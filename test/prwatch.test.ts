@@ -31,15 +31,18 @@ const gh = (script: Record<string, { code: number; out: string }>): GhRunner =>
     return script[key] ?? { code: 0, out: "{}" };
   };
 
+const okGit = async () => ({ code: 0, out: "" });
+
 test("opening a PR records its number once", async () => {
   const h = harness();
   const runner = gh({ "pr create": { code: 0, out: "created" }, "pr view": { code: 0, out: '{"number":42}' } });
-  const r = await openPr({ ctx: h.ctx, gh: runner, grpId: 1, title: "t", body: "b" });
+  const base = { ctx: h.ctx, git: okGit, repo: "/tmp/p", grpId: 1, title: "t", body: "b" };
+  const r = await openPr({ ...base, gh: runner });
   expect(r).toEqual({ number: 42 });
   expect(h.db.query<{ pr_number: number }, []>("SELECT pr_number FROM grp").get()!.pr_number).toBe(42);
 
   // Calling again is a no-op rather than a second PR.
-  const again = await openPr({ ctx: h.ctx, gh: gh({}), grpId: 1, title: "t", body: "b" });
+  const again = await openPr({ ...base, gh: gh({}) });
   expect(again).toEqual({ number: 42 });
 });
 
@@ -48,11 +51,58 @@ test("a failed PR creation reports why instead of vanishing", async () => {
   const r = await openPr({
     ctx: h.ctx,
     gh: gh({ "pr create": { code: 1, out: "no upstream configured" } }),
+    git: okGit,
+    repo: "/tmp/p",
     grpId: 1,
     title: "t",
     body: "b",
   });
   expect("error" in r && r.error).toContain("no upstream");
+});
+
+test("the branch is pushed under the lock before gh is asked to open a PR", async () => {
+  // Nothing else pushes a group's branch, and `gh pr create` refuses to do it
+  // outside a TTY. If this order ever flips, every PR fails on a real remote.
+  const h = harness();
+  const calls: string[] = [];
+  const r = await openPr({
+    ctx: h.ctx,
+    gh: async (argv) => {
+      calls.push(`gh ${argv.slice(0, 2).join(" ")}`);
+      return { code: 0, out: '{"number":9}' };
+    },
+    git: async (repo, argv) => {
+      calls.push(`git(${repo}) ${argv.join(" ")}`);
+      return { code: 0, out: "" };
+    },
+    repo: "/tmp/p",
+    grpId: 1,
+    title: "t",
+    body: "b",
+  });
+  expect(r).toEqual({ number: 9 });
+  expect(calls[0]).toBe("git(/tmp/p) push -u origin orch/g1");
+  expect(calls[1]).toBe("gh pr create");
+});
+
+test("a push that fails names the branch, and no PR is attempted", async () => {
+  const h = harness();
+  let ghCalled = false;
+  const r = await openPr({
+    ctx: h.ctx,
+    gh: async () => {
+      ghCalled = true;
+      return { code: 0, out: "{}" };
+    },
+    git: async () => ({ code: 1, out: "remote: Permission to x/y denied\nfatal: unable to access" }),
+    repo: "/tmp/p",
+    grpId: 1,
+    title: "t",
+    body: "b",
+  });
+  expect("error" in r && r.error).toContain("could not push orch/g1");
+  expect("error" in r && r.error).toContain("Permission");
+  expect(ghCalled).toBe(false);
 });
 
 test("only new comments and failing checks come back", async () => {

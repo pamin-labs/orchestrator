@@ -63,11 +63,15 @@ export function start(overrides: Partial<Config> = {}): Started {
     git,
     onAuditPass: (grpId: number) => {
       const grp = db
-        .query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?")
+        .query<{ name: string; repo_path: string }, [number]>(
+          "SELECT g.name, p.repo_path FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
+        )
         .get(grpId);
       void openPr({
         ctx,
         gh,
+        git,
+        repo: grp?.repo_path ?? "",
         grpId,
         title: `orch: ${grp?.name ?? "changes"}`,
         body: "Opened by the orchestrator after the audit passed. Journals are in docs/journal/.",
