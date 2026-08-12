@@ -1,0 +1,330 @@
+import type { StablePrompt } from "../prompt/assemble.ts";
+
+/**
+ * `claude -p` as one subprocess per turn.
+ *
+ * Chosen over the Agent SDK because swapping the model per turn is just a flag
+ * (needed for per-slice difficulty tiering), a crashed turn cannot take the
+ * orchestrator with it, and codex has the same shape (`codex exec resume`).
+ *
+ * Field names below were read off a real run, not guessed — see PLAN.md §5.
+ */
+
+export interface RateLimitInfo {
+  status: string;
+  rateLimitType: string;
+  resetsAt: number;
+  overageStatus?: string;
+  isUsingOverage?: boolean;
+}
+
+export interface Usage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreate: number;
+  thinking: number;
+}
+
+export interface ToolSummary {
+  name: string;
+  /** One-line rendering of the call, for the timeline. Never the full input. */
+  detail: string;
+  ok?: boolean;
+}
+
+export interface TurnResult {
+  sessionId: string;
+  ok: boolean;
+  /** completed | max_turns | api_error | … — straight from the CLI. */
+  terminalReason: string;
+  /** Final assistant text. */
+  text: string;
+  usage: Usage;
+  costUsd: number;
+  numTurns: number;
+  /**
+   * Non-empty means the agent tried something its clearance forbids. Headless
+   * runs never prompt, so a denial is silent and the agent will invent a
+   * workaround — the orchestrator turns these into escalations (PLAN.md §5).
+   */
+  permissionDenials: unknown[];
+  /** Present when the CLI reported quota state; drives downgrade/suspend. */
+  rateLimit?: RateLimitInfo;
+  /** From modelUsage — the denominator for session rotation. */
+  contextWindow?: number;
+  toolSummaries: ToolSummary[];
+  /** Paths the turn wrote, for narration and reconcile. */
+  filesTouched: string[];
+  /** Raw NDJSON path, if the caller asked for one. */
+  logPath?: string;
+}
+
+export interface TurnHandlers {
+  /** Streamed assistant text, for the live SSE feed. */
+  onText?: (chunk: string) => void;
+  /** Streamed thinking, if the role has thinking enabled. */
+  onThinking?: (chunk: string) => void;
+  /** A tool call started — drives the desk wall's "currently running" line. */
+  onTool?: (t: ToolSummary) => void;
+  /** The CLI's own status pings (requesting, …). */
+  onStatus?: (status: string) => void;
+  /** Called once the child exists, so intercept L3 can kill it. */
+  onPid?: (pid: number) => void;
+}
+
+export interface TurnSpec {
+  stable: StablePrompt;
+  prompt: string;
+  cwd: string;
+  /** Continue this session. Omit to start one (pass `newSessionId` instead). */
+  resumeSessionId?: string;
+  /** Force a specific id for a fresh session, so we can record it up front. */
+  newSessionId?: string;
+  maxTurns?: number;
+  /** Wall-clock cap; the watchdog also enforces one at the job level. */
+  timeoutMs?: number;
+  /** Write raw NDJSON here for later inspection (never into the context). */
+  logPath?: string;
+  signal?: AbortSignal;
+}
+
+export function buildArgv(spec: TurnSpec): string[] {
+  const s = spec.stable;
+  const argv = [
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--include-partial-messages",
+    "--verbose", // required alongside stream-json in print mode
+    "--model",
+    s.model,
+    "--settings",
+    s.settingsPath,
+    "--permission-mode",
+    "acceptEdits",
+    "--append-system-prompt",
+    s.systemAppend,
+    "--allowedTools",
+    ...s.allowedTools,
+  ];
+  for (const d of s.addDirs) argv.push("--add-dir", d);
+  if (spec.resumeSessionId) argv.push("--resume", spec.resumeSessionId);
+  else if (spec.newSessionId) argv.push("--session-id", spec.newSessionId);
+  if (spec.maxTurns) argv.push("--max-turns", String(spec.maxTurns));
+  return argv;
+}
+
+/** One line of stream-json. Only the fields we consume are typed. */
+type Line = {
+  type: string;
+  subtype?: string;
+  session_id?: string;
+  status?: string;
+  message?: { content?: Array<Record<string, any>> };
+  tool_use_result?: { stdout?: string; stderr?: string; interrupted?: boolean };
+  event?: {
+    type: string;
+    delta?: { type: string; text?: string; thinking?: string };
+    content_block?: { type: string; name?: string; input?: Record<string, any> };
+  };
+  rate_limit_info?: RateLimitInfo;
+  // result
+  is_error?: boolean;
+  terminal_reason?: string;
+  result?: string;
+  num_turns?: number;
+  total_cost_usd?: number;
+  usage?: Record<string, any>;
+  modelUsage?: Record<string, { contextWindow?: number }>;
+  permission_denials?: unknown[];
+};
+
+const WRITE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
+
+export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult> {
+  const proc = Bun.spawn(["claude", ...buildArgv(spec)], {
+    cwd: spec.cwd,
+    stdin: new TextEncoder().encode(spec.prompt),
+    stdout: "pipe",
+    stderr: "pipe",
+    signal: spec.signal,
+  });
+  h.onPid?.(proc.pid);
+
+  const timer = spec.timeoutMs
+    ? setTimeout(() => proc.kill("SIGTERM"), spec.timeoutMs)
+    : undefined;
+
+  const log = spec.logPath ? Bun.file(spec.logPath).writer() : undefined;
+  const acc = newAccumulator(spec);
+
+  try {
+    for await (const line of ndjson(proc.stdout)) {
+      log?.write(JSON.stringify(line) + "\n");
+      consume(line, acc, h);
+    }
+    await proc.exited;
+  } finally {
+    if (timer) clearTimeout(timer);
+    await log?.end();
+  }
+
+  if (!acc.sawResult) {
+    const stderr = await new Response(proc.stderr).text();
+    acc.result.ok = false;
+    acc.result.terminalReason = acc.result.terminalReason || "no_result";
+    acc.result.text ||= stderr.trim().split("\n").slice(-5).join("\n");
+  }
+  return acc.result;
+}
+
+interface Acc {
+  result: TurnResult;
+  sawResult: boolean;
+  files: Set<string>;
+}
+
+function newAccumulator(spec: TurnSpec): Acc {
+  return {
+    sawResult: false,
+    files: new Set(),
+    result: {
+      sessionId: spec.resumeSessionId ?? spec.newSessionId ?? "",
+      ok: false,
+      terminalReason: "",
+      text: "",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 },
+      costUsd: 0,
+      numTurns: 0,
+      permissionDenials: [],
+      toolSummaries: [],
+      filesTouched: [],
+      logPath: spec.logPath,
+    },
+  };
+}
+
+function consume(l: Line, acc: Acc, h: TurnHandlers): void {
+  const r = acc.result;
+  switch (l.type) {
+    case "system":
+      if (l.session_id) r.sessionId = l.session_id;
+      if (l.subtype === "status" && l.status) h.onStatus?.(l.status);
+      return;
+
+    case "rate_limit_event":
+      if (l.rate_limit_info) r.rateLimit = l.rate_limit_info;
+      return;
+
+    case "stream_event": {
+      const ev = l.event;
+      if (!ev) return;
+      if (ev.type === "content_block_delta") {
+        const d = ev.delta;
+        if (d?.type === "text_delta" && d.text) h.onText?.(d.text);
+        else if (d?.type === "thinking_delta" && d.thinking) h.onThinking?.(d.thinking);
+      } else if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
+        const t = summarizeTool(ev.content_block.name ?? "?", ev.content_block.input ?? {});
+        r.toolSummaries.push(t);
+        h.onTool?.(t);
+      }
+      return;
+    }
+
+    case "assistant": {
+      for (const block of l.message?.content ?? []) {
+        if (block.type === "text" && typeof block.text === "string") r.text = block.text;
+        if (block.type === "tool_use") {
+          const name = String(block.name ?? "?");
+          const input = (block.input ?? {}) as Record<string, any>;
+          if (WRITE_TOOLS.has(name) && typeof input.file_path === "string") {
+            acc.files.add(input.file_path);
+          }
+          // `stream_event` already reported this call when partial streaming is
+          // on; only record it here if it did not.
+          if (!r.toolSummaries.some((t) => t.detail === summarizeTool(name, input).detail)) {
+            r.toolSummaries.push(summarizeTool(name, input));
+          }
+        }
+      }
+      return;
+    }
+
+    case "user": {
+      const tur = l.tool_use_result;
+      const last = r.toolSummaries.at(-1);
+      if (tur && last && last.ok === undefined) {
+        last.ok = !tur.interrupted && !tur.stderr;
+      }
+      return;
+    }
+
+    case "result": {
+      acc.sawResult = true;
+      r.ok = l.is_error !== true;
+      r.terminalReason = l.terminal_reason ?? (r.ok ? "completed" : "error");
+      if (typeof l.result === "string" && l.result) r.text = l.result;
+      r.numTurns = l.num_turns ?? 0;
+      r.costUsd = l.total_cost_usd ?? 0;
+      r.permissionDenials = l.permission_denials ?? [];
+      const u = l.usage ?? {};
+      r.usage = {
+        input: u.input_tokens ?? 0,
+        output: u.output_tokens ?? 0,
+        cacheRead: u.cache_read_input_tokens ?? 0,
+        cacheCreate: u.cache_creation_input_tokens ?? 0,
+        thinking: u.output_tokens_details?.thinking_tokens ?? 0,
+      };
+      for (const m of Object.values(l.modelUsage ?? {})) {
+        if (m.contextWindow) r.contextWindow = m.contextWindow;
+      }
+      r.filesTouched = [...acc.files];
+      return;
+    }
+  }
+}
+
+/** One short line per call — the timeline shows these, never the raw input. */
+export function summarizeTool(name: string, input: Record<string, any>): ToolSummary {
+  let detail = name;
+  if (typeof input.command === "string") detail = `${name}: ${clip(input.command, 90)}`;
+  else if (typeof input.file_path === "string") detail = `${name}: ${input.file_path}`;
+  else if (typeof input.pattern === "string") detail = `${name}: ${clip(input.pattern, 60)}`;
+  else if (typeof input.prompt === "string") detail = `${name}: ${clip(input.prompt, 60)}`;
+  return { name, detail };
+}
+
+function clip(s: string, n: number): string {
+  const one = s.replace(/\s+/g, " ").trim();
+  return one.length > n ? one.slice(0, n - 1) + "…" : one;
+}
+
+/** Split a byte stream into JSON values, one per line, tolerating partial reads. */
+export async function* ndjson(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<Line, void, unknown> {
+  const dec = new TextDecoder();
+  let buf = "";
+  for await (const chunk of stream) {
+    buf += dec.decode(chunk, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) !== -1) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line) yield safeParse(line);
+    }
+  }
+  const tail = buf.trim();
+  if (tail) yield safeParse(tail);
+}
+
+function safeParse(line: string): Line {
+  try {
+    return JSON.parse(line) as Line;
+  } catch {
+    // The CLI prints the occasional non-JSON line (login prompts, warnings).
+    // Surfacing it as text beats crashing the turn.
+    return { type: "system", subtype: "noise", status: line };
+  }
+}
