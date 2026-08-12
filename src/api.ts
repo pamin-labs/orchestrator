@@ -504,13 +504,22 @@ export function ctxQuery(ctx: Ctx, grpId: number | null, question: string, budge
 const getTasks: Handler = async (ctx, req) => {
   const grp = Number(new URL(req.url).searchParams.get("grp") ?? 0);
   const rows = ctx.db
-    .query<any, [number]>(
+    .query<{ id: number; title: string; status: string; slice_id: number | null; owner: string | null }, [number]>(
       `SELECT t.id, t.title, t.status, t.slice_id, a.role AS owner
        FROM task t LEFT JOIN agent a ON a.id = t.owner_agent_id
        WHERE t.grp_id = ? ORDER BY t.id`,
     )
     .all(grp);
-  return json(rows);
+  if (rows.length === 0) return text("no tasks in this group");
+  // Lines, not a JSON array. Handing an agent `[{"id":1,"title":"…"}]` invites it
+  // to pass the title where an id belongs, which is what happened live.
+  return text(
+    ["id  status       slice  owner       title", ...rows.map(
+      (r) =>
+        `${String(r.id).padEnd(4)}${r.status.padEnd(13)}${String(r.slice_id ?? "-").padEnd(7)}` +
+        `${(r.owner ?? "-").padEnd(12)}${r.title}`,
+    )].join("\n"),
+  );
 };
 
 const postTaskClaim: Handler = async (ctx, req) => {
@@ -746,9 +755,18 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
     ctx.db.run("DELETE FROM slice WHERE grp_id = ?", [grpId]);
     const ins = ctx.db.prepare(
       `INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at)
-       VALUES (?, ?, ?, ?, ?, unixepoch() * 1000)`,
+       VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     );
-    v.slices.forEach((s, i) => ins.run(grpId, i + 1, s.title, s.accept, s.difficulty));
+    // One task per slice, up front. Without something to claim the writer
+    // improvises an id, `task done` never lands, and the whole review pipeline
+    // silently never fires — which is exactly what the live run showed.
+    const insTask = ctx.db.prepare(
+      "INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (?, ?, ?, unixepoch() * 1000)",
+    );
+    v.slices.forEach((sl, i) => {
+      const row = ins.get(grpId, i + 1, sl.title, sl.accept, sl.difficulty) as { id: number };
+      insTask.run(grpId, row.id, sl.title);
+    });
   }
   // Boundaries before work. Two groups discovering at merge time that they were
   // both editing one file have already paid for the work twice.
