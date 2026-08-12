@@ -138,6 +138,14 @@ const READ_SHELL = [
   "Bash(git show*)",
   "Bash(git status*)",
   "Bash(echo*)",
+  // Every segment of a compound command must match, so a missing read-only
+  // builtin blocks the whole line. Live, the Auditor lost a step to
+  // `… && (test -f tsconfig.json && cat …)`.
+  "Bash(cd*)",
+  "Bash(pwd*)",
+  "Bash(test*)",
+  "Bash(basename*)",
+  "Bash(dirname*)",
 ];
 
 /** Tools each clearance may use. QA's list is deliberately narrow. */
