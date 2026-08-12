@@ -120,13 +120,16 @@ function findResponder(ctx: Ctx, grpId: number | null, role: string): number | n
         .get(grpId)?.id ?? null
     );
   }
-  return (
-    ctx.db
-      .query<{ id: number }, [string]>(
-        "SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'",
-      )
-      .get(role)?.id ?? null
-  );
+  const standing = ctx.db
+    .query<{ id: number }, [string]>(
+      "SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'",
+    )
+    .get(role)?.id;
+  if (standing) return standing;
+  // A configured-but-not-yet-hired standing role is a level that exists; skipping
+  // it would send the question to the boss for no reason.
+  if ((ctx.knownRoles?.() ?? []).includes(role)) return ctx.hire?.(null, role) ?? null;
+  return null;
 }
 
 export interface AnswerInput {

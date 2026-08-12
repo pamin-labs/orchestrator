@@ -8,7 +8,7 @@ import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
 import { Notifier, tierFor } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs } from "./mech/prwatch.ts";
-import { makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
+import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { Scheduler } from "./scheduler.ts";
 
 /**
@@ -87,6 +87,11 @@ export function start(overrides: Partial<Config> = {}): Started {
     },
   };
   exec = makeExecutor(execDeps);
+  ctx.knownRoles = () => [...roles.keys()];
+  ctx.hire = (grpId, role) => {
+    if (!roles.has(role)) return null;
+    return hire(execDeps, grpId, role).id;
+  };
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
   ctx.auditVerdict = makeAuditVerdict(execDeps);
 
