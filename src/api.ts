@@ -202,6 +202,21 @@ const postJournal: Handler = async (ctx, req) => {
   // ever-growing list becomes the very context cost it exists to prevent.
   if (v.kind === "lesson") evictOldestLessons(ctx, grp?.project_id ?? null);
 
+  // A retro is what PR-level review was waiting for. Without this the flow
+  // dead-ends: the PM writes the retro nobody asked for again, and the branch sits
+  // finished and unreviewed until someone nudges it by hand.
+  if (v.kind === "retro" && a.grp_id) {
+    const open = ctx.db
+      .query<{ c: number }, [number]>(
+        "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'",
+      )
+      .get(a.grp_id)!.c;
+    if (open === 0) {
+      ctx.sched.enqueue("reconcile", { grp_id: a.grp_id, priority: 5 });
+      ctx.sched.tick();
+    }
+  }
+
   ctx.bus.emit({
     grpId: a.grp_id,
     author: a.role,
