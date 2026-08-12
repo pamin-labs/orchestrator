@@ -98,6 +98,28 @@ export function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
 
+/**
+ * A group, by id or by name.
+ *
+ * Agents reach for the name they can see — one was observed running
+ * `orch draft greet -` — and refusing that teaches nothing. Accepting both costs
+ * one query and removes a whole class of confusion.
+ */
+export function resolveGroup(ctx: Ctx, ref: unknown, fallbackGrp?: number | null): number | null {
+  if (typeof ref === "number" && Number.isInteger(ref)) return ref;
+  if (typeof ref === "string" && ref.trim()) {
+    const n = Number(ref);
+    if (Number.isInteger(n)) return n;
+    const row = ctx.db
+      .query<{ id: number }, [string]>(
+        "SELECT id FROM grp WHERE name = ? AND status != 'DISSOLVED' ORDER BY id DESC LIMIT 1",
+      )
+      .get(ref.trim());
+    if (row) return row.id;
+  }
+  return fallbackGrp ?? null;
+}
+
 // ---------------------------------------------------------------- agent verbs
 
 const postStatus: Handler = async (ctx, req) => {
@@ -420,12 +442,14 @@ const postAnswer2: Handler = async (ctx, req) => {
 };
 
 const postTriage: Handler = async (ctx, req) => {
-  const b = await body<{ group_id: number; as: string; note?: string }>(req);
+  const b = await body<{ group_id: number | string; as: string; note?: string }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
   if (a.role !== "cos") return bad(`${a.role} does not triage the boss's feedback`);
   if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
-  triage({ ctx, git: ctx.git }, b.group_id, b.as as Triage, b.note ?? "");
+  const gid = resolveGroup(ctx, b.group_id);
+  if (!gid) return bad("which group? pass its id or name");
+  triage({ ctx, git: ctx.git }, gid, b.as as Triage, b.note ?? "");
   return text("ok");
 };
 
@@ -441,7 +465,7 @@ const postRevoke: Handler = async (ctx, _req, params) => {
  * card exists — the boss should never be asked to approve nothing.
  */
 const postDraft: Handler = async (ctx, req) => {
-  const b = await body<{ group_id: number; card: string }>(req);
+  const b = await body<{ group_id: number | string; card: string }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
   if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not file DRAFT cards`);
@@ -449,8 +473,8 @@ const postDraft: Handler = async (ctx, req) => {
   const v = validateDraftCard(b.card ?? "");
   if (!v.ok) return bad(v.error);
 
-  const grpId = b.group_id || a.grp_id;
-  if (!grpId) return bad("which group?");
+  const grpId = resolveGroup(ctx, b.group_id, a.grp_id);
+  if (!grpId) return bad("which group? pass its id or name");
   const grp = ctx.db
     .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
     .get(grpId);
@@ -479,16 +503,18 @@ const postDraft: Handler = async (ctx, req) => {
 
 /** The Architect cuts a group's boundary before work is planned inside it. */
 const postOwns: Handler = async (ctx, req) => {
-  const b = await body<{ group_id: number; paths: string[] }>(req);
+  const b = await body<{ group_id: number | string; paths: string[] }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
   if (a.role !== "architect") return bad(`${a.role} does not cut boundaries`);
   if (!Array.isArray(b.paths) || b.paths.length === 0) return bad("give at least one path glob");
+  const gid = resolveGroup(ctx, b.group_id, a.grp_id);
+  if (!gid) return bad("which group? pass its id or name");
 
-  ctx.db.run("UPDATE grp SET owns_json = ? WHERE id = ?", [JSON.stringify(b.paths), b.group_id]);
-  const check = canStart(ctx.db, b.group_id);
+  ctx.db.run("UPDATE grp SET owns_json = ? WHERE id = ?", [JSON.stringify(b.paths), gid]);
+  const check = canStart(ctx.db, gid);
   ctx.bus.emit({
-    grpId: b.group_id,
+    grpId: gid,
     author: "architect",
     kind: "decision",
     intent: "decision",
@@ -499,24 +525,26 @@ const postOwns: Handler = async (ctx, req) => {
 };
 
 const postAudit: Handler = async (ctx, req) => {
-  const b = await body<{ group_id: number; verdict: string; note?: string }>(req);
+  const b = await body<{ group_id: number | string; verdict: string; note?: string }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
   if (a.role !== "auditor") return bad(`${a.role} does not file audit verdicts`);
   if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
+  const gid = resolveGroup(ctx, b.group_id);
+  if (!gid) return bad("which group? pass its id or name");
   // The Auditor is deliberately not a member of the group it reviews, so it is
   // the one role whose group check is inverted.
-  if (a.grp_id === b.group_id) return bad("an auditor may not audit its own group");
+  if (a.grp_id === gid) return bad("an auditor may not audit its own group");
 
   ctx.bus.emit({
-    grpId: b.group_id,
+    grpId: gid,
     author: "auditor",
     kind: "gate_result",
     intent: "decision",
     body: `audit ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
     meta: { verdict: b.verdict },
   });
-  ctx.auditVerdict?.(b.group_id, b.verdict === "pass", b.note ?? "");
+  ctx.auditVerdict?.(gid, b.verdict === "pass", b.note ?? "");
   return text("ok");
 };
 

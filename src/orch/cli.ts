@@ -205,13 +205,12 @@ export async function main(argv: string[]): Promise<number> {
       break;
     }
     case "audit": {
-      const id = Number(sub);
-      if (!Number.isInteger(id)) return usageError("audit needs a group id");
+      if (!sub) return usageError("audit needs a group id or name");
       if (flags.verdict !== "pass" && flags.verdict !== "fail") {
         return usageError("audit needs --verdict pass|fail");
       }
       const note = typeof flags.note === "string" ? flags.note : args.slice(2).join(" ");
-      r = await call("POST", "/orch/audit", { group_id: id, verdict: flags.verdict, note });
+      r = await call("POST", "/orch/audit", { group_id: sub, verdict: flags.verdict, note });
       break;
     }
     case "answer": {
@@ -235,30 +234,30 @@ export async function main(argv: string[]): Promise<number> {
       break;
     }
     case "triage": {
-      const id = Number(sub);
-      if (!Number.isInteger(id)) return usageError("triage needs a group id");
+      if (!sub) return usageError("triage needs a group id or name");
       if (!["patch", "respec", "reject"].includes(String(flags.as))) {
         return usageError("triage needs --as patch|respec|reject");
       }
       r = await call("POST", "/orch/triage", {
-        group_id: id,
+        group_id: sub,
         as: flags.as,
         note: typeof flags.note === "string" ? flags.note : args.slice(2).join(" "),
       });
       break;
     }
     case "draft": {
-      const id = Number(sub) || Number(process.env.ORCH_GRP_ID);
-      if (!Number.isInteger(id)) return usageError("draft needs a group id");
-      r = await call("POST", "/orch/draft", { group_id: id, card: await stdin() });
+      // id or name; the server resolves either. An agent reaches for the name it
+      // can see, and refusing that teaches it nothing.
+      r = await call("POST", "/orch/draft", {
+        group_id: sub ?? process.env.ORCH_GRP_ID,
+        card: await stdin(),
+      });
       break;
     }
     case "owns": {
-      const id = Number(sub) || Number(process.env.ORCH_GRP_ID);
-      if (!Number.isInteger(id)) return usageError("owns needs a group id");
       const paths = list(flags.path);
       if (paths.length === 0) return usageError("owns needs at least one --path <glob>");
-      r = await call("POST", "/orch/owns", { group_id: id, paths });
+      r = await call("POST", "/orch/owns", { group_id: sub ?? process.env.ORCH_GRP_ID, paths });
       break;
     }
     case "status": {
