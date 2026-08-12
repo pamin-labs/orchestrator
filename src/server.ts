@@ -88,9 +88,9 @@ export function start(overrides: Partial<Config> = {}): Started {
   };
   exec = makeExecutor(execDeps);
   ctx.knownRoles = () => [...roles.keys()];
-  ctx.hire = (grpId, role) => {
+  ctx.hire = (grpId, role, projectId) => {
     if (!roles.has(role)) return null;
-    return hire(execDeps, grpId, role).id;
+    return hire(execDeps, grpId, role, null, projectId ?? null).id;
   };
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
   ctx.auditVerdict = makeAuditVerdict(execDeps);
