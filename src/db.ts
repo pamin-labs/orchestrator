@@ -264,6 +264,12 @@ const MIGRATIONS: string[] = [
   ALTER TABLE grp ADD COLUMN paused_at INTEGER;
   ALTER TABLE job ADD COLUMN checkpoint_sha TEXT;
   `,
+
+  // 006 — merge order.
+  //
+  // Assigned when a branch passes its audit. The queue is strictly serial: the
+  // alternative is finding out on main which of two groups broke it.
+  `ALTER TABLE grp ADD COLUMN merge_seq INTEGER;`,
 ];
 
 export type DB = Database;

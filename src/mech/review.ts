@@ -3,6 +3,7 @@ import type { Config } from "../config.ts";
 import { runGates, recordGate, gateState } from "./gate.ts";
 import { reconcile } from "./reconcile.ts";
 import { changedSince, type GitRunner } from "./worktree.ts";
+import { joinQueue, position } from "./mergequeue.ts";
 
 /**
  * Slice-level review, in the one order that makes sense.
@@ -302,12 +303,17 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
 export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, note: string): void {
   const { ctx } = deps;
   if (pass) {
+    joinQueue(ctx.db, grpId);
+    const pos = position(ctx.db, grpId);
     ctx.bus.emit({
       grpId,
       author: "auditor",
       kind: "state_change",
-      body: "audit passed — ready for you to merge",
-      meta: { audit: "pass" },
+      body:
+        pos && pos.position > 1
+          ? `audit passed — queued to merge, ${pos.position} of ${pos.total}`
+          : "audit passed — ready for you to merge",
+      meta: { audit: "pass", ...pos },
     });
     return;
   }

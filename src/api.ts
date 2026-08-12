@@ -8,6 +8,8 @@ import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { createWorktree, type GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
+import { canStart } from "./mech/ownership.ts";
+import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -640,6 +642,15 @@ export function snapshot(ctx: Ctx) {
          WHERE e.chain_state NOT IN ('answered', 'revoked') ORDER BY e.created_at`,
       )
       .all(),
+    // Only the queue head is offered for merging; the rest carry their place in
+    // line so the boss can see why they are waiting.
+    mergeQueue: db
+      .query<{ id: number }, []>("SELECT id FROM project")
+      .all()
+      .flatMap((p) => {
+        const h = head(db, p.id);
+        return h ? [{ projectId: p.id, ...h, place: position(db, h.grpId) }] : [];
+      }),
     lastSeq:
       ctx.db.query<{ s: number | null }, []>("SELECT max(seq) AS s FROM event").get()?.s ?? 0,
   };
@@ -714,6 +725,11 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
     );
     v.slices.forEach((s, i) => ins.run(grpId, i + 1, s.title, s.accept, s.difficulty));
   }
+  // Boundaries before work. Two groups discovering at merge time that they were
+  // both editing one file have already paid for the work twice.
+  const start = canStart(ctx.db, grpId);
+  if (!start.ok) return bad(`cannot start: ${start.reason}`);
+
   // Approval is where the group gets a place to work. The worktree lives under
   // workRoot (outside $HOME) because the sandbox is deny-only: denying $HOME is
   // how writes get confined at all.
@@ -769,6 +785,23 @@ const postGroupControl: Handler = async (ctx, req, params) => {
     case "park":
       park(ctx, grpId, "you parked it");
       return text("ok");
+    case "landed": {
+      // The boss merged it. Everyone still queued now has a stale base.
+      const stale = landed(ctx.db, grpId);
+      ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "merged into main" });
+      for (const id of stale) {
+        ctx.sched.enqueue("agent_turn", {
+          grp_id: id,
+          payload: {
+            role: "engineer",
+            rejection: "main moved: rebase onto it with `orch git -- rebase` before doing anything else.",
+            rotate: true,
+          },
+        });
+      }
+      ctx.sched.tick();
+      return json({ staleGroups: stale });
+    }
     case "wake":
       if (!ctx.git) return bad("no git runner");
       await unpark(ctx, ctx.git, grpId);
@@ -893,7 +926,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
   ["POST", /^\/api\/draft\/(?<id>\d+)\/(?<decision>approve|reject)$/, postDraftDecision],
-  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt)$/, postGroupControl],
+  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|landed)$/, postGroupControl],
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/answer$/, postAnswer],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/revoke$/, postRevoke],
