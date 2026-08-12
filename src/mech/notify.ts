@@ -148,3 +148,44 @@ async function macNotify(title: string, body: string, url?: string, ntfyTopic?: 
     } catch {}
   }
 }
+
+/**
+ * Aggregate everything waiting on the boss into one interruption.
+ *
+ * The CoS is supposed to do this in its own words, but a prompt is not a
+ * guarantee: if it is busy, parked or simply does not run, the boss should still
+ * get one message rather than N or zero. Deterministic backstop.
+ */
+export interface PendingItem {
+  id: number;
+  severity: string;
+  question: string;
+  group: string | null;
+}
+
+export function batchForBoss(items: PendingItem[]): Notification | null {
+  if (items.length === 0) return null;
+  const blockers = items.filter((i) => i.severity === "blocker");
+
+  if (items.length === 1) {
+    const i = items[0]!;
+    return {
+      key: `escalation:${i.id}`,
+      tier: i.severity === "blocker" ? "immediate" : "batched",
+      body: `${i.group ?? "someone"}: ${i.question.slice(0, 200)}`,
+    };
+  }
+
+  // Keyed by the set, so the reminder backs off while the set is unchanged and
+  // fires immediately when something new joins it.
+  const key = `batch:${items.map((i) => i.id).sort((a, b) => a - b).join(",")}`;
+  const lines = items.map((i) => `• ${i.group ?? "?"}: ${i.question.slice(0, 120)}`);
+  return {
+    key,
+    tier: blockers.length > 0 ? "immediate" : "batched",
+    body:
+      `${items.length} waiting on you` +
+      (blockers.length ? ` (${blockers.length} blocking)` : "") +
+      `:\n${lines.join("\n")}`,
+  };
+}

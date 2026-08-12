@@ -224,3 +224,55 @@ test("answering clears the reminder", async () => {
   // Cleared, so the next occurrence is a new problem rather than a reminder.
   expect(await n.push({ key: "esc:7", tier: "immediate", body: "q" })).toBe(true);
 });
+
+// ------------------------------------------------------- boss batching backstop
+
+test("several things waiting on the boss become one message", () => {
+  const { batchForBoss } = require("../src/mech/notify.ts");
+  const n = batchForBoss([
+    { id: 1, severity: "advisory", question: "which library?", group: "auth" },
+    { id: 2, severity: "advisory", question: "rename the flag?", group: "ui" },
+  ])!;
+  expect(n.body).toContain("2 waiting on you");
+  expect(n.body).toContain("• auth:");
+  expect(n.body).toContain("• ui:");
+  expect(n.tier).toBe("batched");
+});
+
+test("one blocker in the set makes the whole batch immediate", () => {
+  const { batchForBoss } = require("../src/mech/notify.ts");
+  const n = batchForBoss([
+    { id: 1, severity: "advisory", question: "a", group: "x" },
+    { id: 2, severity: "blocker", question: "b", group: "y" },
+  ])!;
+  expect(n.tier).toBe("immediate");
+  expect(n.body).toContain("1 blocking");
+});
+
+test("the batch key is the set, so a new arrival is news and a repeat is not", () => {
+  const { batchForBoss } = require("../src/mech/notify.ts");
+  const two = batchForBoss([
+    { id: 1, severity: "advisory", question: "a", group: null },
+    { id: 2, severity: "advisory", question: "b", group: null },
+  ])!;
+  const same = batchForBoss([
+    { id: 2, severity: "advisory", question: "b", group: null },
+    { id: 1, severity: "advisory", question: "a", group: null },
+  ])!;
+  const three = batchForBoss([
+    { id: 1, severity: "advisory", question: "a", group: null },
+    { id: 2, severity: "advisory", question: "b", group: null },
+    { id: 3, severity: "advisory", question: "c", group: null },
+  ])!;
+  // Order-independent: the same set is the same reminder, and backs off.
+  expect(same.key).toBe(two.key);
+  expect(three.key).not.toBe(two.key);
+});
+
+test("a single item is not dressed up as a batch, and nothing waiting sends nothing", () => {
+  const { batchForBoss } = require("../src/mech/notify.ts");
+  expect(batchForBoss([])).toBeNull();
+  const one = batchForBoss([{ id: 7, severity: "blocker", question: "which lib?", group: "auth" }])!;
+  expect(one.key).toBe("escalation:7");
+  expect(one.body).toContain("auth: which lib?");
+});
