@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-**M0–M6 全部落地，313 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
+**M0–M6 全部落地，320 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
 
 **你现在只需要三个动作**：丢想法 → 批 DRAFT 卡（20 秒）→ 查收切片。gate 配置、入职包、PR 预检都在注册项目时自动完成。
 
