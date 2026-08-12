@@ -428,3 +428,30 @@ test("--already-done is accepted and recorded as such", async () => {
   );
   expect(claim.already_done).toBe("S1 covered it");
 });
+
+test("writing the retro resumes PR-level review instead of dead-ending", async () => {
+  const h = await harness();
+  h.gate(0);
+  // Every slice accepted but no retro: review asks for one and stops.
+  await h.post("/api/slices/1/accept");
+  await h.sched.drain();
+  expect(h.specs.at(-1)!.prompt).toContain("no retro");
+
+  const before = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c;
+  await h.post(
+    "/orch/journal",
+    { kind: "retro", body: "S1 返工一次，验收标准写模糊了" },
+    "tok-eng",
+  );
+  // Without this the PM writes a retro nobody asked for again and the finished
+  // branch sits unreviewed until someone nudges it by hand.
+  const after = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c;
+  expect(after).toBe(before + 1);
+});
+
+test("a retro written mid-flight does not trigger PR review", async () => {
+  const h = await harness();
+  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
+  await h.post("/orch/journal", { kind: "retro", body: "早写的 retro" }, "tok-eng");
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
+});
