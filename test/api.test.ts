@@ -223,10 +223,19 @@ test("sending a DRAFT back records the reason and re-runs the dispatcher", async
   expect(JSON.parse(jobs.at(-1)!.payload_json).respec).toBe("wrong layer");
 });
 
-test("pause reports PAUSING, not PAUSED — an in-flight turn cannot be stopped", async () => {
+test("pause is PAUSING only while something is in flight, PAUSED once idle", async () => {
   const { app, db } = harness();
-  await post(app, "/api/groups/1/pause");
+  db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('agent_turn', 1, 'running', 0)");
+  const r = await (await post(app, "/api/groups/1/pause")).json();
+  // An in-flight turn cannot be steered, so claiming PAUSED would be a lie —
+  // and the reply says how many turns it is waiting on.
+  expect(r).toEqual({ status: "PAUSING", waiting: 1 });
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSING");
+
+  db.run("UPDATE job SET state = 'done'");
+  db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 1");
+  const idle = await (await post(app, "/api/groups/1/pause")).json();
+  expect(idle).toEqual({ status: "PAUSED", waiting: 0 });
 });
 
 test("park cancels queued work and leaves the worktree alone", async () => {

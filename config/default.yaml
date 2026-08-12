@@ -15,6 +15,7 @@ maxTurnsPerJob: 30
 sessionRotateFraction: 0.6  # fallback; the real trigger is slice completion
 ctxBudgetChars: 16000     # ~4k tokens
 parkAfterPausedMs: 7200000
+watchdogIntervalMs: 30000   # how often the deterministic rules run
 gateRetries: 2
 
 # Where group worktrees live. Outside $HOME on purpose: the sandbox is deny-only,

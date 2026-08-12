@@ -151,6 +151,11 @@ function groupHtml(g) {
       <span class="grow"></span>
       ${g.status === "RUNNING" ? `<button onclick="ctl(${g.id},'pause')">暂停</button>` : ""}
       ${["PAUSED", "PAUSING"].includes(g.status) ? `<button onclick="ctl(${g.id},'resume')">继续</button>` : ""}
+      ${g.status === "PARKED" ? `<button onclick="ctl(${g.id},'wake')">唤醒</button>` : ""}
+      ${["RUNNING", "PAUSING"].includes(g.status)
+        ? `<button onclick="interrupt(${g.id},'keep')" title="杀掉当前 turn，脏改动留着">打断·保留</button>
+           <button onclick="interrupt(${g.id},'rollback')" title="杀掉当前 turn 并回滚到它开始前">打断·回滚</button>`
+        : ""}
       <button onclick="ctl(${g.id},'park')">封存</button>
     </div>
     ${draft ? draftHtml(g) : slices.map(laneHtml).join("") || '<div class="empty">没有切片</div>'}
@@ -218,6 +223,12 @@ function agentHtml(a) {
 }
 
 window.ctl = async (id, action) => { await api(`/api/groups/${id}/${action}`); refresh(); };
+window.interrupt = async (id, mode) => {
+  // Rollback throws away the turn's work, so it asks; keeping it does not.
+  if (mode === "rollback" && !confirm("回滚会丢弃当前 turn 的全部改动，确定？")) return;
+  const r = await api(`/api/groups/${id}/interrupt`, { mode });
+  if (r.ok) refresh();
+};
 window.approve = async (id) => {
   const card = $(`#card-${id}`).value.trim();
   const r = await api(`/api/draft/${id}/approve`, card ? { card } : {});

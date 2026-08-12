@@ -6,6 +6,7 @@ import type { Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { createWorktree, type GitRunner } from "./mech/worktree.ts";
+import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -27,6 +28,8 @@ export interface Ctx {
   reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
   /** Wired by the server: the Auditor's PR-level verdict. */
   auditVerdict?: (grpId: number, pass: boolean, note: string) => void;
+  /** Wired by the server: a watchdog finding worth telling the boss about. */
+  onFinding?: (rule: string, severity: string, body: string, grpId: number | null) => void;
   config: { language: string; difficultyModel: Record<string, string>; workRoot: string };
 }
 
@@ -698,24 +701,36 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
   return text("ok");
 };
 
-const postGroupControl: Handler = async (ctx, _req, params) => {
+const postGroupControl: Handler = async (ctx, req, params) => {
   const grpId = Number(params.id);
   const action = params.action;
-  if (action === "pause") {
-    // PAUSING, not PAUSED: an in-flight turn cannot be stopped mid-flight, so
-    // the honest state is "no new turns, waiting for the current one to land".
-    ctx.db.run("UPDATE grp SET status = 'PAUSING' WHERE id = ? AND status = 'RUNNING'", [grpId]);
-  } else if (action === "resume") {
-    ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ? AND status IN ('PAUSED','PAUSING')", [grpId]);
-    ctx.sched.tick();
-  } else if (action === "park") {
-    ctx.sched.cancelPending(grpId, "parked");
-    ctx.db.run("UPDATE grp SET status = 'PARKED' WHERE id = ?", [grpId]);
-  } else {
-    return bad(`unknown action ${action}`);
+  switch (action) {
+    case "pause": {
+      // Reports how many turns it is waiting on: PAUSING is honest, PAUSED
+      // would not be while something is still in flight.
+      const waiting = pause(ctx, grpId);
+      return json({ status: waiting ? "PAUSING" : "PAUSED", waiting });
+    }
+    case "resume":
+      resume(ctx, grpId);
+      return text("ok");
+    case "park":
+      park(ctx, grpId, "you parked it");
+      return text("ok");
+    case "wake":
+      if (!ctx.git) return bad("no git runner");
+      await unpark(ctx, ctx.git, grpId);
+      return text("ok");
+    case "interrupt": {
+      const b = await body<{ mode?: string }>(req);
+      const mode = b.mode === "rollback" ? "rollback" : "keep";
+      if (!ctx.git) return bad("no git runner");
+      const out = await interrupt(ctx, ctx.git, grpId, mode);
+      return json(out);
+    }
+    default:
+      return bad(`unknown action ${action}`);
   }
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: action });
-  return text("ok");
 };
 
 const postSliceDecision: Handler = async (ctx, req, params) => {
@@ -824,7 +839,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
   ["POST", /^\/api\/draft\/(?<id>\d+)\/(?<decision>approve|reject)$/, postDraftDecision],
-  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park)$/, postGroupControl],
+  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt)$/, postGroupControl],
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/answer$/, postAnswer],
 ];
