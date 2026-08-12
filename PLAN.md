@@ -49,7 +49,7 @@
 |---|---|---|
 | orchestrator | **bun + TypeScript** 单进程 | HTTP + `bun:sqlite` + 进程管理 + SSE 全内置，零依赖起步 |
 | agent runtime | **CLI 子进程**，非 SDK | per-turn 换 model 只是 flag；进程崩不带走 orchestrator；codex 同形状；hooks/skills/CLAUDE.md 原样生效 |
-| agent↔orchestrator | **`orch` CLI over Bash** | 零新 tool schema（Bash 已有）；阻塞 + 真返回值（stdout）；codex 同样能用；终端可手测 |
+| agent↔orchestrator | **`orch` CLI over Bash**，走 **localhost TCP + 每 agent token** | 零新 tool schema（Bash 已有）；阻塞 + 真返回值（stdout）；codex 同样能用；终端可手测。**不是 unix socket** —— 沙盒无法只放通一个 socket，全放通会连带打开 docker.sock（实测，见 `docs/decisions/001`） |
 | state | **sqlite (WAL)** + journal 落 git | 易变的进 DB；journal 进 repo 跟 PR merge，可 diff 可 grep |
 | 沙盒 | **Claude Code 内置 Seatbelt** + `codex sandbox` | 已装好；能碰 macOS 原生工具链；`SandboxProvider` 接口预留 OpenSandbox |
 | UI | 手写 HTML + vanilla JS + SSE | 无框架无 build step |
@@ -135,13 +135,16 @@ claude -p --output-format stream-json --include-partial-messages \
 ```
 codex 走 `codex exec resume <id> -m <model>` + `codex sandbox`，同一个 adapter 接口。
 
-**clearance = 三份 settings JSON profile**（用内置沙盒键，不自造策略引擎）：
+**clearance = 按组生成的 sandbox settings profile**（用内置沙盒键，不自造策略引擎）。
+⚠️ 实测结论（`docs/decisions/001`，与本节原始设想不同）：**沙盒只有 deny 语义** —— `allowWrite` 无法在更宽的 `denyWrite` 里开口子，且不加 `denyWrite` 时写 cwd 之外是**允许**的。所以「只有 worktree 可写」表达不出来，只能反向 deny：主 checkout + 其他组 worktree + `$HOME` 敏感目录。worktree 因此放在 `$HOME` 之外。
 
 | 级 | 谁 | sandbox 配置要点 |
 |---|---|---|
-| **L1 执行** | Engineer / QA / Librarian / PR-watcher | `denyWrite` 除 worktree 外全部；`denyRead` secrets/`.env`/`~/.ssh`；`autoAllowBashIfSandboxed: true`；不能 push |
-| **L2 主管** | PM / Architect / Dispatcher / Integrator / Auditor / CoS | 加装依赖、改配置、开 PR；仍不能 merge、不能读 secrets |
+| **L1 执行** | Engineer / QA / Librarian / PR-watcher | `denyWrite` 主 checkout + 兄弟 worktree + `$HOME` 敏感目录 + 自己 worktree 里的 `package.json`/`.github`；`denyRead` secrets；`autoAllowBashIfSandboxed: true`；不能 push |
+| **L2 主管** | PM / Architect / Dispatcher / Auditor / CoS | 可改依赖和配置；仍不能 merge、不能读 secrets |
 | **L3** | **只有你** | secrets、花钱、merge to main。**永不授予 agent** |
+
+`failIfUnavailable: true` 是**必须的** —— 实测每一种配错都是**静默失效**（沙盒直接不存在），看起来和成功一模一样。
 
 **session 主动轮换（不做这条，跑到第三天开始鬼打墙）**：
 **主触发是「切片完成」**，不是 token 阈值 —— 切片是天然语义边界，交接最干净且最省（见 §7 token 经济学 #2）。token 过上限 60% 作为兜底触发。
@@ -494,10 +497,11 @@ orchestrator/
       sandbox.ts         # SandboxProvider: seatbelt | opensandbox | none
       session.ts         # session 轮换与退休
     orch/
-      cli.ts             # orch 入口（unix socket 连 server）
+      cli.ts             # orch 入口（localhost TCP + x-orch-token）
       ctx.ts lease.ts journal.ts mail.ts git.ts
     mech/
       intercept.ts watchdog.ts escalate.ts reconcile.ts gate.ts mergequeue.ts park.ts notify.ts
+      clearance.ts        # 按组生成 sandbox profile（deny-only）
       ownership.ts        # file ownership 重叠检测
       standup.ts          # 确定性扫描：相似路径 / 停滞 task / 重复 gate 失败
       lessons.ts          # retro → 教训清单 → 注入；≤20 条淘汰
@@ -507,7 +511,8 @@ orchestrator/
     views/
       timeline.ts wall.ts board.ts
   roles/                 # 11 个 *.yaml，加岗零代码
-  profiles/              # L1/L2 sandbox settings JSON
+  # profiles/ 不是静态文件：clearance profile 按组生成（src/mech/clearance.ts），
+  #   否则静态文件会和 owns/兄弟 worktree 的实际情况漂移
   config/
     default.yaml         # 并发、语种、预算、resource 模板、通知
   web/
@@ -562,7 +567,8 @@ orchestrator/
 | 里程碑 | 一个 runnable check |
 |---|---|
 | M1 | `test/job-queue.test.ts` — 并发槽不超限、job 状态机不会卡在 running |
-| M2 | `test/clearance.test.ts` — L1 profile 下写 worktree 外的路径必须失败；读 `.env` 必须失败 |
+| M2 | `test/clearance.test.ts` — profile 必须 deny 主 checkout / 兄弟 worktree / secrets，且 `failIfUnavailable` 为真 |
+| M2 | `test/sandbox-probe.sh` — 实跑沙盒矩阵（不进 `bun test`，花真 token；沙盒实现变了才跑） |
 | M2 | `test/lease-args.test.ts` — 自由命令注入被 `arg_schema` 拒绝 |
 | M3 | `test/intercept.test.ts` — L3 kill 后回滚到 checkpoint，工作树干净 |
 | M3 | `test/watchdog.test.ts` — 连续零产出 3 turn 触发掐断 |
