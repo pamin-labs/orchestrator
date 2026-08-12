@@ -32,9 +32,22 @@ const WRITE_SUBCOMMANDS = new Set([
   "clean",
 ]);
 
+/**
+ * Global flags that consume the next argument. Skipping the flag but not its
+ * value makes the value look like the subcommand, so `git -C <path> rebase`
+ * reads as a non-write and slips past the lock — the precise corruption this
+ * lock exists to prevent.
+ */
+const VALUE_FLAGS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"]);
+
 export function isWrite(argv: string[]): boolean {
-  for (const a of argv) {
-    if (a.startsWith("-")) continue; // skip global flags like -C <path>
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (VALUE_FLAGS.has(a)) {
+      i++;
+      continue;
+    }
+    if (a.startsWith("-")) continue; // valueless global flag, or --flag=value
     return WRITE_SUBCOMMANDS.has(a);
   }
   return false;

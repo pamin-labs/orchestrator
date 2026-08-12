@@ -41,15 +41,17 @@ export function start(overrides: Partial<Config> = {}): Started {
     leaseSlots: cfg.leaseSlots,
   });
 
+  const git = makeGitRunner(gitLock);
   const ctx: Ctx = {
     db,
     bus,
     sched,
     gitLock,
+    git,
     waiters: new Map(),
-    config: { language: cfg.language, difficultyModel: cfg.difficultyModel },
+    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot },
   };
-  exec = makeExecutor({ ctx, cfg, roles, git: makeGitRunner(gitLock) });
+  exec = makeExecutor({ ctx, cfg, roles, git });
 
   const app = makeApp(ctx);
   const webDir = "web";

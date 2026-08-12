@@ -19,7 +19,7 @@ function harness(opts: { worktree?: string } = {}) {
     sched,
     gitLock: new RepoLock(),
     waiters: new Map(),
-    config: { language: "中文", difficultyModel: { trivial: "haiku", normal: "sonnet", hard: "opus" } },
+    config: { language: "中文", difficultyModel: { trivial: "haiku", normal: "sonnet", hard: "opus" }, workRoot: "/tmp/orch-test/wt" },
   };
   const app = makeApp(ctx);
 

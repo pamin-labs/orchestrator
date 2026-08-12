@@ -5,6 +5,7 @@ import type { Bus } from "./bus.ts";
 import type { Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
+import { createWorktree, type GitRunner } from "./mech/worktree.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -20,7 +21,9 @@ export interface Ctx {
   gitLock: RepoLock;
   /** Resolves a blocking `ask-boss` / `lease` call. Keyed by "kind:id". */
   waiters: Map<string, (value: string) => void>;
-  config: { language: string; difficultyModel: Record<string, string> };
+  /** Runs git under the repo write lock. Absent in unit tests that need no repo. */
+  git?: GitRunner;
+  config: { language: string; difficultyModel: Record<string, string>; workRoot: string };
 }
 
 type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) => Promise<Response>;
@@ -537,6 +540,39 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
     );
     v.slices.forEach((s, i) => ins.run(grpId, i + 1, s.title, s.accept, s.difficulty));
   }
+  // Approval is where the group gets a place to work. The worktree lives under
+  // workRoot (outside $HOME) because the sandbox is deny-only: denying $HOME is
+  // how writes get confined at all.
+  const grp = ctx.db
+    .query<{ name: string; project_id: number; worktree: string | null }, [number]>(
+      "SELECT name, project_id, worktree FROM grp WHERE id = ?",
+    )
+    .get(grpId);
+  if (grp && !grp.worktree && ctx.git) {
+    const repo = ctx.db
+      .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
+      .get(grp.project_id);
+    if (repo) {
+      try {
+        const wt = await createWorktree(ctx.git, {
+          repoPath: repo.repo_path,
+          workRoot: ctx.config.workRoot,
+          group: grp.name,
+        });
+        ctx.db.run("UPDATE grp SET worktree = ?, branch = ? WHERE id = ?", [
+          wt.worktree,
+          wt.branch,
+          grpId,
+        ]);
+        ctx.bus.emit({ grpId, author: "orchestrator", kind: "state_change", body: `worktree ${wt.branch}` });
+      } catch (e: any) {
+        // Refuse to start rather than run the group in the main checkout, where
+        // it would write straight into the boss's working tree.
+        return bad(`could not create a worktree: ${e?.message ?? e}`);
+      }
+    }
+  }
+
   ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [grpId]);
   ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "DRAFT approved" });
   ctx.sched.tick();
