@@ -472,3 +472,33 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   // something they cannot see.
   expect(filed?.body).toContain("支持 zh");
 });
+
+test("a second group triggers boundaries for every undeclared group, not just the new one", async () => {
+  const { app, db } = harness();
+  // The pre-existing group has no owns: it was the only group when it started.
+  const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
+  const { grp_id } = (await r.json()) as { grp_id: number };
+
+  const boundary = db
+    .query<{ payload_json: string }, [number]>(
+      "SELECT payload_json FROM job WHERE grp_id = ? AND payload_json LIKE '%architect%'",
+    )
+    .get(grp_id)!;
+  const groups = JSON.parse(boundary.payload_json).boundary as Array<{ id: number }>;
+  // An undeclared group beside a declared one is the same risk the rule exists to
+  // prevent, just reached from the other direction.
+  expect(groups.map((g) => g.id).sort()).toEqual([1, grp_id].sort());
+});
+
+test("a group that already declared its paths is not asked again", async () => {
+  const { app, db } = harness();
+  db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/auth/**"])]);
+  const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
+  const { grp_id } = (await r.json()) as { grp_id: number };
+  const boundary = db
+    .query<{ payload_json: string }, [number]>(
+      "SELECT payload_json FROM job WHERE grp_id = ? AND payload_json LIKE '%architect%'",
+    )
+    .get(grp_id)!;
+  expect((JSON.parse(boundary.payload_json).boundary as any[]).map((g) => g.id)).toEqual([grp_id]);
+});
