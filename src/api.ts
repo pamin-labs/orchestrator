@@ -258,6 +258,16 @@ const postMail: Handler = async (ctx, req) => {
   if (!["ask", "request", "inform", "note", "decision"].includes(b.intent)) {
     return bad("intent must be one of: ask, request, inform, note, decision");
   }
+  // An empty message wakes someone with nothing to answer. Measured: the
+  // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
+  // out with no body — the Architect burned a turn on "收到的 ask 消息内容为空".
+  if (!b.body?.trim()) {
+    return bad(
+      `mail to "${b.target}" has an empty body. Put the message in quotes as the last ` +
+        `argument: orch mail ${b.target} --intent ${b.intent} "…". There is no --wait flag; ` +
+        `ask blocks on its own.`,
+    );
+  }
 
   // The recipient is an explicit parameter, not an `@` parsed out of prose:
   // waking someone means enqueueing an agent_turn for them, nothing more.
