@@ -381,3 +381,27 @@ test("a task on a slice that has not started cannot be listed or completed", asy
   const claim = await h.post("/orch/task/claim", { task_id: 2 }, "tok-eng");
   expect(claim.status).toBe(422);
 });
+
+test("the Auditor is hired outside the group it audits, and told how to read the branch", async () => {
+  const h = await harness();
+  h.gate(0);
+  h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'retro', 'zh', 'S1 返工一次', 0)");
+  await h.post("/api/slices/1/accept");
+  await h.sched.drain();
+
+  const auditor = h.db
+    .query<{ grp_id: number | null; project_id: number | null }, []>(
+      "SELECT grp_id, project_id FROM agent WHERE role = 'auditor'",
+    )
+    .get()!;
+  // Inside the group it would be reviewing its own reasoning, and `orch audit`
+  // refuses that — so the turn would fail with the branch already finished.
+  expect(auditor.grp_id).toBeNull();
+  expect(auditor.project_id).toBe(1);
+
+  const spec = h.specs.find((s) => s.stable.systemAppend.includes("You are the Auditor"))!;
+  expect(spec.prompt).toContain("group_id 1");
+  expect(spec.prompt).toContain("orch audit 1 --verdict");
+  // It is in the main checkout, so it needs to be told how to see the branch.
+  expect(spec.prompt).toContain("git diff main...orch/g1");
+});

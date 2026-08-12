@@ -93,7 +93,13 @@ export function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
     )
     .get(job.grp_id, roleName);
   if (existing) return existing;
-  const payloadProject = payload.project_id ? Number(payload.project_id) : null;
+  let payloadProject = payload.project_id ? Number(payload.project_id) : null;
+  if (!payloadProject && payload.audit) {
+    payloadProject =
+      ctx.db
+        .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
+        .get(Number(payload.audit))?.project_id ?? null;
+  }
   return hire(deps, job.grp_id, roleName, job.slice_id, payloadProject);
 }
 
@@ -365,6 +371,20 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
           String(m.from) +
           ' --intent inform "…"`. If it needs a decision above your level, pass it up.'
         : "");
+  }
+  if (payload.audit) {
+    const gid = Number(payload.audit);
+    const branch = payload.audit_branch ? String(payload.audit_branch) : null;
+    delta.card =
+      `Audit group ${payload.audit_group ?? gid} (group_id ${gid}) before the boss merges it.\n` +
+      (branch
+        ? `Its branch is ${branch}; you are in the main checkout, so read it with ` +
+          `\`git diff main...${branch}\` and \`git log main..${branch}\`.\n`
+        : "") +
+      `Coverage against the DRAFT card, architectural consistency, and whether the journals ` +
+      `describe what the diff does. Do NOT re-check what the gate covered.\n\n` +
+      `File your verdict with exactly:\n` +
+      `  orch audit ${gid} --verdict pass|fail --note "what is missing or inconsistent"`;
   }
   if (payload.idea) delta.card = `The boss wants: ${payload.idea}`;
   if (payload.respec) delta.rejection = `The boss sent the DRAFT back: ${payload.respec}`;
