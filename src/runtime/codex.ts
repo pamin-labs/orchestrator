@@ -22,12 +22,24 @@ export function buildArgv(spec: TurnSpec): string[] {
   const argv = spec.resumeSessionId
     ? ["exec", "resume", spec.resumeSessionId, "--json"]
     : ["exec", "--json"];
-  argv.push("--skip-git-repo-check", "-m", spec.stable.model);
+  argv.push("--skip-git-repo-check");
+  // An empty model means "whatever the account allows": naming one is rejected
+  // outright on a ChatGPT-account login, and that is not a reason to fail a turn.
+  if (spec.stable.model.trim()) argv.push("-m", spec.stable.model);
   // codex sandboxes through its own config rather than a settings file, and its
   // filesystem policy is set per invocation.
   argv.push("-c", "sandbox_permissions=[]");
   return argv;
 }
+
+/** Refusal-shaped, as opposed to informational. */
+const REFUSAL =
+  /\b(not permitted|permission|denied|refus|forbidden|blocked|sandbox|not allowed|unauthorized|policy)\b/i;
+
+const clip = (s: string, n = 120) => {
+  const one = s.replace(/\s+/g, " ").trim();
+  return one.length > n ? `${one.slice(0, n - 1)}…` : one;
+};
 
 type Line = {
   type?: string;
@@ -98,9 +110,13 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
             result.text = it.text;
             h.onText?.(it.text);
           } else if (it.type === "error") {
-            // codex reports refusals and policy blocks as error items; treating
-            // them as denials is what turns them into an escalation upstream.
-            result.permissionDenials.push({ tool: "codex", message: it.message ?? "" });
+            // codex uses `error` items for refusals AND for notices. Live, a
+            // "skill descriptions were shortened" notice became a permission
+            // denial and would have escalated to the boss for nothing, so only
+            // refusal-shaped messages count.
+            const msg = it.message ?? "";
+            if (REFUSAL.test(msg)) result.permissionDenials.push({ tool: "codex", message: msg });
+            else result.toolSummaries.push({ name: "notice", detail: clip(msg) });
           } else if (it.type) {
             const t: ToolSummary = summarizeTool(it.type, {
               command: it.command,
