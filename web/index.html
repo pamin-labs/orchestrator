@@ -43,6 +43,10 @@
   .status.PLANNING { color: var(--dim); border-color: var(--dim); }
   .status.PR_OPEN { color: var(--ok); border-color: var(--ok); }
   .cost { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+  /* An objection that landed after the card. It has to compete with the card for
+     attention, or the card wins by being the thing with the buttons under it. */
+  .warn { font-size: 12px; color: var(--warn); border-left: 2px solid var(--warn);
+          padding: 4px 8px; margin: 6px 0; white-space: pre-wrap; }
   /* Slice lane: progress is "which gates passed", never a percentage — a model's
      percentage is a guess, a gate is a fact. */
   .lane { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 0;
@@ -216,9 +220,13 @@ function draftHtml(g) {
   const filed = (state.draftCards ?? []).find((c) => c.grpId === g.id)?.body ?? "";
   const idea = (state.ideas ?? []).find((i) => i.grpId === g.id)?.body ?? "";
   const rows = Math.max(6, filed.split("\n").length + 1);
+  // An objection that arrived after the card was filed. Without this the card
+  // says 反对 : 无 and the boss approves a plan somebody had already argued with.
+  const late = (state.lateObjections ?? []).filter((o) => o.grpId === g.id);
   // Your own words next to the plan: the only thing that makes "is this aimed at
   // what I asked for" a 20-second question rather than a re-read.
   return `${idea ? `<div class="cost">你说的：${esc(idea)}</div>` : ""}
+    ${late.map((o) => `<div class="warn">卡交了之后 ${esc(o.author)} 说：${esc(o.body)}</div>`).join("")}
     <div class="empty">${filed ? "Dispatcher 交的卡，20 秒看完。改了再批也行。" : "等 Dispatcher 交卡…"}</div>
     <textarea id="card-${g.id}" rows="${rows}" placeholder="目标 : …
 不做 : …

@@ -259,8 +259,28 @@ const postMail: Handler = async (ctx, req) => {
     return bad("intent must be one of: ask, request, inform, note, decision");
   }
 
+  // The recipient is an explicit parameter, not an `@` parsed out of prose:
+  // waking someone means enqueueing an agent_turn for them, nothing more.
+  let target: { agentId: number; grpId: number | null } | null = null;
+  if (WAKING.has(b.intent)) {
+    const senderProject = ctx.db
+      .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
+      .get(a.id)?.project_id ?? null;
+    target = resolveTarget(ctx, a.grp_id, b.target, senderProject);
+    if (!target) {
+      const known = (ctx.knownRoles?.() ?? []).join(", ");
+      // Never a silent no-op: an unreachable recipient is exactly how an agent
+      // ends up asking a wall twice and then giving up.
+      return bad(`no such recipient "${b.target}". Roles that exist: ${known || "none configured"}`);
+    }
+  }
+
+  // A standing agent has no group of its own, so stamping the sender's group
+  // would file its reply under nothing and drop it out of the group's timeline.
+  // Measured: the Architect's objection to a DRAFT card landed with grp_id NULL
+  // and the boss approved a card that said 反对 : 无.
   ctx.bus.emit({
-    grpId: a.grp_id,
+    grpId: a.grp_id ?? target?.grpId ?? null,
     author: a.role,
     kind: "say",
     intent: b.intent,
@@ -270,19 +290,7 @@ const postMail: Handler = async (ctx, req) => {
     meta: { in_reply_to: b.in_reply_to ?? null },
   });
 
-  // The recipient is an explicit parameter, not an `@` parsed out of prose:
-  // waking someone means enqueueing an agent_turn for them, nothing more.
-  if (WAKING.has(b.intent)) {
-    const senderProject = ctx.db
-      .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
-      .get(a.id)?.project_id ?? null;
-    const target = resolveTarget(ctx, a.grp_id, b.target, senderProject);
-    if (!target) {
-      const known = (ctx.knownRoles?.() ?? []).join(", ");
-      // Never a silent no-op: an unreachable recipient is exactly how an agent
-      // ends up asking a wall twice and then giving up.
-      return bad(`no such recipient "${b.target}". Roles that exist: ${known || "none configured"}`);
-    }
+  if (target) {
     // The message travels with the job. A standing recipient is not in the
     // sender's channel, so relying on the unread cursor would wake it with an
     // empty prompt and it would never see the question at all.
@@ -868,6 +876,23 @@ export function snapshot(ctx: Ctx) {
          JOIN grp g ON g.id = n.grp_id
          WHERE g.status = 'DRAFT' AND json_extract(n.frontmatter_json, '$.draft_card') = 1
          GROUP BY n.grp_id HAVING n.at = max(n.at)`,
+      )
+      .all(),
+    // An objection that arrived after the card was filed. The Dispatcher does not
+    // wait for the Architect — a card nobody filed is worth less than a card with
+    // no objection on it — so a real objection can land a minute later, while the
+    // card still reads 反对 : 无. Approving that is approving something the boss
+    // was never shown. Measured: the late objection was "the locale-inference
+    // slice contradicts the acceptance criterion that says behaviour is unchanged".
+    lateObjections: db
+      .query(
+        `SELECT e.grp_id AS grpId, e.author, e.body FROM event e
+         JOIN grp g ON g.id = e.grp_id
+         WHERE g.status = 'DRAFT' AND e.kind = 'say' AND e.author != 'dispatcher'
+           AND e.at > (SELECT max(n.at) FROM note n
+                       WHERE n.grp_id = e.grp_id
+                         AND json_extract(n.frontmatter_json, '$.draft_card') = 1)
+         ORDER BY e.seq`,
       )
       .all(),
     // What the boss originally said, verbatim. Those 20 seconds on the card are
