@@ -28,6 +28,9 @@ export function makeGhRunner(): GhRunner {
 export interface OpenPrInput {
   ctx: Ctx;
   gh: GhRunner;
+  /** Under the repo write lock: a push writes refs, and worktrees share one `.git`. */
+  git: (repo: string, argv: string[], cwd?: string) => Promise<{ code: number; out: string }>;
+  repo: string;
   grpId: number;
   title: string;
   body: string;
@@ -35,7 +38,7 @@ export interface OpenPrInput {
 
 /** Open the PR once the audit passes. Returns its number, or null with a reason. */
 export async function openPr(input: OpenPrInput): Promise<{ number: number } | { error: string }> {
-  const { ctx, gh, grpId } = input;
+  const { ctx, gh, git, grpId } = input;
   const grp = ctx.db
     .query<{ worktree: string | null; branch: string | null; pr_number: number | null }, [number]>(
       "SELECT worktree, branch, pr_number FROM grp WHERE id = ?",
@@ -43,6 +46,14 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     .get(grpId);
   if (!grp?.worktree || !grp.branch) return { error: "group has no worktree or branch" };
   if (grp.pr_number) return { number: grp.pr_number };
+
+  // Nothing else in the system pushes a group's branch, and `gh pr create` will
+  // not do it for you outside a TTY — it aborts with "you must first push the
+  // current branch". So the branch exists only locally until right here.
+  const pushed = await git(input.repo, ["push", "-u", "origin", grp.branch], grp.worktree);
+  if (pushed.code !== 0) {
+    return { error: `could not push ${grp.branch}: ${pushed.out.split("\n").slice(-3).join("\n")}` };
+  }
 
   const push = await gh(["pr", "create", "--fill-first", "--title", input.title, "--body", input.body], grp.worktree);
   if (push.code !== 0) return { error: push.out.split("\n").slice(-3).join("\n") };
