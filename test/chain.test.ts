@@ -350,3 +350,19 @@ test("a standing agent's mail is filed under the recipient's group, not nowhere"
     .get()!;
   expect(e.grp_id).toBe(1);
 });
+
+test("an empty mail body is refused instead of waking someone with nothing to read", async () => {
+  const h = harness();
+  h.ctx.knownRoles = () => ["architect"];
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'engineer', 'm', 'L1', 'tok-e', 0)",
+  );
+  // What a real run produced: the Dispatcher invented `--wait`, the parser took
+  // it as a flag, and the mail went out with no message at all.
+  const r = await h.post("/orch/mail", { target: "architect", intent: "ask", body: "" }, "tok-e");
+  expect(r.status).toBe(422);
+  const said = await r.text();
+  expect(said).toContain("empty body");
+  expect(said).toContain("--wait");
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'").get()!.c).toBe(0);
+});
