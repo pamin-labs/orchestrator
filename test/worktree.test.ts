@@ -11,6 +11,7 @@ import {
   makeGitRunner,
   removeWorktree,
   rollbackTo,
+  squashWip,
 } from "../src/mech/worktree.ts";
 
 const git = makeGitRunner(new RepoLock());
@@ -140,4 +141,42 @@ test("changedSince sees uncommitted work — reconcile runs before any commit", 
   // Comparing base..HEAD instead would return nothing here, which made every
   // first attempt fail reconcile spuriously.
   expect(changed.sort()).toEqual(["a.txt", "new.txt"]);
+});
+
+test("wip checkpoints are squashed into one commit, and the tree survives", async () => {
+  const dir = await repo();
+  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+
+  for (const [file, body] of [["b.txt", "one\n"], ["c.txt", "two\n"], ["d.txt", "three\n"]]) {
+    writeFileSync(join(wt.worktree, file!), body!);
+    await checkpoint(git, dir, wt.worktree, "engineer turn");
+  }
+  expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out.split("\n").length).toBe(3);
+
+  const r = await squashWip(git, dir, wt.worktree, "feat: the whole thing", "main");
+  expect(r.squashed).toBe(3);
+
+  const log = (await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out.trim();
+  expect(log).toBe("feat: the whole thing");
+  // --soft, so every file the turns wrote is still there and still committed.
+  for (const f of ["b.txt", "c.txt", "d.txt"]) expect(existsSync(join(wt.worktree, f))).toBe(true);
+  expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out.trim()).toBe("");
+});
+
+test("a real commit message is never squashed away", async () => {
+  const dir = await repo();
+  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+
+  writeFileSync(join(wt.worktree, "b.txt"), "one\n");
+  await checkpoint(git, dir, wt.worktree, "engineer turn");
+  writeFileSync(join(wt.worktree, "c.txt"), "two\n");
+  await git(dir, ["add", "-A"], wt.worktree);
+  await git(dir, ["commit", "-q", "-m", "fix: the actual bug"], wt.worktree);
+
+  const r = await squashWip(git, dir, wt.worktree, "squashed", "main");
+  expect(r.squashed).toBe(0);
+  expect(r.reason).toContain("real messages");
+  expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out).toContain("fix: the actual bug");
 });
