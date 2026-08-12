@@ -846,6 +846,16 @@ export function snapshot(ctx: Ctx) {
       .all(),
     tasks: db.query("SELECT id, grp_id, slice_id, title, status FROM task").all(),
     channels: db.query("SELECT id, project_id, grp_id, kind, status FROM channel").all(),
+    // The card each DRAFT group filed. Without this the boss is shown an empty
+    // box and asked to approve something they cannot see.
+    draftCards: db
+      .query(
+        `SELECT n.grp_id AS grpId, n.body FROM note n
+         JOIN grp g ON g.id = n.grp_id
+         WHERE g.status = 'DRAFT' AND json_extract(n.frontmatter_json, '$.draft_card') = 1
+         GROUP BY n.grp_id HAVING n.at = max(n.at)`,
+      )
+      .all(),
     // Recently answered by a stand-in, so the boss can take one back. Without a
     // visible undo, delegated answers are a bet nobody would take.
     answered: db

@@ -441,3 +441,29 @@ test("a group can be named instead of numbered, everywhere it is referenced", as
     "DRAFT",
   );
 });
+
+test("the state snapshot carries the filed card so the boss can see what they approve", async () => {
+  const { app, db } = harness();
+  const r = await post(app, "/api/ideas", { project_id: 1, text: "greet lang" });
+  const { grp_id } = (await r.json()) as { grp_id: number };
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    [grp_id],
+  );
+  const card = `目标 : 支持 zh
+不做 : 不引依赖
+验收 : bun test 全绿
+验收 : greet("x","zh") 返回「你好 x」
+切片 : lang 参数 [trivial] — 默认行为不变
+切片 : zh 词条 [trivial] — 断言通过
+切片 : 类型导出 [normal] — 类型检查过
+风险 : 无
+反对 : 无`;
+  await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
+
+  const s = (await (await get(app, "/api/state")).json()) as any;
+  const filed = s.draftCards.find((c: any) => c.grpId === grp_id);
+  // Showing an empty box and asking for approval is asking the boss to approve
+  // something they cannot see.
+  expect(filed?.body).toContain("支持 zh");
+});

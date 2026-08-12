@@ -40,6 +40,8 @@
   .status.RUNNING { color: var(--ok); border-color: var(--ok); }
   .status.PAUSING, .status.PAUSED { color: var(--warn); border-color: var(--warn); }
   .status.DRAFT { color: var(--accent); border-color: var(--accent); }
+  .status.PLANNING { color: var(--dim); border-color: var(--dim); }
+  .status.PR_OPEN { color: var(--ok); border-color: var(--ok); }
   .cost { font-family: var(--mono); font-size: 11px; color: var(--dim); }
   /* Slice lane: progress is "which gates passed", never a percentage — a model's
      percentage is a guess, a gate is a fact. */
@@ -209,15 +211,17 @@ window.landed = async (id) => {
 };
 
 function draftHtml(g) {
-  // The DRAFT card blocks the boss on purpose, so it is capped at 12 lines
-  // server-side. Editing it here is the "改完批准" path.
-  return `<div class="empty">等你批。卡片 ≤12 行，超了服务端会退回让 Dispatcher 重写。</div>
-    <textarea id="card-${g.id}" rows="10" placeholder="目标 : …
+  // The card the Dispatcher filed, editable in place. Showing an empty box and
+  // asking for approval would be asking the boss to approve something unseen.
+  const filed = (state.draftCards ?? []).find((c) => c.grpId === g.id)?.body ?? "";
+  const rows = Math.max(6, filed.split("\n").length + 1);
+  return `<div class="empty">${filed ? "Dispatcher 交的卡，20 秒看完。改了再批也行。" : "等 Dispatcher 交卡…"}</div>
+    <textarea id="card-${g.id}" rows="${rows}" placeholder="目标 : …
 不做 : …
 验收 : …
 切片 : 标题 [normal] — 怎么验收
 风险 : …
-反对 : 无"></textarea>
+反对 : 无">${esc(filed)}</textarea>
     <div class="row" style="margin-top:8px">
       <button class="primary" onclick="approve(${g.id})">批准开工</button>
       <input id="why-${g.id}" placeholder="打回理由（一句话）" />
@@ -293,8 +297,12 @@ window.interrupt = async (id, mode) => {
   if (r.ok) refresh();
 };
 window.approve = async (id) => {
-  const card = $(`#card-${id}`).value.trim();
-  const r = await api(`/api/draft/${id}/approve`, card ? { card } : {});
+  const box = $(`#card-${id}`);
+  const card = box.value.trim();
+  const filed = (state.draftCards ?? []).find((c) => c.grpId === id)?.body?.trim() ?? "";
+  // Send the text only if it was edited: an untouched card is approved as filed,
+  // which keeps "approve" and "edit then approve" from being the same request.
+  const r = await api(`/api/draft/${id}/approve`, card && card !== filed ? { card } : {});
   if (r.ok) refresh();
 };
 window.reject = async (id) => {
