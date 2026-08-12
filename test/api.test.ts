@@ -522,3 +522,39 @@ test("the snapshot carries the boss's original words alongside the card", async 
   const s2 = (await (await get(app, "/api/state")).json()) as any;
   expect(s2.ideas.find((i: any) => i.grpId === grp_id)?.body).toBe(idea);
 });
+
+test("a refused approval puts the Architect back on the boundary", async () => {
+  const { app, db } = harness();
+  db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/**"])]);
+  const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
+  const { grp_id } = (await r.json()) as { grp_id: number };
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-d', 0)",
+    [grp_id],
+  );
+  const card = `目标 : x
+不做 : y
+验收 : a.test.ts 绿
+验收 : 无回归
+切片 : a [normal] — a.test.ts 绿
+切片 : b [trivial] — b 的回归用例绿
+切片 : c [hard] — 端到端场景通过`;
+  db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grp_id]);
+  db.run(
+    "INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, ?, 'fact', 'zh', ?, ?, 0)",
+    [grp_id, card + "\n风险 : 无\n反对 : 无", JSON.stringify({ draft_card: true })],
+  );
+
+  const refused = await post(app, `/api/draft/${grp_id}/approve`);
+  expect(refused.status).toBe(422);
+  const msg = await refused.text();
+  // An error with no path forward leaves the boss holding it.
+  expect(msg).toContain("Architect has been asked");
+
+  const queued = db
+    .query<{ payload_json: string }, [number]>(
+      "SELECT payload_json FROM job WHERE grp_id = ? AND payload_json LIKE '%architect%' ORDER BY id DESC LIMIT 1",
+    )
+    .get(grp_id)!;
+  expect(JSON.parse(queued.payload_json).boundary.length).toBeGreaterThan(0);
+});

@@ -1002,7 +1002,37 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
   // Boundaries before work. Two groups discovering at merge time that they were
   // both editing one file have already paid for the work twice.
   const start = canStart(ctx.db, grpId);
-  if (!start.ok) return bad(`cannot start: ${start.reason}`);
+  if (!start.ok) {
+    // Refusing with no path forward leaves the boss holding an error. Put the
+    // Architect back on it — the boundary is its job, and it was observed cutting
+    // one group's paths and forgetting the other's.
+    const undeclared = ctx.db
+      .query<{ id: number; name: string }, [number]>(
+        `SELECT id, name FROM grp
+         WHERE project_id = (SELECT project_id FROM grp WHERE id = ?)
+           AND status IN ('PLANNING','DRAFT','RUNNING','PAUSING','PAUSED','PARKED','PR_OPEN')
+           AND (owns_json IS NULL OR owns_json = '[]')`,
+      )
+      .all(grpId);
+    if (undeclared.length) {
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: grpId,
+        priority: 7,
+        payload: { role: "architect", boundary: undeclared },
+      });
+      ctx.sched.tick();
+    }
+    ctx.bus.emit({
+      grpId,
+      author: "orchestrator",
+      kind: "state_change",
+      body: `cannot start yet: ${start.reason}${undeclared.length ? " — asked the Architect to cut it" : ""}`,
+    });
+    return bad(
+      `cannot start: ${start.reason}` +
+        (undeclared.length ? ". The Architect has been asked to cut the boundary; approve again after that." : ""),
+    );
+  }
 
   // Approval is where the group gets a place to work. The worktree lives under
   // workRoot (outside $HOME) because the sandbox is deny-only: denying $HOME is
