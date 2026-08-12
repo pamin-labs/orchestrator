@@ -131,9 +131,13 @@ function render() {
     ? state.groups.map(groupHtml).join("")
     : '<div class="empty">还没有组</div>');
 
-  $("#inbox").innerHTML = "<h2>收件箱</h2>" + (state.escalations.length
-    ? state.escalations.map(escHtml).join("")
-    : '<div class="empty">没人在等你</div>');
+  const answered = state.answered ?? [];
+  $("#inbox").innerHTML =
+    "<h2>收件箱</h2>" +
+    (state.escalations.length ? state.escalations.map(escHtml).join("") : '<div class="empty">没人在等你</div>') +
+    (answered.length
+      ? `<h2 style="margin-top:12px">代答（可撤销）</h2>${answered.map(answeredHtml).join("")}`
+      : "");
 
   $("#wall").innerHTML = "<h2>工位墙</h2>" + (state.agents.length
     ? `<div class="wall">${state.agents.map(agentHtml).join("")}</div>`
@@ -213,6 +217,23 @@ function escHtml(e) {
     </div>
   </div>`;
 }
+
+function answeredHtml(e) {
+  return `<div class="esc">
+    <div class="cost">${esc(e.answered_by)} 代答${e.ref_note_id ? ` · 依据 note #${e.ref_note_id}` : ""}</div>
+    <div class="cost">${esc(e.question)}</div>
+    <div>${esc(e.answer)}</div>
+    <div class="row" style="margin-top:6px">
+      <button onclick="revoke(${e.id})">撤销并接管</button>
+    </div>
+  </div>`;
+}
+
+window.revoke = async (id) => {
+  if (!confirm("撤销这条代答会回滚到提问时的 checkpoint，确定？")) return;
+  await api(`/api/escalations/${id}/revoke`);
+  refresh();
+};
 
 function agentHtml(a) {
   return `<div>

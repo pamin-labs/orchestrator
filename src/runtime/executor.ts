@@ -293,6 +293,25 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
   const payload = safeJson(job.payload_json);
   const delta: Delta = {};
 
+  if (payload.escalation) {
+    const esc = ctx.db
+      .query<{ id: number; question: string; severity: string; agent_id: number | null }, [number]>(
+        "SELECT id, question, severity, agent_id FROM escalation WHERE id = ?",
+      )
+      .get(Number(payload.escalation));
+    if (esc) {
+      const asker =
+        esc.agent_id !== null
+          ? (ctx.db.query<{ role: string }, [number]>("SELECT role FROM agent WHERE id = ?").get(esc.agent_id)
+              ?.role ?? "someone")
+          : "someone";
+      delta.card =
+        `${asker} is blocked and asked (severity ${esc.severity}):\n${esc.question}\n\n` +
+        `Answer it with \`orch answer ${esc.id} --answer "…"\`, or pass it up with ` +
+        `\`orch answer ${esc.id} --abstain --why "…"\`. Abstaining is the right move if you are ` +
+        `not sure — a guess becomes a premise the whole group then reasons from.`;
+    }
+  }
   if (payload.idea) delta.card = `The boss wants: ${payload.idea}`;
   if (payload.respec) delta.rejection = `The boss sent the DRAFT back: ${payload.respec}`;
   if (payload.rejection) delta.rejection = String(payload.rejection);

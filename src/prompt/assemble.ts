@@ -86,6 +86,8 @@ Use Bash. Every command blocks and returns its result on stdout.
   orch task list|claim|done
   orch review <slice_id> --verdict pass|fail --note "…"   # QA files its verdict
   orch audit <group_id> --verdict pass|fail --note "…"    # Auditor files its verdict
+  orch answer <esc_id> --answer "…" [--ref <note_id>]     # answer a question routed to you
+  orch answer <esc_id> --abstain --why "…"                # pass it up instead of guessing
   orch status "<one line>"             # what you are doing, for the desk wall
   orch git -- <cmd>                    # all git writes go through here (repo lock)
 
