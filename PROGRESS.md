@@ -8,7 +8,7 @@
 
 ## 当前里程碑
 
-**M3 — Intercept 与看门狗**（未开始）
+**M4 — 组织层与反馈回路**（未开始）
 
 ## 已完成且已验证
 
@@ -56,13 +56,29 @@
 | PR 级 review | `runPrReview()` + `roles/auditor.yaml` | 你验收完最后一个切片才启动（agent 触发不了）；**没写 retro 不许收尾**；Auditor 在所有开发组之外，组检查是反的 |
 | 不可代答（git 那几条） | `reservedGitAction()` | push / merge / force / hard reset 全拒，且拒绝会发成 escalation —— 撞了静默的墙，agent 会去找绕路 |
 
-## 下一步（M3，按依赖排）
+### M3 — Intercept 与看门狗 ✅（180 checks 绿）
 
-1. [ ] **`src/mech/intercept.ts`** —— 三级：插队（入 event）/ 栅栏（停派发，等在飞 turn）/ 硬打断（kill `job.pid`）。硬打断两个按钮：**保留**（脏改动留着，下个 turn 告知）和**回滚**（`rollbackTo` 已经有了）。
-2. [ ] **`src/mech/watchdog.ts`** —— 6 条确定性规则（turn 超时 / 连续 3 turn 零写入 / 5 turn 反复改同一文件 / 同一 lease 连续 2 次失败且 diff 未变 → `env_suspect` / 预算 80%·100% / `PAUSED` 超时 → park）。用 `watchdog` job 定期跑，它已经绕过组并发槽（否则永远轮不到卡住的那个组）。
-3. [ ] **`src/mech/notify.ts`** —— 立刻 / 批处理两档 + 5m→15m→1h 递增退避去重；macOS 通知走 `osascript`，ntfy 一行配置。
-4. [ ] **park / 唤醒** —— 撤销 pending job + 退休 session + 释放槽；唤醒时 `rebaseOntoBase`。
-5. [ ] web 上加「暂停 / 打断并保留 / 打断并回滚」三个按钮（现在只有暂停/继续/封存）。
+| 机制 | 文件 | 要点 |
+|---|---|---|
+| 三级 intercept | `src/mech/intercept.ts` | 全是 job 队列上的操作。**没有第四级** —— 在飞的 turn 只能杀不能改向，所以 `pause` 返回「还在等几个 turn」，状态就叫 PAUSING |
+| PAUSING→PAUSED | `settlePausing()` | 由**看门狗**结算，不由 turn 自己的完成路径结算 —— 否则 turn 崩了，组永远卡在 PAUSING |
+| 硬打断 | `interrupt(mode)` | `keep` 留脏改动并写一条 fact 告诉下个 turn「上次被打断，先 `git diff` 看一眼」；`rollback` 回到 job 上记的 `checkpoint_sha` |
+| park / 唤醒 | `park()` / `unpark()` | 纯资源回收不是审批：撤 pending job、退休 session、worktree 和 checkpoint 一动不动。唤醒先 rebase，rebase 冲突就升级不糊弄 |
+| 看门狗 6 条 | `src/mech/watchdog.ts` | 全确定性，零 LLM。证据都来自我们自己记的计数器（迁移 005） |
+| 通知 | `src/mech/notify.ts` | 立刻 / 批处理两档 + 5m→15m→1h 退避。一天响二十次的系统等于没有通知，上游所有机制就都成了摆设 |
+
+**两条规则说的是「大概率是什么原因」，不是「症状是什么」**，因为最直觉的反应恰好是错的：
+- 反复改同一文件 → 转 **Architect**，不是让写方再试一次（再试不解决设计问题）
+- 同一 lease 在同一个 sha 上失败两次 → 怀疑**环境**，不是让写方继续改代码（那是几个小时凭空消失的方式）
+
+## 下一步（M4，按依赖排）
+
+1. [ ] **常驻岗接进来**：`roles/{cos,architect,librarian}.yaml`。Dispatcher/PM/Engineer/QA/Auditor 已有。
+2. [ ] **代答链** —— `PM → Architect → CoS → 你`，任一级可弃权；`escalation.chain_state` 字段已在，还没有推进逻辑。CoS 代答必须能指向一条 `decision` note，答复标 `answered_by`。
+3. [ ] **撤销并接管** —— 每条代答带按钮，回滚到 `escalation.checkpoint_sha`（字段已在，创建 escalation 时还没填）。
+4. [ ] **escalation 批处理** —— CoS 攒够 N 条或超时 T 才打包问你（`Notifier` 的 batched 档已经能用，缺 CoS 侧的聚合）。
+5. [ ] **`ctx query` 升级** —— 现在是关键词计分 + 4k 硬上限。够用，但 `PLAN.md` §13 风险④说这是最弱的一块；先量「agent 反复问已答过的问题」的频率再决定要不要上 embedding。
+6. [ ] **CoS 反馈分诊** —— `patch` / `respec` / `reject`。`respec` 退回 Dispatcher 重新深挖（`/api/draft/:id/reject` 已经是这条路的一半）。
 
 ## 已知偏离 PLAN.md 的地方
 
