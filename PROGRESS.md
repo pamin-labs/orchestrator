@@ -49,7 +49,7 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 **PR 级 review 也验过了**（三片全查收之后）：branch gate 绿 → **拒绝收尾，因为没写 retro** → PM 写出有内容的 retro（写明 S1 已经把功能做完、放宽参数类型才编得过）→ 交 retro 自动恢复 PR 级 review → `PR_OPEN` → **Auditor 在组外被雇**（`grp_id` null，同 project，独立 session、独立 context）→ 它自己 `orch ctx query` 调出 DRAFT 卡、`git log main..orch/greet` 读全 diff → `orch audit 1 --verdict pass`（判词点到三片各自的验收断言 + 「无平行造轮子」）→ 进串行 merge queue 拿到 `merge_seq 1` → 停在等你 merge。Auditor 一次 $0.21。
 只有真正开 PR 那一步没走通，原因正确且预检早就报过：`could not open a PR: no git remotes found`（fixture repo 没 remote）。
 
-**成本**：一次完整三切片需求含每片独立 review **$0.62**（dispatcher $0.31 / engineer $0.15 / qa $0.07 / architect $0.07 / librarian $0.03，`hard` 降 sonnet）。全 opus 约 $0.8。
+**成本**：一次完整三切片需求含每片独立 review **$0.62**（dispatcher $0.31 / engineer $0.15 / qa $0.07 / architect $0.07 / librarian $0.03）。注意这次跑**把 `hard` 降成了 sonnet**，所以里面没有一个 opus 数 —— 单独量 Dispatcher 档位的结果见下面那张表。
 
 ## 实测得到的、和直觉相反的事实（**别凭直觉改回去**）
 
@@ -114,16 +114,32 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 - ✅ **空信拒收**。Dispatcher 写了 `orch mail architect --intent ask --wait` —— `--wait` 这个 flag 不存在，通用 parser 把它当 flag 吃了，于是信发出去是空的，Architect 花一整轮报告「收到的 ask 消息内容为空」。报错里直接说这个 flag 不存在，因为 CLI 是 agent 唯一的反馈渠道。
 - ✅ **切片下限从 3 降到 1**。prompt 里早就写着「真的不可分就交一片，凑三片更糟」，但校验器拒收 1-2 片 —— prompt 在骗它，模型只能凑。实测在一句话需求上，它把「切片 2、3 是为满足最少切片数补的相邻能力」当风险写在自己卡上，而补出来的那片会从 `$LANG` 推断语言、**改变现有调用方的输出**。`if` 和 prompt 说的话不一致时，模型听 `if`。
 
+## Dispatcher 档位：量过了，建议保持 opus
+
+同一句需求、同一 fixture、同一校验器，只换 Dispatcher 的 model。比的是**它自己那一轮**，因为 `tier: hard` 只管这个：
+
+| | 成本 | 卡 | 验收条数 |
+|---|---|---|---|
+| **opus**（默认） | **$0.2567**（9 步） | 1 片 / 10 行，另写了 decision journal 解释为什么只切一片 | 3 条，其中一条是**签名断言**「greet(name) 不改一字仍通过类型检查」 |
+| sonnet | $0.1922 | 1 片 / 7 行 | 2 条 |
+
+差 **$0.06/需求**，不是之前记的 $0.2-0.45（那个数是拿 sonnet 跑出来却标成 opus 的，已改）。
+
+**建议保持 `tier: hard`。** 多花的 $0.06 买到的是那条签名断言 —— 「现有调用方不受影响」正是切错方向时最先被破坏的东西，而 DRAFT 卡是这套系统唯一能拦住方向错误的地方。要省就改 `roles/dispatcher.yaml` 的 `tier: hard` 为 `normal`，一行。
+
+两次跑里 Architect 的成本都不可比：我的测量脚本 900 秒超时退出，把它在飞的那轮杀了（job 停在 `running`）。是脚本伪影，别去追。
+
 ## 剩下的
 
-1. [ ] **PR 流程要在真 remote 上验** —— 需要在你 GitHub 账号下建仓库，属于对外动作，我没擅自做。注册项目时的预检会先报能不能走通；在一个真项目上注册后看有没有 `PR flow ready` 那条事件即可。
-2. [ ] **成本档位是偏好不是缺陷**：Dispatcher 用 opus 约 $0.2-0.45/次。`roles/dispatcher.yaml` 里 `tier: hard` 改 `normal` 就便宜，代价是拆解质量可能掉 —— 值得你自己量一次。
-3. [ ] **切错方向仍只能靠你在 DRAFT 那 20 秒拦**。`checkSplit` 拦得住「切重了」，拦不住「切错了」。这就是 `PLAN.md` §13 风险①，实测确认它是真的 —— 也是这套系统唯一没有确定性防线的判断。
+1. [ ] **只剩 `gh pr create` 那一个网络调用没在真 GitHub 上跑过。** 需要在你账号下建私有仓库，属于对外动作，我没擅自做。
+   在此之前能验的都验了：**真裸 remote + 假 `gh`** 跑通了 squash → `git push -u origin <branch>`（走 repo 写锁）→ `gh pr create` 的 argv → 记 `pr_number` → 发事件。裸 remote 上真的收到了 `refs/heads/orch/greet`，且是**一条** `orch: greet` commit（不再是三条 `wip: qa turn`）。
+   你要验的话：拿个真项目注册进来，看有没有 `PR flow ready` 那条事件；预检会先告诉你 remote 是不是 GitHub。
+2. **切错方向仍只能靠你在 DRAFT 那 20 秒拦** —— 这是限制，不是待办。`checkSplit` 拦得住「切重了」，拦不住「切错了」。就是 `PLAN.md` §13 风险①，实测确认成立。唯一的补强是上面那条：卡交了之后才到的反对意见现在也会摆在卡旁边，所以「反对 : 无」不再能盖住一条真反对。
 
 ## 用之前
 
 1. **注册项目就够了** —— gate、入职包、PR 预检自动完成。探测不出 gate 会明确报「no gates detected」（没有确定性底座，上面的 LLM review 就是空的）。
-2. 想省钱：`config/default.yaml` 里把 `difficultyModel.hard` 改成 sonnet（实测一次完整跑 $0.8 → $0.45）。
+2. 想省钱：`config/default.yaml` 里把 `difficultyModel.hard` 改成 sonnet（实测一次完整跑 $0.8 → $0.45）。只想省 Dispatcher 那一项就改 `roles/dispatcher.yaml` 的 `tier` —— 见上面量过的表，只差 $0.06。
 
 ## 已知偏离 PLAN.md
 
