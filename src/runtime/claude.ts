@@ -246,9 +246,11 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
         if (d?.type === "text_delta" && d.text) h.onText?.(d.text);
         else if (d?.type === "thinking_delta" && d.thinking) h.onThinking?.(d.thinking);
       } else if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
+        // At content_block_start the input has not streamed yet, so this is the
+        // tool's name and nothing else. Recorded, but not announced: "Bash" alone
+        // on the desk wall tells the boss less than the previous line did.
         const t = summarizeTool(ev.content_block.name ?? "?", ev.content_block.input ?? {});
         r.toolSummaries.push(t);
-        h.onTool?.(t);
       }
       return;
     }
@@ -262,11 +264,14 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
           if (WRITE_TOOLS.has(name) && typeof input.file_path === "string") {
             acc.files.add(input.file_path);
           }
-          // `stream_event` already reported this call when partial streaming is
-          // on; only record it here if it did not.
-          if (!r.toolSummaries.some((t) => t.detail === summarizeTool(name, input).detail)) {
-            r.toolSummaries.push(summarizeTool(name, input));
-          }
+          // The assistant message carries the complete input, so this is where a
+          // useful one-line summary first exists. Replace the name-only
+          // placeholder the stream left, then announce it.
+          const full = summarizeTool(name, input);
+          const placeholder = r.toolSummaries.findIndex((t) => t.name === name && t.detail === name);
+          if (placeholder !== -1) r.toolSummaries[placeholder] = full;
+          else if (!r.toolSummaries.some((t) => t.detail === full.detail)) r.toolSummaries.push(full);
+          if (full.detail !== name) h.onTool?.(full);
         }
       }
       return;

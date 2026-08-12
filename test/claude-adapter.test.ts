@@ -177,3 +177,38 @@ test("a turn with no result line is a failure, not a silent success", async () =
     Bun.spawn = spawned;
   }
 });
+
+test("the desk wall never shows a bare tool name", async () => {
+  // content_block_start arrives before the input has streamed, so announcing it
+  // would replace a useful line with just "Bash".
+  const lines = [
+    { type: "system", subtype: "init", session_id: "s" },
+    { type: "stream_event", event: { type: "content_block_start", content_block: { type: "tool_use", name: "Bash", input: {} } } },
+    {
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Bash", input: { command: "orch task list" } }] },
+    },
+    { type: "result", subtype: "success", is_error: false, terminal_reason: "completed", usage: {} },
+  ];
+  const spawned = Bun.spawn;
+  // @ts-expect-error fake child
+  Bun.spawn = () => ({
+    pid: 1,
+    stdout: stream(lines),
+    stderr: new ReadableStream({ start: (c) => c.close() }),
+    exited: Promise.resolve(0),
+    kill() {},
+  });
+  try {
+    const announced: string[] = [];
+    const r = await runTurn(
+      { stable, prompt: "x", cwd: "/tmp", resumeSessionId: "s" },
+      { onTool: (t) => announced.push(t.detail) },
+    );
+    expect(announced).toEqual(["Bash: orch task list"]);
+    // And the placeholder is replaced, not duplicated.
+    expect(r.toolSummaries.map((t) => t.detail)).toEqual(["Bash: orch task list"]);
+  } finally {
+    Bun.spawn = spawned;
+  }
+});

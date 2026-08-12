@@ -244,6 +244,9 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
         onThinking: (t) =>
           ctx.bus.live({ grpId: job.grp_id, agentId: agent.id, kind: "thinking", body: t }),
         onTool: (t) => {
+          // A name with no detail is the streaming placeholder; overwriting a good
+          // line with "Bash" makes the desk wall less informative, not more.
+          if (t.detail === t.name) return;
           ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [t.detail, agent.id]);
           ctx.bus.live({ grpId: job.grp_id, agentId: agent.id, kind: "tool", body: t.detail });
         },
