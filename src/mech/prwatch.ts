@@ -157,3 +157,36 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
   });
   ctx.sched.tick();
 }
+
+export interface Preflight {
+  ok: boolean;
+  remote: string | null;
+  reason?: string;
+}
+
+/**
+ * Can this project open a PR at all?
+ *
+ * Checked at registration rather than discovered when a branch is finished. A
+ * group that has done all its work and then has nowhere to put it is the worst
+ * moment to find out, and the fix (add a remote, log in) is the boss's to make.
+ */
+export async function preflightPr(
+  repoPath: string,
+  run: (argv: string[], cwd: string) => Promise<GhRun>,
+  gh: GhRunner,
+): Promise<Preflight> {
+  const remote = await run(["remote", "get-url", "origin"], repoPath);
+  if (remote.code !== 0 || !remote.out.trim()) {
+    return { ok: false, remote: null, reason: "no `origin` remote: a PR has nowhere to go" };
+  }
+  const url = remote.out.trim().split("\n")[0]!;
+  if (!/github\.com/i.test(url)) {
+    return { ok: false, remote: url, reason: `origin is not GitHub (${url}); \`gh pr create\` will not work` };
+  }
+  const auth = await gh(["auth", "status"], repoPath);
+  if (auth.code !== 0) {
+    return { ok: false, remote: url, reason: "gh is not logged in: run `gh auth login`" };
+  }
+  return { ok: true, remote: url };
+}

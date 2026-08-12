@@ -45,16 +45,17 @@ export function start(overrides: Partial<Config> = {}): Started {
   });
 
   const git = makeGitRunner(gitLock);
+  const gh = makeGhRunner();
   const ctx: Ctx = {
     db,
     bus,
     sched,
     gitLock,
     git,
+    gh,
     waiters: new Map(),
     config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot },
   };
-  const gh = makeGhRunner();
   const execDeps = {
     ctx,
     cfg,
