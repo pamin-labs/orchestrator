@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>orchestrator</title>
+<style>
+  /* One file, no build step. Tokens on :root, dark variant swapped by media query. */
+  :root {
+    --bg: #fbfaf9; --panel: #fff; --line: #e5e1dc; --ink: #1c1a18; --dim: #6b645d;
+    --accent: #b4530a; --ok: #1f7a4d; --warn: #a8700c; --bad: #a92f2f;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16150f; --panel: #1e1d17; --line: #322f26; --ink: #ece7dd; --dim: #9a9287;
+            --accent: #e8873a; --ok: #52b788; --warn: #d9a441; --bad: #e5736b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; padding: 10px 16px;
+           border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 5; }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .02em; }
+  .grow { flex: 1; }
+  main { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 14px; padding: 14px; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 0 0 10px; }
+  button { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px;
+           background: var(--panel); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  input, textarea, select { font: inherit; padding: 5px 8px; border: 1px solid var(--line);
+           border-radius: 6px; background: var(--bg); color: var(--ink); width: 100%; }
+  textarea { font-family: var(--mono); font-size: 12px; resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grp { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+  .grp > .row:first-child { margin-bottom: 8px; }
+  .name { font-weight: 600; }
+  .status { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--dim); }
+  .status.RUNNING { color: var(--ok); border-color: var(--ok); }
+  .status.PAUSING, .status.PAUSED { color: var(--warn); border-color: var(--warn); }
+  .status.DRAFT { color: var(--accent); border-color: var(--accent); }
+  .cost { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+  /* Slice lane: progress is "which gates passed", never a percentage — a model's
+     percentage is a guess, a gate is a fact. */
+  .lane { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 0;
+          border-top: 1px dashed var(--line); align-items: center; }
+  .lane .t { font-family: var(--mono); font-size: 12px; }
+  .diff { font-size: 10px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--line); color: var(--dim); }
+  .gates { display: flex; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
+  .gate.pass { color: var(--ok); }
+  .gate.fail { color: var(--bad); }
+  .wall { font-family: var(--mono); font-size: 12px; }
+  .wall div { display: grid; grid-template-columns: 84px 1fr auto; gap: 8px; padding: 2px 0; }
+  .wall .act { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #feed { font-family: var(--mono); font-size: 11.5px; max-height: 46vh; overflow-y: auto; }
+  #feed div { padding: 1px 0; border-bottom: 1px solid transparent; }
+  #feed .a { color: var(--accent); }
+  #feed .live { color: var(--dim); }
+  .esc { border-left: 3px solid var(--warn); padding-left: 8px; margin-bottom: 10px; }
+  .esc.blocker { border-color: var(--bad); }
+  .empty { color: var(--dim); font-size: 12px; }
+  pre { margin: 6px 0 0; font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>orchestrator</h1>
+  <span class="cost" id="hdr"></span>
+  <span class="grow"></span>
+  <span class="cost" id="conn">connecting…</span>
+</header>
+
+<main>
+  <div>
+    <section>
+      <h2>丢个想法</h2>
+      <div class="row">
+        <select id="proj" style="max-width: 200px"></select>
+        <input id="idea" placeholder="今天想到啥就写这儿，Dispatcher 会拆" />
+        <button class="primary" id="drop">丢过去</button>
+      </div>
+      <div class="row" style="margin-top: 8px">
+        <input id="pname" placeholder="新项目名" style="max-width: 160px" />
+        <input id="ppath" placeholder="/Users/…/repo" />
+        <button id="addproj">加项目</button>
+      </div>
+    </section>
+    <section id="groups"><h2>组 / 切片</h2><div class="empty">还没有组</div></section>
+  </div>
+
+  <div>
+    <section id="inbox"><h2>收件箱</h2><div class="empty">没人在等你</div></section>
+    <section id="wall"><h2>工位墙</h2><div class="empty">没有 agent</div></section>
+    <section><h2>事件流</h2><div id="feed"></div></section>
+  </div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]);
+let state = { projects: [], groups: [], slices: [], agents: [], tasks: [], escalations: [] };
+
+const api = async (path, body, method = "POST") => {
+  const r = await fetch(path, {
+    method,
+    headers: body ? { "content-type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await r.text();
+  if (!r.ok) alert(text);   // validators reply with the reason; show it verbatim
+  return { ok: r.ok, text };
+};
+
+async function refresh() {
+  const r = await fetch("/api/state");
+  state = await r.json();
+  render();
+}
+
+function render() {
+  const usd = state.groups.reduce((n, g) => n + (g.spent_usd || 0), 0);
+  $("#hdr").textContent = `${state.groups.length} 组 · ${state.agents.length} agent · $${usd.toFixed(2)}`;
+
+  const sel = $("#proj");
+  const keep = sel.value;
+  sel.innerHTML = state.projects.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  if (keep) sel.value = keep;
+
+  $("#groups").innerHTML = "<h2>组 / 切片</h2>" + (state.groups.length
+    ? state.groups.map(groupHtml).join("")
+    : '<div class="empty">还没有组</div>');
+
+  $("#inbox").innerHTML = "<h2>收件箱</h2>" + (state.escalations.length
+    ? state.escalations.map(escHtml).join("")
+    : '<div class="empty">没人在等你</div>');
+
+  $("#wall").innerHTML = "<h2>工位墙</h2>" + (state.agents.length
+    ? `<div class="wall">${state.agents.map(agentHtml).join("")}</div>`
+    : '<div class="empty">没有 agent</div>');
+}
+
+function groupHtml(g) {
+  const slices = state.slices.filter((s) => s.grp_id === g.id);
+  const draft = g.status === "DRAFT";
+  return `<div class="grp">
+    <div class="row">
+      <span class="name">${esc(g.name)}</span>
+      <span class="status ${g.status}">${g.status}</span>
+      <span class="cost">$${(g.spent_usd || 0).toFixed(2)}</span>
+      <span class="grow"></span>
+      ${g.status === "RUNNING" ? `<button onclick="ctl(${g.id},'pause')">暂停</button>` : ""}
+      ${["PAUSED", "PAUSING"].includes(g.status) ? `<button onclick="ctl(${g.id},'resume')">继续</button>` : ""}
+      <button onclick="ctl(${g.id},'park')">封存</button>
+    </div>
+    ${draft ? draftHtml(g) : slices.map(laneHtml).join("") || '<div class="empty">没有切片</div>'}
+  </div>`;
+}
+
+function draftHtml(g) {
+  // The DRAFT card blocks the boss on purpose, so it is capped at 12 lines
+  // server-side. Editing it here is the "改完批准" path.
+  return `<div class="empty">等你批。卡片 ≤12 行，超了服务端会退回让 Dispatcher 重写。</div>
+    <textarea id="card-${g.id}" rows="10" placeholder="目标 : …
+不做 : …
+验收 : …
+切片 : 标题 [normal] — 怎么验收
+风险 : …
+反对 : 无"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="primary" onclick="approve(${g.id})">批准开工</button>
+      <input id="why-${g.id}" placeholder="打回理由（一句话）" />
+      <button onclick="reject(${g.id})">打回重拆</button>
+    </div>`;
+}
+
+const GATES = ["self", "gate", "qa"];
+function laneHtml(s) {
+  let gates = {};
+  try { gates = JSON.parse(s.gates_json || "{}"); } catch {}
+  const dots = GATES.map((k) => {
+    const v = gates[k];
+    const mark = v === "pass" ? "●" : v === "fail" ? "✕" : v ? "◐" : "○";
+    return `<span class="gate ${v || ""}">${mark}${k}</span>`;
+  }).join("");
+  const awaiting = s.status === "awaiting_boss";
+  return `<div class="lane">
+    <div>
+      <span class="t">S${s.seq} ${esc(s.title)}</span>
+      <span class="diff">${esc(s.difficulty)}</span>
+      <div class="cost">${esc(s.accept_spec)}</div>
+    </div>
+    <div class="row">
+      <span class="gates">${dots}</span>
+      ${awaiting ? `<button class="primary" onclick="slice(${s.id},'accept')">查收</button>
+                    <button onclick="sliceReject(${s.id})">不满意</button>` : `<span class="cost">${esc(s.status)}</span>`}
+    </div>
+  </div>`;
+}
+
+function escHtml(e) {
+  return `<div class="esc ${e.severity}">
+    <div class="cost">${esc(e.asker || "?")} · ${esc(e.severity)} · ${esc(e.chain_state)}</div>
+    <div>${esc(e.question)}</div>
+    <div class="row" style="margin-top:6px">
+      <input id="ans-${e.id}" placeholder="你的答复" />
+      <button class="primary" onclick="answer(${e.id})">回</button>
+    </div>
+  </div>`;
+}
+
+function agentHtml(a) {
+  return `<div>
+    <span>${esc(a.role)}</span>
+    <span class="act">${esc(a.activity || a.state)}</span>
+    <span class="cost">$${(a.total_usd || 0).toFixed(2)}</span>
+  </div>`;
+}
+
+window.ctl = async (id, action) => { await api(`/api/groups/${id}/${action}`); refresh(); };
+window.approve = async (id) => {
+  const card = $(`#card-${id}`).value.trim();
+  const r = await api(`/api/draft/${id}/approve`, card ? { card } : {});
+  if (r.ok) refresh();
+};
+window.reject = async (id) => {
+  await api(`/api/draft/${id}/reject`, { reason: $(`#why-${id}`).value });
+  refresh();
+};
+window.answer = async (id) => {
+  await api(`/api/escalations/${id}/answer`, { answer: $(`#ans-${id}`).value });
+  refresh();
+};
+window.slice = async (id, decision) => { await api(`/api/slices/${id}/${decision}`); refresh(); };
+window.sliceReject = async (id) => {
+  const feedback = prompt("哪里不满意？（会进黑板，PM 会据此改）");
+  if (feedback === null) return;
+  await api(`/api/slices/${id}/reject`, { feedback });
+  refresh();
+};
+
+$("#drop").onclick = async () => {
+  const text = $("#idea").value.trim();
+  if (!text) return;
+  const r = await api("/api/ideas", { project_id: Number($("#proj").value), text });
+  if (r.ok) { $("#idea").value = ""; refresh(); }
+};
+$("#idea").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#drop").click(); });
+$("#addproj").onclick = async () => {
+  const r = await api("/api/projects", { name: $("#pname").value.trim(), repo_path: $("#ppath").value.trim() });
+  if (r.ok) { $("#pname").value = ""; $("#ppath").value = ""; refresh(); }
+};
+
+// The feed is a tail of the event log, plus live frames that are deliberately
+// not persisted (partial text is noise in an audit log, but it is what makes
+// watching a turn feel like watching someone work).
+const feed = $("#feed");
+let lastLive = null;
+function line(cls, text) {
+  const d = document.createElement("div");
+  d.className = cls;
+  d.textContent = text;
+  feed.prepend(d);
+  while (feed.childElementCount > 300) feed.lastElementChild.remove();
+}
+
+function connect() {
+  const es = new EventSource(`/api/stream?since=${state.lastSeq || 0}`);
+  es.onopen = () => { $("#conn").textContent = "live"; };
+  es.onerror = () => { $("#conn").textContent = "reconnecting…"; };
+  es.onmessage = (m) => {
+    const f = JSON.parse(m.data);
+    if (f.type === "live") {
+      if (f.kind === "text" || f.kind === "thinking") {
+        // Coalesce token-by-token text into one growing line.
+        if (!lastLive || lastLive.dataset.agent !== String(f.agentId)) {
+          lastLive = document.createElement("div");
+          lastLive.className = "live";
+          lastLive.dataset.agent = String(f.agentId);
+          feed.prepend(lastLive);
+        }
+        lastLive.textContent = (lastLive.textContent + f.body).slice(-400);
+      } else {
+        lastLive = null;
+        line("live", `· ${f.body}`);
+      }
+      return;
+    }
+    lastLive = null;
+    line("a", `${f.author} ${f.kind}${f.intent ? "/" + f.intent : ""}: ${f.body}`);
+    if (["state_change", "escalation", "note"].includes(f.kind)) refresh();
+  };
+}
+
+await refresh();
+connect();
+</script>
+</body>
+</html>
