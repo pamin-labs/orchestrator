@@ -248,6 +248,8 @@ PR 前自动比对 `task.claim_json` 声称的产出 vs `git diff` 真实改动 
 反对 : Architect 的反对意见，≤2 行，无则写「无」
 ```
 
+**切分质量现在有一条确定性防线**（`checkSplit`，实现时新增）：两片验收标准相同、验收标准嵌套、纯「补测试」片，三种拒收。故意做窄 —— 误伤会卡住你整条流程，比漏判更糟，所以「bun test 全绿」这类通用断言不算重叠证据。**但它只能拦「切重了」，拦不住「切错了」**，后者仍然只有你在 DRAFT 那 20 秒。
+
 **难度标签是 Dispatcher 的产出，直接决定成本（E）**：`trivial` → Engineer 用 haiku、`normal` → sonnet、`hard` → opus。真公司不会让 senior 去改文案。你在 DRAFT 上能直接改这个标签 —— 这是你控制单次需求成本最直接的旋钮。
 
 三个按钮：**批准** / **改完批准**（直接编辑卡片）/ **打回重拆**（一句话理由，进黑板当 fact，退回 Dispatcher）。
@@ -392,6 +394,11 @@ CoS 检测你反馈里的重复模式（例如三次都说「测试写得太浅�
 | 8 | **不需要推理的岗关掉 extended thinking**（Librarian / PR-watcher / 格式校验） | role config 加 thinking 档位 |
 | 9 | **预算按切片而非按组** | 按组超支时已经晚了 |
 | 10 | **task 级难度分派 model** —— Dispatcher 给每个切片打难度标签，简单切片用 haiku 跑 Engineer | 真公司不会让 senior 去改文案 |
+
+### `ctx query` 的实际实现（`src/mech/ctx.ts`）
+BM25 式打分：idf 让罕见词主导、饱和让重复不再加分、长度归一让 6 行的 decision 能压过 300 行的 journal，再加一点温和的时间偏好（但旧 decision 仍压过新 journal）。中文**按字**切词，否则中文笔记根本搜不到。
+**无论问什么，先返回本组切片和验收标准** —— 那是切片内一切提问的框架，agent 要是得自己去找就会改成猜。预算是硬上限，被截断时明说丢了几条（静默截断读起来像「就这些了」）。
+**没上 embedding**：要在 turn 内毫秒级回答、语料只是一个项目的笔记。§13 风险④说先量再上，这就是值得拿去量的基线。
 
 ### 上下文经济
 Librarian（haiku）把长 event 流压成 `note` + digest，压缩过程本身进 event（你看得见它压了什么）。turn 默认只注入（且**放在消息末尾**）：任务卡 + 教训清单 + unread 摘要 + 一行「详情用 `orch ctx query` 自取」。
