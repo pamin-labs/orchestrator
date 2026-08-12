@@ -97,7 +97,9 @@ const USAGE = `orch <command>
   lease log <id> [--grep RE]
   mail <target> --intent ask|request|inform|note|decision [--severity S] [--in-reply-to N] <body>
   journal add --kind decision|journal|retro|risk|fact [--file P ...] [--slice N]   # body on stdin
-  task list | claim <id> | done <id> [--claim JSON]      # or pipe the claim on stdin
+  task list | claim <id>
+  task done <id> --claim JSON            # or pipe the claim on stdin
+  task done <id> --already-done "<why>"  # an earlier slice already covered it
   review <slice_id> --verdict pass|fail [--note "…"]     # QA only
   audit <group_id> --verdict pass|fail [--note "…"]      # Auditor only
   answer <esc_id> --answer "…" [--ref <note_id>] | --abstain [--why "…"]
@@ -182,12 +184,14 @@ export async function main(argv: string[]): Promise<number> {
               "orch task done <id> [--claim JSON]",
           );
         }
+        const alreadyDone = typeof flags["already-done"] === "string" ? flags["already-done"] : "";
         const inline = typeof flags.claim === "string" ? flags.claim : "";
-        const piped = inline ? "" : await stdin();
+        const piped = inline || alreadyDone ? "" : await stdin();
         const raw = inline || piped;
         r = await call("POST", "/orch/task/done", {
           task_id: id,
           claim: raw.trim() ? safeJson(raw.trim()) : undefined,
+          already_done: alreadyDone || undefined,
         });
       } else return usageError(`unknown task subcommand ${sub}`);
       break;

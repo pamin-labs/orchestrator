@@ -405,3 +405,26 @@ test("the Auditor is hired outside the group it audits, and told how to read the
   // It is in the main checkout, so it needs to be told how to see the branch.
   expect(spec.prompt).toContain("git diff main...orch/g1");
 });
+
+test("task done refuses an empty claim — otherwise reconcile is vacuous", async () => {
+  const h = await harness();
+  // Observed live: every claim arrived as {}, so "claimed vs actual" had degenerated
+  // into "did anything change at all".
+  for (const body of [{ task_id: 1 }, { task_id: 1, claim: {} }, { task_id: 1, claim: "" }]) {
+    const r = await h.post("/orch/task/done", body, "tok-eng");
+    expect(r.status).toBe(422);
+    expect(await r.text()).toContain("--claim");
+  }
+  const ok = await h.post("/orch/task/done", { task_id: 1, claim: { files: ["a.txt"] } }, "tok-eng");
+  expect(ok.status).toBe(200);
+});
+
+test("--already-done is accepted and recorded as such", async () => {
+  const h = await harness();
+  const r = await h.post("/orch/task/done", { task_id: 1, already_done: "S1 covered it" }, "tok-eng");
+  expect(r.status).toBe(200);
+  const claim = JSON.parse(
+    h.db.query<{ claim_json: string }, []>("SELECT claim_json FROM task WHERE id = 1").get()!.claim_json,
+  );
+  expect(claim.already_done).toBe("S1 covered it");
+});

@@ -84,7 +84,9 @@ Use Bash. Every command blocks and returns its result on stdout.
   orch mail <target> --intent ask|request|inform|note|decision "<body>"
   orch journal add --kind decision|journal|retro|risk -   # body on stdin, max 6 lines
   orch task list                       # id + status + title, one per line
-  orch task claim <id> / done <id>     # the NUMERIC id from \`task list\`
+  orch task claim <id>
+  orch task done <id> --claim '{"files":["a.ts"],"summary":"…"}'
+  orch task done <id> --already-done "S1 already covered this"   # nothing left to change
   orch draft <group_id> -                                 # DRAFT card on stdin (Dispatcher/PM)
   orch owns <group_id> --path <glob> …                    # Architect cuts a boundary
   orch review <slice_id> --verdict pass|fail --note "…"   # QA files its verdict

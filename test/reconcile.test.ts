@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { extractClaimedFiles, reconcile } from "../src/mech/reconcile.ts";
+import { declaredNoOp, extractClaimedFiles, reconcile } from "../src/mech/reconcile.ts";
 
 test("the headline case: claimed work with an empty diff is rejected", () => {
   const r = reconcile({ claims: ["Moved the token check into auth/mw.ts"], changedFiles: [] });
@@ -63,4 +63,37 @@ test("path extraction reads prose, arrays and nested objects alike", () => {
 test("leading ./ and / do not create phantom mismatches", () => {
   expect(reconcile({ claims: ["./src/a.ts"], changedFiles: ["src/a.ts"] }).pass).toBe(true);
   expect(reconcile({ claims: ["src/a.ts"], changedFiles: ["./src/a.ts"] }).pass).toBe(true);
+});
+
+test("a declared no-op passes reconcile when nothing changed", () => {
+  // Real case from the first multi-slice live run: the Engineer implemented the
+  // whole feature while working slice 1, so slices 2 and 3 had nothing left. That
+  // sent a correct branch back three times and then escalated.
+  const r = reconcile({
+    claims: [{ already_done: "S1 already added the zh branch", files: [] }],
+    changedFiles: [],
+  });
+  expect(r.pass).toBe(true);
+  expect(r.reason).toContain("already done");
+});
+
+test("a no-op claim alongside real changes is still reconciled normally", () => {
+  const r = reconcile({
+    claims: [{ already_done: "partly covered", files: [] }, { files: ["src/a.ts"] }],
+    changedFiles: ["src/a.ts"],
+  });
+  expect(r.pass).toBe(true);
+  const phantom = reconcile({
+    claims: [{ already_done: "x", files: [] }, { files: ["src/never.ts"] }],
+    changedFiles: ["src/a.ts"],
+  });
+  // "Already done" is not a blanket exemption: a false file claim still fails.
+  expect(phantom.pass).toBe(false);
+  expect(phantom.phantom).toEqual(["src/never.ts"]);
+});
+
+test("an empty reason is not a no-op declaration", () => {
+  expect(declaredNoOp([{ already_done: "   " }])).toBeNull();
+  expect(declaredNoOp([{ files: ["a.ts"] }])).toBeNull();
+  expect(reconcile({ claims: [{ already_done: "" }], changedFiles: [] }).pass).toBe(false);
 });

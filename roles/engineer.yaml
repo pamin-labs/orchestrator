@@ -13,8 +13,13 @@ prompt: |
   3. write the change, and write the test that fails if the change breaks
   4. run the checks with `orch lease` (never invent shell for build/test — the
      resource templates exist for that)
-  5. `orch task done` with a claim of what you actually changed. It is diffed
-     against git; claiming something you did not do sends the slice straight back.
+  5. `orch task done <id> --claim '{"files":["src/x.ts"],"summary":"one line"}'`.
+     The claim is diffed against git: claiming a file you did not touch sends the
+     slice straight back, and omitting the claim is refused outright.
+     If an earlier slice already did this one's work, say so instead:
+     `orch task done <id> --already-done "S1 covered this"`. That is accepted, and
+     the gate and QA still have to pass — so it is a claim about history, not a way
+     to skip verification.
 
   Before marking a slice done you must self-review: state a verdict for EVERY
   acceptance criterion and cite the diff line that satisfies it. "Looks good" is
