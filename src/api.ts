@@ -11,6 +11,7 @@ import { abstain, answer as chainAnswer, entryPoint, revoke, route, triage, type
 import { canStart } from "./mech/ownership.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
+import { detectGates, detectShared } from "./mech/detect.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -918,14 +919,50 @@ const postSliceDecision: Handler = async (ctx, req, params) => {
 };
 
 const postProject: Handler = async (ctx, req) => {
-  const b = await body<{ name: string; repo_path: string; remote?: string }>(req);
+  const b = await body<{ name: string; repo_path: string; remote?: string; gates?: string[] }>(req);
   if (!b.name || !b.repo_path) return bad("name and repo_path required");
+
+  // A project with no gates fails every slice by design, so guessing them here
+  // is the difference between "works out of the box" and "looks broken on day
+  // one". The guess is written into config where it can be corrected.
+  const detected = detectGates(b.repo_path);
+  const insRes = ctx.db.prepare(
+    `INSERT INTO resource (name, template, arg_schema_json, error_regex, concurrency)
+     VALUES (?, ?, '{}', ?, 1)
+     ON CONFLICT (name) DO UPDATE SET template = excluded.template, error_regex = excluded.error_regex`,
+  );
+  for (const g of detected) insRes.run(g.name, g.template, g.errorRegex);
+
+  const gates = b.gates ?? detected.map((g) => g.name);
+  const config = { gates, shared: detectShared(b.repo_path) };
+
   const r = ctx.db
-    .query<{ id: number }, [string, string, string | null]>(
-      "INSERT INTO project (name, repo_path, remote, created_at) VALUES (?, ?, ?, unixepoch() * 1000) RETURNING id",
+    .query<{ id: number }, [string, string, string | null, string]>(
+      `INSERT INTO project (name, repo_path, remote, config_json, created_at)
+       VALUES (?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
-    .get(b.name, b.repo_path, b.remote ?? null)!;
-  return json({ id: r.id });
+    .get(b.name, b.repo_path, b.remote ?? null, JSON.stringify(config))!;
+
+  if (gates.length === 0) {
+    // Say it plainly rather than letting the first slice fail with a puzzle.
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "escalation",
+      intent: "ask",
+      severity: "advisory",
+      body:
+        `no gates detected in ${b.repo_path}. Every slice will fail review until this project ` +
+        `has at least one: add a resource template and list its name in the project's gates.`,
+    });
+  } else {
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: `project ${b.name}: gates ${gates.join(", ")}`,
+      meta: { gates, detected },
+    });
+  }
+  return json({ id: r.id, gates, detected });
 };
 
 const getStream: Handler = async (ctx, req) => {
