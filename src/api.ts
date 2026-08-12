@@ -814,6 +814,20 @@ const postGroupControl: Handler = async (ctx, req, params) => {
       // The boss merged it. Everyone still queued now has a stale base.
       const stale = landed(ctx.db, grpId);
       ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "merged into main" });
+
+      // Turn this group's retro into lessons while the branch is fresh. This is
+      // the only mechanism by which the twentieth group is smarter than the
+      // first, so it runs on the way out, not "later".
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: grpId,
+        payload: {
+          role: "librarian",
+          rejection:
+            "This group just merged. Read its retro and journals, then update the project's " +
+            "lesson list (`orch journal add --kind lesson`) with anything that would have changed " +
+            "a decision. Refresh the onboarding pack if this changed how the project is built or tested.",
+        },
+      });
       for (const id of stale) {
         ctx.sched.enqueue("agent_turn", {
           grp_id: id,

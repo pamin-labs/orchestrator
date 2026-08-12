@@ -21,6 +21,7 @@ import {
   sendBack,
 } from "../mech/review.ts";
 import { runTurn, type TurnResult } from "./claude.ts";
+import { runTurn as runCodexTurn } from "./codex.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -188,7 +189,8 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   const logDir = join(cfg.dataDir, "turns");
   mkdirSync(logDir, { recursive: true });
 
-  const run = deps.runTurn ?? runTurn;
+  // Which CLI runs a role is configuration, not a fork in the orchestrator.
+  const run = deps.runTurn ?? (role.runtime === "codex" ? runCodexTurn : runTurn);
   let result: TurnResult;
   try {
     result = await run(
