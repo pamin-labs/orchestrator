@@ -167,6 +167,9 @@ export function validateDraftCard(text: string): Result<DraftOk> {
     slices.push(parsed);
   }
 
+  const split = checkSplit(slices);
+  if (split) return { ok: false, error: split };
+
   const risk = many("风险");
   if (risk.length > 2) return { ok: false, error: `风险 max 2 lines (got ${risk.length})` };
 
@@ -186,6 +189,53 @@ export function validateDraftCard(text: string): Result<DraftOk> {
     objection: one("反对"),
     lines: lines.length,
   };
+}
+
+/**
+ * The one deterministic check on slice quality.
+ *
+ * Slicing is otherwise the only step in the whole pipeline with no automatic
+ * guard, and the abstract rule ("each slice must be independently acceptable") was
+ * already in the Dispatcher's prompt when a real run produced three steps of one
+ * change. These three cases are the ones that can be caught without judgement.
+ */
+export function checkSplit(slices: DraftSlice[]): string | null {
+  const norm = (s: string) => s.toLowerCase().replace(/[\s\p{P}]+/gu, "");
+
+  for (let i = 0; i < slices.length; i++) {
+    for (let j = i + 1; j < slices.length; j++) {
+      const a = norm(slices[i]!.accept);
+      const b = norm(slices[j]!.accept);
+      if (!a || !b) continue;
+      if (a === b) {
+        return (
+          `slices ${i + 1} and ${j + 1} are accepted by the same thing ("${slices[i]!.accept}"), ` +
+          `so they are one deliverable, not two. Merge them.`
+        );
+      }
+      // One acceptance test containing the other means finishing the larger slice
+      // finishes the smaller: they cannot be accepted independently.
+      const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+      if (short.length >= 8 && long.includes(short)) {
+        return (
+          `slice ${i + 1} and slice ${j + 1} have nested acceptance criteria, so one is finished ` +
+          `by finishing the other. Split them by what could ship alone, or merge them.`
+        );
+      }
+    }
+  }
+
+  // "Add tests" is never a deliverable on its own: tests belong with the change
+  // they test, and a slice of them can only be accepted after another slice is.
+  const testOnly = /^(补充?|添加|新增|加上?|补齐|write|add|create)?\s*(单元)?(测试|单测|test|tests|unit ?tests?|用例|测试用例)\s*$/i;
+  const idx = slices.findIndex((s) => testOnly.test(s.title.trim()));
+  if (idx !== -1 && slices.length > 1) {
+    return (
+      `slice ${idx + 1} ("${slices[idx]!.title}") is tests on their own. Tests belong with the ` +
+      `change they test — fold them into the slice that makes the change.`
+    );
+  }
+  return null;
 }
 
 const DIFFICULTIES = new Set(["trivial", "normal", "hard"]);
