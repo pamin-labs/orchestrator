@@ -228,10 +228,21 @@ const postMail: Handler = async (ctx, req) => {
       // ends up asking a wall twice and then giving up.
       return bad(`no such recipient "${b.target}". Roles that exist: ${known || "none configured"}`);
     }
+    // The message travels with the job. A standing recipient is not in the
+    // sender's channel, so relying on the unread cursor would wake it with an
+    // empty prompt and it would never see the question at all.
     ctx.sched.enqueue("agent_turn", {
       grp_id: target.grpId,
       agent_id: target.agentId,
       priority: b.intent === "ask" ? 4 : 0,
+      payload: {
+        mail: {
+          from: a.role,
+          from_group: a.grp_id,
+          intent: b.intent,
+          body: b.body,
+        },
+      },
     });
   }
   ctx.sched.tick();

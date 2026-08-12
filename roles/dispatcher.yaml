@@ -11,8 +11,9 @@ prompt: |
   `orch ctx query` (blackboard, past decisions, retros from earlier groups), reading
   the code, and asking the Architect via `orch mail architect --intent ask`.
 
-  Produce exactly this card and nothing else. It is validated: over 12 lines is
-  rejected and you will be asked to rewrite.
+  File the card with `orch draft <group_id> -` (the card on stdin). Printing it as
+  your reply does not file it and the boss will never see it. It is validated on
+  the way in: over 12 lines is rejected and you rewrite.
 
     目标 : one line — what will be true when this is done
     不做 : one line — what is explicitly out of scope
@@ -27,3 +28,8 @@ prompt: |
 
   Each slice must be independently acceptable: the boss will look at it alone,
   without the others being finished.
+
+  Ask the Architect for its objection with `orch mail architect --intent ask`, but
+  do not wait forever: if you have no reply by the end of your turn, file the card
+  with 反对 : 无 and let the boss see the plan. A card nobody filed is worth less
+  than a card with no objection on it.

@@ -85,6 +85,8 @@ Use Bash. Every command blocks and returns its result on stdout.
   orch journal add --kind decision|journal|retro|risk -   # body on stdin, max 6 lines
   orch task list                       # id + status + title, one per line
   orch task claim <id> / done <id>     # the NUMERIC id from \`task list\`
+  orch draft <group_id> -                                 # DRAFT card on stdin (Dispatcher/PM)
+  orch owns <group_id> --path <glob> …                    # Architect cuts a boundary
   orch review <slice_id> --verdict pass|fail --note "…"   # QA files its verdict
   orch audit <group_id> --verdict pass|fail --note "…"    # Auditor files its verdict
   orch answer <esc_id> --answer "…" [--ref <note_id>]     # answer a question routed to you
@@ -92,7 +94,11 @@ Use Bash. Every command blocks and returns its result on stdout.
   orch status "<one line>"             # what you are doing, for the desk wall
   orch git -- <cmd>                    # all git writes go through here (repo lock)
 
-Do not read whole files when \`orch ctx query\` can point you at the lines.`;
+Do not read whole files when \`orch ctx query\` can point you at the lines.
+
+Printing something as your reply does NOT record it. Anything that has to persist
+— a card, a verdict, a journal entry, an answer — happens through one of these
+commands or it did not happen.`;
 
 /**
  * Build the stable half. Order is fixed and content is trimmed so the same

@@ -102,6 +102,8 @@ const USAGE = `orch <command>
   audit <group_id> --verdict pass|fail [--note "…"]      # Auditor only
   answer <esc_id> --answer "…" [--ref <note_id>] | --abstain [--why "…"]
   triage <group_id> --as patch|respec|reject --note "…"  # CoS only
+  draft <group_id>                                       # card on stdin, Dispatcher/PM
+  owns <group_id> --path <glob> [--path <glob> ...]      # Architect cuts a boundary
   status <one line>
   git -- <args...>`;
 
@@ -243,6 +245,20 @@ export async function main(argv: string[]): Promise<number> {
         as: flags.as,
         note: typeof flags.note === "string" ? flags.note : args.slice(2).join(" "),
       });
+      break;
+    }
+    case "draft": {
+      const id = Number(sub) || Number(process.env.ORCH_GRP_ID);
+      if (!Number.isInteger(id)) return usageError("draft needs a group id");
+      r = await call("POST", "/orch/draft", { group_id: id, card: await stdin() });
+      break;
+    }
+    case "owns": {
+      const id = Number(sub) || Number(process.env.ORCH_GRP_ID);
+      if (!Number.isInteger(id)) return usageError("owns needs a group id");
+      const paths = list(flags.path);
+      if (paths.length === 0) return usageError("owns needs at least one --path <glob>");
+      r = await call("POST", "/orch/owns", { group_id: id, paths });
       break;
     }
     case "status": {

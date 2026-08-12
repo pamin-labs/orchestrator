@@ -270,3 +270,29 @@ function harnessDeps(ctx: Ctx, sched: Scheduler) {
     sched,
   } as unknown as ExecDeps;
 }
+
+test("a woken agent is never handed an empty prompt", async () => {
+  const { sched, specs } = harness(async () => ok());
+  // No payload, no slice, no unread: `claude -p` rejects an empty prompt outright,
+  // so the turn would crash on something that is really a bug upstream.
+  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+  expect(specs[0]!.prompt.trim().length).toBeGreaterThan(0);
+  expect(specs[0]!.prompt).toContain("orch task list");
+});
+
+test("a mailed message travels with the job, not via the channel cursor", async () => {
+  const { sched, specs } = harness(async () => ok());
+  sched.enqueue("agent_turn", {
+    grp_id: null,
+    payload: {
+      role: "architect",
+      mail: { from: "dispatcher", from_group: 1, intent: "ask", body: "objection to this split?" },
+    },
+  });
+  await sched.drain();
+  // A standing recipient is in nobody's channel, so the unread cursor would have
+  // woken it with nothing to read.
+  expect(specs[0]!.prompt).toContain("objection to this split?");
+  expect(specs[0]!.prompt).toContain("orch mail dispatcher");
+});
