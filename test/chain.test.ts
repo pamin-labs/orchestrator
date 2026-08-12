@@ -301,3 +301,29 @@ test("an unhired standing level is a level, not a reason to bother the boss", ()
   expect(route(h.deps, id)).toBe("architect");
   expect(h.notified).toEqual([]);
 });
+
+test("a reply reaches the existing holder of a role instead of hiring a second one", async () => {
+  const h = harness();
+  h.ctx.knownRoles = () => ["pm", "dispatcher", "architect"];
+  let hires = 0;
+  h.ctx.hire = () => {
+    hires++;
+    return 99;
+  };
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+  );
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'architect', 'm', 'L2', 'tok-arch', 0)",
+  );
+
+  // The Architect has no group, so a role lookup scoped to its own group would
+  // find nothing and hire — which is how one project paid for two opus Dispatchers.
+  const r = await h.post("/orch/mail", { target: "dispatcher", intent: "inform", body: "objection: …" }, "tok-arch");
+  expect(r.status).toBe(200);
+  expect(hires).toBe(0);
+  const woken = h.db.query<{ agent_id: number }, []>("SELECT agent_id FROM job WHERE kind = 'agent_turn'").get()!;
+  expect(woken.agent_id).toBe(
+    h.db.query<{ id: number }, []>("SELECT id FROM agent WHERE role = 'dispatcher'").get()!.id,
+  );
+});

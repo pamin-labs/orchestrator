@@ -377,7 +377,16 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
       )
       .get(job.slice_id);
     if (s) {
-      delta.card = `Slice S${s.seq} [${s.difficulty}]: ${s.title}\nAccepted when: ${s.accept_spec}`;
+      // The id, not just the sequence number: the verbs take the id, and giving an
+      // agent an identifier it cannot use is the same mistake twice.
+      delta.card =
+        `Slice S${s.seq} (slice_id ${job.slice_id}) [${s.difficulty}]: ${s.title}\n` +
+        `Accepted when: ${s.accept_spec}`;
+      if (agent.role === "qa") {
+        delta.card +=
+          `\n\nFile your verdict with exactly:\n` +
+          `  orch review ${job.slice_id} --verdict pass|fail --note "one line per criterion"`;
+      }
     }
   } else if (job.grp_id && !payload.idea) {
     const slices = ctx.db

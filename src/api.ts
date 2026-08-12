@@ -274,16 +274,18 @@ function resolveTarget(
       .get(senderGrp, role);
     if (inGroup) return { agentId: inGroup.id, grpId: senderGrp };
   }
-  // Standing agents are per project, not global: an Architect with no project
-  // has no repo to work in and ends up reading whatever directory the server was
-  // started from.
-  const standing = ctx.db
-    .query<{ id: number }, [string, number | null]>(
-      `SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'
-         AND (project_id IS ? OR ? IS NULL)`,
+  // Anyone in this project with that role, group or not. A standing Architect
+  // replying to `orch mail dispatcher` must reach the group's Dispatcher rather
+  // than cause a second one to be hired — which is how one project ended up
+  // paying for two opus Dispatchers.
+  const inProject = ctx.db
+    .query<{ id: number; grp_id: number | null }, [string, number | null]>(
+      `SELECT id, grp_id FROM agent
+       WHERE role = ? AND state != 'retired' AND (project_id IS ? OR ? IS NULL)
+       ORDER BY (grp_id IS NOT NULL) DESC, id DESC LIMIT 1`,
     )
     .get(role, senderProject, senderProject);
-  if (standing) return { agentId: standing.id, grpId: null };
+  if (inProject) return { agentId: inProject.id, grpId: inProject.grp_id };
 
   if (!(ctx.knownRoles?.() ?? []).includes(role)) return null;
   const hired = ctx.hire?.(null, role, senderProject) ?? null;
