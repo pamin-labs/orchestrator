@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-**M0–M6 全部落地，320 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
+**M0–M6 全部落地，324 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
 
 **你现在只需要三个动作**：丢想法 → 批 DRAFT 卡（20 秒）→ 查收切片。gate 配置、入职包、PR 预检都在注册项目时自动完成。
 
@@ -129,12 +129,28 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 
 两次跑里 Architect 的成本都不可比：我的测量脚本 900 秒超时退出，把它在飞的那轮杀了（job 停在 `running`）。是脚本伪影，别去追。
 
-## 剩下的
+## 待开发的功能：没有了
 
-1. [ ] **只剩 `gh pr create` 那一个网络调用没在真 GitHub 上跑过。** 需要在你账号下建私有仓库，属于对外动作，我没擅自做。
-   在此之前能验的都验了：**真裸 remote + 假 `gh`** 跑通了 squash → `git push -u origin <branch>`（走 repo 写锁）→ `gh pr create` 的 argv → 记 `pr_number` → 发事件。裸 remote 上真的收到了 `refs/heads/orch/greet`，且是**一条** `orch: greet` commit（不再是三条 `wip: qa turn`）。
-   你要验的话：拿个真项目注册进来，看有没有 `PR flow ready` 那条事件；预检会先告诉你 remote 是不是 GitHub。
-2. **切错方向仍只能靠你在 DRAFT 那 20 秒拦** —— 这是限制，不是待办。`checkSplit` 拦得住「切重了」，拦不住「切错了」。就是 `PLAN.md` §13 风险①，实测确认成立。唯一的补强是上面那条：卡交了之后才到的反对意见现在也会摆在卡旁边，所以「反对 : 无」不再能盖住一条真反对。
+M0–M6 全部落地，324 checks 绿。下面两节都不是待办：一条是只有你能按的按钮，一条是设计上的固有限制。
+
+### 唯一没在真 GitHub 上跑过的：`gh pr create` 这一个调用
+
+它会在你账号下创建东西，属于对外动作，我不替你做。**它前后的每一步都验过了**：
+
+- squash → `git push -u origin <branch>`（走 repo 写锁）→ `gh pr create` 的 argv → 记 `pr_number` → 发事件：对着**真裸 remote + 假 `gh`** 全跑通。裸 remote 真的收到了 `refs/heads/orch/greet`，而且是**一条** `orch: greet` commit
+- 前置条件对着**真 GitHub API** 验过：`preflightPr` 在 `origin` 指向你 `DailyExpense` 时返回 `ok: true`（真 remote 解析、真 `gh auth status`、真 `viewerPermission` = ADMIN）
+- 会失败的形状也都有 check：没 `origin` / 不是 GitHub / `gh` 没装 / 没登录 / 只有读权限
+
+你要收尾就两步，随便挑个已有的私有仓库：
+```bash
+bun run src/server.ts                     # 起服务
+# web 上注册那个项目，看事件流里有没有：PR flow ready (git@github.com:…)
+```
+真跑一个需求到底就能看到 PR 开出来。**预检失败会在注册那一刻就告诉你原因**，不会等到分支做完才发现没地方去。
+
+### 固有限制：切错方向只能靠你在 DRAFT 那 20 秒拦
+
+`checkSplit` 拦得住「切重了」，拦不住「切错了」。就是 `PLAN.md` §13 风险①，实测确认成立 —— 也是全系统唯一没有确定性防线的判断点。两条补强已经做了：卡上有 Architect 的反对栏，而**卡交完之后才到的反对意见现在也摆在卡旁边**，所以「反对 : 无」不再能盖住一条真反对。
 
 ## 用之前
 
