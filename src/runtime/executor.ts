@@ -93,13 +93,20 @@ export function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
     )
     .get(job.grp_id, roleName);
   if (existing) return existing;
-  return hire(deps, job.grp_id, roleName, job.slice_id);
+  const payloadProject = payload.project_id ? Number(payload.project_id) : null;
+  return hire(deps, job.grp_id, roleName, job.slice_id, payloadProject);
 }
 
 const SELECT_AGENT_BASE = `SELECT id, grp_id, role, model, clearance, session_id, session_tokens, cwd, token, stable_hash FROM agent`;
 const SELECT_AGENT = `${SELECT_AGENT_BASE} WHERE id = ?`;
 
-export function hire(deps: ExecDeps, grpId: number | null, roleName: string, sliceId?: number | null): AgentRow {
+export function hire(
+  deps: ExecDeps,
+  grpId: number | null,
+  roleName: string,
+  sliceId?: number | null,
+  projectId?: number | null,
+): AgentRow {
   const { ctx, cfg, roles } = deps;
   const role = roles.get(roleName);
   if (!role) throw new Error(`no role definition for ${roleName} (add roles/${roleName}.yaml)`);
@@ -122,7 +129,7 @@ export function hire(deps: ExecDeps, grpId: number | null, roleName: string, sli
        VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
     .get(
-      grp?.project_id ?? null,
+      grp?.project_id ?? projectId ?? null,
       grpId,
       roleName,
       modelFor(cfg, role, difficulty),
@@ -155,8 +162,19 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
         .get(grp.project_id)
     : null;
 
-  const cwd = grp?.worktree ?? project?.repo_path ?? process.cwd();
-  const stable = buildStableFor(deps, agent, role, grp, project?.repo_path ?? cwd, job);
+  const standingRepo = agent.grp_id
+    ? null
+    : (ctx.db
+        .query<{ repo_path: string }, [number | null]>(
+          "SELECT repo_path FROM project WHERE id = ?",
+        )
+        .get(
+          ctx.db
+            .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
+            .get(agent.id)?.project_id ?? null,
+        )?.repo_path ?? null);
+  const cwd = grp?.worktree ?? project?.repo_path ?? standingRepo ?? process.cwd();
+  const stable = buildStableFor(deps, agent, role, grp, project?.repo_path ?? standingRepo ?? cwd, job);
 
   // A changed stable half means the cached prefix is dead. Rotating is cheaper
   // than paying full price for every remaining turn of this session.

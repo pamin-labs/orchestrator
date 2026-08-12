@@ -196,3 +196,45 @@ test("higher priority dispatches first", async () => {
   release();
   await s.drain();
 });
+
+test("a standing agent's turn takes a slot like anyone else's", async () => {
+  const db = openMemory();
+  seed(db, 1);
+  const { started, release, exec } = gate();
+  const s = new Scheduler(db, exec, { maxGroups: 1 });
+  s.enqueue("agent_turn", { grp_id: null, payload: { role: "librarian" } });
+  s.enqueue("agent_turn", { grp_id: 1 });
+  s.tick();
+
+  // A standing turn costs the same money and CPU as a group's, so bypassing the
+  // pool would make a concurrency limit meaningless.
+  expect(started.length).toBe(1);
+  release();
+  await s.drain();
+  expect(started.length).toBe(2);
+});
+
+test("two standing turns do not run at once", async () => {
+  const db = openMemory();
+  seed(db, 1);
+  const { started, release, exec } = gate();
+  const s = new Scheduler(db, exec, { maxGroups: 3 });
+  s.enqueue("agent_turn", { grp_id: null, payload: { role: "librarian" } });
+  s.enqueue("agent_turn", { grp_id: null, payload: { role: "architect" } });
+  s.tick();
+  expect(started.length).toBe(1);
+  release();
+  await s.drain();
+  expect(started.length).toBe(2);
+});
+
+test("maxGroups 0 means nothing runs at all", async () => {
+  const db = openMemory();
+  seed(db, 1);
+  const ran: Job[] = [];
+  const s = new Scheduler(db, async (j) => void ran.push(j), { maxGroups: 0 });
+  s.enqueue("agent_turn", { grp_id: 1 });
+  s.enqueue("agent_turn", { grp_id: null });
+  await s.drain();
+  expect(ran.length).toBe(0);
+});
