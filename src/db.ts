@@ -251,6 +251,19 @@ const MIGRATIONS: string[] = [
   ALTER TABLE slice ADD COLUMN base_sha TEXT;
   ALTER TABLE slice ADD COLUMN retries INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // 005 — what the watchdog needs to notice a stuck agent.
+  //
+  // Each of these exists because a rule needs *deterministic* evidence. A model
+  // asked "are you going in circles?" says no.
+  `
+  ALTER TABLE agent ADD COLUMN idle_turns INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE agent ADD COLUMN loop_file TEXT;
+  ALTER TABLE agent ADD COLUMN loop_count INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE lease ADD COLUMN head_sha TEXT;
+  ALTER TABLE grp ADD COLUMN paused_at INTEGER;
+  ALTER TABLE job ADD COLUMN checkpoint_sha TEXT;
+  `,
 ];
 
 export type DB = Database;

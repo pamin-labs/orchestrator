@@ -6,6 +6,7 @@ import { loadConfig, loadRoles, ROOT, type Config } from "./config.ts";
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
+import { Notifier, tierFor } from "./mech/notify.ts";
 import { makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { Scheduler } from "./scheduler.ts";
 
@@ -21,6 +22,7 @@ export interface Started {
   ctx: Ctx;
   cfg: Config;
   url: string;
+  notifier: Notifier;
   stop: () => void;
 }
 
@@ -56,6 +58,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
   ctx.auditVerdict = makeAuditVerdict(execDeps);
 
+
   const app = makeApp(ctx);
   const webDir = join(ROOT, "web");
 
@@ -83,10 +86,34 @@ export function start(overrides: Partial<Config> = {}): Started {
   // token. Identity is never a request-body field.
   process.env.ORCH_URL = url;
 
+  const notifier = new Notifier({ ntfyTopic: process.env.ORCH_NTFY_TOPIC });
+  ctx.onFinding = (rule, severity, body, grpId) => {
+    void notifier.push({ key: `${rule}:${grpId ?? 0}`, tier: tierFor(rule, severity), body, url });
+  };
+
   process.env.ORCH_BIN_DIR = installOrchShim(cfg.dataDir);
 
+  // The watchdog is an ordinary job, enqueued on a timer. It bypasses the group
+  // slot pool, or it could never fire on the very group that is stuck.
+  const tick = setInterval(() => {
+    const queued = db
+      .query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'watchdog' AND state = 'pending'")
+      .get()!.c;
+    if (queued === 0) sched.enqueue("watchdog", {});
+    sched.tick();
+  }, cfg.watchdogIntervalMs);
+
   sched.tick();
-  return { ctx, cfg, url, stop: () => server.stop(true) };
+  return {
+    ctx,
+    cfg,
+    url,
+    notifier,
+    stop: () => {
+      clearInterval(tick);
+      server.stop(true);
+    },
+  };
 }
 
 /**

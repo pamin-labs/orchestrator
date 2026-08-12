@@ -9,6 +9,7 @@ import { assemble, buildStable, needsRotation, type Delta } from "../prompt/asse
 import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
 import { digestOutput, resolveLease, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
+import { recordTurnOutcome, runWatchdog } from "../mech/watchdog.ts";
 import {
   auditVerdict,
   handToBoss,
@@ -58,6 +59,8 @@ export function makeExecutor(deps: ExecDeps): Executor {
         return runLease(deps, job);
       case "gate":
         return runGateJob(deps, job);
+      case "watchdog":
+        return runWatchdogJob(deps);
       case "reconcile":
         // PR level: every slice accepted, so reconcile and gate the whole branch
         // before the Auditor is asked for an opinion.
@@ -172,6 +175,9 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   if (job.slice_id && before) {
     ctx.db.run("UPDATE slice SET base_sha = coalesce(base_sha, ?) WHERE id = ?", [before, job.slice_id]);
   }
+  // Recorded on the job so intercept L3 can roll back to exactly the state this
+  // turn started from, even after the process is gone.
+  if (before) ctx.db.run("UPDATE job SET checkpoint_sha = ? WHERE id = ?", [before, job.id]);
 
   ctx.db.run("UPDATE agent SET state = 'running', session_id = ? WHERE id = ?", [sessionId, agent.id]);
 
@@ -217,6 +223,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   }
 
   recordCost(deps, agent, job, result, stable.hash);
+  recordProgress(deps, agent, job, result);
   await narrate(deps, agent, job, grp, project?.repo_path ?? null, before, result);
   handleDenials(deps, agent, job, result);
   handleRateLimit(deps, job, result);
@@ -396,6 +403,29 @@ function recordCost(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult, st
   });
 }
 
+/**
+ * Feed the watchdog's counters. "Wrote nothing" is three checks we can make
+ * ourselves — a file changed, a task moved, a note appeared — because an agent
+ * asked whether it made progress always says yes.
+ */
+function recordProgress(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
+  const { ctx } = deps;
+  const since = Date.now() - 5 * 60_000;
+  const wroteNote =
+    ctx.db
+      .query<{ c: number }, [number | null, number]>(
+        "SELECT count(*) AS c FROM note WHERE grp_id IS ? AND at > ?",
+      )
+      .get(job.grp_id, since)!.c > 0;
+  const movedTask =
+    ctx.db
+      .query<{ c: number }, [number]>(
+        "SELECT count(*) AS c FROM task WHERE owner_agent_id = ? AND status = 'done'",
+      )
+      .get(agent.id)!.c > 0;
+  recordTurnOutcome(ctx, agent.id, r.filesTouched, wroteNote, movedTask);
+}
+
 export function cacheRatio(r: TurnResult): number {
   const denom = r.usage.cacheRead + r.usage.cacheCreate + r.usage.input;
   return denom === 0 ? 0 : r.usage.cacheRead / denom;
@@ -497,6 +527,15 @@ async function runGateJob(deps: ExecDeps, job: Job): Promise<void> {
   else sendBack(rd, job.slice_id, out.feedback, "gate");
 }
 
+/**
+ * The watchdog runs as an ordinary job, which is why it bypasses the group slot
+ * pool: otherwise it could never fire on the very group that is stuck.
+ */
+async function runWatchdogJob(deps: ExecDeps): Promise<void> {
+  const findings = await runWatchdog({ ctx: deps.ctx, cfg: deps.cfg, git: deps.git });
+  for (const f of findings) deps.ctx.onFinding?.(f.rule, f.severity, f.body, f.grpId);
+}
+
 /** Called by the server when the Auditor files a PR-level verdict. */
 export function makeAuditVerdict(deps: ExecDeps) {
   return (grpId: number, pass: boolean, note: string): void =>
@@ -537,7 +576,13 @@ async function runLease(deps: ExecDeps, job: Job): Promise<void> {
   mkdirSync(logDir, { recursive: true });
   const logPath = join(logDir, `${leaseId}.log`);
 
-  ctx.db.run("UPDATE lease SET state = 'running', started_at = unixepoch() * 1000 WHERE id = ?", [leaseId]);
+  // Stamp the commit this ran against: two failures at the same sha mean the
+  // environment is the variable, not the code.
+  const head = await deps.git(cwd, ["rev-parse", "HEAD"], cwd);
+  ctx.db.run(
+    "UPDATE lease SET state = 'running', head_sha = ?, started_at = unixepoch() * 1000 WHERE id = ?",
+    [head.code === 0 ? head.out.trim() : null, leaseId],
+  );
   ctx.bus.emit({
     grpId: lease.grp_id,
     author: "runner",

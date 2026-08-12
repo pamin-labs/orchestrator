@@ -38,6 +38,7 @@ export interface Config {
   sessionRotateFraction: number;
   ctxBudgetChars: number;
   parkAfterPausedMs: number;
+  watchdogIntervalMs: number;
   gateRetries: number;
   workRoot: string;
   dataDir: string;
@@ -58,6 +59,7 @@ const DEFAULTS: Config = {
   sessionRotateFraction: 0.6,
   ctxBudgetChars: 16_000,
   parkAfterPausedMs: 7_200_000,
+  watchdogIntervalMs: 30_000,
   gateRetries: 2,
   workRoot: "/tmp/orch/worktrees",
   dataDir: "data",
