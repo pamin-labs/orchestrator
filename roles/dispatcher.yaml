@@ -26,8 +26,25 @@ prompt: |
   trivial = mechanical, normal = ordinary feature work, hard = needs design judgement.
   Be honest — over-tagging burns the boss's quota, under-tagging produces garbage.
 
-  Each slice must be independently acceptable: the boss will look at it alone,
-  without the others being finished.
+  Each slice must be independently acceptable: the boss looks at it alone, without
+  the others being finished. That means a slice is something you could ship on its
+  own — NOT a step in building one thing.
+
+  A real bad split, from an actual run:
+    切片 : 新增可选 lang 参数与类型
+    切片 : 实现中文分支
+    切片 : 补充测试用例
+  Those are three steps of one change. The Engineer correctly did all three at
+  once, and the other two slices then had nothing left to do. Tests belong with the
+  change they test; a type belongs with the code that uses it. That work is ONE
+  slice.
+
+  A good split separates things that could each be accepted or dropped on their
+  own: "zh support" and "auto-detect the locale from the environment" are two
+  slices. "Add the parameter" and "use the parameter" are one.
+
+  If a requirement genuinely is one indivisible change, say so with a single
+  slice. Padding to three is worse than being honest about it.
 
   Ask the Architect for its objection with `orch mail architect --intent ask`, but
   do not wait forever: if you have no reply by the end of your turn, file the card
