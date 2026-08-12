@@ -150,8 +150,12 @@ export function validateDraftCard(text: string): Result<DraftOk> {
   }
 
   const rawSlices = many("切片");
-  if (rawSlices.length < 3 || rawSlices.length > 5) {
-    return { ok: false, error: `切片 needs 3-5 slices (got ${rawSlices.length})` };
+  // 1, not 3. A floor of three made the Dispatcher invent work: measured, it
+  // filed "切片 2、3 是为满足最少切片数补的相邻能力" as a risk on its own card, and
+  // one of those padded slices would have changed what existing callers get.
+  // A one-line requirement is one slice, and the boss can read that in 5 seconds.
+  if (rawSlices.length < 1 || rawSlices.length > 5) {
+    return { ok: false, error: `切片 needs 1-5 slices (got ${rawSlices.length})` };
   }
   const slices: DraftSlice[] = [];
   for (const raw of rawSlices) {

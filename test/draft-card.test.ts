@@ -59,9 +59,24 @@ test("a slice with no acceptance method is rejected", () => {
   expect(r.ok).toBe(false);
 });
 
-test("wrong slice count is rejected on both ends", () => {
-  const two = good.split("\n").filter((l) => !l.startsWith("切片 : 补")).join("\n");
-  expect(validateDraftCard(two).ok).toBe(false);
+test("more than five slices is rejected", () => {
+  // Exactly 12 lines, so the length cap cannot be what rejects it.
+  const six = `目标 : x
+不做 : y
+验收 : a 绿
+验收 : b 通过
+切片 : s1 [trivial] — a1
+切片 : s2 [trivial] — a2
+切片 : s3 [trivial] — a3
+切片 : s4 [trivial] — a4
+切片 : s5 [trivial] — a5
+切片 : s6 [trivial] — a6
+风险 : 无
+反对 : 无`;
+  expect(six.split("\n").length).toBe(12);
+  const r = validateDraftCard(six);
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toContain("1-5");
 });
 
 test("wrong acceptance-criteria count is rejected", () => {
@@ -119,7 +134,21 @@ test("a slice that adds a test suite for something specific is still allowed", (
   expect(validateDraftCard(card).ok).toBe(true);
 });
 
-test("a single-slice card is never blamed for a bad split", () => {
+test("a one-slice card is accepted — padding to a floor invents scope", () => {
+  // Measured: with a floor of three, the Dispatcher filed "切片 2、3 是为满足最少
+  // 切片数补的相邻能力" as a risk on its own card, and one of those padded slices
+  // would have changed what existing callers get. A small ask is one slice.
+  const one = `目标 : greet 支持 zh
+不做 : 不引入 i18n 库
+验收 : greet("x","zh") === "你好 x"
+验收 : greet("x") 不变
+切片 : 加可选 lang 参数并支持 zh [trivial] — 上两条验收通过
+风险 : 无
+反对 : 无`;
+  expect(validateDraftCard(one).ok).toBe(true);
+});
+
+test("a lone slice is never blamed for a bad split", () => {
   const one = `目标 : x
 不做 : y
 验收 : a 绿
@@ -127,10 +156,8 @@ test("a single-slice card is never blamed for a bad split", () => {
 切片 : 测试 [trivial] — 全绿
 风险 : 无
 反对 : 无`;
-  // 3-5 slices is enforced separately; a lone slice cannot overlap anything.
-  const r = validateDraftCard(one);
-  expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("3-5");
+  // The tests-only rule needs a sibling to fold into; alone, it is the whole job.
+  expect(validateDraftCard(one).ok).toBe(true);
 });
 
 test("two slices may both require the suite to pass", () => {

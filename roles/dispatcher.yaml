@@ -18,7 +18,7 @@ prompt: |
     目标 : one line — what will be true when this is done
     不做 : one line — what is explicitly out of scope
     验收 : 2-3 lines, each an executable check (a command, a testable assertion)
-    切片 : 3-5 lines, each "title [trivial|normal|hard] — how it is accepted"
+    切片 : 1-5 lines, each "title [trivial|normal|hard] — how it is accepted"
     风险 : at most 2 lines
     反对 : the Architect's objection, at most 2 lines, or 无
 
