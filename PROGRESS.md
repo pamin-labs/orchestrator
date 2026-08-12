@@ -8,38 +8,43 @@
 
 ## 当前里程碑
 
-**M0 — 落盘与断点续开**（进行中）
+**M1 — 单组端到端骨架**（进行中）
 
 ## 已完成且已验证
 
-- [x] `git init`（main 分支）+ 目录骨架 `src/ test/ docs/decisions/`
-- [x] `PLAN.md` —— plan 的权威副本已进 repo。**后续设计变更改这里，不改 `~/.claude/plans/`**
-- [x] `PROGRESS.md` —— 本文件
-- [x] `CLAUDE.md` —— 给未来 session 的项目常识
-- [x] `.gitignore`
+**M0**
+- [x] `git init`（main 分支）+ 目录骨架
+- [x] `PLAN.md` —— plan 的权威副本。**设计变更改这里，不改 `~/.claude/plans/`**
+- [x] `PROGRESS.md` / `CLAUDE.md` / `.gitignore` / `docs/decisions/README.md`
+- [ ] M0 验收待做：开一个**全新** session 只说「继续开发这个项目」，看它能否只靠这三个文件接上
+
+**M1**
+- [x] `package.json` + `tsconfig.json`（bun，无 build step）
+- [x] `src/db.ts` —— 全 schema + 迁移 → `test/schema.test.ts` 5 绿
+- [x] `src/scheduler.ts` —— job 队列、并发槽、准入检查 → `test/job-queue.test.ts` 9 绿
+- [x] `src/prompt/assemble.ts` —— 唯一 prompt 组装入口 → `test/cache-position.test.ts` 9 绿
+- [x] `src/runtime/claude.ts` —— `claude -p` + stream-json → `test/claude-adapter.test.ts` 7 绿
+
+**实跑确认过的 stream-json 字段**（不是猜的）：`permission_denials`、`rate_limit_info{status,rateLimitType,resetsAt,isUsingOverage}`、`modelUsage[*].contextWindow`、`usage.cache_read_input_tokens`、`user.tool_use_result{stdout,stderr,interrupted}`。事件类型：`system(init|status|thinking_tokens|hook_*)` / `stream_event(content_block_*|message_*)` / `assistant` / `user` / `rate_limit_event` / `result`。
 
 ## 进行中
 
-- [ ] M0 验收：开一个**全新** Claude Code session，只说「继续开发这个项目」，看它能否只靠 `CLAUDE.md` + 本文件 + `PLAN.md` 搞清现状并接着做。搞不清 = 本文件写得不够。
+- [ ] `src/mech/validate.ts` —— journal ≤6 行、DRAFT 卡 ≤12 行的硬拒收
 
-## 下一步（M1 顺序）
+## 下一步
 
-按依赖排，前三条互不耦合，可用 agent teams 并行：
-
-1. [ ] `src/db.ts` —— sqlite schema + 迁移（表见 `PLAN.md` §3）→ `test/schema.test.ts`
-2. [ ] `src/scheduler.ts` —— job 队列、并发槽、准入检查 → `test/job-queue.test.ts`
-   **单线做，不并行** —— 正确性核心
-3. [ ] `src/runtime/claude.ts` —— `claude -p` 子进程 + stream-json 解析（含 partial message 边界）
-4. [ ] `src/prompt/assemble.ts` —— **唯一** prompt 组装入口，delta 一律追加到消息末尾 → `test/cache-position.test.ts`
-   **单线做，不并行** —— 写错了功能正常但成本翻 3-5 倍，最隐蔽的故障
-5. [ ] `src/orch/cli.ts` —— unix socket 连 server；先实现 `ask-boss` / `lease` / `journal add` / `task`
-6. [ ] `src/server.ts` + `web/` —— HTTP + SSE + 切片泳道主视图 + DRAFT 卡 + 待查收列
-7. [ ] `roles/` 三个 yaml（PM / Engineer / QA）+ `profiles/L1.json` `L2.json`
-8. [ ] M1 端到端手动验收（步骤见 `PLAN.md` §12）
+1. [ ] `src/mech/lease.ts` —— 资源模板解析 + 参数校验（**永不接受自由命令**）+ 结果三段截断
+2. [ ] `src/server.ts` —— HTTP + SSE + unix socket；路由即 API，web 和 orch 共用
+3. [ ] `src/orch/cli.ts` —— socket 客户端：`ctx query` / `ask-boss` / `lease` / `mail` / `journal add` / `task` / `status` / `git`
+4. [ ] `roles/{pm,engineer,qa}.yaml` + `profiles/{L1,L2}.json`
+5. [ ] `web/` —— 切片泳道主视图 + DRAFT 卡 + 待查收列 + SSE
+6. [ ] M1 端到端手动验收（步骤见 `PLAN.md` §12）
 
 ## 已知偏离 PLAN.md 的地方
 
-（无）
+- `job` 表加了 `slice_id`（PLAN §3 没写）—— 预算按 slice 检查需要它
+- `grp` 表加了 `owns_json` / `spent_usd`，`agent` 加了 `total_tokens`/`total_usd` —— file ownership 和成本归因需要
+- `slice` 加了 `gates_json`（四层 review 的通过状态）和 `depends_on`
 
 ## 卡住的地方 / 待决策
 
