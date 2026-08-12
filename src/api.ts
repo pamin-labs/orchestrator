@@ -25,6 +25,8 @@ export interface Ctx {
   git?: GitRunner;
   /** Wired by the server: advances the review pipeline on a QA verdict. */
   reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
+  /** Wired by the server: the Auditor's PR-level verdict. */
+  auditVerdict?: (grpId: number, pass: boolean, note: string) => void;
   config: { language: string; difficultyModel: Record<string, string>; workRoot: string };
 }
 
@@ -271,6 +273,28 @@ const getLeaseLog: Handler = async (ctx, req, params) => {
       .slice(0, 200)
       .join("\n"),
   );
+};
+
+const postAudit: Handler = async (ctx, req) => {
+  const b = await body<{ group_id: number; verdict: string; note?: string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  if (a.role !== "auditor") return bad(`${a.role} does not file audit verdicts`);
+  if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
+  // The Auditor is deliberately not a member of the group it reviews, so it is
+  // the one role whose group check is inverted.
+  if (a.grp_id === b.group_id) return bad("an auditor may not audit its own group");
+
+  ctx.bus.emit({
+    grpId: b.group_id,
+    author: "auditor",
+    kind: "gate_result",
+    intent: "decision",
+    body: `audit ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
+    meta: { verdict: b.verdict },
+  });
+  ctx.auditVerdict?.(b.group_id, b.verdict === "pass", b.note ?? "");
+  return text("ok");
 };
 
 /**
@@ -712,6 +736,19 @@ const postSliceDecision: Handler = async (ctx, req, params) => {
     body: accept ? `accepted: ${sl.title}` : (b.feedback ?? "rejected"),
     meta: { slice_id: id },
   });
+  if (accept) {
+    // The last acceptance is what starts PR-level review; nothing an agent does
+    // can trigger it, because "the boss is satisfied" is not an agent's call.
+    const open = ctx.db
+      .query<{ c: number }, [number]>(
+        "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'",
+      )
+      .get(sl.grp_id)!.c;
+    if (open === 0) {
+      ctx.sched.enqueue("reconcile", { grp_id: sl.grp_id, priority: 5 });
+    }
+  }
+
   if (!accept) {
     ctx.db.run(
       "INSERT INTO note (grp_id, slice_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
@@ -780,6 +817,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/task\/claim$/, postTaskClaim],
   ["POST", /^\/orch\/task\/done$/, postTaskDone],
   ["POST", /^\/orch\/review$/, postReview],
+  ["POST", /^\/orch\/audit$/, postAudit],
 
   ["GET", /^\/api\/state$/, getState],
   ["GET", /^\/api\/stream$/, getStream],

@@ -229,3 +229,92 @@ function safeJson(s: string | null): unknown {
     return s;
   }
 }
+
+/**
+ * PR-level review, run once every slice has been accepted by the boss.
+ *
+ * Deterministic first, same as at slice level: the whole branch is reconciled and
+ * gated before the Auditor is asked for judgement.
+ */
+export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void> {
+  const { ctx, cfg, git } = deps;
+  const grp = ctx.db
+    .query<{ project_id: number; worktree: string | null; branch: string | null; name: string }, [number]>(
+      "SELECT project_id, worktree, branch, name FROM grp WHERE id = ?",
+    )
+    .get(grpId);
+  if (!grp) return;
+
+  // A group cannot be wound up without a retro. It is the only long-term memory
+  // the system has, and "later" means never once the branch is merged.
+  const retro = ctx.db
+    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ? AND kind = 'retro'")
+    .get(grpId)!.c;
+  if (retro === 0) {
+    ctx.bus.emit({
+      grpId,
+      author: "orchestrator",
+      kind: "state_change",
+      body: "no retro yet — the group cannot wind up without one",
+    });
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: grpId,
+      payload: {
+        role: "pm",
+        rejection:
+          "Every slice is accepted, but this group has no retro. Write one now with " +
+          "`orch journal add --kind retro`: what got reworked, which assumption was wrong, " +
+          "what the next group touching this code needs to know. Max 6 lines.",
+      },
+    });
+    ctx.sched.tick();
+    return;
+  }
+
+  const gateOut = await runGates({
+    db: ctx.db,
+    projectId: grp.project_id,
+    cwd: grp.worktree ?? process.cwd(),
+    dataDir: cfg.dataDir,
+    sliceId: 0,
+  });
+  if (!gateOut.pass) {
+    ctx.bus.emit({
+      grpId,
+      author: "orchestrator",
+      kind: "gate_result",
+      body: `branch gate failed:\n${gateOut.feedback}`,
+    });
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: grpId,
+      payload: { role: "engineer", rejection: gateOut.feedback, rotate: true },
+    });
+    ctx.sched.tick();
+    return;
+  }
+
+  ctx.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = ?", [grpId]);
+  ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "auditor", audit: grpId } });
+  ctx.sched.tick();
+}
+
+/** The Auditor's verdict. Passing means the branch is the boss's to merge. */
+export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, note: string): void {
+  const { ctx } = deps;
+  if (pass) {
+    ctx.bus.emit({
+      grpId,
+      author: "auditor",
+      kind: "state_change",
+      body: "audit passed — ready for you to merge",
+      meta: { audit: "pass" },
+    });
+    return;
+  }
+  ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [grpId]);
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: grpId,
+    payload: { role: "pm", rejection: `The Auditor sent the branch back: ${note}`, rotate: true },
+  });
+  ctx.sched.tick();
+}

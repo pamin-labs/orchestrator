@@ -6,7 +6,7 @@ import { loadConfig, loadRoles, ROOT, type Config } from "./config.ts";
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
-import { makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
+import { makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { Scheduler } from "./scheduler.ts";
 
 /**
@@ -54,6 +54,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   const execDeps = { ctx, cfg, roles, git };
   exec = makeExecutor(execDeps);
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
+  ctx.auditVerdict = makeAuditVerdict(execDeps);
 
   const app = makeApp(ctx);
   const webDir = join(ROOT, "web");

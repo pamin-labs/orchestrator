@@ -99,6 +99,7 @@ const USAGE = `orch <command>
   journal add --kind decision|journal|retro|risk|fact [--file P ...] [--slice N]   # body on stdin
   task list | claim <id> | done <id> [--claim JSON]      # or pipe the claim on stdin
   review <slice_id> --verdict pass|fail [--note "…"]     # QA only
+  audit <group_id> --verdict pass|fail [--note "…"]      # Auditor only
   status <one line>
   git -- <args...>`;
 
@@ -190,6 +191,16 @@ export async function main(argv: string[]): Promise<number> {
       }
       const note = typeof flags.note === "string" ? flags.note : args.slice(2).join(" ");
       r = await call("POST", "/orch/review", { slice_id: id, verdict: flags.verdict, note });
+      break;
+    }
+    case "audit": {
+      const id = Number(sub);
+      if (!Number.isInteger(id)) return usageError("audit needs a group id");
+      if (flags.verdict !== "pass" && flags.verdict !== "fail") {
+        return usageError("audit needs --verdict pass|fail");
+      }
+      const note = typeof flags.note === "string" ? flags.note : args.slice(2).join(" ");
+      r = await call("POST", "/orch/audit", { group_id: id, verdict: flags.verdict, note });
       break;
     }
     case "status": {
