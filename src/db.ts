@@ -34,7 +34,8 @@ const MIGRATIONS: string[] = [
     created_at    INTEGER NOT NULL,
     UNIQUE (project_id, name)
   );
-  -- status: DRAFT | RUNNING | PAUSING | PAUSED | PARKED | PR_OPEN | DISSOLVED
+  -- status: PLANNING | DRAFT | RUNNING | PAUSING | PAUSED | PARKED | PR_OPEN | DISSOLVED
+  --   PLANNING: the Dispatcher/Architect are still working; DRAFT: the card awaits the boss
 
   -- Agent identity is durable (role/group/clearance/cost); the session is disposable.
   CREATE TABLE agent (

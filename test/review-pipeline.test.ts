@@ -322,3 +322,40 @@ test("a failed audit reopens the group and sends the PM back", async () => {
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
   expect(h.specs.at(-1)!.prompt).toContain("S2's promise is not in the diff");
 });
+
+test("accepting a slice starts the next one, and only one runs at a time", async () => {
+  const h = await harness();
+  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
+  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 3, 'S3', 'x', 0)");
+
+  const { startNextSlice } = await import("../src/mech/review.ts");
+  expect(startNextSlice(h.ctx, 1)).toBe(1);
+  // A second in-flight slice would only queue behind the first (one writer per
+  // group) and its review would race the first one's.
+  expect(startNextSlice(h.ctx, 1)).toBeNull();
+
+  h.db.run("UPDATE slice SET status = 'accepted' WHERE id = 1");
+  await h.post("/api/slices/1/accept");
+  const running = h.db
+    .query<{ seq: number }, []>("SELECT seq FROM slice WHERE status = 'running'")
+    .all()
+    .map((r) => r.seq);
+  expect(running).toEqual([2]);
+});
+
+test("a slice waits for the one it depends on", async () => {
+  const h = await harness();
+  h.db.run(
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, depends_on, created_at) VALUES (1, 2, 'S2', 'x', 1, 0)",
+  );
+  const { startNextSlice } = await import("../src/mech/review.ts");
+  h.db.run("UPDATE slice SET status = 'accepted' WHERE id = 1");
+  expect(startNextSlice(h.ctx, 1)).toBe(2);
+
+  const h2 = await harness();
+  h2.db.run(
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, depends_on, created_at) VALUES (1, 2, 'S2', 'x', 1, 0)",
+  );
+  h2.db.run("UPDATE slice SET status = 'rejected' WHERE id = 1");
+  expect(startNextSlice(h2.ctx, 1)).toBeNull();
+});
