@@ -34,9 +34,15 @@ export interface SchedulerOptions {
   now?: () => number;
 }
 
-/** Group statuses that allow dispatching an agent_turn. Everything else is a
- *  barrier: PAUSING/PAUSED (intercept L2), PARKED, DRAFT (awaiting boss). */
-const DISPATCHABLE = new Set(["RUNNING", "PR_OPEN"]);
+/**
+ * Group statuses that allow dispatching an agent_turn.
+ *
+ * PLANNING is dispatchable and DRAFT is not, and the distinction matters: the
+ * Dispatcher has to run *before* the boss can approve anything, so "planning the
+ * work" and "waiting for the boss" cannot be the same state. Everything else is a
+ * barrier: PAUSING/PAUSED (intercept L2), PARKED, DRAFT (the card is ready).
+ */
+const DISPATCHABLE = new Set(["PLANNING", "RUNNING", "PR_OPEN"]);
 
 /** Housekeeping kinds: not attributed to a group's writer slot. */
 const FREE_KINDS = new Set<JobKind>(["watchdog", "notify", "digest"]);

@@ -154,13 +154,15 @@ test("a lease with bad args never reaches the queue", async () => {
   expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM lease").get()!.c).toBe(0);
 });
 
-test("dropping an idea creates a DRAFT group, a channel, and a dispatcher turn", async () => {
+test("dropping an idea creates a PLANNING group, a channel, and a dispatcher turn", async () => {
   const { app, db } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "add rate limiting to the API" });
   const { grp_id } = (await r.json()) as { grp_id: number };
 
+  // PLANNING, not DRAFT: the Dispatcher has to run before there is anything to
+  // approve, so "planning" and "waiting for the boss" cannot be one state.
   expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe(
-    "DRAFT",
+    "PLANNING",
   );
   // channel.grp_id is the only link; grp deliberately has no reverse pointer.
   const ch = db.query<{ id: number }, [number]>("SELECT id FROM channel WHERE grp_id = ?").get(grp_id);
@@ -170,16 +172,36 @@ test("dropping an idea creates a DRAFT group, a channel, and a dispatcher turn",
   const note = db.query<{ body: string }, [number]>("SELECT body FROM note WHERE grp_id = ?").get(grp_id)!;
   expect(note.body).toBe("add rate limiting to the API");
 
-  const job = db.query<{ payload_json: string }, [number]>("SELECT payload_json FROM job WHERE grp_id = ?").get(grp_id)!;
-  expect(JSON.parse(job.payload_json).role).toBe("dispatcher");
+  // Another group in this project already holds paths, so the Architect is asked
+  // for the boundary FIRST — planning work against paths you may not own is how
+  // the plan gets written twice.
+  const roles = db
+    .query<{ payload_json: string }, [number]>("SELECT payload_json FROM job WHERE grp_id = ? ORDER BY priority DESC")
+    .all(grp_id)
+    .map((j) => JSON.parse(j.payload_json).role);
+  expect(roles).toEqual(["architect", "dispatcher"]);
 });
 
-test("a DRAFT group does not dispatch until the boss approves", async () => {
+test("the only group in a project skips the boundary step", async () => {
+  const { app, db } = harness();
+  db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
+  const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
+  const { grp_id, boundaryNeeded } = (await r.json()) as { grp_id: number; boundaryNeeded: boolean };
+  expect(boundaryNeeded).toBe(false);
+  const roles = db
+    .query<{ payload_json: string }, [number]>("SELECT payload_json FROM job WHERE grp_id = ?")
+    .all(grp_id)
+    .map((j) => JSON.parse(j.payload_json).role);
+  expect(roles).toEqual(["dispatcher"]);
+});
+
+test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approval", async () => {
   const { app, db, sched, ran } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = (await r.json()) as { grp_id: number };
   await sched.drain();
-  expect(ran.length).toBe(0);
+  // Both planning turns DO run: without them the boss has nothing to approve.
+  expect(ran.map((j) => JSON.parse(j.payload_json).role)).toEqual(["architect", "dispatcher"]);
 
   const card = `目标 : x
 不做 : y
@@ -190,7 +212,25 @@ test("a DRAFT group does not dispatch until the boss approves", async () => {
 切片 : c [hard] — test c
 风险 : none
 反对 : 无`;
-  const ok = await post(app, `/api/draft/${grp_id}/approve`, { card });
+  // Filing the card is what moves the group to DRAFT, and DRAFT blocks.
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    [grp_id],
+  );
+  const filed = await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
+  expect(filed.status).toBe(200);
+  expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe(
+    "DRAFT",
+  );
+  const before = ran.length;
+  await sched.drain();
+  expect(ran.length).toBe(before);
+
+  // Approval with no card in the body uses the one that was filed.
+  // Sampled before the call: tick() invokes the executor synchronously, so the
+  // turn is already counted by the time the response comes back.
+  const planningTurns = ran.length;
+  const ok = await post(app, `/api/draft/${grp_id}/approve`);
   expect(ok.status).toBe(200);
   expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe("RUNNING");
 
@@ -198,17 +238,40 @@ test("a DRAFT group does not dispatch until the boss approves", async () => {
     "SELECT title, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
   ).all(grp_id);
   expect(slices.map((s) => s.difficulty)).toEqual(["normal", "trivial", "hard"]);
+  // Approval also creates one task per slice, or the writer has nothing to claim
+  // and the whole review pipeline never fires.
+  expect(
+    db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM task WHERE grp_id = ?").get(grp_id)!.c,
+  ).toBe(3);
+
   await sched.drain();
-  expect(ran.length).toBe(1);
+  // Approval also starts the first slice: a plan that is approved and then sits
+  // still is the most confusing failure there is.
+  expect(ran.length).toBeGreaterThan(planningTurns);
+  expect(ran.at(-1)!.slice_id).toBe(
+    db.query<{ id: number }, [number]>("SELECT id FROM slice WHERE grp_id = ? ORDER BY seq LIMIT 1").get(grp_id)!.id,
+  );
 });
 
-test("approving with a malformed card is refused, group stays DRAFT", async () => {
+test("a malformed card is refused both when filed and when approved", async () => {
   const { app, db } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = (await r.json()) as { grp_id: number };
-  const bad = await post(app, `/api/draft/${grp_id}/approve`, { card: "目标 : only this" });
-  expect(bad.status).toBe(422);
-  expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe("DRAFT");
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    [grp_id],
+  );
+
+  // Validated where it is filed, so the boss is never shown a broken card.
+  const filed = await post(app, "/orch/draft", { group_id: grp_id, card: "目标 : only this" }, "tok-disp");
+  expect(filed.status).toBe(422);
+  expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe(
+    "PLANNING",
+  );
+
+  // …and again on the edit-then-approve path.
+  const approved = await post(app, `/api/draft/${grp_id}/approve`, { card: "目标 : still broken" });
+  expect(approved.status).toBe(422);
 });
 
 test("sending a DRAFT back records the reason and re-runs the dispatcher", async () => {

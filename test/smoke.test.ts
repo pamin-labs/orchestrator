@@ -15,7 +15,9 @@ let dataDir: string;
 
 beforeAll(() => {
   dataDir = mkdtempSync(join(tmpdir(), "orch-smoke-"));
-  srv = start({ dataDir, port: 47899, maxGroups: 1 });
+  // maxGroups 0 blocks every group turn, which is how this test exercises the
+  // real HTTP server without spawning a single agent or spending a token.
+  srv = start({ dataDir, port: 47899, maxGroups: 0 });
 });
 
 afterAll(() => {
@@ -40,7 +42,7 @@ test("the web UI is served and is self-contained", async () => {
   expect(html).not.toMatch(/<link[^>]+stylesheet/);
 });
 
-test("boss path: add project, drop an idea, and stop at the DRAFT gate", async () => {
+test("boss path: add project, drop an idea, nothing runs without a slot", async () => {
   const p = await (await post("/api/projects", { name: "demo", repo_path: dataDir })).json();
   expect(p.id).toBeGreaterThan(0);
 
@@ -49,9 +51,9 @@ test("boss path: add project, drop an idea, and stop at the DRAFT gate", async (
 
   const state = await (await fetch(`${srv.url}/api/state`)).json();
   const grp = state.groups.find((g: any) => g.id === idea.grp_id);
-  expect(grp.status).toBe("DRAFT");
+  expect(grp.status).toBe("PLANNING");
 
-  // The dispatcher turn is queued but must not run: no approval, no spend.
+  // The dispatcher turn is queued and stays queued: no slot, no spend.
   await Bun.sleep(50);
   const jobs = srv.ctx.db
     .query<{ state: string; kind: string }, []>("SELECT state, kind FROM job")
@@ -62,15 +64,15 @@ test("boss path: add project, drop an idea, and stop at the DRAFT gate", async (
   expect(srv.ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM agent").get()!.c).toBe(0);
 });
 
-test("a malformed DRAFT card is refused over the wire, group stays DRAFT", async () => {
+test("a malformed DRAFT card is refused over the wire, status unchanged", async () => {
   const state = await (await fetch(`${srv.url}/api/state`)).json();
-  const grp = state.groups.find((g: any) => g.status === "DRAFT");
+  const grp = state.groups.find((g: any) => g.status === "PLANNING");
   const r = await post(`/api/draft/${grp.id}/approve`, { card: "目标 : 只有这一行" });
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("missing sections");
 
   const after = await (await fetch(`${srv.url}/api/state`)).json();
-  expect(after.groups.find((g: any) => g.id === grp.id).status).toBe("DRAFT");
+  expect(after.groups.find((g: any) => g.id === grp.id).status).toBe("PLANNING");
 });
 
 test("orch verbs reject a request with no token", async () => {

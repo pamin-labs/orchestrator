@@ -9,6 +9,7 @@ import { createWorktree, type GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart } from "./mech/ownership.ts";
+import { startNextSlice } from "./mech/review.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
@@ -363,6 +364,66 @@ const postRevoke: Handler = async (ctx, _req, params) => {
   return json(out);
 };
 
+/**
+ * The Dispatcher files its DRAFT card.
+ *
+ * Validated here rather than trusted, and the group only becomes DRAFT once a
+ * card exists — the boss should never be asked to approve nothing.
+ */
+const postDraft: Handler = async (ctx, req) => {
+  const b = await body<{ group_id: number; card: string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not file DRAFT cards`);
+
+  const v = validateDraftCard(b.card ?? "");
+  if (!v.ok) return bad(v.error);
+
+  const grpId = b.group_id || a.grp_id;
+  if (!grpId) return bad("which group?");
+  const grp = ctx.db
+    .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
+    .get(grpId);
+  if (!grp) return bad(`no group ${grpId}`);
+
+  ctx.db.run(
+    `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
+     VALUES (?, ?, 'fact', ?, ?, ?, unixepoch() * 1000)`,
+    [grp.project_id, grpId, ctx.config.language, b.card, JSON.stringify({ draft_card: true })],
+  );
+  ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grpId]);
+  ctx.bus.emit({
+    grpId,
+    author: a.role,
+    kind: "state_change",
+    body: `DRAFT card filed: ${v.goal}`,
+    meta: { slices: v.slices.length, objection: v.objection },
+  });
+  ctx.notifyBoss?.(0, `DRAFT ready: ${v.goal}`, "advisory");
+  return text("ok");
+};
+
+/** The Architect cuts a group's boundary before work is planned inside it. */
+const postOwns: Handler = async (ctx, req) => {
+  const b = await body<{ group_id: number; paths: string[] }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  if (a.role !== "architect") return bad(`${a.role} does not cut boundaries`);
+  if (!Array.isArray(b.paths) || b.paths.length === 0) return bad("give at least one path glob");
+
+  ctx.db.run("UPDATE grp SET owns_json = ? WHERE id = ?", [JSON.stringify(b.paths), b.group_id]);
+  const check = canStart(ctx.db, b.group_id);
+  ctx.bus.emit({
+    grpId: b.group_id,
+    author: "architect",
+    kind: "decision",
+    intent: "decision",
+    body: `owns ${b.paths.join(", ")}${check.ok ? "" : ` — still blocked: ${check.reason}`}`,
+    meta: { paths: b.paths, ok: check.ok },
+  });
+  return check.ok ? text("ok") : bad(check.reason ?? "boundary still overlaps");
+};
+
 const postAudit: Handler = async (ctx, req) => {
   const b = await body<{ group_id: number; verdict: string; note?: string }>(req);
   const a = agentOf(ctx, req);
@@ -713,7 +774,7 @@ const postIdea: Handler = async (ctx, req) => {
   const name = (b.name ?? slug(b.text)).slice(0, 40);
   const grp = ctx.db
     .query<{ id: number }, [number, string]>(
-      "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'DRAFT', unixepoch() * 1000) RETURNING id",
+      "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'PLANNING', unixepoch() * 1000) RETURNING id",
     )
     .get(b.project_id, name)!;
   // `channel.grp_id` is the only link between the two; a reverse pointer on grp
@@ -729,9 +790,26 @@ const postIdea: Handler = async (ctx, req) => {
     [b.project_id, grp.id, ctx.config.language, b.text],
   );
   ctx.bus.emit({ channelId: ch.id, grpId: grp.id, author: "boss", kind: "boss_say", intent: "request", body: b.text });
+  // With another group already holding paths, the boundary has to be cut before
+  // anyone plans work inside it — otherwise the plan is written against paths the
+  // group turns out not to own.
+  const contested = ctx.db
+    .query<{ c: number }, [number, number]>(
+      `SELECT count(*) AS c FROM grp WHERE project_id = ? AND id != ?
+         AND status IN ('PLANNING','RUNNING','PAUSING','PAUSED','PARKED','PR_OPEN')`,
+    )
+    .get(b.project_id, grp.id)!.c;
+  if (contested > 0) {
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: grp.id,
+      priority: 6,
+      payload: { role: "architect", boundary: grp.id, idea: b.text },
+    });
+  }
+
   ctx.sched.enqueue("agent_turn", { grp_id: grp.id, payload: { role: "dispatcher", idea: b.text } });
   ctx.sched.tick();
-  return json({ grp_id: grp.id, channel_id: ch.id });
+  return json({ grp_id: grp.id, channel_id: ch.id, boundaryNeeded: contested > 0 });
 };
 
 const postDraftDecision: Handler = async (ctx, req, params) => {
@@ -750,8 +828,18 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
     return text("sent back");
   }
 
-  if (b.card) {
-    const v = validateDraftCard(b.card);
+  // The boss usually approves what the Dispatcher filed; an edited card in the
+  // request body is the "改完批准" path.
+  const filed = ctx.db
+    .query<{ body: string }, [number]>(
+      `SELECT body FROM note WHERE grp_id = ? AND json_extract(frontmatter_json, '$.draft_card') = 1
+       ORDER BY at DESC LIMIT 1`,
+    )
+    .get(grpId)?.body;
+  const card = b.card ?? filed;
+
+  if (card) {
+    const v = validateDraftCard(card);
     if (!v.ok) return bad(v.error);
     ctx.db.run("DELETE FROM slice WHERE grp_id = ?", [grpId]);
     const ins = ctx.db.prepare(
@@ -809,6 +897,9 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
 
   ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [grpId]);
   ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "DRAFT approved" });
+  // Approving a plan that then sits still is the most confusing failure there is:
+  // it looks like the system ignored you.
+  startNextSlice(ctx, grpId);
   ctx.sched.tick();
   return text("ok");
 };
@@ -895,6 +986,9 @@ const postSliceDecision: Handler = async (ctx, req, params) => {
     meta: { slice_id: id },
   });
   if (accept) {
+    // Accepting one slice is what starts the next.
+    startNextSlice(ctx, sl.grp_id);
+
     // The last acceptance is what starts PR-level review; nothing an agent does
     // can trigger it, because "the boss is satisfied" is not an agent's call.
     const open = ctx.db
@@ -1014,6 +1108,8 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/audit$/, postAudit],
   ["POST", /^\/orch\/answer$/, postAnswer2],
   ["POST", /^\/orch\/triage$/, postTriage],
+  ["POST", /^\/orch\/draft$/, postDraft],
+  ["POST", /^\/orch\/owns$/, postOwns],
 
   ["GET", /^\/api\/state$/, getState],
   ["GET", /^\/api\/cost$/, getCost],

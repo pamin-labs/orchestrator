@@ -327,3 +327,45 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
   });
   ctx.sched.tick();
 }
+
+/**
+ * Start the next slice that is ready to be worked.
+ *
+ * Called on approval and after every acceptance, because nothing else would:
+ * approving a plan that then sits still is the most confusing possible failure —
+ * it looks like the system ignored you.
+ */
+export function startNextSlice(ctx: Ctx, grpId: number): number | null {
+  const busy = ctx.db
+    .query<{ c: number }, [number]>(
+      "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status NOT IN ('pending','accepted')",
+    )
+    .get(grpId)!.c;
+  // One slice at a time per group: the group has one writer, so a second
+  // in-flight slice would just queue behind the first anyway — and its review
+  // would race the first one's.
+  if (busy > 0) return null;
+
+  const next = ctx.db
+    .query<{ id: number; seq: number; depends_on: number | null }, [number]>(
+      "SELECT id, seq, depends_on FROM slice WHERE grp_id = ? AND status = 'pending' ORDER BY seq LIMIT 1",
+    )
+    .get(grpId);
+  if (!next) return null;
+
+  if (next.depends_on) {
+    const dep = ctx.db
+      .query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?")
+      .get(next.depends_on);
+    if (dep && dep.status !== "accepted") return null;
+  }
+
+  ctx.db.run("UPDATE slice SET status = 'running' WHERE id = ?", [next.id]);
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: grpId,
+    slice_id: next.id,
+    payload: { role: "engineer" },
+  });
+  ctx.sched.tick();
+  return next.id;
+}
