@@ -27,8 +27,32 @@ export interface Started {
   stop: () => void;
 }
 
+/**
+ * Binaries without which nothing works, checked once instead of discovered per
+ * turn. `Bun.spawn` throws on a missing executable, so a missing `claude` would
+ * otherwise fail every job one at a time with the same error and no summary.
+ * `gh` is deliberately not here — PR preflight reports that per project.
+ */
+export function missingBinaries(): string[] {
+  return ["git", "claude"].filter((bin) => {
+    try {
+      Bun.spawnSync([bin, "--version"], { stdout: "ignore", stderr: "ignore" });
+      return false;
+    } catch {
+      return true;
+    }
+  });
+}
+
 export function start(overrides: Partial<Config> = {}): Started {
   const cfg = { ...loadConfig(), ...overrides };
+  const missing = missingBinaries();
+  if (missing.length) {
+    throw new Error(
+      `not on PATH: ${missing.join(", ")}. Every agent turn would fail with the same error, ` +
+        `one job at a time. Install them first.`,
+    );
+  }
   mkdirSync(cfg.dataDir, { recursive: true });
 
   const db = open(join(cfg.dataDir, "orchestrator.sqlite"));

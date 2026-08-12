@@ -3,7 +3,7 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { dispatchFeedback, openPr, pollPrs, preflightPr, type GhRunner } from "../src/mech/prwatch.ts";
+import { dispatchFeedback, GH_MISSING, openPr, pollPrs, preflightPr, type GhRunner } from "../src/mech/prwatch.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 
@@ -264,4 +264,51 @@ test("preflight says up front whether a PR can ever be opened", async () => {
     async () => ({ code: 0, out: "Logged in" }),
   );
   expect(ready).toEqual({ ok: true, remote: "git@github.com:me/x.git" });
+});
+
+test("gh missing is a preflight reason, not a thrown registration", async () => {
+  // Bun.spawn throws on a missing binary, so an unguarded runner crashes project
+  // registration instead of telling the boss to install gh.
+  const pre = await preflightPr(
+    "/tmp/p",
+    async () => ({ code: 0, out: "git@github.com:me/x.git" }),
+    async () => ({ code: GH_MISSING, out: "gh is not installed: `brew install gh`, then `gh auth login`" }),
+  );
+  expect(pre.ok).toBe(false);
+  expect(pre.reason).toContain("not installed");
+});
+
+test("auth is not push access — read-only permission is caught before any work", async () => {
+  const pre = await preflightPr(
+    "/tmp/p",
+    async () => ({ code: 0, out: "git@github.com:someone/theirs.git" }),
+    async (argv) =>
+      argv[1] === "view"
+        ? { code: 0, out: '{"viewerPermission":"READ"}' }
+        : { code: 0, out: "logged in" },
+  );
+  expect(pre.ok).toBe(false);
+  expect(pre.reason).toContain("no push access");
+  expect(pre.reason).toContain("READ");
+});
+
+test("write access passes preflight", async () => {
+  const pre = await preflightPr(
+    "/tmp/p",
+    async () => ({ code: 0, out: "git@github.com:me/mine.git" }),
+    async (argv) =>
+      argv[1] === "view" ? { code: 0, out: '{"viewerPermission":"WRITE"}' } : { code: 0, out: "ok" },
+  );
+  expect(pre.ok).toBe(true);
+});
+
+test("a repo view that fails does not block preflight", async () => {
+  // Old gh versions, or a repo gh cannot resolve: unknown is not the same as
+  // refused, and blocking registration on it would be worse than trying.
+  const pre = await preflightPr(
+    "/tmp/p",
+    async () => ({ code: 0, out: "git@github.com:me/mine.git" }),
+    async (argv) => (argv[1] === "view" ? { code: 1, out: "could not resolve" } : { code: 0, out: "ok" }),
+  );
+  expect(pre.ok).toBe(true);
 });
