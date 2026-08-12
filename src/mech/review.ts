@@ -19,6 +19,8 @@ export interface ReviewDeps {
   ctx: Ctx;
   cfg: Config;
   git: GitRunner;
+  /** Wired by the server: opens the PR once a branch passes its audit. */
+  onAuditPass?: (grpId: number) => void;
 }
 
 export interface SliceRow {
@@ -304,6 +306,7 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
   const { ctx } = deps;
   if (pass) {
     joinQueue(ctx.db, grpId);
+    deps.onAuditPass?.(grpId);
     const pos = position(ctx.db, grpId);
     ctx.bus.emit({
       grpId,

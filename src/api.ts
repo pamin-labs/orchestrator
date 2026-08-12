@@ -149,6 +149,10 @@ const postJournal: Handler = async (ctx, req) => {
       Date.now(),
     ],
   );
+  // The lessons list is capped where it is written, not where it is read: an
+  // ever-growing list becomes the very context cost it exists to prevent.
+  if (v.kind === "lesson") evictOldestLessons(ctx, grp?.project_id ?? null);
+
   ctx.bus.emit({
     grpId: a.grp_id,
     author: a.role,
@@ -159,6 +163,21 @@ const postJournal: Handler = async (ctx, req) => {
   });
   return text(exportPath ? `ok ${exportPath}` : "ok");
 };
+
+export const LESSON_CAP = 20;
+
+/** Keep only the newest LESSON_CAP lessons for a project. */
+export function evictOldestLessons(ctx: Ctx, projectId: number | null): number {
+  const r = ctx.db.run(
+    `DELETE FROM note WHERE kind = 'lesson' AND (project_id IS ? OR (? IS NULL AND project_id IS NULL))
+       AND id NOT IN (
+         SELECT id FROM note WHERE kind = 'lesson' AND (project_id IS ? OR (? IS NULL AND project_id IS NULL))
+         ORDER BY at DESC, id DESC LIMIT ?
+       )`,
+    [projectId, projectId, projectId, projectId, LESSON_CAP],
+  );
+  return r.changes;
+}
 
 const WAKING = new Set(["ask", "request", "inform"]);
 
