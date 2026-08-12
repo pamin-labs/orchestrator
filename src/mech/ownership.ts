@@ -163,23 +163,49 @@ export function canStart(db: DB, grpId: number): StartCheck {
 /**
  * Extra denyWrite entries that keep a group inside its own paths.
  *
- * The sandbox is deny-only, so "only these globs are writable" cannot be
- * expressed directly. What we can do is deny the worktree's top-level entries
- * the group does not own — coarse, but it catches the common case of a group
- * wandering into a sibling module.
+ * The sandbox is deny-only, so "only these globs are writable" cannot be stated
+ * directly. What can be stated is the complement: walk down the owned paths and
+ * deny every sibling encountered on the way. `src/auth/**` therefore denies
+ * `web/`, `docs/` at the top and `src/ui/`, `src/db/` one level in — which is the
+ * case top-level-only denial missed entirely, and the likeliest place for a group
+ * to wander.
  *
- * ponytail: top level only. A nested stray write inside an owned directory still
- * gets through; reconcile and the diff review catch that instead.
+ * Wildcards stop the walk: a group owning `src/*` owns everything under src, and
+ * there is no sibling to deny there.
  */
-export function denyOutsideOwns(worktree: string, owns: string[], topLevelEntries: string[]): string[] {
-  const ownedTops = new Set(
-    owns.map((o) => {
-      const first = o.split("/")[0]!;
-      return first.includes("*") ? "*" : first;
-    }),
-  );
-  if (ownedTops.has("*")) return [];
-  return topLevelEntries
-    .filter((e) => !ownedTops.has(e) && e !== ".git")
-    .map((e) => `${worktree}/${e}/**`);
+export function denyOutsideOwns(
+  worktree: string,
+  owns: string[],
+  listDir: (relative: string) => string[],
+): string[] {
+  // Each owned glob contributes the chain of directories leading to it.
+  const ownedAt = new Map<string, Set<string>>(); // dir -> entries that must stay writable
+  const stopAt = new Set<string>(); // dirs whose contents are wholly owned
+
+  for (const glob of owns) {
+    const segs = glob.split("/").filter(Boolean);
+    let dir = "";
+    for (const [i, seg] of segs.entries()) {
+      if (seg.includes("*") || seg.includes("?")) {
+        // Everything at this level is in scope; nothing here to deny.
+        stopAt.add(dir);
+        break;
+      }
+      if (!ownedAt.has(dir)) ownedAt.set(dir, new Set());
+      ownedAt.get(dir)!.add(seg);
+      dir = dir ? `${dir}/${seg}` : seg;
+      if (i === segs.length - 1) stopAt.add(dir);
+    }
+  }
+
+  const deny: string[] = [];
+  for (const [dir, keep] of ownedAt) {
+    if (stopAt.has(dir)) continue;
+    for (const entry of listDir(dir)) {
+      if (entry === ".git" || keep.has(entry)) continue;
+      const rel = dir ? `${dir}/${entry}` : entry;
+      deny.push(`${worktree}/${rel}/**`, `${worktree}/${rel}`);
+    }
+  }
+  return [...new Set(deny)];
 }

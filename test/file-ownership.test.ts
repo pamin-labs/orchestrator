@@ -124,17 +124,46 @@ test("a project may declare extra shared paths", () => {
   expect(canStart(db, 1).ok).toBe(false);
 });
 
-test("denyWrite is generated for the top-level dirs a group does not own", () => {
-  const deny = denyOutsideOwns("/wt/g1", ["src/auth/**"], ["src", "web", "docs", ".git"]);
+const tree: Record<string, string[]> = {
+  "": ["src", "web", "docs", ".git", "README.md"],
+  src: ["auth", "ui", "db"],
+  "src/auth": ["mw.ts", "tokens.ts"],
+};
+const listDir = (rel: string) => tree[rel] ?? [];
+
+test("denial walks down the owned path, not just the top level", () => {
+  const deny = denyOutsideOwns("/wt/g1", ["src/auth/**"], listDir);
   expect(deny).toContain("/wt/g1/web/**");
   expect(deny).toContain("/wt/g1/docs/**");
-  // Its own tree stays writable, and .git is never listed.
-  expect(deny.some((d) => d.includes("/src/"))).toBe(false);
+  // The case top-level-only denial missed, and the likeliest place to wander: a
+  // sibling module one level in.
+  expect(deny).toContain("/wt/g1/src/ui/**");
+  expect(deny).toContain("/wt/g1/src/db/**");
+  // Its own path stays writable at every level, and .git is never listed.
+  expect(deny.some((d) => d.includes("/src/auth"))).toBe(false);
+  expect(deny.some((d) => d === "/wt/g1/src/**")).toBe(false);
   expect(deny.some((d) => d.includes(".git"))).toBe(false);
 });
 
-test("a group owning a repo-wide glob gets no extra denies", () => {
-  expect(denyOutsideOwns("/wt/g1", ["**/*.ts"], ["src", "web"])).toEqual([]);
+test("files are denied as well as directories", () => {
+  const deny = denyOutsideOwns("/wt/g1", ["src/auth/**"], listDir);
+  // A stray edit to a top-level file is as unwanted as one to a sibling module.
+  expect(deny).toContain("/wt/g1/README.md");
+});
+
+test("a wildcard stops the walk — everything below it is owned", () => {
+  expect(denyOutsideOwns("/wt/g1", ["**/*.ts"], listDir)).toEqual([]);
+  const src = denyOutsideOwns("/wt/g1", ["src/*"], listDir);
+  expect(src).toContain("/wt/g1/web/**");
+  // Nothing inside src is denied: the group owns all of it.
+  expect(src.some((d) => d.includes("/src/"))).toBe(false);
+});
+
+test("two owned paths keep both branches writable", () => {
+  const deny = denyOutsideOwns("/wt/g1", ["src/auth/**", "src/db/**"], listDir);
+  expect(deny).toContain("/wt/g1/src/ui/**");
+  expect(deny.some((d) => d.includes("/src/auth"))).toBe(false);
+  expect(deny.some((d) => d.includes("/src/db"))).toBe(false);
 });
 
 // -------------------------------------------------------------- merge queue

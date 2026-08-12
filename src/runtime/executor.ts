@@ -297,7 +297,9 @@ function buildStableFor(
   // Confine the group to the paths it owns. Deny-only sandbox, so this is the
   // complement: the worktree's top-level entries the group did not claim.
   const owns = parseOwns(grp?.owns_json ?? null);
-  const extraDenyWrite = owns.length ? denyOutsideOwns(worktree, owns, topLevel(worktree)) : [];
+  const extraDenyWrite = owns.length
+    ? denyOutsideOwns(worktree, owns, (rel) => topLevel(rel ? join(worktree, rel) : worktree))
+    : [];
 
   const settingsPath = writeProfile(join(cfg.dataDir, "profiles"), `${agent.id}-${clearance}`, {
     clearance,
