@@ -371,3 +371,45 @@ test("the token decides which agent acted, not anything in the body", async () =
   expect(rows[0]!.activity).toBeNull();
   expect(rows[1]!.activity).toBe("verifying S1");
 });
+
+test("filing the card drops the group's other queued planning turns", async () => {
+  const { app, db, sched } = harness();
+  const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
+  const { grp_id } = (await r.json()) as { grp_id: number };
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    [grp_id],
+  );
+  sched.enqueue("agent_turn", { grp_id, payload: { role: "architect" } });
+
+  const card = `目标 : x
+不做 : y
+验收 : a
+验收 : b
+切片 : a [normal] — t
+切片 : b [trivial] — t
+切片 : c [hard] — t
+风险 : none
+反对 : 无`;
+  await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
+
+  // DRAFT is not dispatchable, so a leftover planning turn would sit pending
+  // forever and then fire after approval against a plan it never saw.
+  const pending = db
+    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM job WHERE grp_id = ? AND state = 'pending'")
+    .get(grp_id)!.c;
+  expect(pending).toBe(0);
+});
+
+test("a group name is short and branch-shaped, whatever the idea looked like", async () => {
+  const { app, db } = harness();
+  await post(app, "/api/ideas", {
+    project_id: 1,
+    text: "greet 现在只支持英文，加一个可选的语言参数，中文时返回「你好 X」",
+  });
+  const name = db.query<{ name: string }, []>("SELECT name FROM grp ORDER BY id DESC LIMIT 1").get()!.name;
+  // It becomes orch/<name>, a worktree path and every log line, so a slugified
+  // 40-character sentence is a nuisance forever.
+  expect(name.length).toBeLessThanOrEqual(28);
+  expect(name).toContain("greet");
+});

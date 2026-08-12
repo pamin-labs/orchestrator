@@ -462,11 +462,15 @@ const postDraft: Handler = async (ctx, req) => {
     [grp.project_id, grpId, ctx.config.language, b.card, JSON.stringify({ draft_card: true })],
   );
   ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grpId]);
+  // Planning is over, so anything still queued for this group is moot — and DRAFT
+  // is not dispatchable, so it would otherwise sit pending forever and then fire
+  // after approval against a plan it never saw.
+  const dropped = ctx.sched.cancelPending(grpId, "planning finished");
   ctx.bus.emit({
     grpId,
     author: a.role,
     kind: "state_change",
-    body: `DRAFT card filed: ${v.goal}`,
+    body: `DRAFT card filed: ${v.goal}${dropped ? ` (${dropped} planning turn(s) dropped)` : ""}`,
     meta: { slices: v.slices.length, objection: v.objection },
   });
   ctx.notifyBoss?.(0, `DRAFT ready: ${v.goal}`, "advisory");
@@ -1274,12 +1278,27 @@ export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   };
 }
 
-function slug(s: string): string {
+/**
+ * A short, branch-shaped name.
+ *
+ * This ends up in `orch/<name>`, a worktree path and every log line, so a
+ * slugified 40-character sentence is a nuisance forever. Prefer the ASCII words
+ * (usually the identifiers the idea is about) and fall back to a trimmed slug.
+ */
+function slug(text: string): string {
+  const ascii = (text.toLowerCase().match(/[a-z][a-z0-9._-]{1,}/g) ?? [])
+    .filter((w) => !STOP.has(w))
+    .slice(0, 3)
+    .join("-")
+    .replace(/[._]+/g, "-");
+  if (ascii.length >= 3) return ascii.slice(0, 28);
   return (
-    s
+    text
       .toLowerCase()
       .replace(/[^\p{L}\p{N}]+/gu, "-")
       .replace(/^-|-$/g, "")
-      .slice(0, 40) || "idea"
+      .slice(0, 24) || "idea"
   );
 }
+
+const STOP = new Set(["the", "a", "an", "and", "for", "with", "add", "to", "of", "in", "on"]);
