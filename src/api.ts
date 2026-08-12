@@ -622,14 +622,20 @@ export function ctxQuery(ctx: Ctx, grpId: number | null, question: string, budge
 
 const getTasks: Handler = async (ctx, req) => {
   const grp = Number(new URL(req.url).searchParams.get("grp") ?? 0);
+  // Only the slice being worked, plus anything not tied to a slice. Showing the
+  // whole plan's tasks let the writer mark future slices done, which pushed
+  // slices that had never started into review.
   const rows = ctx.db
     .query<{ id: number; title: string; status: string; slice_id: number | null; owner: string | null }, [number]>(
       `SELECT t.id, t.title, t.status, t.slice_id, a.role AS owner
        FROM task t LEFT JOIN agent a ON a.id = t.owner_agent_id
-       WHERE t.grp_id = ? ORDER BY t.id`,
+       WHERE t.grp_id = ?
+         AND (t.slice_id IS NULL
+              OR t.slice_id IN (SELECT id FROM slice WHERE grp_id = t.grp_id AND status NOT IN ('pending','accepted')))
+       ORDER BY t.id`,
     )
     .all(grp);
-  if (rows.length === 0) return text("no tasks in this group");
+  if (rows.length === 0) return text("no tasks are open in this group right now");
   // Lines, not a JSON array. Handing an agent `[{"id":1,"title":"…"}]` invites it
   // to pass the title where an id belongs, which is what happened live.
   return text(
@@ -646,16 +652,34 @@ const postTaskClaim: Handler = async (ctx, req) => {
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
   const r = ctx.db.run(
-    "UPDATE task SET owner_agent_id = ?, status = 'in_progress' WHERE id = ? AND owner_agent_id IS NULL",
+    `UPDATE task SET owner_agent_id = ?, status = 'in_progress'
+     WHERE id = ? AND owner_agent_id IS NULL
+       AND (slice_id IS NULL
+            OR slice_id IN (SELECT id FROM slice WHERE id = task.slice_id AND status NOT IN ('pending','accepted')))`,
     [a.id, b.task_id],
   );
-  return r.changes ? text("ok") : bad("already claimed");
+  return r.changes ? text("ok") : bad("already claimed, or its slice is not being worked yet");
 };
 
 const postTaskDone: Handler = async (ctx, req) => {
   const b = await body<{ task_id: number; claim?: unknown }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
+  // A task belonging to a slice that has not started cannot be completed: the
+  // writer works one slice at a time, and letting it close future tasks pushed
+  // unstarted slices into review.
+  const owning = ctx.db
+    .query<{ status: string | null }, [number]>(
+      "SELECT (SELECT status FROM slice WHERE id = t.slice_id) AS status FROM task t WHERE t.id = ?",
+    )
+    .get(b.task_id);
+  if (owning?.status && ["pending", "accepted"].includes(owning.status)) {
+    return bad(
+      `task ${b.task_id} belongs to a slice that is not being worked (${owning.status}). ` +
+        `Finish the slice you are on; the next one starts when the boss accepts this one.`,
+    );
+  }
+
   // Unowned is fine: a group has one writer, so requiring an explicit claim only
   // adds a step that gets forgotten. Someone else's task is not.
   const done = ctx.db.run(

@@ -85,8 +85,10 @@ async function harness(opts: { gates?: string[] } = {}) {
     wt.worktree,
     wt.branch,
   ]);
+  // 'running' is what startNextSlice sets: a task whose slice has not started
+  // cannot be completed, so the fixture has to reflect a started slice.
   db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at) VALUES (1, 1, 'S1', 'a.txt says two', 'trivial', 0)",
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 1, 'S1', 'a.txt says two', 'trivial', 'running', 0)",
   );
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'engineer', 'm', 'L1', 'tok-eng', 0)",
@@ -329,12 +331,14 @@ test("accepting a slice starts the next one, and only one runs at a time", async
   h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 3, 'S3', 'x', 0)");
 
   const { startNextSlice } = await import("../src/mech/review.ts");
-  expect(startNextSlice(h.ctx, 1)).toBe(1);
-  // A second in-flight slice would only queue behind the first (one writer per
-  // group) and its review would race the first one's.
+  // S1 is already running in the fixture, so nothing new may start: a second
+  // in-flight slice would only queue behind the group's single writer and its
+  // review would race the first one's.
   expect(startNextSlice(h.ctx, 1)).toBeNull();
 
   h.db.run("UPDATE slice SET status = 'accepted' WHERE id = 1");
+  expect(startNextSlice(h.ctx, 1)).toBe(2);
+  h.db.run("UPDATE slice SET status = 'pending' WHERE id = 2");
   await h.post("/api/slices/1/accept");
   const running = h.db
     .query<{ seq: number }, []>("SELECT seq FROM slice WHERE status = 'running'")
@@ -358,4 +362,22 @@ test("a slice waits for the one it depends on", async () => {
   );
   h2.db.run("UPDATE slice SET status = 'rejected' WHERE id = 1");
   expect(startNextSlice(h2.ctx, 1)).toBeNull();
+});
+
+test("a task on a slice that has not started cannot be listed or completed", async () => {
+  const h = await harness();
+  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
+  h.db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (1, 2, 'later work', 0)");
+  const list = await (await h.app(new Request("http://x/orch/task?grp=1"))).text();
+  // Showing the whole plan let the writer close future slices' tasks, which
+  // pushed slices that had never started into review.
+  expect(list).toContain("edit a.txt");
+  expect(list).not.toContain("later work");
+
+  const done = await h.post("/orch/task/done", { task_id: 2, claim: { files: ["a.txt"] } }, "tok-eng");
+  expect(done.status).toBe(422);
+  expect(await done.text()).toContain("not being worked");
+
+  const claim = await h.post("/orch/task/claim", { task_id: 2 }, "tok-eng");
+  expect(claim.status).toBe(422);
 });
