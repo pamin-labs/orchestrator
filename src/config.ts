@@ -25,6 +25,8 @@ export interface RoleDef {
   prompt: string;
   /** Overrides the default whitelist from clearance.ts when present. */
   allowedTools?: string[];
+  /** Which CLI runs this role's turns. A role is config, so this is too. */
+  runtime?: "claude" | "codex";
 }
 
 export interface Config {

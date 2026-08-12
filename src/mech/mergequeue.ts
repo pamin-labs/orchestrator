@@ -71,6 +71,13 @@ export function landed(db: DB, grpId: number): number[] {
     .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
     .get(grpId);
   db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
+
+  // Wind the group up: sessions are worthless now, but the channel and every
+  // event stay. A later group grepping this history is the only long-term memory
+  // the system has, so archiving must never mean deleting.
+  db.run("UPDATE agent SET state = 'retired', session_id = NULL, token = NULL WHERE grp_id = ?", [grpId]);
+  db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [grpId]);
+
   if (!me) return [];
   return queue(db, me.project_id).map((e) => e.grpId);
 }

@@ -321,10 +321,10 @@ function clip(s: string, n: number): string {
   return one.length > n ? one.slice(0, n - 1) + "…" : one;
 }
 
-/** Split a byte stream into JSON values, one per line, tolerating partial reads. */
-export async function* ndjson(
+/** Split a byte stream into lines, tolerating partial reads. */
+export async function* ndjsonLines(
   stream: ReadableStream<Uint8Array>,
-): AsyncGenerator<Line, void, unknown> {
+): AsyncGenerator<string, void, unknown> {
   const dec = new TextDecoder();
   let buf = "";
   for await (const chunk of stream) {
@@ -333,11 +333,18 @@ export async function* ndjson(
     while ((nl = buf.indexOf("\n")) !== -1) {
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
-      if (line) yield safeParse(line);
+      if (line) yield line;
     }
   }
   const tail = buf.trim();
-  if (tail) yield safeParse(tail);
+  if (tail) yield tail;
+}
+
+/** Split a byte stream into JSON values, one per line, tolerating partial reads. */
+export async function* ndjson(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<Line, void, unknown> {
+  for await (const line of ndjsonLines(stream)) yield safeParse(line);
 }
 
 function safeParse(line: string): Line {

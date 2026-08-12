@@ -153,3 +153,27 @@ test("eviction leaves other note kinds alone", () => {
   expect(evictOldestLessons(h.ctx, 1)).toBe(5);
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'retro'").get()!.c).toBe(1);
 });
+
+test("landing archives the group without deleting its history", () => {
+  const h = harness();
+  h.db.run("INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (1, 1, 'group', 0)");
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, session_id, token, created_at) VALUES (1, 1, 'engineer', 'm', 'live', 'tok-x', 0)",
+  );
+  h.ctx.bus.emit({ grpId: 1, author: "engineer", kind: "say", body: "why we did it this way" });
+
+  const { landed } = require("../src/mech/mergequeue.ts");
+  landed(h.db, 1);
+
+  const a = h.db.query<{ state: string; session_id: string | null; token: string | null }, []>(
+    "SELECT state, session_id, token FROM agent",
+  ).get()!;
+  expect(a.state).toBe("retired");
+  expect(a.session_id).toBeNull();
+  // The token is revoked with the group, so a stale process cannot act as it.
+  expect(a.token).toBeNull();
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM channel").get()!.status).toBe("archived");
+  // Archiving must never mean deleting: a later group grepping this is the only
+  // long-term memory the system has.
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()!.c).toBeGreaterThan(0);
+});
