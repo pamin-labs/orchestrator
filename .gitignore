@@ -1,0 +1,17 @@
+node_modules/
+*.log
+
+# runtime state
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+data/
+.worktrees/
+leases/            # full lease logs (only digests go in the DB)
+
+# secrets
+.env
+.env.*
+!.env.example
+
+.DS_Store
