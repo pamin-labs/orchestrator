@@ -15,9 +15,19 @@ export interface GhRun {
 }
 export type GhRunner = (argv: string[], cwd: string) => Promise<GhRun>;
 
+/** `gh` is missing, as an exit code rather than an exception. 127 is the shell's. */
+export const GH_MISSING = 127;
+
 export function makeGhRunner(): GhRunner {
   return async (argv, cwd) => {
-    const p = Bun.spawn(["gh", ...argv], { cwd, stdout: "pipe", stderr: "pipe" });
+    let p;
+    try {
+      p = Bun.spawn(["gh", ...argv], { cwd, stdout: "pipe", stderr: "pipe" });
+    } catch {
+      // Bun.spawn throws on a missing binary, so without this a machine without
+      // `gh` crashes project registration instead of being told to install it.
+      return { code: GH_MISSING, out: "gh is not installed: `brew install gh`, then `gh auth login`" };
+    }
     const [so, se] = await Promise.all([
       new Response(p.stdout).text(),
       new Response(p.stderr).text(),
@@ -207,8 +217,27 @@ export async function preflightPr(
     return { ok: false, remote: url, reason: `origin is not GitHub (${url}); \`gh pr create\` will not work` };
   }
   const auth = await gh(["auth", "status"], repoPath);
+  if (auth.code === GH_MISSING) return { ok: false, remote: url, reason: auth.out };
   if (auth.code !== 0) {
     return { ok: false, remote: url, reason: "gh is not logged in: run `gh auth login`" };
+  }
+
+  // Auth is not permission. A read-only token, or a repo you can only fork, gets
+  // past `auth status` and then fails at `git push` — after a group has done all
+  // its work. This is the last thing checkable without writing anything.
+  const perm = await gh(["repo", "view", "--json", "viewerPermission"], repoPath);
+  if (perm.code === 0) {
+    let level = "";
+    try {
+      level = String(JSON.parse(perm.out).viewerPermission ?? "");
+    } catch {}
+    if (level && !["ADMIN", "MAINTAIN", "WRITE"].includes(level)) {
+      return {
+        ok: false,
+        remote: url,
+        reason: `no push access to ${url} (your permission is ${level}); the branch could not be pushed`,
+      };
+    }
   }
   return { ok: true, remote: url };
 }
