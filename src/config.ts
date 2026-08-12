@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Clearance } from "./mech/clearance.ts";
 
 /**
@@ -63,13 +63,22 @@ const DEFAULTS: Config = {
   dataDir: "data",
 };
 
-export function loadConfig(path = "config/default.yaml"): Config {
+/**
+ * Repo root, derived from this file rather than from cwd.
+ *
+ * `roles/` and `config/` are part of the installation, not of whatever directory
+ * the server happened to be launched from — resolving them against cwd meant a
+ * server started elsewhere silently found no roles at all.
+ */
+export const ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..");
+
+export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
   if (!existsSync(path)) return { ...DEFAULTS };
   const parsed = Bun.YAML.parse(readFileSync(path, "utf8")) as Partial<Config> | null;
   return { ...DEFAULTS, ...(parsed ?? {}) };
 }
 
-export function loadRoles(dir = "roles"): Map<string, RoleDef> {
+export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {
   const out = new Map<string, RoleDef>();
   if (!existsSync(dir)) return out;
   for (const f of readdirSync(dir)) {

@@ -1,8 +1,8 @@
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { makeApp, type Ctx } from "./api.ts";
 import { Bus } from "./bus.ts";
-import { loadConfig, loadRoles, type Config } from "./config.ts";
+import { loadConfig, loadRoles, ROOT, type Config } from "./config.ts";
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
@@ -54,7 +54,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   exec = makeExecutor({ ctx, cfg, roles, git });
 
   const app = makeApp(ctx);
-  const webDir = "web";
+  const webDir = join(ROOT, "web");
 
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -80,8 +80,24 @@ export function start(overrides: Partial<Config> = {}): Started {
   // token. Identity is never a request-body field.
   process.env.ORCH_URL = url;
 
+  process.env.ORCH_BIN_DIR = installOrchShim(cfg.dataDir);
+
   sched.tick();
   return { ctx, cfg, url, stop: () => server.stop(true) };
+}
+
+/**
+ * Agents invoke a plain `orch`, so one has to exist on their PATH. A two-line
+ * shim beats shipping a compiled binary: it always matches the running source.
+ */
+export function installOrchShim(dataDir: string): string {
+  const binDir = join(dataDir, "bin");
+  mkdirSync(binDir, { recursive: true });
+  const cli = join(ROOT, "src/orch/cli.ts");
+  const path = join(binDir, "orch");
+  writeFileSync(path, `#!/bin/sh\nexec bun run ${JSON.stringify(cli)} "$@"\n`, "utf8");
+  chmodSync(path, 0o755);
+  return binDir;
 }
 
 if (import.meta.main) {

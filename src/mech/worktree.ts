@@ -45,10 +45,17 @@ export async function createWorktree(
   const worktree = join(spec.workRoot, spec.group);
   mkdirSync(spec.workRoot, { recursive: true });
 
-  // Branch from the freshest main rather than from whatever HEAD happens to be:
-  // a group that starts from a stale base pays for it at merge time.
-  const base = spec.baseRef ?? (await defaultBase(git, spec.repoPath));
-  const add = await git(spec.repoPath, ["worktree", "add", "-b", branch, worktree, base]);
+  // Attach to the branch if it already exists — that is the unpark path, and
+  // also what happens when a previous attempt failed after creating the branch.
+  const exists = await git(spec.repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+  const argv =
+    exists.code === 0
+      ? ["worktree", "add", worktree, branch]
+      : // Branch from the freshest base, not from whatever HEAD happens to be:
+        // a group that starts stale pays for it at merge time.
+        ["worktree", "add", "-b", branch, worktree, spec.baseRef ?? (await defaultBase(git, spec.repoPath))];
+
+  const add = await git(spec.repoPath, argv);
   if (add.code !== 0) throw new Error(`git worktree add failed: ${add.out}`);
   return { worktree, branch };
 }

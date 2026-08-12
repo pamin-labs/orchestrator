@@ -175,6 +175,9 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
           ORCH_URL: process.env.ORCH_URL ?? `http://127.0.0.1:${cfg.port}`,
           ORCH_TOKEN: agent.token ?? "",
           ORCH_GRP_ID: String(job.grp_id ?? ""),
+          // `orch` has to be a real executable on PATH; the shim is written at
+          // server start so it always matches the running source.
+          PATH: `${process.env.ORCH_BIN_DIR ?? join(cfg.dataDir, "bin")}:${process.env.PATH ?? ""}`,
         },
       },
       {
