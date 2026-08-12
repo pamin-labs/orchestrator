@@ -27,27 +27,37 @@ function harness(opts: { worktree?: string } = {}) {
   db.run("INSERT INTO grp (project_id, name, status, worktree, created_at) VALUES (1, 'g1', 'RUNNING', ?, 0)", [
     opts.worktree ?? null,
   ]);
+  // Identity is the token, never a body field: the server listens on localhost
+  // TCP, so anything else on 127.0.0.1 could otherwise claim to be any agent.
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'L1', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'L1', 'tok-eng', 0)",
   );
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, created_at) VALUES (1, 1, 'qa', 'sonnet', 'L1', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'qa', 'sonnet', 'L1', 'tok-qa', 0)",
   );
-  return { db, bus, sched, ctx, app, ran, engineer: 1, qa: 2 };
+  return { db, bus, sched, ctx, app, ran, engineer: "tok-eng", qa: "tok-qa" };
 }
 
-const post = (app: (r: Request) => Promise<Response>, path: string, body?: unknown) =>
-  app(new Request(`http://x${path}`, { method: "POST", body: JSON.stringify(body ?? {}) }));
+const post = (
+  app: (r: Request) => Promise<Response>,
+  path: string,
+  body?: unknown,
+  token?: string,
+) =>
+  app(
+    new Request(`http://x${path}`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+      headers: token ? { "x-orch-token": token } : undefined,
+    }),
+  );
 const get = (app: (r: Request) => Promise<Response>, path: string) =>
   app(new Request(`http://x${path}`));
 
 test("an over-long journal is rejected with a reason the agent can act on", async () => {
   const { app } = harness();
-  const r = await post(app, "/orch/journal", {
-    agent_id: 1,
-    kind: "journal",
-    body: "a\nb\nc\nd\ne\nf\ng",
-  });
+  const r = await post(app, "/orch/journal", { kind: "journal", body: "a\nb\nc\nd\ne\nf\ng" },
+    "tok-eng");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("max 6");
 });
@@ -56,12 +66,12 @@ test("journal writes a note and exports journal/retro into the worktree", async 
   const wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
   const { app, db } = harness({ worktree: wt });
 
-  const r = await post(app, "/orch/journal", {
-    agent_id: 1,
-    kind: "journal",
-    body: "Moved token check into middleware.",
-    files: ["auth/mw.ts"],
-  });
+  const r = await post(
+    app,
+    "/orch/journal",
+    { kind: "journal", body: "Moved token check into middleware.", files: ["auth/mw.ts"] },
+    "tok-eng",
+  );
   expect(r.status).toBe(200);
   const out = await r.text();
   expect(out).toContain("docs/journal/g1/001-journal.md");
@@ -79,36 +89,37 @@ test("journal writes a note and exports journal/retro into the worktree", async 
 test("a fact never gets exported to git — only journal/retro/decision do", async () => {
   const wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
   const { app, db } = harness({ worktree: wt });
-  await post(app, "/orch/journal", { agent_id: 1, kind: "fact", body: "boss prefers iteration" });
+  await post(app, "/orch/journal", { kind: "fact", body: "boss prefers iteration" }, "tok-eng");
   const note = db.query<{ export_path: string | null }, []>("SELECT export_path FROM note").get()!;
   expect(note.export_path).toBeNull();
 });
 
 test("mail rejects intents outside the five", async () => {
   const { app } = harness();
-  const r = await post(app, "/orch/mail", { agent_id: 1, target: "qa", intent: "handoff", body: "x" });
+  const r = await post(app, "/orch/mail", { target: "qa", intent: "handoff", body: "x" }, "tok-eng");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("ask, request, inform, note, decision");
 });
 
 test("a waking intent enqueues a turn for the named target; note does not", async () => {
   const { app, db } = harness();
-  await post(app, "/orch/mail", { agent_id: 1, target: "qa", intent: "request", body: "please verify" });
+  await post(app, "/orch/mail", { target: "qa", intent: "request", body: "please verify" }, "tok-eng");
   let jobs = db.query<{ agent_id: number }, []>("SELECT agent_id FROM job WHERE kind = 'agent_turn'").all();
   expect(jobs.map((j) => j.agent_id)).toEqual([2]);
 
-  await post(app, "/orch/mail", { agent_id: 1, target: "qa", intent: "note", body: "fyi" });
+  await post(app, "/orch/mail", { target: "qa", intent: "note", body: "fyi" }, "tok-eng");
   jobs = db.query<{ agent_id: number }, []>("SELECT agent_id FROM job WHERE kind = 'agent_turn'").all();
   expect(jobs.length).toBe(1);
 });
 
 test("ask-boss blocks the caller and a blocker pauses the whole group", async () => {
   const { app, db, ctx } = harness();
-  const pending = post(app, "/orch/ask-boss", {
-    agent_id: 1,
-    severity: "blocker",
-    question: "which validation library?",
-  });
+  const pending = post(
+    app,
+    "/orch/ask-boss",
+    { severity: "blocker", question: "which validation library?" },
+    "tok-eng",
+  );
 
   // Give the handler a tick to register its waiter.
   await Bun.sleep(5);
@@ -127,7 +138,7 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
 
 test("an unknown lease resource says how to get one added", async () => {
   const { app } = harness();
-  const r = await post(app, "/orch/lease", { agent_id: 1, resource: "unity", args: {} });
+  const r = await post(app, "/orch/lease", { resource: "unity", args: {} }, "tok-eng");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("Ask the boss");
 });
@@ -138,7 +149,7 @@ test("a lease with bad args never reaches the queue", async () => {
     `INSERT INTO resource (name, template, arg_schema_json) VALUES
      ('build', 'make {target}', '{"target":{"type":"enum","values":["debug","release"]}}')`,
   );
-  const r = await post(app, "/orch/lease", { agent_id: 1, resource: "build", args: { target: "prod; rm -rf ~" } });
+  const r = await post(app, "/orch/lease", { resource: "build", args: { target: "prod; rm -rf ~" } }, "tok-eng");
   expect(r.status).toBe(422);
   expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM lease").get()!.c).toBe(0);
 });
@@ -245,7 +256,7 @@ test("ctx query is capped so it never costs more than the file it replaces", asy
   const ins = db.prepare("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'fact', 'zh', ?, 0)");
   for (let i = 0; i < 200; i++) ins.run(`middleware note ${i} ` + "x".repeat(400));
 
-  const r = await post(app, "/orch/ctx/query", { agent_id: 1, question: "middleware token check" });
+  const r = await post(app, "/orch/ctx/query", { question: "middleware token check" }, "tok-eng");
   const out = await r.text();
   expect(out.length).toBeLessThanOrEqual(16_000);
   expect(out).toContain("middleware");
@@ -253,7 +264,7 @@ test("ctx query is capped so it never costs more than the file it replaces", asy
 
 test("ctx query with no hits tells the agent what to do instead of returning junk", async () => {
   const { app } = harness();
-  const r = await post(app, "/orch/ctx/query", { agent_id: 1, question: "quantum tunnelling" });
+  const r = await post(app, "/orch/ctx/query", { question: "quantum tunnelling" }, "tok-eng");
   expect(await r.text()).toContain("no matching notes");
 });
 
@@ -266,10 +277,25 @@ test("state snapshot carries everything the three views need", async () => {
   expect(s.agents!.length).toBe(2);
 });
 
-test("unknown agent id is refused everywhere", async () => {
+test("a missing or bogus token is refused everywhere", async () => {
   const { app } = harness();
-  for (const p of ["/orch/status", "/orch/journal", "/orch/mail", "/orch/ask-boss", "/orch/lease"]) {
-    const r = await post(app, p, { agent_id: 999, kind: "journal", body: "x", intent: "note", target: "qa" });
-    expect(r.status).toBe(422);
+  const paths = ["/orch/status", "/orch/journal", "/orch/mail", "/orch/ask-boss", "/orch/lease"];
+  for (const p of paths) {
+    const payload = { kind: "journal", body: "x", intent: "note", target: "qa" };
+    // No token at all.
+    expect((await post(app, p, payload)).status).toBe(422);
+    // A token that belongs to nobody. An agent cannot promote itself by
+    // sending someone else's id, because the id is never in the body.
+    expect((await post(app, p, payload, "not-a-real-token")).status).toBe(422);
   }
+});
+
+test("the token decides which agent acted, not anything in the body", async () => {
+  const { app, db } = harness();
+  await post(app, "/orch/status", { text: "verifying S1" }, "tok-qa");
+  const rows = db
+    .query<{ role: string; activity: string | null }, []>("SELECT role, activity FROM agent ORDER BY id")
+    .all();
+  expect(rows[0]!.activity).toBeNull();
+  expect(rows[1]!.activity).toBe("verifying S1");
 });
