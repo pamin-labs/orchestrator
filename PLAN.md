@@ -8,10 +8,14 @@
 
 **为什么现有工具不行**：vibe-kanban / Conductor / Claude Squad 做了「kanban + worktree + 并行 agent」，Claude Code 原生 Agent Teams 做了「组内消息 + 共享 task list」。但都没有：角色分化的部门与代答链、可随时插入的三级 intercept、跨组共享受限资源的租约队列、确定性强制的 journal 与对账、非代码领域通用。**这些正是核心需求，所以自建。**
 
+**组的状态机（实现时新增了 `PLANNING`）**：
+`PLANNING`（Dispatcher/Architect 在规划，可派发）→ `DRAFT`（卡片已交，**等你批，屏蔽派发**）→ `RUNNING` → `PAUSING`/`PAUSED`/`PARKED` → `PR_OPEN` → `DISSOLVED`。
+把这两个状态分开是必须的：Dispatcher 得先跑完才有卡给你批，「在规划」和「等你批」不能是同一个状态。
+
 **三条硬约束（决定了后面所有设计）**：
 
 1. **需求深挖由 AI 做，但开工必须你批。** PM 靠 `orch ctx query`（黑板 + 历史 retro）+ 读代码 + 问 Architect 自行深挖，**只有命中不可代答六条才找你**。
-   **`DRAFT` 门阻塞，无自动放行。** 但既然阻塞，卡片本身必须硬性精简 —— 否则「必须你批」会退化成「每天读十份需求文档」。见 §7 DRAFT 卡规范（≤12 行，超长 `orch` 拒收）。你批的是**方向和验收标准**，拆解细节与实现不用看，20 秒。
+   **`DRAFT` 门阻塞，无自动放行**（卡片由 Dispatcher 用 `orch draft` 提交，提交时校验，所以你永远不会看到一张坏卡）。 但既然阻塞，卡片本身必须硬性精简 —— 否则「必须你批」会退化成「每天读十份需求文档」。见 §7 DRAFT 卡规范（≤12 行，超长 `orch` 拒收）。你批的是**方向和验收标准**，拆解细节与实现不用看，20 秒。
 2. **一次大查收拆成多次小查收。** 没有前置门，拆错了必须尽早暴露。PM 必须把需求切成**可独立验收的切片**，每片完成即通知你查收。你的动作不变，但白干的单位从「整个需求」降到「一个切片」。
 3. **单项目多组 + 多项目并行都要。** 单项目开多组是主场景 —— 组间边界必须**事先切开**（见 §7 file ownership），不能靠事后解 merge 冲突。
 
@@ -53,7 +57,8 @@
 | state | **sqlite (WAL)** + journal 落 git | 易变的进 DB；journal 进 repo 跟 PR merge，可 diff 可 grep |
 | 沙盒 | **Claude Code 内置 Seatbelt** + `codex sandbox` | 已装好；能碰 macOS 原生工具链；`SandboxProvider` 接口预留 OpenSandbox |
 | UI | 手写 HTML + vanilla JS + SSE | 无框架无 build step |
-| PR | GitHub private repo + `gh` | 所有项目（含非代码）统一 |
+| PR | GitHub private repo + `gh` | 所有项目（含非代码）统一。注册项目时**预检** remote 和 `gh` 登录，不等分支做完才发现没地方去 |
+| gate | 注册时**自动探测** | 从 package.json / Cargo.toml / go.mod / pyproject / csproj / justfile / Makefile 推断，并注册对应 resource 模板。探测不出来就明说「没有 gate」，不瞎猜命令 |
 
 **不用 MCP**：tool schema 每 session 注入 + sentinel JSON 无返回值语义（`lease` 需 mid-turn 返回，否则每次申请编译都要一个 turn 边界）。`orch` CLI 两个问题都没有。
 
@@ -112,7 +117,13 @@ orch lease <resource> [--arg k=v]…  # 阻塞，stdout = result_digest；资源
 orch lease log <id> [--grep RE]     # 取全量日志（不进 context）
 orch mail <target> --intent {ask|request|inform|note|decision} [--severity …] [--in-reply-to …] "…"
 orch journal add --kind <k> -        # stdin 读；≤6 行硬校验，不合规拒收
-orch task {list|claim|done|split}
+orch task list                       # id status slice owner title，一行一条（不是 JSON 数组）
+orch task claim <id> / done <id>     # 只能是 list 里的**数字 id**
+orch draft <group_id> -              # Dispatcher 交 DRAFT 卡（stdin），交时校验
+orch owns <group_id> --path <glob>…  # Architect 切边界
+orch review <slice_id> --verdict …   # QA 判决（值，不是散文）
+orch audit <group_id> --verdict …    # Auditor PR 级判决
+orch answer <esc_id> --answer … | --abstain --why …
 orch status "<一句话>"               # 工位墙上的当前意图
 orch git -- <cmd>                    # repo 级 git 写锁，串行化
 ```
@@ -145,6 +156,9 @@ codex 走 `codex exec resume <id> -m <model>` + `codex sandbox`，同一个 adap
 | **L3** | **只有你** | secrets、花钱、merge to main。**永不授予 agent** |
 
 `failIfUnavailable: true` 是**必须的** —— 实测每一种配错都是**静默失效**（沙盒直接不存在），看起来和成功一模一样。
+
+**每个角色都需要只读 shell**（`ls`/`cat`/`find`/`grep`/只读 git）。实测：只给 `Bash(orch *)` 时，规划岗的 `ls`、`cat` 全被拒，而 headless 下拒绝是**静默的**，它们只是看起来很困惑并白烧 turn。`orch` 仍是唯一能改变世界的通道。
+**管道要把 `orch` 放最前面** —— 权限检查读命令行开头，`orch journal add <<'EOF'` 过，`cat f | orch journal add` 不过。
 
 **session 主动轮换（不做这条，跑到第三天开始鬼打墙）**：
 **主触发是「切片完成」**，不是 token 阈值 —— 切片是天然语义边界，交接最干净且最省（见 §7 token 经济学 #2）。token 过上限 60% 作为兜底触发。
