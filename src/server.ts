@@ -9,7 +9,7 @@ import { makeGitRunner } from "./mech/worktree.ts";
 import { batchForBoss, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs } from "./mech/prwatch.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
-import { Scheduler } from "./scheduler.ts";
+import { reclaimOrphans, Scheduler } from "./scheduler.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -138,6 +138,18 @@ export function start(overrides: Partial<Config> = {}): Started {
   };
 
   process.env.ORCH_BIN_DIR = installOrchShim(cfg.dataDir);
+
+  // Before the first tick: a turn that was in flight when the last server stopped
+  // still holds its group's only slot, and that group would never move again.
+  const orphans = reclaimOrphans(db, { maxAgeMs: cfg.turnTimeoutMs * 4 });
+  if (orphans > 0) {
+    bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: `reclaimed ${orphans} turn(s) left running by the previous server`,
+      meta: { orphans },
+    });
+  }
 
   // The watchdog is an ordinary job, enqueued on a timer. It bypasses the group
   // slot pool, or it could never fire on the very group that is stuck.
