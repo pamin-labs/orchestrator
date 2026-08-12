@@ -156,6 +156,7 @@ function groupHtml(g) {
       ${g.status === "RUNNING" ? `<button onclick="ctl(${g.id},'pause')">暂停</button>` : ""}
       ${["PAUSED", "PAUSING"].includes(g.status) ? `<button onclick="ctl(${g.id},'resume')">继续</button>` : ""}
       ${g.status === "PARKED" ? `<button onclick="ctl(${g.id},'wake')">唤醒</button>` : ""}
+      ${mergeBadge(g)}
       ${["RUNNING", "PAUSING"].includes(g.status)
         ? `<button onclick="interrupt(${g.id},'keep')" title="杀掉当前 turn，脏改动留着">打断·保留</button>
            <button onclick="interrupt(${g.id},'rollback')" title="杀掉当前 turn 并回滚到它开始前">打断·回滚</button>`
@@ -165,6 +166,24 @@ function groupHtml(g) {
     ${draft ? draftHtml(g) : slices.map(laneHtml).join("") || '<div class="empty">没有切片</div>'}
   </div>`;
 }
+
+/**
+ * Only the queue head gets a merge button. Showing three "ready to merge" cards
+ * is an invitation to merge them in the wrong order, and the boss is the only
+ * person who could then work out which one broke main.
+ */
+function mergeBadge(g) {
+  const q = (state.mergeQueue ?? []).find((m) => m.grpId === g.id);
+  if (q) return `<button class="primary" onclick="landed(${g.id})">已 merge，收尾</button>`;
+  if (g.status !== "PR_OPEN") return "";
+  return `<span class="cost">排队等 merge</span>`;
+}
+
+window.landed = async (id) => {
+  if (!confirm("确认这个 branch 已经 merge 进 main？队列里其他组会被要求 rebase。")) return;
+  await api(`/api/groups/${id}/landed`);
+  refresh();
+};
 
 function draftHtml(g) {
   // The DRAFT card blocks the boss on purpose, so it is capped at 12 lines
