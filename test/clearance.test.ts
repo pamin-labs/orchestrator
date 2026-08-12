@@ -76,11 +76,26 @@ test("QA gets no unconstrained Read of the whole repo", () => {
   // The single largest saving in the plan: a review's information is in the
   // diff, and re-reading a module costs about as much as writing it.
   expect(qa).toContain("Bash(git diff*)");
+  expect(qa).not.toContain("Read");
   expect(qa).not.toContain("Write");
   expect(qa).not.toContain("Edit");
 
   const eng = allowedToolsFor("engineer", "L1");
   expect(eng).toContain("Edit");
+});
+
+test("every role can run read-only shell but cannot write through it", () => {
+  for (const role of ["pm", "engineer", "qa", "dispatcher", "architect", "librarian", "cos"]) {
+    const tools = allowedToolsFor(role, "L2");
+    // Measured: without these, planning roles burned turns on denied ls/cat/find,
+    // and a denial is silent in headless mode so they just looked confused.
+    expect(tools).toContain("Bash(ls*)");
+    expect(tools).toContain("Bash(cat*)");
+    expect(tools).toContain("Bash(orch *)");
+    // Still no general Bash: orch stays the only way an agent affects anything.
+    expect(tools).not.toContain("Bash");
+    expect(tools.some((t) => /^Bash\((rm|mv|cp|chmod|curl|npm|pip|sh|bash)/.test(t))).toBe(false);
+  }
 });
 
 test("every role can reach orch and nothing else runs unsandboxed", () => {

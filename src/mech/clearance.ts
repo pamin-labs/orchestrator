@@ -116,17 +116,41 @@ export function buildProfile(input: ProfileInput): Record<string, unknown> {
   };
 }
 
+/**
+ * Read-only shell every role needs.
+ *
+ * Measured: without these, planning roles burned turns on denied `ls`, `cat` and
+ * `find` calls — and a denial in headless mode is silent, so they simply looked
+ * confused. None of these can change anything; `orch` remains the only channel
+ * through which an agent affects the world.
+ */
+const READ_SHELL = [
+  "Bash(ls*)",
+  "Bash(cat*)",
+  "Bash(head*)",
+  "Bash(tail*)",
+  "Bash(wc*)",
+  "Bash(find*)",
+  "Bash(grep*)",
+  "Bash(rg*)",
+  "Bash(git log*)",
+  "Bash(git diff*)",
+  "Bash(git show*)",
+  "Bash(git status*)",
+  "Bash(echo*)",
+];
+
 /** Tools each clearance may use. QA's list is deliberately narrow. */
 export function allowedToolsFor(role: string, clearance: Clearance): string[] {
-  const base = ["Bash(orch *)"];
+  const base = ["Bash(orch *)", ...READ_SHELL];
   switch (role) {
     case "qa":
-      // QA reviews the diff, the acceptance spec and the gate output — never
-      // the whole repo. Re-reading a module costs about as much as writing it,
-      // and the information a review needs is in the diff.
-      return [...base, "Bash(git diff*)", "Bash(git log*)", "Bash(git show*)", "Read", "Grep"];
+      // QA reviews the diff, the acceptance spec and the gate output — never the
+      // whole repo. Re-reading a module costs about as much as writing it, and
+      // the information a review needs is in the diff. No unconstrained Read.
+      return [...base, "Grep"];
     case "engineer":
-      return [...base, "Read", "Edit", "Write", "Grep", "Glob", "Bash(git diff*)", "Bash(git status*)"];
+      return [...base, "Read", "Edit", "Write", "Grep", "Glob"];
     case "pm":
     case "dispatcher":
     case "architect":

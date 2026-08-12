@@ -45,7 +45,7 @@ export interface Ctx {
    * the event — otherwise mailing the Architect before an Architect exists is a
    * silent no-op, and the sender waits on a reply that can never come.
    */
-  hire?: (grpId: number | null, role: string) => number | null;
+  hire?: (grpId: number | null, role: string, projectId?: number | null) => number | null;
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
   config: { language: string; difficultyModel: Record<string, string>; workRoot: string };
@@ -221,7 +221,10 @@ const postMail: Handler = async (ctx, req) => {
   // The recipient is an explicit parameter, not an `@` parsed out of prose:
   // waking someone means enqueueing an agent_turn for them, nothing more.
   if (WAKING.has(b.intent)) {
-    const target = resolveTarget(ctx, a.grp_id, b.target);
+    const senderProject = ctx.db
+      .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
+      .get(a.id)?.project_id ?? null;
+    const target = resolveTarget(ctx, a.grp_id, b.target, senderProject);
     if (!target) {
       const known = (ctx.knownRoles?.() ?? []).join(", ");
       // Never a silent no-op: an unreachable recipient is exactly how an agent
@@ -258,6 +261,7 @@ function resolveTarget(
   ctx: Ctx,
   senderGrp: number | null,
   role: string,
+  senderProject: number | null,
 ): { agentId: number; grpId: number | null } | null {
   if (senderGrp) {
     const inGroup = ctx.db
@@ -267,15 +271,19 @@ function resolveTarget(
       .get(senderGrp, role);
     if (inGroup) return { agentId: inGroup.id, grpId: senderGrp };
   }
+  // Standing agents are per project, not global: an Architect with no project
+  // has no repo to work in and ends up reading whatever directory the server was
+  // started from.
   const standing = ctx.db
-    .query<{ id: number }, [string]>(
-      "SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'",
+    .query<{ id: number }, [string, number | null]>(
+      `SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'
+         AND (project_id IS ? OR ? IS NULL)`,
     )
-    .get(role);
+    .get(role, senderProject, senderProject);
   if (standing) return { agentId: standing.id, grpId: null };
 
   if (!(ctx.knownRoles?.() ?? []).includes(role)) return null;
-  const hired = ctx.hire?.(null, role) ?? null;
+  const hired = ctx.hire?.(null, role, senderProject) ?? null;
   return hired === null ? null : { agentId: hired, grpId: null };
 }
 

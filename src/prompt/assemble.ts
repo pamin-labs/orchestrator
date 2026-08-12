@@ -96,6 +96,10 @@ Use Bash. Every command blocks and returns its result on stdout.
 
 Do not read whole files when \`orch ctx query\` can point you at the lines.
 
+Put \`orch\` first in the command when piping into it — \`orch journal add --kind
+decision <<'EOF'\` is permitted, \`cat file | orch journal add\` is not, because the
+permission check reads the start of the line.
+
 Printing something as your reply does NOT record it. Anything that has to persist
 — a card, a verdict, a journal entry, an answer — happens through one of these
 commands or it did not happen.`;
