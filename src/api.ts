@@ -39,33 +39,49 @@ async function body<T>(req: Request): Promise<T> {
   }
 }
 
-/** Whoever is calling. Agents get their id from the env the spawner injected. */
-function agentOf(ctx: Ctx, b: { agent_id?: number }): { id: number; grp_id: number | null; role: string } | null {
-  if (!b.agent_id) return null;
+export interface Caller {
+  id: number;
+  grp_id: number | null;
+  role: string;
+}
+
+/**
+ * Who is calling.
+ *
+ * The token comes from the environment the spawner injected, never from the
+ * request body — the server listens on localhost TCP, so anything else on
+ * 127.0.0.1 could otherwise claim to be any agent by sending an id.
+ */
+export function agentOf(ctx: Ctx, req: Request): Caller | null {
+  const token = req.headers.get("x-orch-token");
+  if (!token) return null;
   return (
     ctx.db
-      .query<{ id: number; grp_id: number | null; role: string }, [number]>(
-        "SELECT id, grp_id, role FROM agent WHERE id = ?",
-      )
-      .get(b.agent_id) ?? null
+      .query<Caller, [string]>("SELECT id, grp_id, role FROM agent WHERE token = ?")
+      .get(token) ?? null
   );
+}
+
+/** A fresh token for a newly hired agent. */
+export function mintToken(): string {
+  return crypto.randomUUID().replaceAll("-", "");
 }
 
 // ---------------------------------------------------------------- agent verbs
 
 const postStatus: Handler = async (ctx, req) => {
-  const b = await body<{ agent_id: number; text: string }>(req);
-  const a = agentOf(ctx, b);
-  if (!a) return bad("unknown agent");
+  const b = await body<{ text: string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
   ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [b.text ?? "", a.id]);
   ctx.bus.live({ grpId: a.grp_id, agentId: a.id, kind: "status", body: b.text ?? "" });
   return text("ok");
 };
 
 const postJournal: Handler = async (ctx, req) => {
-  const b = await body<{ agent_id: number; kind: string; body: string; files?: string[]; slice_id?: number }>(req);
-  const a = agentOf(ctx, b);
-  if (!a) return bad("unknown agent");
+  const b = await body<{ kind: string; body: string; files?: string[]; slice_id?: number }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
 
   const v = validateJournal({ kind: b.kind, body: b.body, files: b.files });
   if (!v.ok) return bad(v.error);
@@ -132,15 +148,14 @@ const WAKING = new Set(["ask", "request", "inform"]);
 
 const postMail: Handler = async (ctx, req) => {
   const b = await body<{
-    agent_id: number;
     target: string;
     intent: string;
     body: string;
     severity?: string;
     in_reply_to?: number;
   }>(req);
-  const a = agentOf(ctx, b);
-  if (!a) return bad("unknown agent");
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
   if (!["ask", "request", "inform", "note", "decision"].includes(b.intent)) {
     return bad("intent must be one of: ask, request, inform, note, decision");
   }
@@ -171,9 +186,9 @@ const postMail: Handler = async (ctx, req) => {
 };
 
 const postAskBoss: Handler = async (ctx, req) => {
-  const b = await body<{ agent_id: number; severity?: string; question: string }>(req);
-  const a = agentOf(ctx, b);
-  if (!a) return bad("unknown agent");
+  const b = await body<{ severity?: string; question: string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
   const severity = b.severity === "blocker" ? "blocker" : "advisory";
 
   const row = ctx.db
@@ -207,9 +222,9 @@ const postAskBoss: Handler = async (ctx, req) => {
 };
 
 const postLease: Handler = async (ctx, req) => {
-  const b = await body<{ agent_id: number; resource: string; args?: Record<string, unknown> }>(req);
-  const a = agentOf(ctx, b);
-  if (!a) return bad("unknown agent");
+  const b = await body<{ resource: string; args?: Record<string, unknown> }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
 
   const def = loadResource(ctx, b.resource);
   if (!def) return bad(`unknown resource ${b.resource}. Ask the boss to add a template.`);
@@ -254,9 +269,9 @@ const getLeaseLog: Handler = async (ctx, req, params) => {
 };
 
 const postGit: Handler = async (ctx, req) => {
-  const b = await body<{ agent_id: number; argv: string[] }>(req);
-  const a = agentOf(ctx, b);
-  if (!a) return bad("unknown agent");
+  const b = await body<{ argv: string[] }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
   const grp = a.grp_id
     ? ctx.db
         .query<{ worktree: string | null; project_id: number }, [number]>(
@@ -285,9 +300,9 @@ const postGit: Handler = async (ctx, req) => {
 };
 
 const postCtxQuery: Handler = async (ctx, req) => {
-  const b = await body<{ agent_id: number; question: string; limit?: number }>(req);
-  const a = agentOf(ctx, b);
-  if (!a) return bad("unknown agent");
+  const b = await body<{ question: string; limit?: number }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
   return text(ctxQuery(ctx, a.grp_id, b.question, b.limit ?? CTX_BUDGET_CHARS));
 };
 
@@ -345,9 +360,9 @@ const getTasks: Handler = async (ctx, req) => {
 };
 
 const postTaskClaim: Handler = async (ctx, req) => {
-  const b = await body<{ agent_id: number; task_id: number }>(req);
-  const a = agentOf(ctx, b);
-  if (!a) return bad("unknown agent");
+  const b = await body<{ task_id: number }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
   const r = ctx.db.run(
     "UPDATE task SET owner_agent_id = ?, status = 'in_progress' WHERE id = ? AND owner_agent_id IS NULL",
     [a.id, b.task_id],
@@ -356,9 +371,9 @@ const postTaskClaim: Handler = async (ctx, req) => {
 };
 
 const postTaskDone: Handler = async (ctx, req) => {
-  const b = await body<{ agent_id: number; task_id: number; claim?: unknown }>(req);
-  const a = agentOf(ctx, b);
-  if (!a) return bad("unknown agent");
+  const b = await body<{ task_id: number; claim?: unknown }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
   ctx.db.run("UPDATE task SET status = 'done', claim_json = ? WHERE id = ? AND owner_agent_id = ?", [
     JSON.stringify(b.claim ?? {}),
     b.task_id,

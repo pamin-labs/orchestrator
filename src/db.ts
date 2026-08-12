@@ -222,6 +222,18 @@ const MIGRATIONS: string[] = [
   -- chain_state: pm | architect | cos | boss | answered | revoked
   CREATE INDEX escalation_open ON escalation (chain_state, created_at);
   `,
+
+  // 002 — per-agent bearer token.
+  //
+  // `orch` reaches the server over localhost TCP (see
+  // docs/decisions/001-agent-transport-and-sandbox.md), and anything else on
+  // 127.0.0.1 can reach it too. Identity therefore comes from a token the
+  // spawner injects into the turn's environment, never from a field in the
+  // request body that an agent could simply change.
+  `
+  ALTER TABLE agent ADD COLUMN token TEXT;
+  CREATE UNIQUE INDEX agent_token ON agent (token) WHERE token IS NOT NULL;
+  `,
 ];
 
 export type DB = Database;

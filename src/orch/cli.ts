@@ -6,12 +6,17 @@
  * (Bash already exists), real blocking calls with real return values on stdout,
  * identical shape for codex, and it can be exercised by hand from a terminal.
  *
- * The socket path and the caller's identity arrive in the environment, injected
- * by whoever spawned the turn. A unix socket needs no other auth.
+ * Transport is localhost TCP, not a unix socket — the sandbox blocks unix
+ * sockets and cannot be told to allow just one, while opening them all would
+ * also open the Docker socket. See docs/decisions/001.
+ *
+ * The URL and this agent's token arrive in the environment, injected by whoever
+ * spawned the turn. The token is the identity: anything else on 127.0.0.1 could
+ * otherwise claim to be any agent.
  */
 
-const SOCKET = process.env.ORCH_SOCKET ?? "data/orch.sock";
-const AGENT_ID = Number(process.env.ORCH_AGENT_ID ?? 0);
+const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
+const TOKEN = process.env.ORCH_TOKEN ?? "";
 
 interface Parsed {
   flags: Record<string, string | true>;
@@ -70,12 +75,13 @@ async function call(
   path: string,
   payload?: unknown,
 ): Promise<{ status: number; text: string }> {
-  const res = await fetch(`http://orch${path}`, {
+  const headers: Record<string, string> = { "x-orch-token": TOKEN };
+  if (payload !== undefined) headers["content-type"] = "application/json";
+  const res = await fetch(`${URL_BASE}${path}`, {
     method,
-    unix: SOCKET,
-    body: payload === undefined ? undefined : JSON.stringify({ agent_id: AGENT_ID, ...(payload as object) }),
-    headers: payload === undefined ? undefined : { "content-type": "application/json" },
-  } as RequestInit);
+    headers,
+    body: payload === undefined ? undefined : JSON.stringify(payload),
+  });
   return { status: res.status, text: await res.text() };
 }
 

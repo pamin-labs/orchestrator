@@ -22,10 +22,25 @@ test("migrate creates the four first-class tables plus support tables", () => {
 
 test("migrate is idempotent", () => {
   const db = openMemory();
+  const count = () => db.query<{ c: number }, []>("SELECT count(*) AS c FROM migration").get()!.c;
+  const applied = count();
+  expect(applied).toBeGreaterThan(0);
   migrate(db);
   migrate(db);
-  const n = db.query<{ c: number }, []>("SELECT count(*) AS c FROM migration").get()!.c;
-  expect(n).toBe(1);
+  expect(count()).toBe(applied);
+});
+
+test("agent tokens are unique, and NULL is not a duplicate", () => {
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  const ins = db.prepare(
+    "INSERT INTO agent (project_id, role, model, token, created_at) VALUES (1, 'engineer', 'sonnet', ?, 0)",
+  );
+  ins.run("tok-a");
+  expect(() => ins.run("tok-a")).toThrow();
+  // Retired agents keep their row with a cleared token; several may coexist.
+  ins.run(null);
+  ins.run(null);
 });
 
 test("foreign keys are enforced", () => {
