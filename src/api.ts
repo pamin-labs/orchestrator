@@ -707,9 +707,20 @@ const postTaskClaim: Handler = async (ctx, req) => {
 };
 
 const postTaskDone: Handler = async (ctx, req) => {
-  const b = await body<{ task_id: number; claim?: unknown }>(req);
+  const b = await body<{ task_id: number; claim?: unknown; already_done?: string }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
+
+  // An empty claim makes reconcile vacuous: "claimed vs actual" degenerates into
+  // "did anything change at all". Observed live — every claim arrived as {}.
+  const claimText = JSON.stringify(b.claim ?? null);
+  const hasClaim = Boolean(b.claim) && claimText !== "{}" && claimText !== "null" && claimText !== '""';
+  if (!hasClaim && !b.already_done?.trim()) {
+    return bad(
+      "task done needs --claim (what you actually changed: files and a one-line summary), " +
+        'or --already-done "<why>" if an earlier slice already covered it.',
+    );
+  }
   // A task belonging to a slice that has not started cannot be completed: the
   // writer works one slice at a time, and letting it close future tasks pushed
   // unstarted slices into review.
@@ -727,10 +738,13 @@ const postTaskDone: Handler = async (ctx, req) => {
 
   // Unowned is fine: a group has one writer, so requiring an explicit claim only
   // adds a step that gets forgotten. Someone else's task is not.
+  const claim = b.already_done?.trim()
+    ? { already_done: b.already_done.trim(), files: [] }
+    : (b.claim as unknown);
   const done = ctx.db.run(
     `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
      WHERE id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?)`,
-    [JSON.stringify(b.claim ?? {}), a.id, b.task_id, a.id],
+    [JSON.stringify(claim), a.id, b.task_id, a.id],
   );
   if (done.changes === 0) return bad(`task ${b.task_id} is not yours, or does not exist`);
   ctx.bus.emit({
