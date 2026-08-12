@@ -6,7 +6,7 @@ import { loadConfig, loadRoles, ROOT, type Config } from "./config.ts";
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
-import { Notifier, tierFor } from "./mech/notify.ts";
+import { batchForBoss, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs } from "./mech/prwatch.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { Scheduler } from "./scheduler.ts";
@@ -146,6 +146,19 @@ export function start(overrides: Partial<Config> = {}): Started {
       .get()!.c;
     if (queued === 0) sched.enqueue("watchdog", {});
     sched.tick();
+
+    // Everything waiting on the boss, as one message. The CoS is meant to do this
+    // in its own words; this is the backstop for when it does not run at all.
+    const waiting = db
+      .query<PendingItem, []>(
+        `SELECT e.id, e.severity, e.question, g.name AS "group"
+         FROM escalation e LEFT JOIN grp g ON g.id = e.grp_id
+         WHERE e.chain_state = 'boss' AND e.answer IS NULL
+         ORDER BY e.created_at`,
+      )
+      .all();
+    const batched = batchForBoss(waiting);
+    if (batched) void notifier.push(batched);
 
     // Polling is arithmetic, not judgement, so it happens here rather than in an
     // agent. Only a change wakes the PM.
