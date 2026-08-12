@@ -138,3 +138,48 @@ test("a child that says nothing at all fails loudly", async () => {
     Bun.spawn = spawned;
   }
 });
+
+test("an informational error item is a notice, not a permission denial", async () => {
+  const spawned = Bun.spawn;
+  // @ts-expect-error fake child
+  Bun.spawn = fakeSpawn([
+    JSON.stringify({ type: "thread.started", thread_id: "t" }),
+    // Verbatim from a real run: this became a denial and would have escalated to
+    // the boss for nothing.
+    JSON.stringify({
+      type: "item.completed",
+      item: {
+        type: "error",
+        message:
+          "Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill.",
+      },
+    }),
+    JSON.stringify({
+      type: "item.completed",
+      item: { type: "error", message: "refused: writing outside the sandbox is not permitted" },
+    }),
+    JSON.stringify({ type: "turn.completed", usage: {} }),
+  ]);
+  try {
+    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp" });
+    expect(r.permissionDenials.length).toBe(1);
+    expect(JSON.stringify(r.permissionDenials[0])).toContain("not permitted");
+    expect(r.toolSummaries.some((t) => t.name === "notice")).toBe(true);
+  } finally {
+    Bun.spawn = spawned;
+  }
+});
+
+test("an empty model means whatever the account allows", () => {
+  // Naming a model is rejected outright on a ChatGPT-account login, and that is
+  // not a reason to fail every turn.
+  const blank = buildStable({
+    rolePrompt: "x",
+    model: "",
+    allowedTools: ["Read"],
+    settingsPath: "u",
+    addDirs: ["/tmp"],
+  });
+  expect(buildArgv({ stable: blank, prompt: "p", cwd: "/tmp" })).not.toContain("-m");
+  expect(buildArgv({ stable, prompt: "p", cwd: "/tmp" })).toContain("-m");
+});
