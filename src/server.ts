@@ -7,6 +7,7 @@ import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
 import { Notifier, tierFor } from "./mech/notify.ts";
+import { dispatchFeedback, makeGhRunner, openPr, pollPrs } from "./mech/prwatch.ts";
 import { makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { Scheduler } from "./scheduler.ts";
 
@@ -53,7 +54,38 @@ export function start(overrides: Partial<Config> = {}): Started {
     waiters: new Map(),
     config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot },
   };
-  const execDeps = { ctx, cfg, roles, git };
+  const gh = makeGhRunner();
+  const execDeps = {
+    ctx,
+    cfg,
+    roles,
+    git,
+    onAuditPass: (grpId: number) => {
+      const grp = db
+        .query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?")
+        .get(grpId);
+      void openPr({
+        ctx,
+        gh,
+        grpId,
+        title: `orch: ${grp?.name ?? "changes"}`,
+        body: "Opened by the orchestrator after the audit passed. Journals are in docs/journal/.",
+      }).then((r) => {
+        if ("error" in r) {
+          // No remote, no gh auth, whatever it is: the boss needs to know, since
+          // the branch is finished and now has nowhere to go.
+          ctx.bus.emit({
+            grpId,
+            author: "orchestrator",
+            kind: "escalation",
+            intent: "ask",
+            severity: "advisory",
+            body: `could not open a PR: ${r.error}`,
+          });
+        }
+      });
+    },
+  };
   exec = makeExecutor(execDeps);
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
   ctx.auditVerdict = makeAuditVerdict(execDeps);
@@ -109,6 +141,12 @@ export function start(overrides: Partial<Config> = {}): Started {
       .get()!.c;
     if (queued === 0) sched.enqueue("watchdog", {});
     sched.tick();
+
+    // Polling is arithmetic, not judgement, so it happens here rather than in an
+    // agent. Only a change wakes the PM.
+    void pollPrs(ctx, gh).then((fs) => {
+      for (const f of fs) dispatchFeedback(ctx, f);
+    });
   }, cfg.watchdogIntervalMs);
 
   sched.tick();

@@ -270,6 +270,18 @@ const MIGRATIONS: string[] = [
   // Assigned when a branch passes its audit. The queue is strictly serial: the
   // alternative is finding out on main which of two groups broke it.
   `ALTER TABLE grp ADD COLUMN merge_seq INTEGER;`,
+
+  // 007 — the PR this branch opened, and how far we have read its comments.
+  `
+  ALTER TABLE grp ADD COLUMN pr_number INTEGER;
+  ALTER TABLE grp ADD COLUMN pr_seen_at INTEGER NOT NULL DEFAULT 0;
+  `,
+
+  // 008 — which failing checks we already reported.
+  //
+  // A check that stays red is one piece of news, not one every poll: without
+  // this the PM gets woken every 30 seconds for the same failure.
+  `ALTER TABLE grp ADD COLUMN pr_checks_sig TEXT;`,
 ];
 
 export type DB = Database;

@@ -35,6 +35,8 @@ export interface ExecDeps {
   cfg: Config;
   roles: Map<string, RoleDef>;
   git: GitRunner;
+  /** Wired by the server: opens the PR when a branch passes its audit. */
+  onAuditPass?: (grpId: number) => void;
   /** Injectable for tests; defaults to the real `claude -p` adapter. */
   runTurn?: typeof runTurn;
 }
@@ -580,7 +582,12 @@ async function runWatchdogJob(deps: ExecDeps): Promise<void> {
 /** Called by the server when the Auditor files a PR-level verdict. */
 export function makeAuditVerdict(deps: ExecDeps) {
   return (grpId: number, pass: boolean, note: string): void =>
-    auditVerdict({ ctx: deps.ctx, cfg: deps.cfg, git: deps.git }, grpId, pass, note);
+    auditVerdict(
+      { ctx: deps.ctx, cfg: deps.cfg, git: deps.git, onAuditPass: deps.onAuditPass },
+      grpId,
+      pass,
+      note,
+    );
 }
 
 /** Called by the server when QA files a verdict. */
