@@ -241,6 +241,16 @@ const MIGRATIONS: string[] = [
   // cached prefix is dead. Recording the hash lets the executor rotate the
   // session instead of silently paying full price on every remaining turn.
   `ALTER TABLE agent ADD COLUMN stable_hash TEXT;`,
+
+  // 004 — per-slice reconcile baseline and retry counter.
+  //
+  // Reconcile has to compare against what changed *in this slice*, not what
+  // changed on the branch, or every slice after the first inherits the previous
+  // ones' diff and the check stops meaning anything.
+  `
+  ALTER TABLE slice ADD COLUMN base_sha TEXT;
+  ALTER TABLE slice ADD COLUMN retries INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export type DB = Database;

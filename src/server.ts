@@ -6,7 +6,7 @@ import { loadConfig, loadRoles, ROOT, type Config } from "./config.ts";
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
-import { makeExecutor } from "./runtime/executor.ts";
+import { makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { Scheduler } from "./scheduler.ts";
 
 /**
@@ -51,7 +51,9 @@ export function start(overrides: Partial<Config> = {}): Started {
     waiters: new Map(),
     config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot },
   };
-  exec = makeExecutor({ ctx, cfg, roles, git });
+  const execDeps = { ctx, cfg, roles, git };
+  exec = makeExecutor(execDeps);
+  ctx.reviewVerdict = makeReviewVerdict(execDeps);
 
   const app = makeApp(ctx);
   const webDir = join(ROOT, "web");

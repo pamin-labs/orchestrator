@@ -84,6 +84,7 @@ Use Bash. Every command blocks and returns its result on stdout.
   orch mail <target> --intent ask|request|inform|note|decision "<body>"
   orch journal add --kind decision|journal|retro|risk -   # body on stdin, max 6 lines
   orch task list|claim|done
+  orch review <slice_id> --verdict pass|fail --note "…"   # QA files its verdict
   orch status "<one line>"             # what you are doing, for the desk wall
   orch git -- <cmd>                    # all git writes go through here (repo lock)
 
