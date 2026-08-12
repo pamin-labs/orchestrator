@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-**M0–M6 全部落地，278 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
+**M0–M6 全部落地，298 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
 
 **你现在只需要三个动作**：丢想法 → 批 DRAFT 卡（20 秒）→ 查收切片。gate 配置、入职包、PR 预检都在注册项目时自动完成。
 
@@ -77,22 +77,24 @@
 - **`grp_id` 为 null 的 job 曾绕过所有准入检查**，包括并发上限 —— 常驻岗的 turn 照样花钱，不该有特权
 - **工位墙不显示裸工具名**：`content_block_start` 早于 input 到齐，报出去会把有用的一行覆盖成 `Bash`
 
-## 剩下的（都不阻塞使用）
+## 后来补掉的
 
-1. [ ] **`ctx query` 还是关键词计分 + 4k 硬上限**。`PLAN.md` §13 风险④说这是最弱的一块。**先量「agent 反复问已答过的问题」的频率**再决定要不要上 embedding。
-2. [ ] **PR 流程没在真 remote 上跑过**（要在你 GitHub 账号下建仓库，属于对外动作，没擅自做）。注册项目时的预检会先告诉你能不能走通。要验就在一个真项目上注册后看 `PR flow ready` 那条事件。
-3. [ ] **codex adapter 只在 fixture 上验过**：探针那次账号不支持我指定的 model。真要用先 `codex exec --json` 手跑一次确认 model 名。
-4. [ ] **`denyOutsideOwns` 只到 worktree 顶层**（代码里标了 `ponytail:`）。owned 目录内部的越界写靠 reconcile 和 diff review 兜。
-5. [ ] **Dispatcher 用 opus 是成本大头**（一次约 $0.2-0.45）。如果嫌贵，把 `roles/dispatcher.yaml` 的 `tier: hard` 改成 `normal`，先看拆解质量掉不掉。
-6. [ ] **多组并行没 live 验过**（file ownership、merge queue、Architect 切边界都有单测）。
-7. [ ] **PR 级 review 没 live 验过**：要一次「所有切片都被验收」的完整跑。切分质量修好之后再跑一次就能覆盖。
-8. [ ] **切分质量是唯一没有确定性防线的环节**。`--already-done` 兜住了「切重了」的成本，但切错方向仍然只能靠你在 DRAFT 那 20 秒拦。这就是 `PLAN.md` §13 风险①，实测确认它是真的。
+- ✅ **M0 断点验收**：开了个全新 haiku session，只说「继续开发这个项目」，它准确读出状态并合理排了优先级。断点文件有效。
+- ✅ **codex adapter 真跑通**（`src/mech/../runtime/codex.ts`）：不指定 model 就能跑（指定会被 ChatGPT 账号拒）。顺带修掉「信息性 error item 被当成权限拒绝」——那会为一条杂务消息打扰你。
+- ✅ **`ctx query` 换成 BM25**（`src/mech/ctx.ts`）：idf + 饱和 + 长度归一；无论问什么都先返回本组切片和验收标准（那是一切提问的框架）；中文按字切（否则中文笔记搜不到）；预算截断时明说丢了几条。**没上 embedding** —— 这是值得拿去量的基线版本。
+- ✅ **写入约束递归**（`denyOutsideOwns`）：沿 owned 路径逐层拒绝兄弟，文件和目录都拒。`src/auth/**` 现在会拦住 `src/ui/`。
+- ✅ **切分质量有确定性防线了**（`checkSplit`）：验收标准重复 / 嵌套 / 纯「补测试」片，三种都拒。故意做窄，`legacy client 回归测试套件` 仍放行。
+
+## 剩下的
+
+1. [ ] **PR 流程要在真 remote 上验** —— 需要在你 GitHub 账号下建仓库，属于对外动作，我没擅自做。注册项目时的预检会先报能不能走通；在一个真项目上注册后看有没有 `PR flow ready` 那条事件即可。
+2. [ ] **成本档位是偏好不是缺陷**：Dispatcher 用 opus 约 $0.2-0.45/次。`roles/dispatcher.yaml` 里 `tier: hard` 改 `normal` 就便宜，代价是拆解质量可能掉 —— 值得你自己量一次。
+3. [ ] **切错方向仍只能靠你在 DRAFT 那 20 秒拦**。`checkSplit` 拦得住「切重了」，拦不住「切错了」。这就是 `PLAN.md` §13 风险①，实测确认它是真的 —— 也是这套系统唯一没有确定性防线的判断。
 
 ## 用之前
 
 1. **注册项目就够了** —— gate、入职包、PR 预检自动完成。探测不出 gate 会明确报「no gates detected」（没有确定性底座，上面的 LLM review 就是空的）。
-2. **M0 那条验收还没做**：开一个全新 session 只说「继续开发这个项目」，看它能否只靠 `CLAUDE.md` + 本文件 + `PLAN.md` 接上。
-3. 想省钱：`config/default.yaml` 里把 `difficultyModel.hard` 改成 sonnet。
+2. 想省钱：`config/default.yaml` 里把 `difficultyModel.hard` 改成 sonnet（实测一次完整跑 $0.8 → $0.45）。
 
 ## 已知偏离 PLAN.md
 
