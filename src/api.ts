@@ -8,7 +8,7 @@ import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { createWorktree, type GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
-import { canStart } from "./mech/ownership.ts";
+import { canStart, parseOwns } from "./mech/ownership.ts";
 import { startNextSlice } from "./mech/review.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
@@ -917,23 +917,31 @@ const postIdea: Handler = async (ctx, req) => {
   // With another group already holding paths, the boundary has to be cut before
   // anyone plans work inside it — otherwise the plan is written against paths the
   // group turns out not to own.
-  const contested = ctx.db
-    .query<{ c: number }, [number, number]>(
-      `SELECT count(*) AS c FROM grp WHERE project_id = ? AND id != ?
+  const others = ctx.db
+    .query<{ id: number; name: string; owns_json: string }, [number, number]>(
+      `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
          AND status IN ('PLANNING','RUNNING','PAUSING','PAUSED','PARKED','PR_OPEN')`,
     )
-    .get(b.project_id, grp.id)!.c;
-  if (contested > 0) {
+    .all(b.project_id, grp.id);
+  if (others.length > 0) {
+    // Every undeclared active group, not just the new one. The first group in a
+    // project needs no boundary — but the moment a second appears, an undeclared
+    // group beside a declared one is the exact situation the rule exists to
+    // prevent, reached from the other direction.
+    const needBoundary = [
+      { id: grp.id, name },
+      ...others.filter((o) => parseOwns(o.owns_json).length === 0).map((o) => ({ id: o.id, name: o.name })),
+    ];
     ctx.sched.enqueue("agent_turn", {
       grp_id: grp.id,
       priority: 6,
-      payload: { role: "architect", boundary: grp.id, idea: b.text },
+      payload: { role: "architect", boundary: needBoundary, idea: b.text },
     });
   }
 
   ctx.sched.enqueue("agent_turn", { grp_id: grp.id, payload: { role: "dispatcher", idea: b.text } });
   ctx.sched.tick();
-  return json({ grp_id: grp.id, channel_id: ch.id, boundaryNeeded: contested > 0 });
+  return json({ grp_id: grp.id, channel_id: ch.id, boundaryNeeded: others.length > 0 });
 };
 
 const postDraftDecision: Handler = async (ctx, req, params) => {

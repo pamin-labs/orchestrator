@@ -374,6 +374,18 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
           ' --intent inform "…"`. If it needs a decision above your level, pass it up.'
         : "");
   }
+  if (payload.boundary) {
+    const groups = Array.isArray(payload.boundary)
+      ? (payload.boundary as Array<{ id: number; name: string }>)
+      : [{ id: Number(payload.boundary), name: String(payload.boundary) }];
+    delta.card =
+      `This project now has more than one live group, so every one of them needs a path ` +
+      `boundary before work is planned inside it. Cut them now:\n` +
+      groups.map((g) => `  orch owns ${g.id} --path "<glob>" --path "<glob>"   # ${g.name}`).join("\n") +
+      `\n\nOverlapping groups cannot run in parallel, so make them disjoint. Shared files ` +
+      `(manifests, lockfiles, schemas, CI config) belong to no group — leave them out.` +
+      (payload.idea ? `\n\nThe new group's requirement: ${payload.idea}` : "");
+  }
   if (payload.audit) {
     const gid = Number(payload.audit);
     const branch = payload.audit_branch ? String(payload.audit_branch) : null;
