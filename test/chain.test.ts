@@ -252,3 +252,52 @@ test("abstaining over the wire passes the question up", async () => {
       .chain_state,
   ).toBe("architect");
 });
+
+test("mailing a role that has no agent yet hires one instead of doing nothing", async () => {
+  const h = harness();
+  const hired: string[] = [];
+  h.ctx.knownRoles = () => ["pm", "architect", "cos", "engineer"];
+  h.ctx.hire = (grpId, role) => {
+    hired.push(role);
+    return h.db
+      .query<{ id: number }, [string]>(
+        "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, ?, 'm', 'L2', hex(randomblob(8)), 0) RETURNING id",
+      )
+      .get(role)!.id;
+  };
+
+  const r = await h.post(
+    "/orch/mail",
+    { target: "architect", intent: "ask", body: "objection to this split?" },
+    "tok-eng",
+  );
+  // A silent no-op is how an agent ends up asking a wall twice and then giving up
+  // — which is exactly what the first live run did.
+  expect(r.status).toBe(200);
+  expect(hired).toEqual(["architect"]);
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'").get()!.c).toBe(1);
+});
+
+test("mailing a role that does not exist says so, and lists what does", async () => {
+  const h = harness();
+  h.ctx.knownRoles = () => ["pm", "architect"];
+  const r = await h.post("/orch/mail", { target: "wizard", intent: "ask", body: "hi" }, "tok-eng");
+  expect(r.status).toBe(422);
+  const text = await r.text();
+  expect(text).toContain("no such recipient");
+  expect(text).toContain("architect");
+});
+
+test("an unhired standing level is a level, not a reason to bother the boss", () => {
+  const h = harness({ withPm: false });
+  h.ctx.knownRoles = () => ["architect", "cos"];
+  h.ctx.hire = (_g, role) =>
+    h.db
+      .query<{ id: number }, [string]>(
+        "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, ?, 'm', 'L2', hex(randomblob(8)), 0) RETURNING id",
+      )
+      .get(role)!.id;
+  const id = h.ask("where should the seam go?");
+  expect(route(h.deps, id)).toBe("architect");
+  expect(h.notified).toEqual([]);
+});

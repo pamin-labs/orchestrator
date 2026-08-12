@@ -38,6 +38,16 @@ export interface Ctx {
   onFinding?: (rule: string, severity: string, body: string, grpId: number | null) => void;
   /** Wired by the server: a question that reached the top of the answer chain. */
   notifyBoss?: (escId: number, question: string, severity: string) => void;
+  /**
+   * Wired by the server: hire an agent for a role that has none yet.
+   *
+   * Standing roles are event-triggered, and the first message addressed to one IS
+   * the event — otherwise mailing the Architect before an Architect exists is a
+   * silent no-op, and the sender waits on a reply that can never come.
+   */
+  hire?: (grpId: number | null, role: string) => number | null;
+  /** Wired by the server: role names that exist in roles/*.yaml. */
+  knownRoles?: () => string[];
   config: { language: string; difficultyModel: Record<string, string>; workRoot: string };
 }
 
@@ -210,17 +220,53 @@ const postMail: Handler = async (ctx, req) => {
 
   // The recipient is an explicit parameter, not an `@` parsed out of prose:
   // waking someone means enqueueing an agent_turn for them, nothing more.
-  if (WAKING.has(b.intent) && a.grp_id) {
-    const t = ctx.db
-      .query<{ id: number }, [number, string]>(
-        "SELECT id FROM agent WHERE grp_id = ? AND role = ?",
-      )
-      .get(a.grp_id, b.target);
-    if (t) ctx.sched.enqueue("agent_turn", { grp_id: a.grp_id, agent_id: t.id });
+  if (WAKING.has(b.intent)) {
+    const target = resolveTarget(ctx, a.grp_id, b.target);
+    if (!target) {
+      const known = (ctx.knownRoles?.() ?? []).join(", ");
+      // Never a silent no-op: an unreachable recipient is exactly how an agent
+      // ends up asking a wall twice and then giving up.
+      return bad(`no such recipient "${b.target}". Roles that exist: ${known || "none configured"}`);
+    }
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: target.grpId,
+      agent_id: target.agentId,
+      priority: b.intent === "ask" ? 4 : 0,
+    });
   }
   ctx.sched.tick();
   return text("ok");
 };
+
+/**
+ * Who a message is for: someone in the sender's group first, then the standing
+ * holder of that role, and finally — for a role that exists in config but has no
+ * agent yet — a newly hired one.
+ */
+function resolveTarget(
+  ctx: Ctx,
+  senderGrp: number | null,
+  role: string,
+): { agentId: number; grpId: number | null } | null {
+  if (senderGrp) {
+    const inGroup = ctx.db
+      .query<{ id: number }, [number, string]>(
+        "SELECT id FROM agent WHERE grp_id = ? AND role = ? AND state != 'retired'",
+      )
+      .get(senderGrp, role);
+    if (inGroup) return { agentId: inGroup.id, grpId: senderGrp };
+  }
+  const standing = ctx.db
+    .query<{ id: number }, [string]>(
+      "SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'",
+    )
+    .get(role);
+  if (standing) return { agentId: standing.id, grpId: null };
+
+  if (!(ctx.knownRoles?.() ?? []).includes(role)) return null;
+  const hired = ctx.hire?.(null, role) ?? null;
+  return hired === null ? null : { agentId: hired, grpId: null };
+}
 
 const postAskBoss: Handler = async (ctx, req) => {
   const b = await body<{ severity?: string; question: string }>(req);
