@@ -207,9 +207,9 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
 不做 : y
 验收 : bun test 绿
 验收 : 无回归
-切片 : a [normal] — test a
-切片 : b [trivial] — test b
-切片 : c [hard] — test c
+切片 : a [normal] — a.test.ts 绿
+切片 : b [trivial] — b 的回归用例绿
+切片 : c [hard] — 端到端场景通过
 风险 : none
 反对 : 无`;
   // Filing the card is what moves the group to DRAFT, and DRAFT blocks.
@@ -391,9 +391,9 @@ test("filing the card drops the group's other queued planning turns", async () =
 不做 : y
 验收 : a
 验收 : b
-切片 : a [normal] — t
-切片 : b [trivial] — t
-切片 : c [hard] — t
+切片 : a [normal] — a.test.ts 绿
+切片 : b [trivial] — b 的回归用例绿
+切片 : c [hard] — 端到端场景通过
 风险 : none
 反对 : 无`;
   await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
@@ -433,9 +433,9 @@ test("a group can be named instead of numbered, everywhere it is referenced", as
 不做 : y
 验收 : a
 验收 : b
-切片 : a [normal] — t
-切片 : b [trivial] — t
-切片 : c [hard] — t
+切片 : a [normal] — a.test.ts 绿
+切片 : b [trivial] — b 的回归用例绿
+切片 : c [hard] — 端到端场景通过
 风险 : none
 反对 : 无`;
   // An agent reaches for the name it can see — one was observed running

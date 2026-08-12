@@ -81,3 +81,54 @@ test("full-width colons and bullet continuations are accepted", () => {
   const wide = good.replace(/ : /g, "：").replace("切片：补", "切片：- 补");
   expect(validateDraftCard(wide).ok).toBe(true);
 });
+
+test("two slices accepted by the same thing are one deliverable", () => {
+  const dup = good.replace("切片 : legacy header 兼容 [trivial] — 老 client 的 e2e 用例绿", "切片 : legacy header 兼容 [trivial] — mw.test.ts 绿");
+  const r = validateDraftCard(dup);
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toContain("one deliverable");
+});
+
+test("nested acceptance criteria mean one slice finishes the other", () => {
+  const nested = good.replace(
+    "切片 : 补 middleware 单测 [normal] — 覆盖 401/403 两条路径",
+    "切片 : 再加一点 [normal] — mw.test.ts 绿并且覆盖 401",
+  );
+  const r = validateDraftCard(nested);
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toContain("nested acceptance");
+});
+
+test("a tests-only slice is refused — tests belong with their change", () => {
+  // The exact shape a real run produced: 加参数 / 实现分支 / 补充测试用例.
+  for (const title of ["补充测试用例", "添加单元测试", "add tests", "测试"]) {
+    const card = good.replace("切片 : 补 middleware 单测 [normal] — 覆盖 401/403 两条路径", `切片 : ${title} [trivial] — 覆盖两条路径`);
+    const r = validateDraftCard(card);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("Tests belong with");
+  }
+});
+
+test("a slice that adds a test suite for something specific is still allowed", () => {
+  // The guard is narrow on purpose: only bare "tests" is refused, because a named
+  // test target can genuinely be its own deliverable.
+  const card = good.replace(
+    "切片 : 补 middleware 单测 [normal] — 覆盖 401/403 两条路径",
+    "切片 : legacy client 回归测试套件 [normal] — 覆盖 401/403 两条路径",
+  );
+  expect(validateDraftCard(card).ok).toBe(true);
+});
+
+test("a single-slice card is never blamed for a bad split", () => {
+  const one = `目标 : x
+不做 : y
+验收 : a 绿
+验收 : b 绿
+切片 : 测试 [trivial] — 全绿
+风险 : 无
+反对 : 无`;
+  // 3-5 slices is enforced separately; a lone slice cannot overlap anything.
+  const r = validateDraftCard(one);
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toContain("3-5");
+});
