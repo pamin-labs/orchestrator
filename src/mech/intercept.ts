@@ -115,8 +115,20 @@ export async function interrupt(
           .get(grp.project_id)?.repo_path
       : undefined;
     if (sha && repo && grp?.worktree) {
-      await rollbackTo(git, repo, grp.worktree, sha);
-      rolledBackTo = sha;
+      const back = await rollbackTo(git, repo, grp.worktree, sha);
+      if (back.ok) rolledBackTo = sha;
+      else {
+        // "Interrupt and roll back" that only interrupted leaves a dirty tree
+        // the boss believes is clean, which is the worse of the two states.
+        ctx.bus.emit({
+          grpId,
+          author: "orchestrator",
+          kind: "escalation",
+          intent: "inform",
+          severity: "blocker",
+          body: `interrupted, but the rollback to ${sha.slice(0, 8)} failed: ${back.error}. The worktree is dirty.`,
+        });
+      }
     }
   } else if (killed > 0) {
     // Tell the next turn, or it will be confused by its own leftovers.
