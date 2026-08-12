@@ -1056,6 +1056,23 @@ const postProject: Handler = async (ctx, req) => {
       meta: { gates, detected },
     });
   }
+  // Write the onboarding pack before any group exists, so the first group does
+  // not pay to explore the repo. Cheap role, cheap model, once per project.
+  ctx.sched.enqueue("agent_turn", {
+    priority: 4,
+    payload: {
+      role: "librarian",
+      project_id: r.id,
+      onboarding: b.repo_path,
+      idea:
+        `New project registered at ${b.repo_path}. Write its onboarding pack now ` +
+        `(\`orch journal add --kind onboarding\`): how to build, how to test, the conventions ` +
+        `actually in use, the known traps, and a short directory map. Six lines max — every ` +
+        `future agent reads this on its first turn, so it is the highest-leverage six lines ` +
+        `in the project.`,
+    },
+  });
+  ctx.sched.tick();
   return json({ id: r.id, gates, detected });
 };
 

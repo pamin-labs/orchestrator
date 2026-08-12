@@ -58,9 +58,10 @@ test("boss path: add project, drop an idea, nothing runs without a slot", async 
   const jobs = srv.ctx.db
     .query<{ state: string; kind: string }, []>("SELECT state, kind FROM job")
     .all();
-  expect(jobs.length).toBe(1);
-  expect(jobs[0]!.kind).toBe("agent_turn");
-  expect(jobs[0]!.state).toBe("pending");
+  // Two queued turns: the Librarian's onboarding pass from registration, and the
+  // Dispatcher's planning pass. Both stay pending — no slot, no spend.
+  expect(jobs.length).toBe(2);
+  expect(jobs.every((j) => j.kind === "agent_turn" && j.state === "pending")).toBe(true);
   expect(srv.ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM agent").get()!.c).toBe(0);
 });
 

@@ -153,11 +153,15 @@ export class Scheduler {
       .all();
     if (pending.length === 0) return [];
 
+    // Standing agents (Architect, CoS, Librarian) have no group, but their turns
+    // cost the same money and CPU as anyone's — so they take a slot too, keyed by
+    // 0. Letting them bypass the pool was how a "no slots" configuration still
+    // spawned agents.
     const busyGroups = new Set<number>();
     let leasesRunning = 0;
     for (const j of this.runningJobs()) {
       if (j.kind === "lease") leasesRunning++;
-      else if (j.grp_id !== null && !FREE_KINDS.has(j.kind)) busyGroups.add(j.grp_id);
+      else if (!FREE_KINDS.has(j.kind)) busyGroups.add(j.grp_id ?? 0);
     }
 
     const out: Job[] = [];
@@ -172,14 +176,12 @@ export class Scheduler {
         out.push(job);
         continue;
       }
-      if (job.grp_id === null) {
-        out.push(job);
-        continue;
-      }
-      if (busyGroups.has(job.grp_id)) continue;
+      const slot = job.grp_id ?? 0;
+      if (busyGroups.has(slot)) continue;
       if (busyGroups.size >= this.maxGroups) continue;
-      if (!this.admits(job)) continue;
-      busyGroups.add(job.grp_id);
+      // Only a group-scoped job has a status and a budget to check.
+      if (job.grp_id !== null && !this.admits(job)) continue;
+      busyGroups.add(slot);
       out.push(job);
     }
     return out;
