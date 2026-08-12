@@ -15,7 +15,9 @@ test("terms split Latin tokens and CJK characters, and drop stopwords", () => {
   expect(terms("Should we use the middleware for auth?")).toEqual(["middleware", "auth"]);
   // Chinese has no spaces, so per-character terms are what make it searchable at all.
   expect(terms("中文问候")).toEqual(["中", "文", "问", "候"]);
-  expect(terms("src/auth/mw.ts")).toEqual(["src/auth/mw.ts"]);
+  // A path splits into components on purpose: a query for "auth" should match a
+  // note that mentions src/auth/mw.ts, which a single opaque token would not.
+  expect(terms("src/auth/mw.ts")).toEqual(["src", "auth", "mw.ts"]);
 });
 
 test("a rare term beats a common one", () => {
@@ -103,6 +105,16 @@ test("the budget is a hard cap, not a suggestion", () => {
 
   const tight = query({ db, grpId: 1, projectId: 1, question: "middleware token", budget: 800 });
   expect(tight.length).toBeLessThanOrEqual(800);
+});
+
+test("when the budget truncates, it says how many matches were dropped", () => {
+  const db = seeded();
+  const ins = db.prepare("INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'journal', 'zh', ?, ?)");
+  for (let i = 0; i < 30; i++) ins.run(`middleware token note ${i} ` + "x".repeat(400), i);
+  const out = query({ db, grpId: 1, projectId: 1, question: "middleware token", budget: 2000 });
+  // Silent truncation reads as "that is everything there is", which is worse than
+  // a smaller answer that admits what it left out.
+  expect(out).toContain("more matches omitted");
 });
 
 test("an export path is shown so the agent can go read the file itself", () => {
