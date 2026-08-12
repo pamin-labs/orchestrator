@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync } from "node:fs";
 import type { Ctx } from "../api.ts";
 import { mintToken } from "../api.ts";
 import type { Config, RoleDef } from "../config.ts";
@@ -7,9 +7,11 @@ import { modelFor } from "../config.ts";
 import type { Executor, Job } from "../scheduler.ts";
 import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
 import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
+import { denyOutsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
 import { recordTurnOutcome, runWatchdog } from "../mech/watchdog.ts";
+import { runStandup } from "../mech/standup.ts";
 import {
   auditVerdict,
   handToBoss,
@@ -251,11 +253,18 @@ function buildStableFor(
     .filter(Boolean);
 
   const clearance = (agent.clearance as Clearance) ?? "L1";
+
+  // Confine the group to the paths it owns. Deny-only sandbox, so this is the
+  // complement: the worktree's top-level entries the group did not claim.
+  const owns = parseOwns(grp?.owns_json ?? null);
+  const extraDenyWrite = owns.length ? denyOutsideOwns(worktree, owns, topLevel(worktree)) : [];
+
   const settingsPath = writeProfile(join(cfg.dataDir, "profiles"), `${agent.id}-${clearance}`, {
     clearance,
     worktree,
     repoPath,
     siblingWorktrees: siblings,
+    extraDenyWrite,
   });
 
   const projectId = ctx.db
@@ -553,6 +562,19 @@ async function runGateJob(deps: ExecDeps, job: Job): Promise<void> {
 async function runWatchdogJob(deps: ExecDeps): Promise<void> {
   const findings = await runWatchdog({ ctx: deps.ctx, cfg: deps.cfg, git: deps.git });
   for (const f of findings) deps.ctx.onFinding?.(f.rule, f.severity, f.body, f.grpId);
+
+  // The standup rides along: same deterministic pass, and it sees across groups
+  // in a way no single group's agents can.
+  for (const item of runStandup(deps.ctx.db)) {
+    deps.ctx.bus.emit({
+      grpId: item.grpIds[0] ?? null,
+      author: "standup",
+      kind: "state_change",
+      body: item.body,
+      meta: { kind: item.kind, groups: item.grpIds },
+    });
+    deps.ctx.onFinding?.(item.kind, "advisory", item.body, item.grpIds[0] ?? null);
+  }
 }
 
 /** Called by the server when the Auditor files a PR-level verdict. */
@@ -689,6 +711,14 @@ function noteBody(ctx: Ctx, projectId: number | null, kind: string): string | nu
       )
       .get(projectId, kind)?.body ?? null
   );
+}
+
+function topLevel(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
 }
 
 function safeJson(s: string): Record<string, unknown> {

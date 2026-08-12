@@ -10,6 +10,7 @@ import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart } from "./mech/ownership.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
+import { costReport } from "./mech/cost.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -600,6 +601,11 @@ function loadResource(ctx: Ctx, name: string): ResourceDef | null {
 
 const getState: Handler = async (ctx) => json(snapshot(ctx));
 
+const getCost: Handler = async (ctx, req) => {
+  const p = new URL(req.url).searchParams.get("project");
+  return json(costReport(ctx.db, p ? Number(p) : undefined));
+};
+
 export function snapshot(ctx: Ctx) {
   const db = ctx.db;
   return {
@@ -922,6 +928,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/triage$/, postTriage],
 
   ["GET", /^\/api\/state$/, getState],
+  ["GET", /^\/api\/cost$/, getCost],
   ["GET", /^\/api\/stream$/, getStream],
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
