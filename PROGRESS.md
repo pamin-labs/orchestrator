@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-**M0–M6 全部落地，298 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
+**M0–M6 全部落地，308 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
 
 **你现在只需要三个动作**：丢想法 → 批 DRAFT 卡（20 秒）→ 查收切片。gate 配置、入职包、PR 预检都在注册项目时自动完成。
 
@@ -36,9 +36,17 @@
 
 注册项目（gate 自动探测出 `bun test`、Librarian 写出真实入职包、PR 预检正确报「没有 remote，只有 PR 那步会卡」）→ 丢一句中文需求 → Dispatcher 读代码 + `orch ctx query` + 问 Architect → Architect 回真意见 → **Dispatcher 自己交出 11 行合规卡**（`反对` 栏是 Architect 的类型设计批评）→ 你批（不带 card，用它交的那张）→ 建 worktree/branch/task → Engineer 干活 → **reconcile pass → gate pass → QA pass** → 待查收 → **你验收 → 下一片自动开工**。
 
-**没验过的**：全部切片验收后的 PR 级 review（那次跑到切片 2 就因为切分问题停了）、真 remote 上的 PR、多组并行。
+**多组并行也验过了**：两个组各自 branch、**同时各有一个 turn 在跑**；Architect 真调了 `orch owns` 切边界。
 
-**成本**：全 opus 约 $0.8（Dispatcher 占大头）；`hard` 降 sonnet 后约 $0.45。单切片含独立 review 约 $0.055。
+**一次完整的三切片需求，零重试**（切分防线 + claim 强制 + `--already-done` 三处修复合起来的结果 —— 同一个需求上一轮在切片 2 连败三次）：
+```
+S1 lang 参数 + zh 分支 + 测试      reconcile✓ gate✓ qa✓ accepted
+S2 未知 lang 显式回退英文并有测试   reconcile✓ gate✓ qa✓ accepted
+S3 导出 Lang 联合类型供外部复用     reconcile✓ gate✓ qa✓ accepted
+```
+QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fall back to English (tested with 'fr', 'es', 'invalid')`
+
+**成本**：一次完整三切片需求含每片独立 review **$0.62**（dispatcher $0.31 / engineer $0.15 / qa $0.07 / architect $0.07 / librarian $0.03，`hard` 降 sonnet）。全 opus 约 $0.8。
 
 ## 实测得到的、和直觉相反的事实（**别凭直觉改回去**）
 
@@ -61,6 +69,12 @@
 - Engineer 从不传 claim（contract 里 `task done <id>` 后面没写 `--claim`，它就不用），于是「声称 vs 实际」退化成「有没有改动」—— 正好绕过它要抓的那个失败。现在**空 claim 直接拒收**。
 - 反向问题同一次跑出来：切片 1 的 Engineer 把整个功能实现完了，切片 2/3 真的没活干，reconcile 判成造假、打回三次后升级。现在有 `--already-done "<why>"`：reconcile 接受，但 **gate 和 QA 照样得过** —— 它是对历史的声明，不是跳过验证的口子。
 - 根因是切分质量：Dispatcher 切出的是「加参数 / 实现分支 / 补测试」——同一个改动的三个步骤，不是三个能独立交付的东西。抽象规则（「切片必须独立可验收」）已经在 prompt 里且**没用**，现在换成把那次的真实反例写进去。
+
+**「给了任务但没给做这件事需要的信息」—— 犯了三次，每次 agent 都编了个看起来合理的动作**
+- `orch mail` 唤醒常驻收件人，但信的内容没随 job 递过去（它不在发信人的频道里）→ 空 prompt 崩了
+- 边界请求 enqueue 了 `payload.boundary`，但 delta **没有对应的渲染分支** → Architect 发了句 `orch status "…准备划定 src/bye.ts 边界"` 然后什么也没做
+- 边界 delta 只附了**新组**的需求 → 两个组要切时它分不清谁是谁，把 greet 的文件划给了 farewell 组
+  → 现在：信随 job 走；payload 出现没人渲染的键会**发事件点名**；每个组的原始需求都引在它自己那条命令旁边
 
 **「静默 no-op」是最贵的失败模式**
 - `orch mail architect` 在没有 Architect 时静默丢弃 → Dispatcher 对着墙问了两次就放弃，卡片没交。现在：不存在的收件人报错并列出存在的角色；配置里有但还没雇的**常驻岗第一封信就是雇它的事件**
