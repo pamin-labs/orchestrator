@@ -336,3 +336,29 @@ test("the keys that are rendered do not trigger the warning", async () => {
     db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE body LIKE '%nothing renders%'").get()!.c,
   ).toBe(0);
 });
+
+test("the Architect is told which requirement belongs to which group", async () => {
+  const { db, sched, specs } = harness(async () => ok());
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g2', 'PLANNING', 0)");
+  sched.enqueue("agent_turn", {
+    grp_id: 1,
+    payload: {
+      role: "architect",
+      boundary: [
+        { id: 1, name: "greet-zh", idea: "greet 加中文支持" },
+        { id: 2, name: "farewell", idea: "bye(name) 返回 goodbye X" },
+      ],
+    },
+  });
+  await sched.drain();
+
+  const p = specs[0]!.prompt;
+  // Without each group's own requirement, the Architect cannot tell them apart —
+  // live, it handed the farewell group greet's files.
+  expect(p).toContain("greet 加中文支持");
+  expect(p).toContain("bye(name) 返回 goodbye X");
+  expect(p).toContain("orch owns 1 --path");
+  expect(p).toContain("orch owns 2 --path");
+  // And the failure mode a files-only boundary causes.
+  expect(p).toContain("not a list of files that already exist");
+});
