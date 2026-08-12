@@ -86,6 +86,12 @@ export interface TurnSpec {
   timeoutMs?: number;
   /** Write raw NDJSON here for later inspection (never into the context). */
   logPath?: string;
+  /**
+   * Extra environment for the child. This is how the agent learns where the
+   * orchestrator is and who it is (ORCH_URL / ORCH_TOKEN) — identity travels in
+   * the process environment, never in a request body the agent could edit.
+   */
+  env?: Record<string, string>;
   signal?: AbortSignal;
 }
 
@@ -148,6 +154,7 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
     stdin: new TextEncoder().encode(spec.prompt),
     stdout: "pipe",
     stderr: "pipe",
+    env: spec.env ? { ...process.env, ...spec.env } : undefined,
     signal: spec.signal,
   });
   h.onPid?.(proc.pid);

@@ -41,7 +41,7 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     sched,
     gitLock: new RepoLock(),
     waiters: new Map(),
-    config: { language: cfg.language, difficultyModel: cfg.difficultyModel },
+    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot },
   };
   const deps: ExecDeps = {
     ctx,

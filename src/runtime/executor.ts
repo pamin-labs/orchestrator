@@ -171,6 +171,11 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
         maxTurns: cfg.maxTurnsPerJob,
         timeoutMs: cfg.turnTimeoutMs,
         logPath: join(logDir, `${job.id}.jsonl`),
+        env: {
+          ORCH_URL: process.env.ORCH_URL ?? `http://127.0.0.1:${cfg.port}`,
+          ORCH_TOKEN: agent.token ?? "",
+          ORCH_GRP_ID: String(job.grp_id ?? ""),
+        },
       },
       {
         onText: (t) => ctx.bus.live({ grpId: job.grp_id, agentId: agent.id, kind: "text", body: t }),
