@@ -160,9 +160,11 @@ export function query(opts: QueryOptions): string {
     .all(opts.grpId, opts.projectId);
 
   const hits = rank(docs, opts.question, now);
+  let shown = 0;
   for (const h of hits) {
     const where = h.doc.exportPath ? ` (${h.doc.exportPath})` : "";
     if (!push(`## ${h.doc.kind}${where}\n${h.doc.body}`)) break;
+    shown++;
   }
 
   if (parts.length === 0) {
@@ -171,7 +173,8 @@ export function query(opts: QueryOptions): string {
       "or ask the PM with `orch mail pm --intent ask`."
     );
   }
-  const shown = hits.length;
+  // Say what was dropped: silent truncation reads as "that is everything there
+  // is", which is worse than a smaller answer that admits its own limit.
   const trailer =
     shown < hits.length ? `\n\n(${hits.length - shown} more matches omitted to stay in budget)` : "";
   return parts.join("\n\n") + trailer;
