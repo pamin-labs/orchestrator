@@ -30,11 +30,15 @@
 | **M5** ✅ | file ownership + 串行 merge queue + PR-watcher | `mech/{ownership,mergequeue,prwatch}.ts` |
 | **M6** ✅ | standup + 成本归因 + codex adapter + 归档 | `mech/{standup,cost,detect}.ts` `runtime/codex.ts` |
 
-## live 验证到哪一步（真 `claude -p`）
+## live 验证到哪一步（真 `claude -p`，全自动无人手写）
 
-**全自动、无人手写任何东西**，验证过：注册项目（gate 自动探测出 `bun test`，Librarian 写出真实入职包，PR 预检）→ 丢一句中文需求 → Dispatcher 读代码 + `orch ctx query` + 问 Architect → **自己交出 11 行合规 DRAFT 卡**（`反对` 那栏是 Architect 真给的类型设计批评）→ 你批 → 建 worktree/branch/task → Engineer 干活 → **reconcile pass → gate pass** → QA。
+一整条链逐段验过：
 
-**成本**：全 opus 档跑一次约 $0.8（Dispatcher 占大头）；把 `hard` 降到 sonnet 后约 $0.25。单个切片含独立 review 约 $0.055。
+注册项目（gate 自动探测出 `bun test`、Librarian 写出真实入职包、PR 预检正确报「没有 remote，只有 PR 那步会卡」）→ 丢一句中文需求 → Dispatcher 读代码 + `orch ctx query` + 问 Architect → Architect 回真意见 → **Dispatcher 自己交出 11 行合规卡**（`反对` 栏是 Architect 的类型设计批评）→ 你批（不带 card，用它交的那张）→ 建 worktree/branch/task → Engineer 干活 → **reconcile pass → gate pass → QA pass** → 待查收 → **你验收 → 下一片自动开工**。
+
+**没验过的**：全部切片验收后的 PR 级 review（那次跑到切片 2 就因为切分问题停了）、真 remote 上的 PR、多组并行。
+
+**成本**：全 opus 约 $0.8（Dispatcher 占大头）；`hard` 降 sonnet 后约 $0.45。单切片含独立 review 约 $0.055。
 
 ## 实测得到的、和直觉相反的事实（**别凭直觉改回去**）
 
@@ -51,6 +55,11 @@
 - delta 里写 `Slice S1`（组内序号）→ QA 拿不到 `orch review` 要的数据库 id，跑完不交判决
 - 批准 DRAFT 不建 task → 写方自己编了个 id，`task done` 永不落地、**整条 review 流水线静默不触发**
   → 现在都给数字 id，`task list` 输出行、delta 给 `slice_id N` 并附上填好 id 的命令
+
+**对账层曾经名存实亡**
+- Engineer 从不传 claim（contract 里 `task done <id>` 后面没写 `--claim`，它就不用），于是「声称 vs 实际」退化成「有没有改动」—— 正好绕过它要抓的那个失败。现在**空 claim 直接拒收**。
+- 反向问题同一次跑出来：切片 1 的 Engineer 把整个功能实现完了，切片 2/3 真的没活干，reconcile 判成造假、打回三次后升级。现在有 `--already-done "<why>"`：reconcile 接受，但 **gate 和 QA 照样得过** —— 它是对历史的声明，不是跳过验证的口子。
+- 根因是切分质量：Dispatcher 切出的是「加参数 / 实现分支 / 补测试」——同一个改动的三个步骤，不是三个能独立交付的东西。抽象规则（「切片必须独立可验收」）已经在 prompt 里且**没用**，现在换成把那次的真实反例写进去。
 
 **「静默 no-op」是最贵的失败模式**
 - `orch mail architect` 在没有 Architect 时静默丢弃 → Dispatcher 对着墙问了两次就放弃，卡片没交。现在：不存在的收件人报错并列出存在的角色；配置里有但还没雇的**常驻岗第一封信就是雇它的事件**
@@ -75,6 +84,8 @@
 4. [ ] **`denyOutsideOwns` 只到 worktree 顶层**（代码里标了 `ponytail:`）。owned 目录内部的越界写靠 reconcile 和 diff review 兜。
 5. [ ] **Dispatcher 用 opus 是成本大头**（一次约 $0.2-0.45）。如果嫌贵，把 `roles/dispatcher.yaml` 的 `tier: hard` 改成 `normal`，先看拆解质量掉不掉。
 6. [ ] **多组并行没 live 验过**（file ownership、merge queue、Architect 切边界都有单测）。
+7. [ ] **PR 级 review 没 live 验过**：要一次「所有切片都被验收」的完整跑。切分质量修好之后再跑一次就能覆盖。
+8. [ ] **切分质量是唯一没有确定性防线的环节**。`--already-done` 兜住了「切重了」的成本，但切错方向仍然只能靠你在 DRAFT 那 20 秒拦。这就是 `PLAN.md` §13 风险①，实测确认它是真的。
 
 ## 用之前
 
