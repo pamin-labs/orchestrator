@@ -471,6 +471,24 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   // Showing an empty box and asking for approval is asking the boss to approve
   // something they cannot see.
   expect(filed?.body).toContain("支持 zh");
+
+  // An objection that lands after the card must reach the boss too. The card says
+  // 反对 : 无 because the Dispatcher does not wait for the Architect — measured,
+  // the objection arrived a minute later and said the plan contradicted its own
+  // acceptance criterion.
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'architect', 'm', 'L2', 'tok-arch', 0)",
+  );
+  await post(
+    app,
+    "/orch/mail",
+    { target: "dispatcher", intent: "inform", body: "反对：第三片与验收冲突" },
+    "tok-arch",
+  );
+  const s2 = (await (await get(app, "/api/state")).json()) as any;
+  const late = (s2.lateObjections ?? []).find((o: any) => o.grpId === grp_id);
+  expect(late?.body).toContain("与验收冲突");
+  expect(late?.author).toBe("architect");
 });
 
 test("a second group triggers boundaries for every undeclared group, not just the new one", async () => {

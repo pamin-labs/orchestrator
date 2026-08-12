@@ -327,3 +327,26 @@ test("a reply reaches the existing holder of a role instead of hiring a second o
     h.db.query<{ id: number }, []>("SELECT id FROM agent WHERE role = 'dispatcher'").get()!.id,
   );
 });
+
+test("a standing agent's mail is filed under the recipient's group, not nowhere", async () => {
+  const h = harness();
+  h.ctx.knownRoles = () => ["pm", "dispatcher", "architect"];
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+  );
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'architect', 'm', 'L2', 'tok-arch', 0)",
+  );
+
+  await h.post("/orch/mail", { target: "dispatcher", intent: "inform", body: "反对：locale 推断与验收冲突" }, "tok-arch");
+
+  // Stamped with the sender's group, this lands as NULL and vanishes from the
+  // group's timeline — which is how a real objection went unseen while the card
+  // it argued with said 反对 : 无.
+  const e = h.db
+    .query<{ grp_id: number | null; body: string }, []>(
+      "SELECT grp_id, body FROM event WHERE author = 'architect' AND kind = 'say'",
+    )
+    .get()!;
+  expect(e.grp_id).toBe(1);
+});
