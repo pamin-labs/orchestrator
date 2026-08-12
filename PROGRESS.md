@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-**M0–M6 全部落地，267 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
+**M0–M6 全部落地，278 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
 
 **你现在只需要三个动作**：丢想法 → 批 DRAFT 卡（20 秒）→ 查收切片。gate 配置、入职包、PR 预检都在注册项目时自动完成。
 
@@ -50,11 +50,12 @@
 - **每个角色都要只读 shell**（`ls`/`cat`/`find`/`grep`/只读 git）。只给 `Bash(orch *)` 时规划岗的 `ls`、`cat` 全被拒，而 headless 下拒绝是**静默的** —— 它们只是看起来困惑并白烧 turn
 - **管道把 `orch` 放最前面**：权限检查读命令行开头
 
-**「给了 agent 一个它用不了的标识」—— 同一类 bug 犯了三次**
+**「给了 agent 一个它用不了的标识」—— 同一类 bug 犯了四次**
 - `orch task list` 返回 JSON 数组 → agent 把 title 当 id 传
 - delta 里写 `Slice S1`（组内序号）→ QA 拿不到 `orch review` 要的数据库 id，跑完不交判决
 - 批准 DRAFT 不建 task → 写方自己编了个 id，`task done` 永不落地、**整条 review 流水线静默不触发**
-  → 现在都给数字 id，`task list` 输出行、delta 给 `slice_id N` 并附上填好 id 的命令
+- Dispatcher 用组名 `orch draft greet -`（它只看得见名字）
+  → 规律：**agent 看得见的标识它一定会用 —— 要么接受它，要么根本别给它看**。现在 `task list` 输出行、delta 给 `slice_id N` 并附上填好 id 的命令、group 同时接受 id 和名字
 
 **对账层曾经名存实亡**
 - Engineer 从不传 claim（contract 里 `task done <id>` 后面没写 `--claim`，它就不用），于是「声称 vs 实际」退化成「有没有改动」—— 正好绕过它要抓的那个失败。现在**空 claim 直接拒收**。
