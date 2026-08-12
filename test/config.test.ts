@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadConfig, loadRoles, modelFor } from "../src/config.ts";
 
 test("the shipped roles all parse and declare what the runtime needs", () => {
   const roles = loadRoles("roles");
-  for (const name of ["dispatcher", "pm", "engineer", "qa"]) {
+  for (const name of ["dispatcher", "pm", "engineer", "qa", "auditor"]) {
     const r = roles.get(name);
     expect(r).toBeDefined();
     expect(r!.prompt.length).toBeGreaterThan(50);
@@ -20,11 +23,19 @@ test("only the engineer is allowed to be a writer", () => {
 });
 
 test("adding a role is a file, not a code change", () => {
-  const roles = loadRoles("roles");
-  const before = roles.size;
-  expect(before).toBeGreaterThanOrEqual(4);
-  // Nothing in loadRoles enumerates known names — a new yaml just appears.
-  expect([...roles.keys()].sort()).toEqual(["dispatcher", "engineer", "pm", "qa"]);
+  // Assert the property, not the current roster: nothing in the loader
+  // enumerates known names, so an unfamiliar yaml simply appears.
+  const dir = mkdtempSync(join(tmpdir(), "orch-roles-"));
+  writeFileSync(
+    join(dir, "composer.yaml"),
+    "name: composer\nclearance: L1\ntier: hard\nprompt: |\n  You write music.\n",
+  );
+  const roles = loadRoles(dir);
+  expect([...roles.keys()]).toEqual(["composer"]);
+  expect(roles.get("composer")!.tier).toBe("hard");
+
+  // And the shipped roster is whatever is on disk, not a hardcoded list.
+  expect(loadRoles("roles").size).toBeGreaterThanOrEqual(5);
 });
 
 test("config falls back to defaults when the file is missing", () => {

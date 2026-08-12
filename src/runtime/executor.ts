@@ -9,7 +9,14 @@ import { assemble, buildStable, needsRotation, type Delta } from "../prompt/asse
 import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
 import { digestOutput, resolveLease, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
-import { handToBoss, handToQa, runDeterministicReview, sendBack } from "../mech/review.ts";
+import {
+  auditVerdict,
+  handToBoss,
+  handToQa,
+  runDeterministicReview,
+  runPrReview,
+  sendBack,
+} from "../mech/review.ts";
 import { runTurn, type TurnResult } from "./claude.ts";
 
 /**
@@ -51,6 +58,10 @@ export function makeExecutor(deps: ExecDeps): Executor {
         return runLease(deps, job);
       case "gate":
         return runGateJob(deps, job);
+      case "reconcile":
+        // PR level: every slice accepted, so reconcile and gate the whole branch
+        // before the Auditor is asked for an opinion.
+        return job.grp_id ? runPrReview({ ctx: deps.ctx, cfg: deps.cfg, git: deps.git }, job.grp_id) : undefined;
       default:
         // watchdog / notify / digest land in M3. Doing nothing is correct for
         // now; failing would poison the queue.
@@ -484,6 +495,12 @@ async function runGateJob(deps: ExecDeps, job: Job): Promise<void> {
   const out = await runDeterministicReview(rd, job.slice_id);
   if (out.pass) handToQa(rd, job.slice_id);
   else sendBack(rd, job.slice_id, out.feedback, "gate");
+}
+
+/** Called by the server when the Auditor files a PR-level verdict. */
+export function makeAuditVerdict(deps: ExecDeps) {
+  return (grpId: number, pass: boolean, note: string): void =>
+    auditVerdict({ ctx: deps.ctx, cfg: deps.cfg, git: deps.git }, grpId, pass, note);
 }
 
 /** Called by the server when QA files a verdict. */

@@ -10,7 +10,12 @@ import { RepoLock } from "../src/mech/gitlock.ts";
 import { gateState } from "../src/mech/gate.ts";
 import { makeGitRunner, createWorktree, checkpoint } from "../src/mech/worktree.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
-import { makeExecutor, makeReviewVerdict, type ExecDeps } from "../src/runtime/executor.ts";
+import {
+  makeAuditVerdict,
+  makeExecutor,
+  makeReviewVerdict,
+  type ExecDeps,
+} from "../src/runtime/executor.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 
 const git = makeGitRunner(new RepoLock());
@@ -70,6 +75,7 @@ async function harness(opts: { gates?: string[] } = {}) {
   };
   exec = makeExecutor(deps);
   ctx.reviewVerdict = makeReviewVerdict(deps);
+  ctx.auditVerdict = makeAuditVerdict(deps);
 
   db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p', ?, ?, 0)", [
     repo,
@@ -253,4 +259,66 @@ test("ordinary git work still goes through", () => {
   expect(reservedGitAction(["diff", "--name-only"])).toBeNull();
   // Rebasing your own branch onto main is normal and stays allowed.
   expect(reservedGitAction(["rebase", "origin/main"])).toBeNull();
+});
+
+test("accepting the last slice starts PR review; accepting an earlier one does not", async () => {
+  const h = await harness();
+  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
+
+  await h.post("/api/slices/1/accept");
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
+
+  await h.post("/api/slices/2/accept");
+  // "The boss is satisfied" is not a verdict an agent can reach, so nothing an
+  // agent does can start this.
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
+});
+
+test("a group with no retro cannot wind up — the PM is sent back to write one", async () => {
+  const h = await harness();
+  h.gate(0);
+  await h.post("/api/slices/1/accept");
+  await h.sched.drain();
+
+  // retro is the only long-term memory this system has, and "later" means never
+  // once the branch is merged.
+  expect(h.specs.at(-1)!.prompt).toContain("no retro");
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).not.toBe("PR_OPEN");
+});
+
+test("with a retro and a green branch gate, the Auditor is called in", async () => {
+  const h = await harness();
+  h.gate(0);
+  h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'retro', 'zh', 'S1 返工一次，验收标准写模糊了', 0)");
+  await h.post("/api/slices/1/accept");
+  await h.sched.drain();
+
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PR_OPEN");
+  expect(h.specs.some((s) => s.stable.systemAppend.includes("You are the Auditor"))).toBe(true);
+});
+
+test("an auditor may not audit its own group", async () => {
+  const h = await harness();
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'auditor', 'm', 'L2', 'tok-in', 0)",
+  );
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'L2', 'tok-out', 0)",
+  );
+  // Sharing the group's context means reviewing your own reasoning.
+  expect((await h.post("/orch/audit", { group_id: 1, verdict: "pass" }, "tok-in")).status).toBe(422);
+  expect((await h.post("/orch/audit", { group_id: 1, verdict: "pass" }, "tok-out")).status).toBe(200);
+});
+
+test("a failed audit reopens the group and sends the PM back", async () => {
+  const h = await harness();
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'L2', 'tok-aud', 0)",
+  );
+  h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1");
+  await h.post("/orch/audit", { group_id: 1, verdict: "fail", note: "S2's promise is not in the diff" }, "tok-aud");
+  await h.sched.drain();
+
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
+  expect(h.specs.at(-1)!.prompt).toContain("S2's promise is not in the diff");
 });
