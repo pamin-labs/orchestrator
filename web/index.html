@@ -92,6 +92,7 @@
   <div>
     <section id="inbox"><h2>收件箱</h2><div class="empty">没人在等你</div></section>
     <section id="wall"><h2>工位墙</h2><div class="empty">没有 agent</div></section>
+    <section id="costp"><h2>成本</h2><div class="empty">还没花钱</div></section>
     <section><h2>事件流</h2><div id="feed"></div></section>
   </div>
 </main>
@@ -113,9 +114,29 @@ const api = async (path, body, method = "POST") => {
 };
 
 async function refresh() {
-  const r = await fetch("/api/state");
-  state = await r.json();
+  const [s, c] = await Promise.all([fetch("/api/state"), fetch("/api/cost")]);
+  state = await s.json();
+  cost = await c.json();
   render();
+}
+
+let cost = null;
+
+function renderCost() {
+  if (!cost || !cost.total) return '<div class="empty">还没花钱</div>';
+  const rows = (title, list) =>
+    list.filter((r) => r.usd).length
+      ? `<div class="cost" style="margin-top:6px">${title}</div>` +
+        list
+          .filter((r) => r.usd)
+          .map((r) => `<div class="wall"><div><span>${esc(r.label)}</span><span class="act"></span><span>$${(r.usd || 0).toFixed(3)}</span></div></div>`)
+          .join("")
+      : "";
+  // A cache ratio that suddenly drops is the only visible sign that prompt
+  // assembly broke: agents keep working, tests keep passing, turns cost 3-5x.
+  const cr = cost.cacheRatio == null ? "—" : `${Math.round(cost.cacheRatio * 100)}%`;
+  return `<div><b>$${(cost.total.usd || 0).toFixed(2)}</b> · cache 命中 ${cr}</div>
+    ${rows("按需求", cost.byGroup)}${rows("按角色", cost.byRole)}${rows("按难度", cost.byDifficulty)}`;
 }
 
 function render() {
@@ -138,6 +159,8 @@ function render() {
     (answered.length
       ? `<h2 style="margin-top:12px">代答（可撤销）</h2>${answered.map(answeredHtml).join("")}`
       : "");
+
+  $("#costp").innerHTML = "<h2>成本</h2>" + renderCost();
 
   $("#wall").innerHTML = "<h2>工位墙</h2>" + (state.agents.length
     ? `<div class="wall">${state.agents.map(agentHtml).join("")}</div>`

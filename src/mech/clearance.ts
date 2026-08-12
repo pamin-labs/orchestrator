@@ -29,6 +29,12 @@ export interface ProfileInput {
   siblingWorktrees?: string[];
   /** Extra paths this role may not read (per-project secrets, etc). */
   extraDenyRead?: string[];
+  /**
+   * Paths inside the worktree this group does not own. Generated from the
+   * ownership globs, since "only these are writable" cannot be expressed with a
+   * deny-only sandbox.
+   */
+  extraDenyWrite?: string[];
 }
 
 /** Secrets an agent must never read, regardless of clearance. */
@@ -70,6 +76,7 @@ export function buildProfile(input: ProfileInput): Record<string, unknown> {
     // own worktree, and `orch git` performs repo-level writes on the host.
     join(input.repoPath, "**"),
     ...(input.siblingWorktrees ?? []).map((w) => join(w, "**")),
+    ...(input.extraDenyWrite ?? []),
   ];
 
   if (input.clearance === "L1") {
