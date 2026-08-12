@@ -14,6 +14,7 @@ import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
 import { preflightPr } from "./mech/prwatch.ts";
+import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -621,49 +622,22 @@ const postCtxQuery: Handler = async (ctx, req) => {
   const b = await body<{ question: string; limit?: number }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
-  return text(ctxQuery(ctx, a.grp_id, b.question, b.limit ?? CTX_BUDGET_CHARS));
+  const projectId =
+    ctx.db
+      .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
+      .get(a.id)?.project_id ?? null;
+  return text(
+    ctxQuery({
+      db: ctx.db,
+      grpId: a.grp_id,
+      projectId,
+      question: b.question,
+      budget: b.limit ?? CTX_BUDGET_CHARS,
+    }),
+  );
 };
 
-/**
- * Retrieval is deliberately dumb for now: notes and events for this group,
- * keyword-scored, hard-capped. The cap matters more than the ranking — an
- * unbounded answer costs more than the file the agent was going to read.
- */
-export const CTX_BUDGET_CHARS = 16_000; // ~4k tokens
-
-export function ctxQuery(ctx: Ctx, grpId: number | null, question: string, budget = CTX_BUDGET_CHARS): string {
-  const words = question
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}_]+/u)
-    .filter((w) => w.length > 2);
-  const score = (s: string) => {
-    const low = s.toLowerCase();
-    return words.reduce((n, w) => n + (low.includes(w) ? 1 : 0), 0);
-  };
-
-  const notes = ctx.db
-    .query<{ kind: string; body: string; export_path: string | null; at: number }, [number | null]>(
-      `SELECT kind, body, export_path, at FROM note
-       WHERE grp_id = ? OR grp_id IS NULL ORDER BY at DESC LIMIT 200`,
-    )
-    .all(grpId);
-
-  const ranked = notes
-    .map((n) => ({ n, s: score(n.body) + (n.kind === "lesson" || n.kind === "onboarding" ? 1 : 0) }))
-    .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s);
-
-  const parts: string[] = [];
-  let used = 0;
-  for (const { n } of ranked) {
-    const chunk = `## ${n.kind}${n.export_path ? ` (${n.export_path})` : ""}\n${n.body}`;
-    if (used + chunk.length > budget) break;
-    parts.push(chunk);
-    used += chunk.length;
-  }
-  if (parts.length === 0) return "no matching notes. Try `orch ctx query` with different words, or read the code.";
-  return parts.join("\n\n");
-}
+export const CTX_BUDGET_CHARS = DEFAULT_BUDGET;
 
 const getTasks: Handler = async (ctx, req) => {
   const grp = Number(new URL(req.url).searchParams.get("grp") ?? 0);

@@ -335,9 +335,14 @@ test("ctx query is capped so it never costs more than the file it replaces", asy
 });
 
 test("ctx query with no hits tells the agent what to do instead of returning junk", async () => {
-  const { app } = harness();
+  const { app, db } = harness();
+  // No slices either, or the group's acceptance criteria would legitimately come
+  // back as the frame for any question.
+  db.run("DELETE FROM slice");
   const r = await post(app, "/orch/ctx/query", { question: "quantum tunnelling" }, "tok-eng");
-  expect(await r.text()).toContain("no matching notes");
+  const out = await r.text();
+  expect(out).toContain("nothing on the blackboard matches");
+  expect(out).toContain("orch mail pm");
 });
 
 test("state snapshot carries everything the three views need", async () => {
