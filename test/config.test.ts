@@ -69,3 +69,12 @@ test("a role may name a concrete model id and it is used verbatim", () => {
   expect(modelFor(cfg, pinned, "hard")).toBe("claude-haiku-4-5-20251001");
   expect(modelFor(cfg, { ...pinned, tier: "hard" }, "trivial")).toBe("claude-haiku-4-5-20251001");
 });
+
+test("the Dispatcher prompt carries the concrete bad-split example", () => {
+  const d = loadRoles("roles").get("dispatcher")!.prompt;
+  // Abstract advice ("slices must be independent") produced three steps of one
+  // change on a real run. The anti-example is the part that teaches.
+  expect(d).toContain("切片 : 补充测试用例");
+  expect(d).toContain("ONE");
+  expect(d).toContain("Padding to three is worse");
+});
