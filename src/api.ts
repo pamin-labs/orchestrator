@@ -13,6 +13,7 @@ import { startNextSlice } from "./mech/review.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
+import { preflightPr } from "./mech/prwatch.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -30,6 +31,8 @@ export interface Ctx {
   waiters: Map<string, (value: string) => void>;
   /** Runs git under the repo write lock. Absent in unit tests that need no repo. */
   git?: GitRunner;
+  /** Runs `gh`. Absent in unit tests that need no GitHub. */
+  gh?: (argv: string[], cwd: string) => Promise<{ code: number; out: string }>;
   /** Wired by the server: advances the review pipeline on a QA verdict. */
   reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
   /** Wired by the server: the Auditor's PR-level verdict. */
@@ -1145,6 +1148,29 @@ const postProject: Handler = async (ctx, req) => {
       meta: { gates, detected },
     });
   }
+  // Say now whether a PR can ever be opened. A group that finishes its work and
+  // then has nowhere to put it is the worst moment to learn this, and the fix is
+  // the boss's to make.
+  if (ctx.git && ctx.gh) {
+    const pre = await preflightPr(b.repo_path, (argv, cwd) => ctx.git!(cwd, argv, cwd), ctx.gh);
+    if (!pre.ok) {
+      ctx.bus.emit({
+        author: "orchestrator",
+        kind: "escalation",
+        intent: "ask",
+        severity: "advisory",
+        body: `PR flow will not work for ${b.name}: ${pre.reason}. Work can still proceed; only the PR step is blocked.`,
+        meta: { remote: pre.remote },
+      });
+    } else {
+      ctx.bus.emit({
+        author: "orchestrator",
+        kind: "state_change",
+        body: `PR flow ready (${pre.remote})`,
+      });
+    }
+  }
+
   // Write the onboarding pack before any group exists, so the first group does
   // not pay to explore the repo. Cheap role, cheap model, once per project.
   ctx.sched.enqueue("agent_turn", {

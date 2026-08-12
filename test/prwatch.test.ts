@@ -3,7 +3,7 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { dispatchFeedback, openPr, pollPrs, type GhRunner } from "../src/mech/prwatch.ts";
+import { dispatchFeedback, openPr, pollPrs, preflightPr, type GhRunner } from "../src/mech/prwatch.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 
@@ -176,4 +176,38 @@ test("landing archives the group without deleting its history", () => {
   // Archiving must never mean deleting: a later group grepping this is the only
   // long-term memory the system has.
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()!.c).toBeGreaterThan(0);
+});
+
+test("preflight says up front whether a PR can ever be opened", async () => {
+  const noRemote = await preflightPr(
+    "/tmp/x",
+    async () => ({ code: 1, out: "" }),
+    async () => ({ code: 0, out: "" }),
+  );
+  // Discovering this when a branch is finished is the worst possible moment.
+  expect(noRemote.ok).toBe(false);
+  expect(noRemote.reason).toContain("nowhere to go");
+
+  const notGithub = await preflightPr(
+    "/tmp/x",
+    async () => ({ code: 0, out: "git@gitlab.com:me/x.git" }),
+    async () => ({ code: 0, out: "" }),
+  );
+  expect(notGithub.ok).toBe(false);
+  expect(notGithub.reason).toContain("not GitHub");
+
+  const notLoggedIn = await preflightPr(
+    "/tmp/x",
+    async () => ({ code: 0, out: "git@github.com:me/x.git" }),
+    async () => ({ code: 1, out: "not logged in" }),
+  );
+  expect(notLoggedIn.ok).toBe(false);
+  expect(notLoggedIn.reason).toContain("gh auth login");
+
+  const ready = await preflightPr(
+    "/tmp/x",
+    async () => ({ code: 0, out: "git@github.com:me/x.git" }),
+    async () => ({ code: 0, out: "Logged in" }),
+  );
+  expect(ready).toEqual({ ok: true, remote: "git@github.com:me/x.git" });
 });
