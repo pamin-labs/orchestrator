@@ -238,3 +238,56 @@ test("maxGroups 0 means nothing runs at all", async () => {
   await s.drain();
   expect(ran.length).toBe(0);
 });
+
+test("a turn left running by a dead server is reclaimed, not left holding the slot", async () => {
+  const db = openMemory();
+  seed(db, 1);
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1, 1, 'qa', 'm', 'running', 0)",
+  );
+  // Started just now, so it is the dead pid that identifies the orphan rather
+  // than the age check.
+  db.run(
+    "INSERT INTO job (kind, grp_id, state, pid, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 89992, ?, 0)",
+    [Date.now()],
+  );
+  db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('reconcile', 1, 'pending', 0)");
+
+  const { reclaimOrphans } = await import("../src/scheduler.ts");
+  // The pid belongs to nothing: the previous server exited mid-turn.
+  expect(reclaimOrphans(db, { alive: () => false })).toBe(1);
+
+  const j = db.query<{ error: string }, []>("SELECT error FROM job WHERE id = 1").get()!;
+  expect(j.error).toContain("process 89992 is gone");
+  // The agent believed it was mid-turn too, and a running agent is skipped forever.
+  expect(db.query<{ state: string }, []>("SELECT state FROM agent").get()!.state).toBe("idle");
+
+  // And the queue moves again — which it never would have while the slot was held.
+  const ran: Job[] = [];
+  await new Scheduler(db, async (job) => void ran.push(job)).drain();
+  expect(ran.map((r) => r.kind)).toEqual(["reconcile"]);
+});
+
+test("a live process is left alone", () => {
+  const db = openMemory();
+  seed(db, 1);
+  db.run(
+    "INSERT INTO job (kind, grp_id, state, pid, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 4242, ?, 0)",
+    [Date.now()],
+  );
+  const { reclaimOrphans } = require("../src/scheduler.ts");
+  expect(reclaimOrphans(db, { alive: () => true })).toBe(0);
+  expect(db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("running");
+});
+
+test("a job with no pid, or one running impossibly long, is also an orphan", () => {
+  const db = openMemory();
+  seed(db, 1);
+  db.run("INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 0, 0)");
+  db.run(
+    "INSERT INTO job (kind, grp_id, state, pid, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 1, 0, 0)",
+  );
+  const { reclaimOrphans } = require("../src/scheduler.ts");
+  // Never recorded a pid, and still "running" long past any turn's limit.
+  expect(reclaimOrphans(db, { alive: () => true, maxAgeMs: 1000, now: () => 10_000_000 })).toBe(2);
+});

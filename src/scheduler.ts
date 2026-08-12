@@ -245,3 +245,64 @@ export class Scheduler {
     ]);
   }
 }
+
+/**
+ * Reclaim jobs left `running` by a server that is no longer here.
+ *
+ * A job in `running` holds its group's only slot, and nothing else in that group
+ * can ever dispatch while it does. So a crash — or an ordinary restart while a
+ * turn was in flight — permanently wedges the group, silently: the queue looks
+ * healthy and simply never moves. Observed exactly that way.
+ *
+ * A job is an orphan when its process is gone, or when it has no pid, or when it
+ * has been "running" longer than any turn is allowed to.
+ */
+export function reclaimOrphans(
+  db: DB,
+  opts: { maxAgeMs?: number; alive?: (pid: number) => boolean; now?: () => number } = {},
+): number {
+  const maxAge = opts.maxAgeMs ?? 3_600_000;
+  const now = opts.now ?? (() => Date.now());
+  const alive =
+    opts.alive ??
+    ((pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+  const running = db
+    .query<{ id: number; pid: number | null; started_at: number | null; grp_id: number | null }, []>(
+      "SELECT id, pid, started_at, grp_id FROM job WHERE state = 'running'",
+    )
+    .all();
+
+  let reclaimed = 0;
+  for (const j of running) {
+    const tooOld = j.started_at !== null && now() - j.started_at > maxAge;
+    if (j.pid !== null && !tooOld && alive(j.pid)) continue;
+
+    db.run(
+      `UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = 'running'`,
+      [
+        now(),
+        j.pid === null
+          ? "orphaned: no process was ever recorded"
+          : tooOld
+            ? `orphaned: still running after ${Math.round(maxAge / 60000)} min`
+            : `orphaned: process ${j.pid} is gone`,
+        j.id,
+      ],
+    );
+    reclaimed++;
+  }
+
+  // Agents believe they are mid-turn too, and a blocked agent is skipped forever.
+  if (reclaimed > 0) {
+    db.run("UPDATE agent SET state = 'idle' WHERE state = 'running'");
+  }
+  return reclaimed;
+}
