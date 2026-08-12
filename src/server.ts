@@ -1,0 +1,88 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { makeApp, type Ctx } from "./api.ts";
+import { Bus } from "./bus.ts";
+import { loadConfig, loadRoles, type Config } from "./config.ts";
+import { open } from "./db.ts";
+import { RepoLock } from "./mech/gitlock.ts";
+import { makeGitRunner } from "./mech/worktree.ts";
+import { makeExecutor } from "./runtime/executor.ts";
+import { Scheduler } from "./scheduler.ts";
+
+/**
+ * Wires the pieces together and serves them.
+ *
+ * One process: HTTP + SSE for the web UI, the same routes for `orch`, the job
+ * queue, and the subprocesses it spawns. Bound to 127.0.0.1 — the sandbox
+ * allows localhost TCP but no unix sockets (docs/decisions/001).
+ */
+
+export interface Started {
+  ctx: Ctx;
+  cfg: Config;
+  url: string;
+  stop: () => void;
+}
+
+export function start(overrides: Partial<Config> = {}): Started {
+  const cfg = { ...loadConfig(), ...overrides };
+  mkdirSync(cfg.dataDir, { recursive: true });
+
+  const db = open(join(cfg.dataDir, "orchestrator.sqlite"));
+  const bus = new Bus(db);
+  const gitLock = new RepoLock();
+  const roles = loadRoles();
+
+  // The executor needs the ctx that the scheduler lives in, so the scheduler is
+  // created with a thunk that resolves once both exist.
+  let exec: ReturnType<typeof makeExecutor> | null = null;
+  const sched = new Scheduler(db, (job) => exec!(job), {
+    maxGroups: cfg.maxGroups,
+    leaseSlots: cfg.leaseSlots,
+  });
+
+  const ctx: Ctx = {
+    db,
+    bus,
+    sched,
+    gitLock,
+    waiters: new Map(),
+    config: { language: cfg.language, difficultyModel: cfg.difficultyModel },
+  };
+  exec = makeExecutor({ ctx, cfg, roles, git: makeGitRunner(gitLock) });
+
+  const app = makeApp(ctx);
+  const webDir = "web";
+
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: cfg.port,
+    idleTimeout: 0, // `ask-boss` holds a request open until the boss answers
+    async fetch(req) {
+      const path = new URL(req.url).pathname;
+      if (path === "/" || path === "/index.html") {
+        return new Response(Bun.file(join(webDir, "index.html")), {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+      if (path.startsWith("/api/") || path.startsWith("/orch/")) return app(req);
+
+      const file = Bun.file(join(webDir, path.replace(/^\/+/, "")));
+      if (await file.exists()) return new Response(file);
+      return new Response("not found", { status: 404 });
+    },
+  });
+
+  const url = `http://127.0.0.1:${server.port}`;
+  // Environment handed to every spawned turn: the URL plus the agent's own
+  // token. Identity is never a request-body field.
+  process.env.ORCH_URL = url;
+
+  sched.tick();
+  return { ctx, cfg, url, stop: () => server.stop(true) };
+}
+
+if (import.meta.main) {
+  const { url } = start();
+  console.log(`orchestrator on ${url}`);
+}

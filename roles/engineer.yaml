@@ -1,6 +1,6 @@
 name: engineer
 clearance: L1
-tier: normal
+# no tier: the slice's [difficulty] tag decides, so the boss controls cost on the DRAFT card
 thinking: medium
 # The group's single writer. Serialised by the scheduler, so no write conflicts.
 prompt: |

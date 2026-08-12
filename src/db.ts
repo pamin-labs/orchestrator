@@ -234,6 +234,13 @@ const MIGRATIONS: string[] = [
   ALTER TABLE agent ADD COLUMN token TEXT;
   CREATE UNIQUE INDEX agent_token ON agent (token) WHERE token IS NOT NULL;
   `,
+
+  // 003 — hash of the session's stable prompt half.
+  //
+  // If the role prompt, model, tool whitelist or lessons list changes, the
+  // cached prefix is dead. Recording the hash lets the executor rotate the
+  // session instead of silently paying full price on every remaining turn.
+  `ALTER TABLE agent ADD COLUMN stable_hash TEXT;`,
 ];
 
 export type DB = Database;

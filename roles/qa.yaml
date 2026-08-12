@@ -1,6 +1,6 @@
 name: qa
 clearance: L1
-tier: normal
+# no tier: reviewing a hard slice needs the model that wrote it
 thinking: medium
 # Slice-level review. Deliberately cannot read the whole repo.
 prompt: |
