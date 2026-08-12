@@ -97,7 +97,7 @@ const USAGE = `orch <command>
   lease log <id> [--grep RE]
   mail <target> --intent ask|request|inform|note|decision [--severity S] [--in-reply-to N] <body>
   journal add --kind decision|journal|retro|risk|fact [--file P ...] [--slice N]   # body on stdin
-  task list | claim <id> | done <id> [--claim JSON]
+  task list | claim <id> | done <id> [--claim JSON]      # or pipe the claim on stdin
   status <one line>
   git -- <args...>`;
 
@@ -162,9 +162,19 @@ export async function main(argv: string[]): Promise<number> {
       } else if (sub === "claim") {
         r = await call("POST", "/orch/task/claim", { task_id: Number(args[2]) });
       } else if (sub === "done") {
+        // Agents reach for a heredoc as naturally as for a flag, so accept the
+        // claim on stdin too. The id stays required — silently completing "task
+        // NaN" is how a claim ends up attached to nothing.
+        const id = Number(args[2]);
+        if (!Number.isInteger(id)) {
+          return usageError("task done needs a task id: orch task done <id> [--claim JSON]");
+        }
+        const inline = typeof flags.claim === "string" ? flags.claim : "";
+        const piped = inline ? "" : await stdin();
+        const raw = inline || piped;
         r = await call("POST", "/orch/task/done", {
-          task_id: Number(args[2]),
-          claim: typeof flags.claim === "string" ? safeJson(flags.claim) : undefined,
+          task_id: id,
+          claim: raw.trim() ? safeJson(raw.trim()) : undefined,
         });
       } else return usageError(`unknown task subcommand ${sub}`);
       break;

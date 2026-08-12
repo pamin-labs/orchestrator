@@ -106,3 +106,18 @@ test("the orch contract is in the stable half — it is identical every turn", (
   expect(stable).toContain("orch lease");
   expect(stable).toContain("orch journal add");
 });
+
+test("changing the loaded tool set rotates the session", () => {
+  const base = buildStable(parts());
+  // `--tools` decides which definitions enter the prompt prefix, so it is part
+  // of the cached half — unlike allowedTools, which only gates permission.
+  const fewer = buildStable({ ...parts(), tools: ["Bash"] });
+  expect(fewer.hash).not.toBe(base.hash);
+  expect(needsRotation(base.hash, fewer)).toBe(true);
+});
+
+test("the loaded tool set defaults to exactly what the whitelist implies", () => {
+  const s = buildStable(parts());
+  // `Bash(orch *)` needs Bash loaded; nothing else should be paid for.
+  expect(s.tools.sort()).toEqual(["Bash", "Edit", "Read"]);
+});

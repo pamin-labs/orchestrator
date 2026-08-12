@@ -109,8 +109,22 @@ export function buildArgv(spec: TurnSpec): string[] {
     s.settingsPath,
     "--permission-mode",
     "acceptEdits",
+    // Exclude user-level settings. Measured: inheriting the boss's global
+    // CLAUDE.md, plugins and skills pushed a trivial haiku turn to ~195k cached
+    // input tokens. Agents should follow their role prompt, not the boss's
+    // personal setup.
+    "--setting-sources",
+    "project,local",
+    "--strict-mcp-config",
     "--append-system-prompt",
     s.systemAppend,
+    // `--allowedTools` gates permission; it does NOT trim the tool definitions
+    // injected into the prompt. Measured: the built-in set plus skills and slash
+    // commands is ~46k cached tokens of prefix on every turn. `--tools` picks
+    // the built-in set, and `--disable-slash-commands` drops the skill catalogue.
+    "--tools",
+    s.tools.join(","),
+    "--disable-slash-commands",
     "--allowedTools",
     ...s.allowedTools,
   ];
