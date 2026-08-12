@@ -297,7 +297,12 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
   }
 
   ctx.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = ?", [grpId]);
-  ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "auditor", audit: grpId } });
+  // grp_id null on purpose: hiring the Auditor into the group it audits would
+  // make it review its own reasoning, and `orch audit` rightly refuses that.
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: null,
+    payload: { role: "auditor", audit: grpId, audit_branch: grp.branch, audit_group: grp.name },
+  });
   ctx.sched.tick();
 }
 
