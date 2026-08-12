@@ -502,3 +502,23 @@ test("a group that already declared its paths is not asked again", async () => {
     .get(grp_id)!;
   expect((JSON.parse(boundary.payload_json).boundary as any[]).map((g) => g.id)).toEqual([grp_id]);
 });
+
+test("the snapshot carries the boss's original words alongside the card", async () => {
+  const { app, db } = harness();
+  const idea = "greet 现在只支持英文，加一个可选的语言参数";
+  const r = await post(app, "/api/ideas", { project_id: 1, text: idea });
+  const { grp_id } = (await r.json()) as { grp_id: number };
+
+  const s = (await (await get(app, "/api/state")).json()) as any;
+  // The 20 seconds on the card are the only guard against a well-formed plan
+  // aimed at the wrong thing, and that comparison needs the original next to it.
+  expect(s.ideas.find((i: any) => i.grpId === grp_id)?.body).toBe(idea);
+
+  // The first thing the boss said, not the latest — later messages are feedback.
+  db.run(
+    "INSERT INTO event (grp_id, author, kind, body, at) VALUES (?, 'boss', 'boss_say', 'and also make it fast', 999)",
+    [grp_id],
+  );
+  const s2 = (await (await get(app, "/api/state")).json()) as any;
+  expect(s2.ideas.find((i: any) => i.grpId === grp_id)?.body).toBe(idea);
+});
