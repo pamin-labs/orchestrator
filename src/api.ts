@@ -844,6 +844,16 @@ export function snapshot(ctx: Ctx) {
          GROUP BY n.grp_id HAVING n.at = max(n.at)`,
       )
       .all(),
+    // What the boss originally said, verbatim. Those 20 seconds on the card are
+    // the only guard against a plan that is well-formed but aimed at the wrong
+    // thing, and that comparison is impossible without the original next to it.
+    ideas: db
+      .query(
+        `SELECT grp_id AS grpId, body FROM event
+         WHERE kind = 'boss_say' AND grp_id IS NOT NULL
+         GROUP BY grp_id HAVING seq = min(seq)`,
+      )
+      .all(),
     // Recently answered by a stand-in, so the boss can take one back. Without a
     // visible undo, delegated answers are a bet nobody would take.
     answered: db

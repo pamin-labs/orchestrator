@@ -214,8 +214,12 @@ function draftHtml(g) {
   // The card the Dispatcher filed, editable in place. Showing an empty box and
   // asking for approval would be asking the boss to approve something unseen.
   const filed = (state.draftCards ?? []).find((c) => c.grpId === g.id)?.body ?? "";
+  const idea = (state.ideas ?? []).find((i) => i.grpId === g.id)?.body ?? "";
   const rows = Math.max(6, filed.split("\n").length + 1);
-  return `<div class="empty">${filed ? "Dispatcher 交的卡，20 秒看完。改了再批也行。" : "等 Dispatcher 交卡…"}</div>
+  // Your own words next to the plan: the only thing that makes "is this aimed at
+  // what I asked for" a 20-second question rather than a re-read.
+  return `${idea ? `<div class="cost">你说的：${esc(idea)}</div>` : ""}
+    <div class="empty">${filed ? "Dispatcher 交的卡，20 秒看完。改了再批也行。" : "等 Dispatcher 交卡…"}</div>
     <textarea id="card-${g.id}" rows="${rows}" placeholder="目标 : …
 不做 : …
 验收 : …
