@@ -450,8 +450,46 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
   const unread = readUnread(ctx, agent, job.grp_id);
   if (unread) delta.unread = unread;
 
+  // A payload key nobody renders means the agent is woken with no instruction —
+  // it happened twice (a mailed message, then a boundary request) and both times
+  // the agent improvised something reasonable-looking and did not do the job.
+  const unhandled = Object.keys(payload).filter((k) => !PAYLOAD_KEYS.has(k));
+  if (unhandled.length) {
+    ctx.bus.emit({
+      grpId: job.grp_id,
+      author: "orchestrator",
+      kind: "state_change",
+      body: `job ${job.id} carried payload keys nothing renders: ${unhandled.join(", ")}`,
+      meta: { unhandled, job: job.id },
+    });
+  }
+
   return delta;
 }
+
+/**
+ * Payload keys the delta builder knows about.
+ *
+ * Anything else is a bug at the enqueue site, and a silent one: the turn still
+ * runs, the agent still answers, and the work simply does not happen.
+ */
+const PAYLOAD_KEYS = new Set([
+  "role",
+  "idea",
+  "respec",
+  "rejection",
+  "rotate",
+  "mail",
+  "escalation",
+  "boundary",
+  "audit",
+  "audit_branch",
+  "audit_group",
+  "review",
+  "project_id",
+  "onboarding",
+  "lease_id",
+]);
 
 /** Channel delta since this agent's cursor, then advance it. */
 function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null): string | null {

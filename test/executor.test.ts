@@ -310,3 +310,29 @@ test("QA is handed the slice id and the exact command to file its verdict", asyn
   expect(specs[0]!.prompt).toContain("slice_id 1");
   expect(specs[0]!.prompt).toContain("orch review 1 --verdict");
 });
+
+test("a payload key nothing renders is reported instead of silently ignored", async () => {
+  const { db, sched } = harness(async () => ok());
+  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer", cutBoundary: 7 } });
+  await sched.drain();
+
+  const warn = db
+    .query<{ body: string }, []>("SELECT body FROM event WHERE body LIKE '%nothing renders%'")
+    .get();
+  // This happened twice for real — a mailed message and a boundary request — and
+  // both times the agent was woken with no instruction, improvised something
+  // plausible, and did not do the job.
+  expect(warn?.body).toContain("cutBoundary");
+});
+
+test("the keys that are rendered do not trigger the warning", async () => {
+  const { db, sched } = harness(async () => ok());
+  sched.enqueue("agent_turn", {
+    grp_id: 1,
+    payload: { role: "engineer", rejection: "fix this", rotate: true },
+  });
+  await sched.drain();
+  expect(
+    db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE body LIKE '%nothing renders%'").get()!.c,
+  ).toBe(0);
+});
