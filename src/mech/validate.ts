@@ -213,10 +213,15 @@ export function checkSplit(slices: DraftSlice[]): string | null {
           `so they are one deliverable, not two. Merge them.`
         );
       }
-      // One acceptance test containing the other means finishing the larger slice
-      // finishes the smaller: they cannot be accepted independently.
+      // One acceptance criterion containing the other means finishing the larger
+      // slice finishes the smaller: they cannot be accepted independently.
+      //
+      // Except when the shorter one is a bare gate assertion. Two genuinely
+      // independent slices can both require "bun test 全绿", and refusing that
+      // would block a correct card — a false positive here stops the boss's whole
+      // flow, which is worse than missing an overlap.
       const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-      if (short.length >= 8 && long.includes(short)) {
+      if (short.length >= 8 && long.includes(short) && !GENERIC_GATE.test(short)) {
         return (
           `slice ${i + 1} and slice ${j + 1} have nested acceptance criteria, so one is finished ` +
           `by finishing the other. Split them by what could ship alone, or merge them.`
@@ -237,6 +242,10 @@ export function checkSplit(slices: DraftSlice[]): string | null {
   }
   return null;
 }
+
+/** "the suite passes" and friends: true of every slice, so never evidence of overlap. */
+const GENERIC_GATE =
+  /^(bun|npm|pnpm|yarn|cargo|go|pytest|dotnet|make)?(test|tests|check|build|lint|typecheck)?(全绿|绿|通过|pass|passes|passing|ok|green|全部通过)?$/i;
 
 const DIFFICULTIES = new Set(["trivial", "normal", "hard"]);
 

@@ -132,3 +132,33 @@ test("a single-slice card is never blamed for a bad split", () => {
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.error).toContain("3-5");
 });
+
+test("two slices may both require the suite to pass", () => {
+  // A false positive here blocks a correct card, and "the tests pass" is true of
+  // every slice — so it is never evidence that two slices overlap.
+  const card = `目标 : x
+不做 : y
+验收 : bun test 全绿
+验收 : 无回归
+切片 : zh 支持 [normal] — bun test 全绿
+切片 : locale 自动探测 [normal] — bun test 全绿且能从 env 读出 zh
+切片 : 文档 [trivial] — README 写明用法
+风险 : 无
+反对 : 无`;
+  expect(validateDraftCard(card).ok).toBe(true);
+});
+
+test("a genuinely nested criterion is still caught", () => {
+  const card = `目标 : x
+不做 : y
+验收 : a
+验收 : b
+切片 : 加 lang 参数 [normal] — greet("x","zh") 返回你好 x
+切片 : 顺便再做点 [normal] — greet("x","zh") 返回你好 x 并且 greet("x") 不变
+切片 : 文档 [trivial] — README 写明用法
+风险 : 无
+反对 : 无`;
+  const r = validateDraftCard(card);
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toContain("nested acceptance");
+});
