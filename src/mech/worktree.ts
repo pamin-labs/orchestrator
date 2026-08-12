@@ -121,6 +121,52 @@ export async function checkpoint(
   return sha.code === 0 ? sha.out.trim() : null;
 }
 
+export interface SquashResult {
+  /** Commits folded away. 0 means nothing was done, and `reason` says why. */
+  squashed: number;
+  reason: string;
+}
+
+/**
+ * Fold the turn checkpoints into one commit before the PR.
+ *
+ * Every turn leaves a `wip:` commit, so a three-slice feature arrives as a
+ * dozen commits all called "wip: engineer turn" — unreviewable, and the
+ * opposite of the linear history the merge queue wants.
+ *
+ * Only an all-`wip:` range is squashed. An agent that wrote real commit
+ * messages said something worth keeping, and flattening that would destroy
+ * information to satisfy a rule about noise.
+ */
+export async function squashWip(
+  git: GitRunner,
+  repoPath: string,
+  worktree: string,
+  message: string,
+  baseRef?: string,
+): Promise<SquashResult> {
+  const base = baseRef ?? (await defaultBase(git, repoPath));
+  const mb = await git(repoPath, ["merge-base", base, "HEAD"], worktree);
+  if (mb.code !== 0 || !mb.out.trim()) return { squashed: 0, reason: `no merge base with ${base}` };
+  const from = mb.out.trim();
+
+  const log = await git(repoPath, ["log", "--format=%s", `${from}..HEAD`], worktree);
+  if (log.code !== 0) return { squashed: 0, reason: "could not read the branch log" };
+  const subjects = log.out.trim().split("\n").filter(Boolean);
+  if (subjects.length < 2) return { squashed: 0, reason: "nothing to squash" };
+  const real = subjects.filter((s) => !s.startsWith("wip:"));
+  if (real.length) {
+    return { squashed: 0, reason: `left alone: ${real.length} commit(s) have real messages` };
+  }
+
+  // --soft keeps the tree exactly as it is; only the history collapses.
+  const reset = await git(repoPath, ["reset", "--soft", from], worktree);
+  if (reset.code !== 0) return { squashed: 0, reason: reset.out.split("\n").slice(-2).join(" ") };
+  const commit = await git(repoPath, ["commit", "-q", "--no-verify", "-m", message], worktree);
+  if (commit.code !== 0) return { squashed: 0, reason: commit.out.split("\n").slice(-2).join(" ") };
+  return { squashed: subjects.length, reason: `${subjects.length} wip commits -> 1` };
+}
+
 /** Discard everything after `sha` — intercept L3's "interrupt and roll back". */
 export async function rollbackTo(
   git: GitRunner,

@@ -1,4 +1,5 @@
 import type { Ctx } from "../api.ts";
+import { squashWip } from "./worktree.ts";
 
 /**
  * The PR as a feedback channel.
@@ -46,6 +47,16 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     .get(grpId);
   if (!grp?.worktree || !grp.branch) return { error: "group has no worktree or branch" };
   if (grp.pr_number) return { number: grp.pr_number };
+
+  // Every turn left a `wip:` commit behind. Squash before pushing, or the PR is
+  // a dozen commits all called "wip: engineer turn".
+  const sq = await squashWip(git, input.repo, grp.worktree, `${input.title}\n\n${input.body}`);
+  ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "commit",
+    body: sq.squashed ? `squashed ${sq.reason}` : `no squash (${sq.reason})`,
+  });
 
   // Nothing else in the system pushes a group's branch, and `gh pr create` will
   // not do it for you outside a TTY — it aborts with "you must first push the

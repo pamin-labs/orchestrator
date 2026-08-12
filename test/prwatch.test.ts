@@ -81,8 +81,12 @@ test("the branch is pushed under the lock before gh is asked to open a PR", asyn
     body: "b",
   });
   expect(r).toEqual({ number: 9 });
-  expect(calls[0]).toBe("git(/tmp/p) push -u origin orch/g1");
-  expect(calls[1]).toBe("gh pr create");
+  const push = calls.indexOf("git(/tmp/p) push -u origin orch/g1");
+  const create = calls.indexOf("gh pr create");
+  expect(push).toBeGreaterThan(-1);
+  // Order, not position: the squash runs before the push and adds git calls.
+  expect(push).toBeLessThan(create);
+  expect(calls.indexOf("git(/tmp/p) log --format=%s main..HEAD")).toBeLessThan(push);
 });
 
 test("a push that fails names the branch, and no PR is attempted", async () => {
