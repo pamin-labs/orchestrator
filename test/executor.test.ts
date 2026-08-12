@@ -296,3 +296,17 @@ test("a mailed message travels with the job, not via the channel cursor", async 
   expect(specs[0]!.prompt).toContain("objection to this split?");
   expect(specs[0]!.prompt).toContain("orch mail dispatcher");
 });
+
+test("QA is handed the slice id and the exact command to file its verdict", async () => {
+  const { db, sched, specs } = harness(async () => ok());
+  db.run(
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 1, 'S1', 'greet zh works', 'trivial', 'qa', 0)",
+  );
+  sched.enqueue("agent_turn", { grp_id: 1, slice_id: 1, payload: { role: "qa", review: 1 } });
+  await sched.drain();
+
+  // Giving an agent S1 when the verb takes a database id is the same mistake as
+  // the task-id one: an identifier it cannot use.
+  expect(specs[0]!.prompt).toContain("slice_id 1");
+  expect(specs[0]!.prompt).toContain("orch review 1 --verdict");
+});
