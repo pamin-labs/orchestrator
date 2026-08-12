@@ -124,3 +124,20 @@ test("rollback discards a turn's work — this is intercept L3", async () => {
   expect(existsSync(join(wt.worktree, "untracked.txt"))).toBe(false);
   expect(existsSync(join(wt.worktree, "a.txt"))).toBe(true);
 });
+
+test("changedSince sees uncommitted work — reconcile runs before any commit", async () => {
+  const dir = await repo();
+  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const base = (await checkpoint(git, dir, wt.worktree, "start"))!;
+
+  // Exactly the state reconcile sees: the turn wrote files and marked the task
+  // done, and nothing has been committed yet.
+  writeFileSync(join(wt.worktree, "a.txt"), "changed\n"); // tracked, modified
+  writeFileSync(join(wt.worktree, "new.txt"), "added\n"); // untracked
+
+  const changed = await changedSince(git, dir, wt.worktree, base);
+  // Comparing base..HEAD instead would return nothing here, which made every
+  // first attempt fail reconcile spuriously.
+  expect(changed.sort()).toEqual(["a.txt", "new.txt"]);
+});

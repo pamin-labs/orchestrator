@@ -83,7 +83,8 @@ Use Bash. Every command blocks and returns its result on stdout.
   orch lease log <id> [--grep RE]      # full log, stays out of your context
   orch mail <target> --intent ask|request|inform|note|decision "<body>"
   orch journal add --kind decision|journal|retro|risk -   # body on stdin, max 6 lines
-  orch task list|claim|done
+  orch task list                       # id + status + title, one per line
+  orch task claim <id> / done <id>     # the NUMERIC id from \`task list\`
   orch review <slice_id> --verdict pass|fail --note "…"   # QA files its verdict
   orch audit <group_id> --verdict pass|fail --note "…"    # Auditor files its verdict
   orch answer <esc_id> --answer "…" [--ref <note_id>]     # answer a question routed to you

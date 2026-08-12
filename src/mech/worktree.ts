@@ -132,14 +132,28 @@ export async function rollbackTo(
   await git(repoPath, ["clean", "-fd"], worktree);
 }
 
-/** Files changed since a checkpoint — the reconcile input, and free narration. */
+/**
+ * Files changed since a checkpoint — the reconcile input, and free narration.
+ *
+ * Compares the *working tree* against the sha, not `sha..HEAD`. Reconcile runs
+ * the moment a task is marked done, while the turn's work is still uncommitted:
+ * comparing commits made every first attempt look like it had changed nothing,
+ * and it only "passed" on the retry because the next turn's checkpoint had
+ * quietly committed the previous turn's work.
+ */
 export async function changedSince(
   git: GitRunner,
   repoPath: string,
   worktree: string,
   sha: string,
 ): Promise<string[]> {
-  const r = await git(repoPath, ["diff", "--name-only", `${sha}..HEAD`], worktree);
-  if (r.code !== 0) return [];
-  return r.out.split("\n").map((l) => l.trim()).filter(Boolean);
+  const [tracked, untracked] = await Promise.all([
+    git(repoPath, ["diff", "--name-only", sha], worktree),
+    git(repoPath, ["ls-files", "--others", "--exclude-standard"], worktree),
+  ]);
+  const lines = [
+    ...(tracked.code === 0 ? tracked.out.split("\n") : []),
+    ...(untracked.code === 0 ? untracked.out.split("\n") : []),
+  ];
+  return [...new Set(lines.map((l) => l.trim()).filter(Boolean))];
 }

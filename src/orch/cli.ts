@@ -164,14 +164,21 @@ export async function main(argv: string[]): Promise<number> {
       if (sub === "list" || sub === undefined) {
         r = await call("GET", `/orch/task?grp=${process.env.ORCH_GRP_ID ?? ""}`);
       } else if (sub === "claim") {
-        r = await call("POST", "/orch/task/claim", { task_id: Number(args[2]) });
+        const id = Number(args[2]);
+        if (!Number.isInteger(id)) {
+          return usageError("task claim needs the numeric id from `orch task list`, not the title");
+        }
+        r = await call("POST", "/orch/task/claim", { task_id: id });
       } else if (sub === "done") {
         // Agents reach for a heredoc as naturally as for a flag, so accept the
         // claim on stdin too. The id stays required — silently completing "task
         // NaN" is how a claim ends up attached to nothing.
         const id = Number(args[2]);
         if (!Number.isInteger(id)) {
-          return usageError("task done needs a task id: orch task done <id> [--claim JSON]");
+          return usageError(
+            "task done needs the numeric id from `orch task list`, not the title: " +
+              "orch task done <id> [--claim JSON]",
+          );
         }
         const inline = typeof flags.claim === "string" ? flags.claim : "";
         const piped = inline ? "" : await stdin();
