@@ -167,15 +167,25 @@ export async function squashWip(
   return { squashed: subjects.length, reason: `${subjects.length} wip commits -> 1` };
 }
 
-/** Discard everything after `sha` — intercept L3's "interrupt and roll back". */
+/**
+ * Discard everything after `sha` — intercept L3's "interrupt and roll back".
+ *
+ * Returns whether it worked. A rollback that quietly fails is worse than one
+ * that errors: the boss reads "rolled back to abc123" and believes the state
+ * was restored.
+ */
 export async function rollbackTo(
   git: GitRunner,
   repoPath: string,
   worktree: string,
   sha: string,
-): Promise<void> {
-  await git(repoPath, ["reset", "--hard", sha], worktree);
+): Promise<{ ok: boolean; error?: string }> {
+  const reset = await git(repoPath, ["reset", "--hard", sha], worktree);
+  if (reset.code !== 0) {
+    return { ok: false, error: reset.out.split("\n").slice(-2).join(" ").trim() };
+  }
   await git(repoPath, ["clean", "-fd"], worktree);
+  return { ok: true };
 }
 
 /**

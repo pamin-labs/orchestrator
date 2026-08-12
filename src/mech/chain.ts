@@ -245,8 +245,18 @@ export async function revoke(
           .get(grp.project_id)?.repo_path
       : undefined;
     if (repo && grp?.worktree) {
-      await rollbackTo(deps.git, repo, grp.worktree, esc.checkpoint_sha);
-      rolledBackTo = esc.checkpoint_sha;
+      const back = await rollbackTo(deps.git, repo, grp.worktree, esc.checkpoint_sha);
+      if (back.ok) rolledBackTo = esc.checkpoint_sha;
+      else {
+        ctx.bus.emit({
+          grpId: esc.grp_id,
+          author: "orchestrator",
+          kind: "escalation",
+          intent: "inform",
+          severity: "advisory",
+          body: `answer revoked, but the rollback to ${esc.checkpoint_sha.slice(0, 8)} failed: ${back.error}`,
+        });
+      }
     }
   }
   ctx.bus.emit({
