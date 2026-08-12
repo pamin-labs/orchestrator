@@ -66,8 +66,10 @@
 ```sql
 -- 项目与组
 project(id, name, repo_path, remote, config_json)
-grp(id, project_id, name, branch, worktree, status, budget_tokens, spent_tokens, channel_id)
+grp(id, project_id, name, branch, worktree, status, owns_json, budget_tokens, spent_tokens, spent_usd)
   -- status: DRAFT | RUNNING | PAUSING | PAUSED | PARKED | PR_OPEN | DISSOLVED
+  -- no channel_id: `channel.grp_id` is the only link, a reverse pointer would be
+  --   a second source of truth for the same edge
 
 -- agent 身份持久，session 一次性
 agent(id, project_id, grp_id, role, model, clearance, session_id, session_tokens, cwd, activity, state)
