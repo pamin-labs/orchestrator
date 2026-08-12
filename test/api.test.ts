@@ -558,3 +558,23 @@ test("a refused approval puts the Architect back on the boundary", async () => {
     .get(grp_id)!;
   expect(JSON.parse(queued.payload_json).boundary.length).toBeGreaterThan(0);
 });
+
+test("the boundary request quotes each group's own requirement", async () => {
+  const { app, db } = harness();
+  // The pre-existing group's idea has to be recoverable, or the Architect cannot
+  // tell the groups apart — observed live, it gave one group the other's files.
+  db.run(
+    "INSERT INTO event (grp_id, author, kind, body, at) VALUES (1, 'boss', 'boss_say', 'greet 加中文支持', 1)",
+  );
+  const r = await post(app, "/api/ideas", { project_id: 1, text: "farewell: bye(name) 返回 goodbye X" });
+  const { grp_id } = (await r.json()) as { grp_id: number };
+
+  const job = db
+    .query<{ payload_json: string }, [number]>(
+      "SELECT payload_json FROM job WHERE grp_id = ? AND payload_json LIKE '%architect%'",
+    )
+    .get(grp_id)!;
+  const boundary = JSON.parse(job.payload_json).boundary as Array<{ id: number; idea: string }>;
+  expect(boundary.find((g) => g.id === 1)?.idea).toContain("greet");
+  expect(boundary.find((g) => g.id === grp_id)?.idea).toContain("bye");
+});

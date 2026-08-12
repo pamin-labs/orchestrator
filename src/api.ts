@@ -95,6 +95,17 @@ export function agentOf(ctx: Ctx, req: Request): Caller | null {
 }
 
 /** A fresh token for a newly hired agent. */
+/** What the boss first asked for, for this group. */
+function firstIdea(ctx: Ctx, grpId: number): string {
+  return (
+    ctx.db
+      .query<{ body: string }, [number]>(
+        "SELECT body FROM event WHERE grp_id = ? AND kind = 'boss_say' ORDER BY seq LIMIT 1",
+      )
+      .get(grpId)?.body ?? ""
+  );
+}
+
 export function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
@@ -939,8 +950,10 @@ const postIdea: Handler = async (ctx, req) => {
     // group beside a declared one is the exact situation the rule exists to
     // prevent, reached from the other direction.
     const needBoundary = [
-      { id: grp.id, name },
-      ...others.filter((o) => parseOwns(o.owns_json).length === 0).map((o) => ({ id: o.id, name: o.name })),
+      { id: grp.id, name, idea: b.text },
+      ...others
+        .filter((o) => parseOwns(o.owns_json).length === 0)
+        .map((o) => ({ id: o.id, name: o.name, idea: firstIdea(ctx, o.id) })),
     ];
     ctx.sched.enqueue("agent_turn", {
       grp_id: grp.id,
@@ -1018,7 +1031,10 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
       ctx.sched.enqueue("agent_turn", {
         grp_id: grpId,
         priority: 7,
-        payload: { role: "architect", boundary: undeclared },
+        payload: {
+          role: "architect",
+          boundary: undeclared.map((g) => ({ ...g, idea: firstIdea(ctx, g.id) })),
+        },
       });
       ctx.sched.tick();
     }

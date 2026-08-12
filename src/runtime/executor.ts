@@ -376,15 +376,23 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
   }
   if (payload.boundary) {
     const groups = Array.isArray(payload.boundary)
-      ? (payload.boundary as Array<{ id: number; name: string }>)
-      : [{ id: Number(payload.boundary), name: String(payload.boundary) }];
+      ? (payload.boundary as Array<{ id: number; name: string; idea?: string }>)
+      : [{ id: Number(payload.boundary), name: String(payload.boundary), idea: undefined }];
     delta.card =
       `This project now has more than one live group, so every one of them needs a path ` +
-      `boundary before work is planned inside it. Cut them now:\n` +
-      groups.map((g) => `  orch owns ${g.id} --path "<glob>" --path "<glob>"   # ${g.name}`).join("\n") +
-      `\n\nOverlapping groups cannot run in parallel, so make them disjoint. Shared files ` +
-      `(manifests, lockfiles, schemas, CI config) belong to no group — leave them out.` +
-      (payload.idea ? `\n\nThe new group's requirement: ${payload.idea}` : "");
+      `boundary before work is planned inside it. Cut all of them now — each group's own ` +
+      `requirement is quoted so you can tell them apart:\n\n` +
+      groups
+        .map(
+          (g) =>
+            `${g.name} (group ${g.id}) wants: ${g.idea || "(no requirement recorded)"}\n` +
+            `  orch owns ${g.id} --path "<glob>" --path "<glob>"`,
+        )
+        .join("\n\n") +
+      `\n\nGive each group the paths ITS OWN requirement needs — a group told to add a new ` +
+      `file needs a directory or a glob, not a list of files that already exist. Overlapping ` +
+      `groups cannot run in parallel, so make them disjoint. Shared files (manifests, ` +
+      `lockfiles, schemas, CI config) belong to no group — leave them out.`;
   }
   if (payload.audit) {
     const gid = Number(payload.audit);
