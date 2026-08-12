@@ -208,13 +208,22 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   mkdirSync(logDir, { recursive: true });
 
   // Which CLI runs a role is configuration, not a fork in the orchestrator.
+  // An empty prompt is rejected outright by `claude -p`, and an agent woken with
+  // nothing to read is a bug upstream — but crashing the turn hides it, so say
+  // what happened instead.
+  const prompt =
+    assemble(stable, delta).prompt.trim() ||
+    "You were woken with nothing new to read. Check `orch task list` and " +
+      "`orch ctx query` for your current situation, and if there is genuinely " +
+      "nothing to do, say so in one line and stop.";
+
   const run = deps.runTurn ?? (role.runtime === "codex" ? runCodexTurn : runTurn);
   let result: TurnResult;
   try {
     result = await run(
       {
         stable,
-        prompt: assemble(stable, delta).prompt,
+        prompt,
         cwd,
         resumeSessionId: rotate || !agent.session_id ? undefined : sessionId,
         newSessionId: rotate || !agent.session_id ? sessionId : undefined,
@@ -342,6 +351,17 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
         `\`orch answer ${esc.id} --abstain --why "…"\`. Abstaining is the right move if you are ` +
         `not sure — a guess becomes a premise the whole group then reasons from.`;
     }
+  }
+  if (payload.mail) {
+    const m = payload.mail as Record<string, unknown>;
+    const grpNote = m.from_group ? ` (group ${m.from_group})` : "";
+    delta.card =
+      `${m.from}${grpNote} sent you a "${m.intent}":\n${m.body}\n\n` +
+      (m.intent === "ask"
+        ? "Reply with `orch mail " +
+          String(m.from) +
+          ' --intent inform "…"`. If it needs a decision above your level, pass it up.'
+        : "");
   }
   if (payload.idea) delta.card = `The boss wants: ${payload.idea}`;
   if (payload.respec) delta.rejection = `The boss sent the DRAFT back: ${payload.respec}`;
