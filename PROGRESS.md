@@ -8,7 +8,7 @@
 
 ## 当前里程碑
 
-**M2 — 安全边界与两级 review**（未开始）
+**M3 — Intercept 与看门狗**（未开始）
 
 ## 已完成且已验证
 
@@ -43,15 +43,26 @@
 - **`docs/decisions/001`** —— 沙盒只有 deny 语义（`allowWrite` 无法在 `denyWrite` 里开口子）；不加 `denyWrite` 时写 cwd 之外是允许的；`allowUnixSockets` 无效；`allowAllUnixSockets: true` 会连带打开 `/var/run/docker.sock`（一行逃逸）；`excludedCommands` 会让**整条命令行**脱离沙盒。结论：**localhost TCP + 每 agent token**，`failIfUnavailable: true` 必须开（每种配错都是静默失效）。
 - **`docs/decisions/002`** —— `--allowedTools` 只管权限，不裁 tool 定义。加上 `--tools` + `--disable-slash-commands` + `--setting-sources project,local` 后，同一任务前缀 46k → 17.6k tokens、成本 $0.117 → $0.059。
 
-## 下一步（M2，按依赖排）
+### M2 — 安全边界与两级 review ✅（163 checks 绿）
 
-1. [ ] **切片级 review 流水线**：`orch task done` 触发 `self-review` → `gate` → `QA`，任一层不过就打回。`slice.gates_json` 已有字段，执行器里还没有 `gate` / `reconcile` 分支（现在是 no-op）。
-2. [ ] **`src/mech/gate.ts`** —— deterministic gate：build / test / lint / typecheck / secrets 扫描，走 lease 模板，退出码说话。
-3. [ ] **`src/mech/reconcile.ts`** —— `task.claim_json` 声称 vs `git diff` 真实改动对账，对不上打回并计重试。
-4. [ ] **打回重做开新 session**（不 fork 原 session），只带验收标准 + gate 失败行 + reviewer 指摘 + 当前 diff。
-5. [ ] **不可代答硬清单**（六条）在 `orch` 层拦死。
-6. [ ] **session 轮换的主触发改成「切片完成」**（现在只有 stable-hash 变化和 60% token 兜底）。
-7. [ ] `test/qa-tools.test.ts` —— QA 的 allowedTools 不含无约束 Read/Grep（`allowedToolsFor` 已经这么做了，缺一条断言）。
+| 机制 | 文件 | 要点 |
+|---|---|---|
+| 切片级 review | `src/mech/review.ts` | `self-review`（写方 turn 内）→ `reconcile` → `gate` → `QA` → 你查收。两层确定性在前，别让模型去判断「声称是假的」或「测试都编译不过」的活 |
+| deterministic gate | `src/mech/gate.ts` | 项目 config 里声明 gate 资源名；**没配 gate 算失败不算放行**；第一个失败就停 |
+| 对账 | `src/mech/reconcile.ts` | 按 **slice.base_sha** 比，不按 branch 比（否则第二个切片继承前面的 diff，检查就没意义了） |
+| QA 判决 | `orch review <slice> --verdict pass\|fail` | 判决是**值不是散文** —— 把 fail 读成 pass 正是这套流水线要防的那个错 |
+| 打回 | `sendBack()` | 一律开新 session，只带验收标准 + 失败行 + 当前 diff；超 `gateRetries` 升级为 blocker 并说明「大概率是验收标准写错了，不是代码」 |
+| session 轮换 | `handToBoss()` | **主触发是切片完成**（最便宜的交接点），token 上限只是兜底 |
+| PR 级 review | `runPrReview()` + `roles/auditor.yaml` | 你验收完最后一个切片才启动（agent 触发不了）；**没写 retro 不许收尾**；Auditor 在所有开发组之外，组检查是反的 |
+| 不可代答（git 那几条） | `reservedGitAction()` | push / merge / force / hard reset 全拒，且拒绝会发成 escalation —— 撞了静默的墙，agent 会去找绕路 |
+
+## 下一步（M3，按依赖排）
+
+1. [ ] **`src/mech/intercept.ts`** —— 三级：插队（入 event）/ 栅栏（停派发，等在飞 turn）/ 硬打断（kill `job.pid`）。硬打断两个按钮：**保留**（脏改动留着，下个 turn 告知）和**回滚**（`rollbackTo` 已经有了）。
+2. [ ] **`src/mech/watchdog.ts`** —— 6 条确定性规则（turn 超时 / 连续 3 turn 零写入 / 5 turn 反复改同一文件 / 同一 lease 连续 2 次失败且 diff 未变 → `env_suspect` / 预算 80%·100% / `PAUSED` 超时 → park）。用 `watchdog` job 定期跑，它已经绕过组并发槽（否则永远轮不到卡住的那个组）。
+3. [ ] **`src/mech/notify.ts`** —— 立刻 / 批处理两档 + 5m→15m→1h 递增退避去重；macOS 通知走 `osascript`，ntfy 一行配置。
+4. [ ] **park / 唤醒** —— 撤销 pending job + 退休 session + 释放槽；唤醒时 `rebaseOntoBase`。
+5. [ ] web 上加「暂停 / 打断并保留 / 打断并回滚」三个按钮（现在只有暂停/继续/封存）。
 
 ## 已知偏离 PLAN.md 的地方
 
