@@ -7,6 +7,7 @@ import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { createWorktree, type GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
+import { abstain, answer as chainAnswer, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -30,6 +31,8 @@ export interface Ctx {
   auditVerdict?: (grpId: number, pass: boolean, note: string) => void;
   /** Wired by the server: a watchdog finding worth telling the boss about. */
   onFinding?: (rule: string, severity: string, body: string, grpId: number | null) => void;
+  /** Wired by the server: a question that reached the top of the answer chain. */
+  notifyBoss?: (escId: number, question: string, severity: string) => void;
   config: { language: string; difficultyModel: Record<string, string>; workRoot: string };
 }
 
@@ -208,6 +211,26 @@ const postAskBoss: Handler = async (ctx, req) => {
     )
     .get(a.grp_id, a.id, severity, b.question)!;
 
+  // The commit the question was asked at, so a stand-in's answer can be undone.
+  if (ctx.git && a.grp_id) {
+    const grp = ctx.db
+      .query<{ worktree: string | null; project_id: number }, [number]>(
+        "SELECT worktree, project_id FROM grp WHERE id = ?",
+      )
+      .get(a.grp_id);
+    const repo = grp
+      ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(grp.project_id)
+          ?.repo_path
+      : undefined;
+    if (repo && grp?.worktree) {
+      const head = await ctx.git(repo, ["rev-parse", "HEAD"], grp.worktree);
+      if (head.code === 0) {
+        ctx.db.run("UPDATE escalation SET checkpoint_sha = ? WHERE id = ?", [head.out.trim(), row.id]);
+      }
+    }
+  }
+  ctx.db.run("UPDATE escalation SET chain_state = ? WHERE id = ?", [entryPoint(b.question), row.id]);
+
   ctx.db.run("UPDATE agent SET state = 'blocked' WHERE id = ?", [a.id]);
   // A blocker is the one intent that stops the whole group: the answer changes
   // the premise everyone else is reasoning from.
@@ -223,6 +246,8 @@ const postAskBoss: Handler = async (ctx, req) => {
     body: b.question,
     meta: { escalation_id: row.id },
   });
+
+  route({ ctx, git: ctx.git, notifyBoss: ctx.notifyBoss }, row.id);
 
   const answer = await new Promise<string>((resolve) => {
     ctx.waiters.set(`escalation:${row.id}`, resolve);
@@ -276,6 +301,43 @@ const getLeaseLog: Handler = async (ctx, req, params) => {
       .slice(0, 200)
       .join("\n"),
   );
+};
+
+const postAnswer2: Handler = async (ctx, req) => {
+  const b = await body<{ escalation_id: number; answer?: string; abstain?: boolean; why?: string; ref?: number }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  const deps = { ctx, git: ctx.git, notifyBoss: ctx.notifyBoss };
+
+  if (b.abstain) {
+    // Abstaining is the expected move when a level is unsure: a guess made on
+    // the boss's behalf becomes a premise the whole group reasons from.
+    abstain(deps, b.escalation_id, a.role, b.why ?? "");
+    return text("passed up");
+  }
+  if (!b.answer?.trim()) return bad("an answer needs text, or pass --abstain");
+  const r = chainAnswer(deps, {
+    escId: b.escalation_id,
+    by: a.role,
+    answer: b.answer,
+    refNoteId: b.ref,
+  });
+  return r.ok ? text("ok") : bad(r.error);
+};
+
+const postTriage: Handler = async (ctx, req) => {
+  const b = await body<{ group_id: number; as: string; note?: string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  if (a.role !== "cos") return bad(`${a.role} does not triage the boss's feedback`);
+  if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
+  triage({ ctx, git: ctx.git }, b.group_id, b.as as Triage, b.note ?? "");
+  return text("ok");
+};
+
+const postRevoke: Handler = async (ctx, _req, params) => {
+  const out = await revoke({ ctx, git: ctx.git }, Number(params.id));
+  return json(out);
 };
 
 const postAudit: Handler = async (ctx, req) => {
@@ -560,6 +622,16 @@ export function snapshot(ctx: Ctx) {
       .all(),
     tasks: db.query("SELECT id, grp_id, slice_id, title, status FROM task").all(),
     channels: db.query("SELECT id, project_id, grp_id, kind, status FROM channel").all(),
+    // Recently answered by a stand-in, so the boss can take one back. Without a
+    // visible undo, delegated answers are a bet nobody would take.
+    answered: db
+      .query(
+        `SELECT id, grp_id, question, answer, answered_by, ref_note_id, answered_at
+         FROM escalation
+         WHERE chain_state = 'answered' AND answered_by IS NOT NULL AND answered_by != 'boss'
+         ORDER BY answered_at DESC LIMIT 10`,
+      )
+      .all(),
     escalations: db
       .query(
         `SELECT e.id, e.grp_id, e.severity, e.question, e.chain_state, e.answered_by, e.answer,
@@ -583,30 +655,10 @@ const postAnswer: Handler = async (ctx, req, params) => {
     .get(id);
   if (!esc) return text("no such escalation", 404);
 
-  ctx.db.run(
-    `UPDATE escalation SET answer = ?, answered_by = ?, chain_state = 'answered',
-     answered_at = unixepoch() * 1000 WHERE id = ?`,
-    [b.answer, b.answered_by ?? "boss", id],
-  );
-  ctx.bus.emit({
-    grpId: esc.grp_id,
-    author: b.answered_by ?? "boss",
-    kind: "say",
-    intent: "inform",
-    body: b.answer,
-    meta: { in_reply_to_escalation: id },
-  });
-  if (esc.severity === "blocker" && esc.grp_id) {
-    ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ? AND status IN ('PAUSED','PAUSING')", [
-      esc.grp_id,
-    ]);
-  }
-
-  const w = ctx.waiters.get(`escalation:${id}`);
-  ctx.waiters.delete(`escalation:${id}`);
-  w?.(b.answer);
-  ctx.sched.tick();
-  return text("ok");
+  // The boss answers through the same path a stand-in would, so unblocking the
+  // caller and un-pausing the group cannot drift between the two.
+  const r = chainAnswer({ ctx, git: ctx.git }, { escId: id, by: b.answered_by ?? "boss", answer: b.answer });
+  return r.ok ? text("ok") : bad(r.error);
 };
 
 const postIdea: Handler = async (ctx, req) => {
@@ -833,6 +885,8 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/task\/done$/, postTaskDone],
   ["POST", /^\/orch\/review$/, postReview],
   ["POST", /^\/orch\/audit$/, postAudit],
+  ["POST", /^\/orch\/answer$/, postAnswer2],
+  ["POST", /^\/orch\/triage$/, postTriage],
 
   ["GET", /^\/api\/state$/, getState],
   ["GET", /^\/api\/stream$/, getStream],
@@ -842,6 +896,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt)$/, postGroupControl],
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/answer$/, postAnswer],
+  ["POST", /^\/api\/escalations\/(?<id>\d+)\/revoke$/, postRevoke],
 ];
 
 export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {

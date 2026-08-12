@@ -100,6 +100,8 @@ const USAGE = `orch <command>
   task list | claim <id> | done <id> [--claim JSON]      # or pipe the claim on stdin
   review <slice_id> --verdict pass|fail [--note "…"]     # QA only
   audit <group_id> --verdict pass|fail [--note "…"]      # Auditor only
+  answer <esc_id> --answer "…" [--ref <note_id>] | --abstain [--why "…"]
+  triage <group_id> --as patch|respec|reject --note "…"  # CoS only
   status <one line>
   git -- <args...>`;
 
@@ -201,6 +203,39 @@ export async function main(argv: string[]): Promise<number> {
       }
       const note = typeof flags.note === "string" ? flags.note : args.slice(2).join(" ");
       r = await call("POST", "/orch/audit", { group_id: id, verdict: flags.verdict, note });
+      break;
+    }
+    case "answer": {
+      const id = Number(sub);
+      if (!Number.isInteger(id)) return usageError("answer needs an escalation id");
+      if (flags.abstain) {
+        r = await call("POST", "/orch/answer", {
+          escalation_id: id,
+          abstain: true,
+          why: typeof flags.why === "string" ? flags.why : "",
+        });
+        break;
+      }
+      const a = typeof flags.answer === "string" ? flags.answer : args.slice(2).join(" ");
+      if (!a) return usageError("answer needs --answer \"…\" or --abstain");
+      r = await call("POST", "/orch/answer", {
+        escalation_id: id,
+        answer: a,
+        ref: flags.ref ? Number(flags.ref) : undefined,
+      });
+      break;
+    }
+    case "triage": {
+      const id = Number(sub);
+      if (!Number.isInteger(id)) return usageError("triage needs a group id");
+      if (!["patch", "respec", "reject"].includes(String(flags.as))) {
+        return usageError("triage needs --as patch|respec|reject");
+      }
+      r = await call("POST", "/orch/triage", {
+        group_id: id,
+        as: flags.as,
+        note: typeof flags.note === "string" ? flags.note : args.slice(2).join(" "),
+      });
       break;
     }
     case "status": {

@@ -90,6 +90,14 @@ export function start(overrides: Partial<Config> = {}): Started {
   ctx.onFinding = (rule, severity, body, grpId) => {
     void notifier.push({ key: `${rule}:${grpId ?? 0}`, tier: tierFor(rule, severity), body, url });
   };
+  ctx.notifyBoss = (escId, question, severity) => {
+    void notifier.push({
+      key: `escalation:${escId}`,
+      tier: tierFor("blocker", severity),
+      body: question.slice(0, 300),
+      url,
+    });
+  };
 
   process.env.ORCH_BIN_DIR = installOrchShim(cfg.dataDir);
 
