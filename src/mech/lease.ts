@@ -234,3 +234,39 @@ export function digestOutput(
 
   return { exitCode, errorLines, tail, truncated, text: parts.join("\n") };
 }
+
+export interface RunOutcome {
+  exitCode: number;
+  digest: LeaseDigest;
+  logPath?: string;
+}
+
+/**
+ * Run a resolved resource. Shared by `orch lease` and by the deterministic gate,
+ * so both get the same three-part digest and the same off-context log.
+ *
+ * No shell: argv straight to spawn, which is what makes an arg's shell
+ * metacharacters inert rather than filtered.
+ */
+export async function runResource(
+  def: ResourceDef,
+  args: Record<string, unknown>,
+  opts: { cwd?: string; logPath?: string } = {},
+): Promise<RunOutcome | Invalid> {
+  const resolved = resolveLease(def, args);
+  if (!resolved.ok) return resolved;
+
+  const proc = Bun.spawn(resolved.argv, {
+    cwd: opts.cwd ?? resolved.cwd ?? process.cwd(),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [so, se] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const exitCode = await proc.exited;
+  const output = so + se;
+  if (opts.logPath) await Bun.write(opts.logPath, output);
+  return { exitCode, digest: digestOutput(exitCode, output, def.errorRegex, opts.logPath), logPath: opts.logPath };
+}
