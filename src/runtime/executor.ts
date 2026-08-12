@@ -9,6 +9,7 @@ import { assemble, buildStable, needsRotation, type Delta } from "../prompt/asse
 import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
 import { digestOutput, resolveLease, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
+import { handToBoss, handToQa, runDeterministicReview, sendBack } from "../mech/review.ts";
 import { runTurn, type TurnResult } from "./claude.ts";
 
 /**
@@ -48,9 +49,11 @@ export function makeExecutor(deps: ExecDeps): Executor {
         return runAgentTurn(deps, job);
       case "lease":
         return runLease(deps, job);
+      case "gate":
+        return runGateJob(deps, job);
       default:
-        // watchdog / notify / digest / gate / reconcile land in M3-M5. Doing
-        // nothing is correct for now; failing would poison the queue.
+        // watchdog / notify / digest land in M3. Doing nothing is correct for
+        // now; failing would poison the queue.
         return;
     }
   };
@@ -152,6 +155,12 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     grp?.worktree && project
       ? await checkpoint(git, project.repo_path, grp.worktree, `${agent.role} turn`)
       : null;
+
+  // Reconcile compares against what changed *in this slice*, so the baseline is
+  // whatever HEAD was when the slice's first turn began.
+  if (job.slice_id && before) {
+    ctx.db.run("UPDATE slice SET base_sha = coalesce(base_sha, ?) WHERE id = ?", [before, job.slice_id]);
+  }
 
   ctx.db.run("UPDATE agent SET state = 'running', session_id = ? WHERE id = ?", [sessionId, agent.id]);
 
@@ -463,6 +472,27 @@ function overTokenBudget(agent: AgentRow, cfg: Config): boolean {
   // is a clean semantic boundary and makes the handoff cheap.
   const ceiling = 200_000 * cfg.sessionRotateFraction;
   return agent.session_tokens > ceiling;
+}
+
+/**
+ * The deterministic half of slice review: reconcile, then gate. Neither consults
+ * a model, so a send-back can always be explained exactly.
+ */
+async function runGateJob(deps: ExecDeps, job: Job): Promise<void> {
+  if (!job.slice_id) return;
+  const rd = { ctx: deps.ctx, cfg: deps.cfg, git: deps.git };
+  const out = await runDeterministicReview(rd, job.slice_id);
+  if (out.pass) handToQa(rd, job.slice_id);
+  else sendBack(rd, job.slice_id, out.feedback, "gate");
+}
+
+/** Called by the server when QA files a verdict. */
+export function makeReviewVerdict(deps: ExecDeps) {
+  return (sliceId: number, pass: boolean, note: string): void => {
+    const rd = { ctx: deps.ctx, cfg: deps.cfg, git: deps.git };
+    if (pass) handToBoss(rd, sliceId);
+    else sendBack(rd, sliceId, note || "QA rejected the slice", "qa");
+  };
 }
 
 // -------------------------------------------------------------------- leases

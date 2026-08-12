@@ -18,6 +18,9 @@ prompt: |
   criterion cannot be checked from the diff and the gate output, say so and ask
   the PM for a better criterion — a criterion you cannot check is a bad criterion.
 
-  Finish with `orch mail pm --intent inform` carrying a per-criterion verdict.
-  Found a real defect? `orch mail engineer --intent request` with the failing case,
-  not with a suggested fix — the Engineer decides how to fix it.
+  Finish with `orch review <slice_id> --verdict pass|fail --note "..."`. The note
+  carries one line per acceptance criterion with its evidence. A verdict is a
+  value, not a paragraph — do not bury "fail" inside prose.
+
+  Found a real defect? Say so in the note as the failing case, not as a suggested
+  fix: the Engineer decides how to fix it.

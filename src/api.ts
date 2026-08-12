@@ -23,6 +23,8 @@ export interface Ctx {
   waiters: Map<string, (value: string) => void>;
   /** Runs git under the repo write lock. Absent in unit tests that need no repo. */
   git?: GitRunner;
+  /** Wired by the server: advances the review pipeline on a QA verdict. */
+  reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
   config: { language: string; difficultyModel: Record<string, string>; workRoot: string };
 }
 
@@ -271,10 +273,48 @@ const getLeaseLog: Handler = async (ctx, req, params) => {
   );
 };
 
+/**
+ * Actions no agent may take, whatever its clearance and whoever asked it to.
+ *
+ * Written as a list in code rather than a line in a prompt, because a prompt
+ * rule is a suggestion by turn 20. These four are the git-shaped members of the
+ * six reserved actions in PLAN.md §7; secrets are handled by the sandbox and
+ * spending has no mechanism to abuse yet.
+ */
+export function reservedGitAction(argv: string[]): string | null {
+  const sub = argv.find((a) => !a.startsWith("-"));
+  if (sub === "push") return "pushing is the boss's call — open a PR instead";
+  if (sub === "merge" || sub === "rebase") {
+    const ontoMain = argv.some((a) => /^(origin\/)?(main|master)$/.test(a));
+    if (sub === "merge") return "merging is reserved for the boss";
+    if (ontoMain) return null; // rebasing your own branch onto main is fine
+  }
+  if (argv.some((a) => a === "--force" || a === "-f" || a === "--force-with-lease")) {
+    return "force is never allowed: it destroys history someone else may hold";
+  }
+  if (sub === "reset" && argv.includes("--hard")) {
+    return "hard reset discards work — ask the boss to interrupt-and-roll-back instead";
+  }
+  return null;
+}
+
 const postGit: Handler = async (ctx, req) => {
   const b = await body<{ argv: string[] }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
+
+  const reserved = reservedGitAction(b.argv ?? []);
+  if (reserved) {
+    ctx.bus.emit({
+      grpId: a.grp_id,
+      author: a.role,
+      kind: "escalation",
+      intent: "ask",
+      severity: "advisory",
+      body: `blocked: git ${(b.argv ?? []).join(" ")} — ${reserved}`,
+    });
+    return bad(`refused: ${reserved}`);
+  }
   const grp = a.grp_id
     ? ctx.db
         .query<{ worktree: string | null; project_id: number }, [number]>(
@@ -377,11 +417,14 @@ const postTaskDone: Handler = async (ctx, req) => {
   const b = await body<{ task_id: number; claim?: unknown }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
-  ctx.db.run("UPDATE task SET status = 'done', claim_json = ? WHERE id = ? AND owner_agent_id = ?", [
-    JSON.stringify(b.claim ?? {}),
-    b.task_id,
-    a.id,
-  ]);
+  // Unowned is fine: a group has one writer, so requiring an explicit claim only
+  // adds a step that gets forgotten. Someone else's task is not.
+  const done = ctx.db.run(
+    `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
+     WHERE id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?)`,
+    [JSON.stringify(b.claim ?? {}), a.id, b.task_id, a.id],
+  );
+  if (done.changes === 0) return bad(`task ${b.task_id} is not yours, or does not exist`);
   ctx.bus.emit({
     grpId: a.grp_id,
     author: a.role,
@@ -389,6 +432,58 @@ const postTaskDone: Handler = async (ctx, req) => {
     body: `task ${b.task_id} done`,
     meta: { task_id: b.task_id, claim: b.claim ?? {} },
   });
+
+  // A slice enters review only when nothing is left open in it. Reviewing a
+  // half-finished slice burns the reviewer on work that is about to change.
+  const slice = ctx.db
+    .query<{ slice_id: number | null }, [number]>("SELECT slice_id FROM task WHERE id = ?")
+    .get(b.task_id);
+  if (slice?.slice_id) {
+    const open = ctx.db
+      .query<{ c: number }, [number]>(
+        "SELECT count(*) AS c FROM task WHERE slice_id = ? AND status != 'done'",
+      )
+      .get(slice.slice_id)!.c;
+    if (open === 0) {
+      ctx.db.run("UPDATE slice SET status = 'gate' WHERE id = ?", [slice.slice_id]);
+      ctx.sched.enqueue("gate", { grp_id: a.grp_id, slice_id: slice.slice_id });
+      ctx.sched.tick();
+    }
+  }
+  return text("ok");
+};
+
+/**
+ * QA's verdict, as a value rather than as prose.
+ *
+ * Parsing a review out of natural language means occasionally mis-reading a
+ * "fail" as a "pass", which is the one error this whole pipeline exists to
+ * prevent. So the verdict is an explicit verb.
+ */
+const postReview: Handler = async (ctx, req) => {
+  const b = await body<{ slice_id: number; verdict: string; note?: string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  if (a.role !== "qa" && a.role !== "auditor") return bad(`${a.role} does not file review verdicts`);
+  if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
+
+  const slice = ctx.db
+    .query<{ id: number; grp_id: number; seq: number }, [number]>(
+      "SELECT id, grp_id, seq FROM slice WHERE id = ?",
+    )
+    .get(b.slice_id);
+  if (!slice) return bad(`no slice ${b.slice_id}`);
+  if (slice.grp_id !== a.grp_id) return bad("that slice belongs to another group");
+
+  ctx.bus.emit({
+    grpId: slice.grp_id,
+    author: a.role,
+    kind: "gate_result",
+    intent: "decision",
+    body: `S${slice.seq} ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
+    meta: { slice_id: slice.id, verdict: b.verdict },
+  });
+  ctx.reviewVerdict?.(slice.id, b.verdict === "pass", b.note ?? "");
   return text("ok");
 };
 
@@ -684,6 +779,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/orch\/task$/, getTasks],
   ["POST", /^\/orch\/task\/claim$/, postTaskClaim],
   ["POST", /^\/orch\/task\/done$/, postTaskDone],
+  ["POST", /^\/orch\/review$/, postReview],
 
   ["GET", /^\/api\/state$/, getState],
   ["GET", /^\/api\/stream$/, getStream],

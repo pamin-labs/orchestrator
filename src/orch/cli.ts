@@ -98,6 +98,7 @@ const USAGE = `orch <command>
   mail <target> --intent ask|request|inform|note|decision [--severity S] [--in-reply-to N] <body>
   journal add --kind decision|journal|retro|risk|fact [--file P ...] [--slice N]   # body on stdin
   task list | claim <id> | done <id> [--claim JSON]      # or pipe the claim on stdin
+  review <slice_id> --verdict pass|fail [--note "…"]     # QA only
   status <one line>
   git -- <args...>`;
 
@@ -177,6 +178,18 @@ export async function main(argv: string[]): Promise<number> {
           claim: raw.trim() ? safeJson(raw.trim()) : undefined,
         });
       } else return usageError(`unknown task subcommand ${sub}`);
+      break;
+    }
+    case "review": {
+      // A verdict is a value, not prose: mis-reading a "fail" as a "pass" is the
+      // one error the whole review pipeline exists to prevent.
+      const id = Number(sub);
+      if (!Number.isInteger(id)) return usageError("review needs a slice id");
+      if (flags.verdict !== "pass" && flags.verdict !== "fail") {
+        return usageError("review needs --verdict pass|fail");
+      }
+      const note = typeof flags.note === "string" ? flags.note : args.slice(2).join(" ");
+      r = await call("POST", "/orch/review", { slice_id: id, verdict: flags.verdict, note });
       break;
     }
     case "status": {
