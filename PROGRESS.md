@@ -107,6 +107,10 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 - ✅ **写入约束递归**（`denyOutsideOwns`）：沿 owned 路径逐层拒绝兄弟，文件和目录都拒。`src/auth/**` 现在会拦住 `src/ui/`。
 - ✅ **切分质量有确定性防线了**（`checkSplit`）：验收标准重复 / 嵌套 / 纯「补测试」片，三种都拒。故意做窄，`legacy client 回归测试套件` 仍放行。
 - ✅ **写 retro 会自动恢复 PR 级 review**。之前是死路：PM 交了 retro 但没人再推一下，分支就停在「做完了、没审过」，得手动捅一下才动。
+- ✅ **PR 那步之前少了 push**。全仓库没有一处 push 组分支，而 `gh pr create` 在非交互下不会替你 push，它直接 abort。也就是说**在真 remote 上每个 PR 都会失败**，原因跟账号无关。现在 push 走 repo 写锁（多 worktree 共用一个 `.git`）。
+- ✅ **checkpoint 现在真的会 squash**。`checkpoint` 的注释一直写着 "Squashed before the PR"，但没人做 —— live 跑出来的分支是三条一模一样的 `wip: qa turn`。只有全是 `wip:` 的区间才压（`--soft`，工作树不动）；里面有真 commit message 就整段不碰 —— 为了整理噪音去销毁信息是划不来的。
+- ✅ **回滚失败会说出来**。`rollbackTo` 不看 git 退出码，两个调用方都照样报「rolled back to abc123」。「打断并回滚」只打断没回滚，会留下一棵你以为是干净的脏工作树 —— 两种状态里更糟的那个，而且看不见。
+- ✅ **切片下限从 3 降到 1**。prompt 里早就写着「真的不可分就交一片，凑三片更糟」，但校验器拒收 1-2 片 —— prompt 在骗它，模型只能凑。实测在一句话需求上，它把「切片 2、3 是为满足最少切片数补的相邻能力」当风险写在自己卡上，而补出来的那片会从 `$LANG` 推断语言、**改变现有调用方的输出**。`if` 和 prompt 说的话不一致时，模型听 `if`。
 
 ## 剩下的
 
