@@ -53,7 +53,19 @@ export interface State {
   mergeQueue: { projectId: number; grpId: number; name: string; branch: string | null; seq: number }[];
   archived: Archived[];
   limits: { maxGroups: number | null; leaseSlots: Record<string, number>; autoAdvance: boolean; autoAcceptTiers: string[] };
+  /** How much of each subscription window is gone. Percentages are 0-100, or absent. */
+  usage: Usage[];
   lastSeq: number;
+}
+export interface Usage {
+  runtime: string;
+  at: number;
+  status: string;
+  /** Unix seconds. The five-hour window's reset. */
+  resetsAt: number;
+  fiveHourPercent?: number;
+  weeklyPercent?: number;
+  weeklyResetsAt?: number;
 }
 export interface CostRow { label: string; tokens: number; usd: number }
 export interface Cost {
@@ -70,7 +82,7 @@ export interface Cost {
 const EMPTY: State = {
   projects: [], groups: [], slices: [], tasks: [], agents: [], escalations: [],
   draftCards: [], lateObjections: [], approvedBlocked: [], dropProposals: [],
-  ideas: [], answered: [], mergeQueue: [], archived: [],
+  ideas: [], answered: [], mergeQueue: [], archived: [], usage: [],
   limits: { maxGroups: null, leaseSlots: {}, autoAdvance: false, autoAcceptTiers: [] }, lastSeq: 0,
 };
 

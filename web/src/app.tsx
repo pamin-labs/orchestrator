@@ -6,6 +6,7 @@ import { AskHost } from "./ui/confirm";
 import { Switcher } from "./ui/switcher";
 import { STATUS_ZH } from "./lib/select";
 import { ThemeToggle } from "./ui/theme";
+import { UsageBar } from "./ui/usage";
 import { Tip, TipRoot } from "./ui/tooltip";
 import { Card, CardBody, CardTitle } from "./ui/card";
 import { Boundary } from "./ui/boundary";
@@ -205,6 +206,10 @@ export function App() {
         Total spend was there and belongs in 成本, where it can be attributed; a
         green "live" dot that is green all day teaches the eye to skip the corner
         it lives in, so connection state only appears when it is broken.
+
+        Subscription usage is the one addition that passes that test. It is not
+        spend — it is how much of tonight is left on each of the two accounts, and
+        it changes what the boss approves next. It stays grey until 80%.
       */}
       <header className="sticky top-0 z-10 flex items-center gap-4 border-b border-rule bg-rail px-6 py-1.5">
         <button
@@ -232,6 +237,7 @@ export function App() {
           </span>
         )}
         <span className="grow" />
+        <UsageBar usage={st.usage} />
         {live !== "live" && (
           <span className="flex items-center gap-1.5 rounded-md bg-sunk px-2 py-0.5 font-mono text-[0.6875rem] text-warn">
             <i className="breathe size-1.5 rounded-full bg-warn" />

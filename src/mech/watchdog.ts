@@ -5,6 +5,7 @@ import { interrupt, park, unpark } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
+import { pollClaudeUsage } from "./subusage.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
