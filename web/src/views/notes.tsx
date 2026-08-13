@@ -33,14 +33,14 @@ export interface Note {
   group: string | null;
 }
 
-const KINDS: [string, string, string][] = [
-  ["journal", "日志", "每个 turn 的产出：做了啥、为什么、风险。硬性 ≤6 行"],
-  ["decision", "决策", "定下来的事，后面的组会引用它"],
-  ["retro", "复盘", "解散前必写，不写不许解散 —— 系统唯一的长期记忆"],
-  ["lesson", "教训", "从 retro 归纳出来，注入后续组的 prompt。硬上限 20 条"],
-  ["onboarding", "入职包", "怎么 build、怎么测、已知坑。新 agent 第一个 turn 免费拿到"],
-  ["risk", "风险", "写下来的风险，不是猜的"],
-  ["fact", "老板说的", "你的原话，作为最高优先级 fact"],
+const KINDS: [string, string][] = [
+  ["journal", "日志"],
+  ["decision", "决策"],
+  ["retro", "复盘"],
+  ["lesson", "教训"],
+  ["onboarding", "入职包"],
+  ["risk", "风险"],
+  ["fact", "老板说的"],
 ];
 
 const ZH = new Map(KINDS.map(([k, zh]) => [k, zh]));
@@ -92,9 +92,11 @@ export function Notes({ projectId, grpId, compact, tab, onTab, onCount }: {
           </Tab>
         ))}
       </TabList>
-      {present.map(([k, zh, hint]) => (
+      {/* No hint line under the strip. 「每个 turn 的产出：做了啥、为什么、风险。硬性
+          ≤6 行」 sat above the journals themselves, which say all of that by being
+          journals — and it cost a row of height on every tab, every visit. */}
+      {present.map(([k]) => (
         <TabPanel key={k} value={k} className="flex min-h-0 flex-1 flex-col">
-          <Meta className="mb-1 block">{hint}</Meta>
           <Pane>
             <List notes={notes.filter((n) => n.kind === k)} size={12} />
           </Pane>

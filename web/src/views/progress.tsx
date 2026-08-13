@@ -284,7 +284,6 @@ function Done({ rows }: { rows: Archived[] }) {
   }
   return (
     <>
-      <Meta className="mb-1 block">已合入 main，session 全退休，事件和 journal 都留着</Meta>
       {page.map((a) => (
         <div
           key={a.id}
