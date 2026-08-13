@@ -11,6 +11,7 @@ import { BurnChart, SplitDonut } from "../ui/chart";
 import type { Agent, AgentCost, Cost, Frame, Slice, State } from "../lib/api";
 import { STATUS_ZH, owns } from "../lib/select";
 import { cn, K } from "../lib/utils";
+import { activityOf } from "../lib/activity";
 
 /**
  * Per PLAN.md §8: current slice, turn count, the live last line, model, clearance,
@@ -95,16 +96,6 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
 const DESK_ROW =
   "grid grid-cols-[11rem_minmax(0,1fr)_2.5rem_4rem] items-baseline gap-x-4 px-3 max-[52rem]:grid-cols-[9rem_minmax(0,1fr)_2.5rem]";
 
-/**
- * What the agent is doing, in the fewest words that are still true.
- *
- * The raw string is `command_execution: orch ctx query "…"`. The tool name is the
- * least interesting part — every row on this wall is a command — and it was eating
- * a third of the column before the part that says what is happening.
- */
-const activityOf = (a: Agent): string =>
-  (a.activity ?? a.state).replace(/^(command_execution|file_change|Bash|Read|Grep|Glob|Edit|Write):\s*/, "");
-
 function Desks({
   name, agents, slices, tail,
 }: {
@@ -148,11 +139,11 @@ function Desks({
         <div className="mb-1 rounded-md bg-sunk/40 py-2">
           {list.map((a) => {
             const sl = slices.find((s) => s.id === a.slice_id);
-            const doing = activityOf(a);
+            const [verb, detail] = activityOf(a);
             // The live tail is the same string as the activity often enough that
             // printing both made every row look like it stuttered.
             const t = tail.get(a.id);
-            const stream = t && !doing.includes(t.slice(-40)) ? t : null;
+            const stream = t && !detail.includes(t.slice(-40)) ? t : null;
             return (
               <div key={a.id} className={cn(DESK_ROW, "py-1.5")}>
                 {/* Clearance and the session count moved into this label: neither
@@ -175,7 +166,10 @@ function Desks({
                         <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">S{sl.seq}</span>
                       </Tip>
                     )}
-                    <span className="truncate font-mono text-[0.6875rem] text-ink-2">{doing}</span>
+                    {verb && <span className="shrink-0 text-[0.75rem] font-medium text-ink">{verb}</span>}
+                    <Tip label={a.activity ?? a.state}>
+                      <span className="truncate font-mono text-[0.6875rem] text-ink-3">{detail}</span>
+                    </Tip>
                   </span>
                   {stream && (
                     <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-ink-3">{stream.slice(-120)}</span>
@@ -346,7 +340,17 @@ export function CostView({ cost }: { cost: Cost | null }) {
         </Tip>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_17rem] gap-x-8 max-[64rem]:grid-cols-1 max-[64rem]:gap-y-6">
+      {/* `min-h-0` on the grid is not enough: grid rows default to `auto`, so the
+          row grows to its tallest child and the whole page overflows no matter what
+          the container was told. Pinning the row to `minmax(0,1fr)` is what lets
+          each column's own pane take the scrolling — the table and the charts
+          scroll independently, which is the point of putting them side by side. */}
+      <div
+        className={cn(
+          "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_17rem] grid-rows-[minmax(0,1fr)] gap-x-8",
+          "max-[64rem]:grid-cols-1 max-[64rem]:grid-rows-[minmax(0,1fr)_auto] max-[64rem]:gap-y-6",
+        )}
+      >
         {/* One axis at a time, chosen here. Three stacked sections meant the two
             short ones — three difficulties, two accounts — pushed the list that
             grows off the bottom, and you scrolled past a hundred requirements to
@@ -397,7 +401,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
           </TabPanel>
         </Tabs>
 
-        <aside className="min-w-0 self-start max-[64rem]:static lg:sticky lg:top-0">
+        <aside className="flex min-h-0 min-w-0 flex-col overflow-y-auto pr-1">
           <Rail title="烧得多快" note="近 24 小时，按小时">
             <BurnChart data={cost.byHour ?? []} />
           </Rail>
