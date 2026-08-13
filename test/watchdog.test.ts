@@ -692,6 +692,38 @@ test("a stale PR branch is told to rebase too, and the base comes from the remot
   expect(seen.some((a) => a[0] === "rev-parse" && a[1] === "origin/main")).toBe(true);
 });
 
+test("rule 15 checks defaultBase, not the primary checkout's own HEAD", async () => {
+  // The primary checkout can be on a different local sha than the branch the
+  // group should actually rebase onto (detached HEAD, a stale local main, or
+  // just mid-command). Comparing against that sha instead of defaultBase is
+  // what made the check unsatisfiable: the group rebases exactly what the
+  // rejection tells it to and the watchdog still disagrees next tick.
+  const h = harness();
+  h.db.run("UPDATE grp SET worktree = '/tmp/wt/g1' WHERE id = 1");
+  const baseSha = "def4560000000000000000000000000000000000";
+  const staleLocalHeadSha = "aaa1110000000000000000000000000000000000";
+  h.ctx.git = async (_repo, argv) => {
+    if (argv[0] === "remote") return { code: 0, out: "origin\n" };
+    if (argv[0] === "symbolic-ref") return { code: 1, out: "" };
+    if (argv[0] === "rev-parse" && argv[1] === "--verify") {
+      return argv[3] === "origin/main" ? { code: 0, out: "" } : { code: 1, out: "" };
+    }
+    if (argv[0] === "rev-parse" && argv[1] === "origin/main") return { code: 0, out: baseSha };
+    if (argv[0] === "rev-parse" && argv[1] === "HEAD") return { code: 0, out: staleLocalHeadSha };
+    // defaultBase (origin/main) is already an ancestor of the group's branch.
+    if (argv[0] === "merge-base") return { code: 0, out: "" };
+    return { code: 1, out: "" };
+  };
+  const deps = { ...h.deps, git: h.ctx.git! };
+
+  const f = await runWatchdog(deps);
+  expect(f.map((x) => x.rule)).not.toContain("base_moved");
+  const jobs = h.db
+    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn'")
+    .all();
+  expect(jobs.map((j) => JSON.parse(j.payload_json).role)).not.toContain("engineer");
+});
+
 test("turn logs are compressed after a day and dropped after two weeks", () => {
   // Ten requirements produced 123 MB of raw NDJSON — median 324 KB a turn, 3 MB at
   // the tail — because a transcript is mostly tool output written verbatim. Worth

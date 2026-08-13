@@ -612,8 +612,8 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     // somebody pushes from another machine, and nothing here ever fetched, so
     // that half was invisible.
     await refreshOrigin(deps, g.repo);
-    const base = await defaultBase(deps.git, g.repo);
-    const head = await deps.git(g.repo, ["rev-parse", base], g.repo);
+    const baseRef = await defaultBase(deps.git, g.repo);
+    const head = await deps.git(g.repo, ["rev-parse", baseRef], g.repo);
     if (head.code !== 0) continue;
     const sha = head.out.trim();
     if (!sha || sha === g.seen) continue;
@@ -621,6 +621,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     if (merged.code === 0) continue; // already on it
 
     ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [sha, now(), g.id]);
+    const fetchStep = baseRef.startsWith("origin/") ? "`orch git -- fetch origin main` then " : "";
     ctx.sched.enqueue("agent_turn", {
       grp_id: g.id,
       priority: 4,
@@ -629,7 +630,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
         conflict: true,
         rejection:
           `main moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
-          `\`orch git -- fetch origin main\` then \`orch git -- rebase origin/main\`, then carry on. ` +
+          `${fetchStep}\`orch git -- rebase ${baseRef}\`, then carry on. ` +
           `If main removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
           `with \`orch ask-boss\`; that reaches the Architect.`,
       },
