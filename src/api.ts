@@ -1535,6 +1535,37 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
 };
 
 /**
+ * Wind a group up without merging it: the boss decided it should not be done.
+ *
+ * No retro and no librarian turn — it never did any work, and demanding a retro
+ * for a dropped requirement teaches the agents that retros are paperwork. The
+ * worktree and every event stay: archiving must never mean deleting.
+ *
+ * `owns` is deliberately left alone. `canStart` only counts ACTIVE groups, so
+ * DISSOLVED already releases the paths, and blanking the column would erase what
+ * this group was allowed to touch from the record.
+ */
+export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
+  ctx.sched.cancelPending(grpId, "boss dropped it");
+  ctx.db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
+  ctx.db.run("UPDATE agent SET state = 'retired', session_id = NULL, token = NULL WHERE grp_id = ?", [grpId]);
+  ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [grpId]);
+  // Anything it had asked the boss dies with it, or the question outlives the
+  // requirement and sits in 待办 forever.
+  ctx.db.run(
+    `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
+     WHERE grp_id = ? AND answer IS NULL`,
+    [grpId],
+  );
+  ctx.bus.emit({
+    grpId,
+    author: "boss",
+    kind: "state_change",
+    body: say(ctx.config?.language, "group.dropped", { why: why ? `：${why}` : "" }),
+  });
+}
+
+/**
  * Wind a merged group up. One path, whether the boss said so or `gh` did.
  *
  * Dissolving is the most irreversible thing on the panel — the group leaves every
@@ -1668,6 +1699,22 @@ const postGroupControl: Handler = async (ctx, req, params) => {
         );
       }
       return json({ staleGroups: landGroup(ctx, grpId, "boss"), verified: state === "MERGED" });
+    }
+    case "drop": {
+      // 不做了. A requirement that turned out to be a duplicate, or that someone
+      // else already fixed, had no way off the board: 退回重拆 sends it back to the
+      // Dispatcher, which writes another card for work nobody wants. The paths it
+      // held stayed held, so a group waiting on them waited forever.
+      const b = await body<{ why?: string }>(req);
+      const g = ctx.db
+        .query<{ status: string; name: string }, [number]>("SELECT status, name FROM grp WHERE id = ?")
+        .get(grpId);
+      if (!g) return text("no such group", 404);
+      if (g.status === "DISSOLVED") return text("ok");
+      dropGroup(ctx, grpId, b.why ?? "");
+      // Its paths are free the moment it leaves ACTIVE, so anything the boss
+      // already approved behind it can start now.
+      return json({ started: await sweepApproved(ctx) });
     }
     case "wake":
       if (!ctx.git) return bad("no git runner");
@@ -2135,7 +2182,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/attach$/, postAttach],
   ["POST", /^\/api\/say$/, postSay],
   ["POST", /^\/api\/draft\/(?<id>\d+)\/(?<decision>approve|reject)$/, postDraftDecision],
-  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|landed|budget)$/, postGroupControl],
+  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|landed|budget|drop)$/, postGroupControl],
   ["GET", /^\/api\/slices\/(?<id>\d+)\/evidence$/, getEvidence],
   ["GET", /^\/api\/slices\/(?<id>\d+)\/gate\/(?<name>[\w.-]+)$/, getGateLog],
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],
