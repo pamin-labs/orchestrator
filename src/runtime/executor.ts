@@ -250,7 +250,9 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
         newSessionId: rotate || !agent.session_id ? sessionId : undefined,
         maxTurns: role.maxTurns ?? cfg.maxTurnsPerJob,
         timeoutMs: cfg.turnTimeoutMs,
-        logPath: join(logDir, `${job.id}.jsonl`),
+        images: imagePaths(prompt),
+        codexHome: provider.name === "codex" ? codexHome(cfg.dataDir) : undefined,
+        logPath,
         env: {
           ORCH_URL: process.env.ORCH_URL ?? `http://127.0.0.1:${cfg.port}`,
           ORCH_TOKEN: agent.token ?? "",

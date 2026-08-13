@@ -61,6 +61,71 @@ test("argv resumes a thread when there is one, and starts one otherwise", () => 
   expect(resumed[resumed.indexOf("-m") + 1]).toBe("gpt-5-codex");
 });
 
+test("argv keeps the agent reachable and the boss's own setup out", () => {
+  const argv = buildArgv({ stable, prompt: "p", cwd: "/tmp", images: ["/tmp/a.png"] });
+  // Measured on codex 0.147: read-only has no network at all, not even loopback,
+  // and `orch` is HTTP to 127.0.0.1 — read-only would make every codex agent mute.
+  expect(argv[argv.indexOf("-s") + 1]).toBe("workspace-write");
+  expect(argv).toContain("sandbox_workspace_write.network_access=true");
+  // config.toml is the boss's, not the agent's.
+  expect(argv).toContain("--ignore-user-config");
+  expect(argv).toContain("--ignore-rules");
+  expect(argv[argv.indexOf("-i") + 1]).toBe("/tmp/a.png");
+  // The key that used to be here does nothing in 0.147; passing it back would
+  // read as a sandbox that is not there.
+  expect(argv.some((a) => a.startsWith("sandbox_permissions"))).toBe(false);
+});
+
+test("effort travels as a config override", () => {
+  const withEffort = buildStable({
+    rolePrompt: "r",
+    model: "gpt-5.6-sol",
+    effort: "xhigh",
+    allowedTools: ["Bash(orch *)"],
+    settingsPath: "unused",
+    addDirs: [],
+  });
+  const argv = buildArgv({ stable: withEffort, prompt: "p", cwd: "/tmp" });
+  expect(argv).toContain('model_reasoning_effort="xhigh"');
+  // And it is in the hashed prefix, so raising it rotates the session instead of
+  // resuming one that was reasoning at another setting.
+  expect(withEffort.hash).not.toBe(stable.hash);
+});
+
+test("token_count is the one place a real quota percentage arrives", async () => {
+  const spawned = Bun.spawn;
+  // Verbatim from ~/.codex/sessions: 299 minutes is the 5h window, 10079 the week.
+  const quota = JSON.stringify({
+    type: "token_count",
+    info: null,
+    rate_limits: {
+      primary: { used_percent: 34.5, window_minutes: 299, resets_in_seconds: 17940 },
+      secondary: { used_percent: 12.25, window_minutes: 10079, resets_in_seconds: 604740 },
+    },
+  });
+  // @ts-expect-error swap in a fake child
+  Bun.spawn = fakeSpawn([...LINES, quota]);
+  try {
+    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp" });
+    expect(r.rateLimit?.fiveHourPercent).toBe(34.5);
+    expect(r.rateLimit?.weeklyPercent).toBe(12.25);
+    // "allowed" matters: handleRateLimit must not read a routine usage ping as a
+    // throttle and downgrade the agent's model.
+    expect(r.rateLimit?.status).toBe("allowed");
+  } finally {
+    Bun.spawn = spawned;
+  }
+});
+
+test("the log keeps the shape of a turn without its command output", () => {
+  const long = "x".repeat(5000);
+  const line = { type: "item.completed", item: { type: "command_execution", command: "bun test", aggregated_output: long } };
+  const out = trimItem(line as Record<string, unknown>) as typeof line;
+  expect(out.item.command).toBe("bun test");
+  expect(out.item.aggregated_output.length).toBeLessThan(500);
+  expect(out.item.aggregated_output).toContain("5000 chars omitted");
+});
+
 test("the non-JSON banner does not derail the parse", async () => {
   const spawned = Bun.spawn;
   // @ts-expect-error swap in a fake child
