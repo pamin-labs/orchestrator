@@ -39,11 +39,13 @@ leaseTimeoutMs: 10800000
 # so denying $HOME is how writes get confined (docs/decisions/001).
 workRoot: /tmp/orch/worktrees
 
-# 批准之后就别叫我：查收不再挡住下一片开工。
-# 代价：某一片方向错了，后面几片是在它基础上做的。退回时全组会停下并说明。
-autoAdvance: false
+# 批准之后就别叫我：查收不再挡住下一片开工。默认开 —— 「批了」就该买到一夜的活，
+# 关掉的话一个组做完一片就停到早上，等于放弃了这套系统存在的理由。
+# 代价说清楚：某一片方向错了，后面几片是在它基础上做的。你退回那一片时全组会停下并说明，
+# 而不是悄悄在已完成的工作底下改地基。
+autoAdvance: true
 
-# 三道闸（自查 / 跑测试 / QA）全过之后自动查收的难度档。
-# 加 "trivial" 就是「简单片不用等我看」；normal / hard 仍然等你。
-# 这一条把「白干的单位是一片」在 trivial 上放弃了，换整夜无人跑完。
-autoAcceptTiers: []
+# 四道闸（自评 / 对账 / 跑测试 / QA）全过之后自动查收的难度档。
+# 默认只有 trivial：前四层照跑，省掉的是第五层「你亲自看一眼」，而 trivial 正是那一眼
+# 最不值钱的档。normal / hard 仍然等你。
+autoAcceptTiers: ["trivial"]

@@ -572,6 +572,8 @@ orchestrator/
 | turn 超时 | 10 min（按 role 可配） |
 | park | `PAUSED` > 2h |
 | `DRAFT` | **阻塞，必须你批**，无自动放行。卡片 ≤12 行硬校验 |
+| `autoAdvance` | **默认开**。查收不再挡住下一片开工 —— 「批了」应该买到一夜的活。退回某一片时全组停下并说明 |
+| `autoAcceptTiers` | **默认 `["trivial"]`**。四层闸（自评/对账/gate/QA）照跑，省掉的是第五层「你亲自看一眼」，只在最不值钱的那档 |
 | 切片粒度 | 由 PM 定，orchestrator 只强制「每片必须可独立验收」 |
 | 难度 → model | `trivial` = haiku / `normal` = sonnet / `hard` = opus（可在 DRAFT 卡上直接改） |
 | 预算粒度 | 按 slice，不按组 |
