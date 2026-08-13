@@ -130,14 +130,44 @@ export class Notifier {
   }
 }
 
+/**
+ * Clicking a notification should open the page it is about.
+ *
+ * `osascript display notification` cannot carry a click action at all: the
+ * notification belongs to whatever app ran the script, so clicking it opens
+ * Script Editor. Measured, that looked like the tool pointing the boss at a
+ * local folder. `terminal-notifier -open <url>` does the right thing, so use it
+ * when it is installed and fall back to osascript with the URL in the text.
+ */
+let clickable: boolean | null = null;
+function hasTerminalNotifier(): boolean {
+  if (clickable === null) {
+    try {
+      clickable = Bun.spawnSync(["terminal-notifier", "-help"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+    } catch {
+      clickable = false;
+    }
+  }
+  return clickable;
+}
+
 async function macNotify(title: string, body: string, url?: string, ntfyTopic?: string): Promise<void> {
   const text = url ? `${body}\n${url}` : body;
   try {
-    Bun.spawn([
-      "osascript",
-      "-e",
-      `display notification ${JSON.stringify(text.slice(0, 400))} with title ${JSON.stringify(title)}`,
-    ]);
+    if (url && hasTerminalNotifier()) {
+      Bun.spawn([
+        "terminal-notifier",
+        "-title", title,
+        "-message", body.slice(0, 400),
+        "-open", url,
+      ]);
+    } else {
+      Bun.spawn([
+        "osascript",
+        "-e",
+        `display notification ${JSON.stringify(text.slice(0, 400))} with title ${JSON.stringify(title)}`,
+      ]);
+    }
   } catch {
     // A missing notification must never take down the run that produced it.
   }
