@@ -609,6 +609,7 @@ test("main moving under a running group sends it to rebase, once per commit", as
   expect((await runWatchdog(deps)).map((x) => x.rule)).not.toContain("base_moved");
 });
 
+<<<<<<< HEAD
 test("work that is finished but has no PR is sent back through the branch review", async () => {
   // The branch review is enqueued from the last acceptance and from writing a
   // retro, and neither fires again after the Auditor sends the branch back. So a
@@ -667,6 +668,10 @@ test("a pending slice under an idle group is started rather than waited on", asy
   ).toBeGreaterThan(0);
 });
 
+||||||| parent of 2bd05a8 (wip: engineer turn)
+<<<<<<< HEAD
+=======
+>>>>>>> 2bd05a8 (wip: engineer turn)
 test("a stale PR branch is told to rebase too, and the base comes from the remote", async () => {
   // PR_OPEN used to be excluded, so the one branch that has to merge only learned
   // main had moved when GitHub called it CONFLICTING — the late half of the same
@@ -722,6 +727,7 @@ test("rule 15 checks defaultBase, not the primary checkout's own HEAD", async ()
     .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn'")
     .all();
   expect(jobs.map((j) => JSON.parse(j.payload_json).role)).not.toContain("engineer");
+<<<<<<< HEAD
 });
 
 test("turn logs are compressed after a day and dropped after two weeks", () => {
@@ -773,4 +779,8 @@ test("a burst of pushes costs one rebase turn, and never delays one", async () =
   sha = "cccc333333";
   await runWatchdog(deps);
   expect(turns()).toBe(2);
+||||||| parent of 2bd05a8 (wip: engineer turn)
+>>>>>>> 55ee05a (wip: engineer turn)
+=======
+>>>>>>> 2bd05a8 (wip: engineer turn)
 });
