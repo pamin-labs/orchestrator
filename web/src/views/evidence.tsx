@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
 import { Meta } from "../ui/bits";
-import { Card, CardFooter, CardHeader } from "../ui/card";
+import { Card, CardHeader } from "../ui/card";
+import { DiffView } from "../ui/diff";
 import { pull, type Evidence } from "../lib/api";
 import { cn } from "../lib/utils";
 
@@ -17,7 +18,6 @@ import { cn } from "../lib/utils";
  */
 export function EvidencePanel({ sliceId }: { sliceId: number }) {
   const [ev, setEv] = useState<Evidence | null>(null);
-  const [full, setFull] = useState(false);
 
   useEffect(() => {
     setEv(null);
@@ -26,10 +26,7 @@ export function EvidencePanel({ sliceId }: { sliceId: number }) {
 
   if (!ev) return <div className="py-2 text-[0.75rem] text-ink-3">读改动…</div>;
 
-  const files = ev.stat.split("\n").filter(Boolean);
-  const summary = files.at(-1)?.trim() ?? "";
-  const lines = ev.diff.split("\n");
-  const shown = full ? lines : lines.slice(0, 120);
+  const summary = ev.stat.split("\n").filter(Boolean).at(-1)?.trim() ?? "";
 
   return (
     <Card tone="sunk" className="mt-1.5">
@@ -70,36 +67,9 @@ export function EvidencePanel({ sliceId }: { sliceId: number }) {
           没有 diff 可读。这一片没有记下基线 commit，或者 worktree 已经清掉了。
         </div>
       ) : (
-        <>
-          <div className="max-h-[26rem] overflow-auto px-3.5 py-2">
-            <pre className="w-max min-w-full font-mono text-[0.6875rem] leading-[1.5]">
-              {shown.map((l, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    l.startsWith("+") && !l.startsWith("+++") && "text-ok",
-                    l.startsWith("-") && !l.startsWith("---") && "text-bad",
-                    l.startsWith("@@") && "text-accent",
-                    (l.startsWith("diff ") || l.startsWith("index ") || l.startsWith("+++") || l.startsWith("---")) &&
-                      "text-ink-3",
-                  )}
-                >
-                  {l || " "}
-                </div>
-              ))}
-            </pre>
-          </div>
-          {(lines.length > shown.length || ev.truncated) && (
-            <CardFooter>
-              {lines.length > shown.length && (
-                <Button variant="quiet" size="sm" onClick={() => setFull(true)}>
-                  还有 {lines.length - shown.length} 行
-                </Button>
-              )}
-              {ev.truncated && <Meta>太长，剩下的去 worktree 里看</Meta>}
-            </CardFooter>
-          )}
-        </>
+        <div className="max-h-[34rem] overflow-auto">
+          <DiffView diff={ev.diff} truncated={ev.truncated} />
+        </div>
       )}
     </Card>
   );

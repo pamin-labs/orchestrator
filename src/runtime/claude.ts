@@ -327,7 +327,21 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
  */
 const LOG_RESULT_CHARS = 400;
 
+const clipForLog = (v: unknown): unknown => {
+  if (typeof v !== "string" || v.length <= LOG_RESULT_CHARS) return v;
+  return `${v.slice(0, LOG_RESULT_CHARS)}… [${v.length} chars omitted]`;
+};
+
 export function trimForLog(line: any): any {
+  // `tool_use_result` is where the payload actually is: measured on a real turn,
+  // 90.2% of the file, against 0% for the `tool_result` block inside `content`.
+  // Trimming only the latter cut 17%, which is how a fix that looks right and is
+  // aimed at the wrong field reads in a size chart.
+  if (line?.tool_use_result && typeof line.tool_use_result === "object") {
+    const r: any = { ...line.tool_use_result };
+    for (const k of Object.keys(r)) r[k] = clipForLog(r[k]);
+    line = { ...line, tool_use_result: r };
+  }
   const content = line?.message?.content;
   if (!Array.isArray(content)) return line;
   const trimmed = content.map((c: any) => {
