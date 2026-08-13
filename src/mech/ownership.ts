@@ -98,11 +98,12 @@ export function claimsShared(owns: string[], shared: string[]): string[] {
  * A group that declared nothing owns nothing in particular and is not policed
  * here; that is the same reading denyOutsideOwns takes. Build outputs are exempt
  * for the same reason they are exempt there: the gate writes them on every run,
- * for every group, and it has to be able to produce the thing it then checks.
+ * for every group, and it has to be able to produce the thing it then checks. So
+ * are the files the orchestrator itself puts in the worktree.
  */
 export function outsideOwns(changed: string[], owns: string[]): string[] {
   if (!owns.length) return [];
-  const allowed = [...owns, ...BUILD_OUTPUTS];
+  const allowed = [...owns, ...BUILD_OUTPUTS, ...HARNESS_FILES];
   return changed.filter((p) => !allowed.some((glob) => covers(glob, p)));
 }
 
@@ -220,6 +221,17 @@ export function canStart(db: DB, grpId: number): StartCheck {
  * the gate then checks.
  */
 const BUILD_OUTPUTS = ["web/dist"];
+
+/**
+ * Written by the orchestrator into every worktree, not by the agent in it.
+ *
+ * AGENTS.md is the symlink that lets a codex turn read the project's CLAUDE.md.
+ * The reconcile exists to catch what an agent wrote outside its boundary, and this
+ * is ours — without the exemption it was reverted after every turn, recreated
+ * before the next one, and escalated to the boss each time. Observed live, once
+ * per turn, forever.
+ */
+const HARNESS_FILES = ["AGENTS.md"];
 
 export function denyOutsideOwns(
   worktree: string,
