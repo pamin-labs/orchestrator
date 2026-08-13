@@ -72,6 +72,8 @@ export interface Ctx {
     leaseSlots?: number;
     /** Same complaint this many times becomes a project rule (PLAN.md §7③). */
     feedbackSediment?: number;
+    /** Chars an `orch ctx query` answer may spend. Was a setting that changed nothing. */
+    ctxBudgetChars?: number;
   };
 }
 
@@ -1213,7 +1215,9 @@ const postCtxQuery: Handler = async (ctx, req) => {
       grpId: a.grp_id,
       projectId,
       question: b.question,
-      budget: b.limit ?? CTX_BUDGET_CHARS,
+      // From config, not the module default: `ctxBudgetChars` was a setting that
+      // read back as itself and changed nothing, because nobody ever passed it here.
+      budget: b.limit ?? ctx.config.ctxBudgetChars ?? CTX_BUDGET_CHARS,
     }),
   );
 };

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { loadConfig, loadRoles, modelFor, withAbsoluteDataDir } from "../src/config.ts";
@@ -100,4 +100,15 @@ test("unattended is the default: approved buys a night of work", () => {
   expect(cfg.autoAcceptTiers).toEqual(["trivial"]);
   expect(cfg.autoAcceptTiers).not.toContain("normal");
   expect(cfg.autoAcceptTiers).not.toContain("hard");
+});
+
+test("ctxBudgetChars actually reaches the thing it configures", () => {
+  // It was a setting that read back as itself and changed nothing: `orch ctx query`
+  // used the module default because nobody passed the config value in. A knob that
+  // does nothing is worse than no knob — it reads as tried.
+  const cfg = loadConfig("config/does-not-exist.yaml");
+  expect(cfg.ctxBudgetChars).toBeGreaterThan(0);
+  const wired = readFileSync("src/server.ts", "utf8");
+  expect(wired).toContain("ctxBudgetChars: cfg.ctxBudgetChars");
+  expect(readFileSync("src/api.ts", "utf8")).toContain("ctx.config.ctxBudgetChars");
 });
