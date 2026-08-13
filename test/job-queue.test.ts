@@ -255,7 +255,7 @@ test("a turn left running by a dead server is reclaimed, not left holding the sl
 
   const { reclaimOrphans } = await import("../src/scheduler.ts");
   // The pid belongs to nothing: the previous server exited mid-turn.
-  expect(reclaimOrphans(db, { alive: () => false })).toBe(1);
+  expect(reclaimOrphans(db, { alive: () => false })).toHaveLength(1);
 
   const j = db.query<{ error: string }, []>("SELECT error FROM job WHERE id = 1").get()!;
   expect(j.error).toContain("process 89992 is gone");
@@ -276,7 +276,7 @@ test("a live process is left alone", () => {
     [Date.now()],
   );
   const { reclaimOrphans } = require("../src/scheduler.ts");
-  expect(reclaimOrphans(db, { alive: () => true })).toBe(0);
+  expect(reclaimOrphans(db, { alive: () => true })).toHaveLength(0);
   expect(db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("running");
 });
 
@@ -289,5 +289,38 @@ test("a job with no pid, or one running impossibly long, is also an orphan", () 
   );
   const { reclaimOrphans } = require("../src/scheduler.ts");
   // Never recorded a pid, and still "running" long past any turn's limit.
-  expect(reclaimOrphans(db, { alive: () => true, maxAgeMs: 1000, now: () => 10_000_000 })).toBe(2);
+  expect(reclaimOrphans(db, { alive: () => true, maxAgeMs: 1000, now: () => 10_000_000 })).toHaveLength(2);
+});
+
+test("a restart resumes the turn it interrupted, but only once", async () => {
+  const db = openMemory();
+  seed(db, 1);
+  db.run(
+    `INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at)
+     VALUES (1, 1, 't', 'a', 'running', 0)`,
+  );
+  db.run(
+    `INSERT INTO job (kind, grp_id, slice_id, payload_json, state, pid, started_at, enqueued_at)
+     VALUES ('agent_turn', 1, 1, '{"role":"engineer"}', 'running', 89992, 0, 0)`,
+  );
+  // The timer re-adds these itself; resuming them would just double them up.
+  db.run("INSERT INTO job (kind, state, pid, started_at, enqueued_at) VALUES ('watchdog', 'running', 89992, 0, 0)");
+
+  const { reclaimOrphans, resumeReclaimed } = await import("../src/scheduler.ts");
+  const sched = new Scheduler(db, async () => {});
+  expect(resumeReclaimed(sched, reclaimOrphans(db, { alive: () => false }))).toBe(1);
+
+  const back = db
+    .query<{ kind: string; slice_id: number | null; payload_json: string }, []>(
+      "SELECT kind, slice_id, payload_json FROM job WHERE state = 'pending'",
+    )
+    .all();
+  expect(back).toHaveLength(1);
+  expect(back[0]!.slice_id).toBe(1);
+  expect(JSON.parse(back[0]!.payload_json).role).toBe("engineer");
+
+  // Second restart: a turn that takes the server down with it must not be
+  // resurrected forever.
+  db.run("UPDATE job SET state = 'running', pid = 89992, started_at = 0 WHERE state = 'pending'");
+  expect(resumeReclaimed(sched, reclaimOrphans(db, { alive: () => false }))).toBe(0);
 });

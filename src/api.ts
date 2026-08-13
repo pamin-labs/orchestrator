@@ -7,11 +7,12 @@ import type { Bus } from "./bus.ts";
 import type { Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
-import { createWorktree, type GitRunner } from "./mech/worktree.ts";
+import type { GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, parseOwns } from "./mech/ownership.ts";
-import { acceptSlice, startNextSlice } from "./mech/review.ts";
+import { acceptSlice } from "./mech/review.ts";
+import { startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
@@ -781,6 +782,10 @@ const postOwns: Handler = async (ctx, req) => {
     body: `owns ${b.paths.join(", ")}${check.ok ? "" : ` — still blocked: ${check.reason}`}`,
     meta: { paths: b.paths, ok: check.ok },
   });
+  // A re-cut can free a group other than the one it touched, so the whole project
+  // is swept. Without this the boss's approval sat waiting on a boundary that had
+  // already been drawn.
+  await sweepApproved(ctx);
   return check.ok ? text("ok") : bad(check.reason ?? "boundary still overlaps");
 };
 
@@ -1124,9 +1129,16 @@ export function snapshot(ctx: Ctx) {
     groups: db
       .query(
         `SELECT id, project_id, name, branch, worktree, status, owns_json, budget_tokens,
-                spent_tokens, spent_usd, pr_number FROM grp WHERE status != 'DISSOLVED'`,
+                spent_tokens, spent_usd, pr_number, approved_at FROM grp WHERE status != 'DISSOLVED'`,
       )
       .all(),
+    // Why an approved group has not started. The boss pressed the button; showing
+    // the same button again reads as "the click did nothing".
+    approvedBlocked: db
+      .query<{ id: number }, []>("SELECT id FROM grp WHERE status = 'DRAFT' AND approved_at IS NOT NULL")
+      .all()
+      .map((g) => ({ grpId: g.id, reason: canStart(db, g.id).reason ?? "" }))
+      .filter((b) => b.reason),
     slices: db
       .query(
         `SELECT id, grp_id, seq, title, accept_spec, difficulty, status, gates_json,
@@ -1427,7 +1439,14 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
     // still counted as a decision waiting on the boss, still showed the rejected
     // card, and 批准开工 still worked on it — one stray click approves the very
     // plan that was just sent back.
-    ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ? AND status = 'DRAFT'", [grpId]);
+    //
+    // Clearing approved_at as well: sending a plan back withdraws the approval, or
+    // the next card to reach DRAFT would start itself on the strength of a yes the
+    // boss said to a plan that no longer exists.
+    ctx.db.run(
+      "UPDATE grp SET status = 'PLANNING', approved_at = NULL WHERE id = ? AND status = 'DRAFT'",
+      [grpId],
+    );
     const why = withAttachments(b.reason ?? "respec", b.attachments);
     ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
     ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: why } });
@@ -1448,6 +1467,10 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
   if (card) {
     const v = validateDraftCard(card);
     if (!v.ok) return bad(v.error);
+    // Tasks reference slices and foreign keys are on, so dropping the slices while
+    // their tasks are still there is a constraint error — which is what a second
+    // approve always was, and the refusal below tells the boss to approve again.
+    ctx.db.run("DELETE FROM task WHERE slice_id IN (SELECT id FROM slice WHERE grp_id = ?)", [grpId]);
     ctx.db.run("DELETE FROM slice WHERE grp_id = ?", [grpId]);
     const ins = ctx.db.prepare(
       `INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at)
@@ -1466,11 +1489,18 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
   }
   // Boundaries before work. Two groups discovering at merge time that they were
   // both editing one file have already paid for the work twice.
+  //
+  // The slices above are written either way: without them there is nothing for the
+  // automatic start to run once the boundary clears, and an edited card would be
+  // lost between the two clicks.
   const start = canStart(ctx.db, grpId);
   if (!start.ok) {
-    // Refusing with no path forward leaves the boss holding an error. Put the
-    // Architect back on it — the boundary is its job, and it was observed cutting
-    // one group's paths and forgetting the other's.
+    // A refusal used to end here, and the click was gone: the group sat in DRAFT
+    // with nothing recording that the boss had said yes, and nobody re-ran it when
+    // the group holding the paths merged. One click has to be final.
+    ctx.db.run("UPDATE grp SET approved_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
+    // Put the Architect back on it — the boundary is its job, and it was observed
+    // cutting one group's paths and forgetting the other's.
     const undeclared = ctx.db
       .query<{ id: number; name: string }, [number]>(
         `SELECT id, name FROM grp
@@ -1494,59 +1524,14 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
       grpId,
       author: "orchestrator",
       kind: "state_change",
-      body: `cannot start yet: ${start.reason}${undeclared.length ? " — asked the Architect to cut it" : ""}`,
+      body: say(ctx.config?.language, "group.approve_held", { why: start.reason ?? "" }),
     });
-    return bad(
-      `cannot start: ${start.reason}` +
-        (undeclared.length ? ". The Architect has been asked to cut the boundary; approve again after that." : ""),
-    );
+    // 200, not 422: the boss did decide, and a red error toast says the opposite.
+    return text(say(ctx.config?.language, "group.approve_held", { why: start.reason ?? "" }));
   }
 
-  // Approval is where the group gets a place to work. The worktree lives under
-  // workRoot (outside $HOME) because the sandbox is deny-only: denying $HOME is
-  // how writes get confined at all.
-  const grp = ctx.db
-    .query<{ name: string; project_id: number; worktree: string | null }, [number]>(
-      "SELECT name, project_id, worktree FROM grp WHERE id = ?",
-    )
-    .get(grpId);
-  if (grp && !grp.worktree && ctx.git) {
-    const repo = ctx.db
-      .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-      .get(grp.project_id);
-    if (repo) {
-      try {
-        const wt = await createWorktree(ctx.git, {
-          repoPath: repo.repo_path,
-          workRoot: ctx.config.workRoot,
-          group: grp.name,
-        });
-        ctx.db.run("UPDATE grp SET worktree = ?, branch = ? WHERE id = ?", [
-          wt.worktree,
-          wt.branch,
-          grpId,
-        ]);
-        ctx.bus.emit({
-          grpId,
-          author: "orchestrator",
-          kind: "state_change",
-          body: say(ctx.config?.language, "group.worktree", { branch: wt.branch }),
-        });
-      } catch (e: any) {
-        // Refuse to start rather than run the group in the main checkout, where
-        // it would write straight into the boss's working tree.
-        return bad(`could not create a worktree: ${e?.message ?? e}`);
-      }
-    }
-  }
-
-  ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [grpId]);
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config?.language, "group.approved") });
-  // Approving a plan that then sits still is the most confusing failure there is:
-  // it looks like the system ignored you.
-  startNextSlice(ctx, grpId);
-  ctx.sched.tick();
-  return text("ok");
+  const err = await startGroup(ctx, grpId);
+  return err ? bad(err) : text("ok");
 };
 
 /**

@@ -6,7 +6,7 @@ import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
 import { Tip } from "../ui/tooltip";
 import type { Archived, Group, Slice, State } from "../lib/api";
 import { usePaged } from "../lib/page";
-import { STATUS_ZH, STOPS, gates } from "../lib/select";
+import { STOPS, gates, heldApproved, statusLabel } from "../lib/select";
 import { cn, money } from "../lib/utils";
 
 /**
@@ -44,7 +44,10 @@ export function Progress({
 }) {
   const groups = st.groups.filter((g) => g.project_id === projectId);
   const archived = (st.archived ?? []).filter((a) => a.project_id === projectId);
-  const of = (b: Bucket) => groups.filter((g) => b.of.includes(g.status));
+  // A group already approved is not the boss's to act on: it belongs with the
+  // other things that are simply waiting.
+  const of = (b: Bucket) =>
+    groups.filter((g) => (heldApproved(g) ? b.key === "held" : b.of.includes(g.status)));
   const live = of(BUCKETS[1]!).length;
 
   // Open on the tab that has something for the boss; failing that, on the work.
@@ -146,7 +149,7 @@ function Row({ st, g, onOpen, mine }: { st: State; g: Group; onOpen: (id: number
           {doing && <i className="breathe size-1.5 shrink-0 rounded-full bg-ok" />}
         </div>
         <Meta>
-          {STATUS_ZH[g.status] ?? g.status}
+          {statusLabel(g)}
           {slices.length ? ` · 已查收 ${done}/${slices.length}` : ""}
           {g.spent_usd ? ` · ${money(g.spent_usd)}` : ""}
         </Meta>
@@ -154,6 +157,8 @@ function Row({ st, g, onOpen, mine }: { st: State; g: Group; onOpen: (id: number
       <div className="min-w-0 max-[60rem]:col-span-full">
         {g.status === "PLANNING" ? (
           <span className="text-[0.75rem] text-ink-3">Dispatcher 在深挖，还没有切片</span>
+        ) : heldApproved(g) ? (
+          <span className="text-[0.75rem] text-ink-3">已批准，边界让开就自动开工</span>
         ) : g.status === "DRAFT" ? (
           <span className="block truncate text-[0.75rem] text-ink-2">
             {card ? (card.body.split("\n").find((l) => l.startsWith("目标")) ?? "计划卡待批") : "计划卡还没交"}

@@ -297,6 +297,13 @@ const MIGRATIONS: string[] = [
   // nothing cheaper, waits for the reset. Without the timestamp "wait" meant "wait
   // for the boss", so one 429 at 01:00 cost the whole night.
   `ALTER TABLE grp ADD COLUMN rl_resets_at INTEGER;`,
+
+  // 011 — the boss approved, but a boundary was in the way.
+  //
+  // Without this the click was thrown away: the group stayed in DRAFT, nothing
+  // recorded that anyone had said yes, and the boss had to guess when to come
+  // back and click again. One click has to be final.
+  `ALTER TABLE grp ADD COLUMN approved_at INTEGER;`,
 ];
 
 export type DB = Database;

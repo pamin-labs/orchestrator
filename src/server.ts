@@ -9,7 +9,7 @@ import { makeGitRunner } from "./mech/worktree.ts";
 import { batchForBoss, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs } from "./mech/prwatch.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
-import { reclaimOrphans, Scheduler } from "./scheduler.ts";
+import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -183,12 +183,15 @@ export function start(overrides: Partial<Config> = {}): Started {
   // Before the first tick: a turn that was in flight when the last server stopped
   // still holds its group's only slot, and that group would never move again.
   const orphans = reclaimOrphans(db, { maxAgeMs: cfg.turnTimeoutMs * 4 });
-  if (orphans > 0) {
+  if (orphans.length > 0) {
+    // Freeing the slot is not the same as resuming the work: the slice stays
+    // `running`, so the group looks busy to `startNextSlice` and never moves again.
+    const resumed = resumeReclaimed(sched, orphans);
     bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: `reclaimed ${orphans} turn(s) left running by the previous server`,
-      meta: { orphans },
+      body: `reclaimed ${orphans.length} turn(s) left running by the previous server, resumed ${resumed}`,
+      meta: { orphans: orphans.length, resumed },
     });
   }
 
@@ -252,6 +255,26 @@ export function installOrchShim(dataDir: string): string {
 }
 
 if (import.meta.main) {
-  const { url } = start();
+  const { ctx, url, stop } = start();
   console.log(`orchestrator on ${url}`);
+
+  // Ctrl-C left the turns' subprocesses running. Next boot then saw a live pid and
+  // declined to reclaim the job — so the group stayed wedged for four turn timeouts
+  // while an unowned `claude` kept writing into its worktree. Only installed here:
+  // `start()` is called many times per test run, and each would add a listener.
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    process.on(sig, () => {
+      for (const j of ctx.db
+        .query<{ pid: number }, []>("SELECT pid FROM job WHERE state = 'running' AND pid IS NOT NULL")
+        .all()) {
+        try {
+          process.kill(j.pid, "SIGTERM");
+        } catch {
+          // Already gone.
+        }
+      }
+      stop();
+      process.exit(0);
+    });
+  }
 }

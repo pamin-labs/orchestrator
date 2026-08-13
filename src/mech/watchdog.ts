@@ -2,6 +2,7 @@ import type { Ctx } from "../api.ts";
 import type { Config } from "../config.ts";
 import { say } from "../lang.ts";
 import { interrupt, park, settlePausing } from "./intercept.ts";
+import { sweepApproved } from "./start.ts";
 import type { GitRunner } from "./worktree.ts";
 
 /**
@@ -44,6 +45,12 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
 
   // PAUSING -> PAUSED lives here so a crashed turn cannot leave a group stuck.
   settlePausing(ctx);
+
+  // A group the boss approved while a boundary held it. `orch owns` sweeps too,
+  // but a blocker can also leave by merging, being split, or being parked and then
+  // dissolved — hooking each of those is four places to forget. Polling one column
+  // is the same shape as the rate-limit wait above.
+  await sweepApproved(ctx);
 
   // 1. Turn wall-clock timeout.
   const stale = ctx.db
