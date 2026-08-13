@@ -13,6 +13,16 @@ test("a bare -- passes everything through untouched", () => {
   expect(p.flags).toEqual({});
 });
 
+test("-h asks for help, it is not a question for the boss", () => {
+  // `orch ask-boss -h` filed an escalation whose entire text was "-h" and then
+  // waited for an answer.
+  const p = parseArgs(["ask-boss", "-h"]);
+  expect(p.flags.help).toBe(true);
+  expect(p.args).toEqual(["ask-boss"]);
+  // Still passed through untouched where it is somebody else's flag.
+  expect(parseArgs(["git", "--", "log", "-h"]).rest).toEqual(["log", "-h"]);
+});
+
 test("valueless flags become true", () => {
   expect(parseArgs(["task", "list", "--json"]).flags.json).toBe(true);
   expect(parseArgs(["x", "--a", "--b", "1"]).flags).toEqual({ a: true, b: "1" });

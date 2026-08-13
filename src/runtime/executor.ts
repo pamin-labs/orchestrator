@@ -735,10 +735,30 @@ async function narrate(
  * quietly invents a workaround. Surfacing it as an escalation is the only way
  * the boss ever finds out.
  */
+/**
+ * What was denied, in a line a human can read.
+ *
+ * The raw payload went straight into the escalation text, so the question the
+ * boss was asked to answer opened with `[{"tool_name":"Bash","tool_use_id":…` and
+ * was truncated mid-JSON. Shape differs per adapter (claude: `tool_name` +
+ * `tool_input`, codex: `tool` + `message`), so read defensively.
+ */
+export function denialSummary(denials: unknown[]): string {
+  return denials
+    .map((d) => {
+      const o = (d ?? {}) as Record<string, any>;
+      const tool = o.tool_name ?? o.tool ?? "tool";
+      const what = o.tool_input?.command ?? o.message ?? o.tool_input?.file_path ?? JSON.stringify(o.tool_input ?? o);
+      return `${tool}: ${String(what).split("\n")[0]!.trim().slice(0, 120)}`;
+    })
+    .join("; ")
+    .slice(0, 500);
+}
+
 function handleDenials(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
   if (r.permissionDenials.length === 0) return;
   const { ctx } = deps;
-  const summary = JSON.stringify(r.permissionDenials).slice(0, 500);
+  const summary = denialSummary(r.permissionDenials);
 
   // One row per agent, not one per denial. An agent that keeps reaching for the
   // same forbidden shape files the same escalation every turn — nine of them piled
