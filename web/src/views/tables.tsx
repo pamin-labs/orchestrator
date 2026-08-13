@@ -52,7 +52,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
     });
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
         <h2 className="text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2">工位</h2>
         <Meta>在跑 {running.length} · 共 {rows.length}</Meta>
@@ -63,15 +63,15 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
           </Button>
         )}
       </div>
-      <div className="divide-y divide-rule-soft">
+      <Pane>
         {groups.map((g) => (
           <Desks key={String(g.id)} name={g.name} agents={g.agents} slices={st.slices} tail={last} />
         ))}
-      </div>
-      {!idle && running.length > 0 && rows.length > running.length && (
-        <div className="mt-2 text-[0.75rem] text-ink-3">另外 {rows.length - running.length} 个空闲，没在花钱。</div>
-      )}
-    </>
+        {!idle && running.length > 0 && rows.length > running.length && (
+          <div className="mt-3 text-[0.75rem] text-ink-3">另外 {rows.length - running.length} 个空闲，没在花钱。</div>
+        )}
+      </Pane>
+    </div>
   );
 }
 
@@ -111,8 +111,10 @@ function Desks({
           strokeWidth={2}
           className={cn("shrink-0 self-center text-ink-3 transition-transform duration-150", open && "rotate-90")}
         />
-        <span className="truncate text-[0.8125rem]" title={name}>{name}</span>
         {runners > 0 && <i className="breathe size-1.5 shrink-0 self-center rounded-full bg-ok" />}
+        {/* The requirement is the thing being scanned for, so it gets the weight —
+            it was the same size and colour as the shell command beside it. */}
+        <span className="truncate font-display text-[0.9375rem] font-semibold" title={name}>{name}</span>
         {/* Who is running, by role. "2 在跑" makes you open the row to learn the
             one thing you opened it for. */}
         <Meta className="truncate">
@@ -142,8 +144,12 @@ function Desks({
                     is what made this table nine wide. */}
                 <Tip label={`权限 ${a.clearance} · 本 session ${K(a.session_tokens)} tokens · ${a.model}`}>
                   <span className="flex min-w-0 items-baseline gap-1.5">
-                    <span className="truncate font-mono text-[0.75rem]">{a.role}</span>
-                    <Meta className="truncate">{a.model.replace("claude-", "")}</Meta>
+                    <span className="shrink-0 truncate text-[0.75rem] font-medium">{a.role}</span>
+                    {/* A chip, because which model an agent is on is the second
+                        thing looked for here and it was grey text in a grey row. */}
+                    <span className="truncate rounded-sm bg-sunk px-1 font-mono text-[0.625rem] text-ink-2">
+                      {a.model.replace(/^claude-|-\d{8}$/g, "")}
+                    </span>
                   </span>
                 </Tip>
                 <span className="min-w-0">
@@ -206,7 +212,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
     }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* The verdict, first and in one line. */}
       <div
         className={cn(
@@ -236,7 +242,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
         </div>
       ))}
 
-      <div className="mt-5">
+      <Pane className="mt-5">
         {[...gs, ...bare].map((g) => (
           <div
             key={g.id}
@@ -257,8 +263,8 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
             </span>
           </div>
         ))}
-      </div>
-    </>
+      </Pane>
+    </div>
   );
 }
 
@@ -296,7 +302,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
   const sum = groups.reduce((n, g) => n + g.tokens, 0) + standingTotal;
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* One line, not a hero. "Dashboards of big numbers" is an anti-reference in
           PRODUCT.md and every useful number here is comparative. */}
       <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b border-rule pb-3">
@@ -324,12 +330,12 @@ export function CostView({ cost }: { cost: Cost | null }) {
         </Tip>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_17rem] gap-x-8 max-[64rem]:grid-cols-1 max-[64rem]:gap-y-6">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_17rem] gap-x-8 max-[64rem]:grid-cols-1 max-[64rem]:gap-y-6">
         {/* One axis at a time, chosen here. Three stacked sections meant the two
             short ones — three difficulties, two accounts — pushed the list that
             grows off the bottom, and you scrolled past a hundred requirements to
             reach five rows. */}
-        <Tabs defaultValue="grp" className="min-w-0">
+        <Tabs defaultValue="grp" className="flex min-h-0 min-w-0 flex-col">
           <TabList>
             <Tab value="grp">按需求</Tab>
             <Tab value="tier">按难度</Tab>
@@ -337,7 +343,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
             <span className="grow" />
             <Meta className="self-center pb-1.5 max-[52rem]:hidden">tokens · 占比</Meta>
           </TabList>
-          <TabPanel value="grp">
+          <TabPanel value="grp" className="flex min-h-0 flex-1 flex-col">
             <Pane>
               {groups.map((g) => (
                 <Node
@@ -361,13 +367,13 @@ export function CostView({ cost }: { cost: Cost | null }) {
               )}
             </Pane>
           </TabPanel>
-          <TabPanel value="tier">
+          <TabPanel value="tier" className="flex min-h-0 flex-1 flex-col">
             <Meta className="mb-1 block">标签决定跑哪个 model，计划卡上能改</Meta>
             <Pane>
               <Flat rows={cost.byDifficulty ?? []} />
             </Pane>
           </TabPanel>
-          <TabPanel value="acct">
+          <TabPanel value="acct" className="flex min-h-0 flex-1 flex-col">
             <Meta className="mb-1 block">哪个订阅在付。顶栏的百分比是这两个池子还剩多少</Meta>
             <Pane>
               <Flat rows={cost.byRuntime ?? []} />
@@ -387,7 +393,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
           </Rail>
         </aside>
       </div>
-    </>
+    </div>
   );
 }
 

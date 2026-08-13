@@ -25,6 +25,8 @@ interface Item {
   key: string;
   kind: string;
   what: string;
+  /** Which requirement it came from. A question with no home reads as the system's. */
+  where?: string;
   sub: string;
   grpId: number | null;
   points: number;
@@ -124,6 +126,9 @@ export function Queue({
       key: `a${e.id}`,
       kind: "提问",
       what: e.question,
+      // The question was the only thing on the row, so a two-paragraph one filled
+      // the card and never said which requirement was asking it.
+      where: e.grp_id ? groupName(st, e.grp_id) : "常驻",
       // A watchdog escalation has no agent behind it, and "?" read like a bug.
       sub: `${e.asker ?? "系统"}${e.grp_id ? "" : " · 常驻"}`,
       grpId: e.grp_id,
@@ -221,10 +226,19 @@ function Row({ item, onOpen, nested }: { item: Item; onOpen: () => void; nested?
     >
       <span className={cn("font-mono text-[0.6875rem]", stopped ? "text-accent" : "text-ink-3")}>{item.kind}</span>
       <div className="min-w-0">
-        <button onClick={onOpen} className="cursor-pointer text-left text-[0.875rem] font-medium hover:text-accent">
+        {/* Clamped, not truncated to one line: these are questions, and the first
+            line of one is rarely the part that says what is being asked. Two lines
+            is enough to decide whether to open it, and the card stays a card. */}
+        <button
+          onClick={onOpen}
+          className="line-clamp-2 cursor-pointer text-left text-[0.875rem] font-medium hover:text-accent"
+        >
           {item.what} {item.flag && <Badge tone="mine">{item.flag}</Badge>}
         </button>
         <div className="truncate text-[0.75rem] text-ink-3">
+          {/* Which requirement, first: on this page the boss is choosing what to
+              deal with, and "whose problem is this" comes before "why now". */}
+          {item.where && <span className="font-medium text-ink-2">{item.where} · </span>}
           {/* The reason, not the score. A number nobody can interrogate reorders rows
               for reasons nobody can check, and the first time it looks wrong the whole
               ordering stops being trusted. */}

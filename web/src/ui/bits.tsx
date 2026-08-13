@@ -67,7 +67,5 @@ export const Textarea = ({
  * page-level facts.
  */
 export const Pane = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <div className={cn("min-h-0 overflow-y-auto pr-1", className)} style={{ maxHeight: "calc(100vh - 13rem)" }}>
-    {children}
-  </div>
+  <div className={cn("min-h-0 flex-1 overflow-y-auto pr-1", className)}>{children}</div>
 );
