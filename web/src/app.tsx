@@ -310,9 +310,17 @@ export function App() {
           "glance at what just happened" and "read a long journal entry", and the
           reader is the only one who knows which. Below 64rem it goes back to one
           column: there is no width to split. */}
-      <Group orientation="horizontal" className={cn(showSide ? "flex max-[64rem]:block" : "block")}>
-        <Panel className="min-w-0" defaultSize="100%">
-          <div className="max-w-[76rem] px-6 pb-24 pt-6">
+      {/* The document does not scroll; the view does. Header and nav were sticky,
+          which kept them visible but still let the page grow to whatever the
+          longest list wanted — so every view had a different height and the
+          scrollbar belonged to the window. One region, fixed to the viewport, and
+          each view decides what scrolls inside it. 4.5rem is header plus nav. */}
+      <Group
+        orientation="horizontal"
+        className={cn("h-[calc(100vh-4.5rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
+      >
+        <Panel className="min-w-0 overflow-y-auto" defaultSize="100%">
+          <div className="max-w-[76rem] px-6 pb-16 pt-5">
           <Boundary key={`${sel.view}:${sel.p}:${sel.g}`}>
           {!st.projects.length ? (
             <Card className="max-w-[40rem]">
