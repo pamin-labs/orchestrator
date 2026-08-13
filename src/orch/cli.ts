@@ -40,6 +40,12 @@ export function parseArgs(argv: string[]): Parsed {
       afterDashDash = true;
       continue;
     }
+    // `-h` is not a positional argument. Without this, `orch ask-boss -h` filed
+    // an escalation whose entire text was "-h" and waited for the boss to answer it.
+    if (a === "-h") {
+      flags.help = true;
+      continue;
+    }
     if (a.startsWith("--")) {
       const key = a.slice(2);
       const next = argv[i + 1];
