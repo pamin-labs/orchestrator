@@ -392,6 +392,19 @@ const MIGRATIONS: string[] = [
   // real number during a turn (claude in modelUsage, codex in token_count), so
   // record it: a table in config goes stale the week a model ships.
   `ALTER TABLE agent ADD COLUMN context_window INTEGER;`,
+
+  // 022 — which provider an agent runs on, and when that provider is out of quota.
+  //
+  // The window belongs to the account, not to the group that happened to hit it.
+  // Pausing only that group left every other group to spend a turn discovering the
+  // same wall, and a standing agent — no group to pause — kept retrying into it.
+  // `hold_until` is the whole mechanism: the scheduler will not dispatch a turn for
+  // a held provider, and it expires by clock, so nothing polls and nobody has to be
+  // awake to lift it.
+  `
+  ALTER TABLE agent ADD COLUMN runtime TEXT NOT NULL DEFAULT 'claude';
+  ALTER TABLE usage_snapshot ADD COLUMN hold_until INTEGER;
+  `,
 ];
 
 export type DB = Database;
