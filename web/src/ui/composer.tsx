@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle } from "./card";
 import { cn } from "../lib/utils";
 
 export interface Attached { name: string; path: string; type: string; size: number; url?: string }
-export interface Skill { name: string; path: string; description: string }
+export interface Skill { name: string; path: string; description: string; scope: "project" | "user" }
 export interface Draft {
   text: string;
   attachments: { name: string; path: string; type: string }[];
@@ -59,12 +59,14 @@ export function Composer({
   const box = useRef<HTMLTextAreaElement>(null);
 
   /**
-   * `/` offers the project's skills — as paths, not slash commands.
+   * `/` offers the skills the orchestrator can hand an agent.
    *
-   * Agents run with `--disable-slash-commands` (the catalogue is ~46k cached tokens
-   * of prefix per turn), so typing "/impeccable" at them does nothing. Every role
-   * has Read, so the path is the mechanism that actually works: a dozen tokens in
-   * the message and one read in the turn that needs it.
+   * Not slash commands: agents run with `--disable-slash-commands` (the catalogue is
+   * ~46k cached tokens of prefix on every turn) and without the boss's user-level
+   * setup (~195k on a trivial turn). Instead the orchestrator reads the SKILL.md
+   * itself, on the host, and appends its text to that one turn — so a `~/.claude`
+   * skill reaches an agent that cannot see the file, and a skill used once is paid
+   * for once.
    */
   useEffect(() => {
     if (!projectId || skills) return;
@@ -204,7 +206,7 @@ export function Composer({
       {slash && matches.length > 0 && (
         <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
           <div className="border-b border-rule-soft px-2 py-1 text-[0.6875rem] text-ink-3">
-            插入技能路径 —— agent 用 Read 打开它（slash 命令对 agent 是关的，那是 46k tokens 的前缀）
+            选中的技能，正文会随这一个 turn 发给 agent（不进 session 前缀，所以只这一次花钱）
           </div>
           {matches.slice(0, 6).map((sk) => (
             <button
@@ -213,6 +215,11 @@ export function Composer({
               className="flex w-full cursor-pointer items-baseline gap-2 px-2 py-1.5 text-left hover:bg-sunk"
             >
               <span className="font-mono text-[0.75rem] text-ink">{sk.name}</span>
+              {/* Where it came from matters: a project skill is versioned with the
+                  code, a user one is the boss's own and shadowed by the project's. */}
+              <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">
+                {sk.scope === "project" ? "项目" : "全局"}
+              </span>
               <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{sk.description}</span>
               <span className="shrink-0 font-mono text-[0.625rem] text-ink-3">Tab</span>
             </button>

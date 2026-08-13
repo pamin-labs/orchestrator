@@ -47,6 +47,11 @@ export interface Delta {
   rejection?: string;
   /** Handoff note from the retired session this one replaces. */
   handoff?: string;
+  /**
+   * Skill text the boss pointed at, read off the host and inlined for this turn only.
+   * Never part of the stable half: a skill used once must not tax every turn.
+   */
+  skills?: string;
   /** Anything else, verbatim, last. */
   extra?: string;
 }
@@ -87,6 +92,11 @@ Use Bash. Every command blocks and returns its result on stdout.
   orch task claim <id>
   orch task done <id> --claim '{"files":["a.ts"],"summary":"…"}'
   orch task done <id> --already-done "S1 already covered this"   # nothing left to change
+      # the task that FINISHES a slice also needs --review "<verdict per acceptance
+      # criterion + the diff line that satisfies it>". Refused if it says nothing.
+  orch task split <group_id> -   # the boss put several unrelated asks in one box:
+                                 # JSON array on stdin, one requirement each. Each
+                                 # gets its own card, branch and PR. Before the card.
   orch draft <group_id> -                                 # DRAFT card on stdin (Dispatcher/PM)
   orch owns <group_id> --path <glob> …                    # Architect cuts a boundary
   orch review <slice_id> --verdict pass|fail --note "…"   # QA files its verdict
@@ -183,6 +193,7 @@ const DELTA_ORDER: Array<[keyof Delta, string]> = [
   ["rejection", "This was sent back — fix these"],
   ["leaseResult", "Lease result"],
   ["unread", "Channel updates since your last turn"],
+  ["skills", "Follow this skill for this work"],
   ["bossSay", "From the boss"],
   ["extra", ""],
 ];

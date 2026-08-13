@@ -128,6 +128,8 @@ orch status "<一句话>"               # 工位墙上的当前意图
 orch git -- <cmd>                    # repo 级 git 写锁，串行化
 ```
 
+**技能（skill）不走 slash 命令**：agent 带 `--disable-slash-commands` 且不继承用户级设置（实测技能目录 + slash 命令 = 每 turn ~46k 缓存前缀；继承老板全局设置让一个 haiku turn 涨到 ~195k）。老板在输入框里 `/` 选技能时，**orchestrator 在 host 上读 SKILL.md，把正文追加进那一个 turn 的 delta**（消息末尾，不进 stable 半边）。于是：用一次付一次、缓存前缀不动、`~/.claude/skills` 里的技能也能给到看不见该文件的 agent。
+
 **`lease` 是沙盒的唯一缺口，必须堵死**：Runner 跑在 host 上有真权限。资源是 `resource` 表里**预定义的命令模板**，agent 只能选资源名 + 传经 `arg_schema` 校验的参数，**永远不能传自由命令**。agent 确实需要新命令时发 escalation，你在 UI 上看完整命令行点批准，批了可选存成新模板。
 
 **`lease` 返回只给三段**：exit code + 尾 200 行 + `error_regex` 抽出的失败行。全量日志落盘。几 MB 的编译日志一次能炸掉半个 context。
@@ -235,6 +237,11 @@ PM 写交接 journal → 退休全部 session → 撤销该组 pending job → �
 
 ### 对账（`reconcile` job，比整个 Auditor 都值钱）
 PR 前自动比对 `task.claim_json` 声称的产出 vs `git diff` 真实改动 + deterministic gate 结果。对不上直接打回，计入重试计数（默认 2 轮），**不进审批环节**。
+
+### 一个输入框 ≠ 一个需求
+老板往一个框里丢十几个问题加三四件不相关的事，是常态。**需求是 PR 和验收的单位**，所以不相关的活不能共用一张卡 —— 挤进一个 `目标` 和五片切片，最后会变成一个谁也没法分开验收/打回的 PR。
+
+Dispatcher 第一步是**数有几件事**：不相关就先 `orch task split`，每件各自一张卡、一个 branch、一个 PR；相关的留在一个需求里当切片；**不是活的问题不是需求**（从黑板答，或 `ask-boss`）。
 
 ### DRAFT 卡规范（阻塞你，所以必须硬性精简）
 `orch` 校验，**总计 ≤12 行，超长拒收**让 Dispatcher 重写：

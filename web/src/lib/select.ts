@@ -10,9 +10,19 @@ export const STATUS_ZH: Record<string, string> = {
 export const WHERE_ZH: Record<string, string> = {
   pm: "PM 处理中", architect: "Architect 处理中", cos: "CoS 处理中", boss: "待你决策",
 };
-/** The layers `review.ts` actually records. `self` was never one of them, so its
-    tick sat grey forever and taught the boss to ignore the row. */
-export const STOPS: [string, string][] = [["reconcile", "对账"], ["gate", "测试"], ["qa", "QA"]];
+/**
+ * The layers actually recorded, in order.
+ *
+ * `self` was drawn here once while nothing recorded it, so its tick sat grey forever
+ * and taught the boss to ignore the row. It is back because `orch task done --review`
+ * now records it — PLAN.md §7 layer 1, the only one where the writer is the reviewer.
+ */
+export const STOPS: [string, string][] = [
+  ["self", "自评"],
+  ["reconcile", "对账"],
+  ["gate", "测试"],
+  ["qa", "QA"],
+];
 
 export const owns = (g: Group) => { try { return JSON.parse(g.owns_json || "[]") as string[]; } catch { return []; } };
 export const gates = (s: Slice) => { try { return JSON.parse(s.gates_json || "{}") as Record<string, string>; } catch { return {}; } };

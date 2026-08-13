@@ -280,7 +280,7 @@ export type Triage = "patch" | "respec" | "reject";
  * line", and a wrong decomposition can never be corrected — the group keeps
  * polishing something the boss did not ask for.
  */
-export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string): void {
+export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string, skills: string[] = []): void {
   const { ctx } = deps;
   ctx.db.run(
     "INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', ?, ?, unixepoch() * 1000)",
@@ -312,12 +312,12 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string)
     ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ?", [grpId]);
     ctx.sched.enqueue("agent_turn", {
       grp_id: grpId,
-      payload: { role: "dispatcher", respec: note, rotate: true },
+      payload: { role: "dispatcher", respec: note, rotate: true, skills },
     });
   } else {
     ctx.sched.enqueue("agent_turn", {
       grp_id: grpId,
-      payload: { role: "pm", rejection: `The boss wants a correction: ${note}` },
+      payload: { role: "pm", rejection: `The boss wants a correction: ${note}`, skills },
     });
   }
   ctx.sched.tick();
