@@ -53,7 +53,13 @@ export function settlePausing(ctx: Ctx): number {
 }
 
 function settle(ctx: Ctx, grpId: number): void {
-  ctx.db.run("UPDATE grp SET status = 'PAUSED' WHERE id = ? AND status = 'PAUSING'", [grpId]);
+  // Stamp here, not at every caller: three of them write PAUSING without a
+  // timestamp, and every watchdog timer keys off `paused_at` — a group that
+  // arrives here with NULL is never parked, never nudged, never unparked.
+  ctx.db.run(
+    "UPDATE grp SET status = 'PAUSED', paused_at = coalesce(paused_at, unixepoch() * 1000) WHERE id = ? AND status = 'PAUSING'",
+    [grpId],
+  );
   ctx.bus.emit({ grpId, author: "orchestrator", kind: "state_change", body: say(ctx.config?.language, "group.paused") });
 }
 

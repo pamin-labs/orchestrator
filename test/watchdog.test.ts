@@ -199,6 +199,21 @@ test("pause reports how many turns it is waiting on, and settles later", () => {
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PAUSED");
 });
 
+test("a group that reaches PAUSED always carries the time it got there", async () => {
+  const h = harness();
+  // The ask-boss blocker path writes PAUSING without a timestamp. Every
+  // watchdog timer keys off paused_at, so a NULL here froze the group with
+  // nobody nudged and nothing parked.
+  h.db.run("UPDATE grp SET status = 'PAUSING' WHERE id = 1");
+  settlePausing(h.ctx);
+  expect(h.db.query<{ p: number | null }, []>("SELECT paused_at AS p FROM grp").get()!.p).toBeGreaterThan(0);
+
+  // And an already-broken row is repaired rather than left invisible forever.
+  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = NULL WHERE id = 1");
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ p: number | null }, []>("SELECT paused_at AS p FROM grp").get()!.p).toBeGreaterThan(0);
+});
+
 test("pausing an idle group settles immediately", () => {
   const h = harness();
   expect(pause(h.ctx, 1)).toBe(0);
@@ -267,6 +282,25 @@ test("batched notifications arrive as one interruption", async () => {
   expect(sent.length).toBe(1);
   expect(sent[0]).toContain("3 things need you");
   expect(sent[0]).toContain("• two");
+});
+
+test("a batched finding re-derived every tick is not re-sent every tick", async () => {
+  const sent: string[] = [];
+  let t = 0;
+  const n = new Notifier({ batchSize: 2, now: () => t, deliver: (_x, b) => void sent.push(b) });
+  // The standup re-derives the same two findings every 30 s and pushes them again.
+  for (let tick = 0; tick < 6; tick++) {
+    await n.push({ key: "repeat_failure:0", tier: "batched", body: "typecheck is failing" });
+    await n.push({ key: "stalled:3", tier: "batched", body: "g3 stopped" });
+    t += 30_000;
+  }
+  expect(sent.length).toBe(1);
+
+  // Past the first backoff step it is a reminder, and arrives once more.
+  t += 5 * 60_000;
+  await n.push({ key: "repeat_failure:0", tier: "batched", body: "typecheck is failing" });
+  await n.push({ key: "stalled:3", tier: "batched", body: "g3 stopped" });
+  expect(sent.length).toBe(2);
 });
 
 test("answering clears the reminder", async () => {

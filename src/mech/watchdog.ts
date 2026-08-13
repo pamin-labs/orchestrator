@@ -383,6 +383,9 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   }
 
   // 7. Paused too long: notify, then park to stop holding a slot.
+  // A PAUSED row with no `paused_at` is invisible to every timer below, so it
+  // freezes silently. Stamp it now rather than lose the group.
+  ctx.db.run("UPDATE grp SET paused_at = unixepoch() * 1000 WHERE status = 'PAUSED' AND paused_at IS NULL");
   const paused = ctx.db
     .query<{ id: number; name: string; paused_at: number }, []>(
       // `rl_resets_at IS NULL`: a group waiting for quota is not waiting for the boss,
