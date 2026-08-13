@@ -41,9 +41,9 @@ export function Picker({ open, onOpenChange, onAdded }: {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-[oklch(0.2_0.01_70/0.35)]" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-[var(--scrim)]" />
         <Dialog.Content className="fixed left-1/2 top-1/5 z-50 w-[min(34rem,92vw)] -translate-x-1/2 overflow-hidden
-                                   rounded-xl border border-rule bg-paper shadow-[0_12px_40px_oklch(0_0_0/0.18)] fade-in">
+                                   rounded-xl border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in">
           <div className="flex items-baseline gap-2 border-b border-rule p-3">
             <Dialog.Title className="font-display text-[1.0625rem] font-semibold">选择仓库</Dialog.Title>
             <span className="text-[0.75rem] text-ink-3">

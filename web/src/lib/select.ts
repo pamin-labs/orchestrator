@@ -32,10 +32,14 @@ export function pending(st: State, projectId: number | null) {
     merges: st.mergeQueue.filter((m) => ids.has(m.grpId)),
     // grp_id is NULL for standing agents (CoS / Architect / Librarian), and
     // `orch ask-boss` blocks that agent until it is answered. Filtering them out
-    // meant the agent hung forever with its question visible nowhere.
-    asks: st.escalations.filter(
-      (e) => e.chain_state === "boss" && (e.grp_id == null || ids.has(e.grp_id)),
-    ),
+    // meant the agent hung forever with its question visible nowhere — but counting
+    // one in every project made each project's badge include questions that were
+    // not its own, so the per-project counts no longer summed to the global one.
+    asks: st.escalations.filter((e) => {
+      if (e.chain_state !== "boss") return false;
+      if (e.grp_id != null) return ids.has(e.grp_id);
+      return projectId == null || e.asker_project === projectId;
+    }),
   };
 }
 export const countWaiting = (st: State, p: number | null) =>

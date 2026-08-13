@@ -7,7 +7,18 @@
 <!-- Both built locally into web/dist by `bun run build:web`. Nothing is fetched
      from a remote host: the fonts are already on the machine, and
      test/smoke.test.ts enforces that no external origin appears here. -->
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="/dist/app.css">
+<!-- Resolve the theme before first paint. The whole app is JS, so deriving the
+     attribute here and letting CSS carry one dark block beats maintaining the
+     dark palette three times (base, media query, explicit override). -->
+<script>
+  try {
+    var t = localStorage.getItem("orch.theme") || "system";
+    var dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  } catch (e) {}
+</script>
 </head>
 <body>
 <div id="root"></div>

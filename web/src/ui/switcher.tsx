@@ -44,8 +44,11 @@ export function Switcher({
         open={open}
         onOpenChange={setOpen}
         label="切换项目"
-        className="fixed left-1/2 top-1/4 z-50 w-[min(30rem,92vw)] -translate-x-1/2 overflow-hidden rounded-xl
-                   border border-rule bg-paper shadow-[0_12px_40px_oklch(0_0_0/0.18)] fade-in"
+        // Without a scrim the palette floats on top of a fully live page and reads
+        // as a stray tooltip rather than something with focus.
+        overlayClassName="fixed inset-0 z-40 bg-[var(--scrim)]"
+        contentClassName="fixed left-1/2 top-1/4 z-50 w-[min(34rem,92vw)] -translate-x-1/2 overflow-hidden rounded-xl
+                          border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in"
       >
         <Command.Input
           placeholder="项目名…"
@@ -69,9 +72,13 @@ export function Switcher({
                   "data-[selected=true]:bg-sunk",
                 )}
               >
-                <span className="font-display text-[1rem] font-semibold">{p.name}</span>
-                <span className="grow truncate font-mono text-[0.6875rem] text-ink-3">{p.repo_path}</span>
-                {n > 0 && <span className="font-mono text-[0.6875rem] text-accent">{n} 件等你</span>}
+                {/* Every cell states whether it may wrap. Without that the name broke
+                    mid-word and the count stacked one character per line. */}
+                <span className="shrink-0 whitespace-nowrap font-display text-[1rem] font-semibold">{p.name}</span>
+                <span className="min-w-0 grow truncate font-mono text-[0.6875rem] text-ink-3" dir="rtl">{p.repo_path}</span>
+                {n > 0 && (
+                  <span className="shrink-0 whitespace-nowrap font-mono text-[0.6875rem] text-accent">{n} 件等你</span>
+                )}
               </Command.Item>
             );
           })}

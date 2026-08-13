@@ -44,10 +44,10 @@ export function AskHost() {
   return (
     <Dialog.Root open={!!spec} onOpenChange={(o) => !o && done(null)}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-[oklch(0.2_0.01_70/0.35)]" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-[var(--scrim)]" />
         <Dialog.Content
           className="fixed left-1/2 top-1/3 z-50 w-[min(28rem,92vw)] -translate-x-1/2 rounded-xl
-                     border border-rule bg-paper shadow-[0_12px_40px_oklch(0_0_0/0.18)] fade-in"
+                     border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in"
         >
           <div className="p-3.5">
             <Dialog.Title className="mb-1.5 font-display text-[1.0625rem] font-semibold">

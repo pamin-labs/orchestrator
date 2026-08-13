@@ -1,5 +1,6 @@
 import { Button } from "../ui/button";
 import { H2, Meta } from "../ui/bits";
+import { cardStyles } from "../ui/card";
 import type { State } from "../lib/api";
 import { countWaiting, pending, projectState } from "../lib/select";
 import { cn, money } from "../lib/utils";
@@ -24,7 +25,7 @@ export function Home({
   const rows = [...st.projects].sort((a, b) => countWaiting(st, b.id) - countWaiting(st, a.id));
   return (
     <>
-      <Queue st={st} projectId={null} onOpen={onOpen} refresh={refresh} showProject />
+      <Queue st={st} projectId={null} onOpen={onOpen} refresh={refresh} />
       <H2 className="mt-9">
         项目 <span className="font-normal tracking-normal text-ink-3">{st.projects.length}</span>
       </H2>
@@ -45,8 +46,9 @@ export function Home({
             key={p.id}
             onClick={() => onEnter(p.id)}
             className={cn(
-              "mb-2.5 grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-x-5 gap-y-2 rounded-lg border p-3.5 text-left transition-colors",
-              n ? "border-accent bg-accent-soft" : "border-rule bg-paper hover:border-ink-3",
+              cardStyles({ tone: n ? "mine" : "default" }),
+              "mb-2.5 grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-x-5 gap-y-2 p-3.5 text-left transition-colors",
+              !n && "hover:border-ink-3",
             )}
           >
             <div className="min-w-0">

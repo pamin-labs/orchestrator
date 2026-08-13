@@ -15,10 +15,25 @@ export interface Task { id: number; grp_id: number; slice_id: number | null; tit
 export interface Agent {
   id: number; grp_id: number | null; role: string; model: string; clearance: string; state: string;
   activity: string | null; session_tokens: number; total_tokens: number; total_usd: number;
+  turns: number; slice_id: number | null;
+}
+export interface Archived {
+  id: number; project_id: number; name: string; branch: string | null; pr_number: number | null;
+  spent_usd: number; slices: number; at: number | null;
+}
+/** What was actually built, for the one decision that cannot be taken back. */
+export interface Evidence {
+  seq: number; title: string; accept_spec: string; retries: number;
+  stat: string; diff: string; truncated: boolean;
+  verdicts: { author: string; body: string; at: number }[];
+  gates: { name: string; path: string; size: number }[];
 }
 export interface Escalation {
   id: number; grp_id: number | null; severity: string; question: string; chain_state: string;
   answered_by: string | null; answer: string | null; created_at: number; asker: string | null;
+  /** Which project the asker belongs to. A standing agent has no group, so this is
+      the only thing that tells one project's question from another's. */
+  asker_project: number | null;
 }
 export interface State {
   projects: Project[]; groups: Group[]; slices: Slice[]; tasks: Task[]; agents: Agent[];
@@ -27,6 +42,7 @@ export interface State {
   ideas: { grpId: number; body: string }[];
   answered: { id: number; grp_id: number; question: string; answer: string; answered_by: string; ref_note_id: number | null }[];
   mergeQueue: { projectId: number; grpId: number; name: string; branch: string | null; seq: number }[];
+  archived: Archived[];
   lastSeq: number;
 }
 export interface CostRow { label: string; tokens: number; usd: number }
@@ -36,8 +52,18 @@ export interface Cost {
 
 const EMPTY: State = {
   projects: [], groups: [], slices: [], tasks: [], agents: [], escalations: [],
-  draftCards: [], lateObjections: [], ideas: [], answered: [], mergeQueue: [], lastSeq: 0,
+  draftCards: [], lateObjections: [], ideas: [], answered: [], mergeQueue: [], archived: [], lastSeq: 0,
 };
+
+/** GET that surfaces its own failure. Used for the on-demand panels (evidence, logs). */
+export async function pull<T>(path: string): Promise<T | null> {
+  const r = await fetch(path);
+  if (!r.ok) {
+    toast.error(await r.text(), { duration: 8000 });
+    return null;
+  }
+  return (await r.json()) as T;
+}
 
 /** Validators reply with the reason, so the reason is what gets shown. */
 export async function post(path: string, body?: unknown) {

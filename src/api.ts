@@ -339,16 +339,20 @@ const postMail: Handler = async (ctx, req) => {
  * whose opinion it is.
  */
 const postSay: Handler = async (ctx, req) => {
-  const b = await body<{ group_id?: number | string; target?: string; body: string; as?: string }>(req);
+  const b = await body<{
+    group_id?: number | string; target?: string; body: string; as?: string; attachments?: Attachment[];
+  }>(req);
   if (!b.body?.trim()) return bad("nothing to send");
+  // A screenshot is as useful when saying "这里不对" as when filing the idea.
+  const said = withAttachments(b.body.trim(), b.attachments);
   const grpId = b.group_id == null ? null : resolveGroup(ctx, b.group_id);
   if (b.group_id != null && !grpId) return bad("no such requirement");
 
   if (b.as) {
     if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
     if (!grpId) return bad("triage needs a requirement");
-    ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: b.body });
-    triage({ ctx, git: ctx.git }, grpId, b.as as Triage, b.body);
+    ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
+    triage({ ctx, git: ctx.git }, grpId, b.as as Triage, said);
     ctx.sched.tick();
     return text("ok");
   }
@@ -371,7 +375,7 @@ const postSay: Handler = async (ctx, req) => {
     author: "boss",
     kind: "boss_say",
     intent: "request",
-    body: b.body,
+    body: said,
     target: to,
   });
   // Boss talk jumps the queue: the whole point of L1 intercept is that it lands on
@@ -380,7 +384,7 @@ const postSay: Handler = async (ctx, req) => {
     grp_id: target.grpId ?? grpId,
     agent_id: target.agentId,
     priority: 6,
-    payload: { mail: { from: "boss", from_group: null, intent: "request", body: b.body } },
+    payload: { mail: { from: "boss", from_group: null, intent: "request", body: said } },
   });
   ctx.sched.tick();
   return text("ok");
@@ -1001,7 +1005,7 @@ export function snapshot(ctx: Ctx) {
     escalations: db
       .query(
         `SELECT e.id, e.grp_id, e.severity, e.question, e.chain_state, e.answered_by, e.answer,
-                e.created_at, a.role AS asker
+                e.created_at, a.role AS asker, a.project_id AS asker_project
          FROM escalation e LEFT JOIN agent a ON a.id = e.agent_id
          WHERE e.chain_state NOT IN ('answered', 'revoked') ORDER BY e.created_at`,
       )
@@ -1032,7 +1036,7 @@ export function snapshot(ctx: Ctx) {
 }
 
 const postAnswer: Handler = async (ctx, req, params) => {
-  const b = await body<{ answer: string; answered_by?: string }>(req);
+  const b = await body<{ answer: string; answered_by?: string; attachments?: Attachment[] }>(req);
   const id = Number(params.id);
   const esc = ctx.db
     .query<{ grp_id: number | null; severity: string }, [number]>(
@@ -1043,7 +1047,10 @@ const postAnswer: Handler = async (ctx, req, params) => {
 
   // The boss answers through the same path a stand-in would, so unblocking the
   // caller and un-pausing the group cannot drift between the two.
-  const r = chainAnswer({ ctx, git: ctx.git }, { escId: id, by: b.answered_by ?? "boss", answer: b.answer });
+  const r = chainAnswer(
+    { ctx, git: ctx.git },
+    { escId: id, by: b.answered_by ?? "boss", answer: withAttachments(b.answer ?? "", b.attachments) },
+  );
   return r.ok ? text("ok") : bad(r.error);
 };
 
@@ -1109,6 +1116,25 @@ const postAttach: Handler = async (ctx, req) => {
   return json({ files: out });
 };
 
+export interface Attachment { name: string; path: string; type: string }
+
+/**
+ * Words plus the files that came with them.
+ *
+ * Paths, never contents: an image inlined into a prompt costs thousands of tokens
+ * on every turn that carries it, a path costs a dozen and the agent opens it once
+ * with Read when it needs to. Shared by every route the boss can attach to —
+ * an idea, a sent-back card, a rejected slice, a remark to the group.
+ */
+export function withAttachments(text: string, attachments?: Attachment[]): string {
+  const files = (attachments ?? []).filter((f) => f?.path);
+  if (!files.length) return text;
+  return (
+    `${text}\n\n附件（用 Read 打开）：\n` +
+    files.map((f) => `- ${f.path}${f.type?.startsWith("image/") ? "（图片）" : ""}`).join("\n")
+  );
+}
+
 const postIdea: Handler = async (ctx, req) => {
   const b = await body<{
     project_id: number;
@@ -1133,10 +1159,7 @@ const postIdea: Handler = async (ctx, req) => {
 
   // Attachments go on the blackboard as paths next to the words they came with, so
   // whoever plans this reads them in the same breath as the idea.
-  const files = (b.attachments ?? []).filter((f) => f?.path);
-  const noteBody = files.length
-    ? `${b.text}\n\n附件（用 Read 打开）：\n${files.map((f) => `- ${f.path}${f.type.startsWith("image/") ? "（图片）" : ""}`).join("\n")}`
-    : b.text;
+  const noteBody = withAttachments(b.text, b.attachments);
   ctx.db.run(
     "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
     [b.project_id, grp.id, ctx.config.language, noteBody],
@@ -1175,22 +1198,23 @@ const postIdea: Handler = async (ctx, req) => {
 };
 
 const postDraftDecision: Handler = async (ctx, req, params) => {
-  const b = await body<{ card?: string; reason?: string }>(req);
+  const b = await body<{ card?: string; reason?: string; attachments?: Attachment[] }>(req);
   const grpId = Number(params.id);
   const approve = params.decision === "approve";
 
   if (!approve) {
     ctx.db.run(
       "INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', ?, ?, unixepoch() * 1000)",
-      [grpId, ctx.config.language, `boss sent the DRAFT back: ${b.reason ?? ""}`],
+      [grpId, ctx.config.language, withAttachments(`boss sent the DRAFT back: ${b.reason ?? ""}`, b.attachments)],
     );
     // Back to PLANNING, which is what the group actually is now. Left in DRAFT it
     // still counted as a decision waiting on the boss, still showed the rejected
     // card, and 批准开工 still worked on it — one stray click approves the very
     // plan that was just sent back.
     ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ? AND status = 'DRAFT'", [grpId]);
-    ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: b.reason ?? "respec" });
-    ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: b.reason } });
+    const why = withAttachments(b.reason ?? "respec", b.attachments);
+    ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
+    ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: why } });
     ctx.sched.tick();
     return text("sent back");
   }
@@ -1524,7 +1548,7 @@ const getEvidence: Handler = async (ctx, _req, params) => {
 
 /** Tail of one gate's log, on demand: it is only opened when a verdict is doubted. */
 const getGateLog: Handler = async (ctx, req, params) => {
-  const name = params.name.replace(/[^\w.-]/g, "");
+  const name = (params.name ?? "").replace(/[^\w.-]/g, "");
   const path = join(ctx.config.dataDir ?? "data", "gates", `${Number(params.id)}-${name}.log`);
   if (!existsSync(path)) return text("no log", 404);
   const raw = await Bun.file(path).text();
@@ -1534,7 +1558,8 @@ const getGateLog: Handler = async (ctx, req, params) => {
 };
 
 const postSliceDecision: Handler = async (ctx, req, params) => {
-  const b = await body<{ feedback?: string }>(req);
+  const raw = await body<{ feedback?: string; attachments?: Attachment[] }>(req);
+  const b = { feedback: raw.feedback ? withAttachments(raw.feedback, raw.attachments) : raw.feedback };
   const id = Number(params.id);
   const accept = params.decision === "accept";
   const sl = ctx.db
