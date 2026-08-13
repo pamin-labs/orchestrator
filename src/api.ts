@@ -141,7 +141,7 @@ const postStatus: Handler = async (ctx, req) => {
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
   ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [b.text ?? "", a.id]);
-  ctx.bus.live({ grpId: a.grp_id, agentId: a.id, kind: "status", body: b.text ?? "" });
+  ctx.bus.live({ grpId: a.grp_id, agentId: a.id, role: a.role, kind: "status", body: b.text ?? "" });
   return text("ok");
 };
 
@@ -863,7 +863,7 @@ export function snapshot(ctx: Ctx) {
     groups: db
       .query(
         `SELECT id, project_id, name, branch, worktree, status, owns_json, budget_tokens,
-                spent_tokens, spent_usd FROM grp WHERE status != 'DISSOLVED'`,
+                spent_tokens, spent_usd, pr_number FROM grp WHERE status != 'DISSOLVED'`,
       )
       .all(),
     slices: db
