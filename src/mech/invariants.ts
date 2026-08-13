@@ -1,7 +1,7 @@
 import type { Ctx } from "../api.ts";
 import { settlePausing } from "./intercept.ts";
 import { joinQueue } from "./mergequeue.ts";
-import { startNextSlice } from "./review.ts";
+import { reopenTasks, startNextSlice } from "./review.ts";
 import {
   ESCALATION_STATES,
   GRP_STATES,
@@ -155,7 +155,38 @@ export const SLICE_INVARIANTS = rows<SliceState>(
     must: "it starts once the slice before it is accepted",
     driver: "startNextSlice, plus the RUNNING repair above when nothing fires it",
   },
-  { state: "running", must: "an engineer turn is queued or running", driver: "watchdog rule 8" },
+  {
+    state: "running",
+    must: "an engineer turn is queued or running, and the writer has a card it can claim",
+    driver: "watchdog rule 8",
+    repair: (ctx) => {
+      // A retry that left every task `done`. The turn keeps being dispatched and
+      // keeps ending the same way — an empty task list, a claim refused, a question
+      // to the boss — because there is nothing in the group the writer may touch.
+      // Six groups at once, and every one of them read as RUNNING with an engineer
+      // on it. sendBack reopens them now; this catches the rows it already stranded,
+      // and any other path that ever flips a slice back without looking at its cards.
+      for (const s of ctx.db
+        .query<{ id: number }, []>(
+          `SELECT s.id FROM slice s
+           WHERE s.status = 'running'
+             AND EXISTS (SELECT 1 FROM task t WHERE t.slice_id = s.id)
+             AND NOT EXISTS (SELECT 1 FROM task t WHERE t.slice_id = s.id AND t.status != 'done')`,
+        )
+        .all()) {
+        reopenTasks(ctx, s.id);
+      }
+
+      // The other half of the same deadlock: the card is claimed, but by an agent
+      // that no longer exists to close it. `task done` compares against the row id,
+      // so a rehired writer is a stranger to its own group's work.
+      ctx.db.run(
+        `UPDATE task SET owner_agent_id = NULL
+         WHERE status != 'done'
+           AND owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired')`,
+      );
+    },
+  },
   { state: "self_review", must: "the engineer's own pass is recorded before reconcile", driver: "the same turn" },
   { state: "gate", must: "a gate job is queued or running", driver: "runReview; watchdog rule 8 if the queue empties" },
   { state: "qa", must: "a qa turn is queued or running", driver: "handToQa; watchdog rule 8" },

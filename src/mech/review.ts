@@ -147,6 +147,27 @@ export async function runDeterministicReview(
 }
 
 /**
+ * Give the writer back a card it is allowed to work on.
+ *
+ * A slice going back for a retry kept its tasks `done`, and `done` is the one
+ * state the writer cannot act on: `task list` showed a finished card, `task claim`
+ * said the slice was not being worked, `task done` said the task was not its. No
+ * legal move — so the turn ended the only way it could, by asking the boss. Six
+ * groups reached the same dead end, four of them stopping the group outright.
+ *
+ * `claim_json` stays. `reconcile` only reads it off `done` rows, so it is inert
+ * here, and on a reopened card it is the record of what the last attempt already
+ * put on the branch — which is what `getTasks` shows the writer so it checks
+ * before rewriting.
+ */
+export function reopenTasks(ctx: Ctx, sliceId: number): void {
+  ctx.db.run(
+    "UPDATE task SET status = 'pending', owner_agent_id = NULL WHERE slice_id = ? AND status = 'done'",
+    [sliceId],
+  );
+}
+
+/**
  * Send a slice back to the writer.
  *
  * The retry always starts a FRESH session carrying only the acceptance spec, the
@@ -160,6 +181,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
 
   const retries = slice.retries + 1;
   ctx.db.run("UPDATE slice SET retries = ?, status = 'running' WHERE id = ?", [retries, sliceId]);
+  reopenTasks(ctx, sliceId);
 
   if (retries > cfg.gateRetries) {
     // Looping forever is worse than interrupting the boss. Two failed attempts
