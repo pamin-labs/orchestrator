@@ -132,11 +132,20 @@ function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
  * tick would be a worse version of the grepping it replaces. Twelve calls a tick
  * on the cheapest tier catches up over a few minutes and then costs nothing.
  */
+const indexedAt = new Map<number, string>();
+
 async function refreshIndex(ctx: Ctx, _workRoot: string): Promise<void> {
   if (!ctx.git || !ctx.ask) return;
   for (const p of ctx.db
     .query<{ id: number; repo_path: string }, []>("SELECT id, repo_path FROM project")
     .all()) {
+    // Nothing to do when the repo has not moved. Without this the tick still read
+    // the head of every tracked file to compute signatures — no model calls, but
+    // 125 file reads every thirty seconds to prove nothing changed.
+    const head = await ctx.git(p.repo_path, ["rev-parse", "HEAD"], p.repo_path);
+    const at = head.code === 0 ? head.out.trim() : "";
+    if (at && indexedAt.get(p.id) === at) continue;
+
     const ls = await ctx.git(p.repo_path, ["ls-files"], p.repo_path);
     if (ls.code !== 0) continue;
     const files = ls.out.split("\n").map((l) => l.trim()).filter((f) => /\.(ts|tsx|js|jsx|md|yaml|yml)$/.test(f));
@@ -149,6 +158,10 @@ async function refreshIndex(ctx: Ctx, _workRoot: string): Promise<void> {
       maxCalls: 12,
     });
     saveTree(ctx.db, p.id, tree);
+    // Only when the budget was not spent: a partial pass has more to do, and
+    // marking it done would leave the tail of the repo unsummarised until the next
+    // commit.
+    if (at && calls < 12) indexedAt.set(p.id, at);
     if (calls > 0) {
       ctx.bus.emit({
         author: "librarian",
