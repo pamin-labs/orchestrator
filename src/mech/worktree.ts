@@ -1,5 +1,5 @@
-import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, symlinkSync } from "node:fs";
 import type { RepoLock } from "./gitlock.ts";
 
 /**
@@ -57,7 +57,65 @@ export async function createWorktree(
 
   const add = await git(spec.repoPath, argv);
   if (add.code !== 0) throw new Error(`git worktree add failed: ${add.out}`);
+  seedIgnored(spec.repoPath, worktree);
   return { worktree, branch };
+}
+
+/**
+ * Gitignored build prerequisites a fresh worktree does not get from `git`.
+ *
+ * ponytail: hardcoded for this repo shape; move to project config when a second
+ * project needs different artifacts.
+ */
+const SEED = ["node_modules", "web/dist"];
+
+/**
+ * Without these the gates fail for a reason the group did not cause and cannot
+ * fix: `denyOutsideOwns` denies every path outside the group's own boundary, so
+ * `bun install` and `bun run build:web` both come back as
+ * `Operation not permitted` — measured, one group sat on that blocker for hours.
+ *
+ * Symlinks, not copies: the main checkout rebuilds and every worktree follows.
+ * Writing through them is denied by `denyWrite: <repoPath>/**`, so a group
+ * cannot dirty the main checkout this way.
+ */
+export function seedIgnored(repoPath: string, worktree: string): void {
+  excludeSeeds(repoPath);
+  for (const rel of SEED) {
+    const src = join(repoPath, rel);
+    const dst = join(worktree, rel);
+    if (!existsSync(src) || existsSync(dst)) continue;
+    mkdirSync(dirname(dst), { recursive: true });
+    try {
+      symlinkSync(src, dst);
+    } catch {
+      // A worktree that starts without one artifact is worse off, not broken.
+    }
+  }
+}
+
+/**
+ * `.gitignore` does not cover these symlinks, and `info/exclude` does.
+ *
+ * `web/dist/` with a trailing slash matches a directory; the seed is a symlink,
+ * which is a file. So `git add -A` in the turn checkpoint swallowed it, and once
+ * tracked no ignore rule applies again — QA rejected a slice for "the diff
+ * contains web/dist" that the group never touched. `info/exclude` lives in the
+ * common git dir, so one write covers every worktree, is never committed, and
+ * does not depend on what the branch's `.gitignore` happens to say.
+ */
+function excludeSeeds(repoPath: string): void {
+  const path = join(repoPath, ".git/info/exclude");
+  try {
+    const have = existsSync(path) ? readFileSync(path, "utf8") : "";
+    const lines = have.split("\n").map((l) => l.trim());
+    const missing = SEED.filter((s) => !lines.includes(s));
+    if (missing.length) {
+      appendFileSync(path, `${have.endsWith("\n") || !have ? "" : "\n"}${missing.join("\n")}\n`);
+    }
+  } catch {
+    // A bare or unusual repo layout: the symlink still works, it is just visible.
+  }
 }
 
 export async function removeWorktree(

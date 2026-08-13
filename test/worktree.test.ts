@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, mkdirSync, lstatSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RepoLock } from "../src/mech/gitlock.ts";
@@ -72,6 +72,40 @@ test("a worktree is created on its own branch, outside the main checkout", async
 
   await removeWorktree(git, dir, wt.worktree, { deleteBranch: wt.branch });
   expect(existsSync(wt.worktree)).toBe(false);
+});
+
+test("a new worktree gets the gitignored build prerequisites it cannot build itself", async () => {
+  const dir = await repo();
+  mkdirSync(join(dir, "node_modules"), { recursive: true });
+  mkdirSync(join(dir, "web/dist"), { recursive: true });
+  writeFileSync(join(dir, "web/dist/main.js"), "built\n");
+  // Exactly what this repo ships: trailing slashes, so directories only.
+  writeFileSync(join(dir, ".gitignore"), "node_modules/\nweb/dist/\n");
+  await git(dir, ["add", "-A"]);
+  await git(dir, ["commit", "-q", "-m", "ignore built things"]);
+  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+
+  // Symlinks, so the main checkout's rebuild is what every worktree sees.
+  expect(lstatSync(join(wt.worktree, "node_modules")).isSymbolicLink()).toBe(true);
+  expect(readFileSync(join(wt.worktree, "web/dist/main.js"), "utf8")).toBe("built\n");
+
+  // And git must not see them. `.gitignore` here says `web/dist/`, which matches a
+  // directory and not the symlink — the turn checkpoint's `git add -A` committed it
+  // into the branch, and QA rejected the slice for a file the group never touched.
+  expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out).toBe("");
+
+  // Removing the worktree unlinks the symlink; the target survives.
+  await removeWorktree(git, dir, wt.worktree, { deleteBranch: wt.branch });
+  expect(existsSync(join(dir, "web/dist/main.js"))).toBe(true);
+});
+
+test("a repo that has never been built still gets a worktree", async () => {
+  const dir = await repo();
+  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  expect(existsSync(join(wt.worktree, "a.txt"))).toBe(true);
+  expect(existsSync(join(wt.worktree, "node_modules"))).toBe(false);
 });
 
 test("two groups get separate worktrees and separate branches", async () => {
