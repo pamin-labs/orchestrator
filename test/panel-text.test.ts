@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { activityOf } from "../web/src/lib/activity.ts";
 import { splitAttachments } from "../web/src/lib/attach.ts";
+import { imagePaths, withAttachments } from "../src/api.ts";
 
 const of = (activity: string) => activityOf({ activity } as never);
 
@@ -29,10 +30,11 @@ test("a message hands its attachments back as things the panel can open", () => 
   // Exactly what withAttachments() writes. The boss's screenshot used to render
   // as this line, under the question it was evidence for.
   const { text, files } = splitAttachments(
-    "这个 nav 不太对\n\n附件（路径如下）：\n- data/attachments/1755-0-Screenshot.png (image)\n- data/attachments/1755-1-spec.pdf",
+    "按 [图1] 改\n\n附件（路径如下）：\n- [图1] data/attachments/1755-0-Screenshot.png (image)\n- [附件2] data/attachments/1755-1-spec.pdf",
   );
-  expect(text).toBe("这个 nav 不太对");
+  expect(text).toBe("按 [图1] 改");
   expect(files.map((f) => f.image)).toEqual([true, false]);
+  expect(files.map((f) => f.label)).toEqual(["图1", "附件2"]);
   expect(files[0]!.url).toBe("/api/attach/1755-0-Screenshot.png");
 });
 
@@ -40,4 +42,15 @@ test("a message that merely mentions attachments keeps its own body", () => {
   const body = "附件（路径如下）：\n还没传呢";
   expect(splitAttachments(body).text).toBe(body);
   expect(splitAttachments("没有附件").files).toEqual([]);
+});
+
+test("labelled image paths still reach codex as -i flags", () => {
+  // The label is written into the same line the image tag is on, and imagePaths
+  // is how those files leave for a CLI with no tool that opens an image.
+  const prompt = withAttachments("按 [图1] 改", [
+    { name: "a.png", path: "/data/a.png", type: "image/png", label: "图1" },
+    { name: "s.pdf", path: "/data/s.pdf", type: "application/pdf", label: "附件2" },
+  ]);
+  expect(prompt).toContain("- [图1] /data/a.png (image)");
+  expect(imagePaths(prompt)).toEqual(["/data/a.png"]);
 });

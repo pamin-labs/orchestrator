@@ -1822,7 +1822,13 @@ const postAttach: Handler = async (ctx, req) => {
   return json({ files: out });
 };
 
-export interface Attachment { name: string; path: string; type: string }
+export interface Attachment {
+  name: string;
+  path: string;
+  type: string;
+  /** 图1 / 附件2 — the marker the boss's own text refers to. */
+  label?: string;
+}
 
 /**
  * Hand one attachment back to the panel.
@@ -1886,15 +1892,19 @@ const IMAGE_TAG = " (image)";
 export function withAttachments(text: string, attachments?: Attachment[]): string {
   const files = (attachments ?? []).filter((f) => f?.path);
   if (!files.length) return text;
+  // The label goes on the path, because the words above it use the same marker.
+  // Without it, "按 [图2] 改" is a reference into a list of three bare paths.
   return (
     `${text}\n\n附件（路径如下）：\n` +
-    files.map((f) => `- ${f.path}${f.type?.startsWith("image/") ? IMAGE_TAG : ""}`).join("\n")
+    files
+      .map((f) => `- ${f.label ? `[${f.label}] ` : ""}${f.path}${f.type?.startsWith("image/") ? IMAGE_TAG : ""}`)
+      .join("\n")
   );
 }
 
 /** The image attachments in an assembled prompt, for CLIs that need them as flags. */
 export function imagePaths(prompt: string): string[] {
-  const re = new RegExp(`^- (\\S+)${IMAGE_TAG.replace(/[()]/g, "\\$&")}$`, "gm");
+  const re = new RegExp(`^- (?:\\[[^\\]]+\\] )?(\\S+)${IMAGE_TAG.replace(/[()]/g, "\\$&")}$`, "gm");
   return [...prompt.matchAll(re)].map((m) => m[1]!);
 }
 
