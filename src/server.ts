@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { landGroup, makeApp, type Ctx } from "./api.ts";
 import { Bus } from "./bus.ts";
@@ -281,6 +281,18 @@ export function installOrchShim(dataDir: string): string {
 if (import.meta.main) {
   const { ctx, url, stop } = start();
   console.log(`orchestrator on ${url}`);
+  // The panel is served from `web/dist`, and nothing rebuilds it. A UI change that
+  // is committed, tested and typechecked still shows the old page, which reads as
+  // "the fix did not work" — measured, on a button that had already been deleted.
+  // Not rebuilt here on purpose: in a worktree `web/dist` is a symlink to the main
+  // checkout's build, so building would overwrite somebody else's bundle.
+  {
+    const dist = statSync(join(ROOT, "web/dist/main.js"), { throwIfNoEntry: false })?.mtimeMs ?? 0;
+    const newest = readdirSync(join(ROOT, "web/src"), { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile())
+      .reduce((m, e) => Math.max(m, statSync(join(e.parentPath, e.name)).mtimeMs), 0);
+    if (newest > dist) console.log(`web/dist is older than web/src — run \`bun run build:web\`, or the page is stale`);
+  }
 
   // Ctrl-C left the turns' subprocesses running. Next boot then saw a live pid and
   // declined to reclaim the job — so the group stayed wedged for four turn timeouts

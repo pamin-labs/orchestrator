@@ -5,7 +5,7 @@ import { interrupt, park, settlePausing, unpark } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
-import type { GitRunner } from "./worktree.ts";
+import { defaultBase, type GitRunner } from "./worktree.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.
@@ -39,6 +39,21 @@ export const REEMIT_MS = 30 * 60 * 1000;
 export const NUDGE_AFTER_MS = 4 * 60 * 60 * 1000;
 /** And how often to say it again. Nagging every half hour is how a feed is ignored. */
 export const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
+
+/** How often the watchdog asks the remote what main is. Not every 30s tick. */
+export const FETCH_EVERY_MS = 5 * 60 * 1000;
+
+// ponytail: in-memory, so a restart fetches once more than it needed to. A table
+// for this would be a row nobody ever reads.
+const lastFetch = new Map<string, number>();
+
+async function refreshOrigin(deps: WatchdogDeps, repo: string): Promise<void> {
+  const at = deps.now?.() ?? Date.now();
+  if (at - (lastFetch.get(repo) ?? 0) < FETCH_EVERY_MS) return;
+  lastFetch.set(repo, at);
+  // Under the repo lock (makeGitRunner), because worktrees share one `.git`.
+  await deps.git(repo, ["fetch", "--quiet", "origin"], repo);
+}
 
 /**
  * The three approval points, each with a clock.
@@ -455,14 +470,23 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // Told once per base: `rebase_seen` records what the group has already been
   // warned about, so a group that reads the message and keeps working is not
   // nagged every thirty seconds.
+  //
+  // PR_OPEN counts. Its branch is the one thing that has to merge, and it used to
+  // be excluded — so a stale PR sat in the queue until GitHub called it
+  // CONFLICTING, which is the late half of the same news.
   for (const g of ctx.db
     .query<{ id: number; name: string; worktree: string; repo: string; seen: string | null }, []>(
       `SELECT g.id, g.name, g.worktree, p.repo_path AS repo, g.rebase_seen AS seen
        FROM grp g JOIN project p ON p.id = g.project_id
-       WHERE g.status = 'RUNNING' AND g.worktree IS NOT NULL`,
+       WHERE g.status IN ('RUNNING','PR_OPEN') AND g.worktree IS NOT NULL`,
     )
     .all()) {
-    const head = await deps.git(g.repo, ["rev-parse", "HEAD"], g.repo);
+    // Against the real base, not the local checkout's HEAD: main also moves when
+    // somebody pushes from another machine, and nothing here ever fetched, so
+    // that half was invisible.
+    await refreshOrigin(deps, g.repo);
+    const base = await defaultBase(deps.git, g.repo);
+    const head = await deps.git(g.repo, ["rev-parse", base], g.repo);
     if (head.code !== 0) continue;
     const sha = head.out.trim();
     if (!sha || sha === g.seen) continue;

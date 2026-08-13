@@ -21,7 +21,7 @@
  * throwaway database — so a check can seed whatever state it needs and no check can
  * touch the real one.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/server.ts";
@@ -69,6 +69,18 @@ try {
   ({ chromium } = await import("playwright"));
 } catch {
   console.error("playwright is not installed: `bun add -d playwright && bunx playwright install chromium`");
+  process.exit(2);
+}
+
+// The worktree's `web/dist` is a symlink to the main checkout's build (that is how
+// a fresh worktree gets a bundle at all). Serving that would test main's UI, not
+// this group's — the exact confusion this whole resource exists to end. Replace it
+// with a real build of the code under test.
+const dist = join(process.cwd(), "web/dist");
+if (lstatSync(dist, { throwIfNoEntry: false })?.isSymbolicLink()) rmSync(dist);
+const built = Bun.spawnSync(["bun", "run", "build:web"], { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" });
+if (built.exitCode !== 0) {
+  console.error(`build:web failed, so the page under test would be stale:\n${built.stderr.toString().slice(-800)}`);
   process.exit(2);
 }
 

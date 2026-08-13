@@ -556,3 +556,28 @@ test("main moving under a running group sends it to rebase, once per commit", as
   // rebase finishes, which is how an agent learns to skip the message.
   expect((await runWatchdog(deps)).map((x) => x.rule)).not.toContain("base_moved");
 });
+
+test("a stale PR branch is told to rebase too, and the base comes from the remote", async () => {
+  // PR_OPEN used to be excluded, so the one branch that has to merge only learned
+  // main had moved when GitHub called it CONFLICTING — the late half of the same
+  // news. And the base was read from the local checkout's HEAD, so a push from
+  // another machine was invisible however often this ran.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PR_OPEN', worktree = '/tmp/wt/g1' WHERE id = 1");
+  // Its own repo path: the fetch throttle is keyed by repo and lives for the
+  // process, so it would otherwise still be holding the previous test's stamp.
+  h.db.run("UPDATE project SET repo_path = '/tmp/p-pr' WHERE id = 1");
+  const seen: string[][] = [];
+  h.ctx.git = async (_repo, argv) => {
+    seen.push(argv);
+    if (argv[0] === "remote") return { code: 0, out: "origin" };
+    if (argv[0] === "symbolic-ref") return { code: 0, out: "refs/remotes/origin/main" };
+    if (argv[0] === "rev-parse") return { code: 0, out: "abc1234567" };
+    return { code: 1, out: "" }; // not an ancestor of the worktree
+  };
+  const deps = { ...h.deps, git: h.ctx.git! };
+
+  expect((await runWatchdog(deps)).map((x) => x.rule)).toContain("base_moved");
+  expect(seen.some((a) => a[0] === "fetch")).toBe(true);
+  expect(seen.some((a) => a[0] === "rev-parse" && a[1] === "origin/main")).toBe(true);
+});
