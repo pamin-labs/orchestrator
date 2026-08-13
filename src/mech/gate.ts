@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync } from "node:fs";
 import type { DB } from "../db.ts";
 import { runResource, type ResourceDef } from "./lease.ts";
 
@@ -105,6 +105,24 @@ export async function runGates(opts: RunGatesOptions): Promise<GateOutcome> {
       results,
       feedback:
         'no gates are configured for this project. Add resource names to project config_json, e.g. {"gates":["test"]}.',
+    };
+  }
+
+  // A worktree with its own node_modules is a gate failure waiting to happen, and
+  // it fails as something else: `playwright is not installed` when the main
+  // checkout installed it an hour ago. Measured — one group filed a blocker with
+  // the right diagnosis and the boss had to act on it. Say it here, once, in the
+  // words of the fix.
+  const nm = join(opts.cwd, "node_modules");
+  if (existsSync(nm) && !lstatSync(nm).isSymbolicLink()) {
+    return {
+      pass: false,
+      results: [],
+      feedback:
+        `${opts.cwd}/node_modules is a real directory, not the symlink to the main checkout. ` +
+        `It will be missing anything installed since it was created, and the gate that trips on that ` +
+        `reports a missing package rather than a stale tree. Fix: rm -rf that directory and ` +
+        `symlink the main checkout's in its place.`,
     };
   }
 

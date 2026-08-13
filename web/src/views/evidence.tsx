@@ -75,9 +75,32 @@ export function EvidencePanel({ sliceId }: { sliceId: number }) {
   );
 }
 
-/** The gate already wrote its log to disk; this is the only thing that ever read it. */
+/**
+ * The gate's log, read the way anyone actually reads one.
+ *
+ * It was a `<pre>` of 29k characters: four hundred `(pass) … [0.08ms]` lines with
+ * the one failure somewhere inside. Nobody opens a gate log to read the passes —
+ * they open it to find what broke, and scrolling for it is the whole cost.
+ *
+ * So: counts first, failures and their error lines shown, passes collapsed behind
+ * their own number, and a filter for the case where the failure is not the point.
+ * Same idea as the diff viewer next door — structure the thing instead of dumping
+ * it, and put colour on the row rather than the text.
+ */
 function GateLog({ sliceId, name, size }: { sliceId: number; name: string; size: number }) {
   const [text, setText] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [showPass, setShowPass] = useState(false);
+
+  const lines = (text ?? "").split("\n");
+  const passes = lines.filter((l) => /^\s*\(pass\)/.test(l));
+  const fails = lines.filter((l) => /^\s*\(fail\)/.test(l));
+  // Everything that is neither: error bodies, stack lines, tsc diagnostics, the
+  // runner's own summary. This is the half that says why.
+  const rest = lines.filter((l) => l.trim() && !/^\s*\((pass|fail)\)/.test(l));
+  const hit = (l: string) => !q || l.toLowerCase().includes(q.toLowerCase());
+  const body = [...fails, ...rest, ...(showPass ? passes : [])].filter(hit);
+
   return (
     <>
       <Button
@@ -92,9 +115,36 @@ function GateLog({ sliceId, name, size }: { sliceId: number; name: string; size:
         {name} <span className="font-mono text-[0.625rem] text-ink-3">{Math.round(size / 1024)}k</span>
       </Button>
       {text !== null && (
-        <pre className="mt-1 max-h-64 w-full overflow-auto rounded-md bg-sunk p-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2">
-          {text}
-        </pre>
+        <div className="mt-1 w-full rounded-md bg-sunk">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule-soft px-2 py-1">
+            {fails.length > 0 ? (
+              <span className="text-[0.6875rem] font-semibold text-bad">{fails.length} 条没过</span>
+            ) : (
+              <span className="text-[0.6875rem] font-semibold text-ok">全过</span>
+            )}
+            {passes.length > 0 && (
+              <button
+                className="cursor-pointer text-[0.6875rem] text-ink-3 hover:text-accent"
+                onClick={() => setShowPass(!showPass)}
+              >
+                {passes.length} 条通过 {showPass ? "收起" : "展开"}
+              </button>
+            )}
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="过滤"
+              className="ml-auto w-28 rounded border border-rule bg-paper px-1.5 py-0.5 text-[0.6875rem] outline-none focus-visible:border-accent"
+            />
+          </div>
+          <pre className="max-h-64 overflow-auto p-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2">
+            {body.length === 0 ? "没有匹配的行" : body.map((l, i) => (
+              <div key={i} className={cn(/^\s*\(fail\)/.test(l) && "bg-bad-soft", /error|Error/.test(l) && "text-bad")}>
+                {l || " "}
+              </div>
+            ))}
+          </pre>
+        </div>
       )}
     </>
   );
