@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Meta } from "../ui/bits";
 import { Badge } from "../ui/badge";
+import { Tip } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
 import { pull } from "../lib/api";
@@ -118,18 +119,36 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
   } catch {}
 
   return (
-    <div className="border-t border-rule-soft py-2">
+    <div className="border-t border-rule-soft py-4">
+      {/* Who wrote it and when, and nothing else at full strength. The export path
+          was the widest thing on the line — a 60-character docs/journal/<用中文写的
+          很长的需求名>/020-journal.md that said less than the requirement name it
+          contains. It is a hover now. */}
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         {showKind && <Badge>{ZH.get(n.kind) ?? n.kind}</Badge>}
-        {n.group && <Meta>{n.group}</Meta>}
+        {n.group && <span className="truncate text-[0.75rem] font-medium text-ink">{n.group}</span>}
         <Meta>{clock(n.at)}</Meta>
         {gate && (
           <Meta className={gate === "pass" ? "text-ok" : gate === "fail" ? "text-bad" : undefined}>gate {gate}</Meta>
         )}
-        {files.length > 0 && <Meta className="min-w-0 truncate">{files.join(" ")}</Meta>}
-        {n.exportPath && <Meta className="min-w-0 truncate text-ink-3">{n.exportPath}</Meta>}
+        {files.length > 0 && (
+          <Tip label={files.join("\n")}>
+            <Meta className="min-w-0 truncate underline decoration-dotted">
+              {files.length === 1 ? files[0] : `${files.length} 个文件`}
+            </Meta>
+          </Tip>
+        )}
+        {n.exportPath && (
+          <Tip label={n.exportPath}>
+            <Meta className="cursor-default">md</Meta>
+          </Tip>
+        )}
       </div>
-      <div className="mt-0.5 whitespace-pre-wrap text-[0.8125rem] leading-relaxed text-ink-2">{n.body}</div>
+      {/* Indented under its own heading. Six lines of prose butted against the next
+          entry's six made one wall of text with rules through it. */}
+      <div className="mt-1.5 whitespace-pre-wrap text-[0.8125rem] leading-[1.7] text-ink-2">
+        {n.body}
+      </div>
     </div>
   );
 }
