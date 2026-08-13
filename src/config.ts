@@ -147,12 +147,14 @@ const DEFAULTS: Config = {
   sessionRotateFraction: 0.6,
   // Where a rate-limited turn goes next. One step down, not straight to haiku: the
   // point is to keep going at a lower tier, not to make the cheapest possible mess.
-  // Flat model -> model, so the two ladders cannot be walked into each other.
+  // claude only, and deliberately: its tiers draw on one window at different
+  // rates, so dropping a tier really does buy more turns before the reset. codex
+  // reports a percentage of an account-wide quota, and no model spends less of
+  // it — at 100% there is nothing to fall back to and waiting is the answer. A
+  // gpt ladder here would be a mechanism the account does not have.
   modelFallback: {
     "claude-opus-5": "claude-sonnet-5",
     "claude-sonnet-5": "claude-haiku-4-5-20251001",
-    "gpt-5.6-sol": "gpt-5.6-terra",
-    "gpt-5.6-terra": "gpt-5.6-luna",
   },
   unreadDigestThreshold: 30,
   feedbackSedimentThreshold: 3,

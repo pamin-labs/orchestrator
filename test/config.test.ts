@@ -88,9 +88,13 @@ test("the runtime picks the model table, so codex never gets a claude id", () =>
   expect(modelFor(cfg, onCodex, "trivial")).toBe(cfg.difficultyModel.codex!.trivial!);
   expect(modelFor(cfg, onCodex, "hard")).not.toContain("claude");
 
-  // And the fallback ladder cannot walk a codex agent onto a claude model.
+  // The rate-limit ladder is claude's alone. Its tiers spend one window at
+  // different rates, so a downgrade buys turns; codex reports a percentage of an
+  // account-wide quota that no model spends less of, and at 100% the only move is
+  // to wait. A gpt entry here would promise a mechanism that does not exist.
   for (const [from, to] of Object.entries(cfg.modelFallback)) {
-    expect(from.startsWith("gpt")).toBe(to.startsWith("gpt"));
+    expect(from.startsWith("claude-")).toBe(true);
+    expect(to.startsWith("claude-")).toBe(true);
   }
 });
 
