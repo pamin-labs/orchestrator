@@ -165,7 +165,7 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
       onClick={() => onOpen(g.id)}
       className={cn(
         "grid w-full cursor-pointer grid-cols-[14rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5",
-        "border-t border-rule-soft px-2 py-2.5 text-left transition-colors hover:bg-sunk",
+        "border-t border-rule-soft first:border-t-0 px-2 py-2.5 text-left transition-colors hover:bg-sunk",
         "max-[60rem]:grid-cols-[minmax(0,1fr)_auto]",
       )}
     >
@@ -288,7 +288,7 @@ function Done({ rows }: { rows: Archived[] }) {
       {page.map((a) => (
         <div
           key={a.id}
-          className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-t border-rule-soft px-2 py-2"
+          className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-t border-rule-soft first:border-t-0 px-2 py-2"
         >
           <span className="min-w-0 truncate text-[0.8125rem] text-ink-2">
             {a.name}
