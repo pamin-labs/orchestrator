@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { Tip } from "../ui/tooltip";
 import { CardRow } from "../ui/card";
 import { Meta } from "../ui/bits";
-import { post } from "../lib/api";
+import { post, pull } from "../lib/api";
 import type { State } from "../lib/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "../lib/rank";
 import { pending, prUrl } from "../lib/select";
@@ -314,6 +315,7 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
   if (!open) return <Button variant="go" onClick={() => setOpen(true)}>回答</Button>;
   return (
     <span className="flex items-end gap-1.5">
+      <Draft escId={escId} onUse={setText} />
       <textarea
         autoFocus
         rows={2}
@@ -328,5 +330,26 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
       />
       <Button variant="go" disabled={busy || !text.trim()} onClick={() => void send(text)}>发送</Button>
     </span>
+  );
+}
+
+/**
+ * The drafted answer, offered from the queue as well as the requirement page.
+ *
+ * This is where the boss actually answers now — 待办 is one tab and the question
+ * has its reply box on the row — so a draft that only existed on the drill-in was
+ * a draft nobody saw. Same call, same rule: computed on open, never stored, and
+ * it goes into the box rather than to the agent.
+ */
+function Draft({ escId, onUse }: { escId: number; onUse: (t: string) => void }) {
+  const [text, setText] = useState<string | null>(null);
+  useEffect(() => {
+    void pull<{ text: string }>(`/api/escalations/${escId}/draft`).then((r) => setText(r?.text?.trim() || ""));
+  }, [escId]);
+  if (!text) return null;
+  return (
+    <Tip label={text}>
+      <Button size="sm" onClick={() => onUse(text)}>用草稿</Button>
+    </Tip>
   );
 }

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { activityOf } from "../web/src/lib/activity.ts";
 import { splitAttachments } from "../web/src/lib/attach.ts";
-import { imagePaths, withAttachments } from "../src/api.ts";
+import { imagePaths, makeApp, withAttachments } from "../src/api.ts";
 
 const of = (activity: string) => activityOf({ activity } as never);
 
@@ -53,4 +53,35 @@ test("labelled image paths still reach codex as -i flags", () => {
   ]);
   expect(prompt).toContain("- [图1] /data/a.png (image)");
   expect(imagePaths(prompt)).toEqual(["/data/a.png"]);
+});
+
+test("a dropped folder becomes one attachment, and cannot escape its directory", async () => {
+  const { mkdtempSync, existsSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(tmpdir(), "attach-"));
+  const form = new FormData();
+  form.append("file", new File(["a"], "a.txt"), "a.txt");
+  form.append("rel", "spec/a.txt");
+  form.append("file", new File(["b"], "b.txt"), "b.txt");
+  // Every segment is sanitised, so a crafted relative path lands inside.
+  form.append("rel", "spec/../../../b.txt");
+  form.append("file", new File(["c"], "c.png", { type: "image/png" }), "c.png");
+  form.append("rel", "c.png");
+
+  const app = makeApp({
+    db: null as never,
+    config: { dataDir: dir, language: "中文", workRoot: dir },
+  } as never);
+  const r = await app(new Request("http://x/api/attach", { method: "POST", body: form }));
+  const { files } = (await r.json()) as { files: { name: string; path: string; type: string }[] };
+
+  // The folder is one entry, the loose image is another. Forty files inside a
+  // dropped folder would otherwise be forty things to refer to.
+  expect(files.map((f) => f.type)).toEqual(["image/png", "inode/directory"]);
+  const folder = files.find((f) => f.type === "inode/directory")!;
+  expect(folder.name).toBe("spec");
+  expect(existsSync(join(folder.path, "a.txt"))).toBe(true);
+  expect(existsSync(join(folder.path, "b.txt"))).toBe(true);
+  expect(existsSync(join(dir, "b.txt"))).toBe(false);
 });

@@ -8,6 +8,47 @@ import { Card, CardHeader, CardTitle } from "./card";
 import { cn } from "../lib/utils";
 
 export interface Attached { name: string; path: string; type: string; size: number; url?: string; label: string }
+/** A file and where it sat inside whatever was dropped. */
+interface Picked { file: File; rel: string }
+
+/**
+ * Everything under what was dropped, folders included.
+ *
+ * `DataTransfer.files` skips directories entirely — drop a folder and the list is
+ * either empty or holds one entry whose bytes cannot be read. `webkitGetAsEntry`
+ * is the only way in, it is in every browser that matters despite the prefix, and
+ * the items have to be captured synchronously: the DataTransfer empties as soon
+ * as the drop handler yields.
+ */
+async function walk(items: DataTransferItemList): Promise<Picked[]> {
+  const roots = [...items].map((i) => i.webkitGetAsEntry?.()).filter(Boolean) as FileSystemEntry[];
+  const out: Picked[] = [];
+  const one = (e: FileSystemEntry, prefix: string): Promise<void> =>
+    new Promise((done) => {
+      if (e.isFile) {
+        (e as FileSystemFileEntry).file(
+          (f) => {
+            out.push({ file: f, rel: prefix + e.name });
+            done();
+          },
+          () => done(),
+        );
+        return;
+      }
+      const reader = (e as FileSystemDirectoryEntry).createReader();
+      // readEntries hands back at most a hundred at a time and signals the end
+      // with an empty batch.
+      const batch = () =>
+        reader.readEntries(async (list) => {
+          if (!list.length) return done();
+          await Promise.all(list.map((c) => one(c, `${prefix + e.name}/`)));
+          batch();
+        }, () => done());
+      batch();
+    });
+  await Promise.all(roots.map((r) => one(r, "")));
+  return out;
+}
 export interface Skill { name: string; path: string; description: string; scope: "project" | "user" }
 export interface Draft {
   text: string;
@@ -73,8 +114,12 @@ export function Composer({
    * for once.
    */
   useEffect(() => {
-    if (!projectId || skills) return;
-    void fetch(`/api/skills?project=${projectId}`)
+    if (skills) return;
+    // Without a project this returns the user-level ones. A box that takes a
+    // screenshot and a box that takes an idea are the same box (that is why there
+    // is one component), and half of them silently had no `/` because whoever
+    // wired them up did not have a project id to hand.
+    void fetch(`/api/skills?project=${projectId ?? ""}`)
       .then((r) => (r.ok ? r.json() : { skills: [] }))
       .then((d) => setSkills(d.skills ?? []))
       .catch(() => setSkills([]));
@@ -117,19 +162,36 @@ export function Composer({
    * caret, and the same marker labels the path in the assembled prompt. The text
    * can then say 按 [图2] 改, and both ends mean the same file.
    */
-  const label = (f: File, taken: string[]) => {
-    const kind = f.type.startsWith("image/") ? "图" : "附件";
+  const label = (f: { type: string }, taken: string[]) => {
+    const kind = f.type === "inode/directory" ? "目录" : f.type.startsWith("image/") ? "图" : "附件";
     const n = taken.filter((l) => l.startsWith(kind)).length + 1;
     return `${kind}${n}`;
   };
 
-  const upload = async (list: FileList | File[]) => {
-    const picked = [...list];
+  const upload = async (list: FileList | File[] | Picked[]) => {
+    const picked: Picked[] = [...list].map((f) =>
+      f instanceof File ? { file: f, rel: f.name } : (f as Picked),
+    );
     if (!picked.length) return;
     const form = new FormData();
-    for (const f of picked) form.append("file", f);
+    // The relative path travels beside the file: the server rebuilds the folder
+    // and hands back one attachment for it, because "看这个目录" is one reference
+    // and forty files is forty.
+    for (const { file, rel } of picked) {
+      form.append("file", file);
+      form.append("rel", rel);
+    }
     setBusy(true);
-    const r = await fetch("/api/attach", { method: "POST", body: form });
+    // A folder copied in Finder arrives as an unreadable zero-byte entry and the
+    // fetch dies with ERR_ACCESS_DENIED — as an unhandled rejection in the console
+    // and nothing at all on screen.
+    let r: Response;
+    try {
+      r = await fetch("/api/attach", { method: "POST", body: form });
+    } catch {
+      setBusy(false);
+      return void toast.error("浏览器读不到这些内容。文件夹得拖进来，剪贴板给不了它。", { duration: 8000 });
+    }
     setBusy(false);
     // A file that silently fails to attach is worse than one never added: the text
     // goes out referencing a path, and the agent is told to Read something missing.
@@ -137,13 +199,13 @@ export function Composer({
     const { files: saved } = (await r.json()) as { files: Attached[] };
     const taken = files.map((f) => f.label);
     const marked = saved.map((s, i) => {
-      const l = label(picked[i]!, taken);
+      const l = label(s, taken);
       taken.push(l);
       return {
         ...s,
         label: l,
         // Preview from the local File, not a server round trip.
-        url: picked[i]?.type.startsWith("image/") ? URL.createObjectURL(picked[i]!) : undefined,
+        url: picked[i]?.file.type.startsWith("image/") ? URL.createObjectURL(picked[i]!.file) : undefined,
       };
     });
     setFiles((prev) => [...prev, ...marked]);
@@ -208,7 +270,9 @@ export function Composer({
       onDrop={(e) => {
         e.preventDefault();
         setDrag(false);
-        void upload(e.dataTransfer.files);
+        // dataTransfer.files holds a dropped folder as one unreadable entry with
+        // no contents; the entry API is the only way to walk into it.
+        void walk(e.dataTransfer.items).then((picked) => upload(picked.length ? picked : e.dataTransfer.files));
       }}
       onPaste={(e) => {
         const f = [...e.clipboardData.files];
@@ -242,10 +306,18 @@ export function Composer({
 
       {slash && matches.length > 0 && (
         <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
-          <div className="border-b border-rule-soft px-2 py-1 text-[0.6875rem] text-ink-3">
-            选中的技能，正文会随这一个 turn 发给 agent（不进 session 前缀，所以只这一次花钱）
+          <div className="flex items-baseline gap-2 border-b border-rule-soft px-2 py-1 text-[0.6875rem] text-ink-3">
+            <span className="min-w-0 grow">
+              选中的技能，正文会随这一个 turn 发给 agent（不进 session 前缀，所以只这一次花钱）
+            </span>
+            <span className="shrink-0 font-mono">{matches.length}</span>
           </div>
-          {matches.slice(0, 6).map((sk) => (
+          {/* Scrolls, capped by height. It used to render the first six and stop —
+              with no count and no scrollbar, a skill that sorted seventh did not
+              exist as far as the boss could tell, and typing more of its name was
+              the only way to find out otherwise. */}
+          <div className="max-h-56 overflow-y-auto">
+          {matches.map((sk) => (
             <button
               key={sk.path}
               onClick={() => insertSkill(sk)}
@@ -261,6 +333,7 @@ export function Composer({
               <span className="shrink-0 font-mono text-[0.625rem] text-ink-3">Tab</span>
             </button>
           ))}
+          </div>
         </div>
       )}
 
@@ -272,7 +345,7 @@ export function Composer({
                 <img src={f.url} alt="" className="size-9 rounded object-cover" />
               ) : (
                 <span className="grid size-9 place-items-center rounded bg-sunk font-mono text-[0.5625rem] text-ink-3">
-                  {(f.name.split(".").pop() ?? "file").slice(0, 4).toUpperCase()}
+                  {f.type === "inode/directory" ? "DIR" : (f.name.split(".").pop() ?? "file").slice(0, 4).toUpperCase()}
                 </span>
               )}
               <span className="font-mono text-[0.6875rem] text-ink-2">[{f.label}]</span>
