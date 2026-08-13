@@ -11,7 +11,7 @@ import { createWorktree, type GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, parseOwns } from "./mech/ownership.ts";
-import { startNextSlice } from "./mech/review.ts";
+import { acceptSlice, startNextSlice } from "./mech/review.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
@@ -54,7 +54,7 @@ export interface Ctx {
   hire?: (grpId: number | null, role: string, projectId?: number | null) => number | null;
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
-  config: { language: string; difficultyModel: Record<string, string>; workRoot: string; autoAdvance?: boolean };
+  config: { language: string; difficultyModel: Record<string, string>; workRoot: string; autoAdvance?: boolean; autoAcceptTiers?: string[] };
 }
 
 type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) => Promise<Response>;
@@ -1248,36 +1248,25 @@ const postSliceDecision: Handler = async (ctx, req, params) => {
   const id = Number(params.id);
   const accept = params.decision === "accept";
   const sl = ctx.db
-    .query<{ grp_id: number; title: string }, [number]>("SELECT grp_id, title FROM slice WHERE id = ?")
+    .query<{ grp_id: number; seq: number; title: string }, [number]>(
+      "SELECT grp_id, seq, title FROM slice WHERE id = ?",
+    )
     .get(id);
   if (!sl) return text("no such slice", 404);
 
-  ctx.db.run("UPDATE slice SET status = ? WHERE id = ?", [accept ? "accepted" : "rejected", id]);
-  ctx.bus.emit({
-    grpId: sl.grp_id,
-    author: "boss",
-    kind: accept ? "state_change" : "boss_say",
-    intent: accept ? undefined : "request",
-    body: accept ? `accepted: ${sl.title}` : (b.feedback ?? "rejected"),
-    meta: { slice_id: id },
-  });
-  if (accept) {
-    // Accepting one slice is what starts the next.
-    startNextSlice(ctx, sl.grp_id);
-
-    // The last acceptance is what starts PR-level review; nothing an agent does
-    // can trigger it, because "the boss is satisfied" is not an agent's call.
-    const open = ctx.db
-      .query<{ c: number }, [number]>(
-        "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'",
-      )
-      .get(sl.grp_id)!.c;
-    if (open === 0) {
-      ctx.sched.enqueue("reconcile", { grp_id: sl.grp_id, priority: 5 });
-    }
-  }
+  // One acceptance path, whoever accepted: see acceptSlice.
+  if (accept) acceptSlice(ctx, id, "boss");
 
   if (!accept) {
+    ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [id]);
+    ctx.bus.emit({
+      grpId: sl.grp_id,
+      author: "boss",
+      kind: "boss_say",
+      intent: "request",
+      body: b.feedback ?? "rejected",
+      meta: { slice_id: id },
+    });
     ctx.db.run(
       "INSERT INTO note (grp_id, slice_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
       [sl.grp_id, id, ctx.config.language, b.feedback ?? "boss rejected the slice"],

@@ -8,6 +8,7 @@ import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
 import { gateState } from "../src/mech/gate.ts";
+import { handToBoss } from "../src/mech/review.ts";
 import { makeGitRunner, createWorktree, checkpoint } from "../src/mech/worktree.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import {
@@ -454,4 +455,43 @@ test("a retro written mid-flight does not trigger PR review", async () => {
   h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
   await h.post("/orch/journal", { kind: "retro", body: "早写的 retro" }, "tok-eng");
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
+});
+
+test("a trivial slice is accepted automatically once all three gates pass", async () => {
+  const h = await harness();
+  h.ctx.config.autoAcceptTiers = ["trivial"];
+  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 2, 'S2', 'b', 'normal', 'pending', 0)");
+
+  handToBoss({ ctx: h.ctx }, 1);
+
+  const s1 = h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!;
+  // Three gates still ran; this skips the boss's look, not the verification.
+  expect(s1.status).toBe("accepted");
+  // Announced, never silent: an acceptance nobody can see cannot be audited.
+  const said = h.db
+    .query<{ body: string; author: string }, []>("SELECT author, body FROM event ORDER BY seq DESC")
+    .all()
+    .find((e) => e.body.includes("accepted:"))!;
+  expect(said.author).toBe("orchestrator");
+  expect(said.body).toContain("自动查收");
+  // And the next slice starts, which is the point of the whole thing.
+  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(2)!.status)
+    .not.toBe("pending");
+});
+
+test("a normal slice still waits for the boss even with trivial auto-accept on", async () => {
+  const h = await harness();
+  h.ctx.config.autoAcceptTiers = ["trivial"];
+  h.db.run("UPDATE slice SET difficulty = 'normal' WHERE id = 1");
+
+  handToBoss({ ctx: h.ctx }, 1);
+  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status)
+    .toBe("awaiting_boss");
+});
+
+test("with nothing configured, every slice waits for the boss", async () => {
+  const h = await harness();
+  handToBoss({ ctx: h.ctx }, 1);
+  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status)
+    .toBe("awaiting_boss");
 });

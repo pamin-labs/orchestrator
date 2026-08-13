@@ -29,6 +29,7 @@ export interface SliceRow {
   seq: number;
   title: string;
   accept_spec: string;
+  difficulty: string;
   base_sha: string | null;
   retries: number;
 }
@@ -37,7 +38,7 @@ export function loadSlice(ctx: Ctx, sliceId: number): SliceRow | null {
   return (
     ctx.db
       .query<SliceRow, [number]>(
-        "SELECT id, grp_id, seq, title, accept_spec, base_sha, retries FROM slice WHERE id = ?",
+        "SELECT id, grp_id, seq, title, accept_spec, difficulty, base_sha, retries FROM slice WHERE id = ?",
       )
       .get(sliceId) ?? null
   );
@@ -223,6 +224,15 @@ export function handToBoss(deps: ReviewDeps, sliceId: number): void {
     meta: { slice_id: sliceId, gates: gateState(ctx.db, sliceId) },
   });
 
+  // Trivial work the boss chose not to look at. Every gate still ran — self
+  // review, the deterministic gate, an independent QA — so this skips the fourth
+  // layer, not the first three. It is announced, never silent: an acceptance
+  // nobody can see is indistinguishable from one that did not happen.
+  if ((ctx.config?.autoAcceptTiers ?? []).includes(slice.difficulty)) {
+    acceptSlice(ctx, sliceId, "orchestrator", `${slice.difficulty} 自动查收，三道闸全过`);
+    return;
+  }
+
   // Approving at night should buy a night of work. Acceptance is what normally
   // starts the next slice, so without this a group does exactly one slice and
   // then waits until morning. The slice still waits to be accepted; only the
@@ -239,6 +249,42 @@ export function handToBoss(deps: ReviewDeps, sliceId: number): void {
       });
     }
   }
+}
+
+/**
+ * A slice is accepted. One path, whoever accepted it.
+ *
+ * The boss's button and the auto-accept policy must not be two implementations:
+ * "what happens when a slice is accepted" is a rule about the pipeline, and a
+ * second copy of it would drift the day one of them gained a step.
+ */
+export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string): void {
+  const sl = ctx.db
+    .query<{ grp_id: number; seq: number; title: string }, [number]>(
+      "SELECT grp_id, seq, title FROM slice WHERE id = ?",
+    )
+    .get(sliceId);
+  if (!sl) return;
+
+  ctx.db.run("UPDATE slice SET status = 'accepted' WHERE id = ?", [sliceId]);
+  ctx.bus.emit({
+    grpId: sl.grp_id,
+    author: by,
+    kind: "state_change",
+    body: `accepted: S${sl.seq} ${sl.title}${why ? ` (${why})` : ""}`,
+    meta: { slice_id: sliceId, by },
+  });
+
+  // Accepting one slice is what starts the next.
+  startNextSlice(ctx, sl.grp_id);
+
+  // The last acceptance starts PR-level review. Nothing an agent does can trigger
+  // it: "satisfied" is the boss's call, or a policy the boss switched on.
+  const open = ctx.db
+    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'")
+    .get(sl.grp_id)!.c;
+  if (open === 0) ctx.sched.enqueue("reconcile", { grp_id: sl.grp_id, priority: 5 });
+  ctx.sched.tick();
 }
 
 function safeJson(s: string | null): unknown {

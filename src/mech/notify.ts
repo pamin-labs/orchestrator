@@ -187,13 +187,14 @@ async function macNotify(title: string, body: string, url?: string, ntfyTopic?: 
  * get one message rather than N or zero. Deterministic backstop.
  */
 export interface PendingItem {
+  grpId?: number | null;
   id: number;
   severity: string;
   question: string;
   group: string | null;
 }
 
-export function batchForBoss(items: PendingItem[]): Notification | null {
+export function batchForBoss(items: PendingItem[], url?: string): Notification | null {
   if (items.length === 0) return null;
   const blockers = items.filter((i) => i.severity === "blocker");
 
@@ -203,6 +204,8 @@ export function batchForBoss(items: PendingItem[]): Notification | null {
       key: `escalation:${i.id}`,
       tier: i.severity === "blocker" ? "immediate" : "batched",
       body: `${i.group ?? "someone"}: ${i.question.slice(0, 200)}`,
+      // Straight to the requirement that is asking, not the front page.
+      url: url && i.grpId ? `${url}/#g=${i.grpId}&v=progress` : url,
     };
   }
 
@@ -213,6 +216,7 @@ export function batchForBoss(items: PendingItem[]): Notification | null {
   return {
     key,
     tier: blockers.length > 0 ? "immediate" : "batched",
+    url,
     body:
       `${items.length} waiting on you` +
       (blockers.length ? ` (${blockers.length} blocking)` : "") +
