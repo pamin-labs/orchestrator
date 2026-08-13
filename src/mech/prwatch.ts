@@ -218,10 +218,16 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
       },
       []
     >(
-      // PAUSED too, and only because of `closed` below: a group stopped on a closed
-      // PR is waiting for that PR to come back, and nothing else looks at GitHub.
+      // Every group that has a PR, whatever state it is in now. PAUSED is here for
+      // `closed` below — a group stopped on a closed PR is waiting for it to come
+      // back, and nothing else looks at GitHub. RUNNING is here because a group can
+      // be knocked back out of PR_OPEN (an Auditor send-back, a review comment)
+      // while its PR is still live and still mergeable: grp16's PR merged in that
+      // window, nobody was watching, and it stayed RUNNING for hours hiring turns
+      // for a branch already byte-identical to main. A pr_number is the thing worth
+      // polling on; the status is not.
       `SELECT id, status, worktree, pr_number, pr_seen_at, pr_checks_sig FROM grp
-       WHERE status IN ('PR_OPEN','PAUSED') AND pr_number IS NOT NULL`,
+       WHERE status != 'DISSOLVED' AND pr_number IS NOT NULL`,
     )
     .all();
 
@@ -248,6 +254,16 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
     // looked at, so a closed PR left its group at PR_OPEN holding the head of a
     // strictly serial merge queue — everything behind it stopped, permanently,
     // and the only trace was the PR page nobody was watching.
+    // Merged is news that outranks every comment on the PR, and it is the one
+    // thing the boss should not have to come back and confirm by hand. It also
+    // outranks the group's own status: the branch landed, so the group is finished
+    // whatever it was knocked back to in the meantime. Gating this on PR_OPEN, the
+    // way the two cases below are, is what left grp16 running forever on work that
+    // was already in main.
+    if (state === "MERGED") {
+      out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], merged: true });
+      continue;
+    }
     if (state === "CLOSED" && g.status === "PR_OPEN") {
       out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], closed: true });
       continue;
@@ -257,13 +273,6 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
       continue;
     }
     if (g.status !== "PR_OPEN") continue;
-
-    // Merged is news that outranks every comment on the PR, and it is the one
-    // thing the boss should not have to come back and confirm by hand.
-    if (state === "MERGED") {
-      out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], merged: true });
-      continue;
-    }
 
     const raw = [...(parsed.comments ?? []), ...(parsed.reviews ?? [])];
     const comments = raw
