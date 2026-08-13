@@ -70,7 +70,7 @@ const DEFAULTS: Config = {
     hard: "claude-opus-5",
   },
   turnTimeoutMs: 600_000,
-  maxTurnsPerJob: 60,
+  maxTurnsPerJob: 45,
   sessionRotateFraction: 0.6,
   // Where a rate-limited turn goes next. One step down, not straight to haiku: the
   // point is to keep going at a lower tier, not to make the cheapest possible mess.

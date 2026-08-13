@@ -30,9 +30,11 @@ difficultyModel:
 # 20 min. Measured on a toy fixture repo the longest single turn was 8.2 min, so
 # 10 min left under 2x headroom before the watchdog killed productive work.
 turnTimeoutMs: 1200000
-# 60. Measured max on a toy fixture was 19 tool rounds in one turn; a real slice
-# with a test-fix loop goes well past 30.
-maxTurnsPerJob: 60
+# 45. Measured over 259 real turns: median 36 rounds, p90 93, max 144 — and the
+# 23% of turns above 60 rounds ate 59% of the entire cache-read bill, because every
+# round re-reads the whole transcript. 36 is the work; the tail is an agent that
+# has lost the plot and is grepping. Cutting the tail leaves the median alone.
+maxTurnsPerJob: 45
 sessionRotateFraction: 0.6  # fallback; the real trigger is slice completion
 ctxBudgetChars: 16000     # ~4k tokens
 parkAfterPausedMs: 7200000

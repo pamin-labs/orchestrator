@@ -357,6 +357,14 @@ const MIGRATIONS: string[] = [
   // the fleet queues behind one screenshot; sized for the gates, the browsers
   // thrash. Tags name the contended thing, and each tag gets its own pool size.
   `ALTER TABLE resource ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';`,
+
+  // 018 — consecutive turns that ended in a clearance denial.
+  //
+  // The first denial is not a question: the agent reached for a shape it was never
+  // going to get and takes a legal route on its next turn by itself. Filing one
+  // wakes three roles in the chain to think about it — measured, three turns at
+  // ~3M tokens each. Only a repeat means the agent is actually stuck.
+  `ALTER TABLE agent ADD COLUMN denial_turns INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export type DB = Database;

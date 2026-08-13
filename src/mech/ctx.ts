@@ -149,6 +149,39 @@ export function query(opts: QueryOptions): string {
           slices.map((s) => `S${s.seq} [${s.status}] ${s.title} — accepted when: ${s.accept_spec}`).join("\n"),
       );
     }
+
+    // The state agents were fishing for with shell commands. Measured: one turn
+    // spent twelve rounds on `sqlite3 data/orchestrator.sqlite`, every one denied
+    // by the sandbox, and every round re-reads the whole transcript — the tail of
+    // long turns is where the token bill actually is. Answering it here costs a
+    // SELECT and removes the reason to go looking.
+    const g = opts.db
+      .query<{ name: string; status: string; branch: string | null; pr: number | null }, [number]>(
+        "SELECT name, status, branch, pr_number AS pr FROM grp WHERE id = ?",
+      )
+      .get(opts.grpId);
+    const open = opts.db
+      .query<{ id: number; chain_state: string; severity: string; question: string }, [number]>(
+        `SELECT id, chain_state, severity, question FROM escalation
+         WHERE grp_id = ? AND answer IS NULL AND chain_state NOT IN ('answered','revoked') ORDER BY id`,
+      )
+      .all(opts.grpId);
+    const gates = opts.db
+      .query<{ resource: string; state: string }, [number, number]>(
+        `SELECT resource, state FROM lease WHERE grp_id = ? AND id IN
+           (SELECT max(id) FROM lease WHERE grp_id = ? GROUP BY resource)`,
+      )
+      .all(opts.grpId, opts.grpId);
+    if (g) {
+      push(
+        `## This group right now\n` +
+          `status ${g.status}${g.branch ? ` on ${g.branch}` : ""}${g.pr ? ` — PR #${g.pr}` : " — no PR yet"}\n` +
+          (gates.length ? `last gate per resource: ${gates.map((x) => `${x.resource}=${x.state}`).join(", ")}\n` : "") +
+          (open.length
+            ? `open questions: ${open.map((e) => `#${e.id} [${e.severity}, with ${e.chain_state}] ${e.question.slice(0, 80)}`).join(" | ")}`
+            : "open questions: none"),
+      );
+    }
   }
 
   const docs = opts.db
@@ -167,9 +200,12 @@ export function query(opts: QueryOptions): string {
     shown++;
   }
 
-  if (parts.length === 0) {
+  // On `shown`, not on `parts`: the group's own state is always there now, and
+  // returning it silently would read as "that is the answer to your question".
+  if (shown === 0) {
+    const state = parts.length ? `${parts.join("\n\n")}\n\n` : "";
     return (
-      "nothing on the blackboard matches that. Try different words, read the code, " +
+      `${state}nothing on the blackboard matches that. Try different words, read the code, ` +
       "or ask the PM with `orch mail pm --intent ask`."
     );
   }

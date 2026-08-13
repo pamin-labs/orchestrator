@@ -158,14 +158,25 @@ test("cost lands on the agent, the slice and the group", async () => {
   expect(db.query<{ u: number }, []>("SELECT spent_usd AS u FROM grp").get()!.u).toBeCloseTo(0.25);
 });
 
-test("a permission denial becomes an escalation instead of vanishing", async () => {
+test("one denial is not a question; the second one is", async () => {
   const { db, sched } = harness(async () =>
     ok({ permissionDenials: [{ tool: "Bash", command: "git push" }] }),
   );
   sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
 
-  const esc = db.query<{ question: string; severity: string }, []>("SELECT question, severity FROM escalation").get()!;
+  // Almost every first denial is an agent reaching for a shape it was never going
+  // to get, and taking a legal route by itself next turn. Filing it wakes three
+  // roles in the chain to read a group's context — three turns at ~3M tokens each,
+  // for a question that answers itself. It is said in the feed and nothing else.
+  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM escalation").get()!.c).toBe(0);
+  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE body LIKE '%another route%'").get()!.c)
+    .toBe(1);
+
+  // Twice running means it is actually stuck.
+  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+  const esc = db.query<{ question: string }, []>("SELECT question FROM escalation").get()!;
   expect(esc.question).toContain("git push");
   // The agent stops, the group keeps going: one denial should not halt everyone.
   expect(db.query<{ state: string }, []>("SELECT state FROM agent").get()!.state).toBe("blocked");
