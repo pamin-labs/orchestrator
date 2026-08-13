@@ -28,7 +28,6 @@ function turnOk(): TurnResult {
     terminalReason: "completed",
     text: "done",
     usage: { input: 1, output: 1, cacheRead: 0, cacheCreate: 0, thinking: 0 },
-    costUsd: 0,
     numTurns: 1,
     permissionDenials: [],
     toolSummaries: [],

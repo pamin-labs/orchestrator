@@ -4,26 +4,26 @@ import { toast } from "sonner";
 export interface Project { id: number; name: string; repo_path: string; remote: string | null }
 export interface Group {
   id: number; project_id: number; name: string; branch: string | null; worktree: string | null;
-  status: string; owns_json: string; budget_tokens: number; spent_tokens: number; spent_usd: number;
+  status: string; owns_json: string; budget_tokens: number; spent_tokens: number;
   pr_number: number | null;
   /** The boss approved, but a boundary is holding it. Cleared when it starts. */
   approved_at: number | null;
 }
 export interface Slice {
   id: number; grp_id: number; seq: number; title: string; accept_spec: string; difficulty: string;
-  status: string; gates_json: string; spent_tokens: number; spent_usd: number;
+  status: string; gates_json: string; spent_tokens: number;
   /** When it started waiting on the boss. The clock on 白干的单位. */
   awaiting_at: number | null;
 }
 export interface Task { id: number; grp_id: number; slice_id: number | null; title: string; status: string }
 export interface Agent {
   id: number; grp_id: number | null; role: string; model: string; clearance: string; state: string;
-  activity: string | null; session_tokens: number; total_tokens: number; total_usd: number;
+  activity: string | null; session_tokens: number; total_tokens: number;
   turns: number; slice_id: number | null;
 }
 export interface Archived {
   id: number; project_id: number; name: string; branch: string | null; pr_number: number | null;
-  spent_usd: number; slices: number; at: number | null;
+  spent_tokens: number; slices: number; at: number | null;
 }
 /** What was actually built, for the one decision that cannot be taken back. */
 export interface Evidence {

@@ -165,13 +165,13 @@ export function prBody(ctx: Ctx, grpId: number): string {
   )[0];
   if (retro) out.push(`## Retro\n\n${retro.body.trim().slice(0, 2000)}`);
 
-  const g = q<{ name: string; branch: string | null; spent_usd: number }>(
-    "SELECT name, branch, spent_usd FROM grp WHERE id = ?",
+  const g = q<{ name: string; branch: string | null; spent_tokens: number }>(
+    "SELECT name, branch, spent_tokens FROM grp WHERE id = ?",
     grpId,
   )[0];
   if (g) {
     out.push(
-      `---\n\`${g.branch ?? "?"}\` · ${slices.length} slice(s) · $${g.spent_usd.toFixed(2)} · ` +
+      `---\n\`${g.branch ?? "?"}\` · ${slices.length} slice(s) · ${g.spent_tokens} tokens · ` +
         `journals in \`docs/journal/${g.name}/\``,
     );
   }

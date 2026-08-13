@@ -49,7 +49,7 @@ export function Queue({
   /** Nothing is running on this requirement: its agents are idle until you act. */
   const halted = (grpId: number | null) =>
     grpId == null || !st.agents.some((a) => a.grp_id === grpId && a.state === "running");
-  const spend = (grpId: number | null) => st.groups.find((g) => g.id === grpId)?.spent_usd ?? 0;
+  const spend = (grpId: number | null) => st.groups.find((g) => g.id === grpId)?.spent_tokens ?? 0;
 
   const items: Item[] = [];
 

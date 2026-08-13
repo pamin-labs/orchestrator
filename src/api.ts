@@ -1493,7 +1493,7 @@ export function snapshot(ctx: Ctx) {
     groups: db
       .query(
         `SELECT id, project_id, name, branch, worktree, status, owns_json, budget_tokens,
-                spent_tokens, spent_usd, pr_number, approved_at FROM grp WHERE status != 'DISSOLVED'`,
+                spent_tokens, pr_number, approved_at FROM grp WHERE status != 'DISSOLVED'`,
       )
       .all(),
     // Why an approved group has not started. The boss pressed the button; showing
@@ -1516,7 +1516,7 @@ export function snapshot(ctx: Ctx) {
     slices: db
       .query(
         `SELECT id, grp_id, seq, title, accept_spec, difficulty, status, gates_json,
-                spent_tokens, spent_usd, awaiting_at FROM slice ORDER BY grp_id, seq`,
+                spent_tokens, awaiting_at FROM slice ORDER BY grp_id, seq`,
       )
       .all(),
     // PLAN.md §8 asks the desk wall for the current slice, the turn count and the
@@ -1526,7 +1526,7 @@ export function snapshot(ctx: Ctx) {
     agents: db
       .query(
         `SELECT a.id, a.grp_id, a.role, a.model, a.clearance, a.state, a.activity, a.session_tokens,
-                a.total_tokens, a.total_usd,
+                a.total_tokens,
                 (SELECT count(*) FROM job j WHERE j.agent_id = a.id AND j.kind = 'agent_turn'
                   AND j.state IN ('done','failed')) AS turns,
                 (SELECT j.slice_id FROM job j WHERE j.agent_id = a.id AND j.slice_id IS NOT NULL
@@ -1606,7 +1606,7 @@ export function snapshot(ctx: Ctx) {
     // anywhere in the panel.
     archived: db
       .query(
-        `SELECT g.id, g.project_id, g.name, g.branch, g.pr_number, g.spent_usd,
+        `SELECT g.id, g.project_id, g.name, g.branch, g.pr_number, g.spent_tokens,
                 (SELECT count(*) FROM slice s WHERE s.grp_id = g.id) AS slices,
                 (SELECT max(e.at) FROM event e WHERE e.grp_id = g.id) AS at
          FROM grp g WHERE g.status = 'DISSOLVED' ORDER BY at DESC LIMIT 12`,
