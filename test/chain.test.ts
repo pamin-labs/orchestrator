@@ -213,20 +213,46 @@ test("respec sends the whole thing back to be re-scoped", () => {
   expect(JSON.parse(jobsFor(h.db).at(-1)!.payload_json).respec).toContain("not what I asked");
 });
 
-test("reject stops the work but still demands the retro", () => {
+test("reject dissolves the group so it stops holding its paths", () => {
   const h = harness();
   h.sched.enqueue("agent_turn", { grp_id: 1 });
   triage(h.deps, 1, "reject", "dropping this");
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'cancelled'").get()!.c).toBe(1);
-  // An abandoned group is exactly the kind whose lesson is worth keeping.
-  expect(JSON.parse(jobsFor(h.db).at(-1)!.payload_json).rejection).toContain("retro");
+  // Cancelling the queue left it ACTIVE, so a requirement nobody wanted went on
+  // blocking one they did. No retro turn: no status a dropped group has is
+  // dispatchable, so the one that used to be enqueued here sat pending forever.
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("DISSOLVED");
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'pending'").get()!.c).toBe(0);
 });
 
-test("triage records the boss's words verbatim on the blackboard", () => {
+test("a patch on a card still waiting for approval rewrites the card", () => {
+  // There is no PM before approval and no work in flight to correct. Sending the
+  // addition to one meant nobody read it, and the boss approved a card that did
+  // not contain what they had just asked for.
   const h = harness();
-  triage(h.deps, 1, "patch", "错误提示太含糊");
-  const note = h.db.query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'fact'").get()!;
-  expect(note.body).toContain("错误提示太含糊");
+  h.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = 1");
+  triage(h.deps, 1, "patch", "还要支持中文");
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
+  const p = JSON.parse(jobsFor(h.db).at(-1)!.payload_json);
+  expect(p.role).toBe("dispatcher");
+  expect(p.rejection).toContain("还要支持中文");
+});
+
+test("triage records the boss's words verbatim on the blackboard, once", () => {
+  const h = harness();
+  // Wired the way the server wires it. `deps.bossFact?.(…) ?? fallback` always ran
+  // the fallback too — bossFact returns undefined whether or not it fired — so
+  // every sentence was written twice and the 记录 tab showed each one doubled.
+  // Without a bossFact here the test takes the fallback branch and proves nothing.
+  const deps = {
+    ...h.deps,
+    bossFact: (g: number | null, body: string) =>
+      void h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', 'zh', ?, 0)", [g, body]),
+  };
+  triage(deps, 1, "patch", "错误提示太含糊");
+  const notes = h.db.query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'fact'").all();
+  expect(notes).toHaveLength(1);
+  expect(notes[0]!.body).toContain("错误提示太含糊");
 });
 
 test("only the CoS triages, and only reviewers answer their own level", async () => {
