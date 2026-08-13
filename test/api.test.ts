@@ -563,12 +563,11 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
 验收 : 无回归
 切片 : a [normal] — a.test.ts 绿
 切片 : b [trivial] — b 的回归用例绿
-切片 : c [hard] — 端到端场景通过
-名字 : boundary-block-approval`;
+切片 : c [hard] — 端到端场景通过`;
   db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grp_id]);
   db.run(
     "INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, ?, 'fact', 'zh', ?, ?, 0)",
-    [grp_id, card + "\n风险 : 无\n反对 : 无", JSON.stringify({ draft_card: true })],
+    [grp_id, card + "\n风险 : 无\n反对 : 无\n名字 : boundary-block-approval", JSON.stringify({ draft_card: true })],
   );
 
   const held = await post(app, `/api/draft/${grp_id}/approve`);
