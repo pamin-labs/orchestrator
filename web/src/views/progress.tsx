@@ -4,6 +4,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
 import { Tip } from "../ui/tooltip";
+import { prUrl } from "../lib/select";
 import type { Archived, Group, Slice, State } from "../lib/api";
 import { usePaged } from "../lib/page";
 import { STOPS, gates, heldApproved, statusLabel } from "../lib/select";
@@ -177,7 +178,24 @@ function Row({ st, g, onOpen, mine }: { st: State; g: Group; onOpen: (id: number
       <span className="flex items-center gap-2 whitespace-nowrap">
         {broke && <Badge tone="mine">预算用尽</Badge>}
         {waiting > 0 && <Badge tone="mine">{waiting} 片待查收</Badge>}
-        {g.status === "PR_OPEN" && <Badge tone="mine">PR 待合入</Badge>}
+        {/* The row is a button, so this cannot be an <a>. It still has to go to the
+            PR: "PR 待合入" that does not take you to the PR is a label describing
+            work it will not let you do. */}
+        {g.status === "PR_OPEN" &&
+          (prUrl(st, g) ? (
+            <Badge
+              tone="mine"
+              className="cursor-pointer underline decoration-dotted underline-offset-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(prUrl(st, g)!, "_blank", "noopener");
+              }}
+            >
+              去合并 PR ↗
+            </Badge>
+          ) : (
+            <Badge tone="mine">PR 待合入</Badge>
+          ))}
         <Meta>{g.branch ?? ""}</Meta>
       </span>
     </button>
