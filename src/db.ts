@@ -372,6 +372,26 @@ const MIGRATIONS: string[] = [
   // different shas and three rebase turns — the boss pushing a batch of fixes cost
   // one group three turns of pure rebasing. A clock lets a burst coalesce.
   `ALTER TABLE grp ADD COLUMN rebase_seen_at INTEGER;`,
+
+  // 020 — how much of each subscription window is gone.
+  //
+  // One row per provider, overwritten. A table rather than a variable in the
+  // server so the header is not blank after a restart, and the boss's answer to
+  // "can this still run tonight" does not wait for the next turn to arrive.
+  `
+  CREATE TABLE usage_snapshot (
+    runtime TEXT PRIMARY KEY,
+    json    TEXT    NOT NULL,
+    at      INTEGER NOT NULL
+  );
+  `,
+
+  // 021 — the context window this agent's model actually reported.
+  //
+  // Rotation divided by a hardcoded 200_000 for every model. Both CLIs state the
+  // real number during a turn (claude in modelUsage, codex in token_count), so
+  // record it: a table in config goes stale the week a model ships.
+  `ALTER TABLE agent ADD COLUMN context_window INTEGER;`,
 ];
 
 export type DB = Database;

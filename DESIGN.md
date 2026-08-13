@@ -65,7 +65,9 @@ controls), 0.875 (base), 0.9375 (group name), 1.375 (the one big number in 成�
 
 ## Layout
 
-- Header (project switch, spend, connection) → nav (the five views) → one view.
+- Header (project trail, subscription usage, waiting count, connection) → nav
+  (the views) → one view. Spend is not here — it belongs in 成本, where it can be
+  attributed. Usage is, because it is a constraint on what to start next.
 - The views are peers, one at a time. Crowding them onto one screen is how an
   earlier version became seven boxes each reporting an absence.
 - Chat is a collapsible right sidebar, never the spine.

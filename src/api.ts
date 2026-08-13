@@ -1621,6 +1621,21 @@ export function snapshot(ctx: Ctx) {
       autoAdvance: !!ctx.config.autoAdvance,
       autoAcceptTiers: ctx.config.autoAcceptTiers ?? [],
     },
+    // How much of each subscription is gone. Not spend — spend is attributable and
+    // belongs in 成本. This answers "can this still run tonight", which is the one
+    // usage question that changes what the boss does next.
+    usage: db
+      .query<{ runtime: string; json: string; at: number }, []>(
+        "SELECT runtime, json, at FROM usage_snapshot",
+      )
+      .all()
+      .map((r) => {
+        try {
+          return { runtime: r.runtime, at: r.at, ...(JSON.parse(r.json) as object) };
+        } catch {
+          return { runtime: r.runtime, at: r.at };
+        }
+      }),
     lastSeq:
       ctx.db.query<{ s: number | null }, []>("SELECT max(seq) AS s FROM event").get()?.s ?? 0,
   };
