@@ -570,7 +570,7 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
   db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grp_id]);
   db.run(
     "INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, ?, 'fact', 'zh', ?, ?, 0)",
-    [grp_id, card + "\n风险 : 无\n反对 : 无", JSON.stringify({ draft_card: true })],
+    [grp_id, card, JSON.stringify({ draft_card: true })],
   );
 
   const held = await post(app, `/api/draft/${grp_id}/approve`);
