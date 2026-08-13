@@ -121,7 +121,15 @@ function Desks({
         {runners > 0 && <i className="breathe size-1.5 shrink-0 self-center rounded-full bg-ok" />}
         {/* The requirement is the thing being scanned for, so it gets the weight —
             it was the same size and colour as the shell command beside it. */}
-        <span className="truncate font-display text-[0.9375rem] font-semibold" title={name}>{name}</span>
+        <span
+          className={cn(
+            "truncate font-display text-[0.9375rem] font-semibold",
+            runners === 0 && "text-ink-3",
+          )}
+          title={name}
+        >
+          {name}
+        </span>
         {/* Who is running, by role. "2 在跑" makes you open the row to learn the
             one thing you opened it for. */}
         <Meta className="truncate">
@@ -145,13 +153,22 @@ function Desks({
             const t = tail.get(a.id);
             const stream = t && !detail.includes(t.slice(-40)) ? t : null;
             return (
-              <div key={a.id} className={cn(DESK_ROW, "py-1.5")}>
+              <div
+                key={a.id}
+                className={cn(
+                  DESK_ROW,
+                  "py-1.5",
+                  // Three of forty-five are running and they read exactly like the
+                  // forty-two that are not. The wall's whole job is to say which.
+                  a.state === "running" ? "text-ink" : "text-ink-3 opacity-70",
+                )}
+              >
                 {/* Clearance and the session count moved into this label: neither
                     answers "who is working on what", and two more columns for them
                     is what made this table nine wide. */}
                 <Tip label={`权限 ${a.clearance} · 本 session ${K(a.session_tokens)} tokens · ${a.model}`}>
                   <span className="flex min-w-0 items-baseline gap-1.5">
-                    <span className="shrink-0 truncate text-[0.75rem] font-medium">{a.role}</span>
+                    <span className="shrink-0 truncate text-[0.8125rem] font-medium">{a.role}</span>
                     {/* A chip, because which model an agent is on is the second
                         thing looked for here and it was grey text in a grey row. */}
                     <span className="truncate rounded-sm bg-sunk px-1 font-mono text-[0.625rem] text-ink-2">
