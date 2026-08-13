@@ -5,6 +5,9 @@ import { interrupt, park, unpark } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
+import { join } from "node:path";
+import { gzipSync } from "node:zlib";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { buildMap, renderMap, saveMap } from "./repomap.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
 import { defaultBase, type GitRunner } from "./worktree.ts";
@@ -55,6 +58,41 @@ async function refreshOrigin(deps: WatchdogDeps, repo: string): Promise<void> {
   lastFetch.set(repo, at);
   // Under the repo lock (makeGitRunner), because worktrees share one `.git`.
   await deps.git(repo, ["fetch", "--quiet", "origin"], repo);
+}
+
+/** Compress after a day, delete after two weeks. */
+export const GZIP_AFTER_MS = 24 * 60 * 60 * 1000;
+export const DROP_AFTER_MS = 14 * 24 * 60 * 60 * 1000;
+
+export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropped: number } {
+  let zipped = 0;
+  let dropped = 0;
+  if (!existsSync(dir)) return { zipped, dropped };
+  for (const f of readdirSync(dir)) {
+    const path = join(dir, f);
+    let age: number;
+    try {
+      age = now - statSync(path).mtimeMs;
+    } catch {
+      continue;
+    }
+    if (f.endsWith(".gz")) {
+      if (age > DROP_AFTER_MS) {
+        rmSync(path, { force: true });
+        dropped++;
+      }
+      continue;
+    }
+    if (!f.endsWith(".jsonl") || age < GZIP_AFTER_MS) continue;
+    try {
+      writeFileSync(`${path}.gz`, gzipSync(readFileSync(path)));
+      rmSync(path, { force: true });
+      zipped++;
+    } catch {
+      // A log that will not compress is not worth failing a watchdog tick over.
+    }
+  }
+  return { zipped, dropped };
 }
 
 /**
@@ -284,6 +322,16 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", body: t("rl.resumed") });
   }
 
+  // 7d2. Turn logs, compressed then dropped.
+  //
+  // Ten requirements produced 123 MB of raw NDJSON, median 324 KB a turn and 3 MB
+  // at the tail, because a turn's transcript is mostly tool output and all of it is
+  // written verbatim. It is worth keeping — every measurement in PROGRESS.md came
+  // out of these files — but not worth keeping uncompressed: NDJSON gzips about
+  // ten to one, and nothing reads a turn from a week ago without unzipping it
+  // first anyway.
+  sweepTurnLogs(join(cfg.dataDir, "turns"), now());
+
   // 7e. Keep the shared repo map current.
   //
   // Deterministic and cheap — `git ls-files` plus a regex per file — and only
@@ -493,12 +541,13 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // be excluded — so a stale PR sat in the queue until GitHub called it
   // CONFLICTING, which is the late half of the same news.
   for (const g of ctx.db
-    .query<{ id: number; name: string; worktree: string; repo: string; seen: string | null }, []>(
+    .query<{ id: number; name: string; worktree: string; repo: string; seen: string | null }, [number]>(
       `SELECT g.id, g.name, g.worktree, p.repo_path AS repo, g.rebase_seen AS seen
        FROM grp g JOIN project p ON p.id = g.project_id
-       WHERE g.status IN ('RUNNING','PR_OPEN') AND g.worktree IS NOT NULL`,
+       WHERE g.status IN ('RUNNING','PR_OPEN') AND g.worktree IS NOT NULL
+         AND (g.rebase_seen_at IS NULL OR g.rebase_seen_at < ?)`,
     )
-    .all()) {
+    .all(now() - cfg.rebaseNudgeMs)) {
     // Against the real base, not the local checkout's HEAD: main also moves when
     // somebody pushes from another machine, and nothing here ever fetched, so
     // that half was invisible.
@@ -511,7 +560,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     const merged = await deps.git(g.repo, ["merge-base", "--is-ancestor", sha, "HEAD"], g.worktree);
     if (merged.code === 0) continue; // already on it
 
-    ctx.db.run("UPDATE grp SET rebase_seen = ? WHERE id = ?", [sha, g.id]);
+    ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [sha, now(), g.id]);
     ctx.sched.enqueue("agent_turn", {
       grp_id: g.id,
       priority: 4,

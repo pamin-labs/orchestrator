@@ -365,6 +365,13 @@ const MIGRATIONS: string[] = [
   // wakes three roles in the chain to think about it — measured, three turns at
   // ~3M tokens each. Only a repeat means the agent is actually stuck.
   `ALTER TABLE agent ADD COLUMN denial_turns INTEGER NOT NULL DEFAULT 0;`,
+
+  // 019 — when this group was last told main had moved.
+  //
+  // `rebase_seen` records which commit, so three pushes in an hour are three
+  // different shas and three rebase turns — the boss pushing a batch of fixes cost
+  // one group three turns of pure rebasing. A clock lets a burst coalesce.
+  `ALTER TABLE grp ADD COLUMN rebase_seen_at INTEGER;`,
 ];
 
 export type DB = Database;

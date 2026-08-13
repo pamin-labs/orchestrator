@@ -180,6 +180,15 @@ export function canStart(db: DB, grpId: number): StartCheck {
  * Wildcards stop the walk: a group owning `src/*` owns everything under src, and
  * there is no sibling to deny there.
  */
+/**
+ * Never denied inside a worktree, whatever the group owns.
+ *
+ * The build gate writes here on every run, and it runs for every group. Denying it
+ * to everyone who does not own `web/**` meant the gate could not produce the thing
+ * the gate then checks.
+ */
+const BUILD_OUTPUTS = ["web/dist"];
+
 export function denyOutsideOwns(
   worktree: string,
   owns: string[],
@@ -211,6 +220,20 @@ export function denyOutsideOwns(
     for (const entry of listDir(dir)) {
       if (entry === ".git" || keep.has(entry)) continue;
       const rel = dir ? `${dir}/${entry}` : entry;
+      // The build gate writes its output on every run, for every group, so a blanket
+      // denial of the directory above it meant the gate could not produce the thing
+      // the gate then checks. `allowWrite` cannot carve an exception out of a
+      // broader `denyWrite` (see clearance.ts), so the denial has to step around it:
+      // deny this directory's entries one by one, minus the output.
+      if (BUILD_OUTPUTS.includes(rel)) continue;
+      if (BUILD_OUTPUTS.some((b) => b.startsWith(`${rel}/`))) {
+        for (const inner of listDir(rel)) {
+          const innerRel = `${rel}/${inner}`;
+          if (BUILD_OUTPUTS.includes(innerRel)) continue;
+          deny.push(`${worktree}/${innerRel}/**`, `${worktree}/${innerRel}`);
+        }
+        continue;
+      }
       deny.push(`${worktree}/${rel}/**`, `${worktree}/${rel}`);
     }
   }

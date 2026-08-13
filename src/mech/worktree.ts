@@ -64,10 +64,14 @@ export async function createWorktree(
 /**
  * Gitignored build prerequisites a fresh worktree does not get from `git`.
  *
+ * `web/dist` is deliberately NOT here any more: a symlinked bundle meant a group's
+ * gate served the main checkout's UI, so its own change was invisible to its own
+ * test. The build gate produces it per worktree instead.
+ *
  * ponytail: hardcoded for this repo shape; move to project config when a second
  * project needs different artifacts.
  */
-const SEED = ["node_modules", "web/dist"];
+const SEED = ["node_modules"];
 
 /**
  * Without these the gates fail for a reason the group did not cause and cannot

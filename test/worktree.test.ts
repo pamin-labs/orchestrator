@@ -74,7 +74,7 @@ test("a worktree is created on its own branch, outside the main checkout", async
   expect(existsSync(wt.worktree)).toBe(false);
 });
 
-test("a new worktree gets the gitignored build prerequisites it cannot build itself", async () => {
+test("a new worktree gets the dependency tree it cannot install itself", async () => {
   const dir = await repo();
   mkdirSync(join(dir, "node_modules"), { recursive: true });
   mkdirSync(join(dir, "web/dist"), { recursive: true });
@@ -86,9 +86,12 @@ test("a new worktree gets the gitignored build prerequisites it cannot build its
   const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
   const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
 
-  // Symlinks, so the main checkout's rebuild is what every worktree sees.
+  // node_modules is a symlink: the main checkout's install is what every worktree
+  // uses. web/dist deliberately is NOT seeded — a symlinked bundle meant a group's
+  // gate served the main checkout's UI, so its own change was invisible to its own
+  // test. The build gate produces it per worktree instead.
   expect(lstatSync(join(wt.worktree, "node_modules")).isSymbolicLink()).toBe(true);
-  expect(readFileSync(join(wt.worktree, "web/dist/main.js"), "utf8")).toBe("built\n");
+  expect(existsSync(join(wt.worktree, "web/dist"))).toBe(false);
 
   // And git must not see them. `.gitignore` here says `web/dist/`, which matches a
   // directory and not the symlink — the turn checkpoint's `git add -A` committed it

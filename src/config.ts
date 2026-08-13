@@ -65,6 +65,8 @@ export interface Config {
   autoAdvance: boolean;
   /** Difficulty tags accepted automatically once all three gates pass. */
   autoAcceptTiers: string[];
+  /** Quiet period after a rebase nudge, so a burst of pushes costs one turn. */
+  rebaseNudgeMs: number;
   workRoot: string;
   dataDir: string;
 }
@@ -108,6 +110,7 @@ const DEFAULTS: Config = {
   // an independent QA — so this skips the fourth layer, the boss's look, on the tier
   // where that look is worth least. normal and hard still wait for you.
   autoAcceptTiers: ["trivial"],
+  rebaseNudgeMs: 900_000,
   workRoot: "/tmp/orch/worktrees",
   dataDir: "data",
 };
