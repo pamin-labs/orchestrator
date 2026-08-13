@@ -21,13 +21,37 @@ const IMMEDIATE_RULES = new Set([
   "blocker",
   "reserved_action",
   "chain_exhausted",
-  "turn_timeout",
-  "no_progress",
-  "circling",
-  "env_suspect",
   "budget_exhausted",
   "waiting_on_you",
 ]);
+
+/**
+ * Findings the boss can actually do something about.
+ *
+ * A notification is a claim that the reader has to act. Most watchdog rules are
+ * the opposite: the system noticed something and already handled it — "main 动到
+ * 了 549e8bc，已经让它先 rebase" needs nothing from anybody, and it arrived under a
+ * heading that said "5 things need you". Two of those in a row and the heading
+ * stops meaning anything, which costs the notifications that were real.
+ *
+ * So: the boss's own queue (approve, accept, answer, merge), plus money running
+ * out. Everything else is in the timeline, where looking is voluntary.
+ */
+const BOSS_RULES = new Set([
+  "blocker",
+  "reserved_action",
+  "chain_exhausted",
+  "budget_exhausted",
+  "waiting_on_you",
+  "waiting_card",
+  "waiting_slice",
+  "waiting_merge",
+  "waiting_parked",
+]);
+
+export function notifiable(rule: string, severity?: string): boolean {
+  return severity === "blocker" || BOSS_RULES.has(rule);
+}
 
 export function tierFor(rule: string, severity?: string): Tier {
   if (severity === "blocker") return "immediate";

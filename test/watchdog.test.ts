@@ -3,7 +3,7 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { Notifier, tierFor, batchForBoss } from "../src/mech/notify.ts";
+import { Notifier, notifiable, tierFor, batchForBoss } from "../src/mech/notify.ts";
 import { pause, resume, settlePausing, park } from "../src/mech/intercept.ts";
 import { recordTurnOutcome, runWatchdog, IDLE_TURN_LIMIT, SAME_FILE_LIMIT } from "../src/mech/watchdog.ts";
 import { Scheduler } from "../src/scheduler.ts";
@@ -239,6 +239,25 @@ test("park drops queued turns, retires sessions, keeps the worktree", () => {
 });
 
 // ------------------------------------------------------------------ notifier
+
+test("only what the boss can act on is worth a notification", async () => {
+  // "main 动到了 549e8bc，已经让它先 rebase" arrived under a heading that said
+  // "5 things need you". It needed nobody: the system had already handled it. Two
+  // of those in a row and the heading stops meaning anything, which costs the
+  // notifications that were real.
+  expect(notifiable("base_moved", "advisory")).toBe(false);
+  expect(notifiable("repeat_failure", "advisory")).toBe(false);
+  expect(notifiable("env_suspect", "advisory")).toBe(false);
+  expect(notifiable("unshipped", "advisory")).toBe(false);
+  expect(notifiable("parked", "advisory")).toBe(false);
+
+  // The boss's own queue, and money running out.
+  expect(notifiable("waiting_slice", "advisory")).toBe(true);
+  expect(notifiable("waiting_merge", "advisory")).toBe(true);
+  expect(notifiable("budget_exhausted", "advisory")).toBe(true);
+  // Severity still wins: anything that stopped a group reaches them.
+  expect(notifiable("stalled", "blocker")).toBe(true);
+});
 
 test("blockers interrupt immediately; ordinary findings are batched", () => {
   expect(tierFor("budget_80")).toBe("batched");

@@ -7,7 +7,7 @@ import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from ".
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
-import { batchForBoss, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
+import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
@@ -271,6 +271,10 @@ export function start(overrides: Partial<Config> = {}): Started {
 
   const notifier = new Notifier({ ntfyTopic: process.env.ORCH_NTFY_TOPIC });
   ctx.onFinding = (rule, severity, body, grpId) => {
+    // The finding is already an event in the timeline. A notification on top of it
+    // is a claim that the boss has to act, and most rules are the system reporting
+    // that it handled something itself.
+    if (!notifiable(rule, severity)) return;
     void notifier.push({ key: `${rule}:${grpId ?? 0}`, tier: tierFor(rule, severity), body, url });
   };
   ctx.notifyBoss = (escId, question, severity) => {
