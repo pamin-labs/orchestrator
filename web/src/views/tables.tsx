@@ -161,10 +161,11 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   const pairs: [string, string, string[]][] = [];
   for (let i = 0; i < gs.length; i++)
     for (let j = i + 1; j < gs.length; j++) {
-      const hit = owns(gs[i]).filter((a) =>
-        owns(gs[j]).some((b) => a === b || a.startsWith(b.replace(/\*+$/, "")) || b.startsWith(a.replace(/\*+$/, ""))),
+      const [a1, b1] = [gs[i]!, gs[j]!];
+      const hit = owns(a1).filter((a) =>
+        owns(b1).some((b) => a === b || a.startsWith(b.replace(/\*+$/, "")) || b.startsWith(a.replace(/\*+$/, ""))),
       );
-      if (hit.length) pairs.push([gs[i].name, gs[j].name, hit]);
+      if (hit.length) pairs.push([a1.name, b1.name, hit]);
     }
   return (
     <>
@@ -323,6 +324,19 @@ export function CostView({ cost }: { cost: Cost | null }) {
   );
 }
 
+/**
+ * One numeric grid for the whole page.
+ *
+ * Same reason the slice lanes fix their columns: a number whose left edge moves
+ * with the label above it cannot be compared with that one, and comparing them is
+ * the entire view. The header row, the requirements and the agents nested inside
+ * them all land on the same right-hand columns.
+ */
+const ROW = cn(
+  "grid grid-cols-[minmax(0,1fr)_5rem_2.75rem_4.5rem] items-center gap-x-3 px-2",
+  "max-[52rem]:grid-cols-[minmax(0,1fr)_5rem_2.75rem]",
+);
+
 function SectionHead({ title, note, scope }: { title: string; note: string; scope: string }) {
   return (
     <>
@@ -415,7 +429,7 @@ function Node({
                   chevron so the nesting is the indent, not a rule down the side. */}
               <span className="flex min-w-0 items-baseline gap-1.5 pl-[1.125rem]">
                 <span className="truncate font-mono text-[0.75rem] text-ink-2">{a.role}</span>
-                <Meta className="truncate" title={a.model}>{a.model}</Meta>
+                <Meta className="truncate">{a.model}</Meta>
               </span>
               <span className="text-right font-mono text-[0.75rem] text-ink-2">{K(a.tokens)}</span>
               {/* Share of this requirement, not of the project: inside the open row

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
-import { POLL_EVERY_MS, pollClaudeUsage, toRateLimit } from "../src/mech/subusage.ts";
+import { POLL_EVERY_MS, objectsAfter, pollClaudeUsage, toRateLimit } from "../src/mech/subusage.ts";
 
 // The real response, trimmed to the two windows this reads. Verbatim shape from
 // GET /api/oauth/usage — a dozen other keys are present and all ignored.
@@ -62,4 +62,24 @@ test("a failed poll keeps the last good reading rather than blanking the header"
   const row = db.query<{ json: string; at: number }, []>("SELECT json, at FROM usage_snapshot").get()!;
   expect(row.at).toBe(2);
   expect(JSON.parse(row.json).weeklyPercent).toBe(65);
+});
+
+test("codex quota comes from its rollout file, not the stream", () => {
+  // Verbatim shape from a real $CODEX_HOME/sessions rollout. `codex exec --json`
+  // never emits token_count — six live turn logs carry only thread.started,
+  // turn.started, item.* and turn.completed — so this is where the numbers are.
+  // Note what this account reports: one 10080-minute window and a null secondary,
+  // with an absolute resets_at. The window is identified by its length, not by
+  // which slot it arrived in.
+  const line =
+    '{"type":"event_msg","payload":{"rate_limits":{"limit_id":"codex","limit_name":null,' +
+    '"primary":{"used_percent":12.5,"window_minutes":10080,"resets_at":1787207305},' +
+    '"secondary":null,"credits":{"has_credits":false,"balance":"0"}}}}';
+  const objs = objectsAfter(line, '"rate_limits":');
+  expect(objs.length).toBe(1);
+  // Brace-matched, not regexed: `primary` nests, so a non-greedy match would stop
+  // at its closing brace and parse to the wrong object.
+  const rl = JSON.parse(objs[0]!);
+  expect(rl.primary.used_percent).toBe(12.5);
+  expect(rl.secondary).toBeNull();
 });

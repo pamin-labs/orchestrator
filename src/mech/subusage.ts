@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DB } from "../db.ts";
@@ -165,4 +165,131 @@ function stamp(db: DB, now: number, read: UsageRead): void {
 /** A success has to remove a stale `error`, and json_patch removes on null. */
 function json_clear(good: string): string {
   return JSON.stringify({ ...JSON.parse(good), error: null });
+}
+
+/**
+ * codex's quota, which is not in the stream.
+ *
+ * `codex exec --json` emits thread.started, turn.started, item.* and
+ * turn.completed and nothing else — checked against six real turn logs from this
+ * repo. `token_count`, which carries `rate_limits`, is a TUI event. But codex
+ * writes a rollout file per session under $CODEX_HOME/sessions, and that file has
+ * the same `rate_limits` object in it. Since the orchestrator sets CODEX_HOME
+ * itself (codexHome()), those files are ours to read.
+ *
+ * The shape is not the one the TUI streams: windows come back as
+ * `{used_percent, window_minutes, resets_at}` with `resets_at` absolute, and an
+ * account may report only one of them — this one has a single 10080-minute
+ * window and a null secondary. So the window is identified by its length rather
+ * than by which slot it arrived in.
+ */
+export function codexUsage(dataDir: string, now = Date.now()): RateLimitInfo | null {
+  // Not just the newest file: a session that ended before its first quota ping has
+  // none, and short ones are common. Walk back through the recent ones.
+  for (const file of recentFiles(join(dataDir, "codex-home", "sessions"), 12)) {
+    let text: string;
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    // Last reading in the file wins: it grows as the session runs.
+    for (const raw of objectsAfter(text, '"rate_limits":').reverse()) {
+      try {
+        const rl = JSON.parse(raw) as { primary?: CodexWindow; secondary?: CodexWindow };
+        const out = fromCodex(rl.primary ?? null, rl.secondary ?? null, now);
+        if (out) return out;
+      } catch {}
+    }
+  }
+  return null;
+}
+
+/**
+ * Every JSON object following `key` in the text, brace-matched.
+ *
+ * A regex cannot do this: the object nests (`primary` is an object inside it), so
+ * a non-greedy match ends at the first inner `}` and produces something that
+ * parses to the wrong thing or not at all.
+ */
+export function objectsAfter(text: string, key: string): string[] {
+  const out: string[] = [];
+  let i = text.indexOf(key);
+  while (i !== -1) {
+    const start = text.indexOf("{", i + key.length);
+    if (start === -1) break;
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let j = start; j < text.length; j++) {
+      const c = text[j]!;
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = !inStr;
+      else if (!inStr && c === "{") depth++;
+      else if (!inStr && c === "}" && --depth === 0) {
+        out.push(text.slice(start, j + 1));
+        break;
+      }
+    }
+    i = text.indexOf(key, i + key.length);
+  }
+  return out;
+}
+
+type CodexWindow = { used_percent?: number; window_minutes?: number; resets_at?: number; resets_in_seconds?: number } | null;
+
+/** 299 minutes is the five-hour window, 10079/10080 the week. Anything else is ignored. */
+function fromCodex(...args: [CodexWindow, CodexWindow, number]): RateLimitInfo | null {
+  const [a, b, now] = args;
+  const wins = [a, b].filter((w): w is NonNullable<CodexWindow> => !!w && w.used_percent !== undefined);
+  if (!wins.length) return null;
+  const at = (w: NonNullable<CodexWindow>) =>
+    w.resets_at ?? (w.resets_in_seconds ? Math.floor(now / 1000) + w.resets_in_seconds : 0);
+  const five = wins.find((w) => (w.window_minutes ?? 0) < 600);
+  const week = wins.find((w) => (w.window_minutes ?? 0) >= 6000);
+  if (!five && !week) return null;
+  return {
+    status: "allowed",
+    rateLimitType: "five_hour",
+    resetsAt: five ? at(five) : 0,
+    fiveHourPercent: five?.used_percent,
+    weeklyPercent: week?.used_percent,
+    weeklyResetsAt: week ? at(week) : undefined,
+  };
+}
+
+/** The `limit` most recently modified files under a directory tree, newest first. */
+function recentFiles(root: string, limit: number): string[] {
+  const all: { path: string; at: number }[] = [];
+  const walk = (dir: string) => {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = join(dir, e);
+      try {
+        const s = statSync(p);
+        if (s.isDirectory()) walk(p);
+        else all.push({ path: p, at: s.mtimeMs });
+      } catch {}
+    }
+  };
+  walk(root);
+  return all.sort((a, b) => b.at - a.at).slice(0, limit).map((f) => f.path);
+}
+
+/** Both providers, on the watchdog's clock. */
+export async function pollUsage(db: DB, dataDir: string, now = Date.now()): Promise<void> {
+  await pollClaudeUsage(db, now);
+  const rl = codexUsage(dataDir, now);
+  if (!rl) return;
+  db.run(
+    `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('codex', ?, ?)
+     ON CONFLICT (runtime) DO UPDATE SET json = excluded.json, at = excluded.at`,
+    [JSON.stringify(rl), now],
+  );
 }

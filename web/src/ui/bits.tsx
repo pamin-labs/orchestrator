@@ -18,8 +18,10 @@ export const H3 = ({ children, className }: { children: React.ReactNode; classNa
   <h3 className={cn("mt-8 mb-2.5 font-display text-[1rem] font-semibold", className)}>{children}</h3>
 );
 
-export const Meta = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <span className={cn("font-mono text-[0.6875rem] text-ink-3", className)}>{children}</span>
+export const Meta = ({ children, className, ...rest }: React.HTMLAttributes<HTMLSpanElement>) => (
+  <span className={cn("font-mono text-[0.6875rem] text-ink-3", className)} {...rest}>
+    {children}
+  </span>
 );
 
 /** Absence, with a reason. An empty panel that only says "none" teaches nothing. */
