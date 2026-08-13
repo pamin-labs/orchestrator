@@ -186,16 +186,16 @@ export function Composer({
     setBusy(false);
     if (!r?.ok) return void toast.error((await r?.text()) || "加不进来", { duration: 8000 });
     const { files: saved } = (await r.json()) as { files: Attached[] };
+    // Labelled before the state update, not inside it: the updater had not run
+    // yet when the markers were assembled, so the text got `[undefined]`.
     const taken = files.map((f) => f.label);
-    setFiles((prev) => [
-      ...prev,
-      ...saved.map((s) => {
-        const l = label(s, taken);
-        taken.push(l);
-        return { ...s, label: l };
-      }),
-    ]);
-    mark(saved.map((_, i) => `[${taken[taken.length - saved.length + i]}]`).join(""));
+    const marked = saved.map((s) => {
+      const l = label(s, taken);
+      taken.push(l);
+      return { ...s, label: l };
+    });
+    setFiles((prev) => [...prev, ...marked]);
+    mark(marked.map((m) => `[${m.label}]`).join(""));
   };
 
   /** Drop the markers in where the caret was. */
@@ -383,7 +383,9 @@ export function Composer({
               )}
               <span className="font-mono text-[0.6875rem] text-ink-2">[{f.label}]</span>
               <span className="max-w-40 truncate text-[0.75rem]">{f.name}</span>
-              <span className="font-mono text-[0.625rem] text-ink-3">{Math.round(f.size / 1024)}k</span>
+              {f.type !== "inode/directory" && (
+                <span className="font-mono text-[0.625rem] text-ink-3">{Math.round(f.size / 1024)}k</span>
+              )}
               <button
                 aria-label={`移除 ${f.name}`}
                 className="cursor-pointer text-ink-3 hover:text-bad"
