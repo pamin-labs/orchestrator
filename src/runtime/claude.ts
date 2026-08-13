@@ -182,7 +182,7 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
 
   try {
     for await (const line of ndjson(proc.stdout)) {
-      log?.write(JSON.stringify(line) + "\n");
+      log?.write(JSON.stringify(trimForLog(line)) + "\n");
       consume(line, acc, h);
     }
     await proc.exited;
@@ -312,6 +312,33 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
 }
 
 /** One short line per call — the timeline shows these, never the raw input. */
+/**
+ * What goes on disk, minus the part that made it 123 MB.
+ *
+ * A turn's NDJSON is 90% tool results — whole files, whole diffs, whole test runs —
+ * and every measurement worth having from these logs is about *shape*: how many
+ * rounds, which tools, how many tokens, what failed. So results keep their first
+ * line and their size, and the body goes. Measured on this repo's own logs: ~10x
+ * before gzip, on top of gzip's own 3.5x.
+ *
+ * The tool *input* is kept whole: it is small, and it is the half that says what
+ * the agent was trying to do — which is what anyone reading a log afterwards is
+ * looking for.
+ */
+const LOG_RESULT_CHARS = 400;
+
+export function trimForLog(line: any): any {
+  const content = line?.message?.content;
+  if (!Array.isArray(content)) return line;
+  const trimmed = content.map((c: any) => {
+    if (c?.type !== "tool_result") return c;
+    const text = typeof c.content === "string" ? c.content : JSON.stringify(c.content ?? "");
+    if (text.length <= LOG_RESULT_CHARS) return c;
+    return { ...c, content: `${text.slice(0, LOG_RESULT_CHARS)}… [${text.length} chars omitted]` };
+  });
+  return { ...line, message: { ...line.message, content: trimmed } };
+}
+
 export function summarizeTool(name: string, input: Record<string, any>): ToolSummary {
   let detail = name;
   if (typeof input.command === "string") detail = `${name}: ${clip(input.command, 90)}`;

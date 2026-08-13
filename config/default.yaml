@@ -46,15 +46,6 @@ gateRetries: 2
 # few, so one wedged command stops every group from gating again.
 leaseTimeoutMs: 10800000
 
-# 15 min of quiet after telling a group main moved. `rebase_seen` alone records the
-# commit, so three pushes in an hour were three shas and three rebase turns — one
-# group spent three turns rebasing while the boss pushed a batch of fixes.
-#
-# The cost, stated: a group can be up to this far behind before it is told. It finds
-# out at PR time anyway (GitHub reports CONFLICTING and the watchdog acts on it), so
-# what this trades is early warning, not correctness.
-rebaseNudgeMs: 900000
-
 # Where group worktrees live. Outside $HOME on purpose: the sandbox is deny-only,
 # so denying $HOME is how writes get confined (docs/decisions/001).
 workRoot: /tmp/orch/worktrees

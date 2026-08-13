@@ -691,3 +691,32 @@ test("turn logs are compressed after a day and dropped after two weeks", () => {
   expect(existsSync(join(dir, "2.jsonl"))).toBe(true);
   expect(existsSync(join(dir, "3.jsonl.gz"))).toBe(false);
 });
+
+test("a burst of pushes costs one rebase turn, and never delays one", async () => {
+  const h = harness();
+  h.db.run("UPDATE grp SET worktree = '/tmp/wt/g1' WHERE id = 1");
+  h.db.run("UPDATE project SET repo_path = '/tmp/p-burst' WHERE id = 1");
+  let sha = "aaaa111111";
+  h.ctx.git = async (_r, argv) => (argv[0] === "rev-parse" ? { code: 0, out: sha } : { code: 1, out: "" });
+  const deps = { ...h.deps, git: h.ctx.git! };
+
+  // Count the turns, not the findings: a finding is suppressed as a re-emit for
+  // half an hour, and what is being asserted here is what the group was made to do.
+  const turns = () =>
+    h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE payload_json LIKE '%conflict%'").get()!.c;
+
+  await runWatchdog(deps);
+  expect(turns()).toBe(1);
+
+  // Pushed again while the first nudge is still queued: same turn, not a second.
+  sha = "bbbb222222";
+  await runWatchdog(deps);
+  expect(turns()).toBe(1);
+
+  // It ran. A base that moved again is acted on immediately — there is no clock to
+  // wait out, because a group whose PR is blocked on a rebase must not sit on it.
+  h.db.run("UPDATE job SET state = 'done' WHERE state = 'pending'");
+  sha = "cccc333333";
+  await runWatchdog(deps);
+  expect(turns()).toBe(2);
+});
