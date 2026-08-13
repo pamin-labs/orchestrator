@@ -211,68 +211,94 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
       </Empty>
     );
   }
-  const pairs: [string, string, string[]][] = [];
-  for (let i = 0; i < gs.length; i++)
+
+  /**
+   * The clash, marked on the path that clashes.
+   *
+   * There used to be a list of pairs above the table: `A ↔ B` and the paths they
+   * share, and then the same paths again in each requirement's own row. Reading it
+   * meant holding two names in your head and scrolling to find them — for a page
+   * whose entire question is "who is standing on whose feet". A prefix match, not
+   * equality: `src/mech/**` and `src/mech/gate.ts` do not look alike and are the
+   * same territory.
+   */
+  const bumps = new Map<number, Map<string, string[]>>();
+  const covers = (a: string, b: string) =>
+    a === b || a.startsWith(b.replace(/\*+$/, "")) || b.startsWith(a.replace(/\*+$/, ""));
+  for (const g of gs) bumps.set(g.id, new Map());
+  for (let i = 0; i < gs.length; i++) {
     for (let j = i + 1; j < gs.length; j++) {
-      const [a1, b1] = [gs[i]!, gs[j]!];
-      const hit = owns(a1).filter((a) =>
-        owns(b1).some((b) => a === b || a.startsWith(b.replace(/\*+$/, "")) || b.startsWith(a.replace(/\*+$/, ""))),
-      );
-      if (hit.length) pairs.push([a1.name, b1.name, hit]);
+      const [x, y] = [gs[i]!, gs[j]!];
+      for (const a of owns(x)) {
+        for (const b of owns(y)) {
+          if (!covers(a, b)) continue;
+          bumps.get(x.id)!.set(a, [...(bumps.get(x.id)!.get(a) ?? []), y.name]);
+          bumps.get(y.id)!.set(b, [...(bumps.get(y.id)!.get(b) ?? []), x.name]);
+        }
+      }
     }
+  }
+  const hit = gs.filter((g) => bumps.get(g.id)!.size);
+  // Colliding requirements first: they are the only rows anyone has to do
+  // something about, and they were sorted in among the ones that are fine.
+  const rows = [...hit, ...gs.filter((g) => !bumps.get(g.id)!.size), ...bare];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* The verdict, first and in one line. */}
-      <div
-        className={cn(
-          "mb-4 flex flex-wrap items-baseline gap-x-2 border-b pb-3 text-[0.8125rem]",
-          pairs.length ? "border-bad/40 text-bad" : "border-rule",
-        )}
-      >
-        {pairs.length ? (
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-rule pb-2.5">
+        {hit.length ? (
           <>
-            <b className="font-semibold">路径重叠 {pairs.length} 处，这些组不能并行</b>
-            <Meta className="text-bad">Architect 得重新切边界</Meta>
+            <b className="text-[0.8125rem] font-semibold text-bad">{hit.length} 个需求的边界互相压着</b>
+            <Meta>并行会踩到同一批文件，得让 Architect 重新切</Meta>
           </>
         ) : (
           <>
-            <b className="font-semibold">边界两两不相交</b>
+            <b className="text-[0.8125rem] font-semibold">边界两两不相交</b>
             <Meta>{gs.length} 个需求可以同时开工{bare.length ? `，另有 ${bare.length} 个还没划` : ""}</Meta>
           </>
         )}
       </div>
 
-      {pairs.map(([a, b, hit]) => (
-        <div key={a + b} className="mb-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[0.8125rem]">
-          <span className="text-bad">{a} ↔ {b}</span>
-          {hit.map((h) => (
-            <span key={h} className="rounded-sm bg-bad-soft px-1.5 py-0.5 font-mono text-[0.6875rem] text-bad">{h}</span>
-          ))}
-        </div>
-      ))}
-
-      <Pane className="mt-5">
-        {[...gs, ...bare].map((g) => (
-          <div
-            key={g.id}
-            className="grid grid-cols-[12rem_minmax(0,1fr)] items-baseline gap-x-5 border-t border-rule-soft
-                       px-3 py-3 max-[52rem]:grid-cols-1 max-[52rem]:gap-y-1.5"
-          >
-            <span className="truncate text-[0.8125rem]" title={g.name}>{g.name}</span>
-            {/* Chips that wrap, not a stack. Eight owned paths were eight rows of
-                height for one requirement, and the page is a comparison. */}
-            <span className="flex min-w-0 flex-wrap gap-x-2 gap-y-1.5">
-              {owns(g).length ? (
-                owns(g).map((o) => (
-                  <span key={o} className="rounded-sm bg-sunk px-1.5 py-0.5 font-mono text-[0.6875rem] text-ink-2">{o}</span>
-                ))
-              ) : (
-                <Badge tone="warn">未划定</Badge>
-              )}
-            </span>
-          </div>
-        ))}
+      <Pane>
+        {rows.map((g) => {
+          const mine = bumps.get(g.id) ?? new Map<string, string[]>();
+          const others = [...new Set([...mine.values()].flat())];
+          return (
+            <div
+              key={g.id}
+              className="grid grid-cols-[13rem_minmax(0,1fr)] items-baseline gap-x-5 border-t border-rule-soft
+                         py-2.5 first:border-t-0 max-[52rem]:grid-cols-1 max-[52rem]:gap-y-1"
+            >
+              <div className="min-w-0">
+                <div className="truncate font-display text-[0.875rem] font-semibold" title={g.name}>{g.name}</div>
+                {others.length > 0 && (
+                  <Meta className="truncate text-bad" title={others.join("、")}>压着 {others.join("、")}</Meta>
+                )}
+              </div>
+              {/* Chips that wrap, not a stack: eight owned paths were eight rows of
+                  height for one requirement, and the page is a comparison. */}
+              <span className="flex min-w-0 flex-wrap gap-x-1.5 gap-y-1">
+                {owns(g).length ? (
+                  owns(g).map((o) =>
+                    mine.has(o) ? (
+                      <Tip key={o} label={`和 ${mine.get(o)!.join("、")} 是同一块地方`}>
+                        <span className="rounded-sm bg-bad-soft px-1.5 py-0.5 font-mono text-[0.6875rem] text-bad">
+                          {o}
+                        </span>
+                      </Tip>
+                    ) : (
+                      <span key={o} className="rounded-sm bg-sunk px-1.5 py-0.5 font-mono text-[0.6875rem] text-ink-2">
+                        {o}
+                      </span>
+                    ),
+                  )
+                ) : (
+                  <Badge tone="warn">未划定</Badge>
+                )}
+              </span>
+            </div>
+          );
+        })}
       </Pane>
     </div>
   );

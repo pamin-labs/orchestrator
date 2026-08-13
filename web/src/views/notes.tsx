@@ -127,39 +127,52 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
   let gate: string | null = null;
   try {
     const f = JSON.parse(n.frontmatter ?? "{}");
-    files = Array.isArray(f.files) ? f.files.slice(0, 6) : [];
+    files = Array.isArray(f.files) ? f.files.slice(0, 4) : [];
     gate = typeof f.gate === "string" ? f.gate : null;
   } catch {}
 
   return (
-    <div className="border-t border-rule-soft py-4">
-      {/* Who wrote it and when, and nothing else at full strength. The export path
-          was the widest thing on the line — a 60-character docs/journal/<用中文写的
-          很长的需求名>/020-journal.md that said less than the requirement name it
-          contains. It is a hover now. */}
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        {showKind && <Badge>{ZH.get(n.kind) ?? n.kind}</Badge>}
-        {n.group && <span className="truncate text-[0.75rem] font-medium text-ink">{n.group}</span>}
-        <Meta>{clock(n.at)}</Meta>
-        {gate && (
-          <Meta className={gate === "pass" ? "text-ok" : gate === "fail" ? "text-bad" : undefined}>gate {gate}</Meta>
-        )}
-        {files.length > 0 && (
-          <Tip label={files.join("\n")}>
-            <Meta className="min-w-0 truncate underline decoration-dotted">
-              {files.length === 1 ? files[0] : `${files.length} 个文件`}
-            </Meta>
-          </Tip>
-        )}
-        {n.exportPath && (
-          <Tip label={n.exportPath}>
-            <Meta className="cursor-default">md</Meta>
-          </Tip>
+    // Two columns, because there are two things here and they were on one line.
+    // When it happened and which requirement it belongs to is what you scan; the
+    // note is what you read. Interleaved — badge, name, clock, gate, files, md,
+    // all at 0.6875rem — the eye had no column to run down, so twenty journals
+    // read as one wall with rules through it.
+    <div
+      className="grid grid-cols-[8.5rem_minmax(0,1fr)] gap-x-5 border-t border-rule-soft py-3 first:border-t-0
+                 max-[52rem]:grid-cols-1 max-[52rem]:gap-y-1"
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          {showKind && <Badge>{ZH.get(n.kind) ?? n.kind}</Badge>}
+          <Meta>{clock(n.at)}</Meta>
+        </div>
+        {n.group && <div className="truncate text-[0.75rem] text-ink-2" title={n.group}>{n.group}</div>}
+      </div>
+      <div className="min-w-0">
+        <Body text={n.body} />
+        {/* The deterministic anchors, under the prose they are meant to check: the
+            files it touched and the gate's verdict are what stop a journal being
+            self-congratulation. The export path was the widest thing on the old
+            header — 60 characters of docs/journal/<一个很长的中文需求名>/020-journal.md
+            saying less than the requirement name inside it. It is a hover. */}
+        {(gate || files.length > 0 || n.exportPath) && (
+          <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
+            {gate && (
+              <Meta className={gate === "pass" ? "text-ok" : gate === "fail" ? "text-bad" : undefined}>
+                闸门 {gate === "pass" ? "过" : gate === "fail" ? "没过" : gate}
+              </Meta>
+            )}
+            {files.map((f) => (
+              <Meta key={f} className="min-w-0 truncate font-mono" title={f}>{f}</Meta>
+            ))}
+            {n.exportPath && (
+              <Tip label={n.exportPath}>
+                <Meta className="cursor-default underline decoration-dotted">md</Meta>
+              </Tip>
+            )}
+          </div>
         )}
       </div>
-      {/* Indented under its own heading. Six lines of prose butted against the next
-          entry's six made one wall of text with rules through it. */}
-      <Body text={n.body} />
     </div>
   );
 }

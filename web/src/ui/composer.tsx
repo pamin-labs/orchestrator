@@ -7,11 +7,11 @@ import { Textarea } from "./bits";
 import { Card, CardHeader, CardTitle } from "./card";
 import { cn } from "../lib/utils";
 
-export interface Attached { name: string; path: string; type: string; size: number; url?: string }
+export interface Attached { name: string; path: string; type: string; size: number; url?: string; label: string }
 export interface Skill { name: string; path: string; description: string; scope: "project" | "user" }
 export interface Draft {
   text: string;
-  attachments: { name: string; path: string; type: string }[];
+  attachments: { name: string; path: string; type: string; label: string }[];
 }
 
 /**
@@ -103,7 +103,25 @@ export function Composer({
     setText("");
     setFiles([]);
   };
-  const draft: Draft = { text: text.trim(), attachments: files.map(({ name, path, type }) => ({ name, path, type })) };
+  const draft: Draft = {
+    text: text.trim(),
+    attachments: files.map(({ name, path, type, label }) => ({ name, path, type, label })),
+  };
+
+  /**
+   * A name for each file, written into the text where it was added.
+   *
+   * Two screenshots and a sentence saying "这里不对" leaves the agent guessing which
+   * one 这里 is — and the agent cannot ask cheaply, because asking costs the boss a
+   * turn in 待办. So every attachment gets 图N / 附件N, the marker goes in at the
+   * caret, and the same marker labels the path in the assembled prompt. The text
+   * can then say 按 [图2] 改, and both ends mean the same file.
+   */
+  const label = (f: File, taken: string[]) => {
+    const kind = f.type.startsWith("image/") ? "图" : "附件";
+    const n = taken.filter((l) => l.startsWith(kind)).length + 1;
+    return `${kind}${n}`;
+  };
 
   const upload = async (list: FileList | File[]) => {
     const picked = [...list];
@@ -117,14 +135,29 @@ export function Composer({
     // goes out referencing a path, and the agent is told to Read something missing.
     if (!r.ok) return void toast.error(await r.text(), { duration: 8000 });
     const { files: saved } = (await r.json()) as { files: Attached[] };
-    setFiles((prev) => [
-      ...prev,
-      ...saved.map((s, i) => ({
+    const taken = files.map((f) => f.label);
+    const marked = saved.map((s, i) => {
+      const l = label(picked[i]!, taken);
+      taken.push(l);
+      return {
         ...s,
+        label: l,
         // Preview from the local File, not a server round trip.
         url: picked[i]?.type.startsWith("image/") ? URL.createObjectURL(picked[i]!) : undefined,
-      })),
-    ]);
+      };
+    });
+    setFiles((prev) => [...prev, ...marked]);
+
+    // At the caret, because that is where the boss was pointing when they pasted.
+    const marks = marked.map((m) => `[${m.label}]`).join("");
+    const box2 = box.current;
+    const at = box2 ? (box2.selectionStart ?? text.length) : text.length;
+    const next = `${text.slice(0, at)}${marks}${text.slice(at)}`;
+    setText(next);
+    requestAnimationFrame(() => {
+      box2?.focus();
+      box2?.setSelectionRange(at + marks.length, at + marks.length);
+    });
   };
 
   /**
@@ -242,6 +275,7 @@ export function Composer({
                   {(f.name.split(".").pop() ?? "file").slice(0, 4).toUpperCase()}
                 </span>
               )}
+              <span className="font-mono text-[0.6875rem] text-ink-2">[{f.label}]</span>
               <span className="max-w-40 truncate text-[0.75rem]">{f.name}</span>
               <span className="font-mono text-[0.625rem] text-ink-3">{Math.round(f.size / 1024)}k</span>
               <button

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button } from "../ui/button";
 import { Meta } from "../ui/bits";
+import { Segment, Segments } from "../ui/segment";
 import { Card, CardHeader } from "../ui/card";
 import { DiffView } from "../ui/diff";
 import { pull, type Evidence } from "../lib/api";
@@ -16,12 +16,13 @@ import { cn } from "../lib/utils";
  * diff is underneath it because "is this what I asked for" is answered by reading
  * the change, not by trusting the summary of it.
  */
-export function EvidencePanel({ sliceId }: { sliceId: number }) {
+export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?: React.ReactNode }) {
   const [ev, setEv] = useState<Evidence | null>(null);
-  const [openGate, setOpenGate] = useState<string | null>(null);
+  const [view, setView] = useState("diff");
 
   useEffect(() => {
     setEv(null);
+    setView("diff");
     void pull<Evidence>(`/api/slices/${sliceId}/evidence`).then(setEv);
   }, [sliceId]);
 
@@ -31,16 +32,19 @@ export function EvidencePanel({ sliceId }: { sliceId: number }) {
 
   return (
     <Card tone="sunk" className="mt-1.5">
-      {/* Two lines, because these are two different kinds of fact and they were
-          competing on one. What you are being asked to agree to — the acceptance
-          line — is the sentence; how big the change is and how many times it came
-          back are the measurements. Ordered that way, at those weights. */}
-      <CardHeader className="flex-col items-start gap-0.5">
-        <span className="text-[0.8125rem] text-ink">{ev.accept_spec}</span>
-        <span className="flex flex-wrap items-baseline gap-x-3">
-          <Meta>{summary || "无改动记录"}</Meta>
-          {ev.retries > 0 && <Meta className="text-warn">被打回过 {ev.retries} 次</Meta>}
+      {/* What you are being asked to agree to, then the measurements of it, then
+          the button. The acceptance line used to be last on a header that opened
+          with the panel's own name and a diffstat. */}
+      <CardHeader className="gap-y-1.5">
+        <span className="min-w-0">
+          <span className="block text-[0.8125rem] text-ink">{ev.accept_spec}</span>
+          <span className="flex flex-wrap items-baseline gap-x-3">
+            <Meta>{summary || "无改动记录"}</Meta>
+            {ev.retries > 0 && <Meta className="text-warn">被打回过 {ev.retries} 次</Meta>}
+          </span>
         </span>
+        <span className="grow" />
+        {actions}
       </CardHeader>
 
       {ev.verdicts.length > 0 && (
@@ -64,38 +68,35 @@ export function EvidencePanel({ sliceId }: { sliceId: number }) {
         </div>
       )}
 
-      {ev.gates.length > 0 && (
-        <div className="border-b border-rule-soft px-3.5 py-2">
-          {/* One log open at a time, and it opens under the whole row rather than
-              inside it. The buttons and the panel used to share one flex-wrap
-              container, so opening a log rewrapped the buttons around it. */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Meta className="mr-1">闸门日志</Meta>
-            {ev.gates.map((g) => (
-              <Button
-                key={g.name}
-                size="sm"
-                variant={openGate === g.name ? "go" : "default"}
-                onClick={() => setOpenGate(openGate === g.name ? null : g.name)}
-              >
-                {g.name}
-                <span className={cn("font-mono text-[0.625rem]", openGate === g.name ? "opacity-70" : "text-ink-3")}>
-                  {Math.round(g.size / 1024)}k
-                </span>
-              </Button>
-            ))}
-          </div>
-          {openGate && <GateLog key={openGate} sliceId={sliceId} name={openGate} />}
-        </div>
-      )}
+      {/* The diff and the gate logs are the same kind of thing — the machine's
+          record of what happened — and they were stacked, so reading a log meant
+          scrolling past a 3000-line diff to reach it and scrolling back. One
+          switch, one pane. Not a tab strip: this page already has one, and a
+          second under it stops reading as navigation. */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-rule-soft px-3.5 py-2">
+        <Segments value={view} onValueChange={setView}>
+          <Segment value="diff">改动</Segment>
+          {ev.gates.map((g) => (
+            <Segment key={g.name} value={g.name} count={`${Math.round(g.size / 1024)}k`}>
+              {g.name}
+            </Segment>
+          ))}
+        </Segments>
+      </div>
 
-      {!ev.diff ? (
-        <div className="px-3.5 py-2 text-[0.75rem] text-ink-3">
-          没有 diff 可读。这一片没有记下基线 commit，或者 worktree 已经清掉了。
-        </div>
+      {view === "diff" ? (
+        !ev.diff ? (
+          <div className="px-3.5 py-2 text-[0.75rem] text-ink-3">
+            没有 diff 可读。这一片没有记下基线 commit，或者 worktree 已经清掉了。
+          </div>
+        ) : (
+          <div className="h-[34rem]">
+            <DiffView diff={ev.diff} truncated={ev.truncated} />
+          </div>
+        )
       ) : (
-        <div className="h-[34rem]">
-          <DiffView diff={ev.diff} truncated={ev.truncated} />
+        <div className="px-3.5 pb-3 pt-1">
+          <GateLog key={view} sliceId={sliceId} name={view} />
         </div>
       )}
     </Card>
@@ -142,7 +143,7 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
   if (text === null) return <div className="mt-2 text-[0.75rem] text-ink-3">读日志…</div>;
 
   return (
-    <div className="mt-2 overflow-hidden rounded-md border border-rule-soft bg-sunk">
+    <div className="overflow-hidden rounded-md border border-rule-soft bg-sunk">
       {/* One verdict and one field. A 没过/全部 segment sat here for a version: on a
           passing gate it read 没过 0 / 全部 373, which is two buttons offering to
           filter for nothing and to show you 373 lines of the word "pass". */}

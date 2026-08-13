@@ -60,6 +60,8 @@ export function Requirement({
 
   const draft = g.status === "DRAFT" || g.status === "PLANNING";
   const active = tab ?? (mine.length ? "ask" : "slice");
+  /** Open questions somebody else in the chain is still holding. */
+  const others = asks.filter((a) => !mine.includes(a));
   // The record is fetched by the panel that shows it, so the tab has to be told.
   const [notes, setNotes] = useState<number | null>(null);
 
@@ -130,12 +132,21 @@ export function Requirement({
           </TabPanel>
 
           <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col">
-            <Pane>
-              {asks.length ? (
-                [...mine, ...asks.filter((a) => !mine.includes(a))].map((e) => (
+            {/* The one waiting on you stays put; everything else scrolls under it.
+                They were in one pane, so the question with the answer box in it
+                scrolled away while you read the four below it that are somebody
+                else's problem — and the box is the reason you opened the tab. */}
+            {mine.length > 0 && (
+              <div className="shrink-0">
+                {mine.map((e) => (
                   <Ask key={e.id} e={e} refresh={refresh} />
-                ))
-              ) : (
+                ))}
+              </div>
+            )}
+            <Pane className={mine.length && others.length ? "mt-2 border-t border-rule pt-2" : undefined}>
+              {others.length ? (
+                others.map((e) => <Ask key={e.id} e={e} refresh={refresh} />)
+              ) : mine.length ? null : (
                 <div className="text-[0.8125rem] text-ink-3">没有开着的问题。</div>
               )}
               {/* An answer a stand-in gave for the boss belongs with the questions,
@@ -365,23 +376,29 @@ function Ticks({ s, gs }: { s: Slice; gs: Record<string, string> }) {
 function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; refresh: () => void }) {
   const tasks = st.tasks.filter((t) => t.slice_id === s.id);
   const waiting = s.status === "awaiting_boss";
+  // A header saying `S2 <title> 验收：<spec>` sat here, directly under the lane row
+  // that says S2 and the title, directly above the evidence panel that leads with
+  // the acceptance line. Three copies of two facts, stacked. The buttons were the
+  // only thing here that was not a repeat, so they moved next to the evidence they
+  // are a verdict on.
+  const act = waiting ? (
+    <span className="flex shrink-0 gap-1.5">
+      <Button variant="go" onClick={async () => { await post(`/api/slices/${s.id}/accept`); refresh(); }}>
+        查收
+      </Button>
+      <RejectSlice sliceId={s.id} refresh={refresh} />
+    </span>
+  ) : null;
+
+  if (s.status === "pending") {
+    return <div className="mt-2 text-[0.75rem] text-ink-3">还没开工，等前面的切片查收。</div>;
+  }
   return (
-    <div className="mt-3 rounded-lg border border-rule">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-rule px-3.5 py-2">
-        <b className="text-[0.875rem] font-semibold">S{s.seq} {s.title}</b>
-        <Meta>验收：{s.accept_spec}</Meta>
-        <span className="grow" />
-        {waiting && (
-          <span className="flex gap-1.5">
-            <Button variant="go" onClick={async () => { await post(`/api/slices/${s.id}/accept`); refresh(); }}>
-              查收
-            </Button>
-            <RejectSlice sliceId={s.id} refresh={refresh} />
-          </span>
-        )}
-      </div>
-      {tasks.length > 0 && (
-        <ul className="list-none border-b border-rule-soft px-3.5 py-2">
+    <div className="mt-1">
+      {/* Only when it says something the slice title does not: one task whose title
+          is the slice's own is the same line twice with a tick in front. */}
+      {(tasks.length > 1 || (tasks[0] && tasks[0].title !== s.title)) && (
+        <ul className="list-none pb-1">
           {tasks.map((t) => (
             <li key={t.id} className="flex gap-2 py-px text-[0.75rem]">
               <span className={cn("font-mono", t.status === "done" ? "text-ok" : "text-ink-3")}>
@@ -392,13 +409,7 @@ function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; ref
           ))}
         </ul>
       )}
-      {s.status === "pending" ? (
-        <div className="px-3.5 py-3 text-[0.75rem] text-ink-3">还没开工，等前面的切片查收。</div>
-      ) : (
-        <div className="p-3">
-          <EvidencePanel sliceId={s.id} />
-        </div>
-      )}
+      <EvidencePanel sliceId={s.id} actions={act} />
     </div>
   );
 }
