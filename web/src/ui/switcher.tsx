@@ -77,7 +77,7 @@ export function Switcher({
                 <span className="shrink-0 whitespace-nowrap font-display text-[1rem] font-semibold">{p.name}</span>
                 <span className="min-w-0 grow truncate font-mono text-[0.6875rem] text-ink-3" dir="rtl">{p.repo_path}</span>
                 {n > 0 && (
-                  <span className="shrink-0 whitespace-nowrap font-mono text-[0.6875rem] text-accent">{n} 件等你</span>
+                  <span className="shrink-0 whitespace-nowrap font-mono text-[0.6875rem] text-accent">{n} 件待办</span>
                 )}
               </Command.Item>
             );
