@@ -340,6 +340,14 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // first anyway.
   sweepTurnLogs(join(cfg.dataDir, "turns"), now());
 
+  // 7d3. How much of the claude subscription is left.
+  //
+  // codex reports both its windows in every turn; claude's stream reports none,
+  // so the only way to put the two side by side in the header is to ask. Rate
+  // limited to five minutes inside, and it swallows its own failures — the
+  // endpoint is undocumented and nothing here may depend on it.
+  await pollClaudeUsage(ctx.db, now());
+
   // 7e. Keep the shared repo map current.
   //
   // Deterministic and cheap — `git ls-files` plus a regex per file — and only
