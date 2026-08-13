@@ -1268,7 +1268,29 @@ const getTasks: Handler = async (ctx, req) => {
        ORDER BY t.id`,
     )
     .all(grp);
-  if (rows.length === 0) return text("no tasks are open in this group right now");
+  // Why the list is short, in the list itself.
+  //
+  // Slices run in order, so a later slice sits `pending` and its cards are filtered
+  // out above. From inside a turn that is indistinguishable from cards that were
+  // never written, and an agent that cannot tell the difference does the reasonable
+  // thing: it asks the boss to create them. Measured once and it cost a blocker
+  // escalation, a suspended group and 12 minutes of the boss's queue — for a state
+  // that was correct the whole time. Prompt wording cannot fix this; the answer has
+  // to be where the question is asked.
+  const later = ctx.db
+    .query<{ seq: number; n: number }, [number]>(
+      `SELECT s.seq AS seq, count(t.id) AS n
+       FROM slice s JOIN task t ON t.slice_id = s.id
+       WHERE s.grp_id = ? AND s.status = 'pending'
+       GROUP BY s.id ORDER BY s.seq`,
+    )
+    .all(grp);
+  const gated = later.length
+    ? `\n${later.map((l) => `S${l.seq}: ${l.n} cards, not yet open`).join("\n")}\n` +
+      "Later slices open one at a time, after the slice before them is accepted. " +
+      "Their cards appear here by themselves — do not ask the boss to create or dispatch them."
+    : "";
+  if (rows.length === 0) return text(`no tasks are open in this group right now${gated}`);
   // Lines, not a JSON array. Handing an agent `[{"id":1,"title":"…"}]` invites it
   // to pass the title where an id belongs, which is what happened live.
   return text(
@@ -1276,7 +1298,7 @@ const getTasks: Handler = async (ctx, req) => {
       (r) =>
         `${String(r.id).padEnd(4)}${r.status.padEnd(13)}${String(r.slice_id ?? "-").padEnd(7)}` +
         `${(r.owner ?? "-").padEnd(12)}${r.title}`,
-    )].join("\n"),
+    )].join("\n") + gated,
   );
 };
 

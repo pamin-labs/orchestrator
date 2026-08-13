@@ -793,7 +793,15 @@ function recordCost(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult, st
     author: agent.role,
     kind: "tool_summary",
     body: `turn done (${r.numTurns} steps, ${total} tokens)`,
-    meta: { usage: r.usage, cacheRatio: cacheRatio(r), model: agent.model },
+    // The provider, recorded rather than inferred. 成本's 按账号 split was reading
+    // `model LIKE 'gpt%'`, which is right today and wrong the first time either
+    // vendor renames anything — and the event row has no agent to join back to.
+    meta: {
+      usage: r.usage,
+      cacheRatio: cacheRatio(r),
+      model: agent.model,
+      runtime: agent.runtime ?? DEFAULT_PROVIDER,
+    },
   });
 }
 

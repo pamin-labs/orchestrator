@@ -61,12 +61,12 @@ export interface CostReport {
   /** Which subscription paid. The axis that appeared the day roles split across two. */
   byRuntime: CostRow[];
   /**
-   * The last 48 hours, per hour, split by provider.
+   * The last 24 hours, per hour, split by provider.
    *
    * The only question on this page that a number cannot answer: how fast is it
    * burning right now, and which of the two accounts is carrying it. Hourly
    * because that is the resolution the work has — 300 to 700 turns an hour on a
-   * busy night, and two days of history in total, so a daily bucket is two dots.
+   * busy night. 48 hours was two screens of chart to answer a question about now.
    */
   byHour: HourRow[];
   total: CostRow;
@@ -75,6 +75,16 @@ export interface CostReport {
 }
 
 /** The four counters a turn reports, summed. Written once; the CASE needs it twice. */
+/**
+ * Which account paid, from the turn event.
+ *
+ * Recorded on the event since this change; rows written before it fall back to
+ * the model name, which is what the whole split used to be. A prefix match is
+ * right until someone renames a model, and it was silently deciding a column.
+ */
+const RUNTIME = `coalesce(json_extract(meta_json, '$.runtime'),
+                          CASE WHEN json_extract(meta_json, '$.model') LIKE 'gpt%' THEN 'codex' ELSE 'claude' END)`;
+
 const TOK = `json_extract(meta_json, '$.usage.input') + json_extract(meta_json, '$.usage.output')
            + json_extract(meta_json, '$.usage.cacheRead') + json_extract(meta_json, '$.usage.cacheCreate')`;
 
@@ -128,11 +138,11 @@ export function costReport(db: DB, projectId?: number): CostReport {
   const byHour = db
     .query<HourRow, any[]>(
       `SELECT strftime('%m-%d %H', at / 1000, 'unixepoch', 'localtime') AS hour,
-              coalesce(sum(CASE WHEN json_extract(meta_json, '$.model') LIKE 'gpt%' THEN 0 ELSE ${TOK} END), 0) AS claude,
-              coalesce(sum(CASE WHEN json_extract(meta_json, '$.model') LIKE 'gpt%' THEN ${TOK} ELSE 0 END), 0) AS codex
+              coalesce(sum(CASE WHEN ${RUNTIME} = 'codex' THEN 0 ELSE ${TOK} END), 0) AS claude,
+              coalesce(sum(CASE WHEN ${RUNTIME} = 'codex' THEN ${TOK} ELSE 0 END), 0) AS codex
        FROM event
        WHERE kind = 'tool_summary' AND meta_json LIKE '%usage%'
-         AND at > (unixepoch() - 48 * 3600) * 1000
+         AND at > (unixepoch() - 24 * 3600) * 1000
        GROUP BY hour ORDER BY hour`,
     )
     .all();

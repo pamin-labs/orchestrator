@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { Card, CardLabel, CardRow } from "../ui/card";
+import { CardRow } from "../ui/card";
 import { Meta } from "../ui/bits";
+import { post } from "../lib/api";
 import type { State } from "../lib/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "../lib/rank";
 import { pending, prUrl } from "../lib/select";
@@ -33,6 +35,10 @@ interface Item {
   reasons: Reason[];
   flag?: string;
   actions: React.ReactNode;
+  /** An open question, answerable without leaving the list. */
+  escId?: number;
+  /** Told, not asked: 知道了 is the only move. */
+  fyi?: boolean;
 }
 
 export function Queue({
@@ -48,9 +54,14 @@ export function Queue({
 }) {
   const w = pending(st, projectId);
   const now = Date.now();
-  /** Nothing is running on this requirement: its agents are idle until you act. */
+  /**
+   * Nothing is running on this requirement: its agents are idle until you act.
+   *
+   * A standing agent has no requirement, so there is no group to be stopped — the
+   * row used to claim 组停着不动 about a question the Architect filed for information.
+   */
   const halted = (grpId: number | null) =>
-    grpId == null || !st.agents.some((a) => a.grp_id === grpId && a.state === "running");
+    grpId != null && !st.agents.some((a) => a.grp_id === grpId && a.state === "running");
   const spend = (grpId: number | null) => st.groups.find((g) => g.id === grpId)?.spent_tokens ?? 0;
 
   const items: Item[] = [];
@@ -64,8 +75,9 @@ export function Queue({
     items.push({
       key: `c${g.id}`,
       kind: drop ? "作废" : "计划",
-      what: g.name,
-      sub: drop ? drop.body.split("\n")[0]! : goal || "计划卡未提交",
+      where: g.name,
+      what: drop ? drop.body.split("\n")[0]! : goal || "计划卡未提交",
+      sub: "",
       grpId: g.id,
       ...rank([
         REASONS.unstarted(),
@@ -80,6 +92,7 @@ export function Queue({
     items.push({
       key: `s${s.id}`,
       kind: "切片",
+      where: groupName(st, s.grp_id),
       what: s.title,
       sub: s.accept_spec,
       grpId: s.grp_id,
@@ -108,8 +121,9 @@ export function Queue({
     items.push({
       key: `m${m.grpId}`,
       kind: "PR",
-      what: m.name,
-      sub: `${m.branch ?? ""}${url ? "" : " · 未找到 PR 链接"}`,
+      where: m.name,
+      what: m.branch ?? "等你合入",
+      sub: url ? "" : "未找到 PR 链接",
       grpId: m.grpId,
       ...rank([
         REASONS.halted(),
@@ -128,9 +142,9 @@ export function Queue({
       what: e.question,
       // The question was the only thing on the row, so a two-paragraph one filled
       // the card and never said which requirement was asking it.
-      where: e.grp_id ? groupName(st, e.grp_id) : "常驻",
+      where: e.grp_id ? groupName(st, e.grp_id) : "常驻岗",
       // A watchdog escalation has no agent behind it, and "?" read like a bug.
-      sub: `${e.asker ?? "系统"}${e.grp_id ? "" : " · 常驻"}`,
+      sub: e.asker ?? "系统",
       grpId: e.grp_id,
       ...rank([
         // `orch ask-boss` blocks its caller, so a blocker from an agent is that agent
@@ -142,19 +156,24 @@ export function Queue({
         REASONS.waited(now - e.created_at),
       ]),
       flag: e.severity === "blocker" ? "全组已暂停" : undefined,
-      actions: <Button variant="go" onClick={() => onOpen(e.grp_id!)}>去回答</Button>,
+      escId: e.id,
+      // A standing agent that files a non-blocker is telling you something, not
+      // asking: nothing is hanging on the reply and there is no requirement to
+      // reply about. A 回答 box there is a text field whose text goes nowhere.
+      fyi: !e.grp_id && e.severity !== "blocker",
+      // One button. 去回答 used to be the only one and it called onOpen(null) for a
+      // standing agent, so the one class of question with nowhere to navigate to
+      // was also the one the boss could not clear. Answering happens here; the row
+      // title still opens the requirement for anyone who wants the context.
+      actions: null,
     });
   }
 
   if (!items.length) {
     return (
-      <Card className="mb-10 overflow-hidden">
-        <CardLabel className="bg-sunk text-ink-3">待办</CardLabel>
-        <CardRow className="text-[0.8125rem] text-ink-2">
-          <b className="text-ok">无待办</b>
-          <span className="text-ink-3"> · 需要决策时出现在此并推送通知</span>
-        </CardRow>
-      </Card>
+      <div className="text-[0.8125rem] text-ink-3">
+        <b className="text-ok">都处理完了。</b> 有计划卡待批、切片待查收、PR 待合入或 agent 提问时出现在这里，并推送通知。
+      </div>
     );
   }
 
@@ -164,30 +183,28 @@ export function Queue({
   const blocks = [
     ...clustered.map((c) => ({
       points: c.points,
-      node: <Cluster key={`g${c.grpId}`} st={st} c={c} onOpen={onOpen} />,
+      node: <Cluster key={`g${c.grpId}`} st={st} c={c} onOpen={onOpen} refresh={refresh} />,
     })),
     ...loose.map((i) => ({
       points: i.points,
-      node: <Row key={i.key} item={i} onOpen={() => i.grpId != null && onOpen(i.grpId)} />,
+      node: <Row key={i.key} item={i} onOpen={() => i.grpId != null && onOpen(i.grpId)} refresh={refresh} />,
     })),
   ].sort((a, b) => b.points - a.points);
 
-  return (
-    <Card tone="mine" className="mb-10 overflow-hidden">
-      <CardLabel className="bg-accent-soft text-accent">
-        待办 {items.length}
-        <span className="font-normal text-ink-2">按「不管它会怎样」排序</span>
-      </CardLabel>
-      {blocks.map((b) => b.node)}
-    </Card>
-  );
+  // No card, no second 待办 label: the tab this renders into already carries the
+  // name and the count, and a titled card inside a titled tab was the same word
+  // twice with two different numbers under it.
+  // The sort order used to be printed above the list. Every row already carries
+  // the reason it sits where it does, which is the same fact said once instead of
+  // twice — and said on the row that has to justify itself.
+  return <div className="overflow-hidden rounded-md border border-rule-soft">{blocks.map((b) => b.node)}</div>;
 }
 
 /** Several things on one requirement: go there once. */
 function Cluster({
-  st, c, onOpen,
+  st, c, onOpen, refresh,
 }: {
-  st: State; c: { grpId: number; items: Item[] }; onOpen: (id: number) => void;
+  st: State; c: { grpId: number; items: Item[] }; onOpen: (id: number) => void; refresh: () => void;
 }) {
   const g = st.groups.find((x) => x.id === c.grpId);
   return (
@@ -203,13 +220,17 @@ function Cluster({
         {g?.branch && <Meta className="ml-auto">{g.branch}</Meta>}
       </div>
       {c.items.map((i) => (
-        <Row key={i.key} item={i} onOpen={() => onOpen(c.grpId)} nested />
+        <Row key={i.key} item={i} onOpen={() => onOpen(c.grpId)} refresh={refresh} nested />
       ))}
     </>
   );
 }
 
-function Row({ item, onOpen, nested }: { item: Item; onOpen: () => void; nested?: boolean }) {
+function Row({
+  item, onOpen, refresh, nested,
+}: {
+  item: Item; onOpen: () => void; refresh: () => void; nested?: boolean;
+}) {
   const top = item.reasons[0];
   const stopped = item.reasons.some((r) => r.points >= 60);
   return (
@@ -226,19 +247,27 @@ function Row({ item, onOpen, nested }: { item: Item; onOpen: () => void; nested?
     >
       <span className={cn("font-mono text-[0.6875rem]", stopped ? "text-accent" : "text-ink-3")}>{item.kind}</span>
       <div className="min-w-0">
+        {/* Which requirement, on its own line and in the same weight the list of
+            requirements uses. It was a grey run-in ahead of the reasons, so the
+            first question a row has to answer — whose problem is this — was the
+            least visible thing on it. Suppressed inside a cluster, where the header
+            two rows up already says it. */}
+        {item.where && !nested && (
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="font-display text-[0.9375rem] font-semibold">{item.where}</span>
+            {item.flag && <Badge tone="mine">{item.flag}</Badge>}
+          </div>
+        )}
         {/* Clamped, not truncated to one line: these are questions, and the first
             line of one is rarely the part that says what is being asked. Two lines
             is enough to decide whether to open it, and the card stays a card. */}
         <button
           onClick={onOpen}
-          className="line-clamp-2 cursor-pointer text-left text-[0.875rem] font-medium hover:text-accent"
+          className="line-clamp-2 cursor-pointer text-left text-[0.8125rem] text-ink-2 hover:text-accent"
         >
-          {item.what} {item.flag && <Badge tone="mine">{item.flag}</Badge>}
+          {item.what} {(!item.where || nested) && item.flag && <Badge tone="mine">{item.flag}</Badge>}
         </button>
         <div className="truncate text-[0.75rem] text-ink-3">
-          {/* Which requirement, first: on this page the boss is choosing what to
-              deal with, and "whose problem is this" comes before "why now". */}
-          {item.where && <span className="font-medium text-ink-2">{item.where} · </span>}
           {/* The reason, not the score. A number nobody can interrogate reorders rows
               for reasons nobody can check, and the first time it looks wrong the whole
               ordering stops being trusted. */}
@@ -249,7 +278,55 @@ function Row({ item, onOpen, nested }: { item: Item; onOpen: () => void; nested?
           {item.sub && <span> · {item.sub}</span>}
         </div>
       </div>
-      <span className="flex flex-wrap items-center gap-1.5 max-[52rem]:col-start-2">{item.actions}</span>
+      <span className="flex flex-wrap items-center gap-1.5 max-[52rem]:col-start-2">
+        {item.escId != null && <Reply escId={item.escId} fyi={item.fyi} refresh={refresh} />}
+        {item.actions}
+      </span>
     </CardRow>
+  );
+}
+
+/**
+ * Answer a question from the list.
+ *
+ * `orch ask-boss` blocks its caller until this lands, and the Architect files
+ * questions with no requirement behind them — those had a 去回答 button that opened
+ * a requirement id of null, so the one class of question the boss cannot navigate to
+ * was also the one they could not clear. 知道了 is the whole point for an FYI: the
+ * answer text is unimportant, unblocking the agent is not.
+ */
+function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const send = async (answer: string) => {
+    if (busy || !answer.trim()) return;
+    setBusy(true);
+    await post(`/api/escalations/${escId}/answer`, { answer });
+    setBusy(false);
+    setOpen(false);
+    setText("");
+    refresh();
+  };
+  if (fyi) {
+    return <Button variant="go" disabled={busy} onClick={() => send("知道了")}>知道了</Button>;
+  }
+  if (!open) return <Button variant="go" onClick={() => setOpen(true)}>回答</Button>;
+  return (
+    <span className="flex items-end gap-1.5">
+      <textarea
+        autoFocus
+        rows={2}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send(text);
+        }}
+        placeholder="回答…  ⌘↵ 发送"
+        className="w-[20rem] resize-none rounded-md border border-rule bg-paper px-2 py-1.5 text-[0.8125rem] outline-none focus:border-accent"
+      />
+      <Button variant="go" disabled={busy || !text.trim()} onClick={() => void send(text)}>发送</Button>
+    </span>
   );
 }
