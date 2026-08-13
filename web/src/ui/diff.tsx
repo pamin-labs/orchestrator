@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import parseDiff from "parse-diff";
 import { diffWordsWithSpace } from "diff";
 import * as Collapsible from "@radix-ui/react-collapsible";
+import { Group, Panel, Separator } from "react-resizable-panels";
+import { Button } from "./button";
 import { Meta } from "./bits";
 import { cn } from "../lib/utils";
 
@@ -179,16 +181,26 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
   if (files.length === 0) return null;
 
   return (
-    <div className="flex h-full min-h-0">
+    // Resizable, because the two halves compete for the same width and which one
+    // needs it depends on the diff: `docs/journal/more-menu-dead/015-decision.md`
+    // wants a wide rail, a file of long lines wants none of it. This is the
+    // primitive shadcn's Resizable wraps — a drag handle carries keyboard
+    // resizing and aria-valuenow, which is exactly the kind of behaviour we do
+    // not write ourselves.
+    <Group orientation="horizontal" className="flex h-full min-h-0">
       {/* The rail is index and summary at once: what changed, by how much, and where
           you are. One file at a time was worse — a review reads a change, and a
           change spans files; making the reader click through thirty of them puts the
           work back on them. */}
-      <nav className="w-64 shrink-0 overflow-auto border-r border-rule-soft py-1">
-        <Branch dir={tree} depth={0} here={here} go={go} />
-      </nav>
+      <Panel defaultSize="18rem" minSize="8rem" maxSize="50%" className="min-w-0">
+        <nav className="h-full overflow-auto py-1">
+          <Branch dir={tree} depth={0} here={here} go={go} />
+        </nav>
+      </Panel>
+      <Separator className="w-px shrink-0 cursor-col-resize bg-rule transition-colors hover:bg-accent data-[state=dragging]:bg-accent" />
 
-      <div ref={pane} className="min-w-0 grow overflow-auto">
+      <Panel className="min-w-0">
+        <div ref={pane} className="h-full overflow-auto">
         {files.map((f, fi) => {
           const name = nameOf(f);
           const rows = f.chunks.flatMap((c) => [{ gap: c.content } as Row, ...rowsOf(c)]);
@@ -238,12 +250,16 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
                 </tbody>
               </table>
               {rows.length > shown.length && (
-                <button
-                  className="w-full cursor-pointer border-y border-rule-soft bg-sunk py-1 text-[0.6875rem] text-ink-2 hover:text-accent"
-                  onClick={() => setOpen(new Set([...open, fi]))}
-                >
-                  还有 {rows.length - shown.length} 行
-                </button>
+                <div className="border-y border-rule-soft bg-sunk px-3.5 py-1">
+                  {/* The project's Button, not a hand-styled one: this is an action,
+                      and every control in the page shares one shape and one set of
+                      focus / hover / disabled states. The rows above are not — they
+                      are a list you navigate, and dressing them as buttons would say
+                      the wrong thing about what they do. */}
+                  <Button variant="quiet" size="sm" onClick={() => setOpen(new Set([...open, fi]))}>
+                    还有 {rows.length - shown.length} 行
+                  </Button>
+                </div>
               )}
             </div>
           );
@@ -251,8 +267,9 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
         {truncated && (
           <Meta className="block px-3.5 py-2">这一片的改动超过 400k 字符，尾部没取回来 —— 剩下的在 worktree 里</Meta>
         )}
-      </div>
-    </div>
+        </div>
+      </Panel>
+    </Group>
   );
 }
 
