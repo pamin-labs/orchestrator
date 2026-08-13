@@ -208,12 +208,12 @@ export function start(overrides: Partial<Config> = {}): Started {
     gh,
     // Cheapest tier: navigating a tree of one-line summaries is not a reasoning
     // job, and this runs on every `orch ctx query`.
-    ask: modelAsk(cfg.difficultyModel.trivial ?? "claude-haiku-4-5-20251001", ROOT),
+    ask: modelAsk(cfg.indexModel, ROOT),
     waiters: new Map(),
     config: {
       language: cfg.language,
-      difficultyModel: cfg.difficultyModel,
       workRoot: cfg.workRoot,
+      sliceBudgetTokens: cfg.sliceBudgetTokens,
       dataDir: cfg.dataDir,
       autoAdvance: cfg.autoAdvance,
       autoAcceptTiers: cfg.autoAcceptTiers,

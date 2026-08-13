@@ -2,7 +2,15 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { loadConfig, loadRoles, modelFor, withAbsoluteDataDir } from "../src/config.ts";
+import {
+  MAX_CONTEXT,
+  MIN_CONTEXT,
+  contextWindowFor,
+  loadConfig,
+  loadRoles,
+  modelFor,
+  withAbsoluteDataDir,
+} from "../src/config.ts";
 
 test("the shipped roles all parse and declare what the runtime needs", () => {
   const roles = loadRoles("roles");
@@ -62,13 +70,28 @@ test("the shipped config keeps worktrees outside $HOME", () => {
 test("difficulty picks the model, and a role may pin one", () => {
   const cfg = loadConfig("config/default.yaml");
   const eng = { name: "engineer", clearance: "L1" as const, prompt: "x" };
-  expect(modelFor(cfg, eng, "trivial")).toBe(cfg.difficultyModel.trivial!);
-  expect(modelFor(cfg, eng, "hard")).toBe(cfg.difficultyModel.hard!);
+  expect(modelFor(cfg, eng, "trivial")).toBe(cfg.difficultyModel.claude!.trivial!);
+  expect(modelFor(cfg, eng, "hard")).toBe(cfg.difficultyModel.claude!.hard!);
   // No tag falls back to normal rather than to the most expensive tier.
-  expect(modelFor(cfg, eng, null)).toBe(cfg.difficultyModel.normal!);
+  expect(modelFor(cfg, eng, null)).toBe(cfg.difficultyModel.claude!.normal!);
 
   const dispatcher = loadRoles("roles").get("dispatcher")!;
-  expect(modelFor(cfg, dispatcher, "trivial")).toBe(cfg.difficultyModel.hard!);
+  expect(modelFor(cfg, dispatcher, "trivial")).toBe(cfg.difficultyModel.claude!.hard!);
+});
+
+test("the runtime picks the model table, so codex never gets a claude id", () => {
+  const cfg = loadConfig("config/default.yaml");
+  const onCodex = { name: "x", clearance: "L1" as const, prompt: "p", runtime: "codex" as const };
+  // `codex exec -m claude-sonnet-5` is rejected outright, which is what a
+  // runtime: codex role got before the table was split.
+  expect(modelFor(cfg, onCodex, "hard")).toBe(cfg.difficultyModel.codex!.hard!);
+  expect(modelFor(cfg, onCodex, "trivial")).toBe(cfg.difficultyModel.codex!.trivial!);
+  expect(modelFor(cfg, onCodex, "hard")).not.toContain("claude");
+
+  // And the fallback ladder cannot walk a codex agent onto a claude model.
+  for (const [from, to] of Object.entries(cfg.modelFallback)) {
+    expect(from.startsWith("gpt")).toBe(to.startsWith("gpt"));
+  }
 });
 
 test("a role may name a concrete model id and it is used verbatim", () => {
@@ -123,4 +146,26 @@ test("a reviewer does not get the writer's tool budget", () => {
   expect(roles.get("auditor")!.maxTurns).toBe(20);
   // The Engineer keeps the global cap: a test-fix loop is what rounds are for.
   expect(roles.get("engineer")!.maxTurns).toBeUndefined();
+});
+
+test("the rotation denominator is the model's own window, clamped", () => {
+  const cfg = loadConfig("config/default.yaml");
+  // Read off this repo's own turn logs: haiku-4-5 reports 200k, sonnet-5 and
+  // opus-5 report 1M, codex reports 272k for gpt-5.6. The denominator used to be
+  // a literal 200_000 for all of them, so the strong models rotated at 12% of
+  // their window and threw away a cached prefix each time.
+  expect(contextWindowFor(cfg, "claude-opus-5")).toBe(1_000_000);
+  expect(contextWindowFor(cfg, "gpt-5.6-sol")).toBe(272_000);
+  // A model nobody listed still gets a usable number rather than a crash.
+  expect(contextWindowFor(cfg, "some-model-shipped-next-week")).toBe(cfg.contextWindow.default!);
+
+  // What the CLI reported during the turn wins: a table goes stale, the stream
+  // does not.
+  expect(contextWindowFor(cfg, "claude-opus-5", 250_000)).toBe(250_000);
+
+  // And the clamp holds either side, so a zero or a shape change cannot produce a
+  // session that never rotates or one that rotates every turn.
+  expect(contextWindowFor(cfg, "claude-opus-5", 0)).toBe(1_000_000);
+  expect(contextWindowFor(cfg, "x", 5)).toBe(MIN_CONTEXT);
+  expect(contextWindowFor(cfg, "x", 99_000_000)).toBe(MAX_CONTEXT);
 });

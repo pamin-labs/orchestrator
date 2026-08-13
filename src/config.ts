@@ -10,6 +10,27 @@ import type { Clearance } from "./mech/clearance.ts";
  * prompt, the model tier and the tool whitelist.
  */
 
+/**
+ * Reasoning effort, one word for both CLIs.
+ *
+ * Measured off the two installations rather than assumed: `claude --help` offers
+ * `--effort (low, medium, high, xhigh, max)`, and every entry in codex's
+ * `models_cache.json` lists the same five under `supported_reasoning_levels`.
+ * Only `gpt-5.6-sol` adds `ultra`, so that one word is the whole difference and
+ * the claude adapter clamps it to `max` rather than carrying a mapping table.
+ */
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+
+/**
+ * A key into the provider registry (src/runtime/providers.ts), not a closed set.
+ * Deliberately a string: adding a provider must not mean widening a union that
+ * half the codebase switches on.
+ */
+export type Runtime = string;
+
+/** Which provider a role gets when its yaml does not say. */
+export const DEFAULT_PROVIDER = "claude";
+
 export interface RoleDef {
   name: string;
   clearance: Clearance;
@@ -31,12 +52,13 @@ export interface RoleDef {
    * reviewers spend it.
    */
   maxTurns?: number;
-  thinking?: "off" | "low" | "medium" | "high";
+  /** How hard the model thinks per turn. Part of the cached prefix, see assemble.ts. */
+  effort?: Effort;
   prompt: string;
   /** Overrides the default whitelist from clearance.ts when present. */
   allowedTools?: string[];
   /** Which CLI runs this role's turns. A role is config, so this is too. */
-  runtime?: "claude" | "codex";
+  runtime?: Runtime;
 }
 
 export interface Config {
@@ -45,7 +67,8 @@ export interface Config {
   /** One number for the whole Runner pool, or one pool per resource tag. */
   leaseSlots: number | Record<string, number>;
   port: number;
-  difficultyModel: Record<string, string>;
+  /** provider -> difficulty -> model. One knob per family; adding one is a yaml block. */
+  difficultyModel: Record<Runtime, Record<string, string>>;
   turnTimeoutMs: number;
   maxTurnsPerJob: number;
   sessionRotateFraction: number;
@@ -65,6 +88,36 @@ export interface Config {
   autoAdvance: boolean;
   /** Difficulty tags accepted automatically once all three gates pass. */
   autoAcceptTiers: string[];
+  /**
+   * Token cap written onto every new slice. difficulty -> cap.
+   *
+   * Until this existed `budget_tokens` was never INSERTed, so it was NULL on every
+   * row and the two admission checks in scheduler.ts had never stopped anything.
+   * It matters more now: QA moved to a CLI with no tool whitelist, and a budget is
+   * the deterministic replacement for the whitelist that used to bound its reading.
+   */
+  sliceBudgetTokens: Record<string, number>;
+  /**
+   * Who answers `orch ctx query` and writes the index summaries.
+   *
+   * The most frequent model call in the system and pure summarisation — no
+   * decision, no tools, no blackboard — so it is the first thing that should come
+   * off the expensive subscription.
+   */
+  indexModel: { runtime: Runtime; model: string };
+  /**
+   * model -> context window, and a `default` for anything unlisted.
+   *
+   * The rotation ceiling was the literal 200_000 for every model, which is only
+   * true of the cheapest one. Read off real turn logs: haiku-4-5 reports 200k,
+   * sonnet-5 and opus-5 report 1M, and codex's token_count reports 272k for the
+   * gpt-5.6 family. So the strong models were rotating at 120k of a 1M window —
+   * five times too early, and a rotation throws the cached prefix away.
+   *
+   * Both CLIs report their real window during a turn, and that value wins over
+   * this table; this is what the first turn of a session has to go on.
+   */
+  contextWindow: Record<string, number>;
   workRoot: string;
   dataDir: string;
 }
@@ -75,18 +128,31 @@ const DEFAULTS: Config = {
   leaseSlots: 2,
   port: 47821,
   difficultyModel: {
-    trivial: "claude-haiku-4-5-20251001",
-    normal: "claude-sonnet-5",
-    hard: "claude-opus-5",
+    claude: {
+      trivial: "claude-haiku-4-5-20251001",
+      normal: "claude-sonnet-5",
+      hard: "claude-opus-5",
+    },
+    // GPT-5.6's three tiers line up with the three difficulties on their own:
+    // models_cache.json records `gpt-5.4 -> terra` and `gpt-5.4-mini -> luna` as its
+    // own upgrade path, and sol is the flagship.
+    codex: {
+      trivial: "gpt-5.6-luna",
+      normal: "gpt-5.6-terra",
+      hard: "gpt-5.6-sol",
+    },
   },
   turnTimeoutMs: 600_000,
   maxTurnsPerJob: 45,
   sessionRotateFraction: 0.6,
   // Where a rate-limited turn goes next. One step down, not straight to haiku: the
   // point is to keep going at a lower tier, not to make the cheapest possible mess.
+  // Flat model -> model, so the two ladders cannot be walked into each other.
   modelFallback: {
     "claude-opus-5": "claude-sonnet-5",
     "claude-sonnet-5": "claude-haiku-4-5-20251001",
+    "gpt-5.6-sol": "gpt-5.6-terra",
+    "gpt-5.6-terra": "gpt-5.6-luna",
   },
   unreadDigestThreshold: 30,
   feedbackSedimentThreshold: 3,
@@ -108,6 +174,22 @@ const DEFAULTS: Config = {
   // an independent QA — so this skips the fourth layer, the boss's look, on the tier
   // where that look is worth least. normal and hard still wait for you.
   autoAcceptTiers: ["trivial"],
+  // Measured over the 16 slices in this checkout that spent anything: trivial
+  // averaged 4.0M with one 12.0M runaway, normal averaged 7.3M with a 16.1M tail,
+  // the single hard slice took 4.0M. So these are set above the worst slice that
+  // actually finished and below the runaway — the cap is for the agent that has
+  // lost the plot, not for the one having a hard day.
+  sliceBudgetTokens: { trivial: 8_000_000, normal: 20_000_000, hard: 30_000_000 },
+  indexModel: { runtime: "codex", model: "gpt-5.6-luna" },
+  contextWindow: {
+    default: 200_000,
+    "claude-haiku-4-5-20251001": 200_000,
+    "claude-sonnet-5": 1_000_000,
+    "claude-opus-5": 1_000_000,
+    "gpt-5.6-sol": 272_000,
+    "gpt-5.6-terra": 272_000,
+    "gpt-5.6-luna": 272_000,
+  },
   workRoot: "/tmp/orch/worktrees",
   dataDir: "data",
 };
@@ -154,12 +236,37 @@ export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {
 /**
  * Which model runs this turn.
  *
- * A role may pin one (the Dispatcher always needs the strong model), otherwise
- * the slice's difficulty tag decides — that tag is the boss's cost knob, editable
- * right on the DRAFT card.
+ * A role may pin one (the Auditor wants a specific reviewer), otherwise the
+ * slice's difficulty tag decides — that tag is the boss's cost knob, editable
+ * right on the DRAFT card. The provider picks the table first: a claude model id
+ * handed to `codex exec -m` is rejected outright, and before this split that is
+ * exactly what a `runtime: codex` role would have got.
  */
 export function modelFor(cfg: Config, role: RoleDef, difficulty?: string | null): string {
   if (role.model) return role.model;
+  const table = cfg.difficultyModel[role.runtime ?? DEFAULT_PROVIDER] ?? {};
   const tier = role.tier ?? difficulty ?? "normal";
-  return cfg.difficultyModel[tier] ?? cfg.difficultyModel.normal!;
+  return table[tier] ?? table.normal ?? "";
+}
+
+/**
+ * How much context this model has, clamped to something a rotation can use.
+ *
+ * `reported` is what the CLI said during the turn and is believed first — a table
+ * goes stale the week a model ships. The clamp is the safety net around both: an
+ * absurd value (a shape change, a zero, a provider inventing a number) must not
+ * turn into a session that never rotates or one that rotates every turn.
+ */
+export const MIN_CONTEXT = 100_000;
+export const MAX_CONTEXT = 2_000_000;
+
+export function contextWindowFor(cfg: Config, model: string, reported?: number | null): number {
+  const raw = reported || cfg.contextWindow?.[model] || cfg.contextWindow?.default || MIN_CONTEXT;
+  return Math.min(MAX_CONTEXT, Math.max(MIN_CONTEXT, raw));
+}
+
+/** Token cap for a new slice at this difficulty. */
+export function sliceBudgetFor(cfg: Config, difficulty?: string | null): number {
+  const t = cfg.sliceBudgetTokens;
+  return t[difficulty ?? "normal"] ?? t.normal!;
 }

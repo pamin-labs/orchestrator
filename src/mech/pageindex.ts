@@ -206,14 +206,33 @@ export function render(tree: Tree, ids: string[]): string {
  * sandbox — it reads one file head and answers one line. Going through the turn
  * machinery would buy a session, a stable prefix and a cost row for a call that
  * costs less than the bookkeeping.
+ *
+ * It is also the most frequent model call in the system — one per `orch ctx
+ * query` plus one per changed file when the index is rebuilt — and it is pure
+ * summarisation, so which subscription pays for it is a config choice like any
+ * other role's. `-s read-only` costs nothing here: this prompt never runs a
+ * command, and codex's sandbox governs the commands the model asks for, not
+ * codex's own API traffic.
  */
-export function modelAsk(model: string, cwd: string, timeoutMs = 60_000): Ask {
+export function modelAsk(
+  spec: { runtime?: string; model: string },
+  cwd: string,
+  timeoutMs = 60_000,
+): Ask {
+  const codex = spec.runtime === "codex";
+  // codex takes the prompt on stdin (it announces "Reading prompt from stdin…"),
+  // claude takes it as an argument. No `--max-turns 1` on the claude side:
+  // measured, it makes `claude -p` exit 0 with the body "Error: Reached max turns
+  // (1)", so every summary in the index became that sentence and nothing noticed
+  // because the exit code said fine.
+  const argv = codex
+    ? ["codex", "exec", "--json", "--skip-git-repo-check", "-s", "read-only",
+       "--ignore-user-config", "--ignore-rules", "-m", spec.model]
+    : ["claude", "-p", "--model", spec.model];
   return async (prompt) => {
-    // No `--max-turns 1`: measured, it makes `claude -p` exit 0 with the body
-    // "Error: Reached max turns (1)" — so every summary in the index became that
-    // sentence, and nothing noticed because the exit code said fine.
-    const p = Bun.spawn(["claude", "-p", prompt, "--model", model], {
+    const p = Bun.spawn(codex ? argv : [...argv, prompt], {
       cwd,
+      stdin: codex ? new TextEncoder().encode(prompt) : undefined,
       stdout: "pipe",
       stderr: "ignore",
     });
@@ -221,6 +240,7 @@ export function modelAsk(model: string, cwd: string, timeoutMs = 60_000): Ask {
     try {
       const out = await new Response(p.stdout).text();
       if ((await p.exited) !== 0) return "";
+      if (codex) return lastAgentMessage(out);
       // The CLI reports its own failures on stdout with exit 0, so the exit code
       // is not the check.
       return /^\s*Error:/.test(out) ? "" : out;
@@ -228,6 +248,21 @@ export function modelAsk(model: string, cwd: string, timeoutMs = 60_000): Ask {
       clearTimeout(timer);
     }
   };
+}
+
+/** `codex exec --json` prints a banner and a stream; the answer is the last agent_message. */
+function lastAgentMessage(out: string): string {
+  let text = "";
+  for (const line of out.split("\n")) {
+    if (!line.startsWith("{")) continue;
+    try {
+      const l = JSON.parse(line) as { type?: string; item?: { type?: string; text?: string } };
+      if (l.type === "item.completed" && l.item?.type === "agent_message" && l.item.text) {
+        text = l.item.text;
+      }
+    } catch {}
+  }
+  return text;
 }
 
 /** The repo half of the corpus. */

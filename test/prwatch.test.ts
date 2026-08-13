@@ -16,7 +16,7 @@ function harness() {
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
     waiters: new Map(),
-    config: { language: "中文", difficultyModel: cfg.difficultyModel, workRoot: "/tmp/x" },
+    config: { language: "中文", workRoot: "/tmp/x" },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run(

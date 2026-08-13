@@ -62,7 +62,7 @@ async function harness(opts: { gates?: string[] } = {}) {
     gitLock: new RepoLock(),
     git,
     waiters: new Map(),
-    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot },
+    config: { language: cfg.language, workRoot },
   };
   const deps: ExecDeps = {
     ctx,

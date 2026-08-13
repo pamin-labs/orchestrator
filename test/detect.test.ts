@@ -89,7 +89,7 @@ test("registering a project wires its gates and resources with no manual SQL", a
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
     waiters: new Map(),
-    config: { language: "中文", difficultyModel: cfg.difficultyModel, workRoot: "/tmp/x" },
+    config: { language: "中文", workRoot: "/tmp/x" },
   };
   const app = makeApp(ctx);
 
@@ -116,7 +116,7 @@ test("a project with nothing detectable says so instead of failing silently late
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
     waiters: new Map(),
-    config: { language: "中文", difficultyModel: cfg.difficultyModel, workRoot: "/tmp/x" },
+    config: { language: "中文", workRoot: "/tmp/x" },
   };
   const r = await makeApp(ctx)(
     new Request("http://x/api/projects", { method: "POST", body: JSON.stringify({ name: "plain", repo_path: dir }) }),

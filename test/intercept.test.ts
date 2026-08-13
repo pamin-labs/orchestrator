@@ -35,7 +35,7 @@ function harness(worktree: string, repoPath: string, checkpoint: string) {
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
     waiters: new Map(),
-    config: { language: "中文", difficultyModel: {}, workRoot: "/tmp/x" },
+    config: { language: "中文", workRoot: "/tmp/x" },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', ?, 0)", [repoPath]);
   db.run("INSERT INTO grp (project_id, name, status, worktree, created_at) VALUES (1, 'g1', 'RUNNING', ?, 0)", [

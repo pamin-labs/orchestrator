@@ -41,7 +41,7 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     sched,
     gitLock: new RepoLock(),
     waiters: new Map(),
-    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot },
+    config: { language: cfg.language, workRoot: cfg.workRoot },
   };
   const deps: ExecDeps = {
     ctx,
@@ -82,13 +82,20 @@ test("the slice's difficulty picks the model — the boss's cost knob", async ()
   );
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 1, payload: { role: "engineer" } });
   await sched.drain();
-  expect(specs[0]!.stable.model).toContain("haiku");
+  // The tier, not the family: the Engineer runs on codex, so the knob moves it
+  // along that provider's ladder. Reading the id out of config rather than naming
+  // one keeps this a test of the mechanism instead of of today's roster.
+  const cfg = loadConfig("config/default.yaml");
+  const eng = loadRoles("roles").get("engineer")!;
+  const table = cfg.difficultyModel[eng.runtime ?? "claude"]!;
+  expect(specs[0]!.stable.model).toBe(table.trivial!);
 
   db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at) VALUES (1, 2, 'S2', 'x', 'hard', 0)");
   db.run("DELETE FROM agent");
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 2, payload: { role: "engineer" } });
   await sched.drain();
-  expect(specs[1]!.stable.model).toContain("opus");
+  expect(specs[1]!.stable.model).toBe(table.hard!);
+  expect(specs[1]!.stable.model).not.toBe(specs[0]!.stable.model);
 });
 
 test("the dispatcher ignores difficulty and always takes the strong tier", async () => {

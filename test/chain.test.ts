@@ -20,7 +20,7 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
     gitLock: new RepoLock(),
     git: async () => ({ code: 0, out: "abc123" }),
     waiters: new Map(),
-    config: { language: "中文", difficultyModel: cfg.difficultyModel, workRoot: "/tmp/x" },
+    config: { language: "中文", workRoot: "/tmp/x" },
     notifyBoss: (id) => void notified.push(id),
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
