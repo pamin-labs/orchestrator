@@ -17,6 +17,7 @@ import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
 import { preflightPr } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
+import { gatesFor } from "./mech/gate.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -320,6 +321,67 @@ const postMail: Handler = async (ctx, req) => {
       },
     });
   }
+  ctx.sched.tick();
+  return text("ok");
+};
+
+/**
+ * The boss says something, and it reaches someone.
+ *
+ * PLAN.md §7 makes this the whole feedback loop: dissatisfaction that only gets
+ * heard as "change one line" is how a wrong decomposition never gets corrected.
+ * The panel had no way to say anything at all — every route into the blackboard
+ * needed an agent token, so the boss could approve and reject but never explain.
+ *
+ * `triage` decides what the words mean: patch keeps going, respec sends the whole
+ * requirement back to the Dispatcher, reject dissolves it. The CoS normally makes
+ * that call; the boss saying it directly is the same call, made by the one person
+ * whose opinion it is.
+ */
+const postSay: Handler = async (ctx, req) => {
+  const b = await body<{ group_id?: number | string; target?: string; body: string; as?: string }>(req);
+  if (!b.body?.trim()) return bad("nothing to send");
+  const grpId = b.group_id == null ? null : resolveGroup(ctx, b.group_id);
+  if (b.group_id != null && !grpId) return bad("no such requirement");
+
+  if (b.as) {
+    if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
+    if (!grpId) return bad("triage needs a requirement");
+    ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: b.body });
+    triage({ ctx, git: ctx.git }, grpId, b.as as Triage, b.body);
+    ctx.sched.tick();
+    return text("ok");
+  }
+
+  // Plain talk. The recipient defaults to the group's PM: PLAN.md §7 makes the PM
+  // the group's only conversational entrance so one sentence costs one turn
+  // instead of five.
+  const to = b.target || "pm";
+  const project = grpId
+    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
+        ?.project_id ?? null
+    : null;
+  const target = resolveTarget(ctx, grpId, to, project);
+  if (!target) {
+    const known = (ctx.knownRoles?.() ?? []).join(", ");
+    return bad(`没有 "${to}" 这个收件人。现有角色：${known || "none configured"}`);
+  }
+  ctx.bus.emit({
+    grpId: grpId ?? target.grpId ?? null,
+    author: "boss",
+    kind: "boss_say",
+    intent: "request",
+    body: b.body,
+    target: to,
+  });
+  // Boss talk jumps the queue: the whole point of L1 intercept is that it lands on
+  // the next turn rather than after everything already enqueued.
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: target.grpId ?? grpId,
+    agent_id: target.agentId,
+    priority: 6,
+    payload: { mail: { from: "boss", from_group: null, intent: "request", body: b.body } },
+  });
   ctx.sched.tick();
   return text("ok");
 };
@@ -872,10 +934,19 @@ export function snapshot(ctx: Ctx) {
                 spent_tokens, spent_usd FROM slice ORDER BY grp_id, seq`,
       )
       .all(),
+    // PLAN.md §8 asks the desk wall for the current slice, the turn count and the
+    // live last line. Two of the three are here; the third is the SSE stream,
+    // which the client already holds. Turn count is what tells a stuck agent from
+    // a busy one — "in_progress" looks identical either way.
     agents: db
       .query(
-        `SELECT id, grp_id, role, model, clearance, state, activity, session_tokens,
-                total_tokens, total_usd FROM agent WHERE state != 'retired'`,
+        `SELECT a.id, a.grp_id, a.role, a.model, a.clearance, a.state, a.activity, a.session_tokens,
+                a.total_tokens, a.total_usd,
+                (SELECT count(*) FROM job j WHERE j.agent_id = a.id AND j.kind = 'agent_turn'
+                  AND j.state IN ('done','failed')) AS turns,
+                (SELECT j.slice_id FROM job j WHERE j.agent_id = a.id AND j.slice_id IS NOT NULL
+                  ORDER BY j.id DESC LIMIT 1) AS slice_id
+         FROM agent a WHERE a.state != 'retired'`,
       )
       .all(),
     tasks: db.query("SELECT id, grp_id, slice_id, title, status FROM task").all(),
@@ -944,6 +1015,17 @@ export function snapshot(ctx: Ctx) {
         const h = head(db, p.id);
         return h ? [{ projectId: p.id, ...h, place: position(db, h.grpId) }] : [];
       }),
+    // Delivered work, so 收尾 stops meaning "vanished". A group that merged is the
+    // only proof the system did what it was asked, and it was leaving no trace
+    // anywhere in the panel.
+    archived: db
+      .query(
+        `SELECT g.id, g.project_id, g.name, g.branch, g.pr_number, g.spent_usd,
+                (SELECT count(*) FROM slice s WHERE s.grp_id = g.id) AS slices,
+                (SELECT max(e.at) FROM event e WHERE e.grp_id = g.id) AS at
+         FROM grp g WHERE g.status = 'DISSOLVED' ORDER BY at DESC LIMIT 12`,
+      )
+      .all(),
     lastSeq:
       ctx.db.query<{ s: number | null }, []>("SELECT max(seq) AS s FROM event").get()?.s ?? 0,
   };
@@ -1102,6 +1184,11 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
       "INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', ?, ?, unixepoch() * 1000)",
       [grpId, ctx.config.language, `boss sent the DRAFT back: ${b.reason ?? ""}`],
     );
+    // Back to PLANNING, which is what the group actually is now. Left in DRAFT it
+    // still counted as a decision waiting on the boss, still showed the rejected
+    // card, and 批准开工 still worked on it — one stray click approves the very
+    // plan that was just sent back.
+    ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ? AND status = 'DRAFT'", [grpId]);
     ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: b.reason ?? "respec" });
     ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: b.reason } });
     ctx.sched.tick();
@@ -1217,52 +1304,140 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
   return text("ok");
 };
 
+/**
+ * Wind a merged group up. One path, whether the boss said so or `gh` did.
+ *
+ * Dissolving is the most irreversible thing on the panel — the group leaves every
+ * view — so it must never rest on a guess about whether the branch is in main.
+ */
+export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
+  const stale = landed(ctx.db, grpId);
+  ctx.bus.emit({ grpId, author: by, kind: "state_change", body: "merged into main" });
+
+  // Turn this group's retro into lessons while the branch is fresh. This is
+  // the only mechanism by which the twentieth group is smarter than the
+  // first, so it runs on the way out, not "later".
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: grpId,
+    payload: {
+      role: "librarian",
+      rejection:
+        "This group just merged. Read its retro and journals, then update the project's " +
+        "lesson list (`orch journal add --kind lesson`) with anything that would have changed " +
+        "a decision. Refresh the onboarding pack if this changed how the project is built or tested.",
+    },
+  });
+  for (const id of stale) {
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: id,
+      payload: {
+        role: "engineer",
+        rejection: "main moved: rebase onto it with `orch git -- rebase` before doing anything else.",
+        rotate: true,
+      },
+    });
+  }
+  ctx.sched.tick();
+  return stale;
+}
+
+/**
+ * Ask GitHub, not the boss, whether the PR is merged.
+ *
+ * Returns the state string, or null when it cannot be established (no `gh`, no PR
+ * number, no worktree) — which is a different answer from "not merged" and has to
+ * stay distinguishable, or a project without `gh` could never wind a group up.
+ */
+export async function prState(ctx: Ctx, grpId: number): Promise<string | null> {
+  const g = ctx.db
+    .query<{ pr_number: number | null; worktree: string | null }, [number]>(
+      "SELECT pr_number, worktree FROM grp WHERE id = ?",
+    )
+    .get(grpId);
+  if (!ctx.gh || !g?.pr_number || !g.worktree) return null;
+  const r = await ctx.gh(["pr", "view", String(g.pr_number), "--json", "state,mergedAt"], g.worktree);
+  if (r.code !== 0) return null;
+  try {
+    return String(JSON.parse(r.out).state ?? "").toUpperCase() || null;
+  } catch {
+    return null;
+  }
+}
+
 const postGroupControl: Handler = async (ctx, req, params) => {
   const grpId = Number(params.id);
   const action = params.action;
   switch (action) {
+    case "budget": {
+      // Budget exhaustion suspends the group, and until this existed there was no
+      // route out of it: 继续 un-paused a group the scheduler refused to admit,
+      // so the next tick suspended it again. A limit needs a way to be raised.
+      const b = await body<{ tokens?: number | null }>(req);
+      const t = b.tokens == null ? null : Math.round(Number(b.tokens));
+      if (t !== null && !(t > 0)) return bad("tokens must be a positive number, or null to lift the cap");
+      const spent = ctx.db
+        .query<{ spent_tokens: number; status: string }, [number]>("SELECT spent_tokens, status FROM grp WHERE id = ?")
+        .get(grpId);
+      if (!spent) return text("no such group", 404);
+      if (t !== null && t <= spent.spent_tokens) {
+        return bad(`already spent ${spent.spent_tokens} tokens — a cap at ${t} would stop it again immediately`);
+      }
+      ctx.db.run("UPDATE grp SET budget_tokens = ? WHERE id = ?", [t, grpId]);
+      ctx.bus.emit({
+        grpId,
+        author: "boss",
+        kind: "state_change",
+        body: t === null ? "budget cap lifted" : `budget raised to ${t} tokens`,
+      });
+      // Raising the cap is the answer to the question the watchdog asked, so it
+      // also closes it: a stale "out of budget" row in 等你 is worse than none.
+      ctx.db.run(
+        `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = ?, answered_at = unixepoch() * 1000
+         WHERE grp_id = ? AND chain_state = 'boss' AND answer IS NULL AND question LIKE 'budget:%'`,
+        [t === null ? "cap lifted" : `raised to ${t}`, grpId],
+      );
+      if (spent.status === "PAUSED") resume(ctx, grpId);
+      ctx.sched.tick();
+      return json({ budget: t });
+    }
     case "pause": {
       // Reports how many turns it is waiting on: PAUSING is honest, PAUSED
       // would not be while something is still in flight.
       const waiting = pause(ctx, grpId);
       return json({ status: waiting ? "PAUSING" : "PAUSED", waiting });
     }
-    case "resume":
+    case "resume": {
+      // Un-pausing an over-budget group is a no-op the boss cannot see: the
+      // scheduler refuses to admit it, so it sits in RUNNING doing nothing.
+      const g = ctx.db
+        .query<{ budget_tokens: number | null; spent_tokens: number }, [number]>(
+          "SELECT budget_tokens, spent_tokens FROM grp WHERE id = ?",
+        )
+        .get(grpId);
+      if (g?.budget_tokens != null && g.spent_tokens >= g.budget_tokens) {
+        return bad(
+          `out of budget (${g.spent_tokens}/${g.budget_tokens} tokens). Raise the cap first, ` +
+            `or it stops again on the next tick.`,
+        );
+      }
       resume(ctx, grpId);
       return text("ok");
+    }
     case "park":
       park(ctx, grpId, "you parked it");
       return text("ok");
     case "landed": {
-      // The boss merged it. Everyone still queued now has a stale base.
-      const stale = landed(ctx.db, grpId);
-      ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "merged into main" });
-
-      // Turn this group's retro into lessons while the branch is fresh. This is
-      // the only mechanism by which the twentieth group is smarter than the
-      // first, so it runs on the way out, not "later".
-      ctx.sched.enqueue("agent_turn", {
-        grp_id: grpId,
-        payload: {
-          role: "librarian",
-          rejection:
-            "This group just merged. Read its retro and journals, then update the project's " +
-            "lesson list (`orch journal add --kind lesson`) with anything that would have changed " +
-            "a decision. Refresh the onboarding pack if this changed how the project is built or tested.",
-        },
-      });
-      for (const id of stale) {
-        ctx.sched.enqueue("agent_turn", {
-          grp_id: id,
-          payload: {
-            role: "engineer",
-            rejection: "main moved: rebase onto it with `orch git -- rebase` before doing anything else.",
-            rotate: true,
-          },
-        });
+      // "Confirm merged" used to be taken on trust, and it dissolves the group:
+      // one mis-click archived a branch that was still open, with no way back.
+      // GitHub already knows the answer, and prwatch is already asking it.
+      const b = await body<{ force?: boolean }>(req);
+      const state = await prState(ctx, grpId);
+      if (state && state !== "MERGED" && !b.force) {
+        return bad(
+          `GitHub says this PR is ${state}, not MERGED. Merge it there first — 收尾 dissolves the group.`,
+        );
       }
-      ctx.sched.tick();
-      return json({ staleGroups: stale });
+      return json({ staleGroups: landGroup(ctx, grpId, "boss"), verified: state === "MERGED" });
     }
     case "wake":
       if (!ctx.git) return bad("no git runner");
@@ -1278,6 +1453,84 @@ const postGroupControl: Handler = async (ctx, req, params) => {
     default:
       return bad(`unknown action ${action}`);
   }
+};
+
+/** Roughly a screenful of diff. Beyond this the boss wants the editor, not a panel. */
+const DIFF_CAP = 80_000;
+
+/**
+ * What actually happened in one slice: the diff, QA's verdict, the gate output.
+ *
+ * Accepting is one of the boss's three approval points, and it was being asked
+ * for on a title and an acceptance line — the same information the boss already
+ * approved on the DRAFT card. Nothing new to judge means the button is a rubber
+ * stamp, which makes the three gates in front of it decorative.
+ */
+const getEvidence: Handler = async (ctx, _req, params) => {
+  const id = Number(params.id);
+  const sl = ctx.db
+    .query<
+      { grp_id: number; seq: number; title: string; accept_spec: string; base_sha: string | null; retries: number },
+      [number]
+    >("SELECT grp_id, seq, title, accept_spec, base_sha, retries FROM slice WHERE id = ?")
+    .get(id);
+  if (!sl) return text("no such slice", 404);
+
+  const grp = ctx.db
+    .query<{ project_id: number; worktree: string | null }, [number]>(
+      "SELECT project_id, worktree FROM grp WHERE id = ?",
+    )
+    .get(sl.grp_id);
+  const repo = grp
+    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(grp.project_id)
+        ?.repo_path
+    : undefined;
+
+  let stat = "";
+  let diff = "";
+  let truncated = false;
+  if (ctx.git && repo && grp?.worktree && sl.base_sha) {
+    const [s, d] = await Promise.all([
+      ctx.git(repo, ["diff", "--stat", sl.base_sha, "--"], grp.worktree),
+      ctx.git(repo, ["diff", sl.base_sha, "--"], grp.worktree),
+    ]);
+    stat = s.code === 0 ? s.out.trim() : "";
+    diff = d.code === 0 ? d.out : "";
+    truncated = diff.length > DIFF_CAP;
+    if (truncated) diff = diff.slice(0, DIFF_CAP);
+  }
+
+  // Both reviewers file through the same route, so this is QA's verdict on a
+  // slice and the Auditor's on a branch, in the order they were given.
+  const verdicts = ctx.db
+    .query<{ author: string; body: string; at: number }, [number]>(
+      `SELECT author, body, at FROM event
+       WHERE kind = 'gate_result' AND json_extract(meta_json, '$.slice_id') = ?
+       ORDER BY seq`,
+    )
+    .all(id);
+
+  // The gate wrote these itself (gate.ts logPath). Tail only: a build log is
+  // megabytes and the useful part is at the end.
+  const gates = gatesFor(ctx.db, grp?.project_id ?? 0).flatMap((name) => {
+    const path = join(ctx.config.dataDir ?? "data", "gates", `${id}-${name}.log`);
+    if (!existsSync(path)) return [];
+    const raw = Bun.file(path);
+    return [{ name, path, size: raw.size }];
+  });
+
+  return json({ ...sl, stat, diff, truncated, verdicts, gates });
+};
+
+/** Tail of one gate's log, on demand: it is only opened when a verdict is doubted. */
+const getGateLog: Handler = async (ctx, req, params) => {
+  const name = params.name.replace(/[^\w.-]/g, "");
+  const path = join(ctx.config.dataDir ?? "data", "gates", `${Number(params.id)}-${name}.log`);
+  if (!existsSync(path)) return text("no log", 404);
+  const raw = await Bun.file(path).text();
+  const grep = new URL(req.url).searchParams.get("grep");
+  const lines = raw.split("\n");
+  return text(grep ? lines.filter((l) => new RegExp(grep).test(l)).slice(0, 400).join("\n") : lines.slice(-400).join("\n"));
 };
 
 const postSliceDecision: Handler = async (ctx, req, params) => {
@@ -1568,8 +1821,11 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
   ["POST", /^\/api\/attach$/, postAttach],
+  ["POST", /^\/api\/say$/, postSay],
   ["POST", /^\/api\/draft\/(?<id>\d+)\/(?<decision>approve|reject)$/, postDraftDecision],
-  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|landed)$/, postGroupControl],
+  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|landed|budget)$/, postGroupControl],
+  ["GET", /^\/api\/slices\/(?<id>\d+)\/evidence$/, getEvidence],
+  ["GET", /^\/api\/slices\/(?<id>\d+)\/gate\/(?<name>[\w.-]+)$/, getGateLog],
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/answer$/, postAnswer],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/revoke$/, postRevoke],

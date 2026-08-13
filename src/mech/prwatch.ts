@@ -96,6 +96,8 @@ export interface Feedback {
   prNumber: number;
   comments: Array<{ author: string; body: string; at: number }>;
   failingChecks: string[];
+  /** GitHub says it is in main. The group winds itself up; nobody clicks anything. */
+  merged?: boolean;
 }
 
 /**
@@ -125,7 +127,7 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
   for (const g of groups) {
     if (!g.worktree) continue;
     const r = await gh(
-      ["pr", "view", String(g.pr_number), "--json", "comments,reviews,statusCheckRollup"],
+      ["pr", "view", String(g.pr_number), "--json", "state,comments,reviews,statusCheckRollup"],
       g.worktree,
     );
     if (r.code !== 0) continue;
@@ -134,6 +136,13 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
     try {
       parsed = JSON.parse(r.out);
     } catch {
+      continue;
+    }
+
+    // Merged is news that outranks every comment on the PR, and it is the one
+    // thing the boss should not have to come back and confirm by hand.
+    if (String(parsed.state ?? "").toUpperCase() === "MERGED") {
+      out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], merged: true });
       continue;
     }
 

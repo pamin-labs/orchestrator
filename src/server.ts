@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { makeApp, type Ctx } from "./api.ts";
+import { landGroup, makeApp, type Ctx } from "./api.ts";
 import { Bus } from "./bus.ts";
 import { loadConfig, loadRoles, ROOT, type Config } from "./config.ts";
 import { open } from "./db.ts";
@@ -207,7 +207,10 @@ export function start(overrides: Partial<Config> = {}): Started {
     // Polling is arithmetic, not judgement, so it happens here rather than in an
     // agent. Only a change wakes the PM.
     void pollPrs(ctx, gh).then((fs) => {
-      for (const f of fs) dispatchFeedback(ctx, f);
+      for (const f of fs) {
+        if (f.merged) landGroup(ctx, f.grpId, "github");
+        else dispatchFeedback(ctx, f);
+      }
     });
   }, cfg.watchdogIntervalMs);
 
