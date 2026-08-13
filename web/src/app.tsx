@@ -11,6 +11,7 @@ import { Card, CardBody, CardTitle } from "./ui/card";
 import { Boundary } from "./ui/boundary";
 import { useOrch } from "./lib/api";
 import { countWaiting } from "./lib/select";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import { cn } from "./lib/utils";
 import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
@@ -292,8 +293,13 @@ export function App() {
         </nav>
       )}
 
-      <main className={cn("grid", showSide ? "grid-cols-[minmax(0,1fr)_20rem] max-[64rem]:grid-cols-1" : "grid-cols-1")}>
-        <div className="max-w-[76rem] px-6 pb-24 pt-6">
+      {/* Draggable when the feed is open. 20rem was a guess that has to serve both
+          "glance at what just happened" and "read a long journal entry", and the
+          reader is the only one who knows which. Below 64rem it goes back to one
+          column: there is no width to split. */}
+      <Group orientation="horizontal" className={cn(showSide ? "flex max-[64rem]:block" : "block")}>
+        <Panel className="min-w-0" defaultSize="100%">
+          <div className="max-w-[76rem] px-6 pb-24 pt-6">
           <Boundary key={`${sel.view}:${sel.p}:${sel.g}`}>
           {!st.projects.length ? (
             <Card className="max-w-[40rem]">
@@ -350,15 +356,21 @@ export function App() {
             <CostView st={st} cost={cost} projectId={sel.p!} />
           )}
           </Boundary>
-        </div>
+          </div>
+        </Panel>
         {showSide && (
-          <aside className="overflow-hidden border-l border-rule">
-            <div className="px-4 pb-24 pt-4">
-              <Timeline st={st} frames={frames} grpId={sel.g} projectId={sel.p} />
-            </div>
-          </aside>
+          <>
+            <Separator className="w-px shrink-0 cursor-col-resize bg-rule transition-colors hover:bg-accent data-[state=dragging]:bg-accent max-[64rem]:hidden" />
+            <Panel defaultSize="20rem" minSize="14rem" maxSize="40rem" className="min-w-0">
+              <aside className="h-full overflow-auto">
+                <div className="px-4 pb-24 pt-4">
+                  <Timeline st={st} frames={frames} grpId={sel.g} projectId={sel.p} />
+                </div>
+              </aside>
+            </Panel>
+          </>
         )}
-      </main>
+      </Group>
     </TipRoot>
   );
 
