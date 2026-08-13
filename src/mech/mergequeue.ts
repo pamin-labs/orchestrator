@@ -25,7 +25,7 @@ export function joinQueue(db: DB, grpId: number): number {
 
   const next =
     (db.query<{ m: number | null }, []>("SELECT max(merge_seq) AS m FROM grp").get()?.m ?? 0) + 1;
-  db.run("UPDATE grp SET merge_seq = ? WHERE id = ?", [next, grpId]);
+  db.run("UPDATE grp SET merge_seq = ?, merge_seq_at = unixepoch() * 1000 WHERE id = ?", [next, grpId]);
   return next;
 }
 
@@ -70,7 +70,7 @@ export function landed(db: DB, grpId: number): number[] {
   const me = db
     .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
     .get(grpId);
-  db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
+  db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL, merge_seq_at = NULL WHERE id = ?", [grpId]);
 
   // Wind the group up: sessions are worthless now, but the channel and every
   // event stay. A later group grepping this history is the only long-term memory

@@ -977,6 +977,17 @@ const postBlocked: Handler = async (ctx, req) => {
     .all(me.project_id, gid)
     .find((o) => parseOwns(o.owns_json).some((glob) => overlaps(glob, path)));
 
+  // Two groups each waiting on the other is two groups that never move again, and
+  // nothing downstream would notice: both are PAUSED for a stated reason, and the
+  // reason is each other.
+  if (owner) {
+    for (let at: number | null = owner.id, hops = 0; at && hops < 32; hops++) {
+      if (at === gid) return bad(`${owner.name} is already waiting on you — one of you has to go first`);
+      at = ctx.db.query<{ blocked_on: number | null }, [number]>("SELECT blocked_on FROM grp WHERE id = ?").get(at)
+        ?.blocked_on ?? null;
+    }
+  }
+
   let target: number;
   if (owner) {
     // Somebody live already owns it. A second group for the same file would be
