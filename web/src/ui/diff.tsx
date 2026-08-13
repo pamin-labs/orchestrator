@@ -80,6 +80,18 @@ function buildTree(files: parseDiff.File[], nameOf: (f: parseDiff.File) => strin
   return { ...root, dirs: new Map([...root.dirs].map(([k, v]) => [k, squash(v)])) };
 }
 
+/**
+ * The order the rail shows, so scrolling and the rail agree.
+ *
+ * They did not: the rail groups by folder and the panes were rendered in `git
+ * diff` order, so scrolling down went somewhere the rail could not explain and
+ * the highlight jumped backwards. Same traversal as `Branch` — sub-directories
+ * first, then this level's files.
+ */
+function flatten(d: Dir): number[] {
+  return [...[...d.dirs.values()].flatMap(flatten), ...d.files.map((f) => f.i)];
+}
+
 const base = (f: parseDiff.File) => {
   const n = f.to && f.to !== "/dev/null" ? f.to : (f.from ?? "?");
   return n.slice(n.lastIndexOf("/") + 1);
@@ -153,6 +165,7 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
   const heads = useRef<(HTMLDivElement | null)[]>([]);
 
   const tree = useMemo(() => buildTree(files, nameOf), [files]);
+  const order = useMemo(() => flatten(tree), [tree]);
 
   // Not scrollIntoView: it scrolls every scrollable ancestor, so clicking a file
   // also threw the whole page to a fixed position.
@@ -201,7 +214,8 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
 
       <Panel className="min-w-0">
         <div ref={pane} className="h-full overflow-auto">
-        {files.map((f, fi) => {
+        {order.map((fi) => {
+          const f = files[fi]!;
           const name = nameOf(f);
           const rows = f.chunks.flatMap((c) => [{ gap: c.content } as Row, ...rowsOf(c)]);
           // Bounded per file, not per diff: thirty files of four hundred rows each
