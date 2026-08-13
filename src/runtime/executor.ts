@@ -4,7 +4,7 @@ import { gzipSync } from "node:zlib";
 import type { Ctx } from "../api.ts";
 import { imagePaths, mintToken } from "../api.ts";
 import type { Config, RoleDef } from "../config.ts";
-import { contextWindowFor, modelFor } from "../config.ts";
+import { DEFAULT_PROVIDER, contextWindowFor, modelFor } from "../config.ts";
 import type { Executor, Job } from "../scheduler.ts";
 import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
 import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
@@ -61,6 +61,8 @@ interface AgentRow {
   stable_hash?: string | null;
   /** What the CLI said this model's window is, once it has said it. */
   context_window?: number | null;
+  /** Which provider this agent's turns run on. Frozen at hire. */
+  runtime?: string | null;
 }
 
 export function makeExecutor(deps: ExecDeps): Executor {
@@ -111,7 +113,7 @@ export function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
   return hire(deps, job.grp_id, roleName, job.slice_id, payloadProject);
 }
 
-const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, clearance, session_id, session_tokens, cwd, token, stable_hash, context_window FROM agent`;
+const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, runtime, clearance, session_id, session_tokens, cwd, token, stable_hash, context_window FROM agent`;
 const SELECT_AGENT = `${SELECT_AGENT_BASE} WHERE id = ?`;
 
 export function hire(
@@ -138,15 +140,19 @@ export function hire(
     : null;
 
   const row = ctx.db
-    .query<{ id: number }, [number | null, number | null, string, string, string, string, string | null]>(
-      `INSERT INTO agent (project_id, grp_id, role, model, clearance, token, cwd, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
+    .query<{ id: number }, [number | null, number | null, string, string, string, string, string, string | null]>(
+      `INSERT INTO agent (project_id, grp_id, role, model, runtime, clearance, token, cwd, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
     .get(
       grp?.project_id ?? projectId ?? null,
       grpId,
       roleName,
       modelFor(cfg, role, difficulty),
+      // Recorded, not looked up later: the scheduler has to know which account a
+      // queued turn would spend without loading roles/*.yaml, and the role could
+      // be re-pointed at another provider while this agent is mid-slice.
+      role.runtime ?? DEFAULT_PROVIDER,
       role.clearance,
       mintToken(),
       grp?.worktree ?? null,
@@ -953,49 +959,38 @@ function handleDenials(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult)
 }
 
 /**
- * Hitting the account's rate limit, per PLAN.md §11: drop a tier and keep going; if
- * there is nothing cheaper, wait for the reset — not for the boss.
+ * Hitting the account's rate limit: wait for the reset, not for the boss.
  *
- * Before this it only paused. The system exists so work happens while the boss is
- * asleep, and one 429 at 01:00 stopped everything until morning, which is the exact
- * failure it is supposed to prevent. The model is part of the cached prefix, so a
- * downgrade rotates the session by construction (`needsRotation` compares the hash) —
- * the retry starts a fresh session on the cheaper tier rather than re-reading an
- * expensive prefix at a new price.
+ * It used to drop a tier and carry on, and the reasoning was that work should keep
+ * happening while the boss is asleep. It does not survive contact with how these
+ * accounts actually work. The windows are per account, not per model, so a cheaper
+ * model does not restore quota — it spends the same exhausted pool a little slower,
+ * and only if there is any left, which at a rate limit there is not. What the
+ * downgrade reliably did instead was silently change which model was doing the
+ * work, mid-slice, at 01:00, with nobody choosing it: the boss tagged that slice
+ * `hard` for a reason.
+ *
+ * So the only honest move is the one this always had as its fallback. Record when
+ * the window reopens and let the watchdog restart it — nobody has to be awake for
+ * that, which was the real requirement.
  */
 function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
   const rl = r.rateLimit;
   if (!rl || rl.status === "allowed") return;
-  const { ctx, cfg } = deps;
-  const cheaper = cfg.modelFallback?.[agent.model];
+  const { ctx } = deps;
 
-  if (cheaper) {
-    ctx.db.run("UPDATE agent SET model = ?, session_id = NULL, session_tokens = 0 WHERE id = ?", [
-      cheaper,
-      agent.id,
-    ]);
-    ctx.bus.emit({
-      grpId: job.grp_id,
-      author: "orchestrator",
-      kind: "state_change",
-      body: say(ctx.config?.language, "rl.downgraded", { role: agent.role, from: agent.model, to: cheaper }),
-      meta: { ...rl, from: agent.model, to: cheaper },
-    });
-    // Same work, cheaper tier, straight back in the queue.
-    ctx.sched.enqueue("agent_turn", {
-      grp_id: job.grp_id,
-      agent_id: agent.id,
-      slice_id: job.slice_id,
-      priority: 4,
-      payload: { ...(safeParse(job.payload_json) as object), rotate: true },
-    });
-    ctx.sched.tick();
-    return;
-  }
-
-  // Already at the bottom tier: hold, and record when to try again so the watchdog
-  // can restart it without anyone being awake.
+  // Hold, and record when to try again so the watchdog can restart it without
+  // anyone being awake.
   const resetsMs = rl.resetsAt ? rl.resetsAt * 1000 : Date.now() + 15 * 60_000;
+  // The window belongs to the account, so the hold does too: every agent on this
+  // CLI stops being dispatched until the reset, standing ones included. Nine other
+  // groups each spending a turn to discover the same wall is the waste this
+  // prevents — and a held job is never started, so it costs nothing to wait.
+  ctx.db.run(
+    `INSERT INTO usage_snapshot (runtime, json, at, hold_until) VALUES (?, ?, ?, ?)
+     ON CONFLICT (runtime) DO UPDATE SET hold_until = excluded.hold_until, at = excluded.at`,
+    [agent.runtime ?? DEFAULT_PROVIDER, JSON.stringify(rl), Date.now(), resetsMs],
+  );
   ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",

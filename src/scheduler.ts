@@ -216,6 +216,7 @@ export class Scheduler {
       if (busyGroups.size >= this.maxGroups) continue;
       // Only a group-scoped job has a status and a budget to check.
       if (job.grp_id !== null && !this.admits(job)) continue;
+      if (job.kind === "agent_turn" && this.providerHeld(job)) continue;
       busyGroups.add(slot);
       out.push(job);
     }
@@ -254,6 +255,29 @@ export class Scheduler {
          FROM job WHERE state = 'running'`,
       )
       .all();
+  }
+
+  /**
+   * Is this turn's provider out of quota right now?
+   *
+   * A rate limit is an account-level fact, so it holds every agent on that CLI —
+   * including standing ones, which have no group to pause. Holding here rather
+   * than failing the turn is what keeps it free: a held job is simply not picked
+   * up, so there is no process, no retry loop and no quota spent proving the wall
+   * is still there. It lifts by clock, on the reset time the CLI itself reported.
+   *
+   * A job whose agent does not exist yet cannot be held: nothing has chosen a
+   * provider for it. It will be hired, run once, and hold the provider itself.
+   */
+  private providerHeld(job: Job): boolean {
+    if (!job.agent_id) return false;
+    const row = this.db
+      .query<{ hold_until: number | null }, [number]>(
+        `SELECT u.hold_until FROM agent a JOIN usage_snapshot u ON u.runtime = a.runtime
+         WHERE a.id = ?`,
+      )
+      .get(job.agent_id);
+    return !!row?.hold_until && row.hold_until > this.now();
   }
 
   /** Admission check: group status is a barrier, budget is a hard stop. */

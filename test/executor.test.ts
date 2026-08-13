@@ -190,13 +190,38 @@ test("one denial is not a question; the second one is", async () => {
   expect(db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("RUNNING");
 });
 
-test("a rate limit pauses the group instead of burning through the quota", async () => {
-  const { db, sched } = harness(async () =>
-    ok({ rateLimit: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1786554000 } }),
+test("a rate limit holds the whole provider, not just the group that hit it", async () => {
+  const resetsAt = Math.floor(Date.now() / 1000) + 3600;
+  const { db, sched, specs } = harness(async () =>
+    ok({ rateLimit: { status: "rejected", rateLimitType: "five_hour", resetsAt } }),
   );
   sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   expect(db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PAUSED");
+
+  // The window belongs to the account. Before this, every other group spent a turn
+  // discovering the same wall, and a standing agent — no group to pause — retried
+  // into it. The held job is never started, so waiting costs nothing.
+  const hold = db
+    .query<{ runtime: string; hold_until: number }, []>("SELECT runtime, hold_until FROM usage_snapshot")
+    .get()!;
+  expect(hold.runtime).toBe(db.query<{ runtime: string }, []>("SELECT runtime FROM agent").get()!.runtime);
+  expect(hold.hold_until).toBe(resetsAt * 1000);
+
+  // With the group running again, the hold is the only thing left holding it —
+  // which is the point: the two are independent, and the account-level one is not
+  // a property of any group.
+  db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL, rl_resets_at = NULL");
+  const before = specs.length;
+  sched.enqueue("agent_turn", { grp_id: 1, agent_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+  expect(specs.length).toBe(before);
+  expect(db.query<{ state: string }, []>("SELECT state FROM job ORDER BY id DESC").get()!.state).toBe("pending");
+
+  // And it lifts by clock — nobody has to be awake for the reset.
+  db.run("UPDATE usage_snapshot SET hold_until = 1");
+  await sched.drain();
+  expect(specs.length).toBe(before + 1);
 });
 
 test("a failed turn is recorded as failed, not silently swallowed", async () => {

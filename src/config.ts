@@ -72,8 +72,6 @@ export interface Config {
   turnTimeoutMs: number;
   maxTurnsPerJob: number;
   sessionRotateFraction: number;
-  /** model -> the cheaper model to fall back to when the account is throttled. */
-  modelFallback: Record<string, string>;
   /** Unread events past this get compressed by the Librarian instead of dribbling. */
   unreadDigestThreshold: number;
   /** The same complaint this many times becomes a project rule. */
@@ -145,17 +143,6 @@ const DEFAULTS: Config = {
   turnTimeoutMs: 600_000,
   maxTurnsPerJob: 45,
   sessionRotateFraction: 0.6,
-  // Where a rate-limited turn goes next. One step down, not straight to haiku: the
-  // point is to keep going at a lower tier, not to make the cheapest possible mess.
-  // claude only, and deliberately: its tiers draw on one window at different
-  // rates, so dropping a tier really does buy more turns before the reset. codex
-  // reports a percentage of an account-wide quota, and no model spends less of
-  // it — at 100% there is nothing to fall back to and waiting is the answer. A
-  // gpt ladder here would be a mechanism the account does not have.
-  modelFallback: {
-    "claude-opus-5": "claude-sonnet-5",
-    "claude-sonnet-5": "claude-haiku-4-5-20251001",
-  },
   unreadDigestThreshold: 30,
   feedbackSedimentThreshold: 3,
   ctxBudgetChars: 16_000,
