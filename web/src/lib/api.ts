@@ -10,6 +10,8 @@ export interface Group {
 export interface Slice {
   id: number; grp_id: number; seq: number; title: string; accept_spec: string; difficulty: string;
   status: string; gates_json: string; spent_tokens: number; spent_usd: number;
+  /** When it started waiting on the boss. The clock on 白干的单位. */
+  awaiting_at: number | null;
 }
 export interface Task { id: number; grp_id: number; slice_id: number | null; title: string; status: string }
 export interface Agent {
@@ -37,7 +39,7 @@ export interface Escalation {
 }
 export interface State {
   projects: Project[]; groups: Group[]; slices: Slice[]; tasks: Task[]; agents: Agent[];
-  escalations: Escalation[]; draftCards: { grpId: number; body: string }[];
+  escalations: Escalation[]; draftCards: { grpId: number; body: string; at: number }[];
   lateObjections: { grpId: number; author: string; body: string }[];
   ideas: { grpId: number; body: string }[];
   answered: { id: number; grp_id: number; question: string; answer: string; answered_by: string; ref_note_id: number | null }[];
@@ -48,7 +50,13 @@ export interface State {
 }
 export interface CostRow { label: string; tokens: number; usd: number }
 export interface Cost {
-  total: CostRow; byGroup: CostRow[]; byRole: CostRow[]; byDifficulty: CostRow[]; cacheRatio: number | null;
+  total: CostRow;
+  byGroup: (CostRow & { grpId: number })[];
+  /** Per role, with the requirement it was hired into. null = standing. */
+  roles: (CostRow & { grpId: number | null })[];
+  byRole: CostRow[];
+  byDifficulty: CostRow[];
+  cacheRatio: number | null;
   delivered: { count: number; usd: number };
 }
 

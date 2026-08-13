@@ -15,6 +15,7 @@ import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
 import { Picker } from "./views/picker";
 import { Pipeline } from "./views/pipeline";
+import { Notes } from "./views/notes";
 import { Progress } from "./views/progress";
 import { Queue } from "./views/queue";
 import { Requirement } from "./views/requirement";
@@ -24,7 +25,7 @@ import { CostView, Desk, Owns } from "./views/tables";
 // `req` is a drill-in, not a tab: it only exists with a requirement selected, and
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
-type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost";
+type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes";
 interface Sel { p: number | null; view: View; g: number | null }
 
 const readHash = (): Sel => {
@@ -102,6 +103,7 @@ export function App() {
     ["board", "概览"],
     ["progress", "需求"],
     ["desk", "工位墙"],
+    ["notes", "黑板"],
     ["owns", "所有权"],
     ["cost", "成本"],
   ];
@@ -263,6 +265,8 @@ export function App() {
             )
           ) : view === "desk" ? (
             <Desk st={st} frames={frames} projectId={sel.p!} />
+          ) : view === "notes" ? (
+            <Notes projectId={sel.p!} />
           ) : view === "owns" ? (
             <Owns st={st} projectId={sel.p!} />
           ) : (

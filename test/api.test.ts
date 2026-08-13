@@ -743,3 +743,31 @@ test("the boss can talk to the team, and triage decides what the words mean", as
   expect((await post(app, "/api/say", { group_id: 1, as: "respec", body: "方向错了" })).status).toBe(200);
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
 });
+
+test("the blackboard is readable: notes by project, by group, and by kind", async () => {
+  const { app, db } = harness();
+  db.run(
+    `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
+     VALUES (1, 1, 'journal', '中文', 'moved token check into middleware', '{"files":["auth/mw.ts"],"gate":"pass"}', 10)`,
+  );
+  db.run(
+    "INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'lesson', '中文', 'QA 只看 diff，不重读全库', 20)",
+  );
+  // The DRAFT card is a note too, and it has its own screen; it must not show up here.
+  db.run(
+    `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
+     VALUES (1, 1, 'decision', '中文', 'card', '{"draft_card":1}', 30)`,
+  );
+
+  const all = (await (await get(app, "/api/notes?project=1")).json()) as any;
+  expect(all.notes.map((n: any) => n.kind)).toEqual(["lesson", "journal"]);
+  // A project-level lesson has no group, and that is exactly where it matters.
+  expect(all.notes.find((n: any) => n.kind === "lesson").grpId).toBe(null);
+  expect(all.notes.find((n: any) => n.kind === "journal").group).toBe("g1");
+
+  const one = (await (await get(app, "/api/notes?group=1")).json()) as any;
+  expect(one.notes.map((n: any) => n.kind)).toEqual(["journal"]);
+
+  const kind = (await (await get(app, "/api/notes?project=1&kind=lesson")).json()) as any;
+  expect(kind.notes.length).toBe(1);
+});
