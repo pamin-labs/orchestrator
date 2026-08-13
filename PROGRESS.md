@@ -210,6 +210,15 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 - ✅ **Runner 池按标签分**（`resource.tags_json` + `leaseSlots: {default: 2, browser: 1}`）。一个全局数字只能取所有资源里最小的那个：按浏览器取 1，全队门禁排在一张截图后面；按门禁取 4，浏览器互相拖死。标签描述「争的是什么」，每个标签一个池；无标签走 `default`；一个租约占它所有标签的名额，任一满就排队；未知标签回落到 default 而不是「无限制」。
 - ✅ **无头浏览器成了一等资源**（`scripts/browse.ts` + `browser` 资源）。前端切片的验收几乎都是「菜单能弹」「行能点开」，而全项目没有任何角色能验 —— QA 只能读 JSX，Auditor 因证据不足退回分支，最后让老板自己点。三组同时卡在这上面。现在 QA 写一个 JSON 步骤文件（`api` 播种 / `goto` / `click` / `expect` / `missing` / `shot`）然后 `orch lease browser --arg steps=qa-steps.json`：它在**本 worktree** 起服务器（随机端口 + 一次性数据库），跑 Chromium，失败自动截图。**步骤是数据不是脚本** —— Runner 跑在 host 上有真权限，这是硬约束 2 的唯一走法。实测跑通：`click text=更多` → `expect 不做了` PASS，截图为证。
 
+- ✅ **状态机有了不变量表**（`src/mech/states.ts` + `src/mech/invariants.ts`）。每条 watchdog 规则都是一次事故换来的，而它们形状完全一样：某个转移只有一条路径会触发，那条没跑，状态就永久停住且**看起来健康**。表里一个状态一行：什么必须成立 / 谁推它 / 幂等 repair；`test/invariants.test.ts` 断言 `states.ts` 的四台机器（grp / slice / job / escalation）全被覆盖 —— 加状态不填表就构建失败。**表里只放活性**，健康检查（超时/打转/预算/env_suspect）留在 watchdog。
+- ✅ **PageIndex 取代了 BM25 做「东西在哪」**（`src/mech/pageindex.ts`）。带 LLM 摘要的树 + 模型走树导航（VectifyAI 那套方法，不是向量、不是词法）。仓库文件和黑板 note（journal/retro/decision/fact/lesson）**在同一棵树**上，叶子 id 是路径或 `notes/<scope>/<kind>/<id>`。按 signature 增量，静止的仓库零调用，每跳最多 12 次 haiku。导航失败/超时降级到词法。走到 note 直接把正文带回来（journal 本来就 ≤6 行，让 agent 再取一次就是多一轮）。
+- ✅ **token 实测三刀**（259 个 turn 的数据）。tool_result 占 transcript 的 **90.1%**，缓存前缀只有 5-7k 字符 —— 账单 = 拉进来多少 × 多少轮重读。所以：`maxTurnsPerJob` 60→45 且**每角色自己的上限**（qa/auditor 20，engineer 保持 45 —— 一个全局数字必然等于 engineer 的需求，reviewer 拿着它去翻仓库）；切片边界**只轮换 engineer+qa**（原来全组清空 → 95% 的 turn 冷前缀，45.5M creation ≈ 570M read 的价）；`ctx query` 直接答组状态（实测一个 turn 花 12 轮跑 `sqlite3` 全被拒）。
+- ✅ **第一次 clearance 拒绝不立单**。一次拒绝叫醒 pm→architect→cos 三个 turn × 3M token，去问一个 agent 下一轮自己会绕开的问题。连续第二次才立单 —— 那才是真卡住。agent 后来走通合法路子时自动关闭。
+- ✅ **PR 全链路补齐**：正文由 `prBody()` 从库里 SELECT 出来（原来是一句硬编码，读着像 agent 偷懒，其实压根没人写过）；注册项目必须有 GitHub origin；「确认已合入」按钮和路由删掉（`pollPrs` 每跳问 GitHub）；**PR 被关 → 组暂停并让出队列 + 给老板两条出路**，重开自动回队；分支被强推删不了重开时有「开新 PR」。
+- ✅ **`web/dist` 陈旧从根上解决**：不再软链，`build` 成为第一道门禁 —— 每次门禁都从**这个分支的源码**产出 bundle 再测它。附带：服务端静态资源发 `cache-control: no-cache`（bundle 名字没 hash，浏览器一直喂旧的，一个已删的按钮活过了重建和重启）。
+- ✅ **push 不再烧 turn**：合并按**队列**做不按时钟 —— 已有 rebase turn 排队时新 sha 不再派第二个（那个 turn 跑起来 rebase 的就是最新 main），跑完之后 main 再动**立刻**响应。曾经用时钟做过一版，错在它困住的正是「PR 卡着等 rebase」那个组。
+- ✅ **日志从 123MB 降到写入端就小**：tool_result 只留 400 字符头 + 真实长度，tool_use 入参整个留（小，且是「它当时想干什么」那一半）；一天后 gzip，两周后删。写入端 ~10x + gzip ~3.5x。
+
 ## Dispatcher 档位：量过了，建议保持 opus
 
 同一句需求、同一 fixture、同一校验器，只换 Dispatcher 的 model。比的是**它自己那一轮**，因为 `tier: hard` 只管这个：
