@@ -44,6 +44,8 @@ export interface Config {
   gateRetries: number;
   /** Start the next slice when QA passes, without waiting for the boss to accept. */
   autoAdvance: boolean;
+  /** Difficulty tags accepted automatically once all three gates pass. */
+  autoAcceptTiers: string[];
   workRoot: string;
   dataDir: string;
 }
@@ -68,6 +70,9 @@ const DEFAULTS: Config = {
   // Off by default: the point of slice-sized delivery is that a wrong slice wastes
   // one slice. Turning this on trades that for overnight throughput.
   autoAdvance: false,
+  // Empty by default. Adding "trivial" trades the slice-sized blast radius for an
+  // unattended overnight run: three gates still run, the boss's look does not.
+  autoAcceptTiers: [],
   workRoot: "/tmp/orch/worktrees",
   dataDir: "data",
 };

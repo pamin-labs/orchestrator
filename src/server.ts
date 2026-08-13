@@ -78,7 +78,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     git,
     gh,
     waiters: new Map(),
-    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot, autoAdvance: cfg.autoAdvance },
+    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot, autoAdvance: cfg.autoAdvance, autoAcceptTiers: cfg.autoAcceptTiers },
   };
   const execDeps = {
     ctx,
@@ -157,11 +157,14 @@ export function start(overrides: Partial<Config> = {}): Started {
     void notifier.push({ key: `${rule}:${grpId ?? 0}`, tier: tierFor(rule, severity), body, url });
   };
   ctx.notifyBoss = (escId, question, severity) => {
+    const g = db
+      .query<{ grp_id: number | null }, [number]>("SELECT grp_id FROM escalation WHERE id = ?")
+      .get(escId)?.grp_id;
     void notifier.push({
       key: `escalation:${escId}`,
       tier: tierFor("blocker", severity),
       body: question.slice(0, 300),
-      url,
+      url: g ? `${url}/#g=${g}&v=progress` : url,
     });
   };
 
@@ -192,13 +195,13 @@ export function start(overrides: Partial<Config> = {}): Started {
     // in its own words; this is the backstop for when it does not run at all.
     const waiting = db
       .query<PendingItem, []>(
-        `SELECT e.id, e.severity, e.question, g.name AS "group"
+        `SELECT e.id, e.severity, e.question, e.grp_id AS grpId, g.name AS "group"
          FROM escalation e LEFT JOIN grp g ON g.id = e.grp_id
          WHERE e.chain_state = 'boss' AND e.answer IS NULL
          ORDER BY e.created_at`,
       )
       .all();
-    const batched = batchForBoss(waiting);
+    const batched = batchForBoss(waiting, url);
     if (batched) void notifier.push(batched);
 
     // Polling is arithmetic, not judgement, so it happens here rather than in an

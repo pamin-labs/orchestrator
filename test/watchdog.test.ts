@@ -3,7 +3,7 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { Notifier, tierFor } from "../src/mech/notify.ts";
+import { Notifier, tierFor, batchForBoss } from "../src/mech/notify.ts";
 import { pause, resume, settlePausing, park } from "../src/mech/intercept.ts";
 import { recordTurnOutcome, runWatchdog, IDLE_TURN_LIMIT, SAME_FILE_LIMIT } from "../src/mech/watchdog.ts";
 import { Scheduler } from "../src/scheduler.ts";
@@ -275,4 +275,22 @@ test("a single item is not dressed up as a batch, and nothing waiting sends noth
   const one = batchForBoss([{ id: 7, severity: "blocker", question: "which lib?", group: "auth" }])!;
   expect(one.key).toBe("escalation:7");
   expect(one.body).toContain("auth: which lib?");
+});
+
+test("a batched notification carries a link, and one item links to its requirement", () => {
+  // Without this the batched path built notifications with no url, which fell
+  // back to osascript: no click target, and the notification belonged to
+  // whatever app ran the script rather than to the page it is about.
+  const one = batchForBoss([{ id: 7, grpId: 3, severity: "blocker", question: "which library?", group: "auth" }], "http://127.0.0.1:47821")!;
+  expect(one.url).toBe("http://127.0.0.1:47821/#g=3&v=progress");
+
+  const many = batchForBoss(
+    [
+      { id: 7, grpId: 3, severity: "advisory", question: "a", group: "auth" },
+      { id: 8, grpId: 4, severity: "advisory", question: "b", group: "bye" },
+    ],
+    "http://127.0.0.1:47821",
+  )!;
+  // Two requirements, so the link is the front page rather than an arbitrary one.
+  expect(many.url).toBe("http://127.0.0.1:47821");
 });
