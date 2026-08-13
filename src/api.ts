@@ -1876,9 +1876,15 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
     // approve always was, and the refusal below tells the boss to approve again.
     ctx.db.run("DELETE FROM task WHERE slice_id IN (SELECT id FROM slice WHERE grp_id = ?)", [grpId]);
     ctx.db.run("DELETE FROM slice WHERE grp_id = ?", [grpId]);
+    // A cap, per difficulty, written at birth. Until this, `budget_tokens` was
+    // never INSERTed anywhere, so it was NULL on every row and both admission
+    // checks in scheduler.ts had never stopped a single turn. It matters more now
+    // that reviewers run on a CLI with no tool whitelist: the whitelist used to be
+    // what bounded how much of the repo a review could read, and this is what
+    // replaces it. The boss can raise any of them from the requirement page.
     const ins = ctx.db.prepare(
-      `INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at)
-       VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
+      `INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, budget_tokens, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     );
     // One task per slice, up front. Without something to claim the writer
     // improvises an id, `task done` never lands, and the whole review pipeline
@@ -1887,7 +1893,14 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
       "INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (?, ?, ?, unixepoch() * 1000)",
     );
     v.slices.forEach((sl, i) => {
-      const row = ins.get(grpId, i + 1, sl.title, sl.accept, sl.difficulty) as { id: number };
+      const row = ins.get(
+        grpId,
+        i + 1,
+        sl.title,
+        sl.accept,
+        sl.difficulty,
+        ctx.config.sliceBudgetTokens?.[sl.difficulty] ?? ctx.config.sliceBudgetTokens?.normal ?? null,
+      ) as { id: number };
       insTask.run(grpId, row.id, sl.title);
     });
   }

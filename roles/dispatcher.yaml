@@ -1,7 +1,7 @@
 name: dispatcher
 clearance: L2
+effort: xhigh
 tier: hard
-thinking: high
 # Turns one sentence from the boss into a DRAFT card the boss can approve in 20s.
 # Tool rounds. Measured: tool results are 90% of a transcript and every round
 # re-reads all of them, so rounds are the bill.

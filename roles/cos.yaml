@@ -1,5 +1,6 @@
 name: cos
 clearance: L2
+effort: high
 tier: hard
 # The boss's only interface to the system. Everything else routes through here.
 # Tool rounds. Measured: tool results are 90% of a transcript and every round

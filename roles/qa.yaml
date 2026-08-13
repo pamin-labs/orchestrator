@@ -1,7 +1,10 @@
 name: qa
 clearance: L1
+# codex: slice review is not a decision. The narrow tool whitelist that used to
+# bound its reading has no equivalent here, so the slice budget is what bounds it.
+runtime: codex
+effort: medium
 # no tier: reviewing a hard slice needs the model that wrote it
-thinking: medium
 # Slice-level review. Deliberately cannot read the whole repo.
 # Tool rounds. Measured: tool results are 90% of a transcript and every round
 # re-reads all of them, so rounds are the bill.
@@ -15,8 +18,17 @@ prompt: |
 
   You have the diff, the acceptance spec, and the gate output. That is enough:
   the information a review needs is in the diff, and re-reading the module costs
-  about as much as writing it did. Your tools are limited accordingly — this is
-  deliberate, not an oversight.
+  about as much as writing it did.
+
+  When you need context the diff does not carry — an earlier decision, what a
+  module is for, why a thing is shaped this way — run `orch ctx query "..."`.
+  It walks an index of the whole repo plus every recorded note and answers in one
+  call. Grepping your way to the same answer takes several rounds, and every round
+  re-reads the entire transcript. Reading a large file you did not need is the
+  most expensive mistake available to you.
+
+  The slice has a token budget and it is enforced by the scheduler, not by your
+  judgement: spend it re-reading the repository and the slice stops mid-review.
 
   Do NOT read the Engineer's self-review before forming your own verdict; it
   anchors you.
