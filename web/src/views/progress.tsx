@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Meta } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -8,7 +7,7 @@ import { prUrl } from "../lib/select";
 import type { Archived, Group, Slice, State } from "../lib/api";
 import { usePaged } from "../lib/page";
 import { STOPS, gates, heldApproved, statusLabel } from "../lib/select";
-import { cn, money } from "../lib/utils";
+import { cn, K } from "../lib/utils";
 
 /**
  * Every requirement in the project, filtered by whose turn it is.
@@ -39,9 +38,11 @@ const BUCKETS: Bucket[] = [
 const DONE = "done";
 
 export function Progress({
-  st, projectId, onOpen, maxGroups,
+  st, projectId, onOpen, maxGroups, tab, onTab,
 }: {
   st: State; projectId: number; onOpen: (id: number) => void; maxGroups?: number | null;
+  /** From the hash, so it survives opening a requirement and coming back. */
+  tab: string | null; onTab: (t: string) => void;
 }) {
   const groups = st.groups.filter((g) => g.project_id === projectId);
   const archived = (st.archived ?? []).filter((a) => a.project_id === projectId);
@@ -52,10 +53,13 @@ export function Progress({
   const live = of(BUCKETS[1]!).length;
 
   // Open on the tab that has something for the boss; failing that, on the work.
-  const [tab, setTab] = useState(() => {
-    if (of(BUCKETS[0]!).length) return "mine";
-    return BUCKETS.find((b) => of(b).length)?.key ?? (archived.length ? DONE : "live");
-  });
+  // Only when the boss has not chosen one — this used to be component state, so
+  // drilling into a requirement unmounted the list and this heuristic quietly
+  // overrode their choice on the way back.
+  const fallback =
+    of(BUCKETS[0]!).length
+      ? "mine"
+      : (BUCKETS.find((b) => of(b).length)?.key ?? (archived.length ? DONE : "live"));
 
   if (!groups.length && !archived.length) {
     return (
@@ -66,7 +70,7 @@ export function Progress({
   }
 
   return (
-    <Tabs value={tab} onValueChange={setTab}>
+    <Tabs value={tab ?? fallback} onValueChange={onTab}>
       <TabList>
         {BUCKETS.map((b) => (
           <Tab key={b.key} value={b.key} count={of(b).length} mine={b.mine}>
@@ -152,7 +156,7 @@ function Row({ st, g, onOpen, mine }: { st: State; g: Group; onOpen: (id: number
         <Meta>
           {statusLabel(g)}
           {slices.length ? ` · 已查收 ${done}/${slices.length}` : ""}
-          {g.spent_usd ? ` · ${money(g.spent_usd)}` : ""}
+          {g.spent_tokens ? ` · ${K(g.spent_tokens)} tokens` : ""}
         </Meta>
       </div>
       <div className="min-w-0 max-[60rem]:col-span-full">
@@ -269,7 +273,7 @@ function Done({ rows }: { rows: Archived[] }) {
             {a.name}
             {a.pr_number ? <Meta className="ml-2">#{a.pr_number}</Meta> : null}
           </span>
-          <Meta>{a.slices} 片 · {money(a.spent_usd)}</Meta>
+          <Meta>{a.slices} 片</Meta>
         </div>
       ))}
       {rest > 0 && (

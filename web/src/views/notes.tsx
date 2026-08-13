@@ -43,7 +43,11 @@ const KINDS: [string, string, string][] = [
 
 const ZH = new Map(KINDS.map(([k, zh]) => [k, zh]));
 
-export function Notes({ projectId, grpId, compact }: { projectId?: number; grpId?: number; compact?: boolean }) {
+export function Notes({ projectId, grpId, compact, tab, onTab }: {
+  projectId?: number; grpId?: number; compact?: boolean;
+  /** From the hash where this is a whole view; local where it is embedded. */
+  tab?: string | null; onTab?: (t: string) => void;
+}) {
   const [notes, setNotes] = useState<Note[] | null>(null);
   const scope = grpId ? `group=${grpId}` : projectId ? `project=${projectId}` : "";
 
@@ -68,7 +72,7 @@ export function Notes({ projectId, grpId, compact }: { projectId?: number; grpId
 
   const present = KINDS.filter(([k]) => notes.some((n) => n.kind === k));
   return (
-    <Tabs defaultValue={present[0]?.[0] ?? "journal"}>
+    <Tabs value={tab ?? present[0]?.[0] ?? "journal"} onValueChange={onTab}>
       <TabList>
         {present.map(([k, zh]) => (
           <Tab key={k} value={k} count={notes.filter((n) => n.kind === k).length}>
