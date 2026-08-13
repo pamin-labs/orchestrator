@@ -13,6 +13,44 @@ import { createWorktree } from "./worktree.ts";
  * act ("start it") is what lets the second one happen later, without the boss.
  */
 
+/**
+ * Wind a group up without merging it: it should not be done.
+ *
+ * The boss's 不做了, and the CoS triaging a complaint as `reject` — one path, or
+ * the two disagree about what "dropped" means. Rejecting used to only cancel the
+ * queue, so the group kept its ACTIVE status and went on holding its paths against
+ * every other group forever.
+ *
+ * No retro turn. A group that is being dropped has, by definition, nobody who
+ * wants its output, and the reason it is being dropped is the sentence that was
+ * just written to its blackboard — spending an Opus turn to restate that teaches
+ * the agents that retros are paperwork. The worktree and every event stay:
+ * archiving must never mean deleting.
+ *
+ * `owns` is deliberately left alone. `canStart` only counts ACTIVE groups, so
+ * DISSOLVED already releases the paths, and blanking the column would erase what
+ * this group was allowed to touch from the record.
+ */
+export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
+  ctx.sched.cancelPending(grpId, "dropped");
+  ctx.db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
+  ctx.db.run("UPDATE agent SET state = 'retired', session_id = NULL, token = NULL WHERE grp_id = ?", [grpId]);
+  ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [grpId]);
+  // Anything it had asked the boss dies with it, or the question outlives the
+  // requirement and sits in 待办 forever.
+  ctx.db.run(
+    `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
+     WHERE grp_id = ? AND answer IS NULL`,
+    [grpId],
+  );
+  ctx.bus.emit({
+    grpId,
+    author: "boss",
+    kind: "state_change",
+    body: say(ctx.config?.language, "group.dropped", { why: why ? `：${why}` : "" }),
+  });
+}
+
 /** Worktree, RUNNING, first slice. Returns an error message, or null on success. */
 export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null> {
   // The worktree lives under workRoot (outside $HOME) because the sandbox is

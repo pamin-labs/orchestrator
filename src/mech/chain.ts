@@ -1,5 +1,6 @@
 import type { Ctx } from "../api.ts";
 import { rollbackTo, type GitRunner } from "./worktree.ts";
+import { dropGroup } from "./start.ts";
 
 /**
  * The answer chain: PM -> Architect -> CoS -> the boss.
@@ -286,12 +287,19 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
   const { ctx } = deps;
   // Through bossFact: a patch is the boss complaining, and the third identical
   // complaint is supposed to become a project rule rather than a third isolated fact.
-  deps.bossFact?.(grpId, `boss (${as}): ${note}`) ??
+  //
+  // `??` on a void call always takes the fallback: bossFact returns undefined
+  // whether or not it ran, so every sentence the boss said was written twice and
+  // the requirement's 记录 tab showed each one doubled.
+  const body = `boss (${as}): ${note}`;
+  if (deps.bossFact) deps.bossFact(grpId, body);
+  else {
     ctx.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', ?, ?, unixepoch() * 1000)", [
       grpId,
       ctx.config.language,
-      `boss (${as}): ${note}`,
+      body,
     ]);
+  }
   ctx.bus.emit({
     grpId,
     author: "cos",
@@ -302,15 +310,12 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
   });
 
   if (as === "reject") {
-    ctx.sched.cancelPending(grpId, "rejected by the boss");
-    // Still a retro: an abandoned group is exactly the kind whose lesson matters.
-    ctx.sched.enqueue("agent_turn", {
-      grp_id: grpId,
-      payload: {
-        role: "pm",
-        rejection: `The boss dropped this: ${note}. Write the retro (\`orch journal add --kind retro\`) and stop.`,
-      },
-    });
+    // Actually dissolve it. Cancelling the queue left the group ACTIVE, so it went
+    // on holding its paths against every other group — a requirement nobody wanted
+    // could block one they did, indefinitely. The retro turn that used to be
+    // enqueued here could never run either: no status a dropped group has is
+    // dispatchable, so it sat pending forever.
+    dropGroup(ctx, grpId, note);
   } else if (as === "respec") {
     // PLANNING, not DRAFT. DRAFT blocks dispatch, so setting it here deadlocked the
     // Dispatcher turn enqueued on the next line — the group sat waiting on a boss
@@ -321,10 +326,32 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
       payload: { role: "dispatcher", respec: note, rotate: true, skills },
     });
   } else {
-    ctx.sched.enqueue("agent_turn", {
-      grp_id: grpId,
-      payload: { role: "pm", rejection: `The boss wants a correction: ${note}`, skills },
-    });
+    // A patch normally goes to the PM, who owns the work in flight. But while the
+    // card is waiting for approval there is no work in flight and no PM — the
+    // Dispatcher owns the card, and the card is the thing that has to change.
+    // Sending it to a PM meant the addition was never read and the boss approved a
+    // card that did not contain what they had just asked for.
+    const draft =
+      ctx.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)?.status ===
+      "DRAFT";
+    if (draft) {
+      ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ?", [grpId]);
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: grpId,
+        payload: {
+          role: "dispatcher",
+          rejection:
+            `The boss added a requirement while the card was waiting for approval: ${note}\n\n` +
+            `Rewrite the card so it covers this, then file it again with \`orch draft\`.`,
+          skills,
+        },
+      });
+    } else {
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: grpId,
+        payload: { role: "pm", rejection: `The boss wants a correction: ${note}`, skills },
+      });
+    }
   }
   ctx.sched.tick();
 }

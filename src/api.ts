@@ -12,7 +12,7 @@ import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, parseOwns } from "./mech/ownership.ts";
 import { acceptSlice } from "./mech/review.ts";
-import { startGroup, sweepApproved } from "./mech/start.ts";
+import { dropGroup, startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
@@ -1533,37 +1533,6 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
   const err = await startGroup(ctx, grpId);
   return err ? bad(err) : text("ok");
 };
-
-/**
- * Wind a group up without merging it: the boss decided it should not be done.
- *
- * No retro and no librarian turn — it never did any work, and demanding a retro
- * for a dropped requirement teaches the agents that retros are paperwork. The
- * worktree and every event stay: archiving must never mean deleting.
- *
- * `owns` is deliberately left alone. `canStart` only counts ACTIVE groups, so
- * DISSOLVED already releases the paths, and blanking the column would erase what
- * this group was allowed to touch from the record.
- */
-export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
-  ctx.sched.cancelPending(grpId, "boss dropped it");
-  ctx.db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
-  ctx.db.run("UPDATE agent SET state = 'retired', session_id = NULL, token = NULL WHERE grp_id = ?", [grpId]);
-  ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [grpId]);
-  // Anything it had asked the boss dies with it, or the question outlives the
-  // requirement and sits in 待办 forever.
-  ctx.db.run(
-    `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
-     WHERE grp_id = ? AND answer IS NULL`,
-    [grpId],
-  );
-  ctx.bus.emit({
-    grpId,
-    author: "boss",
-    kind: "state_change",
-    body: say(ctx.config?.language, "group.dropped", { why: why ? `：${why}` : "" }),
-  });
-}
 
 /**
  * Wind a merged group up. One path, whether the boss said so or `gh` did.
