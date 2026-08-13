@@ -397,7 +397,10 @@ export async function* ndjsonLines(
 ): AsyncGenerator<string, void, unknown> {
   const dec = new TextDecoder();
   let buf = "";
-  for await (const chunk of stream) {
+  // Bun's ReadableStream is async-iterable; the DOM lib's type is not, and the
+  // web sources need that lib. Asserting here beats excluding web/ from the
+  // typecheck, which is how `ROW is not defined` reached a running page.
+  for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
     buf += dec.decode(chunk, { stream: true });
     let nl: number;
     while ((nl = buf.indexOf("\n")) !== -1) {

@@ -5,7 +5,7 @@ import { interrupt, park, unpark } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
-import { pollClaudeUsage } from "./subusage.ts";
+import { pollUsage } from "./subusage.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -346,7 +346,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // so the only way to put the two side by side in the header is to ask. Rate
   // limited to five minutes inside, and it swallows its own failures — the
   // endpoint is undocumented and nothing here may depend on it.
-  await pollClaudeUsage(ctx.db, now());
+  await pollUsage(ctx.db, cfg.dataDir, now());
 
   // 7e. Keep the shared repo map current.
   //

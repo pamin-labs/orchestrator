@@ -6,7 +6,7 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "orch": "bun run src/orch/cli.ts",
-    "test": "bun test",
+    "test": "bun test test/",
     "build:web": "bun build web/src/main.tsx --outdir web/dist --minify --target browser && bunx @tailwindcss/cli -i web/style.css -o web/dist/app.css --minify",
     "dev": "bun run build:web && bun run src/server.ts"
   },
