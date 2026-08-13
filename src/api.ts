@@ -1259,9 +1259,24 @@ const getTasks: Handler = async (ctx, req) => {
   // whole plan's tasks let the writer mark future slices done, which pushed
   // slices that had never started into review.
   const rows = ctx.db
-    .query<{ id: number; title: string; status: string; slice_id: number | null; owner: string | null }, [number]>(
-      `SELECT t.id, t.title, t.status, t.slice_id, a.role AS owner
-       FROM task t LEFT JOIN agent a ON a.id = t.owner_agent_id
+    .query<
+      {
+        id: number;
+        title: string;
+        status: string;
+        slice_id: number | null;
+        owner: string | null;
+        claim_json: string | null;
+      },
+      [number]
+    >(
+      // The owner is only shown when it is someone who can still act. A retired
+      // row rendered as `engineer` reads as "another engineer has this", and the
+      // writer's own name for itself is `engineer` too — so the list said the card
+      // was taken, by nobody, forever.
+      `SELECT t.id, t.title, t.status, t.slice_id, t.claim_json,
+              (SELECT a.role FROM agent a WHERE a.id = t.owner_agent_id AND a.state != 'retired') AS owner
+       FROM task t
        WHERE t.grp_id = ?
          AND (t.slice_id IS NULL
               OR t.slice_id IN (SELECT id FROM slice WHERE grp_id = t.grp_id AND status NOT IN ('pending','accepted')))
@@ -1290,6 +1305,28 @@ const getTasks: Handler = async (ctx, req) => {
       "Later slices open one at a time, after the slice before them is accepted. " +
       "Their cards appear here by themselves — do not ask the boss to create or dispatch them."
     : "";
+  // A card that was delivered once and sent back for a retry.
+  //
+  // The work is almost always still on the branch — the retry is usually about one
+  // failing criterion, not about the whole slice. A writer that cannot tell a fresh
+  // card from a reopened one starts over, and then spends the turn fighting its own
+  // earlier commit. `--already-done` is the exit and it exists; it only gets used if
+  // it is named here, next to the card, for the same reason the note above exists.
+  const reopened = rows.filter((r) => r.status === "pending" && r.claim_json);
+  const redo = reopened.length
+    ? "\n" +
+      reopened
+        .map((r) => {
+          let claim: unknown = null;
+          try { claim = JSON.parse(r.claim_json!); } catch {}
+          const files = extractClaimedFiles([claim]).slice(0, 6).join(", ");
+          return `task ${r.id} was delivered once already${files ? `, touching ${files}` : ""}`;
+        })
+        .join("\n") +
+      "\nCheck the branch before you rewrite anything — `git log origin/main..HEAD` and " +
+      "`git diff origin/main...HEAD`. If the work is still there and still right, claim the card " +
+      'and close it with `--already-done "<what is on the branch>"` instead of doing it twice.'
+    : "";
   if (rows.length === 0) return text(`no tasks are open in this group right now${gated}`);
   // Lines, not a JSON array. Handing an agent `[{"id":1,"title":"…"}]` invites it
   // to pass the title where an id belongs, which is what happened live.
@@ -1298,7 +1335,7 @@ const getTasks: Handler = async (ctx, req) => {
       (r) =>
         `${String(r.id).padEnd(4)}${r.status.padEnd(13)}${String(r.slice_id ?? "-").padEnd(7)}` +
         `${(r.owner ?? "-").padEnd(12)}${r.title}`,
-    )].join("\n") + gated,
+    )].join("\n") + redo + gated,
   );
 };
 
@@ -1306,9 +1343,15 @@ const postTaskClaim: Handler = async (ctx, req) => {
   const b = await body<{ task_id: number }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
+  // A retired owner is not an owner. Ownership is a row id, and a group that
+  // rehires its writer — a rotation, a restart, anything that ends one agent row
+  // and starts another — leaves its own cards locked to a session that no longer
+  // exists. Nothing could ever unlock them, which is how a live group ends up with
+  // work it is not allowed to touch.
   const r = ctx.db.run(
     `UPDATE task SET owner_agent_id = ?, status = 'in_progress'
-     WHERE id = ? AND owner_agent_id IS NULL
+     WHERE id = ? AND (owner_agent_id IS NULL
+                       OR owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired'))
        AND (slice_id IS NULL
             OR slice_id IN (SELECT id FROM slice WHERE id = task.slice_id AND status NOT IN ('pending','accepted')))`,
     [a.id, b.task_id],
@@ -1383,13 +1426,16 @@ const postTaskDone: Handler = async (ctx, req) => {
   }
 
   // Unowned is fine: a group has one writer, so requiring an explicit claim only
-  // adds a step that gets forgotten. Someone else's task is not.
+  // adds a step that gets forgotten. Someone else's task is not — unless that
+  // someone else is retired, in which case the card outlived its claimant and the
+  // group's current writer is the only one who can finish it. Same reason as claim.
   const claim = b.already_done?.trim()
     ? { already_done: b.already_done.trim(), files: [] }
     : (b.claim as unknown);
   const done = ctx.db.run(
     `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
-     WHERE id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?)`,
+     WHERE id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?
+                       OR owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired'))`,
     [JSON.stringify(claim), a.id, b.task_id, a.id],
   );
   if (done.changes === 0) return bad(`task ${b.task_id} is not yours, or does not exist`);
