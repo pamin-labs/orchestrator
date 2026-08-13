@@ -1,4 +1,6 @@
 import type { DB } from "../db.ts";
+import { loadMap, mapFor } from "./repomap.ts";
+
 
 /**
  * Retrieval for `orch ctx query`.
@@ -112,6 +114,12 @@ export interface QueryOptions {
   question: string;
   /** Hard character budget. ~4 chars per token. */
   budget?: number;
+  /**
+   * Where the answer lives, already looked up. Passed in rather than looked up
+   * here because PageIndex navigation is a model call, and this function is the
+   * pure, synchronous half — the half every test can run without a model.
+   */
+  where?: string;
   now?: () => number;
 }
 
@@ -183,6 +191,14 @@ export function query(opts: QueryOptions): string {
       );
     }
   }
+
+  // Where things live. PageIndex first — a model walks the summary tree and can
+  // land on a file whose name shares no word with the question — and the lexical
+  // map when there is no tree yet or the navigator fails. Shared by every group,
+  // so seven agents stop grepping the same repository for the same file.
+  const room = Math.floor(budget / 4);
+  const where = opts.where || mapFor(loadMap(opts.db, opts.projectId ?? null), opts.question, room);
+  if (where) push(`## Where that lives\n${where.slice(0, room)}`);
 
   const docs = opts.db
     .query<Doc, [number | null, number | null]>(

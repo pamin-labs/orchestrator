@@ -144,7 +144,10 @@ function formatFeedback(results: GateResult[]): string {
   return failed
     .map(
       (r) =>
-        `${r.name}: exit ${r.exitCode}\n${r.errorLines.slice(0, 20).join("\n")}` +
+        // Deduped: a failing suite repeats the same assertion once per case, and
+        // twenty identical lines is twenty lines the agent re-reads every round for
+        // one fact. The full log is on disk and deliberately not here.
+        `${r.name}: exit ${r.exitCode}\n${[...new Set(r.errorLines)].slice(0, 20).join("\n")}` +
         (r.logPath ? `\n(full log: ${r.logPath})` : ""),
     )
     .join("\n\n");

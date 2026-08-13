@@ -5,6 +5,7 @@ import { interrupt, park, unpark } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
+import { buildMap, renderMap, saveMap } from "./repomap.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
 import { defaultBase, type GitRunner } from "./worktree.ts";
 
@@ -281,6 +282,22 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       body: t("rl.resumed"),
     });
     findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", body: t("rl.resumed") });
+  }
+
+  // 7e. Keep the shared repo map current.
+  //
+  // Deterministic and cheap — `git ls-files` plus a regex per file — and only
+  // written when the render changed, so a quiet repo costs one comparison. This is
+  // the thing seven groups were each rediscovering by grep.
+  for (const p of ctx.db
+    .query<{ id: number; repo_path: string }, []>("SELECT id, repo_path FROM project")
+    .all()) {
+    const ls = await deps.git(p.repo_path, ["ls-files"], p.repo_path);
+    if (ls.code !== 0) continue;
+    const files = ls.out.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (saveMap(ctx.db, p.id, renderMap(buildMap(p.repo_path, () => files)))) {
+      ctx.bus.emit({ author: "librarian", kind: "state_change", body: `repo map refreshed (${files.length} files)` });
+    }
   }
 
   // 8. A live group with nothing queued.
