@@ -173,6 +173,22 @@ export async function main(argv: string[]): Promise<number> {
           return usageError("task claim needs the numeric id from `orch task list`, not the title");
         }
         r = await call("POST", "/orch/task/claim", { task_id: id });
+      } else if (sub === "split") {
+        // One box, several unrelated asks. Titles+ideas on stdin as JSON, because a
+        // paragraph per requirement does not fit in flags.
+        const gid = Number(args[2]);
+        if (!Number.isInteger(gid)) {
+          return usageError(
+            "orch task split <group_id> — then a JSON array on stdin: " +
+              '[{"name":"short-name","idea":"one requirement, in the boss\'s words"}, …]',
+          );
+        }
+        const raw = (await stdin()).trim();
+        const parsed = raw ? safeJson(raw) : null;
+        if (!Array.isArray(parsed)) {
+          return usageError('split needs a JSON array on stdin: [{"name":"…","idea":"…"}, …]');
+        }
+        r = await call("POST", "/orch/split", { group_id: gid, requirements: parsed });
       } else if (sub === "done") {
         // Agents reach for a heredoc as naturally as for a flag, so accept the
         // claim on stdin too. The id stays required — silently completing "task
@@ -192,6 +208,7 @@ export async function main(argv: string[]): Promise<number> {
           task_id: id,
           claim: raw.trim() ? safeJson(raw.trim()) : undefined,
           already_done: alreadyDone || undefined,
+          review: typeof flags.review === "string" ? flags.review : undefined,
         });
       } else return usageError(`unknown task subcommand ${sub}`);
       break;

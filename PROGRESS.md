@@ -183,6 +183,7 @@ bun run src/server.ts                     # 起服务
 
 ## 已知偏离 PLAN.md
 
+
 - 新增状态 `PLANNING`
 - `grp` 无 `channel_id`；增加 `owns_json` / `spent_usd` / `paused_at` / `merge_seq` / `pr_number` / `pr_seen_at` / `pr_checks_sig`
 - `agent` 增加 `token` / `stable_hash` / `idle_turns` / `loop_file` / `loop_count`

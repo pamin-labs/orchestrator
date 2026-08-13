@@ -123,8 +123,10 @@ async function harness(opts: { gates?: string[] } = {}) {
   return { db, ctx, sched, deps, app, post, repo, wt, specs, gate, git };
 }
 
+const REVIEW = "pass: a.txt contains two — the diff line adds it";
+
 const doneClaim = (post: any, claim: unknown) =>
-  post("/orch/task/done", { task_id: 1, claim }, "tok-eng");
+  post("/orch/task/done", { task_id: 1, claim, review: REVIEW }, "tok-eng");
 
 test("a truthful claim with a passing gate reaches QA, not the boss", async () => {
   const h = await harness();
@@ -135,7 +137,9 @@ test("a truthful claim with a passing gate reaches QA, not the boss", async () =
   await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
   await h.sched.drain();
 
-  expect(gateState(h.db, 1)).toEqual({ reconcile: "pass", gate: "pass" });
+  // self is layer 1 and is recorded by `task done --review`, before the two
+  // deterministic layers run.
+  expect(gateState(h.db, 1)).toEqual({ self: "pass", reconcile: "pass", gate: "pass" });
   const slice = h.db.query<{ status: string }, []>("SELECT status FROM slice WHERE id = 1").get()!;
   expect(slice.status).toBe("qa");
   // A QA turn was queued; the boss is not involved until QA files a verdict.
@@ -171,7 +175,7 @@ test("a failing gate sends the slice back with the failing lines", async () => {
   await doneClaim(h.post, { files: ["a.txt"] });
   await h.sched.drain();
 
-  expect(gateState(h.db, 1)).toEqual({ reconcile: "pass", gate: "fail" });
+  expect(gateState(h.db, 1)).toEqual({ self: "pass", reconcile: "pass", gate: "fail" });
   expect(h.specs.at(-1)!.prompt).toContain("FAIL_mw_test");
 });
 
@@ -375,7 +379,7 @@ test("a task on a slice that has not started cannot be listed or completed", asy
   expect(list).toContain("edit a.txt");
   expect(list).not.toContain("later work");
 
-  const done = await h.post("/orch/task/done", { task_id: 2, claim: { files: ["a.txt"] } }, "tok-eng");
+  const done = await h.post("/orch/task/done", { task_id: 2, claim: { files: ["a.txt"] }, review: REVIEW }, "tok-eng");
   expect(done.status).toBe(422);
   expect(await done.text()).toContain("not being worked");
 
@@ -416,13 +420,17 @@ test("task done refuses an empty claim — otherwise reconcile is vacuous", asyn
     expect(r.status).toBe(422);
     expect(await r.text()).toContain("--claim");
   }
-  const ok = await h.post("/orch/task/done", { task_id: 1, claim: { files: ["a.txt"] } }, "tok-eng");
+  const ok = await h.post("/orch/task/done", { task_id: 1, claim: { files: ["a.txt"] }, review: REVIEW }, "tok-eng");
   expect(ok.status).toBe(200);
 });
 
 test("--already-done is accepted and recorded as such", async () => {
   const h = await harness();
-  const r = await h.post("/orch/task/done", { task_id: 1, already_done: "S1 covered it" }, "tok-eng");
+  const r = await h.post(
+    "/orch/task/done",
+    { task_id: 1, already_done: "S1 covered it", review: "pass: nothing to change — S1 already did it" },
+    "tok-eng",
+  );
   expect(r.status).toBe(200);
   const claim = JSON.parse(
     h.db.query<{ claim_json: string }, []>("SELECT claim_json FROM task WHERE id = 1").get()!.claim_json,
@@ -494,4 +502,45 @@ test("with nothing configured, every slice waits for the boss", async () => {
   handToBoss({ ctx: h.ctx }, 1);
   expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status)
     .toBe("awaiting_boss");
+});
+
+
+test("the task that closes a slice needs a self-review, and vacuous does not count", async () => {
+  const h = await harness();
+  writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
+
+  // The Engineer's role prompt has always said a content-free self-review would be
+  // rejected. Until this check existed, nothing rejected anything — the prompt was
+  // describing a gate that was not there.
+  const none = await h.post("/orch/task/done", { task_id: 1, claim: { files: ["a.txt"] } }, "tok-eng");
+  expect(none.status).toBe(422);
+  expect(await none.text()).toContain("--review");
+
+  const vacuous = await h.post(
+    "/orch/task/done",
+    { task_id: 1, claim: { files: ["a.txt"] }, review: "looks good" },
+    "tok-eng",
+  );
+  expect(vacuous.status).toBe(422);
+  expect(await vacuous.text()).toContain("carries no information");
+
+  const ok = await h.post(
+    "/orch/task/done",
+    { task_id: 1, claim: { files: ["a.txt"] }, review: "pass: a.txt says two — the diff adds that line" },
+    "tok-eng",
+  );
+  expect(ok.status).toBe(200);
+  // Recorded as the gate layer it is, so the panel can draw the first tick and the
+  // evidence panel can show what was claimed.
+  const gates = JSON.parse(
+    h.db.query<{ gates_json: string }, []>("SELECT gates_json FROM slice WHERE id = 1").get()!.gates_json,
+  );
+  expect(gates.self).toBe("pass");
+  const filed = h.db
+    .query<{ body: string; author: string }, []>(
+      "SELECT author, body FROM event WHERE kind = 'gate_result' ORDER BY seq",
+    )
+    .all()
+    .find((e) => e.body.includes("a.txt says two"))!;
+  expect(filed.author).toBe("engineer");
 });

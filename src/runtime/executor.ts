@@ -8,6 +8,7 @@ import type { Executor, Job } from "../scheduler.ts";
 import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
 import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
 import { say } from "../lang.ts";
+import { listSkills, readSkill } from "../mech/skills.ts";
 import { denyOutsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
@@ -465,6 +466,21 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
   }
 
   const unread = readUnread(ctx, agent, job.grp_id);
+  // Skill text, read off the host for this turn only. The names travelled on the
+  // payload; the bodies are not stored anywhere, so editing a SKILL.md takes effect
+  // on the next turn that asks for it.
+  const wanted = Array.isArray(payload.skills) ? payload.skills.map(String) : [];
+  if (wanted.length) {
+    const repo = ctx.db
+      .query<{ repo_path: string }, [number | null]>(
+        "SELECT p.repo_path FROM project p JOIN grp g ON g.project_id = p.id WHERE g.id = ?",
+      )
+      .get(job.grp_id ?? null)?.repo_path;
+    const all = listSkills(repo);
+    const found = wanted.map((n) => all.find((s) => s.name === n)).filter((s): s is NonNullable<typeof s> => !!s);
+    if (found.length) delta.skills = found.map(readSkill).join("\n\n");
+  }
+
   if (unread) delta.unread = unread;
 
   // A payload key nobody renders means the agent is woken with no instruction —
@@ -503,6 +519,7 @@ const PAYLOAD_KEYS = new Set([
   "audit_branch",
   "audit_group",
   "review",
+  "skills",
   "project_id",
   "onboarding",
   "lease_id",

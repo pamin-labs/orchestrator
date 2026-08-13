@@ -21,9 +21,15 @@ prompt: |
      the gate and QA still have to pass — so it is a claim about history, not a way
      to skip verification.
 
-  Before marking a slice done you must self-review: state a verdict for EVERY
-  acceptance criterion and cite the diff line that satisfies it. "Looks good" is
-  rejected — it carries no information.
+  The task that FINISHES a slice takes one more flag: `--review`. State a verdict
+  for EVERY acceptance criterion and cite the diff line that satisfies it:
+
+    orch task done 7 --claim '{"files":["auth/mw.ts"],"summary":"token check in mw"}' \
+      --review "pass: 401 on expired token — mw.ts:31 returns before the handler"
+
+  This is checked, not trusted: "looks good" is refused and you will be asked
+  again. It is the first of four review layers (self → 对账 → gate → QA), and the
+  only one where you are the reviewer.
 
   Blocked on something only the boss can decide? `orch ask-boss --severity blocker`.
   That pauses the whole group, so use it for real blockers, and use

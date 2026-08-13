@@ -17,9 +17,10 @@ import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
 import { preflightPr } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
-import { gatesFor } from "./mech/gate.ts";
+import { gatesFor, recordGate } from "./mech/gate.ts";
+import { listSkills, skillNames } from "./mech/skills.ts";
 import { say } from "./lang.ts";
-import { validateDraftCard, validateJournal } from "./mech/validate.ts";
+import { validateDraftCard, validateJournal, validateSelfReview } from "./mech/validate.ts";
 
 /**
  * One API, two clients: the web UI (the boss's main surface) and `orch` (what
@@ -359,11 +360,23 @@ const postSay: Handler = async (ctx, req) => {
   const grpId = b.group_id == null ? null : resolveGroup(ctx, b.group_id);
   if (b.group_id != null && !grpId) return bad("no such requirement");
 
+  const project = grpId
+    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
+        ?.project_id ?? null
+    : null;
+  const repo = project
+    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(project)
+        ?.repo_path
+    : null;
+  // A skill the boss pointed at is read on the host and inlined into that turn — for
+  // triage too, since "do it this way instead" is exactly when it matters.
+  const skills = skillNames(said, repo);
+
   if (b.as) {
     if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
     if (!grpId) return bad("triage needs a requirement");
     ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
-    triage({ ctx, git: ctx.git }, grpId, b.as as Triage, said);
+    triage({ ctx, git: ctx.git }, grpId, b.as as Triage, said, skills);
     ctx.sched.tick();
     return text("ok");
   }
@@ -372,10 +385,6 @@ const postSay: Handler = async (ctx, req) => {
   // the group's only conversational entrance so one sentence costs one turn
   // instead of five.
   const to = b.target || "pm";
-  const project = grpId
-    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-        ?.project_id ?? null
-    : null;
   const target = resolveTarget(ctx, grpId, to, project);
   if (!target) {
     const known = (ctx.knownRoles?.() ?? []).join(", ");
@@ -395,7 +404,7 @@ const postSay: Handler = async (ctx, req) => {
     grp_id: target.grpId ?? grpId,
     agent_id: target.agentId,
     priority: 6,
-    payload: { mail: { from: "boss", from_group: null, intent: "request", body: said } },
+    payload: { mail: { from: "boss", from_group: null, intent: "request", body: said }, skills },
   });
   ctx.sched.tick();
   return text("ok");
@@ -626,6 +635,124 @@ const postDraft: Handler = async (ctx, req) => {
 };
 
 /** The Architect cuts a group's boundary before work is planned inside it. */
+/**
+ * One idea, several requirements.
+ *
+ * The boss types into one box, and what lands there is often not one thing: a dozen
+ * questions and three unrelated asks in one paragraph. Until this existed the shape
+ * of the system forced all of it into ONE requirement — one DRAFT card with one 目标
+ * line and at most five slices, one branch, one Engineer working serially, and one PR
+ * at the end. The Dispatcher's only options were to drop most of it or to write a 目标
+ * that was not true ("多项改进"), and `checkSplit` would not object, because four
+ * unrelated slices genuinely do have four different acceptance criteria.
+ *
+ * A requirement is the unit of a PR and of acceptance (PLAN.md §7), so unrelated work
+ * must be unrelated requirements: separate branches, separate boundaries, separately
+ * mergeable, separately rejectable. Splitting IS decomposition, which makes it the
+ * Dispatcher's job — so it gets a verb rather than a prompt telling it to cope.
+ *
+ * Only before work exists. After a card is approved there is a branch and a worktree,
+ * and re-cutting then is `respec`, not a split.
+ */
+const MAX_SPLIT = 6;
+
+const postSplit: Handler = async (ctx, req) => {
+  const b = await body<{ group_id: number | string; requirements?: { name?: string; idea: string }[]; why?: string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not split requirements`);
+
+  const gid = resolveGroup(ctx, b.group_id, a.grp_id);
+  if (!gid) return bad("which group? pass its id or name");
+  const grp = ctx.db
+    .query<{ project_id: number; name: string; status: string; worktree: string | null }, [number]>(
+      "SELECT project_id, name, status, worktree FROM grp WHERE id = ?",
+    )
+    .get(gid);
+  if (!grp) return text("no such group", 404);
+  if (grp.status !== "PLANNING") {
+    return bad(
+      `${grp.name} is ${grp.status}, not PLANNING. A split only makes sense before a card is approved; ` +
+        `after that the branch exists and re-cutting the work is the boss's respec, not yours.`,
+    );
+  }
+  const hasWork = ctx.db
+    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ?")
+    .get(gid)!.c;
+  if (hasWork > 0 || grp.worktree) return bad(`${grp.name} already has slices or a worktree; split before that`);
+
+  const items = (b.requirements ?? []).filter((r) => r?.idea?.trim());
+  if (items.length < 2) {
+    return bad(
+      "a split needs at least 2 requirements. If it is one thing, just file the card with `orch draft`.",
+    );
+  }
+  if (items.length > MAX_SPLIT) {
+    return bad(
+      `${items.length} is too many for one split (max ${MAX_SPLIT}). Group what shares an acceptance path, ` +
+        `and ask the boss which of the rest matters first.`,
+    );
+  }
+
+  // What the boss originally said, so nothing typed in that box is lost — including
+  // the attachment paths, which live in the first note.
+  const original = ctx.db
+    .query<{ id: number; body: string }, [number]>(
+      "SELECT id, body FROM note WHERE grp_id = ? AND kind = 'fact' ORDER BY at LIMIT 1",
+    )
+    .get(gid);
+
+  const made: { id: number; name: string }[] = [];
+  for (const item of items) {
+    const name = (item.name?.trim() || slug(item.idea)).slice(0, 40);
+    const child = ctx.db
+      .query<{ id: number }, [number, string]>(
+        "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'PLANNING', unixepoch() * 1000) RETURNING id",
+      )
+      .get(grp.project_id, name)!;
+    const ch = ctx.db
+      .query<{ id: number }, [number, number]>(
+        "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000) RETURNING id",
+      )
+      .get(grp.project_id, child.id)!;
+    ctx.db.run(
+      "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
+      [
+        grp.project_id,
+        child.id,
+        ctx.config.language,
+        `${item.idea.trim()}\n\n（从「${grp.name}」拆出来的一条${original ? `，原始整段见 note #${original.id}` : ""}）`,
+      ],
+    );
+    ctx.bus.emit({
+      channelId: ch.id,
+      grpId: child.id,
+      author: "boss",
+      kind: "boss_say",
+      intent: "request",
+      body: item.idea.trim(),
+    });
+    ctx.sched.enqueue("agent_turn", { grp_id: child.id, priority: 5, payload: { role: "dispatcher", idea: item.idea.trim() } });
+    made.push({ id: child.id, name });
+  }
+
+  // The container is done: its pending turns would re-plan work that has moved. No
+  // retro — it never did any work, and demanding one for a bookkeeping group would
+  // teach the agents that retros are paperwork.
+  ctx.sched.cancelPending(gid, "split into separate requirements");
+  ctx.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = ?", [gid]);
+  ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [gid]);
+  ctx.bus.emit({
+    grpId: gid,
+    author: a.role,
+    kind: "state_change",
+    body: `拆成 ${made.length} 个独立需求：${made.map((m) => m.name).join("、")}${b.why ? ` —— ${b.why}` : ""}`,
+    meta: { split: made.map((m) => m.id) },
+  });
+  ctx.sched.tick();
+  return json({ requirements: made });
+};
+
 const postOwns: Handler = async (ctx, req) => {
   const b = await body<{ group_id: number | string; paths: string[] }>(req);
   const a = agentOf(ctx, req);
@@ -804,7 +931,7 @@ const postTaskClaim: Handler = async (ctx, req) => {
 };
 
 const postTaskDone: Handler = async (ctx, req) => {
-  const b = await body<{ task_id: number; claim?: unknown; already_done?: string }>(req);
+  const b = await body<{ task_id: number; claim?: unknown; already_done?: string; review?: string }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
 
@@ -833,6 +960,42 @@ const postTaskDone: Handler = async (ctx, req) => {
     );
   }
 
+  /**
+   * Self-review: layer 1 of the slice review, and the only layer that was written
+   * down and never enforced.
+   *
+   * The Engineer's role prompt already told it a content-free self-review would be
+   * rejected, and nothing rejected anything — `validateSelfReview` existed, had a
+   * test, and no caller. A prompt that promises a check nobody runs is worse than no
+   * check: it reads as done. PLAN.md §7 is explicit that self-review needs a
+   * deterministic anchor (the acceptance criteria and the agent's own diff lines) or
+   * it is self-congratulation.
+   *
+   * Demanded only on the task that closes the slice: that is where the work is
+   * finished, and asking per task would make it a formality four times over.
+   */
+  const closing = ctx.db
+    .query<{ slice_id: number | null; open: number }, [number]>(
+      `SELECT t.slice_id AS slice_id,
+              (SELECT count(*) FROM task o WHERE o.slice_id = t.slice_id AND o.status != 'done' AND o.id != t.id) AS open
+       FROM task t WHERE t.id = ?`,
+    )
+    .get(b.task_id);
+  const lastOfSlice = closing?.slice_id != null && closing.open === 0;
+  if (lastOfSlice) {
+    const spec = ctx.db
+      .query<{ accept_spec: string; seq: number }, [number]>("SELECT accept_spec, seq FROM slice WHERE id = ?")
+      .get(closing!.slice_id!);
+    const v = validateSelfReview(b.review ?? "", 1);
+    if (!v.ok) {
+      return bad(
+        `${v.error}\n\nThis task closes S${spec?.seq ?? "?"}, so it needs a self-review:\n` +
+          `  orch task done ${b.task_id} --claim '{…}' --review "pass: <criterion> — <the diff line that satisfies it>"\n` +
+          `Acceptance criterion: ${spec?.accept_spec ?? "(none recorded)"}`,
+      );
+    }
+  }
+
   // Unowned is fine: a group has one writer, so requiring an explicit claim only
   // adds a step that gets forgotten. Someone else's task is not.
   const claim = b.already_done?.trim()
@@ -857,6 +1020,18 @@ const postTaskDone: Handler = async (ctx, req) => {
   const slice = ctx.db
     .query<{ slice_id: number | null }, [number]>("SELECT slice_id FROM task WHERE id = ?")
     .get(b.task_id);
+  if (lastOfSlice && b.review?.trim()) {
+    recordGate(ctx.db, closing!.slice_id!, "self", "pass");
+    ctx.bus.emit({
+      grpId: a.grp_id,
+      author: a.role,
+      kind: "gate_result",
+      intent: "decision",
+      body: b.review.trim().slice(0, 1200),
+      meta: { slice_id: closing!.slice_id, layer: "self" },
+    });
+  }
+
   if (slice?.slice_id) {
     const open = ctx.db
       .query<{ c: number }, [number]>(
@@ -1833,27 +2008,9 @@ const getSkills: Handler = async (ctx, req) => {
   const repo = ctx.db
     .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
     .get(id)?.repo_path;
-  if (!repo) return json({ skills: [] });
-
-  const out: { name: string; path: string; description: string }[] = [];
-  for (const base of ["skills", "agents/skills"]) {
-    const dir = join(repo, ".claude", base);
-    if (!existsSync(dir)) continue;
-    for (const d of readdirSync(dir, { withFileTypes: true })) {
-      if (!d.isDirectory()) continue;
-      const file = join(dir, d.name, "SKILL.md");
-      if (!existsSync(file)) continue;
-      // First line of frontmatter description, if any. Cheap and good enough for a
-      // picker; the agent reads the real thing.
-      let description = "";
-      try {
-        const head = readFileSync(file, "utf8").slice(0, 1200);
-        description = (/^description:\s*(.+)$/m.exec(head)?.[1] ?? "").trim().slice(0, 120);
-      } catch {}
-      out.push({ name: d.name, path: `.claude/${base}/${d.name}/SKILL.md`, description });
-    }
-  }
-  return json({ skills: out.sort((a, b) => a.name.localeCompare(b.name)) });
+  return json({
+    skills: listSkills(repo).map(({ name, rel, description, scope }) => ({ name, path: rel, description, scope })),
+  });
 };
 
 const getDirs: Handler = async (ctx, req) => {
@@ -1961,6 +2118,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/triage$/, postTriage],
   ["POST", /^\/orch\/draft$/, postDraft],
   ["POST", /^\/orch\/owns$/, postOwns],
+  ["POST", /^\/orch\/split$/, postSplit],
 
   ["GET", /^\/api\/state$/, getState],
   ["GET", /^\/api\/cost$/, getCost],

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { listSkills, readSkill, referencedSkills } from "../src/mech/skills.ts";
 import {
   assemble,
   buildDelta,
@@ -120,4 +121,39 @@ test("the loaded tool set defaults to exactly what the whitelist implies", () =>
   const s = buildStable(parts());
   // `Bash(orch *)` needs Bash loaded; nothing else should be paid for.
   expect(s.tools.sort()).toEqual(["Bash", "Edit", "Read"]);
+});
+
+test("a skill the boss pointed at lands in the delta, never in the cached prefix", () => {
+  const dir = "/tmp/skilltest";
+  const all = listSkills(dir);
+  const tidy = all.find((s) => s.name === "tidy")!;
+  expect(tidy.scope).toBe("project");
+  expect(tidy.rel).toBe(".claude/skills/tidy/SKILL.md");
+
+  // The path is how the composer refers to it; a bare /name works too, because that
+  // is what gets typed.
+  expect(referencedSkills(`按 ${tidy.rel} 来做`, all).map((s) => s.name)).toEqual(["tidy"]);
+  expect(referencedSkills("用 /tidy 的做法", all).map((s) => s.name)).toEqual(["tidy"]);
+  expect(referencedSkills("nothing here", all)).toEqual([]);
+
+  const body = readSkill(tidy);
+  expect(body).toContain("guard clause first");
+
+  // The whole point: skill text is per-turn. In the stable half it would tax every
+  // turn of the session for a skill used in one, and it would also rotate the
+  // session, throwing away the cached prefix as well.
+  const stable = buildStable({
+    rolePrompt: "engineer",
+    model: "claude-sonnet-5",
+    allowedTools: ["Bash(orch *)", "Read"],
+    settingsPath: "/tmp/s.json",
+    addDirs: ["/tmp/wt"],
+  });
+  const { prompt } = assemble(stable, { card: "S1", skills: body });
+  expect(stable.systemAppend).not.toContain("guard clause");
+  expect(prompt).toContain("guard clause first");
+  // And after the card, before the boss's own words, which stay last.
+  const { prompt: both } = assemble(stable, { card: "S1", skills: body, bossSay: "别忘了 zh" });
+  expect(both.indexOf("guard clause")).toBeGreaterThan(both.indexOf("S1"));
+  expect(both.indexOf("别忘了 zh")).toBeGreaterThan(both.indexOf("guard clause"));
 });

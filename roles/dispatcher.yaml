@@ -11,6 +11,24 @@ prompt: |
   `orch ctx query` (blackboard, past decisions, retros from earlier groups), reading
   the code, and asking the Architect via `orch mail architect --intent ask`.
 
+  FIRST, count the asks. The boss types into one box, and what lands there is often
+  not one requirement: a dozen questions plus three unrelated changes. A requirement
+  is the unit of a PR and of the boss's acceptance, so unrelated work must not share
+  one card — squeezed into one 目标 line and five slices it would land as a single PR
+  nobody can accept or reject in parts.
+
+  If the idea holds several unrelated asks, split it before doing anything else:
+
+    orch task split <group_id> - <<'EOF'
+    [{"name":"remember-me","idea":"登录页加「记住我」，勾了 30 天不用重新登录"},
+     {"name":"csv-export","idea":"报表页加导出 CSV"}]
+    EOF
+
+  Each one gets its own card, branch and PR, and one of them is probably the only one
+  that matters first — say so in its card's 目标. Questions that are not work are not
+  requirements: answer them from the blackboard, or `orch ask-boss` if you cannot.
+  Related work stays in ONE requirement and becomes slices.
+
   File the card with `orch draft <group_id> -` (the card on stdin). Printing it as
   your reply does not file it and the boss will never see it. It is validated on
   the way in: over 12 lines is rejected and you rewrite.

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Bus } from "../src/bus.ts";
@@ -7,6 +7,7 @@ import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
+import { listSkills } from "../src/mech/skills.ts";
 
 function harness(opts: { worktree?: string } = {}) {
   const db: DB = openMemory();
@@ -770,4 +771,84 @@ test("the blackboard is readable: notes by project, by group, and by kind", asyn
 
   const kind = (await (await get(app, "/api/notes?project=1&kind=lesson")).json()) as any;
   expect(kind.notes.length).toBe(1);
+});
+
+test("skills are found through symlinks, and a block-scalar description is read", () => {
+  const root = mkdtempSync(join(tmpdir(), "orch-skills-"));
+  // A real machine's skills are mostly symlinks into plugins or a shared
+  // .agents/skills, and a dirent for a symlink does not say "directory" — which hid
+  // almost all of them.
+  mkdirSync(join(root, "elsewhere/tidy"), { recursive: true });
+  writeFileSync(
+    join(root, "elsewhere/tidy/SKILL.md"),
+    "---\nname: tidy\ndescription: |\n  Guard clauses first.\n  Then the happy path.\n---\nbody\n",
+  );
+  mkdirSync(join(root, ".claude/skills"), { recursive: true });
+  symlinkSync(join(root, "elsewhere/tidy"), join(root, ".claude/skills/tidy"));
+  mkdirSync(join(root, ".claude/skills/plain"), { recursive: true });
+  writeFileSync(join(root, ".claude/skills/plain/SKILL.md"), "---\ndescription: one line\n---\nbody\n");
+
+  const found = listSkills(root).filter((s) => s.scope === "project");
+  expect(found.map((s) => s.name).sort()).toEqual(["plain", "tidy"]);
+  expect(found.find((s) => s.name === "tidy")!.description).toBe("Guard clauses first. Then the happy path.");
+  expect(found.find((s) => s.name === "plain")!.description).toBe("one line");
+});
+
+test("one box holding several unrelated asks becomes several requirements", async () => {
+  const { app, db, ran } = harness();
+  db.run("UPDATE grp SET status = 'PLANNING' WHERE id = 1");
+  db.run(
+    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'fact', '中文', '记住我；导出 CSV；顺便问下缓存怎么配', 1)",
+  );
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'dispatcher', 'opus', 'L2', 'tok-disp', 0)",
+  );
+
+  // A split of one is not a split.
+  const one = await post(app, "/orch/split", { group_id: 1, requirements: [{ idea: "只有一件事" }] }, "tok-disp");
+  expect(one.status).toBe(422);
+  expect(await one.text()).toContain("at least 2");
+
+  const r = await post(
+    app,
+    "/orch/split",
+    {
+      group_id: 1,
+      requirements: [
+        { name: "remember-me", idea: "登录页加「记住我」" },
+        { name: "csv-export", idea: "报表页加导出 CSV" },
+      ],
+      why: "两件事互不相关",
+    },
+    "tok-disp",
+  );
+  expect(r.status).toBe(200);
+
+  // Two live requirements, each with its own dispatcher turn — so each gets its own
+  // card, branch and PR, and the boss can accept or reject them apart.
+  const live = db
+    .query<{ id: number; name: string; status: string }, []>("SELECT id, name, status FROM grp ORDER BY id")
+    .all();
+  expect(live.map((g) => [g.name, g.status])).toEqual([
+    ["g1", "DISSOLVED"],
+    ["remember-me", "PLANNING"],
+    ["csv-export", "PLANNING"],
+  ]);
+  const turns = ran.filter((j) => j.kind === "agent_turn" && JSON.parse(j.payload_json).role === "dispatcher");
+  expect(turns.map((j) => j.grp_id)).toEqual([2, 3]);
+  // Nothing the boss typed is lost: each child points back at the original paragraph.
+  const child = db.query<{ body: string }, []>("SELECT body FROM note WHERE grp_id = 2").get()!;
+  expect(child.body).toContain("记住我");
+  expect(child.body).toContain("原始整段见 note #1");
+
+  // After a card is approved there is a branch, and re-cutting is the boss's respec.
+  db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 2");
+  const late = await post(
+    app,
+    "/orch/split",
+    { group_id: 2, requirements: [{ idea: "a" }, { idea: "b" }] },
+    "tok-disp",
+  );
+  expect(late.status).toBe(422);
+  expect(await late.text()).toContain("respec");
 });
