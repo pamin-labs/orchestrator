@@ -29,6 +29,13 @@ export interface CostRow {
  * know which model it took them on. `grpId` NULL means standing — paid for across
  * the project rather than by one requirement.
  */
+export interface HourRow {
+  /** Local hour, `MM-DD HH`. Formatted here so the panel does not re-derive a timezone. */
+  hour: string;
+  claude: number;
+  codex: number;
+}
+
 export interface AgentCost extends CostRow {
   id: number;
   grpId: number | null;
@@ -53,10 +60,23 @@ export interface CostReport {
   byDifficulty: CostRow[];
   /** Which subscription paid. The axis that appeared the day roles split across two. */
   byRuntime: CostRow[];
+  /**
+   * The last 48 hours, per hour, split by provider.
+   *
+   * The only question on this page that a number cannot answer: how fast is it
+   * burning right now, and which of the two accounts is carrying it. Hourly
+   * because that is the resolution the work has — 300 to 700 turns an hour on a
+   * busy night, and two days of history in total, so a daily bucket is two dots.
+   */
+  byHour: HourRow[];
   total: CostRow;
   /** Cache hit ratio across recorded turns; the only visible sign caching works. */
   cacheRatio: number | null;
 }
+
+/** The four counters a turn reports, summed. Written once; the CASE needs it twice. */
+const TOK = `json_extract(meta_json, '$.usage.input') + json_extract(meta_json, '$.usage.output')
+           + json_extract(meta_json, '$.usage.cacheRead') + json_extract(meta_json, '$.usage.cacheCreate')`;
 
 export function costReport(db: DB, projectId?: number): CostReport {
   const where = projectId ? "WHERE project_id = ?" : "";
@@ -102,6 +122,21 @@ export function costReport(db: DB, projectId?: number): CostReport {
     )
     .all(...args);
 
+  // From the turn events rather than a new table: recordCost already emits one per
+  // turn with the usage and the model, and the model prefix is what says which
+  // account paid — the event row has no agent to join back to.
+  const byHour = db
+    .query<HourRow, any[]>(
+      `SELECT strftime('%m-%d %H', at / 1000, 'unixepoch', 'localtime') AS hour,
+              coalesce(sum(CASE WHEN json_extract(meta_json, '$.model') LIKE 'gpt%' THEN 0 ELSE ${TOK} END), 0) AS claude,
+              coalesce(sum(CASE WHEN json_extract(meta_json, '$.model') LIKE 'gpt%' THEN ${TOK} ELSE 0 END), 0) AS codex
+       FROM event
+       WHERE kind = 'tool_summary' AND meta_json LIKE '%usage%'
+         AND at > (unixepoch() - 48 * 3600) * 1000
+       GROUP BY hour ORDER BY hour`,
+    )
+    .all();
+
   const total = db
     .query<CostRow, any[]>(
       `SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens FROM grp ${where}`,
@@ -117,7 +152,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
     )
     .get(...args)!;
 
-  return { delivered, byGroup, agents, byRole, byDifficulty, byRuntime, total, cacheRatio: recentCacheRatio(db) };
+  return { delivered, byGroup, agents, byRole, byDifficulty, byRuntime, byHour, total, cacheRatio: recentCacheRatio(db) };
 }
 
 /**

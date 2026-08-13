@@ -82,6 +82,8 @@ export interface Cost {
   byDifficulty: CostRow[];
   /** Which subscription paid for it. Two accounts, so this is a real axis now. */
   byRuntime: CostRow[];
+  /** Last 48h of burn, per hour, split by which subscription paid. */
+  byHour: { hour: string; claude: number; codex: number }[];
   cacheRatio: number | null;
   delivered: { count: number; tokens: number };
 }

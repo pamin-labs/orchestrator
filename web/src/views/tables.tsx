@@ -6,6 +6,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Bar, Table, TBody, TD, TH, THead, TR } from "../ui/table";
 import { Tip } from "../ui/tooltip";
+import { BurnChart, SplitDonut } from "../ui/chart";
 import type { Agent, AgentCost, Cost, Frame, Slice, State } from "../lib/api";
 import { STATUS_ZH, owns } from "../lib/select";
 import { cn, K } from "../lib/utils";
@@ -243,15 +244,13 @@ export function CostView({ cost }: { cost: Cost | null }) {
   return (
     <>
       {/* One line, not a hero. "Dashboards of big numbers" is an anti-reference in
-          PRODUCT.md and the useful numbers here are all comparative — a token total
-          means nothing without the requirement it bought. So the total sits at the
-          scale DESIGN.md reserves for it and the two facts that qualify it sit on
-          the same baseline. */}
-      <div className="mb-5 flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-rule pb-3">
+          PRODUCT.md and every useful number here is comparative — a token total
+          means nothing without the requirement it bought — so the two facts that
+          qualify it sit on the same baseline rather than under it as supporting
+          stats. */}
+      <div className="mb-4 flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-rule pb-3">
         <span className="flex items-baseline gap-1.5">
           <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
-          {/* Names its own scope: this is the project level of 项目 → 需求 → agent,
-              and the breadcrumb naming the project is two rows away in the header. */}
           <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
         </span>
         <span className="text-[0.75rem] text-ink-2">
@@ -274,94 +273,90 @@ export function CostView({ cost }: { cost: Cost | null }) {
         </Tip>
       </div>
 
-      <Section title="按需求" note="点开是这一组的人和各自跑的模型。贵得离谱的通常是被打回过几轮的">
-        {groups.map((g) => (
-          <Node
-            key={g.grpId}
-            label={g.label}
-            tokens={g.tokens}
-            top={top}
-            share={g.tokens / sum}
-            rows={agents.filter((a) => a.grpId === g.grpId && a.tokens)}
-          />
-        ))}
-        {standing.length > 0 && (
-          <Node
-            label="常驻岗"
-            note="跨需求共用，摊不到某一个需求上"
-            tokens={standingTotal}
-            top={top}
-            share={standingTotal / sum}
-            rows={standing}
-          />
-        )}
-      </Section>
+      {/* Two columns, and the page stops at the viewport. Stacking four sections
+          down the page meant the two smallest — three difficulties and two
+          accounts, five rows between them — pushed the one list that grows off the
+          bottom. The list scrolls in its own column; the fixed-size things sit
+          beside it and never move. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_17rem] gap-x-8 max-[64rem]:grid-cols-1 max-[64rem]:gap-y-6">
+        <div className="min-w-0">
+          <SectionHead title="按需求" note="点开是这一组的人和各自跑的模型" scope="需求" />
+          <div>
+            {groups.map((g) => (
+              <Node
+                key={g.grpId}
+                label={g.label}
+                tokens={g.tokens}
+                top={top}
+                share={g.tokens / sum}
+                rows={agents.filter((a) => a.grpId === g.grpId && a.tokens)}
+              />
+            ))}
+            {standing.length > 0 && (
+              <Node
+                label="常驻岗"
+                note="跨需求共用，摊不到某一个需求上"
+                tokens={standingTotal}
+                top={top}
+                share={standingTotal / sum}
+                rows={standing}
+              />
+            )}
+          </div>
+        </div>
 
-      <Section title="按难度" note="这一栏是旋钮：标签直接决定跑哪个 model，在计划卡上就能改">
-        <Flat rows={cost.byDifficulty} />
-      </Section>
-      <Section title="按账号" note="哪个订阅在被花。顶栏的百分比是这两个池子还剩多少，这里是花在了什么上">
-        <Flat rows={cost.byRuntime ?? []} />
-      </Section>
+        {/* Sticky rather than a second scrollbar: the fixed-size blocks stay put
+            while the list that grows moves past them. */}
+        <aside className="min-w-0 self-start max-[64rem]:static lg:sticky lg:top-0">
+          <Rail title="烧得多快" note="近 48 小时，按小时">
+            <BurnChart data={cost.byHour ?? []} />
+          </Rail>
+          <Rail title="按账号" note="哪个订阅在付">
+            <SplitDonut rows={cost.byRuntime ?? []} />
+          </Rail>
+          <Rail title="按难度" note="标签决定跑哪个 model，计划卡上能改">
+            <SplitDonut rows={cost.byDifficulty ?? []} />
+          </Rail>
+        </aside>
+      </div>
     </>
   );
 }
 
-/**
- * One numeric grid for the whole page.
- *
- * Same reason the slice lanes fix their columns: a number whose left edge moves
- * with the label above it cannot be compared with that one, and comparing them is
- * the entire view. Requirements, the agents nested inside them, 难度 and 账号 all
- * land on the same three right-hand columns, so the eye reads one ruler down the
- * page instead of four.
- */
-const ROW = cn(
-  "grid grid-cols-[minmax(0,1fr)_5rem_2.75rem_4.5rem] items-center gap-x-3 px-2",
-  "max-[52rem]:grid-cols-[minmax(0,1fr)_5rem_2.75rem]",
-);
-
-function Section({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+function SectionHead({ title, note, scope }: { title: string; note: string; scope: string }) {
   return (
-    <section className="mt-7 first:mt-0">
-      <div className="mb-1 flex flex-wrap items-baseline gap-x-2.5">
+    <>
+      <div className="flex flex-wrap items-baseline gap-x-2.5">
         <h3 className="text-[0.8125rem] font-semibold">{title}</h3>
         <Meta>{note}</Meta>
       </div>
-      {/* The columns need naming. A right-aligned number and a percent sign next
-          to each other are two plausible readings of the same pair, and the reader
-          should not have to work out which is which from the magnitudes. */}
-      <div className={cn(ROW, "pb-1 text-[0.6875rem] text-ink-3")}>
-        <span>{title.replace("按", "")}</span>
+      {/* The columns need naming. A right-aligned number and a percentage next to
+          each other are two plausible readings of the same pair, and the reader
+          should not have to work it out from the magnitudes. */}
+      <div className={cn(ROW, "pb-1 pt-1 text-[0.6875rem] text-ink-3")}>
+        <span>{scope}</span>
         <span className="text-right">tokens</span>
         <span className="text-right">占比</span>
         <span className="max-[52rem]:hidden" />
+      </div>
+    </>
+  );
+}
+
+/** A fixed-size block in the right rail. Never grows, so it never pushes the list. */
+function Rail({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+  return (
+    <section className="mb-5 last:mb-0">
+      <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
+        <h3 className="text-[0.8125rem] font-semibold">{title}</h3>
+        <Meta>{note}</Meta>
       </div>
       {children}
     </section>
   );
 }
 
-/** A flat attribution: no children to open, same ruler, share against the section. */
-function Flat({ rows }: { rows: { label: string; tokens: number }[] }) {
-  const list = rows.filter((r) => r.tokens).sort((a, b) => b.tokens - a.tokens);
-  if (!list.length) return null;
-  const top = Math.max(...list.map((r) => r.tokens));
-  const sum = list.reduce((n, r) => n + r.tokens, 0);
-  return (
-    <>
-      {list.map((r) => (
-        <div key={r.label} className={cn(ROW, "border-t border-rule-soft py-1.5")}>
-          <span className="truncate pl-[1.125rem] text-[0.8125rem]" title={r.label}>{r.label}</span>
-          <span className="text-right font-mono text-[0.8125rem]">{K(r.tokens)}</span>
-          {/* A share of one row is 100%, which says nothing. */}
-          <Meta className="text-right">{list.length > 1 ? `${Math.round((r.tokens / sum) * 100)}%` : ""}</Meta>
-          <Bar frac={r.tokens / top} className="max-[52rem]:hidden" />
-        </div>
-      ))}
-    </>
-  );
-}
+
 
 /**
  * One requirement, opening onto the agents inside it.
