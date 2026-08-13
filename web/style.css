@@ -88,7 +88,15 @@
   html {
     -webkit-text-size-adjust: 100%;
   }
+  /* The document never scrolls; a pane inside it does.
+     The layout already sized itself to the viewport — header plus
+     calc(100vh - 3.5rem) — and still the window scrolled, because any child that
+     overflows its box grows the body regardless of what the box was told. One
+     stray min-height anywhere in the tree and the header slides off the top. This
+     is the only place that can state the rule once for every view. */
   body {
+    height: 100dvh;
+    overflow: hidden;
     background: var(--color-paper);
     color: var(--color-ink);
     font-family: var(--font-sans);
