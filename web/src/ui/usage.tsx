@@ -68,23 +68,20 @@ export function UsageBar({ usage }: { usage: Usage[] }) {
   );
   if (!rows.length) return null;
 
-  // A small table, aligned by window rather than by account: the question is
-  // never "how is claude doing" on its own, it is "which pool runs out first",
-  // and that is a comparison down a column. Rings were the other candidate and
-  // lose here — an arc at this size is read by angle, which nobody can compare
-  // across two rings 20px apart, while two bars on a shared left edge compare
-  // themselves.
+  // One row per account, two rings per row, each ring carrying its own label.
+  // The column headers this replaced sat above the grid and drifted out of line
+  // with the cells under them, which is the failure mode of labelling a column
+  // instead of the thing itself. A ring with 5h written beside it cannot come
+  // apart from what it measures, and the rows still align because every cell is
+  // the same width.
   return (
-    <span className="grid grid-cols-[auto_auto_auto] items-center gap-x-2.5 gap-y-0.5 font-mono text-[0.625rem]">
-      <span />
-      <span className="text-center text-ink-3">5h</span>
-      <span className="text-center text-ink-3">周</span>
+    <span className="grid grid-cols-[auto_auto_auto] items-center gap-x-3 gap-y-1 font-mono text-[0.625rem]">
       {rows.map((u) => (
         <Tip key={u.runtime} label={detail(u) || u.runtime}>
           <span className="contents cursor-default">
-            <span className="text-ink-3">{u.runtime}</span>
-            <Cell v={u.fiveHourPercent} stale={staleMark(u)} />
-            <Cell v={u.weeklyPercent} stale={staleMark(u)} />
+            <span className="truncate text-ink-3">{u.runtime}</span>
+            <Ring label="5h" v={u.fiveHourPercent} stale={staleMark(u)} />
+            <Ring label="周" v={u.weeklyPercent} stale={staleMark(u)} />
           </span>
         </Tip>
       ))}
@@ -95,21 +92,44 @@ export function UsageBar({ usage }: { usage: Usage[] }) {
 /** A reading only becomes news once it is too old to trust. */
 const staleMark = (u: Usage) => !!u.error && Date.now() - u.at > STALE_MS;
 
-function Cell({ v, stale }: { v?: number; stale: boolean }) {
-  // An account with no such window gets a dash, not a zero: "this pool does not
-  // exist here" and "this pool is untouched" are different facts.
-  if (v === undefined) return <span className="text-center text-ink-3">{stale ? "?" : "—"}</span>;
-  const hot = v >= WARN_AT;
+const R = 5.5;
+const C = 2 * Math.PI * R;
+
+/**
+ * One window, as a ring.
+ *
+ * Hand-drawn rather than charted: at 15px a chart library renders the same two
+ * arcs through a layout engine, a container observer and a tooltip portal, and
+ * this needs none of them. An account without this window still gets its ring,
+ * empty — the row has to stay aligned with the one above it, and an absent
+ * window is a fact worth showing rather than a gap.
+ */
+function Ring({ label, v, stale }: { label: string; v?: number; stale: boolean }) {
+  const known = v !== undefined;
+  const hot = known && v >= WARN_AT;
   return (
-    <span className="flex items-center gap-1">
-      <span className="relative h-1 w-9 overflow-hidden rounded-full bg-sunk">
-        <span
-          className={cn("absolute inset-y-0 left-0 rounded-full", hot ? "bg-warn" : "bg-ink-3")}
-          style={{ width: `${Math.min(100, Math.max(2, v))}%` }}
-        />
-      </span>
-      <span className={cn("w-7 text-right tabular-nums", hot ? "font-semibold text-warn" : "text-ink-2")}>
-        {Math.round(v)}%{stale ? "?" : ""}
+    <span className="flex items-center gap-1.5">
+      <svg viewBox="0 0 14 14" className="size-[15px] shrink-0 -rotate-90">
+        <circle cx="7" cy="7" r={R} fill="none" stroke="var(--color-sunk)" strokeWidth="2.5" />
+        {known && (
+          <circle
+            cx="7"
+            cy="7"
+            r={R}
+            fill="none"
+            stroke={hot ? "var(--color-warn)" : "var(--color-ink-3)"}
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray={`${(Math.min(100, Math.max(2, v)) / 100) * C} ${C}`}
+          />
+        )}
+      </svg>
+      <span className="text-ink-3">{label}</span>
+      <span
+        className={cn("w-7 text-right tabular-nums", hot ? "font-semibold text-warn" : "text-ink-2")}
+      >
+        {known ? `${Math.round(v)}%` : "—"}
+        {stale ? <span className="text-warn"> ?</span> : null}
       </span>
     </span>
   );

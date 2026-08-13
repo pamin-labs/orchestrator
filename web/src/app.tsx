@@ -17,7 +17,6 @@ import { cn } from "./lib/utils";
 import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
 import { Picker } from "./views/picker";
-import { Pipeline } from "./views/pipeline";
 import { Notes } from "./views/notes";
 import { Progress } from "./views/progress";
 import { Queue } from "./views/queue";
@@ -37,7 +36,7 @@ type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "
  * long list moves past it. Everything else scrolls whole, which is right when the
  * page has no controls of its own to lose.
  */
-const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes"]);
+const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req"]);
 interface Sel { p: number | null; view: View; g: number | null; t: string | null }
 
 const readHash = (): Sel => {
@@ -162,7 +161,11 @@ export function App() {
     go({ p: g?.project_id ?? sel.p, view: "req", g: grpId });
   };
   // A notification sent before this split points at #v=progress&g=N.
-  const view: View = sel.view === "progress" && sel.g ? "req" : sel.view;
+  // 概览 was 待办 plus the same requirement list 需求 shows, so it is gone and its
+  // queue sits on top of that list. Links already sent still work: the hash is
+  // rewritten rather than 404'd.
+  const asked: View = sel.view === "board" ? "progress" : sel.view;
+  const view: View = asked === "progress" && sel.g ? "req" : asked;
 
   // No badge on 概览: the header already carries that count, and two copies of one
   // number is how a reader stops trusting either.
@@ -171,7 +174,6 @@ export function App() {
   // uses everywhere else. The hash key stays `progress` so links already sent still
   // land.
   const VIEWS: [View, string][] = [
-    ["board", "概览"],
     ["progress", "需求"],
     ["desk", "工位墙"],
     ["notes", "记录"],
@@ -227,7 +229,7 @@ export function App() {
         spend — it is how much of tonight is left on each of the two accounts, and
         it changes what the boss approves next. It stays grey until 80%.
       */}
-      <header className="sticky top-0 z-10 flex h-12 items-center gap-4 border-b border-rule bg-rail px-6">
+      <header className="sticky top-0 z-10 flex h-11 items-center gap-4 border-b border-rule bg-rail px-6">
         <button
           className="cursor-pointer font-display text-[1.0625rem] font-semibold"
           onClick={() => go({ view: "home", p: null, g: null })}
@@ -294,7 +296,7 @@ export function App() {
       </header>
 
       {!home && (
-        <nav className="sticky top-12 z-9 flex gap-5 overflow-x-auto border-b border-rule bg-rail px-6">
+        <nav className="sticky top-11 z-9 flex gap-5 overflow-x-auto border-b border-rule bg-rail px-6">
           {VIEWS.map(([k, zh]) => (
             <button
               key={k}
@@ -326,7 +328,7 @@ export function App() {
           each view decides what scrolls inside it. 4.5rem is header plus nav. */}
       <Group
         orientation="horizontal"
-        className={cn("h-[calc(100vh-5.25rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
+        className={cn("h-[calc(100vh-5rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
       >
         <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
           {/* The view decides what scrolls. 成本 has a tab strip and a rail that
@@ -351,35 +353,30 @@ export function App() {
               </CardBody>
             </Card>
           ) : home ? (
-            <Home st={st} onEnter={(p) => go({ p, view: "board", g: null })} onOpen={openReq}
+            <Home st={st} onEnter={(p) => go({ p, view: "progress", g: null })} onOpen={openReq}
                   onAdd={() => setPicking(true)} refresh={refresh} />
-          ) : view === "board" ? (
-            <>
-              <Queue st={st} projectId={sel.p} onOpen={openReq} refresh={refresh} />
-              {groups.length ? (
-                <Pipeline
-                  st={st}
-                  groups={groups}
-                  onOpen={openReq}
-                  maxGroups={st.limits?.maxGroups ?? undefined}
-                  onAll={() => go({ view: "progress", g: null })}
-                />
-              ) : (
-                <Card>
-                  <CardBody>
-                    <CardTitle>还没有需求</CardTitle>
-                    <div className="mt-1 text-[0.75rem] text-ink-3">
-                      写一句话就行。Dispatcher 深挖、Architect 划边界，拆成计划卡再回来给你批 —— 20 秒。
-                    </div>
-                    <Button variant="go" className="mt-3" onClick={() => setAdding(true)}>＋ 新需求</Button>
-                  </CardBody>
-                </Card>
-              )}
-
-            </>
           ) : view === "progress" ? (
-            <Progress st={st} projectId={sel.p!} onOpen={openReq} maxGroups={st.limits?.maxGroups}
-                      tab={sel.t} onTab={(t) => go({ t })} />
+            groups.length ? (
+              <Progress
+                st={st}
+                projectId={sel.p!}
+                onOpen={openReq}
+                maxGroups={st.limits?.maxGroups}
+                tab={sel.t}
+                onTab={(t) => go({ t })}
+                queue={<Queue st={st} projectId={sel.p} onOpen={openReq} refresh={refresh} />}
+              />
+            ) : (
+              <Card>
+                <CardBody>
+                  <CardTitle>还没有需求</CardTitle>
+                  <div className="mt-1 text-[0.75rem] text-ink-3">
+                    写一句话就行。Dispatcher 深挖、Architect 划边界，拆成计划卡再回来给你批 —— 20 秒。
+                  </div>
+                  <Button variant="go" className="mt-3" onClick={() => setAdding(true)}>＋ 新需求</Button>
+                </CardBody>
+              </Card>
+            )
           ) : view === "req" ? (
             openGroup ? (
               <Requirement st={st} g={openGroup} refresh={refresh} open tab={sel.t} onTab={(t) => go({ t })} />

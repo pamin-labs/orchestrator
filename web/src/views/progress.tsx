@@ -1,4 +1,4 @@
-import { Meta } from "../ui/bits";
+import { Meta, Pane } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
@@ -38,11 +38,13 @@ const BUCKETS: Bucket[] = [
 const DONE = "done";
 
 export function Progress({
-  st, projectId, onOpen, maxGroups, tab, onTab,
+  st, projectId, onOpen, maxGroups, tab, onTab, queue,
 }: {
   st: State; projectId: number; onOpen: (id: number) => void; maxGroups?: number | null;
   /** From the hash, so it survives opening a requirement and coming back. */
   tab: string | null; onTab: (t: string) => void;
+  /** What needs the boss, pinned above the list. 概览 was this plus the same list. */
+  queue?: React.ReactNode;
 }) {
   const groups = st.groups.filter((g) => g.project_id === projectId);
   const archived = (st.archived ?? []).filter((a) => a.project_id === projectId);
@@ -70,8 +72,10 @@ export function Progress({
   }
 
   return (
-    <Tabs value={tab ?? fallback} onValueChange={onTab}>
-      <TabList>
+    <div className="flex min-h-0 flex-1 flex-col">
+      {queue}
+      <Tabs value={tab ?? fallback} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
+        <TabList>
         {BUCKETS.map((b) => (
           <Tab key={b.key} value={b.key} count={of(b).length} mine={b.mine}>
             {b.zh}
@@ -91,14 +95,19 @@ export function Progress({
       </TabList>
 
       {BUCKETS.map((b) => (
-        <TabPanel key={b.key} value={b.key}>
-          <List st={st} groups={of(b)} onOpen={onOpen} hint={b.hint} mine={!!b.mine} empty={emptyOf(b.key)} />
+        <TabPanel key={b.key} value={b.key} className="flex min-h-0 flex-1 flex-col">
+          <Pane>
+            <List st={st} groups={of(b)} onOpen={onOpen} hint={b.hint} mine={!!b.mine} empty={emptyOf(b.key)} />
+          </Pane>
         </TabPanel>
       ))}
-      <TabPanel value={DONE}>
-        <Done rows={archived} />
+      <TabPanel value={DONE} className="flex min-h-0 flex-1 flex-col">
+        <Pane>
+          <Done rows={archived} />
+        </Pane>
       </TabPanel>
-    </Tabs>
+      </Tabs>
+    </div>
   );
 }
 

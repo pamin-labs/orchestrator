@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Button, LinkButton } from "../ui/button";
 import { Menu, MenuItem } from "../ui/menu";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
-import { H2, Meta, Textarea, Working } from "../ui/bits";
+import { H2, Meta, Textarea, Working, Pane } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Card, CardBody, CardTitle } from "../ui/card";
 import { Bar } from "../ui/table";
@@ -51,75 +51,102 @@ export function Requirement({
   const [picked, setPicked] = useState<number | null>(null);
   const shown = slices.find((s) => s.id === picked) ?? wants ?? moving ?? slices[0];
 
+  const draft = g.status === "DRAFT" || g.status === "PLANNING";
+
   return (
-    <section>
+    // Four things this page holds, and they were stacked in two columns down one
+    // scroll: questions, slices, the record, the roster — plus a composer that
+    // ended up below however many slices there were. Tabs put one at a time in
+    // front of the boss, each scrolling inside itself, with the header and the
+    // box you type into pinned. Long shell commands inside an escalation used to
+    // push the whole page into a horizontal scroll; every column is min-w-0 and
+    // the text breaks now.
+    <section className="flex min-h-0 flex-1 flex-col">
       <Header st={st} g={g} refresh={refresh} slices={slices} />
       {broke && <BudgetWall g={g} refresh={refresh} />}
 
-      {/* The decisions on the left, the reference beside them. This page was one
-          column, so the notes, the roster and the box you type into sat below
-          however many slices there were — furthest from the eye at exactly the
-          moment the boss wanted to ask about what they had just read. PRODUCT.md
-          already says it: chat is a side rail, never the spine. */}
-      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_19rem] gap-x-8 max-[68rem]:grid-cols-1 max-[68rem]:gap-y-5">
-        <div className="min-w-0">
-          {/* Questions come before the work: an unanswered blocker means the group
-              is stopped, so nothing below it can move anyway. */}
-          {asks.length > 0 && (
-            <div className="mb-4">
-              {/* Only the ones on the boss are 待你决策. The rest are open questions
-                  the chain is still holding, and counting them under that heading
-                  made the badge lie about how much of this was a decision. */}
-              <H2>
-                {mine.length ? "待你决策" : "开着的问题"}{" "}
-                <span className="font-normal text-ink-3">{mine.length || asks.length}</span>
-              </H2>
-              {[...mine, ...asks.filter((a) => !mine.includes(a))].map((e) => (
-                <Ask key={e.id} e={e} refresh={refresh} />
-              ))}
-            </div>
-          )}
+      {draft ? (
+        <Pane className="mt-4">
+          <Draft st={st} g={g} refresh={refresh} />
+        </Pane>
+      ) : (
+        <Tabs
+          value={tab ?? (mine.length ? "ask" : "slice")}
+          onValueChange={onTab}
+          className="mt-3 flex min-h-0 flex-1 flex-col"
+        >
+          <TabList>
+            <Tab value="slice" count={slices.length}>切片</Tab>
+            {/* Only the ones on the boss are 待你决策. The rest are open questions
+                the chain is still holding, and counting them under that heading
+                made the badge lie about how much of this was a decision. */}
+            <Tab value="ask" count={asks.length} mine={mine.length > 0}>
+              {mine.length ? "待你决策" : "问题"}
+            </Tab>
+            <Tab value="notes">记录</Tab>
+            <Tab value="roster" count={st.agents.filter((a) => a.grp_id === g.id).length}>这个组的人</Tab>
+          </TabList>
 
-          {g.status === "DRAFT" || g.status === "PLANNING" ? (
-            <Draft st={st} g={g} refresh={refresh} />
-          ) : slices.length ? (
-            <>
-              <H2>
-                交付切片{" "}
-                <span className="font-normal text-ink-3">
-                  {slices.filter((s) => s.status === "accepted").length}/{slices.length} 已查收
-                </span>
-              </H2>
-              <div className="overflow-hidden rounded-lg border border-rule">
-                {slices.map((s) => (
-                  <SliceRow
-                    key={s.id}
-                    st={st}
-                    g={g}
-                    s={s}
-                    selected={s.id === shown?.id}
-                    onPick={() => setPicked(s.id === shown?.id ? null : s.id)}
-                  />
-                ))}
-              </div>
-              {shown && <SliceDetail key={shown.id} st={st} g={g} s={shown} refresh={refresh} />}
-            </>
-          ) : (
-            <Working>正在拆解</Working>
-          )}
-          {/* Stays in the main column, under what it is about. The rail is for
-              reference; these three buttons are decisions — 作废这个需求 is not a
-              thing to put in a 19rem gutter — and the boss reaches them having
-              just read the slices above. */}
-          {open && <Say g={g} refresh={refresh} projectId={g.project_id} />}
+          <TabPanel value="slice" className="flex min-h-0 flex-1 flex-col">
+            <Pane>
+              {slices.length ? (
+                <>
+                  <div className="overflow-hidden rounded-lg border border-rule">
+                    {slices.map((s) => (
+                      <SliceRow
+                        key={s.id}
+                        st={st}
+                        g={g}
+                        s={s}
+                        selected={s.id === shown?.id}
+                        onPick={() => setPicked(s.id === shown?.id ? null : s.id)}
+                      />
+                    ))}
+                  </div>
+                  {shown && <SliceDetail key={shown.id} st={st} g={g} s={shown} refresh={refresh} />}
+                </>
+              ) : (
+                <Working>正在拆解</Working>
+              )}
+            </Pane>
+          </TabPanel>
+
+          <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col">
+            <Pane>
+              {asks.length ? (
+                [...mine, ...asks.filter((a) => !mine.includes(a))].map((e) => (
+                  <Ask key={e.id} e={e} refresh={refresh} />
+                ))
+              ) : (
+                <div className="text-[0.8125rem] text-ink-3">没有开着的问题。</div>
+              )}
+            </Pane>
+          </TabPanel>
+
+          <TabPanel value="notes" className="flex min-h-0 flex-1 flex-col">
+            <Pane>
+              <Notes grpId={g.id} compact />
+            </Pane>
+          </TabPanel>
+
+          <TabPanel value="roster" className="flex min-h-0 flex-1 flex-col">
+            <Pane>
+              <Roster rows={st.agents.filter((a) => a.grp_id === g.id)} />
+              {/* Answers a stand-in gave on the boss's behalf live with the people
+                  who gave them, not in a tab of their own that read as empty. */}
+              <Delegated rows={st.answered.filter((a) => a.grp_id === g.id)} refresh={refresh} />
+            </Pane>
+          </TabPanel>
+        </Tabs>
+      )}
+
+      {/* Pinned, not the last thing on a long page. It is how the boss answers
+          what they just read. */}
+      {open && !draft && (
+        <div className="mt-2 border-t border-rule pt-2">
+          <Say g={g} refresh={refresh} projectId={g.project_id} />
         </div>
-
-        {open && (
-          <aside className="min-w-0 self-start max-[68rem]:static lg:sticky lg:top-0">
-            <Aside st={st} g={g} refresh={refresh} tab={tab} onTab={onTab} />
-          </aside>
-        )}
-      </div>
+      )}
     </section>
   );
 }
@@ -356,37 +383,6 @@ function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; ref
   );
 }
 
-/** Records, stand-in answers, roster: real but not what the page is for. */
-function Aside({
-  st, g, refresh, tab, onTab,
-}: {
-  st: State; g: Group; refresh: () => void; tab?: string | null; onTab?: (t: string) => void;
-}) {
-  const answered = st.answered.filter((a) => a.grp_id === g.id);
-  const roster = st.agents.filter((a) => a.grp_id === g.id);
-  return (
-    <div className="mt-5">
-      <Tabs value={tab ?? "notes"} onValueChange={onTab}>
-        <TabList>
-          <Tab value="notes">记录</Tab>
-          <Tab value="answered" count={answered.length}>别人替你答的</Tab>
-          <Tab value="roster" count={roster.length}>这个组的人</Tab>
-        </TabList>
-        <TabPanel value="notes">
-          {/* The journal is ≤6 lines by force, so this is the cheapest honest account
-              of the work that exists. */}
-          <Notes grpId={g.id} compact />
-        </TabPanel>
-        <TabPanel value="answered">
-          <Delegated rows={answered} refresh={refresh} />
-        </TabPanel>
-        <TabPanel value="roster">
-          <Roster rows={roster} />
-        </TabPanel>
-      </Tabs>
-    </div>
-  );
-}
 
 /**
  * A second PR for a branch whose first one was closed.
@@ -642,7 +638,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
       {/* An objection that arrived after the card was filed. Without this the card
           reads 反对 : 无 and the boss approves a plan somebody already argued with. */}
       {late.map((o, i) => (
-        <div key={i} className="my-2 whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]">
+        <div key={i} className="my-2 break-words whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]">
           <b className="font-semibold text-warn">{o.author} 后补反对</b> {o.body}
         </div>
       ))}
@@ -664,7 +660,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
       {proposal && (
         <div className="my-3 rounded-md border border-warn/40 bg-sunk px-3 py-2.5">
           <div className="text-[0.8125rem] font-semibold text-warn">规划岗建议作废</div>
-          <div className="my-1 whitespace-pre-wrap text-[0.8125rem]">{proposal.body}</div>
+          <div className="my-1 break-words whitespace-pre-wrap text-[0.8125rem]">{proposal.body}</div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Button variant="go" size="sm" onClick={async () => {
               const go = await ask({
@@ -789,6 +785,13 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
   );
 }
 
+/**
+ * One open question.
+ *
+ * `break-words` is load-bearing: an escalation often quotes a shell line with no
+ * spaces in it, which sets a minimum width on the row and pushed the entire page
+ * into a horizontal scroll — the content was there, just off the left edge.
+ */
 function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
   const mine = e.chain_state === "boss";
   return (
@@ -839,7 +842,7 @@ function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
 
 function Roster({ rows }: { rows: State["agents"] }) {
   if (!rows.length) {
-    return <div className="text-[0.8125rem] text-ink-3">还没雇人。批准计划卡之后 PM / Engineer / QA 会被雇进这一组。</div>;
+    return <div className="break-words text-[0.8125rem] text-ink-3">还没雇人。批准计划卡之后 PM / Engineer / QA 会被雇进这一组。</div>;
   }
   return (
     <>
