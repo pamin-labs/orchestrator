@@ -5,6 +5,7 @@ import {
   claimsShared,
   denyOutsideOwns,
   overlaps,
+  outsideOwns,
   sharedFor,
   staticPrefix,
 } from "../src/mech/ownership.ts";
@@ -246,4 +247,27 @@ test("a group granted one shared path by name may start; everyone else still may
   // The grant is by name and by group: nobody else gets in on it.
   expect(canStart(db, 3).ok).toBe(false);
   expect(canStart(db, 3).sharedClaimed).toContain("tsconfig.json");
+});
+
+test("after-the-fact ownership catches what a deny-list would have blocked", () => {
+  // codex cannot be told which paths a turn may write — cwd stays writable
+  // whatever writable_roots says — so the same rule runs against `git status`
+  // once the turn is over. These are the cases denyOutsideOwns covers up front.
+  const owns = ["src/auth/**", "docs/auth.md"];
+  const changed = [
+    "src/auth/mw.ts", // owned, deep
+    "docs/auth.md", // owned, exact
+    "web/dist/app.js", // build output: the gate writes it for every group
+    "src/db.ts", // NOT owned — a sibling one level in
+    "package.json", // NOT owned — shared, and being shared is not permission
+  ];
+  expect(outsideOwns(changed, owns)).toEqual(["src/db.ts", "package.json"]);
+
+  // `src/*` is one level, `src/**` is any depth.
+  expect(outsideOwns(["src/a/b.ts"], ["src/*"])).toEqual(["src/a/b.ts"]);
+  expect(outsideOwns(["src/a/b.ts"], ["src/**"])).toEqual([]);
+
+  // A group that declared no boundary is not policed here, exactly as
+  // denyOutsideOwns declines to build a deny-list for one.
+  expect(outsideOwns(changed, [])).toEqual([]);
 });

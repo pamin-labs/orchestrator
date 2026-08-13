@@ -86,6 +86,38 @@ export function claimsShared(owns: string[], shared: string[]): string[] {
   return owns.filter((o) => shared.some((s) => overlaps(o, s)));
 }
 
+/**
+ * Which of these repo-relative paths the group had no business writing.
+ *
+ * The deny-list in denyOutsideOwns() stops the write before it happens, but only
+ * where the sandbox takes a deny-list. codex's does not — cwd stays writable
+ * whatever `writable_roots` says — so for those providers the same rule is
+ * applied to `git status` after the turn instead, and the offending files are
+ * rolled back. Same rule, later clock.
+ *
+ * A group that declared nothing owns nothing in particular and is not policed
+ * here; that is the same reading denyOutsideOwns takes. Build outputs are exempt
+ * for the same reason they are exempt there: the gate writes them on every run,
+ * for every group, and it has to be able to produce the thing it then checks.
+ */
+export function outsideOwns(changed: string[], owns: string[]): string[] {
+  if (!owns.length) return [];
+  const allowed = [...owns, ...BUILD_OUTPUTS];
+  return changed.filter((p) => !allowed.some((glob) => covers(glob, p)));
+}
+
+/** Does this glob cover this concrete path? `src/a/**`, `src/*`, `src/a/b.ts`. */
+function covers(glob: string, path: string): boolean {
+  if (glob === path) return true;
+  const prefix = staticPrefix(glob);
+  // No wildcard: a plain directory entry covers everything under it.
+  if (prefix === glob) return path.startsWith(glob.endsWith("/") ? glob : `${glob}/`);
+  if (!path.startsWith(prefix)) return false;
+  // `src/*` is one segment, `src/**` is any depth. Everything else is a prefix.
+  if (glob.endsWith("/*")) return !path.slice(prefix.length).includes("/");
+  return true;
+}
+
 export interface StartCheck {
   ok: boolean;
   conflicts: OwnershipConflict[];
