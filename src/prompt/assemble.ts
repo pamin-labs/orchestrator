@@ -21,6 +21,12 @@ export interface StablePrompt {
   systemAppend: string;
   model: string;
   /**
+   * Reasoning effort, already clamped to what this role's provider accepts.
+   * Hashed with the rest: raising it changes how the model reasons over the same
+   * prefix, so the session rotates rather than resuming under a new setting.
+   */
+  effort?: string;
+  /**
    * Built-in tools whose *definitions* are loaded. Distinct from allowedTools,
    * which only gates permission — a tool left in the built-in set costs prompt
    * prefix on every turn whether or not the agent may call it.
@@ -72,6 +78,7 @@ export interface StableParts {
   /** Language for human-facing output. Code/commits stay English. */
   language?: string;
   model: string;
+  effort?: string;
   tools?: string[];
   allowedTools: string[];
   settingsPath: string;
@@ -162,6 +169,7 @@ export function buildStable(parts: StableParts): StablePrompt {
   const stable: Omit<StablePrompt, "hash"> = {
     systemAppend,
     model: parts.model,
+    effort: parts.effort,
     tools: [...(parts.tools ?? toolsFromAllowed(parts.allowedTools))],
     allowedTools: [...parts.allowedTools],
     settingsPath: parts.settingsPath,
@@ -178,6 +186,8 @@ export function hashStable(s: Omit<StablePrompt, "hash">): string {
   h.update(s.systemAppend);
   h.update(SEP);
   h.update(s.model);
+  h.update(SEP);
+  h.update(s.effort ?? "");
   h.update(SEP);
   // The loaded tool set is part of the cached prefix, so changing it has to
   // rotate the session exactly like a changed role prompt does.

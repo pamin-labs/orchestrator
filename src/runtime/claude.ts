@@ -128,6 +128,9 @@ export function buildArgv(spec: TurnSpec): string[] {
     "--allowedTools",
     ...s.allowedTools,
   ];
+  // Already clamped to what this provider accepts (providers.ts), because effort
+  // is part of the hashed prefix and the hash has to describe what was sent.
+  if (s.effort) argv.push("--effort", s.effort);
   for (const d of s.addDirs) argv.push("--add-dir", d);
   if (spec.resumeSessionId) argv.push("--resume", spec.resumeSessionId);
   else if (spec.newSessionId) argv.push("--session-id", spec.newSessionId);

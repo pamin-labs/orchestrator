@@ -342,6 +342,9 @@ function buildStableFor(
     lessons,
     language: cfg.language,
     model: agent.model,
+    // Clamped to what this role's provider accepts before it is hashed, so the
+    // prefix hash describes the turn that was actually sent.
+    effort: clampEffort(role.runtime, role.effort),
     allowedTools: role.allowedTools ?? allowedToolsFor(agent.role, clearance),
     settingsPath,
     // Attachments the boss sent with the idea live in the data dir, so the agent
