@@ -55,13 +55,18 @@ const readHash = (): Sel => {
 };
 
 /** A name in the trail. Clicking it offers the others of its kind. */
-function Crumb({ children, dim, onClick }: { children: React.ReactNode; dim?: boolean; onClick: () => void }) {
+function Crumb({
+  children, dim, onClick, className,
+}: {
+  children: React.ReactNode; dim?: boolean; onClick: () => void; className?: string;
+}) {
   return (
     <button
       onClick={onClick}
       className={cn(
         "cursor-pointer truncate font-display text-[1rem] font-semibold transition-colors hover:text-ink",
         dim ? "text-ink-2" : "text-ink",
+        className,
       )}
     >
       {children}
@@ -158,7 +163,10 @@ export function App() {
 
   const openReq = (grpId: number) => {
     const g = st.groups.find((x) => x.id === grpId);
-    go({ p: g?.project_id ?? sel.p, view: "req", g: grpId });
+    // Without clearing `t`, the tab the boss was standing on in the list (`live`)
+    // followed them into the drill-in, which has no such tab and so opened on
+    // nothing.
+    go({ p: g?.project_id ?? sel.p, view: "req", g: grpId, t: null });
   };
   // A notification sent before this split points at #v=progress&g=N.
   // 概览 was 待办 plus the same requirement list 需求 shows, so it is gone and its
@@ -229,7 +237,7 @@ export function App() {
         spend — it is how much of tonight is left on each of the two accounts, and
         it changes what the boss approves next. It stays grey until 80%.
       */}
-      <header className="sticky top-0 z-10 flex h-11 items-center gap-4 border-b border-rule bg-rail px-6">
+      <header className="sticky top-0 z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
         <button
           className="cursor-pointer font-display text-[1.0625rem] font-semibold"
           onClick={() => go({ view: "home", p: null, g: null })}
@@ -240,7 +248,7 @@ export function App() {
             切换 control beside them had to explain which of the two it meant, and
             the answer changed depending on how deep the boss had drilled in. */}
         {!home && (
-          <span className="flex min-w-0 items-baseline gap-2 text-[0.8125rem]">
+          <span className="flex min-w-0 shrink items-baseline gap-2 text-[0.8125rem]">
             <span className="text-ink-3">/</span>
             <Crumb dim={view === "req"} onClick={() => setPickProject(true)}>
               {proj!.name}
@@ -248,7 +256,12 @@ export function App() {
             {view === "req" && openGroup && (
               <>
                 <span className="text-ink-3">/</span>
-                <Crumb onClick={() => setPickReq(true)}>{openGroup.name}</Crumb>
+                    {/* Requirement names are a sentence the boss typed, and one of
+                    them ran the views off the bar. The trail gives up width
+                    first: it says where you are, and the tabs are how you leave. */}
+                <Crumb className="max-w-[18rem]" onClick={() => setPickReq(true)}>
+                  {openGroup.name}
+                </Crumb>
               </>
             )}
             <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">⌘K</span>
@@ -258,8 +271,11 @@ export function App() {
             their own, which read as a second tab bar above whatever tabs the view
             itself has — three levels of the same affordance stacked. Five items
             fit here, and the row they cost is worth more to the list below. */}
+        {/* A rule between the trail and the views: they were touching, and two
+            different kinds of navigation reading as one run of words is how you
+            click the wrong one. */}
         {!home && (
-          <span className="flex min-w-0 gap-4 overflow-x-auto">
+          <span className="flex min-w-0 gap-4 overflow-x-auto border-l border-rule pl-5">
             {VIEWS.map(([k, zh]) => (
               <button
                 key={k}
@@ -280,6 +296,10 @@ export function App() {
           </span>
         )}
         <span className="grow" />
+        {/* Three groups, three rhythms: what is true (usage, queue), what you can
+            do (new requirement), and the two switches. They had one gap between
+            every pair, which reads as a single run of eight things rather than
+            three groups of two or three. */}
         <UsageBar usage={st.usage} />
         {live !== "live" && (
           <span className="flex items-center gap-1.5 rounded-md bg-sunk px-2 py-0.5 font-mono text-[0.6875rem] text-warn">
@@ -301,8 +321,9 @@ export function App() {
           <span className="font-mono text-[0.6875rem] text-ink-3">无待办</span>
         )}
         {sel.p && !!st.projects.length && (
-          <Button size="sm" onClick={() => setAdding(true)}>＋ 新需求</Button>
+          <Button size="sm" className="ml-1" onClick={() => setAdding(true)}>＋ 新需求</Button>
         )}
+        <span className="ml-2 flex items-center gap-1 border-l border-rule pl-3">
         {!home && (
           <Tip label={side ? "收起事件流" : "展开事件流：谁跟谁说了什么，按时间倒序"}>
             <button
@@ -318,6 +339,7 @@ export function App() {
           </Tip>
         )}
         <ThemeToggle />
+        </span>
       </header>
 
 
@@ -332,7 +354,7 @@ export function App() {
           each view decides what scrolls inside it. 4.5rem is header plus nav. */}
       <Group
         orientation="horizontal"
-        className={cn("h-[calc(100vh-2.75rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
+        className={cn("h-[calc(100vh-3.5rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
       >
         <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
           {/* The view decides what scrolls. 成本 has a tab strip and a rail that
