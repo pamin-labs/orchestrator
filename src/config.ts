@@ -84,12 +84,19 @@ const DEFAULTS: Config = {
   watchdogIntervalMs: 30_000,
   gateRetries: 2,
   leaseTimeoutMs: 10_800_000,
-  // Off by default: the point of slice-sized delivery is that a wrong slice wastes
-  // one slice. Turning this on trades that for overnight throughput.
-  autoAdvance: false,
-  // Empty by default. Adding "trivial" trades the slice-sized blast radius for an
-  // unattended overnight run: three gates still run, the boss's look does not.
-  autoAcceptTiers: [],
+  // On by default: "approved" should buy a night of work. Accepting a slice was what
+  // started the next one, so with this off a group did exactly one slice and then
+  // waited until morning — which defeats the reason the system exists. The slice still
+  // waits to be accepted; only the next one stops waiting.
+  //
+  // The cost, stated: a wrong slice is discovered later, with the following slices
+  // built on top of it. Rejecting one then pauses the whole group and says so
+  // (postSliceDecision), rather than quietly fixing the foundation under finished work.
+  autoAdvance: true,
+  // trivial only. Three gates still run on it — self-review, the deterministic gate,
+  // an independent QA — so this skips the fourth layer, the boss's look, on the tier
+  // where that look is worth least. normal and hard still wait for you.
+  autoAcceptTiers: ["trivial"],
   workRoot: "/tmp/orch/worktrees",
   dataDir: "data",
 };

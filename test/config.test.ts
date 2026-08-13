@@ -78,3 +78,17 @@ test("the Dispatcher prompt carries the concrete bad-split example", () => {
   expect(d).toContain("ONE");
   expect(d).toContain("Padding to three is worse");
 });
+
+test("unattended is the default: approved buys a night of work", () => {
+  const cfg = loadConfig("config/does-not-exist.yaml");
+  // With autoAdvance off a group did exactly one slice and then waited until morning,
+  // which defeats the reason the system exists. The slice still waits to be accepted;
+  // only the next one stops waiting.
+  expect(cfg.autoAdvance).toBe(true);
+  // trivial only. Self-review, reconcile, the gate and an independent QA all still run
+  // on it — this skips the fifth layer, the boss's own look, on the tier where that
+  // look is worth least.
+  expect(cfg.autoAcceptTiers).toEqual(["trivial"]);
+  expect(cfg.autoAcceptTiers).not.toContain("normal");
+  expect(cfg.autoAcceptTiers).not.toContain("hard");
+});
