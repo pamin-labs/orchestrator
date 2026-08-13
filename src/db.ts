@@ -329,6 +329,25 @@ const MIGRATIONS: string[] = [
   // an end. PLAN.md §"Gate 与审批顺序" says two rounds then escalate; this is the
   // column that makes that true.
   `ALTER TABLE grp ADD COLUMN pr_retries INTEGER NOT NULL DEFAULT 0;`,
+
+  // 015 — shared paths this one group was granted, by name.
+  //
+  // Shared files belong to no group, which is right: two groups editing
+  // package.json is the collision ownership exists to prevent. But a defect *in*
+  // one still has to be fixable, and the requirement opened for it could never
+  // start — the Architect can only cut its boundary to the file itself, and
+  // canStart then refuses it as a shared path. `sweepApproved` retried that
+  // forever. The grant is issued by the server when a group reports being blocked
+  // by the file, names exactly that path, and is what lets this one requirement
+  // through while every other group is still refused.
+  `ALTER TABLE grp ADD COLUMN shared_grant TEXT;`,
+
+  // 016 — the main commit this group has already been told to rebase onto.
+  //
+  // Without it the same nudge fires every watchdog tick for as long as the group
+  // has not finished rebasing, which is exactly how a useful message becomes one
+  // the agent learns to skip.
+  `ALTER TABLE grp ADD COLUMN rebase_seen TEXT;`,
 ];
 
 export type DB = Database;

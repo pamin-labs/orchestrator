@@ -10,7 +10,7 @@ import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import type { GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
-import { canStart, overlaps, parseOwns } from "./mech/ownership.ts";
+import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
 import { acceptSlice } from "./mech/review.ts";
 import { dropGroup, startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
@@ -1011,11 +1011,19 @@ const postBlocked: Handler = async (ctx, req) => {
     });
   } else {
     const name = slug(`${path} ${why}`).slice(0, 40) || `fix-${gid}`;
+    // A shared file — package.json, tsconfig.json, the migrations array — belongs
+    // to no group on purpose, and a requirement opened for one could never start:
+    // the boundary can only be the file itself, and canStart refuses exactly that.
+    // The grant names this one path for this one group, so everybody else is still
+    // refused, and the boundary is settled here rather than costing an Architect
+    // turn to discover there is only one answer.
+    const grant = claimsShared([path], sharedFor(ctx.db, me.project_id));
     const grp = ctx.db
-      .query<{ id: number }, [number, string]>(
-        "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'PLANNING', unixepoch() * 1000) RETURNING id",
+      .query<{ id: number }, [number, string, string | null, string]>(
+        `INSERT INTO grp (project_id, name, status, shared_grant, owns_json, created_at)
+         VALUES (?, ?, 'PLANNING', ?, ?, unixepoch() * 1000) RETURNING id`,
       )
-      .get(me.project_id, name)!;
+      .get(me.project_id, name, grant.length ? JSON.stringify(grant) : null, JSON.stringify([path]))!;
     ctx.db.run(
       "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000)",
       [me.project_id, grp.id],

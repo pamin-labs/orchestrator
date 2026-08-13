@@ -497,3 +497,28 @@ test("a rebase the Engineer could not finish goes to the Architect, not round ag
   expect(p.role).toBe("architect");
   expect(p.rejection).toContain("could not rebase");
 });
+
+test("main moving under a running group sends it to rebase, once per commit", async () => {
+  // landGroup tells the merge queue to rebase when another group lands. It does not
+  // cover the boss pushing to main directly — and the boss is a person with a
+  // terminal. Six groups spent a day on a base fifteen commits stale and would each
+  // have found out at PR time, one conflict apiece.
+  const h = harness();
+  h.db.run("UPDATE grp SET worktree = '/tmp/wt/g1' WHERE id = 1");
+  // repo HEAD answers with a sha; the worktree says it is not an ancestor.
+  h.ctx.git = async (_repo, argv) =>
+    argv[0] === "rev-parse" ? { code: 0, out: "abc1234567" } : { code: 1, out: "" };
+  const deps = { ...h.deps, git: h.ctx.git! };
+
+  const f = await runWatchdog(deps);
+  expect(f.map((x) => x.rule)).toContain("base_moved");
+  const p = JSON.parse(
+    h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job ORDER BY id DESC LIMIT 1").get()!
+      .payload_json,
+  );
+  expect(p.role).toBe("engineer");
+  expect(p.rejection).toContain("rebase");
+  // Told once per base — otherwise the same nudge fires every tick until the
+  // rebase finishes, which is how an agent learns to skip the message.
+  expect((await runWatchdog(deps)).map((x) => x.rule)).not.toContain("base_moved");
+});
