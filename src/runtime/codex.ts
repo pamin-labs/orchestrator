@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, symlinkSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary } from "./claude.ts";
 import { ndjsonLines, summarizeTool } from "./claude.ts";
 
@@ -26,10 +29,56 @@ export function buildArgv(spec: TurnSpec): string[] {
   // An empty model means "whatever the account allows": naming one is rejected
   // outright on a ChatGPT-account login, and that is not a reason to fail a turn.
   if (spec.stable.model.trim()) argv.push("-m", spec.stable.model);
-  // codex sandboxes through its own config rather than a settings file, and its
-  // filesystem policy is set per invocation.
-  argv.push("-c", "sandbox_permissions=[]");
+  if (spec.stable.effort) argv.push("-c", `model_reasoning_effort="${spec.stable.effort}"`);
+  // The boss's own setup is not this agent's. Same reason as the claude adapter's
+  // `--setting-sources project,local`: inheriting a personal config.toml means the
+  // role's model and effort are silently overridden, and the skill catalogue is
+  // prefix tax on every turn. (CODEX_HOME does the rest — see codexHome().)
+  argv.push("--ignore-user-config", "--ignore-rules");
+  // Sandbox. Measured on codex 0.147 (docs/decisions/006):
+  //   - the default and `-s read-only` have no network AT ALL, not even loopback,
+  //     and `orch` is HTTP to 127.0.0.1 — a read-only agent is a mute agent
+  //   - the old `-c sandbox_permissions=[]` here was a no-op; 0.147 does not know
+  //     that key, and passing "network-full-access" changed nothing either
+  //   - config.toml's network_access is ignored by the macOS seatbelt (codex#10390),
+  //     so this has to travel as argv
+  // ponytail: the shape we actually want is the beta permission profiles
+  // (base="read-only" + network.allow_local_binding + a domain allowlist). They
+  // SIGABRT on 0.147. Until they land, the ceiling is "a codex role can reach the
+  // public internet", which is also how it does web research.
+  argv.push("-s", "workspace-write");
+  argv.push("-c", "sandbox_workspace_write.network_access=true");
+  for (const img of spec.images ?? []) argv.push("-i", img);
   return argv;
+}
+
+/**
+ * A CODEX_HOME holding nothing but the login.
+ *
+ * `--ignore-user-config` only drops config.toml. Skills still load from
+ * $CODEX_HOME/skills — a live run announced "Skill descriptions were shortened to
+ * fit the skills context budget", which is the same prefix tax that measured 46k
+ * tokens a turn on the claude side. Pointing CODEX_HOME at a directory containing
+ * one symlink removes them, and the symlink is what keeps the login shared: both
+ * this and the boss's own codex refresh the same auth.json, so the OAuth refresh
+ * token rotates in one place.
+ *
+ * ponytail: if codex ever replaces auth.json by atomic rename the symlink becomes
+ * a private copy and the two logins drift. It shows up as an auth failure, and the
+ * fix is to re-link after each turn.
+ */
+export function codexHome(dataDir: string, home = homedir()): string {
+  const dir = join(dataDir, "codex-home");
+  mkdirSync(dir, { recursive: true });
+  const link = join(dir, "auth.json");
+  if (!existsSync(link)) {
+    try {
+      symlinkSync(join(home, ".codex/auth.json"), link);
+    } catch {
+      // No login to borrow yet. codex will say so far more clearly than we can.
+    }
+  }
+  return dir;
 }
 
 /** Refusal-shaped, as opposed to informational. */
