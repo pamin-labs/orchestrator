@@ -99,87 +99,86 @@ function marks(a: string, b: string, side: "left" | "right") {
 
 export function DiffView({ diff, truncated }: { diff: string; truncated?: boolean }) {
   const files = useMemo(() => parseDiff(diff), [diff]);
-  const [open, setOpen] = useState<Set<string>>(new Set());
-  const nameOf = (f: parseDiff.File) => f.to && f.to !== "/dev/null" ? f.to : (f.from ?? "?");
+  const nameOf = (f: parseDiff.File) => (f.to && f.to !== "/dev/null" ? f.to : (f.from ?? "?"));
+  const [pick, setPick] = useState(0);
+  const [all, setAll] = useState(false);
 
   if (files.length === 0) return null;
+  const f = files[Math.min(pick, files.length - 1)]!;
+  const rows = f.chunks.flatMap((c) => [{ gap: c.content } as Row, ...rowsOf(c)]);
+  const shown = all ? rows : rows.slice(0, 400);
 
   return (
-    <div>
-      {/* The file list is navigation and summary at once: what changed, how much,
-          and a way to get to it. It was one collapsed `git stat` line before. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule-soft px-3.5 py-2">
-        <Meta>{files.length} 个文件</Meta>
-        {files.map((f) => (
-          <a
-            key={nameOf(f)}
-            href={`#f-${nameOf(f)}`}
-            className="flex items-baseline gap-1.5 font-mono text-[0.6875rem] text-ink-2 hover:text-accent"
-          >
-            <span className="max-w-[18rem] truncate">{nameOf(f)}</span>
-            <span className="text-ok">+{f.additions}</span>
-            <span className="text-bad">−{f.deletions}</span>
-          </a>
-        ))}
-      </div>
+    <div className="flex h-full min-h-0">
+      {/* One file at a time, chosen from a list, because a slice touches thirty of
+          them and stacking all thirty is the same wall of text in a new order. The
+          list is the summary too: what changed and how much, without opening it. */}
+      <nav className="w-56 shrink-0 overflow-auto border-r border-rule-soft py-1">
+        {files.map((x, i) => {
+          const n = nameOf(x);
+          const cut = n.lastIndexOf("/");
+          return (
+            <button
+              key={n}
+              onClick={() => {
+                setPick(i);
+                setAll(false);
+              }}
+              className={cn(
+                "flex w-full cursor-pointer flex-col items-start gap-px px-2.5 py-1 text-left font-mono text-[0.6875rem] hover:bg-sunk",
+                i === pick && "bg-accent-soft text-accent",
+              )}
+            >
+              <span className="w-full truncate">{n.slice(cut + 1)}</span>
+              <span className="flex w-full items-baseline gap-1.5">
+                {cut > 0 && <span className="min-w-0 truncate text-[0.625rem] text-ink-3">{n.slice(0, cut)}</span>}
+                <span className="ml-auto shrink-0 text-[0.625rem]">
+                  <span className="text-ok">+{x.additions}</span> <span className="text-bad">−{x.deletions}</span>
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </nav>
 
-      {files.map((f) => {
-        const name = nameOf(f);
-        const rows = f.chunks.flatMap((c, i) => [
-          { gap: c.content } as Row,
-          ...(i === 0 || open.has(name) ? rowsOf(c) : rowsOf(c)),
-        ]);
-        const big = rows.length > 400 && !open.has(name);
-        const shown = big ? rows.slice(0, 400) : rows;
-        return (
-          <div key={name} id={`f-${name}`}>
-            {/* Sticky, because knowing which file you are in is the thing that
-                goes first when scrolling a long change. */}
-            <div className="sticky top-0 z-10 flex items-baseline gap-2 border-y border-rule-soft bg-sunk px-3.5 py-1">
-              <span className="font-mono text-[0.6875rem] font-semibold">{name}</span>
-              <Meta>
-                +{f.additions} −{f.deletions}
-              </Meta>
-            </div>
-            <table className="w-full table-fixed border-collapse font-mono text-[0.6875rem] leading-[1.55]">
-              <colgroup>
-                <col className="w-10" />
-                <col className="w-[calc(50%-2.5rem)]" />
-                <col className="w-10" />
-                <col />
-              </colgroup>
-              <tbody>
-                {shown.map((r, i) =>
-                  r.gap !== undefined ? (
-                    <tr key={i}>
-                      <td colSpan={4} className="border-y border-rule-soft bg-sunk px-3.5 py-0.5 text-ink-3">
-                        {/* The useful half of `@@ -1,7 +1,9 @@` is the context after it. */}
-                        {r.gap.replace(/^@@[^@]*@@\s*/, "") || "…"}
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr key={i}>
-                      <Gutter n={r.left?.n} tone={r.left && !r.right ? "bad" : r.left?.changed ? "bad" : undefined} />
-                      <Side cell={r.left} other={r.right} side="left" />
-                      <Gutter n={r.right?.n} tone={r.right && !r.left ? "ok" : r.right?.changed ? "ok" : undefined} />
-                      <Side cell={r.right} other={r.left} side="right" />
-                    </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
-            {big && (
-              <button
-                className="w-full cursor-pointer border-y border-rule-soft bg-sunk py-1 text-[0.6875rem] text-ink-2 hover:text-accent"
-                onClick={() => setOpen(new Set([...open, name]))}
-              >
-                还有 {rows.length - shown.length} 行
-              </button>
+      <div className="min-w-0 grow overflow-auto">
+        <table className="w-full table-fixed border-collapse font-mono text-[0.6875rem] leading-[1.55]">
+          <colgroup>
+            <col className="w-10" />
+            <col className="w-[calc(50%-2.5rem)]" />
+            <col className="w-10" />
+            <col />
+          </colgroup>
+          <tbody>
+            {shown.map((r, i) =>
+              r.gap !== undefined ? (
+                <tr key={i}>
+                  <td colSpan={4} className="border-y border-rule-soft bg-sunk px-3.5 py-0.5 text-ink-3">
+                    {/* The useful half of `@@ -1,7 +1,9 @@` is the context after it. */}
+                    {r.gap.replace(/^@@[^@]*@@\s*/, "") || "…"}
+                  </td>
+                </tr>
+              ) : (
+                <tr key={i}>
+                  <Gutter n={r.left?.n} tone={r.left && (!r.right || r.left.changed) ? "bad" : undefined} />
+                  <Side cell={r.left} other={r.right} side="left" />
+                  <Gutter n={r.right?.n} tone={r.right && (!r.left || r.right.changed) ? "ok" : undefined} />
+                  <Side cell={r.right} other={r.left} side="right" />
+                </tr>
+              ),
             )}
-          </div>
-        );
-      })}
-      {truncated && <Meta className="block px-3.5 py-2">太长，剩下的去 worktree 里看</Meta>}
+          </tbody>
+        </table>
+        {rows.length > shown.length && (
+          <button
+            className="w-full cursor-pointer border-y border-rule-soft bg-sunk py-1 text-[0.6875rem] text-ink-2 hover:text-accent"
+            onClick={() => setAll(true)}
+          >
+            还有 {rows.length - shown.length} 行
+          </button>
+        )}
+        {truncated && <Meta className="block px-3.5 py-2">太长，剩下的去 worktree 里看</Meta>}
+      </div>
     </div>
   );
 }
