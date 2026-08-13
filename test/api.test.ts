@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
@@ -624,4 +624,34 @@ test("the same repo cannot be registered twice", async () => {
   const again = await post(app, "/api/projects", { name: "second", repo_path: dir });
   expect(again.status).toBe(422);
   expect(await again.text()).toContain('already registered as "first"');
+});
+
+test("the directory list marks git repos and what is already registered", async () => {
+  const { app, db } = harness();
+  const root = mkdtempSync(join(tmpdir(), "orch-dirs-"));
+  mkdirSync(join(root, "a-plain"));
+  mkdirSync(join(root, "b-repo/.git"), { recursive: true });
+  mkdirSync(join(root, "c-taken/.git"), { recursive: true });
+  mkdirSync(join(root, ".hidden"));
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('t', ?, 0)", [join(root, "c-taken")]);
+
+  const r = await get(app, `/api/dirs?path=${encodeURIComponent(root)}`);
+  expect(r.status).toBe(200);
+  const out = (await r.json()) as any;
+  // Repos first: the boss is looking for one, so burying them under plain folders
+  // makes the picker useless in a deep tree.
+  expect(out.dirs.map((d: any) => d.name)).toEqual(["b-repo", "c-taken", "a-plain"]);
+  expect(out.dirs.find((d: any) => d.name === "b-repo").repo).toBe(true);
+  expect(out.dirs.find((d: any) => d.name === "c-taken").taken).toBe(true);
+  expect(out.dirs.find((d: any) => d.name === "a-plain").repo).toBe(false);
+  // Dotfiles are noise in a picker.
+  expect(out.dirs.some((d: any) => d.name === ".hidden")).toBe(false);
+  expect(out.parent).toBe(dirname(root));
+});
+
+test("an unreadable path is an error with the reason, not an empty list", async () => {
+  const { app } = harness();
+  const r = await get(app, "/api/dirs?path=/definitely/not/here");
+  expect(r.status).toBe(422);
+  expect(await r.text()).toContain("no such file");
 });

@@ -222,6 +222,23 @@ export function handToBoss(deps: ReviewDeps, sliceId: number): void {
     body: `S${slice.seq} "${slice.title}" is ready for you`,
     meta: { slice_id: sliceId, gates: gateState(ctx.db, sliceId) },
   });
+
+  // Approving at night should buy a night of work. Acceptance is what normally
+  // starts the next slice, so without this a group does exactly one slice and
+  // then waits until morning. The slice still waits to be accepted; only the
+  // next one stops waiting.
+  if (ctx.config?.autoAdvance) {
+    const started = startNextSlice(ctx, slice.grp_id);
+    if (started) {
+      ctx.bus.emit({
+        grpId: slice.grp_id,
+        author: "orchestrator",
+        kind: "state_change",
+        body: `autoAdvance: started the next slice without waiting for you`,
+        meta: { slice_id: started },
+      });
+    }
+  }
 }
 
 function safeJson(s: string | null): unknown {
@@ -341,10 +358,11 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
  * it looks like the system ignored you.
  */
 export function startNextSlice(ctx: Ctx, grpId: number): number | null {
+  // A slice sitting on the boss is not occupying the writer. Counting it as busy
+  // is correct only when acceptance is what starts the next one.
+  const idle = ctx.config?.autoAdvance ? "('pending','accepted','awaiting_boss')" : "('pending','accepted')";
   const busy = ctx.db
-    .query<{ c: number }, [number]>(
-      "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status NOT IN ('pending','accepted')",
-    )
+    .query<{ c: number }, [number]>(`SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status NOT IN ${idle}`)
     .get(grpId)!.c;
   // One slice at a time per group: the group has one writer, so a second
   // in-flight slice would just queue behind the first anyway — and its review
