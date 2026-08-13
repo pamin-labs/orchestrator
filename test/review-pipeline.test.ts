@@ -388,6 +388,10 @@ test("a task on a slice that has not started cannot be listed or completed", asy
   // pushed slices that had never started into review.
   expect(list).toContain("edit a.txt");
   expect(list).not.toContain("later work");
+  // ...but it has to say that it is hiding them. Live, an engineer read the short
+  // list as "S2 has no cards" and filed a blocker asking the boss to create them.
+  expect(list).toContain("S2: 1 cards, not yet open");
+  expect(list).toContain("do not ask the boss");
 
   const done = await h.post("/orch/task/done", { task_id: 2, claim: { files: ["a.txt"] }, review: REVIEW }, "tok-eng");
   expect(done.status).toBe(422);

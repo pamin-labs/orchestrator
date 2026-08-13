@@ -6,7 +6,7 @@ import { Tip } from "../ui/tooltip";
 import { prUrl } from "../lib/select";
 import type { Archived, Group, Slice, State } from "../lib/api";
 import { usePaged } from "../lib/page";
-import { STOPS, gates, heldApproved, statusLabel } from "../lib/select";
+import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../lib/select";
 import { cn, K } from "../lib/utils";
 
 /**
@@ -25,15 +25,26 @@ import { cn, K } from "../lib/utils";
 interface Bucket {
   key: string;
   zh: string;
-  hint: string;
   of: string[];
   mine?: boolean;
 }
 
+/**
+ * 待办 is the queue itself, not a fourth list of requirements.
+ *
+ * It used to be both: a pinned card of everything waiting on the boss, and a tab
+ * holding the requirements those items came from. Two things labelled 待办 with two
+ * different counts, one above the other. The card also sat outside the scroll pane,
+ * so a two-paragraph question pushed the list off the bottom of a fixed-height page.
+ *
+ * Now the queue lives in the tab that names it, inside the same pane everything else
+ * scrolls in, and 进行中 holds every requirement that has not been delivered — a
+ * DRAFT waiting on approval is still in flight, and its decision is one tab over.
+ */
 const BUCKETS: Bucket[] = [
-  { key: "mine", zh: "待办", hint: "计划卡待批、切片待查收、PR 待合入", of: ["DRAFT", "PR_OPEN"], mine: true },
-  { key: "live", zh: "执行中", hint: "有 agent 在跑，或正在拆解", of: ["RUNNING", "PLANNING", "PAUSING"] },
-  { key: "held", zh: "停着", hint: "暂停或封存，工作都留着，唤醒即续", of: ["PAUSED", "PARKED"] },
+  { key: "mine", zh: "待办", of: [], mine: true },
+  { key: "live", zh: "进行中", of: ["RUNNING", "PLANNING", "PAUSING", "DRAFT", "PR_OPEN"] },
+  { key: "held", zh: "停着", of: ["PAUSED", "PARKED"] },
 ];
 const DONE = "done";
 
@@ -43,7 +54,7 @@ export function Progress({
   st: State; projectId: number; onOpen: (id: number) => void; maxGroups?: number | null;
   /** From the hash, so it survives opening a requirement and coming back. */
   tab: string | null; onTab: (t: string) => void;
-  /** What needs the boss, pinned above the list. 概览 was this plus the same list. */
+  /** What needs the boss. Rendered as the 待办 tab, not above it. */
   queue?: React.ReactNode;
 }) {
   const groups = st.groups.filter((g) => g.project_id === projectId);
@@ -52,16 +63,16 @@ export function Progress({
   // other things that are simply waiting.
   const of = (b: Bucket) =>
     groups.filter((g) => (heldApproved(g) ? b.key === "held" : b.of.includes(g.status)));
-  const live = of(BUCKETS[1]!).length;
+  const live = groups.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
+  const todo = countWaiting(st, projectId);
 
   // Open on the tab that has something for the boss; failing that, on the work.
   // Only when the boss has not chosen one — this used to be component state, so
   // drilling into a requirement unmounted the list and this heuristic quietly
   // overrode their choice on the way back.
-  const fallback =
-    of(BUCKETS[0]!).length
-      ? "mine"
-      : (BUCKETS.find((b) => of(b).length)?.key ?? (archived.length ? DONE : "live"));
+  const fallback = todo
+    ? "mine"
+    : (BUCKETS.slice(1).find((b) => of(b).length)?.key ?? (archived.length ? DONE : "live"));
 
   if (!groups.length && !archived.length) {
     return (
@@ -73,11 +84,10 @@ export function Progress({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {queue}
       <Tabs value={tab ?? fallback} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
         <TabList>
         {BUCKETS.map((b) => (
-          <Tab key={b.key} value={b.key} count={of(b).length} mine={b.mine}>
+          <Tab key={b.key} value={b.key} count={b.mine ? todo : of(b).length} mine={b.mine}>
             {b.zh}
           </Tab>
         ))}
@@ -97,7 +107,11 @@ export function Progress({
       {BUCKETS.map((b) => (
         <TabPanel key={b.key} value={b.key} className="flex min-h-0 flex-1 flex-col">
           <Pane>
-            <List st={st} groups={of(b)} onOpen={onOpen} hint={b.hint} mine={!!b.mine} empty={emptyOf(b.key)} />
+            {b.mine ? (
+              queue
+            ) : (
+              <List st={st} groups={of(b)} onOpen={onOpen} empty={emptyOf(b.key)} />
+            )}
           </Pane>
         </TabPanel>
       ))}
@@ -114,22 +128,21 @@ export function Progress({
 /** Absence, with the reason it is absent. A bare "无" teaches nothing. */
 function emptyOf(key: string): string {
   if (key === "mine") return "没有待办。有计划卡、待查收切片或待合入 PR 时出现在这里，并推送通知。";
-  if (key === "live") return "没有在跑的需求。批准一张计划卡就会有。";
+  if (key === "live") return "没有在办的需求。右上角 ＋ 新需求。";
   return "没有停着的需求。预算用尽、或等你答问题超过 2 小时会自动封存到这里，工作不丢。";
 }
 
 function List({
-  st, groups, onOpen, hint, mine, empty,
+  st, groups, onOpen, empty,
 }: {
-  st: State; groups: Group[]; onOpen: (id: number) => void; hint: string; mine: boolean; empty: string;
+  st: State; groups: Group[]; onOpen: (id: number) => void; empty: string;
 }) {
   const { page, rest, more, total } = usePaged(groups, 25);
   if (!groups.length) return <div className="text-[0.8125rem] text-ink-3">{empty}</div>;
   return (
     <>
-      <Meta className="mb-1 block">{hint}</Meta>
       {page.map((g) => (
-        <Row key={g.id} st={st} g={g} onOpen={onOpen} mine={mine} />
+        <Row key={g.id} st={st} g={g} onOpen={onOpen} />
       ))}
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
@@ -140,7 +153,7 @@ function List({
   );
 }
 
-function Row({ st, g, onOpen, mine }: { st: State; g: Group; onOpen: (id: number) => void; mine: boolean }) {
+function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => void }) {
   const slices = st.slices.filter((s) => s.grp_id === g.id);
   const doing = st.agents.find((a) => a.grp_id === g.id && a.state === "running");
   const waiting = slices.filter((s) => s.status === "awaiting_boss").length;
@@ -154,7 +167,6 @@ function Row({ st, g, onOpen, mine }: { st: State; g: Group; onOpen: (id: number
         "grid w-full cursor-pointer grid-cols-[14rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5",
         "border-t border-rule-soft px-2 py-2.5 text-left transition-colors hover:bg-sunk",
         "max-[60rem]:grid-cols-[minmax(0,1fr)_auto]",
-        mine && "bg-accent-soft/40",
       )}
     >
       <div className="min-w-0">

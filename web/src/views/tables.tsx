@@ -64,6 +64,22 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
         )}
       </div>
       <Pane>
+        {/* Two of the four columns were bare numbers. `5` and `8.3M` in a row with
+            no heading are a quiz: the tooltip explaining them is on a different
+            element, and nobody hovers a number they cannot read. The header is
+            sticky because the pane scrolls and a heading that scrolls away stops
+            being a heading. */}
+        <div
+          className={cn(
+            DESK_ROW,
+            "sticky top-0 z-10 border-b border-rule bg-paper pb-1.5 text-[0.6875rem] text-ink-3",
+          )}
+        >
+          <span>谁 · 模型</span>
+          <span>在做什么</span>
+          <span className="text-right">turn</span>
+          <span className="text-right max-[52rem]:hidden">tokens</span>
+        </div>
         {groups.map((g) => (
           <Desks key={String(g.id)} name={g.name} agents={g.agents} slices={st.slices} tail={last} />
         ))}
@@ -102,7 +118,7 @@ function Desks({
     <Collapsible.Root open={open} onOpenChange={setOpen}>
       <Collapsible.Trigger
         className={cn(
-          "flex w-full cursor-pointer items-baseline gap-2.5 rounded-md px-3 py-2.5",
+          "flex w-full cursor-pointer items-baseline gap-2.5 border-b border-rule-soft px-3 py-2",
           "text-left transition-colors hover:bg-sunk",
         )}
       >
@@ -382,7 +398,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
         </Tabs>
 
         <aside className="min-w-0 self-start max-[64rem]:static lg:sticky lg:top-0">
-          <Rail title="烧得多快" note="近 48 小时，按小时">
+          <Rail title="烧得多快" note="近 24 小时，按小时">
             <BurnChart data={cost.byHour ?? []} />
           </Rail>
           <Rail title="按账号" note="">

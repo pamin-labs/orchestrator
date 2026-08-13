@@ -72,6 +72,36 @@ async function refreshOrigin(deps: WatchdogDeps, repo: string): Promise<void> {
 export const GZIP_AFTER_MS = 60 * 60 * 1000;
 export const DROP_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * codex writes a full transcript per session into the CODEX_HOME we hand it, and
+ * that directory is inside `data/`. Nothing ever removed them: 78 rollout files
+ * and 110 MB in two days, next to a turn-log directory that has had gzip and a
+ * retention window since the beginning. Same window here, no compression —
+ * these are read by codex itself on resume, and only while the thread is live.
+ */
+export function sweepCodexSessions(home: string, now: number): number {
+  const root = join(home, "sessions");
+  if (!existsSync(root)) return 0;
+  let dropped = 0;
+  const walk = (dir: string) => {
+    for (const e of readdirSync(dir)) {
+      const p = join(dir, e);
+      try {
+        const s = statSync(p);
+        if (s.isDirectory()) walk(p);
+        else if (now - s.mtimeMs > DROP_AFTER_MS) {
+          rmSync(p, { force: true });
+          dropped++;
+        }
+      } catch {}
+    }
+  };
+  try {
+    walk(root);
+  } catch {}
+  return dropped;
+}
+
 export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropped: number } {
   let zipped = 0;
   let dropped = 0;
@@ -339,6 +369,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // ten to one, and nothing reads a turn from a week ago without unzipping it
   // first anyway.
   sweepTurnLogs(join(cfg.dataDir, "turns"), now());
+  sweepCodexSessions(join(cfg.dataDir, "codex-home"), now());
 
   // 7d3. How much of the claude subscription is left.
   //
