@@ -15,10 +15,23 @@ export interface CostRow {
   usd: number;
 }
 
+/** A role's spend, and which requirement it was spent inside. NULL = standing. */
+export interface RoleCost extends CostRow {
+  grpId: number | null;
+}
+
 export interface CostReport {
   /** Requirements that finished, for a per-requirement average worth quoting. */
   delivered: { count: number; usd: number };
-  byGroup: CostRow[];
+  byGroup: (CostRow & { grpId: number })[];
+  /**
+   * Every role's spend with its group, so the panel can nest what is nested.
+   * A slice belongs to a requirement and a role is either standing (Architect,
+   * Dispatcher, CoS, Librarian — `grp_id` NULL, paid for across the project) or
+   * hired into one group (PM, Engineer, QA). Four flat tables said all of that was
+   * the same shape, which is a lie about the data model.
+   */
+  roles: RoleCost[];
   byRole: CostRow[];
   byDifficulty: CostRow[];
   total: CostRow;
@@ -31,9 +44,16 @@ export function costReport(db: DB, projectId?: number): CostReport {
   const args = projectId ? [projectId] : [];
 
   const byGroup = db
-    .query<CostRow, any[]>(
-      `SELECT name AS label, spent_tokens AS tokens, spent_usd AS usd FROM grp
-       ${where} ORDER BY spent_usd DESC LIMIT 20`,
+    .query<CostRow & { grpId: number }, any[]>(
+      `SELECT id AS grpId, name AS label, spent_tokens AS tokens, spent_usd AS usd FROM grp
+       ${where} ORDER BY spent_usd DESC LIMIT 50`,
+    )
+    .all(...args);
+
+  const roles = db
+    .query<RoleCost, any[]>(
+      `SELECT grp_id AS grpId, role AS label, sum(total_tokens) AS tokens, sum(total_usd) AS usd
+       FROM agent ${where} GROUP BY grp_id, role ORDER BY usd DESC`,
     )
     .all(...args);
 
@@ -72,7 +92,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
     )
     .get(...args)!;
 
-  return { delivered, byGroup, byRole, byDifficulty, total, cacheRatio: recentCacheRatio(db) };
+  return { delivered, byGroup, roles, byRole, byDifficulty, total, cacheRatio: recentCacheRatio(db) };
 }
 
 /**

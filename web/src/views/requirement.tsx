@@ -11,6 +11,7 @@ import { STATUS_ZH, STOPS, WHERE_ZH, asksOf, gates, prUrl } from "../lib/select"
 import { cn, K, money, waited } from "../lib/utils";
 import { useState } from "react";
 import { EvidencePanel } from "./evidence";
+import { Notes } from "./notes";
 
 /** One requirement in full: slices, their tasks, who is on it, and what it asks. */
 export function Requirement({
@@ -98,6 +99,10 @@ export function Requirement({
       {open && (
         <>
           <Delegated st={st} g={g} refresh={refresh} />
+          {/* What this group decided and why. The journal is ≤6 lines by force, so
+              this is the cheapest honest account of the work that exists. */}
+          <H2 className="mt-6">记录</H2>
+          <Notes grpId={g.id} compact />
           <Roster st={st} g={g} />
           <Say g={g} refresh={refresh} />
         </>

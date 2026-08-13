@@ -283,6 +283,13 @@ const MIGRATIONS: string[] = [
   // A check that stays red is one piece of news, not one every poll: without
   // this the PM gets woken every 30 seconds for the same failure.
   `ALTER TABLE grp ADD COLUMN pr_checks_sig TEXT;`,
+
+  // 009 — when a slice started waiting on the boss.
+  //
+  // "白干的单位是一个切片" (PLAN.md §7) only means something if the clock on it is
+  // visible: a slice that has waited four hours is a different problem from one
+  // that finished a minute ago, and the queue could not tell them apart.
+  `ALTER TABLE slice ADD COLUMN awaiting_at INTEGER;`,
 ];
 
 export type DB = Database;

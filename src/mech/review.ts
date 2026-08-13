@@ -207,7 +207,7 @@ export function handToBoss(deps: ReviewDeps, sliceId: number): void {
   const slice = loadSlice(ctx, sliceId);
   if (!slice) return;
   recordGate(ctx.db, sliceId, "qa", "pass");
-  ctx.db.run("UPDATE slice SET status = 'awaiting_boss' WHERE id = ?", [sliceId]);
+  ctx.db.run("UPDATE slice SET status = 'awaiting_boss', awaiting_at = unixepoch() * 1000 WHERE id = ?", [sliceId]);
 
   // Retire the group's sessions at the slice boundary. This is the primary
   // rotation trigger, not the token ceiling: a slice is a natural semantic

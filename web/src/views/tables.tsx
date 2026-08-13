@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Empty, H3, Meta } from "../ui/bits";
 import { Button } from "../ui/button";
@@ -169,30 +170,33 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
 }
 
 /**
- * Where the money went, and the one ratio that decides whether any of this is worth
- * running.
+ * Where the money went, in the shape the data actually has.
  *
- * PLAN.md §13 risk ② is "this costs 5-10x a direct conversation" — the test for it
- * is the cost of a delivered requirement, so that is the headline. Underneath, the
- * four attributions, in the order they change a decision: which requirement, which
- * slice, which role, and — the one that is actually a knob — which difficulty tag,
- * since the tag picks the model.
+ * PLAN.md §13 risk ② is "this costs 5-10x a direct conversation", and the test for
+ * it is the cost of one delivered requirement — so that is the headline.
+ *
+ * Underneath, the hierarchy is real and the first version flattened it: a slice
+ * belongs to a requirement, and a role is either standing (Architect, Dispatcher,
+ * CoS, Librarian — paid for across the whole project) or hired into one group (PM,
+ * Engineer, QA). So requirements are the primary axis and open up to their own
+ * slices and roster; standing roles are their own block, because attributing them to
+ * any one requirement would be made up. 难度 stays last and separate: it is the only
+ * row here that is a knob rather than a report.
  */
 export function CostView({ st, cost, projectId }: { st: State; cost: Cost | null; projectId: number }) {
   if (!cost?.total?.usd) {
     return (
       <Empty>
-        还没有花钱。批准计划卡之后，这里按需求、切片、角色、难度四个维度归因 ——
+        还没有花钱。批准计划卡之后，这里按需求（含它的切片和人）、常驻岗、难度三层归因 ——
         难度标签是单次需求成本最直接的旋钮（trivial 跑 haiku，normal 跑 sonnet，hard 跑 opus）。
       </Empty>
     );
   }
-  const ids = new Set(st.groups.filter((g) => g.project_id === projectId).map((g) => g.id));
-  const bySlice = st.slices
-    .filter((s) => ids.has(s.grp_id) && s.spent_usd)
-    .map((s) => ({ label: `S${s.seq} ${s.title}`, usd: s.spent_usd, tokens: s.spent_tokens }))
-    .sort((a, b) => b.usd - a.usd);
   const per = cost.delivered?.count ? cost.delivered.usd / cost.delivered.count : null;
+  const standing = (cost.roles ?? []).filter((r) => r.grpId == null && r.usd);
+  const groups = (cost.byGroup ?? []).filter((g) => g.usd).sort((a, b) => b.usd - a.usd);
+  const topGroup = Math.max(1e-9, ...groups.map((g) => g.usd));
+  const inGroups = groups.reduce((n, g) => n + g.usd, 0);
 
   return (
     <>
@@ -217,11 +221,111 @@ export function CostView({ st, cost, projectId }: { st: State; cost: Cost | null
         </Tip>
       </div>
 
-      <Split title="按需求" rows={cost.byGroup} note="哪个需求贵。贵得离谱的通常是被打回过几轮的" />
-      <Split title="按切片" rows={bySlice} note="切片是预算单位，超支在这一层最早看得见" />
-      <Split title="按角色" rows={cost.byRole} note="决策岗（dispatcher / architect）跑 opus，执行岗跑 sonnet" />
-      <Split title="按难度" rows={cost.byDifficulty} note="这一栏是旋钮：标签直接决定跑哪个 model，在计划卡上可以改" />
+      <div className="mb-1 flex flex-wrap items-baseline gap-x-2.5">
+        <h3 className="text-[0.8125rem] font-semibold">按需求</h3>
+        <Meta>点开看它的切片和这一组的人。贵得离谱的通常是被打回过几轮的</Meta>
+      </div>
+      {groups.map((g) => (
+        <GroupCost key={g.grpId} st={st} cost={cost} row={g} top={topGroup} share={g.usd / inGroups} />
+      ))}
+
+      {standing.length > 0 && (
+        <Split
+          title="常驻岗"
+          note="跨需求共用，摊不到某一个需求上：Architect 切边界、Dispatcher 拆需求、Librarian 压缩、CoS 分诊"
+          rows={standing}
+        />
+      )}
+      <Split
+        title="按难度"
+        note="这一栏是旋钮：标签直接决定跑哪个 model，在计划卡上就能改"
+        rows={cost.byDifficulty}
+      />
     </>
+  );
+}
+
+/** One requirement, and — on demand — the slices and people inside it. */
+function GroupCost({
+  st, cost, row, top, share,
+}: {
+  st: State; cost: Cost; row: { grpId: number; label: string; tokens: number; usd: number }; top: number; share: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const slices = st.slices
+    .filter((s) => s.grp_id === row.grpId && s.spent_usd)
+    .sort((a, b) => b.spent_usd - a.spent_usd);
+  const roles = (cost.roles ?? []).filter((r) => r.grpId === row.grpId && r.usd).sort((a, b) => b.usd - a.usd);
+  const inner = Math.max(1e-9, ...slices.map((s) => s.spent_usd), ...roles.map((r) => r.usd));
+  const canOpen = slices.length > 0 || roles.length > 0;
+
+  return (
+    <>
+      <button
+        onClick={() => canOpen && setOpen((v) => !v)}
+        disabled={!canOpen}
+        className={cn(
+          "grid w-full grid-cols-[minmax(6rem,14rem)_minmax(0,1fr)_3.5rem_4rem_3rem] items-center gap-x-3",
+          "border-t border-rule-soft py-1.5 text-left",
+          "max-[52rem]:grid-cols-[minmax(0,1fr)_4rem_3rem]",
+          canOpen && "cursor-pointer hover:bg-sunk",
+        )}
+      >
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          {canOpen && (
+            <ChevronRight
+              size={12}
+              strokeWidth={2}
+              className={cn("shrink-0 text-ink-3 transition-transform", open && "rotate-90")}
+            />
+          )}
+          <span className="truncate text-[0.8125rem]" title={row.label}>{row.label}</span>
+        </span>
+        <Bar frac={row.usd / top} className="max-[52rem]:hidden" />
+        <Meta className="text-right max-[52rem]:hidden">{K(row.tokens)}</Meta>
+        <span className="text-right font-mono text-[0.8125rem]">{money(row.usd)}</span>
+        <Meta className="text-right">{Math.round(share * 100)}%</Meta>
+      </button>
+      {open && (
+        <div className="mb-1.5 border-l border-rule pl-3">
+          {slices.length > 0 && (
+            <>
+              <Meta className="mt-1 block">切片（预算单位，超支在这一层最早看得见）</Meta>
+              {slices.map((s) => (
+                <Line key={s.id} label={`S${s.seq} ${s.title}`} tag={s.difficulty} tokens={s.spent_tokens} usd={s.spent_usd} top={inner} />
+              ))}
+            </>
+          )}
+          {roles.length > 0 && (
+            <>
+              <Meta className="mt-1.5 block">这一组的人</Meta>
+              {roles.map((r) => (
+                <Line key={r.label} label={r.label} tokens={r.tokens} usd={r.usd} top={inner} mono />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Line({
+  label, tag, tokens, usd, top, mono,
+}: {
+  label: string; tag?: string; tokens: number; usd: number; top: number; mono?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(6rem,13rem)_minmax(0,1fr)_3.5rem_4rem] items-center gap-x-3 py-1
+                    max-[52rem]:grid-cols-[minmax(0,1fr)_4rem]">
+      <span className={cn("truncate text-[0.75rem] text-ink-2", mono && "font-mono")} title={label}>
+        {label}
+        {tag && <span className="ml-1.5 font-mono text-[0.625rem] text-ink-3">{tag}</span>}
+      </span>
+      <Bar frac={usd / top} className="max-[52rem]:hidden" />
+      <Meta className="text-right max-[52rem]:hidden">{K(tokens)}</Meta>
+      <span className="text-right font-mono text-[0.75rem]">{money(usd)}</span>
+    </div>
   );
 }
 
@@ -235,8 +339,8 @@ function Stat({
       <span className="block text-[0.75rem] text-ink-3">{label}</span>
       <b
         className={cn(
-          "block font-display font-semibold",
-          big ? "text-[1.75rem] leading-tight" : "text-[1.25rem] leading-tight",
+          "block font-display font-semibold leading-tight",
+          big ? "text-[1.75rem]" : "text-[1.25rem]",
           warn && "text-warn",
         )}
       >
@@ -247,14 +351,14 @@ function Stat({
   );
 }
 
-/** One attribution: rows sorted by spend, share as a bar, absolute numbers aligned. */
+/** A flat attribution: rows sorted by spend, share as a bar, numbers aligned. */
 function Split({ title, rows, note }: { title: string; rows: { label: string; usd: number; tokens: number }[]; note: string }) {
   const list = rows.filter((r) => r.usd).sort((a, b) => b.usd - a.usd);
   if (!list.length) return null;
   const top = Math.max(...list.map((r) => r.usd));
   const sum = list.reduce((n, r) => n + r.usd, 0);
   return (
-    <section className="mb-7">
+    <section className="mt-7">
       <div className="mb-1 flex flex-wrap items-baseline gap-x-2.5">
         <h3 className="text-[0.8125rem] font-semibold">{title}</h3>
         <Meta>{note}</Meta>
@@ -269,7 +373,7 @@ function Split({ title, rows, note }: { title: string; rows: { label: string; us
           <Bar frac={r.usd / top} className="max-[52rem]:hidden" />
           <Meta className="text-right max-[52rem]:hidden">{K(r.tokens)}</Meta>
           <span className="text-right font-mono text-[0.8125rem]">{money(r.usd)}</span>
-          {/* Share, because "$0.31" only means something next to the total. */}
+          {/* Share, because "$0.31" only means something next to a denominator. */}
           <Meta className="text-right">{Math.round((r.usd / sum) * 100)}%</Meta>
         </div>
       ))}

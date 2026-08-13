@@ -945,7 +945,7 @@ export function snapshot(ctx: Ctx) {
     slices: db
       .query(
         `SELECT id, grp_id, seq, title, accept_spec, difficulty, status, gates_json,
-                spent_tokens, spent_usd FROM slice ORDER BY grp_id, seq`,
+                spent_tokens, spent_usd, awaiting_at FROM slice ORDER BY grp_id, seq`,
       )
       .all(),
     // PLAN.md §8 asks the desk wall for the current slice, the turn count and the
@@ -969,7 +969,7 @@ export function snapshot(ctx: Ctx) {
     // box and asked to approve something they cannot see.
     draftCards: db
       .query(
-        `SELECT n.grp_id AS grpId, n.body FROM note n
+        `SELECT n.grp_id AS grpId, n.body, n.at FROM note n
          JOIN grp g ON g.id = n.grp_id
          WHERE g.status = 'DRAFT' AND json_extract(n.frontmatter_json, '$.draft_card') = 1
          GROUP BY n.grp_id HAVING n.at = max(n.at)`,
@@ -1767,6 +1767,49 @@ const SSE_HEARTBEAT_MS = 25_000;
  * Names only, never contents: this endpoint has no business reading files, and
  * the page it serves only needs to know what to offer.
  */
+/**
+ * The blackboard's static half, readable.
+ *
+ * `note` holds every journal, decision, retro, risk, handoff, onboarding pack and
+ * lesson — PLAN.md §7 calls the lesson list "the only mechanism by which the
+ * twentieth group is smarter than the first" — and none of it was reachable from
+ * the panel at all. Agents could `orch ctx query` it; the boss could not read it.
+ */
+const getNotes: Handler = async (ctx, req) => {
+  const q = new URL(req.url).searchParams;
+  const project = q.get("project");
+  const group = q.get("group");
+  const kind = q.get("kind");
+  const where: string[] = [];
+  const args: any[] = [];
+  if (group) {
+    where.push("n.grp_id = ?");
+    args.push(Number(group));
+  } else if (project) {
+    // Project scope includes the standing notes (onboarding, lessons) that belong
+    // to no group, which is exactly where they matter.
+    where.push("(n.project_id = ? OR g.project_id = ?)");
+    args.push(Number(project), Number(project));
+  }
+  if (kind) {
+    where.push("n.kind = ?");
+    args.push(kind);
+  }
+  // The draft card is a note too, and it already has its own screen.
+  where.push("coalesce(json_extract(n.frontmatter_json, '$.draft_card'), 0) != 1");
+
+  const rows = ctx.db
+    .query<unknown, any[]>(
+      `SELECT n.id, n.grp_id AS grpId, n.kind, n.body, n.at, n.export_path AS exportPath,
+              n.frontmatter_json AS frontmatter, g.name AS "group"
+       FROM note n LEFT JOIN grp g ON g.id = n.grp_id
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY n.at DESC LIMIT 300`,
+    )
+    .all(...args);
+  return json({ notes: rows });
+};
+
 const getDirs: Handler = async (ctx, req) => {
   const asked = new URL(req.url).searchParams.get("path") ?? homedir();
   const path = resolve(expandHome(asked));
@@ -1877,6 +1920,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/cost$/, getCost],
   ["GET", /^\/api\/stream$/, getStream],
   ["GET", /^\/api\/dirs$/, getDirs],
+  ["GET", /^\/api\/notes$/, getNotes],
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
   ["POST", /^\/api\/attach$/, postAttach],
