@@ -379,3 +379,26 @@ test("a group waiting on quota is not parked out from under itself", async () =>
   expect(found.some((f) => f.rule === "parked")).toBe(false);
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSED");
 });
+
+test("the group it was waiting on landed, so it starts again by itself", async () => {
+  // `orch blocked` hands a defect outside a group's boundary to whoever can fix it
+  // and stops the caller. Nothing else in the system knows that one group's merge
+  // is another group's green light.
+  const h = harness();
+  h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'fixer', 'RUNNING', 0)");
+  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = 0, blocked_on = 2 WHERE id = 1");
+
+  // Still running: nothing to wake up for, and parking must not touch it either —
+  // it is waiting on another group, not on the boss.
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSED");
+
+  h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 2");
+  const f = await runWatchdog(h.deps);
+  expect(f.map((x) => x.rule)).toContain("unblocked");
+  const g = h.db
+    .query<{ status: string; blocked_on: number | null }, []>("SELECT status, blocked_on FROM grp WHERE id = 1")
+    .get()!;
+  expect(g.status).toBe("RUNNING");
+  expect(g.blocked_on).toBeNull();
+});

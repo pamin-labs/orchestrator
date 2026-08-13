@@ -106,6 +106,7 @@ const USAGE = `orch <command>
   triage <group_id> --as patch|respec|reject --note "…"  # CoS only
   draft <group_id>                                       # card on stdin, Dispatcher/PM
   owns <group_id> --path <glob> [--path <glob> ...]      # Architect cuts a boundary
+  blocked <group_id> --path <file> --why "…"   # a defect outside your boundary
   drop <group_id> --why "…" --duplicate <group> | --commit <sha>
                                          # already covered; the boss confirms
   status <one line>
@@ -281,6 +282,14 @@ export async function main(argv: string[]): Promise<number> {
       const paths = list(flags.path);
       if (paths.length === 0) return usageError("owns needs at least one --path <glob>");
       r = await call("POST", "/orch/owns", { group_id: sub ?? process.env.ORCH_GRP_ID, paths });
+      break;
+    }
+    case "blocked": {
+      r = await call("POST", "/orch/blocked", {
+        group_id: sub ?? process.env.ORCH_GRP_ID,
+        path: typeof flags.path === "string" ? flags.path : "",
+        why: typeof flags.why === "string" ? flags.why : "",
+      });
       break;
     }
     case "drop": {

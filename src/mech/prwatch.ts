@@ -104,6 +104,14 @@ export interface Feedback {
   failingChecks: string[];
   /** GitHub says it is in main. The group winds itself up; nobody clicks anything. */
   merged?: boolean;
+  /**
+   * The branch no longer merges cleanly.
+   *
+   * Nothing watched for this, so a PR that went stale just sat there: the group
+   * was PR_OPEN, its queue empty, and the only way anyone found out was the boss
+   * opening GitHub. Rebasing is the Engineer's job, not the PM's.
+   */
+  conflicting?: boolean;
 }
 
 /**
@@ -133,7 +141,7 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
   for (const g of groups) {
     if (!g.worktree) continue;
     const r = await gh(
-      ["pr", "view", String(g.pr_number), "--json", "state,comments,reviews,statusCheckRollup"],
+      ["pr", "view", String(g.pr_number), "--json", "state,mergeable,comments,reviews,statusCheckRollup"],
       g.worktree,
     );
     if (r.code !== 0) continue;
@@ -165,8 +173,10 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
       .filter((c: any) => ["FAILURE", "ERROR", "TIMED_OUT"].includes(c.conclusion ?? c.state))
       .map((c: any) => String(c.name ?? c.context ?? "check"));
 
-    // A check that stays red is one piece of news, not one per poll.
-    const sig = failingChecks.slice().sort().join(",");
+    // A conflict is news exactly like a red check is, and it goes through the same
+    // signature so a stale branch does not wake the group every thirty seconds.
+    const conflicting = String(parsed.mergeable ?? "").toUpperCase() === "CONFLICTING";
+    const sig = [...failingChecks, ...(conflicting ? ["merge conflict"] : [])].sort().join(",");
     const checksChanged = sig !== (g.pr_checks_sig ?? "");
     if (comments.length === 0 && !checksChanged) continue;
 
@@ -177,6 +187,7 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
       prNumber: g.pr_number!,
       comments,
       failingChecks: checksChanged ? failingChecks : [],
+      conflicting,
     });
   }
   return out;
@@ -187,6 +198,7 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
   const lines = [
     ...f.comments.map((c) => `${c.author}: ${c.body}`),
     ...(f.failingChecks.length ? [`failing checks: ${f.failingChecks.join(", ")}`] : []),
+    ...(f.conflicting ? ["the branch no longer merges cleanly into main"] : []),
   ].join("\n");
 
   ctx.bus.emit({
@@ -198,9 +210,21 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
     meta: { pr: f.prNumber, comments: f.comments.length, failingChecks: f.failingChecks },
   });
   ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ? AND status = 'PR_OPEN'", [f.grpId]);
+  // A conflict is work, not a judgement call: the PM would only forward it. Reading
+  // a review and deciding what to concede is the PM's; `git rebase` is not.
   ctx.sched.enqueue("agent_turn", {
     grp_id: f.grpId,
-    payload: { role: "pm", rejection: `PR #${f.prNumber} feedback:\n${lines}` },
+    payload: f.conflicting
+      ? {
+          role: "engineer",
+          rotate: true,
+          rejection:
+            `PR #${f.prNumber} no longer merges into main. Rebase onto it before anything else:\n` +
+            `\`orch git -- fetch origin main\` then \`orch git -- rebase origin/main\`, resolve every conflict, ` +
+            `re-run the gates, then \`orch git -- push --force-with-lease\`. Keep both sides' intent — main moved ` +
+            `for a reason and so did this branch.\n${lines}`,
+        }
+      : { role: "pm", rejection: `PR #${f.prNumber} feedback:\n${lines}` },
   });
   ctx.sched.tick();
 }

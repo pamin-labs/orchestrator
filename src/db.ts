@@ -304,6 +304,15 @@ const MIGRATIONS: string[] = [
   // recorded that anyone had said yes, and the boss had to guess when to come
   // back and click again. One click has to be final.
   `ALTER TABLE grp ADD COLUMN approved_at INTEGER;`,
+
+  // 012 — the group this one is waiting on.
+  //
+  // A group that hits a defect outside its own paths cannot fix it and cannot ask
+  // anyone to: `orch mail` is a message, not a work item. So it escalated to the
+  // boss and stopped, and the boss got a blocker with no button on it. Recording
+  // which group now owns the problem is what lets the waiter start again by itself
+  // when that group lands.
+  `ALTER TABLE grp ADD COLUMN blocked_on INTEGER REFERENCES grp(id);`,
 ];
 
 export type DB = Database;

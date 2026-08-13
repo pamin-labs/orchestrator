@@ -312,3 +312,31 @@ test("a repo view that fails does not block preflight", async () => {
   );
   expect(pre.ok).toBe(true);
 });
+
+test("a branch that stopped merging wakes the Engineer, not the PM", async () => {
+  // Nothing watched for this: a PR that went stale sat at PR_OPEN with an empty
+  // queue, and the only way anyone found out was the boss opening GitHub.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 7 WHERE id = 1");
+  const fs = await pollPrs(
+    h.ctx,
+    gh({ "pr view": { code: 0, out: JSON.stringify({ state: "OPEN", mergeable: "CONFLICTING" }) } }),
+  );
+  expect(fs[0]!.conflicting).toBe(true);
+
+  dispatchFeedback(h.ctx, fs[0]!);
+  const p = JSON.parse(
+    h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job ORDER BY id DESC LIMIT 1").get()!
+      .payload_json,
+  );
+  // Reading a review and deciding what to concede is the PM's. `git rebase` is not.
+  expect(p.role).toBe("engineer");
+  expect(p.rejection).toContain("rebase");
+
+  // Still conflicting on the next poll is not new news; the group is already on it.
+  const again = await pollPrs(
+    h.ctx,
+    gh({ "pr view": { code: 0, out: JSON.stringify({ state: "OPEN", mergeable: "CONFLICTING" }) } }),
+  );
+  expect(again).toHaveLength(0);
+});

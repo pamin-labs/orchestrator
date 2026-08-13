@@ -10,7 +10,7 @@ import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import type { GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
-import { canStart, parseOwns } from "./mech/ownership.ts";
+import { canStart, overlaps, parseOwns } from "./mech/ownership.ts";
 import { acceptSlice } from "./mech/review.ts";
 import { dropGroup, startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
@@ -831,6 +831,124 @@ const postDrop: Handler = async (ctx, req) => {
     meta: { drop_proposal: true, evidence },
   });
   return text("ok");
+};
+
+/**
+ * "I am blocked by something I am not allowed to touch."
+ *
+ * The gap this closes, seen whole: pm-ai-agent's gate failed on a missing line in
+ * `tsconfig.json`. The file is not in its `owns`, so the sandbox refused the write.
+ * It could not open a requirement for it — there was no verb. It could not hand it
+ * to whoever owns it — `orch mail` is a message, and a message creates no work. So
+ * it rewrote its own code three times, hit the retry ceiling, escalated, and
+ * stopped. The boss got a blocker with no button on it, and four other groups sat
+ * red on the same line.
+ *
+ * The evidence is the path itself: the server checks the file exists and is
+ * genuinely outside this group's boundary. "I cannot reach it" is a fact about the
+ * repository, not a claim about how hard the work is — which is the difference
+ * between this and a way out of difficult work.
+ *
+ * Where it goes is decided here, not by the agent: a live group that owns the path
+ * gets it as an addition, and if nobody owns it, it becomes a requirement the boss
+ * approves like any other. Either way the caller records what it is waiting on and
+ * stops, and the watchdog starts it again when that lands.
+ */
+const postBlocked: Handler = async (ctx, req) => {
+  const b = await body<{ group_id?: number | string; path?: string; why?: string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  const gid = resolveGroup(ctx, b.group_id, a.grp_id);
+  if (!gid) return bad("which group? pass its id or name");
+  const path = (b.path ?? "").trim().replace(/^\.\//, "");
+  const why = (b.why ?? "").trim();
+  if (!path) return bad("--path <file> — which file you cannot change");
+  if (why.length < 10) return bad("--why has to say what is wrong with it, in a sentence");
+
+  const me = ctx.db
+    .query<{ project_id: number; name: string; owns_json: string }, [number]>(
+      "SELECT project_id, name, owns_json FROM grp WHERE id = ?",
+    )
+    .get(gid);
+  if (!me) return bad("no such group");
+  const repo = ctx.db
+    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
+    .get(me.project_id);
+  if (!repo || !existsSync(join(repo.repo_path, path))) return bad(`${path} is not a file in this repo`);
+  // The whole justification. Inside its own boundary the group is expected to fix
+  // it, and saying otherwise is the cheap way out of difficult work.
+  if (parseOwns(me.owns_json).some((o) => overlaps(o, path))) {
+    return bad(`${path} is inside your own boundary — fix it`);
+  }
+
+  const owner = ctx.db
+    .query<{ id: number; name: string; owns_json: string }, [number, number]>(
+      `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
+         AND status IN ('PLANNING','RUNNING','PAUSING','PAUSED','PARKED','PR_OPEN')`,
+    )
+    .all(me.project_id, gid)
+    .find((o) => parseOwns(o.owns_json).some((glob) => overlaps(glob, path)));
+
+  let target: number;
+  if (owner) {
+    // Somebody live already owns it. A second group for the same file would be
+    // refused by canStart anyway, so this is an addition to their work.
+    target = owner.id;
+    ctx.bus.emit({
+      grpId: owner.id,
+      author: a.role,
+      kind: "say",
+      intent: "request",
+      body: `${me.name} 被 ${path} 挡住了，那是你们的路径：${why}`,
+      meta: { from_group: gid, path },
+    });
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: owner.id,
+      priority: 6,
+      payload: {
+        role: "pm",
+        rejection: `Another group is blocked on ${path}, which is inside your boundary: ${why}\n\nAdd it to this group's work.`,
+      },
+    });
+  } else {
+    const name = slug(`${path} ${why}`).slice(0, 40) || `fix-${gid}`;
+    const grp = ctx.db
+      .query<{ id: number }, [number, string]>(
+        "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'PLANNING', unixepoch() * 1000) RETURNING id",
+      )
+      .get(me.project_id, name)!;
+    ctx.db.run(
+      "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000)",
+      [me.project_id, grp.id],
+    );
+    const idea = `${why}\n\n（${me.name} 报的：${path} 不在它的边界内，它改不了）`;
+    ctx.db.run(
+      "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
+      [me.project_id, grp.id, ctx.config.language, idea],
+    );
+    // boss_say, because that is what every planner reads as the requirement, and a
+    // second shape for "this is the ask" would be a second thing to remember.
+    ctx.bus.emit({ grpId: grp.id, author: a.role, kind: "boss_say", intent: "request", body: idea });
+    ctx.sched.enqueue("agent_turn", { grp_id: grp.id, priority: 6, payload: { role: "dispatcher", idea } });
+    target = grp.id;
+  }
+
+  // Stop, and say what it is waiting for. PAUSED rather than a spin: a group with
+  // nothing it can legally do should not hold a concurrency slot.
+  ctx.db.run(
+    "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, blocked_on = ? WHERE id = ?",
+    [target, gid],
+  );
+  ctx.sched.cancelPending(gid, `blocked on ${path}`);
+  ctx.bus.emit({
+    grpId: gid,
+    author: a.role,
+    kind: "state_change",
+    body: say(ctx.config?.language, "group.blocked", { path, target: String(target) }),
+    meta: { blocked_on: target, path },
+  });
+  ctx.sched.tick();
+  return json({ blocked_on: target, handedTo: owner ? owner.name : "a new requirement" });
 };
 
 const postOwns: Handler = async (ctx, req) => {
@@ -2219,6 +2337,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/draft$/, postDraft],
   ["POST", /^\/orch\/owns$/, postOwns],
   ["POST", /^\/orch\/drop$/, postDrop],
+  ["POST", /^\/orch\/blocked$/, postBlocked],
   ["POST", /^\/orch\/split$/, postSplit],
 
   ["GET", /^\/api\/state$/, getState],

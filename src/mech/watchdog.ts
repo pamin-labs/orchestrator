@@ -244,12 +244,43 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     });
   }
 
+  // 10. The group it was waiting on has landed.
+  //
+  // `orch blocked` hands a defect outside a group's boundary to whoever can fix
+  // it and stops the caller. Without this the caller waits forever: nothing else
+  // in the system knows that one group's merge is another group's green light.
+  const waiting = ctx.db
+    .query<{ id: number; name: string; blocked_on: number }, []>(
+      `SELECT g.id, g.name, g.blocked_on FROM grp g JOIN grp b ON b.id = g.blocked_on
+       WHERE g.blocked_on IS NOT NULL AND b.status = 'DISSOLVED'`,
+    )
+    .all();
+  for (const g of waiting) {
+    ctx.db.run(
+      "UPDATE grp SET status = 'RUNNING', paused_at = NULL, blocked_on = NULL WHERE id = ?",
+      [g.id],
+    );
+    ctx.bus.emit({
+      grpId: g.id,
+      author: "orchestrator",
+      kind: "state_change",
+      body: t("group.unblocked", { target: String(g.blocked_on) }),
+    });
+    // Rule 8 above requeues a live group with an empty queue, so the turn itself
+    // comes from there — this only has to make the group live again.
+    findings.push({ rule: "unblocked", grpId: g.id, severity: "advisory", body: t("group.unblocked", { target: String(g.blocked_on) }) });
+  }
+
   // 7. Paused too long: notify, then park to stop holding a slot.
   const paused = ctx.db
     .query<{ id: number; name: string; paused_at: number }, []>(
       // `rl_resets_at IS NULL`: a group waiting for quota is not waiting for the boss,
       // and parking it would retire its sessions minutes before it could resume.
-      "SELECT id, name, paused_at FROM grp WHERE status = 'PAUSED' AND paused_at IS NOT NULL AND rl_resets_at IS NULL",
+      // `blocked_on IS NULL` for the same reason: it is waiting on another group,
+      // not on anyone here, and parking would retire the sessions that are about to
+      // be woken.
+      `SELECT id, name, paused_at FROM grp
+       WHERE status = 'PAUSED' AND paused_at IS NOT NULL AND rl_resets_at IS NULL AND blocked_on IS NULL`,
     )
     .all();
   for (const g of paused) {
