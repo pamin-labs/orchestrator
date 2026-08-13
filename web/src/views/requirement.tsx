@@ -58,6 +58,8 @@ export function Requirement({
 
   const draft = g.status === "DRAFT" || g.status === "PLANNING";
   const active = tab ?? (mine.length ? "ask" : "slice");
+  // The record is fetched by the panel that shows it, so the tab has to be told.
+  const [notes, setNotes] = useState<number | null>(null);
 
   return (
     // Four things this page holds, and they were stacked in two columns down one
@@ -89,8 +91,7 @@ export function Requirement({
             <Tab value="ask" count={asks.length} mine={mine.length > 0}>
               {mine.length ? "待你决策" : "问题"}
             </Tab>
-            <Tab value="notes">记录</Tab>
-            <Tab value="roster" count={st.agents.filter((a) => a.grp_id === g.id).length}>这个组的人</Tab>
+            <Tab value="notes" count={notes ?? undefined}>记录</Tab>
           </TabList>
 
           <TabPanel value="slice" className="flex min-h-0 flex-1 flex-col">
@@ -126,21 +127,19 @@ export function Requirement({
               ) : (
                 <div className="text-[0.8125rem] text-ink-3">没有开着的问题。</div>
               )}
+              {/* An answer a stand-in gave for the boss belongs with the questions,
+                  which is where someone goes looking for it. It used to sit in a
+                  roster tab: 这个组的人 listed role, activity, turns and tokens for
+                  every agent in the group — the 工位墙 in miniature, one column
+                  narrower, on a page about a requirement rather than about people.
+                  The tab is gone; this was the only part of it doing work. */}
+              <Delegated rows={st.answered.filter((a) => a.grp_id === g.id)} refresh={refresh} />
             </Pane>
           </TabPanel>
 
           <TabPanel value="notes" className="flex min-h-0 flex-1 flex-col">
             <Pane>
-              <Notes grpId={g.id} compact />
-            </Pane>
-          </TabPanel>
-
-          <TabPanel value="roster" className="flex min-h-0 flex-1 flex-col">
-            <Pane>
-              <Roster rows={st.agents.filter((a) => a.grp_id === g.id)} />
-              {/* Answers a stand-in gave on the boss's behalf live with the people
-                  who gave them, not in a tab of their own that read as empty. */}
-              <Delegated rows={st.answered.filter((a) => a.grp_id === g.id)} refresh={refresh} />
+              <Notes grpId={g.id} compact onCount={setNotes} />
             </Pane>
           </TabPanel>
         </Tabs>
@@ -873,22 +872,3 @@ function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
   );
 }
 
-function Roster({ rows }: { rows: State["agents"] }) {
-  if (!rows.length) {
-    return <div className="break-words text-[0.8125rem] text-ink-3">还没雇人。批准计划卡之后 PM / Engineer / QA 会被雇进这一组。</div>;
-  }
-  return (
-    <>
-      <div className="grid gap-1">
-        {rows.map((a) => (
-          <div key={a.id} className="grid grid-cols-[5rem_minmax(0,1fr)_auto_auto] items-baseline gap-3 text-[0.75rem]">
-            <span className="font-mono text-[0.6875rem] text-ink-2">{a.role}</span>
-            <span className="truncate text-ink-3">{a.activity ?? a.state}</span>
-            <Meta className={a.turns >= 15 ? "text-warn" : undefined}>{a.turns || 0} turn</Meta>
-            <Meta>{K(a.total_tokens)}</Meta>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
