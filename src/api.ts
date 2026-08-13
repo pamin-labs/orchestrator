@@ -1375,23 +1375,40 @@ const postProject: Handler = async (ctx, req) => {
   return json({ id: r.id, gates, detected });
 };
 
+/** Idle SSE connections get dropped by proxies and by browsers' own timeouts. */
+const SSE_HEARTBEAT_MS = 25_000;
+
 const getStream: Handler = async (ctx, req) => {
   const since = Number(new URL(req.url).searchParams.get("since") ?? 0);
   let unsub = () => {};
+  let beat: ReturnType<typeof setInterval> | undefined;
   const stream = new ReadableStream<Uint8Array>({
     start(c) {
       const enc = new TextEncoder();
-      const send = (data: unknown) => {
+      const raw = (s: string) => {
         try {
-          c.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`));
+          c.enqueue(enc.encode(s));
+          return true;
         } catch {
           unsub();
+          if (beat) clearInterval(beat);
+          return false;
         }
       };
+      const send = (data: unknown) => raw(`data: ${JSON.stringify(data)}\n\n`);
+
+      // A stream that sends nothing has sent no bytes, and a browser does not
+      // report a byteless response as open — the UI sat on "connecting…" forever
+      // on a fresh database with no events to replay. The comment also defeats
+      // proxy buffering, and `retry` sets the reconnect delay.
+      raw(`retry: 3000\n: connected\n\n`);
+
       for (const e of ctx.bus.since(since)) send({ type: "event", ...e });
       unsub = ctx.bus.subscribe(send);
+      beat = setInterval(() => raw(`: ping\n\n`), SSE_HEARTBEAT_MS);
       req.signal.addEventListener("abort", () => {
         unsub();
+        if (beat) clearInterval(beat);
         try {
           c.close();
         } catch {}
@@ -1399,6 +1416,7 @@ const getStream: Handler = async (ctx, req) => {
     },
     cancel() {
       unsub();
+      if (beat) clearInterval(beat);
     },
   });
   return new Response(stream, {

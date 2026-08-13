@@ -42,6 +42,14 @@ test("the web UI is served and is self-contained", async () => {
   // No build step and no CDN: a strict local page must not fetch anything.
   expect(html).not.toMatch(/<script[^>]+src=/);
   expect(html).not.toMatch(/<link[^>]+stylesheet/);
+
+  // The page's JS must actually parse. It shipped with top-level `await` inside a
+  // classic <script>, which is a SyntaxError — and one SyntaxError means NONE of
+  // the script runs, so the UI rendered its static placeholders and sat on
+  // "connecting…" forever. Asserting "no external script" did not catch that.
+  const m = /<script([^>]*)>([\s\S]*?)<\/script>/.exec(html)!;
+  expect(m[1]).toContain('type="module"');
+  new Bun.Transpiler({ loader: "js" }).transformSync(m[2]!);
 });
 
 test("boss path: add project, drop an idea, nothing runs without a slot", async () => {

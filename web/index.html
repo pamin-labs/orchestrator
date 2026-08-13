@@ -103,7 +103,10 @@
   </div>
 </main>
 
-<script>
+<!-- type="module" is required: the bottom of this file uses top-level await, which is a
+     SyntaxError in a classic script — and a SyntaxError means NONE of the page's JS
+     runs, so the UI looks like a static mockup stuck on "connecting…". -->
+<script type="module">
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]);
 let state = { projects: [], groups: [], slices: [], agents: [], tasks: [], escalations: [] };
