@@ -291,3 +291,37 @@ bun run src/server.ts                     # 起服务
 - `profiles/` 不是静态文件，按组生成
 - **intent 只有 5 种**（`ask`/`request`/`inform`/`note`/`decision` + 正交字段）
 - 迁移共 8 条，全部 append-only
+
+## 两个账号，一份工作（决策 004）
+
+`RoleDef.runtime` 从第一版就有，八个 role 一个都没用过 —— 而它背后是空的：`difficultyModel` 里只有 claude 的模型 id，真写了 `runtime: codex` 会把 claude 模型名喂给 `codex exec -m`，当场被拒。现在补齐了，claude 只留三个决策角色：
+
+| role | 跑在 | 模型 | effort |
+|---|---|---|---|
+| dispatcher / architect / cos | claude | hard 档（opus 5） | xhigh / high / high |
+| engineer / qa | codex | 随切片难度（sol / terra / luna） | medium |
+| auditor | codex | 钉死 `gpt-5.6-sol` | high |
+| pm | codex | normal 档（terra） | medium |
+| librarian | codex | trivial 档（luna） | low |
+
+`orch ctx query` 的索引调用（全系统最频繁的一次模型调用，纯摘要）也挪到了 codex 最便宜那档 —— `config.indexModel`。
+
+**强度（effort）两边同名**：`claude --help` 是 `low…max`，codex 的 `models_cache.json` 也是同五档，只有 `gpt-5.6-sol` 多一个 `ultra`。所以没有映射表，只在 `providers.ts` 里按 provider 声明支持的档位并钳位。effort 进了 `hashStable` —— 改强度会轮换 session，和改模型一样。
+
+**provider 是注册表不是 union**（`src/runtime/providers.ts`）：加第三个 CLI = 一个文件 + 一行注册，`Runtime` 是 string，没有 union 要加宽、没有 `if` 要找。每个 provider 声明自己能不能约束写入（`confinesWrites`），这决定 ownership 是前置拦截还是事后对账。
+
+沙箱、ownership 后置对账、`CODEX_HOME` 隔离、AGENTS.md 软链的实测依据全在**决策 004**。真跑了一个 codex turn 用最终这套 argv 去 `curl 127.0.0.1`，拿到 `ORCH-OK` —— 「agent 够不够得着 orchestrator」这个前提是验过的，不是推的。
+
+### 顺手挖出来的一个真 bug：轮换分母写死 200k
+
+`overTokenBudget` 对所有模型都除以字面量 `200_000`。翻本仓库真实 turn 日志：haiku-4-5 报 200k，**sonnet-5 和 opus-5 报 1M**，codex 的 `token_count` 报 272k。也就是强模型一直在自己窗口的 12% 处轮换 session，每轮换一次扔掉一次花钱建起来的缓存前缀。现在 `config.contextWindow` 给初值、turn 里 CLI 报的真实值覆盖它、`contextWindowFor` 把结果钳在 [100k, 2M]。
+
+## nav 上的订阅用量
+
+codex 每个 turn 的 `token_count` 里自带 5h 和周窗口的 `used_percent`。claude 的流里没有 —— 267 条真实 `rate_limit_event` 只有 status 和重置时间，所以 `src/mech/subusage.ts` 走那个社区通用但**未文档化**的 `api/oauth/usage`（token 从 Keychain 读，只读不写），5 分钟一次，挂了就静默降级回 status + 倒计时。整套东西不许让任何主流程依赖它。
+
+放进 header 是对 `DESIGN.md` 那条「不放仅仅为真的东西」的有意让步：花了多少钱属于 成本 页，**今晚还能不能干活**属于这里。80% 以下是灰的。
+
+## turns 日志
+
+`data/turns` 涨到 59MB / 365 个文件，而**全仓库没有任何代码读它**。改成 turn 一结束就 gzip（watchdog 那道 24h 扫描退成崩溃残留的兜底，保留期 14d → 7d），codex 侧也套上了裁剪 —— 它之前写的是未裁剪原始行，claude 侧早就量过 tool 输出占文件 90.2%。
