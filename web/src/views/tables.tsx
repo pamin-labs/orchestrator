@@ -200,25 +200,31 @@ export function CostView({ st, cost, projectId }: { st: State; cost: Cost | null
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-end gap-x-10 gap-y-4">
-        <Stat big label="累计" value={money(cost.total.usd)} sub={`${K(cost.total.tokens)} tokens`} />
-        {/* The number to hold against "what would this have cost me directly". */}
-        <Stat
-          big
-          label="每个已交付需求"
-          value={per == null ? "还没有" : money(per)}
-          sub={per == null ? "合入一个才有这个数" : `${cost.delivered.count} 个已交付`}
-        />
-        <Tip label="注入的 delta 必须留在最后一条 user message 末尾。这个数掉下来说明 prompt 组装被改坏了 —— agent 照跑、测试照绿，每个 turn 贵 3-5 倍。">
+      <div className="mb-6 border-b border-rule pb-4">
+        <span className="block text-[0.75rem] text-ink-3">这个项目累计</span>
+        <b className="block font-display text-[2rem] font-semibold leading-none">{money(cost.total.usd)}</b>
+        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[0.75rem] text-ink-2">
+          <span className="font-mono text-ink-3">{K(cost.total.tokens)} tokens</span>
+          {/* The number to hold against "what would this have cost me directly". */}
           <span>
-            <Stat
-              label="cache 命中"
-              value={cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`}
-              sub="最近 50 个 turn"
-              warn={cost.cacheRatio != null && cost.cacheRatio < 0.5}
-            />
+            每个已交付需求{" "}
+            <b className="font-mono font-semibold text-ink">{per == null ? "—" : money(per)}</b>
+            <span className="text-ink-3">{per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`}</span>
           </span>
-        </Tip>
+          <Tip label="注入的 delta 必须留在最后一条 user message 末尾。这个数掉下来说明 prompt 组装被改坏了 —— agent 照跑、测试照绿，每个 turn 贵 3-5 倍。">
+            <span className="underline decoration-dotted">
+              cache 命中{" "}
+              <b
+                className={cn(
+                  "font-mono font-semibold",
+                  cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
+                )}
+              >
+                {cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`}
+              </b>
+            </span>
+          </Tip>
+        </div>
       </div>
 
       <div className="mb-1 flex flex-wrap items-baseline gap-x-2.5">
@@ -265,9 +271,9 @@ function GroupCost({
         onClick={() => canOpen && setOpen((v) => !v)}
         disabled={!canOpen}
         className={cn(
-          "grid w-full grid-cols-[minmax(6rem,14rem)_minmax(0,1fr)_3.5rem_4rem_3rem] items-center gap-x-3",
-          "border-t border-rule-soft py-1.5 text-left",
-          "max-[52rem]:grid-cols-[minmax(0,1fr)_4rem_3rem]",
+          "grid w-full grid-cols-[minmax(0,1fr)_4.5rem_4rem_2.75rem_5rem] items-center gap-x-3",
+          "border-t border-rule-soft px-2 py-1.5 text-left",
+          "max-[52rem]:grid-cols-[minmax(0,1fr)_4rem_2.75rem]",
           canOpen && "cursor-pointer hover:bg-sunk",
         )}
       >
@@ -281,13 +287,13 @@ function GroupCost({
           )}
           <span className="truncate text-[0.8125rem]" title={row.label}>{row.label}</span>
         </span>
-        <Bar frac={row.usd / top} className="max-[52rem]:hidden" />
         <Meta className="text-right max-[52rem]:hidden">{K(row.tokens)}</Meta>
         <span className="text-right font-mono text-[0.8125rem]">{money(row.usd)}</span>
         <Meta className="text-right">{Math.round(share * 100)}%</Meta>
+        <Bar frac={row.usd / top} className="max-[52rem]:hidden" />
       </button>
       {open && (
-        <div className="mb-1.5 border-l border-rule pl-3">
+        <div className="mb-2 ml-2 border-l-2 border-rule bg-rail/40 pl-3">
           {slices.length > 0 && (
             <>
               <Meta className="mt-1 block">切片（预算单位，超支在这一层最早看得见）</Meta>
@@ -316,15 +322,15 @@ function Line({
   label: string; tag?: string; tokens: number; usd: number; top: number; mono?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(6rem,13rem)_minmax(0,1fr)_3.5rem_4rem] items-center gap-x-3 py-1
+    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4rem_5rem] items-center gap-x-3 py-1
                     max-[52rem]:grid-cols-[minmax(0,1fr)_4rem]">
       <span className={cn("truncate text-[0.75rem] text-ink-2", mono && "font-mono")} title={label}>
         {label}
         {tag && <span className="ml-1.5 font-mono text-[0.625rem] text-ink-3">{tag}</span>}
       </span>
-      <Bar frac={usd / top} className="max-[52rem]:hidden" />
       <Meta className="text-right max-[52rem]:hidden">{K(tokens)}</Meta>
       <span className="text-right font-mono text-[0.75rem]">{money(usd)}</span>
+      <Bar frac={usd / top} className="max-[52rem]:hidden" />
     </div>
   );
 }
@@ -366,15 +372,16 @@ function Split({ title, rows, note }: { title: string; rows: { label: string; us
       {list.map((r) => (
         <div
           key={r.label}
-          className="grid grid-cols-[minmax(6rem,14rem)_minmax(0,1fr)_3.5rem_4rem_3rem] items-center gap-x-3
-                     border-t border-rule-soft py-1.5 max-[52rem]:grid-cols-[minmax(0,1fr)_4rem_3rem]"
+          className="grid grid-cols-[minmax(0,1fr)_4.5rem_4rem_2.75rem_5rem] items-center gap-x-3
+                     border-t border-rule-soft px-2 py-1.5 max-[52rem]:grid-cols-[minmax(0,1fr)_4rem_2.75rem]"
         >
           <span className="truncate text-[0.8125rem]" title={r.label}>{r.label}</span>
-          <Bar frac={r.usd / top} className="max-[52rem]:hidden" />
           <Meta className="text-right max-[52rem]:hidden">{K(r.tokens)}</Meta>
           <span className="text-right font-mono text-[0.8125rem]">{money(r.usd)}</span>
-          {/* Share, because "$0.31" only means something next to a denominator. */}
-          <Meta className="text-right">{Math.round((r.usd / sum) * 100)}%</Meta>
+          {/* Share, because "$0.31" only means something next to a denominator — and
+              "100%" next to a lone row means nothing at all. */}
+          <Meta className="text-right">{list.length > 1 ? `${Math.round((r.usd / sum) * 100)}%` : ""}</Meta>
+          <Bar frac={r.usd / top} className="max-[52rem]:hidden" />
         </div>
       ))}
     </section>

@@ -32,14 +32,16 @@ export interface Note {
 }
 
 const KINDS: [string, string, string][] = [
-  ["journal", "journal", "每个 turn 的产出：做了啥、为什么、风险"],
+  ["journal", "日志", "每个 turn 的产出：做了啥、为什么、风险。硬性 ≤6 行"],
   ["decision", "决策", "定下来的事，后面的组会引用它"],
-  ["retro", "retro", "解散前必写，不写不许解散"],
+  ["retro", "复盘", "解散前必写，不写不许解散 —— 系统唯一的长期记忆"],
   ["lesson", "教训", "从 retro 归纳出来，注入后续组的 prompt。硬上限 20 条"],
   ["onboarding", "入职包", "怎么 build、怎么测、已知坑。新 agent 第一个 turn 免费拿到"],
   ["risk", "风险", "写下来的风险，不是猜的"],
   ["fact", "老板说的", "你的原话，作为最高优先级 fact"],
 ];
+
+const ZH = new Map(KINDS.map(([k, zh]) => [k, zh]));
 
 export function Notes({ projectId, grpId, compact }: { projectId?: number; grpId?: number; compact?: boolean }) {
   const [notes, setNotes] = useState<Note[] | null>(null);
@@ -50,11 +52,11 @@ export function Notes({ projectId, grpId, compact }: { projectId?: number; grpId
     void pull<{ notes: Note[] }>(`/api/notes?${scope}`).then((r) => setNotes(r?.notes ?? []));
   }, [scope]);
 
-  if (!notes) return <Meta>读黑板…</Meta>;
+  if (!notes) return <Meta>读记录…</Meta>;
   if (!notes.length) {
     return (
       <div className="text-[0.8125rem] text-ink-3">
-        黑板上还没有东西。agent 每个 turn 写 journal（≤6 行，超了 `orch` 拒收），组解散前必须写 retro，
+        还没有记录。agent 每个 turn 写 journal（≤6 行，超了 `orch` 拒收），组解散前必须写 retro，
         Librarian 把 retro 归纳成教训注入后续组。
       </div>
     );
@@ -114,7 +116,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
   return (
     <div className="border-t border-rule-soft py-2">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        {showKind && <Badge>{n.kind}</Badge>}
+        {showKind && <Badge>{ZH.get(n.kind) ?? n.kind}</Badge>}
         {n.group && <Meta>{n.group}</Meta>}
         <Meta>{clock(n.at)}</Meta>
         {gate && (

@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from "node:path";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { mkdir, writeFile } from "node:fs/promises";
 import type { DB } from "./db.ts";
@@ -18,6 +18,7 @@ import { detectGates, detectShared } from "./mech/detect.ts";
 import { preflightPr } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { gatesFor } from "./mech/gate.ts";
+import { say } from "./lang.ts";
 import { validateDraftCard, validateJournal } from "./mech/validate.ts";
 
 /**
@@ -1328,7 +1329,12 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
           wt.branch,
           grpId,
         ]);
-        ctx.bus.emit({ grpId, author: "orchestrator", kind: "state_change", body: `worktree ${wt.branch}` });
+        ctx.bus.emit({
+          grpId,
+          author: "orchestrator",
+          kind: "state_change",
+          body: say(ctx.config?.language, "group.worktree", { branch: wt.branch }),
+        });
       } catch (e: any) {
         // Refuse to start rather than run the group in the main checkout, where
         // it would write straight into the boss's working tree.
@@ -1338,7 +1344,7 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
   }
 
   ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [grpId]);
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "DRAFT approved" });
+  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config?.language, "group.approved") });
   // Approving a plan that then sits still is the most confusing failure there is:
   // it looks like the system ignored you.
   startNextSlice(ctx, grpId);
@@ -1354,7 +1360,7 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
  */
 export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
   const stale = landed(ctx.db, grpId);
-  ctx.bus.emit({ grpId, author: by, kind: "state_change", body: "merged into main" });
+  ctx.bus.emit({ grpId, author: by, kind: "state_change", body: say(ctx.config?.language, "group.merged") });
 
   // Turn this group's retro into lessons while the branch is fresh. This is
   // the only mechanism by which the twentieth group is smarter than the
@@ -1810,6 +1816,46 @@ const getNotes: Handler = async (ctx, req) => {
   return json({ notes: rows });
 };
 
+/**
+ * Skills the project carries, by path.
+ *
+ * Agents run with `--disable-slash-commands` and `--setting-sources project,local`
+ * on purpose: the skill catalogue is ~46k cached tokens of prefix on every turn, and
+ * inheriting the boss's user-level skills measured at ~195k on a trivial haiku turn.
+ * So "/impeccable" typed into a requirement would do exactly nothing.
+ *
+ * What does work is the path: every role has Read, so naming the SKILL.md costs a
+ * dozen tokens now and one read later, only in the turn that needs it. This route
+ * exists so the composer can offer those paths instead of the boss remembering them.
+ */
+const getSkills: Handler = async (ctx, req) => {
+  const id = Number(new URL(req.url).searchParams.get("project"));
+  const repo = ctx.db
+    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
+    .get(id)?.repo_path;
+  if (!repo) return json({ skills: [] });
+
+  const out: { name: string; path: string; description: string }[] = [];
+  for (const base of ["skills", "agents/skills"]) {
+    const dir = join(repo, ".claude", base);
+    if (!existsSync(dir)) continue;
+    for (const d of readdirSync(dir, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue;
+      const file = join(dir, d.name, "SKILL.md");
+      if (!existsSync(file)) continue;
+      // First line of frontmatter description, if any. Cheap and good enough for a
+      // picker; the agent reads the real thing.
+      let description = "";
+      try {
+        const head = readFileSync(file, "utf8").slice(0, 1200);
+        description = (/^description:\s*(.+)$/m.exec(head)?.[1] ?? "").trim().slice(0, 120);
+      } catch {}
+      out.push({ name: d.name, path: `.claude/${base}/${d.name}/SKILL.md`, description });
+    }
+  }
+  return json({ skills: out.sort((a, b) => a.name.localeCompare(b.name)) });
+};
+
 const getDirs: Handler = async (ctx, req) => {
   const asked = new URL(req.url).searchParams.get("path") ?? homedir();
   const path = resolve(expandHome(asked));
@@ -1921,6 +1967,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/stream$/, getStream],
   ["GET", /^\/api\/dirs$/, getDirs],
   ["GET", /^\/api\/notes$/, getNotes],
+  ["GET", /^\/api\/skills$/, getSkills],
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
   ["POST", /^\/api\/attach$/, postAttach],

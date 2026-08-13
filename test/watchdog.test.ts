@@ -91,7 +91,10 @@ test("the same lease failing twice on unchanged code blames the environment", as
   const f = await runWatchdog(h.deps);
   const env = f.find((x) => x.rule === "env_suspect")!;
   expect(env).toBeDefined();
-  expect(env.body).toContain("environment");
+  // The body follows output.language (中文 here); the resource name is a technical
+  // term and stays verbatim in both.
+  expect(env.body).toContain("build");
+  expect(env.body).toContain("环境");
 });
 
 test("two failures at different commits are just two failures", async () => {

@@ -1,4 +1,5 @@
 import type { Ctx } from "../api.ts";
+import { say } from "../lang.ts";
 import { squashWip } from "./worktree.ts";
 
 /**
@@ -87,7 +88,12 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   if (!number) return { error: `opened, but could not read its number: ${view.out.slice(0, 200)}` };
 
   ctx.db.run("UPDATE grp SET pr_number = ? WHERE id = ?", [number, grpId]);
-  ctx.bus.emit({ grpId, author: "orchestrator", kind: "state_change", body: `PR #${number} opened` });
+  ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "state_change",
+    body: say(ctx.config?.language, "pr.opened", { n: number }),
+  });
   return { number };
 }
 

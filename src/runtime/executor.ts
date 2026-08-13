@@ -7,6 +7,7 @@ import { modelFor } from "../config.ts";
 import type { Executor, Job } from "../scheduler.ts";
 import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
 import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
+import { say } from "../lang.ts";
 import { denyOutsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
@@ -144,7 +145,12 @@ export function hire(
       grp?.worktree ?? null,
     )!;
 
-  ctx.bus.emit({ grpId, author: "orchestrator", kind: "state_change", body: `hired ${roleName}` });
+  ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "state_change",
+    body: say(ctx.config?.language, "hired", { role: roleName }),
+  });
   return ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(row.id)!;
 }
 

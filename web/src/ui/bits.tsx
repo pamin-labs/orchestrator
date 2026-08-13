@@ -43,6 +43,14 @@ export const Input = ({ className, ...rest }: React.InputHTMLAttributes<HTMLInpu
   <input className={cn(field, "px-2 py-1 text-[0.8125rem]", className)} {...rest} />
 );
 
-export const Textarea = ({ className, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
-  <textarea className={cn(field, "resize-y px-2 py-1 font-mono text-[0.75rem] leading-relaxed", className)} {...rest} />
+export const Textarea = ({
+  className,
+  ref,
+  ...rest
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: React.Ref<HTMLTextAreaElement> }) => (
+  <textarea
+    ref={ref}
+    className={cn(field, "resize-y px-2 py-1 font-mono text-[0.75rem] leading-relaxed", className)}
+    {...rest}
+  />
 );
