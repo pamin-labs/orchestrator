@@ -305,6 +305,8 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
     meta: { slice_id: sliceId, by },
   });
 
+  carryOver(ctx, sliceId, sl.grp_id);
+
   // Accepting one slice is what starts the next.
   startNextSlice(ctx, sl.grp_id);
 
@@ -315,6 +317,55 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
     .get(sl.grp_id)!.c;
   if (open === 0) ctx.sched.enqueue("reconcile", { grp_id: sl.grp_id, priority: 5 });
   ctx.sched.tick();
+}
+
+/**
+ * What the next slice would otherwise rediscover.
+ *
+ * The second slice of a group re-greps what the first one already worked out —
+ * which files matter, what the gate says, what was decided — because the only
+ * thing carried across was a journal capped at six lines. Every one of those
+ * rounds re-reads the whole transcript, which is where the token bill is.
+ *
+ * Derived, not asked for: the files are the commits this slice made, the gates are
+ * recorded verdicts, the decisions are notes it wrote. A prompt asking an agent to
+ * "summarise for the next slice" would be a model call producing what a SELECT
+ * already knows, and would be forgotten on the turn it mattered.
+ */
+export function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
+  const files = new Set<string>();
+  for (const e of ctx.db
+    .query<{ meta_json: string }, [number]>(
+      "SELECT meta_json FROM event WHERE kind = 'commit' AND json_extract(meta_json, '$.slice_id') = ?",
+    )
+    .all(sliceId)) {
+    try {
+      for (const f of JSON.parse(e.meta_json).files ?? []) files.add(String(f));
+    } catch {}
+  }
+  const decisions = ctx.db
+    .query<{ body: string }, [number]>(
+      "SELECT body FROM note WHERE slice_id = ? AND kind IN ('decision','journal') ORDER BY id",
+    )
+    .all(sliceId)
+    .map((n) => n.body.split("\n")[0]!.slice(0, 160));
+  const sl = ctx.db
+    .query<{ seq: number; title: string; gates_json: string }, [number]>(
+      "SELECT seq, title, gates_json FROM slice WHERE id = ?",
+    )
+    .get(sliceId);
+  if (!sl) return;
+
+  const body =
+    `S${sl.seq} ${sl.title} — accepted.\n` +
+    (files.size ? `Files it touched: ${[...files].slice(0, 20).join(", ")}\n` : "") +
+    `Gates: ${sl.gates_json}\n` +
+    (decisions.length ? `What it settled:\n${decisions.map((d) => `- ${d}`).join("\n")}` : "");
+
+  ctx.db.run(
+    "INSERT INTO note (grp_id, slice_id, kind, body, at) VALUES (?, ?, 'handoff', ?, unixepoch() * 1000)",
+    [grpId, sliceId, body],
+  );
 }
 
 function safeJson(s: string | null): unknown {

@@ -19,6 +19,7 @@ import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
 import { openPr, prBody, preflightPr } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
+import { loadTree, render, search, type Ask } from "./mech/pageindex.ts";
 import { gatesFor, recordGate } from "./mech/gate.ts";
 import { listSkills, skillNames } from "./mech/skills.ts";
 import { sediment } from "./mech/lessons.ts";
@@ -42,6 +43,8 @@ export interface Ctx {
   git?: GitRunner;
   /** Runs `gh`. Absent in unit tests that need no GitHub. */
   gh?: (argv: string[], cwd: string) => Promise<{ code: number; out: string }>;
+  /** One cheap model call, for PageIndex navigation. Absent in unit tests. */
+  ask?: Ask;
   /** Wired by the server: advances the review pipeline on a QA verdict. */
   reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
   /** Wired by the server: the Auditor's PR-level verdict. */
@@ -1209,12 +1212,25 @@ const postCtxQuery: Handler = async (ctx, req) => {
     ctx.db
       .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
       .get(a.id)?.project_id ?? null;
+  // PageIndex: a model walks the summary tree and can land on a file whose name
+  // shares no word with the question. It costs one cheap call, against grep rounds
+  // that each re-read the agent's whole transcript. No tree yet, or a navigator
+  // that fails, falls through to the lexical map inside ctxQuery.
+  let where = "";
+  const tree = loadTree(ctx.db, projectId);
+  if (tree && ctx.ask) {
+    try {
+      const hits = await search(tree, b.question, ctx.ask);
+      if (hits.length) where = render(tree, hits);
+    } catch {}
+  }
   return text(
     ctxQuery({
       db: ctx.db,
       grpId: a.grp_id,
       projectId,
       question: b.question,
+      where,
       // From config, not the module default: `ctxBudgetChars` was a setting that
       // read back as itself and changed nothing, because nobody ever passed it here.
       budget: b.limit ?? ctx.config.ctxBudgetChars ?? CTX_BUDGET_CHARS,

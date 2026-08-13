@@ -9,6 +9,7 @@ import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
+import { modelAsk, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
 
@@ -124,6 +125,36 @@ function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
   ctx.sched.tick();
 }
 
+/**
+ * Re-summarise what changed, once per tick, capped.
+ *
+ * The cap is the point: an index that could spend a hundred model calls in one
+ * tick would be a worse version of the grepping it replaces. Twelve calls a tick
+ * on the cheapest tier catches up over a few minutes and then costs nothing.
+ */
+async function refreshIndex(ctx: Ctx, _workRoot: string): Promise<void> {
+  if (!ctx.git || !ctx.ask) return;
+  for (const p of ctx.db
+    .query<{ id: number; repo_path: string }, []>("SELECT id, repo_path FROM project")
+    .all()) {
+    const ls = await ctx.git(p.repo_path, ["ls-files"], p.repo_path);
+    if (ls.code !== 0) continue;
+    const files = ls.out.split("\n").map((l) => l.trim()).filter((f) => /\.(ts|tsx|js|jsx|md|yaml|yml)$/.test(f));
+    const { tree, calls } = await summarise(skeleton(files), p.repo_path, ctx.ask, {
+      previous: loadTree(ctx.db, p.id) ?? {},
+      maxCalls: 12,
+    });
+    saveTree(ctx.db, p.id, tree);
+    if (calls > 0) {
+      ctx.bus.emit({
+        author: "librarian",
+        kind: "state_change",
+        body: `PageIndex: summarised ${calls} node(s), ${files.length} files indexed`,
+      });
+    }
+  }
+}
+
 export function start(overrides: Partial<Config> = {}): Started {
   // Overrides can put a relative dataDir back; the subprocesses cannot use one.
   const cfg = withAbsoluteDataDir({ ...loadConfig(), ...overrides });
@@ -158,6 +189,9 @@ export function start(overrides: Partial<Config> = {}): Started {
     gitLock,
     git,
     gh,
+    // Cheapest tier: navigating a tree of one-line summaries is not a reasoning
+    // job, and this runs on every `orch ctx query`.
+    ask: modelAsk(cfg.difficultyModel.trivial ?? "claude-haiku-4-5-20251001", ROOT),
     waiters: new Map(),
     config: {
       language: cfg.language,
@@ -327,6 +361,10 @@ export function start(overrides: Partial<Config> = {}): Started {
       .all();
     const batched = batchForBoss(waiting, url);
     if (batched) void notifier.push(batched);
+
+    // Keep the PageIndex tree current. Incremental by file signature, so a quiet
+    // repo costs zero model calls; a busy one pays for the files that changed.
+    void refreshIndex(ctx, cfg.workRoot);
 
     // Polling is arithmetic, not judgement, so it happens here rather than in an
     // agent. Only a change wakes the PM.
