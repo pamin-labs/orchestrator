@@ -59,6 +59,8 @@ interface AgentRow {
   cwd: string | null;
   token: string | null;
   stable_hash?: string | null;
+  /** What the CLI said this model's window is, once it has said it. */
+  context_window?: number | null;
 }
 
 export function makeExecutor(deps: ExecDeps): Executor {
@@ -109,7 +111,7 @@ export function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
   return hire(deps, job.grp_id, roleName, job.slice_id, payloadProject);
 }
 
-const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, clearance, session_id, session_tokens, cwd, token, stable_hash FROM agent`;
+const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, clearance, session_id, session_tokens, cwd, token, stable_hash, context_window FROM agent`;
 const SELECT_AGENT = `${SELECT_AGENT_BASE} WHERE id = ?`;
 
 export function hire(
@@ -1020,7 +1022,12 @@ function safeParse(s: string): unknown {
 function overTokenBudget(agent: AgentRow, cfg: Config): boolean {
   // Fallback trigger only. The real rotation point is slice completion, which
   // is a clean semantic boundary and makes the handoff cheap.
-  const ceiling = 200_000 * cfg.sessionRotateFraction;
+  //
+  // The denominator used to be the literal 200_000 for every model. Measured on
+  // this repo's own logs, sonnet-5 and opus-5 report a 1M window — so the strong
+  // models were rotating at 12% of theirs, and every rotation throws away a cached
+  // prefix that cost real money to build.
+  const ceiling = contextWindowFor(cfg, agent.model, agent.context_window) * cfg.sessionRotateFraction;
   return agent.session_tokens > ceiling;
 }
 
