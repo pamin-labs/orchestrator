@@ -1,6 +1,6 @@
 import { Meta } from "../ui/bits";
 import type { Group, Slice, State } from "../lib/api";
-import { STATUS_ZH, gates } from "../lib/select";
+import { STATUS_ZH, STOPS, gates } from "../lib/select";
 import { cn, money } from "../lib/utils";
 
 /**
@@ -83,10 +83,15 @@ function Seg({ s }: { s: Slice }) {
         {mark}
       </span>
       <span className="mt-px block truncate text-[0.6875rem] text-ink-2">{s.title}</span>
+      {/* The layers review.ts actually records. `self` was drawn here and never
+          recorded anywhere, so the first tick was permanently grey — and the layer
+          it stood in for, reconcile, is the one PLAN.md §7 calls worth more than
+          the whole Auditor. */}
       <span className="mt-1 flex gap-1">
-        {["self", "gate", "qa"].map((k) => (
+        {STOPS.map(([k]) => (
           <i
             key={k}
+            title={k}
             className={cn(
               "tick",
               gs[k] === "pass" && "bg-ok",

@@ -1,8 +1,9 @@
 import { Button, LinkButton } from "../ui/button";
-import { Empty, Input, Meta, Pill } from "../ui/bits";
-import { ask } from "../ui/confirm";
-import { post, type State } from "../lib/api";
+import { Badge } from "../ui/badge";
+import { Card, CardLabel, CardRow } from "../ui/card";
+import type { State } from "../lib/api";
 import { pending, prUrl, waitedLabel } from "../lib/select";
+import { Landed, RejectSlice } from "./requirement";
 
 /**
  * Everything waiting on the boss, one list, action on the row.
@@ -15,13 +16,11 @@ export function Queue({
   projectId,
   onOpen,
   refresh,
-  showProject,
 }: {
   st: State;
   projectId: number | null;
   onOpen: (grpId: number) => void;
   refresh: () => void;
-  showProject?: boolean;
 }) {
   const w = pending(st, projectId);
   const name = (id: number | null) => st.groups.find((g) => g.id === id)?.name ?? "";
@@ -30,17 +29,17 @@ export function Queue({
   for (const g of w.cards) {
     const filed = st.draftCards.find((c) => c.grpId === g.id)?.body ?? "";
     const goal = (filed.split("\n").find((l) => l.startsWith("目标")) ?? "").replace(/^目标\s*[:：]\s*/, "");
-    const objected = st.lateObjections.some((o) => o.grpId === g.id);
     rows.push(
       <Row
         key={`c${g.id}`}
         kind="计划"
         what={g.name}
-        flag={objected ? "有反对意见" : undefined}
+        flag={st.lateObjections.some((o) => o.grpId === g.id) ? "有反对意见" : undefined}
         sub={goal || "计划卡未提交"}
         onOpen={() => onOpen(g.id)}
-        actions={<Button variant="go" onClick={() => onOpen(g.id)}>审阅</Button>}
-      />,
+      >
+        <Button variant="go" onClick={() => onOpen(g.id)}>审阅</Button>
+      </Row>,
     );
   }
   for (const s of w.slices) {
@@ -49,28 +48,14 @@ export function Queue({
         key={`s${s.id}`}
         kind="切片"
         what={s.title}
-        sub={`${showProject ? "" : ""}${name(s.grp_id)} · ${s.accept_spec}`}
+        sub={`${name(s.grp_id)} · ${s.accept_spec}`}
         onOpen={() => onOpen(s.grp_id)}
-        actions={
-          <>
-            <Button variant="go" onClick={async () => { await post(`/api/slices/${s.id}/accept`); refresh(); }}>
-              查收
-            </Button>
-            <Button
-              onClick={async () => {
-                const why = await ask({
-                  title: "退回这一片", body: "原话记入黑板，PM 据此安排修正。", yes: "退回", field: "哪里不满意",
-                });
-                if (why === null) return;
-                await post(`/api/slices/${s.id}/reject`, { feedback: why });
-                refresh();
-              }}
-            >
-              不满意
-            </Button>
-          </>
-        }
-      />,
+      >
+        {/* 查收 lives on the requirement page, where the diff and the verdicts are.
+            Accepting from a list is accepting a title. */}
+        <Button variant="go" onClick={() => onOpen(s.grp_id)}>看改动</Button>
+        <RejectSlice sliceId={s.id} refresh={refresh} />
+      </Row>,
     );
   }
   for (const m of w.merges) {
@@ -83,26 +68,11 @@ export function Queue({
         what={m.name}
         sub={`${m.branch ?? ""}${url ? "" : " · 未找到 PR 链接"}`}
         onOpen={() => onOpen(m.grpId)}
-        actions={
-          <>
-            {url && <LinkButton href={url}>打开 PR ↗</LinkButton>}
-            {/* GitHub does the merging. This only tells the orchestrator it
-                happened, so the group can wind up and the queue release the next. */}
-            <Button variant="go" onClick={async () => {
-              const go = await ask({
-                title: "确认已合入 main",
-                body: "本组收尾归档，队列中下一个需求放行，其余需求会被要求 rebase。",
-                yes: "已合入，收尾",
-              });
-              if (!go) return;
-              await post(`/api/groups/${m.grpId}/landed`);
-              refresh();
-            }}>
-              确认已合入
-            </Button>
-          </>
-        }
-      />,
+      >
+        {url && <LinkButton href={url}>打开 PR ↗</LinkButton>}
+        {/* GitHub does the merging, and GitHub is asked whether it happened. */}
+        <Landed grpId={m.grpId} refresh={refresh} />
+      </Row>,
     );
   }
   for (const e of w.asks) {
@@ -114,50 +84,49 @@ export function Queue({
         flag={e.severity === "blocker" ? "全组已暂停" : undefined}
         sub={`${e.asker ?? "?"} · ${name(e.grp_id)} · ${waitedLabel(e.created_at)}`}
         onOpen={() => onOpen(e.grp_id!)}
-        actions={<Button variant="go" onClick={() => onOpen(e.grp_id!)}>去回答</Button>}
-      />,
+      >
+        <Button variant="go" onClick={() => onOpen(e.grp_id!)}>去回答</Button>
+      </Row>,
     );
   }
 
   if (!rows.length) {
     return (
-      <div className="mb-10 overflow-hidden rounded-xl border border-rule">
-        <div className="bg-sunk px-3.5 py-2 text-[0.625rem] font-medium uppercase tracking-[0.13em] text-ink-3">
-          等你
-        </div>
-        <div className="px-3.5 py-4 text-[0.8125rem] text-ink-2">
+      <Card className="mb-10 overflow-hidden">
+        <CardLabel className="bg-sunk text-ink-3">等你</CardLabel>
+        <CardRow className="text-[0.8125rem] text-ink-2">
           <b className="text-ok">无待办</b>
           <span className="text-ink-3"> · 需要决策时出现在此并推送通知</span>
-        </div>
-      </div>
+        </CardRow>
+      </Card>
     );
   }
   return (
-    <div className="mb-10 overflow-hidden rounded-xl border border-accent shadow-[0_1px_2px_oklch(0.435_0.145_285/0.06)]">
-      <div className="flex items-center gap-2 bg-accent-soft px-3.5 py-2 text-[0.625rem] font-semibold uppercase tracking-[0.13em] text-accent">
-        等你 {rows.length}
-      </div>
+    <Card tone="mine" className="mb-10 overflow-hidden">
+      <CardLabel className="bg-accent-soft text-accent">等你 {rows.length}</CardLabel>
       {rows}
-    </div>
+    </Card>
   );
 }
 
 function Row({
-  kind, what, sub, flag, actions, onOpen,
+  kind, what, sub, flag, children, onOpen,
 }: {
   kind: string; what: string; sub: string; flag?: string;
-  actions: React.ReactNode; onOpen: () => void;
+  children: React.ReactNode; onOpen: () => void;
 }) {
   return (
-    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-4 border-t border-rule-soft px-3.5 py-3 transition-colors hover:bg-sunk">
+    // Below ~52rem the buttons stop fitting beside the text and the row was pushing
+    // the whole page into a horizontal scroll. They wrap under instead.
+    <CardRow className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 transition-colors hover:bg-sunk max-[52rem]:grid-cols-[2.75rem_minmax(0,1fr)]">
       <span className="font-mono text-[0.6875rem] text-accent">{kind}</span>
       <div className="min-w-0">
         <button onClick={onOpen} className="cursor-pointer text-left text-[0.875rem] font-medium hover:text-accent">
-          {what} {flag && <Pill tone="mine">{flag}</Pill>}
+          {what} {flag && <Badge tone="mine">{flag}</Badge>}
         </button>
         <div className="truncate text-[0.75rem] text-ink-3">{sub}</div>
       </div>
-      <span className="flex gap-1.5">{actions}</span>
-    </div>
+      <span className="flex flex-wrap gap-1.5 max-[52rem]:col-start-2">{children}</span>
+    </CardRow>
   );
 }
