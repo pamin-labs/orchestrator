@@ -279,6 +279,38 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", body: t("rl.resumed") });
   }
 
+  // 7b. Every slice accepted, no PR, and nothing left in the queue.
+  //
+  // The branch-level review is enqueued from exactly two places: the last
+  // acceptance, and writing a retro. Neither fires again after the Auditor sends
+  // the branch back — so once the rework turn ends, a group with all its work
+  // accepted has nobody left to hand it to. Measured: a group sat like this while
+  // its Engineer kept being woken by rebase nudges, looking busy, with no PR and
+  // no error. Rule 8 below cannot cover it either: it requeues the last *turn*,
+  // and the last turn is not what opens a PR.
+  //
+  // Not while a question is open: `pr_retries` is exhausted at that point and the
+  // boss is the one being waited on, not the Auditor.
+  for (const g of ctx.db
+    .query<{ id: number; name: string }, []>(
+      `SELECT g.id, g.name FROM grp g
+       WHERE g.status = 'RUNNING' AND g.pr_number IS NULL
+         AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id)
+         AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status != 'accepted')
+         AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id AND state IN ('pending','running'))
+         AND NOT EXISTS (SELECT 1 FROM escalation
+                         WHERE grp_id = g.id AND answer IS NULL AND chain_state NOT IN ('answered','revoked'))`,
+    )
+    .all()) {
+    ctx.sched.enqueue("reconcile", { grp_id: g.id, priority: 5 });
+    findings.push({
+      rule: "unshipped",
+      grpId: g.id,
+      severity: "advisory",
+      body: t("wd.unshipped", { name: g.name }),
+    });
+  }
+
   // 8. A live group with nothing queued.
   //
   // Every way a turn can end is terminal — failed, done, cancelled — and nothing

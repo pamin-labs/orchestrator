@@ -557,6 +557,27 @@ test("main moving under a running group sends it to rebase, once per commit", as
   expect((await runWatchdog(deps)).map((x) => x.rule)).not.toContain("base_moved");
 });
 
+test("work that is finished but has no PR is sent back through the branch review", async () => {
+  // The branch review is enqueued from the last acceptance and from writing a
+  // retro, and neither fires again after the Auditor sends the branch back. So a
+  // group with every slice accepted had nobody left to hand it to: no PR, no
+  // error, and an Engineer still being woken by rebase nudges so it looked busy.
+  const h = harness();
+  h.db.run(
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES (1, 1, 's', 'a', 'accepted', 0)",
+  );
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
+
+  // Not while something is still queued, and not while the boss is being waited on.
+  h.db.run("DELETE FROM job");
+  h.db.run(
+    "INSERT INTO escalation (grp_id, severity, question, chain_state, created_at) VALUES (1, 'blocker', 'q', 'boss', 0)",
+  );
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
+});
+
 test("a stale PR branch is told to rebase too, and the base comes from the remote", async () => {
   // PR_OPEN used to be excluded, so the one branch that has to merge only learned
   // main had moved when GitHub called it CONFLICTING — the late half of the same
