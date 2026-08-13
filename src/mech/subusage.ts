@@ -88,13 +88,26 @@ export async function claudeToken(home = homedir()): Promise<string | null> {
   return null;
 }
 
-export async function fetchClaudeUsage(token: string): Promise<RateLimitInfo | null> {
+/**
+ * Either a reading, or why there is not one.
+ *
+ * The distinction the header needs is not "data / no data". It is "this account
+ * has windows and here they are", "this account has windows and we cannot read
+ * them right now", and "this account has no windows at all" — the last being an
+ * API-key user, who is billed per token and has nothing to run out of.
+ */
+export type UsageRead = { rl: RateLimitInfo } | { error: string };
+
+export async function fetchClaudeUsage(token: string): Promise<UsageRead> {
   const res = await fetch(ENDPOINT, {
     headers: { Authorization: `Bearer ${token}`, "anthropic-beta": BETA },
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) return null;
-  return toRateLimit((await res.json()) as UsageResponse);
+  // 429 is the one worth naming: it is self-inflicted and it clears by itself, so
+  // the header should say "wait" rather than the shrug it says for everything else.
+  if (!res.ok) return { error: res.status === 429 ? "rate_limited" : `http_${res.status}` };
+  const rl = toRateLimit((await res.json()) as UsageResponse);
+  return rl ? { rl } : { error: "no_windows" };
 }
 
 /**
@@ -108,31 +121,48 @@ export async function pollClaudeUsage(db: DB, now = Date.now()): Promise<boolean
     .query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'")
     .get()?.at;
   if (last && now - last < POLL_EVERY_MS) return false;
+  // No OAuth token means no subscription: this account is billed per token, has no
+  // window to run out of, and must not get a usage bar at all — an error state
+  // there would be reporting the absence of something it never had. Nothing is
+  // written, so the row never appears.
+  const token = await claudeToken();
+  if (!token) return false;
+
   // Stamped before the attempt, not after a success. The watchdog ticks every 30s,
   // so an interval that only applied to successes meant a failing endpoint was
   // retried twice a minute — and this one answers a failure with 429, which that
   // would then keep feeding. Observed live while testing.
-  stamp(db, now, null);
+  stamp(db, now, { error: "unreachable" });
   try {
-    const token = await claudeToken();
-    if (!token) return false;
-    const rl = await fetchClaudeUsage(token);
-    if (!rl) return false;
-    stamp(db, now, rl);
-    return true;
+    const read = await fetchClaudeUsage(token);
+    stamp(db, now, read);
+    return "rl" in read;
   } catch {
-    // An undocumented endpoint is allowed to disappear. The header degrades to
-    // what the turn stream reports and the system does not notice.
+    // An undocumented endpoint is allowed to disappear. The header says it cannot
+    // read the window rather than implying the window is fine.
     return false;
   }
 }
 
-/** Upsert the row. A null reading records the attempt and keeps the last good one. */
-function stamp(db: DB, now: number, rl: RateLimitInfo | null): void {
+/**
+ * Upsert the row.
+ *
+ * A failure keeps whatever percentages were last read and adds the reason beside
+ * them: the window did not move because we could not ask it, and blanking the bar
+ * would read as "no data" when what we have is data from a minute ago. A success
+ * clears the reason.
+ */
+function stamp(db: DB, now: number, read: UsageRead): void {
+  const patch = "rl" in read ? JSON.stringify(read.rl) : JSON.stringify({ error: read.error });
   db.run(
     `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', ?, ?)
-     ON CONFLICT (runtime) DO UPDATE SET json = ${rl ? "excluded.json" : "usage_snapshot.json"},
-       at = excluded.at`,
-    [JSON.stringify(rl ?? {}), now],
+     ON CONFLICT (runtime) DO UPDATE SET
+       json = json_patch(usage_snapshot.json, ?), at = excluded.at`,
+    ["rl" in read ? patch : "{}", now, "rl" in read ? json_clear(patch) : patch],
   );
+}
+
+/** A success has to remove a stale `error`, and json_patch removes on null. */
+function json_clear(good: string): string {
+  return JSON.stringify({ ...JSON.parse(good), error: null });
 }
