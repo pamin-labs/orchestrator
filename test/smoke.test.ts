@@ -19,7 +19,12 @@ beforeAll(() => {
   mkdirSync(join(dataDir, ".git"), { recursive: true });
   // maxGroups 0 blocks every group turn, which is how this test exercises the
   // real HTTP server without spawning a single agent or spending a token.
-  srv = start({ dataDir, port: 47899, maxGroups: 0 });
+  // Port 0, not a fixed one: several groups run `bun test` in their own worktrees
+  // at the same time, and a fixed port means they fight over it — whoever loses
+  // talks to another group's server and fails on a response that was never theirs.
+  // Four groups were red at once on this, which reads as a project-wide breakage
+  // and is really just this line. srv.url carries whatever the OS handed out.
+  srv = start({ dataDir, port: 0, maxGroups: 0 });
 });
 
 afterAll(() => {

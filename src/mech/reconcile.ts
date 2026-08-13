@@ -12,6 +12,18 @@ export interface ReconcileInput {
   claims: unknown[];
   /** Paths git reports as changed since the slice started. */
   changedFiles: string[];
+  /**
+   * Claimed paths that are neither in the branch point's tree nor in the worktree.
+   *
+   * A scratch file the Engineer created and then deleted leaves nothing behind:
+   * never committed, so it is not in the diff, and gone, so it is not untracked
+   * either. Reporting that deletion honestly was scored as a phantom claim, and a
+   * correct branch went back twice on it. Git cannot tell that case from an
+   * invented path — neither ever existed as far as it is concerned — so neither
+   * can we, and neither is a delivery. They are dropped from the claim rather than
+   * failing it; if nothing real is left, the checks below still catch it.
+   */
+  absent?: string[];
 }
 
 /**
@@ -39,6 +51,8 @@ export interface ReconcileResult {
   phantom: string[];
   /** Files git shows that nothing claimed. Reported, never fatal. */
   unclaimed: string[];
+  /** Claimed paths that never existed either side. Reported, never fatal. */
+  ignored: string[];
   reason?: string;
 }
 
@@ -69,13 +83,16 @@ export function extractClaimedFiles(claims: unknown[]): string[] {
 
 export function reconcile(input: ReconcileInput): ReconcileResult {
   const changed = new Set(input.changedFiles.map(normalise));
-  const claimed = extractClaimedFiles(input.claims).map(normalise);
+  const absent = new Set((input.absent ?? []).map(normalise));
+  const all = extractClaimedFiles(input.claims).map(normalise);
+  const ignored = all.filter((c) => absent.has(c));
+  const claimed = all.filter((c) => !absent.has(c));
 
   const noOp = declaredNoOp(input.claims);
   if (noOp && changed.size === 0) {
     // Nothing changed and nobody claimed otherwise. Whether the slice is really
     // satisfied is the gate's and QA's question, not this one's.
-    return { pass: true, phantom: [], unclaimed: [], reason: `declared already done: ${noOp}` };
+    return { pass: true, phantom: [], unclaimed: [], ignored, reason: `declared already done: ${noOp}` };
   }
 
   // Claimed work with an empty diff is the case worth catching loudly.
@@ -84,6 +101,7 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
       pass: false,
       phantom: claimed,
       unclaimed: [],
+      ignored,
       reason: `claimed ${claimed.length} file(s) but git shows no changes at all`,
     };
   }
@@ -96,15 +114,16 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
       pass: false,
       phantom,
       unclaimed,
+      ignored,
       reason: `claimed but not changed: ${phantom.join(", ")}`,
     };
   }
   if (claimed.length === 0 && changed.size === 0) {
-    return { pass: false, phantom: [], unclaimed: [], reason: "nothing was claimed and nothing changed" };
+    return { pass: false, phantom: [], unclaimed: [], ignored, reason: "nothing was claimed and nothing changed" };
   }
   // Extra changed files are normal (a test file, a lockfile) and are surfaced
   // for the reviewer rather than treated as a failure.
-  return { pass: true, phantom: [], unclaimed };
+  return { pass: true, phantom: [], unclaimed, ignored };
 }
 
 function normalise(p: string): string {

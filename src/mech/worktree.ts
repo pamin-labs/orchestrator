@@ -197,6 +197,12 @@ export async function rollbackTo(
  * and it only "passed" on the retry because the next turn's checkpoint had
  * quietly committed the previous turn's work.
  */
+/** Every path the branch point knew about. Used to tell a deletion from a fiction. */
+export async function filesAt(git: GitRunner, repoPath: string, worktree: string, sha: string): Promise<string[]> {
+  const r = await git(repoPath, ["ls-tree", "-r", "--name-only", sha], worktree);
+  return r.code === 0 ? r.out.split("\n").map((l) => l.trim()).filter(Boolean) : [];
+}
+
 export async function changedSince(
   git: GitRunner,
   repoPath: string,
