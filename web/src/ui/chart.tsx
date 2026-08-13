@@ -84,16 +84,24 @@ export function BurnChart({ data }: { data: { hour: string; claude: number; code
   );
 }
 
-/** Monochrome ramp: these are parts of one quantity, not different kinds of thing. */
-const RAMP = ["var(--color-ink)", "var(--color-ink-2)", "var(--color-ink-3)", "var(--color-rule)"];
-
 /**
- * A whole and its two or three parts, with the numbers beside it.
+ * A whole and its two or three parts.
  *
- * The arc carries the proportion, the legend carries the exact figure. Neither
- * alone is enough: a ring you have to hover is a quiz, and three raw numbers make
- * the reader do the division.
+ * The ring was right; the colours were not. ink / ink-2 / ink-3 are three steps of
+ * one warm near-black, which is legible as text and nearly identical as fill —
+ * and when one account carries 99%, the other arc is a few pixels of a grey you
+ * cannot tell from its neighbour. The ramp below steps by half the distance to
+ * the paper each time, so adjacent segments differ at a glance. Still no hue: the
+ * accent belongs to "needs you" and green/red/amber belong to gates, and a chart
+ * that borrows either teaches the eye to stop trusting them.
  */
+const RAMP = [
+  "var(--color-ink)",
+  "color-mix(in oklch, var(--color-ink) 52%, var(--color-paper))",
+  "color-mix(in oklch, var(--color-ink) 26%, var(--color-paper))",
+  "color-mix(in oklch, var(--color-ink) 13%, var(--color-paper))",
+];
+
 export function SplitDonut({ rows }: { rows: { label: string; tokens: number }[] }) {
   const list = rows.filter((r) => r.tokens).sort((a, b) => b.tokens - a.tokens);
   if (!list.length) return null;
@@ -107,7 +115,7 @@ export function SplitDonut({ rows }: { rows: { label: string; tokens: number }[]
               data={list}
               dataKey="tokens"
               nameKey="label"
-              innerRadius="62%"
+              innerRadius="60%"
               outerRadius="100%"
               paddingAngle={list.length > 1 ? 2 : 0}
               stroke="none"
@@ -117,20 +125,37 @@ export function SplitDonut({ rows }: { rows: { label: string; tokens: number }[]
                 <Cell key={r.label} fill={RAMP[i % RAMP.length]} />
               ))}
             </Pie>
+            <Tooltip
+              wrapperClassName="!outline-none"
+              contentStyle={{ all: "unset" }}
+              content={({ active, payload }) =>
+                active && payload?.length ? (
+                  <div className={CARD}>
+                    {payload[0]!.name} {K(Number(payload[0]!.value))} · {pct(Number(payload[0]!.value), sum)}
+                  </div>
+                ) : null
+              }
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
       <div className="min-w-0 grow">
         {list.map((r, i) => (
-          <div key={r.label} className="flex items-baseline gap-1.5 py-px text-[0.6875rem]">
-            <i className="size-1.5 shrink-0 rounded-[1px]" style={{ background: RAMP[i % RAMP.length] }} />
+          <div key={r.label} className="flex items-baseline gap-2 py-0.5 text-[0.75rem]">
+            <i className="size-2 shrink-0 rounded-[2px]" style={{ background: RAMP[i % RAMP.length] }} />
             <span className="min-w-0 truncate text-ink-2">{r.label}</span>
             <span className="grow" />
             <span className="font-mono text-ink">{K(r.tokens)}</span>
-            <span className="w-7 text-right font-mono text-ink-3">{Math.round((r.tokens / sum) * 100)}%</span>
+            <span className="w-9 text-right font-mono text-ink-3">{pct(r.tokens, sum)}</span>
           </div>
         ))}
       </div>
     </div>
   );
+}
+
+/** Never rounds a real share to 0%: "<1%" is a different fact from "none". */
+function pct(n: number, sum: number): string {
+  const p = (n / sum) * 100;
+  return p > 0 && p < 1 ? "<1%" : `${Math.round(p)}%`;
 }

@@ -61,6 +61,16 @@ test("argv resumes a thread when there is one, and starts one otherwise", () => 
   expect(resumed[resumed.indexOf("-m") + 1]).toBe("gpt-5-codex");
 });
 
+test("resume takes the sandbox as config, because the flag does not exist there", () => {
+  // `codex exec resume --help` has no -s/--sandbox. Passing it anyway made the
+  // first turn of every codex agent work and every turn after it fail with
+  // `turn failed (no_result)` — an agent that looks idle rather than broken.
+  const resumed = buildArgv({ stable, prompt: "p", cwd: "/tmp", resumeSessionId: "t1" });
+  expect(resumed).not.toContain("-s");
+  expect(resumed).toContain('sandbox_mode="workspace-write"');
+  expect(resumed).toContain("sandbox_workspace_write.network_access=true");
+});
+
 test("argv keeps the agent reachable and the boss's own setup out", () => {
   const argv = buildArgv({ stable, prompt: "p", cwd: "/tmp", images: ["/tmp/a.png"] });
   // Measured on codex 0.147: read-only has no network at all, not even loopback,
@@ -246,4 +256,28 @@ test("an empty model means whatever the account allows", () => {
   });
   expect(buildArgv({ stable: blank, prompt: "p", cwd: "/tmp" })).not.toContain("-m");
   expect(buildArgv({ stable, prompt: "p", cwd: "/tmp" })).toContain("-m");
+});
+
+test("a resumed thread is not re-sent the stable half", async () => {
+  const spawned = Bun.spawn;
+  let sent = "";
+  // @ts-expect-error swap in a fake child that records what it was fed
+  Bun.spawn = (_argv: string[], opts: any) => {
+    sent = new TextDecoder().decode(opts.stdin);
+    return fakeSpawn(LINES)();
+  };
+  try {
+    await runTurn({ stable, prompt: "do S2", cwd: "/tmp", resumeSessionId: "t1" });
+    // The thread already holds the role prompt and the contract; sending them
+    // again pays for them twice and moves the prefix the provider could have
+    // matched. The first turn of a session still carries them.
+    expect(sent).toBe("do S2");
+    expect(sent).not.toContain("You are the Engineer.");
+
+    await runTurn({ stable, prompt: "do S1", cwd: "/tmp" });
+    expect(sent).toContain("You are the Engineer.");
+    expect(sent.endsWith("do S1")).toBe(true);
+  } finally {
+    Bun.spawn = spawned;
+  }
 });

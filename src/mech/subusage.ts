@@ -35,6 +35,16 @@ const BETA = "oauth-2025-04-20";
  */
 export const POLL_EVERY_MS = 60_000;
 
+/**
+ * After a 429, back off hard.
+ *
+ * The endpoint answers a too-frequent read with 429 and it is not ours to tune,
+ * so the polite response to being told to slow down is to slow down — a minute
+ * later would just earn another one. The header keeps showing the last good
+ * reading meanwhile, which is what it should do: the window moves in hours.
+ */
+export const BACKOFF_MS = 10 * 60_000;
+
 type Window = { utilization?: number; resets_at?: string | null };
 
 /** Only the two windows are consumed; the response has a dozen more fields. */
@@ -120,7 +130,11 @@ export async function pollClaudeUsage(db: DB, now = Date.now()): Promise<boolean
   const last = db
     .query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'")
     .get()?.at;
-  if (last && now - last < POLL_EVERY_MS) return false;
+  const prev = db
+    .query<{ json: string }, []>("SELECT json FROM usage_snapshot WHERE runtime = 'claude'")
+    .get()?.json;
+  const throttled = !!prev && prev.includes('"error":"rate_limited"');
+  if (last && now - last < (throttled ? BACKOFF_MS : POLL_EVERY_MS)) return false;
   // No OAuth token means no subscription: this account is billed per token, has no
   // window to run out of, and must not get a usage bar at all — an error state
   // there would be reporting the absence of something it never had. Nothing is

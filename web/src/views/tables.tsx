@@ -1,10 +1,11 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { Empty, H3, Meta } from "../ui/bits";
+import { Empty, H3, Meta, Pane } from "../ui/bits";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Bar, Table, TBody, TD, TH, THead, TR } from "../ui/table";
+import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
 import { Tip } from "../ui/tooltip";
 import { BurnChart, SplitDonut } from "../ui/chart";
 import type { Agent, AgentCost, Cost, Frame, Slice, State } from "../lib/api";
@@ -297,11 +298,8 @@ export function CostView({ cost }: { cost: Cost | null }) {
   return (
     <>
       {/* One line, not a hero. "Dashboards of big numbers" is an anti-reference in
-          PRODUCT.md and every useful number here is comparative — a token total
-          means nothing without the requirement it bought — so the two facts that
-          qualify it sit on the same baseline rather than under it as supporting
-          stats. */}
-      <div className="mb-4 flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-rule pb-3">
+          PRODUCT.md and every useful number here is comparative. */}
+      <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b border-rule pb-3">
         <span className="flex items-baseline gap-1.5">
           <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
           <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
@@ -326,48 +324,65 @@ export function CostView({ cost }: { cost: Cost | null }) {
         </Tip>
       </div>
 
-      {/* Two columns, and the page stops at the viewport. Stacking four sections
-          down the page meant the two smallest — three difficulties and two
-          accounts, five rows between them — pushed the one list that grows off the
-          bottom. The list scrolls in its own column; the fixed-size things sit
-          beside it and never move. */}
       <div className="grid grid-cols-[minmax(0,1fr)_17rem] gap-x-8 max-[64rem]:grid-cols-1 max-[64rem]:gap-y-6">
-        <div className="min-w-0">
-          <SectionHead title="按需求" note="点开是这一组的人和各自跑的模型" scope="需求" />
-          <div>
-            {groups.map((g) => (
-              <Node
-                key={g.grpId}
-                label={g.label}
-                tokens={g.tokens}
-                top={top}
-                share={g.tokens / sum}
-                rows={agents.filter((a) => a.grpId === g.grpId && a.tokens)}
-              />
-            ))}
-            {standing.length > 0 && (
-              <Node
-                label="常驻岗"
-                note="跨需求共用，摊不到某一个需求上"
-                tokens={standingTotal}
-                top={top}
-                share={standingTotal / sum}
-                rows={standing}
-              />
-            )}
-          </div>
-        </div>
+        {/* One axis at a time, chosen here. Three stacked sections meant the two
+            short ones — three difficulties, two accounts — pushed the list that
+            grows off the bottom, and you scrolled past a hundred requirements to
+            reach five rows. */}
+        <Tabs defaultValue="grp" className="min-w-0">
+          <TabList>
+            <Tab value="grp">按需求</Tab>
+            <Tab value="tier">按难度</Tab>
+            <Tab value="acct">按账号</Tab>
+            <span className="grow" />
+            <Meta className="self-center pb-1.5 max-[52rem]:hidden">tokens · 占比</Meta>
+          </TabList>
+          <TabPanel value="grp">
+            <Pane>
+              {groups.map((g) => (
+                <Node
+                  key={g.grpId}
+                  label={g.label}
+                  tokens={g.tokens}
+                  top={top}
+                  share={g.tokens / sum}
+                  rows={agents.filter((a) => a.grpId === g.grpId && a.tokens)}
+                />
+              ))}
+              {standing.length > 0 && (
+                <Node
+                  label="常驻岗"
+                  note="跨需求共用"
+                  tokens={standingTotal}
+                  top={top}
+                  share={standingTotal / sum}
+                  rows={standing}
+                />
+              )}
+            </Pane>
+          </TabPanel>
+          <TabPanel value="tier">
+            <Meta className="mb-1 block">标签决定跑哪个 model，计划卡上能改</Meta>
+            <Pane>
+              <Flat rows={cost.byDifficulty ?? []} />
+            </Pane>
+          </TabPanel>
+          <TabPanel value="acct">
+            <Meta className="mb-1 block">哪个订阅在付。顶栏的百分比是这两个池子还剩多少</Meta>
+            <Pane>
+              <Flat rows={cost.byRuntime ?? []} />
+            </Pane>
+          </TabPanel>
+        </Tabs>
 
-        {/* Sticky rather than a second scrollbar: the fixed-size blocks stay put
-            while the list that grows moves past them. */}
         <aside className="min-w-0 self-start max-[64rem]:static lg:sticky lg:top-0">
           <Rail title="烧得多快" note="近 48 小时，按小时">
             <BurnChart data={cost.byHour ?? []} />
           </Rail>
-          <Rail title="按账号" note="哪个订阅在付">
+          <Rail title="按账号" note="">
             <SplitDonut rows={cost.byRuntime ?? []} />
           </Rail>
-          <Rail title="按难度" note="标签决定跑哪个 model，计划卡上能改">
+          <Rail title="按难度" note="">
             <SplitDonut rows={cost.byDifficulty ?? []} />
           </Rail>
         </aside>
@@ -381,30 +396,29 @@ export function CostView({ cost }: { cost: Cost | null }) {
  *
  * Same reason the slice lanes fix their columns: a number whose left edge moves
  * with the label above it cannot be compared with that one, and comparing them is
- * the entire view. The header row, the requirements and the agents nested inside
- * them all land on the same right-hand columns.
+ * the entire view.
  */
 const ROW = cn(
   "grid grid-cols-[minmax(0,1fr)_5rem_2.75rem_4.5rem] items-center gap-x-4 px-3",
   "max-[52rem]:grid-cols-[minmax(0,1fr)_5rem_2.75rem]",
 );
 
-function SectionHead({ title, note, scope }: { title: string; note: string; scope: string }) {
+/** A flat attribution: no children to open, same ruler, share against the tab. */
+function Flat({ rows }: { rows: { label: string; tokens: number }[] }) {
+  const list = rows.filter((r) => r.tokens).sort((a, b) => b.tokens - a.tokens);
+  if (!list.length) return null;
+  const top = Math.max(...list.map((r) => r.tokens));
+  const sum = list.reduce((n, r) => n + r.tokens, 0);
   return (
     <>
-      <div className="flex flex-wrap items-baseline gap-x-2.5">
-        <h3 className="text-[0.8125rem] font-semibold">{title}</h3>
-        <Meta>{note}</Meta>
-      </div>
-      {/* The columns need naming. A right-aligned number and a percentage next to
-          each other are two plausible readings of the same pair, and the reader
-          should not have to work it out from the magnitudes. */}
-      <div className={cn(ROW, "pb-1 pt-1 text-[0.6875rem] text-ink-3")}>
-        <span>{scope}</span>
-        <span className="text-right">tokens</span>
-        <span className="text-right">占比</span>
-        <span className="max-[52rem]:hidden" />
-      </div>
+      {list.map((r) => (
+        <div key={r.label} className={cn(ROW, "border-t border-rule-soft py-2.5")}>
+          <span className="truncate pl-[1.125rem] text-[0.8125rem]" title={r.label}>{r.label}</span>
+          <span className="text-right font-mono text-[0.8125rem]">{K(r.tokens)}</span>
+          <Meta className="text-right">{list.length > 1 ? `${Math.round((r.tokens / sum) * 100)}%` : ""}</Meta>
+          <Bar frac={r.tokens / top} className="max-[52rem]:hidden" />
+        </div>
+      ))}
     </>
   );
 }
@@ -415,12 +429,13 @@ function Rail({ title, note, children }: { title: string; note: string; children
     <section className="mb-5 last:mb-0">
       <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
         <h3 className="text-[0.8125rem] font-semibold">{title}</h3>
-        <Meta>{note}</Meta>
+        {note && <Meta>{note}</Meta>}
       </div>
       {children}
     </section>
   );
 }
+
 
 
 
