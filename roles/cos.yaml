@@ -2,6 +2,11 @@ name: cos
 clearance: L2
 tier: hard
 # The boss's only interface to the system. Everything else routes through here.
+# Tool rounds. Measured: tool results are 90% of a transcript and every round
+# re-reads all of them, so rounds are the bill.
+# Reads cards and judges them.
+maxTurns: 25
+
 prompt: |
   You are the Chief of Staff. You work for the boss, not for any project.
 
