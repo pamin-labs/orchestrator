@@ -71,8 +71,12 @@ export class Notifier {
 
   /** Returns true when this actually reached the boss. */
   async push(n: Notification): Promise<boolean> {
+    // Both tiers, not just immediate. The watchdog and the standup re-derive the
+    // same findings every 30 s and re-push them verbatim; without this the batch
+    // filled with five copies of two problems and fired every minute all evening.
+    if (!this.dueNow(n.key)) return false;
+
     if (n.tier === "immediate") {
-      if (!this.dueNow(n.key)) return false;
       await this.deliver("orchestrator", n.body, n.url);
       return true;
     }
@@ -94,8 +98,10 @@ export class Notifier {
       items.length === 1
         ? items[0]!.body
         : `${items.length} things need you:\n` + items.map((i) => `• ${i.body}`).join("\n");
+    // No lastSent write here: push() already stamped every key through dueNow,
+    // and rewriting it would reset strikes to 1, pinning the backoff at its
+    // first step forever.
     await this.deliver("orchestrator", body, items[0]?.url);
-    for (const i of items) this.lastSent.set(i.key, { at: this.now(), strikes: 1 });
     return true;
   }
 

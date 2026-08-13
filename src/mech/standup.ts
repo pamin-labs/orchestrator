@@ -68,10 +68,16 @@ export function runStandup(db: DB, now = Date.now()): StandupItem[] {
 
   // The same gate failing across several groups is a project problem, not three
   // separate coding problems.
+  // Only the latest attempt per (resource, group) counts. Counting every failed
+  // row ever recorded made a gate that had since gone green keep reporting
+  // itself broken in four groups, with nothing that could ever clear it.
   const repeats = db
     .query<{ resource: string; n: number }, []>(
-      `SELECT resource, count(DISTINCT grp_id) AS n FROM lease
-       WHERE state = 'failed' GROUP BY resource HAVING n >= 2`,
+      `SELECT l.resource AS resource, count(*) AS n
+       FROM (SELECT resource, grp_id, max(id) AS last_id FROM lease
+             WHERE grp_id IS NOT NULL GROUP BY resource, grp_id) g
+       JOIN lease l ON l.id = g.last_id
+       WHERE l.state = 'failed' GROUP BY l.resource HAVING n >= 2`,
     )
     .all();
   for (const r of repeats) {
