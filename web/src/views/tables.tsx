@@ -62,9 +62,11 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
           </Button>
         )}
       </div>
-      {groups.map((g) => (
-        <Desks key={String(g.id)} name={g.name} agents={g.agents} slices={st.slices} tail={last} />
-      ))}
+      <div className="divide-y divide-rule-soft">
+        {groups.map((g) => (
+          <Desks key={String(g.id)} name={g.name} agents={g.agents} slices={st.slices} tail={last} />
+        ))}
+      </div>
       {!idle && running.length > 0 && rows.length > running.length && (
         <div className="mt-2 text-[0.75rem] text-ink-3">另外 {rows.length - running.length} 个空闲，没在花钱。</div>
       )}
@@ -73,7 +75,18 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
 }
 
 /** 谁 · 在做什么 · turn · 累计. Four columns, no horizontal scroll, one ruler. */
-const DESK_ROW = "grid grid-cols-[10rem_minmax(0,1fr)_3rem_4.5rem] items-baseline gap-x-3 px-2 max-[52rem]:grid-cols-[8rem_minmax(0,1fr)_3rem]";
+const DESK_ROW =
+  "grid grid-cols-[11rem_minmax(0,1fr)_2.5rem_4rem] items-baseline gap-x-4 px-3 max-[52rem]:grid-cols-[9rem_minmax(0,1fr)_2.5rem]";
+
+/**
+ * What the agent is doing, in the fewest words that are still true.
+ *
+ * The raw string is `command_execution: orch ctx query "…"`. The tool name is the
+ * least interesting part — every row on this wall is a command — and it was eating
+ * a third of the column before the part that says what is happening.
+ */
+const activityOf = (a: Agent): string =>
+  (a.activity ?? a.state).replace(/^(command_execution|file_change|Bash|Read|Grep|Glob|Edit|Write):\s*/, "");
 
 function Desks({
   name, agents, slices, tail,
@@ -88,7 +101,7 @@ function Desks({
     <Collapsible.Root open={open} onOpenChange={setOpen}>
       <Collapsible.Trigger
         className={cn(
-          "flex w-full cursor-pointer items-baseline gap-2 border-t border-rule-soft px-2 py-1.5",
+          "flex w-full cursor-pointer items-baseline gap-2.5 rounded-md px-3 py-2.5",
           "text-left transition-colors hover:bg-sunk",
         )}
       >
@@ -99,17 +112,30 @@ function Desks({
         />
         <span className="truncate text-[0.8125rem]" title={name}>{name}</span>
         {runners > 0 && <i className="breathe size-1.5 shrink-0 self-center rounded-full bg-ok" />}
-        <Meta>{runners > 0 ? `${runners} 在跑` : "空闲"}</Meta>
+        {/* Who is running, by role. "2 在跑" makes you open the row to learn the
+            one thing you opened it for. */}
+        <Meta className="truncate">
+          {runners > 0
+            ? agents.filter((a) => a.state === "running").map((a) => a.role).join(" · ")
+            : "空闲"}
+        </Meta>
         <span className="grow" />
-        <Meta>{K(agents.reduce((n, a) => n + a.total_tokens, 0))}</Meta>
+        {(() => {
+          const sum = agents.reduce((n, a) => n + a.total_tokens, 0);
+          return sum ? <Meta>{K(sum)}</Meta> : null;
+        })()}
       </Collapsible.Trigger>
       <Collapsible.Content className="fade-in">
-        <div className="mb-1.5 bg-sunk/50 py-1">
+        <div className="mb-1 rounded-md bg-sunk/40 py-2">
           {list.map((a) => {
             const sl = slices.find((s) => s.id === a.slice_id);
+            const doing = activityOf(a);
+            // The live tail is the same string as the activity often enough that
+            // printing both made every row look like it stuttered.
             const t = tail.get(a.id);
+            const stream = t && !doing.includes(t.slice(-40)) ? t : null;
             return (
-              <div key={a.id} className={cn(DESK_ROW, "py-0.5")}>
+              <div key={a.id} className={cn(DESK_ROW, "py-1.5")}>
                 {/* Clearance and the session count moved into this label: neither
                     answers "who is working on what", and two more columns for them
                     is what made this table nine wide. */}
@@ -126,14 +152,17 @@ function Desks({
                         <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">S{sl.seq}</span>
                       </Tip>
                     )}
-                    <span className="truncate text-[0.75rem] text-ink-2">{a.activity ?? a.state}</span>
+                    <span className="truncate font-mono text-[0.6875rem] text-ink-2">{doing}</span>
                   </span>
-                  {t && <span className="block truncate font-mono text-[0.625rem] text-ink-3">{t.slice(-140)}</span>}
+                  {stream && (
+                    <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-ink-3">{stream.slice(-120)}</span>
+                  )}
                 </span>
                 {/* A high count on one slice is the visible shape of circling, and
-                    the watchdog's own threshold is 5 turns on one file. */}
-                <Meta className={cn("text-right", a.turns >= 15 && "text-warn")}>{a.turns || "—"}</Meta>
-                <Meta className="text-right max-[52rem]:hidden">{K(a.total_tokens)}</Meta>
+                    the watchdog's own threshold is 5 turns on one file. Blank at
+                    zero: a column of em-dashes is a column of nothing. */}
+                <Meta className={cn("text-right", a.turns >= 15 && "text-warn")}>{a.turns || ""}</Meta>
+                <Meta className="text-right max-[52rem]:hidden">{a.total_tokens ? K(a.total_tokens) : ""}</Meta>
               </div>
             );
           })}
@@ -143,8 +172,15 @@ function Desks({
   );
 }
 
-/** Overlap is what this view exists for: two groups owning one path is the thing
-    file ownership prevents, so it gets named rather than implied. */
+/**
+ * Who may write where, and — the actual question — who collides with whom.
+ *
+ * The verdict was at the bottom, under a table whose middle column stacked every
+ * owned path on its own line, so twelve requirements made a page you scrolled to
+ * reach the one sentence that mattered. Now the verdict is the first thing, the
+ * paths are chips that wrap, and the status column is gone: it read 在跑 on every
+ * row, which is a column that costs width to say nothing.
+ */
 export function Owns({ st, projectId }: { st: State; projectId: number }) {
   const all = st.groups.filter((g) => g.project_id === projectId);
   const gs = all.filter((g) => owns(g).length);
@@ -167,44 +203,60 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
       );
       if (hit.length) pairs.push([a1.name, b1.name, hit]);
     }
+
   return (
     <>
-      <Table min="30rem">
-        <THead><TR><TH>需求</TH><TH>owns</TH><TH>状态</TH></TR></THead>
-        <TBody>
-          {gs.map((g) => (
-            <TR key={g.id}>
-              <TD>{g.name}</TD>
-              <TD><Meta>{owns(g).map((o) => <div key={o}>{o}</div>)}</Meta></TD>
-              <TD className="text-[0.75rem] text-ink-3">{STATUS_ZH[g.status] ?? g.status}</TD>
-            </TR>
+      {/* The verdict, first and in one line. */}
+      <div
+        className={cn(
+          "mb-4 flex flex-wrap items-baseline gap-x-2 border-b pb-3 text-[0.8125rem]",
+          pairs.length ? "border-bad/40 text-bad" : "border-rule",
+        )}
+      >
+        {pairs.length ? (
+          <>
+            <b className="font-semibold">路径重叠 {pairs.length} 处，这些组不能并行</b>
+            <Meta className="text-bad">Architect 得重新切边界</Meta>
+          </>
+        ) : (
+          <>
+            <b className="font-semibold">边界两两不相交</b>
+            <Meta>{gs.length} 个需求可以同时开工{bare.length ? `，另有 ${bare.length} 个还没划` : ""}</Meta>
+          </>
+        )}
+      </div>
+
+      {pairs.map(([a, b, hit]) => (
+        <div key={a + b} className="mb-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[0.8125rem]">
+          <span className="text-bad">{a} ↔ {b}</span>
+          {hit.map((h) => (
+            <span key={h} className="rounded-sm bg-bad-soft px-1.5 py-0.5 font-mono text-[0.6875rem] text-bad">{h}</span>
           ))}
-          {/* A group with no boundary is the risk this view exists to show, so it is
-              a row here rather than an omission. */}
-          {bare.map((g) => (
-            <TR key={g.id}>
-              <TD>{g.name}</TD>
-              <TD><Badge tone="warn">未划定</Badge></TD>
-              <TD className="text-[0.75rem] text-ink-3">{STATUS_ZH[g.status] ?? g.status}</TD>
-            </TR>
-          ))}
-        </TBody>
-      </Table>
-      {pairs.length ? (
-        <>
-          <H3 className="text-bad">路径重叠，禁止并行</H3>
-          {pairs.map(([a, b, hit]) => (
-            <div key={a + b} className="text-[0.75rem] text-bad">
-              {a} 和 {b}：<span className="font-mono">{hit.join(" ")}</span>
-            </div>
-          ))}
-        </>
-      ) : (
-        <>
-          <H3>无重叠</H3>
-          <Empty>路径两两不相交，可并行开工。</Empty>
-        </>
-      )}
+        </div>
+      ))}
+
+      <div className="mt-5">
+        {[...gs, ...bare].map((g) => (
+          <div
+            key={g.id}
+            className="grid grid-cols-[12rem_minmax(0,1fr)] items-baseline gap-x-5 border-t border-rule-soft
+                       px-3 py-3 max-[52rem]:grid-cols-1 max-[52rem]:gap-y-1.5"
+          >
+            <span className="truncate text-[0.8125rem]" title={g.name}>{g.name}</span>
+            {/* Chips that wrap, not a stack. Eight owned paths were eight rows of
+                height for one requirement, and the page is a comparison. */}
+            <span className="flex min-w-0 flex-wrap gap-x-2 gap-y-1.5">
+              {owns(g).length ? (
+                owns(g).map((o) => (
+                  <span key={o} className="rounded-sm bg-sunk px-1.5 py-0.5 font-mono text-[0.6875rem] text-ink-2">{o}</span>
+                ))
+              ) : (
+                <Badge tone="warn">未划定</Badge>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
@@ -333,7 +385,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
  * them all land on the same right-hand columns.
  */
 const ROW = cn(
-  "grid grid-cols-[minmax(0,1fr)_5rem_2.75rem_4.5rem] items-center gap-x-3 px-2",
+  "grid grid-cols-[minmax(0,1fr)_5rem_2.75rem_4.5rem] items-center gap-x-4 px-3",
   "max-[52rem]:grid-cols-[minmax(0,1fr)_5rem_2.75rem]",
 );
 
@@ -399,7 +451,7 @@ function Node({
         disabled={!list.length}
         className={cn(
           ROW,
-          "w-full border-t border-rule-soft py-1.5 text-left transition-colors",
+          "w-full border-t border-rule-soft py-2.5 text-left transition-colors",
           list.length && "cursor-pointer hover:bg-sunk",
         )}
       >
@@ -421,9 +473,9 @@ function Node({
         <Bar frac={tokens / top} className="max-[52rem]:hidden" />
       </Collapsible.Trigger>
       <Collapsible.Content className="fade-in">
-        <div className="mb-1.5 bg-sunk/50 py-0.5">
+        <div className="mb-1 rounded-md bg-sunk/40 py-1.5">
           {list.map((a) => (
-            <div key={a.id} className={ROW}>
+            <div key={a.id} className={cn(ROW, "py-1")}>
               {/* Role and model together: "the engineer took 4M" is half a fact
                   until you know which model it took them on. Indented past the
                   chevron so the nesting is the indent, not a rule down the side. */}

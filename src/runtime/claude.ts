@@ -379,11 +379,24 @@ export function trimForLog(line: any): any {
 
 export function summarizeTool(name: string, input: Record<string, any>): ToolSummary {
   let detail = name;
-  if (typeof input.command === "string") detail = `${name}: ${clip(input.command, 90)}`;
+  if (typeof input.command === "string") detail = `${name}: ${clip(unwrapShell(input.command), 90)}`;
   else if (typeof input.file_path === "string") detail = `${name}: ${input.file_path}`;
   else if (typeof input.pattern === "string") detail = `${name}: ${clip(input.pattern, 60)}`;
   else if (typeof input.prompt === "string") detail = `${name}: ${clip(input.prompt, 60)}`;
   return { name, detail };
+}
+
+/**
+ * The command the agent meant, without the shell it was handed to.
+ *
+ * codex reports every command as `/bin/zsh -lc '…'`, so the desk wall showed
+ * eleven characters of shell before the part that says what is happening — and
+ * with the line clipped at 90, that boilerplate was crowding out the end of every
+ * `orch ctx query`. Also drops a `2>&1 | head -40` tail for the same reason.
+ */
+function unwrapShell(cmd: string): string {
+  const m = /^\s*(?:\/[\w/.-]*)?(?:sh|bash|zsh)\s+-[a-z]*c\s+(['"])([\s\S]*)\1\s*$/.exec(cmd.trim());
+  return (m?.[2] ?? cmd).trim();
 }
 
 function clip(s: string, n: number): string {
