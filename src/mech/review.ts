@@ -164,9 +164,14 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
   if (retries > cfg.gateRetries) {
     // Looping forever is worse than interrupting the boss. Two failed attempts
     // usually means the acceptance criteria are wrong, not the code.
+    // 'boss', not the default 'pm'. The next line pauses the group, so the PM this
+    // was addressed to cannot run — the question sat at chain_state='pm' forever,
+    // never reached 待你决策, and the only visible symptom was a paused group with
+    // no reason attached. Observed on pm-ai-agent: a blocker filed two hours
+    // earlier that the boss had no way to see.
     ctx.db.run(
-      `INSERT INTO escalation (grp_id, severity, question, created_at)
-       VALUES (?, 'blocker', ?, unixepoch() * 1000)`,
+      `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+       VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
       [
         slice.grp_id,
         `S${slice.seq} "${slice.title}" failed ${from} ${retries} times. Latest:\n${feedback}`,

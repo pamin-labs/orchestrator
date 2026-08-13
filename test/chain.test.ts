@@ -422,3 +422,23 @@ test("delegating to the boss is refused — that is where it already is", async 
   const r = await h.post(`/api/escalations/${id}/delegate`, { to: "boss" });
   expect(r.status).toBe(422);
 });
+
+test("a stopped group's question goes straight to the boss", () => {
+  // Every level below the boss answers by taking a turn, and a turn on a paused
+  // group is never dispatched. A blocker filed by sendBack sat at chain_state='pm'
+  // for two hours — on a group sendBack had itself just paused — and the boss's
+  // only symptom was a group that had stopped for no stated reason.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PAUSED' WHERE id = 1");
+  const id = h.db
+    .query<{ id: number }, []>(
+      `INSERT INTO escalation (grp_id, severity, question, created_at)
+       VALUES (1, 'blocker', 'S1 failed the gate 3 times', unixepoch() * 1000) RETURNING id`,
+    )
+    .get()!.id;
+  expect(route(h.deps, id)).toBe("boss");
+  expect(
+    h.db.query<{ chain_state: string }, [number]>("SELECT chain_state FROM escalation WHERE id = ?").get(id)!
+      .chain_state,
+  ).toBe("boss");
+});

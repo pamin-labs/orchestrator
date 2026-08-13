@@ -14,6 +14,7 @@ import { digestOutput, resolveLease, runResource, type ResourceDef } from "../me
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
 import { recordTurnOutcome, runWatchdog } from "../mech/watchdog.ts";
 import { runStandup } from "../mech/standup.ts";
+import { route } from "../mech/chain.ts";
 import {
   auditVerdict,
   handToBoss,
@@ -738,11 +739,26 @@ function handleDenials(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult)
   const { ctx } = deps;
   const summary = JSON.stringify(r.permissionDenials).slice(0, 500);
 
-  ctx.db.run(
-    `INSERT INTO escalation (grp_id, agent_id, severity, question, created_at)
-     VALUES (?, ?, 'advisory', ?, unixepoch() * 1000)`,
-    [job.grp_id, agent.id, `blocked by clearance: ${summary}`],
-  );
+  // One row per agent, not one per denial. An agent that keeps reaching for the
+  // same forbidden shape files the same escalation every turn — nine of them piled
+  // up on one group, none answered, all of them reading as work waiting on someone.
+  // A repeat is a reminder, not a new problem.
+  const open = ctx.db
+    .query<{ id: number }, [number]>(
+      "SELECT id FROM escalation WHERE agent_id = ? AND answer IS NULL AND question LIKE 'blocked by clearance:%'",
+    )
+    .get(agent.id);
+  if (!open) {
+    const row = ctx.db
+      .query<{ id: number }, [number | null, number, string]>(
+        `INSERT INTO escalation (grp_id, agent_id, severity, question, created_at)
+         VALUES (?, ?, 'advisory', ?, unixepoch() * 1000) RETURNING id`,
+      )
+      .get(job.grp_id, agent.id, `blocked by clearance: ${summary}`)!;
+    // Route it, or it sits at the default chain_state forever: the PM it was
+    // addressed to is never told, and it never climbs to anyone who could answer.
+    route({ ctx }, row.id);
+  }
   // Escalate the agent, not the whole group: the PM or Architect can often
   // point at a legal route, and stopping everyone for one denial is noisy.
   ctx.db.run("UPDATE agent SET state = 'blocked' WHERE id = ?", [agent.id]);

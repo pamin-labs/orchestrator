@@ -98,4 +98,15 @@ export function prUrl(st: State, g: Group) {
   return m && g.pr_number ? `https://github.com/${m[1]}/${m[2]}/pull/${g.pr_number}` : null;
 }
 
-export const asksOf = (st: State, id: number): Escalation[] => st.escalations.filter((e) => e.grp_id === id);
+/**
+ * This group's open questions. Answered ones are history, not a decision.
+ *
+ * Unfiltered, this fed a heading that said 待你决策 — so a question the boss had
+ * already answered, and one the PM was still holding, both sat at the top of the
+ * page under a label claiming they needed the boss.
+ */
+export const asksOf = (st: State, id: number): Escalation[] =>
+  st.escalations.filter((e) => e.grp_id === id && !e.answer && e.chain_state !== "revoked");
+
+/** Of those, the ones actually waiting on the boss. */
+export const mineOf = (asks: Escalation[]): Escalation[] => asks.filter((e) => e.chain_state === "boss");

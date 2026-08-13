@@ -79,7 +79,18 @@ export function route(deps: ChainDeps, escId: number): string {
   const esc = load(ctx, escId);
   if (!esc || esc.chain_state === "answered" || esc.chain_state === "revoked") return "closed";
 
-  let level = esc.chain_state as (typeof CHAIN)[number];
+  // A stopped group can answer nothing: every level below the boss replies by
+  // taking a turn, and a turn on a paused, parked or draft group is never
+  // dispatched. The question then sits at chain_state='pm' forever while the only
+  // visible symptom is a group that stopped — which is exactly what a blocker is
+  // supposed to prevent.
+  const status = esc.grp_id
+    ? ctx.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(esc.grp_id)?.status
+    : null;
+  let level =
+    status && !["PLANNING", "RUNNING", "PR_OPEN"].includes(status)
+      ? "boss"
+      : (esc.chain_state as (typeof CHAIN)[number]);
   for (;;) {
     if (level === "boss") {
       ctx.db.run("UPDATE escalation SET chain_state = 'boss' WHERE id = ?", [escId]);

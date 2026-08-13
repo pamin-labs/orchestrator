@@ -10,7 +10,7 @@ import { Tip } from "../ui/tooltip";
 import { ask } from "../ui/confirm";
 import { Composer, ComposerDialog } from "../ui/composer";
 import { post, type Escalation, type Group, type Slice, type State } from "../lib/api";
-import { STOPS, WHERE_ZH, asksOf, gates, heldApproved, prUrl, statusLabel } from "../lib/select";
+import { STOPS, WHERE_ZH, asksOf, gates, heldApproved, mineOf, prUrl, statusLabel } from "../lib/select";
 import { cn, K, money, waited } from "../lib/utils";
 import { useState } from "react";
 import { EvidencePanel } from "./evidence";
@@ -39,6 +39,7 @@ export function Requirement({
 }) {
   const slices = st.slices.filter((s) => s.grp_id === g.id);
   const asks = asksOf(st, g.id);
+  const mine = mineOf(asks);
   const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
 
   // Select what needs the boss; failing that, what is moving; failing that, the first.
@@ -56,8 +57,16 @@ export function Requirement({
           stopped, so nothing below it can move anyway. */}
       {asks.length > 0 && (
         <div className="mt-4">
-          <H2>待你决策 <span className="font-normal text-ink-3">{asks.length}</span></H2>
-          {asks.map((e) => <Ask key={e.id} e={e} refresh={refresh} />)}
+          {/* Only the ones on the boss are 待你决策. The rest are open questions the
+              chain is still holding, and counting them under that heading made the
+              badge lie about how much of this was actually a decision. */}
+          <H2>
+            {mine.length ? "待你决策" : "开着的问题"}{" "}
+            <span className="font-normal text-ink-3">{mine.length || asks.length}</span>
+          </H2>
+          {[...mine, ...asks.filter((a) => !mine.includes(a))].map((e) => (
+            <Ask key={e.id} e={e} refresh={refresh} />
+          ))}
         </div>
       )}
 
