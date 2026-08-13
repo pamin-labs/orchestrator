@@ -3,6 +3,7 @@ import type { Config } from "../config.ts";
 import { say } from "../lang.ts";
 import { interrupt, park, settlePausing } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
+import { resumeReclaimed, type Job } from "../scheduler.ts";
 import type { GitRunner } from "./worktree.ts";
 
 /**
@@ -190,6 +191,35 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     });
     findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", body: t("rl.resumed") });
   }
+
+  // 8. A RUNNING group with nothing queued.
+  //
+  // A failed turn is terminal, so the chain simply ends: the group stays RUNNING,
+  // its slice stays `running`, `startNextSlice` counts it busy, and the desk wall
+  // reads 在跑 0 with no error anywhere. One `claude --settings` path bug took six
+  // groups down this way and nothing said so. One automatic retry, then the boss.
+  const stalled = ctx.db
+    .query<Job, []>(
+      `SELECT j.id, j.kind, j.grp_id, j.agent_id, j.slice_id, j.payload_json, j.priority, j.state, j.error
+       FROM job j JOIN grp g ON g.id = j.grp_id
+       WHERE g.status = 'RUNNING' AND j.state = 'failed'
+         AND j.id = (SELECT max(id) FROM job WHERE grp_id = j.grp_id)
+         AND NOT EXISTS (SELECT 1 FROM job k WHERE k.grp_id = j.grp_id AND k.state IN ('pending','running'))`,
+    )
+    .all();
+  for (const j of stalled) {
+    // Same one-shot guard as a restart: a turn that fails again after being put
+    // back is not going to succeed on the third try either.
+    if (resumeReclaimed(ctx.sched, [j]) > 0) continue;
+    findings.push({
+      rule: "stalled",
+      grpId: j.grp_id,
+      severity: "blocker",
+      body: t("wd.stalled", { why: (j as any).error ?? "" }),
+    });
+  }
+  // No tick here: the server ticks on the same timer that enqueued this watchdog,
+  // so the re-queued turn goes out a beat later either way.
 
   // 7. Paused too long: notify, then park to stop holding a slot.
   const paused = ctx.db
