@@ -228,12 +228,18 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
   recordGate(ctx.db, sliceId, "qa", "pass");
   ctx.db.run("UPDATE slice SET status = 'awaiting_boss', awaiting_at = unixepoch() * 1000 WHERE id = ?", [sliceId]);
 
-  // Retire the group's sessions at the slice boundary. This is the primary
-  // rotation trigger, not the token ceiling: a slice is a natural semantic
-  // break, so the handoff is cheap, and a session that keeps growing costs more
-  // on every remaining turn even at the cached rate.
+  // Retire the sessions that carried this slice. A slice is a natural semantic
+  // break, so the handoff is cheap, and a session that keeps growing costs more on
+  // every remaining turn even at the cached rate.
+  //
+  // The writer and its reviewer only — not the whole roster. Rotating everyone cost
+  // a full prefix rebuild per role per slice: measured over 259 turns, 95% of them
+  // started on a cold prefix and cache creation came to 45.5M tokens, which bills
+  // like ~570M cached reads. The PM, Dispatcher and Auditor carry group-level
+  // context that is still true in the next slice, so throwing it away buys nothing.
   ctx.db.run(
-    "UPDATE agent SET session_id = NULL, session_tokens = 0 WHERE grp_id = ? AND state != 'retired'",
+    `UPDATE agent SET session_id = NULL, session_tokens = 0
+     WHERE grp_id = ? AND state != 'retired' AND role IN ('engineer','qa')`,
     [slice.grp_id],
   );
   ctx.bus.emit({

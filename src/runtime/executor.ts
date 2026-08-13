@@ -766,10 +766,31 @@ function handleDenials(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult)
        WHERE agent_id = ? AND answer IS NULL AND question LIKE 'blocked by clearance:%'`,
       [agent.id],
     );
+    deps.ctx.db.run("UPDATE agent SET denial_turns = 0 WHERE id = ?", [agent.id]);
     return;
   }
   const { ctx } = deps;
   const summary = denialSummary(r.permissionDenials);
+
+  // A first denial is not a question. Almost every one of them is an agent
+  // reaching for a shape it was never going to get — `sqlite3` on the server's own
+  // database, a write outside its boundary — and the next turn it takes a legal
+  // route by itself. Filing one asks three roles in the chain to read a group's
+  // context and think about it: measured, that is three turns at ~3M tokens each,
+  // for a question that answers itself.
+  const repeat = ctx.db
+    .query<{ n: number }, [number]>("SELECT denial_turns AS n FROM agent WHERE id = ?")
+    .get(agent.id)!.n;
+  ctx.db.run("UPDATE agent SET denial_turns = denial_turns + 1 WHERE id = ?", [agent.id]);
+  if (repeat === 0) {
+    ctx.bus.emit({
+      grpId: job.grp_id,
+      author: agent.role,
+      kind: "tool_summary",
+      body: `clearance blocked a call, trying another route: ${summary}`,
+    });
+    return;
+  }
 
   // One row per agent, not one per denial. An agent that keeps reaching for the
   // same forbidden shape files the same escalation every turn — nine of them piled
