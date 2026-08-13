@@ -2086,7 +2086,13 @@ const postGroupControl: Handler = async (ctx, req, params) => {
 };
 
 /** Roughly a screenful of diff. Beyond this the boss wants the editor, not a panel. */
-const DIFF_CAP = 80_000;
+// 400k. The old 80k was sized for a page that pasted the whole diff into one
+// <pre>: past that it was unreadable anyway, so truncating cost nothing. The
+// viewer now renders one file at a time from a parsed diff, so the ceiling that
+// matters is the browser's, not the reader's — and a slice that touched thirty
+// files was being cut off mid-review, which is the one moment the boss needs all
+// of it.
+const DIFF_CAP = 400_000;
 
 /**
  * What actually happened in one slice: the diff, QA's verdict, the gate output.
