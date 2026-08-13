@@ -326,6 +326,15 @@ function Section({ title, note, children }: { title: string; note: string; child
         <h3 className="text-[0.8125rem] font-semibold">{title}</h3>
         <Meta>{note}</Meta>
       </div>
+      {/* The columns need naming. A right-aligned number and a percent sign next
+          to each other are two plausible readings of the same pair, and the reader
+          should not have to work out which is which from the magnitudes. */}
+      <div className={cn(ROW, "pb-1 text-[0.6875rem] text-ink-3")}>
+        <span>{title.replace("按", "")}</span>
+        <span className="text-right">tokens</span>
+        <span className="text-right">占比</span>
+        <span className="max-[52rem]:hidden" />
+      </div>
       {children}
     </section>
   );

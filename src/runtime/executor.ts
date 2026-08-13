@@ -242,7 +242,12 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
       "`orch ctx query` for your current situation, and if there is genuinely " +
       "nothing to do, say so in one line and stop.";
 
-  const provider = providerFor(role.runtime);
+  // The agent's runtime, not the role's. `agent.model` was resolved against the
+  // provider this agent was hired on and is frozen there; reading the CLI from the
+  // role instead means an agent hired before its role was re-pointed runs the new
+  // CLI with the old CLI's model id. Observed live: `codex exec -m claude-sonnet-5`
+  // starting every turn with "Model metadata for claude-sonnet-5 not found".
+  const provider = providerFor(agent.runtime ?? role.runtime);
   const run: Provider["run"] = deps.runTurn ?? provider.run;
   // codex reads AGENTS.md where claude reads CLAUDE.md. Same repo instructions,
   // different filename, so link them rather than asking every project to keep two.
@@ -363,7 +368,7 @@ function buildStableFor(
     model: agent.model,
     // Clamped to what this role's provider accepts before it is hashed, so the
     // prefix hash describes the turn that was actually sent.
-    effort: clampEffort(role.runtime, role.effort),
+    effort: clampEffort(agent.runtime ?? role.runtime, role.effort),
     allowedTools: role.allowedTools ?? allowedToolsFor(agent.role, clearance),
     settingsPath,
     // Attachments the boss sent with the idea live in the data dir, so the agent

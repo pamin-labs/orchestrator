@@ -26,8 +26,14 @@ import type { RateLimitInfo } from "../runtime/claude.ts";
 const ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
 const BETA = "oauth-2025-04-20";
 
-/** Politeness, and enough: these windows move in hours, not seconds. */
-export const POLL_EVERY_MS = 5 * 60_000;
+/**
+ * One minute. The windows move in hours, so this is already generous — what it
+ * really buys is that the header is never more than a minute stale when the boss
+ * glances at it. Every read in between comes from usage_snapshot, not the network:
+ * the panel polls /api/state on its own clock and must never turn into traffic
+ * here. codex needs none of this; it reports both windows in every turn it runs.
+ */
+export const POLL_EVERY_MS = 60_000;
 
 type Window = { utilization?: number; resets_at?: string | null };
 
