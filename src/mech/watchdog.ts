@@ -284,6 +284,26 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     )
     .all();
   for (const j of stalled) {
+    // A rebase that beat the Engineer twice is a design question, not a harder
+    // rebase. It only reaches here after failing with the fork spelled out, so the
+    // next thing to try is the role that can say whether the slice still makes
+    // sense — not the same role with more determination.
+    let payload: any = {};
+    try { payload = JSON.parse(j.payload_json); } catch {}
+    if (payload?.conflict) {
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: j.grp_id,
+        priority: 6,
+        payload: {
+          role: "architect",
+          rejection:
+            `The Engineer could not rebase this branch onto main. Decide what it means: is the slice still ` +
+            `what we want now that main has moved, does the boundary need re-cutting, or should it be dropped? ` +
+            `Say so on the blackboard and mail the group.\n\n${j.error ?? ""}`,
+        },
+      });
+      continue;
+    }
     // Same one-shot guard as a restart: a turn that fails again after being put
     // back is not going to succeed on the third try either.
     if (resumeReclaimed(ctx.sched, [j]) > 0) continue;
