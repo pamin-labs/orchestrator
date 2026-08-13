@@ -562,6 +562,28 @@ test("a rebase the Engineer could not finish goes to the Architect, not round ag
   expect(p.rejection).toContain("could not rebase");
 });
 
+test("a rebase turn that finished is a stall, not a conflict", () => {
+  // `conflict` marks a turn that was *told* to rebase (rule 15), not one that
+  // failed to. Reading the flag without the outcome turned every clean rebase into
+  // a design escalation as soon as the queue went quiet: pm-ai-agent was handed the
+  // same false "could not rebase" eight times and its Architect refuted all eight.
+  const h = harness();
+  h.db.run(
+    `INSERT INTO job (kind, grp_id, payload_json, state, enqueued_at)
+     VALUES ('agent_turn', 1, '{"role":"engineer","conflict":true}', 'done', 0)`,
+  );
+  return runWatchdog(h.deps).then(() => {
+    const queued = h.db
+      .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'")
+      .all()
+      .map((q) => JSON.parse(q.payload_json));
+    // The one-shot resume below, which is what an emptied queue always deserved —
+    // and not a word to the Architect about a rebase that never failed.
+    expect(queued.map((p) => p.role)).toEqual(["engineer"]);
+    expect(queued[0].rejection).toBeUndefined();
+  });
+});
+
 test("main moving under a running group sends it to rebase, once per commit", async () => {
   // landGroup tells the merge queue to rebase when another group lands. It does not
   // cover the boss pushing to main directly — and the boss is a person with a

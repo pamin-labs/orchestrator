@@ -419,9 +419,16 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     // rebase. It only reaches here after failing with the fork spelled out, so the
     // next thing to try is the role that can say whether the slice still makes
     // sense — not the same role with more determination.
+    //
+    // `conflict` marks a turn that was *told* to rebase (rule 15), not one that
+    // failed to. Reading the flag alone turned every successful rebase into a
+    // design escalation the moment the queue went quiet: pm-ai-agent got the same
+    // "The Engineer could not rebase this branch onto main" eight times, all eight
+    // false, and its Architect burned a turn refuting each one. A turn that ended
+    // `done` is a stall — that is the branch below, and it was always the right one.
     let payload: any = {};
     try { payload = JSON.parse(j.payload_json); } catch {}
-    if (payload?.conflict) {
+    if (payload?.conflict && j.state === "failed") {
       ctx.sched.enqueue("agent_turn", {
         grp_id: j.grp_id,
         priority: 6,
