@@ -29,7 +29,7 @@ import { CostView, Desk, Owns } from "./views/tables";
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
 type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes";
-interface Sel { p: number | null; view: View; g: number | null }
+interface Sel { p: number | null; view: View; g: number | null; t: string | null }
 
 const readHash = (): Sel => {
   const h = new URLSearchParams(location.hash.slice(1));
@@ -37,6 +37,12 @@ const readHash = (): Sel => {
     p: h.get("p") ? Number(h.get("p")) : null,
     view: (h.get("v") as View) || "home",
     g: h.get("g") ? Number(h.get("g")) : null,
+    // Which tab, inside whichever view has them. In the hash for the same reason
+    // the other three are: a tab lived in component state, so opening a
+    // requirement unmounted the list and coming back re-picked a tab by heuristic
+    // — the boss's choice silently replaced by ours, at the one moment they were
+    // navigating back to it.
+    t: h.get("t"),
   };
 };
 
@@ -86,6 +92,7 @@ export function App() {
     if (sel.p) h.set("p", String(sel.p));
     h.set("v", sel.view);
     if (sel.g) h.set("g", String(sel.g));
+    if (sel.t) h.set("t", sel.t);
     const next = `#${h}`;
     if (next === location.hash) return;
     if (!location.hash) history.replaceState(null, "", next);
@@ -116,7 +123,7 @@ export function App() {
   // was unreachable without editing the URL.
   useEffect(() => {
     if (!sel.g || !st.groups.length) return;
-    if (!st.groups.some((g) => g.id === sel.g)) go({ g: null, view: "progress" });
+    if (!st.groups.some((g) => g.id === sel.g)) go({ g: null, view: "progress", t: null });
   }, [sel.g, st.groups]);
 
   useEffect(() => {
@@ -284,7 +291,7 @@ export function App() {
               key={k}
               // Every tab clears the drill-in, 需求 included: keeping `g` there made
               // the tab reopen the requirement the boss was trying to leave.
-              onClick={() => go({ view: k, g: null })}
+              onClick={() => go({ view: k, g: null, t: null })}
               className={cn(
                 "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-2 text-[0.8125rem] transition-colors",
                 // The drill-in belongs to 进展, so that tab stays lit inside it.
@@ -345,21 +352,22 @@ export function App() {
 
             </>
           ) : view === "progress" ? (
-            <Progress st={st} projectId={sel.p!} onOpen={openReq} maxGroups={st.limits?.maxGroups} />
+            <Progress st={st} projectId={sel.p!} onOpen={openReq} maxGroups={st.limits?.maxGroups}
+                      tab={sel.t} onTab={(t) => go({ t })} />
           ) : view === "req" ? (
             openGroup ? (
-              <Requirement st={st} g={openGroup} refresh={refresh} open />
+              <Requirement st={st} g={openGroup} refresh={refresh} open tab={sel.t} onTab={(t) => go({ t })} />
             ) : (
               <div className="text-[0.8125rem] text-ink-3">这个需求已经归档或不存在了。</div>
             )
           ) : view === "desk" ? (
             <Desk st={st} frames={frames} projectId={sel.p!} />
           ) : view === "notes" ? (
-            <Notes projectId={sel.p!} />
+            <Notes projectId={sel.p!} tab={sel.t} onTab={(t) => go({ t })} />
           ) : view === "owns" ? (
             <Owns st={st} projectId={sel.p!} />
           ) : (
-            <CostView st={st} cost={cost} projectId={sel.p!} />
+            <CostView cost={cost} />
           )}
           </Boundary>
           </div>

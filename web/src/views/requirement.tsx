@@ -12,7 +12,7 @@ import { ask } from "../ui/confirm";
 import { Composer, ComposerDialog } from "../ui/composer";
 import { post, type Escalation, type Group, type Slice, type State } from "../lib/api";
 import { STOPS, WHERE_ZH, asksOf, gates, heldApproved, mineOf, prUrl, statusLabel } from "../lib/select";
-import { cn, K, money, waited } from "../lib/utils";
+import { cn, K, waited } from "../lib/utils";
 import { useState } from "react";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
@@ -34,9 +34,11 @@ import { Notes } from "./notes";
  * what needs you, and what to type — in that order.
  */
 export function Requirement({
-  st, g, refresh, open,
+  st, g, refresh, open, tab, onTab,
 }: {
   st: State; g: Group; refresh: () => void; open: boolean;
+  /** From the hash: leaving the drill-in and coming back kept unmounting this. */
+  tab?: string | null; onTab?: (t: string) => void;
 }) {
   const slices = st.slices.filter((s) => s.grp_id === g.id);
   const asks = asksOf(st, g.id);
@@ -126,7 +128,7 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
       </Badge>
       <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {g.branch && <Meta>{g.branch}</Meta>}
-        <Meta>{money(g.spent_usd)}</Meta>
+        <Meta>{K(g.spent_tokens)} tokens</Meta>
         <Budget g={g} refresh={refresh} />
       </span>
 
@@ -344,7 +346,7 @@ function Aside({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
   const roster = st.agents.filter((a) => a.grp_id === g.id);
   return (
     <div className="mt-8">
-      <Tabs defaultValue="notes">
+      <Tabs value={tab ?? "notes"} onValueChange={onTab}>
         <TabList>
           <Tab value="notes">记录</Tab>
           <Tab value="answered" count={answered.length}>别人替你答的</Tab>
@@ -474,7 +476,7 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
       <CardBody>
         <CardTitle className="text-[0.9375rem] text-accent">预算用尽，全组挂起</CardTitle>
         <div className="mt-0.5 text-[0.75rem] text-ink-2">
-          已花 {K(g.spent_tokens)} tokens（{money(g.spent_usd)}），上限 {K(g.budget_tokens)}。
+          已花 {K(g.spent_tokens)} tokens，上限 {K(g.budget_tokens)}。
           加上限才动得了；「继续」在这个状态下不生效。
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -827,7 +829,7 @@ function Roster({ rows }: { rows: State["agents"] }) {
             <span className="font-mono text-[0.6875rem] text-ink-2">{a.role}</span>
             <span className="truncate text-ink-3">{a.activity ?? a.state}</span>
             <Meta className={a.turns >= 15 ? "text-warn" : undefined}>{a.turns || 0} turn</Meta>
-            <Meta>{money(a.total_usd)}</Meta>
+            <Meta>{K(a.total_tokens)}</Meta>
           </div>
         ))}
       </div>
