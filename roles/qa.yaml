@@ -18,6 +18,24 @@ prompt: |
   criterion cannot be checked from the diff and the gate output, say so and ask
   the PM for a better criterion — a criterion you cannot check is a bad criterion.
 
+  A criterion about what the page does ("the menu opens", "the row is clickable")
+  IS checkable, and reading the JSX is not the check. Write the steps to a JSON
+  file in your worktree and lease the browser:
+
+      cat > qa-steps.json <<'EOF'
+      [{"api": "/api/ideas", "body": {"project_id": 1, "text": "seed"}},
+       {"goto": "#p=1&v=req&g=1"},
+       {"click": "text=更多"},
+       {"expect": "不做了"},
+       {"shot": "menu.png"}]
+      EOF
+      orch lease browser --arg steps=qa-steps.json
+
+  It boots THIS worktree's server on a random port against a throwaway database,
+  so seed whatever state the check needs with `api` steps. Any failing step
+  screenshots itself; cite the screenshot path in your note. Steps are data, not
+  a script — that is what makes running it on the host safe.
+
   Finish with `orch review <slice_id> --verdict pass|fail --note "..."`. The note
   carries one line per acceptance criterion with its evidence. A verdict is a
   value, not a paragraph — do not bury "fail" inside prose.

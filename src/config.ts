@@ -32,7 +32,8 @@ export interface RoleDef {
 export interface Config {
   language: string;
   maxGroups: number;
-  leaseSlots: number;
+  /** One number for the whole Runner pool, or one pool per resource tag. */
+  leaseSlots: number | Record<string, number>;
   port: number;
   difficultyModel: Record<string, string>;
   turnTimeoutMs: number;

@@ -82,6 +82,33 @@ test("leases use their own pool and do not consume group slots", async () => {
   expect(started.filter((j) => j.kind === "lease").length).toBe(2);
 });
 
+test("a tagged resource draws from its own pool, so one browser cannot stall every gate", async () => {
+  const db = openMemory();
+  const ids = seed(db, 3);
+  db.run("INSERT INTO resource (name, template, tags_json) VALUES ('browser', 'echo b', '[\"browser\"]')");
+  db.run("INSERT INTO resource (name, template) VALUES ('typecheck', 'echo t')");
+  const mk = (resource: string, grp: number) =>
+    db
+      .query<{ id: number }, [string, number]>(
+        "INSERT INTO lease (resource, grp_id, enqueued_at) VALUES (?, ?, 0) RETURNING id",
+      )
+      .get(resource, grp)!.id;
+
+  const { started, release, exec } = gate();
+  const s = new Scheduler(db, exec, { maxGroups: 3, leaseSlots: { default: 2, browser: 1 } });
+  for (const g of ids) s.enqueue("lease", { grp_id: g, payload: { lease_id: mk("browser", g!) } });
+  for (const g of ids) s.enqueue("lease", { grp_id: g, payload: { lease_id: mk("typecheck", g!) } });
+  s.tick();
+
+  // One browser (its pool is 1) and two typechecks (the default pool is 2). The
+  // point of splitting: sized for the browser, a global pool would have let one
+  // screenshot hold up every gate in the fleet.
+  expect(started.length).toBe(3);
+  release();
+  await s.drain();
+  expect(started.length).toBe(6);
+});
+
 test("non-RUNNING group status is a barrier — this IS intercept L2", async () => {
   const db = openMemory();
   const [g] = seed(db, 1, "PAUSED");

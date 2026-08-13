@@ -6,10 +6,19 @@ language: 中文            # human-facing text; code/commits/PRs stay English
 # own rate limit. Raise it and watch 成本 → cache 命中: many concurrent turns on one
 # subscription is where throttling shows up first.
 maxGroups: 10
-# Lease slots are deliberately not 10. A lease is a real build or test on the host,
-# and ten of those at once thrash the machine and make every one of them slower —
-# and a wedged lease holds its slot for leaseTimeoutMs. Raise only after measuring.
-leaseSlots: 2
+# Runner pools, one per resource tag. `default` covers every resource with no tag.
+# A plain number here still works and means "one pool that size".
+#
+# Deliberately not 10. A lease is a real build or test on the host, and ten of those
+# at once thrash the machine and make every one of them slower — and a wedged lease
+# holds its slot for leaseTimeoutMs. Raise only after measuring.
+#
+# browser: 1 because each browser lease is a real Chromium. This is exactly why the
+# pool is split: one global number would have to be the browser's, and every gate in
+# the fleet would queue behind one screenshot.
+leaseSlots:
+  default: 2
+  browser: 1
 port: 47821              # localhost TCP; agents get ORCH_URL + ORCH_TOKEN
 
 # difficulty -> model. The Dispatcher tags each slice; this is the cost knob.
