@@ -18,6 +18,9 @@ const repo = (files: Record<string, string>) => {
     mkdirSync(join(p, ".."), { recursive: true });
     writeFileSync(p, body);
   }
+  // Registration requires a real repo: every group needs a worktree, so a path
+  // without `.git` is refused before the project exists.
+  mkdirSync(join(dir, ".git"), { recursive: true });
   return dir;
 };
 
