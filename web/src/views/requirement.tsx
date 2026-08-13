@@ -47,11 +47,17 @@ export function Requirement({
 
   // Select what needs the boss; failing that, what is moving; failing that, the first.
   const wants = slices.find((s) => s.status === "awaiting_boss");
-  const moving = slices.find((s) => !["accepted", "pending"].includes(s.status));
+  // The LAST one in flight. Work moves down the list, so the newest one that is
+  // not finished is where it has got to; the first is usually long accepted.
+  const moving = [...slices].reverse().find((s) => !["accepted", "pending"].includes(s.status));
   const [picked, setPicked] = useState<number | null>(null);
-  const shown = slices.find((s) => s.id === picked) ?? wants ?? moving ?? slices[0];
+  // Falls back to the LAST slice, not the first. Something waiting on the boss
+  // or currently moving still wins, but with neither the interesting one is where
+  // the work has got to — the first slice is usually accepted and closed.
+  const shown = slices.find((s) => s.id === picked) ?? moving ?? wants ?? slices.at(-1);
 
   const draft = g.status === "DRAFT" || g.status === "PLANNING";
+  const active = tab ?? (mine.length ? "ask" : "slice");
 
   return (
     // Four things this page holds, and they were stacked in two columns down one
@@ -71,7 +77,7 @@ export function Requirement({
         </Pane>
       ) : (
         <Tabs
-          value={tab ?? (mine.length ? "ask" : "slice")}
+          value={active}
           onValueChange={onTab}
           className="mt-3 flex min-h-0 flex-1 flex-col"
         >
@@ -140,12 +146,16 @@ export function Requirement({
         </Tabs>
       )}
 
-      {/* Pinned, not the last thing on a long page. It is how the boss answers
-          what they just read. */}
-      {open && !draft && (
-        <div className="mt-2 border-t border-rule pt-2">
-          <Say g={g} refresh={refresh} projectId={g.project_id} />
-        </div>
+      {/* Pinned and one line tall until it is wanted. A composer that is always
+          open costs four rows of the slice list to sit there empty, and this page
+          is read far more often than it is typed into — but it has to stay
+          reachable without scrolling, because it is how the boss answers what
+          they just read. */}
+      {/* A decision carries its own answer box, and that box is the one that
+          unblocks the agent hanging on it. Two inputs on one screen asks the boss
+          to work out which of them the words go to. */}
+      {open && !draft && !(active === "ask" && mine.length > 0) && (
+        <SayDock g={g} refresh={refresh} />
       )}
     </section>
   );
@@ -547,6 +557,29 @@ function Delegated({
         </div>
       ))}
     </>
+  );
+}
+
+/** One line at rest, the full composer once clicked. */
+function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-2 flex w-full cursor-pointer items-center gap-2 rounded-md border border-rule
+                   bg-paper px-3 py-2 text-left text-[0.8125rem] text-ink-3 transition-colors hover:border-ink-3"
+      >
+        跟这个组说话…
+        <span className="grow" />
+        <Meta>⌘Enter 发给 PM</Meta>
+      </button>
+    );
+  }
+  return (
+    <div className="mt-2 border-t border-rule pt-2">
+      <Say g={g} refresh={refresh} projectId={g.project_id} />
+    </div>
   );
 }
 

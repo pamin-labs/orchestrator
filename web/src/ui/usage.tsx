@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { Usage } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Tip } from "./tooltip";
@@ -47,18 +48,6 @@ function until(unixSecs?: number): string {
   return h >= 1 ? `${h}h${min % 60}m` : `${min}m`;
 }
 
-/** Both windows, for the hover. */
-function detail(u: Usage): string {
-  const parts: string[] = [];
-  if (u.fiveHourPercent !== undefined) {
-    parts.push(`5 小时窗口 ${Math.round(u.fiveHourPercent)}%${u.resetsAt ? `，${until(u.resetsAt)} 后重置` : ""}`);
-  }
-  if (u.weeklyPercent !== undefined) {
-    parts.push(`周窗口 ${Math.round(u.weeklyPercent)}%${u.weeklyResetsAt ? `，${until(u.weeklyResetsAt)} 后重置` : ""}`);
-  }
-  if (u.error) parts.push(WHY[u.error] ?? u.error);
-  return parts.join("\n");
-}
 
 export function UsageBar({ usage }: { usage: Usage[] }) {
   // No window and no error means an account with nothing to run out of — API-key
@@ -68,22 +57,18 @@ export function UsageBar({ usage }: { usage: Usage[] }) {
   );
   if (!rows.length) return null;
 
-  // One row per account, two rings per row, each ring carrying its own label.
-  // The column headers this replaced sat above the grid and drifted out of line
-  // with the cells under them, which is the failure mode of labelling a column
-  // instead of the thing itself. A ring with 5h written beside it cannot come
-  // apart from what it measures, and the rows still align because every cell is
-  // the same width.
+  // One row per account, two rings per row, each ring carrying its own label and
+  // its own tooltip. The tooltip used to hang off the row, and a row is
+  // `display: contents` — no box, so Radix had nothing to position against and
+  // put the card at the far edge of the screen.
   return (
-    <span className="grid grid-cols-[auto_auto_auto] items-center gap-x-3 gap-y-1 font-mono text-[0.625rem]">
+    <span className="grid grid-cols-[auto_auto_auto] items-center gap-x-4 gap-y-0.5 font-mono text-[0.625rem]">
       {rows.map((u) => (
-        <Tip key={u.runtime} label={detail(u) || u.runtime}>
-          <span className="contents cursor-default">
-            <span className="truncate text-ink-3">{u.runtime}</span>
-            <Ring label="5h" v={u.fiveHourPercent} stale={staleMark(u)} />
-            <Ring label="周" v={u.weeklyPercent} stale={staleMark(u)} />
-          </span>
-        </Tip>
+        <Fragment key={u.runtime}>
+          <span className="truncate text-right text-ink-3">{u.runtime}</span>
+          <Ring label="5h" v={u.fiveHourPercent} at={u.resetsAt} stale={staleMark(u)} why={u.error} />
+          <Ring label="周" v={u.weeklyPercent} at={u.weeklyResetsAt} stale={staleMark(u)} why={u.error} />
+        </Fragment>
       ))}
     </span>
   );
@@ -100,37 +85,46 @@ const C = 2 * Math.PI * R;
  *
  * Hand-drawn rather than charted: at 15px a chart library renders the same two
  * arcs through a layout engine, a container observer and a tooltip portal, and
- * this needs none of them. An account without this window still gets its ring,
- * empty — the row has to stay aligned with the one above it, and an absent
- * window is a fact worth showing rather than a gap.
+ * this needs none of them.
  */
-function Ring({ label, v, stale }: { label: string; v?: number; stale: boolean }) {
+function Ring({
+  label, v, at, stale, why,
+}: {
+  label: string; v?: number; at?: number; stale: boolean; why?: string;
+}) {
   const known = v !== undefined;
+  // An account without this window holds the column open and says nothing in it.
+  // An empty ring plus a dash was two marks claiming the reading failed, when the
+  // truth is the window does not exist on that plan.
+  if (!known && !stale) return <span aria-hidden />;
   const hot = known && v >= WARN_AT;
+  // Terse: a number and when it resets. The sentence it replaced said "5 小时窗口"
+  // next to a ring already labelled 5h, and repeated the failure text under every
+  // window it had already been shown for.
+  const label2 = known ? `${Math.round(v)}%${at ? ` · ${until(at)}后重置` : ""}` : (WHY[why ?? ""] ?? "读不到");
   return (
-    <span className="flex items-center gap-1.5">
-      <svg viewBox="0 0 14 14" className="size-[15px] shrink-0 -rotate-90">
-        <circle cx="7" cy="7" r={R} fill="none" stroke="var(--color-sunk)" strokeWidth="2.5" />
-        {known && (
-          <circle
-            cx="7"
-            cy="7"
-            r={R}
-            fill="none"
-            stroke={hot ? "var(--color-warn)" : "var(--color-ink-3)"}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeDasharray={`${(Math.min(100, Math.max(2, v)) / 100) * C} ${C}`}
-          />
-        )}
-      </svg>
-      <span className="text-ink-3">{label}</span>
-      <span
-        className={cn("w-7 text-right tabular-nums", hot ? "font-semibold text-warn" : "text-ink-2")}
-      >
-        {known ? `${Math.round(v)}%` : "—"}
-        {stale ? <span className="text-warn"> ?</span> : null}
+    <Tip label={label2}>
+      <span className="flex cursor-default items-center gap-1.5">
+        <svg viewBox="0 0 14 14" className="size-[15px] shrink-0 -rotate-90">
+          <circle cx="7" cy="7" r={R} fill="none" stroke="var(--color-sunk)" strokeWidth="2.5" />
+          {known && (
+            <circle
+              cx="7"
+              cy="7"
+              r={R}
+              fill="none"
+              stroke={hot ? "var(--color-warn)" : "var(--color-ink-3)"}
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeDasharray={`${(Math.min(100, Math.max(2, v)) / 100) * C} ${C}`}
+            />
+          )}
+        </svg>
+        {/* The ring carries the quantity and the tooltip carries the digits. A
+            percentage beside its own ring is the same fact twice, and it was the
+            widest thing in the bar. */}
+        <span className={cn(hot ? "font-semibold text-warn" : "text-ink-3")}>{known ? label : "?"}</span>
       </span>
-    </span>
+    </Tip>
   );
 }
