@@ -10,6 +10,13 @@ import { start, type Started } from "../src/server.ts";
  * exactly the property being asserted.
  */
 
+const ASSET_MAIN_JS = "/dist/main.js";
+const ASSET_APP_CSS = "/dist/app.css";
+const ENDPOINT_PROJECTS = "/api/projects";
+const ENDPOINT_IDEAS = "/api/ideas";
+const ENDPOINT_STATE = "/api/state";
+const ENDPOINT_ORCH_STATUS = "/orch/status";
+
 let srv: Started;
 let dataDir: string;
 
@@ -56,7 +63,7 @@ test("the web UI is served and fetches nothing from a remote origin", async () =
 
   // The built bundle has to be there and served, or the page is a blank div and
   // every panel silently shows nothing.
-  for (const asset of ["/dist/main.js", "/dist/app.css"]) {
+  for (const asset of [ASSET_MAIN_JS, ASSET_APP_CSS]) {
     const a = await fetch(`${srv.url}${asset}`);
     expect(a.status).toBe(200);
     // The bundle name carries no hash, so without this the browser keeps serving
@@ -67,13 +74,13 @@ test("the web UI is served and fetches nothing from a remote origin", async () =
 });
 
 test("boss path: add project, drop an idea, nothing runs without a slot", async () => {
-  const p = await (await post("/api/projects", { name: "demo", repo_path: dataDir })).json();
+  const p = await (await post(ENDPOINT_PROJECTS, { name: "demo", repo_path: dataDir })).json();
   expect(p.id).toBeGreaterThan(0);
 
-  const idea = await (await post("/api/ideas", { project_id: p.id, text: "add rate limiting" })).json();
+  const idea = await (await post(ENDPOINT_IDEAS, { project_id: p.id, text: "add rate limiting" })).json();
   expect(idea.grp_id).toBeGreaterThan(0);
 
-  const state = await (await fetch(`${srv.url}/api/state`)).json();
+  const state = await (await fetch(`${srv.url}${ENDPOINT_STATE}`)).json();
   const grp = state.groups.find((g: any) => g.id === idea.grp_id);
   expect(grp.status).toBe("PLANNING");
 
@@ -110,18 +117,18 @@ test("boss path: add project, drop an idea, nothing runs without a slot", async 
 });
 
 test("a malformed DRAFT card is refused over the wire, status unchanged", async () => {
-  const state = await (await fetch(`${srv.url}/api/state`)).json();
+  const state = await (await fetch(`${srv.url}${ENDPOINT_STATE}`)).json();
   const grp = state.groups.find((g: any) => g.status === "PLANNING");
   const r = await post(`/api/draft/${grp.id}/approve`, { card: "目标 : 只有这一行" });
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("missing sections");
 
-  const after = await (await fetch(`${srv.url}/api/state`)).json();
+  const after = await (await fetch(`${srv.url}${ENDPOINT_STATE}`)).json();
   expect(after.groups.find((g: any) => g.id === grp.id).status).toBe("PLANNING");
 });
 
 test("orch verbs reject a request with no token", async () => {
-  const r = await post("/orch/status", { text: "hello" });
+  const r = await post(ENDPOINT_ORCH_STATUS, { text: "hello" });
   expect(r.status).toBe(422);
 });
 
