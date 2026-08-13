@@ -53,7 +53,6 @@ export interface TurnResult {
   /** Final assistant text. */
   text: string;
   usage: Usage;
-  costUsd: number;
   numTurns: number;
   /**
    * Non-empty means the agent tried something its clearance forbids. Headless
@@ -182,7 +181,6 @@ type Line = {
   terminal_reason?: string;
   result?: string;
   num_turns?: number;
-  total_cost_usd?: number;
   usage?: Record<string, any>;
   modelUsage?: Record<string, { contextWindow?: number }>;
   permission_denials?: unknown[];
@@ -244,7 +242,6 @@ function newAccumulator(spec: TurnSpec): Acc {
       terminalReason: "",
       text: "",
       usage: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 },
-      costUsd: 0,
       numTurns: 0,
       permissionDenials: [],
       toolSummaries: [],
@@ -320,7 +317,6 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
       r.terminalReason = l.terminal_reason ?? (r.ok ? "completed" : "error");
       if (typeof l.result === "string" && l.result) r.text = l.result;
       r.numTurns = l.num_turns ?? 0;
-      r.costUsd = l.total_cost_usd ?? 0;
       r.permissionDenials = l.permission_denials ?? [];
       const u = l.usage ?? {};
       r.usage = {

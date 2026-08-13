@@ -19,7 +19,6 @@ function ok(over: Partial<TurnResult> = {}): TurnResult {
     terminalReason: "completed",
     text: "done",
     usage: { input: 10, output: 20, cacheRead: 5000, cacheCreate: 100, thinking: 0 },
-    costUsd: 0.01,
     numTurns: 1,
     permissionDenials: [],
     toolSummaries: [],
@@ -154,15 +153,19 @@ test("the delta is the prompt and never leaks into the stable half", async () =>
 });
 
 test("cost lands on the agent, the slice and the group", async () => {
-  const { db, sched } = harness(async () => ok({ costUsd: 0.25 }));
+  const { db, sched } = harness(async () => ok());
   db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 1, 'S1', 'x', 0)");
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 1, payload: { role: "engineer" } });
   await sched.drain();
 
   const total = 10 + 20 + 5000 + 100;
   expect(db.query<{ t: number }, []>("SELECT total_tokens AS t FROM agent").get()!.t).toBe(total);
-  expect(db.query<{ u: number }, []>("SELECT spent_usd AS u FROM slice").get()!.u).toBeCloseTo(0.25);
-  expect(db.query<{ u: number }, []>("SELECT spent_usd AS u FROM grp").get()!.u).toBeCloseTo(0.25);
+  // Tokens are the unit of account now: two subscriptions pay for this, so the
+  // dollar figure was API-rate fiction on one half and absent on the other.
+  // Tokens are the unit of account now: two subscriptions pay for this, so the
+  // dollar figure was API-rate fiction on one half and absent on the other.
+  expect(db.query<{ t: number }, []>("SELECT spent_tokens AS t FROM slice").get()!.t).toBe(total);
+  expect(db.query<{ t: number }, []>("SELECT spent_tokens AS t FROM grp").get()!.t).toBe(total);
 });
 
 test("one denial is not a question; the second one is", async () => {

@@ -1,4 +1,5 @@
 import type { State } from "./api";
+import { K } from "./utils";
 
 /**
  * Why one thing on the boss's list outranks another.
@@ -34,7 +35,14 @@ export const REASONS = {
   /** DRAFT blocks dispatch entirely: nothing in this requirement has started. */
   unstarted: (): Reason => ({ why: "批了才开工", points: 45 }),
   /** Money already spent and now sitting idle. */
-  sunk: (usd: number): Reason => ({ why: `已经花了 $${usd.toFixed(2)}`, points: Math.min(30, usd * 20) }),
+  // Tokens, not dollars. codex reports no cost at all, so with usd here every
+  // requirement that ran on it scored zero for sunk cost — the reason silently
+  // stopped applying to five of the eight roles. 1M tokens is roughly where a
+  // requirement starts being worth not abandoning.
+  sunk: (tokens: number): Reason => ({
+    why: `已经花了 ${K(tokens)} tokens`,
+    points: Math.min(30, (tokens / 1e6) * 10),
+  }),
   /** The clock. PLAN.md's whole argument for slicing work up. */
   waited: (ms: number): Reason => {
     const h = ms / 3_600_000;

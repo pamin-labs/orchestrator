@@ -154,9 +154,6 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
     terminalReason: "",
     text: "",
     usage: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 },
-    // codex reports tokens but not money, so cost is attributed from tokens
-    // upstream rather than invented here.
-    costUsd: 0,
     numTurns: 0,
     permissionDenials: [],
     toolSummaries: [],

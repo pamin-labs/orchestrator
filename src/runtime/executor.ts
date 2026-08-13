@@ -776,23 +776,15 @@ function recordCost(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult, st
   const total = r.usage.input + r.usage.output + r.usage.cacheRead + r.usage.cacheCreate;
   ctx.db.run(
     `UPDATE agent SET session_tokens = session_tokens + ?, total_tokens = total_tokens + ?,
-     total_usd = total_usd + ?, stable_hash = ?, context_window = coalesce(?, context_window)
+     stable_hash = ?, context_window = coalesce(?, context_window)
      WHERE id = ?`,
-    [total, total, r.costUsd, stableHash, r.contextWindow ?? null, agent.id],
+    [total, total, stableHash, r.contextWindow ?? null, agent.id],
   );
   if (job.slice_id) {
-    ctx.db.run("UPDATE slice SET spent_tokens = spent_tokens + ?, spent_usd = spent_usd + ? WHERE id = ?", [
-      total,
-      r.costUsd,
-      job.slice_id,
-    ]);
+    ctx.db.run("UPDATE slice SET spent_tokens = spent_tokens + ? WHERE id = ?", [total, job.slice_id]);
   }
   if (job.grp_id) {
-    ctx.db.run("UPDATE grp SET spent_tokens = spent_tokens + ?, spent_usd = spent_usd + ? WHERE id = ?", [
-      total,
-      r.costUsd,
-      job.grp_id,
-    ]);
+    ctx.db.run("UPDATE grp SET spent_tokens = spent_tokens + ? WHERE id = ?", [total, job.grp_id]);
   }
   // cacheRead vs input is the only visible signal that the prompt cache is
   // still working. A sudden drop means someone broke assemble.ts.
@@ -800,8 +792,8 @@ function recordCost(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult, st
     grpId: job.grp_id,
     author: agent.role,
     kind: "tool_summary",
-    body: `turn done (${r.numTurns} steps, $${r.costUsd.toFixed(4)})`,
-    meta: { usage: r.usage, costUsd: r.costUsd, cacheRatio: cacheRatio(r), model: agent.model },
+    body: `turn done (${r.numTurns} steps, ${total} tokens)`,
+    meta: { usage: r.usage, cacheRatio: cacheRatio(r), model: agent.model },
   });
 }
 

@@ -149,7 +149,6 @@ test("usage maps onto the same shape the claude adapter produces", async () => {
     expect(r.usage).toEqual({ input: 27330, output: 5, cacheRead: 6912, cacheCreate: 0, thinking: 2 });
     // codex reports tokens but not money; inventing a number here would be worse
     // than attributing cost from tokens upstream.
-    expect(r.costUsd).toBe(0);
     expect(r.filesTouched).toEqual(["auth/mw.ts"]);
     expect(r.toolSummaries.map((t) => t.name)).toEqual(["command_execution", "file_change"]);
   } finally {

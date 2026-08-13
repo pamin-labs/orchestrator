@@ -56,54 +56,70 @@ export function Requirement({
       <Header st={st} g={g} refresh={refresh} slices={slices} />
       {broke && <BudgetWall g={g} refresh={refresh} />}
 
-      {/* Questions come before the work: an unanswered blocker means the group is
-          stopped, so nothing below it can move anyway. */}
-      {asks.length > 0 && (
-        <div className="mt-4">
-          {/* Only the ones on the boss are 待你决策. The rest are open questions the
-              chain is still holding, and counting them under that heading made the
-              badge lie about how much of this was actually a decision. */}
-          <H2>
-            {mine.length ? "待你决策" : "开着的问题"}{" "}
-            <span className="font-normal text-ink-3">{mine.length || asks.length}</span>
-          </H2>
-          {[...mine, ...asks.filter((a) => !mine.includes(a))].map((e) => (
-            <Ask key={e.id} e={e} refresh={refresh} />
-          ))}
-        </div>
-      )}
+      {/* The decisions on the left, the reference beside them. This page was one
+          column, so the notes, the roster and the box you type into sat below
+          however many slices there were — furthest from the eye at exactly the
+          moment the boss wanted to ask about what they had just read. PRODUCT.md
+          already says it: chat is a side rail, never the spine. */}
+      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_19rem] gap-x-8 max-[68rem]:grid-cols-1 max-[68rem]:gap-y-5">
+        <div className="min-w-0">
+          {/* Questions come before the work: an unanswered blocker means the group
+              is stopped, so nothing below it can move anyway. */}
+          {asks.length > 0 && (
+            <div className="mb-4">
+              {/* Only the ones on the boss are 待你决策. The rest are open questions
+                  the chain is still holding, and counting them under that heading
+                  made the badge lie about how much of this was a decision. */}
+              <H2>
+                {mine.length ? "待你决策" : "开着的问题"}{" "}
+                <span className="font-normal text-ink-3">{mine.length || asks.length}</span>
+              </H2>
+              {[...mine, ...asks.filter((a) => !mine.includes(a))].map((e) => (
+                <Ask key={e.id} e={e} refresh={refresh} />
+              ))}
+            </div>
+          )}
 
-      {g.status === "DRAFT" || g.status === "PLANNING" ? (
-        <div className="mt-4">
-          <Draft st={st} g={g} refresh={refresh} />
+          {g.status === "DRAFT" || g.status === "PLANNING" ? (
+            <Draft st={st} g={g} refresh={refresh} />
+          ) : slices.length ? (
+            <>
+              <H2>
+                交付切片{" "}
+                <span className="font-normal text-ink-3">
+                  {slices.filter((s) => s.status === "accepted").length}/{slices.length} 已查收
+                </span>
+              </H2>
+              <div className="overflow-hidden rounded-lg border border-rule">
+                {slices.map((s) => (
+                  <SliceRow
+                    key={s.id}
+                    st={st}
+                    g={g}
+                    s={s}
+                    selected={s.id === shown?.id}
+                    onPick={() => setPicked(s.id === shown?.id ? null : s.id)}
+                  />
+                ))}
+              </div>
+              {shown && <SliceDetail key={shown.id} st={st} g={g} s={shown} refresh={refresh} />}
+            </>
+          ) : (
+            <Working>正在拆解</Working>
+          )}
+          {/* Stays in the main column, under what it is about. The rail is for
+              reference; these three buttons are decisions — 作废这个需求 is not a
+              thing to put in a 19rem gutter — and the boss reaches them having
+              just read the slices above. */}
+          {open && <Say g={g} refresh={refresh} projectId={g.project_id} />}
         </div>
-      ) : slices.length ? (
-        <div className="mt-4">
-          <H2>交付切片 <span className="font-normal text-ink-3">{slices.filter((s) => s.status === "accepted").length}/{slices.length} 已查收</span></H2>
-          <div className="overflow-hidden rounded-lg border border-rule">
-            {slices.map((s) => (
-              <SliceRow
-                key={s.id}
-                st={st}
-                g={g}
-                s={s}
-                selected={s.id === shown?.id}
-                onPick={() => setPicked(s.id === shown?.id ? null : s.id)}
-              />
-            ))}
-          </div>
-          {shown && <SliceDetail key={shown.id} st={st} g={g} s={shown} refresh={refresh} />}
-        </div>
-      ) : (
-        <Working>正在拆解</Working>
-      )}
 
-      {open && (
-        <>
-          <Aside st={st} g={g} refresh={refresh} />
-          <Say g={g} refresh={refresh} projectId={g.project_id} />
-        </>
-      )}
+        {open && (
+          <aside className="min-w-0 self-start max-[68rem]:static lg:sticky lg:top-0">
+            <Aside st={st} g={g} refresh={refresh} tab={tab} onTab={onTab} />
+          </aside>
+        )}
+      </div>
     </section>
   );
 }
@@ -341,11 +357,15 @@ function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; ref
 }
 
 /** Records, stand-in answers, roster: real but not what the page is for. */
-function Aside({ st, g, refresh }: { st: State; g: Group; refresh: () => void }) {
+function Aside({
+  st, g, refresh, tab, onTab,
+}: {
+  st: State; g: Group; refresh: () => void; tab?: string | null; onTab?: (t: string) => void;
+}) {
   const answered = st.answered.filter((a) => a.grp_id === g.id);
   const roster = st.agents.filter((a) => a.grp_id === g.id);
   return (
-    <div className="mt-8">
+    <div className="mt-5">
       <Tabs value={tab ?? "notes"} onValueChange={onTab}>
         <TabList>
           <Tab value="notes">记录</Tab>

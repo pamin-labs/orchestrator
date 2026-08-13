@@ -405,6 +405,23 @@ const MIGRATIONS: string[] = [
   ALTER TABLE agent ADD COLUMN runtime TEXT NOT NULL DEFAULT 'claude';
   ALTER TABLE usage_snapshot ADD COLUMN hold_until INTEGER;
   `,
+
+  // 023 — the dollar columns go.
+  //
+  // They stay in the CREATE above because that block is history: a fresh database
+  // walks the same path an old one did, and a migration that drops a column the
+  // schema never created fails on every new install.
+  //
+  // Nothing displays them and nothing can: two subscriptions pay for this, so the
+  // figure was what these turns would have cost at API rates on the half that
+  // reported one, and zero on the other. A column half-populated with a number
+  // nobody is billed for is worse than no column — it invites exactly the ranking
+  // and the totals that were quietly wrong for every codex role.
+  `
+  ALTER TABLE grp DROP COLUMN spent_usd;
+  ALTER TABLE slice DROP COLUMN spent_usd;
+  ALTER TABLE agent DROP COLUMN total_usd;
+  `,
 ];
 
 export type DB = Database;

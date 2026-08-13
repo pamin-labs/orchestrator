@@ -104,19 +104,19 @@ test("one group failing its own gate is not a standup item", () => {
 test("cost is attributed four ways, because they answer different questions", () => {
   const db = seed();
   db.run(
-    "INSERT INTO grp (project_id, name, status, spent_tokens, spent_usd, created_at) VALUES (1, 'g1', 'RUNNING', 5000, 1.25, 0)",
+    "INSERT INTO grp (project_id, name, status, spent_tokens, created_at) VALUES (1, 'g1', 'RUNNING', 5000, 0)",
   );
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, total_tokens, total_usd, created_at) VALUES (1, 1, 'engineer', 'm', 4000, 1.0, 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, total_tokens, created_at) VALUES (1, 1, 'engineer', 'm', 4000, 0)",
   );
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, runtime, total_tokens, total_usd, created_at) VALUES (1, 1, 'qa', 'm', 'codex', 1000, 0, 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, runtime, total_tokens, created_at) VALUES (1, 1, 'qa', 'm', 'codex', 1000, 0)",
   );
   db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, spent_tokens, spent_usd, created_at) VALUES (1, 1, 'S1', 'x', 'trivial', 1000, 0.05, 0)",
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, spent_tokens, created_at) VALUES (1, 1, 'S1', 'x', 'trivial', 1000, 0)",
   );
   db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, spent_tokens, spent_usd, created_at) VALUES (1, 2, 'S2', 'x', 'hard', 4000, 1.2, 0)",
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, spent_tokens, created_at) VALUES (1, 2, 'S2', 'x', 'hard', 4000, 0)",
   );
 
   const r = costReport(db, 1);

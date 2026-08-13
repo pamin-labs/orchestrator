@@ -99,7 +99,6 @@ test("runTurn extracts usage, cost, denials, rate limit and touched files", asyn
       terminal_reason: "completed",
       result: "moved the check",
       num_turns: 2,
-      total_cost_usd: 0.0100466,
       permission_denials: [{ tool: "Bash", command: "git push" }],
       usage: {
         input_tokens: 18,
@@ -139,7 +138,6 @@ test("runTurn extracts usage, cost, denials, rate limit and touched files", asyn
       cacheCreate: 153,
       thinking: 83,
     });
-    expect(r.costUsd).toBeCloseTo(0.0100466);
     expect(r.contextWindow).toBe(200000);
     expect(r.filesTouched).toEqual(["auth/mw.ts"]);
     // A denied call is silent in headless mode — the agent would invent a
