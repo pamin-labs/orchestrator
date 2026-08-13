@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import parseDiff from "parse-diff";
 import { diffWordsWithSpace } from "diff";
+import * as Collapsible from "@radix-ui/react-collapsible";
 import { Meta } from "./bits";
 import { cn } from "../lib/utils";
 
@@ -37,6 +38,45 @@ import { cn } from "../lib/utils";
  * and the thing being read is a change, not a program. Add it if reading the
  * change turns out to need the language.
  */
+
+interface Dir {
+  name: string;
+  dirs: Map<string, Dir>;
+  files: { name: string; i: number; add: number; del: number }[];
+}
+
+const emptyDir = (name: string): Dir => ({ name, dirs: new Map(), files: [] });
+
+/**
+ * The rail as a folder tree, the way a diff is normally read.
+ *
+ * Single-child chains are folded into one row — `docs/journal/more-menu-dead`
+ * rather than three nested rows with one child each — because the intermediate
+ * folders carry no choice, and a column this narrow cannot spend indentation on
+ * rows that say nothing.
+ */
+function buildTree(files: parseDiff.File[], nameOf: (f: parseDiff.File) => string): Dir {
+  const root = emptyDir("");
+  files.forEach((f, i) => {
+    const parts = nameOf(f).split("/");
+    let at = root;
+    for (const seg of parts.slice(0, -1)) {
+      if (!at.dirs.has(seg)) at.dirs.set(seg, emptyDir(seg));
+      at = at.dirs.get(seg)!;
+    }
+    at.files.push({ name: parts.at(-1)!, i, add: f.additions, del: f.deletions });
+  });
+
+  const squash = (d: Dir): Dir => {
+    let cur = d;
+    while (cur.files.length === 0 && cur.dirs.size === 1) {
+      const only = [...cur.dirs.values()][0]!;
+      cur = { ...only, name: cur.name ? `${cur.name}/${only.name}` : only.name };
+    }
+    return { ...cur, dirs: new Map([...cur.dirs].map(([k, v]) => [k, squash(v)])) };
+  };
+  return { ...root, dirs: new Map([...root.dirs].map(([k, v]) => [k, squash(v)])) };
+}
 
 const base = (f: parseDiff.File) => {
   const n = f.to && f.to !== "/dev/null" ? f.to : (f.from ?? "?");
@@ -110,17 +150,14 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
   const pane = useRef<HTMLDivElement>(null);
   const heads = useRef<(HTMLDivElement | null)[]>([]);
 
-  const tree = useMemo(() => {
-    const by = new Map<string, { f: parseDiff.File; i: number }[]>();
-    files.forEach((f, i) => {
-      const n = nameOf(f);
-      const cut = n.lastIndexOf("/");
-      const dir = cut < 0 ? "" : n.slice(0, cut);
-      if (!by.has(dir)) by.set(dir, []);
-      by.get(dir)!.push({ f, i });
-    });
-    return [...by.entries()];
-  }, [files]);
+  const tree = useMemo(() => buildTree(files, nameOf), [files]);
+
+  // Not scrollIntoView: it scrolls every scrollable ancestor, so clicking a file
+  // also threw the whole page to a fixed position.
+  const go = (i: number) => {
+    const el = heads.current[i];
+    if (el && pane.current) pane.current.scrollTop = el.offsetTop - pane.current.offsetTop;
+  };
 
   // Which file the reader is in, from what is actually at the top of the pane.
   // Scrolling IS the navigation here; the rail follows it rather than replacing it.
@@ -147,37 +184,8 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
           you are. One file at a time was worse — a review reads a change, and a
           change spans files; making the reader click through thirty of them puts the
           work back on them. */}
-      {/* Grouped by directory, because thirty files in one flat list is the wall of
-          text again in a narrower column — and a slice's files cluster by folder:
-          eighteen journals, four roles, three sources. */}
-      <nav className="w-60 shrink-0 overflow-auto border-r border-rule-soft py-1">
-        {tree.map(([dir, items]) => (
-          <div key={dir} className="mb-1">
-            <div className="truncate px-2.5 py-0.5 font-mono text-[0.625rem] text-ink-3" title={dir}>
-              {dir || "/"}
-            </div>
-            {items.map(({ f, i }) => (
-              <button
-                key={i}
-                onClick={() => {
-                  // Not scrollIntoView: it scrolls every scrollable ancestor, so
-                  // clicking a file also threw the whole page to a fixed position.
-                  const el = heads.current[i];
-                  if (el && pane.current) pane.current.scrollTop = el.offsetTop - pane.current.offsetTop;
-                }}
-                className={cn(
-                  "flex w-full cursor-pointer items-baseline gap-1.5 px-2.5 py-0.5 pl-4 text-left font-mono text-[0.6875rem] hover:bg-sunk",
-                  i === here && "bg-accent-soft text-accent",
-                )}
-              >
-                <span className="min-w-0 grow truncate">{base(f)}</span>
-                <span className="shrink-0 text-[0.625rem]">
-                  <span className="text-ok">+{f.additions}</span> <span className="text-bad">−{f.deletions}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ))}
+      <nav className="w-64 shrink-0 overflow-auto border-r border-rule-soft py-1">
+        <Branch dir={tree} depth={0} here={here} go={go} />
       </nav>
 
       <div ref={pane} className="min-w-0 grow overflow-auto">
@@ -195,7 +203,7 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
                   heads.current[fi] = el;
                 }}
                 data-i={fi}
-                className="flex items-baseline gap-2 border-y border-rule-soft bg-sunk px-3.5 py-1"
+                className="mt-2 flex items-baseline gap-2 border-y-2 border-rule bg-sunk px-3.5 py-1.5 first:mt-0"
               >
                 <span className="font-mono text-[0.6875rem] font-semibold">{name}</span>
                 <span className="font-mono text-[0.625rem]">
@@ -222,7 +230,7 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
                       <tr key={i}>
                         <Gutter n={r.left?.n} tone={r.left && (!r.right || r.left.changed) ? "bad" : undefined} />
                         <Side cell={r.left} other={r.right} side="left" />
-                        <Gutter n={r.right?.n} tone={r.right && (!r.left || r.right.changed) ? "ok" : undefined} />
+                        <Gutter n={r.right?.n} tone={r.right && (!r.left || r.right.changed) ? "ok" : undefined} split />
                         <Side cell={r.right} other={r.left} side="right" />
                       </tr>
                     ),
@@ -248,11 +256,61 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
   );
 }
 
-function Gutter({ n, tone }: { n?: number; tone?: "ok" | "bad" }) {
+function Branch({ dir, depth, here, go }: { dir: Dir; depth: number; here: number; go: (i: number) => void }) {
+  return (
+    <>
+      {[...dir.dirs.values()].map((d) => (
+        <Folder key={d.name} dir={d} depth={depth} here={here} go={go} />
+      ))}
+      {dir.files.map((f) => (
+        <button
+          key={f.i}
+          onClick={() => go(f.i)}
+          style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+          className={cn(
+            "flex w-full cursor-pointer items-baseline gap-1.5 py-0.5 pr-2 text-left font-mono text-[0.6875rem] hover:bg-sunk",
+            f.i === here && "bg-accent-soft text-accent",
+          )}
+        >
+          <span className="min-w-0 grow truncate">{f.name}</span>
+          <span className="shrink-0 text-[0.625rem]">
+            <span className="text-ok">+{f.add}</span> <span className="text-bad">−{f.del}</span>
+          </span>
+        </button>
+      ))}
+    </>
+  );
+}
+
+/** Radix, not a hand-rolled toggle: keyboard and aria-expanded come with it. */
+function Folder({ dir, depth, here, go }: { dir: Dir; depth: number; here: number; go: (i: number) => void }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <Collapsible.Root open={open} onOpenChange={setOpen}>
+      <Collapsible.Trigger
+        style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+        className="flex w-full cursor-pointer items-baseline gap-1 py-0.5 pr-2 text-left font-mono text-[0.625rem] text-ink-3 hover:text-accent"
+      >
+        <span className="w-2 shrink-0">{open ? "▾" : "▸"}</span>
+        <span className="min-w-0 truncate" title={dir.name}>
+          {dir.name}
+        </span>
+      </Collapsible.Trigger>
+      <Collapsible.Content>
+        <Branch dir={dir} depth={depth + 1} here={here} go={go} />
+      </Collapsible.Content>
+    </Collapsible.Root>
+  );
+}
+
+function Gutter({ n, tone, split }: { n?: number; tone?: "ok" | "bad"; split?: boolean }) {
   return (
     <td
       className={cn(
         "select-none border-r border-rule-soft px-1.5 text-right align-top text-[0.625rem] text-ink-3 tabular-nums",
+        // The two sides had no edge between them, so a wash on one and paper on
+        // the other read as one column with an odd background.
+        split && "border-l-2 border-l-rule",
         tone === "ok" && "bg-ok-soft",
         tone === "bad" && "bg-bad-soft",
       )}

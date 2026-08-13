@@ -27,11 +27,11 @@
   /* Diff rows: a wash the eye reads as +/- while the code stays in normal ink.
      Coloured body text is what made the old diff tiring to read. `-mark` is the
      word-level hit inside a paired line, one step stronger than the row. */
-  --color-ok-soft: oklch(0.955 0.035 156);
-  --color-ok-mark: oklch(0.895 0.075 156);
+  --color-ok-soft: oklch(0.917 0.068 156);
+  --color-ok-mark: oklch(0.845 0.115 156);
   --color-bad: oklch(0.512 0.17 27);
-  --color-bad-soft: oklch(0.958 0.028 27);
-  --color-bad-mark: oklch(0.9 0.07 27);
+  --color-bad-soft: oklch(0.922 0.058 27);
+  --color-bad-mark: oklch(0.855 0.1 27);
   --color-warn: oklch(0.56 0.115 74);
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -73,11 +73,11 @@
   --color-accent-soft: oklch(0.285 0.048 288);
   --color-on-accent: oklch(0.175 0.012 288);
   --color-ok: oklch(0.735 0.115 158);
-  --color-ok-soft: oklch(0.29 0.045 158);
-  --color-ok-mark: oklch(0.375 0.075 158);
+  --color-ok-soft: oklch(0.325 0.072 158);
+  --color-ok-mark: oklch(0.42 0.105 158);
   --color-bad: oklch(0.68 0.15 28);
-  --color-bad-soft: oklch(0.288 0.05 28);
-  --color-bad-mark: oklch(0.37 0.085 28);
+  --color-bad-soft: oklch(0.325 0.075 28);
+  --color-bad-mark: oklch(0.415 0.11 28);
   --color-warn: oklch(0.76 0.105 78);
   --shade: oklch(0 0 0 / 0.4);
   --scrim: oklch(0.12 0.008 70 / 0.6);
