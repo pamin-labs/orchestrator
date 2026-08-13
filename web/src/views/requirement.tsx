@@ -534,31 +534,10 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
     return r.ok;
   };
 
-  // Before approval there is no PM and no work to patch: the only two things worth
-  // saying are "also do this" and "start over".
-  if (draft) {
-    return (
-      <>
-        <H2 className="mt-6">要说点什么</H2>
-        <Composer
-          rows={2}
-          projectId={projectId}
-          placeholder="补充要求，或者写退回理由。截图、设计稿直接粘，/ 插技能路径。⌘Enter 补充给 Dispatcher"
-          submit="补充要求"
-          onSubmit={(d) => send(d, "patch")}
-          actions={({ text, attachments, busy, clear }) => (
-            <Tip label="这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖">
-              <Button size="sm" disabled={busy || !text} onClick={async () => {
-                const r = await post(`/api/draft/${g.id}/reject`, { reason: text, attachments });
-                refresh();
-                if (r.ok) clear();
-              }}>退回重拆</Button>
-            </Tip>
-          )}
-        />
-      </>
-    );
-  }
+  // Before approval the exits live next to the approve button, where the decision
+  // is. A second composer down here asked the boss to type into whichever one they
+  // found first, and neither said where the words would go.
+  if (draft) return null;
 
   return (
     <>
@@ -609,6 +588,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
   const filed = st.draftCards.find((c) => c.grpId === g.id)?.body ?? "";
   const idea = st.ideas.find((i) => i.grpId === g.id)?.body ?? "";
   const late = st.lateObjections.filter((o) => o.grpId === g.id);
+  const proposal = st.dropProposals.find((p) => p.grpId === g.id);
   const [card, setCard] = useState(filed);
 
   return (
@@ -621,6 +601,35 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           <b className="font-semibold text-warn">{o.author} 后补反对</b> {o.body}
         </div>
       ))}
+      {/* A planner found this is already covered, and the server checked the
+          evidence before this row could exist. Offering it beside the card is the
+          point: without it the boss reads a full plan for work nobody needs. */}
+      {proposal && (
+        <div className="my-3 rounded-md border border-warn/40 bg-sunk px-3 py-2.5">
+          <div className="text-[0.8125rem] font-semibold text-warn">规划岗建议作废</div>
+          <div className="my-1 whitespace-pre-wrap text-[0.8125rem]">{proposal.body}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button variant="go" size="sm" onClick={async () => {
+              const go = await ask({
+                title: "作废这条需求",
+                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。worktree 和记录都留着。`,
+                yes: "作废", danger: true,
+              });
+              if (!go) return;
+              await post(`/api/groups/${g.id}/drop`, { why: proposal.body.split("\n")[0] });
+              refresh();
+            }}>确认作废</Button>
+            <Button size="sm" onClick={async () => {
+              await post("/api/say", {
+                group_id: g.id,
+                body: "不是重复，也不算已经做完了 —— 接着拆。",
+                as: "respec",
+              });
+              refresh();
+            }}>不，接着做</Button>
+          </div>
+        </div>
+      )}
       {!filed ? (
         // Nothing to approve yet. An empty textarea and an approve button asks the
         // boss to sign off on nothing, which is why this screen read as "我该干嘛".
@@ -652,13 +661,74 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
               await post(`/api/draft/${g.id}/approve`, edited ? { card: card.trim() } : {});
               refresh();
             }}>批准开工</Button>
-            <span className="text-[0.75rem] text-ink-3">
-              卡可以直接改再批。要退回重拆就在下面写理由。
-            </span>
+            <span className="text-[0.75rem] text-ink-3">卡可以直接改再批</span>
           </div>
         </>
       )}
+      <Exits g={g} refresh={refresh} projectId={g.project_id} />
     </>
+  );
+}
+
+/**
+ * The other three things the boss can say here, with the box to say them in.
+ *
+ * There were two: 批准开工 and 退回重拴, and the box to type in was at the very
+ * bottom of the page under everything else — so the words the boss added while
+ * looking at the card went somewhere they could not see, and "要求修改" and
+ * "不做了" did not exist at all. A duplicate requirement could not be turned away.
+ *
+ * Each button says who receives the sentence, because the same words mean three
+ * different things depending on which one is pressed.
+ */
+function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; projectId: number }) {
+  const send = async (d: { text: string; attachments: unknown[] }, as: "patch" | "respec") => {
+    const r = await post("/api/say", { group_id: g.id, body: d.text, attachments: d.attachments, as });
+    refresh();
+    return r.ok;
+  };
+  return (
+    <div className="mt-4 border-t border-rule-soft pt-3">
+      <Composer
+        rows={2}
+        projectId={projectId}
+        placeholder="补充要求，或者写退回理由。截图、设计稿直接粘，/ 插技能路径。⌘Enter 要求修改"
+        submit="要求修改"
+        onSubmit={(d) => send(d, "patch")}
+        actions={({ text, attachments, busy, clear }) => (
+          <>
+            <Tip label="方向错了：整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact">
+              <Button size="sm" disabled={busy || !text} onClick={async () => {
+                const go = await ask({
+                  title: "退回重新拆解",
+                  body: "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。",
+                  yes: "退回重拆",
+                });
+                if (go && (await send({ text, attachments }, "respec"))) clear();
+              }}>退回重拆</Button>
+            </Tip>
+            <Tip label="这条不做了：排队的 turn 全取消，占的路径立刻交还给别的组">
+              {/* Not a red button. Two filled buttons on one row and the destructive
+                  one outweighs 批准开工, which is the answer this screen usually wants.
+                  The confirm carries the weight instead. */}
+              <Button size="sm" disabled={busy} onClick={async () => {
+                const go = await ask({
+                  title: "不做了",
+                  body: `${g.name} 会从看板上消失，排队的 turn 全部取消。worktree 和记录都留着。`,
+                  yes: "不做了", danger: true,
+                });
+                if (!go) return;
+                await post(`/api/groups/${g.id}/drop`, { why: text });
+                refresh();
+              }}>不做了</Button>
+            </Tip>
+          </>
+        )}
+      />
+      <div className="mt-1.5 text-[0.75rem] text-ink-3">
+        「要求修改」和「退回重拆」都发给 Dispatcher，它改完卡再回来给你批。
+      </div>
+    </div>
   );
 }
 

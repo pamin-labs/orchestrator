@@ -99,6 +99,11 @@ Use Bash. Every command blocks and returns its result on stdout.
                                  # gets its own card, branch and PR. Before the card.
   orch draft <group_id> -                                 # DRAFT card on stdin (Dispatcher/PM)
   orch owns <group_id> --path <glob> …                    # Architect cuts a boundary
+  orch drop <group_id> --why "…" --duplicate <group>      # this is already covered:
+  orch drop <group_id> --why "…" --commit <sha>           # propose dropping it. The
+      # evidence is checked here, and the boss confirms. Say it BEFORE writing a card
+      # for work that does not need doing — a duplicate requirement, or one somebody
+      # fixed between the boss typing it and you reading the code.
   orch review <slice_id> --verdict pass|fail --note "…"   # QA files its verdict
   orch audit <group_id> --verdict pass|fail --note "…"    # Auditor files its verdict
   orch answer <esc_id> --answer "…" [--ref <note_id>]     # answer a question routed to you

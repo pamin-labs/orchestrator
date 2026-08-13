@@ -763,6 +763,76 @@ const postSplit: Handler = async (ctx, req) => {
   return json({ requirements: made });
 };
 
+/**
+ * "This is already done." The one thing a planner could not say.
+ *
+ * A requirement that is a duplicate, or that someone fixed between the boss
+ * typing it and the Dispatcher reading the code, has no exit: the Dispatcher digs
+ * in, slices it, and files a card for work that does not need doing. The only
+ * thing standing between that and a group burning a day on it is the boss's 20
+ * seconds on the DRAFT card — PLAN.md §13's risk ①, and the one judgement in the
+ * system with no deterministic line under it.
+ *
+ * This is not the agent dissolving the group. It cannot be: "there is nothing to
+ * do here" is the single most attractive thing a tired model can conclude, and no
+ * prompt survives being the cheap way out. So it is a proposal, it costs evidence
+ * the server checks itself — a commit that is really in the repo, or a group that
+ * really exists — and the boss presses the button.
+ */
+const postDrop: Handler = async (ctx, req) => {
+  const b = await body<{ group_id?: number | string; why?: string; commit?: string; duplicate?: number | string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  if (!["dispatcher", "pm", "architect"].includes(a.role)) return bad(`${a.role} does not propose dropping work`);
+  const gid = resolveGroup(ctx, b.group_id, a.grp_id);
+  if (!gid) return bad("which group? pass its id or name");
+  const why = (b.why ?? "").trim();
+  if (why.length < 10) return bad("--why has to say what already covers it, in a sentence");
+
+  // Evidence the server can check. A sentence alone is a model's opinion of its
+  // own workload, which is exactly what must not be able to close a requirement.
+  let evidence: string;
+  if (b.duplicate != null) {
+    const dup = resolveGroup(ctx, b.duplicate);
+    if (!dup) return bad(`no group ${b.duplicate}`);
+    if (dup === gid) return bad("a group cannot be a duplicate of itself");
+    const d = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(dup)!;
+    evidence = `duplicate of ${d.name} (grp ${dup})`;
+  } else if (b.commit) {
+    const sha = String(b.commit).trim();
+    if (!/^[0-9a-f]{7,40}$/i.test(sha)) return bad("--commit takes a sha, 7 to 40 hex characters");
+    const repo = ctx.db
+      .query<{ repo_path: string }, [number]>(
+        "SELECT p.repo_path FROM project p JOIN grp g ON g.project_id = p.id WHERE g.id = ?",
+      )
+      .get(gid);
+    if (!ctx.git || !repo) return bad("cannot verify a commit without a repo");
+    const r = await ctx.git(repo.repo_path, ["cat-file", "-t", sha], repo.repo_path);
+    if (r.code !== 0 || r.out.trim() !== "commit") return bad(`${sha} is not a commit in this repo`);
+    evidence = `already landed in ${sha.slice(0, 8)}`;
+  } else {
+    return bad("give evidence: --duplicate <group> or --commit <sha>");
+  }
+
+  ctx.db.run(
+    `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
+     VALUES ((SELECT project_id FROM grp WHERE id = ?), ?, 'decision', ?, ?, ?, unixepoch() * 1000)`,
+    [gid, gid, ctx.config.language, `${why}\n\n证据：${evidence}`, JSON.stringify({ drop_proposal: 1 })],
+  );
+  // DRAFT, so the group stops being dispatchable and the boss is asked. Left in
+  // PLANNING the Dispatcher would be woken again and re-propose the same thing.
+  ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ? AND status = 'PLANNING'", [gid]);
+  ctx.bus.emit({
+    grpId: gid,
+    author: a.role,
+    kind: "decision",
+    intent: "decision",
+    body: `建议作废：${why}（${evidence}）`,
+    meta: { drop_proposal: true, evidence },
+  });
+  return text("ok");
+};
+
 const postOwns: Handler = async (ctx, req) => {
   const b = await body<{ group_id: number | string; paths: string[] }>(req);
   const a = agentOf(ctx, req);
@@ -1139,6 +1209,16 @@ export function snapshot(ctx: Ctx) {
       .all()
       .map((g) => ({ grpId: g.id, reason: canStart(db, g.id).reason ?? "" }))
       .filter((b) => b.reason),
+    // A planner found this requirement is already covered. The evidence was checked
+    // before the row could exist; the boss decides whether it leaves the board.
+    dropProposals: db
+      .query(
+        `SELECT n.grp_id AS grpId, n.body FROM note n
+         JOIN grp g ON g.id = n.grp_id
+         WHERE g.status NOT IN ('DISSOLVED') AND json_extract(n.frontmatter_json, '$.drop_proposal') = 1
+         GROUP BY n.grp_id HAVING n.at = max(n.at)`,
+      )
+      .all(),
     slices: db
       .query(
         `SELECT id, grp_id, seq, title, accept_spec, difficulty, status, gates_json,
@@ -2138,6 +2218,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/triage$/, postTriage],
   ["POST", /^\/orch\/draft$/, postDraft],
   ["POST", /^\/orch\/owns$/, postOwns],
+  ["POST", /^\/orch\/drop$/, postDrop],
   ["POST", /^\/orch\/split$/, postSplit],
 
   ["GET", /^\/api\/state$/, getState],
