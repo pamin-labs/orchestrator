@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { landGroup, makeApp, type Ctx } from "./api.ts";
 import { Bus } from "./bus.ts";
-import { loadConfig, loadRoles, ROOT, type Config } from "./config.ts";
+import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "./config.ts";
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
@@ -45,7 +45,8 @@ export function missingBinaries(): string[] {
 }
 
 export function start(overrides: Partial<Config> = {}): Started {
-  const cfg = { ...loadConfig(), ...overrides };
+  // Overrides can put a relative dataDir back; the subprocesses cannot use one.
+  const cfg = withAbsoluteDataDir({ ...loadConfig(), ...overrides });
   const missing = missingBinaries();
   if (missing.length) {
     throw new Error(

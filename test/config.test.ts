@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { loadConfig, loadRoles, modelFor } from "../src/config.ts";
+import { isAbsolute, join } from "node:path";
+import { loadConfig, loadRoles, modelFor, withAbsoluteDataDir } from "../src/config.ts";
 
 test("the shipped roles all parse and declare what the runtime needs", () => {
   const roles = loadRoles("roles");
@@ -12,6 +12,15 @@ test("the shipped roles all parse and declare what the runtime needs", () => {
     expect(r!.prompt.length).toBeGreaterThan(50);
     expect(["L1", "L2"]).toContain(r!.clearance);
   }
+});
+
+test("dataDir is absolute, because subprocesses run somewhere else", () => {
+  // The clearance profile goes to `claude --settings`, and that process runs in
+  // the group's worktree. A relative "data/profiles/N-L2.json" resolved there, and
+  // every turn inside a worktree died with "Settings file not found" while
+  // planning roles (cwd = repo root) went on working.
+  expect(isAbsolute(loadConfig().dataDir)).toBe(true);
+  expect(isAbsolute(withAbsoluteDataDir({ ...loadConfig(), dataDir: "data" }).dataDir)).toBe(true);
 });
 
 test("only the engineer is allowed to be a writer", () => {

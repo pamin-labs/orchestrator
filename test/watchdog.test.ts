@@ -42,6 +42,29 @@ test("a turn past its wall clock is killed and reported", async () => {
   expect(h.db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("cancelled");
 });
 
+test("a RUNNING group whose last turn failed is put back once, then handed to the boss", async () => {
+  // Failure is terminal, so the chain just ends: RUNNING group, empty queue, no
+  // error anywhere the boss looks. Six groups sat like this behind one bad path.
+  const h = harness();
+  h.db.run(
+    `INSERT INTO job (kind, grp_id, slice_id, payload_json, state, error, enqueued_at)
+     VALUES ('agent_turn', 1, NULL, '{"role":"engineer"}', 'failed', 'Settings file not found', 0)`,
+  );
+  expect((await runWatchdog(h.deps)).map((x) => x.rule)).not.toContain("stalled");
+  const back = h.db
+    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'")
+    .all();
+  expect(back).toHaveLength(1);
+  expect(JSON.parse(back[0]!.payload_json).role).toBe("engineer");
+
+  // It failed again. A third try is not going to work either — say so instead.
+  h.db.run("UPDATE job SET state = 'failed', error = 'same thing' WHERE state = 'pending'");
+  const f = await runWatchdog(h.deps);
+  expect(f.map((x) => x.rule)).toContain("stalled");
+  expect(f.find((x) => x.rule === "stalled")!.body).toContain("same thing");
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'pending'").get()!.c).toBe(0);
+});
+
 test("turns that write nothing accumulate, and productive ones reset", async () => {
   const h = harness();
   for (let i = 0; i < IDLE_TURN_LIMIT; i++) recordTurnOutcome(h.ctx, 1, [], false, false);

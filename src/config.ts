@@ -110,10 +110,22 @@ const DEFAULTS: Config = {
  */
 export const ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..");
 
+/**
+ * dataDir is absolute from here on.
+ *
+ * Everything under it is handed to a subprocess — the clearance profile as
+ * `--settings`, the `orch` shim as a PATH entry — and those subprocesses run in
+ * the group's worktree. A relative `data/profiles/19-L2.json` resolved against
+ * the worktree, where nothing of the sort exists, and every turn in a worktree
+ * died with "Settings file not found" while planning roles (cwd = repo root)
+ * kept working. Same lesson as ROOT above, one directory over.
+ */
+export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: resolve(ROOT, c.dataDir) });
+
 export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
-  if (!existsSync(path)) return { ...DEFAULTS };
+  if (!existsSync(path)) return withAbsoluteDataDir({ ...DEFAULTS });
   const parsed = Bun.YAML.parse(readFileSync(path, "utf8")) as Partial<Config> | null;
-  return { ...DEFAULTS, ...(parsed ?? {}) };
+  return withAbsoluteDataDir({ ...DEFAULTS, ...(parsed ?? {}) });
 }
 
 export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {
