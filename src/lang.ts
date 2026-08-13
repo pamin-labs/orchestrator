@@ -44,6 +44,11 @@ const ZH: Record<string, string> = {
   "wd.budget_80": "{name} 预算用到 {pct}%",
   "wd.parked": "{name} 等你 {min} 分钟后自动封存 —— worktree 留着，并发槽释放了",
   "wd.waiting_on_you": "{name} 已经等你 {min} 分钟",
+  "rl.downgraded": "撞到限额：{role} 从 {from} 降到 {to} 接着跑",
+  "rl.waiting": "撞到限额且已经是最便宜的档，挂起等额度恢复（约 {at}），到点自动继续",
+  "rl.resumed": "额度恢复，自动继续",
+  "unread.digest": "未读 {n} 条，已让 Librarian 压成摘要",
+  "sediment": "同一类反馈第 {n} 次了，让 CoS 归纳成项目规约",
   "hired": "雇了 {role}",
   "boss.reject_slice": "退回了这一片",
 };
@@ -75,6 +80,11 @@ const EN: Record<string, string> = {
   "wd.budget_80": "{name} is at {pct}% of its budget",
   "wd.parked": "{name} parked after waiting {min} min — worktree kept, slot freed",
   "wd.waiting_on_you": "{name} has been waiting {min} min for you",
+  "rl.downgraded": "rate limited: {role} dropped from {from} to {to} and continued",
+  "rl.waiting": "rate limited on the cheapest tier; waiting for quota (~{at}) and resuming itself",
+  "rl.resumed": "quota is back, resuming",
+  "unread.digest": "{n} unread — the Librarian is compressing them",
+  "sediment": "the same feedback for the {n}th time; asking the CoS to make it a project rule",
   hired: "hired {role}",
   "boss.reject_slice": "rejected the slice",
 };

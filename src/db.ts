@@ -290,6 +290,13 @@ const MIGRATIONS: string[] = [
   // visible: a slice that has waited four hours is a different problem from one
   // that finished a minute ago, and the queue could not tell them apart.
   `ALTER TABLE slice ADD COLUMN awaiting_at INTEGER;`,
+
+  // 010 — when the account's quota comes back.
+  //
+  // PLAN.md §11: hitting a rate limit degrades to a cheaper model and, if there is
+  // nothing cheaper, waits for the reset. Without the timestamp "wait" meant "wait
+  // for the boss", so one 429 at 01:00 cost the whole night.
+  `ALTER TABLE grp ADD COLUMN rl_resets_at INTEGER;`,
 ];
 
 export type DB = Database;

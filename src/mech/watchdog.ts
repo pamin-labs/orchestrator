@@ -166,10 +166,30 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     }
   }
 
-  // 6. Paused too long: notify, then park to stop holding a slot.
+  // 6. Quota came back. PLAN.md §11 says a rate-limited group waits for the reset,
+  // and waiting is only useful if something is watching the clock.
+  const throttled = ctx.db
+    .query<{ id: number; name: string }, [number]>(
+      "SELECT id, name FROM grp WHERE status = 'PAUSED' AND rl_resets_at IS NOT NULL AND rl_resets_at <= ?",
+    )
+    .all(now());
+  for (const g of throttled) {
+    ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL, rl_resets_at = NULL WHERE id = ?", [g.id]);
+    ctx.bus.emit({
+      grpId: g.id,
+      author: "orchestrator",
+      kind: "state_change",
+      body: t("rl.resumed"),
+    });
+    findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", body: t("rl.resumed") });
+  }
+
+  // 7. Paused too long: notify, then park to stop holding a slot.
   const paused = ctx.db
     .query<{ id: number; name: string; paused_at: number }, []>(
-      "SELECT id, name, paused_at FROM grp WHERE status = 'PAUSED' AND paused_at IS NOT NULL",
+      // `rl_resets_at IS NULL`: a group waiting for quota is not waiting for the boss,
+      // and parking it would retire its sessions minutes before it could resume.
+      "SELECT id, name, paused_at FROM grp WHERE status = 'PAUSED' AND paused_at IS NOT NULL AND rl_resets_at IS NULL",
     )
     .all();
   for (const g of paused) {

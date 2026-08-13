@@ -297,3 +297,35 @@ test("a batched notification carries a link, and one item links to its requireme
   // Two requirements, so the link is the front page rather than an arbitrary one.
   expect(many.url).toBe("http://127.0.0.1:47821");
 });
+
+test("a rate-limited group resumes itself when the quota comes back", async () => {
+  const h = harness();
+  // PLAN.md §11: on the cheapest tier there is nothing to downgrade to, so it waits —
+  // and waiting is only useful if something watches the clock. Before this, one 429 at
+  // 01:00 held the group until the boss woke up, which is the failure the whole system
+  // exists to prevent.
+  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = ?, rl_resets_at = ? WHERE id = 1", [
+    1_000_000 - 60_000,
+    1_000_000 - 1_000,
+  ]);
+  const found = await runWatchdog(h.deps);
+  expect(found.some((f) => f.rule === "rate_limit_resumed")).toBe(true);
+  const g = h.db.query<{ status: string; rl: number | null }, []>(
+    "SELECT status, rl_resets_at AS rl FROM grp WHERE id = 1",
+  ).get()!;
+  expect(g.status).toBe("RUNNING");
+  expect(g.rl).toBe(null);
+});
+
+test("a group waiting on quota is not parked out from under itself", async () => {
+  const h = harness();
+  // parkAfterPausedMs has passed, but the reset has not. Parking here retires the
+  // sessions minutes before it could have resumed on its own.
+  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = ?, rl_resets_at = ? WHERE id = 1", [
+    1_000_000 - h.cfg.parkAfterPausedMs - 1000,
+    1_000_000 + 600_000,
+  ]);
+  const found = await runWatchdog(h.deps);
+  expect(found.some((f) => f.rule === "parked")).toBe(false);
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSED");
+});

@@ -40,6 +40,8 @@ export function entryPoint(question: string): (typeof CHAIN)[number] {
 }
 
 export interface ChainDeps {
+  /** Wired by api.ts: records a boss fact and checks whether it is the third of its kind. */
+  bossFact?: (grpId: number | null, body: string) => void;
   ctx: Ctx;
   git?: GitRunner;
   /** Tell the boss. Wired to the notifier by the server. */
@@ -282,10 +284,14 @@ export type Triage = "patch" | "respec" | "reject";
  */
 export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string, skills: string[] = []): void {
   const { ctx } = deps;
-  ctx.db.run(
-    "INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', ?, ?, unixepoch() * 1000)",
-    [grpId, ctx.config.language, `boss (${as}): ${note}`],
-  );
+  // Through bossFact: a patch is the boss complaining, and the third identical
+  // complaint is supposed to become a project rule rather than a third isolated fact.
+  deps.bossFact?.(grpId, `boss (${as}): ${note}`) ??
+    ctx.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', ?, ?, unixepoch() * 1000)", [
+      grpId,
+      ctx.config.language,
+      `boss (${as}): ${note}`,
+    ]);
   ctx.bus.emit({
     grpId,
     author: "cos",
