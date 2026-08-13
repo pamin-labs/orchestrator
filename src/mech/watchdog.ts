@@ -4,6 +4,8 @@ import { say } from "../lang.ts";
 import { interrupt, park, settlePausing, unpark } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
+import { joinQueue } from "./mergequeue.ts";
+import { startNextSlice } from "./review.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
 import { defaultBase, type GitRunner } from "./worktree.ts";
 
@@ -312,6 +314,38 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       severity: "advisory",
       body: t("wd.unshipped", { name: g.name }),
     });
+  }
+
+  // 7c. Finished, but not in the queue that would get it merged.
+  //
+  // Same shape as the `paused_at` bug: `waiting_merge` reads `merge_seq_at`, so a
+  // PR_OPEN group with a null one is invisible to it — no nudge, no place in the
+  // order, and nothing else ever looks. It gets in line rather than waiting to be
+  // noticed.
+  for (const g of ctx.db
+    .query<{ id: number }, []>(
+      "SELECT id FROM grp WHERE status = 'PR_OPEN' AND pr_number IS NOT NULL AND merge_seq IS NULL",
+    )
+    .all()) {
+    joinQueue(ctx.db, g.id);
+  }
+
+  // 7d. A group with work left and nothing in flight.
+  //
+  // `startNextSlice` is called from three places, all of them the end of something
+  // else — a group starting, autoAdvance, an acceptance. A slice left `pending`
+  // when none of those fires again has nobody to start it, and the group sits
+  // RUNNING with an empty queue, which is indistinguishable from working.
+  for (const g of ctx.db
+    .query<{ id: number }, []>(
+      `SELECT g.id FROM grp g
+       WHERE g.status = 'RUNNING'
+         AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status NOT IN ('pending','accepted'))
+         AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id AND state IN ('pending','running'))`,
+    )
+    .all()) {
+    startNextSlice(ctx, g.id);
   }
 
   // 8. A live group with nothing queued.
