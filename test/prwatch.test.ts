@@ -168,6 +168,25 @@ test("only new comments and failing checks come back", async () => {
   expect(third[0]!.failingChecks.sort()).toEqual(["ci", "lint"]);
 });
 
+test("a PR closed on GitHub stops its group and lets the queue past; reopening puts it back", async () => {
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 7, merge_seq = 1 WHERE id = 1");
+  const view = (state: string) =>
+    gh({ "pr view": { code: 0, out: JSON.stringify({ state, comments: [], reviews: [], statusCheckRollup: [] }) } });
+
+  const closed = await pollPrs(h.ctx, view("CLOSED"));
+  expect(closed[0]!.closed).toBe(true);
+
+  // The group has to actually be paused for the reopen half to be reachable —
+  // that is what the server does with this feedback.
+  h.db.run("UPDATE grp SET status = 'PAUSED', merge_seq = NULL WHERE id = 1");
+  // Still closed: nothing new to say, and no second escalation.
+  expect(await pollPrs(h.ctx, view("CLOSED"))).toEqual([]);
+
+  const back = await pollPrs(h.ctx, view("OPEN"));
+  expect(back[0]!.reopened).toBe(true);
+});
+
 test("a quiet PR produces nothing at all", async () => {
   const h = harness();
   h.db.run("UPDATE grp SET pr_number = 7 WHERE id = 1");

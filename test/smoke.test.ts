@@ -59,6 +59,9 @@ test("the web UI is served and fetches nothing from a remote origin", async () =
   for (const asset of ["/dist/main.js", "/dist/app.css"]) {
     const a = await fetch(`${srv.url}${asset}`);
     expect(a.status).toBe(200);
+    // The bundle name carries no hash, so without this the browser keeps serving
+    // the previous build: a deleted button survived a rebuild and a restart.
+    expect(a.headers.get("cache-control")).toBe("no-cache");
     expect((await a.text()).length).toBeGreaterThan(1000);
   }
 });

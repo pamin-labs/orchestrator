@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { landGroup, makeApp, type Ctx } from "./api.ts";
+import { joinQueue } from "./mech/mergequeue.ts";
 import { Bus } from "./bus.ts";
 import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "./config.ts";
 import { open } from "./db.ts";
@@ -42,6 +43,85 @@ export function missingBinaries(): string[] {
       return true;
     }
   });
+}
+
+/**
+ * The panel is one localhost page for one person, and its bundle is `/dist/main.js`
+ * with no hash in the name. Bun's file responses carry no etag and no
+ * last-modified, so the browser heuristically cached the bundle and kept showing a
+ * UI that had already been rebuilt — a deleted button stayed on screen through a
+ * rebuild and a restart, and the PM ended up asking the boss to hard-refresh.
+ *
+ * `no-cache` is revalidate-every-time, not "never store". Over loopback that costs
+ * nothing measurable.
+ */
+const NO_CACHE = "no-cache";
+
+/**
+ * The boss closed the PR on GitHub.
+ *
+ * Closing is a decision — "not like this" — and it can only be made there, so the
+ * system has to read it from there. It leaves the merge queue rather than blocking
+ * it (the queue is strictly serial; a group that will never merge at its head stops
+ * every group behind it), and stops as a group waiting on the boss, with the two
+ * exits stated: reopen the PR, or 不做了.
+ *
+ * Nothing here reopens it automatically. The close was deliberate, and undoing a
+ * deliberate act because a poller disagreed with it is the worst kind of helpful.
+ */
+function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): void {
+  const g = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grpId);
+  ctx.db.run(
+    `UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, merge_seq = NULL, merge_seq_at = NULL
+     WHERE id = ? AND status = 'PR_OPEN'`,
+    [grpId],
+  );
+  ctx.db.run(
+    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+     VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
+    [
+      grpId,
+      `PR #${prNumber} 被关掉了（没有合入）。这一组已经停下并让出了合入队列。\n` +
+        `要继续：在 GitHub 上重开这个 PR，它会自己回到队列。不想要了：在这个需求上点「不做了」。`,
+    ],
+  );
+  ctx.bus.emit({
+    grpId,
+    author: "pr-watcher",
+    kind: "escalation",
+    intent: "ask",
+    severity: "blocker",
+    body: `PR #${prNumber} was closed without merging`,
+    meta: { pr: prNumber },
+  });
+  void notifier.push({
+    key: `pr-closed:${grpId}:${prNumber}`,
+    tier: "immediate",
+    body: `${g?.name ?? grpId}: PR #${prNumber} 被关了 — 重开或不做了`,
+    url: `${url}/#g=${grpId}&v=progress`,
+  });
+}
+
+/** Reopened on GitHub: back into the queue, and the question that asked is answered. */
+function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
+  ctx.db.run(
+    "UPDATE grp SET status = 'PR_OPEN', paused_at = NULL WHERE id = ? AND status = 'PAUSED'",
+    [grpId],
+  );
+  ctx.db.run(
+    `UPDATE escalation SET chain_state = 'answered', answered_by = 'github', answer = 'reopened'
+     WHERE grp_id = ? AND answer IS NULL AND question LIKE ?`,
+    [grpId, `PR #${prNumber} 被关掉了%`],
+  );
+  joinQueue(ctx.db, grpId);
+  ctx.bus.emit({
+    grpId,
+    author: "pr-watcher",
+    kind: "state_change",
+    body: `PR #${prNumber} was reopened; back in the merge queue`,
+    meta: { pr: prNumber },
+  });
+  ctx.sched.tick();
 }
 
 export function start(overrides: Partial<Config> = {}): Started {
@@ -165,18 +245,21 @@ export function start(overrides: Partial<Config> = {}): Started {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: cfg.port,
+    // See NO_CACHE: /dist/main.js has no hash in its name and Bun sends no
+    // validators, so a rebuilt bundle kept being served from the browser's cache.
+
     idleTimeout: 0, // `ask-boss` holds a request open until the boss answers
     async fetch(req) {
       const path = new URL(req.url).pathname;
       if (path === "/" || path === "/index.html") {
         return new Response(Bun.file(join(webDir, "index.html")), {
-          headers: { "content-type": "text/html; charset=utf-8" },
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": NO_CACHE },
         });
       }
       if (path.startsWith("/api/") || path.startsWith("/orch/")) return app(req);
 
       const file = Bun.file(join(webDir, path.replace(/^\/+/, "")));
-      if (await file.exists()) return new Response(file);
+      if (await file.exists()) return new Response(file, { headers: { "cache-control": NO_CACHE } });
       return new Response("not found", { status: 404 });
     },
   });
@@ -246,6 +329,8 @@ export function start(overrides: Partial<Config> = {}): Started {
     void pollPrs(ctx, gh).then((fs) => {
       for (const f of fs) {
         if (f.merged) landGroup(ctx, f.grpId, "github");
+        else if (f.closed) prClosed(ctx, f.grpId, f.prNumber, url, notifier);
+        else if (f.reopened) prReopened(ctx, f.grpId, f.prNumber);
         else dispatchFeedback(ctx, f);
       }
     });

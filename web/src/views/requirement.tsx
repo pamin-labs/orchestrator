@@ -135,6 +135,10 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
             here confirms it: `pollPrs` asks GitHub every tick and winds the group
             up by itself. */}
         {url && <LinkButton href={url}>{inQueue ? "去合并 PR ↗" : "打开 PR ↗"}</LinkButton>}
+        {/* Closed PR: reopening it on GitHub is enough and the watchdog sees it,
+            but a branch that was force-pushed or deleted cannot be reopened at
+            all — so the way out has to exist here too. */}
+        {g.status === "PAUSED" && g.pr_number != null && <NewPr grpId={g.id} refresh={refresh} />}
         {!inQueue && g.status === "PR_OPEN" && <Badge>排队中</Badge>}
         {g.status === "RUNNING" && <Button onClick={() => act("pause")}>暂停</Button>}
         {["PAUSED", "PAUSING"].includes(g.status) && !broke && <Button onClick={() => act("resume")}>继续</Button>}
@@ -359,6 +363,31 @@ function Aside({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
         </TabPanel>
       </Tabs>
     </div>
+  );
+}
+
+/**
+ * A second PR for a branch whose first one was closed.
+ *
+ * Reopening on GitHub is the ordinary path and needs nothing here — the poller
+ * sees it and puts the group back in the queue. This is for when reopening is not
+ * possible: GitHub refuses it once the branch has been force-pushed or deleted,
+ * and the group would otherwise sit forever holding a pr_number that openPr reads
+ * as "already done".
+ */
+function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
+  return (
+    <Button variant="go" onClick={async () => {
+      const go = await ask({
+        title: "开一个新 PR",
+        body: "先在 GitHub 上重开旧 PR —— 能重开就不需要这个。分支被强推或删过才用它：会用当前分支重新提一个，并回到合入队列。",
+        yes: "开新 PR",
+      });
+      if (!go) return;
+      const r = await post(`/api/groups/${grpId}/newpr`);
+      if (!r.ok) await ask({ title: "开不出来", body: r.text, yes: "知道了" });
+      refresh();
+    }}>开新 PR</Button>
   );
 }
 
