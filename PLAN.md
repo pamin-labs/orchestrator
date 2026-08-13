@@ -56,7 +56,7 @@
 | agent↔orchestrator | **`orch` CLI over Bash**，走 **localhost TCP + 每 agent token** | 零新 tool schema（Bash 已有）；阻塞 + 真返回值（stdout）；codex 同样能用；终端可手测。**不是 unix socket** —— 沙盒无法只放通一个 socket，全放通会连带打开 docker.sock（实测，见 `docs/decisions/001`） |
 | state | **sqlite (WAL)** + journal 落 git | 易变的进 DB；journal 进 repo 跟 PR merge，可 diff 可 grep |
 | 沙盒 | **Claude Code 内置 Seatbelt** + `codex sandbox` | 已装好；能碰 macOS 原生工具链；`SandboxProvider` 接口预留 OpenSandbox |
-| UI | 手写 HTML + vanilla JS + SSE | 无框架无 build step |
+| UI | **React + Tailwind v4 + shadcn/ui**（Radix 行为层）+ SSE | 手写组件层试过了，弹窗/菜单/焦点管理自己实现一遍不如用 Radix。视觉语言仍是自己的（`DESIGN.md`），shadcn 只提供行为 |
 | PR | GitHub private repo + `gh` | 所有项目（含非代码）统一。注册项目时**预检** remote 和 `gh` 登录，不等分支做完才发现没地方去 |
 | gate | 注册时**自动探测** | 从 package.json / Cargo.toml / go.mod / pyproject / csproj / justfile / Makefile 推断，并注册对应 resource 模板。探测不出来就明说「没有 gate」，不瞎猜命令 |
 
@@ -633,7 +633,6 @@ orchestrator/
 
 - 不自造权限/沙盒策略引擎（用内置 Seatbelt 键）
 - 不上 MCP、不上 sentinel JSON（用 `orch` CLI）
-- 不上前端框架、不上 build step
 - 不做 speaker-selection、不解析文本里的 `@`（收件人是显式参数）
 - intent 不超过 5 种（多出来的都是正交字段，不是新 intent）
 - 不做两套逻辑：web 和 `orch` CLI 是同一套 API 的两个客户端

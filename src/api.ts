@@ -54,7 +54,7 @@ export interface Ctx {
   hire?: (grpId: number | null, role: string, projectId?: number | null) => number | null;
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
-  config: { language: string; difficultyModel: Record<string, string>; workRoot: string; autoAdvance?: boolean; autoAcceptTiers?: string[] };
+  config: { language: string; difficultyModel: Record<string, string>; workRoot: string; dataDir?: string; autoAdvance?: boolean; autoAcceptTiers?: string[] };
 }
 
 type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) => Promise<Response>;
@@ -1001,8 +1001,39 @@ const postDelegate: Handler = async (ctx, req, params) => {
   return text(landed);
 };
 
+/**
+ * Files that come with an idea: a screenshot of the bug, a mock, a spec.
+ *
+ * Saved on disk and referenced by absolute path, never inlined: an image in a
+ * prompt is worth thousands of tokens on every turn that carries it, while a path
+ * costs a dozen and the agent can open it with Read exactly once, when it needs to.
+ */
+const postAttach: Handler = async (ctx, req) => {
+  const form = await req.formData();
+  const files = form.getAll("file").filter((f): f is File => f instanceof File);
+  if (!files.length) return bad("no file");
+  const dir = join(ctx.config.dataDir ?? "data", "attachments");
+  await mkdir(dir, { recursive: true });
+  const out: { name: string; path: string; type: string; size: number }[] = [];
+  for (const f of files) {
+    if (f.size > 25 * 1024 * 1024) return bad(`${f.name} 超过 25MB`);
+    // The stamp keeps two screenshots called "Screenshot.png" apart, and the
+    // sanitising keeps a crafted filename inside the directory.
+    const safe = f.name.replace(/[^\w.\-\u4e00-\u9fff]/g, "_").slice(-80);
+    const path = join(dir, `${Date.now()}-${out.length}-${safe}`);
+    await writeFile(path, Buffer.from(await f.arrayBuffer()));
+    out.push({ name: f.name, path, type: f.type || "application/octet-stream", size: f.size });
+  }
+  return json({ files: out });
+};
+
 const postIdea: Handler = async (ctx, req) => {
-  const b = await body<{ project_id: number; text: string; name?: string }>(req);
+  const b = await body<{
+    project_id: number;
+    text: string;
+    name?: string;
+    attachments?: { name: string; path: string; type: string }[];
+  }>(req);
   if (!b.text?.trim()) return bad("empty idea");
   const name = (b.name ?? slug(b.text)).slice(0, 40);
   const grp = ctx.db
@@ -1018,9 +1049,15 @@ const postIdea: Handler = async (ctx, req) => {
     )
     .get(b.project_id, grp.id)!;
 
+  // Attachments go on the blackboard as paths next to the words they came with, so
+  // whoever plans this reads them in the same breath as the idea.
+  const files = (b.attachments ?? []).filter((f) => f?.path);
+  const noteBody = files.length
+    ? `${b.text}\n\n附件（用 Read 打开）：\n${files.map((f) => `- ${f.path}${f.type.startsWith("image/") ? "（图片）" : ""}`).join("\n")}`
+    : b.text;
   ctx.db.run(
     "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-    [b.project_id, grp.id, ctx.config.language, b.text],
+    [b.project_id, grp.id, ctx.config.language, noteBody],
   );
   ctx.bus.emit({ channelId: ch.id, grpId: grp.id, author: "boss", kind: "boss_say", intent: "request", body: b.text });
   // With another group already holding paths, the boundary has to be cut before
@@ -1530,6 +1567,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/dirs$/, getDirs],
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
+  ["POST", /^\/api\/attach$/, postAttach],
   ["POST", /^\/api\/draft\/(?<id>\d+)\/(?<decision>approve|reject)$/, postDraftDecision],
   ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|landed)$/, postGroupControl],
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],

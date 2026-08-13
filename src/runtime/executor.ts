@@ -329,7 +329,10 @@ function buildStableFor(
     model: agent.model,
     allowedTools: role.allowedTools ?? allowedToolsFor(agent.role, clearance),
     settingsPath,
-    addDirs: [worktree],
+    // Attachments the boss sent with the idea live in the data dir, so the agent
+    // has to be allowed to open them. Without this, a screenshot is a path the
+    // sandbox refuses to read.
+    addDirs: [worktree, join(deps.cfg.dataDir, "attachments")],
   });
 }
 

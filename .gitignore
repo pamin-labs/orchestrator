@@ -15,3 +15,6 @@ leases/            # full lease logs (only digests go in the DB)
 !.env.example
 
 .DS_Store
+
+# built web bundle
+web/dist/

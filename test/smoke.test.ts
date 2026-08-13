@@ -34,22 +34,25 @@ const post = (path: string, body?: unknown, token?: string) =>
     body: JSON.stringify(body ?? {}),
   });
 
-test("the web UI is served and is self-contained", async () => {
+test("the web UI is served and fetches nothing from a remote origin", async () => {
   const r = await fetch(`${srv.url}/`);
   expect(r.status).toBe(200);
   const html = await r.text();
   expect(html).toContain("orchestrator");
-  // No build step and no CDN: a strict local page must not fetch anything.
-  expect(html).not.toMatch(/<script[^>]+src=/);
-  expect(html).not.toMatch(/<link[^>]+stylesheet/);
 
-  // The page's JS must actually parse. It shipped with top-level `await` inside a
-  // classic <script>, which is a SyntaxError — and one SyntaxError means NONE of
-  // the script runs, so the UI rendered its static placeholders and sat on
-  // "connecting…" forever. Asserting "no external script" did not catch that.
-  const m = /<script([^>]*)>([\s\S]*?)<\/script>/.exec(html)!;
-  expect(m[1]).toContain('type="module"');
-  new Bun.Transpiler({ loader: "js" }).transformSync(m[2]!);
+  // Local assets are fine; a remote origin is not. Fonts are the ones already on
+  // the machine, so a strict local page must never reach out.
+  const remote = [...html.matchAll(/(?:src|href)\s*=\s*"([^"]+)"/g)].map((m) => m[1]!);
+  expect(remote.filter((u) => /^(https?:)?\/\//.test(u))).toEqual([]);
+  expect(html).not.toMatch(/@import\s+url\(/);
+
+  // The built bundle has to be there and served, or the page is a blank div and
+  // every panel silently shows nothing.
+  for (const asset of ["/dist/main.js", "/dist/app.css"]) {
+    const a = await fetch(`${srv.url}${asset}`);
+    expect(a.status).toBe(200);
+    expect((await a.text()).length).toBeGreaterThan(1000);
+  }
 });
 
 test("boss path: add project, drop an idea, nothing runs without a slot", async () => {
