@@ -47,6 +47,7 @@ export interface ExecDeps {
 interface AgentRow {
   id: number;
   grp_id: number | null;
+  project_id: number | null;
   role: string;
   model: string;
   clearance: string;
@@ -105,7 +106,7 @@ export function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
   return hire(deps, job.grp_id, roleName, job.slice_id, payloadProject);
 }
 
-const SELECT_AGENT_BASE = `SELECT id, grp_id, role, model, clearance, session_id, session_tokens, cwd, token, stable_hash FROM agent`;
+const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, clearance, session_id, session_tokens, cwd, token, stable_hash FROM agent`;
 const SELECT_AGENT = `${SELECT_AGENT_BASE} WHERE id = ?`;
 
 export function hire(
@@ -284,7 +285,7 @@ function buildStableFor(
   deps: ExecDeps,
   agent: AgentRow,
   role: RoleDef,
-  grp: { worktree: string | null; name: string } | null | undefined,
+  grp: { worktree: string | null; name: string; owns_json?: string } | null | undefined,
   repoPath: string,
   job: Job,
 ) {

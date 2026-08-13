@@ -74,7 +74,7 @@ interface FactRow {
 export function sediment(ctx: Ctx, projectId: number | null, threshold: number): number {
   if (!projectId) return 0;
   const facts = ctx.db
-    .query<FactRow, [number]>(
+    .query<FactRow, [number, number]>(
       `SELECT n.id, n.body FROM note n
        LEFT JOIN grp g ON g.id = n.grp_id
        WHERE n.kind = 'fact' AND (n.project_id = ? OR g.project_id = ?)

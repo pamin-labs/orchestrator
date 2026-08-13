@@ -135,7 +135,7 @@ export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {
     if (!f.endsWith(".yaml") && !f.endsWith(".yml")) continue;
     const r = Bun.YAML.parse(readFileSync(join(dir, f), "utf8")) as RoleDef;
     if (!r?.name || !r?.prompt) throw new Error(`${f}: a role needs at least name and prompt`);
-    out.set(r.name, { clearance: "L1", ...r });
+    out.set(r.name, { ...r, clearance: r.clearance ?? "L1" });
   }
   return out;
 }

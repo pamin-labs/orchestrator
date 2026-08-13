@@ -99,7 +99,7 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: say(ctx.config?.language, "gate.reconcile", { seq: slice.seq, reason: rec.reason }),
+      body: say(ctx.config?.language, "gate.reconcile", { seq: slice.seq, reason: rec.reason ?? "" }),
       meta: { slice_id: sliceId, phantom: rec.phantom },
     });
     return {
@@ -216,7 +216,7 @@ export function handToQa(deps: ReviewDeps, sliceId: number): void {
 }
 
 /** QA passed: the slice is the boss's to accept. */
-export function handToBoss(deps: ReviewDeps, sliceId: number): void {
+export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void {
   const { ctx } = deps;
   const slice = loadSlice(ctx, sliceId);
   if (!slice) return;

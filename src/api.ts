@@ -444,7 +444,7 @@ function resolveTarget(
   // than cause a second one to be hired — which is how one project ended up
   // paying for two opus Dispatchers.
   const inProject = ctx.db
-    .query<{ id: number; grp_id: number | null }, [string, number | null]>(
+    .query<{ id: number; grp_id: number | null }, [string, number | null, number | null]>(
       `SELECT id, grp_id FROM agent
        WHERE role = ? AND state != 'retired' AND (project_id IS ? OR ? IS NULL)
        ORDER BY (grp_id IS NOT NULL) DESC, id DESC LIMIT 1`,

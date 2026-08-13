@@ -62,13 +62,13 @@ test("the shipped config keeps worktrees outside $HOME", () => {
 test("difficulty picks the model, and a role may pin one", () => {
   const cfg = loadConfig("config/default.yaml");
   const eng = { name: "engineer", clearance: "L1" as const, prompt: "x" };
-  expect(modelFor(cfg, eng, "trivial")).toBe(cfg.difficultyModel.trivial);
-  expect(modelFor(cfg, eng, "hard")).toBe(cfg.difficultyModel.hard);
+  expect(modelFor(cfg, eng, "trivial")).toBe(cfg.difficultyModel.trivial!);
+  expect(modelFor(cfg, eng, "hard")).toBe(cfg.difficultyModel.hard!);
   // No tag falls back to normal rather than to the most expensive tier.
-  expect(modelFor(cfg, eng, null)).toBe(cfg.difficultyModel.normal);
+  expect(modelFor(cfg, eng, null)).toBe(cfg.difficultyModel.normal!);
 
   const dispatcher = loadRoles("roles").get("dispatcher")!;
-  expect(modelFor(cfg, dispatcher, "trivial")).toBe(cfg.difficultyModel.hard);
+  expect(modelFor(cfg, dispatcher, "trivial")).toBe(cfg.difficultyModel.hard!);
 });
 
 test("a role may name a concrete model id and it is used verbatim", () => {
