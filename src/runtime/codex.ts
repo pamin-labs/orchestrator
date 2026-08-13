@@ -46,7 +46,14 @@ export function buildArgv(spec: TurnSpec): string[] {
   // (base="read-only" + network.allow_local_binding + a domain allowlist). They
   // SIGABRT on 0.147. Until they land, the ceiling is "a codex role can reach the
   // public internet", which is also how it does web research.
-  argv.push("-s", "workspace-write");
+  // `-s` only exists on `codex exec`. `codex exec resume` takes the same setting
+  // as a config key and rejects the flag outright — so the first turn of every
+  // codex agent ran and every turn after it died with `turn failed (no_result)`
+  // and "tip: to pass -s as a value, use -- -s". Found by the Architect on a live
+  // run, which is the only place it could be found: the flag is valid argv, the
+  // model is fine, and the failure looks like an idle agent rather than an error.
+  if (spec.resumeSessionId) argv.push("-c", 'sandbox_mode="workspace-write"');
+  else argv.push("-s", "workspace-write");
   argv.push("-c", "sandbox_workspace_write.network_access=true");
   for (const img of spec.images ?? []) argv.push("-i", img);
   return argv;
@@ -130,10 +137,16 @@ type Line = {
 };
 
 export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult> {
-  // codex takes system-level instruction as part of the prompt: it has no
-  // equivalent of --append-system-prompt, so the stable half leads the message.
-  // The delta still lands last, which is what the cache cares about.
-  const input = `${spec.stable.systemAppend}\n\n---\n\n${spec.prompt}`;
+  // codex has no --append-system-prompt, so the stable half leads the first
+  // message of a thread. It must NOT lead the rest: `codex exec resume` replays
+  // the thread server-side, so re-sending the role prompt, the contract, the
+  // onboarding pack and the lessons every turn both pays for them again and moves
+  // the boundary of what the provider can match as an unchanged prefix — the
+  // opposite of what resuming is for. A changed stable half rotates the session
+  // (needsRotation compares the hash), which is where the new one gets sent.
+  const input = spec.resumeSessionId
+    ? spec.prompt
+    : `${spec.stable.systemAppend}\n\n---\n\n${spec.prompt}`;
 
   const proc = Bun.spawn(["codex", ...buildArgv(spec)], {
     cwd: spec.cwd,

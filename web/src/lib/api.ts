@@ -198,12 +198,19 @@ export function useOrch() {
   const [live, setLive] = useState<"connecting" | "live" | "retry">("connecting");
   const started = useRef(false);
   const liveSeq = useRef(0);
+  // The last project asked for, so a refresh that does not name one does not
+  // silently widen the scope. Every SSE event called refresh() with no argument,
+  // which swapped 成本 from this project to every project the moment anything
+  // happened — and the page still said 这个项目累计.
+  const lastProject = useRef<number | null>(null);
 
   const refresh = async (projectId?: number | null) => {
+    if (projectId !== undefined) lastProject.current = projectId;
+    const p = projectId ?? lastProject.current;
     const [s, c] = await Promise.all([
       fetch("/api/state"),
       // The nav says 成本 is this project's, so ask for this project's.
-      fetch(projectId ? `/api/cost?project=${projectId}` : "/api/cost"),
+      fetch(p ? `/api/cost?project=${p}` : "/api/cost"),
     ]);
     setState((await s.json()) as State);
     setCost((await c.json()) as Cost);
@@ -224,6 +231,22 @@ export function useOrch() {
         if (["state_change", "escalation", "note"].includes(f.kind)) void refresh();
       };
     });
+  }, []);
+
+  // A slow heartbeat, because some of the state has no event behind it.
+  // Subscription usage is refreshed on the watchdog's clock and writes no bus
+  // frame, so on a quiet system the header kept showing a reading — or a failure —
+  // from however long ago the last unrelated event happened to be. Only while the
+  // tab is visible: a backgrounded panel refreshing all night is traffic nobody
+  // asked for, and it is re-fetched on the way back anyway.
+  useEffect(() => {
+    const tick = () => document.visibilityState === "visible" && void refresh();
+    const id = setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, []);
 
   return { state, cost, frames, live, refresh };

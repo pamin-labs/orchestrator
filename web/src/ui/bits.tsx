@@ -56,3 +56,18 @@ export const Textarea = ({
     {...rest}
   />
 );
+
+/**
+ * A list that fills what is left of the screen and scrolls inside itself.
+ *
+ * The page height is fixed in the shell, so a view that simply grows pushes its
+ * own controls — the tab strip, the verdict line, the totals — off the top the
+ * moment there are twenty rows. Anything that can be long goes in one of these
+ * and the things you steer with stay put. 13rem is header, nav, and one block of
+ * page-level facts.
+ */
+export const Pane = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("min-h-0 overflow-y-auto pr-1", className)} style={{ maxHeight: "calc(100vh - 13rem)" }}>
+    {children}
+  </div>
+);
