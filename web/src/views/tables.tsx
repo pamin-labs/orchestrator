@@ -356,33 +356,6 @@ export function CostView({ cost }: { cost: Cost | null }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* One line, not a hero. "Dashboards of big numbers" is an anti-reference in
-          PRODUCT.md and every useful number here is comparative. */}
-      <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b border-rule pb-3">
-        <span className="flex items-baseline gap-1.5">
-          <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
-          <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
-        </span>
-        <span className="text-[0.75rem] text-ink-2">
-          每个已交付需求{" "}
-          <b className="font-mono font-semibold text-ink">{per == null ? "—" : K(per)}</b>
-          <span className="text-ink-3">{per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`}</span>
-        </span>
-        <Tip label="注入的 delta 必须留在最后一条 user message 末尾。这个数掉下来说明 prompt 组装被改坏了 —— agent 照跑、测试照绿，每个 turn 贵 3-5 倍。">
-          <span className="text-[0.75rem] text-ink-2 underline decoration-dotted">
-            cache 命中{" "}
-            <b
-              className={cn(
-                "font-mono font-semibold",
-                cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
-              )}
-            >
-              {cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`}
-            </b>
-          </span>
-        </Tip>
-      </div>
-
       {/* `min-h-0` on the grid is not enough: grid rows default to `auto`, so the
           row grows to its tallest child and the whole page overflows no matter what
           the container was told. Pinning the row to `minmax(0,1fr)` is what lets
@@ -407,7 +380,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
             <Meta className="self-center pb-1.5 max-[52rem]:hidden">tokens · 占比</Meta>
           </TabList>
           <TabPanel value="grp" className="flex min-h-0 flex-1 flex-col">
-            <Pane>
+            <Pane className="[&>*:first-child_button]:border-t-0">
               {groups.map((g) => (
                 <Node
                   key={g.grpId}
@@ -431,13 +404,11 @@ export function CostView({ cost }: { cost: Cost | null }) {
             </Pane>
           </TabPanel>
           <TabPanel value="tier" className="flex min-h-0 flex-1 flex-col">
-            <Meta className="mb-1 block">标签决定跑哪个 model，计划卡上能改</Meta>
             <Pane>
               <Flat rows={cost.byDifficulty ?? []} />
             </Pane>
           </TabPanel>
           <TabPanel value="acct" className="flex min-h-0 flex-1 flex-col">
-            <Meta className="mb-1 block">哪个订阅在付。顶栏的百分比是这两个池子还剩多少</Meta>
             <Pane>
               <Flat rows={cost.byRuntime ?? []} />
             </Pane>
@@ -445,6 +416,36 @@ export function CostView({ cost }: { cost: Cost | null }) {
         </Tabs>
 
         <aside className="flex min-h-0 min-w-0 flex-col overflow-y-auto pr-1">
+        {/* The totals ride the rail, above the charts they are the sum of.
+            They had a band of their own with a rule under it, and the tab strip
+            below had another — two horizontal lines a centimetre apart, dividing
+            a page into three when it has two parts. "Dashboards of big numbers"
+            is an anti-reference in PRODUCT.md, so this stays one line of text
+            with one number set in display size, not a row of stat cards. */}
+        <div className="mb-5">
+          <div className="flex items-baseline gap-1.5">
+            <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
+            <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
+          </div>
+          <div className="mt-1.5 text-[0.75rem] text-ink-2">
+            每个已交付需求{" "}
+            <b className="font-mono font-semibold text-ink">{per == null ? "—" : K(per)}</b>
+            <span className="text-ink-3">{per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`}</span>
+          </div>
+          <Tip label="注入的 delta 必须留在最后一条 user message 末尾。这个数掉下来说明 prompt 组装被改坏了 —— agent 照跑、测试照绿，每个 turn 贵 3-5 倍。">
+            <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
+              cache 命中{" "}
+              <b
+                className={cn(
+                  "font-mono font-semibold",
+                  cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
+                )}
+              >
+                {cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`}
+              </b>
+            </div>
+          </Tip>
+        </div>
           <Rail title="烧得多快" note="近 24 小时，按小时">
             <BurnChart data={cost.byHour ?? []} />
           </Rail>
@@ -481,7 +482,7 @@ function Flat({ rows }: { rows: { label: string; tokens: number }[] }) {
   return (
     <>
       {list.map((r) => (
-        <div key={r.label} className={cn(ROW, "border-t border-rule-soft py-2.5")}>
+        <div key={r.label} className={cn(ROW, "border-t border-rule-soft py-2.5 first:border-t-0")}>
           <span className="truncate pl-[1.125rem] text-[0.8125rem]" title={r.label}>{r.label}</span>
           <span className="text-right font-mono text-[0.8125rem]">{K(r.tokens)}</span>
           <Meta className="text-right">{list.length > 1 ? `${Math.round((r.tokens / sum) * 100)}%` : ""}</Meta>
