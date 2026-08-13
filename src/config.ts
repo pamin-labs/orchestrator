@@ -38,6 +38,12 @@ export interface Config {
   turnTimeoutMs: number;
   maxTurnsPerJob: number;
   sessionRotateFraction: number;
+  /** model -> the cheaper model to fall back to when the account is throttled. */
+  modelFallback: Record<string, string>;
+  /** Unread events past this get compressed by the Librarian instead of dribbling. */
+  unreadDigestThreshold: number;
+  /** The same complaint this many times becomes a project rule. */
+  feedbackSedimentThreshold: number;
   ctxBudgetChars: number;
   parkAfterPausedMs: number;
   watchdogIntervalMs: number;
@@ -65,6 +71,14 @@ const DEFAULTS: Config = {
   turnTimeoutMs: 600_000,
   maxTurnsPerJob: 60,
   sessionRotateFraction: 0.6,
+  // Where a rate-limited turn goes next. One step down, not straight to haiku: the
+  // point is to keep going at a lower tier, not to make the cheapest possible mess.
+  modelFallback: {
+    "claude-opus-5": "claude-sonnet-5",
+    "claude-sonnet-5": "claude-haiku-4-5-20251001",
+  },
+  unreadDigestThreshold: 30,
+  feedbackSedimentThreshold: 3,
   ctxBudgetChars: 16_000,
   parkAfterPausedMs: 7_200_000,
   watchdogIntervalMs: 30_000,

@@ -76,6 +76,26 @@ test("boss path: add project, drop an idea, nothing runs without a slot", async 
   expect(jobs.length).toBe(2);
   expect(jobs.every((j) => j.kind === "agent_turn" && j.state === "pending")).toBe(true);
   expect(srv.ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM agent").get()!.c).toBe(0);
+
+  // PLAN.md §12 asks the smoke run to assert the four first-class tables, because
+  // "the request was accepted" and "the request was recorded" are different claims and
+  // only the second one matters after a restart.
+  const count = (t: string) =>
+    srv.ctx.db.query<{ c: number }, []>(`SELECT count(*) AS c FROM ${t}`).get()!.c;
+  expect(count("job")).toBe(2);
+  // event: the project, the idea, the group's channel opening — the append-only half.
+  expect(count("event")).toBeGreaterThanOrEqual(1);
+  // note: the idea itself is a fact, plus whatever registration wrote (gates, PR
+  // preflight). The idea being a note is what lets a later group find it.
+  expect(count("note")).toBeGreaterThanOrEqual(1);
+  const ideaNote = srv.ctx.db
+    .query<{ body: string }, [number]>("SELECT body FROM note WHERE grp_id = ? AND kind = 'fact'")
+    .get(idea.grp_id);
+  expect(ideaNote?.body).toContain("rate limiting");
+  // task: none yet, and that is the point — tasks exist only after the boss approves a
+  // card, so a task here would mean work started without approval.
+  expect(count("task")).toBe(0);
+  expect(count("slice")).toBe(0);
 });
 
 test("a malformed DRAFT card is refused over the wire, status unchanged", async () => {

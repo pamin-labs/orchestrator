@@ -19,6 +19,7 @@ import { preflightPr } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { gatesFor, recordGate } from "./mech/gate.ts";
 import { listSkills, skillNames } from "./mech/skills.ts";
+import { sediment } from "./mech/lessons.ts";
 import { say } from "./lang.ts";
 import { validateDraftCard, validateJournal, validateSelfReview } from "./mech/validate.ts";
 
@@ -67,6 +68,8 @@ export interface Ctx {
     /** Surfaced to the panel: how many groups may run at once, and lease slots. */
     maxGroups?: number;
     leaseSlots?: number;
+    /** Same complaint this many times becomes a project rule (PLAN.md §7③). */
+    feedbackSediment?: number;
   };
 }
 
@@ -376,7 +379,13 @@ const postSay: Handler = async (ctx, req) => {
     if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
     if (!grpId) return bad("triage needs a requirement");
     ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
-    triage({ ctx, git: ctx.git }, grpId, b.as as Triage, said, skills);
+    triage(
+      { ctx, git: ctx.git, bossFact: (g, body) => bossFact(ctx, g, body) },
+      grpId,
+      b.as as Triage,
+      said,
+      skills,
+    );
     ctx.sched.tick();
     return text("ok");
   }
@@ -582,7 +591,7 @@ const postTriage: Handler = async (ctx, req) => {
   if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
-  triage({ ctx, git: ctx.git }, gid, b.as as Triage, b.note ?? "");
+  triage({ ctx, git: ctx.git, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as as Triage, b.note ?? "");
   return text("ok");
 };
 
@@ -1313,6 +1322,22 @@ const postAttach: Handler = async (ctx, req) => {
 export interface Attachment { name: string; path: string; type: string }
 
 /**
+ * The boss said something that should stick. One helper, because "record it and see if
+ * it is the third time" must not be remembered separately at four call sites.
+ */
+export function bossFact(ctx: Ctx, grpId: number | null, body: string): void {
+  const projectId = grpId
+    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
+        ?.project_id ?? null
+    : null;
+  ctx.db.run(
+    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
+    [projectId, grpId, ctx.config.language, body],
+  );
+  sediment(ctx, projectId, ctx.config.feedbackSediment ?? 3);
+}
+
+/**
  * Words plus the files that came with them.
  *
  * Paths, never contents: an image inlined into a prompt costs thousands of tokens
@@ -1397,10 +1422,7 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
   const approve = params.decision === "approve";
 
   if (!approve) {
-    ctx.db.run(
-      "INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', ?, ?, unixepoch() * 1000)",
-      [grpId, ctx.config.language, withAttachments(`boss sent the DRAFT back: ${b.reason ?? ""}`, b.attachments)],
-    );
+    bossFact(ctx, grpId, withAttachments(`boss sent the DRAFT back: ${b.reason ?? ""}`, b.attachments));
     // Back to PLANNING, which is what the group actually is now. Left in DRAFT it
     // still counted as a decision waiting on the boss, still showed the rejected
     // card, and 批准开工 still worked on it — one stray click approves the very
@@ -1781,10 +1803,7 @@ const postSliceDecision: Handler = async (ctx, req, params) => {
       body: b.feedback ?? "rejected",
       meta: { slice_id: id },
     });
-    ctx.db.run(
-      "INSERT INTO note (grp_id, slice_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-      [sl.grp_id, id, ctx.config.language, b.feedback ?? "boss rejected the slice"],
-    );
+    bossFact(ctx, sl.grp_id, b.feedback ?? "boss rejected the slice");
     // With autoAdvance on, later slices were built on the one just rejected. Fixing
     // it underneath work that assumed it is how two problems become four, so the
     // group stops and says so instead.

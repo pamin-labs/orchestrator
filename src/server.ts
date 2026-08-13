@@ -87,6 +87,7 @@ export function start(overrides: Partial<Config> = {}): Started {
       autoAcceptTiers: cfg.autoAcceptTiers,
       maxGroups: cfg.maxGroups,
       leaseSlots: cfg.leaseSlots,
+      feedbackSediment: cfg.feedbackSedimentThreshold,
     },
   };
   const execDeps = {

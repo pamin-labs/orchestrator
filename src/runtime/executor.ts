@@ -275,7 +275,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   recordProgress(deps, agent, job, result);
   await narrate(deps, agent, job, grp, project?.repo_path ?? null, before, result);
   handleDenials(deps, agent, job, result);
-  handleRateLimit(deps, job, result);
+  handleRateLimit(deps, agent, job, result);
 
   if (!result.ok) throw new Error(`turn failed (${result.terminalReason}): ${clip(result.text)}`);
 }
@@ -418,6 +418,32 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
       `File your verdict with exactly:\n` +
       `  orch audit ${gid} --verdict pass|fail --note "what is missing or inconsistent"`;
   }
+  if (payload.digest && typeof payload.digest === "object") {
+    const d = payload.digest as { channel_id?: number; from?: number; to?: number };
+    const rows = ctx.db
+      .query<{ seq: number; author: string; body: string }, [number, number, number]>(
+        `SELECT seq, author, body FROM event
+         WHERE channel_id = ? AND seq > ? AND seq <= ? AND kind IN ('say','boss_say','note','escalation')
+         ORDER BY seq LIMIT 400`,
+      )
+      .all(d.channel_id ?? 0, d.from ?? 0, d.to ?? 0);
+    delta.card =
+      `Compress this channel backlog so nobody has to read it again. ${rows.length} events, ` +
+      `seq ${d.from}..${d.to}.\n\n` +
+      `File ONE note: \`orch journal add --kind journal -\`, at most 6 lines, covering what was ` +
+      `decided, what is still open, and anything a later turn must not re-litigate. Names and ` +
+      `file paths verbatim; drop the pleasantries.\n\n` +
+      rows.map((r) => `[${r.seq}] ${r.author}: ${r.body}`).join("\n").slice(0, 20_000);
+  }
+  if (Array.isArray(payload.sediment)) {
+    delta.card =
+      `The boss has said the same thing ${payload.sediment.length} times now, to different groups. ` +
+      `A fact attached to one group is invisible to the next, so this has to become a project rule.\n\n` +
+      payload.sediment.map((t: unknown, i: number) => `${i + 1}. ${String(t)}`).join("\n") +
+      `\n\nWrite ONE rule with \`orch journal add --kind lesson -\` — at most 6 lines, phrased as an ` +
+      `instruction a later group can follow without knowing this history ("QA 必须…", not "老板不满意…"). ` +
+      `If these are not actually the same complaint, say so with \`orch mail cos --intent note\` and write nothing.`;
+  }
   if (payload.idea) delta.card = `The boss wants: ${payload.idea}`;
   if (payload.respec) delta.rejection = `The boss sent the DRAFT back: ${payload.respec}`;
   if (payload.rejection) delta.rejection = String(payload.rejection);
@@ -465,7 +491,7 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
       "rather than assuming you remember it.";
   }
 
-  const unread = readUnread(ctx, agent, job.grp_id);
+  const unread = readUnread(ctx, agent, job.grp_id, deps.cfg);
   // Skill text, read off the host for this turn only. The names travelled on the
   // payload; the bodies are not stored anywhere, so editing a SKILL.md takes effect
   // on the next turn that asks for it.
@@ -520,13 +546,24 @@ const PAYLOAD_KEYS = new Set([
   "audit_group",
   "review",
   "skills",
+  "digest",
+  "sediment",
   "project_id",
   "onboarding",
   "lease_id",
 ]);
 
 /** Channel delta since this agent's cursor, then advance it. */
-function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null): string | null {
+/**
+ * Unread channel events, and what to do when there are too many.
+ *
+ * The cursor only ever advances to the last row actually handed over, so a backlog is
+ * not lost — but it drains 30 per turn, and an agent that comes back to 200 events
+ * spends six turns reading history at full price. PLAN.md §7 puts the Librarian here:
+ * past the threshold it compresses the run into one note, and the compression itself
+ * is an event so the boss can see what was compressed.
+ */
+function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null, cfg?: Config): string | null {
   if (!grpId) return null;
   const ch = ctx.db
     .query<{ id: number }, [number]>("SELECT id FROM channel WHERE grp_id = ? LIMIT 1")
@@ -540,14 +577,50 @@ function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null): string | n
       )
       .get(agent.id, ch.id)?.last_seq ?? 0;
 
+  const limit = cfg?.unreadDigestThreshold ?? 30;
   const rows = ctx.db
-    .query<{ seq: number; author: string; intent: string | null; body: string }, [number, number]>(
+    .query<{ seq: number; author: string; intent: string | null; body: string }, [number, number, number]>(
       `SELECT seq, author, intent, body FROM event
        WHERE channel_id = ? AND seq > ? AND kind IN ('say', 'boss_say', 'note', 'escalation')
-       ORDER BY seq LIMIT 30`,
+       ORDER BY seq LIMIT ?`,
     )
-    .all(ch.id, cur);
+    .all(ch.id, cur, limit);
   if (rows.length === 0) return null;
+
+  // A full page means there is probably more behind it. Hand this page over, and put
+  // the Librarian on the rest — once: a queued digest already covers the backlog.
+  let tail = "";
+  if (rows.length >= limit) {
+    const behind = ctx.db
+      .query<{ c: number; hi: number }, [number, number]>(
+        `SELECT count(*) AS c, max(seq) AS hi FROM event
+         WHERE channel_id = ? AND seq > ? AND kind IN ('say', 'boss_say', 'note', 'escalation')`,
+      )
+      .get(ch.id, rows.at(-1)!.seq)!;
+    if (behind.c > 0) {
+      const queued = ctx.db
+        .query<{ c: number }, [number]>(
+          `SELECT count(*) AS c FROM job WHERE kind = 'agent_turn' AND state IN ('pending','running')
+           AND json_extract(payload_json, '$.digest.channel_id') = ?`,
+        )
+        .get(ch.id)!.c;
+      if (queued === 0) {
+        ctx.sched.enqueue("agent_turn", {
+          grp_id: grpId,
+          priority: 2,
+          payload: { role: "librarian", digest: { channel_id: ch.id, from: rows.at(-1)!.seq, to: behind.hi } },
+        });
+      }
+      tail = `\n\n(${behind.c} 条更早的还没读，Librarian 正在压成一条摘要，别自己去翻)`;
+      ctx.bus.emit({
+        grpId,
+        author: "orchestrator",
+        kind: "state_change",
+        body: say(ctx.config?.language, "unread.digest", { n: behind.c }),
+        meta: { channel_id: ch.id, behind: behind.c },
+      });
+    }
+  }
 
   const last = rows.at(-1)!.seq;
   ctx.db.run(
@@ -555,7 +628,7 @@ function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null): string | n
      ON CONFLICT (agent_id, channel_id) DO UPDATE SET last_seq = excluded.last_seq`,
     [agent.id, ch.id, last],
   );
-  return rows.map((r) => `${r.author}${r.intent ? ` (${r.intent})` : ""}: ${r.body}`).join("\n");
+  return rows.map((r) => `${r.author}${r.intent ? ` (${r.intent})` : ""}: ${r.body}`).join("\n") + tail;
 }
 
 function recordCost(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult, stableHash: string): void {
@@ -682,18 +755,71 @@ function handleDenials(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult)
   });
 }
 
-function handleRateLimit(deps: ExecDeps, job: Job, r: TurnResult): void {
+/**
+ * Hitting the account's rate limit, per PLAN.md §11: drop a tier and keep going; if
+ * there is nothing cheaper, wait for the reset — not for the boss.
+ *
+ * Before this it only paused. The system exists so work happens while the boss is
+ * asleep, and one 429 at 01:00 stopped everything until morning, which is the exact
+ * failure it is supposed to prevent. The model is part of the cached prefix, so a
+ * downgrade rotates the session by construction (`needsRotation` compares the hash) —
+ * the retry starts a fresh session on the cheaper tier rather than re-reading an
+ * expensive prefix at a new price.
+ */
+function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
   const rl = r.rateLimit;
   if (!rl || rl.status === "allowed") return;
-  const { ctx } = deps;
+  const { ctx, cfg } = deps;
+  const cheaper = cfg.modelFallback?.[agent.model];
+
+  if (cheaper) {
+    ctx.db.run("UPDATE agent SET model = ?, session_id = NULL, session_tokens = 0 WHERE id = ?", [
+      cheaper,
+      agent.id,
+    ]);
+    ctx.bus.emit({
+      grpId: job.grp_id,
+      author: "orchestrator",
+      kind: "state_change",
+      body: say(ctx.config?.language, "rl.downgraded", { role: agent.role, from: agent.model, to: cheaper }),
+      meta: { ...rl, from: agent.model, to: cheaper },
+    });
+    // Same work, cheaper tier, straight back in the queue.
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: job.grp_id,
+      agent_id: agent.id,
+      slice_id: job.slice_id,
+      priority: 4,
+      payload: { ...(safeParse(job.payload_json) as object), rotate: true },
+    });
+    ctx.sched.tick();
+    return;
+  }
+
+  // Already at the bottom tier: hold, and record when to try again so the watchdog
+  // can restart it without anyone being awake.
+  const resetsMs = rl.resetsAt ? rl.resetsAt * 1000 : Date.now() + 15 * 60_000;
   ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: `rate limit ${rl.status} (${rl.rateLimitType}), resets ${new Date(rl.resetsAt * 1000).toISOString()}`,
+    body: say(ctx.config?.language, "rl.waiting", { at: new Date(resetsMs).toLocaleString() }),
     meta: rl,
   });
-  if (job.grp_id) ctx.db.run("UPDATE grp SET status = 'PAUSED' WHERE id = ?", [job.grp_id]);
+  if (job.grp_id) {
+    ctx.db.run(
+      "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, rl_resets_at = ? WHERE id = ?",
+      [resetsMs, job.grp_id],
+    );
+  }
+}
+
+function safeParse(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return {};
+  }
 }
 
 function overTokenBudget(agent: AgentRow, cfg: Config): boolean {
