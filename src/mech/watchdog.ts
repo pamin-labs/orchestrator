@@ -441,6 +441,53 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     findings.push({ rule: "unparked", grpId: g.id, severity: "advisory", body: t("wd.unparked", { name: g.name }) });
   }
 
+  // 15. main moved under a group that is still working on it.
+  //
+  // `landGroup` tells the groups still in the merge queue to rebase, which covers
+  // the case where another group merged. It does not cover the boss pushing to
+  // main directly — and that is the common case, since the boss is a person with a
+  // terminal. Six groups spent a day building on a base fifteen commits stale, and
+  // every one of them would have found out at PR time, one conflict at a time.
+  //
+  // Told once per base: `rebase_seen` records what the group has already been
+  // warned about, so a group that reads the message and keeps working is not
+  // nagged every thirty seconds.
+  for (const g of ctx.db
+    .query<{ id: number; name: string; worktree: string; repo: string; seen: string | null }, []>(
+      `SELECT g.id, g.name, g.worktree, p.repo_path AS repo, g.rebase_seen AS seen
+       FROM grp g JOIN project p ON p.id = g.project_id
+       WHERE g.status = 'RUNNING' AND g.worktree IS NOT NULL`,
+    )
+    .all()) {
+    const head = await deps.git(g.repo, ["rev-parse", "HEAD"], g.repo);
+    if (head.code !== 0) continue;
+    const sha = head.out.trim();
+    if (!sha || sha === g.seen) continue;
+    const merged = await deps.git(g.repo, ["merge-base", "--is-ancestor", sha, "HEAD"], g.worktree);
+    if (merged.code === 0) continue; // already on it
+
+    ctx.db.run("UPDATE grp SET rebase_seen = ? WHERE id = ?", [sha, g.id]);
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: g.id,
+      priority: 4,
+      payload: {
+        role: "engineer",
+        conflict: true,
+        rejection:
+          `main moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
+          `\`orch git -- fetch origin main\` then \`orch git -- rebase origin/main\`, then carry on. ` +
+          `If main removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
+          `with \`orch ask-boss\`; that reaches the Architect.`,
+      },
+    });
+    findings.push({
+      rule: "base_moved",
+      grpId: g.id,
+      severity: "advisory",
+      body: `main 动到了 ${sha.slice(0, 8)}，${g.name} 的基线落后了，已经让它先 rebase`,
+    });
+  }
+
   // 14. Parked and forgotten. It will not come back on its own and it will not ask
   // again, so the one thing owed is a reminder that says how long — 唤醒 and 不做了
   // are both one click from the requirement page.

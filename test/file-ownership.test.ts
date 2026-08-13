@@ -219,3 +219,23 @@ test("a group not in the queue has no position", () => {
   expect(position(db, 1)).toBeNull();
   expect(head(db, 1)).toBeNull();
 });
+
+test("a group granted one shared path by name may start; everyone else still may not", () => {
+  // Shared files belong to no group, and that must stay true — two groups editing
+  // package.json is the collision ownership exists to prevent. But a defect in one
+  // still has to be fixable, and the requirement opened for exactly that could
+  // never start: the boundary can only be the file itself, which canStart then
+  // refused as shared. sweepApproved retried that forever, silently.
+  const db = seed([
+    { name: "other", owns: ["src/a/**"] },
+    { name: "fix-tsconfig", owns: ["tsconfig.json"], status: "DRAFT" },
+    { name: "opportunist", owns: ["tsconfig.json"], status: "DRAFT" },
+  ]);
+  expect(canStart(db, 2).ok).toBe(false);
+
+  db.run("UPDATE grp SET shared_grant = ? WHERE id = 2", [JSON.stringify(["tsconfig.json"])]);
+  expect(canStart(db, 2).ok).toBe(true);
+  // The grant is by name and by group: nobody else gets in on it.
+  expect(canStart(db, 3).ok).toBe(false);
+  expect(canStart(db, 3).sharedClaimed).toContain("tsconfig.json");
+});

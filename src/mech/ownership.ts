@@ -129,8 +129,15 @@ export function canStart(db: DB, grpId: number): StartCheck {
     };
   }
 
-  const shared = sharedFor(db, me.project_id);
-  const sharedClaimed = claimsShared(owns, shared);
+  // A path this group was granted by name. Shared files belong to no group, and
+  // that stays true for everyone else — but a defect in one has to be fixable by
+  // somebody, and the requirement opened for exactly that was refused here forever.
+  const granted = parseOwns(
+    db.query<{ shared_grant: string | null }, [number]>("SELECT shared_grant FROM grp WHERE id = ?").get(grpId)
+      ?.shared_grant ?? null,
+  );
+  const shared = sharedFor(db, me.project_id).filter((s) => !granted.includes(s));
+  const sharedClaimed = claimsShared(owns, shared).filter((o) => !granted.includes(o));
   if (sharedClaimed.length) {
     return {
       ok: false,
