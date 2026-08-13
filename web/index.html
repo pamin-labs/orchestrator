@@ -93,8 +93,44 @@
              letter-spacing: 0.005em; }
   /* Projects are a switch, not a dropdown to hunt through: several projects at
      once is a first-class case, so the current one is visible without a click. */
-  .projects { display: flex; gap: 0.25rem; }
-  .projects button.on { background: var(--paper); color: var(--ink); border-color: var(--rule); }
+  /* Breadcrumb, not tabs: tabs stop working somewhere around a dozen projects,
+     and they duplicated the list that already lives on Home. */
+  .crumb { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.8125rem; }
+  .crumb .sep { color: var(--ink-3); }
+  .crumb .here { font-family: var(--display); font-size: 1rem; font-weight: 600; }
+  .switch { position: relative; }
+  .switch > summary { list-style: none; cursor: pointer; color: var(--ink-3); font-size: 0.6875rem; }
+  .switch > summary::-webkit-details-marker { display: none; }
+  .switch > summary:hover { color: var(--ink); }
+  .switch > .menu {
+    position: absolute; top: 1.5rem; left: -0.5rem; z-index: 20; width: 17rem;
+    background: var(--paper); border: 1px solid var(--rule); border-radius: 0.5rem;
+    box-shadow: 0 10px 32px oklch(0 0 0 / 0.14); padding: 0.375rem; max-height: 60vh; overflow-y: auto;
+  }
+  .switch .menu input { margin-bottom: 0.375rem; }
+  .switch .menu button {
+    display: block; width: 100%; text-align: left; border-color: transparent; background: none;
+    padding: 0.3125rem 0.5rem;
+  }
+  .switch .menu button:hover { background: var(--sunk); }
+  .switch .menu button.on { color: var(--accent); font-weight: 600; }
+
+  /* ---- home -------------------------------------------------------------- */
+  .pcard {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem 1.25rem;
+    padding: 0.875rem 0.875rem; border: 1px solid var(--rule); border-radius: 0.5rem;
+    margin-bottom: 0.625rem; cursor: pointer; background: var(--paper);
+    transition: border-color var(--t), background var(--t);
+  }
+  .pcard:hover { border-color: var(--ink-3); }
+  .pcard.mine { border-color: var(--accent); background: var(--accent-soft); }
+  .pcard .pn { font-family: var(--display); font-size: 1.0625rem; font-weight: 600; }
+  .pcard .pp { font-family: var(--mono); font-size: 0.6875rem; color: var(--ink-3); margin-top: 0.0625rem; }
+  .pcard .pw { font-size: 0.8125rem; color: var(--accent); font-weight: 600; }
+  .pcard .pq { font-size: 0.75rem; color: var(--ink-3); }
+  .pcard .prq { font-size: 0.75rem; color: var(--ink-2); margin-top: 0.375rem; }
+  .pcard .nums { text-align: right; font-family: var(--mono); font-size: 0.6875rem; color: var(--ink-3);
+                 white-space: nowrap; }
   .conn { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--ink-3); }
   .conn i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); transition: background var(--t); }
   .conn.on i { background: var(--ok); animation: breathe 2.4s var(--out) infinite; }
@@ -346,11 +382,26 @@
   .setup .why { font-size: 0.75rem; color: var(--ink-3); margin: 0.25rem 0 0.75rem; }
 
   /* ---- feed -------------------------------------------------------------- */
-  .feed { font-family: var(--mono); font-size: 0.6875rem; line-height: 1.6;
-          max-height: calc(100vh - 12rem); overflow-y: auto; overscroll-behavior: contain; }
-  .feed > div { padding: 0.0625rem 0; animation: in 200ms var(--out); }
-  .feed .said-by { color: var(--ink-2); }
-  .feed .partial { color: var(--ink-3); }
+  /* A timeline, not a log. What the boss wants to read here is who said what to
+     whom; tool calls and state changes are context around that, not the point. */
+  .feed { max-height: calc(100vh - 11rem); overflow-y: auto; overscroll-behavior: contain; }
+  .ev { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: 0.5rem;
+        padding: 0.3125rem 0; animation: in 200ms var(--out); font-size: 0.75rem; }
+  .ev + .ev { border-top: 1px solid var(--rule-soft); }
+  .ev.same { border-top: none; padding-top: 0; }
+  .ev .when { font-family: var(--mono); font-size: 0.625rem; color: var(--ink-3); padding-top: 0.125rem; }
+  .ev .who { font-weight: 600; }
+  .ev .to { color: var(--ink-3); font-weight: 400; }
+  .ev .what { color: var(--ink-2); overflow-wrap: anywhere; }
+  /* Agent to agent talk is the thing being looked for, so it is the only kind
+     that gets full ink. Everything else recedes. */
+  .ev.say .what { color: var(--ink); }
+  .ev.tool .what, .ev.partial .what { color: var(--ink-3); font-family: var(--mono); font-size: 0.6875rem; }
+  .ev.state .what { color: var(--ok); }
+  .ev.ask .what { color: var(--warn); }
+  .ev.boss .who { color: var(--accent); }
+  .ev .tag { font-family: var(--mono); font-size: 0.5625rem; letter-spacing: 0.06em;
+             text-transform: uppercase; color: var(--ink-3); margin-left: 0.25rem; }
   @keyframes in { from { opacity: 0; } to { opacity: 1; } }
 
   /* ---- first run --------------------------------------------------------- */
@@ -366,12 +417,23 @@
 
   .compose { display: flex; gap: 0.5rem; align-items: center; padding-bottom: 1rem; }
   .none { font-size: 0.75rem; color: var(--ink-3); }
+  /* Work in flight, with nothing for the boss to do yet. */
+  .pending { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem;
+             color: var(--ink-2); padding: 0.75rem 0; }
+  .pending > i { width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--ink-3);
+                 animation: breathe 1.6s var(--out) infinite; }
+  a.btn {
+    font-size: 0.8125rem; line-height: 1.2; padding: 0.3125rem 0.625rem; border-radius: 0.375rem;
+    border: 1px solid var(--rule); color: var(--ink-2); text-decoration: none; white-space: nowrap;
+    transition: color var(--t), border-color var(--t);
+  }
+  a.btn:hover { color: var(--ink); border-color: var(--ink-3); }
 </style>
 </head>
 <body>
 <header>
-  <b>orchestrator</b>
-  <span class="projects" id="projects"></span>
+  <b style="cursor:pointer" onclick="go({view:'home',p:null,g:null})">orchestrator</b>
+  <span class="crumb" id="crumb"></span>
   <span class="grow"></span>
   <span class="t-xs mono dim" id="spend"></span>
   <button class="quiet t-xs" id="sidetoggle" title="事件流">事件流</button>
@@ -393,7 +455,7 @@
 
 <main id="main">
   <div class="view" id="view"></div>
-  <aside><div><h2>事件流</h2><div class="feed" id="feed-all"></div></div></aside>
+  <aside><div><h2 id="feedscope">事件流</h2><div class="feed" id="feed-all"></div></div></aside>
 </main>
 
 <!-- type="module" is required: the bottom of this file uses top-level await, which is a
@@ -408,7 +470,7 @@ let state = { projects: [], groups: [], slices: [], tasks: [], agents: [], escal
 let cost = null;
 
 /** Where the boss is. Kept in the hash so a reload and a notification link land here. */
-const sel = { p: null, view: "board", g: null, side: true, adding: false };
+const sel = { p: null, view: "home", g: null, side: true, adding: false };
 
 function readHash() {
   const h = new URLSearchParams(location.hash.slice(1));
@@ -476,38 +538,113 @@ function pending(p) {
 /* ------------------------------------------------------------------ render */
 
 function render() {
+  const home = sel.view === "home" || !sel.p || !state.projects.some((p) => p.id === sel.p);
+  const usd = state.groups.reduce((n, g) => n + (g.spent_usd || 0), 0);
+  $("#spend").textContent = usd ? money(usd) : "";
+  $("#main").className = sel.side ? "side" : "";
+
   if (!state.projects.length) {
-    $("#projects").innerHTML = "";
+    $("#crumb").innerHTML = "";
     $("#nav").innerHTML = "";
-    $("#spend").textContent = "";
-    $("#main").className = "";
     $("#view").innerHTML = setupHtml();
     return wire();
   }
-  if (!sel.p || !state.projects.some((p) => p.id === sel.p)) sel.p = state.projects[0].id;
 
-  $("#projects").innerHTML = state.projects.map((p) => {
-    const n = Object.values(pending(p.id)).reduce((a, x) => a + x.length, 0);
-    return `<button class="${p.id === sel.p ? "on" : ""}" onclick="go({p:${p.id},g:null})">${esc(p.name)}${
-      n ? `<span class="mono t-xs" style="color:var(--accent)"> ${n}</span>` : ""}</button>`;
-  }).join("") + `<button class="quiet" title="添加项目" onclick="openPick()">＋</button>`;
+  if (home) {
+    // Home is not scoped to a project, so it carries no view tabs and no
+    // breadcrumb tail. Everything here spans projects on purpose.
+    sel.view = "home";
+    $("#crumb").innerHTML = "";
+    $("#nav").innerHTML = "";
+    $("#view").innerHTML = homeView();
+    wire();
+    return paintFeeds();
+  }
 
-  const w = pending(sel.p);
-  const waiting = w.cards.length + w.slices.length + w.merges.length + w.asks.length;
-  const VIEWS = [["board", "概览", waiting], ["progress", "进展", 0],
+  const proj = state.projects.find((p) => p.id === sel.p);
+  $("#crumb").innerHTML = `<span class="sep">/</span><span class="here">${esc(proj.name)}</span>
+    <details class="switch"><summary>切换</summary><div class="menu">
+      ${state.projects.length > 8 ? '<input id="pfilter" placeholder="筛选" aria-label="筛选项目" />' : ""}
+      ${state.projects.map((p) => {
+        const n = countWaiting(p.id);
+        return `<button class="${p.id === sel.p ? "on" : ""}" data-name="${esc(p.name.toLowerCase())}"
+          onclick="go({p:${p.id},g:null,view:'board'})">${esc(p.name)}${n ? ` · ${n} 件等你` : ""}</button>`;
+      }).join("")}
+    </div></details>`;
+
+  const VIEWS = [["board", "概览", countWaiting(sel.p)], ["progress", "进展", 0],
                  ["desk", "工位墙", 0], ["owns", "所有权", 0], ["cost", "成本", 0]];
   $("#nav").innerHTML = VIEWS.map(([k, zh, n]) =>
     `<a class="${sel.view === k ? "on" : ""}" onclick="go({view:'${k}'})">${zh}${
       n ? `<span class="n">${n}</span>` : ""}</a>`).join("");
 
-  const usd = state.groups.reduce((n, g) => n + (g.spent_usd || 0), 0);
-  $("#spend").textContent = usd ? money(usd) : "";
-  $("#main").className = sel.side ? "side" : "";
-
-  const body = { progress: progressView, board: boardView, desk: deskView, owns: ownsView, cost: costView };
-  $("#view").innerHTML = (body[sel.view] ?? progressView)();
+  const body = { board: boardView, progress: progressView, desk: deskView, owns: ownsView, cost: costView };
+  $("#view").innerHTML = (body[sel.view] ?? boardView)();
   wire();
   paintFeeds();
+}
+
+const countWaiting = (p) => Object.values(pending(p)).reduce((a, x) => a + x.length, 0);
+
+/** Home spans projects: what wants the boss does not care which one it is in. */
+function pendingAll() {
+  const all = { cards: [], slices: [], merges: [], asks: [] };
+  for (const p of state.projects) {
+    const w = pending(p.id);
+    for (const k of Object.keys(all)) all[k].push(...w[k]);
+  }
+  return all;
+}
+
+/** Where the PR lives, so "go and merge it" is one click rather than a hunt. */
+function prUrl(g) {
+  const proj = state.projects.find((p) => p.id === g.project_id);
+  const remote = proj?.remote ?? "";
+  const m = /github\.com[:/]+([^/]+)\/(.+?)(?:\.git)?$/.exec(remote);
+  return m && g.pr_number ? `https://github.com/${m[1]}/${m[2]}/pull/${g.pr_number}` : null;
+}
+
+/* ------------------------------------------------------------------- home */
+
+/**
+ * Every project at once, plus what wants the boss across all of them.
+ *
+ * "谁在等我" does not care which project it is in, so the queue spans them and
+ * each row says where it came from. Entering a project is a deliberate step.
+ */
+function homeView() {
+  const rows = [...state.projects]
+    // Whatever wants something goes first: that is the reading order.
+    .sort((a, b) => countWaiting(b.id) - countWaiting(a.id))
+    .map((p) => {
+      const w = pending(p.id);
+      const n = countWaiting(p.id);
+      const gs = groupsOf(p.id);
+      const st = projectState(p.id);
+      const live = gs.filter((g) => ["RUNNING", "PLANNING"].includes(g.status));
+      const usd = gs.reduce((x, g) => x + (g.spent_usd || 0), 0);
+      const bits = [
+        w.cards.length ? `${w.cards.length} 张卡待批` : "",
+        w.slices.length ? `${w.slices.length} 片待查收` : "",
+        w.merges.length ? `${w.merges.length} 个待合入` : "",
+        w.asks.length ? `${w.asks.length} 个提问` : "",
+      ].filter(Boolean);
+      return `<div class="pcard ${n ? "mine" : ""}" onclick="go({p:${p.id},view:'board',g:null})">
+        <div>
+          <div class="pn">${esc(p.name)}</div>
+          <div class="pp trunc">${esc(p.repo_path)}</div>
+          ${n ? `<div class="pw">${bits.join(" · ")}</div>`
+              : `<div class="pq">${st.zh}</div>`}
+          ${live.length ? `<div class="prq trunc">在跑：${live.map((g) => esc(g.name)).join("、")}</div>` : ""}
+        </div>
+        <div class="nums">${gs.length} 个需求<br>${usd ? money(usd) : "$0.00"}</div>
+      </div>`;
+    }).join("");
+
+  return `${queueHtml(null)}
+    <h2 style="margin-top:2.25rem">项目 <span class="dim" style="font-weight:400;letter-spacing:0">${state.projects.length}</span></h2>
+    ${rows}
+    <button style="margin-top:.5rem" onclick="openPick()">＋ 添加项目</button>`;
 }
 
 /* ---------------------------------------------------------- 进展 (main view) */
@@ -540,7 +677,10 @@ function bandHtml(g, open) {
     ${needs ? draftHtml(g)
       : slices.length ? slices.map((s) => laneHtml(s, g, open)).join("")
       : '<div class="none" style="margin-top:.5rem">还没有切片</div>'}
-    ${asksOf(g.id).map(askHtml).join("")}
+    ${(() => {
+      const a = asksOf(g.id);
+      return a.length ? `<h2 style="margin-top:1.5rem">待你决策</h2>${a.map(askHtml).join("")}` : "";
+    })()}
   </section>`;
 }
 
@@ -574,10 +714,15 @@ function actionsHtml(g) {
  * who could then work out which one broke main.
  */
 function mergeHtml(g) {
-  if ((state.mergeQueue ?? []).some((m) => m.grpId === g.id)) {
-    return `<button class="go" onclick="landed(${g.id})">已合入</button>`;
+  if (!(state.mergeQueue ?? []).some((m) => m.grpId === g.id)) {
+    return g.status === "PR_OPEN" ? `<span class="pill">排队中</span>` : "";
   }
-  return g.status === "PR_OPEN" ? `<span class="pill">排队中</span>` : "";
+  // Two separate things, and conflating them is why the old single button was
+  // unreadable: merging happens on GitHub, and this only tells the orchestrator
+  // it happened so the group can wind up and the queue can release the next one.
+  const url = prUrl(g);
+  return `${url ? `<a class="btn" href="${url}" target="_blank" rel="noreferrer">打开 PR ↗</a>` : ""}
+    <button class="go" onclick="landed(${g.id})" title="在 GitHub 上 merge 之后点这里：本组收尾，队列放行下一个">确认已合入</button>`;
 }
 
 function laneHtml(s, g, open) {
@@ -631,28 +776,26 @@ function askHtml(e) {
 }
 
 function draftHtml(g) {
-  // The card the Dispatcher filed, editable in place. An empty box asking for
-  // approval would be asking the boss to approve something unseen.
   const filed = (state.draftCards ?? []).find((c) => c.grpId === g.id)?.body ?? "";
   const idea = (state.ideas ?? []).find((i) => i.grpId === g.id)?.body ?? "";
   // An objection that arrived after the card was filed. Without this the card
   // reads 反对 : 无 and the boss approves a plan somebody had already argued with.
   const late = (state.lateObjections ?? []).filter((o) => o.grpId === g.id);
+  const said = idea ? `<div class="said">${esc(idea)}</div>` : "";
+
+  // Nothing to approve yet. Offering an empty textarea and an approve button asks
+  // the boss to sign off on nothing, which is why this screen read as "我该干嘛".
+  if (!filed) {
+    return `${said}<div class="pending"><i></i>Dispatcher 正在写计划卡，写完出现在这里</div>`;
+  }
+
   const rows = Math.max(7, filed.split("\n").length + 1);
-  // Your own words next to the plan: the only thing that makes "is this aimed at
-  // what I asked for" a 20-second question instead of a re-read.
-  return `${idea ? `<div class="said">${esc(idea)}</div>` : ""}
+  return `${said}
     ${late.map((o) => `<div class="objection"><em>${esc(o.author)} 后补反对</em> ${esc(o.body)}</div>`).join("")}
-    ${filed ? "" : '<div class="none" style="margin-bottom:.5rem">计划卡未提交</div>'}
-    <textarea id="card-${g.id}" rows="${rows}" aria-label="计划卡" placeholder="目标 : …
-不做 : …
-验收 : …
-切片 : 标题 [normal] — 怎么验收
-风险 : …
-反对 : 无">${esc(filed)}</textarea>
-    <div class="row" style="margin-top:.625rem">
+    <textarea id="card-${g.id}" rows="${rows}" aria-label="计划卡">${esc(filed)}</textarea>
+    <div class="row" style="margin-top:.75rem">
       <button class="go" onclick="approve(${g.id})">批准开工</button>
-      <input id="why-${g.id}" class="grow" placeholder="退回理由" aria-label="打回理由" />
+      <input id="why-${g.id}" class="grow" placeholder="退回理由" aria-label="退回理由" />
       <button onclick="reject(${g.id})">退回重拆</button>
     </div>`;
 }
@@ -687,19 +830,6 @@ function projectState(p) {
   return { zh: "都做完了", cls: "" };
 }
 
-function projectsHtml() {
-  return `<h2>项目</h2><div class="plist">${state.projects.map((p) => {
-    const st = projectState(p.id);
-    const gs = groupsOf(p.id);
-    const usd = gs.reduce((n, g) => n + (g.spent_usd || 0), 0);
-    return `<div class="prow ${p.id === sel.p ? "on" : ""}" onclick="go({p:${p.id},g:null})">
-      <div><div class="pn">${esc(p.name)}</div><div class="pp trunc">${esc(p.repo_path)}</div></div>
-      <span class="ps ${st.cls}">${st.zh}</span>
-      <span class="ps">${gs.length ? `${gs.length} 个需求` : ""}</span>
-      <span class="meta" style="text-align:right">${usd ? money(usd) : ""}</span>
-    </div>`;
-  }).join("")}</div>`;
-}
 
 function boardView() {
   if (!state.projects.length) return setupHtml();
@@ -714,12 +844,12 @@ function boardView() {
       <div class="row"><input id="idea" class="grow" placeholder="例：登录页加「记住我」" aria-label="想法" />
         <button class="go" id="drop">提交</button></div>
     </div>` : ""}`;
-  return projectsHtml() + bar + queueHtml() + pipelineHtml(gs);
+  return bar + queueHtml(sel.p) + pipelineHtml(gs);
 }
 
 /** Everything waiting on the boss, in one list, with its action on the row. */
-function queueHtml() {
-  const w = pending(sel.p);
+function queueHtml(projectId) {
+  const w = projectId ? pending(projectId) : pendingAll();
   const rows = [];
   for (const g of w.cards) {
     const filed = (state.draftCards ?? []).find((c) => c.grpId === g.id)?.body ?? "";
@@ -736,8 +866,14 @@ function queueHtml() {
        <button onclick="sliceReject(${s.id})">不满意</button>`, "", s.grp_id));
   }
   for (const m of w.merges) {
-    rows.push(qrow("PR", esc(m.name), esc(m.branch ?? ""),
-      `<button class="go" onclick="landed(${m.grpId})">已 merge</button>`, "", m.grpId));
+    // Two different actions, and the old single button hid that: GitHub does the
+    // merging, this only tells the orchestrator it happened.
+    const g = state.groups.find((x) => x.id === m.grpId);
+    const url = g ? prUrl(g) : null;
+    rows.push(qrow("PR", esc(m.name), `${esc(m.branch ?? "")}${url ? "" : " · 未找到 PR 链接"}`,
+      `${url ? `<a class="btn" href="${url}" target="_blank" rel="noreferrer">打开 PR ↗</a>` : ""}
+       <button class="go" onclick="landed(${m.grpId})" title="在 GitHub 上 merge 之后点这里：本组收尾，队列放行下一个">确认已合入</button>`,
+      "", m.grpId));
   }
   for (const e of w.asks) {
     const g = state.groups.find((x) => x.id === e.grp_id);
@@ -1012,20 +1148,65 @@ $("#sidetoggle").onclick = () => go({ side: !sel.side });
 
 /* ------------------------------------------------------------------- feed */
 
-// Buffered rather than appended straight to the DOM, so re-rendering a view never
-// wipes it. Chat is a sidebar here, never the spine.
+// Buffered rather than appended to the DOM, so re-rendering a view never wipes it
+// and the same frames can be filtered to whatever the boss is looking at.
 const frames = [];
 function pushFrame(f) {
   frames.push(f);
-  if (frames.length > 400) frames.splice(0, frames.length - 400);
+  if (frames.length > 600) frames.splice(0, frames.length - 600);
   paintFeeds();
 }
+
+const KIND = {
+  say: "say", boss_say: "say", escalation: "ask", state_change: "state",
+  tool_summary: "tool", gate_result: "state", commit: "state", note: "say", digest: "tool",
+};
+const clock = (ms) => {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+/**
+ * Scope follows the selection: a requirement when one is open, otherwise the
+ * project, otherwise everything. A feed that ignores where the boss is looking is
+ * a wall of unrelated lines.
+ */
+function feedScope() {
+  if (sel.g) {
+    const g = state.groups.find((x) => x.id === sel.g);
+    return { ids: new Set([sel.g]), label: `事件流 · ${g?.name ?? ""}` };
+  }
+  if (sel.view !== "home" && sel.p) {
+    const ids = new Set(groupsOf(sel.p).map((g) => g.id));
+    const p = state.projects.find((x) => x.id === sel.p);
+    return { ids, label: `事件流 · ${p?.name ?? ""}` };
+  }
+  return { ids: null, label: "事件流 · 全部" };
+}
+
 function paintFeeds() {
   const el = $("#feed-all");
   if (!el) return;
-  const rows = frames.slice(-140).reverse()
-    .map((f) => `<div class="${f.partial ? "partial" : "said-by"}">${esc(f.text)}</div>`).join("");
-  el.innerHTML = rows || '<div class="none">无事件</div>';
+  const { ids, label } = feedScope();
+  const head = $("#feedscope");
+  if (head) head.textContent = label;
+
+  // Unscoped frames (a standing agent with no group) are kept: they are usually
+  // the Architect or the CoS answering, which is exactly the exchange being read.
+  const shown = frames.filter((f) => !ids || f.grpId == null || ids.has(f.grpId)).slice(-160).reverse();
+  if (!shown.length) return void (el.innerHTML = '<div class="none">无事件</div>');
+
+  let prev = null;
+  el.innerHTML = shown.map((f) => {
+    const same = prev && prev.author === f.author && prev.at - f.at < 60_000;
+    prev = f;
+    const to = f.target ? `<span class="to"> → ${esc(f.target)}</span>` : "";
+    const tag = f.intent && f.intent !== "inform" ? `<span class="tag">${esc(f.intent)}</span>` : "";
+    return `<div class="ev ${f.cls}${same ? " same" : ""}${f.author === "boss" ? " boss" : ""}">
+      <span class="when">${same ? "" : clock(f.at)}</span>
+      <div>${same ? "" : `<span class="who">${esc(f.author)}</span>${to}${tag} `}<span class="what">${esc(f.text)}</span></div>
+    </div>`;
+  }).join("");
 }
 
 function conn(cls, label) {
@@ -1043,19 +1224,28 @@ function connect() {
   es.onerror = () => conn("off", "重连中");
   es.onmessage = (m) => {
     const f = JSON.parse(m.data);
+    const at = f.at ?? Date.now();
     if (f.type === "live") {
       if (f.kind === "text" || f.kind === "thinking") {
         // Coalesce token-by-token text into one growing line.
         const last = frames[frames.length - 1];
-        if (last && last.partial && last.agentId === f.agentId) {
-          last.text = (last.text + f.body).slice(-400);
+        if (last && last.cls === "partial" && last.agentId === f.agentId) {
+          last.text = (last.text + f.body).slice(-300);
           return paintFeeds();
         }
-        return pushFrame({ partial: true, agentId: f.agentId, text: f.body });
+        return pushFrame({ cls: "partial", agentId: f.agentId, grpId: f.grpId ?? null, at, author: f.role ?? "agent", text: f.body });
       }
-      return pushFrame({ partial: true, agentId: f.agentId, text: `· ${f.body}` });
+      return pushFrame({ cls: "tool", agentId: f.agentId, grpId: f.grpId ?? null, at, author: f.role ?? "agent", text: f.body });
     }
-    pushFrame({ text: `${f.author} ${f.kind}${f.intent ? "/" + f.intent : ""}: ${f.body}` });
+    pushFrame({
+      cls: KIND[f.kind] ?? "say",
+      grpId: f.grpId ?? null,
+      at,
+      author: f.author,
+      target: f.target ?? null,
+      intent: f.intent ?? null,
+      text: f.body,
+    });
     if (["state_change", "escalation", "note"].includes(f.kind)) refresh();
   };
 }

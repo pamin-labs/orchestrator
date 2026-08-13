@@ -31,6 +31,8 @@ export interface LiveFrame {
   type: "live";
   grpId: number | null;
   agentId: number | null;
+  /** Who is talking. Without it the desk wall and the timeline say "agent". */
+  role?: string;
   kind: "text" | "thinking" | "tool" | "status";
   body: string;
 }
