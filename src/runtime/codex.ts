@@ -174,6 +174,7 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
       } catch {
         continue;
       }
+      log?.write(JSON.stringify(trimItem(l)) + "\n");
 
       switch (l.type) {
         case "thread.started":
@@ -217,6 +218,26 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
           };
           result.ok = true;
           result.terminalReason = "completed";
+          break;
+        }
+        case "token_count": {
+          // The only place either CLI hands over a real quota percentage. primary
+          // is the 5-hour window (299 minutes), secondary the weekly one (10079).
+          // The same event carries the model's real context window, which is the
+          // denominator session rotation needs — 272000 for the gpt-5.6 family.
+          if (l.info?.model_context_window) result.contextWindow = l.info.model_context_window;
+          const { primary, secondary } = l.rate_limits ?? {};
+          if (primary || secondary) {
+            const now = Math.floor(Date.now() / 1000);
+            result.rateLimit = {
+              status: "allowed",
+              rateLimitType: "five_hour",
+              resetsAt: now + (primary?.resets_in_seconds ?? 0),
+              fiveHourPercent: primary?.used_percent,
+              weeklyPercent: secondary?.used_percent,
+              weeklyResetsAt: secondary ? now + (secondary.resets_in_seconds ?? 0) : undefined,
+            };
+          }
           break;
         }
         case "turn.failed":
