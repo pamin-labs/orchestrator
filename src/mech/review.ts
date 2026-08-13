@@ -107,6 +107,7 @@ export async function runDeterministicReview(
     cwd: grp?.worktree ?? repo ?? process.cwd(),
     dataDir: cfg.dataDir,
     sliceId,
+    timeoutMs: cfg.leaseTimeoutMs,
   });
   recordGate(ctx.db, sliceId, "gate", out.pass ? "pass" : "fail");
   ctx.bus.emit({
@@ -343,6 +344,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
     cwd: grp.worktree ?? process.cwd(),
     dataDir: cfg.dataDir,
     sliceId: 0,
+    timeoutMs: cfg.leaseTimeoutMs,
   });
   if (!gateOut.pass) {
     ctx.bus.emit({

@@ -83,6 +83,7 @@ export interface RunGatesOptions {
   sliceId: number;
   /** Injected in tests. */
   run?: typeof runResource;
+  timeoutMs?: number;
 }
 
 /**
@@ -117,7 +118,7 @@ export async function runGates(opts: RunGatesOptions): Promise<GateOutcome> {
       break;
     }
     const logPath = join(logDir, `${opts.sliceId}-${name}.log`);
-    const out = await run(def, {}, { cwd: opts.cwd, logPath });
+    const out = await run(def, {}, { cwd: opts.cwd, logPath, timeoutMs: opts.timeoutMs });
     if (!("digest" in out)) {
       results.push({ name, pass: false, exitCode: 126, errorLines: [out.error] });
       break;

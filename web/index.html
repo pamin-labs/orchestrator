@@ -369,14 +369,14 @@
 <nav id="nav"></nav>
 
 <dialog id="pick">
-  <div class="dtitle"><b>挑一个代码文件夹</b><span class="none" id="pickhint">带 git 的会排在前面</span></div>
+  <div class="dtitle"><b>选择仓库</b><span class="none" id="pickhint">git 仓库排在前面</span></div>
   <div class="crumbs" id="crumbs"></div>
   <div class="dlist" id="dlist"></div>
   <div class="dfoot">
-    <input id="pname" placeholder="项目名（默认用文件夹名）" style="max-width:12rem" aria-label="项目名" />
+    <input id="pname" placeholder="项目名，默认取目录名" style="max-width:12rem" aria-label="项目名" />
     <span class="grow"></span>
     <button onclick="document.getElementById('pick').close()">取消</button>
-    <button class="go" id="pickok">就用这个</button>
+    <button class="go" id="pickok">选择此目录</button>
   </div>
 </dialog>
 
@@ -479,7 +479,7 @@ function render() {
     const n = Object.values(pending(p.id)).reduce((a, x) => a + x.length, 0);
     return `<button class="${p.id === sel.p ? "on" : ""}" onclick="go({p:${p.id},g:null})">${esc(p.name)}${
       n ? `<span class="mono t-xs" style="color:var(--accent)"> ${n}</span>` : ""}</button>`;
-  }).join("") + `<button class="quiet" title="再加一个代码文件夹" onclick="openPick()">＋</button>`;
+  }).join("") + `<button class="quiet" title="添加项目" onclick="openPick()">＋</button>`;
 
   const w = pending(sel.p);
   const waiting = w.cards.length + w.slices.length + w.merges.length + w.asks.length;
@@ -509,7 +509,7 @@ function progressView() {
   return `<button class="quiet" style="margin-bottom:.75rem" onclick="go({view:'board',g:null})">← 概览</button>` +
     (gs.length
       ? shown.map((g) => bandHtml(g, !!sel.g)).join("")
-      : '<div class="none">这个项目还没有需求。回概览点「＋ 新需求」。</div>');
+      : '<div class="none">该项目暂无需求。概览页「＋ 新需求」添加。</div>');
 }
 
 
@@ -695,13 +695,13 @@ function boardView() {
   const gs = groupsOf(sel.p);
   const bar = `<div class="newbar">
       <button class="go" onclick="go({adding:${!sel.adding}})">${sel.adding ? "取消" : "＋ 新需求"}</button>
-      <span class="none">${gs.length ? `${gs.length} 个需求` : "还没有需求"}</span>
+      <span class="none">${gs.length ? `${gs.length} 个需求` : "无需求"}</span>
     </div>
     ${sel.adding ? `<div class="setup" style="margin-bottom:1.25rem">
-      <b>想要什么？一句话</b>
-      <div class="why">不用写文档。它自己读代码、自己拆，然后给你一张卡；你不点同意，一行代码都不会写。</div>
-      <div class="row"><input id="idea" class="grow" placeholder="例：登录页加个「记住我」" aria-label="想法" />
-        <button class="go" id="drop">交给它</button></div>
+      <b>新需求</b>
+      <div class="why">一句话即可。产出一张计划卡等你同意，同意前不写代码。</div>
+      <div class="row"><input id="idea" class="grow" placeholder="例：登录页加「记住我」" aria-label="想法" />
+        <button class="go" id="drop">提交</button></div>
     </div>` : ""}`;
   return projectsHtml() + bar + queueHtml() + pipelineHtml(gs);
 }
@@ -736,7 +736,7 @@ function queueHtml() {
   }
   if (!rows.length) {
     return `<div class="queue clear"><div class="qhead">等你</div>
-      <div class="qclear"><b>都处理完了。</b> 有要你决定的会出现在这儿，也会弹通知，不用盯着。</div></div>`;
+      <div class="qclear"><b>无待办。</b> 需要决策时出现在这里，并发通知。</div></div>`;
   }
   return `<div class="queue"><div class="qhead">等你 ${rows.length}</div>${rows.join("")}</div>`;
 }
@@ -761,9 +761,9 @@ function pipelineHtml(gs) {
     const doing = agentsOf(g.id).filter((a) => a.state === "running")
       .map((a) => `${a.role} ▸ ${a.activity || ""}`)[0];
     let mid;
-    if (g.status === "PLANNING") mid = `<span class="plan">在读代码、问 Architect，还没交卡</span>`;
-    else if (g.status === "DRAFT") mid = `<span class="plan">计划卡写好了，等你同意</span>`;
-    else if (!slices.length) mid = `<span class="plan">没有切片</span>`;
+    if (g.status === "PLANNING") mid = `<span class="plan">拆解中，未出卡</span>`;
+    else if (g.status === "DRAFT") mid = `<span class="plan">计划卡已提交，等你同意</span>`;
+    else if (!slices.length) mid = `<span class="plan">无切片</span>`;
     else mid = `<div class="track2">${slices.map(segHtml).join("")}</div>`;
     return `<div class="pipe" onclick="go({view:'progress',g:${g.id}})">
       <div>
@@ -799,8 +799,8 @@ function segHtml(s) {
 /** No project yet: one panel with the one field it needs, not a tutorial page. */
 function setupHtml() {
   return `<div class="setup">
-    <b>先挑一个代码文件夹</b>
-    <div class="why">挑完它自己进去看怎么跑测试、代码什么风格，有毛病当场说。之后你只做三件事：同意计划、查收、merge。</div>
+    <b>添加项目</b>
+    <div class="why">需要一个本地 git 仓库。注册时自动检查：测试怎么跑、能不能开 PR。</div>
     <button class="go" onclick="openPick()">挑文件夹…</button>
   </div>`;
 }
@@ -810,7 +810,7 @@ function setupHtml() {
 function deskView() {
   const ids = new Set(groupsOf(sel.p).map((g) => g.id));
   const rows = state.agents.filter((a) => !a.grp_id || ids.has(a.grp_id));
-  if (!rows.length) return '<div class="none">还没人上班</div>';
+  if (!rows.length) return '<div class="none">无在职 agent</div>';
   return `<table><thead><tr>
       <th>角色</th><th>在哪个需求</th><th>正在做什么</th><th>model</th><th>权限</th>
       <th class="num">本轮 token</th><th class="num">花了</th>
@@ -835,7 +835,7 @@ function deskView() {
 function ownsView() {
   const gs = groupsOf(sel.p).filter((g) => owns(g).length);
   if (!gs.length) {
-    return '<div class="none">还没有需求划过边界。Architect 在开工前切，这样两个组不会改到同一个文件。</div>';
+    return '<div class="none">暂无边界划分。开工前由 Architect 划定，避免两个需求改同一批文件。</div>';
   }
   // Overlap is what this view is for: two groups owning the same path is the exact
   // thing file ownership exists to prevent, so it gets named rather than implied.
@@ -855,14 +855,14 @@ function ownsView() {
     ${pairs.length
       ? `<h3 class="clash">有重叠，不能同时开工</h3>` + pairs.map(([a, b, hit]) =>
           `<div class="t-sm clash">${esc(a)} 和 ${esc(b)}：<span class="mono">${hit.map(esc).join(" ")}</span></div>`).join("")
-      : `<h3>没有重叠</h3><div class="none">两两之间没有共同路径，可以并行。</div>`}`;
+      : `<h3>无重叠</h3><div class="none">路径两两不相交，可并行。</div>`}`;
 }
 
 /* ---------------------------------------------------------------- 成本 */
 
 function costView() {
   if (!cost || !cost.total || !cost.total.usd) {
-    return '<div class="none">还没花钱。开工之后这里按需求、切片、角色三个维度算给你看。</div>';
+    return '<div class="none">暂无支出。开工后按需求 / 切片 / 角色 / 难度分列。</div>';
   }
   // A cache ratio that suddenly drops is the only visible sign that prompt
   // assembly broke: agents keep working, tests keep passing, turns cost 3-5x.
@@ -924,11 +924,11 @@ async function loadDirs(path) {
         onclick="${x.repo && !x.taken ? `pickThis('${esc(x.path)}','${esc(x.name)}')` : `loadDirs('${esc(x.path)}')`}">
         <span class="ic">${x.repo ? "◆" : "▸"}</span>
         <span class="nm trunc">${esc(x.name)}</span>
-        <span class="none">${x.taken ? "已经加过了" : x.repo ? "git 仓库 · 点选它" : ""}</span>
+        <span class="none">${x.taken ? "已添加" : x.repo ? "git 仓库 · 选择" : ""}</span>
       </div>`).join("")
     : '<div class="none" style="padding:.875rem">这个文件夹里没有子文件夹</div>';
 
-  $("#pickhint").textContent = d.repo ? "当前这个文件夹本身就是 git 仓库，可以直接用" : "带 git 的会排在前面";
+  $("#pickhint").textContent = d.repo ? "当前目录即 git 仓库" : "git 仓库排在前面";
   $("#pickok").disabled = !d.repo;
   $("#pickok").onclick = () => submitPick(d.path, parts[parts.length - 1] ?? "project");
 }
@@ -1014,7 +1014,7 @@ function paintFeeds() {
   if (!el) return;
   const rows = frames.slice(-140).reverse()
     .map((f) => `<div class="${f.partial ? "partial" : "said-by"}">${esc(f.text)}</div>`).join("");
-  el.innerHTML = rows || '<div class="none">还没动静</div>';
+  el.innerHTML = rows || '<div class="none">无事件</div>';
 }
 
 function conn(cls, label) {

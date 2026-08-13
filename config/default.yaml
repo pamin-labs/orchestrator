@@ -10,13 +10,22 @@ difficultyModel:
   normal: claude-sonnet-5
   hard: claude-opus-5
 
-turnTimeoutMs: 600000     # 10 min wall clock per turn
-maxTurnsPerJob: 30
+# 20 min. Measured on a toy fixture repo the longest single turn was 8.2 min, so
+# 10 min left under 2x headroom before the watchdog killed productive work.
+turnTimeoutMs: 1200000
+# 60. Measured max on a toy fixture was 19 tool rounds in one turn; a real slice
+# with a test-fix loop goes well past 30.
+maxTurnsPerJob: 60
 sessionRotateFraction: 0.6  # fallback; the real trigger is slice completion
 ctxBudgetChars: 16000     # ~4k tokens
 parkAfterPausedMs: 7200000
 watchdogIntervalMs: 30000   # how often the deterministic rules run
 gateRetries: 2
+
+# 3h for one leased command. A big project's compile is hours; without a limit at
+# all a hung build holds the lease slot forever, and lease slots are global and
+# few, so one wedged command stops every group from gating again.
+leaseTimeoutMs: 10800000
 
 # Where group worktrees live. Outside $HOME on purpose: the sandbox is deny-only,
 # so denying $HOME is how writes get confined (docs/decisions/001).
