@@ -51,6 +51,17 @@ const RULES: Rule[] = [
       // whatever the project actually uses, not whatever we like.
       const runner = hasFile(repo, "bun.lock") || hasFile(repo, "bun.lockb") ? "bun" : "npm";
       const out: DetectedGate[] = [];
+      // First, and before the tests: a suite that serves a built bundle otherwise
+      // tests whichever bundle happened to be lying there. In a worktree that was
+      // the main checkout's, so a group's own UI change was invisible to its own
+      // gate — and on the boss's machine a deleted button survived a rebuild.
+      if (scripts["build:web"]) {
+        out.push({
+          name: "build",
+          template: runner === "bun" ? "bun run build:web" : "npm run build:web",
+          errorRegex: "(error|ERROR|failed)",
+        });
+      }
       if (scripts.test) {
         out.push({
           name: "test",

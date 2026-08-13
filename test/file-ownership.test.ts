@@ -128,13 +128,20 @@ const tree: Record<string, string[]> = {
   "": ["src", "web", "docs", ".git", "README.md"],
   src: ["auth", "ui", "db"],
   "src/auth": ["mw.ts", "tokens.ts"],
+  web: ["src", "dist", "index.html"],
 };
 const listDir = (rel: string) => tree[rel] ?? [];
 
 test("denial walks down the owned path, not just the top level", () => {
   const deny = denyOutsideOwns("/wt/g1", ["src/auth/**"], listDir);
-  expect(deny).toContain("/wt/g1/web/**");
   expect(deny).toContain("/wt/g1/docs/**");
+  // `web` holds the build output, so it is denied entry by entry instead of whole:
+  // the build gate runs for every group and has to be able to write what the gate
+  // then checks, and allowWrite cannot carve a hole in a broader denyWrite.
+  expect(deny).toContain("/wt/g1/web/src/**");
+  expect(deny).toContain("/wt/g1/web/index.html");
+  expect(deny).not.toContain("/wt/g1/web/**");
+  expect(deny.some((d) => d.includes("/web/dist"))).toBe(false);
   // The case top-level-only denial missed, and the likeliest place to wander: a
   // sibling module one level in.
   expect(deny).toContain("/wt/g1/src/ui/**");
@@ -154,9 +161,10 @@ test("files are denied as well as directories", () => {
 test("a wildcard stops the walk — everything below it is owned", () => {
   expect(denyOutsideOwns("/wt/g1", ["**/*.ts"], listDir)).toEqual([]);
   const src = denyOutsideOwns("/wt/g1", ["src/*"], listDir);
-  expect(src).toContain("/wt/g1/web/**");
-  // Nothing inside src is denied: the group owns all of it.
-  expect(src.some((d) => d.includes("/src/"))).toBe(false);
+  expect(src).toContain("/wt/g1/web/src/**");
+  // Nothing inside the owned src is denied: the group owns all of it. (`web/src`
+  // is a different directory and stays denied.)
+  expect(src.some((d) => d.startsWith("/wt/g1/src/"))).toBe(false);
 });
 
 test("two owned paths keep both branches writable", () => {

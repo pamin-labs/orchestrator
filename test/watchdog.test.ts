@@ -5,7 +5,18 @@ import { openMemory, type DB } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
 import { Notifier, notifiable, tierFor, batchForBoss } from "../src/mech/notify.ts";
 import { pause, resume, settlePausing, park } from "../src/mech/intercept.ts";
-import { recordTurnOutcome, runWatchdog, IDLE_TURN_LIMIT, SAME_FILE_LIMIT } from "../src/mech/watchdog.ts";
+import {
+  DROP_AFTER_MS,
+  GZIP_AFTER_MS,
+  recordTurnOutcome,
+  runWatchdog,
+  sweepTurnLogs,
+  IDLE_TURN_LIMIT,
+  SAME_FILE_LIMIT,
+} from "../src/mech/watchdog.ts";
+import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Scheduler } from "../src/scheduler.ts";
 import type { Ctx } from "../src/api.ts";
 
@@ -657,4 +668,26 @@ test("a stale PR branch is told to rebase too, and the base comes from the remot
   expect((await runWatchdog(deps)).map((x) => x.rule)).toContain("base_moved");
   expect(seen.some((a) => a[0] === "fetch")).toBe(true);
   expect(seen.some((a) => a[0] === "rev-parse" && a[1] === "origin/main")).toBe(true);
+});
+
+test("turn logs are compressed after a day and dropped after two weeks", () => {
+  // Ten requirements produced 123 MB of raw NDJSON — median 324 KB a turn, 3 MB at
+  // the tail — because a transcript is mostly tool output written verbatim. Worth
+  // keeping (every measurement in PROGRESS came out of these), not worth keeping
+  // uncompressed.
+  const dir = mkdtempSync(join(tmpdir(), "orch-logs-"));
+  const now = 10 * DROP_AFTER_MS;
+  writeFileSync(join(dir, "1.jsonl"), "x".repeat(5000));
+  writeFileSync(join(dir, "2.jsonl"), "y".repeat(5000));
+  writeFileSync(join(dir, "3.jsonl.gz"), "old");
+  utimesSync(join(dir, "1.jsonl"), 0, (now - GZIP_AFTER_MS * 2) / 1000);
+  utimesSync(join(dir, "3.jsonl.gz"), 0, (now - DROP_AFTER_MS * 2) / 1000);
+
+  const r = sweepTurnLogs(dir, now);
+  expect(r).toEqual({ zipped: 1, dropped: 1 });
+  expect(existsSync(join(dir, "1.jsonl.gz"))).toBe(true);
+  expect(existsSync(join(dir, "1.jsonl"))).toBe(false);
+  // Today's turn is left alone: it is still being written to.
+  expect(existsSync(join(dir, "2.jsonl"))).toBe(true);
+  expect(existsSync(join(dir, "3.jsonl.gz"))).toBe(false);
 });
