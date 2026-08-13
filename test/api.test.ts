@@ -214,7 +214,8 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
 切片 : b [trivial] — b 的回归用例绿
 切片 : c [hard] — 端到端场景通过
 风险 : none
-反对 : 无`;
+反对 : 无
+名字 : group-approval-planning`;
   // Filing the card is what moves the group to DRAFT, and DRAFT blocks.
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
@@ -398,7 +399,8 @@ test("filing the card drops the group's other queued planning turns", async () =
 切片 : b [trivial] — b 的回归用例绿
 切片 : c [hard] — 端到端场景通过
 风险 : none
-反对 : 无`;
+反对 : 无
+名字 : draft-cancels-queue`;
   await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
 
   // DRAFT is not dispatchable, so a leftover planning turn would sit pending
@@ -440,7 +442,8 @@ test("a group can be named instead of numbered, everywhere it is referenced", as
 切片 : b [trivial] — b 的回归用例绿
 切片 : c [hard] — 端到端场景通过
 风险 : none
-反对 : 无`;
+反对 : 无
+名字 : group-by-name`;
   // An agent reaches for the name it can see — one was observed running
   // `orch draft greet -` — and refusing that teaches it nothing.
   const filed = await post(app, "/orch/draft", { group_id: name, card }, "tok-disp");
@@ -466,7 +469,8 @@ test("the state snapshot carries the filed card so the boss can see what they ap
 切片 : zh 词条 [trivial] — 断言通过
 切片 : 类型导出 [normal] — 类型检查过
 风险 : 无
-反对 : 无`;
+反对 : 无
+名字 : state-carries-card`;
   await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
 
   const s = (await (await get(app, "/api/state")).json()) as any;
@@ -563,7 +567,7 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
   db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grp_id]);
   db.run(
     "INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, ?, 'fact', 'zh', ?, ?, 0)",
-    [grp_id, card + "\n风险 : 无\n反对 : 无", JSON.stringify({ draft_card: true })],
+    [grp_id, card + "\n风险 : 无\n反对 : 无\n名字 : boundary-block-approval", JSON.stringify({ draft_card: true })],
   );
 
   const held = await post(app, `/api/draft/${grp_id}/approve`);
@@ -610,7 +614,8 @@ async function blocked(h: ReturnType<typeof harness>) {
 切片 : b [trivial] — b 的回归用例绿
 切片 : c [hard] — 端到端场景通过
 风险 : 无
-反对 : 无`,
+反对 : 无
+名字 : held-group-reapprove`,
       JSON.stringify({ draft_card: true }),
     ],
   );
