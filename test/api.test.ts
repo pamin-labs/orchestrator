@@ -1061,3 +1061,32 @@ test("a live group that owns the path gets it as an addition, not a rival group"
   expect(p.role).toBe("pm");
   expect(p.rejection).toContain("package.json");
 });
+
+test("a question no answer can resolve becomes a requirement, and the group waits for it", async () => {
+  // The commonest blocker on the queue is one no answer resolves: a config file is
+  // wrong, four groups are red on one line. Answering means typing the fix into a
+  // chat box for an agent that is not allowed to apply it, so these sat in 待办
+  // until the boss did the work by hand.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = 1 WHERE id = 1");
+  h.db.run(
+    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+     VALUES (1, 'blocker', 'S1 连续 3 次没过闸门，根因是 tsconfig.json 少一行', 'boss', 0)`,
+  );
+
+  const r = await post(h.app, "/api/escalations/1/requirement", { text: "加 allowImportingTsExtensions" });
+  expect(r.status).toBe(200);
+  const { grp_id } = (await r.json()) as { grp_id: number };
+
+  const made = h.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!;
+  expect(made.status).toBe("PLANNING");
+  // The question is closed with a pointer, not left as a second thing to remember.
+  const esc = h.db.query<{ answer: string; chain_state: string }, []>("SELECT answer, chain_state FROM escalation").get()!;
+  expect(esc.chain_state).toBe("answered");
+  expect(esc.answer).toContain(String(grp_id));
+  // And the stopped group comes back by itself when that lands — same mechanism
+  // as `orch blocked`, so this is not a new thing to remember either.
+  expect(h.db.query<{ blocked_on: number | null }, []>("SELECT blocked_on FROM grp WHERE id = 1").get()!.blocked_on).toBe(
+    grp_id,
+  );
+});
