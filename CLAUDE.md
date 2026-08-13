@@ -39,7 +39,7 @@ bun test test/xxx.test.ts     # 单个
 
 **没有 mail 表**（合入 `event`）。**没有独立的 group 实体**（= task 子树 + branch + worktree + roster + 预算）。
 
-## 三条不许违反的硬约束
+## 不许违反的硬约束
 
 1. **注入的 delta 一律追加到最新一条 user message 末尾。** 塞进 system prompt 或历史前部会击穿 prompt cache，成本翻 3-5 倍且功能完全正常 —— 最隐蔽的故障。所有 prompt 组装必须走 `src/prompt/assemble.ts`，回归测试是 `test/cache-position.test.ts`。
 2. **`orch lease` 永不接受自由命令。** 资源是 `resource` 表里预定义的模板，agent 只能选资源名 + 传经 `arg_schema` 校验的参数。Runner 跑在 host 上有真权限，这是沙盒的唯一缺口。
@@ -47,6 +47,11 @@ bun test test/xxx.test.ts     # 单个
 4. **组件行为不许自己造。** dialog / menu / toast / 命令面板 一律用 shadcn（Radix + cmdk + sonner）。手写过一遍 confirm、toast、下拉，结果是没有焦点陷阱、Esc 不响应、aria 全缺 —— 视觉语言是我们的（`DESIGN.md`），行为不是我们该发明的。加组件先看 shadcn 有没有。
 5. **要老板做的决定必须把证据摆在按钮旁边。** 查收给 diff + QA 判词 + 闸门日志；不可逆动作（确认已合入）先让服务端向 GitHub 核对；被卡住的状态（预算烧穿、退回的 DRAFT、代答）必须有出路按钮。只给标题就让人批 = 橡皮图章，前面三道闸白跑。
 6. **`if` 和 prompt 说的话必须一致，不一致时模型听 `if`。** 改校验器时同步改对应的 role prompt，反过来也一样。实测：dispatcher prompt 写着「真的不可分就交一片，凑三片更糟」，而校验器拒收 1-2 片 —— 模型只能凑，还把凑出来的切片当风险写在自己卡上。**prompt 给的许可如果校验器不认，就是在教模型撒谎。**
+7. **每个状态都必须有人推。** 加状态 = 在 `src/mech/invariants.ts` 加一行：什么必须成立 / 谁推它出去（`driver`）/ 需要的话一个幂等 repair。`src/mech/states.ts` 是唯一的状态清单，`test/invariants.test.ts` 断言两者对齐 —— 加了状态不填表，`bun test` 直接红。
+
+   为什么：**每一条 watchdog 规则都是一次事故换来的，而它们形状完全一样** —— 某个转移只有一条代码路径会触发，那条路径没跑，状态就永久停住，而且**看起来是健康的**（组 RUNNING、有 agent、哪儿都没报错）。实测过的：六个组卡在过期基线上；六个组卡在一个 `--settings` 路径 bug 上；一个组每片都查收了却没人把分支交出去；一个 PAUSED 却没有 `paused_at` 的组对所有定时器隐形。表把「又发现一个」变成「表里有个空格」。
+
+   **表里只放活性（liveness）：谁推。** 健康检查（turn 超时、原地打转、预算、env_suspect）留在 `watchdog.ts` —— 那是「它还好吗」，不是「有没有人在推它」。两者混在一起，任何一边都会变成垃圾堆。
 
 ## 代码风格
 
