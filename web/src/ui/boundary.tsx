@@ -25,7 +25,7 @@ export class Boundary extends Component<{ children: ReactNode }, { err: Error | 
         <CardBody>
           <CardTitle className="text-bad">这个视图崩了</CardTitle>
           <div className="mt-1 text-[0.75rem] text-ink-2">
-            界面版本和服务端可能不一致。重启服务（<span className="font-mono">bun run dev</span>）会一起重建前端。
+            界面和服务端版本可能不一致。重启服务（<span className="font-mono">bun run dev</span>）会重建前端。
           </div>
           <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-sunk p-2 font-mono text-[0.6875rem] text-ink-2">
             {err.message}
