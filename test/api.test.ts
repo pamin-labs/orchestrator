@@ -804,6 +804,36 @@ test("an unreadable path is an error with the reason, not an empty list", async 
   expect(await r.text()).toContain("no such file");
 });
 
+test("a closed PR whose branch cannot be reopened can still get a new one", async () => {
+  const { app, db, ctx } = harness();
+  db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, worktree = '/tmp/wt', branch = 'orch/g1' WHERE id = 1");
+  ctx.git = async () => ({ code: 0, out: "" });
+  ctx.gh = async (argv) => (argv[1] === "view" ? { code: 0, out: '{"number":9}' } : { code: 0, out: "created" });
+
+  const r = await post(app, "/api/groups/1/newpr");
+  expect(r.status).toBe(200);
+  expect((await r.json()).number).toBe(9);
+  const g = db
+    .query<{ status: string; pr_number: number; merge_seq: number }, []>(
+      "SELECT status, pr_number, merge_seq FROM grp WHERE id = 1",
+    )
+    .get()!;
+  expect(g.status).toBe("PR_OPEN");
+  expect(g.pr_number).toBe(9);
+  // Back in the queue, or it would be finished work nobody merges.
+  expect(g.merge_seq).toBeGreaterThan(0);
+});
+
+test("a failed second PR leaves the old number in place rather than none at all", async () => {
+  const { app, db, ctx } = harness();
+  db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, worktree = '/tmp/wt', branch = 'orch/g1' WHERE id = 1");
+  ctx.git = async () => ({ code: 1, out: "remote: Permission denied" });
+  ctx.gh = async () => ({ code: 0, out: "{}" });
+
+  expect((await post(app, "/api/groups/1/newpr")).status).toBe(422);
+  expect(db.query<{ pr_number: number }, []>("SELECT pr_number FROM grp WHERE id = 1").get()!.pr_number).toBe(7);
+});
+
 test("nobody confirms a merge by hand: GitHub is the only source, and it winds the group up", async () => {
   const { app, db, ctx } = harness();
   db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 7, worktree = '/tmp/wt', merge_seq = 1 WHERE id = 1");

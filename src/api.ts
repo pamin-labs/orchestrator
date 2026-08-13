@@ -17,7 +17,7 @@ import { dropGroup, startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
-import { preflightPr } from "./mech/prwatch.ts";
+import { openPr, prBody, preflightPr } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { gatesFor, recordGate } from "./mech/gate.ts";
 import { listSkills, skillNames } from "./mech/skills.ts";
@@ -1980,6 +1980,51 @@ const postGroupControl: Handler = async (ctx, req, params) => {
     case "park":
       park(ctx, grpId, "you parked it");
       return text("ok");
+    case "newpr": {
+      // A closed PR normally comes back by being reopened on GitHub, and the
+      // watchdog picks that up. But a PR cannot be reopened once its branch has
+      // been force-pushed or deleted, and sometimes the boss simply wants a clean
+      // one — without this the group is stuck holding a pr_number that openPr
+      // treats as "already done", so it could never get another.
+      const g = ctx.db
+        .query<{ name: string; repo: string; pr_number: number | null }, [number]>(
+          "SELECT g.name, p.repo_path AS repo, g.pr_number FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
+        )
+        .get(grpId);
+      if (!g) return text("no such group", 404);
+      if (!ctx.gh || !ctx.git) return bad("no gh runner on this server");
+      ctx.db.run("UPDATE grp SET pr_number = NULL WHERE id = ?", [grpId]);
+      const r = await openPr({
+        ctx,
+        gh: ctx.gh,
+        git: ctx.git,
+        repo: g.repo,
+        grpId,
+        title: `orch: ${g.name}`,
+        body: prBody(ctx, grpId),
+      });
+      if ("error" in r) {
+        // Put the old number back: a group with no PR and no way to open one is
+        // worse off than one whose PR is closed.
+        ctx.db.run("UPDATE grp SET pr_number = ? WHERE id = ?", [g.pr_number, grpId]);
+        return bad(r.error);
+      }
+      ctx.db.run("UPDATE grp SET status = 'PR_OPEN', paused_at = NULL WHERE id = ?", [grpId]);
+      joinQueue(ctx.db, grpId);
+      ctx.db.run(
+        `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = ?
+         WHERE grp_id = ? AND answer IS NULL AND question LIKE 'PR #%被关掉了%'`,
+        [`opened #${r.number} instead`, grpId],
+      );
+      ctx.bus.emit({
+        grpId,
+        author: "boss",
+        kind: "state_change",
+        body: `opened PR #${r.number} to replace the closed one`,
+        meta: { pr: r.number },
+      });
+      return json({ number: r.number });
+    }
     case "drop": {
       // 不做了. A requirement that turned out to be a duplicate, or that someone
       // else already fixed, had no way off the board: 退回重拆 sends it back to the
@@ -2495,7 +2540,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   // No `landed`: whether a PR is merged is GitHub's answer, and `pollPrs` asks it
   // every tick. A button for it was a boss confirming by hand what the server
   // already knew — and one mis-click dissolved a group whose PR was still open.
-  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|budget|drop)$/, postGroupControl],
+  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|budget|drop|newpr)$/, postGroupControl],
   ["GET", /^\/api\/slices\/(?<id>\d+)\/evidence$/, getEvidence],
   ["GET", /^\/api\/slices\/(?<id>\d+)\/gate\/(?<name>[\w.-]+)$/, getGateLog],
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],

@@ -57,4 +57,4 @@ autoAdvance: true
 # 四道闸（自评 / 对账 / 跑测试 / QA）全过之后自动查收的难度档。
 # 默认只有 trivial：前四层照跑，省掉的是第五层「你亲自看一眼」，而 trivial 正是那一眼
 # 最不值钱的档。normal / hard 仍然等你。
-autoAcceptTiers: ["trivial"]
+autoAcceptTiers: ["trivial", "normal"]

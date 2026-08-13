@@ -57,7 +57,12 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     )
     .get(grpId);
   if (!grp?.worktree || !grp.branch) return { error: "group has no worktree or branch" };
-  if (grp.pr_number) return { number: grp.pr_number };
+  if (grp.pr_number) {
+    // Already open, so this is a retry after rework: refresh what the PR says
+    // rather than leaving a description written before the last three slices.
+    await gh(["pr", "edit", String(grp.pr_number), "--title", input.title, "--body", input.body], grp.worktree);
+    return { number: grp.pr_number };
+  }
 
   // Every turn left a `wip:` commit behind. Squash before pushing, or the PR is
   // a dozen commits all called "wip: engineer turn".
@@ -180,6 +185,10 @@ export interface Feedback {
   failingChecks: string[];
   /** GitHub says it is in main. The group winds itself up; nobody clicks anything. */
   merged?: boolean;
+  /** Closed without merging. The group stops and leaves the queue rather than block it. */
+  closed?: boolean;
+  /** …and open again. Same round trip, backwards. */
+  reopened?: boolean;
   /**
    * The branch no longer merges cleanly.
    *
@@ -203,13 +212,16 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
         id: number;
         worktree: string | null;
         pr_number: number | null;
+        status: string;
         pr_seen_at: number;
         pr_checks_sig: string | null;
       },
       []
     >(
-      `SELECT id, worktree, pr_number, pr_seen_at, pr_checks_sig FROM grp
-       WHERE status = 'PR_OPEN' AND pr_number IS NOT NULL`,
+      // PAUSED too, and only because of `closed` below: a group stopped on a closed
+      // PR is waiting for that PR to come back, and nothing else looks at GitHub.
+      `SELECT id, status, worktree, pr_number, pr_seen_at, pr_checks_sig FROM grp
+       WHERE status IN ('PR_OPEN','PAUSED') AND pr_number IS NOT NULL`,
     )
     .all();
 
@@ -229,9 +241,26 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
       continue;
     }
 
+    const state = String(parsed.state ?? "").toUpperCase();
+
+    // Closed without merging, and reopened again: both are the boss acting on
+    // GitHub, which is the only place a PR can be closed. Neither used to be
+    // looked at, so a closed PR left its group at PR_OPEN holding the head of a
+    // strictly serial merge queue — everything behind it stopped, permanently,
+    // and the only trace was the PR page nobody was watching.
+    if (state === "CLOSED" && g.status === "PR_OPEN") {
+      out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], closed: true });
+      continue;
+    }
+    if (state === "OPEN" && g.status === "PAUSED") {
+      out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], reopened: true });
+      continue;
+    }
+    if (g.status !== "PR_OPEN") continue;
+
     // Merged is news that outranks every comment on the PR, and it is the one
     // thing the boss should not have to come back and confirm by hand.
-    if (String(parsed.state ?? "").toUpperCase() === "MERGED") {
+    if (state === "MERGED") {
       out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], merged: true });
       continue;
     }
