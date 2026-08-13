@@ -19,7 +19,7 @@ import { costReport } from "./mech/cost.ts";
 import { detectGates, detectShared } from "./mech/detect.ts";
 import { openPr, prBody, preflightPr } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
-import { loadTree, render, search, type Ask } from "./mech/pageindex.ts";
+import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/pageindex.ts";
 import { gatesFor, recordGate } from "./mech/gate.ts";
 import { listSkills, skillNames } from "./mech/skills.ts";
 import { sediment } from "./mech/lessons.ts";
@@ -1221,7 +1221,19 @@ const postCtxQuery: Handler = async (ctx, req) => {
   if (tree && ctx.ask) {
     try {
       const hits = await search(tree, b.question, ctx.ask);
-      if (hits.length) where = render(tree, hits);
+      if (hits.length) {
+        where = render(tree, hits);
+        // A note the walk landed on is the answer, not a pointer to it: journals and
+        // retros are already short, and making the agent go and fetch one costs
+        // another round, which is the thing this whole path exists to avoid.
+        const noteIds = hits.filter((h) => h.startsWith(NOTE_PREFIX)).map((h) => Number(h.split("/").pop()));
+        for (const id of noteIds) {
+          const n = ctx.db
+            .query<{ kind: string; body: string }, [number]>("SELECT kind, body FROM note WHERE id = ?")
+            .get(id);
+          if (n) where += `\n\n### ${n.kind} #${id}\n${n.body.slice(0, 1200)}`;
+        }
+      }
     } catch {}
   }
   return text(

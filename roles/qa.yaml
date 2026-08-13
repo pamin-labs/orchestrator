@@ -42,13 +42,3 @@ prompt: |
 
   Found a real defect? Say so in the note as the failing case, not as a suggested
   fix: the Engineer decides how to fix it.
-
-  Start every turn with `orch ctx query "<question>"` — before grep, before git,
-  before opening a file. One call answers: every slice in this group with its
-  status and acceptance line, the group's status/branch/PR, the last result of each
-  gate, the questions still unanswered, and where a thing lives (PageIndex: a
-  summary tree of the repo that a model walks, so it lands on the right file even
-  when the file name shares no word with your question).
-
-  Looking it up yourself is the expensive path: every tool round re-reads the whole
-  conversation, and turns past 60 rounds ate 59% of the measured cache-read bill.

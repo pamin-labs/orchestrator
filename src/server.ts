@@ -9,7 +9,7 @@ import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
-import { modelAsk, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
+import { bothRead, modelAsk, noteLeaves, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
 
@@ -140,7 +140,11 @@ async function refreshIndex(ctx: Ctx, _workRoot: string): Promise<void> {
     const ls = await ctx.git(p.repo_path, ["ls-files"], p.repo_path);
     if (ls.code !== 0) continue;
     const files = ls.out.split("\n").map((l) => l.trim()).filter((f) => /\.(ts|tsx|js|jsx|md|yaml|yml)$/.test(f));
-    const { tree, calls } = await summarise(skeleton(files), p.repo_path, ctx.ask, {
+    // One tree over both corpora: the repo answers "where is the code" and the
+    // blackboard answers "what did we already decide about it", and an agent
+    // asking either question should not have to know which one it is asking.
+    const notes = noteLeaves(ctx.db, p.id);
+    const { tree, calls } = await summarise(skeleton([...files, ...notes.ids]), bothRead(p.repo_path, notes.read), ctx.ask, {
       previous: loadTree(ctx.db, p.id) ?? {},
       maxCalls: 12,
     });

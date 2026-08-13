@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
-import { loadTree, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/pageindex.ts";
+import { fileRead, loadTree, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/pageindex.ts";
 
 function repo(): string {
   const d = mkdtempSync(join(tmpdir(), "orch-pi-"));
@@ -21,7 +21,7 @@ test("the tree is structure first, and every node gets one summary", async () =>
     asks.push(p);
     return p.includes("notify") ? "sends notifications to the boss" : "one line";
   };
-  const { tree, calls } = await summarise(skeleton(FILES), dir, ask);
+  const { tree, calls } = await summarise(skeleton(FILES), fileRead(dir), ask);
 
   expect(Object.keys(tree).sort()).toEqual(["/", "src/", "src/mech/", "src/mech/gate.ts", "src/mech/notify.ts"]);
   expect(tree["src/mech/notify.ts"]!.summary).toBe("sends notifications to the boss");
@@ -35,15 +35,15 @@ test("the tree is structure first, and every node gets one summary", async () =>
 test("nothing changed, nothing re-summarised", async () => {
   const dir = repo();
   const ask: Ask = async () => "a summary";
-  const first = await summarise(skeleton(FILES), dir, ask);
-  const again = await summarise(skeleton(FILES), dir, ask, { previous: first.tree });
+  const first = await summarise(skeleton(FILES), fileRead(dir), ask);
+  const again = await summarise(skeleton(FILES), fileRead(dir), ask, { previous: first.tree });
   expect(again.calls).toBe(0);
   expect(again.tree["src/mech/gate.ts"]!.summary).toBe("a summary");
 });
 
 test("retrieval is the model walking the tree, not a similarity score", async () => {
   const dir = repo();
-  const { tree } = await summarise(skeleton(FILES), dir, async (p) =>
+  const { tree } = await summarise(skeleton(FILES), fileRead(dir), async (p) =>
     p.startsWith("One line, under 20 words: what is src/mech/notify.ts")
       ? "the only place that talks to the OS notification centre"
       : "misc",
@@ -68,16 +68,41 @@ test("retrieval is the model walking the tree, not a similarity score", async ()
 
 test("a navigator that finds nothing relevant says so instead of guessing", async () => {
   const dir = repo();
-  const { tree } = await summarise(skeleton(FILES), dir, async () => "s");
+  const { tree } = await summarise(skeleton(FILES), fileRead(dir), async () => "s");
   expect(await search(tree, "how do I file my taxes", async () => "NONE")).toEqual([]);
 });
 
 test("the tree survives a round trip through the note it lives in", async () => {
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  const { tree } = await summarise(skeleton(FILES), repo(), async () => "s");
+  const { tree } = await summarise(skeleton(FILES), fileRead(repo()), async () => "s");
   saveTree(db, 1, tree);
   saveTree(db, 1, tree);
   expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'pageindex'").get()!.c).toBe(1);
   expect(loadTree(db, 1)!["src/mech/gate.ts"]!.summary).toBe("s");
+});
+
+test("journals and retros are leaves in the same tree as the code", async () => {
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  db.run(
+    "INSERT INTO note (grp_id, kind, body, at) VALUES (1, 'retro', 'the flicker was the key, not the diffing', 0)",
+  );
+
+  const notes = noteLeaves(db, 1);
+  expect(notes.ids).toEqual(["notes/grp-1/retro/1"]);
+
+  const { tree } = await summarise(skeleton(notes.ids), notes.read, async (p) =>
+    p.includes("what does this note establish") ? "why the timeline flickered" : "the group's retros",
+  );
+  // The note prompt is the one that ran: a retro is not a source file and asking
+  // "what is this file for" of one produces a summary of the format.
+  expect(tree["notes/grp-1/retro/1"]!.summary).toBe("why the timeline flickered");
+
+  const hits = await search(tree, "did anyone work out the flicker", async (p) => {
+    const lines = (p.split("NONE if none of them are relevant.")[1] ?? "").trim().split("\n");
+    return lines[0]!.split(" — ")[0]!;
+  });
+  expect(hits).toEqual(["notes/grp-1/retro/1"]);
 });
