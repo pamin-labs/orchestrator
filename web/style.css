@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/*
+ * Tokens are the ones DESIGN.md already committed to, moved into Tailwind's theme
+ * so components can use them by name. The look does not change here; the
+ * component layer underneath it does.
+ *
+ * Scene that decides the look: afternoon at the desk, editor open beside this, a
+ * fifteen-second glance to see whether anything waits on the boss. Warm paper,
+ * dense, no ceremony.
+ */
+@theme {
+  --color-paper: oklch(0.985 0.005 76);
+  --color-rail: oklch(0.964 0.007 74);
+  --color-sunk: oklch(0.945 0.008 74);
+  --color-rule: oklch(0.902 0.01 72);
+  --color-rule-soft: oklch(0.941 0.008 72);
+  --color-ink: oklch(0.245 0.013 62);
+  --color-ink-2: oklch(0.468 0.011 65);
+  --color-ink-3: oklch(0.545 0.011 68);
+  /* Accent means "needs you" and nothing else. Cool, and deliberately far from
+     red / amber / green so it can never be misread as a gate outcome. */
+  --color-accent: oklch(0.435 0.145 285);
+  --color-accent-soft: oklch(0.945 0.03 285);
+  --color-on-accent: oklch(0.985 0.006 285);
+  --color-ok: oklch(0.505 0.105 156);
+  --color-bad: oklch(0.512 0.17 27);
+  --color-warn: oklch(0.56 0.115 74);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  /* Nothing is fetched, so character comes from faces already on the machine.
+     Chinese falls through to 宋体, which is the right pairing against 黑体 data
+     rows. Never below 15px: both faces get weak there. */
+  --font-display: ui-serif, "New York", "Songti SC", Charter, Georgia, serif;
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Same design in dark ink, not a second design: the tool stays open into the
+   evening and a light-only page in a dark room is hostile. */
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-paper: oklch(0.185 0.008 70);
+    --color-rail: oklch(0.222 0.009 70);
+    --color-sunk: oklch(0.246 0.01 70);
+    --color-rule: oklch(0.312 0.011 70);
+    --color-rule-soft: oklch(0.262 0.01 70);
+    --color-ink: oklch(0.925 0.01 76);
+    --color-ink-2: oklch(0.735 0.01 74);
+    --color-ink-3: oklch(0.585 0.01 72);
+    --color-accent: oklch(0.735 0.125 288);
+    --color-accent-soft: oklch(0.285 0.048 288);
+    --color-on-accent: oklch(0.175 0.012 288);
+    --color-ok: oklch(0.735 0.115 158);
+    --color-bad: oklch(0.68 0.15 28);
+    --color-warn: oklch(0.76 0.105 78);
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.55;
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+  }
+  /* One focus ring for the whole page, in the accent, so keyboard use is never a
+     guess about where you are. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+}
+
+@layer utilities {
+  /* Progress is which gates passed, never a percentage. This is a discrete mark,
+     which is why it has a fixed width instead of filling its container. */
+  .tick {
+    height: 0.1875rem;
+    width: 1rem;
+    border-radius: 0.09375rem;
+    background: var(--color-rule);
+  }
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+  .breathe {
+    animation: breathe 2s var(--ease-out-quint) infinite;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .fade-in {
+    animation: fade-in 200ms var(--ease-out-quint);
+  }
+}

@@ -1,0 +1,84 @@
+import * as Dialog from "@radix-ui/react-dialog";
+import { useState } from "react";
+import { Button } from "./button";
+import { Textarea } from "./bits";
+
+/**
+ * Confirmations are ours, not the browser's.
+ *
+ * A native confirm() is the browser's chrome: different type, different buttons,
+ * different language, and no way to say what the consequence is. Radix supplies
+ * the behaviour this needs and hand-rolling never got right — focus trap, escape,
+ * restoring focus, aria wiring.
+ */
+export interface AskSpec {
+  title: string;
+  body?: string;
+  yes?: string;
+  danger?: boolean;
+  /** Turns it into a one-question form: resolves with the typed text. */
+  field?: string;
+}
+
+let open: ((spec: AskSpec) => Promise<string | true | null>) | null = null;
+export const ask = (spec: AskSpec) => open?.(spec) ?? Promise.resolve(null);
+
+export function AskHost() {
+  const [spec, setSpec] = useState<AskSpec | null>(null);
+  const [text, setText] = useState("");
+  const [resolve, setResolve] = useState<((v: string | true | null) => void) | null>(null);
+
+  open = (s) =>
+    new Promise((res) => {
+      setText("");
+      setSpec(s);
+      setResolve(() => res);
+    });
+
+  const done = (v: string | true | null) => {
+    resolve?.(v);
+    setSpec(null);
+    setResolve(null);
+  };
+
+  return (
+    <Dialog.Root open={!!spec} onOpenChange={(o) => !o && done(null)}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-[oklch(0.2_0.01_70/0.35)]" />
+        <Dialog.Content
+          className="fixed left-1/2 top-1/3 z-50 w-[min(28rem,92vw)] -translate-x-1/2 rounded-xl
+                     border border-rule bg-paper shadow-[0_12px_40px_oklch(0_0_0/0.18)] fade-in"
+        >
+          <div className="p-3.5">
+            <Dialog.Title className="mb-1.5 font-display text-[1.0625rem] font-semibold">
+              {spec?.title}
+            </Dialog.Title>
+            {spec?.body && (
+              <Dialog.Description className="text-[0.8125rem] text-ink-2">{spec.body}</Dialog.Description>
+            )}
+            {spec?.field && (
+              <Textarea
+                autoFocus
+                rows={3}
+                className="mt-2.5"
+                placeholder={spec.field}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+            )}
+          </div>
+          <div className="flex items-center gap-2 border-t border-rule p-3.5">
+            <span className="grow" />
+            <Button onClick={() => done(null)}>取消</Button>
+            <Button
+              variant={spec?.danger ? "danger" : "go"}
+              onClick={() => done(spec?.field ? text : true)}
+            >
+              {spec?.yes ?? "确定"}
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
