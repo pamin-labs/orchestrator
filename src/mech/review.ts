@@ -376,6 +376,7 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
       kind: "gate_result",
       body: `branch gate failed:\n${gateOut.feedback}`,
     });
+    if (branchRework(deps, grpId, "the branch gate", gateOut.feedback)) return;
     ctx.sched.enqueue("agent_turn", {
       grp_id: grpId,
       payload: { role: "engineer", rejection: gateOut.feedback, rotate: true },
@@ -384,7 +385,9 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
     return;
   }
 
-  ctx.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = ?", [grpId]);
+  // Through, so the count starts again: the next rejection is about the next
+  // branch, not this one.
+  ctx.db.run("UPDATE grp SET status = 'PR_OPEN', pr_retries = 0 WHERE id = ?", [grpId]);
   // grp_id null on purpose: hiring the Auditor into the group it audits would
   // make it review its own reasoning, and `orch audit` rightly refuses that.
   ctx.sched.enqueue("agent_turn", {
@@ -414,11 +417,48 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
     return;
   }
   ctx.db.run("UPDATE grp SET status = 'RUNNING' WHERE id = ?", [grpId]);
+  if (branchRework(deps, grpId, "the Auditor", note)) return;
   ctx.sched.enqueue("agent_turn", {
     grp_id: grpId,
     payload: { role: "pm", rejection: `The Auditor sent the branch back: ${note}`, rotate: true },
   });
   ctx.sched.tick();
+}
+
+/**
+ * Count a branch-level rejection, and stop when there have been enough.
+ *
+ * A slice that keeps failing gives up after `gateRetries` and asks the boss. The
+ * branch had no counter at all: a red branch gate sent the Engineer round, a
+ * rejected audit sent the PM round, and neither loop had an end — the same money
+ * spent forever on the same disagreement, with nothing on the boss's screen saying
+ * so. PLAN.md's rule is two rounds, then escalate.
+ *
+ * Returns true when the caller should stop rather than send it round again.
+ */
+function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string): boolean {
+  const { ctx, cfg } = deps;
+  const n =
+    (ctx.db.query<{ pr_retries: number }, [number]>("SELECT pr_retries FROM grp WHERE id = ?").get(grpId)
+      ?.pr_retries ?? 0) + 1;
+  ctx.db.run("UPDATE grp SET pr_retries = ? WHERE id = ?", [n, grpId]);
+  if (n <= cfg.gateRetries) return false;
+
+  ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
+  ctx.db.run(
+    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+     VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
+    [grpId, `整个分支被 ${from} 打回 ${n} 次了。多半是验收口径本身有问题，不是代码：\n${why}`],
+  );
+  ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "escalation",
+    intent: "ask",
+    severity: "blocker",
+    body: `branch sent back by ${from} ${n} times — stopping rather than paying for another round`,
+  });
+  return true;
 }
 
 /**

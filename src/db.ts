@@ -320,6 +320,15 @@ const MIGRATIONS: string[] = [
   // it — and there was no clock on it, which is what makes "the boss forgot" and
   // "it only just got there" look identical.
   `ALTER TABLE grp ADD COLUMN merge_seq_at INTEGER;`,
+
+  // 014 — branch-level rework counter.
+  //
+  // A slice that keeps failing stops after `gateRetries` and asks the boss
+  // (slice.retries). The branch had no such counter at all: a red branch gate sent
+  // the Engineer round, a rejected audit sent the PM round, and neither loop had
+  // an end. PLAN.md §"Gate 与审批顺序" says two rounds then escalate; this is the
+  // column that makes that true.
+  `ALTER TABLE grp ADD COLUMN pr_retries INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export type DB = Database;
