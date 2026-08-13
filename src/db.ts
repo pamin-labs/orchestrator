@@ -348,6 +348,15 @@ const MIGRATIONS: string[] = [
   // has not finished rebasing, which is exactly how a useful message becomes one
   // the agent learns to skip.
   `ALTER TABLE grp ADD COLUMN rebase_seen TEXT;`,
+
+  // 017 — what a resource contends for, so the Runner pool can be split by it.
+  //
+  // One global `leaseSlots` has to be the minimum any resource can tolerate. A
+  // headless browser tolerates 1 (each lease is a real Chromium); `typecheck`
+  // tolerates as many as there are cores. Sized for the browser, every gate in
+  // the fleet queues behind one screenshot; sized for the gates, the browsers
+  // thrash. Tags name the contended thing, and each tag gets its own pool size.
+  `ALTER TABLE resource ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';`,
 ];
 
 export type DB = Database;

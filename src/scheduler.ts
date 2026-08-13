@@ -30,10 +30,28 @@ export type Executor = (job: Job) => Promise<void>;
 export interface SchedulerOptions {
   /** Max groups with an in-flight agent_turn. Default 3 (see PLAN.md §11). */
   maxGroups?: number;
-  /** Slots for the Runner pool. Leases never consume group slots. */
-  leaseSlots?: number;
+  /**
+   * Slots for the Runner pool, per resource tag. Leases never consume group slots.
+   *
+   * A plain number is the whole pool, as before. A map is one pool per tag, with
+   * `default` covering resources that carry no tag — because the pool size is a
+   * property of what the resource contends for, not of leases in general: a
+   * headless browser wants 1 (each one is a real Chromium), while `typecheck`
+   * wants as many as the machine has cores. One global number could only ever be
+   * the minimum of those, which is the browser's, which starves everything else.
+   */
+  leaseSlots?: number | Record<string, number>;
   /** Kinds that are cheap bookkeeping and bypass the group slot pool. */
   now?: () => number;
+}
+
+export const DEFAULT_POOL = "default";
+
+/** `2` and `{default: 2}` mean the same thing; the rest is per tag. */
+export function poolSizes(slots: number | Record<string, number> | undefined): Record<string, number> {
+  if (slots === undefined) return { [DEFAULT_POOL]: 1 };
+  if (typeof slots === "number") return { [DEFAULT_POOL]: slots };
+  return { [DEFAULT_POOL]: 1, ...slots };
 }
 
 /**
@@ -72,7 +90,7 @@ const FREE_KINDS = new Set<JobKind>(["watchdog", "notify", "digest"]);
 export class Scheduler {
   private inflight = new Map<number, Promise<void>>();
   private readonly maxGroups: number;
-  private readonly leaseSlots: number;
+  private readonly pools: Record<string, number>;
   private readonly now: () => number;
   private draining = false;
 
@@ -82,7 +100,7 @@ export class Scheduler {
     opts: SchedulerOptions = {},
   ) {
     this.maxGroups = opts.maxGroups ?? 3;
-    this.leaseSlots = opts.leaseSlots ?? 1;
+    this.pools = poolSizes(opts.leaseSlots);
     this.now = opts.now ?? (() => Date.now());
   }
 
@@ -172,17 +190,20 @@ export class Scheduler {
     // 0. Letting them bypass the pool was how a "no slots" configuration still
     // spawned agents.
     const busyGroups = new Set<number>();
-    let leasesRunning = 0;
+    const taken: Record<string, number> = {};
     for (const j of this.runningJobs()) {
-      if (j.kind === "lease") leasesRunning++;
+      if (j.kind === "lease") for (const p of this.poolsOf(j)) taken[p] = (taken[p] ?? 0) + 1;
       else if (!FREE_KINDS.has(j.kind)) busyGroups.add(j.grp_id ?? 0);
     }
 
     const out: Job[] = [];
     for (const job of pending) {
       if (job.kind === "lease") {
-        if (leasesRunning >= this.leaseSlots) continue;
-        leasesRunning++;
+        // Every pool the resource is tagged with has to have room: a lease that
+        // is both `browser` and `heavy` waits for whichever is tighter.
+        const want = this.poolsOf(job);
+        if (want.some((p) => (taken[p] ?? 0) >= (this.pools[p] ?? this.pools[DEFAULT_POOL]!))) continue;
+        for (const p of want) taken[p] = (taken[p] ?? 0) + 1;
         out.push(job);
         continue;
       }
@@ -199,6 +220,31 @@ export class Scheduler {
       out.push(job);
     }
     return out;
+  }
+
+  /**
+   * Which pools a lease job draws from.
+   *
+   * The tags live on the resource, not on the job, so this is a lookup — and an
+   * unknown tag falls back to `default` rather than to "unlimited": a typo in a
+   * tag name must not silently uncap the pool it meant to name.
+   */
+  private poolsOf(job: Job): string[] {
+    let leaseId = 0;
+    try {
+      leaseId = Number(JSON.parse(job.payload_json ?? "{}").lease_id ?? 0);
+    } catch {}
+    if (!leaseId) return [DEFAULT_POOL];
+    const row = this.db
+      .query<{ tags_json: string }, [number]>(
+        "SELECT r.tags_json FROM lease l JOIN resource r ON r.name = l.resource WHERE l.id = ?",
+      )
+      .get(leaseId);
+    let tags: string[] = [];
+    try {
+      tags = JSON.parse(row?.tags_json ?? "[]");
+    } catch {}
+    return tags.length ? tags : [DEFAULT_POOL];
   }
 
   private runningJobs(): Job[] {
