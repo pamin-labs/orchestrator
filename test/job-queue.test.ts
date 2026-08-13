@@ -97,6 +97,25 @@ test("non-RUNNING group status is a barrier — this IS intercept L2", async () 
   expect(ran.length).toBe(1);
 });
 
+test("DRAFT stops the writers, not the planners", async () => {
+  // A refused approval enqueues an Architect turn to cut the boundary — and the
+  // group it enqueues it on is the one sitting in DRAFT. Blocking every role there
+  // meant the boundary was never cut, so the approval never landed and the boss was
+  // told to click again. Three groups were holding a job like this at once.
+  const db = openMemory();
+  const [g] = seed(db, 1, "DRAFT");
+  const g1 = g!;
+  const ran: Job[] = [];
+  const s = new Scheduler(db, async (j) => void ran.push(j));
+  s.enqueue("agent_turn", { grp_id: g1, payload: { role: "engineer" } });
+  await s.drain();
+  expect(ran.length).toBe(0);
+
+  s.enqueue("agent_turn", { grp_id: g1, payload: { role: "architect" } });
+  await s.drain();
+  expect(ran.map((j) => JSON.parse(j.payload_json).role)).toEqual(["architect"]);
+});
+
 test("exhausted slice budget blocks dispatch before the group budget does", async () => {
   const db = openMemory();
   const [g] = seed(db, 1);

@@ -65,6 +65,33 @@ test("a RUNNING group whose last turn failed is put back once, then handed to th
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'pending'").get()!.c).toBe(0);
 });
 
+test("a turn that ended cleanly without arranging the next one also counts as stalled", async () => {
+  // The exit code is not the signal. A Dispatcher that finished without filing a
+  // card leaves PLANNING with an empty queue, and that reads identically to
+  // success from every view the boss has.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = 1");
+  h.db.run(
+    `INSERT INTO job (kind, grp_id, payload_json, state, enqueued_at)
+     VALUES ('agent_turn', 1, '{"role":"dispatcher"}', 'done', 0)`,
+  );
+  await runWatchdog(h.deps);
+  const back = h.db
+    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'")
+    .get()!;
+  expect(JSON.parse(back.payload_json).role).toBe("dispatcher");
+});
+
+test("work queued for a dissolved group is cancelled, not left pending forever", async () => {
+  // Drop and split both cancel what was pending, but a mail landing a moment later
+  // enqueues another, and no status a dissolved group has is dispatchable.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
+  h.db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('agent_turn', 1, 'pending', 0)");
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("cancelled");
+});
+
 test("turns that write nothing accumulate, and productive ones reset", async () => {
   const h = harness();
   for (let i = 0; i < IDLE_TURN_LIMIT; i++) recordTurnOutcome(h.ctx, 1, [], false, false);
