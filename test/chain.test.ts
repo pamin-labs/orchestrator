@@ -205,7 +205,11 @@ test("respec sends the whole thing back to be re-scoped", () => {
   triage(h.deps, 1, "respec", "this is not what I asked for");
   // Without respec every complaint is heard as "change this line", and a wrong
   // decomposition can never be corrected.
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("DRAFT");
+  //
+  // PLANNING, not DRAFT: DRAFT is the state that blocks dispatch, so it would have
+  // stopped the Dispatcher turn respec exists to run. The group is back to being
+  // re-scoped, and a new card is what returns it to DRAFT.
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
   expect(JSON.parse(jobsFor(h.db).at(-1)!.payload_json).respec).toContain("not what I asked");
 });
 

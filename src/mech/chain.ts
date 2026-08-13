@@ -306,7 +306,10 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string)
       },
     });
   } else if (as === "respec") {
-    ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grpId]);
+    // PLANNING, not DRAFT. DRAFT blocks dispatch, so setting it here deadlocked the
+    // Dispatcher turn enqueued on the next line — the group sat waiting on a boss
+    // who was being shown the very card that had just been thrown out.
+    ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ?", [grpId]);
     ctx.sched.enqueue("agent_turn", {
       grp_id: grpId,
       payload: { role: "dispatcher", respec: note, rotate: true },

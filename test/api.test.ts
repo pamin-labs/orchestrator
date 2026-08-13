@@ -655,3 +655,91 @@ test("an unreadable path is an error with the reason, not an empty list", async 
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("no such file");
 });
+
+test("confirming a merge is refused while GitHub says the PR is still open", async () => {
+  const { app, db, ctx } = harness();
+  db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 7, worktree = '/tmp/wt', merge_seq = 1 WHERE id = 1");
+  ctx.gh = async () => ({ code: 0, out: '{"state":"OPEN","mergedAt":null}' });
+
+  const r = await post(app, "/api/groups/1/landed");
+  expect(r.status).toBe(422);
+  expect(await r.text()).toContain("OPEN");
+  // Still alive: the whole point is that it was not dissolved on a guess.
+  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PR_OPEN");
+
+  // The boss can still override — a project without `gh` push access merges by hand.
+  const forced = await post(app, "/api/groups/1/landed", { force: true });
+  expect(forced.status).toBe(200);
+  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("DISSOLVED");
+});
+
+test("a merged PR winds the group up without asking, and it stays visible as delivered", async () => {
+  const { app, db, ctx } = harness();
+  db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 7, worktree = '/tmp/wt', merge_seq = 1 WHERE id = 1");
+  ctx.gh = async () => ({ code: 0, out: '{"state":"MERGED","mergedAt":"2026-01-01"}' });
+
+  const r = await post(app, "/api/groups/1/landed");
+  expect(r.status).toBe(200);
+  expect((await r.json()).verified).toBe(true);
+  const snap = (await (await get(app, "/api/state")).json()) as any;
+  expect(snap.groups.some((g: any) => g.id === 1)).toBe(false);
+  expect(snap.archived.map((g: any) => g.name)).toEqual(["g1"]);
+});
+
+test("raising a budget resumes the group and closes the question that asked", async () => {
+  const { app, db } = harness();
+  db.run("UPDATE grp SET status = 'PAUSED', budget_tokens = 100, spent_tokens = 120 WHERE id = 1");
+  db.run(
+    "INSERT INTO escalation (grp_id, severity, question, chain_state, created_at) VALUES (1, 'blocker', 'budget: g1 用完了', 'boss', 0)",
+  );
+
+  // 继续 alone is a lie: the scheduler will not admit an over-budget group.
+  const resumed = await post(app, "/api/groups/1/resume");
+  expect(resumed.status).toBe(422);
+  expect(await resumed.text()).toContain("120/100");
+
+  // A cap below what is already spent would stop it again on the next tick.
+  expect((await post(app, "/api/groups/1/budget", { tokens: 110 })).status).toBe(422);
+
+  expect((await post(app, "/api/groups/1/budget", { tokens: 300 })).status).toBe(200);
+  const g = db.query<{ status: string; budget_tokens: number }, []>(
+    "SELECT status, budget_tokens FROM grp WHERE id = 1",
+  ).get()!;
+  expect(g.status).toBe("RUNNING");
+  expect(g.budget_tokens).toBe(300);
+  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM escalation WHERE answer IS NULL").get()!.c).toBe(0);
+});
+
+test("a sent-back DRAFT stops being approvable", async () => {
+  const { app, db } = harness();
+  db.run("UPDATE grp SET status = 'DRAFT' WHERE id = 1");
+  db.run(
+    `INSERT INTO note (grp_id, kind, lang, body, frontmatter_json, at)
+     VALUES (1, 'decision', '中文', 'old card', '{"draft_card":1}', 1)`,
+  );
+  expect((await get(app, "/api/state")).status).toBe(200);
+
+  await post(app, "/api/draft/1/reject", { reason: "切得太粗" });
+  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
+  // The rejected card is no longer offered as a decision.
+  const snap = (await (await get(app, "/api/state")).json()) as any;
+  expect(snap.draftCards).toEqual([]);
+});
+
+test("the boss can talk to the team, and triage decides what the words mean", async () => {
+  const { app, db, ran } = harness();
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'pm', 'sonnet', 'L2', 'tok-pm', 0)",
+  );
+  expect((await post(app, "/api/say", { group_id: 1, body: "" })).status).toBe(422);
+
+  expect((await post(app, "/api/say", { group_id: 1, body: "测试写得太浅" })).status).toBe(200);
+  const woken = ran.filter((j) => j.kind === "agent_turn");
+  expect(woken.length).toBe(1);
+  expect(JSON.parse(woken[0]!.payload_json).mail.from).toBe("boss");
+
+  // respec is the one that matters: without it dissatisfaction only ever reads as
+  // "change one line" and a wrong decomposition is never corrected.
+  expect((await post(app, "/api/say", { group_id: 1, as: "respec", body: "方向错了" })).status).toBe(200);
+  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
+});

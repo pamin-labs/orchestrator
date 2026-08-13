@@ -128,6 +128,27 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
         body: `${g.name} spent its whole budget (${g.spent_tokens} tokens) and is suspended`,
       });
       ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [g.id]);
+      // A notification says it stopped; it does not put a decision in front of
+      // anyone. Without a row in the queue the group sat suspended, 继续 did
+      // nothing the scheduler would honour, and the only visible state was a
+      // paused group with no reason attached. `budget:` prefixes the question so
+      // raising the cap can close exactly this row.
+      const open = ctx.db
+        .query<{ c: number }, [number]>(
+          "SELECT count(*) AS c FROM escalation WHERE grp_id = ? AND answer IS NULL AND question LIKE 'budget:%'",
+        )
+        .get(g.id)!.c;
+      if (open === 0) {
+        ctx.db.run(
+          `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+           VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
+          [
+            g.id,
+            `budget: ${g.name} 用完了 ${g.budget_tokens} tokens，全组已挂起。` +
+              `提高上限它就接着跑，或者就让它停在这里。`,
+          ],
+        );
+      }
     } else if (frac >= 0.8) {
       findings.push({
         rule: "budget_80",
