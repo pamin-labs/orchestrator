@@ -197,6 +197,19 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 - ✅ **空信拒收**。Dispatcher 写了 `orch mail architect --intent ask --wait` —— `--wait` 这个 flag 不存在，通用 parser 把它当 flag 吃了，于是信发出去是空的，Architect 花一整轮报告「收到的 ask 消息内容为空」。报错里直接说这个 flag 不存在，因为 CLI 是 agent 唯一的反馈渠道。
 - ✅ **切片下限从 3 降到 1**。prompt 里早就写着「真的不可分就交一片，凑三片更糟」，但校验器拒收 1-2 片 —— prompt 在骗它，模型只能凑。实测在一句话需求上，它把「切片 2、3 是为满足最少切片数补的相邻能力」当风险写在自己卡上，而补出来的那片会从 `$LANG` 推断语言、**改变现有调用方的输出**。`if` 和 prompt 说的话不一致时，模型听 `if`。
 
+- ✅ **新 worktree 现在拿得到它自己造不出来的东西**（`seedIgnored`）。`node_modules` 和 `web/dist` 都在 `.gitignore` 里，`git worktree add` 一个都不带；而 `denyOutsideOwns` 把组自己的边界外全拒了，`bun install` 和 `bun run build:web` 都是 `Operation not permitted`。结果是 `bun test` / `bunx tsc --noEmit` 在新组里必红，红的原因跟这个组写的代码没有任何关系 —— 实测同时有 6 个组这样，其中一个挂着 blocker 等了一小时。现在 create 完就从主仓库软链过去（软链不是拷贝：主仓库 rebuild，所有 worktree 跟上；往回写被 `denyWrite: repoPath/**` 挡住）。
+- ✅ **进 PAUSED 一定盖 `paused_at`**。三个调用方写 `PAUSING` 都不盖时间戳（`api.ts` 的 ask-boss blocker、退回切片、`review.ts`），而 watchdog 的 park / 催办 / unpark 全部 `WHERE paused_at IS NOT NULL` —— 这种组是**静默冻结**：不会被 park、不会催你、不会自己醒，面板上看着还在跑。改在汇合点 `settle()` 盖一次，三个调用方全好；watchdog 再补一行把已经坏掉的行捞回来。
+- ✅ **batched 通知也要走 backoff**。原来只有 immediate 查 `dueNow`，batched 无条件进队；而 standup 每 30 s 把同样三条 finding 原样重推一遍，攒够 5 条就发 —— 于是「5 things need you」每分钟糊一次，内容一字不差。顺带删掉 `flush()` 里重写 `lastSent` 那行：它把 strikes 打回 1，backoff 永远停在第一档。
+- ✅ **`repeat_failure` 会自己消失**。原来数的是 `lease` 表里所有 `state='failed'` 的历史行，修好了也不清零 ——「typecheck 在 4 个组里失败」在这 4 个组早就绿了之后还挂着。现在只看每个 (resource, 组) 的**最后一次**。
+- ✅ **`-h` 不是问题**。`parseArgs` 只认 `--`，于是 `orch ask-boss -h` 把 `-h` 当问题立了张单，挂在你名下等回答。
+- ✅ **clearance 拒绝说人话**。原来直接 `JSON.stringify(permissionDenials)` 塞进 escalation 正文，你看到的是 `blocked by clearance: [{"tool_name":"Bash","tool_use_id":…` 截在半截的 JSON。同一时刻 6 张单里有 3 张是这个。
+
+- ✅ **PR 描述不再是一句话**（`prBody`）。原来写死 "Opened by the orchestrator after the audit passed."，读起来像提 PR 的 agent 偷懒，其实压根没人写过 —— 而需求原话、每片的验收标准、四道闸结果、decision/retro 在开 PR 那一刻全都已经在库里。现在是 SELECT 拼出来的：让模型写这段等于为一次查询付钱，而且提示词会被忘掉。
+- ✅ **注册项目必须有 GitHub origin**。原来没有 remote 也放行，只发一条「只有 PR 这步不能用」的提醒 —— 那是整个交付环节：分支做完没地方去。而且 `project.remote` 只在前端传了才写，preflight 明明 `git remote get-url origin` 读到了却不回存，于是 `prUrl()` 永远返回 null，「打开 PR」按钮在任何页面都不出现。现在没有 origin / origin 不是 GitHub 直接拒绝注册；gh 没装没登录仍是提醒（那个不用重新注册就能修）。
+- ✅ **删掉「确认已合入」按钮**。合没合是 GitHub 的答案，`pollPrs` 每跳都在问，MERGED 自己收尾。那个按钮是让老板手动确认服务端已经知道的事，而且点错一次就把 PR 还开着的组归档了。现在只剩「去合并 PR ↗」一个链接。
+- ✅ **Runner 池按标签分**（`resource.tags_json` + `leaseSlots: {default: 2, browser: 1}`）。一个全局数字只能取所有资源里最小的那个：按浏览器取 1，全队门禁排在一张截图后面；按门禁取 4，浏览器互相拖死。标签描述「争的是什么」，每个标签一个池；无标签走 `default`；一个租约占它所有标签的名额，任一满就排队；未知标签回落到 default 而不是「无限制」。
+- ✅ **无头浏览器成了一等资源**（`scripts/browse.ts` + `browser` 资源）。前端切片的验收几乎都是「菜单能弹」「行能点开」，而全项目没有任何角色能验 —— QA 只能读 JSX，Auditor 因证据不足退回分支，最后让老板自己点。三组同时卡在这上面。现在 QA 写一个 JSON 步骤文件（`api` 播种 / `goto` / `click` / `expect` / `missing` / `shot`）然后 `orch lease browser --arg steps=qa-steps.json`：它在**本 worktree** 起服务器（随机端口 + 一次性数据库），跑 Chromium，失败自动截图。**步骤是数据不是脚本** —— Runner 跑在 host 上有真权限，这是硬约束 2 的唯一走法。实测跑通：`click text=更多` → `expect 不做了` PASS，截图为证。
+
 ## Dispatcher 档位：量过了，建议保持 opus
 
 同一句需求、同一 fixture、同一校验器，只换 Dispatcher 的 model。比的是**它自己那一轮**，因为 `tier: hard` 只管这个：
