@@ -1,5 +1,6 @@
 import type { Ctx } from "../api.ts";
 import type { Config } from "../config.ts";
+import { say } from "../lang.ts";
 import { interrupt, park, settlePausing } from "./intercept.ts";
 import type { GitRunner } from "./worktree.ts";
 
@@ -34,6 +35,10 @@ export const REEMIT_MS = 30 * 60 * 1000;
 
 export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   const { ctx, cfg } = deps;
+  // These bodies land in the boss's feed and notifications, so they follow
+  // output.language. Feedback aimed at an agent stays English: it lands in a prompt
+  // next to code and gate output.
+  const t = (k: any, a?: any) => say(ctx.config?.language, k, a);
   const now = deps.now ?? (() => Date.now());
   const findings: Finding[] = [];
 
@@ -52,7 +57,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       rule: "turn_timeout",
       grpId: j.grp_id,
       severity: "advisory",
-      body: `turn ran past ${Math.round(cfg.turnTimeoutMs / 60000)} min and was killed`,
+      body: t("wd.turn_timeout", { min: Math.round(cfg.turnTimeoutMs / 60000) }),
     });
     if (j.grp_id) await interrupt(ctx, deps.git, j.grp_id, "keep");
   }
@@ -68,7 +73,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       rule: "no_progress",
       grpId: a.grp_id,
       severity: "advisory",
-      body: `${a.role} finished ${a.idle_turns} turns without changing a file, a task or a note`,
+      body: t("wd.no_progress", { role: a.role, n: a.idle_turns }),
     });
     ctx.db.run("UPDATE agent SET state = 'blocked', idle_turns = 0 WHERE id = ?", [a.id]);
   }
@@ -86,7 +91,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       severity: "advisory",
       // Architect, not the writer: going round in circles on one file is usually
       // a design problem, and asking the writer to try harder does not fix it.
-      body: `${a.role} has rewritten ${a.loop_file} ${a.loop_count} turns running — probably a design problem, sending it to the Architect`,
+      body: t("wd.circling", { role: a.role, file: a.loop_file, n: a.loop_count }),
     });
     ctx.db.run("UPDATE agent SET loop_count = 0 WHERE id = ?", [a.id]);
   }
@@ -106,7 +111,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       severity: "advisory",
       // Same command, same code, same failure: the environment is the variable,
       // and letting the writer keep editing code is how hours disappear.
-      body: `${l.resource} failed ${l.c}x with no code change in between — treat the environment as the suspect, not the code`,
+      body: t("wd.env_suspect", { resource: l.resource, n: l.c }),
     });
     ctx.db.run("UPDATE lease SET head_sha = NULL WHERE resource = ? AND state = 'failed' AND head_sha = ?", [
       l.resource,
@@ -127,7 +132,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
         rule: "budget_exhausted",
         grpId: g.id,
         severity: "blocker",
-        body: `${g.name} spent its whole budget (${g.spent_tokens} tokens) and is suspended`,
+        body: t("wd.budget_exhausted", { name: g.name, tokens: g.spent_tokens }),
       });
       ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [g.id]);
       // A notification says it stopped; it does not put a decision in front of
@@ -156,7 +161,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
         rule: "budget_80",
         grpId: g.id,
         severity: "advisory",
-        body: `${g.name} is at ${Math.round(frac * 100)}% of its budget`,
+        body: t("wd.budget_80", { name: g.name, pct: Math.round(frac * 100) }),
       });
     }
   }
@@ -175,14 +180,14 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
         rule: "parked",
         grpId: g.id,
         severity: "advisory",
-        body: `${g.name} parked after waiting ${Math.round(waited / 60000)} min — worktree kept, slot freed`,
+        body: t("wd.parked", { name: g.name, min: Math.round(waited / 60000) }),
       });
     } else if (waited >= PAUSED_NOTIFY_MS) {
       findings.push({
         rule: "waiting_on_you",
         grpId: g.id,
         severity: "blocker",
-        body: `${g.name} has been waiting ${Math.round(waited / 60000)} min for you`,
+        body: t("wd.waiting_on_you", { name: g.name, min: Math.round(waited / 60000) }),
       });
     }
   }

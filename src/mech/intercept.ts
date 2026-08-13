@@ -1,5 +1,6 @@
 import type { Ctx } from "../api.ts";
 import { rollbackTo, type GitRunner } from "./worktree.ts";
+import { say } from "../lang.ts";
 
 /**
  * Three levels of getting in the way, all of them operations on the job queue.
@@ -53,7 +54,7 @@ export function settlePausing(ctx: Ctx): number {
 
 function settle(ctx: Ctx, grpId: number): void {
   ctx.db.run("UPDATE grp SET status = 'PAUSED' WHERE id = ? AND status = 'PAUSING'", [grpId]);
-  ctx.bus.emit({ grpId, author: "orchestrator", kind: "state_change", body: "PAUSED" });
+  ctx.bus.emit({ grpId, author: "orchestrator", kind: "state_change", body: say(ctx.config?.language, "group.paused") });
 }
 
 export function resume(ctx: Ctx, grpId: number): void {
@@ -61,7 +62,7 @@ export function resume(ctx: Ctx, grpId: number): void {
     "UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE id = ? AND status IN ('PAUSED', 'PAUSING')",
     [grpId],
   );
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "resumed" });
+  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config?.language, "group.resumed") });
   ctx.sched.tick();
 }
 

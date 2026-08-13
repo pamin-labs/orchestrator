@@ -471,7 +471,7 @@ test("a trivial slice is accepted automatically once all three gates pass", asyn
   const said = h.db
     .query<{ body: string; author: string }, []>("SELECT author, body FROM event ORDER BY seq DESC")
     .all()
-    .find((e) => e.body.includes("accepted:"))!;
+    .find((e) => e.body.includes("自动查收"))!;
   expect(said.author).toBe("orchestrator");
   expect(said.body).toContain("自动查收");
   // And the next slice starts, which is the point of the whole thing.

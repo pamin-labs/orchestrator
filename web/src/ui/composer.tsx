@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { ClipboardPaste, Paperclip, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "./button";
 import { Textarea } from "./bits";
@@ -8,6 +8,7 @@ import { Card, CardHeader, CardTitle } from "./card";
 import { cn } from "../lib/utils";
 
 export interface Attached { name: string; path: string; type: string; size: number; url?: string }
+export interface Skill { name: string; path: string; description: string }
 export interface Draft {
   text: string;
   attachments: { name: string; path: string; type: string }[];
@@ -33,9 +34,12 @@ export function Composer({
   actions,
   autoFocus,
   className,
+  projectId,
 }: {
   placeholder?: string;
   rows?: number;
+  /** Enables the `/` skill picker: skills come from that project's repo. */
+  projectId?: number;
   /** Label of the primary action. Omit for a composer whose actions are all custom. */
   submit?: string;
   /** Return true to clear. */
@@ -49,7 +53,45 @@ export function Composer({
   const [files, setFiles] = useState<Attached[]>([]);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
+  const [skills, setSkills] = useState<Skill[] | null>(null);
+  const [slash, setSlash] = useState<{ from: number; q: string } | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+
+  /**
+   * `/` offers the project's skills — as paths, not slash commands.
+   *
+   * Agents run with `--disable-slash-commands` (the catalogue is ~46k cached tokens
+   * of prefix per turn), so typing "/impeccable" at them does nothing. Every role
+   * has Read, so the path is the mechanism that actually works: a dozen tokens in
+   * the message and one read in the turn that needs it.
+   */
+  useEffect(() => {
+    if (!projectId || skills) return;
+    void fetch(`/api/skills?project=${projectId}`)
+      .then((r) => (r.ok ? r.json() : { skills: [] }))
+      .then((d) => setSkills(d.skills ?? []))
+      .catch(() => setSkills([]));
+  }, [projectId, skills]);
+
+  const onType = (v: string, caret: number) => {
+    setText(v);
+    // A slash only opens the picker at the start of a word.
+    const upto = v.slice(0, caret);
+    const m = /(?:^|\s)\/([\w.:-]*)$/.exec(upto);
+    setSlash(m && (skills?.length ?? 0) > 0 ? { from: caret - m[1]!.length - 1, q: m[1]!.toLowerCase() } : null);
+  };
+
+  const insertSkill = (sk: Skill) => {
+    if (!slash) return;
+    const next = `${text.slice(0, slash.from)}${sk.path} `;
+    setText(next + text.slice(slash.from + slash.q.length + 1));
+    setSlash(null);
+    box.current?.focus();
+  };
+  const matches = (skills ?? []).filter(
+    (sk) => !slash?.q || sk.name.toLowerCase().includes(slash.q) || sk.path.toLowerCase().includes(slash.q),
+  );
 
   const clear = () => {
     setText("");
@@ -138,19 +180,45 @@ export function Composer({
       }}
     >
       <Textarea
+        ref={box}
         autoFocus={autoFocus}
         rows={rows}
         className="rounded-b-none border-0 font-sans text-[0.875rem] focus:ring-0"
         placeholder={placeholder}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => onType(e.target.value, e.target.selectionStart ?? e.target.value.length)}
         onKeyDown={(e) => {
+          if (slash && (e.key === "Escape" || e.key === "Tab")) {
+            e.preventDefault();
+            if (e.key === "Tab" && matches[0]) insertSkill(matches[0]);
+            else setSlash(null);
+            return;
+          }
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             void send();
           }
         }}
       />
+
+      {slash && matches.length > 0 && (
+        <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
+          <div className="border-b border-rule-soft px-2 py-1 text-[0.6875rem] text-ink-3">
+            插入技能路径 —— agent 用 Read 打开它（slash 命令对 agent 是关的，那是 46k tokens 的前缀）
+          </div>
+          {matches.slice(0, 6).map((sk) => (
+            <button
+              key={sk.path}
+              onClick={() => insertSkill(sk)}
+              className="flex w-full cursor-pointer items-baseline gap-2 px-2 py-1.5 text-left hover:bg-sunk"
+            >
+              <span className="font-mono text-[0.75rem] text-ink">{sk.name}</span>
+              <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{sk.description}</span>
+              <span className="shrink-0 font-mono text-[0.625rem] text-ink-3">Tab</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2 px-2 pb-2">
@@ -186,6 +254,9 @@ export function Composer({
         <Button variant="quiet" size="sm" onClick={pasteClipboard}>
           <ClipboardPaste size={12} strokeWidth={1.75} /> 粘贴
         </Button>
+        {(skills?.length ?? 0) > 0 && (
+          <span className="font-mono text-[0.625rem] text-ink-3">/ 插技能</span>
+        )}
         <span className="grow" />
         {actions?.({ ...draft, busy, clear })}
         {submit && onSubmit && (
@@ -200,8 +271,9 @@ export function Composer({
 
 /** The same composer, in a dialog, for the places that interrupt rather than sit inline. */
 export function ComposerDialog({
-  open, onOpenChange, title, hint, placeholder, submit, onSubmit, rows = 5,
+  open, onOpenChange, title, hint, placeholder, submit, onSubmit, rows = 5, projectId,
 }: {
+  projectId?: number;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   title: string;
@@ -229,6 +301,7 @@ export function ComposerDialog({
             <div className="p-3.5">
               <Composer
                 autoFocus
+                projectId={projectId}
                 rows={rows}
                 placeholder={placeholder}
                 submit={submit}

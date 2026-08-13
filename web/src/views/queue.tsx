@@ -63,7 +63,7 @@ export function Queue({
       // DRAFT blocks dispatch by design, so this group is doing nothing at all.
       stopped: true,
       flag: st.lateObjections.some((o) => o.grpId === g.id) ? "有反对意见" : undefined,
-      actions: <Button variant="go" onClick={() => onOpen(g.id)}>审阅</Button>,
+      actions: <Button variant="go" onClick={() => onOpen(g.id)}>去审阅</Button>,
     });
   }
   for (const s of w.slices) {
@@ -77,9 +77,10 @@ export function Queue({
       stopped: halted(s.grp_id),
       actions: (
         <>
-          {/* 查收 lives on the requirement page, next to the diff and the verdicts.
-              Accepting from a list is accepting a title. */}
-          <Button variant="go" onClick={() => onOpen(s.grp_id)}>看改动</Button>
+          {/* 查收 happens on the requirement page, next to the diff and the verdicts:
+              accepting from a list is accepting a title. So this navigates — and says
+              so, in the same word the act is called everywhere else. */}
+          <Button variant="go" onClick={() => onOpen(s.grp_id)}>去查收</Button>
           <RejectSlice sliceId={s.id} refresh={refresh} />
         </>
       ),
@@ -136,20 +137,36 @@ export function Queue({
   // Halted first, then oldest first. An undated row sits at the end of its tier
   // rather than pretending to be new.
   items.sort((a, b) => Number(b.stopped) - Number(a.stopped) || (a.at ?? Infinity) - (b.at ?? Infinity));
-  const stopped = items.filter((i) => i.stopped).length;
+  const halt = items.filter((i) => i.stopped);
+  const rest = items.filter((i) => !i.stopped);
 
   return (
     <Card tone="mine" className="mb-10 overflow-hidden">
-      <CardLabel className="bg-accent-soft text-accent">
-        等你 {items.length}
-        <span className="font-normal text-ink-2">
-          {stopped ? `${stopped} 件停着不动` : "都还在跑，不急"}
-        </span>
-      </CardLabel>
-      {items.map((i) => (
+      <CardLabel className="bg-accent-soft text-accent">等你 {items.length}</CardLabel>
+      {halt.length > 0 && (
+        <Tier zh="停着不动" hint="这些需求上没有 agent 在跑，等你之前不会动" n={halt.length} mine />
+      )}
+      {halt.map((i) => (
+        <Row key={i.key} item={i} onOpen={() => i.grpId != null && onOpen(i.grpId)} />
+      ))}
+      {rest.length > 0 && (
+        <Tier zh="可以稍后" hint="组还在干别的，晚点处理不耽误进度" n={rest.length} />
+      )}
+      {rest.map((i) => (
         <Row key={i.key} item={i} onOpen={() => i.grpId != null && onOpen(i.grpId)} />
       ))}
     </Card>
+  );
+}
+
+/** Names the tier, so the difference in tint is a statement instead of an accident. */
+function Tier({ zh, hint, n, mine }: { zh: string; hint: string; n: number; mine?: boolean }) {
+  return (
+    <div className={cn("flex flex-wrap items-baseline gap-x-2 border-t border-rule-soft px-3.5 py-1.5",
+                       mine ? "bg-accent-soft" : "bg-sunk")}>
+      <b className={cn("text-[0.75rem] font-semibold", mine ? "text-accent" : "text-ink-2")}>{zh} {n}</b>
+      <Meta>{hint}</Meta>
+    </div>
   );
 }
 
@@ -179,7 +196,6 @@ function Row({ item, onOpen }: { item: Item; onOpen: () => void }) {
         </div>
       </div>
       <span className="flex flex-wrap items-center gap-1.5 max-[52rem]:col-start-2">
-        {!item.stopped && <Meta className="mr-1 max-[52rem]:hidden">还在跑</Meta>}
         {item.actions}
       </span>
     </CardRow>

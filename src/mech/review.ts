@@ -1,5 +1,6 @@
 import type { Ctx } from "../api.ts";
 import type { Config } from "../config.ts";
+import { say } from "../lang.ts";
 import { runGates, recordGate, gateState } from "./gate.ts";
 import { reconcile } from "./reconcile.ts";
 import { changedSince, type GitRunner } from "./worktree.ts";
@@ -88,7 +89,7 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: `reconcile failed on S${slice.seq}: ${rec.reason}`,
+      body: say(ctx.config?.language, "gate.reconcile", { seq: slice.seq, reason: rec.reason }),
       meta: { slice_id: sliceId, phantom: rec.phantom },
     });
     return {
@@ -114,7 +115,7 @@ export async function runDeterministicReview(
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "gate_result",
-    body: `gate ${out.pass ? "pass" : "fail"} on S${slice.seq}`,
+    body: say(ctx.config?.language, out.pass ? "gate.pass" : "gate.fail", { seq: slice.seq }),
     meta: { slice_id: sliceId, results: out.results.map((r) => ({ name: r.name, pass: r.pass })) },
   });
   if (!out.pass) return { pass: false, feedback: out.feedback };
@@ -125,7 +126,10 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: `also changed, unclaimed: ${rec.unclaimed.slice(0, 10).join(", ")}`,
+      body: say(ctx.config?.language, "gate.unclaimed", {
+        seq: slice.seq,
+        files: rec.unclaimed.slice(0, 10).join(", "),
+      }),
       meta: { slice_id: sliceId },
     });
   }
@@ -166,7 +170,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
       kind: "escalation",
       intent: "ask",
       severity: "blocker",
-      body: `S${slice.seq} failed ${from} ${retries}x — probably the acceptance criteria, not the code`,
+      body: say(ctx.config?.language, "slice.failed", { seq: slice.seq, from, n: retries }),
       meta: { slice_id: sliceId },
     });
     return;
@@ -176,7 +180,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: `S${slice.seq} sent back by ${from} (attempt ${retries})`,
+    body: say(ctx.config?.language, "slice.sentback", { seq: slice.seq, from, n: retries }),
     meta: { slice_id: sliceId },
   });
   ctx.sched.enqueue("agent_turn", {
@@ -221,7 +225,7 @@ export function handToBoss(deps: ReviewDeps, sliceId: number): void {
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: `S${slice.seq} "${slice.title}" is ready for you`,
+    body: say(ctx.config?.language, "slice.ready", { seq: slice.seq, title: slice.title }),
     meta: { slice_id: sliceId, gates: gateState(ctx.db, sliceId) },
   });
 
@@ -230,7 +234,7 @@ export function handToBoss(deps: ReviewDeps, sliceId: number): void {
   // layer, not the first three. It is announced, never silent: an acceptance
   // nobody can see is indistinguishable from one that did not happen.
   if ((ctx.config?.autoAcceptTiers ?? []).includes(slice.difficulty)) {
-    acceptSlice(ctx, sliceId, "orchestrator", `${slice.difficulty} 自动查收，三道闸全过`);
+    acceptSlice(ctx, sliceId, "orchestrator", say(ctx.config?.language, "slice.autoaccept", { tier: slice.difficulty }));
     return;
   }
 
@@ -245,7 +249,7 @@ export function handToBoss(deps: ReviewDeps, sliceId: number): void {
         grpId: slice.grp_id,
         author: "orchestrator",
         kind: "state_change",
-        body: `autoAdvance: started the next slice without waiting for you`,
+        body: say(ctx.config?.language, "group.autoadvance"),
         meta: { slice_id: started },
       });
     }
@@ -272,7 +276,11 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
     grpId: sl.grp_id,
     author: by,
     kind: "state_change",
-    body: `accepted: S${sl.seq} ${sl.title}${why ? ` (${why})` : ""}`,
+    body: say(ctx.config?.language, "slice.accepted", {
+      seq: sl.seq,
+      title: sl.title,
+      why: why ? `（${why}）` : "",
+    }),
     meta: { slice_id: sliceId, by },
   });
 

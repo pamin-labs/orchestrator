@@ -55,7 +55,7 @@ export function TD({ className, num, ...rest }: React.TdHTMLAttributes<HTMLTable
 /** A share-of-total bar. The cost view had this inline three times. */
 export function Bar({ frac, tone, className }: { frac: number; tone?: "ink" | "warn" | "bad"; className?: string }) {
   return (
-    <span className={cn("block h-1 min-w-12 rounded-sm bg-rule", className)}>
+    <span className={cn("block h-1 w-full min-w-10 rounded-sm bg-rule", className)}>
       <i
         className={cn(
           "block h-full rounded-sm",

@@ -40,7 +40,7 @@ test("adding a role is a file, not a code change", () => {
 
 test("config falls back to defaults when the file is missing", () => {
   const cfg = loadConfig("config/does-not-exist.yaml");
-  expect(cfg.maxGroups).toBe(3);
+  expect(cfg.maxGroups).toBe(10);
   expect(cfg.workRoot.startsWith("/tmp")).toBe(true);
 });
 

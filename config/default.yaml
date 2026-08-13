@@ -1,7 +1,15 @@
 # Defaults. See PLAN.md §11.
 language: 中文            # human-facing text; code/commits/PRs stay English
-maxGroups: 3
-leaseSlots: 1
+# 10 requirements may run at once. The ceiling that bites first is not this number:
+# it is file ownership (two groups may not own overlapping paths, so a project with
+# few separable modules will not reach 10 no matter what this says) and the account's
+# own rate limit. Raise it and watch 成本 → cache 命中: many concurrent turns on one
+# subscription is where throttling shows up first.
+maxGroups: 10
+# Lease slots are deliberately not 10. A lease is a real build or test on the host,
+# and ten of those at once thrash the machine and make every one of them slower —
+# and a wedged lease holds its slot for leaseTimeoutMs. Raise only after measuring.
+leaseSlots: 2
 port: 47821              # localhost TCP; agents get ORCH_URL + ORCH_TOKEN
 
 # difficulty -> model. The Dispatcher tags each slice; this is the cost knob.

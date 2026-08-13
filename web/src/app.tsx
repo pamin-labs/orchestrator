@@ -42,7 +42,19 @@ export function App() {
   const [sel, setSel] = useState<Sel>(readHash);
   const [picking, setPicking] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [side, setSide] = useState(true);
+  const [side, setSide] = useState(() => {
+    // Hiding the feed has to survive a reload, or it is not a setting, it is a twitch.
+    try {
+      return localStorage.getItem("orch.side") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("orch.side", side ? "1" : "0");
+    } catch {}
+  }, [side]);
 
   const go = (patch: Partial<Sel>) => setSel((s) => ({ ...s, ...patch }));
 
@@ -103,7 +115,7 @@ export function App() {
     ["board", "概览"],
     ["progress", "需求"],
     ["desk", "工位墙"],
-    ["notes", "黑板"],
+    ["notes", "记录"],
     ["owns", "所有权"],
     ["cost", "成本"],
   ];

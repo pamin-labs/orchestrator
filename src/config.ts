@@ -54,8 +54,8 @@ export interface Config {
 
 const DEFAULTS: Config = {
   language: "中文",
-  maxGroups: 3,
-  leaseSlots: 1,
+  maxGroups: 10,
+  leaseSlots: 2,
   port: 47821,
   difficultyModel: {
     trivial: "claude-haiku-4-5-20251001",
