@@ -8,9 +8,20 @@
 
 ## 当前状态
 
-**M0–M6 全部落地，324 checks 绿。** `bun test` 全绿；`bun run src/server.ts` 起服务，web 在 `http://127.0.0.1:47821`。
+**PLAN.md 全部实现完毕，354 checks 绿。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
 
-**你现在只需要三个动作**：丢想法 → 批 DRAFT 卡（20 秒）→ 查收切片。gate 配置、入职包、PR 预检都在注册项目时自动完成。
+**你只需要三个动作**：丢想法 → 批 DRAFT 卡（20 秒）→ 查收切片。gate 探测、入职包、PR 权限预检都在注册项目时自动完成。
+
+### 唯一还没被真实执行过的一步
+
+**`gh pr create` 打真 GitHub。** 两侧都验过：preflight 打过真 API（正确报出「没有 remote」和 `viewerPermission`），squash + push 到本地裸仓库成功，`pollPrs` 的 MERGED 检测有 check。**中间那一次网络调用没跑过** —— 第一个需求收尾时会走到它，出问题也只影响这一步（分支和 journal 都已经在），失败会以 escalation 的形式落到「待办」。
+
+### 拿 orchestrator 自己当项目跑，要知道的两件事
+
+PLAN §13 风险⑥「系统自己是最大的那个项目」现在是实际情况：
+
+1. **跑着的进程持有旧代码。** agent 在 worktree 里改的是源码；PR 合进 main 之后，**你手上这个 server 还是旧的**，要重启（`bun run dev`）才生效。合了 migration 就更要重启 —— 新列只在 `open()` 时补。
+2. **`data/` 和 `web/dist/` 不进任何组的 owns**，公共文件同理（`package.json`、`src/db.ts` 的 MIGRATIONS 数组）。改这些要走 escalation，不然两个组同时加 migration 会撞号。
 
 ## 组的状态机
 
