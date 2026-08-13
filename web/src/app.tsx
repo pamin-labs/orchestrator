@@ -58,6 +58,11 @@ export function App() {
     if (!location.hash) history.replaceState(null, "", next);
     else history.pushState(null, "", next);
   }, [sel]);
+  // 成本 says "this project", so it must be fetched for this project. refresh()
+  // takes the id; nothing was passing it.
+  useEffect(() => {
+    if (sel.p) void refresh(sel.p);
+  }, [sel.p]);
   useEffect(() => {
     const onNav = () => setSel(readHash());
     // popstate covers Back/Forward; hashchange covers a hand-edited fragment and
@@ -89,9 +94,13 @@ export function App() {
 
   // No badge on 概览: the header already carries that count, and two copies of one
   // number is how a reader stops trusting either.
+  // 「进展」 named a feeling, not a thing. The page is the list of requirements, and
+  // `grp` is the requirement — so the tab is 需求, matching the vocabulary PLAN.md
+  // uses everywhere else. The hash key stays `progress` so links already sent still
+  // land.
   const VIEWS: [View, string][] = [
     ["board", "概览"],
-    ["progress", "进展"],
+    ["progress", "需求"],
     ["desk", "工位墙"],
     ["owns", "所有权"],
     ["cost", "成本"],

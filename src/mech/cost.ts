@@ -16,6 +16,8 @@ export interface CostRow {
 }
 
 export interface CostReport {
+  /** Requirements that finished, for a per-requirement average worth quoting. */
+  delivered: { count: number; usd: number };
   byGroup: CostRow[];
   byRole: CostRow[];
   byDifficulty: CostRow[];
@@ -42,12 +44,17 @@ export function costReport(db: DB, projectId?: number): CostReport {
     )
     .all(...args);
 
+  // The project filter was missing here, so one project's cost panel showed every
+  // project's difficulty mix — and the difficulty tag is the cost knob the whole
+  // panel exists to inform.
   const byDifficulty = db
-    .query<CostRow, []>(
-      `SELECT difficulty AS label, sum(spent_tokens) AS tokens, sum(spent_usd) AS usd
-       FROM slice GROUP BY difficulty ORDER BY usd DESC`,
+    .query<CostRow, any[]>(
+      `SELECT s.difficulty AS label, sum(s.spent_tokens) AS tokens, sum(s.spent_usd) AS usd
+       FROM slice s JOIN grp g ON g.id = s.grp_id
+       ${projectId ? "WHERE g.project_id = ?" : ""}
+       GROUP BY s.difficulty ORDER BY usd DESC`,
     )
-    .all();
+    .all(...args);
 
   const total = db
     .query<CostRow, any[]>(
@@ -56,7 +63,16 @@ export function costReport(db: DB, projectId?: number): CostReport {
     )
     .get(...args)!;
 
-  return { byGroup, byRole, byDifficulty, total, cacheRatio: recentCacheRatio(db) };
+  // What a finished requirement costs is the number to compare against doing it by
+  // hand — PLAN.md §13 risk ② turns on exactly this ratio.
+  const delivered = db
+    .query<{ count: number; usd: number }, any[]>(
+      `SELECT count(*) AS count, coalesce(sum(spent_usd), 0) AS usd FROM grp
+       WHERE status = 'DISSOLVED' ${projectId ? "AND project_id = ?" : ""}`,
+    )
+    .get(...args)!;
+
+  return { delivered, byGroup, byRole, byDifficulty, total, cacheRatio: recentCacheRatio(db) };
 }
 
 /**

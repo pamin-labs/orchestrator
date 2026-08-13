@@ -49,6 +49,7 @@ export interface State {
 export interface CostRow { label: string; tokens: number; usd: number }
 export interface Cost {
   total: CostRow; byGroup: CostRow[]; byRole: CostRow[]; byDifficulty: CostRow[]; cacheRatio: number | null;
+  delivered: { count: number; usd: number };
 }
 
 const EMPTY: State = {

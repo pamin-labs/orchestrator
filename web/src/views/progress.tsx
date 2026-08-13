@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Meta } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
 import { Tip } from "../ui/tooltip";
 import type { Archived, Group, Slice, State } from "../lib/api";
 import { usePaged } from "../lib/page";
@@ -8,31 +10,32 @@ import { STATUS_ZH, STOPS, gates } from "../lib/select";
 import { cn, money } from "../lib/utils";
 
 /**
- * Where every requirement in the project stands, grouped by what it is waiting on.
+ * Every requirement in the project, filtered by whose turn it is.
  *
- * The state is the grouping, not a column: "which of these needs me, which are
+ * The state is the filter, not a column: "which of these needs me, which are
  * moving, which are stuck, which are done" is the only question this page answers,
- * and sorting by it beats a status column the eye has to scan. Sections are ordered
- * by whose turn it is — the boss first, then the machines, then the parked, then the
- * archive — so the top of the page is always the part that cannot proceed without a
- * decision.
+ * and a tab carrying the count answers it before the list is read at all.
  *
- * Each section pages independently: at a hundred requirements the archive is the
- * long one, and it is also the one nobody scrolls.
+ * Four stacked sections were the first attempt. They read fine at four
+ * requirements and become a scroll hunt at forty — the archive is the longest
+ * section and the one nobody wants, so it was permanently in the way. One list at a
+ * time, paged, with the count on the control that selects it.
  */
 
-interface Section {
+interface Bucket {
   key: string;
   zh: string;
   hint: string;
   of: string[];
+  mine?: boolean;
 }
 
-const SECTIONS: Section[] = [
-  { key: "mine", zh: "等你决策", hint: "计划卡待批、切片待查收、PR 待合入", of: ["DRAFT", "PR_OPEN"] },
+const BUCKETS: Bucket[] = [
+  { key: "mine", zh: "等你决策", hint: "计划卡待批、切片待查收、PR 待合入", of: ["DRAFT", "PR_OPEN"], mine: true },
   { key: "live", zh: "执行中", hint: "有 agent 在跑，或正在拆解", of: ["RUNNING", "PLANNING", "PAUSING"] },
-  { key: "held", zh: "停着", hint: "暂停或封存，工作都留着", of: ["PAUSED", "PARKED"] },
+  { key: "held", zh: "停着", hint: "暂停或封存，工作都留着，唤醒即续", of: ["PAUSED", "PARKED"] },
 ];
+const DONE = "done";
 
 export function Progress({
   st, projectId, onOpen, maxGroups,
@@ -41,76 +44,82 @@ export function Progress({
 }) {
   const groups = st.groups.filter((g) => g.project_id === projectId);
   const archived = (st.archived ?? []).filter((a) => a.project_id === projectId);
-  const live = groups.filter((g) => SECTIONS[1]!.of.includes(g.status)).length;
+  const of = (b: Bucket) => groups.filter((g) => b.of.includes(g.status));
+  const live = of(BUCKETS[1]!).length;
+
+  // Open on the tab that has something for the boss; failing that, on the work.
+  const [tab, setTab] = useState(() => {
+    if (of(BUCKETS[0]!).length) return "mine";
+    return BUCKETS.find((b) => of(b).length)?.key ?? (archived.length ? DONE : "live");
+  });
 
   if (!groups.length && !archived.length) {
     return (
       <div className="text-[0.8125rem] text-ink-3">
-        这个项目还没有需求。右上角 ＋ 新需求，写一句话就行。
+        这个项目还没有需求。右上角 ＋ 新需求，写一句话就行 —— 深挖和切边界不用你做。
       </div>
     );
   }
 
   return (
-    <>
-      <div className="mb-5 flex flex-wrap items-baseline gap-x-4 gap-y-1.5 border-b border-rule pb-3">
-        {SECTIONS.map((sec) => {
-          const n = groups.filter((g) => sec.of.includes(g.status)).length;
-          return (
-            <span key={sec.key} className="flex items-baseline gap-1.5">
-              <b className={cn("font-display text-[1.25rem] font-semibold", sec.key === "mine" && n > 0 && "text-accent")}>
-                {n}
-              </b>
-              <span className="text-[0.75rem] text-ink-3">{sec.zh}</span>
-            </span>
-          );
-        })}
-        <span className="flex items-baseline gap-1.5">
-          <b className="font-display text-[1.25rem] font-semibold">{archived.length}</b>
-          <span className="text-[0.75rem] text-ink-3">已交付</span>
-        </span>
+    <Tabs value={tab} onValueChange={setTab}>
+      <TabList>
+        {BUCKETS.map((b) => (
+          <Tab key={b.key} value={b.key} count={of(b).length} mine={b.mine}>
+            {b.zh}
+          </Tab>
+        ))}
+        <Tab value={DONE} count={archived.length}>已交付</Tab>
         <span className="grow" />
         {/* The slot cap is why an approved requirement can sit still: queued, not
             stuck. Without it that difference is invisible. */}
         {maxGroups != null && (
           <Tip label={`并发上限 ${maxGroups} 组。满了之后已批准的需求排队等槽位，不是卡住了。`}>
-            <Meta className={cn("underline decoration-dotted", live >= maxGroups && "text-warn")}>
+            <Meta className={cn("self-center underline decoration-dotted", live >= maxGroups && "text-warn")}>
               并行 {live}/{maxGroups}
             </Meta>
           </Tip>
         )}
-      </div>
+      </TabList>
 
-      {SECTIONS.map((sec) => (
-        <Group key={sec.key} sec={sec} st={st} groups={groups.filter((g) => sec.of.includes(g.status))} onOpen={onOpen} />
+      {BUCKETS.map((b) => (
+        <TabPanel key={b.key} value={b.key}>
+          <List st={st} groups={of(b)} onOpen={onOpen} hint={b.hint} mine={!!b.mine} empty={emptyOf(b.key)} />
+        </TabPanel>
       ))}
-      <Done rows={archived} />
-    </>
+      <TabPanel value={DONE}>
+        <Done rows={archived} />
+      </TabPanel>
+    </Tabs>
   );
 }
 
-function Group({
-  sec, st, groups, onOpen,
+/** Absence, with the reason it is absent. A bare "无" teaches nothing. */
+function emptyOf(key: string): string {
+  if (key === "mine") return "没有等你的决策。有计划卡、待查收切片或待合入 PR 时出现在这里，并推送通知。";
+  if (key === "live") return "没有在跑的需求。批准一张计划卡就会有。";
+  return "没有停着的需求。预算用尽、或等你答问题超过 2 小时会自动封存到这里，工作不丢。";
+}
+
+function List({
+  st, groups, onOpen, hint, mine, empty,
 }: {
-  sec: Section; st: State; groups: Group[]; onOpen: (id: number) => void;
+  st: State; groups: Group[]; onOpen: (id: number) => void; hint: string; mine: boolean; empty: string;
 }) {
-  const { page, rest, more } = usePaged(groups, 25);
-  if (!groups.length) return null;
+  const { page, rest, more, total } = usePaged(groups, 25);
+  if (!groups.length) return <div className="text-[0.8125rem] text-ink-3">{empty}</div>;
   return (
-    <section className="mb-7">
-      <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2.5">
-        <h2 className={cn("text-[0.8125rem] font-semibold", sec.key === "mine" ? "text-accent" : "text-ink")}>
-          {sec.zh} <span className="font-normal text-ink-3">{groups.length}</span>
-        </h2>
-        <Meta>{sec.hint}</Meta>
-      </div>
+    <>
+      <Meta className="mb-1 block">{hint}</Meta>
       {page.map((g) => (
-        <Row key={g.id} st={st} g={g} onOpen={onOpen} mine={sec.key === "mine"} />
+        <Row key={g.id} st={st} g={g} onOpen={onOpen} mine={mine} />
       ))}
       {rest > 0 && (
-        <Button variant="quiet" size="sm" className="mt-1.5" onClick={more}>还有 {rest} 个</Button>
+        <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
+          还有 {rest} 个（共 {total}）
+        </Button>
       )}
-    </section>
+    </>
   );
 }
 
@@ -120,6 +129,7 @@ function Row({ st, g, onOpen, mine }: { st: State; g: Group; onOpen: (id: number
   const waiting = slices.filter((s) => s.status === "awaiting_boss").length;
   const done = slices.filter((s) => s.status === "accepted").length;
   const card = st.draftCards.find((c) => c.grpId === g.id);
+  const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
   return (
     <button
       onClick={() => onOpen(g.id)}
@@ -145,7 +155,7 @@ function Row({ st, g, onOpen, mine }: { st: State; g: Group; onOpen: (id: number
         {g.status === "PLANNING" ? (
           <span className="text-[0.75rem] text-ink-3">Dispatcher 在深挖，还没有切片</span>
         ) : g.status === "DRAFT" ? (
-          <span className="text-[0.75rem] text-ink-2">
+          <span className="block truncate text-[0.75rem] text-ink-2">
             {card ? (card.body.split("\n").find((l) => l.startsWith("目标")) ?? "计划卡待批") : "计划卡还没交"}
           </span>
         ) : !slices.length ? (
@@ -160,6 +170,7 @@ function Row({ st, g, onOpen, mine }: { st: State; g: Group; onOpen: (id: number
         )}
       </div>
       <span className="flex items-center gap-2 whitespace-nowrap">
+        {broke && <Badge tone="mine">预算用尽</Badge>}
         {waiting > 0 && <Badge tone="mine">{waiting} 片待查收</Badge>}
         {g.status === "PR_OPEN" && <Badge tone="mine">PR 待合入</Badge>}
         <Meta>{g.branch ?? ""}</Meta>
@@ -219,14 +230,13 @@ function Seg({ s }: { s: Slice }) {
 
 /** Delivered work. 收尾 dissolves the group, and it used to leave no trace at all. */
 function Done({ rows }: { rows: Archived[] }) {
-  const { page, rest, more } = usePaged(rows, 10);
-  if (!rows.length) return null;
+  const { page, rest, more, total } = usePaged(rows, 25);
+  if (!rows.length) {
+    return <div className="text-[0.8125rem] text-ink-3">还没有交付过。合入 main 之后的需求归档到这里。</div>;
+  }
   return (
-    <section className="mb-7">
-      <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2.5">
-        <h2 className="text-[0.8125rem] font-semibold">已交付 <span className="font-normal text-ink-3">{rows.length}</span></h2>
-        <Meta>已合入 main，session 全退休</Meta>
-      </div>
+    <>
+      <Meta className="mb-1 block">已合入 main，session 全退休，事件和 journal 都留着</Meta>
       {page.map((a) => (
         <div
           key={a.id}
@@ -239,7 +249,9 @@ function Done({ rows }: { rows: Archived[] }) {
           <Meta>{a.slices} 片 · {money(a.spent_usd)}</Meta>
         </div>
       ))}
-      {rest > 0 && <Button variant="quiet" size="sm" className="mt-1.5" onClick={more}>还有 {rest} 个</Button>}
-    </section>
+      {rest > 0 && (
+        <Button variant="quiet" size="sm" className="mt-2" onClick={more}>还有 {rest} 个（共 {total}）</Button>
+      )}
+    </>
   );
 }

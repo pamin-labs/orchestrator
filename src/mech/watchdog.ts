@@ -29,6 +29,8 @@ export interface Finding {
 export const IDLE_TURN_LIMIT = 3;
 export const SAME_FILE_LIMIT = 5;
 export const PAUSED_NOTIFY_MS = 15 * 60 * 1000;
+/** How often one standing finding may reappear in the timeline. */
+export const REEMIT_MS = 30 * 60 * 1000;
 
 export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   const { ctx, cfg } = deps;
@@ -185,7 +187,21 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     }
   }
 
+  // A standing condition is re-detected on every tick, and emitting it every time
+  // filled the timeline with the same line dozens of times over — "perf-rewrite is
+  // at 102% of its budget", every few seconds, until the feed was worthless. The
+  // notifier already backs off; the event log needs the same rule. A repeat is a
+  // reminder, not a new problem.
   for (const f of findings) {
+    const last = ctx.db
+      .query<{ at: number }, [string, number | null, number | null]>(
+        `SELECT max(at) AS at FROM event
+         WHERE kind = 'escalation' AND author = 'watchdog'
+           AND json_extract(meta_json, '$.rule') = ?
+           AND (grp_id IS ? OR (grp_id IS NULL AND ? IS NULL))`,
+      )
+      .get(f.rule, f.grpId ?? null, f.grpId ?? null);
+    if (last?.at && now() - last.at < REEMIT_MS) continue;
     ctx.bus.emit({
       grpId: f.grpId,
       author: "watchdog",

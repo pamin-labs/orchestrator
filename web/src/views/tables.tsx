@@ -168,13 +168,22 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   );
 }
 
-/** Per PLAN.md §8: by requirement, slice, role and difficulty, plus cache hit rate. */
+/**
+ * Where the money went, and the one ratio that decides whether any of this is worth
+ * running.
+ *
+ * PLAN.md §13 risk ② is "this costs 5-10x a direct conversation" — the test for it
+ * is the cost of a delivered requirement, so that is the headline. Underneath, the
+ * four attributions, in the order they change a decision: which requirement, which
+ * slice, which role, and — the one that is actually a knob — which difficulty tag,
+ * since the tag picks the model.
+ */
 export function CostView({ st, cost, projectId }: { st: State; cost: Cost | null; projectId: number }) {
   if (!cost?.total?.usd) {
     return (
       <Empty>
         还没有花钱。批准计划卡之后，这里按需求、切片、角色、难度四个维度归因 ——
-        难度标签是单次需求成本最直接的旋钮。
+        难度标签是单次需求成本最直接的旋钮（trivial 跑 haiku，normal 跑 sonnet，hard 跑 opus）。
       </Empty>
     );
   }
@@ -183,47 +192,87 @@ export function CostView({ st, cost, projectId }: { st: State; cost: Cost | null
     .filter((s) => ids.has(s.grp_id) && s.spent_usd)
     .map((s) => ({ label: `S${s.seq} ${s.title}`, usd: s.spent_usd, tokens: s.spent_tokens }))
     .sort((a, b) => b.usd - a.usd);
-
-  const table = (title: string, rows: { label: string; usd: number; tokens: number }[]) => {
-    const list = rows.filter((r) => r.usd);
-    if (!list.length) return null;
-    const top = Math.max(...list.map((r) => r.usd));
-    return (
-      <div key={title}>
-        <H3>{title}</H3>
-        <Table min="20rem">
-          <TBody>
-            {list.map((r) => (
-              <TR key={r.label}>
-                <TD className="max-w-[20rem] truncate text-[0.75rem]">{r.label}</TD>
-                <TD className="w-2/5"><Bar frac={r.usd / top} /></TD>
-                <TD num><span className="text-ink-3">{K(r.tokens)}</span></TD>
-                <TD num>{money(r.usd)}</TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      </div>
-    );
-  };
+  const per = cost.delivered?.count ? cost.delivered.usd / cost.delivered.count : null;
 
   return (
     <>
-      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <b className="font-display text-[1.75rem] font-semibold">{money(cost.total.usd)}</b>
-        <Meta>{K(cost.total.tokens)} tokens</Meta>
-        {/* A cache ratio that drops is the only visible sign that prompt assembly
-            broke: agents keep working, tests keep passing, turns cost 3-5x. */}
-        <Tip label="注入的 delta 必须留在最后一条 user message 末尾。这个数掉下来说明 prompt 组装被改坏了 —— 功能全正常，成本翻 3-5 倍。">
-          <Meta className="underline decoration-dotted">
-            cache 命中 {cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`}
-          </Meta>
+      <div className="mb-6 flex flex-wrap items-end gap-x-10 gap-y-4">
+        <Stat big label="累计" value={money(cost.total.usd)} sub={`${K(cost.total.tokens)} tokens`} />
+        {/* The number to hold against "what would this have cost me directly". */}
+        <Stat
+          big
+          label="每个已交付需求"
+          value={per == null ? "还没有" : money(per)}
+          sub={per == null ? "合入一个才有这个数" : `${cost.delivered.count} 个已交付`}
+        />
+        <Tip label="注入的 delta 必须留在最后一条 user message 末尾。这个数掉下来说明 prompt 组装被改坏了 —— agent 照跑、测试照绿，每个 turn 贵 3-5 倍。">
+          <span>
+            <Stat
+              label="cache 命中"
+              value={cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`}
+              sub="最近 50 个 turn"
+              warn={cost.cacheRatio != null && cost.cacheRatio < 0.5}
+            />
+          </span>
         </Tip>
       </div>
-      {table("按需求", cost.byGroup)}
-      {table("按切片", bySlice)}
-      {table("按角色", cost.byRole)}
-      {table("按难度", cost.byDifficulty)}
+
+      <Split title="按需求" rows={cost.byGroup} note="哪个需求贵。贵得离谱的通常是被打回过几轮的" />
+      <Split title="按切片" rows={bySlice} note="切片是预算单位，超支在这一层最早看得见" />
+      <Split title="按角色" rows={cost.byRole} note="决策岗（dispatcher / architect）跑 opus，执行岗跑 sonnet" />
+      <Split title="按难度" rows={cost.byDifficulty} note="这一栏是旋钮：标签直接决定跑哪个 model，在计划卡上可以改" />
     </>
+  );
+}
+
+function Stat({
+  label, value, sub, big, warn,
+}: {
+  label: string; value: string; sub?: string; big?: boolean; warn?: boolean;
+}) {
+  return (
+    <span className="block">
+      <span className="block text-[0.75rem] text-ink-3">{label}</span>
+      <b
+        className={cn(
+          "block font-display font-semibold",
+          big ? "text-[1.75rem] leading-tight" : "text-[1.25rem] leading-tight",
+          warn && "text-warn",
+        )}
+      >
+        {value}
+      </b>
+      {sub && <span className="block font-mono text-[0.6875rem] text-ink-3">{sub}</span>}
+    </span>
+  );
+}
+
+/** One attribution: rows sorted by spend, share as a bar, absolute numbers aligned. */
+function Split({ title, rows, note }: { title: string; rows: { label: string; usd: number; tokens: number }[]; note: string }) {
+  const list = rows.filter((r) => r.usd).sort((a, b) => b.usd - a.usd);
+  if (!list.length) return null;
+  const top = Math.max(...list.map((r) => r.usd));
+  const sum = list.reduce((n, r) => n + r.usd, 0);
+  return (
+    <section className="mb-7">
+      <div className="mb-1 flex flex-wrap items-baseline gap-x-2.5">
+        <h3 className="text-[0.8125rem] font-semibold">{title}</h3>
+        <Meta>{note}</Meta>
+      </div>
+      {list.map((r) => (
+        <div
+          key={r.label}
+          className="grid grid-cols-[minmax(6rem,14rem)_minmax(0,1fr)_3.5rem_4rem_3rem] items-center gap-x-3
+                     border-t border-rule-soft py-1.5 max-[52rem]:grid-cols-[minmax(0,1fr)_4rem_3rem]"
+        >
+          <span className="truncate text-[0.8125rem]" title={r.label}>{r.label}</span>
+          <Bar frac={r.usd / top} className="max-[52rem]:hidden" />
+          <Meta className="text-right max-[52rem]:hidden">{K(r.tokens)}</Meta>
+          <span className="text-right font-mono text-[0.8125rem]">{money(r.usd)}</span>
+          {/* Share, because "$0.31" only means something next to the total. */}
+          <Meta className="text-right">{Math.round((r.usd / sum) * 100)}%</Meta>
+        </div>
+      ))}
+    </section>
   );
 }
