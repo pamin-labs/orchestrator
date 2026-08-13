@@ -1,9 +1,11 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { Ctx } from "../api.ts";
 import type { Config } from "../config.ts";
 import { say } from "../lang.ts";
 import { runGates, recordGate, gateState } from "./gate.ts";
-import { reconcile } from "./reconcile.ts";
-import { changedSince, type GitRunner } from "./worktree.ts";
+import { extractClaimedFiles, reconcile } from "./reconcile.ts";
+import { changedSince, filesAt, type GitRunner } from "./worktree.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 
 /**
@@ -79,10 +81,18 @@ export async function runDeterministicReview(
     .map((r) => safeJson(r.claim_json));
 
   let changed: string[] = [];
+  let absent: string[] = [];
   if (repo && grp?.worktree && slice.base_sha) {
     changed = await changedSince(git, repo, grp.worktree, slice.base_sha);
+    // A path that is in neither the branch point nor the worktree: a scratch file
+    // created and then deleted inside this slice. Git has no record of it either
+    // way, so it cannot be a delivery — and it must not be scored as a lie.
+    const known = new Set(await filesAt(git, repo, grp.worktree, slice.base_sha));
+    absent = extractClaimedFiles(claims).filter(
+      (c) => !known.has(c) && !existsSync(join(grp.worktree!, c)),
+    );
   }
-  const rec = reconcile({ claims, changedFiles: changed });
+  const rec = reconcile({ claims, changedFiles: changed, absent });
   recordGate(ctx.db, sliceId, "reconcile", rec.pass ? "pass" : "fail");
   if (!rec.pass) {
     ctx.bus.emit({

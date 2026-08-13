@@ -1,6 +1,30 @@
 import { expect, test } from "bun:test";
 import { declaredNoOp, extractClaimedFiles, reconcile } from "../src/mech/reconcile.ts";
 
+test("a scratch file created and deleted inside the slice is not a lie", () => {
+  // Observed: the Engineer removed its own debug script and said so. Never
+  // committed, so not in the diff; deleted, so not untracked either — and the
+  // honest report was scored as a phantom claim twice in a row.
+  const r = reconcile({
+    claims: [{ files: ["tmp_probe4.mjs", "src/api.ts"], summary: "remove stray debug script" }],
+    changedFiles: ["src/api.ts"],
+    absent: ["tmp_probe4.mjs"],
+  });
+  expect(r.pass).toBe(true);
+  expect(r.ignored).toEqual(["tmp_probe4.mjs"]);
+});
+
+test("a claim made entirely of paths that never existed still fails", () => {
+  // Dropping them must not become the way to pass with nothing: git cannot tell an
+  // invented path from a deleted scratch file, so neither counts as a delivery.
+  const r = reconcile({
+    claims: [{ files: ["src/invented.ts"], summary: "did the thing" }],
+    changedFiles: [],
+    absent: ["src/invented.ts"],
+  });
+  expect(r.pass).toBe(false);
+});
+
 test("the headline case: claimed work with an empty diff is rejected", () => {
   const r = reconcile({ claims: ["Moved the token check into auth/mw.ts"], changedFiles: [] });
   expect(r.pass).toBe(false);
