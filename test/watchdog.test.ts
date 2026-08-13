@@ -667,7 +667,7 @@ test("a pending slice under an idle group is started rather than waited on", asy
   ).toBeGreaterThan(0);
 });
 
-test("a stale PR branch is told to rebase too, and the base comes from the remote", async () => {
+test("a stale PR branch is told to rebase too, with the measured remote base in its instructions", async () => {
   // PR_OPEN used to be excluded, so the one branch that has to merge only learned
   // main had moved when GitHub called it CONFLICTING — the late half of the same
   // news. And the base was read from the local checkout's HEAD, so a push from
@@ -681,7 +681,7 @@ test("a stale PR branch is told to rebase too, and the base comes from the remot
   h.ctx.git = async (_repo, argv) => {
     seen.push(argv);
     if (argv[0] === "remote") return { code: 0, out: "origin" };
-    if (argv[0] === "symbolic-ref") return { code: 0, out: "refs/remotes/origin/main" };
+    if (argv[0] === "symbolic-ref") return { code: 0, out: "refs/remotes/origin/master" };
     if (argv[0] === "rev-parse") return { code: 0, out: "abc1234567" };
     return { code: 1, out: "" }; // not an ancestor of the worktree
   };
@@ -689,7 +689,13 @@ test("a stale PR branch is told to rebase too, and the base comes from the remot
 
   expect((await runWatchdog(deps)).map((x) => x.rule)).toContain("base_moved");
   expect(seen.some((a) => a[0] === "fetch")).toBe(true);
-  expect(seen.some((a) => a[0] === "rev-parse" && a[1] === "origin/main")).toBe(true);
+  expect(seen.some((a) => a[0] === "rev-parse" && a[1] === "origin/master")).toBe(true);
+  const job = h.db
+    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn' AND state = 'pending'")
+    .get()!;
+  expect(JSON.parse(job.payload_json).rejection).toContain("origin/master moved to abc12345");
+  expect(JSON.parse(job.payload_json).rejection).toContain("orch git -- fetch origin master");
+  expect(JSON.parse(job.payload_json).rejection).toContain("orch git -- rebase origin/master");
 });
 
 test("rule 15 checks defaultBase, not the primary checkout's own HEAD", async () => {
