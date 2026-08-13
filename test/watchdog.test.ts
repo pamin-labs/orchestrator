@@ -627,9 +627,11 @@ test("a pending slice under an idle group is started rather than waited on", asy
   );
   await runWatchdog(h.deps);
   expect(h.db.query<{ s: string }, []>("SELECT status AS s FROM slice WHERE grp_id = 1").get()!.s).toBe("running");
-  // The harness scheduler dispatches inline, so the turn is already through the
-  // queue by now — what matters is that one exists at all.
-  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'").get()!.c).toBe(1);
+  // The harness scheduler dispatches inline, so by now the turn is done and rule 8
+  // has put another one back. What matters is that one exists at all.
+  expect(
+    h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'").get()!.c,
+  ).toBeGreaterThan(0);
 });
 
 test("a stale PR branch is told to rebase too, and the base comes from the remote", async () => {

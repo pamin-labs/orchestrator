@@ -1,11 +1,10 @@
 import type { Ctx } from "../api.ts";
 import type { Config } from "../config.ts";
 import { say } from "../lang.ts";
-import { interrupt, park, settlePausing, unpark } from "./intercept.ts";
+import { interrupt, park, unpark } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
-import { joinQueue } from "./mergequeue.ts";
-import { startNextSlice } from "./review.ts";
+import { runInvariants } from "./invariants.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
 import { defaultBase, type GitRunner } from "./worktree.ts";
 
@@ -133,8 +132,11 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   const now = deps.now ?? (() => Date.now());
   const findings: Finding[] = [];
 
-  // PAUSING -> PAUSED lives here so a crashed turn cannot leave a group stuck.
-  settlePausing(ctx);
+  // Liveness first: one row per state, each saying who pushes it (invariants.ts).
+  // The rules below are the other question — not "is anybody driving this" but
+  // "is this healthy" — and keeping the two apart is what stops either from
+  // becoming a dumping ground.
+  runInvariants(ctx);
 
   // A group the boss approved while a boundary held it. `orch owns` sweeps too,
   // but a blocker can also leave by merging, being split, or being parked and then
@@ -281,73 +283,6 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", body: t("rl.resumed") });
   }
 
-  // 7b. Every slice accepted, no PR, and nothing left in the queue.
-  //
-  // The branch-level review is enqueued from exactly two places: the last
-  // acceptance, and writing a retro. Neither fires again after the Auditor sends
-  // the branch back — so once the rework turn ends, a group with all its work
-  // accepted has nobody left to hand it to. Measured: a group sat like this while
-  // its Engineer kept being woken by rebase nudges, looking busy, with no PR and
-  // no error. Rule 8 below cannot cover it either: it requeues the last *turn*,
-  // and the last turn is not what opens a PR.
-  //
-  // Not while the *boss* is being waited on: at that point `pr_retries` is spent
-  // and shipping anyway would walk past the person who was asked. Questions still
-  // travelling the chain do not count — a group had three stale advisories on it,
-  // two of them clearance denials nobody will ever answer, and blocking on those
-  // would mean finished work never ships.
-  for (const g of ctx.db
-    .query<{ id: number; name: string }, []>(
-      `SELECT g.id, g.name FROM grp g
-       WHERE g.status = 'RUNNING' AND g.pr_number IS NULL
-         AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id)
-         AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status != 'accepted')
-         AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id AND state IN ('pending','running'))
-         AND NOT EXISTS (SELECT 1 FROM escalation
-                         WHERE grp_id = g.id AND answer IS NULL AND chain_state = 'boss')`,
-    )
-    .all()) {
-    ctx.sched.enqueue("reconcile", { grp_id: g.id, priority: 5 });
-    findings.push({
-      rule: "unshipped",
-      grpId: g.id,
-      severity: "advisory",
-      body: t("wd.unshipped", { name: g.name }),
-    });
-  }
-
-  // 7c. Finished, but not in the queue that would get it merged.
-  //
-  // Same shape as the `paused_at` bug: `waiting_merge` reads `merge_seq_at`, so a
-  // PR_OPEN group with a null one is invisible to it — no nudge, no place in the
-  // order, and nothing else ever looks. It gets in line rather than waiting to be
-  // noticed.
-  for (const g of ctx.db
-    .query<{ id: number }, []>(
-      "SELECT id FROM grp WHERE status = 'PR_OPEN' AND pr_number IS NOT NULL AND merge_seq IS NULL",
-    )
-    .all()) {
-    joinQueue(ctx.db, g.id);
-  }
-
-  // 7d. A group with work left and nothing in flight.
-  //
-  // `startNextSlice` is called from three places, all of them the end of something
-  // else — a group starting, autoAdvance, an acceptance. A slice left `pending`
-  // when none of those fires again has nobody to start it, and the group sits
-  // RUNNING with an empty queue, which is indistinguishable from working.
-  for (const g of ctx.db
-    .query<{ id: number }, []>(
-      `SELECT g.id FROM grp g
-       WHERE g.status = 'RUNNING'
-         AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status = 'pending')
-         AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status NOT IN ('pending','accepted'))
-         AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id AND state IN ('pending','running'))`,
-    )
-    .all()) {
-    startNextSlice(ctx, g.id);
-  }
-
   // 8. A live group with nothing queued.
   //
   // Every way a turn can end is terminal — failed, done, cancelled — and nothing
@@ -467,9 +402,6 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   }
 
   // 7. Paused too long: notify, then park to stop holding a slot.
-  // A PAUSED row with no `paused_at` is invisible to every timer below, so it
-  // freezes silently. Stamp it now rather than lose the group.
-  ctx.db.run("UPDATE grp SET paused_at = unixepoch() * 1000 WHERE status = 'PAUSED' AND paused_at IS NULL");
   const paused = ctx.db
     .query<{ id: number; name: string; paused_at: number }, []>(
       // `rl_resets_at IS NULL`: a group waiting for quota is not waiting for the boss,
