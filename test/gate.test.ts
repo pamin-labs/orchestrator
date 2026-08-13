@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory, type DB } from "../src/db.ts";
@@ -115,4 +115,27 @@ test("gate verdicts merge into gates_json without clobbering other layers", () =
   recordGate(db, 1, "gate", "fail");
   recordGate(db, 1, "gate", "pass");
   expect(gateState(db, 1)).toEqual({ self: "pass", gate: "pass" });
+});
+
+test("a worktree with its own node_modules is refused before any gate runs", async () => {
+  // It fails as something else otherwise: `playwright is not installed`, an hour
+  // after the main checkout installed it. One group filed a blocker with exactly
+  // the right diagnosis and the boss had to act on it, which is a message the gate
+  // could have written itself.
+  const wt = mkdtempSync(join(tmpdir(), "orch-nm-"));
+  mkdirSync(join(wt, "node_modules"));
+  const db = seed(["test"]);
+  resource(db, "test");
+  const r = await runGates({
+    db,
+    projectId: 1,
+    sliceId: 1,
+    cwd: wt,
+    dataDir: dataDir(),
+    run: async () => ({ exitCode: 0, digest: { errorLines: [], tail: [] } }) as any,
+  });
+  expect(r.pass).toBe(false);
+  expect(r.feedback).toContain("not the symlink");
+  // The fix is in the message, not in a doc somewhere.
+  expect(r.feedback).toContain("rm -rf");
 });
