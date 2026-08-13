@@ -44,17 +44,23 @@ const KINDS: [string, string, string][] = [
 
 const ZH = new Map(KINDS.map(([k, zh]) => [k, zh]));
 
-export function Notes({ projectId, grpId, compact, tab, onTab }: {
+export function Notes({ projectId, grpId, compact, tab, onTab, onCount }: {
   projectId?: number; grpId?: number; compact?: boolean;
   /** From the hash where this is a whole view; local where it is embedded. */
   tab?: string | null; onTab?: (t: string) => void;
+  /** How many were found, for a tab label that cannot fetch them itself. */
+  onCount?: (n: number) => void;
 }) {
   const [notes, setNotes] = useState<Note[] | null>(null);
   const scope = grpId ? `group=${grpId}` : projectId ? `project=${projectId}` : "";
 
   useEffect(() => {
     setNotes(null);
-    void pull<{ notes: Note[] }>(`/api/notes?${scope}`).then((r) => setNotes(r?.notes ?? []));
+    void pull<{ notes: Note[] }>(`/api/notes?${scope}`).then((r) => {
+      setNotes(r?.notes ?? []);
+      onCount?.(r?.notes?.length ?? 0);
+    });
+    // `onCount` is a fresh closure every render and this must not refetch on it.
   }, [scope]);
 
   if (!notes) return <Meta>读记录…</Meta>;
