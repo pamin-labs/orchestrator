@@ -20,6 +20,8 @@ export interface Job {
   payload_json: string;
   priority: number;
   state: JobState;
+  /** Why it ended, when it ended badly. Read to tell a dead turn from a dead server. */
+  error?: string | null;
 }
 
 /** Runs a job to completion. Throwing marks the job failed. */
@@ -312,19 +314,19 @@ export function reclaimOrphans(
     const tooOld = j.started_at !== null && now() - j.started_at > maxAge;
     if (j.pid !== null && !tooOld && alive(j.pid)) continue;
 
+    const why =
+      j.pid === null
+        ? "orphaned: no process was ever recorded"
+        : tooOld
+          ? `orphaned: still running after ${Math.round(maxAge / 60000)} min`
+          : `orphaned: process ${j.pid} is gone`;
     db.run(
       `UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = 'running'`,
-      [
-        now(),
-        j.pid === null
-          ? "orphaned: no process was ever recorded"
-          : tooOld
-            ? `orphaned: still running after ${Math.round(maxAge / 60000)} min`
-            : `orphaned: process ${j.pid} is gone`,
-        j.id,
-      ],
+      [now(), why, j.id],
     );
-    reclaimed.push({ ...j, state: "failed" });
+    // The reason travels with the row: resumeReclaimed reads it to tell a turn that
+    // died of its own doing from one the server took down on its way out.
+    reclaimed.push({ ...j, state: "failed", error: why });
   }
 
   // Agents believe they are mid-turn too, and a blocked agent is skipped forever.
@@ -355,7 +357,14 @@ export function resumeReclaimed(sched: Scheduler, jobs: Job[]): number {
       // A payload we cannot read is a payload we cannot re-run faithfully.
       continue;
     }
-    if (payload?.resumed) continue;
+    // `resumed` stops a turn that takes the server down with it from being
+    // resurrected forever — but an orphan died because the *server* went away, not
+    // because of anything it did, and that must not spend its one chance. Six
+    // groups sat stopped after a restart with a fix already in main, each holding a
+    // turn that was only ever killed by the restart itself, and every one of them
+    // needed a human to say "go on then".
+    const orphaned = j.error?.startsWith("orphaned:") ?? false;
+    if (payload?.resumed && !orphaned) continue;
     sched.enqueue(j.kind, {
       grp_id: j.grp_id,
       agent_id: j.agent_id,
