@@ -65,11 +65,25 @@ controls), 0.875 (base), 0.9375 (group name), 1.375 (the one big number in 成�
 
 ## Layout
 
-- Header (project trail, subscription usage, waiting count, connection) → nav
-  (the views) → one view. Spend is not here — it belongs in 成本, where it can be
-  attributed. Usage is, because it is a constraint on what to start next.
+- One header row: project trail, the five views, subscription usage, waiting
+  count, connection. It was two rows for a while and the second was a tab strip
+  above pages that had their own tab strips. Spend is not here — it belongs in
+  成本, where it can be attributed. Usage is, because it is a constraint on what
+  to start next.
 - The views are peers, one at a time. Crowding them onto one screen is how an
   earlier version became seven boxes each reporting an absence.
+- **The window never scrolls; a pane inside a view does.** The shell is one
+  `h-dvh` grid, rows `auto` (header) and `minmax(0,1fr)` (everything else), and
+  each view carries a `min-h-0` chain down to the pane that owns the scrollbar.
+  Two rules follow from experience: never measure a region as
+  `calc(100vh - <header>)` — that writes the same height twice and detunes on the
+  next header change — and a grid whose rows are left at `auto` grows past its
+  container no matter what `min-h-0` says above it, so pin the row to
+  `minmax(0,1fr)`. `overflow: hidden` on `body` is not a fix; it hides the
+  content that could not be reached.
+- One count, one name. 待办 is the queue of things waiting on the boss, and it
+  appears once — as the tab that holds it, and as the header badge. Two lists
+  with the same name and different counts is how a number stops being trusted.
 - Chat is a collapsible right sidebar, never the spine.
 - Hairlines and spacing instead of card borders. Cards appear once, shallowly,
   never nested.
