@@ -569,11 +569,20 @@ test("work that is finished but has no PR is sent back through the branch review
   await runWatchdog(h.deps);
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
 
-  // Not while something is still queued, and not while the boss is being waited on.
+  // A question still travelling the chain is not a reason to leave it unshipped:
+  // one group carried three stale advisories, two of them clearance denials nobody
+  // was ever going to answer.
   h.db.run("DELETE FROM job");
   h.db.run(
-    "INSERT INTO escalation (grp_id, severity, question, chain_state, created_at) VALUES (1, 'blocker', 'q', 'boss', 0)",
+    "INSERT INTO escalation (grp_id, severity, question, chain_state, created_at) VALUES (1, 'advisory', 'q', 'architect', 0)",
   );
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
+
+  // The boss being asked IS: pr_retries is spent, and shipping anyway walks past
+  // the person who was asked.
+  h.db.run("DELETE FROM job");
+  h.db.run("UPDATE escalation SET chain_state = 'boss' WHERE grp_id = 1");
   await runWatchdog(h.deps);
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
 });

@@ -289,8 +289,11 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // no error. Rule 8 below cannot cover it either: it requeues the last *turn*,
   // and the last turn is not what opens a PR.
   //
-  // Not while a question is open: `pr_retries` is exhausted at that point and the
-  // boss is the one being waited on, not the Auditor.
+  // Not while the *boss* is being waited on: at that point `pr_retries` is spent
+  // and shipping anyway would walk past the person who was asked. Questions still
+  // travelling the chain do not count — a group had three stale advisories on it,
+  // two of them clearance denials nobody will ever answer, and blocking on those
+  // would mean finished work never ships.
   for (const g of ctx.db
     .query<{ id: number; name: string }, []>(
       `SELECT g.id, g.name FROM grp g
@@ -299,7 +302,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
          AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status != 'accepted')
          AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id AND state IN ('pending','running'))
          AND NOT EXISTS (SELECT 1 FROM escalation
-                         WHERE grp_id = g.id AND answer IS NULL AND chain_state NOT IN ('answered','revoked'))`,
+                         WHERE grp_id = g.id AND answer IS NULL AND chain_state = 'boss')`,
     )
     .all()) {
     ctx.sched.enqueue("reconcile", { grp_id: g.id, priority: 5 });
