@@ -23,8 +23,9 @@ import {
   runPrReview,
   sendBack,
 } from "../mech/review.ts";
-import { runTurn, type TurnResult } from "./claude.ts";
-import { runTurn as runCodexTurn } from "./codex.ts";
+import { type TurnResult } from "./claude.ts";
+import { codexHome } from "./codex.ts";
+import { clampEffort, providerFor, type Provider } from "./providers.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -41,8 +42,8 @@ export interface ExecDeps {
   git: GitRunner;
   /** Wired by the server: opens the PR when a branch passes its audit. */
   onAuditPass?: (grpId: number) => void;
-  /** Injectable for tests; defaults to the real `claude -p` adapter. */
-  runTurn?: typeof runTurn;
+  /** Injectable for tests; defaults to whichever provider the role names. */
+  runTurn?: Provider["run"];
 }
 
 interface AgentRow {
@@ -232,7 +233,12 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
       "`orch ctx query` for your current situation, and if there is genuinely " +
       "nothing to do, say so in one line and stop.";
 
-  const run = deps.runTurn ?? (role.runtime === "codex" ? runCodexTurn : runTurn);
+  const provider = providerFor(role.runtime);
+  const run: Provider["run"] = deps.runTurn ?? provider.run;
+  // codex reads AGENTS.md where claude reads CLAUDE.md. Same repo instructions,
+  // different filename, so link them rather than asking every project to keep two.
+  if (provider.name === "codex") linkAgentsMd(cwd);
+  const logPath = join(logDir, `${job.id}.jsonl`);
   let result: TurnResult;
   try {
     result = await run(
