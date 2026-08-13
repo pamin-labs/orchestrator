@@ -7,7 +7,7 @@ import { Bar, Table, TBody, TD, TH, THead, TR } from "../ui/table";
 import { Tip } from "../ui/tooltip";
 import type { Cost, Frame, State } from "../lib/api";
 import { STATUS_ZH, owns } from "../lib/select";
-import { cn, K, money } from "../lib/utils";
+import { cn, K, money, moneyOrBlank } from "../lib/utils";
 
 /**
  * Per PLAN.md §8: current slice, turn count, the live last line, model, clearance,
@@ -91,7 +91,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
                 <TD><Meta>{a.model.replace("claude-", "")}</Meta></TD>
                 <TD><Meta>{a.clearance}</Meta></TD>
                 <TD num><span className="text-ink-3">{K(a.session_tokens)}</span></TD>
-                <TD num>{money(a.total_usd)}</TD>
+                <TD num>{moneyOrBlank(a.total_usd)}</TD>
               </TR>
             );
           })}
@@ -170,7 +170,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
 }
 
 /**
- * Where the money went, in the shape the data actually has.
+ * Where the tokens went, in the shape the data actually has.
  *
  * PLAN.md §13 risk ② is "this costs 5-10x a direct conversation", and the test for
  * it is the cost of one delivered requirement — so that is the headline.
@@ -184,31 +184,42 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
  * row here that is a knob rather than a report.
  */
 export function CostView({ st, cost, projectId }: { st: State; cost: Cost | null; projectId: number }) {
-  if (!cost?.total?.usd) {
+  if (!cost?.total?.tokens) {
     return (
       <Empty>
-        还没有花钱。批准计划卡之后，这里按需求（含它的切片和人）、常驻岗、难度三层归因 ——
-        难度标签是单次需求成本最直接的旋钮（trivial 跑 haiku，normal 跑 sonnet，hard 跑 opus）。
+        还没花 token。批准计划卡之后，这里按需求（含它的切片和人）、常驻岗、难度、账号四层归因 ——
+        难度标签是单次需求成本最直接的旋钮，它决定跑哪个模型。
       </Empty>
     );
   }
-  const per = cost.delivered?.count ? cost.delivered.usd / cost.delivered.count : null;
-  const standing = (cost.roles ?? []).filter((r) => r.grpId == null && r.usd);
-  const groups = (cost.byGroup ?? []).filter((g) => g.usd).sort((a, b) => b.usd - a.usd);
-  const topGroup = Math.max(1e-9, ...groups.map((g) => g.usd));
-  const inGroups = groups.reduce((n, g) => n + g.usd, 0);
+  // Tokens, not dollars. Two subscriptions pay for this: claude's CLI reports what
+  // a turn would have cost at API rates and codex reports nothing, so ranking by
+  // dollars sorted every codex role to the bottom behind a $0 that reads as free.
+  const per = cost.delivered?.count ? cost.delivered.tokens / cost.delivered.count : null;
+  const standing = (cost.roles ?? []).filter((r) => r.grpId == null && r.tokens);
+  const groups = (cost.byGroup ?? []).filter((g) => g.tokens).sort((a, b) => b.tokens - a.tokens);
+  const topGroup = Math.max(1e-9, ...groups.map((g) => g.tokens));
+  const inGroups = groups.reduce((n, g) => n + g.tokens, 0);
 
   return (
     <>
       <div className="mb-6 border-b border-rule pb-4">
         <span className="block text-[0.75rem] text-ink-3">这个项目累计</span>
-        <b className="block font-display text-[2rem] font-semibold leading-none">{money(cost.total.usd)}</b>
+        <b className="block font-display text-[2rem] font-semibold leading-none">
+          {K(cost.total.tokens)} <span className="text-[1rem] font-normal text-ink-3">tokens</span>
+        </b>
         <div className="mt-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[0.75rem] text-ink-2">
-          <span className="font-mono text-ink-3">{K(cost.total.tokens)} tokens</span>
+          {/* Kept, and kept small: it is what these turns would have cost at API
+              rates on the claude half, which is not what the month costs. */}
+          {!!cost.total.usd && (
+            <Tip label="按 API 价折算，且只有 claude 的 CLI 会报 —— 订阅制下你并不按这个付钱。真正的余量看顶栏的配额百分比">
+              <span className="font-mono text-ink-3 underline decoration-dotted">≈{money(cost.total.usd)}</span>
+            </Tip>
+          )}
           {/* The number to hold against "what would this have cost me directly". */}
           <span>
             每个已交付需求{" "}
-            <b className="font-mono font-semibold text-ink">{per == null ? "—" : money(per)}</b>
+            <b className="font-mono font-semibold text-ink">{per == null ? "—" : `${K(per)} tokens`}</b>
             <span className="text-ink-3">{per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`}</span>
           </span>
           <Tip label="注入的 delta 必须留在最后一条 user message 末尾。这个数掉下来说明 prompt 组装被改坏了 —— agent 照跑、测试照绿，每个 turn 贵 3-5 倍。">
@@ -232,7 +243,7 @@ export function CostView({ st, cost, projectId }: { st: State; cost: Cost | null
         <Meta>点开看它的切片和这一组的人。贵得离谱的通常是被打回过几轮的</Meta>
       </div>
       {groups.map((g) => (
-        <GroupCost key={g.grpId} st={st} cost={cost} row={g} top={topGroup} share={g.usd / inGroups} />
+        <GroupCost key={g.grpId} st={st} cost={cost} row={g} top={topGroup} share={g.tokens / inGroups} />
       ))}
 
       {standing.length > 0 && (
@@ -247,6 +258,11 @@ export function CostView({ st, cost, projectId }: { st: State; cost: Cost | null
         note="这一栏是旋钮：标签直接决定跑哪个 model，在计划卡上就能改"
         rows={cost.byDifficulty}
       />
+      <Split
+        title="按账号"
+        note="哪个订阅在被花。顶栏的百分比是这两个池子还剩多少，这里是花在了什么上"
+        rows={cost.byRuntime ?? []}
+      />
     </>
   );
 }
@@ -259,10 +275,10 @@ function GroupCost({
 }) {
   const [open, setOpen] = useState(false);
   const slices = st.slices
-    .filter((s) => s.grp_id === row.grpId && s.spent_usd)
-    .sort((a, b) => b.spent_usd - a.spent_usd);
-  const roles = (cost.roles ?? []).filter((r) => r.grpId === row.grpId && r.usd).sort((a, b) => b.usd - a.usd);
-  const inner = Math.max(1e-9, ...slices.map((s) => s.spent_usd), ...roles.map((r) => r.usd));
+    .filter((s) => s.grp_id === row.grpId && s.spent_tokens)
+    .sort((a, b) => b.spent_tokens - a.spent_tokens);
+  const roles = (cost.roles ?? []).filter((r) => r.grpId === row.grpId && r.tokens).sort((a, b) => b.tokens - a.tokens);
+  const inner = Math.max(1e-9, ...slices.map((s) => s.spent_tokens), ...roles.map((r) => r.tokens));
   const canOpen = slices.length > 0 || roles.length > 0;
 
   return (
@@ -287,10 +303,10 @@ function GroupCost({
           )}
           <span className="truncate text-[0.8125rem]" title={row.label}>{row.label}</span>
         </span>
-        <Meta className="text-right max-[52rem]:hidden">{K(row.tokens)}</Meta>
-        <span className="text-right font-mono text-[0.8125rem]">{money(row.usd)}</span>
+        <span className="text-right font-mono text-[0.8125rem]">{K(row.tokens)}</span>
+        <Meta className="text-right max-[52rem]:hidden">{moneyOrBlank(row.usd)}</Meta>
         <Meta className="text-right">{Math.round(share * 100)}%</Meta>
-        <Bar frac={row.usd / top} className="max-[52rem]:hidden" />
+        <Bar frac={row.tokens / top} className="max-[52rem]:hidden" />
       </button>
       {open && (
         <div className="mb-2 ml-2 border-l-2 border-rule bg-rail/40 pl-3">
@@ -328,9 +344,9 @@ function Line({
         {label}
         {tag && <span className="ml-1.5 font-mono text-[0.625rem] text-ink-3">{tag}</span>}
       </span>
-      <Meta className="text-right max-[52rem]:hidden">{K(tokens)}</Meta>
-      <span className="text-right font-mono text-[0.75rem]">{money(usd)}</span>
-      <Bar frac={usd / top} className="max-[52rem]:hidden" />
+      <span className="text-right font-mono text-[0.75rem]">{K(tokens)}</span>
+      <Meta className="text-right max-[52rem]:hidden">{moneyOrBlank(usd)}</Meta>
+      <Bar frac={tokens / top} className="max-[52rem]:hidden" />
     </div>
   );
 }
@@ -359,10 +375,10 @@ function Stat({
 
 /** A flat attribution: rows sorted by spend, share as a bar, numbers aligned. */
 function Split({ title, rows, note }: { title: string; rows: { label: string; usd: number; tokens: number }[]; note: string }) {
-  const list = rows.filter((r) => r.usd).sort((a, b) => b.usd - a.usd);
+  const list = rows.filter((r) => r.tokens).sort((a, b) => b.tokens - a.tokens);
   if (!list.length) return null;
-  const top = Math.max(...list.map((r) => r.usd));
-  const sum = list.reduce((n, r) => n + r.usd, 0);
+  const top = Math.max(...list.map((r) => r.tokens));
+  const sum = list.reduce((n, r) => n + r.tokens, 0);
   return (
     <section className="mt-7">
       <div className="mb-1 flex flex-wrap items-baseline gap-x-2.5">
@@ -376,12 +392,12 @@ function Split({ title, rows, note }: { title: string; rows: { label: string; us
                      border-t border-rule-soft px-2 py-1.5 max-[52rem]:grid-cols-[minmax(0,1fr)_4rem_2.75rem]"
         >
           <span className="truncate text-[0.8125rem]" title={r.label}>{r.label}</span>
-          <Meta className="text-right max-[52rem]:hidden">{K(r.tokens)}</Meta>
-          <span className="text-right font-mono text-[0.8125rem]">{money(r.usd)}</span>
-          {/* Share, because "$0.31" only means something next to a denominator — and
-              "100%" next to a lone row means nothing at all. */}
-          <Meta className="text-right">{list.length > 1 ? `${Math.round((r.usd / sum) * 100)}%` : ""}</Meta>
-          <Bar frac={r.usd / top} className="max-[52rem]:hidden" />
+          <span className="text-right font-mono text-[0.8125rem]">{K(r.tokens)}</span>
+          <Meta className="text-right max-[52rem]:hidden">{moneyOrBlank(r.usd)}</Meta>
+          {/* Share, because a token count only means something next to a
+              denominator — and "100%" next to a lone row means nothing at all. */}
+          <Meta className="text-right">{list.length > 1 ? `${Math.round((r.tokens / sum) * 100)}%` : ""}</Meta>
+          <Bar frac={r.tokens / top} className="max-[52rem]:hidden" />
         </div>
       ))}
     </section>

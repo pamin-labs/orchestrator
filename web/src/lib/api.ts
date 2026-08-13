@@ -75,8 +75,10 @@ export interface Cost {
   roles: (CostRow & { grpId: number | null })[];
   byRole: CostRow[];
   byDifficulty: CostRow[];
+  /** Which subscription paid for it. Two accounts, so this is a real axis now. */
+  byRuntime: CostRow[];
   cacheRatio: number | null;
-  delivered: { count: number; usd: number };
+  delivered: { count: number; tokens: number; usd: number };
 }
 
 const EMPTY: State = {

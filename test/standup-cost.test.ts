@@ -101,7 +101,7 @@ test("one group failing its own gate is not a standup item", () => {
 
 // ----------------------------------------------------------------------- cost
 
-test("cost is attributed three ways, because they answer different questions", () => {
+test("cost is attributed four ways, because they answer different questions", () => {
   const db = seed();
   db.run(
     "INSERT INTO grp (project_id, name, status, spent_tokens, spent_usd, created_at) VALUES (1, 'g1', 'RUNNING', 5000, 1.25, 0)",
@@ -110,7 +110,7 @@ test("cost is attributed three ways, because they answer different questions", (
     "INSERT INTO agent (project_id, grp_id, role, model, total_tokens, total_usd, created_at) VALUES (1, 1, 'engineer', 'm', 4000, 1.0, 0)",
   );
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, total_tokens, total_usd, created_at) VALUES (1, 1, 'qa', 'm', 1000, 0.25, 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, runtime, total_tokens, total_usd, created_at) VALUES (1, 1, 'qa', 'm', 'codex', 1000, 0, 0)",
   );
   db.run(
     "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, spent_tokens, spent_usd, created_at) VALUES (1, 1, 'S1', 'x', 'trivial', 1000, 0.05, 0)",
@@ -120,12 +120,24 @@ test("cost is attributed three ways, because they answer different questions", (
   );
 
   const r = costReport(db, 1);
-  expect(r.total.usd).toBeCloseTo(1.25);
+  expect(r.total.tokens).toBe(5000);
   expect(r.byRole[0]!.label).toBe("engineer");
   // Difficulty is the boss's cost knob, and a knob nobody measures gets turned
   // at random.
   expect(r.byDifficulty[0]!.label).toBe("hard");
-  expect(r.byDifficulty[0]!.usd).toBeCloseTo(1.2);
+  expect(r.byDifficulty[0]!.tokens).toBe(4000);
+
+  // Which subscription paid. Two accounts is the whole reason this axis exists.
+  expect(r.byRuntime.map((x) => [x.label, x.tokens])).toEqual([
+    ["claude", 4000],
+    ["codex", 1000],
+  ]);
+
+  // Every ordering is by tokens, and this is why: on a subscription the dollar
+  // figure is notional, and codex reports none at all — so ranking by usd sorted
+  // a real 1000-token reviewer below nothing, behind a $0 that reads as free.
+  expect(r.byRuntime.find((x) => x.label === "codex")!.usd).toBe(0);
+  expect(r.byRole.map((x) => x.label)).toEqual(["engineer", "qa"]);
 });
 
 test("cache ratio is averaged from recorded turns, and absent before any run", () => {
