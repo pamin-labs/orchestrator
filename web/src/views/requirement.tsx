@@ -169,6 +169,26 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
               复制 worktree 路径
             </MenuItem>
           )}
+          {/* 退回重拆 sends it back to the Dispatcher, which writes another card for
+              work nobody wants. A requirement that turned out to be a duplicate, or
+              that someone already fixed, needs to leave the board instead. */}
+          <MenuItem
+            danger
+            hint="整条需求下线：排队的 turn 全取消，占的路径立刻交还给别的组。worktree、分支和记录都留着"
+            onSelect={async () => {
+              const go = await ask({
+                title: "不做了",
+                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。worktree 和记录都留着，但组不会再被拉起。`,
+                yes: "不做了",
+                danger: true,
+              });
+              if (!go) return;
+              await post(`/api/groups/${g.id}/drop`, {});
+              refresh();
+            }}
+          >
+            不做了
+          </MenuItem>
         </Menu>
       </span>
     </div>

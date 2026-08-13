@@ -670,6 +670,32 @@ test("the Architect re-cutting someone else's boundary starts the approved group
   ).toBe("RUNNING");
 });
 
+test("dropping a requirement frees its paths and starts whoever was waiting", async () => {
+  // 退回重拆 was the only way off the approval screen, and it sends the plan back
+  // to be written again. A duplicate needs to leave, and the group behind it needs
+  // to stop waiting on paths nobody will ever use.
+  const h = harness();
+  const grpId = await blocked(h);
+  h.db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('agent_turn', 1, 'pending', 0)");
+  h.db.run(
+    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+     VALUES (1, 'blocker', 'still needed?', 'boss', 0)`,
+  );
+
+  const r = await post(h.app, "/api/groups/1/drop", { why: "grp2 covers it" });
+  expect(r.status).toBe(200);
+  expect((await r.json()) as any).toEqual({ started: [grpId] });
+
+  const q = (sql: string) => h.db.query<{ v: string }, []>(sql).get()!.v;
+  expect(q("SELECT status AS v FROM grp WHERE id = 1")).toBe("DISSOLVED");
+  expect(q("SELECT state AS v FROM job WHERE grp_id = 1 AND kind = 'agent_turn' ORDER BY id DESC LIMIT 1")).toBe(
+    "cancelled",
+  );
+  // A question that outlives its requirement sits in 待办 forever.
+  expect(q("SELECT chain_state AS v FROM escalation WHERE grp_id = 1")).toBe("revoked");
+  expect(q("SELECT status AS v FROM grp WHERE id = " + grpId)).toBe("RUNNING");
+});
+
 test("the boundary request quotes each group's own requirement", async () => {
   const { app, db } = harness();
   // The pre-existing group's idea has to be recoverable, or the Architect cannot
