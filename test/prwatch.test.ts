@@ -381,3 +381,22 @@ test("a branch that stopped merging wakes the Engineer, not the PM", async () =>
   );
   expect(again).toHaveLength(0);
 });
+
+test("a PR that merged after its group was knocked back is still seen", async () => {
+  // A group leaves PR_OPEN whenever anything sends the branch back — an Auditor
+  // verdict, a review comment — while the PR itself stays live and mergeable. The
+  // poll was keyed on the group's status, so a merge landing in that window was
+  // invisible: grp16's PR went in, nothing wound the group up, and it kept hiring
+  // turns for a branch already byte-identical to main. A pr_number is what is worth
+  // polling on.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 2, status = 'RUNNING' WHERE id = 1");
+  const fs = await pollPrs(h.ctx, gh({ "pr view": { code: 0, out: JSON.stringify({ state: "MERGED" }) } }));
+  expect(fs).toHaveLength(1);
+  expect(fs[0]!.merged).toBe(true);
+
+  // DISSOLVED is the one status that stops mattering: it has already been wound up.
+  h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
+  const gone = await pollPrs(h.ctx, gh({ "pr view": { code: 0, out: JSON.stringify({ state: "MERGED" }) } }));
+  expect(gone).toHaveLength(0);
+});
