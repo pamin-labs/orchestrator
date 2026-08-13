@@ -67,7 +67,7 @@ export function EvidencePanel({ sliceId }: { sliceId: number }) {
           没有 diff 可读。这一片没有记下基线 commit，或者 worktree 已经清掉了。
         </div>
       ) : (
-        <div className="max-h-[34rem] overflow-auto">
+        <div className="h-[34rem]">
           <DiffView diff={ev.diff} truncated={ev.truncated} />
         </div>
       )}
