@@ -168,7 +168,7 @@
      guess, a gate is a fact. Fixed columns so tracks line up down the page, which
      is what makes "卡在哪道闸" answerable at a glance. */
   .lane {
-    display: grid; grid-template-columns: 1.75rem minmax(0, 1fr) 15rem 8.5rem;
+    display: grid; grid-template-columns: 1.75rem minmax(0, 1fr) 13rem 8.5rem;
     align-items: start; gap: 0.375rem 0.75rem;
     padding: 0.5rem 0; border-top: 1px solid var(--rule-soft);
   }
@@ -196,7 +196,7 @@
 
   .track { display: flex; align-items: center; }
   .stop { display: flex; align-items: center; gap: 0.25rem; font-size: 0.6875rem; color: var(--ink-3); }
-  .stop b { font-weight: 500; }
+  .stop b { font-weight: 500; white-space: nowrap; }
   .stop::after { content: ""; width: 0.875rem; height: 1px; background: var(--rule); margin: 0 0.3125rem; }
   .stop:last-child::after { display: none; }
   .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; border: 1px solid var(--ink-3); }
@@ -391,7 +391,7 @@ const STATUS_ZH = {
   PAUSED: "已暂停", PARKED: "已封存", PR_OPEN: "PR 开着", DISSOLVED: "已解散",
 };
 const WHERE_ZH = { pm: "PM 答不了", architect: "Architect 答不了", cos: "CoS 答不了", boss: "轮到你" };
-const STOPS = [["self", "自查"], ["gate", "跑测试"], ["qa", "QA 复核"]];
+const STOPS = [["self", "自查"], ["gate", "测试"], ["qa", "QA"]];
 
 const owns = (g) => { try { return JSON.parse(g.owns_json || "[]"); } catch { return []; } };
 const groupsOf = (p) => state.groups.filter((g) => g.project_id === p);
@@ -530,7 +530,7 @@ function laneHtml(s, g, open) {
     const cls = v === "pass" ? "pass" : v === "fail" ? "fail" : s.status === k ? "now" : "";
     return `<span class="stop ${cls}"><span class="dot"></span><b>${zh}</b></span>`;
   }).join("") +
-    `<span class="stop ${waiting ? "wait" : ""}"><span class="dot"></span><b>${waiting ? "等你查收" : "查收"}</b></span>`;
+    `<span class="stop ${waiting ? "wait" : ""}"><span class="dot"></span><b>${waiting ? "等你收" : "查收"}</b></span>`;
 
   // Who is on this slice, narrated by the orchestrator out of the turn's own
   // stream. Agents are never asked to report progress.
