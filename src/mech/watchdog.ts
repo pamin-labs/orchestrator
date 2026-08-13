@@ -541,13 +541,19 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // be excluded — so a stale PR sat in the queue until GitHub called it
   // CONFLICTING, which is the late half of the same news.
   for (const g of ctx.db
-    .query<{ id: number; name: string; worktree: string; repo: string; seen: string | null }, [number]>(
+    .query<{ id: number; name: string; worktree: string; repo: string; seen: string | null }, []>(
       `SELECT g.id, g.name, g.worktree, p.repo_path AS repo, g.rebase_seen AS seen
        FROM grp g JOIN project p ON p.id = g.project_id
        WHERE g.status IN ('RUNNING','PR_OPEN') AND g.worktree IS NOT NULL
-         AND (g.rebase_seen_at IS NULL OR g.rebase_seen_at < ?)`,
+         -- Coalesce on the nudge that is already queued, not on a clock. Three
+         -- pushes a minute apart were three shas and three rebase turns; a timer
+         -- would fix that by making a group wait to be told, and a group whose PR
+         -- is blocked on a rebase must not wait at all. If the turn is still
+         -- pending it will rebase onto whatever main is when it runs.
+         AND NOT EXISTS (SELECT 1 FROM job j WHERE j.grp_id = g.id AND j.state = 'pending'
+                           AND j.kind = 'agent_turn' AND j.payload_json LIKE '%"conflict":true%')`,
     )
-    .all(now() - cfg.rebaseNudgeMs)) {
+    .all()) {
     // Against the real base, not the local checkout's HEAD: main also moves when
     // somebody pushes from another machine, and nothing here ever fetched, so
     // that half was invisible.

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { buildStable } from "../src/prompt/assemble.ts";
-import { buildArgv, ndjson, runTurn, summarizeTool } from "../src/runtime/claude.ts";
+import { buildArgv, ndjson, runTurn, summarizeTool, trimForLog } from "../src/runtime/claude.ts";
 
 const stable = buildStable({
   rolePrompt: "Engineer",
@@ -211,4 +211,29 @@ test("the desk wall never shows a bare tool name", async () => {
   } finally {
     Bun.spawn = spawned;
   }
+});
+
+test("a turn log keeps the shape and drops the payload", () => {
+  // 123 MB for ten requirements, and 90% of it was tool results: whole files, whole
+  // diffs, whole test runs. Everything these logs are actually read for is shape —
+  // rounds, tools, tokens, what failed — so results keep a head and a size.
+  const line = {
+    type: "user",
+    message: {
+      usage: { cache_read_input_tokens: 5 },
+      content: [
+        { type: "tool_result", tool_use_id: "t1", content: "x".repeat(5000) },
+        { type: "tool_use", name: "Bash", input: { command: "bun test" } },
+      ],
+    },
+  };
+  const out = trimForLog(line) as any;
+  expect(out.message.usage.cache_read_input_tokens).toBe(5);
+  expect(out.message.content[0].content).toContain("[5000 chars omitted]");
+  expect(out.message.content[0].content.length).toBeLessThan(500);
+  expect(out.message.content[0].tool_use_id).toBe("t1");
+  // The input says what the agent was trying to do, and it is small. Kept whole.
+  expect(out.message.content[1].input.command).toBe("bun test");
+  // A short result is untouched: truncating it would only add noise.
+  expect((trimForLog({ message: { content: [{ type: "tool_result", content: "ok" }] } }) as any).message.content[0].content).toBe("ok");
 });
