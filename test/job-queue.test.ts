@@ -338,8 +338,19 @@ test("a restart resumes the turn it interrupted, but only once", async () => {
   expect(back[0]!.slice_id).toBe(1);
   expect(JSON.parse(back[0]!.payload_json).role).toBe("engineer");
 
-  // Second restart: a turn that takes the server down with it must not be
-  // resurrected forever.
+  // A second restart still resumes it: the server going away is not this turn's
+  // doing, and spending its one chance on that left six groups stopped after a
+  // restart with the fix for what broke them already in main.
   db.run("UPDATE job SET state = 'running', pid = 89992, started_at = 0 WHERE state = 'pending'");
-  expect(resumeReclaimed(sched, reclaimOrphans(db, { alive: () => false }))).toBe(0);
+  expect(resumeReclaimed(sched, reclaimOrphans(db, { alive: () => false }))).toBe(1);
+
+  // But a turn that failed on its own is resumed once and no more — that is what
+  // the guard is for.
+  db.run("UPDATE job SET state = 'failed', error = 'turn failed (max_turns)' WHERE state = 'pending'");
+  const own = db
+    .query<Job & { error: string }, []>(
+      "SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state, error FROM job WHERE error LIKE 'turn failed%'",
+    )
+    .all();
+  expect(resumeReclaimed(sched, own)).toBe(0);
 });
