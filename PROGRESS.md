@@ -356,3 +356,21 @@ codex 每个 turn 的 `token_count` 里自带 5h 和周窗口的 `used_percent`�
 ## 成本页「按账号」不再猜模型名
 
 原来是 `model LIKE 'gpt%'` 推出来的 —— 今天准，任何一边改个命名就错，而事件行里没有 agent 可以 join 回去。现在 provider 直接记在 turn 事件的 meta 里，旧行还走前缀匹配兜底。
+
+## 退回的切片会把任务卡还给工程师（八个组同时卡死那次）
+
+一次退回（gate / qa / reconcile 任意一个）只写 `slice.status='running'` 和 `retries`，**不动它的 task 行**。task 还是 `done` —— 而 `done` 恰好是工程师唯一动不了的状态：`task list` 显示一张已完成的卡，`task claim` 说切片还没开工，`task done` 说这卡不是你的。**一步合法动作都没有**，所以那一轮只能以「问老板」收场。八个组同时卡在这个形状上，四个直接停摆，每一个看起来都是健康的 RUNNING + 有工程师在岗。
+
+死锁的另一半：`owner_agent_id` 是行号。组里换一次工程师（轮换、重启、任何结束一行 agent 又起一行的路径），这张卡就永久锁给一个不存在的会话，没有任何东西能解开。
+
+- `sendBack` 现在调 `reopenTasks`；`claim_json` 故意留着 —— reconcile 只从 `done` 行读它，在重开的卡上它是「上一轮已经交到分支上的东西」的记录。
+- claim / done 两处谓词都认「owner 已 retired = 无主」。
+- `SLICE_INVARIANTS.running` 补了 repair：`running` 的切片如果每张卡都 `done`，把卡放回去；顺手清掉 retired owner 持有的未完成卡。这条是给「已经被弄坏的行」和「以后任何一条不看卡就翻切片状态的路径」兜底的。
+- **`orch task list` 现在会说这张卡上一轮交过什么**（`claim_json` + `pending` 就是「交付过又被退回」的精确判据），并指名 `--already-done`。不说这一句，重试就是从零重写，然后和自己上一条 commit 打架。
+
+配套修掉的两个：
+
+- **规则 8 把「上一轮带了 rebase 指令」当成「rebase 失败了」。** 只读 `payload.conflict`，不看那个 job 是 `done` 还是 `failed`。规则 15 派的 rebase 轮次正常跑完、队列一空，架构师就收到一句「The Engineer could not rebase this branch onto main」—— pm-ai-agent 连收八次，八次全假，架构师逐条驳了八轮。
+- **合入了的组没人告诉它。** `pollPrs` 只查 `status IN ('PR_OPEN','PAUSED')`，MERGED 判断还压在 `if (g.status !== 'PR_OPEN') continue` 下面。组被打回 RUNNING 的窗口里 PR 合了 —— grp16 的 PR #2 进了 main，它继续给一个和 main 逐字节相同的分支派 turn。**MERGED 不该看组状态**，有 pr_number 才是该轮询的理由。
+
+check 在 `test/stuck-slice.test.ts`（五条，去掉任一修复都会红）+ `test/watchdog.test.ts` / `test/prwatch.test.ts` 各一条。
