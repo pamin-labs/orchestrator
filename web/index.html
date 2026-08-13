@@ -292,6 +292,30 @@
   /* Adding a requirement is a button, not a form that is always open. */
   .newbar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
   .setup { border: 1px solid var(--rule); border-radius: 0.5rem; padding: 0.875rem 1rem; max-width: 40rem; }
+  /* A modal earns its place here: picking a folder is a focused, transient task
+     with its own navigation, and inlining a file browser would bury the page. */
+  dialog {
+    border: 1px solid var(--rule); border-radius: 0.625rem; background: var(--paper); color: var(--ink);
+    padding: 0; width: min(34rem, 92vw); box-shadow: 0 12px 40px oklch(0 0 0 / 0.18);
+  }
+  dialog::backdrop { background: oklch(0.2 0.01 70 / 0.35); }
+  .dtitle { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.75rem 0.875rem;
+            border-bottom: 1px solid var(--rule); }
+  .dtitle b { font-size: 0.875rem; }
+  .crumbs { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center;
+            padding: 0.5rem 0.875rem; border-bottom: 1px solid var(--rule-soft);
+            font-family: var(--mono); font-size: 0.6875rem; }
+  .crumbs button { padding: 0.0625rem 0.25rem; font-size: 0.6875rem; }
+  .dlist { max-height: 46vh; overflow-y: auto; }
+  .drow { display: grid; grid-template-columns: 1.125rem minmax(0, 1fr) auto; gap: 0.5rem;
+          align-items: center; padding: 0.375rem 0.875rem; cursor: pointer; font-size: 0.8125rem; }
+  .drow:hover { background: var(--sunk); }
+  .drow .ic { font-family: var(--mono); color: var(--ink-3); font-size: 0.75rem; }
+  .drow.isrepo .ic { color: var(--accent); }
+  .drow.isrepo .nm { font-weight: 550; }
+  .drow.taken { color: var(--ink-3); }
+  .dfoot { display: flex; gap: 0.5rem; align-items: center; padding: 0.75rem 0.875rem;
+           border-top: 1px solid var(--rule); }
   .setup b { font-size: 0.875rem; }
   .setup .why { font-size: 0.75rem; color: var(--ink-3); margin: 0.25rem 0 0.75rem; }
 
@@ -315,9 +339,6 @@
   .step.off h4, .step.off .why { color: var(--ink-3); }
 
   .compose { display: flex; gap: 0.5rem; align-items: center; padding-bottom: 1rem; }
-  details.addproj > summary { font-size: 0.75rem; color: var(--ink-3); cursor: pointer; width: fit-content; }
-  details.addproj > summary:hover { color: var(--ink); }
-  details.addproj[open] > summary { margin-bottom: 0.5rem; }
   .none { font-size: 0.75rem; color: var(--ink-3); }
 </style>
 </head>
@@ -331,6 +352,18 @@
   <span class="conn t-xs mono" id="conn"><i></i><span>connecting</span></span>
 </header>
 <nav id="nav"></nav>
+
+<dialog id="pick">
+  <div class="dtitle"><b>挑一个代码文件夹</b><span class="none" id="pickhint">带 git 的会排在前面</span></div>
+  <div class="crumbs" id="crumbs"></div>
+  <div class="dlist" id="dlist"></div>
+  <div class="dfoot">
+    <input id="pname" placeholder="项目名（默认用文件夹名）" style="max-width:12rem" aria-label="项目名" />
+    <span class="grow"></span>
+    <button onclick="document.getElementById('pick').close()">取消</button>
+    <button class="go" id="pickok">就用这个</button>
+  </div>
+</dialog>
 
 <main id="main">
   <div class="view" id="view"></div>
@@ -431,7 +464,7 @@ function render() {
     const n = Object.values(pending(p.id)).reduce((a, x) => a + x.length, 0);
     return `<button class="${p.id === sel.p ? "on" : ""}" onclick="go({p:${p.id},g:null})">${esc(p.name)}${
       n ? `<span class="mono t-xs" style="color:var(--accent)"> ${n}</span>` : ""}</button>`;
-  }).join("");
+  }).join("") + `<button class="quiet" title="再加一个代码文件夹" onclick="openPick()">＋</button>`;
 
   const w = pending(sel.p);
   const waiting = w.cards.length + w.slices.length + w.merges.length + w.asks.length;
@@ -718,9 +751,9 @@ function segHtml(s) {
 /** No project yet: one panel with the one field it needs, not a tutorial page. */
 function setupHtml() {
   return `<div class="setup">
-    <b>先指一个代码文件夹</b>
-    <div class="why">填你电脑上项目的完整路径。填完它自己进去看怎么跑测试、代码什么风格，有毛病当场说。之后你只做三件事：同意计划、查收、merge。</div>
-    ${projFormHtml()}
+    <b>先挑一个代码文件夹</b>
+    <div class="why">挑完它自己进去看怎么跑测试、代码什么风格，有毛病当场说。之后你只做三件事：同意计划、查收、merge。</div>
+    <button class="go" onclick="openPick()">挑文件夹…</button>
   </div>`;
 }
 
@@ -812,13 +845,53 @@ function costView() {
 
 /* --------------------------------------------------------------- first run */
 
-function projFormHtml() {
-  return `<div class="row">
-      <input id="pname" placeholder="项目名" style="max-width:9rem" aria-label="项目名" />
-      <input id="ppath" class="grow mono t-sm" placeholder="/Users/你/code/项目" aria-label="仓库路径" />
-      <button id="addproj">加</button>
-    </div>
-    <div class="none" style="margin-top:.375rem">要是 git 管着的文件夹。浏览器不给选文件夹，只能手打或粘贴。</div>`;
+/* ------------------------------------------------------------ folder picker */
+
+/**
+ * The server reads the disk and lists directories, so the boss picks instead of
+ * typing. A browser cannot hand over a real path, and a typed path is both ugly
+ * and the likeliest place to make a mistake.
+ */
+let pickAt = null;
+
+window.openPick = async (start) => {
+  $("#pick").showModal();
+  await loadDirs(start ?? null);
+};
+
+async function loadDirs(path) {
+  const r = await fetch(`/api/dirs${path ? `?path=${encodeURIComponent(path)}` : ""}`);
+  if (!r.ok) { $("#dlist").innerHTML = `<div class="none" style="padding:.875rem">${esc(await r.text())}</div>`; return; }
+  const d = await r.json();
+  pickAt = d;
+
+  const parts = d.path.split("/").filter(Boolean);
+  const crumbs = [`<button onclick="loadDirs('/')">/</button>`].concat(
+    parts.map((seg, i) => `<button onclick="loadDirs('${esc("/" + parts.slice(0, i + 1).join("/"))}')">${esc(seg)}</button>`),
+  ).join("<span class=\"dim\">/</span>");
+  $("#crumbs").innerHTML = crumbs;
+
+  $("#dlist").innerHTML = d.dirs.length
+    ? d.dirs.map((x) => `<div class="drow ${x.repo ? "isrepo" : ""} ${x.taken ? "taken" : ""}"
+        onclick="${x.repo && !x.taken ? `pickThis('${esc(x.path)}','${esc(x.name)}')` : `loadDirs('${esc(x.path)}')`}">
+        <span class="ic">${x.repo ? "◆" : "▸"}</span>
+        <span class="nm trunc">${esc(x.name)}</span>
+        <span class="none">${x.taken ? "已经加过了" : x.repo ? "git 仓库 · 点选它" : ""}</span>
+      </div>`).join("")
+    : '<div class="none" style="padding:.875rem">这个文件夹里没有子文件夹</div>';
+
+  $("#pickhint").textContent = d.repo ? "当前这个文件夹本身就是 git 仓库，可以直接用" : "带 git 的会排在前面";
+  $("#pickok").disabled = !d.repo;
+  $("#pickok").onclick = () => submitPick(d.path, parts[parts.length - 1] ?? "project");
+}
+window.loadDirs = loadDirs;
+
+window.pickThis = (path, name) => submitPick(path, name);
+
+async function submitPick(path, folder) {
+  const name = ($("#pname").value.trim() || folder).slice(0, 40);
+  const r = await api("/api/projects", { name, repo_path: path });
+  if (r.ok) { $("#pick").close(); $("#pname").value = ""; refresh(); }
 }
 
 /* -------------------------------------------------------------- actions */
@@ -873,16 +946,6 @@ function wire() {
     };
     drop.onclick = send;
     $("#idea").onkeydown = (e) => { if (e.key === "Enter") send(); };
-  }
-  const add = $("#addproj");
-  if (add) {
-    add.onclick = async () => {
-      add.disabled = true;
-      const r = await api("/api/projects", { name: $("#pname").value.trim(), repo_path: $("#ppath").value.trim() });
-      add.disabled = false;
-      if (r.ok) refresh();
-    };
-    $("#ppath").onkeydown = (e) => { if (e.key === "Enter") add.click(); };
   }
 }
 
@@ -942,6 +1005,9 @@ readHash();
 window.addEventListener("hashchange", () => { readHash(); render(); });
 await refresh();
 connect();
+// Deep link to the picker, so "you have no project yet" can be one click from
+// anywhere, including a notification.
+if (new URLSearchParams(location.hash.slice(1)).get("pick")) openPick();
 </script>
 </body>
 </html>

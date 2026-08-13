@@ -78,7 +78,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     git,
     gh,
     waiters: new Map(),
-    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot },
+    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot, autoAdvance: cfg.autoAdvance },
   };
   const execDeps = {
     ctx,

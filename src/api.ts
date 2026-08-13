@@ -1,5 +1,5 @@
-import { dirname, join } from "node:path";
-import { existsSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { mkdir, writeFile } from "node:fs/promises";
 import type { DB } from "./db.ts";
@@ -54,7 +54,7 @@ export interface Ctx {
   hire?: (grpId: number | null, role: string, projectId?: number | null) => number | null;
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
-  config: { language: string; difficultyModel: Record<string, string>; workRoot: string };
+  config: { language: string; difficultyModel: Record<string, string>; workRoot: string; autoAdvance?: boolean };
 }
 
 type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) => Promise<Response>;
@@ -1282,6 +1282,27 @@ const postSliceDecision: Handler = async (ctx, req, params) => {
       "INSERT INTO note (grp_id, slice_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
       [sl.grp_id, id, ctx.config.language, b.feedback ?? "boss rejected the slice"],
     );
+    // With autoAdvance on, later slices were built on the one just rejected. Fixing
+    // it underneath work that assumed it is how two problems become four, so the
+    // group stops and says so instead.
+    const ahead = ctx.db
+      .query<{ c: number }, [number, number]>(
+        "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND seq > (SELECT seq FROM slice WHERE id = ?) AND status != 'pending'",
+      )
+      .get(sl.grp_id, id)!.c;
+    if (ctx.config.autoAdvance && ahead > 0) {
+      ctx.db.run("UPDATE grp SET status = 'PAUSING' WHERE id = ? AND status = 'RUNNING'", [sl.grp_id]);
+      ctx.bus.emit({
+        grpId: sl.grp_id,
+        author: "orchestrator",
+        kind: "escalation",
+        intent: "ask",
+        severity: "blocker",
+        body:
+          `你退回了 S${sl.seq}，但 autoAdvance 已经让后面 ${ahead} 片开工了 —— 它们是在这一片的基础上做的。` +
+          `全组先停下：要么让它先修这一片，要么把后面几片一起退回。`,
+      });
+    }
     ctx.sched.enqueue("agent_turn", { grp_id: sl.grp_id, slice_id: id, payload: { rejection: b.feedback } });
   }
   ctx.sched.tick();
@@ -1414,6 +1435,39 @@ const postProject: Handler = async (ctx, req) => {
 /** Idle SSE connections get dropped by proxies and by browsers' own timeouts. */
 const SSE_HEARTBEAT_MS = 25_000;
 
+/**
+ * Directories, so the boss can pick a repo instead of typing a path.
+ *
+ * A browser cannot hand over a real filesystem path, and typing one is both ugly
+ * and the most likely place to make a mistake. The server can read the disk, so
+ * it lists directories and says which are git repos.
+ *
+ * Names only, never contents: this endpoint has no business reading files, and
+ * the page it serves only needs to know what to offer.
+ */
+const getDirs: Handler = async (ctx, req) => {
+  const asked = new URL(req.url).searchParams.get("path") ?? homedir();
+  const path = resolve(expandHome(asked));
+  let entries;
+  try {
+    entries = readdirSync(path, { withFileTypes: true });
+  } catch (e) {
+    return bad(`${path}: ${(e as Error).message}`);
+  }
+  const taken = new Set(
+    ctx.db.query<{ repo_path: string }, []>("SELECT repo_path FROM project").all().map((r) => r.repo_path),
+  );
+  const dirs = entries
+    .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+    .map((d) => {
+      const full = join(path, d.name);
+      return { name: d.name, path: full, repo: existsSync(join(full, ".git")), taken: taken.has(full) };
+    })
+    .sort((a, b) => (a.repo === b.repo ? a.name.localeCompare(b.name) : a.repo ? -1 : 1));
+  // A repo can be picked at any level, including the one being listed.
+  return json({ path, parent: path === "/" ? null : dirname(path), repo: existsSync(join(path, ".git")), dirs });
+};
+
 const getStream: Handler = async (ctx, req) => {
   const since = Number(new URL(req.url).searchParams.get("since") ?? 0);
   let unsub = () => {};
@@ -1484,6 +1538,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/state$/, getState],
   ["GET", /^\/api\/cost$/, getCost],
   ["GET", /^\/api\/stream$/, getStream],
+  ["GET", /^\/api\/dirs$/, getDirs],
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
   ["POST", /^\/api\/draft\/(?<id>\d+)\/(?<decision>approve|reject)$/, postDraftDecision],

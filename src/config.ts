@@ -42,6 +42,8 @@ export interface Config {
   parkAfterPausedMs: number;
   watchdogIntervalMs: number;
   gateRetries: number;
+  /** Start the next slice when QA passes, without waiting for the boss to accept. */
+  autoAdvance: boolean;
   workRoot: string;
   dataDir: string;
 }
@@ -63,6 +65,9 @@ const DEFAULTS: Config = {
   parkAfterPausedMs: 7_200_000,
   watchdogIntervalMs: 30_000,
   gateRetries: 2,
+  // Off by default: the point of slice-sized delivery is that a wrong slice wastes
+  // one slice. Turning this on trades that for overnight throughput.
+  autoAdvance: false,
   workRoot: "/tmp/orch/worktrees",
   dataDir: "data",
 };
