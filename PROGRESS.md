@@ -123,6 +123,17 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 上面那条只解开了**队列**。那条 turn 本身还是丢了：slice 停在 `running`，`startNextSlice` 数着它算「组正忙」，于是再也不排新活 —— 同一种沉默，往下一层。现在回收之后按原 kind / grp / slice / payload **原样重排**（slice 状态不动，worktree 里的半成品留着，等同 `interrupt` 的 `keep`），payload 打 `resumed` 标记，所以**只重排一次** —— 一条能把 server 带崩的 turn 不会被无限复活。看门狗 / 通知 / digest 不重排，定时器本来就会补。
 另外 Ctrl-C 以前会把 turn 的子进程留在世上：下次开机看到 pid 还活着就**不肯**回收，那个组要挂到 4 倍 turn 超时。现在 SIGINT/SIGTERM 先把 `running` 的 job 的 pid 全 SIGTERM 掉再退。
 
+**「队列空」是这个系统唯一真正的故障形状**
+一天之内同一个形状撞了五次，每次表现都一样：**状态是活的，队列是空的，界面显示在干活，没有任何错误**。
+- turn 在飞时重启 → job 停在 `running` 占着槽位（回收孤儿）
+- 回收了但没重排 → slice 停在 `running`，`startNextSlice` 数它算忙（重排一次）
+- `--settings` 传相对路径 → worktree 里的 turn 全部秒退，失败是终态没人续
+- turn **正常结束**却没安排下一步（Dispatcher 跑完没交卡）→ 和成功长得一模一样
+- 组在 `DRAFT`，而批准被挡时系统给它派了架构师切边界的 turn → `DISPATCHABLE` 不含 DRAFT，那条 turn 永不派发。**边界永远切不好、批准永远落不了地、老板被告知「再点一次」** —— 三个组同时挂着这样一条 job
+
+现在：**活着的组队列为空本身就是故障**，不看上一条 turn 的退出码（看门狗规则 8，重排一次，再不行就找老板）；DRAFT 只挡写方（engineer/pm/qa/auditor），规划岗（dispatcher/architect/cos/librarian）放行；已解散的组的 pending job 直接取消（规则 9）。
+→ 规律：**每条链路都要问「这一步之后谁来排下一步」，没有答案就是一个静默死锁。** 确定性兜底必须建立在「状态 × 队列」的矛盾上，不能建立在错误信息上 —— 这类故障根本不产生错误信息。
+
 **批准了但落不了地（已修）**
 老板报「有的需求无法批准开工」。三个缺口叠在一起，最后一个才是真正堵死的：
 1. `canStart` 挡下就 `return bad`，**老板的表态没有任何地方记着**，组留在 DRAFT

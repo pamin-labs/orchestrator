@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { Button } from "./ui/button";
 import { AskHost } from "./ui/confirm";
 import { Switcher } from "./ui/switcher";
+import { STATUS_ZH } from "./lib/select";
 import { ThemeToggle } from "./ui/theme";
 import { Tip, TipRoot } from "./ui/tooltip";
 import { Card, CardBody, CardTitle } from "./ui/card";
@@ -37,11 +38,28 @@ const readHash = (): Sel => {
   };
 };
 
+/** A name in the trail. Clicking it offers the others of its kind. */
+function Crumb({ children, dim, onClick }: { children: React.ReactNode; dim?: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "cursor-pointer truncate font-display text-[1rem] font-semibold transition-colors hover:text-ink",
+        dim ? "text-ink-2" : "text-ink",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function App() {
   const { state: st, cost, frames, live, refresh } = useOrch();
   const [sel, setSel] = useState<Sel>(readHash);
   const [picking, setPicking] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [pickProject, setPickProject] = useState(false);
+  const [pickReq, setPickReq] = useState(false);
   const [side, setSide] = useState(() => {
     // Hiding the feed has to survive a reload, or it is not a setting, it is a twitch.
     try {
@@ -76,6 +94,29 @@ export function App() {
   useEffect(() => {
     if (sel.p) void refresh(sel.p);
   }, [sel.p]);
+  // ⌘K switches whatever the boss is standing in. Inside a requirement that is
+  // the requirement — offering the project list there means the shortcut does the
+  // wrong thing at exactly the depth it is most useful.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "k" || !(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      if (sel.view === "req" && sel.g) setPickReq((v) => !v);
+      else setPickProject((v) => !v);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sel.view, sel.g]);
+
+  // A requirement that left the board — dropped, merged — takes its id with it,
+  // and the hash still points at it. Nothing could clear that: the 需求 tab kept
+  // `g`, so it reopened the drill-in on a group that no longer exists and the list
+  // was unreachable without editing the URL.
+  useEffect(() => {
+    if (!sel.g || !st.groups.length) return;
+    if (!st.groups.some((g) => g.id === sel.g)) go({ g: null, view: "progress" });
+  }, [sel.g, st.groups]);
+
   useEffect(() => {
     const onNav = () => setSel(readHash());
     // popstate covers Back/Forward; hashchange covers a hand-edited fragment and
@@ -126,6 +167,34 @@ export function App() {
       <Toaster position="bottom-right" theme="system" />
       <AskHost />
       <Picker open={picking} onOpenChange={setPicking} onAdded={refresh} />
+      <Switcher
+        open={pickProject}
+        onOpenChange={setPickProject}
+        label="切换项目"
+        placeholder="项目名…"
+        empty="没有匹配的项目"
+        items={st.projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          meta: p.repo_path,
+          rtlMeta: true,
+          badge: countWaiting(st, p.id) > 0 ? `${countWaiting(st, p.id)} 件待办` : undefined,
+        }))}
+        onPick={(id) => go({ p: id, g: null, view: "board" })}
+      />
+      <Switcher
+        open={pickReq}
+        onOpenChange={setPickReq}
+        label="切换需求"
+        placeholder="需求名…"
+        empty="这个项目没有别的需求"
+        items={groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          meta: `${STATUS_ZH[g.status] ?? g.status}${g.branch ? ` · ${g.branch}` : ""}`,
+        }))}
+        onPick={(id) => go({ view: "req", g: id })}
+      />
       {sel.p && (
         <NewRequirement open={adding} onOpenChange={setAdding} projectId={sel.p} onDone={refresh} />
       )}
@@ -143,28 +212,22 @@ export function App() {
         >
           orchestrator
         </button>
+        {/* Each name in the trail switches to another of its own kind. A separate
+            切换 control beside them had to explain which of the two it meant, and
+            the answer changed depending on how deep the boss had drilled in. */}
         {!home && (
           <span className="flex min-w-0 items-baseline gap-2 text-[0.8125rem]">
             <span className="text-ink-3">/</span>
-            {view === "req" && openGroup ? (
+            <Crumb dim={view === "req"} onClick={() => setPickProject(true)}>
+              {proj!.name}
+            </Crumb>
+            {view === "req" && openGroup && (
               <>
-                <button
-                  onClick={() => go({ view: "progress", g: null })}
-                  className="cursor-pointer truncate font-display text-[1rem] font-semibold text-ink-2 hover:text-ink"
-                >
-                  {proj!.name}
-                </button>
                 <span className="text-ink-3">/</span>
-                <span className="truncate font-display text-[1rem] font-semibold">{openGroup.name}</span>
+                <Crumb onClick={() => setPickReq(true)}>{openGroup.name}</Crumb>
               </>
-            ) : (
-              <span className="truncate font-display text-[1rem] font-semibold">{proj!.name}</span>
             )}
-            <Switcher
-              projects={st.projects}
-              waiting={(id) => countWaiting(st, id)}
-              onPick={(id) => go({ p: id, g: null, view: "board" })}
-            />
+            <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">⌘K</span>
           </span>
         )}
         <span className="grow" />
@@ -212,7 +275,9 @@ export function App() {
           {VIEWS.map(([k, zh]) => (
             <button
               key={k}
-              onClick={() => go({ view: k, g: k === "progress" ? sel.g : null })}
+              // Every tab clears the drill-in, 需求 included: keeping `g` there made
+              // the tab reopen the requirement the boss was trying to leave.
+              onClick={() => go({ view: k, g: null })}
               className={cn(
                 "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-2 text-[0.8125rem] transition-colors",
                 // The drill-in belongs to 进展, so that tab stays lit inside it.

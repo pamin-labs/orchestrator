@@ -44,6 +44,18 @@ export interface SchedulerOptions {
  */
 const DISPATCHABLE = new Set(["PLANNING", "RUNNING", "PR_OPEN"]);
 
+/**
+ * Roles DRAFT does not block.
+ *
+ * DRAFT means "the card is written, stop spending until the boss says go", and
+ * that is about the writers. It was applied to every role, and the contradiction
+ * was load-bearing: a refused approval enqueues an Architect turn to cut the
+ * boundary, the group is in DRAFT, so that turn never ran — the boundary was
+ * never cut, the approval never landed, and the boss was told to click again.
+ * Observed on three groups at once, each holding a permanently pending job.
+ */
+const PLANNING_ROLES = new Set(["dispatcher", "architect", "cos", "librarian"]);
+
 /** Housekeeping kinds: not attributed to a group's writer slot. */
 const FREE_KINDS = new Set<JobKind>(["watchdog", "notify", "digest"]);
 
@@ -204,7 +216,16 @@ export class Scheduler {
       )
       .get(job.grp_id!);
     if (!grp) return false;
-    if (!DISPATCHABLE.has(grp.status)) return false;
+    if (!DISPATCHABLE.has(grp.status)) {
+      if (grp.status !== "DRAFT") return false;
+      let role: unknown;
+      try {
+        role = JSON.parse(job.payload_json)?.role;
+      } catch {
+        return false;
+      }
+      if (typeof role !== "string" || !PLANNING_ROLES.has(role)) return false;
+    }
     if (grp.budget_tokens !== null && grp.spent_tokens >= grp.budget_tokens) return false;
 
     if (job.slice_id !== null) {

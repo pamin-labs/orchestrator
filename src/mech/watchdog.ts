@@ -192,18 +192,22 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     findings.push({ rule: "rate_limit_resumed", grpId: g.id, severity: "advisory", body: t("rl.resumed") });
   }
 
-  // 8. A RUNNING group with nothing queued.
+  // 8. A live group with nothing queued.
   //
-  // A failed turn is terminal, so the chain simply ends: the group stays RUNNING,
-  // its slice stays `running`, `startNextSlice` counts it busy, and the desk wall
-  // reads 在跑 0 with no error anywhere. One `claude --settings` path bug took six
-  // groups down this way and nothing said so. One automatic retry, then the boss.
+  // Every way a turn can end is terminal — failed, done, cancelled — and nothing
+  // re-queues. So whenever a turn ends without arranging the next one, the group
+  // stays RUNNING, its slice stays `running`, `startNextSlice` counts it busy, and
+  // the desk wall reads 在跑 0 with no error anywhere. A `claude --settings` path
+  // bug took six groups down this way; a Dispatcher that finished without filing a
+  // card left a seventh in PLANNING the same afternoon. The queue being empty under
+  // a live group IS the fault, whatever the last turn's exit code said. One
+  // automatic retry, then the boss.
   const stalled = ctx.db
     .query<Job, []>(
       `SELECT j.id, j.kind, j.grp_id, j.agent_id, j.slice_id, j.payload_json, j.priority, j.state, j.error
        FROM job j JOIN grp g ON g.id = j.grp_id
-       WHERE g.status = 'RUNNING' AND j.state = 'failed'
-         AND j.id = (SELECT max(id) FROM job WHERE grp_id = j.grp_id)
+       WHERE g.status IN ('RUNNING', 'PLANNING') AND j.kind = 'agent_turn'
+         AND j.id = (SELECT max(id) FROM job WHERE grp_id = j.grp_id AND kind = 'agent_turn')
          AND NOT EXISTS (SELECT 1 FROM job k WHERE k.grp_id = j.grp_id AND k.state IN ('pending','running'))`,
     )
     .all();
@@ -220,6 +224,25 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   }
   // No tick here: the server ticks on the same timer that enqueued this watchdog,
   // so the re-queued turn goes out a beat later either way.
+
+  // 9. Work queued for a group that is gone.
+  //
+  // Dropping and splitting both cancel what was pending, but a mail arriving a
+  // moment later enqueues another one, and no status a dissolved group has is
+  // dispatchable. It sits pending forever, counted in every "what is queued" view
+  // the boss reads.
+  const orphanQueued = ctx.db.run(
+    `UPDATE job SET state = 'cancelled', ended_at = ?, error = 'the group was dissolved'
+     WHERE state = 'pending' AND grp_id IN (SELECT id FROM grp WHERE status = 'DISSOLVED')`,
+    [now()],
+  );
+  if (orphanQueued.changes > 0) {
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: `cancelled ${orphanQueued.changes} job(s) queued for a dissolved group`,
+    });
+  }
 
   // 7. Paused too long: notify, then park to stop holding a slot.
   const paused = ctx.db
