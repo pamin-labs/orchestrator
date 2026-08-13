@@ -10,10 +10,12 @@ import { Bar } from "../ui/table";
 import { Tip } from "../ui/tooltip";
 import { ask } from "../ui/confirm";
 import { Composer, ComposerDialog } from "../ui/composer";
-import { post, type Escalation, type Group, type Slice, type State } from "../lib/api";
+import { post, pull, type Escalation, type Group, type Slice, type State } from "../lib/api";
 import { STOPS, WHERE_ZH, asksOf, gates, heldApproved, mineOf, prUrl, statusLabel } from "../lib/select";
 import { cn, K, waited } from "../lib/utils";
-import { useState } from "react";
+import { activityOf } from "../lib/activity";
+import { WithAttachments } from "../ui/attachments";
+import { useEffect, useState } from "react";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
 
@@ -95,27 +97,36 @@ export function Requirement({
           </TabList>
 
           <TabPanel value="slice" className="flex min-h-0 flex-1 flex-col">
-            <Pane>
-              {slices.length ? (
-                <>
-                  <div className="overflow-hidden rounded-lg border border-rule">
-                    {slices.map((s) => (
-                      <SliceRow
-                        key={s.id}
-                        st={st}
-                        g={g}
-                        s={s}
-                        selected={s.id === shown?.id}
-                        onPick={() => setPicked(s.id === shown?.id ? null : s.id)}
-                      />
-                    ))}
-                  </div>
-                  {shown && <SliceDetail key={shown.id} st={st} g={g} s={shown} refresh={refresh} />}
-                </>
-              ) : (
+            {slices.length ? (
+              <>
+                {/* The lanes stay put; the evidence under them scrolls. They were
+                    in the same scroll pane, so reading a diff scrolled away the
+                    row that says which slice it belongs to — and the lanes are
+                    how you switch between them. Capped at 40% so eight slices
+                    cannot take the pane they select into. */}
+                <div className="max-h-[40%] shrink-0 overflow-y-auto overflow-x-hidden rounded-lg border border-rule">
+                  {slices.map((s) => (
+                    <SliceRow
+                      key={s.id}
+                      st={st}
+                      g={g}
+                      s={s}
+                      selected={s.id === shown?.id}
+                      onPick={() => setPicked(s.id === shown?.id ? null : s.id)}
+                    />
+                  ))}
+                </div>
+                {shown && (
+                  <Pane className="mt-2">
+                    <SliceDetail key={shown.id} st={st} g={g} s={shown} refresh={refresh} />
+                  </Pane>
+                )}
+              </>
+            ) : (
+              <Pane>
                 <Working>正在拆解</Working>
-              )}
-            </Pane>
+              </Pane>
+            )}
           </TabPanel>
 
           <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col">
@@ -300,7 +311,7 @@ function SliceRow({
                   ? `待你查收 · ${waited(s.awaiting_at)}`
                   : "待你查收"
                 : on.length
-                  ? on.map((a) => `${a.role} ▸ ${a.activity ?? a.state}`).join(" · ")
+                  ? on.map((a) => { const [verb, detail] = activityOf(a); return `${a.role} ▸ ${verb ? `${verb} ` : ""}${detail}`; }).join(" · ")
                   : s.accept_spec}
         </span>
       </span>
@@ -826,15 +837,21 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
  */
 function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
   const mine = e.chain_state === "boss";
+  // Seeding by remount: the composer owns its text once the boss starts typing,
+  // and a controlled value here would fight them for it.
+  const [seed, setSeed] = useState("");
   return (
     <div className="border-t border-rule-soft py-2.5 first:border-t-0">
       <div className={cn("font-mono text-[0.6875rem]", e.severity === "blocker" ? "text-bad" : "text-ink-3")}>
         {e.asker ?? "?"} · {e.severity === "blocker" ? "阻塞" : "非阻塞"} ·{" "}
         {WHERE_ZH[e.chain_state] ?? e.chain_state} · {waited(e.created_at)}
       </div>
-      <div className="my-1 text-[0.8125rem]">{e.question}</div>
+      <WithAttachments body={e.question} className="my-1 text-[0.8125rem]" />
+      {mine && <Suggested escId={e.id} onUse={setSeed} />}
       {mine && (
         <Composer
+          key={seed}
+          initial={seed}
           rows={2}
           placeholder="答复。这条会直接解开被阻塞的那个 agent。⌘Enter 发送"
           submit="回答"
@@ -872,3 +889,55 @@ function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
   );
 }
 
+
+/**
+ * What the answer probably is, from the cheapest model there is.
+ *
+ * Most of what reaches this box is not a judgement call — it is a question whose
+ * answer is already on the blackboard, asked by an agent that could not find it.
+ * Writing that out by hand is the boss doing retrieval, which is the one job the
+ * system exists to do for them.
+ *
+ * Fetched on open, every open, never stored: the blackboard moves while a
+ * question waits, and a draft written an hour ago can be arguing from facts that
+ * have since been overturned. Nothing is sent by this component — 用这个 puts the
+ * text in the composer, where it is edited and sent by hand like any other
+ * answer. A draft that does not arrive leaves no trace.
+ */
+function Suggested({ escId, onUse }: { escId: number; onUse: (t: string) => void }) {
+  const [text, setText] = useState<string | null>(null);
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    setText(null);
+    void pull<{ text: string }>(`/api/escalations/${escId}/draft`).then((r) => setText(r?.text?.trim() || ""));
+  }, [escId]);
+
+  if (text === null) return <Meta className="my-1 block">在替你想一个答复…</Meta>;
+  if (!text) return null;
+  return (
+    <div className="my-1.5 rounded-md border border-rule-soft bg-sunk px-2.5 py-1.5">
+      <div className="flex items-baseline gap-2">
+        <Meta>参考答复 · 便宜模型现算的，没发出去</Meta>
+        <span className="grow" />
+        <button
+          onClick={() => setOpen(!open)}
+          className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
+        >
+          {open ? "收起" : "展开"}
+        </button>
+      </div>
+      {open && (
+        <>
+          <div className="mt-1 whitespace-pre-wrap break-words text-[0.8125rem] text-ink-2">{text}</div>
+          <Button
+            size="sm"
+            className="mt-1.5"
+            onClick={() => onUse(text)}
+          >
+            用这个
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}

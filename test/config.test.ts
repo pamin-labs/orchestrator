@@ -58,7 +58,11 @@ test("adding a role is a file, not a code change", () => {
 test("config falls back to defaults when the file is missing", () => {
   const cfg = loadConfig("config/does-not-exist.yaml");
   expect(cfg.maxGroups).toBe(10);
-  expect(cfg.workRoot.startsWith("/tmp")).toBe(true);
+  // Outside $HOME, because the sandbox is deny-only — and under /var/tmp rather
+  // than /tmp, which macOS empties at boot and sweeps after three days. A
+  // worktree holds commits on a branch nobody has pushed.
+  expect(cfg.workRoot.startsWith("/var/tmp")).toBe(true);
+  expect(cfg.workRoot.startsWith(process.env.HOME ?? "~")).toBe(false);
 });
 
 test("the shipped config keeps worktrees outside $HOME", () => {

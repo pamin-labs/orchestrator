@@ -82,7 +82,15 @@ leaseTimeoutMs: 10800000
 
 # Where group worktrees live. Outside $HOME on purpose: the sandbox is deny-only,
 # so denying $HOME is how writes get confined (docs/decisions/001).
-workRoot: /tmp/orch/worktrees
+#
+# /var/tmp, not /tmp. Both are outside $HOME, but macOS empties /tmp at boot and
+# sweeps anything untouched for three days — and a worktree holds work that is
+# committed to a branch nobody has pushed yet. A group that runs overnight, waits
+# on the boss over a weekend, or simply outlives a reboot would come back to a
+# branch with no checkout. /var/tmp is the standard persistent one and survives
+# both. Existing groups keep the path recorded in grp.worktree; this is the
+# default for the next one.
+workRoot: /var/tmp/orch/worktrees
 
 # 批准之后就别叫我：查收不再挡住下一片开工。默认开 —— 「批了」就该买到一夜的活，
 # 关掉的话一个组做完一片就停到早上，等于放弃了这套系统存在的理由。

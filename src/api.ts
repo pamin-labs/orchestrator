@@ -1,4 +1,4 @@
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -1683,6 +1683,84 @@ const postAnswer: Handler = async (ctx, req, params) => {
 };
 
 /**
+ * A first draft of the answer, from the cheapest model there is.
+ *
+ * Answering is one of the boss's three approval points, and most of what reaches
+ * it is not a judgement call — it is a question whose answer is already in the
+ * blackboard, asked by an agent that could not find it. Writing that answer out
+ * by hand is the boss doing retrieval, which is the one job this system has.
+ *
+ * So: same context the agent had — the group's journal, its decisions, its
+ * slices — and one cheap call. It is a draft in a box, never the answer: nothing
+ * is sent until the boss sends it, and it lands in the composer where it can be
+ * rewritten. Generated on open rather than stored, because a stored draft is a
+ * stale one — the blackboard moves while the question waits, and by the time the
+ * boss looks, the reason for the answer may have changed.
+ *
+ * No draft is a fine outcome. If the model is unreachable or says nothing useful
+ * this returns nothing and the composer is the composer.
+ */
+const getAnswerDraft: Handler = async (ctx, _req, params) => {
+  if (!ctx.ask) return json({ text: "" });
+  const id = Number(params.id);
+  const e = ctx.db
+    .query<{ grp_id: number | null; question: string; severity: string; asker: string | null }, [number]>(
+      `SELECT e.grp_id, e.question, e.severity, a.role AS asker
+       FROM escalation e LEFT JOIN agent a ON a.id = e.agent_id
+       WHERE e.id = ? AND e.answer IS NULL`,
+    )
+    .get(id);
+  if (!e) return json({ text: "" });
+
+  const grp = e.grp_id
+    ? ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(e.grp_id)
+    : null;
+  // The blackboard, newest first and capped: this is the cheapest model in the
+  // system and a 40k-character prompt would cost more than the answer is worth.
+  const notes = e.grp_id
+    ? ctx.db
+        .query<{ kind: string; body: string }, [number]>(
+          `SELECT kind, body FROM note
+           WHERE (grp_id = ? OR (grp_id IS NULL AND kind IN ('decision','lesson','fact')))
+           ORDER BY at DESC LIMIT 12`,
+        )
+        .all(e.grp_id)
+        .map((n) => `[${n.kind}] ${n.body.slice(0, 400)}`)
+    : [];
+  const slices = e.grp_id
+    ? ctx.db
+        .query<{ seq: number; title: string; status: string }, [number]>(
+          "SELECT seq, title, status FROM slice WHERE grp_id = ? ORDER BY seq",
+        )
+        .all(e.grp_id)
+        .map((s) => `S${s.seq} ${s.status} ${s.title}`)
+    : [];
+
+  const zh = (ctx.config.language ?? "zh") !== "en";
+  const prompt = [
+    zh
+      ? "你是老板的助手。下面是一个 agent 提给老板的问题，以及这个需求的黑板内容。写出老板可以直接发出去的答复。"
+      : "You draft answers for the boss. Below is a question an agent escalated, plus this requirement's blackboard. Write the reply the boss could send as-is.",
+    zh
+      ? "要求：直接给结论和依据，不要开场白，不要复述问题，不超过 4 行。黑板里答得出来就直接答；答不出来就说清楚缺什么、并给出你认为最可能的决定。"
+      : "Rules: conclusion and evidence, no preamble, no restating the question, at most 4 lines. Answer from the blackboard when it is there; when it is not, say what is missing and give the most likely decision.",
+    ``,
+    `${zh ? "需求" : "requirement"}: ${grp?.name ?? (zh ? "常驻岗" : "standing")}`,
+    `${zh ? "提问的人" : "asker"}: ${e.asker ?? "?"} (${e.severity})`,
+    `${zh ? "问题" : "question"}: ${e.question.slice(0, 2000)}`,
+    slices.length ? `\n${zh ? "切片" : "slices"}:\n${slices.join("\n")}` : "",
+    notes.length ? `\n${zh ? "黑板" : "blackboard"}:\n${notes.join("\n")}` : "",
+  ].join("\n");
+
+  try {
+    const out = (await ctx.ask(prompt)).trim();
+    return json({ text: out.length > 1200 ? out.slice(0, 1200) : out });
+  } catch {
+    return json({ text: "" });
+  }
+};
+
+/**
  * Hand a question back down the chain instead of answering it.
  *
  * PLAN.md §8 puts `[回答] [转 Architect]` on the same line for a reason: plenty of
@@ -1745,6 +1823,34 @@ const postAttach: Handler = async (ctx, req) => {
 };
 
 export interface Attachment { name: string; path: string; type: string }
+
+/**
+ * Hand one attachment back to the panel.
+ *
+ * The files were written to `data/attachments` and referenced by absolute path
+ * from the first version, which is what an agent needs — but the panel is a
+ * browser, and a browser cannot open a path. So the boss's own screenshot,
+ * attached to the question the boss is being asked, rendered as a line of text
+ * naming a file they could not see.
+ *
+ * Basename only: the stored name is already sanitised on the way in, and taking
+ * only the last segment means a path that arrives with `..` in it resolves to a
+ * file that does not exist rather than to one outside the directory.
+ */
+const getAttachment: Handler = async (ctx, _req, params) => {
+  const name = basename(params.name ?? "");
+  const path = join(ctx.config.dataDir ?? "data", "attachments", name);
+  if (!name || !existsSync(path)) return text("no such attachment", 404);
+  const f = Bun.file(path);
+  return new Response(f, {
+    headers: {
+      "content-type": f.type || "application/octet-stream",
+      // Content-addressed by name — every upload carries its own timestamp, so a
+      // given URL never changes.
+      "cache-control": "public, max-age=31536000, immutable",
+    },
+  });
+};
 
 /**
  * The boss said something that should stick. One helper, because "record it and see if
@@ -2646,6 +2752,8 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/revoke$/, postRevoke],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/requirement$/, postEscalationRequirement],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/delegate$/, postDelegate],
+  ["GET", /^\/api\/escalations\/(?<id>\d+)\/draft$/, getAnswerDraft],
+  ["GET", /^\/api\/attach\/(?<name>[^/]+)$/, getAttachment],
 ];
 
 export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {

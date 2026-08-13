@@ -117,7 +117,6 @@ export function EvidencePanel({ sliceId }: { sliceId: number }) {
 function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
   const [text, setText] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [only, setOnly] = useState<"bad" | "all">("bad");
 
   useEffect(() => {
     setText(null);
@@ -132,35 +131,28 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
   // Everything that is neither: error bodies, stack lines, tsc diagnostics, the
   // runner's own summary. This is the half that says why.
   const rest = lines.filter((l) => l.trim() && !/^\s*\((pass|fail)\)/.test(l));
-  const hit = (l: string) => !q || l.toLowerCase().includes(q.toLowerCase());
-  const body = [...fails, ...rest, ...(only === "all" ? passes : [])].filter(hit);
+  // Nobody opens a gate log to read the passes, so they are not in the default
+  // view — but a search is someone looking for a specific line, and refusing to
+  // look in 373 of them because they passed is the filter deciding what the
+  // question was. Typing searches everything; empty shows what broke.
+  const body = q
+    ? lines.filter((l) => l.toLowerCase().includes(q.toLowerCase()))
+    : [...fails, ...rest];
 
   if (text === null) return <div className="mt-2 text-[0.75rem] text-ink-3">读日志…</div>;
 
   return (
     <div className="mt-2 overflow-hidden rounded-md border border-rule-soft bg-sunk">
-      {/* A filter bar, not three unrelated controls. It was a coloured word, a
-          text link that toggled the passes, and a 7rem input pushed to the far
-          right — three shapes for one job, and the only one that looked clickable
-          was the one that was not. */}
+      {/* One verdict and one field. A 没过/全部 segment sat here for a version: on a
+          passing gate it read 没过 0 / 全部 373, which is two buttons offering to
+          filter for nothing and to show you 373 lines of the word "pass". */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-rule-soft px-2 py-1.5">
-        <div className="flex overflow-hidden rounded-md border border-rule">
-          {([["bad", `没过 ${fails.length}`], ["all", `全部 ${lines.filter((l) => l.trim()).length}`]] as const).map(
-            ([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setOnly(k)}
-                className={cn(
-                  "cursor-pointer px-2 py-0.5 text-[0.6875rem] transition-colors",
-                  only === k ? "bg-ink text-paper" : "text-ink-3 hover:bg-paper hover:text-ink",
-                )}
-              >
-                {label}
-              </button>
-            ),
-          )}
-        </div>
-        {fails.length === 0 && <span className="text-[0.6875rem] font-semibold text-ok">全过</span>}
+        {fails.length > 0 ? (
+          <span className="text-[0.6875rem] font-semibold text-bad">{fails.length} 条没过</span>
+        ) : (
+          <span className="text-[0.6875rem] font-semibold text-ok">全过</span>
+        )}
+        <span className="text-[0.6875rem] text-ink-3">{passes.length} 条通过没列出来，搜索会翻到</span>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}

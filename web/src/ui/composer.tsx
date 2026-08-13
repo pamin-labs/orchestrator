@@ -35,6 +35,7 @@ export function Composer({
   autoFocus,
   className,
   projectId,
+  initial,
 }: {
   placeholder?: string;
   rows?: number;
@@ -48,8 +49,11 @@ export function Composer({
   actions?: (d: Draft & { busy: boolean; clear: () => void }) => React.ReactNode;
   autoFocus?: boolean;
   className?: string;
+  /** Seed text. Remount (a changing `key`) to reseed — this is a starting point,
+   *  not a controlled value; the box belongs to whoever is typing in it. */
+  initial?: string;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initial ?? "");
   const [files, setFiles] = useState<Attached[]>([]);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
