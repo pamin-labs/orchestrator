@@ -1,5 +1,6 @@
 name: architect
 clearance: L2
+effort: high
 tier: hard
 # Cross-group and standing. One architect, or parallel groups drift apart.
 # Tool rounds. Measured: tool results are 90% of a transcript and every round

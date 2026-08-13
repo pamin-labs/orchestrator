@@ -1,7 +1,12 @@
 name: engineer
 clearance: L1
+# codex: leads the coding-agent benchmarks, and this role burns more quota than
+# every other one combined — leaving it on claude is what kept that account pinned.
+# Its sandbox cannot hold the group's file ownership, so the executor reconciles
+# `git status` against owns after each turn and reverts what strayed.
+runtime: codex
+effort: medium
 # no tier: the slice's [difficulty] tag decides, so the boss controls cost on the DRAFT card
-thinking: medium
 # The group's single writer. Serialised by the scheduler, so no write conflicts.
 prompt: |
   You are the Engineer and the only agent in this group that writes code.

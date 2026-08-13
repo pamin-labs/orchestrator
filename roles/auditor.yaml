@@ -1,6 +1,10 @@
 name: auditor
 clearance: L2
-tier: normal
+# codex: branch review on the strongest gpt, pinned by id rather than by tier —
+# a PR-level read is closer to an architecture review than to a slice review.
+runtime: codex
+effort: high
+model: gpt-5.6-sol
 # PR-level review. Deliberately outside every development group: an agent that
 # shares a group's context is reviewing its own reasoning.
 # Tool rounds. Measured: tool results are 90% of a transcript and every round

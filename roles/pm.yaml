@@ -1,7 +1,9 @@
 name: pm
 clearance: L2
+# codex: answers and plans, decides nothing. Its tools were already read-only.
+runtime: codex
+effort: medium
 tier: normal
-thinking: medium
 # The group's only conversational entrance. One turn per boss message, not five.
 # Tool rounds. Measured: tool results are 90% of a transcript and every round
 # re-reads all of them, so rounds are the bill.

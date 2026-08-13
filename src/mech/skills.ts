@@ -107,6 +107,11 @@ export function listSkills(repoPath?: string | null): SkillRef[] {
   }
   const home = homedir();
   scan(home, ".claude/skills", "user", out);
+  // The other CLI keeps its own, and the boss has no reason to care which
+  // directory a skill lives in — the text is inlined into the turn either way, so
+  // a codex skill works on a claude role and the reverse. Second, so a same-named
+  // skill resolves to the .claude one (the dedupe above is first-wins).
+  scan(home, ".codex/skills", "user", out);
   return out.sort((a, b) => (a.scope === b.scope ? a.name.localeCompare(b.name) : a.scope === "project" ? -1 : 1));
 }
 
