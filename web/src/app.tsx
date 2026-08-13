@@ -254,6 +254,31 @@ export function App() {
             <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">⌘K</span>
           </span>
         )}
+        {/* The views, on the same line as everything else. They had a row of
+            their own, which read as a second tab bar above whatever tabs the view
+            itself has — three levels of the same affordance stacked. Five items
+            fit here, and the row they cost is worth more to the list below. */}
+        {!home && (
+          <span className="flex min-w-0 gap-4 overflow-x-auto">
+            {VIEWS.map(([k, zh]) => (
+              <button
+                key={k}
+                // Every tab clears the drill-in, 需求 included: keeping `g` there
+                // made the tab reopen the requirement the boss was trying to leave.
+                onClick={() => go({ view: k, g: null, t: null })}
+                className={cn(
+                  "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-1 text-[0.8125rem] transition-colors",
+                  // The drill-in belongs to 需求, so that tab stays lit inside it.
+                  view === k || (view === "req" && k === "progress")
+                    ? "border-accent font-medium text-ink"
+                    : "border-transparent text-ink-3 hover:text-ink",
+                )}
+              >
+                {zh}
+              </button>
+            ))}
+          </span>
+        )}
         <span className="grow" />
         <UsageBar usage={st.usage} />
         {live !== "live" && (
@@ -295,27 +320,6 @@ export function App() {
         <ThemeToggle />
       </header>
 
-      {!home && (
-        <nav className="sticky top-11 z-9 flex gap-5 overflow-x-auto border-b border-rule bg-rail px-6">
-          {VIEWS.map(([k, zh]) => (
-            <button
-              key={k}
-              // Every tab clears the drill-in, 需求 included: keeping `g` there made
-              // the tab reopen the requirement the boss was trying to leave.
-              onClick={() => go({ view: k, g: null, t: null })}
-              className={cn(
-                "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-2 text-[0.8125rem] transition-colors",
-                // The drill-in belongs to 进展, so that tab stays lit inside it.
-                view === k || (view === "req" && k === "progress")
-                  ? "border-accent font-medium text-ink"
-                  : "border-transparent text-ink-3 hover:text-ink",
-              )}
-            >
-              {zh}
-            </button>
-          ))}
-        </nav>
-      )}
 
       {/* Draggable when the feed is open. 20rem was a guess that has to serve both
           "glance at what just happened" and "read a long journal entry", and the
@@ -328,7 +332,7 @@ export function App() {
           each view decides what scrolls inside it. 4.5rem is header plus nav. */}
       <Group
         orientation="horizontal"
-        className={cn("h-[calc(100vh-5rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
+        className={cn("h-[calc(100vh-2.75rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
       >
         <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
           {/* The view decides what scrolls. 成本 has a tab strip and a rail that
