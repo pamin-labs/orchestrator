@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { ClipboardPaste, Paperclip, X } from "lucide-react";
+import { ClipboardPaste, Paperclip, SquareSlash, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "./button";
@@ -372,8 +372,28 @@ export function Composer({
         <Button variant="quiet" size="sm" onClick={pasteClipboard}>
           <ClipboardPaste size={12} strokeWidth={1.75} /> 粘贴
         </Button>
+        {/* A button, like the two beside it. It was a 0.625rem mono hint sitting on
+            the same row as two 0.75rem buttons with icons — three controls, three
+            shapes, and the only one that did nothing when clicked was the one that
+            named a keystroke nobody had been told about. */}
         {(skills?.length ?? 0) > 0 && (
-          <span className="font-mono text-[0.625rem] text-ink-3">/ 插技能</span>
+          <Button
+            variant="quiet"
+            size="sm"
+            onClick={() => {
+              const box2 = box.current;
+              const at = box2?.selectionStart ?? text.length;
+              // Typing the slash for them, so the picker opens the same way it does
+              // when they type it themselves — one code path, not two.
+              onType(`${text.slice(0, at)}/${text.slice(at)}`, at + 1);
+              requestAnimationFrame(() => {
+                box2?.focus();
+                box2?.setSelectionRange(at + 1, at + 1);
+              });
+            }}
+          >
+            <SquareSlash size={12} strokeWidth={1.75} /> 插技能
+          </Button>
         )}
         <span className="grow" />
         {actions?.({ ...draft, busy, clear })}
