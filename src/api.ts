@@ -1,4 +1,6 @@
 import { dirname, join } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { mkdir, writeFile } from "node:fs/promises";
 import type { DB } from "./db.ts";
 import type { Bus } from "./bus.ts";
@@ -1250,9 +1252,45 @@ const postSliceDecision: Handler = async (ctx, req, params) => {
   return text("ok");
 };
 
+/**
+ * Why a path cannot be a project, in words the boss can act on. Null when fine.
+ *
+ * Every group needs a worktree, and `git worktree add` needs a real repo. A
+ * relative path is refused rather than resolved: it would resolve against
+ * whatever directory the server happens to be running in, which is not what the
+ * person typing it means.
+ */
+export function expandHome(p: string): string {
+  // Typed by hand, so `~` is what people actually write.
+  return p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : p;
+}
+
+export function checkRepoPath(p: string): string | null {
+  if (!p.startsWith("/")) return `${p} must be an absolute path (start with /)`;
+  if (!existsSync(p)) return `${p} does not exist`;
+  if (!statSync(p).isDirectory()) return `${p} is not a directory`;
+  // A worktree has `.git` as a file, not a directory, so check for either.
+  if (!existsSync(join(p, ".git"))) {
+    return `${p} is not a git repo (no .git). Run \`git init\` there first — every group needs a branch.`;
+  }
+  return null;
+}
+
 const postProject: Handler = async (ctx, req) => {
   const b = await body<{ name: string; repo_path: string; remote?: string; gates?: string[] }>(req);
   if (!b.name || !b.repo_path) return bad("name and repo_path required");
+
+  // The web form is a typed path — a browser cannot hand over a real filesystem
+  // path — so a typo is the expected mistake, not an exotic one. Checked here
+  // rather than discovered when the first group tries to create a worktree.
+  b.repo_path = expandHome(b.repo_path);
+  const pathProblem = checkRepoPath(b.repo_path);
+  if (pathProblem) return bad(pathProblem);
+
+  const dup = ctx.db
+    .query<{ name: string }, [string]>("SELECT name FROM project WHERE repo_path = ?")
+    .get(b.repo_path);
+  if (dup) return bad(`${b.repo_path} is already registered as "${dup.name}"`);
 
   // A project with no gates fails every slice by design, so guessing them here
   // is the difference between "works out of the box" and "looks broken on day

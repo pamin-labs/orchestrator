@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start, type Started } from "../src/server.ts";
@@ -15,6 +15,8 @@ let dataDir: string;
 
 beforeAll(() => {
   dataDir = mkdtempSync(join(tmpdir(), "orch-smoke-"));
+  // The smoke run registers dataDir as a project, and registration wants a repo.
+  mkdirSync(join(dataDir, ".git"), { recursive: true });
   // maxGroups 0 blocks every group turn, which is how this test exercises the
   // real HTTP server without spawning a single agent or spending a token.
   srv = start({ dataDir, port: 47899, maxGroups: 0 });
