@@ -38,6 +38,17 @@ export type Tree = Record<string, Node>;
 /** One prompt in, one text out. Injected so tests never spawn a model. */
 export type Ask = (prompt: string) => Promise<string>;
 
+/**
+ * A leaf's text, by id. Injected because the corpus is not one kind of thing: the
+ * repo's files come off disk and the blackboard's journals, retros and decisions
+ * come out of `note`. They index the same way and answer the same question — where
+ * is what I need — so they belong in one tree rather than two retrieval paths.
+ */
+export type Read = (id: string) => string | null;
+
+/** Notes live under this prefix, so a leaf's id says which corpus it came from. */
+export const NOTE_PREFIX = "notes/";
+
 const HEAD_CHARS = 1800;
 
 /** Structure first, summaries second — the same order as the original. */
@@ -73,7 +84,7 @@ const sigOf = (text: string): string => `${text.length}:${Bun.hash(text).toStrin
  */
 export async function summarise(
   tree: Tree,
-  repoPath: string,
+  read: Read,
   ask: Ask,
   opts: { maxCalls?: number; previous?: Tree } = {},
 ): Promise<{ tree: Tree; calls: number }> {
@@ -83,12 +94,8 @@ export async function summarise(
 
   const files = Object.values(tree).filter((n) => n.kind === "file");
   for (const n of files) {
-    let head = "";
-    try {
-      head = readFileSync(join(repoPath, n.id), "utf8").slice(0, HEAD_CHARS);
-    } catch {
-      continue;
-    }
+    const head = read(n.id)?.slice(0, HEAD_CHARS);
+    if (!head) continue;
     n.sig = sigOf(head);
     const old = prev[n.id];
     if (old && old.sig === n.sig && old.summary) {
@@ -99,7 +106,9 @@ export async function summarise(
     calls++;
     n.summary = oneLine(
       await ask(
-        `One line, under 20 words: what is ${n.id} for? Name the thing it owns, not its language.\n\n` +
+        (n.id.startsWith(NOTE_PREFIX)
+          ? `One line, under 20 words: what does this note establish? Name the decision or fact, not the format.\n\n`
+          : `One line, under 20 words: what is ${n.id} for? Name the thing it owns, not its language.\n\n`) +
           `----\n${head}\n----`,
       ),
     );
@@ -209,6 +218,48 @@ export function modelAsk(model: string, cwd: string, timeoutMs = 60_000): Ask {
       clearTimeout(timer);
     }
   };
+}
+
+/** The repo half of the corpus. */
+export function fileRead(repoPath: string): Read {
+  return (id) => {
+    if (id.startsWith(NOTE_PREFIX)) return null;
+    try {
+      return readFileSync(join(repoPath, id), "utf8");
+    } catch {
+      return null;
+    }
+  };
+}
+
+/**
+ * The blackboard half: every journal, retro, decision and fact, as leaves under
+ * `notes/<scope>/<kind>/<id>`.
+ *
+ * Grouping by scope then kind is what makes the walk cheap — "what did that group
+ * settle" is one directory, and the model never sees the other 200 notes. BM25 over
+ * the whole table could only ever return whole notes and rank them by word overlap,
+ * which is exactly what fails when the retro that matters calls it something else.
+ */
+export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; read: Read } {
+  const rows = db
+    .query<{ id: number; grp_id: number | null; kind: string; body: string }, [number | null]>(
+      `SELECT id, grp_id, kind, body FROM note
+       WHERE (project_id IS ? OR grp_id IS NOT NULL) AND kind IN ('decision','retro','journal','fact','lesson')
+       ORDER BY id DESC LIMIT 500`,
+    )
+    .all(projectId);
+  const byId = new Map<string, string>();
+  for (const r of rows) {
+    byId.set(`${NOTE_PREFIX}${r.grp_id ? `grp-${r.grp_id}` : "project"}/${r.kind}/${r.id}`, r.body);
+  }
+  return { ids: [...byId.keys()], read: (id) => byId.get(id) ?? null };
+}
+
+/** Both halves, one reader. */
+export function bothRead(repoPath: string, notes: Read): Read {
+  const files = fileRead(repoPath);
+  return (id) => (id.startsWith(NOTE_PREFIX) ? notes(id) : files(id));
 }
 
 // ------------------------------------------------------------------ storage

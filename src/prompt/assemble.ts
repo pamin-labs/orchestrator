@@ -82,7 +82,13 @@ const ORCH_CONTRACT = `## Talking to the orchestrator
 
 Use Bash. Every command blocks and returns its result on stdout.
 
-  orch ctx query "<question>"          # pull blackboard context on demand
+  orch ctx query "<question>"          # ALWAYS FIRST, before grep/git/reading files.
+      # One call answers: every slice in this group with status and acceptance line;
+      # the group's status, branch and PR; the last result of each gate; the questions
+      # still unanswered; and where a thing lives — a summary tree of the repo that a
+      # model walks, so it lands on the right file even when the file name shares no
+      # word with your question. Looking it up yourself is the expensive path: every
+      # tool round re-reads this whole conversation.
   orch ask-boss --severity blocker|advisory "<question>"
   orch lease <resource> [--arg k=v]    # run a rate-limited resource, get the digest
   orch lease log <id> [--grep RE]      # full log, stays out of your context
@@ -112,6 +118,13 @@ Use Bash. Every command blocks and returns its result on stdout.
   orch git -- <cmd>                    # all git writes go through here (repo lock)
 
 Do not read whole files when \`orch ctx query\` can point you at the lines.
+
+A criterion about what the page does ("the menu opens", "the row is clickable") is
+checkable and reading the JSX is not the check: write the steps to a JSON file and
+\`orch lease browser --arg steps=qa-steps.json\`. It boots this worktree on a random
+port against a throwaway database, so \`api\` steps seed whatever state you need, and
+a failing step screenshots itself. Steps are data, never a command — that is what
+makes running it on the host safe.
 
 Put \`orch\` first in the command when piping into it — \`orch journal add --kind
 decision <<'EOF'\` is permitted, \`cat file | orch journal add\` is not, because the
