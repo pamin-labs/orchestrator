@@ -999,3 +999,65 @@ test("one box holding several unrelated asks becomes several requirements", asyn
   expect(late.status).toBe(422);
   expect(await late.text()).toContain("respec");
 });
+
+test("a group blocked outside its boundary hands the work on and waits for it", async () => {
+  // The gap seen whole: pm-ai-agent's gate failed on a missing line in
+  // tsconfig.json, which is not in its owns, so the sandbox refused the write. No
+  // verb opened a requirement for it and `orch mail` creates no work, so it rewrote
+  // its own code three times, escalated, and stopped.
+  const h = harness();
+  // The path check is against the real repo: an invented path must not be able to
+  // stop a group, so there has to be a repo for it to be absent from.
+  const repo = mkdtempSync(join(tmpdir(), "orch-blocked-"));
+  writeFileSync(join(repo, "package.json"), "{}");
+  mkdirSync(join(repo, "src", "a"), { recursive: true });
+  writeFileSync(join(repo, "src", "a", "x.ts"), "");
+  h.db.run("UPDATE project SET repo_path = ? WHERE id = 1", [repo]);
+  h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
+  const blocked = (b: unknown, tok = "tok-eng") => post(h.app, "/orch/blocked", b, tok);
+
+  expect((await blocked({ group_id: 1, path: "tsconfig.json" })).status).toBe(422);
+  expect((await blocked({ group_id: 1, path: "nope.json", why: "缺一行配置" })).status).toBe(422);
+  // Inside its own boundary it is expected to fix it — saying otherwise is the
+  // cheap way out of difficult work.
+  expect((await blocked({ group_id: 1, path: "src/a/x.ts", why: "缺一行配置" })).status).toBe(422);
+
+  const r = await blocked({ group_id: 1, path: "package.json", why: "缺 allowImportingTsExtensions，闸门必红" });
+  expect(r.status).toBe(200);
+  const target = ((await r.json()) as any).blocked_on as number;
+
+  const me = h.db
+    .query<{ status: string; blocked_on: number | null }, []>("SELECT status, blocked_on FROM grp WHERE id = 1")
+    .get()!;
+  expect(me.status).toBe("PAUSED");
+  expect(me.blocked_on).toBe(target);
+  // Nobody owns package.json, so it becomes a requirement the boss approves like
+  // any other — planning starts without waiting for anyone.
+  const planning = h.db
+    .query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?")
+    .get(target)!;
+  expect(planning.status).toBe("PLANNING");
+});
+
+test("a live group that owns the path gets it as an addition, not a rival group", async () => {
+  // A second group for the same file would be refused by canStart anyway, so
+  // opening one would only produce a requirement that can never start.
+  const h = harness();
+  const repo = mkdtempSync(join(tmpdir(), "orch-blocked2-"));
+  writeFileSync(join(repo, "package.json"), "{}");
+  h.db.run("UPDATE project SET repo_path = ? WHERE id = 1", [repo]);
+  h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
+  h.db.run(
+    "INSERT INTO grp (project_id, name, status, owns_json, created_at) VALUES (1, 'owner', 'RUNNING', ?, 0)",
+    [JSON.stringify(["package.json"])],
+  );
+  const r = await post(h.app, "/orch/blocked", { group_id: 1, path: "package.json", why: "缺一行配置，闸门必红" }, "tok-eng");
+  expect(((await r.json()) as any).handedTo).toBe("owner");
+  const p = JSON.parse(
+    h.db.query<{ payload_json: string }, []>(
+      "SELECT payload_json FROM job WHERE grp_id = 2 ORDER BY id DESC LIMIT 1",
+    ).get()!.payload_json,
+  );
+  expect(p.role).toBe("pm");
+  expect(p.rejection).toContain("package.json");
+});
