@@ -125,7 +125,7 @@ export function Queue({
   if (!items.length) {
     return (
       <Card className="mb-10 overflow-hidden">
-        <CardLabel className="bg-sunk text-ink-3">等你</CardLabel>
+        <CardLabel className="bg-sunk text-ink-3">待办</CardLabel>
         <CardRow className="text-[0.8125rem] text-ink-2">
           <b className="text-ok">无待办</b>
           <span className="text-ink-3"> · 需要决策时出现在此并推送通知</span>
@@ -142,7 +142,7 @@ export function Queue({
 
   return (
     <Card tone="mine" className="mb-10 overflow-hidden">
-      <CardLabel className="bg-accent-soft text-accent">等你 {items.length}</CardLabel>
+      <CardLabel className="bg-accent-soft text-accent">待办 {items.length}</CardLabel>
       {halt.length > 0 && (
         <Tier zh="停着不动" hint="这些需求上没有 agent 在跑，等你之前不会动" n={halt.length} mine />
       )}

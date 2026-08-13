@@ -182,7 +182,7 @@ export function App() {
             size="sm"
             onClick={() => go(sel.p ? { view: "board", g: null } : { view: "home", p: null, g: null })}
           >
-            等你 {waiting}
+            待办 {waiting}
           </Button>
         ) : (
           <span className="font-mono text-[0.6875rem] text-ink-3">无待办</span>

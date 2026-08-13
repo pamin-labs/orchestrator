@@ -17,7 +17,13 @@ export const STOPS: [string, string][] = [["reconcile", "对账"], ["gate", "测
 export const owns = (g: Group) => { try { return JSON.parse(g.owns_json || "[]") as string[]; } catch { return []; } };
 export const gates = (s: Slice) => { try { return JSON.parse(s.gates_json || "{}") as Record<string, string>; } catch { return {}; } };
 
-/** Everything that blocks the boss, per PLAN.md. Nothing else counts as waiting. */
+/**
+ * Everything that cannot move without the boss, per PLAN.md's three approval points.
+ *
+ * Called 待办 everywhere in the panel. It used to be 等你 in the nav, 等你决策 in the
+ * requirement list and 无待办 when empty — three names for one concept, one of which
+ * was a verb phrase doing a noun's job in a nav badge.
+ */
 export function pending(st: State, projectId: number | null) {
   const ids = new Set(
     (projectId ? st.groups.filter((g) => g.project_id === projectId) : st.groups).map((g) => g.id),
@@ -48,7 +54,7 @@ export const countWaiting = (st: State, p: number | null) =>
 /** A project's state, ordered by what should pull the eye. */
 export function projectState(st: State, p: number) {
   const n = countWaiting(st, p);
-  if (n) return { zh: `${n} 件等你`, mine: true };
+  if (n) return { zh: `${n} 件待办`, mine: true };
   const gs = st.groups.filter((g) => g.project_id === p);
   if (!gs.length) return { zh: "空着", mine: false };
   const live = gs.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;

@@ -31,7 +31,7 @@ interface Bucket {
 }
 
 const BUCKETS: Bucket[] = [
-  { key: "mine", zh: "等你决策", hint: "计划卡待批、切片待查收、PR 待合入", of: ["DRAFT", "PR_OPEN"], mine: true },
+  { key: "mine", zh: "待办", hint: "计划卡待批、切片待查收、PR 待合入", of: ["DRAFT", "PR_OPEN"], mine: true },
   { key: "live", zh: "执行中", hint: "有 agent 在跑，或正在拆解", of: ["RUNNING", "PLANNING", "PAUSING"] },
   { key: "held", zh: "停着", hint: "暂停或封存，工作都留着，唤醒即续", of: ["PAUSED", "PARKED"] },
 ];
@@ -96,7 +96,7 @@ export function Progress({
 
 /** Absence, with the reason it is absent. A bare "无" teaches nothing. */
 function emptyOf(key: string): string {
-  if (key === "mine") return "没有等你的决策。有计划卡、待查收切片或待合入 PR 时出现在这里，并推送通知。";
+  if (key === "mine") return "没有待办。有计划卡、待查收切片或待合入 PR 时出现在这里，并推送通知。";
   if (key === "live") return "没有在跑的需求。批准一张计划卡就会有。";
   return "没有停着的需求。预算用尽、或等你答问题超过 2 小时会自动封存到这里，工作不丢。";
 }

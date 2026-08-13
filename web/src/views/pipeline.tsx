@@ -22,7 +22,7 @@ import { cn, money } from "../lib/utils";
 
 const BUCKETS = {
   live: { zh: "在跑", of: ["RUNNING", "PLANNING", "PAUSING"] },
-  mine: { zh: "等你", of: ["DRAFT", "PR_OPEN"] },
+  mine: { zh: "待办", of: ["DRAFT", "PR_OPEN"] },
   held: { zh: "停着", of: ["PAUSED", "PARKED"] },
 } as const;
 type Bucket = keyof typeof BUCKETS;
