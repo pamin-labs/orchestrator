@@ -11,6 +11,7 @@ import type { GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
+import { extractClaimedFiles } from "./mech/reconcile.ts";
 import { acceptSlice } from "./mech/review.ts";
 import { dropGroup, startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
@@ -22,7 +23,7 @@ import { gatesFor, recordGate } from "./mech/gate.ts";
 import { listSkills, skillNames } from "./mech/skills.ts";
 import { sediment } from "./mech/lessons.ts";
 import { say } from "./lang.ts";
-import { validateDraftCard, validateJournal, validateSelfReview } from "./mech/validate.ts";
+import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/validate.ts";
 
 /**
  * One API, two clients: the web UI (the boss's main surface) and `orch` (what
@@ -702,10 +703,31 @@ const postDraft: Handler = async (ctx, req) => {
     .get(grpId);
   if (!grp) return bad(`no group ${grpId}`);
 
+  // Paths the card names that are not in the repo.
+  //
+  // Not a refusal — a card that plans a new file names it, and that is the whole
+  // point of planning. But a plan written from memory of a codebase rather than
+  // from reading it names files that were never there, and that is the cheapest
+  // detectable symptom of the one failure with no deterministic line under it
+  // (PLAN.md §13 risk ①): a decomposition pointed the wrong way. The boss gets the
+  // list beside the card and decides which it is, in the same 20 seconds.
+  const repo = ctx.db
+    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
+    .get(grp.project_id)?.repo_path;
+  const unknown = repo
+    ? extractClaimedFiles([b.card]).filter((p) => !existsSync(join(repo, p))).slice(0, 8)
+    : [];
+
   ctx.db.run(
     `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
      VALUES (?, ?, 'fact', ?, ?, ?, unixepoch() * 1000)`,
-    [grp.project_id, grpId, ctx.config.language, b.card, JSON.stringify({ draft_card: true })],
+    [
+      grp.project_id,
+      grpId,
+      ctx.config.language,
+      b.card,
+      JSON.stringify({ draft_card: true, ...(unknown.length ? { unknownPaths: unknown } : {}) }),
+    ],
   );
   ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grpId]);
   // Planning is over, so anything still queued for this group is moot — and DRAFT
@@ -1371,12 +1393,26 @@ const postReview: Handler = async (ctx, req) => {
   if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
 
   const slice = ctx.db
-    .query<{ id: number; grp_id: number; seq: number }, [number]>(
-      "SELECT id, grp_id, seq FROM slice WHERE id = ?",
+    .query<{ id: number; grp_id: number; seq: number; accept_spec: string }, [number]>(
+      "SELECT id, grp_id, seq, accept_spec FROM slice WHERE id = ?",
     )
     .get(b.slice_id);
   if (!slice) return bad(`no slice ${b.slice_id}`);
   if (slice.grp_id !== a.grp_id) return bad("that slice belongs to another group");
+
+  // QA's verdict was the one review layer with no floor under it: `--verdict pass`
+  // with an empty note was accepted, which makes the independent check a formality
+  // and leaves "the acceptance criterion itself was wrong" to surface three slices
+  // later. Same validator the Engineer's self-review uses, and the same reason —
+  // a verdict per criterion, or it carries no information.
+  const need = criteriaIn(slice.accept_spec);
+  const v = validateSelfReview(b.note ?? "", need);
+  if (!v.ok) {
+    return bad(
+      `${v.error}\n\nAcceptance for S${slice.seq}: ${slice.accept_spec}\n` +
+        `  orch review ${b.slice_id} --verdict ${b.verdict} --note "pass: <criterion> — <what you ran and saw>"`,
+    );
+  }
 
   ctx.bus.emit({
     grpId: slice.grp_id,
@@ -1471,7 +1507,8 @@ export function snapshot(ctx: Ctx) {
     // box and asked to approve something they cannot see.
     draftCards: db
       .query(
-        `SELECT n.grp_id AS grpId, n.body, n.at FROM note n
+        `SELECT n.grp_id AS grpId, n.body, n.at,
+                json_extract(n.frontmatter_json, '$.unknownPaths') AS unknownPaths FROM note n
          JOIN grp g ON g.id = n.grp_id
          WHERE g.status = 'DRAFT' AND json_extract(n.frontmatter_json, '$.draft_card') = 1
          GROUP BY n.grp_id HAVING n.at = max(n.at)`,

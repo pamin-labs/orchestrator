@@ -599,6 +599,15 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
   const idea = st.ideas.find((i) => i.grpId === g.id)?.body ?? "";
   const late = st.lateObjections.filter((o) => o.grpId === g.id);
   const proposal = st.dropProposals.find((p) => p.grpId === g.id);
+  const card0 = st.draftCards.find((c) => c.grpId === g.id);
+  const unknown: string[] = (() => {
+    try {
+      const v = JSON.parse(card0?.unknownPaths ?? "null");
+      return Array.isArray(v) ? (v as string[]) : [];
+    } catch {
+      return [];
+    }
+  })();
   const [card, setCard] = useState(filed);
 
   return (
@@ -611,6 +620,18 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           <b className="font-semibold text-warn">{o.author} 后补反对</b> {o.body}
         </div>
       ))}
+      {/* Paths the card names that are not in the repo. A plan that creates a file
+          names it, so this is not an error — but a plan written from memory of the
+          codebase instead of from reading it also names files that were never
+          there, and that is the cheapest visible symptom of a decomposition
+          pointed the wrong way. The 20 seconds is where that gets caught. */}
+      {unknown.length > 0 && (
+        <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]">
+          <b className="font-semibold text-warn">卡里这些路径仓库里没有</b>{" "}
+          <span className="font-mono">{unknown.join("、")}</span>
+          <div className="mt-1 text-ink-3">新建的文件正常；如果它以为这些已经存在，这张卡是照着想象写的。</div>
+        </div>
+      )}
       {/* A planner found this is already covered, and the server checked the
           evidence before this row could exist. Offering it beside the card is the
           point: without it the boss reads a full plan for work nobody needs. */}

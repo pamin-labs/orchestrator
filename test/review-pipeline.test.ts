@@ -219,10 +219,21 @@ test("QA's pass hands the slice to the boss and rotates the sessions", async () 
 
 test("QA's fail sends the slice back with QA's note", async () => {
   const h = await harness();
-  await h.post("/orch/review", { slice_id: 1, verdict: "fail", note: "criterion 2 unchecked" }, "tok-qa");
+  await h.post("/orch/review", { slice_id: 1, verdict: "fail", note: "fail: criterion 2 unchecked" }, "tok-qa");
   await h.sched.drain();
   expect(h.db.query<{ retries: number }, []>("SELECT retries FROM slice WHERE id = 1").get()!.retries).toBe(1);
   expect(h.specs.at(-1)!.prompt).toContain("criterion 2 unchecked");
+});
+
+test("a verdict with nothing behind it is refused", async () => {
+  // `--verdict pass` with an empty note was accepted, which makes the independent
+  // check a formality and leaves "the criterion itself was wrong" to surface three
+  // slices later.
+  const h = await harness();
+  expect((await h.post("/orch/review", { slice_id: 1, verdict: "pass" }, "tok-qa")).status).toBe(422);
+  const vague = await h.post("/orch/review", { slice_id: 1, verdict: "pass", note: "looks good" }, "tok-qa");
+  expect(vague.status).toBe(422);
+  expect(await vague.text()).toContain("carries no information");
 });
 
 test("only reviewers may file verdicts, and only for their own group", async () => {
