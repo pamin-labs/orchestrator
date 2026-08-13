@@ -91,7 +91,7 @@ export function Timeline({
         事件流 <span className="truncate font-normal text-ink-3">{label}</span>
       </h2>
       {!shown.length && <div className="text-[0.75rem] text-ink-3">无事件</div>}
-      <div className="max-h-[calc(100vh-11rem)] overflow-y-auto overscroll-contain [&>*:first-child]:border-t-0">
+      <div className="[&>*:first-child]:border-t-0">
         {groupedRows(shown).map(({ f, showHeader, showDivider }) => (
           <TimelineRow key={f.id} f={f} showHeader={showHeader} showDivider={showDivider} />
         ))}

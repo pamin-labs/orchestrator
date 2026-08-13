@@ -237,7 +237,13 @@ export function App() {
         spend — it is how much of tonight is left on each of the two accounts, and
         it changes what the boss approves next. It stays grey until 80%.
       */}
-      <header className="sticky top-0 z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
+      {/* The shell is a fixed-height grid: header sized to itself, the rest taking
+          exactly what is left. It used to be a sticky header plus a region measured
+          as calc(100vh - 3.5rem) — the same height written twice, in two units, so
+          any change to the header silently detuned the region below it, and a child
+          that overflowed grew the window because nothing above it was constrained. */}
+      <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)]">
+      <header className="z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
         <button
           className="cursor-pointer font-display text-[1.0625rem] font-semibold"
           onClick={() => go({ view: "home", p: null, g: null })}
@@ -354,7 +360,7 @@ export function App() {
           each view decides what scrolls inside it. 4.5rem is header plus nav. */}
       <Group
         orientation="horizontal"
-        className={cn("h-[calc(100vh-3.5rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
+        className={cn("h-full min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
       >
         <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
           {/* The view decides what scrolls. 成本 has a tab strip and a rail that
@@ -434,6 +440,7 @@ export function App() {
           </>
         )}
       </Group>
+      </div>
     </TipRoot>
   );
 
