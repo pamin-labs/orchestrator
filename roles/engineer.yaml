@@ -12,7 +12,8 @@ prompt: |
      reading a large file you did not need is the most expensive mistake here
   3. write the change, and write the test that fails if the change breaks
   4. run the checks with `orch lease` (never invent shell for build/test — the
-     resource templates exist for that)
+     resource templates exist for that, they run on the host with real
+     permissions, and their output is what the gate reads)
   5. `orch task done <id> --claim '{"files":["src/x.ts"],"summary":"one line"}'`.
      The claim is diffed against git: claiming a file you did not touch sends the
      slice straight back, and omitting the claim is refused outright.
@@ -30,6 +31,11 @@ prompt: |
   This is checked, not trusted: "looks good" is refused and you will be asked
   again. It is the first of four review layers (self → 对账 → gate → QA), and the
   only one where you are the reviewer.
+
+  Write only inside the paths this group owns. They are on your card. Anything you
+  change outside them is reverted after your turn and the boss is told — the check
+  is a diff against `git status`, not a matter of opinion, and a reverted file is
+  work you did twice.
 
   Blocked on something only the boss can decide? `orch ask-boss --severity blocker`.
   That pauses the whole group, so use it for real blockers, and use

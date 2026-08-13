@@ -54,6 +54,7 @@ const ZH: Record<string, string> = {
   "rl.downgraded": "撞到限额：{role} 从 {from} 降到 {to} 接着跑",
   "rl.waiting": "撞到限额且已经是最便宜的档，挂起等额度恢复（约 {at}），到点自动继续",
   "rl.resumed": "额度恢复，自动继续",
+  "owns.reverted": "{role} 改了本组不拥有的 {n} 个文件（{files}），已回滚 —— 这个 CLI 的沙箱拦不住写入，只能事后对账",
   "unread.digest": "未读 {n} 条，已让 Librarian 压成摘要",
   "sediment": "同一类反馈第 {n} 次了，让 CoS 归纳成项目规约",
   "hired": "雇了 {role}",
@@ -97,6 +98,8 @@ const EN: Record<string, string> = {
   "rl.downgraded": "rate limited: {role} dropped from {from} to {to} and continued",
   "rl.waiting": "rate limited on the cheapest tier; waiting for quota (~{at}) and resuming itself",
   "rl.resumed": "quota is back, resuming",
+  "owns.reverted":
+    "{role} wrote {n} files this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it",
   "unread.digest": "{n} unread — the Librarian is compressing them",
   "sediment": "the same feedback for the {n}th time; asking the CoS to make it a project rule",
   hired: "hired {role}",

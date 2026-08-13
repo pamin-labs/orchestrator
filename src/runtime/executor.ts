@@ -1,15 +1,16 @@
 import { join } from "node:path";
-import { mkdirSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import type { Ctx } from "../api.ts";
-import { mintToken } from "../api.ts";
+import { imagePaths, mintToken } from "../api.ts";
 import type { Config, RoleDef } from "../config.ts";
-import { modelFor } from "../config.ts";
+import { contextWindowFor, modelFor } from "../config.ts";
 import type { Executor, Job } from "../scheduler.ts";
 import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
 import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
 import { say } from "../lang.ts";
 import { listSkills, readSkill } from "../mech/skills.ts";
-import { denyOutsideOwns, parseOwns } from "../mech/ownership.ts";
+import { denyOutsideOwns, outsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
 import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/watchdog.ts";
@@ -279,6 +280,10 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     );
   } finally {
     ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ? AND state = 'running'", [agent.id]);
+    // Compress now rather than a day later. Nothing reads these while they are
+    // warm — every consumer is a human debugging afterwards — and 24h of raw
+    // NDJSON was most of the 59 MB this directory had grown to.
+    gzipTurnLog(logPath);
   }
 
   recordCost(deps, agent, job, result, stable.hash);
@@ -649,13 +654,118 @@ function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null, cfg?: Confi
   return rows.map((r) => `${r.author}${r.intent ? ` (${r.intent})` : ""}: ${r.body}`).join("\n") + tail;
 }
 
+/**
+ * codex reads AGENTS.md; claude reads CLAUDE.md. Same instructions, two names.
+ *
+ * A symlink rather than a copy, so a project that edits CLAUDE.md does not have a
+ * stale twin. A project that already ships its own AGENTS.md is left alone: it
+ * said what it wanted.
+ */
+function linkAgentsMd(worktree: string): void {
+  const agents = join(worktree, "AGENTS.md");
+  if (existsSync(agents) || !existsSync(join(worktree, "CLAUDE.md"))) return;
+  try {
+    symlinkSync("CLAUDE.md", agents);
+  } catch {
+    // Read-only checkout, a race with another turn — not worth failing a turn.
+  }
+}
+
+/**
+ * Compress a finished turn's log and drop the raw file.
+ *
+ * The sweep in watchdog.ts did this after 24 hours, which meant a day of raw
+ * NDJSON on disk at all times — most of the 59 MB this directory had reached.
+ * Nothing reads a warm log: every consumer is a person looking at it afterwards.
+ * The sweep stays as the backstop for logs left behind by a crash.
+ */
+function gzipTurnLog(path: string): void {
+  try {
+    if (!existsSync(path)) return;
+    writeFileSync(`${path}.gz`, gzipSync(readFileSync(path)));
+    rmSync(path, { force: true });
+  } catch {
+    // A log that will not compress is not worth failing a turn over.
+  }
+}
+
+/**
+ * The account's own quota state, for the header.
+ *
+ * Only codex volunteers this, and only in `token_count`. The claude side is
+ * filled in by mech/subusage.ts on the watchdog's clock, since its stream carries
+ * a status but never a percentage.
+ */
+function recordSubscriptionUsage(deps: ExecDeps, provider: string, r: TurnResult): void {
+  const rl = r.rateLimit;
+  if (!rl || rl.fiveHourPercent === undefined) return;
+  deps.ctx.db.run(
+    `INSERT INTO usage_snapshot (runtime, json, at) VALUES (?, ?, ?)
+     ON CONFLICT (runtime) DO UPDATE SET json = excluded.json, at = excluded.at`,
+    [provider, JSON.stringify(rl), Date.now()],
+  );
+}
+
+/**
+ * File ownership, enforced after the fact for providers whose sandbox cannot.
+ *
+ * The deny-list handed to claude's settings stops the write; codex has no
+ * equivalent (cwd is writable whatever `writable_roots` says, probed on 0.147),
+ * so the same rule runs against `git status` here and the offending files go
+ * back. Deliberately deterministic: asking a role prompt to respect a boundary
+ * is the thing this codebase does not do.
+ *
+ * Rolled back, then said out loud — a silent revert would have the agent puzzling
+ * over work that keeps vanishing.
+ */
+async function reconcileOwnership(
+  deps: ExecDeps,
+  agent: AgentRow,
+  job: Job,
+  grp: { owns_json?: string } | null | undefined,
+  worktree: string,
+): Promise<void> {
+  const owns = parseOwns(grp?.owns_json ?? null);
+  if (!owns.length) return;
+
+  const status = await deps.git(worktree, ["status", "--porcelain"], worktree);
+  if (status.code !== 0) return;
+  // "XY path" and "XY old -> new"; the destination is the one that exists now.
+  const changed = status.out
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => l.slice(3).trim())
+    .map((p) => (p.includes(" -> ") ? p.split(" -> ")[1]!.trim() : p))
+    .map((p) => p.replace(/^"|"$/g, ""));
+
+  const stray = outsideOwns(changed, owns);
+  if (!stray.length) return;
+
+  // Untracked files have nothing to check out, so they are removed instead.
+  await deps.git(worktree, ["checkout", "--", ...stray], worktree);
+  await deps.git(worktree, ["clean", "-fd", "--", ...stray], worktree);
+  deps.ctx.bus.emit({
+    grpId: job.grp_id,
+    author: "orchestrator",
+    kind: "state_change",
+    severity: "blocker",
+    body: say(deps.ctx.config?.language, "owns.reverted", {
+      role: agent.role,
+      files: stray.slice(0, 5).join(", "),
+      n: String(stray.length),
+    }),
+    meta: { reverted: stray, owns },
+  });
+}
+
 function recordCost(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult, stableHash: string): void {
   const { ctx } = deps;
   const total = r.usage.input + r.usage.output + r.usage.cacheRead + r.usage.cacheCreate;
   ctx.db.run(
     `UPDATE agent SET session_tokens = session_tokens + ?, total_tokens = total_tokens + ?,
-     total_usd = total_usd + ?, stable_hash = ? WHERE id = ?`,
-    [total, total, r.costUsd, stableHash, agent.id],
+     total_usd = total_usd + ?, stable_hash = ?, context_window = coalesce(?, context_window)
+     WHERE id = ?`,
+    [total, total, r.costUsd, stableHash, r.contextWindow ?? null, agent.id],
   );
   if (job.slice_id) {
     ctx.db.run("UPDATE slice SET spent_tokens = spent_tokens + ?, spent_usd = spent_usd + ? WHERE id = ?", [

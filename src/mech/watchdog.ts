@@ -60,9 +60,16 @@ async function refreshOrigin(deps: WatchdogDeps, repo: string): Promise<void> {
   await deps.git(repo, ["fetch", "--quiet", "origin"], repo);
 }
 
-/** Compress after a day, delete after two weeks. */
-export const GZIP_AFTER_MS = 24 * 60 * 60 * 1000;
-export const DROP_AFTER_MS = 14 * 24 * 60 * 60 * 1000;
+/**
+ * Backstop, and a shorter shelf life.
+ *
+ * The executor now gzips a turn log the moment the turn ends, so the sweep only
+ * meets files a crash left behind — hence the hour rather than the day. A week is
+ * enough: these are read by a person diagnosing something that just happened, and
+ * 365 files had grown to 59 MB.
+ */
+export const GZIP_AFTER_MS = 60 * 60 * 1000;
+export const DROP_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropped: number } {
   let zipped = 0;
