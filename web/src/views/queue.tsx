@@ -55,12 +55,15 @@ export function Queue({
 
   for (const g of w.cards) {
     const card = st.draftCards.find((c) => c.grpId === g.id);
+    // A planner that found the work already covered files this instead of a card.
+    // Labelled as a plan it read as "go review the slices" and there were none.
+    const drop = st.dropProposals.find((p) => p.grpId === g.id);
     const goal = (card?.body.split("\n").find((l) => l.startsWith("目标")) ?? "").replace(/^目标\s*[:：]\s*/, "");
     items.push({
       key: `c${g.id}`,
-      kind: "计划",
+      kind: drop ? "作废" : "计划",
       what: g.name,
-      sub: goal || "计划卡未提交",
+      sub: drop ? drop.body.split("\n")[0]! : goal || "计划卡未提交",
       grpId: g.id,
       ...rank([
         REASONS.unstarted(),

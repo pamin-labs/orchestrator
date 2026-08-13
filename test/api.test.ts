@@ -696,6 +696,35 @@ test("dropping a requirement frees its paths and starts whoever was waiting", as
   expect(q("SELECT status AS v FROM grp WHERE id = " + grpId)).toBe("RUNNING");
 });
 
+test("a planner may propose dropping already-covered work, but only with evidence", async () => {
+  // "There is nothing to do here" is the most attractive thing a tired model can
+  // conclude, so a sentence alone must not be able to close a requirement — that is
+  // the model's opinion of its own workload. The server checks the evidence, and
+  // the boss still presses the button.
+  const h = harness();
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'L2', 'tok-d', 0)",
+  );
+  h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'other', 'RUNNING', 0)");
+  const drop = (b: unknown, tok = "tok-d") => post(h.app, "/orch/drop", b, tok);
+
+  expect((await drop({ group_id: 1, why: "已经做完了" })).status).toBe(422);
+  expect((await drop({ group_id: 1, why: "短", duplicate: 2 })).status).toBe(422);
+  expect((await drop({ group_id: 1, why: "grp2 已经覆盖了这件事", duplicate: 1 })).status).toBe(422);
+  // A writer cannot decide its own work is unnecessary.
+  expect((await drop({ group_id: 1, why: "grp2 已经覆盖了这件事", duplicate: 2 }, "tok-eng")).status).toBe(422);
+
+  expect((await drop({ group_id: 1, why: "grp2 已经覆盖了这件事", duplicate: 2 })).status).toBe(200);
+  const st = (await (await get(h.app, "/api/state")).json()) as any;
+  const p = st.dropProposals.find((x: any) => x.grpId === 1);
+  expect(p.body).toContain("grp2 已经覆盖");
+  expect(p.body).toContain("other");
+  // Still the boss's call: proposing does not dissolve anything.
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).not.toBe(
+    "DISSOLVED",
+  );
+});
+
 test("the boundary request quotes each group's own requirement", async () => {
   const { app, db } = harness();
   // The pre-existing group's idea has to be recoverable, or the Architect cannot

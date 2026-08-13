@@ -58,7 +58,9 @@ export function pending(st: State, projectId: number | null) {
         ids.has(g.id) &&
         g.status === "DRAFT" &&
         !g.approved_at &&
-        st.draftCards.some((c) => c.grpId === g.id),
+        // A proposal to drop the requirement is a decision too, and it arrives
+        // instead of a card — the whole point is that no card gets written.
+        (st.draftCards.some((c) => c.grpId === g.id) || st.dropProposals.some((p) => p.grpId === g.id)),
     ),
     slices: st.slices.filter((s) => ids.has(s.grp_id) && s.status === "awaiting_boss"),
     merges: st.mergeQueue.filter((m) => ids.has(m.grpId)),

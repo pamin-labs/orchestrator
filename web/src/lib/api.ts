@@ -44,6 +44,8 @@ export interface State {
   escalations: Escalation[]; draftCards: { grpId: number; body: string; at: number }[];
   lateObjections: { grpId: number; author: string; body: string }[];
   approvedBlocked: { grpId: number; reason: string }[];
+  /** A planner's checked claim that this requirement is already covered. */
+  dropProposals: { grpId: number; body: string }[];
   ideas: { grpId: number; body: string }[];
   answered: { id: number; grp_id: number; question: string; answer: string; answered_by: string; ref_note_id: number | null }[];
   mergeQueue: { projectId: number; grpId: number; name: string; branch: string | null; seq: number }[];
@@ -65,7 +67,8 @@ export interface Cost {
 
 const EMPTY: State = {
   projects: [], groups: [], slices: [], tasks: [], agents: [], escalations: [],
-  draftCards: [], lateObjections: [], approvedBlocked: [], ideas: [], answered: [], mergeQueue: [], archived: [],
+  draftCards: [], lateObjections: [], approvedBlocked: [], dropProposals: [],
+  ideas: [], answered: [], mergeQueue: [], archived: [],
   limits: { maxGroups: null, leaseSlots: null, autoAdvance: false, autoAcceptTiers: [] }, lastSeq: 0,
 };
 
