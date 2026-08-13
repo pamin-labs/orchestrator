@@ -173,7 +173,7 @@ export function Queue({
   if (!items.length) {
     return (
       <div className="text-[0.8125rem] text-ink-3">
-        <b className="text-ok">都处理完了。</b> 有计划卡待批、切片待查收、PR 待合入或 agent 提问时出现在这里，并推送通知。
+        <b className="text-ok">都处理完了。</b> 有计划卡待批、切片待查收、PR 待合入或 agent 提问时会推送通知。
       </div>
     );
   }

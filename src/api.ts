@@ -1,7 +1,7 @@
 import { basename, dirname, join, resolve } from "node:path";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, writeFile } from "node:fs/promises";
 import type { DB } from "./db.ts";
 import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
@@ -1845,6 +1845,55 @@ const postAttach: Handler = async (ctx, req) => {
   return json({ files: out });
 };
 
+/**
+ * Attach something already on this machine, by path.
+ *
+ * The upload route exists because a browser cannot hand over a real path — but
+ * the boss picking through their own disk in our own picker is not a browser
+ * upload, and round-tripping a 400MB folder through a file input to write it back
+ * to the same disk is absurd. Copied rather than referenced in place: the file
+ * the agent reads has to still be there when it reads it, and the boss's working
+ * copy moves.
+ */
+const postAttachLocal: Handler = async (ctx, req) => {
+  const b = await body<{ paths?: string[] }>(req);
+  const picked = (b.paths ?? []).filter((s) => typeof s === "string" && s.trim());
+  if (!picked.length) return bad("no path");
+  const root = join(ctx.config.dataDir ?? "data", "attachments");
+  await mkdir(root, { recursive: true });
+  const stamp = Date.now();
+  const out: { name: string; path: string; type: string; size: number }[] = [];
+  for (const raw of picked) {
+    const src = resolve(expandHome(raw));
+    let st;
+    try {
+      st = statSync(src);
+    } catch {
+      return bad(`${raw}: 读不到`);
+    }
+    const safe = basename(src).replace(/[^\w.\-\u4e00-\u9fff]/g, "_").slice(-80);
+    const dest = join(root, `${stamp}-${out.length}-${safe}`);
+    await cp(src, dest, { recursive: st.isDirectory() });
+    out.push({
+      name: basename(src),
+      path: dest,
+      type: st.isDirectory() ? "inode/directory" : guessType(src),
+      size: st.size,
+    });
+  }
+  return json({ files: out });
+};
+
+/** Enough to tell an image from everything else, which is all this decides. */
+function guessType(path: string): string {
+  const ext = path.toLowerCase().split(".").pop() ?? "";
+  const img: Record<string, string> = {
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+  };
+  return img[ext] ?? "application/octet-stream";
+}
+
 export interface Attachment {
   name: string;
   path: string;
@@ -2655,7 +2704,8 @@ const getSkills: Handler = async (ctx, req) => {
 };
 
 const getDirs: Handler = async (ctx, req) => {
-  const asked = new URL(req.url).searchParams.get("path") ?? homedir();
+  const q = new URL(req.url).searchParams;
+  const asked = q.get("path") ?? homedir();
   const path = resolve(expandHome(asked));
   let entries;
   try {
@@ -2673,8 +2723,29 @@ const getDirs: Handler = async (ctx, req) => {
       return { name: d.name, path: full, repo: existsSync(join(full, ".git")), taken: taken.has(full) };
     })
     .sort((a, b) => (a.repo === b.repo ? a.name.localeCompare(b.name) : a.repo ? -1 : 1));
+  // Files only when someone is picking files. The repo picker asking for them
+  // would list a thousand entries in a source directory to choose one folder.
+  const files = q.get("files")
+    ? entries
+        .filter((d) => d.isFile() && !d.name.startsWith("."))
+        .map((d) => {
+          const full = join(path, d.name);
+          let size = 0;
+          try {
+            size = statSync(full).size;
+          } catch {}
+          return { name: d.name, path: full, size };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
   // A repo can be picked at any level, including the one being listed.
-  return json({ path, parent: path === "/" ? null : dirname(path), repo: existsSync(join(path, ".git")), dirs });
+  return json({
+    path,
+    parent: path === "/" ? null : dirname(path),
+    repo: existsSync(join(path, ".git")),
+    dirs,
+    files,
+  });
 };
 
 const getStream: Handler = async (ctx, req) => {
@@ -2772,6 +2843,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
   ["POST", /^\/api\/attach$/, postAttach],
+  ["POST", /^\/api\/attach\/local$/, postAttachLocal],
   ["POST", /^\/api\/say$/, postSay],
   ["POST", /^\/api\/draft\/(?<id>\d+)\/(?<decision>approve|reject)$/, postDraftDecision],
   // No `landed`: whether a PR is merged is GitHub's answer, and `pollPrs` asks it

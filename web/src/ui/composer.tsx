@@ -6,6 +6,7 @@ import { Button } from "./button";
 import { Textarea } from "./bits";
 import { Card, CardHeader, CardTitle } from "./card";
 import { cn } from "../lib/utils";
+import { FilePicker } from "../views/picker";
 
 export interface Attached { name: string; path: string; type: string; size: number; url?: string; label: string }
 /** A file and where it sat inside whatever was dropped. */
@@ -100,7 +101,7 @@ export function Composer({
   const [drag, setDrag] = useState(false);
   const [skills, setSkills] = useState<Skill[] | null>(null);
   const [slash, setSlash] = useState<{ from: number; q: string } | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+  const [picking, setPicking] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
 
   /**
@@ -168,6 +169,46 @@ export function Composer({
     return `${kind}${n}`;
   };
 
+  /**
+   * Attach what is already on this machine, by path.
+   *
+   * The file input can pick neither a folder nor several things of mixed kinds,
+   * and everything it does pick it reads into memory to post straight back to the
+   * same disk. Our own picker walks the real filesystem, so a folder is one click.
+   */
+  const fromDisk = async (paths: string[]) => {
+    setBusy(true);
+    const r = await fetch("/api/attach/local", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paths }),
+    }).catch(() => null);
+    setBusy(false);
+    if (!r?.ok) return void toast.error((await r?.text()) || "加不进来", { duration: 8000 });
+    const { files: saved } = (await r.json()) as { files: Attached[] };
+    const taken = files.map((f) => f.label);
+    setFiles((prev) => [
+      ...prev,
+      ...saved.map((s) => {
+        const l = label(s, taken);
+        taken.push(l);
+        return { ...s, label: l };
+      }),
+    ]);
+    mark(saved.map((_, i) => `[${taken[taken.length - saved.length + i]}]`).join(""));
+  };
+
+  /** Drop the markers in where the caret was. */
+  const mark = (marks: string) => {
+    const box2 = box.current;
+    const at = box2 ? (box2.selectionStart ?? text.length) : text.length;
+    setText(`${text.slice(0, at)}${marks}${text.slice(at)}`);
+    requestAnimationFrame(() => {
+      box2?.focus();
+      box2?.setSelectionRange(at + marks.length, at + marks.length);
+    });
+  };
+
   const upload = async (list: FileList | File[] | Picked[]) => {
     const picked: Picked[] = [...list].map((f) =>
       f instanceof File ? { file: f, rel: f.name } : (f as Picked),
@@ -190,7 +231,7 @@ export function Composer({
       r = await fetch("/api/attach", { method: "POST", body: form });
     } catch {
       setBusy(false);
-      return void toast.error("浏览器读不到这些内容。文件夹得拖进来，剪贴板给不了它。", { duration: 8000 });
+      return void toast.error("浏览器读不到这些内容。文件夹得拖进来。", { duration: 8000 });
     }
     setBusy(false);
     // A file that silently fails to attach is worse than one never added: the text
@@ -211,15 +252,7 @@ export function Composer({
     setFiles((prev) => [...prev, ...marked]);
 
     // At the caret, because that is where the boss was pointing when they pasted.
-    const marks = marked.map((m) => `[${m.label}]`).join("");
-    const box2 = box.current;
-    const at = box2 ? (box2.selectionStart ?? text.length) : text.length;
-    const next = `${text.slice(0, at)}${marks}${text.slice(at)}`;
-    setText(next);
-    requestAnimationFrame(() => {
-      box2?.focus();
-      box2?.setSelectionRange(at + marks.length, at + marks.length);
-    });
+    mark(marked.map((m) => `[${m.label}]`).join(""));
   };
 
   /**
@@ -247,7 +280,7 @@ export function Composer({
       else if (!items.length) toast.error("剪贴板是空的");
     } catch {
       // Safari and a denied permission both land here.
-      toast.error("浏览器不让直接读剪贴板。点进输入框按 ⌘V 一样可以，图片也认。", { duration: 8000 });
+      toast.error("浏览器不让直接读剪贴板。点进输入框按 ⌘V，图片也认。", { duration: 8000 });
     }
   };
 
@@ -308,7 +341,7 @@ export function Composer({
         <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
           <div className="flex items-baseline gap-2 border-b border-rule-soft px-2 py-1 text-[0.6875rem] text-ink-3">
             <span className="min-w-0 grow">
-              选中的技能，正文会随这一个 turn 发给 agent（不进 session 前缀，所以只这一次花钱）
+              选中的技能，正文随这一个 turn 发给 agent，只花这一次钱
             </span>
             <span className="shrink-0 font-mono">{matches.length}</span>
           </div>
@@ -364,9 +397,8 @@ export function Composer({
       )}
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-rule-soft px-2 py-1.5">
-        <input ref={input} type="file" multiple className="hidden"
-               onChange={(e) => e.target.files && upload(e.target.files)} />
-        <Button variant="quiet" size="sm" onClick={() => input.current?.click()}>
+        <FilePicker open={picking} onOpenChange={setPicking} onPick={fromDisk} />
+        <Button variant="quiet" size="sm" onClick={() => setPicking(true)}>
           <Paperclip size={12} strokeWidth={1.75} /> 附件
         </Button>
         <Button variant="quiet" size="sm" onClick={pasteClipboard}>

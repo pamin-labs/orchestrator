@@ -225,7 +225,7 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
         <Menu label="更多">
           {running && (
             <MenuItem
-              hint="停止当前 turn，未完成的改动留着，下一个 turn 会被告知"
+              hint="停止当前 turn，改动留着，下一个 turn 会被告知"
               onSelect={async () => { await post(`/api/groups/${g.id}/interrupt`, { mode: "keep" }); refresh(); }}
             >
               打断，保留改动
@@ -250,7 +250,7 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
           )}
           {["RUNNING", "PAUSING", "PAUSED"].includes(g.status) && (
             <MenuItem
-              hint="写交接 journal、退休 session、释放并发槽。worktree 和 checkpoint 原地不动"
+              hint="释放并发槽，worktree 和 checkpoint 原地不动"
               onSelect={() => act("park")}
             >
               封存
@@ -266,11 +266,11 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
               that someone already fixed, needs to leave the board instead. */}
           <MenuItem
             danger
-            hint="整条需求下线：排队的 turn 全取消，占的路径立刻交还给别的组。worktree、分支和记录都留着"
+            hint="排队的 turn 全取消，占的路径交还给别的组。worktree、分支和记录都留着"
             onSelect={async () => {
               const go = await ask({
                 title: "不做了",
-                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。worktree 和记录都留着，但组不会再被拉起。`,
+                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。worktree 和记录留着，组不会再被拉起。`,
                 yes: "不做了",
                 danger: true,
               });
@@ -429,7 +429,7 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
     <Button variant="go" onClick={async () => {
       const go = await ask({
         title: "开一个新 PR",
-        body: "先在 GitHub 上重开旧 PR —— 能重开就不需要这个。分支被强推或删过才用它：会用当前分支重新提一个，并回到合入队列。",
+        body: "能在 GitHub 上重开旧 PR 就不用这个。分支被强推或删过才用：会用当前分支重提一个，回到合入队列。",
         yes: "开新 PR",
       });
       if (!go) return;
@@ -460,7 +460,7 @@ export function RejectSlice({
         open={open}
         onOpenChange={setOpen}
         title="退回这一片"
-        hint="原话记进黑板，PM 据此安排修正。截图可以直接粘。"
+        hint="原话记进黑板，PM 据此安排修正。截图直接粘。"
         placeholder="哪里不满意。⌘Enter 退回"
         submit="退回"
         rows={4}
@@ -524,7 +524,7 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
         <CardTitle className="text-[0.9375rem] text-accent">预算用尽，全组挂起</CardTitle>
         <div className="mt-0.5 text-[0.75rem] text-ink-2">
           已花 {K(g.spent_tokens)} tokens，上限 {K(g.budget_tokens)}。
-          加上限才动得了；「继续」在这个状态下不生效。
+          加上限才动得了，「继续」不生效。
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <Button variant="go" onClick={() => set(doubled)}>翻倍到 {K(doubled)}</Button>
@@ -566,7 +566,7 @@ function Delegated({
             <Button variant="quiet" onClick={async () => {
               const go = await ask({
                 title: "撤销并接管",
-                body: "回滚到提这个问题时的 checkpoint，之后的改动作废，由你重新回答再往下跑。",
+                body: "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。",
                 yes: "撤销并接管", danger: true,
               });
               if (!go) return;
@@ -637,13 +637,13 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
         actions={({ text, attachments, busy, clear }) => (
           <>
             <span className="mr-1 text-[0.75rem] text-ink-3 max-[40rem]:hidden">分量：</span>
-            <Tip label="局部改：原话记进黑板，PM 安排一条修正 task，组继续跑">
+            <Tip label="原话记进黑板，PM 安排一条修正 task，组继续跑">
               <Button size="sm" disabled={busy || !text}
                       onClick={async () => (await send({ text, attachments }, "patch")) && clear()}>
                 要改一处
               </Button>
             </Tip>
-            <Tip label="方向错了：整个需求退回 Dispatcher 重新深挖，代码留在分支上待判断能否复用">
+            <Tip label="整个需求退回 Dispatcher 重新深挖，已写的代码留在分支上">
               <Button size="sm" disabled={busy || !text} onClick={async () => {
                 const go = await ask({
                   title: "退回重新拆解",
@@ -653,11 +653,11 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
                 if (go && (await send({ text, attachments }, "respec"))) clear();
               }}>方向错了</Button>
             </Tip>
-            <Tip label="作废：停止派发，分支保留不合入，但仍然要写 retro">
+            <Tip label="停止派发，分支保留不合入，仍然要写 retro">
               <Button size="sm" disabled={busy || !text} onClick={async () => {
                 const go = await ask({
                   title: "作废这个需求",
-                  body: "停止派发，分支保留不合入。仍然要求写 retro —— 白干的那次教训最值钱。",
+                  body: "停止派发，分支保留不合入。仍然要求写 retro。",
                   yes: "作废", danger: true,
                 });
                 if (go && (await send({ text, attachments }, "reject"))) clear();
@@ -804,7 +804,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
         onSubmit={(d) => send(d, "patch")}
         actions={({ text, attachments, busy, clear }) => (
           <>
-            <Tip label="方向错了：整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact">
+            <Tip label="整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact">
               <Button size="sm" disabled={busy || !text} onClick={async () => {
                 const go = await ask({
                   title: "退回重新拆解",
@@ -814,7 +814,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
                 if (go && (await send({ text, attachments }, "respec"))) clear();
               }}>退回重拆</Button>
             </Tip>
-            <Tip label="这条不做了：排队的 turn 全取消，占的路径立刻交还给别的组">
+            <Tip label="排队的 turn 全取消，占的路径交还给别的组">
               {/* Not a red button. Two filled buttons on one row and the destructive
                   one outweighs 批准开工, which is the answer this screen usually wants.
                   The confirm carries the weight instead. */}
@@ -833,7 +833,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
         )}
       />
       <div className="mt-1.5 text-[0.75rem] text-ink-3">
-        「要求修改」和「退回重拆」都发给 Dispatcher，它改完卡再回来给你批。
+        两个都发给 Dispatcher，它改完卡再回来给你批。
       </div>
     </div>
   );
@@ -864,7 +864,7 @@ function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
           key={seed}
           initial={seed}
           rows={2}
-          placeholder="答复。这条会直接解开被阻塞的那个 agent。⌘Enter 发送"
+          placeholder="答复。发出去直接解开被阻塞的 agent。⌘Enter 发送"
           submit="回答"
           onSubmit={async ({ text, attachments }) => {
             const r = await post(`/api/escalations/${e.id}/answer`, { answer: text, attachments });
@@ -873,7 +873,7 @@ function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
           }}
           actions={({ text, busy }) => (
             <>
-              <Tip label="技术选型和架构边界是 Architect 的判断，不是你的。转过去，它答不了会自己回来。">
+              <Tip label="技术选型和架构边界归 Architect 判断，它答不了会自己回来">
                 <Button size="sm"
                   onClick={async () => { await post(`/api/escalations/${e.id}/delegate`, { to: "architect" }); refresh(); }}>
                   转 Architect
@@ -883,7 +883,7 @@ function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
                   is wrong, a shared fixture is broken. Answering it means typing the
                   fix into a chat box for an agent that is not allowed to apply it, so
                   these sat in 待办 until the boss did the work by hand. */}
-              <Tip label="没有哪句回答能解决它：开成一条需求去做。这一组会等它落地后自动继续">
+              <Tip label="开成一条需求去做，这一组等它落地后自动继续">
                 <Button size="sm" variant="go" disabled={busy} onClick={async () => {
                   const r = await post(`/api/escalations/${e.id}/requirement`, { text });
                   refresh();
