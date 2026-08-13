@@ -418,3 +418,63 @@ test("a question stranded on a stopped group is lifted to the boss", async () =>
     h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state,
   ).toBe("boss");
 });
+
+test("a parked group whose question got answered comes back", async () => {
+  // answer() un-pauses PAUSED groups and silently skips PARKED ones, so a group
+  // that waited long enough to be parked stayed parked even after the boss answered
+  // the very thing it was waiting for.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PARKED', paused_at = 100 WHERE id = 1");
+  h.db.run(
+    `INSERT INTO escalation (grp_id, severity, question, answer, answered_by, chain_state, created_at, answered_at)
+     VALUES (1, 'blocker', 'which library?', 'the stdlib one', 'boss', 'answered', 0, 500)`,
+  );
+  const f = await runWatchdog(h.deps);
+  expect(f.map((x) => x.rule)).toContain("unparked");
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).not.toBe("PARKED");
+});
+
+test("parking is not undone on the tick that did it", async () => {
+  // Most parked groups never had a blocker at all. "No open blocker" would revive
+  // every one of them immediately, including the one just parked for waiting.
+  const h = harness({ parkAfterPausedMs: 60_000 });
+  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = ? WHERE id = 1", [1_000_000 - 20 * 60_000]);
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PARKED");
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PARKED");
+});
+
+test("the three places that wait on the boss each carry a clock", async () => {
+  // They are meant to wait. What was missing is that they waited in silence, so
+  // "waiting since Tuesday" and "arrived a minute ago" looked exactly alike.
+  const h = harness();
+  const old = 1_000_000 - 5 * 3_600_000;
+  h.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = 1");
+  h.db.run(
+    "INSERT INTO note (grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, 'fact', 'zh', 'card', ?, ?)",
+    [JSON.stringify({ draft_card: 1 }), old],
+  );
+  h.db.run(
+    `INSERT INTO slice (grp_id, seq, title, accept_spec, status, awaiting_at, created_at)
+     VALUES (1, 1, 'S1', 'a', 'awaiting_boss', ?, 0)`,
+    [old],
+  );
+  h.db.run(
+    "INSERT INTO grp (project_id, name, status, merge_seq, merge_seq_at, created_at) VALUES (1, 'q1', 'PR_OPEN', 1, ?, 0)",
+    [old],
+  );
+  h.db.run(
+    "INSERT INTO grp (project_id, name, status, merge_seq, merge_seq_at, created_at) VALUES (1, 'q2', 'PR_OPEN', 2, ?, 0)",
+    [old],
+  );
+
+  const rules = (await runWatchdog(h.deps)).map((x) => x.rule);
+  expect(rules).toContain("waiting_card");
+  expect(rules).toContain("waiting_slice");
+  expect(rules).toContain("waiting_merge");
+  // Only the head — everything behind it is waiting on this one merge, and that
+  // count is the whole reason to care.
+  const merge = (await runWatchdog({ ...h.deps, now: () => 1_000_001 })).filter((x) => x.rule === "waiting_merge");
+  expect(merge).toHaveLength(0); // deduplicated: nagging every half hour is noise
+});

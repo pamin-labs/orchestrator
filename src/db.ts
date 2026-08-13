@@ -313,6 +313,13 @@ const MIGRATIONS: string[] = [
   // which group now owns the problem is what lets the waiter start again by itself
   // when that group lands.
   `ALTER TABLE grp ADD COLUMN blocked_on INTEGER REFERENCES grp(id);`,
+
+  // 013 — when this branch joined the merge queue.
+  //
+  // The queue is strictly serial, so a head nobody merges blocks everything behind
+  // it — and there was no clock on it, which is what makes "the boss forgot" and
+  // "it only just got there" look identical.
+  `ALTER TABLE grp ADD COLUMN merge_seq_at INTEGER;`,
 ];
 
 export type DB = Database;

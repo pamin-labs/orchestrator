@@ -1,7 +1,7 @@
 import type { Ctx } from "../api.ts";
 import type { Config } from "../config.ts";
 import { say } from "../lang.ts";
-import { interrupt, park, settlePausing } from "./intercept.ts";
+import { interrupt, park, settlePausing, unpark } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
@@ -35,6 +35,77 @@ export const SAME_FILE_LIMIT = 5;
 export const PAUSED_NOTIFY_MS = 15 * 60 * 1000;
 /** How often one standing finding may reappear in the timeline. */
 export const REEMIT_MS = 30 * 60 * 1000;
+/** How long one of the boss's own decisions may sit before it is worth a word. */
+export const NUDGE_AFTER_MS = 4 * 60 * 60 * 1000;
+/** And how often to say it again. Nagging every half hour is how a feed is ignored. */
+export const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * The three approval points, each with a clock.
+ *
+ * They are meant to wait — a plan the boss has not read should not start, and a
+ * slice nobody accepted should not be called delivered. What was missing is that
+ * they waited in silence, so "waiting for you since Tuesday" and "arrived a minute
+ * ago" looked exactly alike, and a forgotten requirement is as stopped as a
+ * crashed one.
+ */
+function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
+  const out: Finding[] = [];
+  const hours = (ms: number) => Math.round(ms / 3_600_000);
+
+  for (const g of db
+    .query<{ id: number; name: string; at: number }, [number]>(
+      `SELECT g.id, g.name, max(n.at) AS at FROM grp g JOIN note n ON n.grp_id = g.id
+       WHERE g.status = 'DRAFT' AND g.approved_at IS NULL
+         AND json_extract(n.frontmatter_json, '$.draft_card') = 1
+       GROUP BY g.id HAVING max(n.at) < ?`,
+    )
+    .all(now - NUDGE_AFTER_MS)) {
+    out.push({
+      rule: "waiting_card",
+      grpId: g.id,
+      severity: "advisory",
+      body: `${g.name} 的计划卡等你批 ${hours(now - g.at)} 小时了`,
+    });
+  }
+
+  for (const s of db
+    .query<{ grp_id: number; name: string; seq: number; awaiting_at: number }, [number]>(
+      `SELECT s.grp_id, g.name, s.seq, s.awaiting_at FROM slice s JOIN grp g ON g.id = s.grp_id
+       WHERE s.status = 'awaiting_boss' AND s.awaiting_at IS NOT NULL AND s.awaiting_at < ?`,
+    )
+    .all(now - NUDGE_AFTER_MS)) {
+    out.push({
+      rule: "waiting_slice",
+      grpId: s.grp_id,
+      severity: "advisory",
+      body: `${s.name} S${s.seq} 等你查收 ${hours(now - s.awaiting_at)} 小时了`,
+    });
+  }
+
+  // Only the head: the queue is strictly serial, so everything behind it is
+  // waiting on this one merge, and that count is the whole reason to care.
+  for (const q of db
+    .query<{ id: number; name: string; at: number; behind: number }, [number]>(
+      `SELECT g.id, g.name, g.merge_seq_at AS at,
+              (SELECT count(*) FROM grp o WHERE o.project_id = g.project_id
+                 AND o.status = 'PR_OPEN' AND o.merge_seq > g.merge_seq) AS behind
+       FROM grp g WHERE g.status = 'PR_OPEN' AND g.merge_seq_at IS NOT NULL AND g.merge_seq_at < ?
+         AND NOT EXISTS (SELECT 1 FROM grp o WHERE o.project_id = g.project_id
+                           AND o.status = 'PR_OPEN' AND o.merge_seq < g.merge_seq)`,
+    )
+    .all(now - NUDGE_AFTER_MS)) {
+    out.push({
+      rule: "waiting_merge",
+      grpId: q.id,
+      severity: q.behind > 0 ? "blocker" : "advisory",
+      body:
+        `${q.name} 的 PR 排在队首 ${hours(now - q.at)} 小时了` +
+        (q.behind > 0 ? `，后面还堵着 ${q.behind} 个` : ""),
+    });
+  }
+  return out;
+}
 
 export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   const { ctx, cfg } = deps;
@@ -323,6 +394,57 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     }
   }
 
+  // 12. A parked group whose question got answered after it stopped.
+  //
+  // `answer()` un-pauses PAUSED groups and silently skips PARKED ones, so a group
+  // that waited long enough to be parked stayed parked even once the boss answered
+  // the very thing it was waiting for — the boss answers, and watches nothing
+  // happen. Parking is the only state the system puts a group into and never takes
+  // it out of again: 唤醒 is a button and nothing else.
+  //
+  // Answered *after* it stopped, not merely "no open blocker": most parked groups
+  // never had a blocker at all, and reviving those would undo the parking on the
+  // same tick that did it.
+  const revivable = ctx.db
+    .query<{ id: number; name: string }, []>(
+      `SELECT g.id, g.name FROM grp g WHERE g.status = 'PARKED' AND g.paused_at IS NOT NULL
+         AND EXISTS (SELECT 1 FROM escalation e
+                     WHERE e.grp_id = g.id AND e.severity = 'blocker'
+                       AND e.answer IS NOT NULL AND e.answered_at > g.paused_at)
+         AND NOT EXISTS (SELECT 1 FROM escalation e
+                         WHERE e.grp_id = g.id AND e.answer IS NULL AND e.severity = 'blocker')`,
+    )
+    .all();
+  for (const g of revivable) {
+    if (!deps.ctx.git) break;
+    await unpark(ctx, deps.ctx.git, g.id);
+    findings.push({ rule: "unparked", grpId: g.id, severity: "advisory", body: t("wd.unparked", { name: g.name }) });
+  }
+
+  // 14. Parked and forgotten. It will not come back on its own and it will not ask
+  // again, so the one thing owed is a reminder that says how long — 唤醒 and 不做了
+  // are both one click from the requirement page.
+  for (const g of ctx.db
+    .query<{ id: number; name: string; paused_at: number }, [number]>(
+      "SELECT id, name, paused_at FROM grp WHERE status = 'PARKED' AND paused_at IS NOT NULL AND paused_at < ?",
+    )
+    .all(now() - NUDGE_AFTER_MS)) {
+    findings.push({
+      rule: "waiting_parked",
+      grpId: g.id,
+      severity: "advisory",
+      body: `${g.name} 封存了 ${Math.round((now() - g.paused_at) / 3_600_000)} 小时，唤醒还是不做了？`,
+    });
+  }
+
+  // 13. The three places that wait on the boss, with a clock on each.
+  //
+  // DRAFT waiting for approval, a slice waiting to be accepted, and the head of
+  // the merge queue are all supposed to wait — that is the design. What was missing
+  // is that they wait in silence: three days later the system has still said
+  // nothing, and the requirement is as stopped as if it had crashed.
+  for (const w of waitingOnBoss(ctx.db, now())) findings.push(w);
+
   // A standing condition is re-detected on every tick, and emitting it every time
   // filled the timeline with the same line dozens of times over — "perf-rewrite is
   // at 102% of its budget", every few seconds, until the feed was worthless. The
@@ -343,7 +465,8 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
            AND (grp_id IS ? OR (grp_id IS NULL AND ? IS NULL))`,
       )
       .get(f.rule, f.grpId ?? null, f.grpId ?? null);
-    if (last?.at && now() - last.at < REEMIT_MS) continue;
+    const window = f.rule.startsWith("waiting_") ? NUDGE_REEMIT_MS : REEMIT_MS;
+    if (last?.at && now() - last.at < window) continue;
     fresh.push(f);
     ctx.bus.emit({
       grpId: f.grpId,

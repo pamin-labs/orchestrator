@@ -110,7 +110,29 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
   const started: number[] = [];
   for (const g of waiting) {
     if (!canStart(ctx.db, g.id).ok) continue;
-    if ((await startGroup(ctx, g.id)) === null) started.push(g.id);
+    const err = await startGroup(ctx, g.id);
+    if (err === null) {
+      started.push(g.id);
+      continue;
+    }
+    // Withdraw the intent and say so. Worktree failures are almost always
+    // permanent — a full disk, a branch name already taken, no write permission —
+    // and this runs on the watchdog tick, so leaving the intent set retried it
+    // every thirty seconds forever, returning an error to nobody.
+    ctx.db.run("UPDATE grp SET approved_at = NULL WHERE id = ?", [g.id]);
+    ctx.db.run(
+      `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+       VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
+      [g.id, `批准没能落地：${err}。修好之后再批一次。`],
+    );
+    ctx.bus.emit({
+      grpId: g.id,
+      author: "orchestrator",
+      kind: "escalation",
+      intent: "ask",
+      severity: "blocker",
+      body: `批准没能落地：${err}`,
+    });
   }
   return started;
 }

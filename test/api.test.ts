@@ -1090,3 +1090,40 @@ test("a question no answer can resolve becomes a requirement, and the group wait
     grp_id,
   );
 });
+
+test("two groups cannot end up waiting on each other", async () => {
+  // Both PAUSED for a stated reason, and the reason is each other. Nothing
+  // downstream would notice: neither will ever dissolve, so neither is ever freed.
+  const h = harness();
+  const repo = mkdtempSync(join(tmpdir(), "orch-cycle-"));
+  writeFileSync(join(repo, "shared.ts"), "");
+  h.db.run("UPDATE project SET repo_path = ? WHERE id = 1", [repo]);
+  h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
+  h.db.run(
+    "INSERT INTO grp (project_id, name, status, owns_json, blocked_on, created_at) VALUES (1, 'other', 'PAUSED', ?, 1, 0)",
+    [JSON.stringify(["shared.ts"])],
+  );
+  const r = await post(h.app, "/orch/blocked", { group_id: 1, path: "shared.ts", why: "缺一行配置，闸门必红" }, "tok-eng");
+  expect(r.status).toBe(422);
+  expect(await r.text()).toContain("already waiting on you");
+});
+
+test("a worktree that cannot be created withdraws the approval instead of retrying forever", async () => {
+  // sweepApproved runs on the watchdog tick, so leaving the intent set retried a
+  // permanent failure every thirty seconds and returned the error to nobody.
+  const h = harness();
+  h.ctx.git = async () => ({ code: 1, out: "fatal: disk full" });
+  h.db.run("UPDATE grp SET status = 'DRAFT', approved_at = 1 WHERE id = 1");
+  h.db.run("UPDATE project SET repo_path = '/tmp/nope' WHERE id = 1");
+
+  await sweepApproved(h.ctx);
+  const g = h.db
+    .query<{ status: string; approved_at: number | null }, []>("SELECT status, approved_at FROM grp WHERE id = 1")
+    .get()!;
+  expect(g.approved_at).toBeNull();
+  expect(g.status).toBe("DRAFT");
+  const esc = h.db
+    .query<{ chain_state: string; question: string }, []>("SELECT chain_state, question FROM escalation").get()!;
+  expect(esc.chain_state).toBe("boss");
+  expect(esc.question).toContain("批准没能落地");
+});
