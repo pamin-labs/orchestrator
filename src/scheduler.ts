@@ -256,11 +256,16 @@ export class Scheduler {
  *
  * A job is an orphan when its process is gone, or when it has no pid, or when it
  * has been "running" longer than any turn is allowed to.
+ *
+ * Returns the reclaimed jobs so the caller can put them back: freeing the slot
+ * only un-wedges the *queue*. The work itself was still dropped — the slice stayed
+ * `running`, so `startNextSlice` counted the group busy and never queued anything
+ * again. Same silence, one layer down.
  */
 export function reclaimOrphans(
   db: DB,
   opts: { maxAgeMs?: number; alive?: (pid: number) => boolean; now?: () => number } = {},
-): number {
+): Job[] {
   const maxAge = opts.maxAgeMs ?? 3_600_000;
   const now = opts.now ?? (() => Date.now());
   const alive =
@@ -275,12 +280,13 @@ export function reclaimOrphans(
     });
 
   const running = db
-    .query<{ id: number; pid: number | null; started_at: number | null; grp_id: number | null }, []>(
-      "SELECT id, pid, started_at, grp_id FROM job WHERE state = 'running'",
+    .query<Job & { pid: number | null; started_at: number | null }, []>(
+      `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state, pid, started_at
+       FROM job WHERE state = 'running'`,
     )
     .all();
 
-  let reclaimed = 0;
+  const reclaimed: Job[] = [];
   for (const j of running) {
     const tooOld = j.started_at !== null && now() - j.started_at > maxAge;
     if (j.pid !== null && !tooOld && alive(j.pid)) continue;
@@ -297,12 +303,46 @@ export function reclaimOrphans(
         j.id,
       ],
     );
-    reclaimed++;
+    reclaimed.push({ ...j, state: "failed" });
   }
 
   // Agents believe they are mid-turn too, and a blocked agent is skipped forever.
-  if (reclaimed > 0) {
+  if (reclaimed.length > 0) {
     db.run("UPDATE agent SET state = 'idle' WHERE state = 'running'");
   }
   return reclaimed;
+}
+
+/**
+ * Put reclaimed turns back on the queue, so a restart costs one turn rather than
+ * the group.
+ *
+ * The slice is left where it was and the same role is re-queued on it: whatever
+ * the killed turn wrote is still in the worktree, which is the `keep` half of
+ * intercept, reached from the other direction. `resumed` is stamped on the payload
+ * so a turn that takes the server down with it cannot be resurrected forever.
+ */
+export function resumeReclaimed(sched: Scheduler, jobs: Job[]): number {
+  let requeued = 0;
+  for (const j of jobs) {
+    // Housekeeping kinds are re-enqueued by the server's own timer.
+    if (FREE_KINDS.has(j.kind)) continue;
+    let payload: any = {};
+    try {
+      payload = JSON.parse(j.payload_json);
+    } catch {
+      // A payload we cannot read is a payload we cannot re-run faithfully.
+      continue;
+    }
+    if (payload?.resumed) continue;
+    sched.enqueue(j.kind, {
+      grp_id: j.grp_id,
+      agent_id: j.agent_id,
+      slice_id: j.slice_id,
+      priority: j.priority,
+      payload: { ...payload, resumed: true },
+    });
+    requeued++;
+  }
+  return requeued;
 }

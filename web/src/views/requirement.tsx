@@ -10,7 +10,7 @@ import { Tip } from "../ui/tooltip";
 import { ask } from "../ui/confirm";
 import { Composer, ComposerDialog } from "../ui/composer";
 import { post, type Escalation, type Group, type Slice, type State } from "../lib/api";
-import { STATUS_ZH, STOPS, WHERE_ZH, asksOf, gates, prUrl } from "../lib/select";
+import { STOPS, WHERE_ZH, asksOf, gates, heldApproved, prUrl, statusLabel } from "../lib/select";
 import { cn, K, money, waited } from "../lib/utils";
 import { useState } from "react";
 import { EvidencePanel } from "./evidence";
@@ -107,8 +107,12 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule pb-3">
       <span className="font-display text-[1.25rem] font-semibold">{g.name}</span>
-      <Badge tone={g.status === "DRAFT" ? "mine" : g.status === "RUNNING" ? "live" : "muted"}>
-        {STATUS_ZH[g.status] ?? g.status}
+      <Badge
+        tone={
+          heldApproved(g) ? "muted" : g.status === "DRAFT" ? "mine" : g.status === "RUNNING" ? "live" : "muted"
+        }
+      >
+        {statusLabel(g)}
       </Badge>
       <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {g.branch && <Meta>{g.branch}</Meta>}
@@ -601,6 +605,17 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
         // Nothing to approve yet. An empty textarea and an approve button asks the
         // boss to sign off on nothing, which is why this screen read as "我该干嘛".
         <Working>Dispatcher 正在写计划卡，写完出现在这里</Working>
+      ) : g.approved_at ? (
+        // Already decided. Showing 批准开工 again asks for a click that changes
+        // nothing and reads as "the last one was ignored" — which is what it was.
+        // 退回重拆 below is still the way out: it withdraws the approval.
+        <>
+          <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.8125rem]">
+            <b className="font-semibold text-warn">已批准，边界挡着</b>{" "}
+            {st.approvedBlocked.find((b) => b.grpId === g.id)?.reason ?? "等 Architect 切边界"}
+          </div>
+          <Working>让开之后自动开工，不用再点一次</Working>
+        </>
       ) : (
         <>
           <Textarea

@@ -8,6 +8,8 @@ import { Scheduler, type Job } from "../src/scheduler.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { listSkills } from "../src/mech/skills.ts";
+import { landed } from "../src/mech/mergequeue.ts";
+import { sweepApproved } from "../src/mech/start.ts";
 
 function harness(opts: { worktree?: string } = {}) {
   const db: DB = openMemory();
@@ -542,7 +544,7 @@ test("the snapshot carries the boss's original words alongside the card", async 
   expect(s2.ideas.find((i: any) => i.grpId === grp_id)?.body).toBe(idea);
 });
 
-test("a refused approval puts the Architect back on the boundary", async () => {
+test("an approval a boundary blocks is recorded, not thrown away", async () => {
   const { app, db } = harness();
   db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/**"])]);
   const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
@@ -564,11 +566,19 @@ test("a refused approval puts the Architect back on the boundary", async () => {
     [grp_id, card + "\n风险 : 无\n反对 : 无", JSON.stringify({ draft_card: true })],
   );
 
-  const refused = await post(app, `/api/draft/${grp_id}/approve`);
-  expect(refused.status).toBe(422);
-  const msg = await refused.text();
-  // An error with no path forward leaves the boss holding it.
-  expect(msg).toContain("Architect has been asked");
+  const held = await post(app, `/api/draft/${grp_id}/approve`);
+  // 200: the boss did decide. A 422 shows a red error and asks for the same click
+  // again — and the click it asked for used to be a 500 (see the next test).
+  expect(held.status).toBe(200);
+  expect(await held.text()).toContain("自动开工");
+
+  const g = db
+    .query<{ status: string; approved_at: number | null }, [number]>(
+      "SELECT status, approved_at FROM grp WHERE id = ?",
+    )
+    .get(grp_id)!;
+  expect(g.status).toBe("DRAFT");
+  expect(g.approved_at).toBeGreaterThan(0);
 
   const queued = db
     .query<{ payload_json: string }, [number]>(
@@ -576,6 +586,88 @@ test("a refused approval puts the Architect back on the boundary", async () => {
     )
     .get(grp_id)!;
   expect(JSON.parse(queued.payload_json).boundary.length).toBeGreaterThan(0);
+});
+
+/** A blocked group B beside a running group A that holds every path. */
+async function blocked(h: ReturnType<typeof harness>) {
+  const { app, db } = h;
+  db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
+  const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
+  const { grp_id } = (await r.json()) as { grp_id: number };
+  db.run("UPDATE grp SET status = 'DRAFT', owns_json = ? WHERE id = ?", [
+    JSON.stringify(["src/a/mw.ts"]),
+    grp_id,
+  ]);
+  db.run(
+    "INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, ?, 'fact', 'zh', ?, ?, 0)",
+    [
+      grp_id,
+      `目标 : x
+不做 : y
+验收 : a.test.ts 绿
+验收 : 无回归
+切片 : a [normal] — a.test.ts 绿
+切片 : b [trivial] — b 的回归用例绿
+切片 : c [hard] — 端到端场景通过
+风险 : 无
+反对 : 无`,
+      JSON.stringify({ draft_card: true }),
+    ],
+  );
+  expect((await post(app, `/api/draft/${grp_id}/approve`)).status).toBe(200);
+  return grp_id;
+}
+
+test("approving a held group twice does not blow up", async () => {
+  // The first approve writes slices AND their tasks, then the boundary refuses. The
+  // second one deleted the slices out from under those tasks — foreign keys are on,
+  // so it was a 500, every time. The message it printed told the boss to do exactly
+  // this, which is why "有的需求无法批准开工" had no way out at all.
+  const h = harness();
+  const grpId = await blocked(h);
+  expect((await post(h.app, `/api/draft/${grpId}/approve`)).status).toBe(200);
+  expect(
+    h.db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ?").get(grpId)!.c,
+  ).toBe(3);
+});
+
+test("the group holding the paths dissolves, and the approved one starts itself", async () => {
+  const h = harness();
+  const grpId = await blocked(h);
+  landed(h.db, 1);
+  await sweepApproved(h.ctx);
+
+  const g = h.db
+    .query<{ status: string; approved_at: number | null }, [number]>(
+      "SELECT status, approved_at FROM grp WHERE id = ?",
+    )
+    .get(grpId)!;
+  expect(g.status).toBe("RUNNING");
+  // Left set, the sweep would keep finding it forever.
+  expect(g.approved_at).toBeNull();
+  // Started, not merely unblocked: a RUNNING group with no turn queued is the same
+  // silence from the boss's side.
+  const turn = h.db
+    .query<{ payload_json: string; slice_id: number | null }, [number]>(
+      "SELECT payload_json, slice_id FROM job WHERE grp_id = ? AND kind = 'agent_turn' ORDER BY id DESC LIMIT 1",
+    )
+    .get(grpId)!;
+  expect(JSON.parse(turn.payload_json).role).toBe("engineer");
+  expect(turn.slice_id).not.toBeNull();
+});
+
+test("the Architect re-cutting someone else's boundary starts the approved group", async () => {
+  const h = harness();
+  const grpId = await blocked(h);
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'architect', 'm', 'L2', 'tok-a', 0)",
+  );
+  // The re-cut moves group 1 off the contested path. Nothing touches group 2 —
+  // sweeping only the group `owns` names would leave it waiting.
+  await post(h.app, "/orch/owns", { group_id: 1, paths: ["src/c/**"] }, "tok-a");
+  expect(
+    h.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)!.status,
+  ).toBe("RUNNING");
 });
 
 test("the boundary request quotes each group's own requirement", async () => {

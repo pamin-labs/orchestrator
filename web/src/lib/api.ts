@@ -6,6 +6,8 @@ export interface Group {
   id: number; project_id: number; name: string; branch: string | null; worktree: string | null;
   status: string; owns_json: string; budget_tokens: number; spent_tokens: number; spent_usd: number;
   pr_number: number | null;
+  /** The boss approved, but a boundary is holding it. Cleared when it starts. */
+  approved_at: number | null;
 }
 export interface Slice {
   id: number; grp_id: number; seq: number; title: string; accept_spec: string; difficulty: string;
@@ -41,6 +43,7 @@ export interface State {
   projects: Project[]; groups: Group[]; slices: Slice[]; tasks: Task[]; agents: Agent[];
   escalations: Escalation[]; draftCards: { grpId: number; body: string; at: number }[];
   lateObjections: { grpId: number; author: string; body: string }[];
+  approvedBlocked: { grpId: number; reason: string }[];
   ideas: { grpId: number; body: string }[];
   answered: { id: number; grp_id: number; question: string; answer: string; answered_by: string; ref_note_id: number | null }[];
   mergeQueue: { projectId: number; grpId: number; name: string; branch: string | null; seq: number }[];
@@ -62,7 +65,7 @@ export interface Cost {
 
 const EMPTY: State = {
   projects: [], groups: [], slices: [], tasks: [], agents: [], escalations: [],
-  draftCards: [], lateObjections: [], ideas: [], answered: [], mergeQueue: [], archived: [],
+  draftCards: [], lateObjections: [], approvedBlocked: [], ideas: [], answered: [], mergeQueue: [], archived: [],
   limits: { maxGroups: null, leaseSlots: null, autoAdvance: false, autoAcceptTiers: [] }, lastSeq: 0,
 };
 

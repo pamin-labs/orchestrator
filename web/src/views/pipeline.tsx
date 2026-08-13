@@ -4,7 +4,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Tip } from "../ui/tooltip";
 import type { Group, Slice, State } from "../lib/api";
-import { STATUS_ZH, STOPS, gates } from "../lib/select";
+import { STOPS, gates, heldApproved, statusLabel } from "../lib/select";
 import { cn, money } from "../lib/utils";
 
 /**
@@ -28,7 +28,10 @@ const BUCKETS = {
 type Bucket = keyof typeof BUCKETS;
 
 const bucketOf = (g: Group): Bucket =>
-  (Object.keys(BUCKETS) as Bucket[]).find((k) => BUCKETS[k].of.includes(g.status as never)) ?? "held";
+  // Approved and waiting on a boundary is not the boss's to act on.
+  heldApproved(g)
+    ? "held"
+    : (Object.keys(BUCKETS) as Bucket[]).find((k) => BUCKETS[k].of.includes(g.status as never)) ?? "held";
 
 /**
  * 概览 shows what is moving, not everything.
@@ -121,7 +124,7 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
           {b === "live" && <i className="breathe size-1.5 shrink-0 rounded-full bg-ok" />}
         </div>
         <Meta>
-          {STATUS_ZH[g.status] ?? g.status}
+          {statusLabel(g)}
           {slices.length ? ` · ${done}/${slices.length}` : ""}
           {g.spent_usd ? ` · ${money(g.spent_usd)}` : ""}
         </Meta>
@@ -129,6 +132,8 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
       <div className="min-w-0 max-[60rem]:col-span-full">
         {g.status === "PLANNING" ? (
           <span className="text-[0.75rem] text-ink-3">拆解中，还没有切片</span>
+        ) : heldApproved(g) ? (
+          <Badge>已批准，等边界</Badge>
         ) : g.status === "DRAFT" ? (
           <Badge tone="mine">计划卡待批</Badge>
         ) : !slices.length ? (

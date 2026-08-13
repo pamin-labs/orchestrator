@@ -3,6 +3,16 @@ import { waited } from "./utils";
 
 export const waitedLabel = waited;
 
+/**
+ * DRAFT with the boss's yes already on it: waiting on a boundary, not on the boss.
+ *
+ * It has to be one predicate, because a row that sits in 待办 while the 待办 badge
+ * does not count it is worse than either answer alone.
+ */
+export const heldApproved = (g: Group) => g.status === "DRAFT" && !!g.approved_at;
+
+export const statusLabel = (g: Group) => (heldApproved(g) ? "已批·等边界" : STATUS_ZH[g.status] ?? g.status);
+
 export const STATUS_ZH: Record<string, string> = {
   PLANNING: "拆解中", DRAFT: "待批", RUNNING: "在跑", PAUSING: "正在停",
   PAUSED: "已暂停", PARKED: "已封存", PR_OPEN: "PR 开着", DISSOLVED: "已解散",
@@ -41,8 +51,14 @@ export function pending(st: State, projectId: number | null) {
   return {
     // A card that has not been filed is not a decision. Counting it inflates the
     // badge and produces a queue row whose button leads to nothing actionable.
+    // Neither is one already approved and waiting on a boundary — the boss decided,
+    // and asking again is what made the click look like it did nothing.
     cards: st.groups.filter(
-      (g) => ids.has(g.id) && g.status === "DRAFT" && st.draftCards.some((c) => c.grpId === g.id),
+      (g) =>
+        ids.has(g.id) &&
+        g.status === "DRAFT" &&
+        !g.approved_at &&
+        st.draftCards.some((c) => c.grpId === g.id),
     ),
     slices: st.slices.filter((s) => ids.has(s.grp_id) && s.status === "awaiting_boss"),
     merges: st.mergeQueue.filter((m) => ids.has(m.grpId)),

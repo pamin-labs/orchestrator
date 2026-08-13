@@ -119,6 +119,18 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 上一个进程在 turn 在飞时退出 → 那条 job 永远停在 `running` → 它占着组的唯一槽位 → **那个组再也派发不出任何东西**，而队列看起来完全健康、什么都不报错。agent 也卡在 `running`，而 running 的 agent 会被跳过。
 这是最难发现的形状：没有错误，只是不动了。现在启动时先回收孤儿（进程没了 / 没记 pid / 跑了超过 4 倍 turn 超时），标 failed 并写明原因，并发一条「回收了 N 个」的事件 —— 重启回收了东西要看得见，不能靠猜。
 
+**回收槽位 ≠ 恢复工作（第二层，已修）**
+上面那条只解开了**队列**。那条 turn 本身还是丢了：slice 停在 `running`，`startNextSlice` 数着它算「组正忙」，于是再也不排新活 —— 同一种沉默，往下一层。现在回收之后按原 kind / grp / slice / payload **原样重排**（slice 状态不动，worktree 里的半成品留着，等同 `interrupt` 的 `keep`），payload 打 `resumed` 标记，所以**只重排一次** —— 一条能把 server 带崩的 turn 不会被无限复活。看门狗 / 通知 / digest 不重排，定时器本来就会补。
+另外 Ctrl-C 以前会把 turn 的子进程留在世上：下次开机看到 pid 还活着就**不肯**回收，那个组要挂到 4 倍 turn 超时。现在 SIGINT/SIGTERM 先把 `running` 的 job 的 pid 全 SIGTERM 掉再退。
+
+**批准了但落不了地（已修）**
+老板报「有的需求无法批准开工」。三个缺口叠在一起，最后一个才是真正堵死的：
+1. `canStart` 挡下就 `return bad`，**老板的表态没有任何地方记着**，组留在 DRAFT
+2. 边界后来切好了（`orch owns`）、挡它的组后来合入了，**没有任何地方重跑这个组**
+3. 错误信息叫老板「等切好了再批一次」，而**再批一次必然 500**：第一次批准已经写进了 slice **和** task，第二次 `DELETE FROM slice` 撞上 `task.slice_id` 的外键。它指的那条路本身是死的
+现在：批准落成持久意向（`grp.approved_at`），被挡就记下来并**返回 200**（422 弹红 toast，等于说「你没决定」）；开工只有一个入口 `startGroup`（worktree → RUNNING → 起第一片），批准和自动开工共用；`orch owns` 之后扫一遍全项目（重切边界放行的常常是**别的**组），看门狗每 tick 兜底一次（挡它的组也可能是合入、被拆、封存后解散的 —— 挂四个钩子就是四个会忘的地方）。面板上这种组从「待办」挪到「停着」，写明谁挡着、让开会自动开工，出路仍是「退回重拆」（会撤销批准）。
+→ 规律：**一次点击必须终局。** 让老板「等会儿再点一次」，等于把调度器的活派给人，而人不知道什么时候该点。
+
 **「静默 no-op」是最贵的失败模式**
 - `orch mail architect` 在没有 Architect 时静默丢弃 → Dispatcher 对着墙问了两次就放弃，卡片没交。现在：不存在的收件人报错并列出存在的角色；配置里有但还没雇的**常驻岗第一封信就是雇它的事件**
 - 常驻 agent 通过 mail 被雇时没继承 project → cwd 退化成 server 的工作目录，**Architect 跑去读 orchestrator 自己的源码**。现在常驻 agent 按 project 归属，且回信优先找**已存在**的角色持有者（否则一个项目雇了两个 opus Dispatcher）
