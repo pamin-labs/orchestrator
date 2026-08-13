@@ -290,6 +290,23 @@ export function validateSelfReview(text: string, criteriaCount: number): Result<
   return { ok: true, checked: verdicts };
 }
 
+/**
+ * How many separate things an acceptance line asks for.
+ *
+ * Only `；;` and newlines, never the comma: Chinese prose uses `，` as ordinary
+ * punctuation, so counting those would demand five verdicts for one criterion and
+ * teach the writer to pad. A single-clause spec asks for one verdict, which is the
+ * same floor self-review already has — this only bites on specs that genuinely
+ * listed several things and got one word back.
+ */
+export function criteriaIn(acceptSpec: string): number {
+  const parts = (acceptSpec ?? "")
+    .split(/[；;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return Math.max(1, parts.length);
+}
+
 function nonEmptyLines(s: string): string[] {
   return (s ?? "")
     .split("\n")

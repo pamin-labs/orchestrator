@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { validateDraftCard } from "../src/mech/validate.ts";
+import { criteriaIn, validateDraftCard, validateSelfReview } from "../src/mech/validate.ts";
 
 const good = `目标 : token 校验挪到 middleware
 不做 : 不动 legacy client 的鉴权协议
@@ -188,4 +188,15 @@ test("a genuinely nested criterion is still caught", () => {
   const r = validateDraftCard(card);
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.error).toContain("nested acceptance");
+});
+
+test("an acceptance line listing several things asks for several verdicts", () => {
+  // Only `；;` and newlines, never the comma: Chinese prose uses `，` as ordinary
+  // punctuation, so counting those would demand five verdicts for one criterion
+  // and teach the writer to pad.
+  expect(criteriaIn("bun test 绿")).toBe(1);
+  expect(criteriaIn("浏览器点附件进项目目录，多选两文件一目录")).toBe(1);
+  expect(criteriaIn("bun test 绿；worktree git status 有改动")).toBe(2);
+  expect(validateSelfReview("pass: bun test 绿 — 见 a.test.ts:12", 2).ok).toBe(false);
+  expect(validateSelfReview("pass: 一 — x\npass: 二 — y", 2).ok).toBe(true);
 });

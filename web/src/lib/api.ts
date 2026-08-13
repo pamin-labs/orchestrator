@@ -41,7 +41,9 @@ export interface Escalation {
 }
 export interface State {
   projects: Project[]; groups: Group[]; slices: Slice[]; tasks: Task[]; agents: Agent[];
-  escalations: Escalation[]; draftCards: { grpId: number; body: string; at: number }[];
+  escalations: Escalation[];
+  /** unknownPaths: paths the card names that are not in the repo — new files, or a plan written from memory. */
+  draftCards: { grpId: number; body: string; at: number; unknownPaths?: string | null }[];
   lateObjections: { grpId: number; author: string; body: string }[];
   approvedBlocked: { grpId: number; reason: string }[];
   /** A planner's checked claim that this requirement is already covered. */
