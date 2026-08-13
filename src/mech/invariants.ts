@@ -2,7 +2,16 @@ import type { Ctx } from "../api.ts";
 import { settlePausing } from "./intercept.ts";
 import { joinQueue } from "./mergequeue.ts";
 import { startNextSlice } from "./review.ts";
-import { GRP_STATES, SLICE_STATES, type GrpState, type SliceState } from "./states.ts";
+import {
+  ESCALATION_STATES,
+  GRP_STATES,
+  JOB_STATES,
+  SLICE_STATES,
+  type EscalationState,
+  type GrpState,
+  type JobState,
+  type SliceState,
+} from "./states.ts";
 
 /**
  * One row per state, and the row has to say who pushes it.
@@ -159,6 +168,39 @@ export const SLICE_INVARIANTS = rows<SliceState>(
   { state: "rejected", must: "an engineer turn carries the rejection back", driver: "postSliceDecision; watchdog rule 8" },
 );
 
+export const JOB_INVARIANTS = rows<JobState>(
+  { state: "pending", must: "it is dispatched once its group and pool have room", driver: "Scheduler.tick" },
+  {
+    state: "running",
+    must: "it ends, or something ends it",
+    driver: "the executor; watchdog rule 1 kills a turn past its wall clock, and reclaimOrphans frees one whose process died with the server",
+  },
+  { state: "done", must: "whatever it was doing arranged what comes next", driver: null },
+  {
+    state: "failed",
+    must: "it is retried once, and then it is the boss's problem",
+    driver: "watchdog rule 8 requeues it once, then files a blocker",
+  },
+  { state: "cancelled", must: "nothing is waiting on it", driver: null },
+);
+
+export const ESCALATION_INVARIANTS = rows<EscalationState>(
+  {
+    state: "pm",
+    must: "the role it is with has a turn queued to answer it",
+    driver: "route() enqueues the turn; answering or abstaining moves it on",
+  },
+  { state: "architect", must: "same, one level up", driver: "route(); abstain climbs to the CoS" },
+  { state: "cos", must: "same, one level up", driver: "route(); abstain climbs to the boss" },
+  {
+    state: "boss",
+    must: "it is in the queue and the boss is reminded",
+    driver: "the boss answers; batchForBoss notifies and waiting_* nudges after 4h",
+  },
+  { state: "answered", must: "the caller is unblocked and the group resumed", driver: null },
+  { state: "revoked", must: "the boss took it back and is answering it themselves", driver: null },
+);
+
 /**
  * Run every repair, every tick. Ordering does not matter: each one is a SELECT of
  * rows that are wrong and a write that makes them right, so running them twice is
@@ -169,10 +211,12 @@ export function runInvariants(ctx: Ctx): void {
 }
 
 /** States with no row. The test fails on a non-empty result; nothing else calls it. */
-export function uncovered(): { grp: string[]; slice: string[] } {
+export function uncovered(): { grp: string[]; slice: string[]; job: string[]; escalation: string[] } {
   const has = (rs: { state: string }[], s: string) => rs.some((r) => r.state === s);
   return {
     grp: GRP_STATES.filter((s) => !has(GRP_INVARIANTS, s)),
     slice: SLICE_STATES.filter((s) => !has(SLICE_INVARIANTS, s)),
+    job: JOB_STATES.filter((s) => !has(JOB_INVARIANTS, s)),
+    escalation: ESCALATION_STATES.filter((s) => !has(ESCALATION_INVARIANTS, s)),
   };
 }
