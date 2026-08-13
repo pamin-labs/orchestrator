@@ -97,6 +97,82 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   return { number };
 }
 
+/**
+ * The PR description, built from the record rather than asked for.
+ *
+ * It used to be one hardcoded sentence — "Opened by the orchestrator after the
+ * audit passed" — which reads as an agent that could not be bothered, and it
+ * throws away everything the reviewer needs: what was asked for, what each slice
+ * promised, which gates ran, why the decisions went the way they did. All of it
+ * is already in the database by the time a PR opens, so asking a model to write
+ * it would be paying for a SELECT — and a prompt that can be forgotten.
+ *
+ * Labels are English (PR bodies always are); the quoted material stays in the
+ * language it was written in.
+ */
+export function prBody(ctx: Ctx, grpId: number): string {
+  const q = <T,>(sql: string, ...p: unknown[]): T[] => (ctx.db.query(sql) as any).all(...p) as T[];
+  const out: string[] = [];
+
+  const idea = q<{ body: string }>(
+    "SELECT body FROM event WHERE grp_id = ? AND kind = 'boss_say' ORDER BY seq LIMIT 1",
+    grpId,
+  )[0];
+  if (idea) out.push(`## Asked for\n\n${idea.body.trim().slice(0, 1000)}`);
+
+  const slices = q<{ seq: number; title: string; accept_spec: string; gates_json: string }>(
+    "SELECT seq, title, accept_spec, gates_json FROM slice WHERE grp_id = ? ORDER BY seq",
+    grpId,
+  );
+  if (slices.length) {
+    const lines = slices.map((s) => {
+      let gates: Record<string, string> = {};
+      try {
+        gates = JSON.parse(s.gates_json);
+      } catch {}
+      const passed = Object.entries(gates)
+        .filter(([, v]) => v === "pass")
+        .map(([k]) => k);
+      return (
+        `- **S${s.seq} ${s.title}**\n` +
+        `  - acceptance: ${s.accept_spec.replace(/\s*\n\s*/g, " / ").slice(0, 300)}\n` +
+        `  - gates: ${passed.length ? passed.join(", ") + " pass" : "none recorded"}`
+      );
+    });
+    out.push(`## Slices (${slices.length}, all accepted)\n\n${lines.join("\n")}`);
+  }
+
+  const decisions = q<{ body: string; export_path: string | null }>(
+    "SELECT body, export_path FROM note WHERE grp_id = ? AND kind = 'decision' ORDER BY id",
+    grpId,
+  );
+  if (decisions.length) {
+    const lines = decisions.map((d) => {
+      const first = d.body.trim().split("\n")[0]!.slice(0, 200);
+      return d.export_path ? `- [${first}](${d.export_path})` : `- ${first}`;
+    });
+    out.push(`## Decisions\n\n${lines.join("\n")}`);
+  }
+
+  const retro = q<{ body: string }>(
+    "SELECT body FROM note WHERE grp_id = ? AND kind = 'retro' ORDER BY id DESC LIMIT 1",
+    grpId,
+  )[0];
+  if (retro) out.push(`## Retro\n\n${retro.body.trim().slice(0, 2000)}`);
+
+  const g = q<{ name: string; branch: string | null; spent_usd: number }>(
+    "SELECT name, branch, spent_usd FROM grp WHERE id = ?",
+    grpId,
+  )[0];
+  if (g) {
+    out.push(
+      `---\n\`${g.branch ?? "?"}\` · ${slices.length} slice(s) · $${g.spent_usd.toFixed(2)} · ` +
+        `journals in \`docs/journal/${g.name}/\``,
+    );
+  }
+  return out.join("\n\n");
+}
+
 export interface Feedback {
   grpId: number;
   prNumber: number;

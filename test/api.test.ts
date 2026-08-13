@@ -6,7 +6,7 @@ import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { makeApp, type Ctx } from "../src/api.ts";
+import { landGroup, makeApp, type Ctx } from "../src/api.ts";
 import { listSkills } from "../src/mech/skills.ts";
 import { landed } from "../src/mech/mergequeue.ts";
 import { sweepApproved } from "../src/mech/start.ts";
@@ -804,31 +804,17 @@ test("an unreadable path is an error with the reason, not an empty list", async 
   expect(await r.text()).toContain("no such file");
 });
 
-test("confirming a merge is refused while GitHub says the PR is still open", async () => {
+test("nobody confirms a merge by hand: GitHub is the only source, and it winds the group up", async () => {
   const { app, db, ctx } = harness();
   db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 7, worktree = '/tmp/wt', merge_seq = 1 WHERE id = 1");
-  ctx.gh = async () => ({ code: 0, out: '{"state":"OPEN","mergedAt":null}' });
 
-  const r = await post(app, "/api/groups/1/landed");
-  expect(r.status).toBe(422);
-  expect(await r.text()).toContain("OPEN");
-  // Still alive: the whole point is that it was not dissolved on a guess.
+  // The button that asked the boss to confirm is gone. It dissolved a group on
+  // trust, and one mis-click archived a branch whose PR was still open.
+  expect((await post(app, "/api/groups/1/landed")).status).toBe(404);
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PR_OPEN");
 
-  // The boss can still override — a project without `gh` push access merges by hand.
-  const forced = await post(app, "/api/groups/1/landed", { force: true });
-  expect(forced.status).toBe(200);
-  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("DISSOLVED");
-});
-
-test("a merged PR winds the group up without asking, and it stays visible as delivered", async () => {
-  const { app, db, ctx } = harness();
-  db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 7, worktree = '/tmp/wt', merge_seq = 1 WHERE id = 1");
-  ctx.gh = async () => ({ code: 0, out: '{"state":"MERGED","mergedAt":"2026-01-01"}' });
-
-  const r = await post(app, "/api/groups/1/landed");
-  expect(r.status).toBe(200);
-  expect((await r.json()).verified).toBe(true);
+  // What `pollPrs` calls when GitHub says MERGED. Delivered, and still visible.
+  landGroup(ctx, 1, "github");
   const snap = (await (await get(app, "/api/state")).json()) as any;
   expect(snap.groups.some((g: any) => g.id === 1)).toBe(false);
   expect(snap.archived.map((g: any) => g.name)).toEqual(["g1"]);

@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { mkdir, writeFile } from "node:fs/promises";
 import type { DB } from "./db.ts";
 import type { Bus } from "./bus.ts";
-import type { Scheduler } from "./scheduler.ts";
+import { poolSizes, type Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import type { GitRunner } from "./mech/worktree.ts";
@@ -69,7 +69,7 @@ export interface Ctx {
     autoAcceptTiers?: string[];
     /** Surfaced to the panel: how many groups may run at once, and lease slots. */
     maxGroups?: number;
-    leaseSlots?: number;
+    leaseSlots?: number | Record<string, number>;
     /** Same complaint this many times becomes a project rule (PLAN.md §7③). */
     feedbackSediment?: number;
     /** Chars an `orch ctx query` answer may spend. Was a setting that changed nothing. */
@@ -1587,7 +1587,8 @@ export function snapshot(ctx: Ctx) {
     // stuck rather than queued, which is the difference between a bug and a setting.
     limits: {
       maxGroups: ctx.config.maxGroups ?? null,
-      leaseSlots: ctx.config.leaseSlots ?? null,
+      // Always the map shape for the panel, whatever the config wrote.
+      leaseSlots: poolSizes(ctx.config.leaseSlots),
       autoAdvance: !!ctx.config.autoAdvance,
       autoAcceptTiers: ctx.config.autoAcceptTiers ?? [],
     },
@@ -1917,29 +1918,6 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
   return stale;
 }
 
-/**
- * Ask GitHub, not the boss, whether the PR is merged.
- *
- * Returns the state string, or null when it cannot be established (no `gh`, no PR
- * number, no worktree) — which is a different answer from "not merged" and has to
- * stay distinguishable, or a project without `gh` could never wind a group up.
- */
-export async function prState(ctx: Ctx, grpId: number): Promise<string | null> {
-  const g = ctx.db
-    .query<{ pr_number: number | null; worktree: string | null }, [number]>(
-      "SELECT pr_number, worktree FROM grp WHERE id = ?",
-    )
-    .get(grpId);
-  if (!ctx.gh || !g?.pr_number || !g.worktree) return null;
-  const r = await ctx.gh(["pr", "view", String(g.pr_number), "--json", "state,mergedAt"], g.worktree);
-  if (r.code !== 0) return null;
-  try {
-    return String(JSON.parse(r.out).state ?? "").toUpperCase() || null;
-  } catch {
-    return null;
-  }
-}
-
 const postGroupControl: Handler = async (ctx, req, params) => {
   const grpId = Number(params.id);
   const action = params.action;
@@ -2002,19 +1980,6 @@ const postGroupControl: Handler = async (ctx, req, params) => {
     case "park":
       park(ctx, grpId, "you parked it");
       return text("ok");
-    case "landed": {
-      // "Confirm merged" used to be taken on trust, and it dissolves the group:
-      // one mis-click archived a branch that was still open, with no way back.
-      // GitHub already knows the answer, and prwatch is already asking it.
-      const b = await body<{ force?: boolean }>(req);
-      const state = await prState(ctx, grpId);
-      if (state && state !== "MERGED" && !b.force) {
-        return bad(
-          `GitHub says this PR is ${state}, not MERGED. Merge it there first — 收尾 dissolves the group.`,
-        );
-      }
-      return json({ staleGroups: landGroup(ctx, grpId, "boss"), verified: state === "MERGED" });
-    }
     case "drop": {
       // 不做了. A requirement that turned out to be a duplicate, or that someone
       // else already fixed, had no way off the board: 退回重拆 sends it back to the
@@ -2218,16 +2183,49 @@ const postProject: Handler = async (ctx, req) => {
     .get(b.repo_path);
   if (dup) return bad(`${b.repo_path} is already registered as "${dup.name}"`);
 
+  // A GitHub remote is a registration requirement, not a warning.
+  //
+  // It used to register anyway and say "only the PR step is blocked", which is
+  // the whole delivery half of the system: the branch finishes and has nowhere
+  // to go. Everything downstream also assumes GitHub can be asked — "is it
+  // merged" is answered by `gh pr view`, and the alternative was a button that
+  // asked the boss to confirm a merge by hand.
+  let remote = b.remote ?? null;
+  if (ctx.git) {
+    const r = await ctx.git(b.repo_path, ["remote", "get-url", "origin"]);
+    const url = r.code === 0 ? (r.out.trim().split("\n")[0] ?? "") : "";
+    if (!url) return bad(`${b.repo_path} has no \`origin\` remote: a PR would have nowhere to go`);
+    if (!/github\.com/i.test(url)) return bad(`origin is ${url}; only GitHub is supported for now`);
+    remote = url;
+  }
+
   // A project with no gates fails every slice by design, so guessing them here
   // is the difference between "works out of the box" and "looks broken on day
   // one". The guess is written into config where it can be corrected.
   const detected = detectGates(b.repo_path);
   const insRes = ctx.db.prepare(
-    `INSERT INTO resource (name, template, arg_schema_json, error_regex, concurrency)
-     VALUES (?, ?, '{}', ?, 1)
-     ON CONFLICT (name) DO UPDATE SET template = excluded.template, error_regex = excluded.error_regex`,
+    `INSERT INTO resource (name, template, arg_schema_json, error_regex, concurrency, tags_json)
+     VALUES (?, ?, ?, ?, 1, ?)
+     ON CONFLICT (name) DO UPDATE SET template = excluded.template, error_regex = excluded.error_regex,
+       arg_schema_json = excluded.arg_schema_json, tags_json = excluded.tags_json`,
   );
-  for (const g of detected) insRes.run(g.name, g.template, g.errorRegex);
+  for (const g of detected) insRes.run(g.name, g.template, "{}", g.errorRegex, "[]");
+
+  // A project that ships the runner gets the browser resource. Without it, every
+  // acceptance line of the form "the menu opens" is unverifiable by anyone in the
+  // fleet — measured, three groups stalled at once and the boss was asked to click.
+  // Tagged `browser` so it draws from its own pool: each lease is a real Chromium.
+  if (existsSync(join(b.repo_path, "scripts/browse.ts"))) {
+    insRes.run(
+      "browser",
+      "bun run scripts/browse.ts --steps {steps}",
+      // A step file, never a command: the Runner has real permissions, so the only
+      // thing an agent may hand it is data (PLAN.md, hard constraint 2).
+      JSON.stringify({ steps: { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$", maxLength: 200 } }),
+      "FAIL:",
+      JSON.stringify(["browser"]),
+    );
+  }
 
   const gates = b.gates ?? detected.map((g) => g.name);
   const config = { gates, shared: detectShared(b.repo_path) };
@@ -2237,7 +2235,7 @@ const postProject: Handler = async (ctx, req) => {
       `INSERT INTO project (name, repo_path, remote, config_json, created_at)
        VALUES (?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
-    .get(b.name, b.repo_path, b.remote ?? null, JSON.stringify(config))!;
+    .get(b.name, b.repo_path, remote, JSON.stringify(config))!;
 
   if (gates.length === 0) {
     // Say it plainly rather than letting the first slice fail with a puzzle.
@@ -2258,27 +2256,22 @@ const postProject: Handler = async (ctx, req) => {
       meta: { gates, detected },
     });
   }
-  // Say now whether a PR can ever be opened. A group that finishes its work and
-  // then has nowhere to put it is the worst moment to learn this, and the fix is
-  // the boss's to make.
+  // The remote is settled above; what is left — `gh` installed, logged in, write
+  // permission — is fixable without re-registering, so it is said, not refused.
   if (ctx.git && ctx.gh) {
     const pre = await preflightPr(b.repo_path, (argv, cwd) => ctx.git!(cwd, argv, cwd), ctx.gh);
-    if (!pre.ok) {
-      ctx.bus.emit({
-        author: "orchestrator",
-        kind: "escalation",
-        intent: "ask",
-        severity: "advisory",
-        body: `PR flow will not work for ${b.name}: ${pre.reason}. Work can still proceed; only the PR step is blocked.`,
-        meta: { remote: pre.remote },
-      });
-    } else {
-      ctx.bus.emit({
-        author: "orchestrator",
-        kind: "state_change",
-        body: `PR flow ready (${pre.remote})`,
-      });
-    }
+    ctx.bus.emit(
+      pre.ok
+        ? { author: "orchestrator", kind: "state_change", body: `PR flow ready (${pre.remote})` }
+        : {
+            author: "orchestrator",
+            kind: "escalation",
+            intent: "ask",
+            severity: "advisory",
+            body: `PR flow will not work for ${b.name} until this is fixed: ${pre.reason}`,
+            meta: { remote: pre.remote },
+          },
+    );
   }
 
   // Write the onboarding pack before any group exists, so the first group does
@@ -2499,7 +2492,10 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/attach$/, postAttach],
   ["POST", /^\/api\/say$/, postSay],
   ["POST", /^\/api\/draft\/(?<id>\d+)\/(?<decision>approve|reject)$/, postDraftDecision],
-  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|landed|budget|drop)$/, postGroupControl],
+  // No `landed`: whether a PR is merged is GitHub's answer, and `pollPrs` asks it
+  // every tick. A button for it was a boss confirming by hand what the server
+  // already knew — and one mis-click dissolved a group whose PR was still open.
+  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|budget|drop)$/, postGroupControl],
   ["GET", /^\/api\/slices\/(?<id>\d+)\/evidence$/, getEvidence],
   ["GET", /^\/api\/slices\/(?<id>\d+)\/gate\/(?<name>[\w.-]+)$/, getGateLog],
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],
