@@ -131,8 +131,10 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
       </span>
 
       <span className="ml-auto flex flex-wrap items-center gap-1.5">
-        {url && <LinkButton href={url}>打开 PR ↗</LinkButton>}
-        {inQueue && <Landed grpId={g.id} refresh={refresh} />}
+        {/* Merging is the one step that stays the boss's hand, on GitHub. Nothing
+            here confirms it: `pollPrs` asks GitHub every tick and winds the group
+            up by itself. */}
+        {url && <LinkButton href={url}>{inQueue ? "去合并 PR ↗" : "打开 PR ↗"}</LinkButton>}
         {!inQueue && g.status === "PR_OPEN" && <Badge>排队中</Badge>}
         {g.status === "RUNNING" && <Button onClick={() => act("pause")}>暂停</Button>}
         {["PAUSED", "PAUSING"].includes(g.status) && !broke && <Button onClick={() => act("resume")}>继续</Button>}
@@ -458,33 +460,6 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
   );
 }
 
-/**
- * Confirming a merge dissolves the group, so the server checks GitHub first and
- * refuses on anything but MERGED. The force path exists for a repo merged by hand
- * or a machine without `gh` — and says so, rather than pretending it verified.
- */
-export function Landed({ grpId, refresh }: { grpId: number; refresh: () => void }) {
-  return (
-    <Button variant="go" onClick={async () => {
-      const go = await ask({
-        title: "确认已合入 main",
-        body: "先向 GitHub 核对 PR 状态。确认后本组归档，队列里下一个放行，其余需求会被要求 rebase。",
-        yes: "核对并收尾",
-      });
-      if (!go) return;
-      const r = await post(`/api/groups/${grpId}/landed`);
-      if (!r.ok) {
-        const force = await ask({
-          title: "GitHub 说它还没合",
-          body: `${r.text}\n\n如果你是在别处手动合的，可以强制收尾 —— 但这一步不可撤销。`,
-          yes: "我确定，强制收尾", danger: true,
-        });
-        if (force) await post(`/api/groups/${grpId}/landed`, { force: true });
-      }
-      refresh();
-    }}>确认已合入</Button>
-  );
-}
 
 /**
  * Answers given on the boss's behalf, with the undo that makes delegation

@@ -6,7 +6,7 @@ import type { State } from "../lib/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "../lib/rank";
 import { pending, prUrl } from "../lib/select";
 import { cn } from "../lib/utils";
-import { Landed, RejectSlice } from "./requirement";
+import { RejectSlice } from "./requirement";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
@@ -114,13 +114,9 @@ export function Queue({
         behind > 0 && REASONS.blocking(behind),
         spend(m.grpId) > 0 && REASONS.sunk(spend(m.grpId)),
       ]),
-      actions: (
-        <>
-          {url && <LinkButton href={url}>打开 PR ↗</LinkButton>}
-          {/* GitHub does the merging, and GitHub is asked whether it happened. */}
-          <Landed grpId={m.grpId} refresh={refresh} />
-        </>
-      ),
+      // GitHub does the merging, and GitHub is asked whether it happened — so the
+      // only action here is going there.
+      actions: url ? <LinkButton href={url}>去合并 PR ↗</LinkButton> : null,
     });
   }
   for (const e of w.asks) {

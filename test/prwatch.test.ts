@@ -3,7 +3,7 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { dispatchFeedback, GH_MISSING, openPr, pollPrs, preflightPr, type GhRunner } from "../src/mech/prwatch.ts";
+import { dispatchFeedback, GH_MISSING, openPr, pollPrs, prBody, preflightPr, type GhRunner } from "../src/mech/prwatch.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 
@@ -44,6 +44,28 @@ test("opening a PR records its number once", async () => {
   // Calling again is a no-op rather than a second PR.
   const again = await openPr({ ...base, gh: gh({}) });
   expect(again).toEqual({ number: 42 });
+});
+
+test("the PR body is built from the record, not from a sentence", () => {
+  const h = harness();
+  h.db.run("INSERT INTO event (grp_id, author, kind, body, at, seq) VALUES (1, 'boss', 'boss_say', 'the timeline flickers', 0, 1)");
+  h.db.run(
+    `INSERT INTO slice (grp_id, seq, title, accept_spec, gates_json, status, created_at)
+     VALUES (1, 1, 'stable keys', 'no row remounts', '{"self":"pass","gate":"pass","qa":"fail"}', 'accepted', 0)`,
+  );
+  h.db.run("INSERT INTO note (grp_id, kind, body, export_path, at) VALUES (1, 'decision', 'key was at+index', 'docs/journal/g1/003.md', 0)");
+  h.db.run("INSERT INTO note (grp_id, kind, body, at) VALUES (1, 'retro', 'memo alone was not enough', 0)");
+
+  const body = prBody(h.ctx, 1);
+  expect(body).toContain("the timeline flickers");
+  expect(body).toContain("**S1 stable keys**");
+  expect(body).toContain("no row remounts");
+  // Only what actually passed; a failed layer must not be listed as green.
+  expect(body).toContain("self, gate pass");
+  expect(body).not.toContain("qa pass");
+  expect(body).toContain("(docs/journal/g1/003.md)");
+  expect(body).toContain("memo alone was not enough");
+  expect(body).toContain("orch/g1");
 });
 
 test("a failed PR creation reports why instead of vanishing", async () => {

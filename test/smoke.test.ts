@@ -15,8 +15,11 @@ let dataDir: string;
 
 beforeAll(() => {
   dataDir = mkdtempSync(join(tmpdir(), "orch-smoke-"));
-  // The smoke run registers dataDir as a project, and registration wants a repo.
-  mkdirSync(join(dataDir, ".git"), { recursive: true });
+  // The smoke run registers dataDir as a project, and registration wants a repo
+  // with a GitHub `origin` — a PR is where the work ends up, so a project without
+  // one is refused rather than discovered at delivery time.
+  Bun.spawnSync(["git", "init", "-q", "-b", "main", dataDir]);
+  Bun.spawnSync(["git", "-C", dataDir, "remote", "add", "origin", "git@github.com:example/demo.git"]);
   // maxGroups 0 blocks every group turn, which is how this test exercises the
   // real HTTP server without spawning a single agent or spending a token.
   // Port 0, not a fixed one: several groups run `bun test` in their own worktrees

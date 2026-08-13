@@ -7,7 +7,7 @@ import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
 import { batchForBoss, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
-import { dispatchFeedback, makeGhRunner, openPr, pollPrs } from "./mech/prwatch.ts";
+import { dispatchFeedback, makeGhRunner, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
 
@@ -110,7 +110,7 @@ export function start(overrides: Partial<Config> = {}): Started {
         repo: grp?.repo_path ?? "",
         grpId,
         title: `orch: ${grp?.name ?? "changes"}`,
-        body: "Opened by the orchestrator after the audit passed. Journals are in docs/journal/.",
+        body: prBody(ctx, grpId),
       }).then((r) => {
         if ("error" in r) {
           // No remote, no gh auth, a rejected push: the branch is finished and has
