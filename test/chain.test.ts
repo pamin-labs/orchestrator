@@ -366,3 +366,29 @@ test("an empty mail body is refused instead of waking someone with nothing to re
   expect(said).toContain("--wait");
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'").get()!.c).toBe(0);
 });
+
+test("the boss can hand a question to the Architect instead of answering it", async () => {
+  const h = harness();
+  h.ctx.knownRoles = () => ["pm", "architect", "cos"];
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'architect', 'm', 'L2', 'tok-arch', 0)",
+  );
+  const id = h.ask("用哪个校验库？");
+  const r = await h.post(`/api/escalations/${id}/delegate`, { to: "architect" });
+  expect(r.status).toBe(200);
+  expect(await r.text()).toBe("architect");
+  // The Architect is actually woken, not just recorded as the new owner.
+  const job = h.db
+    .query<{ agent_id: number; payload_json: string }, []>(
+      "SELECT agent_id, payload_json FROM job WHERE kind = 'agent_turn' ORDER BY id DESC",
+    )
+    .get()!;
+  expect(JSON.parse(job.payload_json).escalation).toBe(id);
+});
+
+test("delegating to the boss is refused — that is where it already is", async () => {
+  const h = harness();
+  const id = h.ask("x");
+  const r = await h.post(`/api/escalations/${id}/delegate`, { to: "boss" });
+  expect(r.status).toBe(422);
+});

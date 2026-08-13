@@ -9,7 +9,7 @@ import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { createWorktree, type GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
-import { abstain, answer as chainAnswer, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
+import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, parseOwns } from "./mech/ownership.ts";
 import { startNextSlice } from "./mech/review.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
@@ -965,6 +965,42 @@ const postAnswer: Handler = async (ctx, req, params) => {
   return r.ok ? text("ok") : bad(r.error);
 };
 
+/**
+ * Hand a question back down the chain instead of answering it.
+ *
+ * PLAN.md §8 puts `[回答] [转 Architect]` on the same line for a reason: plenty of
+ * what reaches the boss is a technical call somebody else should make, and
+ * without this the only ways out are answering it or leaving it to rot.
+ */
+const postDelegate: Handler = async (ctx, req, params) => {
+  const b = await body<{ to?: string }>(req);
+  const to = b.to ?? "architect";
+  if (!CHAIN.includes(to as never) || to === "boss") {
+    return bad(`to must be one of: ${CHAIN.filter((c) => c !== "boss").join(", ")}`);
+  }
+  const id = Number(params.id);
+  const esc = ctx.db
+    .query<{ grp_id: number | null; question: string }, [number]>(
+      "SELECT grp_id, question FROM escalation WHERE id = ?",
+    )
+    .get(id);
+  if (!esc) return text("no such escalation", 404);
+
+  ctx.db.run("UPDATE escalation SET chain_state = ? WHERE id = ?", [to, id]);
+  ctx.bus.emit({
+    grpId: esc.grp_id,
+    author: "boss",
+    kind: "escalation",
+    intent: "request",
+    body: `转给 ${to}：${esc.question}`,
+    meta: { escalation_id: id, chain_state: to },
+  });
+  // route() skips a level with nobody in it, so this cannot strand the question:
+  // worst case it comes straight back.
+  const landed = route({ ctx, git: ctx.git, notifyBoss: ctx.notifyBoss }, id);
+  return text(landed);
+};
+
 const postIdea: Handler = async (ctx, req) => {
   const b = await body<{ project_id: number; text: string; name?: string }>(req);
   if (!b.text?.trim()) return bad("empty idea");
@@ -1455,6 +1491,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/answer$/, postAnswer],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/revoke$/, postRevoke],
+  ["POST", /^\/api\/escalations\/(?<id>\d+)\/delegate$/, postDelegate],
 ];
 
 export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
