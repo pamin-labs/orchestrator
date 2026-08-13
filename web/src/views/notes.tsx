@@ -7,6 +7,7 @@ import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
 import { pull } from "../lib/api";
 import { usePaged } from "../lib/page";
 import { clock, cn } from "../lib/utils";
+import { WithAttachments } from "../ui/attachments";
 
 /**
  * The blackboard's static half.
@@ -176,13 +177,8 @@ function Body({ text }: { text: string }) {
   const long = text.split("\n").length > 4 || text.length > 320;
   return (
     <div className="mt-1.5">
-      <div
-        className={cn(
-          "whitespace-pre-wrap text-[0.8125rem] leading-[1.7] text-ink-2",
-          !open && long && "line-clamp-4",
-        )}
-      >
-        {text}
+      <div className={cn("text-[0.8125rem] leading-[1.7] text-ink-2", !open && long && "line-clamp-4")}>
+        <WithAttachments body={text} />
       </div>
       {long && (
         <button

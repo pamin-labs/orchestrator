@@ -179,7 +179,7 @@ const DEFAULTS: Config = {
     "gpt-5.6-terra": 272_000,
     "gpt-5.6-luna": 272_000,
   },
-  workRoot: "/tmp/orch/worktrees",
+  workRoot: "/var/tmp/orch/worktrees",
   dataDir: "data",
 };
 

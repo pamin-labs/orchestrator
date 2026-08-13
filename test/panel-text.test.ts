@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { activityOf } from "../web/src/lib/activity.ts";
+import { splitAttachments } from "../web/src/lib/attach.ts";
 
 const of = (activity: string) => activityOf({ activity } as never);
 
@@ -22,4 +23,21 @@ test("an unrecognised command keeps its own words rather than being filed as 其
     "",
     "./scripts/deploy.sh --dry-run",
   ]);
+});
+
+test("a message hands its attachments back as things the panel can open", () => {
+  // Exactly what withAttachments() writes. The boss's screenshot used to render
+  // as this line, under the question it was evidence for.
+  const { text, files } = splitAttachments(
+    "这个 nav 不太对\n\n附件（路径如下）：\n- data/attachments/1755-0-Screenshot.png (image)\n- data/attachments/1755-1-spec.pdf",
+  );
+  expect(text).toBe("这个 nav 不太对");
+  expect(files.map((f) => f.image)).toEqual([true, false]);
+  expect(files[0]!.url).toBe("/api/attach/1755-0-Screenshot.png");
+});
+
+test("a message that merely mentions attachments keeps its own body", () => {
+  const body = "附件（路径如下）：\n还没传呢";
+  expect(splitAttachments(body).text).toBe(body);
+  expect(splitAttachments("没有附件").files).toEqual([]);
 });
