@@ -81,10 +81,12 @@ function Browse({
         {hint && <span className="text-[0.75rem] text-ink-3">{hint}</span>}
       </div>
       <div className="flex flex-wrap items-center gap-1 border-b border-rule-soft px-3 py-2 font-mono text-[0.6875rem]">
+        {/* The root button IS the first slash. Printing a separator before every
+            segment as well gave `/ / Users / jason`. */}
         <Button size="sm" variant="quiet" onClick={() => load("/")}>/</Button>
         {parts.map((seg, i) => (
           <span key={i} className="flex items-center">
-            <span className="text-ink-3">/</span>
+            {i > 0 && <span className="text-ink-3">/</span>}
             <Button size="sm" variant="quiet" onClick={() => load("/" + parts.slice(0, i + 1).join("/"))}>
               {seg}
             </Button>
@@ -99,7 +101,7 @@ function Browse({
             ? "已选"
             : x.taken
               ? "已添加"
-              : x.repo
+              : x.repo && !pick
                 ? "git 仓库"
                 : x.size != null
                   ? `${Math.max(1, Math.round(x.size / 1024))}k`
@@ -111,8 +113,8 @@ function Browse({
             chosen?.(x.path) && "bg-accent-soft",
           );
           const glyph = (
-            <span className={cn("font-mono text-[0.75rem]", x.repo ? "text-accent" : "text-ink-3")}>
-              {x.repo ? "◆" : isDir ? "▸" : "·"}
+            <span className={cn("font-mono text-[0.75rem]", x.repo && !pick ? "text-accent" : "text-ink-3")}>
+              {x.repo && !pick ? "◆" : isDir ? "▸" : "·"}
             </span>
           );
           // A folder that can itself be attached needs two meanings on one row, so
@@ -170,9 +172,12 @@ function Shell({ open, onOpenChange, children }: {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-[var(--scrim)]" />
+        {/* Above z-50, because the attachment picker opens from inside the new-idea
+            dialog — at the same layer its scrim landed under the dialog it was
+            supposed to dim, and the picker floated with nothing behind it. */}
+        <Dialog.Overlay className="fixed inset-0 z-[60] bg-[var(--scrim)]" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/5 z-50 w-[min(34rem,92vw)] -translate-x-1/2 overflow-hidden
+          className="fixed left-1/2 top-1/5 z-[70] w-[min(34rem,92vw)] -translate-x-1/2 overflow-hidden
                      rounded-xl border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in"
         >
           {open && children}

@@ -19,8 +19,8 @@ export function NewRequirement({
       open={open}
       onOpenChange={onOpenChange}
       title="新需求"
-      hint="说清要什么就够，不用写文档。产出计划卡待批，批准前不写代码。"
-      placeholder={"例：登录页加「记住我」，勾了之后 30 天不用重新登录。\n截图、设计稿拖进来或粘贴都行。⌘Enter 提交。"}
+      hint="说清要什么就够。产出计划卡待批，批准前不写代码。"
+      placeholder={"例：登录页加「记住我」，勾了之后 30 天不用重新登录。\n截图、设计稿拖进来或粘贴。⌘Enter 提交"}
       submit="提交"
       rows={6}
       onSubmit={async ({ text, attachments }) => {
