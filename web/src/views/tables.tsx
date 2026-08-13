@@ -250,7 +250,9 @@ export function CostView({ cost }: { cost: Cost | null }) {
       <div className="mb-5 flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b border-rule pb-3">
         <span className="flex items-baseline gap-1.5">
           <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
-          <span className="text-[0.75rem] text-ink-3">tokens 累计</span>
+          {/* Names its own scope: this is the project level of 项目 → 需求 → agent,
+              and the breadcrumb naming the project is two rows away in the header. */}
+          <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
         </span>
         <span className="text-[0.75rem] text-ink-2">
           每个已交付需求{" "}
