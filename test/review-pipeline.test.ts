@@ -544,3 +544,28 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
     .find((e) => e.body.includes("a.txt says two"))!;
   expect(filed.author).toBe("engineer");
 });
+
+test("a branch the Auditor keeps rejecting stops instead of paying for another round", async () => {
+  // A slice that keeps failing gives up after gateRetries and asks the boss. The
+  // branch had no counter at all — the same money spent forever on the same
+  // disagreement, with nothing on the boss's screen saying so.
+  const h = await harness();
+  h.ctx.auditVerdict!(1, false, "the error path is still untested");
+  h.ctx.auditVerdict!(1, false, "still untested");
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
+
+  h.ctx.auditVerdict!(1, false, "and again");
+  const g = h.db.query<{ status: string; pr_retries: number }, []>("SELECT status, pr_retries FROM grp WHERE id = 1").get()!;
+  expect(g.status).toBe("PAUSED");
+  expect(g.pr_retries).toBe(3);
+  const esc = h.db
+    .query<{ severity: string; chain_state: string; question: string }, []>(
+      "SELECT severity, chain_state, question FROM escalation ORDER BY id DESC LIMIT 1",
+    )
+    .get()!;
+  expect(esc.severity).toBe("blocker");
+  expect(esc.chain_state).toBe("boss");
+  // The likely cause, said out loud: three rounds usually means the acceptance
+  // wording is wrong, not the code.
+  expect(esc.question).toContain("验收口径");
+});
