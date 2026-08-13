@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { digestOutput, resolveLease, tokenize, type ResourceDef } from "../src/mech/lease.ts";
+import { digestOutput, resolveLease, tokenize, type ResourceDef, runResource, LEASE_TIMEOUT_CODE } from "../src/mech/lease.ts";
 
 const testRes: ResourceDef = {
   name: "test",
@@ -129,4 +129,31 @@ test("a clean short run needs no truncation notice", () => {
   expect(d.errorLines).toEqual([]);
   expect(d.text).not.toContain("## errors");
   expect(d.text).not.toContain("orch lease log");
+});
+
+test("a hung command is killed and says so, instead of holding the slot forever", async () => {
+  // Lease slots are global and few, so one command that never returns stops every
+  // group from ever gating again. That failure is silent: the queue looks healthy.
+  const def = {
+    name: "hang",
+    template: "sleep 30",
+    concurrency: 1,
+    argSchema: {},
+  };
+  const t0 = Date.now();
+  const out = await runResource(def, {}, { timeoutMs: 400 });
+  expect(Date.now() - t0).toBeLessThan(6000);
+  expect("digest" in out).toBe(true);
+  if (!("digest" in out)) return;
+  expect(out.exitCode).toBe(LEASE_TIMEOUT_CODE);
+  expect(out.digest.text).toContain("lease timeout");
+  // The number has to be actionable: it names the limit it blew through.
+  expect(out.digest.text).toContain("min");
+});
+
+test("a command that finishes in time is untouched by the timeout", async () => {
+  const out = await runResource({ name: "ok", template: "echo hi", concurrency: 1, argSchema: {} }, {}, {
+    timeoutMs: 10_000,
+  });
+  expect("digest" in out && out.exitCode).toBe(0);
 });

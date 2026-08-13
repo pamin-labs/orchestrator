@@ -8,7 +8,7 @@ import type { Executor, Job } from "../scheduler.ts";
 import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
 import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
 import { denyOutsideOwns, parseOwns } from "../mech/ownership.ts";
-import { digestOutput, resolveLease, type ResourceDef } from "../mech/lease.ts";
+import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
 import { recordTurnOutcome, runWatchdog } from "../mech/watchdog.ts";
 import { runStandup } from "../mech/standup.ts";
@@ -770,17 +770,15 @@ async function runLease(deps: ExecDeps, job: Job): Promise<void> {
     body: `lease ${lease.resource} #${leaseId} started`,
   });
 
-  const proc = Bun.spawn(resolved.argv, { cwd, stdout: "pipe", stderr: "pipe" });
-  const [so, se] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  const output = so + se;
-  await Bun.write(logPath, output);
-
-  const digest = digestOutput(code, output, def.errorRegex, logPath);
-  finishLease(deps, leaseId, code, digest.text, logPath);
+  // Same runner as the gates use. This used to spawn its own process, which meant
+  // two implementations of "run a resource" and a timeout on only one of them.
+  const out = await runResource(def, safeJson(lease.args_json) as Record<string, unknown>, {
+    cwd,
+    logPath,
+    timeoutMs: cfg.leaseTimeoutMs,
+  });
+  if (!("digest" in out)) return finishLease(deps, leaseId, 126, out.error, logPath);
+  finishLease(deps, leaseId, out.exitCode, out.digest.text, logPath);
 }
 
 function finishLease(

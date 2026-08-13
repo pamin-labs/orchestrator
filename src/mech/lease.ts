@@ -248,10 +248,13 @@ export interface RunOutcome {
  * No shell: argv straight to spawn, which is what makes an arg's shell
  * metacharacters inert rather than filtered.
  */
+/** 124 is what `timeout(1)` returns, so the number already means this. */
+export const LEASE_TIMEOUT_CODE = 124;
+
 export async function runResource(
   def: ResourceDef,
   args: Record<string, unknown>,
-  opts: { cwd?: string; logPath?: string } = {},
+  opts: { cwd?: string; logPath?: string; timeoutMs?: number } = {},
 ): Promise<RunOutcome | Invalid> {
   const resolved = resolveLease(def, args);
   if (!resolved.ok) return resolved;
@@ -261,12 +264,40 @@ export async function runResource(
     stdout: "pipe",
     stderr: "pipe",
   });
+  // Without this a hung command holds the lease slot forever, and lease slots are
+  // global and few: one wedged build stops every group from ever gating again.
+  let timedOut = false;
+  const limit = opts.timeoutMs ?? 0;
+  const timer = limit
+    ? setTimeout(() => {
+        timedOut = true;
+        proc.kill("SIGTERM");
+        // SIGTERM is a request. A build that ignores it still has to die.
+        setTimeout(() => proc.kill("SIGKILL"), 5_000);
+      }, limit)
+    : undefined;
+
   const [so, se] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
   ]);
   const exitCode = await proc.exited;
+  if (timer) clearTimeout(timer);
   const output = so + se;
   if (opts.logPath) await Bun.write(opts.logPath, output);
+  if (timedOut) {
+    const mins = Math.round(limit / 60_000);
+    const base = digestOutput(LEASE_TIMEOUT_CODE, output, def.errorRegex, opts.logPath);
+    return {
+      exitCode: LEASE_TIMEOUT_CODE,
+      digest: {
+        ...base,
+        text:
+          `exit ${LEASE_TIMEOUT_CODE}: killed after ${mins} min (lease timeout). It either ` +
+          `hangs, or needs a leaseTimeoutMs above ${mins} min.\n${base.text}`,
+      },
+      logPath: opts.logPath,
+    };
+  }
   return { exitCode, digest: digestOutput(exitCode, output, def.errorRegex, opts.logPath), logPath: opts.logPath };
 }

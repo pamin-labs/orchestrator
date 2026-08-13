@@ -42,6 +42,8 @@ export interface Config {
   parkAfterPausedMs: number;
   watchdogIntervalMs: number;
   gateRetries: number;
+  /** Wall clock for one leased command. A big compile is hours, not minutes. */
+  leaseTimeoutMs: number;
   /** Start the next slice when QA passes, without waiting for the boss to accept. */
   autoAdvance: boolean;
   /** Difficulty tags accepted automatically once all three gates pass. */
@@ -61,12 +63,13 @@ const DEFAULTS: Config = {
     hard: "claude-opus-5",
   },
   turnTimeoutMs: 600_000,
-  maxTurnsPerJob: 30,
+  maxTurnsPerJob: 60,
   sessionRotateFraction: 0.6,
   ctxBudgetChars: 16_000,
   parkAfterPausedMs: 7_200_000,
   watchdogIntervalMs: 30_000,
   gateRetries: 2,
+  leaseTimeoutMs: 10_800_000,
   // Off by default: the point of slice-sized delivery is that a wrong slice wastes
   // one slice. Turning this on trades that for overnight throughput.
   autoAdvance: false,
