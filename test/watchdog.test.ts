@@ -606,6 +606,32 @@ test("work that is finished but has no PR is sent back through the branch review
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
 });
 
+test("a finished PR that never joined the queue gets in line", async () => {
+  // `waiting_merge` reads merge_seq_at, so a PR_OPEN group with a null one is
+  // invisible to it — no nudge, no place in the order, nothing else looking. The
+  // same shape as a PAUSED group with no paused_at.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 5, merge_seq = NULL WHERE id = 1");
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ m: number }, []>("SELECT merge_seq AS m FROM grp WHERE id = 1").get()!.m).toBe(1);
+});
+
+test("a pending slice under an idle group is started rather than waited on", async () => {
+  // startNextSlice is only ever called at the end of something else — a group
+  // starting, autoAdvance, an acceptance. A slice left pending when none of those
+  // fires again has nobody to start it, and RUNNING with an empty queue looks
+  // exactly like working.
+  const h = harness();
+  h.db.run(
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES (1, 1, 's', 'a', 'pending', 0)",
+  );
+  await runWatchdog(h.deps);
+  expect(h.db.query<{ s: string }, []>("SELECT status AS s FROM slice WHERE grp_id = 1").get()!.s).toBe("running");
+  // The harness scheduler dispatches inline, so the turn is already through the
+  // queue by now — what matters is that one exists at all.
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'").get()!.c).toBe(1);
+});
+
 test("a stale PR branch is told to rebase too, and the base comes from the remote", async () => {
   // PR_OPEN used to be excluded, so the one branch that has to merge only learned
   // main had moved when GitHub called it CONFLICTING — the late half of the same

@@ -756,7 +756,18 @@ export function denialSummary(denials: unknown[]): string {
 }
 
 function handleDenials(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
-  if (r.permissionDenials.length === 0) return;
+  if (r.permissionDenials.length === 0) {
+    // It found a legal route. Nothing else ever closed these, so they accumulated
+    // as advisories nobody would ever answer — and an open question is not inert:
+    // it counts as "this group is waiting on someone" everywhere that looks.
+    deps.ctx.db.run(
+      `UPDATE escalation SET chain_state = 'answered', answered_by = 'orchestrator',
+         answer = 'the agent found a permitted route on a later turn'
+       WHERE agent_id = ? AND answer IS NULL AND question LIKE 'blocked by clearance:%'`,
+      [agent.id],
+    );
+    return;
+  }
   const { ctx } = deps;
   const summary = denialSummary(r.permissionDenials);
 
