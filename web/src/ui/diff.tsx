@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import parseDiff from "parse-diff";
 import { diffWordsWithSpace } from "diff";
 import { Meta } from "./bits";
@@ -100,19 +100,36 @@ function marks(a: string, b: string, side: "left" | "right") {
 export function DiffView({ diff, truncated }: { diff: string; truncated?: boolean }) {
   const files = useMemo(() => parseDiff(diff), [diff]);
   const nameOf = (f: parseDiff.File) => (f.to && f.to !== "/dev/null" ? f.to : (f.from ?? "?"));
-  const [pick, setPick] = useState(0);
-  const [all, setAll] = useState(false);
+  const [here, setHere] = useState(0);
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  const pane = useRef<HTMLDivElement>(null);
+  const heads = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Which file the reader is in, from what is actually at the top of the pane.
+  // Scrolling IS the navigation here; the rail follows it rather than replacing it.
+  useEffect(() => {
+    const root = pane.current;
+    if (!root) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) setHere(Number((e.target as HTMLElement).dataset.i));
+        }
+      },
+      { root, rootMargin: "0px 0px -85% 0px" },
+    );
+    for (const h of heads.current) if (h) io.observe(h);
+    return () => io.disconnect();
+  }, [files]);
 
   if (files.length === 0) return null;
-  const f = files[Math.min(pick, files.length - 1)]!;
-  const rows = f.chunks.flatMap((c) => [{ gap: c.content } as Row, ...rowsOf(c)]);
-  const shown = all ? rows : rows.slice(0, 400);
 
   return (
     <div className="flex h-full min-h-0">
-      {/* One file at a time, chosen from a list, because a slice touches thirty of
-          them and stacking all thirty is the same wall of text in a new order. The
-          list is the summary too: what changed and how much, without opening it. */}
+      {/* The rail is index and summary at once: what changed, by how much, and where
+          you are. One file at a time was worse — a review reads a change, and a
+          change spans files; making the reader click through thirty of them puts the
+          work back on them. */}
       <nav className="w-56 shrink-0 overflow-auto border-r border-rule-soft py-1">
         {files.map((x, i) => {
           const n = nameOf(x);
@@ -120,13 +137,10 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
           return (
             <button
               key={n}
-              onClick={() => {
-                setPick(i);
-                setAll(false);
-              }}
+              onClick={() => heads.current[i]?.scrollIntoView({ block: "start" })}
               className={cn(
                 "flex w-full cursor-pointer flex-col items-start gap-px px-2.5 py-1 text-left font-mono text-[0.6875rem] hover:bg-sunk",
-                i === pick && "bg-accent-soft text-accent",
+                i === here && "bg-accent-soft text-accent",
               )}
             >
               <span className="w-full truncate">{n.slice(cut + 1)}</span>
@@ -141,43 +155,69 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
         })}
       </nav>
 
-      <div className="min-w-0 grow overflow-auto">
-        <table className="w-full table-fixed border-collapse font-mono text-[0.6875rem] leading-[1.55]">
-          <colgroup>
-            <col className="w-10" />
-            <col className="w-[calc(50%-2.5rem)]" />
-            <col className="w-10" />
-            <col />
-          </colgroup>
-          <tbody>
-            {shown.map((r, i) =>
-              r.gap !== undefined ? (
-                <tr key={i}>
-                  <td colSpan={4} className="border-y border-rule-soft bg-sunk px-3.5 py-0.5 text-ink-3">
-                    {/* The useful half of `@@ -1,7 +1,9 @@` is the context after it. */}
-                    {r.gap.replace(/^@@[^@]*@@\s*/, "") || "…"}
-                  </td>
-                </tr>
-              ) : (
-                <tr key={i}>
-                  <Gutter n={r.left?.n} tone={r.left && (!r.right || r.left.changed) ? "bad" : undefined} />
-                  <Side cell={r.left} other={r.right} side="left" />
-                  <Gutter n={r.right?.n} tone={r.right && (!r.left || r.right.changed) ? "ok" : undefined} />
-                  <Side cell={r.right} other={r.left} side="right" />
-                </tr>
-              ),
-            )}
-          </tbody>
-        </table>
-        {rows.length > shown.length && (
-          <button
-            className="w-full cursor-pointer border-y border-rule-soft bg-sunk py-1 text-[0.6875rem] text-ink-2 hover:text-accent"
-            onClick={() => setAll(true)}
-          >
-            还有 {rows.length - shown.length} 行
-          </button>
+      <div ref={pane} className="min-w-0 grow overflow-auto">
+        {files.map((f, fi) => {
+          const name = nameOf(f);
+          const rows = f.chunks.flatMap((c) => [{ gap: c.content } as Row, ...rowsOf(c)]);
+          // Bounded per file, not per diff: thirty files of four hundred rows each
+          // is a DOM nobody scrolls, and the long file is usually not the one being
+          // reviewed. Opening one is a click, and it stays open.
+          const shown = open.has(fi) ? rows : rows.slice(0, 400);
+          return (
+            <div key={name}>
+              <div
+                ref={(el) => {
+                  heads.current[fi] = el;
+                }}
+                data-i={fi}
+                className="sticky top-0 z-10 flex items-baseline gap-2 border-y border-rule-soft bg-sunk px-3.5 py-1"
+              >
+                <span className="font-mono text-[0.6875rem] font-semibold">{name}</span>
+                <span className="font-mono text-[0.625rem]">
+                  <span className="text-ok">+{f.additions}</span> <span className="text-bad">−{f.deletions}</span>
+                </span>
+              </div>
+              <table className="w-full table-fixed border-collapse font-mono text-[0.6875rem] leading-[1.55]">
+                <colgroup>
+                  <col className="w-10" />
+                  <col className="w-[calc(50%-2.5rem)]" />
+                  <col className="w-10" />
+                  <col />
+                </colgroup>
+                <tbody>
+                  {shown.map((r, i) =>
+                    r.gap !== undefined ? (
+                      <tr key={i}>
+                        <td colSpan={4} className="border-y border-rule-soft bg-sunk px-3.5 py-0.5 text-ink-3">
+                          {/* The useful half of `@@ -1,7 +1,9 @@` is the context after it. */}
+                          {r.gap.replace(/^@@[^@]*@@\s*/, "") || "…"}
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={i}>
+                        <Gutter n={r.left?.n} tone={r.left && (!r.right || r.left.changed) ? "bad" : undefined} />
+                        <Side cell={r.left} other={r.right} side="left" />
+                        <Gutter n={r.right?.n} tone={r.right && (!r.left || r.right.changed) ? "ok" : undefined} />
+                        <Side cell={r.right} other={r.left} side="right" />
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+              {rows.length > shown.length && (
+                <button
+                  className="w-full cursor-pointer border-y border-rule-soft bg-sunk py-1 text-[0.6875rem] text-ink-2 hover:text-accent"
+                  onClick={() => setOpen(new Set([...open, fi]))}
+                >
+                  还有 {rows.length - shown.length} 行
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {truncated && (
+          <Meta className="block px-3.5 py-2">这一片的改动超过 400k 字符，尾部没取回来 —— 剩下的在 worktree 里</Meta>
         )}
-        {truncated && <Meta className="block px-3.5 py-2">太长，剩下的去 worktree 里看</Meta>}
       </div>
     </div>
   );
