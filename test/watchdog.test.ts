@@ -478,3 +478,22 @@ test("the three places that wait on the boss each carry a clock", async () => {
   const merge = (await runWatchdog({ ...h.deps, now: () => 1_000_001 })).filter((x) => x.rule === "waiting_merge");
   expect(merge).toHaveLength(0); // deduplicated: nagging every half hour is noise
 });
+
+test("a rebase the Engineer could not finish goes to the Architect, not round again", async () => {
+  // A conflict it lost twice is a design question — main moved for a reason, and
+  // the Engineer only knows its own slice. Sending it back with more determination
+  // produces code that compiles and points the wrong way, which nothing downstream
+  // can catch.
+  const h = harness();
+  h.db.run(
+    `INSERT INTO job (kind, grp_id, payload_json, state, error, enqueued_at)
+     VALUES ('agent_turn', 1, '{"role":"engineer","conflict":true}', 'failed', 'could not rebase', 0)`,
+  );
+  await runWatchdog(h.deps);
+  const p = JSON.parse(
+    h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!
+      .payload_json,
+  );
+  expect(p.role).toBe("architect");
+  expect(p.rejection).toContain("could not rebase");
+});

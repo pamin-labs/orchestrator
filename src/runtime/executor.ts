@@ -543,6 +543,7 @@ const PAYLOAD_KEYS = new Set([
   "mail",
   "escalation",
   "boundary",
+  "conflict",
   "audit",
   "audit_branch",
   "audit_group",

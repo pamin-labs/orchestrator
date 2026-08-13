@@ -112,15 +112,37 @@ export function start(overrides: Partial<Config> = {}): Started {
         body: "Opened by the orchestrator after the audit passed. Journals are in docs/journal/.",
       }).then((r) => {
         if ("error" in r) {
-          // No remote, no gh auth, whatever it is: the boss needs to know, since
-          // the branch is finished and now has nowhere to go.
+          // No remote, no gh auth, a rejected push: the branch is finished and has
+          // nowhere to go. This used to be an event and nothing else — not a row in
+          // `escalation`, so it never reached 待办 — while the group sat at PR_OPEN
+          // holding the head of a strictly serial merge queue with a null
+          // pr_number, which pollPrs skips forever. Everything behind it stopped,
+          // and the only trace was one line in the feed.
+          //
+          // So: leave the queue rather than block it, and stop as a group that is
+          // waiting on the boss. Answering the blocker un-pauses it, the watchdog
+          // finds a live group with an empty queue and re-queues its last turn —
+          // the Auditor's — which passes again and retries the PR. No new
+          // mechanism, and no button that only exists for this.
+          db.run("UPDATE grp SET merge_seq = NULL, merge_seq_at = NULL, status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
+          db.run(
+            `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+             VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
+            [grpId, `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`],
+          );
           ctx.bus.emit({
             grpId,
             author: "orchestrator",
             kind: "escalation",
             intent: "ask",
-            severity: "advisory",
+            severity: "blocker",
             body: `could not open a PR: ${r.error}`,
+          });
+          void notifier.push({
+            key: `pr-open:${grpId}`,
+            tier: "immediate",
+            body: `${grp?.name ?? grpId}: PR 开不出来 — ${r.error}`.slice(0, 200),
+            url,
           });
         }
       });
