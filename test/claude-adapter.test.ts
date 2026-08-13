@@ -113,14 +113,14 @@ test("runTurn extracts usage, cost, denials, rate limit and touched files", asyn
   ];
 
   const spawned = Bun.spawn;
-  // @ts-expect-error — swap in a fake child process
-  Bun.spawn = () => ({
+  // A fake child process: only the four fields the adapter reads.
+  Bun.spawn = ((): any => ({
     pid: 4242,
     stdout: stream(lines),
     stderr: new ReadableStream({ start: (c) => c.close() }),
     exited: Promise.resolve(0),
     kill() {},
-  });
+  })) as unknown as typeof Bun.spawn;
   try {
     const seenText: string[] = [];
     const r = await runTurn(
@@ -155,8 +155,8 @@ test("runTurn extracts usage, cost, denials, rate limit and touched files", asyn
 
 test("a turn with no result line is a failure, not a silent success", async () => {
   const spawned = Bun.spawn;
-  // @ts-expect-error — fake child that dies without emitting `result`
-  Bun.spawn = () => ({
+  // A fake child process: fake child that dies without emitting `result`
+  Bun.spawn = ((): any => ({
     pid: 1,
     stdout: stream([{ type: "system", subtype: "init", session_id: "s" }]),
     stderr: new ReadableStream({
@@ -167,7 +167,7 @@ test("a turn with no result line is a failure, not a silent success", async () =
     }),
     exited: Promise.resolve(1),
     kill() {},
-  });
+  })) as unknown as typeof Bun.spawn;
   try {
     const r = await runTurn({ stable, prompt: "x", cwd: "/tmp", resumeSessionId: "s" });
     expect(r.ok).toBe(false);
@@ -191,14 +191,14 @@ test("the desk wall never shows a bare tool name", async () => {
     { type: "result", subtype: "success", is_error: false, terminal_reason: "completed", usage: {} },
   ];
   const spawned = Bun.spawn;
-  // @ts-expect-error fake child
-  Bun.spawn = () => ({
+  // A fake child process: only the fields the adapter reads.
+  Bun.spawn = ((): any => ({
     pid: 1,
     stdout: stream(lines),
     stderr: new ReadableStream({ start: (c) => c.close() }),
     exited: Promise.resolve(0),
     kill() {},
-  });
+  })) as unknown as typeof Bun.spawn;
   try {
     const announced: string[] = [];
     const r = await runTurn(

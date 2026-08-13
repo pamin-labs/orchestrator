@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -65,7 +65,7 @@ export function frontmatterDescription(text: string): string {
 function scan(root: string, base: string, scope: SkillRef["scope"], out: SkillRef[]): void {
   const dir = join(root, base);
   if (!existsSync(dir)) return;
-  let entries: ReturnType<typeof readdirSync>;
+  let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch {
