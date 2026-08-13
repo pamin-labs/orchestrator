@@ -30,6 +30,9 @@ export interface StoredEvent extends EventInput {
 export interface LiveFrame {
   type: "live";
   grpId: number | null;
+  /** A standing agent has no group, so this is the only thing that scopes its
+      output to a project rather than to every project's feed. */
+  projectId?: number | null;
   agentId: number | null;
   /** Who is talking. Without it the desk wall and the timeline say "agent". */
   role?: string;

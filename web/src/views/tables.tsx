@@ -1,4 +1,6 @@
-import { Empty, H2, H3, Meta } from "../ui/bits";
+import { useState } from "react";
+import { Empty, H3, Meta } from "../ui/bits";
+import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Bar, Table, TBody, TD, TH, THead, TR } from "../ui/table";
 import { Tip } from "../ui/tooltip";
@@ -18,6 +20,7 @@ import { cn, K, money } from "../lib/utils";
 export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; projectId: number }) {
   const ids = new Set(st.groups.filter((g) => g.project_id === projectId).map((g) => g.id));
   const rows = st.agents.filter((a) => !a.grp_id || ids.has(a.grp_id));
+  const [idle, setIdle] = useState(false);
   if (!rows.length) {
     return <Empty>还没有人上工。批准一张计划卡，这里会列出每个 agent 在做什么、跑到第几个 turn、正在打印什么。</Empty>;
   }
@@ -26,81 +29,76 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
   for (const f of frames) {
     if (f.agentId != null && (f.cls === "partial" || f.cls === "tool")) last.set(f.agentId, f.text);
   }
-  return (
-    <Table min="52rem">
-      <THead>
-        <TR>
-          <TH>角色</TH><TH>需求</TH><TH>切片</TH><TH num>turn</TH><TH>当前动作</TH><TH>model</TH><TH>权限</TH>
-          <TH num>session token</TH><TH num>支出</TH>
-        </TR>
-      </THead>
-      <TBody>
-        {rows.map((a) => {
-          const sl = st.slices.find((s) => s.id === a.slice_id);
-          const tail = last.get(a.id);
-          return (
-            <TR key={a.id}>
-              <TD className="font-mono text-[0.75rem]">
-                {a.role}
-                {a.state === "running" && <span className="ml-1.5 font-sans text-[0.625rem] text-ok">在跑</span>}
-              </TD>
-              <TD className="text-[0.75rem] text-ink-2">
-                {st.groups.find((g) => g.id === a.grp_id)?.name ?? "常驻"}
-              </TD>
-              <TD className="max-w-[13rem]">
-                {sl ? (
-                  <Tip label={sl.accept_spec}>
-                    <span className="truncate text-[0.75rem] text-ink-2">
-                      <span className="font-mono text-[0.6875rem] text-ink-3">S{sl.seq}</span> {sl.title}
-                    </span>
-                  </Tip>
-                ) : (
-                  <Meta>—</Meta>
-                )}
-              </TD>
-              <TD num>
-                {/* A high count on one slice is the visible shape of circling. */}
-                <span className={cn(a.turns >= 15 ? "text-warn" : "text-ink-3")}>{a.turns || "—"}</span>
-              </TD>
-              <TD className="max-w-[24rem]">
-                <div className="truncate text-[0.75rem] text-ink-2">{a.activity ?? a.state}</div>
-                {tail && <div className="truncate font-mono text-[0.625rem] text-ink-3">{tail.slice(-140)}</div>}
-              </TD>
-              <TD><Meta>{a.model.replace("claude-", "")}</Meta></TD>
-              <TD><Meta>{a.clearance}</Meta></TD>
-              <TD num><span className="text-ink-3">{K(a.session_tokens)}</span></TD>
-              <TD num>{money(a.total_usd)}</TD>
-            </TR>
-          );
-        })}
-      </TBody>
-    </Table>
-  );
-}
+  // Running first, then by requirement. At three agents the order does not matter;
+  // at thirty, the two that are working are the only ones being looked for.
+  const running = rows.filter((a) => a.state === "running");
+  const rest = rows.filter((a) => a.state !== "running");
+  const shown = idle ? [...running, ...rest] : running.length ? running : rows;
 
-/**
- * Delivered work.
- *
- * 收尾 dissolves the group and it left no trace in any view, which made the one
- * irreversible button on the panel indistinguishable from losing the requirement.
- */
-export function Delivered({ st, projectId }: { st: State; projectId: number }) {
-  const rows = (st.archived ?? []).filter((a) => a.project_id === projectId);
-  if (!rows.length) return null;
   return (
     <>
-      <H2 className="mt-9">已交付 <span className="font-normal tracking-normal text-ink-3">{rows.length}</span></H2>
-      <div className="grid gap-1">
-        {rows.map((a) => (
-          <div key={a.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 border-t border-rule-soft py-1.5 first:border-t-0">
-            <span className="min-w-0 truncate text-[0.8125rem] text-ink-2">
-              {a.name}
-              {a.pr_number ? <Meta className="ml-2">#{a.pr_number}</Meta> : null}
-            </span>
-            <Meta>{a.slices} 片 · {money(a.spent_usd)}</Meta>
-          </div>
-        ))}
+      <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
+        <h2 className="text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2">工位</h2>
+        <Meta>在跑 {running.length} · 共 {rows.length}</Meta>
+        <span className="grow" />
+        {running.length > 0 && rest.length > 0 && (
+          <Button variant="quiet" size="sm" onClick={() => setIdle((v) => !v)}>
+            {idle ? "只看在跑的" : `连空闲的一起看（${rest.length}）`}
+          </Button>
+        )}
       </div>
+      <Table min="54rem">
+        <THead>
+          <TR>
+            <TH>角色</TH><TH>需求</TH><TH>切片</TH><TH num>turn</TH><TH>在做什么</TH><TH>model</TH><TH>权限</TH>
+            <TH num>session</TH><TH num>支出</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {shown.map((a) => {
+            const sl = st.slices.find((s) => s.id === a.slice_id);
+            const tail = last.get(a.id);
+            return (
+              <TR key={a.id}>
+                <TD className="whitespace-nowrap font-mono text-[0.75rem]">
+                  {a.state === "running" && <i className="breathe mr-1.5 inline-block size-1.5 rounded-full bg-ok" />}
+                  {a.role}
+                </TD>
+                <TD className="max-w-[10rem] truncate text-[0.75rem] text-ink-2">
+                  {st.groups.find((g) => g.id === a.grp_id)?.name ?? "常驻"}
+                </TD>
+                <TD className="max-w-[12rem]">
+                  {sl ? (
+                    <Tip label={sl.accept_spec}>
+                      <span className="block truncate text-[0.75rem] text-ink-2">
+                        <span className="font-mono text-[0.6875rem] text-ink-3">S{sl.seq}</span> {sl.title}
+                      </span>
+                    </Tip>
+                  ) : (
+                    <Meta>—</Meta>
+                  )}
+                </TD>
+                <TD num>
+                  {/* A high count on one slice is the visible shape of circling, and
+                      the watchdog's own threshold is 5 turns on one file. */}
+                  <span className={cn(a.turns >= 15 ? "text-warn" : "text-ink-3")}>{a.turns || "—"}</span>
+                </TD>
+                <TD className="max-w-[22rem]">
+                  <div className="truncate text-[0.75rem] text-ink-2">{a.activity ?? a.state}</div>
+                  {tail && <div className="truncate font-mono text-[0.625rem] text-ink-3">{tail.slice(-140)}</div>}
+                </TD>
+                <TD><Meta>{a.model.replace("claude-", "")}</Meta></TD>
+                <TD><Meta>{a.clearance}</Meta></TD>
+                <TD num><span className="text-ink-3">{K(a.session_tokens)}</span></TD>
+                <TD num>{money(a.total_usd)}</TD>
+              </TR>
+            );
+          })}
+        </TBody>
+      </Table>
+      {!idle && running.length > 0 && rest.length > 0 && (
+        <div className="mt-2 text-[0.75rem] text-ink-3">另外 {rest.length} 个空闲，没在花钱。</div>
+      )}
     </>
   );
 }

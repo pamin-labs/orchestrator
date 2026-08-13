@@ -24,14 +24,24 @@ export function Timeline({
     label = st.projects.find((p) => p.id === projectId)?.name ?? "";
   }
 
-  // Frames with no group are kept: usually a standing Architect or CoS answering,
-  // which is exactly the exchange being looked for.
-  const shown = frames.filter((f) => !ids || f.grpId == null || ids.has(f.grpId)).slice(-160).reverse();
+  // Scope, in order of precision: the requirement, else the project, else
+  // everything. A standing Architect or CoS has no group — that exchange is exactly
+  // what this feed is for — so it is kept when it belongs to this project, and only
+  // an unattributable orchestrator line is shown everywhere.
+  const shown = frames
+    .filter((f) => {
+      if (!ids) return true;
+      if (f.grpId != null) return ids.has(f.grpId);
+      if (projectId != null && f.projectId != null) return f.projectId === projectId;
+      return true;
+    })
+    .slice(-160)
+    .reverse();
 
   return (
     <div>
-      <h2 className="mb-3 text-[0.625rem] font-semibold uppercase tracking-[0.13em] text-ink-3">
-        事件流 · {label}
+      <h2 className="mb-2.5 flex items-baseline gap-1.5 text-[0.75rem] font-semibold text-ink-2">
+        事件流 <span className="truncate font-normal text-ink-3">{label}</span>
       </h2>
       {!shown.length && <div className="text-[0.75rem] text-ink-3">无事件</div>}
       <div className="max-h-[calc(100vh-11rem)] overflow-y-auto overscroll-contain">

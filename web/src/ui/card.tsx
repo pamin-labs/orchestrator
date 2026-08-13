@@ -38,7 +38,7 @@ export function CardLabel({ className, ...rest }: Div) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-3.5 py-2 text-[0.625rem] font-semibold uppercase tracking-[0.13em]",
+        "flex items-center gap-2 px-3.5 py-2 text-[0.75rem] font-semibold tracking-[0.02em]",
         className,
       )}
       {...rest}

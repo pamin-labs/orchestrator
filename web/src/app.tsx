@@ -15,12 +15,16 @@ import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
 import { Picker } from "./views/picker";
 import { Pipeline } from "./views/pipeline";
+import { Progress } from "./views/progress";
 import { Queue } from "./views/queue";
 import { Requirement } from "./views/requirement";
 import { Timeline } from "./views/timeline";
-import { CostView, Delivered, Desk, Owns } from "./views/tables";
+import { CostView, Desk, Owns } from "./views/tables";
 
-type View = "home" | "board" | "progress" | "desk" | "owns" | "cost";
+// `req` is a drill-in, not a tab: it only exists with a requirement selected, and
+// the breadcrumb is the way back out. `progress` deep links from before (and from
+// every notification already sent) carry a group id, so they land on the drill-in.
+type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost";
 interface Sel { p: number | null; view: View; g: number | null }
 
 const readHash = (): Sel => {
@@ -78,8 +82,10 @@ export function App() {
 
   const openReq = (grpId: number) => {
     const g = st.groups.find((x) => x.id === grpId);
-    go({ p: g?.project_id ?? sel.p, view: "progress", g: grpId });
+    go({ p: g?.project_id ?? sel.p, view: "req", g: grpId });
   };
+  // A notification sent before this split points at #v=progress&g=N.
+  const view: View = sel.view === "progress" && sel.g ? "req" : sel.view;
 
   // No badge on 概览: the header already carries that count, and two copies of one
   // number is how a reader stops trusting either.
@@ -90,6 +96,7 @@ export function App() {
     ["owns", "所有权"],
     ["cost", "成本"],
   ];
+  const openGroup = sel.g ? st.groups.find((g) => g.id === sel.g) : undefined;
 
   return (
     <TipRoot>
@@ -116,7 +123,20 @@ export function App() {
         {!home && (
           <span className="flex min-w-0 items-baseline gap-2 text-[0.8125rem]">
             <span className="text-ink-3">/</span>
-            <span className="truncate font-display text-[1rem] font-semibold">{proj!.name}</span>
+            {view === "req" && openGroup ? (
+              <>
+                <button
+                  onClick={() => go({ view: "progress", g: null })}
+                  className="cursor-pointer truncate font-display text-[1rem] font-semibold text-ink-2 hover:text-ink"
+                >
+                  {proj!.name}
+                </button>
+                <span className="text-ink-3">/</span>
+                <span className="truncate font-display text-[1rem] font-semibold">{openGroup.name}</span>
+              </>
+            ) : (
+              <span className="truncate font-display text-[1rem] font-semibold">{proj!.name}</span>
+            )}
             <Switcher
               projects={st.projects}
               waiting={(id) => countWaiting(st, id)}
@@ -172,7 +192,10 @@ export function App() {
               onClick={() => go({ view: k, g: k === "progress" ? sel.g : null })}
               className={cn(
                 "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-2 text-[0.8125rem] transition-colors",
-                sel.view === k ? "border-accent font-medium text-ink" : "border-transparent text-ink-3 hover:text-ink",
+                // The drill-in belongs to 进展, so that tab stays lit inside it.
+                view === k || (view === "req" && k === "progress")
+                  ? "border-accent font-medium text-ink"
+                  : "border-transparent text-ink-3 hover:text-ink",
               )}
             >
               {zh}
@@ -197,11 +220,17 @@ export function App() {
           ) : home ? (
             <Home st={st} onEnter={(p) => go({ p, view: "board", g: null })} onOpen={openReq}
                   onAdd={() => setPicking(true)} refresh={refresh} />
-          ) : sel.view === "board" ? (
+          ) : view === "board" ? (
             <>
               <Queue st={st} projectId={sel.p} onOpen={openReq} refresh={refresh} />
               {groups.length ? (
-                <Pipeline st={st} groups={groups} onOpen={openReq} />
+                <Pipeline
+                  st={st}
+                  groups={groups}
+                  onOpen={openReq}
+                  maxGroups={st.limits?.maxGroups ?? undefined}
+                  onAll={() => go({ view: "progress", g: null })}
+                />
               ) : (
                 <Card>
                   <CardBody>
@@ -213,23 +242,19 @@ export function App() {
                   </CardBody>
                 </Card>
               )}
-              <Delivered st={st} projectId={sel.p!} />
+
             </>
-          ) : sel.view === "progress" ? (
-            <>
-              {sel.g && (
-                <Button variant="quiet" className="mb-4" onClick={() => go({ view: "board", g: null })}>
-                  ← 返回概览
-                </Button>
-              )}
-              {(sel.g ? groups.filter((g) => g.id === sel.g) : groups).map((g) => (
-                <Requirement key={g.id} st={st} g={g} refresh={refresh} open={!!sel.g} />
-              ))}
-              {!groups.length && <div className="text-[0.75rem] text-ink-3">该项目暂无需求。</div>}
-            </>
-          ) : sel.view === "desk" ? (
+          ) : view === "progress" ? (
+            <Progress st={st} projectId={sel.p!} onOpen={openReq} maxGroups={st.limits?.maxGroups} />
+          ) : view === "req" ? (
+            openGroup ? (
+              <Requirement st={st} g={openGroup} refresh={refresh} open />
+            ) : (
+              <div className="text-[0.8125rem] text-ink-3">这个需求已经归档或不存在了。</div>
+            )
+          ) : view === "desk" ? (
             <Desk st={st} frames={frames} projectId={sel.p!} />
-          ) : sel.view === "owns" ? (
+          ) : view === "owns" ? (
             <Owns st={st} projectId={sel.p!} />
           ) : (
             <CostView st={st} cost={cost} projectId={sel.p!} />

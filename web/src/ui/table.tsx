@@ -29,7 +29,9 @@ export function TH({ className, num, ...rest }: React.ThHTMLAttributes<HTMLTable
     <th
       className={cn(
         "border-b border-rule pb-1.5 pr-3 text-[0.6875rem] font-medium uppercase tracking-[0.07em] text-ink-3",
-        num ? "pr-0 text-right" : "text-left",
+        // Only the last column may lose its gutter: zeroing it on every numeric
+        // column ran "turn" into "当前动作", in the header and in the cells.
+        num ? "text-right last:pr-0" : "text-left",
         className,
       )}
       {...rest}
@@ -42,7 +44,7 @@ export function TD({ className, num, ...rest }: React.TdHTMLAttributes<HTMLTable
     <td
       className={cn(
         "border-b border-rule-soft py-1.5 pr-3 align-top",
-        num && "pr-0 text-right font-mono text-[0.75rem]",
+        num && "text-right font-mono text-[0.75rem] last:pr-0",
         className,
       )}
       {...rest}
