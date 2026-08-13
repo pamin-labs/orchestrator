@@ -1,4 +1,5 @@
 import { ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 import { Button, LinkButton } from "../ui/button";
 import { Menu, MenuItem } from "../ui/menu";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
@@ -760,13 +761,28 @@ function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
             refresh();
             return r.ok;
           }}
-          actions={() => (
-            <Tip label="技术选型和架构边界是 Architect 的判断，不是你的。转过去，它答不了会自己回来。">
-              <Button size="sm"
-                onClick={async () => { await post(`/api/escalations/${e.id}/delegate`, { to: "architect" }); refresh(); }}>
-                转 Architect
-              </Button>
-            </Tip>
+          actions={({ text, busy }) => (
+            <>
+              <Tip label="技术选型和架构边界是 Architect 的判断，不是你的。转过去，它答不了会自己回来。">
+                <Button size="sm"
+                  onClick={async () => { await post(`/api/escalations/${e.id}/delegate`, { to: "architect" }); refresh(); }}>
+                  转 Architect
+                </Button>
+              </Tip>
+              {/* The commonest blocker here is one no answer resolves — a config file
+                  is wrong, a shared fixture is broken. Answering it means typing the
+                  fix into a chat box for an agent that is not allowed to apply it, so
+                  these sat in 待办 until the boss did the work by hand. */}
+              <Tip label="没有哪句回答能解决它：开成一条需求去做。这一组会等它落地后自动继续">
+                <Button size="sm" variant="go" disabled={busy} onClick={async () => {
+                  const r = await post(`/api/escalations/${e.id}/requirement`, { text });
+                  refresh();
+                  if (r.ok) toast.success(r.text);
+                }}>
+                  开成需求
+                </Button>
+              </Tip>
+            </>
           )}
         />
       )}

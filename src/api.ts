@@ -596,6 +596,85 @@ const postTriage: Handler = async (ctx, req) => {
   return text("ok");
 };
 
+/**
+ * This question is not a question. It is a piece of work.
+ *
+ * The commonest thing on the boss's queue is a blocker that no answer resolves:
+ * a config file is wrong, a shared fixture is broken, four groups are red on one
+ * line. Answering it means typing the fix into a chat box for an agent that is not
+ * allowed to apply it; the honest response is "somebody has to go and do this".
+ * There was no way to say that, so these sat in 待办 until the boss did the work
+ * by hand — which is the one outcome the whole system exists to avoid.
+ *
+ * `orch blocked` is the same move made by an agent. This is it made by the boss,
+ * on anything already in the queue, including the findings agents cannot act on.
+ */
+const postEscalationRequirement: Handler = async (ctx, req, params) => {
+  const id = Number(params.id);
+  const b = await body<{ text?: string; name?: string }>(req);
+  const esc = ctx.db
+    .query<{ grp_id: number | null; question: string; answer: string | null }, [number]>(
+      "SELECT grp_id, question, answer FROM escalation WHERE id = ?",
+    )
+    .get(id);
+  if (!esc) return text("no such question", 404);
+  if (esc.answer) return bad("already answered");
+
+  const projectId = esc.grp_id
+    ? (ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(esc.grp_id)
+        ?.project_id ?? null)
+    : (ctx.db.query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?").get(
+        ctx.db.query<{ agent_id: number | null }, [number]>("SELECT agent_id FROM escalation WHERE id = ?").get(id)
+          ?.agent_id ?? 0,
+      )?.project_id ?? null);
+  if (!projectId) return bad("cannot tell which project this belongs to");
+
+  const idea = [b.text?.trim(), esc.question].filter(Boolean).join("\n\n");
+  const name = (b.name ?? slug(idea)).slice(0, 40) || `esc-${id}`;
+  const grp = ctx.db
+    .query<{ id: number }, [number, string]>(
+      "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'PLANNING', unixepoch() * 1000) RETURNING id",
+    )
+    .get(projectId, name)!;
+  ctx.db.run("INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000)", [
+    projectId,
+    grp.id,
+  ]);
+  ctx.db.run(
+    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
+    [projectId, grp.id, ctx.config.language, idea],
+  );
+  ctx.bus.emit({ grpId: grp.id, author: "boss", kind: "boss_say", intent: "request", body: idea });
+  ctx.sched.enqueue("agent_turn", { grp_id: grp.id, priority: 6, payload: { role: "dispatcher", idea } });
+
+  ctx.db.run(
+    `UPDATE escalation SET answer = ?, answered_by = 'boss', chain_state = 'answered',
+     answered_at = unixepoch() * 1000 WHERE id = ?`,
+    [`开成需求 ${name}（grp ${grp.id}）`, id],
+  );
+  // A blocker on a group that has already stopped is what `blocked_on` is for: the
+  // group comes back by itself when the new requirement lands, so this does not
+  // become a second thing for the boss to remember.
+  if (esc.grp_id) {
+    ctx.db.run(
+      `UPDATE grp SET blocked_on = ? WHERE id = ? AND status IN ('PAUSED','PAUSING') AND blocked_on IS NULL`,
+      [grp.id, esc.grp_id],
+    );
+    ctx.bus.emit({
+      grpId: esc.grp_id,
+      author: "boss",
+      kind: "state_change",
+      body: `这个问题开成了需求 ${name}（grp ${grp.id}）`,
+      meta: { requirement: grp.id, escalation_id: id },
+    });
+  }
+  const w = ctx.waiters.get(`escalation:${id}`);
+  ctx.waiters.delete(`escalation:${id}`);
+  w?.(`the boss turned this into requirement ${name} (grp ${grp.id}); stop and wait for it`);
+  ctx.sched.tick();
+  return json({ grp_id: grp.id, name });
+};
+
 const postRevoke: Handler = async (ctx, _req, params) => {
   const out = await revoke({ ctx, git: ctx.git }, Number(params.id));
   return json(out);
@@ -809,6 +888,15 @@ const postDrop: Handler = async (ctx, req) => {
     if (!ctx.git || !repo) return bad("cannot verify a commit without a repo");
     const r = await ctx.git(repo.repo_path, ["cat-file", "-t", sha], repo.repo_path);
     if (r.code !== 0 || r.out.trim() !== "commit") return bad(`${sha} is not a commit in this repo`);
+    // And it has to be on the main line. Any real sha passes cat-file, including
+    // one on an abandoned branch or on the group's own unmerged work — "it is
+    // already done" means done where everyone can see it.
+    const merged = await ctx.git(
+      repo.repo_path,
+      ["merge-base", "--is-ancestor", sha, "HEAD"],
+      repo.repo_path,
+    );
+    if (merged.code !== 0) return bad(`${sha.slice(0, 8)} is a real commit but is not on the main line yet`);
     evidence = `already landed in ${sha.slice(0, 8)}`;
   } else {
     return bad("give evidence: --duplicate <group> or --commit <sha>");
@@ -2357,6 +2445,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/answer$/, postAnswer],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/revoke$/, postRevoke],
+  ["POST", /^\/api\/escalations\/(?<id>\d+)\/requirement$/, postEscalationRequirement],
   ["POST", /^\/api\/escalations\/(?<id>\d+)\/delegate$/, postDelegate],
 ];
 
