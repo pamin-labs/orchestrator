@@ -1,8 +1,14 @@
 import { cn } from "../lib/utils";
 
-/** Uppercase section label. Sans, never the display face: 宋体 is weak at 10px. */
+/**
+ * Section label.
+ *
+ * Was 10px, uppercase, tracked out to 0.13em. Uppercase buys contrast in Latin and
+ * nothing at all in Chinese, where it only widens the tracking of characters that
+ * were already too small to read. 12px, normal case, ink-2.
+ */
 export const H2 = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <h2 className={cn("text-[0.625rem] font-semibold uppercase tracking-[0.13em] text-ink-3 mb-3", className)}>
+  <h2 className={cn("mb-2.5 text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2", className)}>
     {children}
   </h2>
 );

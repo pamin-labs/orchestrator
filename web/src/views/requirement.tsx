@@ -275,11 +275,38 @@ function Delegated({ st, g, refresh }: { st: State; g: Group; refresh: () => voi
  * decomposition survives to the end.
  */
 function Say({ g, refresh }: { g: Group; refresh: () => void }) {
+  const draft = g.status === "DRAFT" || g.status === "PLANNING";
   const send = async (d: { text: string; attachments: unknown[] }, as?: "patch" | "respec" | "reject") => {
     const r = await post("/api/say", { group_id: g.id, body: d.text, attachments: d.attachments, as });
     refresh();
     return r.ok;
   };
+
+  // Before approval there is no PM and no work to patch: the only two things worth
+  // saying are "also do this" and "start over".
+  if (draft) {
+    return (
+      <>
+        <H2 className="mt-6">要说点什么</H2>
+        <Composer
+          rows={2}
+          placeholder="补充要求，或者写退回理由。截图、设计稿直接粘。⌘Enter 补充给 Dispatcher"
+          submit="补充要求"
+          onSubmit={(d) => send(d, "patch")}
+          actions={({ text, attachments, busy, clear }) => (
+            <Tip label="这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖">
+              <Button size="sm" disabled={busy || !text} onClick={async () => {
+                const r = await post(`/api/draft/${g.id}/reject`, { reason: text, attachments });
+                refresh();
+                if (r.ok) clear();
+              }}>退回重拆</Button>
+            </Tip>
+          )}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <H2 className="mt-6">跟这个组说话</H2>
@@ -329,7 +356,6 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
   const idea = st.ideas.find((i) => i.grpId === g.id)?.body ?? "";
   const late = st.lateObjections.filter((o) => o.grpId === g.id);
   const [card, setCard] = useState(filed);
-  const [sending, setSending] = useState(false);
 
   return (
     <>
@@ -353,7 +379,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
             onChange={(e) => setCard(e.target.value)}
             aria-label="计划卡"
           />
-          <div className="mt-3">
+          <div className="mt-3 flex items-baseline gap-3">
             <Button variant="go" onClick={async () => {
               // Send the text only when edited: an untouched card is approved as
               // filed, so "approve" and "edit then approve" stay distinct requests.
@@ -361,20 +387,10 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
               await post(`/api/draft/${g.id}/approve`, edited ? { card: card.trim() } : {});
               refresh();
             }}>批准开工</Button>
+            <span className="text-[0.75rem] text-ink-3">
+              卡可以直接改再批。要退回重拆就在下面写理由。
+            </span>
           </div>
-          <H2 className="mt-5">或者退回重拆</H2>
-          <Composer
-            rows={2}
-            placeholder="哪里不对。这句话会成为最高优先级 fact，Dispatcher 按它重新深挖。⌘Enter 退回"
-            submit={sending ? "退回中…" : "退回重拆"}
-            onSubmit={async ({ text, attachments }) => {
-              setSending(true);
-              const r = await post(`/api/draft/${g.id}/reject`, { reason: text, attachments });
-              setSending(false);
-              refresh();
-              return r.ok;
-            }}
-          />
         </>
       )}
     </>

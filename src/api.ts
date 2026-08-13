@@ -55,7 +55,17 @@ export interface Ctx {
   hire?: (grpId: number | null, role: string, projectId?: number | null) => number | null;
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
-  config: { language: string; difficultyModel: Record<string, string>; workRoot: string; dataDir?: string; autoAdvance?: boolean; autoAcceptTiers?: string[] };
+  config: {
+    language: string;
+    difficultyModel: Record<string, string>;
+    workRoot: string;
+    dataDir?: string;
+    autoAdvance?: boolean;
+    autoAcceptTiers?: string[];
+    /** Surfaced to the panel: how many groups may run at once, and lease slots. */
+    maxGroups?: number;
+    leaseSlots?: number;
+  };
 }
 
 type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) => Promise<Response>;
@@ -1030,6 +1040,14 @@ export function snapshot(ctx: Ctx) {
          FROM grp g WHERE g.status = 'DISSOLVED' ORDER BY at DESC LIMIT 12`,
       )
       .all(),
+    // The panel shows "并行 3/3" from this: without the cap, a queued group looks
+    // stuck rather than queued, which is the difference between a bug and a setting.
+    limits: {
+      maxGroups: ctx.config.maxGroups ?? null,
+      leaseSlots: ctx.config.leaseSlots ?? null,
+      autoAdvance: !!ctx.config.autoAdvance,
+      autoAcceptTiers: ctx.config.autoAcceptTiers ?? [],
+    },
     lastSeq:
       ctx.db.query<{ s: number | null }, []>("SELECT max(seq) AS s FROM event").get()?.s ?? 0,
   };
@@ -1789,7 +1807,23 @@ const getStream: Handler = async (ctx, req) => {
           return false;
         }
       };
-      const send = (data: unknown) => raw(`data: ${JSON.stringify(data)}\n\n`);
+      // Which project a frame belongs to, so the feed can be scoped. grp -> project
+      // is immutable, so it is cached rather than queried per frame — live frames
+      // arrive per token.
+      const ofGrp = new Map<number, number | null>();
+      const projectOf = (grpId: number | null | undefined): number | null => {
+        if (grpId == null) return null;
+        if (!ofGrp.has(grpId)) {
+          ofGrp.set(
+            grpId,
+            ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
+              ?.project_id ?? null,
+          );
+        }
+        return ofGrp.get(grpId) ?? null;
+      };
+      const send = (data: any) =>
+        raw(`data: ${JSON.stringify({ ...data, projectId: data.projectId ?? projectOf(data.grpId) })}\n\n`);
 
       // A stream that sends nothing has sent no bytes, and a browser does not
       // report a byteless response as open — the UI sat on "connecting…" forever

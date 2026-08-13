@@ -43,6 +43,7 @@ export interface State {
   answered: { id: number; grp_id: number; question: string; answer: string; answered_by: string; ref_note_id: number | null }[];
   mergeQueue: { projectId: number; grpId: number; name: string; branch: string | null; seq: number }[];
   archived: Archived[];
+  limits: { maxGroups: number | null; leaseSlots: number | null; autoAdvance: boolean; autoAcceptTiers: string[] };
   lastSeq: number;
 }
 export interface CostRow { label: string; tokens: number; usd: number }
@@ -52,7 +53,8 @@ export interface Cost {
 
 const EMPTY: State = {
   projects: [], groups: [], slices: [], tasks: [], agents: [], escalations: [],
-  draftCards: [], lateObjections: [], ideas: [], answered: [], mergeQueue: [], archived: [], lastSeq: 0,
+  draftCards: [], lateObjections: [], ideas: [], answered: [], mergeQueue: [], archived: [],
+  limits: { maxGroups: null, leaseSlots: null, autoAdvance: false, autoAcceptTiers: [] }, lastSeq: 0,
 };
 
 /** GET that surfaces its own failure. Used for the on-demand panels (evidence, logs). */
@@ -80,6 +82,7 @@ export async function post(path: string, body?: unknown) {
 export interface Frame {
   cls: "say" | "ask" | "state" | "tool" | "partial";
   grpId: number | null;
+  projectId: number | null;
   at: number;
   author: string;
   target?: string | null;
@@ -131,11 +134,14 @@ export function useOrch() {
               next[next.length - 1] = { ...last, text: (last.text + f.body).slice(-300) };
               return next;
             }
-            return [...next, { cls, grpId: f.grpId ?? null, at, author: f.role ?? "agent", text: f.body, agentId: f.agentId }];
+            return [...next, {
+              cls, grpId: f.grpId ?? null, projectId: f.projectId ?? null, at,
+              author: f.role ?? "agent", text: f.body, agentId: f.agentId,
+            }];
           }
           return [...next, {
-            cls: KIND[f.kind] ?? "say", grpId: f.grpId ?? null, at, author: f.author,
-            target: f.target, intent: f.intent, text: f.body,
+            cls: KIND[f.kind] ?? "say", grpId: f.grpId ?? null, projectId: f.projectId ?? null, at,
+            author: f.author, target: f.target, intent: f.intent, text: f.body,
           }];
         });
         if (["state_change", "escalation", "note"].includes(f.kind)) void refresh();
