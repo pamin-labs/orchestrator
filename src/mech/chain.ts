@@ -84,11 +84,16 @@ export function route(deps: ChainDeps, escId: number): string {
   // dispatched. The question then sits at chain_state='pm' forever while the only
   // visible symptom is a group that stopped — which is exactly what a blocker is
   // supposed to prevent.
+  //
+  // Blockers only. An advisory is "answer it if you can" — the sandbox refusing a
+  // command an agent tried is the common one, and it is a JSON blob about a tool
+  // call, not a decision. Lifting those to the boss put five of them on the phone
+  // as "things need you" and buried the one blocker that did.
   const status = esc.grp_id
     ? ctx.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(esc.grp_id)?.status
     : null;
   let level =
-    status && !["PLANNING", "RUNNING", "PR_OPEN"].includes(status)
+    esc.severity === "blocker" && status && !["PLANNING", "RUNNING", "PR_OPEN"].includes(status)
       ? "boss"
       : (esc.chain_state as (typeof CHAIN)[number]);
   for (;;) {

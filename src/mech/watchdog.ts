@@ -253,8 +253,12 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // a stopped group, and a 待办 count of zero.
   const stranded = ctx.db
     .query<{ id: number }, []>(
+      // Blockers only, same reason route() lifts only blockers: an advisory that
+      // nobody answers costs nothing, and a clearance denial is a JSON blob about
+      // a tool call rather than a decision anyone can take.
       `SELECT e.id FROM escalation e JOIN grp g ON g.id = e.grp_id
-       WHERE e.answer IS NULL AND e.chain_state NOT IN ('boss', 'answered', 'revoked')
+       WHERE e.answer IS NULL AND e.severity = 'blocker'
+         AND e.chain_state NOT IN ('boss', 'answered', 'revoked')
          AND g.status NOT IN ('PLANNING', 'RUNNING', 'PR_OPEN')`,
     )
     .all();
@@ -324,6 +328,12 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // at 102% of its budget", every few seconds, until the feed was worthless. The
   // notifier already backs off; the event log needs the same rule. A repeat is a
   // reminder, not a new problem.
+  //
+  // The returned list is filtered to the same set, not just the emitted events.
+  // It is what the caller pushes to the boss's phone, and leaving it unfiltered
+  // meant the timeline was deduplicated while the notifications were not — one
+  // stalled group produced a push every thirty seconds, all night.
+  const fresh: Finding[] = [];
   for (const f of findings) {
     const last = ctx.db
       .query<{ at: number }, [string, number | null, number | null]>(
@@ -334,6 +344,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       )
       .get(f.rule, f.grpId ?? null, f.grpId ?? null);
     if (last?.at && now() - last.at < REEMIT_MS) continue;
+    fresh.push(f);
     ctx.bus.emit({
       grpId: f.grpId,
       author: "watchdog",
@@ -344,7 +355,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       meta: { rule: f.rule },
     });
   }
-  return findings;
+  return fresh;
 }
 
 /**
