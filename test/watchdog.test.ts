@@ -402,3 +402,19 @@ test("the group it was waiting on landed, so it starts again by itself", async (
   expect(g.status).toBe("RUNNING");
   expect(g.blocked_on).toBeNull();
 });
+
+test("a question stranded on a stopped group is lifted to the boss", async () => {
+  // route() handles this at routing time, but a group can stop *after* a question
+  // was handed to its PM — and every one filed before that fix is still sitting
+  // where it was. Symptom: a stopped group and a 待办 count of zero.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = 999_999 WHERE id = 1");
+  h.db.run(
+    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+     VALUES (1, 'blocker', 'S1 failed the gate 3 times', 'pm', 0)`,
+  );
+  await runWatchdog(h.deps);
+  expect(
+    h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state,
+  ).toBe("boss");
+});

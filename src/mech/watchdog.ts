@@ -3,6 +3,7 @@ import type { Config } from "../config.ts";
 import { say } from "../lang.ts";
 import { interrupt, park, settlePausing } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
+import { route } from "./chain.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
 import type { GitRunner } from "./worktree.ts";
 
@@ -243,6 +244,21 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       body: `cancelled ${orphanQueued.changes} job(s) queued for a dissolved group`,
     });
   }
+
+  // 11. A question stranded below the boss on a group that cannot answer it.
+  //
+  // route() sends these to the boss now, but only at the moment they are routed —
+  // a group can stop *after* a question was handed to its PM, and every one filed
+  // before that fix is still sitting where it was. The symptom is the worst kind:
+  // a stopped group, and a 待办 count of zero.
+  const stranded = ctx.db
+    .query<{ id: number }, []>(
+      `SELECT e.id FROM escalation e JOIN grp g ON g.id = e.grp_id
+       WHERE e.answer IS NULL AND e.chain_state NOT IN ('boss', 'answered', 'revoked')
+         AND g.status NOT IN ('PLANNING', 'RUNNING', 'PR_OPEN')`,
+    )
+    .all();
+  for (const e of stranded) route({ ctx, git: deps.git, notifyBoss: ctx.notifyBoss }, e.id);
 
   // 10. The group it was waiting on has landed.
   //
