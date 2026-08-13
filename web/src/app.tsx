@@ -29,6 +29,15 @@ import { CostView, Desk, Owns } from "./views/tables";
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
 type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes";
+
+/**
+ * Views that keep something pinned and scroll the rest themselves.
+ *
+ * They own a tab strip, a verdict line or a rail that has to stay put while a
+ * long list moves past it. Everything else scrolls whole, which is right when the
+ * page has no controls of its own to lose.
+ */
+const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes"]);
 interface Sel { p: number | null; view: View; g: number | null; t: string | null }
 
 const readHash = (): Sel => {
@@ -218,7 +227,7 @@ export function App() {
         spend — it is how much of tonight is left on each of the two accounts, and
         it changes what the boss approves next. It stays grey until 80%.
       */}
-      <header className="sticky top-0 z-10 flex items-center gap-4 border-b border-rule bg-rail px-6 py-1.5">
+      <header className="sticky top-0 z-10 flex h-12 items-center gap-4 border-b border-rule bg-rail px-6">
         <button
           className="cursor-pointer font-display text-[1.0625rem] font-semibold"
           onClick={() => go({ view: "home", p: null, g: null })}
@@ -285,7 +294,7 @@ export function App() {
       </header>
 
       {!home && (
-        <nav className="sticky top-9 z-9 flex gap-5 overflow-x-auto border-b border-rule bg-rail px-6">
+        <nav className="sticky top-12 z-9 flex gap-5 overflow-x-auto border-b border-rule bg-rail px-6">
           {VIEWS.map(([k, zh]) => (
             <button
               key={k}
@@ -317,10 +326,19 @@ export function App() {
           each view decides what scrolls inside it. 4.5rem is header plus nav. */}
       <Group
         orientation="horizontal"
-        className={cn("h-[calc(100vh-4.5rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
+        className={cn("h-[calc(100vh-5.25rem)] min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
       >
-        <Panel className="min-w-0 overflow-y-auto" defaultSize="100%">
-          <div className="max-w-[76rem] px-6 pb-16 pt-5">
+        <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
+          {/* The view decides what scrolls. 成本 has a tab strip and a rail that
+              must stay put, so it manages its own panes; everything else scrolls
+              whole. Two scrollbars, or a page that grows past the viewport with
+              its controls at the top, are the two failures this picks between. */}
+          <div
+            className={cn(
+              "flex h-full max-w-[76rem] flex-col px-6 pt-5",
+              SELF_SCROLL.has(view) ? "overflow-hidden pb-4" : "overflow-y-auto pb-16",
+            )}
+          >
           <Boundary key={`${sel.view}:${sel.p}:${sel.g}`}>
           {!st.projects.length ? (
             <Card className="max-w-[40rem]">

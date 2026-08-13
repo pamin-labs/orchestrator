@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Meta } from "../ui/bits";
+import { Meta, Pane } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Tip } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
 import { pull } from "../lib/api";
 import { usePaged } from "../lib/page";
-import { clock } from "../lib/utils";
+import { clock, cn } from "../lib/utils";
 
 /**
  * The blackboard's static half.
@@ -73,7 +73,11 @@ export function Notes({ projectId, grpId, compact, tab, onTab }: {
 
   const present = KINDS.filter(([k]) => notes.some((n) => n.kind === k));
   return (
-    <Tabs value={tab ?? present[0]?.[0] ?? "journal"} onValueChange={onTab}>
+    <Tabs
+      value={tab ?? present[0]?.[0] ?? "journal"}
+      onValueChange={onTab}
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <TabList>
         {present.map(([k, zh]) => (
           <Tab key={k} value={k} count={notes.filter((n) => n.kind === k).length}>
@@ -81,10 +85,12 @@ export function Notes({ projectId, grpId, compact, tab, onTab }: {
           </Tab>
         ))}
       </TabList>
-      {present.map(([k, , hint]) => (
-        <TabPanel key={k} value={k}>
-          <Meta className="mb-1.5 block">{hint}</Meta>
-          <List notes={notes.filter((n) => n.kind === k)} size={25} />
+      {present.map(([k, zh, hint]) => (
+        <TabPanel key={k} value={k} className="flex min-h-0 flex-1 flex-col">
+          <Meta className="mb-1 block">{hint}</Meta>
+          <Pane>
+            <List notes={notes.filter((n) => n.kind === k)} size={12} />
+          </Pane>
         </TabPanel>
       ))}
     </Tabs>
@@ -146,9 +152,40 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
       </div>
       {/* Indented under its own heading. Six lines of prose butted against the next
           entry's six made one wall of text with rules through it. */}
-      <div className="mt-1.5 whitespace-pre-wrap text-[0.8125rem] leading-[1.7] text-ink-2">
-        {n.body}
+      <Body text={n.body} />
+    </div>
+  );
+}
+
+/**
+ * A note's text, clamped until asked.
+ *
+ * Journals are capped at six lines by the validator, but a retro or a boss
+ * remark is not, and one long entry pushed every other entry off the screen —
+ * turning a list you scan into a document you scroll. Four lines is enough to
+ * know whether this is the one, and the rest is one click away.
+ */
+function Body({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.split("\n").length > 4 || text.length > 320;
+  return (
+    <div className="mt-1.5">
+      <div
+        className={cn(
+          "whitespace-pre-wrap text-[0.8125rem] leading-[1.7] text-ink-2",
+          !open && long && "line-clamp-4",
+        )}
+      >
+        {text}
       </div>
+      {long && (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="mt-0.5 cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
+        >
+          {open ? "收起" : "展开"}
+        </button>
+      )}
     </div>
   );
 }
