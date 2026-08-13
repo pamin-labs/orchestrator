@@ -40,6 +40,11 @@
     --warn: oklch(0.560 0.115 74);
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    /* Nothing is fetched, so character has to come from faces already on the
+       machine. New York for names and totals; Chinese falls through to 宋体, which
+       is the right pairing against 黑体 data rows. Never below 15px: 宋体 goes thin
+       and New York goes fussy, and a data panel cannot afford either. */
+    --display: ui-serif, "New York", "Songti SC", Charter, Georgia, serif;
     --out: cubic-bezier(0.22, 1, 0.36, 1);
     --t: 180ms var(--out);
   }
@@ -82,9 +87,10 @@
   header {
     position: sticky; top: 0; z-index: 10; background: var(--rail);
     border-bottom: 1px solid var(--rule);
-    display: flex; align-items: center; gap: 1rem; padding: 0.5rem 1.25rem;
+    display: flex; align-items: baseline; gap: 1.125rem; padding: 0.5rem 1.5rem;
   }
-  header b { font-size: 0.9375rem; font-weight: 650; }
+  header b { font-family: var(--display); font-size: 1.0625rem; font-weight: 600;
+             letter-spacing: 0.005em; }
   /* Projects are a switch, not a dropdown to hunt through: several projects at
      once is a first-class case, so the current one is visible without a click. */
   .projects { display: flex; gap: 0.25rem; }
@@ -98,7 +104,7 @@
   /* The views PLAN.md names, one at a time. Crowding them onto one screen is how
      the previous version became seven boxes each reporting an absence. */
   nav {
-    display: flex; gap: 1.125rem; padding: 0 1.25rem;
+    display: flex; gap: 1.5rem; padding: 0 1.5rem;
     border-bottom: 1px solid var(--rule); background: var(--rail);
     position: sticky; top: 2.5rem; z-index: 9;
   }
@@ -114,7 +120,7 @@
   main { display: grid; grid-template-columns: minmax(0, 1fr) 0; }
   main.side { grid-template-columns: minmax(0, 1fr) 20rem; }
   @media (max-width: 64rem) { main.side { grid-template-columns: 1fr; } }
-  .view { padding: 1.125rem 1.25rem 5rem; max-width: 76rem; }
+  .view { padding: 1.5rem 1.5rem 6rem; max-width: 76rem; }
   aside { border-left: 1px solid var(--rule); overflow: hidden; }
   aside > div { padding: 1rem 1rem 5rem; }
 
@@ -148,7 +154,8 @@
   .band { padding: 1rem 0; border-top: 1px solid var(--rule); }
   .band:first-of-type { border-top: none; padding-top: 0; }
   .band-head { display: flex; align-items: baseline; gap: 0.625rem; flex-wrap: wrap; }
-  .gname { font-size: 0.9375rem; font-weight: 620; cursor: pointer; }
+  .gname { font-family: var(--display); font-size: 1.125rem; font-weight: 600;
+           letter-spacing: 0.005em; cursor: pointer; }
   .gname:hover { color: var(--accent); }
   .pill {
     font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.06em;
@@ -223,9 +230,10 @@
   .objection em { font-style: normal; font-weight: 600; color: var(--warn); }
 
   /* ---- tables ------------------------------------------------------------ */
-  h2 { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em;
-       color: var(--ink-3); margin: 0 0 0.625rem; }
-  h3 { font-size: 0.8125rem; font-weight: 600; margin: 1.375rem 0 0.5rem; }
+  h2 { font-size: 0.625rem; font-weight: 620; text-transform: uppercase; letter-spacing: 0.13em;
+       color: var(--ink-3); margin: 0 0 0.75rem; }
+  h3 { font-family: var(--display); font-size: 1rem; font-weight: 600; letter-spacing: 0.01em;
+       margin: 2rem 0 0.625rem; }
   table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
   th { text-align: left; font-weight: 500; font-size: 0.6875rem; text-transform: uppercase;
        letter-spacing: 0.07em; color: var(--ink-3); padding: 0 0.75rem 0.375rem 0;
@@ -246,7 +254,7 @@
           border-top: 1px solid var(--rule-soft); cursor: pointer; border-radius: 0.375rem; }
   .prow:hover { background: var(--sunk); }
   .prow.on { background: var(--sunk); }
-  .prow .pn { font-size: 0.875rem; font-weight: 600; }
+  .prow .pn { font-family: var(--display); font-size: 1rem; font-weight: 600; }
   .prow .pp { font-family: var(--mono); font-size: 0.6875rem; color: var(--ink-3); }
   .prow .ps { font-size: 0.75rem; color: var(--ink-3); }
   .prow .ps.mine { color: var(--accent); font-weight: 600; }
@@ -255,18 +263,20 @@
   /* ---- decision queue --------------------------------------------------- */
   /* The boss's whole job is this list, and it can reach zero. A board cannot: it
      always looks half empty, which trains you to ignore it. */
-  .queue { border: 1px solid var(--accent); border-radius: 0.5rem; overflow: hidden; margin-bottom: 1.75rem; }
+  .queue { border: 1px solid var(--accent); border-radius: 0.625rem; overflow: hidden;
+           margin-bottom: 2.5rem; box-shadow: 0 1px 2px oklch(0.435 0.145 285 / 0.06); }
   .queue.clear { border-color: var(--rule); }
-  .qhead { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem;
-           background: var(--accent-soft); font-size: 0.75rem; color: var(--accent); font-weight: 600; }
+  .qhead { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.875rem;
+           background: var(--accent-soft); font-size: 0.625rem; color: var(--accent);
+           font-weight: 620; text-transform: uppercase; letter-spacing: 0.13em; }
   .queue.clear .qhead { background: var(--sunk); color: var(--ink-3); font-weight: 500; }
   .qrow { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr) auto;
-          gap: 0.75rem; align-items: center; padding: 0.625rem 0.75rem;
-          border-top: 1px solid var(--rule-soft); }
+          gap: 1rem; align-items: center; padding: 0.75rem 0.875rem;
+          border-top: 1px solid var(--rule-soft); transition: background var(--t); }
   .qrow:hover { background: var(--sunk); }
   .qrow.on { background: var(--accent-soft); }
   .qrow .kind { font-size: 0.6875rem; color: var(--accent); font-family: var(--mono); }
-  .qrow .what { font-size: 0.8125rem; font-weight: 550; cursor: pointer; }
+  .qrow .what { font-size: 0.875rem; font-weight: 560; cursor: pointer; letter-spacing: 0.002em; }
   .qrow .sub { font-size: 0.75rem; color: var(--ink-3); margin-top: 0.0625rem; }
   .qrow .qacts { display: flex; gap: 0.375rem; }
   .qclear { padding: 1.125rem 0.75rem; font-size: 0.8125rem; color: var(--ink-2); }
@@ -279,7 +289,8 @@
           gap: 0.75rem; align-items: center; padding: 0.6875rem 0;
           border-top: 1px solid var(--rule-soft); cursor: pointer; }
   .pipe:hover { background: var(--sunk); }
-  .pipe .pname { font-size: 0.8125rem; font-weight: 550; overflow-wrap: anywhere; }
+  .pipe .pname { font-family: var(--display); font-size: 0.9375rem; font-weight: 600;
+                 overflow-wrap: anywhere; }
   .pipe .pstate { font-size: 0.6875rem; color: var(--ink-3); font-family: var(--mono); }
   .track2 { display: flex; gap: 0.375rem; align-items: stretch; flex-wrap: wrap; }
   /* A segment per slice. Its ticks are the gates, so length means work and fill
@@ -316,7 +327,7 @@
   dialog::backdrop { background: oklch(0.2 0.01 70 / 0.35); }
   .dtitle { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.75rem 0.875rem;
             border-bottom: 1px solid var(--rule); }
-  .dtitle b { font-size: 0.875rem; }
+  .dtitle b { font-family: var(--display); font-size: 1.0625rem; font-weight: 600; }
   .crumbs { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center;
             padding: 0.5rem 0.875rem; border-bottom: 1px solid var(--rule-soft);
             font-family: var(--mono); font-size: 0.6875rem; }
@@ -331,7 +342,7 @@
   .drow.taken { color: var(--ink-3); }
   .dfoot { display: flex; gap: 0.5rem; align-items: center; padding: 0.75rem 0.875rem;
            border-top: 1px solid var(--rule); }
-  .setup b { font-size: 0.875rem; }
+  .setup b { font-family: var(--display); font-size: 1.0625rem; font-weight: 600; }
   .setup .why { font-size: 0.75rem; color: var(--ink-3); margin: 0.25rem 0 0.75rem; }
 
   /* ---- feed -------------------------------------------------------------- */
@@ -369,14 +380,14 @@
 <nav id="nav"></nav>
 
 <dialog id="pick">
-  <div class="dtitle"><b>选择仓库</b><span class="none" id="pickhint">git 仓库排在前面</span></div>
+  <div class="dtitle"><b>选择仓库</b><span class="none" id="pickhint">git 仓库优先</span></div>
   <div class="crumbs" id="crumbs"></div>
   <div class="dlist" id="dlist"></div>
   <div class="dfoot">
-    <input id="pname" placeholder="项目名，默认取目录名" style="max-width:12rem" aria-label="项目名" />
+    <input id="pname" placeholder="项目名，默认同目录名" style="max-width:12rem" aria-label="项目名" />
     <span class="grow"></span>
     <button onclick="document.getElementById('pick').close()">取消</button>
-    <button class="go" id="pickok">选择此目录</button>
+    <button class="go" id="pickok">选择</button>
   </div>
 </dialog>
 
@@ -435,10 +446,10 @@ async function refresh() {
 /* ------------------------------------------------------------------ shared */
 
 const STATUS_ZH = {
-  PLANNING: "拆解中", DRAFT: "等你批", RUNNING: "在跑", PAUSING: "正在停",
+  PLANNING: "拆解中", DRAFT: "待批", RUNNING: "在跑", PAUSING: "正在停",
   PAUSED: "已暂停", PARKED: "已封存", PR_OPEN: "PR 开着", DISSOLVED: "已解散",
 };
-const WHERE_ZH = { pm: "PM 答不了", architect: "Architect 答不了", cos: "CoS 答不了", boss: "轮到你" };
+const WHERE_ZH = { pm: "PM 处理中", architect: "Architect 处理中", cos: "CoS 处理中", boss: "待你决策" };
 const STOPS = [["self", "自查"], ["gate", "测试"], ["qa", "QA"]];
 
 const owns = (g) => { try { return JSON.parse(g.owns_json || "[]"); } catch { return []; } };
@@ -448,7 +459,7 @@ const agentsOf = (id) => state.agents.filter((a) => a.grp_id === id);
 const asksOf = (id) => state.escalations.filter((e) => e.grp_id === id);
 const since = (ms) => {
   const m = Math.round((Date.now() - ms) / 60000);
-  return m < 1 ? "刚刚" : m < 60 ? `${m}m` : `${Math.round(m / 60)}h`;
+  return m < 1 ? "刚刚" : m < 60 ? `等待 ${m}m` : `等待 ${Math.round(m / 60)}h`;
 };
 
 /** The things that block the boss, per PLAN.md. Nothing else counts as waiting. */
@@ -506,10 +517,10 @@ function progressView() {
   // A selected group is shown alone: that is the drill-in, and it makes room for
   // its tasks, its people and its questions without a second screen.
   const shown = sel.g ? gs.filter((g) => g.id === sel.g) : gs;
-  return `<button class="quiet" style="margin-bottom:.75rem" onclick="go({view:'board',g:null})">← 概览</button>` +
+  return `<button class="quiet" style="margin-bottom:1rem" onclick="go({view:'board',g:null})">← 返回概览</button>` +
     (gs.length
       ? shown.map((g) => bandHtml(g, !!sel.g)).join("")
-      : '<div class="none">该项目暂无需求。概览页「＋ 新需求」添加。</div>');
+      : '<div class="none">该项目暂无需求。</div>');
 }
 
 
@@ -521,7 +532,7 @@ function bandHtml(g, open) {
     <div class="band-head">
       <span class="gname" onclick="go({g:${open ? "null" : g.id}})">${esc(g.name)}</span>
       <span class="pill ${needs ? "needs" : g.status === "RUNNING" ? "live" : ""}">${STATUS_ZH[g.status] ?? esc(g.status)}</span>
-      ${slices.length ? `<span class="meta">${done}/${slices.length} 片已查收</span>` : ""}
+      ${slices.length ? `<span class="meta">已查收 ${done}/${slices.length}</span>` : ""}
       ${g.branch ? `<span class="meta">${esc(g.branch)}</span>` : ""}
       ${budgetHtml(g)}
       <span class="acts">${actionsHtml(g)}</span>
@@ -549,8 +560,8 @@ function actionsHtml(g) {
   if (["PAUSED", "PAUSING"].includes(g.status)) b.push(`<button onclick="ctl(${g.id},'resume')">继续</button>`);
   if (g.status === "PARKED") b.push(`<button onclick="ctl(${g.id},'wake')">唤醒</button>`);
   if (["RUNNING", "PAUSING"].includes(g.status)) {
-    b.push(`<button class="quiet" onclick="interrupt(${g.id},'keep')" title="立刻停手，改到一半的东西留着">打断</button>`);
-    b.push(`<button class="quiet" onclick="interrupt(${g.id},'rollback')" title="立刻停手，并且退回到这一轮开始前">打断并回滚</button>`);
+    b.push(`<button class="quiet" onclick="interrupt(${g.id},'keep')" title="停止当前 turn，保留未完成改动">打断</button>`);
+    b.push(`<button class="quiet" onclick="interrupt(${g.id},'rollback')" title="停止当前 turn 并回滚到起点">打断并回滚</button>`);
   }
   b.push(mergeHtml(g));
   b.push(`<button class="quiet" onclick="ctl(${g.id},'park')">封存</button>`);
@@ -564,9 +575,9 @@ function actionsHtml(g) {
  */
 function mergeHtml(g) {
   if ((state.mergeQueue ?? []).some((m) => m.grpId === g.id)) {
-    return `<button class="go" onclick="landed(${g.id})">已 merge，收尾</button>`;
+    return `<button class="go" onclick="landed(${g.id})">已合入</button>`;
   }
-  return g.status === "PR_OPEN" ? `<span class="pill">排队等 merge</span>` : "";
+  return g.status === "PR_OPEN" ? `<span class="pill">排队中</span>` : "";
 }
 
 function laneHtml(s, g, open) {
@@ -578,7 +589,7 @@ function laneHtml(s, g, open) {
     const cls = v === "pass" ? "pass" : v === "fail" ? "fail" : s.status === k ? "now" : "";
     return `<span class="stop ${cls}"><span class="dot"></span><b>${zh}</b></span>`;
   }).join("") +
-    `<span class="stop ${waiting ? "wait" : ""}"><span class="dot"></span><b>${waiting ? "等你收" : "查收"}</b></span>`;
+    `<span class="stop ${waiting ? "wait" : ""}"><span class="dot"></span><b>${waiting ? "待查收" : "查收"}</b></span>`;
 
   // Who is on this slice, narrated by the orchestrator out of the turn's own
   // stream. Agents are never asked to report progress.
@@ -589,7 +600,7 @@ function laneHtml(s, g, open) {
     <div>
       <div class="title">${esc(s.title)} <span class="tier">${esc(s.difficulty)}</span></div>
       <div class="spec">${esc(s.accept_spec)}</div>
-      ${s.status === "pending" ? '<div class="waitfor">⏸ 等前一片做完</div>' : ""}
+      ${s.status === "pending" ? '<div class="waitfor">等前序切片</div>' : ""}
       ${["in_progress", "running", "gate", "qa"].includes(s.status) && on.length
         ? `<div class="doing">${on.map((a) => `${esc(a.role)} ▸ ${esc(a.activity || a.state)}`).join(" · ")}</div>` : ""}
       ${open && tasks.length ? `<ul class="tasks">${tasks.map((t) =>
@@ -605,16 +616,16 @@ function laneHtml(s, g, open) {
 }
 
 function askHtml(e) {
-  const urgency = e.severity === "blocker" ? "卡住了" : "不急";
+  const urgency = e.severity === "blocker" ? "阻塞" : "非阻塞";
   const mine = e.chain_state === "boss";
   return `<div class="ask ${esc(e.severity)}">
-    <div class="who">${esc(e.asker || "?")} 问 · ${urgency} · ${
-      WHERE_ZH[e.chain_state] ?? esc(e.chain_state)} · 等了 ${since(e.created_at)}</div>
+    <div class="who">${esc(e.asker || "?")} · ${urgency} · ${
+      WHERE_ZH[e.chain_state] ?? esc(e.chain_state)} · ${since(e.created_at)}</div>
     <div class="q">${esc(e.question)}</div>
     ${mine ? `<div class="row">
-      <input id="ans-${e.id}" class="grow" placeholder="你的答复" aria-label="答复" />
+      <input id="ans-${e.id}" class="grow" placeholder="答复" aria-label="答复" />
       <button class="go" onclick="answer(${e.id})">回答</button>
-      <button onclick="delegate(${e.id},'architect')" title="不想自己答，交给 Architect">转 Architect</button>
+      <button onclick="delegate(${e.id},'architect')" title="转交 Architect 判断">转 Architect</button>
     </div>` : ""}
   </div>`;
 }
@@ -631,8 +642,8 @@ function draftHtml(g) {
   // Your own words next to the plan: the only thing that makes "is this aimed at
   // what I asked for" a 20-second question instead of a re-read.
   return `${idea ? `<div class="said">${esc(idea)}</div>` : ""}
-    ${late.map((o) => `<div class="objection"><em>卡交了之后 ${esc(o.author)} 说</em> ${esc(o.body)}</div>`).join("")}
-    ${filed ? "" : '<div class="none" style="margin-bottom:.5rem">等它把计划卡交上来</div>'}
+    ${late.map((o) => `<div class="objection"><em>${esc(o.author)} 后补反对</em> ${esc(o.body)}</div>`).join("")}
+    ${filed ? "" : '<div class="none" style="margin-bottom:.5rem">计划卡未提交</div>'}
     <textarea id="card-${g.id}" rows="${rows}" aria-label="计划卡" placeholder="目标 : …
 不做 : …
 验收 : …
@@ -640,9 +651,9 @@ function draftHtml(g) {
 风险 : …
 反对 : 无">${esc(filed)}</textarea>
     <div class="row" style="margin-top:.625rem">
-      <button class="go" onclick="approve(${g.id})">同意，开工</button>
-      <input id="why-${g.id}" class="grow" placeholder="哪儿不对，一句话" aria-label="打回理由" />
-      <button onclick="reject(${g.id})">重新拆</button>
+      <button class="go" onclick="approve(${g.id})">批准开工</button>
+      <input id="why-${g.id}" class="grow" placeholder="退回理由" aria-label="打回理由" />
+      <button onclick="reject(${g.id})">退回重拆</button>
     </div>`;
 }
 
@@ -699,7 +710,7 @@ function boardView() {
     </div>
     ${sel.adding ? `<div class="setup" style="margin-bottom:1.25rem">
       <b>新需求</b>
-      <div class="why">一句话即可。产出一张计划卡等你同意，同意前不写代码。</div>
+      <div class="why">一句话即可。产出计划卡待批，批准前不写代码。</div>
       <div class="row"><input id="idea" class="grow" placeholder="例：登录页加「记住我」" aria-label="想法" />
         <button class="go" id="drop">提交</button></div>
     </div>` : ""}`;
@@ -714,9 +725,9 @@ function queueHtml() {
     const filed = (state.draftCards ?? []).find((c) => c.grpId === g.id)?.body ?? "";
     const goal = (filed.split("\n").find((l) => l.startsWith("目标")) ?? "").replace(/^目标\s*[:：]\s*/, "");
     const objected = (state.lateObjections ?? []).some((o) => o.grpId === g.id);
-    rows.push(qrow("计划", esc(g.name), esc(goal || "还在写卡"),
-      `<button class="go" onclick="go({view:'progress',g:${g.id}})">看卡</button>`,
-      objected ? "有人提了反对" : "", g.id));
+    rows.push(qrow("计划", esc(g.name), esc(goal || "计划卡未提交"),
+      `<button class="go" onclick="go({view:'progress',g:${g.id}})">审阅</button>`,
+      objected ? "有反对意见" : "", g.id));
   }
   for (const s of w.slices) {
     const g = state.groups.find((x) => x.id === s.grp_id);
@@ -730,13 +741,13 @@ function queueHtml() {
   }
   for (const e of w.asks) {
     const g = state.groups.find((x) => x.id === e.grp_id);
-    rows.push(qrow("提问", esc(e.question), `${esc(e.asker ?? "?")} · ${esc(g?.name ?? "")} · 等了 ${since(e.created_at)}`,
+    rows.push(qrow("提问", esc(e.question), `${esc(e.asker ?? "?")} · ${esc(g?.name ?? "")} · ${since(e.created_at)}`,
       `<button class="go" onclick="go({view:'progress',g:${e.grp_id}})">去回答</button>`,
-      e.severity === "blocker" ? "全组停着" : "", e.grp_id));
+      e.severity === "blocker" ? "全组已暂停" : "", e.grp_id));
   }
   if (!rows.length) {
     return `<div class="queue clear"><div class="qhead">等你</div>
-      <div class="qclear"><b>无待办。</b> 需要决策时出现在这里，并发通知。</div></div>`;
+      <div class="qclear"><b>无待办</b><span class="dim"> · 需要决策时出现在此并推送通知</span></div></div>`;
   }
   return `<div class="queue"><div class="qhead">等你 ${rows.length}</div>${rows.join("")}</div>`;
 }
@@ -761,8 +772,8 @@ function pipelineHtml(gs) {
     const doing = agentsOf(g.id).filter((a) => a.state === "running")
       .map((a) => `${a.role} ▸ ${a.activity || ""}`)[0];
     let mid;
-    if (g.status === "PLANNING") mid = `<span class="plan">拆解中，未出卡</span>`;
-    else if (g.status === "DRAFT") mid = `<span class="plan">计划卡已提交，等你同意</span>`;
+    if (g.status === "PLANNING") mid = `<span class="plan">拆解中</span>`;
+    else if (g.status === "DRAFT") mid = `<span class="plan">计划卡待批</span>`;
     else if (!slices.length) mid = `<span class="plan">无切片</span>`;
     else mid = `<div class="track2">${slices.map(segHtml).join("")}</div>`;
     return `<div class="pipe" onclick="go({view:'progress',g:${g.id}})">
@@ -774,7 +785,7 @@ function pipelineHtml(gs) {
       <span class="meta">${g.branch ? esc(g.branch) : ""}</span>
     </div>`;
   }).join("");
-  return `<h2 style="margin-top:1.5rem">每个需求走到哪</h2>${rows}`;
+  return `<h2 style="margin-top:2.25rem">需求进度</h2>${rows}`;
 }
 
 function segHtml(s) {
@@ -800,7 +811,7 @@ function segHtml(s) {
 function setupHtml() {
   return `<div class="setup">
     <b>添加项目</b>
-    <div class="why">需要一个本地 git 仓库。注册时自动检查：测试怎么跑、能不能开 PR。</div>
+    <div class="why">本地 git 仓库。注册时自动检测测试命令与 PR 权限。</div>
     <button class="go" onclick="openPick()">挑文件夹…</button>
   </div>`;
 }
@@ -810,10 +821,10 @@ function setupHtml() {
 function deskView() {
   const ids = new Set(groupsOf(sel.p).map((g) => g.id));
   const rows = state.agents.filter((a) => !a.grp_id || ids.has(a.grp_id));
-  if (!rows.length) return '<div class="none">无在职 agent</div>';
+  if (!rows.length) return '<div class="none">无活动 agent</div>';
   return `<table><thead><tr>
-      <th>角色</th><th>在哪个需求</th><th>正在做什么</th><th>model</th><th>权限</th>
-      <th class="num">本轮 token</th><th class="num">花了</th>
+      <th>角色</th><th>需求</th><th>当前动作</th><th>model</th><th>权限</th>
+      <th class="num">session token</th><th class="num">支出</th>
     </tr></thead><tbody>
     ${rows.map((a) => {
       const g = state.groups.find((x) => x.id === a.grp_id);
@@ -835,7 +846,7 @@ function deskView() {
 function ownsView() {
   const gs = groupsOf(sel.p).filter((g) => owns(g).length);
   if (!gs.length) {
-    return '<div class="none">暂无边界划分。开工前由 Architect 划定，避免两个需求改同一批文件。</div>';
+    return '<div class="none">暂无边界划分。开工前由 Architect 划定，防止两个需求改同一批文件。</div>';
   }
   // Overlap is what this view is for: two groups owning the same path is the exact
   // thing file ownership exists to prevent, so it gets named rather than implied.
@@ -847,22 +858,22 @@ function ownsView() {
       if (hit.length) pairs.push([gs[i].name, gs[j].name, hit]);
     }
   }
-  return `<table><thead><tr><th>需求</th><th>它管的文件</th><th>状态</th></tr></thead><tbody>
+  return `<table><thead><tr><th>需求</th><th>owns</th><th>状态</th></tr></thead><tbody>
       ${gs.map((g) => `<tr><td>${esc(g.name)}</td>
         <td class="mono t-xs dim-2">${owns(g).map(esc).join("<br>")}</td>
         <td class="t-sm dim">${STATUS_ZH[g.status] ?? esc(g.status)}</td></tr>`).join("")}
     </tbody></table>
     ${pairs.length
-      ? `<h3 class="clash">有重叠，不能同时开工</h3>` + pairs.map(([a, b, hit]) =>
+      ? `<h3 class="clash">路径重叠，禁止并行</h3>` + pairs.map(([a, b, hit]) =>
           `<div class="t-sm clash">${esc(a)} 和 ${esc(b)}：<span class="mono">${hit.map(esc).join(" ")}</span></div>`).join("")
-      : `<h3>无重叠</h3><div class="none">路径两两不相交，可并行。</div>`}`;
+      : `<h3>无重叠</h3><div class="none">路径两两不相交，可并行开工。</div>`}`;
 }
 
 /* ---------------------------------------------------------------- 成本 */
 
 function costView() {
   if (!cost || !cost.total || !cost.total.usd) {
-    return '<div class="none">暂无支出。开工后按需求 / 切片 / 角色 / 难度分列。</div>';
+    return '<div class="none">暂无支出。</div>';
   }
   // A cache ratio that suddenly drops is the only visible sign that prompt
   // assembly broke: agents keep working, tests keep passing, turns cost 3-5x.
@@ -883,7 +894,7 @@ function costView() {
       <td class="num">${money(r.usd)}</td></tr>`).join("")}</tbody></table>`;
   };
   return `<div class="row" style="gap:1.5rem;align-items:baseline">
-      <b style="font-size:1.375rem">${money(cost.total.usd)}</b>
+      <b style="font-family:var(--display);font-size:1.75rem;font-weight:600">${money(cost.total.usd)}</b>
       <span class="meta">${K(cost.total.tokens)} tokens</span>
       <span class="meta">cache 命中 ${cr}</span>
     </div>
@@ -928,7 +939,7 @@ async function loadDirs(path) {
       </div>`).join("")
     : '<div class="none" style="padding:.875rem">这个文件夹里没有子文件夹</div>';
 
-  $("#pickhint").textContent = d.repo ? "当前目录即 git 仓库" : "git 仓库排在前面";
+  $("#pickhint").textContent = d.repo ? "当前目录为 git 仓库" : "git 仓库优先";
   $("#pickok").disabled = !d.repo;
   $("#pickok").onclick = () => submitPick(d.path, parts[parts.length - 1] ?? "project");
 }
@@ -947,12 +958,12 @@ async function submitPick(path, folder) {
 window.ctl = async (id, action) => { await api(`/api/groups/${id}/${action}`); refresh(); };
 window.interrupt = async (id, mode) => {
   // Rollback throws away the turn's work, so it asks; keeping it does not.
-  if (mode === "rollback" && !confirm("回滚会丢掉这一轮改的东西，确定？")) return;
+  if (mode === "rollback" && !confirm("回滚将丢弃当前 turn 的改动。继续？")) return;
   const r = await api(`/api/groups/${id}/interrupt`, { mode });
   if (r.ok) refresh();
 };
 window.landed = async (id) => {
-  if (!confirm("确认这个 branch 已经 merge 进 main？队列里其他组会被要求 rebase。")) return;
+  if (!confirm("确认该 branch 已合入 main？队列中其他需求将被要求 rebase。")) return;
   await api(`/api/groups/${id}/landed`);
   refresh();
 };
@@ -968,13 +979,13 @@ window.reject = async (id) => { await api(`/api/draft/${id}/reject`, { reason: $
 window.answer = async (id) => { await api(`/api/escalations/${id}/answer`, { answer: $(`#ans-${id}`).value }); refresh(); };
 window.delegate = async (id, to) => { await api(`/api/escalations/${id}/delegate`, { to }); refresh(); };
 window.revoke = async (id) => {
-  if (!confirm("会退回到它当初提问的那一刻，之后做的都不算，确定？")) return;
+  if (!confirm("将回滚到提问时的 checkpoint，此后改动全部作废。继续？")) return;
   await api(`/api/escalations/${id}/revoke`);
   refresh();
 };
 window.slice = async (id, decision) => { await api(`/api/slices/${id}/${decision}`); refresh(); };
 window.sliceReject = async (id) => {
-  const feedback = prompt("哪里不满意？照原话记下来，PM 据此改");
+  const feedback = prompt("退回理由，原话记入黑板");
   if (feedback === null) return;
   await api(`/api/slices/${id}/reject`, { feedback });
   refresh();
