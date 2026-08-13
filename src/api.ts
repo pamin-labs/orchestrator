@@ -1806,18 +1806,41 @@ const postDelegate: Handler = async (ctx, req, params) => {
 const postAttach: Handler = async (ctx, req) => {
   const form = await req.formData();
   const files = form.getAll("file").filter((f): f is File => f instanceof File);
+  // Each file's path relative to what was dropped. A loose file has none; a file
+  // from inside a dropped folder has `<folder>/…/name`, and the folder is what the
+  // boss meant to attach — "看这个目录" is one reference, not forty.
+  const rels = form.getAll("rel").map((r) => String(r));
   if (!files.length) return bad("no file");
-  const dir = join(ctx.config.dataDir ?? "data", "attachments");
-  await mkdir(dir, { recursive: true });
+  const root = join(ctx.config.dataDir ?? "data", "attachments");
   const out: { name: string; path: string; type: string; size: number }[] = [];
-  for (const f of files) {
+  const dirs = new Map<string, { path: string; bytes: number }>();
+  const stamp = Date.now();
+
+  for (const [i, f] of files.entries()) {
     if (f.size > 25 * 1024 * 1024) return bad(`${f.name} 超过 25MB`);
     // The stamp keeps two screenshots called "Screenshot.png" apart, and the
-    // sanitising keeps a crafted filename inside the directory.
-    const safe = f.name.replace(/[^\w.\-\u4e00-\u9fff]/g, "_").slice(-80);
-    const path = join(dir, `${Date.now()}-${out.length}-${safe}`);
+    // sanitising keeps a crafted filename inside the directory. Every segment of
+    // a relative path is sanitised the same way, so `..` cannot survive one.
+    const safe = (s: string) => s.replace(/[^\w.\-\u4e00-\u9fff]/g, "_").slice(-80);
+    const rel = (rels[i] ?? "").split("/").filter((s) => s && s !== "." && s !== "..").map(safe);
+    if (rel.length > 1) {
+      const top = rel[0]!;
+      const base = dirs.get(top)?.path ?? join(root, `${stamp}-${top}`);
+      const path = join(base, ...rel.slice(1));
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, Buffer.from(await f.arrayBuffer()));
+      dirs.set(top, { path: base, bytes: (dirs.get(top)?.bytes ?? 0) + f.size });
+      continue;
+    }
+    await mkdir(root, { recursive: true });
+    const path = join(root, `${stamp}-${out.length}-${safe(f.name)}`);
     await writeFile(path, Buffer.from(await f.arrayBuffer()));
     out.push({ name: f.name, path, type: f.type || "application/octet-stream", size: f.size });
+  }
+
+  // A directory is one attachment: the path, for an agent to walk.
+  for (const [name, d] of dirs) {
+    out.push({ name, path: d.path, type: "inode/directory", size: d.bytes });
   }
   return json({ files: out });
 };
