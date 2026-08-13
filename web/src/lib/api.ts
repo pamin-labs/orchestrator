@@ -66,6 +66,8 @@ export interface Usage {
   fiveHourPercent?: number;
   weeklyPercent?: number;
   weeklyResetsAt?: number;
+  /** Why the last read failed, if it did. Percentages beside it are the last good ones. */
+  error?: string;
 }
 export interface CostRow { label: string; tokens: number }
 /** One agent, with what it was spending on. null grpId = standing. */

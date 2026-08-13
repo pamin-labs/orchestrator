@@ -52,8 +52,19 @@ function Window({ label, value, resetsAt }: { label: string; value?: number; res
   );
 }
 
+const WHY: Record<string, string> = {
+  rate_limited: "读用量被限流了，过一会自己恢复",
+  unreachable: "连不上用量接口",
+  no_windows: "这个账号没有窗口",
+};
+
 export function UsageBar({ usage }: { usage: Usage[] }) {
-  const rows = usage.filter((u) => u.fiveHourPercent !== undefined || u.weeklyPercent !== undefined);
+  // A row with neither a percentage nor an error is an account with no windows to
+  // report: API-key billing has nothing to run out of, so it gets no bar rather
+  // than an empty one.
+  const rows = usage.filter(
+    (u) => u.fiveHourPercent !== undefined || u.weeklyPercent !== undefined || u.error,
+  );
   if (!rows.length) return null;
   return (
     <span className="flex items-center gap-3 font-mono text-[0.6875rem] text-ink-3">
@@ -62,8 +73,25 @@ export function UsageBar({ usage }: { usage: Usage[] }) {
           <span className="text-ink-3">{u.runtime}</span>
           <Window label="5h" value={u.fiveHourPercent} resetsAt={u.resetsAt} />
           <Window label="周" value={u.weeklyPercent} resetsAt={u.weeklyResetsAt} />
+          {/* Said out loud, not by going blank. A bar that quietly disappears
+              reads as "fine"; the one thing it must never do is imply headroom
+              nobody checked. Stale numbers stay beside it, dimmed by the ？. */}
+          {u.error && (
+            <Tip label={`${WHY[u.error] ?? u.error}${lastRead(u)}`}>
+              <span className="cursor-default text-warn underline decoration-dotted">
+                {u.fiveHourPercent === undefined && u.weeklyPercent === undefined ? "读不到" : "?"}
+              </span>
+            </Tip>
+          )}
         </span>
       ))}
     </span>
   );
+}
+
+/** How old the numbers beside the warning are, if there are any. */
+function lastRead(u: Usage): string {
+  if (u.fiveHourPercent === undefined && u.weeklyPercent === undefined) return "";
+  const min = Math.round((Date.now() - u.at) / 60_000);
+  return `。旁边是 ${min < 1 ? "刚才" : `${min} 分钟前`}读到的数`;
 }
