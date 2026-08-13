@@ -98,12 +98,16 @@ export async function summarise(
     if (!head) continue;
     n.sig = sigOf(head);
     const old = prev[n.id];
-    if (old && old.sig === n.sig && old.summary) {
+    if (old && old.sig === n.sig) {
       n.summary = old.summary;
       continue;
     }
     if (calls >= budget) continue; // Next tick takes the rest; a partial tree still works.
     calls++;
+    // Recorded whether or not the summary came back: a node that fails to
+    // summarise must be retried when the file changes, not on every tick forever.
+    // Without this a broken model call is an infinite loop that spends money and
+    // writes a feed line every thirty seconds.
     n.summary = oneLine(
       await ask(
         (n.id.startsWith(NOTE_PREFIX)
@@ -123,7 +127,7 @@ export async function summarise(
     const kids = d.children.map((c) => `${c}: ${tree[c]?.summary ?? ""}`).join("\n");
     d.sig = sigOf(kids);
     const old = prev[d.id];
-    if (old && old.sig === d.sig && old.summary) {
+    if (old && old.sig === d.sig) {
       d.summary = old.summary;
       continue;
     }
@@ -205,7 +209,10 @@ export function render(tree: Tree, ids: string[]): string {
  */
 export function modelAsk(model: string, cwd: string, timeoutMs = 60_000): Ask {
   return async (prompt) => {
-    const p = Bun.spawn(["claude", "-p", prompt, "--model", model, "--max-turns", "1"], {
+    // No `--max-turns 1`: measured, it makes `claude -p` exit 0 with the body
+    // "Error: Reached max turns (1)" — so every summary in the index became that
+    // sentence, and nothing noticed because the exit code said fine.
+    const p = Bun.spawn(["claude", "-p", prompt, "--model", model], {
       cwd,
       stdout: "pipe",
       stderr: "ignore",
@@ -213,7 +220,10 @@ export function modelAsk(model: string, cwd: string, timeoutMs = 60_000): Ask {
     const timer = setTimeout(() => p.kill(), timeoutMs);
     try {
       const out = await new Response(p.stdout).text();
-      return (await p.exited) === 0 ? out : "";
+      if ((await p.exited) !== 0) return "";
+      // The CLI reports its own failures on stdout with exit 0, so the exit code
+      // is not the check.
+      return /^\s*Error:/.test(out) ? "" : out;
     } finally {
       clearTimeout(timer);
     }

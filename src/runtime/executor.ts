@@ -12,7 +12,7 @@ import { listSkills, readSkill } from "../mech/skills.ts";
 import { denyOutsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
-import { recordTurnOutcome, runWatchdog } from "../mech/watchdog.ts";
+import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/watchdog.ts";
 import { runStandup } from "../mech/standup.ts";
 import { route } from "../mech/chain.ts";
 import {
@@ -922,6 +922,15 @@ async function runWatchdogJob(deps: ExecDeps): Promise<void> {
   // The standup rides along: same deterministic pass, and it sees across groups
   // in a way no single group's agents can.
   for (const item of runStandup(deps.ctx.db)) {
+    // Same body, every thirty seconds, forever: the watchdog's own findings are
+    // filtered against the event log before they are emitted and the standup's
+    // never were, so the feed filled with three lines repeating.
+    const seen = deps.ctx.db
+      .query<{ at: number }, [string]>(
+        `SELECT max(at) AS at FROM event WHERE author = 'standup' AND body = ?`,
+      )
+      .get(item.body);
+    if (seen?.at && Date.now() - seen.at < REEMIT_MS) continue;
     deps.ctx.bus.emit({
       grpId: item.grpIds[0] ?? null,
       author: "standup",

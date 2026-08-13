@@ -234,6 +234,12 @@ test("a turn log keeps the shape and drops the payload", () => {
   expect(out.message.content[0].tool_use_id).toBe("t1");
   // The input says what the agent was trying to do, and it is small. Kept whole.
   expect(out.message.content[1].input.command).toBe("bun test");
+  // The field the payload is actually in: 90% of a real turn's file, against 0%
+  // for the block inside `content`. Trimming only the latter cut 17%.
+  const big = trimForLog({ type: "user", tool_use_result: { stdout: "z".repeat(9000), interrupted: false } }) as any;
+  expect(big.tool_use_result.stdout).toContain("[9000 chars omitted]");
+  expect(big.tool_use_result.interrupted).toBe(false);
+
   // A short result is untouched: truncating it would only add noise.
   expect((trimForLog({ message: { content: [{ type: "tool_result", content: "ok" }] } }) as any).message.content[0].content).toBe("ok");
 });
