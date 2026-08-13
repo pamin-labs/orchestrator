@@ -33,7 +33,7 @@ const bucketOf = (g: Group): Bucket =>
 /**
  * 概览 shows what is moving, not everything.
  *
- * The full, state-grouped list is 进展. Repeating it here made two pages that answer
+ * The full, state-filtered list is 需求. Repeating it here made two pages that answer
  * the same question slightly differently, which is how a reader stops trusting
  * either. Eight rows plus a link.
  */
@@ -93,7 +93,7 @@ export function Pipeline({
 
       {(shown.length > page.length || onAll) && (
         <Button variant="quiet" className="mt-2" onClick={onAll}>
-          {shown.length > page.length ? `还有 ${shown.length - page.length} 个，去进展看全部 →` : "去进展看全部 →"}
+          {shown.length > page.length ? `还有 ${shown.length - page.length} 个，看全部需求 →` : "看全部需求 →"}
         </Button>
       )}
     </>
