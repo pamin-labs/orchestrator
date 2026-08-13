@@ -27,7 +27,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
   const rows = st.agents.filter((a) => !a.grp_id || ids.has(a.grp_id));
   const [idle, setIdle] = useState(false);
   if (!rows.length) {
-    return <Empty>还没有人上工。批准一张计划卡，这里会列出每个 agent 在做什么、跑到第几个 turn、正在打印什么。</Empty>;
+    return <Empty>还没有人上工。批准一张计划卡，这里就会列出每个 agent 在做什么。</Empty>;
   }
   // Newest live frame per agent: the tail of what it is printing right now.
   const last = new Map<number, string>();
@@ -222,8 +222,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   if (!gs.length) {
     return (
       <Empty>
-        还没有划过边界。Architect 在开工前划定每组能写哪些路径，沙盒按这个挡写操作 ——
-        没划的组一旦并行就会踩到同一批文件。
+        还没有划过边界。Architect 开工前划定每组能写哪些路径，没划的组并行会踩到同一批文件。
         {bare.length > 0 && `目前 ${bare.length} 个需求没有边界：${bare.map((g) => g.name).join("、")}。`}
       </Empty>
     );
@@ -262,18 +261,28 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-rule pb-2.5">
+      {/* Said the way the boss would say it. 「边界互相压着」「并行会踩到同一批文件」
+          「得让 Architect 重新切」 is three pieces of our vocabulary for one fact
+          they act on: two requirements want the same files, so they cannot run at
+          once. */}
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {hit.length ? (
-          <>
-            <b className="text-[0.8125rem] font-semibold text-bad">{hit.length} 个需求的边界互相压着</b>
-            <Meta>并行会踩到同一批文件，得让 Architect 重新切</Meta>
-          </>
+          <b className="text-[0.8125rem] font-semibold text-bad">
+            {hit.length} 个需求想改同一批文件，不能一起跑
+          </b>
         ) : (
-          <>
-            <b className="text-[0.8125rem] font-semibold">边界两两不相交</b>
-            <Meta>{gs.length} 个需求可以同时开工{bare.length ? `，另有 ${bare.length} 个还没划` : ""}</Meta>
-          </>
+          <b className="text-[0.8125rem] font-semibold">
+            {gs.length} 个需求各改各的，可以一起跑{bare.length ? `（还有 ${bare.length} 个没分` : ""}
+            {bare.length ? "）" : ""}
+          </b>
         )}
+      </div>
+
+      {/* A column of paths under no heading is a column of paths. */}
+      <div className="grid grid-cols-[13rem_minmax(0,1fr)] gap-x-5 border-b border-rule pb-1.5 text-[0.6875rem]
+                      text-ink-3 max-[52rem]:grid-cols-1">
+        <span>需求</span>
+        <span>能改哪些文件</span>
       </div>
 
       <Pane>
@@ -341,8 +350,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
   if (!cost?.total?.tokens) {
     return (
       <Empty>
-        还没花 token。批准计划卡之后，这里从项目总量往下拆：每个需求多少，点开是需求里每个 agent
-        多少、各自跑的什么模型。难度标签是最直接的旋钮，它决定跑哪个模型。
+        还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。
       </Empty>
     );
   }
@@ -432,7 +440,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
             <b className="font-mono font-semibold text-ink">{per == null ? "—" : K(per)}</b>
             <span className="text-ink-3">{per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`}</span>
           </div>
-          <Tip label="注入的 delta 必须留在最后一条 user message 末尾。这个数掉下来说明 prompt 组装被改坏了 —— agent 照跑、测试照绿，每个 turn 贵 3-5 倍。">
+          <Tip label="掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍">
             <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
               cache 命中{" "}
               <b

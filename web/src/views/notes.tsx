@@ -68,8 +68,7 @@ export function Notes({ projectId, grpId, compact, tab, onTab, onCount }: {
   if (!notes.length) {
     return (
       <div className="text-[0.8125rem] text-ink-3">
-        还没有记录。agent 每个 turn 写 journal（≤6 行，超了 `orch` 拒收），组解散前必须写 retro，
-        Librarian 把 retro 归纳成教训注入后续组。
+        还没有记录。agent 每个 turn 写 journal，组解散前写 retro，retro 归纳成教训注入后续组。
       </div>
     );
   }

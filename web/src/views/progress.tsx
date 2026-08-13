@@ -77,7 +77,7 @@ export function Progress({
   if (!groups.length && !archived.length) {
     return (
       <div className="text-[0.8125rem] text-ink-3">
-        这个项目还没有需求。右上角 ＋ 新需求，写一句话就行 —— 深挖和切边界不用你做。
+        这个项目还没有需求。右上角 ＋ 新需求，写一句话就行。
       </div>
     );
   }
@@ -96,7 +96,7 @@ export function Progress({
         {/* The slot cap is why an approved requirement can sit still: queued, not
             stuck. Without it that difference is invisible. */}
         {maxGroups != null && (
-          <Tip label={`并发上限 ${maxGroups} 组。满了之后已批准的需求排队等槽位，不是卡住了。`}>
+          <Tip label={`并发上限 ${maxGroups} 组。满了已批准的需求排队等槽位，不是卡住了。`}>
             <Meta className={cn("self-center underline decoration-dotted", live >= maxGroups && "text-warn")}>
               并行 {live}/{maxGroups}
             </Meta>
@@ -127,9 +127,9 @@ export function Progress({
 
 /** Absence, with the reason it is absent. A bare "无" teaches nothing. */
 function emptyOf(key: string): string {
-  if (key === "mine") return "没有待办。有计划卡、待查收切片或待合入 PR 时出现在这里，并推送通知。";
+  if (key === "mine") return "没有待办。有计划卡、待查收切片或待合入 PR 时会推送通知。";
   if (key === "live") return "没有在办的需求。右上角 ＋ 新需求。";
-  return "没有停着的需求。预算用尽、或等你答问题超过 2 小时会自动封存到这里，工作不丢。";
+  return "没有停着的需求。预算用尽、或等你答问题超过 2 小时会封存到这里，工作不丢。";
 }
 
 function List({

@@ -403,7 +403,7 @@ export function App() {
                 <CardBody>
                   <CardTitle>还没有需求</CardTitle>
                   <div className="mt-1 text-[0.75rem] text-ink-3">
-                    写一句话就行。Dispatcher 深挖、Architect 划边界，拆成计划卡再回来给你批 —— 20 秒。
+                    写一句话就行。拆成计划卡再回来给你批，20 秒。
                   </div>
                   <Button variant="go" className="mt-3" onClick={() => setAdding(true)}>＋ 新需求</Button>
                 </CardBody>
