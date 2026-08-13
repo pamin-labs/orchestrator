@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { GRP_INVARIANTS, SLICE_INVARIANTS, uncovered } from "../src/mech/invariants.ts";
+import {
+  ESCALATION_INVARIANTS,
+  GRP_INVARIANTS,
+  JOB_INVARIANTS,
+  SLICE_INVARIANTS,
+  uncovered,
+} from "../src/mech/invariants.ts";
 
 /**
  * The one check this table exists for.
@@ -10,9 +16,9 @@ import { GRP_INVARIANTS, SLICE_INVARIANTS, uncovered } from "../src/mech/invaria
  * that failure happens here instead — at `bun test`, in the commit that adds it.
  */
 test("every state says who pushes it out", () => {
-  expect(uncovered()).toEqual({ grp: [], slice: [] });
+  expect(uncovered()).toEqual({ grp: [], slice: [], job: [], escalation: [] });
 
-  for (const i of [...GRP_INVARIANTS, ...SLICE_INVARIANTS]) {
+  for (const i of [...GRP_INVARIANTS, ...SLICE_INVARIANTS, ...JOB_INVARIANTS, ...ESCALATION_INVARIANTS]) {
     // `driver: null` is a real answer — terminal, or a human is deliberately being
     // waited on. An empty string is the unanswered question.
     expect(i.driver === null || i.driver.length > 10).toBe(true);
