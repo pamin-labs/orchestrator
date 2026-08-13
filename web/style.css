@@ -101,6 +101,12 @@
     height: 0.1875rem;
     width: 1rem;
     border-radius: 0.09375rem;
+  }
+  /* The unpassed colour, at zero specificity. Written plainly it is a utility like
+     `bg-ok` is, declared later, and so it won every tie — the gate marks on the
+     overview stayed grey no matter what the slice had passed, while the same data
+     drew correctly on the requirement page. `:where()` makes it a default. */
+  :where(.tick) {
     background: var(--color-rule);
   }
   @keyframes breathe {
