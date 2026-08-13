@@ -67,18 +67,21 @@ export interface Usage {
   weeklyPercent?: number;
   weeklyResetsAt?: number;
 }
-export interface CostRow { label: string; tokens: number; usd: number }
+export interface CostRow { label: string; tokens: number }
+/** One agent, with what it was spending on. null grpId = standing. */
+export interface AgentCost extends CostRow {
+  id: number; grpId: number | null; role: string; model: string; runtime: string;
+}
 export interface Cost {
   total: CostRow;
   byGroup: (CostRow & { grpId: number })[];
-  /** Per role, with the requirement it was hired into. null = standing. */
-  roles: (CostRow & { grpId: number | null })[];
+  agents: AgentCost[];
   byRole: CostRow[];
   byDifficulty: CostRow[];
   /** Which subscription paid for it. Two accounts, so this is a real axis now. */
   byRuntime: CostRow[];
   cacheRatio: number | null;
-  delivered: { count: number; tokens: number; usd: number };
+  delivered: { count: number; tokens: number };
 }
 
 const EMPTY: State = {

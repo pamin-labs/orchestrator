@@ -3,7 +3,7 @@ import { H2, Meta } from "../ui/bits";
 import { cardStyles } from "../ui/card";
 import type { State } from "../lib/api";
 import { countWaiting, pending, projectState } from "../lib/select";
-import { cn, money } from "../lib/utils";
+import { cn, K } from "../lib/utils";
 import { Queue } from "./queue";
 
 /**
@@ -34,7 +34,7 @@ export function Home({
         const n = countWaiting(st, p.id);
         const gs = st.groups.filter((g) => g.project_id === p.id);
         const live = gs.filter((g) => ["RUNNING", "PLANNING"].includes(g.status));
-        const usd = gs.reduce((x, g) => x + (g.spent_usd || 0), 0);
+        const tokens = gs.reduce((x, g) => x + (g.spent_tokens || 0), 0);
         const bits = [
           w.cards.length && `${w.cards.length} 张卡待批`,
           w.slices.length && `${w.slices.length} 片待查收`,
@@ -68,7 +68,7 @@ export function Home({
             <div className="whitespace-nowrap text-right">
               <Meta>{gs.length} 个需求</Meta>
               <br />
-              <Meta>{usd ? money(usd) : "$0.00"}</Meta>
+              <Meta>{K(tokens)} tokens</Meta>
             </div>
           </button>
         );

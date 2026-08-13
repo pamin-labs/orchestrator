@@ -19,26 +19,36 @@ import type { DB } from "../db.ts";
 export interface CostRow {
   label: string;
   tokens: number;
-  usd: number;
 }
 
-/** A role's spend, and which requirement it was spent inside. NULL = standing. */
-export interface RoleCost extends CostRow {
+/**
+ * One agent's spend, with what it was spending it on.
+ *
+ * Per agent rather than per role, and carrying the model, because that is the
+ * pair the boss reads together: "the engineer took 4M" is half a fact until you
+ * know which model it took them on. `grpId` NULL means standing — paid for across
+ * the project rather than by one requirement.
+ */
+export interface AgentCost extends CostRow {
+  id: number;
   grpId: number | null;
+  role: string;
+  model: string;
+  runtime: string;
 }
 
 export interface CostReport {
   /** Requirements that finished, for a per-requirement average worth quoting. */
-  delivered: { count: number; tokens: number; usd: number };
+  delivered: { count: number; tokens: number };
   byGroup: (CostRow & { grpId: number })[];
   /**
-   * Every role's spend with its group, so the panel can nest what is nested.
-   * A slice belongs to a requirement and a role is either standing (Architect,
-   * Dispatcher, CoS, Librarian — `grp_id` NULL, paid for across the project) or
-   * hired into one group (PM, Engineer, QA). Four flat tables said all of that was
-   * the same shape, which is a lie about the data model.
+   * Every agent's spend with its group, so the panel can nest what is nested:
+   * project, then requirement, then the people in it. An agent is either standing
+   * (`grp_id` NULL, paid for across the project) or hired into one group. Four flat
+   * tables said all of that was the same shape, which is a lie about the data
+   * model.
    */
-  roles: RoleCost[];
+  agents: AgentCost[];
   byRole: CostRow[];
   byDifficulty: CostRow[];
   /** Which subscription paid. The axis that appeared the day roles split across two. */
@@ -54,21 +64,21 @@ export function costReport(db: DB, projectId?: number): CostReport {
 
   const byGroup = db
     .query<CostRow & { grpId: number }, any[]>(
-      `SELECT id AS grpId, name AS label, spent_tokens AS tokens, spent_usd AS usd FROM grp
+      `SELECT id AS grpId, name AS label, spent_tokens AS tokens FROM grp
        ${where} ORDER BY spent_tokens DESC LIMIT 50`,
     )
     .all(...args);
 
-  const roles = db
-    .query<RoleCost, any[]>(
-      `SELECT grp_id AS grpId, role AS label, sum(total_tokens) AS tokens, sum(total_usd) AS usd
-       FROM agent ${where} GROUP BY grp_id, role ORDER BY tokens DESC`,
+  const agents = db
+    .query<AgentCost, any[]>(
+      `SELECT id, grp_id AS grpId, role, role AS label, model, runtime, total_tokens AS tokens
+       FROM agent ${where} ORDER BY tokens DESC`,
     )
     .all(...args);
 
   const byRole = db
     .query<CostRow, any[]>(
-      `SELECT role AS label, sum(total_tokens) AS tokens, sum(total_usd) AS usd FROM agent
+      `SELECT role AS label, sum(total_tokens) AS tokens FROM agent
        ${where} GROUP BY role ORDER BY tokens DESC`,
     )
     .all(...args);
@@ -78,7 +88,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
   // panel exists to inform.
   const byDifficulty = db
     .query<CostRow, any[]>(
-      `SELECT s.difficulty AS label, sum(s.spent_tokens) AS tokens, sum(s.spent_usd) AS usd
+      `SELECT s.difficulty AS label, sum(s.spent_tokens) AS tokens
        FROM slice s JOIN grp g ON g.id = s.grp_id
        ${projectId ? "WHERE g.project_id = ?" : ""}
        GROUP BY s.difficulty ORDER BY tokens DESC`,
@@ -87,29 +97,27 @@ export function costReport(db: DB, projectId?: number): CostReport {
 
   const byRuntime = db
     .query<CostRow, any[]>(
-      `SELECT runtime AS label, sum(total_tokens) AS tokens, sum(total_usd) AS usd FROM agent
+      `SELECT runtime AS label, sum(total_tokens) AS tokens FROM agent
        ${where} GROUP BY runtime ORDER BY tokens DESC`,
     )
     .all(...args);
 
   const total = db
     .query<CostRow, any[]>(
-      `SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens,
-              coalesce(sum(spent_usd), 0) AS usd FROM grp ${where}`,
+      `SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens FROM grp ${where}`,
     )
     .get(...args)!;
 
   // What a finished requirement costs is the number to compare against doing it by
   // hand — PLAN.md §13 risk ② turns on exactly this ratio.
   const delivered = db
-    .query<{ count: number; tokens: number; usd: number }, any[]>(
-      `SELECT count(*) AS count, coalesce(sum(spent_tokens), 0) AS tokens,
-              coalesce(sum(spent_usd), 0) AS usd FROM grp
+    .query<{ count: number; tokens: number }, any[]>(
+      `SELECT count(*) AS count, coalesce(sum(spent_tokens), 0) AS tokens FROM grp
        WHERE status = 'DISSOLVED' ${projectId ? "AND project_id = ?" : ""}`,
     )
     .get(...args)!;
 
-  return { delivered, byGroup, roles, byRole, byDifficulty, byRuntime, total, cacheRatio: recentCacheRatio(db) };
+  return { delivered, byGroup, agents, byRole, byDifficulty, byRuntime, total, cacheRatio: recentCacheRatio(db) };
 }
 
 /**
