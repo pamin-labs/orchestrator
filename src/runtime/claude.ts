@@ -16,6 +16,18 @@ export interface RateLimitInfo {
   resetsAt: number;
   overageStatus?: string;
   isUsingOverage?: boolean;
+  /**
+   * How much of each subscription window is gone, 0-100.
+   *
+   * codex volunteers both in every `token_count` event. claude's stream never
+   * carries a percentage — 267 real rate_limit_events in this repo's logs had
+   * only status and a reset time — so on that side these are filled in by
+   * mech/subusage.ts and the fields stay undefined when it cannot reach the API.
+   */
+  fiveHourPercent?: number;
+  weeklyPercent?: number;
+  /** Unix seconds, per window. `resetsAt` above stays the five-hour one. */
+  weeklyResetsAt?: number;
 }
 
 export interface Usage {
@@ -86,6 +98,19 @@ export interface TurnSpec {
   timeoutMs?: number;
   /** Write raw NDJSON here for later inspection (never into the context). */
   logPath?: string;
+  /**
+   * Image attachments for this turn, as paths.
+   *
+   * Only codex needs them: it has `-i/--image` and no file-reading tool that
+   * handles images, while claude opens the path with Read. Paths, never contents —
+   * an inlined image is thousands of tokens on every turn that carries it.
+   */
+  images?: string[];
+  /**
+   * CODEX_HOME for this turn — a directory holding the login and nothing else.
+   * codex-only; see codexHome() in codex.ts for why it is not the boss's ~/.codex.
+   */
+  codexHome?: string;
   /**
    * Extra environment for the child. This is how the agent learns where the
    * orchestrator is and who it is (ORCH_URL / ORCH_TOKEN) — identity travels in

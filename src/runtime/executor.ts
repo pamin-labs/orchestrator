@@ -286,6 +286,10 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   await narrate(deps, agent, job, grp, project?.repo_path ?? null, before, result);
   handleDenials(deps, agent, job, result);
   handleRateLimit(deps, agent, job, result);
+  recordSubscriptionUsage(deps, provider.name, result);
+  // The sandbox cannot hold this provider to the group's paths, so the check runs
+  // after the fact instead of before it. No-op for a provider whose profile did.
+  if (!provider.confinesWrites) await reconcileOwnership(deps, agent, job, grp, cwd);
 
   if (!result.ok) throw new Error(`turn failed (${result.terminalReason}): ${clip(result.text)}`);
 }

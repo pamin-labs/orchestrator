@@ -1730,16 +1730,29 @@ export function bossFact(ctx: Ctx, grpId: number | null, body: string): void {
  *
  * Paths, never contents: an image inlined into a prompt costs thousands of tokens
  * on every turn that carries it, a path costs a dozen and the agent opens it once
- * with Read when it needs to. Shared by every route the boss can attach to —
- * an idea, a sent-back card, a rejected slice, a remark to the group.
+ * when it needs to. Shared by every route the boss can attach to — an idea, a
+ * sent-back card, a rejected slice, a remark to the group.
+ *
+ * The image tag is ASCII and fixed because it is read back by machine: codex has
+ * no file tool that opens an image, so those paths have to leave here and come
+ * back as `-i` flags (imagePaths below). The wording no longer names a tool —
+ * `Read` exists on one of the two CLIs.
  */
+const IMAGE_TAG = " (image)";
+
 export function withAttachments(text: string, attachments?: Attachment[]): string {
   const files = (attachments ?? []).filter((f) => f?.path);
   if (!files.length) return text;
   return (
-    `${text}\n\n附件（用 Read 打开）：\n` +
-    files.map((f) => `- ${f.path}${f.type?.startsWith("image/") ? "（图片）" : ""}`).join("\n")
+    `${text}\n\n附件（路径如下）：\n` +
+    files.map((f) => `- ${f.path}${f.type?.startsWith("image/") ? IMAGE_TAG : ""}`).join("\n")
   );
+}
+
+/** The image attachments in an assembled prompt, for CLIs that need them as flags. */
+export function imagePaths(prompt: string): string[] {
+  const re = new RegExp(`^- (\\S+)${IMAGE_TAG.replace(/[()]/g, "\\$&")}$`, "gm");
+  return [...prompt.matchAll(re)].map((m) => m[1]!);
 }
 
 const postIdea: Handler = async (ctx, req) => {

@@ -90,6 +90,33 @@ const clip = (s: string, n = 120) => {
   return one.length > n ? `${one.slice(0, n - 1)}…` : one;
 };
 
+/**
+ * What goes on disk, minus the command output.
+ *
+ * Same finding as the claude adapter's trimForLog, one CLI over: a turn's NDJSON
+ * is mostly command output, and every measurement worth having from these files is
+ * about shape — how many rounds, which tools, how many tokens, what failed. This
+ * adapter was writing the raw line, so it kept all of it. Claude's version cannot
+ * be reused: it trims `tool_use_result` and `message.content`, neither of which
+ * codex emits. Everything long lands under `item`, so that is what gets clipped.
+ */
+const LOG_ITEM_CHARS = 400;
+
+export function trimItem(l: Record<string, unknown>): Record<string, unknown> {
+  const item = l.item;
+  if (!item || typeof item !== "object") return l;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(item as Record<string, unknown>)) {
+    out[k] =
+      typeof v === "string" && v.length > LOG_ITEM_CHARS
+        ? `${v.slice(0, LOG_ITEM_CHARS)}… [${v.length} chars omitted]`
+        : v;
+  }
+  return { ...l, item: out };
+}
+
+type Window = { used_percent?: number; window_minutes?: number; resets_in_seconds?: number };
+
 type Line = {
   type?: string;
   thread_id?: string;
@@ -97,6 +124,9 @@ type Line = {
   usage?: Record<string, number>;
   error?: { message?: string };
   message?: string;
+  /** token_count carries the account's own quota state, both windows, as percentages. */
+  rate_limits?: { primary?: Window; secondary?: Window };
+  info?: { model_context_window?: number } | null;
 };
 
 export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult> {
@@ -110,7 +140,7 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
     stdin: new TextEncoder().encode(input),
     stdout: "pipe",
     stderr: "pipe",
-    env: spec.env ? { ...process.env, ...spec.env } : undefined,
+    env: { ...process.env, ...(spec.codexHome ? { CODEX_HOME: spec.codexHome } : {}), ...spec.env },
     signal: spec.signal,
   });
   h.onPid?.(proc.pid);
@@ -137,7 +167,6 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
 
   try {
     for await (const raw of ndjsonLines(proc.stdout)) {
-      log?.write(raw + "\n");
       if (!raw.startsWith("{")) continue; // the stdin banner and friends
       let l: Line;
       try {

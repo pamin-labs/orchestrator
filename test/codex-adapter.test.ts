@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { buildStable } from "../src/prompt/assemble.ts";
-import { buildArgv, runTurn } from "../src/runtime/codex.ts";
+import { buildArgv, runTurn, trimItem } from "../src/runtime/codex.ts";
 
 const stable = buildStable({
   rolePrompt: "You are the Engineer.",
