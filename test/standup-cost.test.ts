@@ -133,11 +133,20 @@ test("cost is attributed four ways, because they answer different questions", ()
     ["codex", 1000],
   ]);
 
-  // Every ordering is by tokens, and this is why: on a subscription the dollar
-  // figure is notional, and codex reports none at all — so ranking by usd sorted
-  // a real 1000-token reviewer below nothing, behind a $0 that reads as free.
-  expect(r.byRuntime.find((x) => x.label === "codex")!.usd).toBe(0);
   expect(r.byRole.map((x) => x.label)).toEqual(["engineer", "qa"]);
+
+  // Per agent, not per role, and carrying the model: the panel nests project ->
+  // requirement -> the people in it, and "the engineer took 4M" is half a fact
+  // until you know which model it took them on.
+  expect(r.agents.map((a) => [a.role, a.model, a.tokens])).toEqual([
+    ["engineer", "m", 4000],
+    ["qa", "m", 1000],
+  ]);
+  expect(r.agents.every((a) => a.grpId === 1)).toBe(true);
+
+  // No dollars anywhere in the report. Two subscriptions pay for this, so the
+  // figure was notional on the half that reported one and absent on the other.
+  expect(JSON.stringify(r)).not.toContain("usd");
 });
 
 test("cache ratio is averaged from recorded turns, and absent before any run", () => {

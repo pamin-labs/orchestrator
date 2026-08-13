@@ -3,16 +3,6 @@ import { twMerge } from "tailwind-merge";
 
 export const cn = (...v: ClassValue[]) => twMerge(clsx(v));
 
-export const money = (n?: number | null) => `$${(n ?? 0).toFixed(2)}`;
-/**
- * The same, but blank at zero.
- *
- * Dollars are notional here: claude's CLI reports what a turn would have cost at
- * API rates, codex reports nothing, and the boss pays neither — two subscriptions.
- * So a codex row printing "$0.00" claims the work was free, which is worse than
- * saying nothing. Tokens are the number that means something; this is the aside.
- */
-export const moneyOrBlank = (n?: number | null) => (n ? money(n) : "");
 /**
  * Token counts, in the unit that fits.
  *

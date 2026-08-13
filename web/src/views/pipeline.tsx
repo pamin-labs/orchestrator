@@ -5,7 +5,7 @@ import { Button } from "../ui/button";
 import { Tip } from "../ui/tooltip";
 import type { Group, Slice, State } from "../lib/api";
 import { STOPS, gates, heldApproved, statusLabel } from "../lib/select";
-import { cn, money } from "../lib/utils";
+import { cn, K } from "../lib/utils";
 
 /**
  * Every requirement in the project, one line each, running ones first.
@@ -126,7 +126,7 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
         <Meta>
           {statusLabel(g)}
           {slices.length ? ` · ${done}/${slices.length}` : ""}
-          {g.spent_usd ? ` · ${money(g.spent_usd)}` : ""}
+          {g.spent_tokens ? ` · ${K(g.spent_tokens)} tokens` : ""}
         </Meta>
       </div>
       <div className="min-w-0 max-[60rem]:col-span-full">
