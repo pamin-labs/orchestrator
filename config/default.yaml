@@ -21,11 +21,45 @@ leaseSlots:
   browser: 1
 port: 47821              # localhost TCP; agents get ORCH_URL + ORCH_TOKEN
 
-# difficulty -> model. The Dispatcher tags each slice; this is the cost knob.
+# runtime -> difficulty -> model. The Dispatcher tags each slice; this is the cost knob.
+# 每个 role 用哪个 CLI 写在 roles/*.yaml 的 runtime，这里只管「那个 CLI 上，这个难度用哪个模型」。
 difficultyModel:
-  trivial: claude-haiku-4-5-20251001
-  normal: claude-sonnet-5
-  hard: claude-opus-5
+  claude:
+    trivial: claude-haiku-4-5-20251001
+    normal: claude-sonnet-5
+    hard: claude-opus-5
+  codex:
+    trivial: gpt-5.6-luna
+    normal: gpt-5.6-terra
+    hard: gpt-5.6-sol
+
+# 每个新切片的 token 上限。在此之前 budget_tokens 从来没被 INSERT 过，恒 NULL，
+# scheduler 里那两道熔断一次都没拦过东西。数字取自本仓库 16 个真实切片：
+# trivial 均值 4.0M（有一个 12.0M 跑飞的），normal 均值 7.3M 尾部 16.1M，hard 4.0M。
+# 卡在「跑完的最坏一片」之上、「跑飞那一片」之下。
+sliceBudgetTokens:
+  trivial: 8000000
+  normal: 20000000
+  hard: 30000000
+
+# 谁来答 `orch ctx query` 并写索引摘要。全系统调用最频繁的一个模型调用，纯摘要、
+# 不做决策、不用工具、不碰黑板 —— 第一个该从贵的订阅上挪走的就是它。
+indexModel:
+  runtime: codex
+  model: gpt-5.6-luna
+
+# 每个模型的上下文窗口。轮换 session 的分母 —— 之前是写死的 200000，而那只对最便宜那个成立：
+# 真实 turn 日志里 haiku-4-5 报 200k，sonnet-5 和 opus-5 报 1M，codex 的 token_count 里
+# gpt-5.6 报 272k。也就是强模型一直在 1M 窗口的 12% 处轮换，每轮换一次就扔掉一次缓存前缀。
+# 两个 CLI 在 turn 里都会报真实值，那个值优先；这张表管的是一个 session 的第一个 turn。
+contextWindow:
+  default: 200000
+  claude-haiku-4-5-20251001: 200000
+  claude-sonnet-5: 1000000
+  claude-opus-5: 1000000
+  gpt-5.6-sol: 272000
+  gpt-5.6-terra: 272000
+  gpt-5.6-luna: 272000
 
 # 20 min. Measured on a toy fixture repo the longest single turn was 8.2 min, so
 # 10 min left under 2x headroom before the watchdog killed productive work.

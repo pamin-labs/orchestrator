@@ -65,8 +65,9 @@ export interface Ctx {
   knownRoles?: () => string[];
   config: {
     language: string;
-    difficultyModel: Record<string, string>;
     workRoot: string;
+    /** difficulty -> token cap written onto each new slice. */
+    sliceBudgetTokens?: Record<string, number>;
     dataDir?: string;
     autoAdvance?: boolean;
     autoAcceptTiers?: string[];

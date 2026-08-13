@@ -32,7 +32,7 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     gitLock: new RepoLock(),
     git: async () => ({ code: 0, out: "" }),
     waiters: new Map(),
-    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: "/tmp/x" },
+    config: { language: cfg.language, workRoot: "/tmp/x" },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
