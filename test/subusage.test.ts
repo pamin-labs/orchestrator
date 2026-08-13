@@ -36,3 +36,30 @@ test("a fresh row is left alone until the poll interval is up", async () => {
   // the watchdog ticks every 30s and this endpoint is not ours to hammer.
   expect(await pollClaudeUsage(db, now + POLL_EVERY_MS - 1)).toBe(false);
 });
+
+test("a failed poll still costs the interval, so a bad endpoint is not hammered", async () => {
+  const db = openMemory();
+  const now = 2_000_000_000;
+  // No token, no network, so this fails — and must still record the attempt. The
+  // watchdog ticks every 30s, and stamping only on success meant a failing
+  // endpoint got retried twice a minute. This one answers failure with 429.
+  await pollClaudeUsage(db, now);
+  const row = db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'").get();
+  expect(row?.at).toBe(now);
+  expect(await pollClaudeUsage(db, now + POLL_EVERY_MS - 1)).toBe(false);
+});
+
+test("a failed poll keeps the last good reading rather than blanking the header", () => {
+  const db = openMemory();
+  const good = JSON.stringify(toRateLimit(RESPONSE));
+  db.run("INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', ?, 1)", [good]);
+  // The window did not move because we could not ask; showing nothing would read
+  // as "no data" when what we have is data from four minutes ago.
+  db.run(
+    `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', '{}', 2)
+     ON CONFLICT (runtime) DO UPDATE SET json = usage_snapshot.json, at = excluded.at`,
+  );
+  const row = db.query<{ json: string; at: number }, []>("SELECT json, at FROM usage_snapshot").get()!;
+  expect(row.at).toBe(2);
+  expect(JSON.parse(row.json).weeklyPercent).toBe(65);
+});

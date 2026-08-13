@@ -102,20 +102,31 @@ export async function pollClaudeUsage(db: DB, now = Date.now()): Promise<boolean
     .query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'")
     .get()?.at;
   if (last && now - last < POLL_EVERY_MS) return false;
+  // Stamped before the attempt, not after a success. The watchdog ticks every 30s,
+  // so an interval that only applied to successes meant a failing endpoint was
+  // retried twice a minute — and this one answers a failure with 429, which that
+  // would then keep feeding. Observed live while testing.
+  stamp(db, now, null);
   try {
     const token = await claudeToken();
     if (!token) return false;
     const rl = await fetchClaudeUsage(token);
     if (!rl) return false;
-    db.run(
-      `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', ?, ?)
-       ON CONFLICT (runtime) DO UPDATE SET json = excluded.json, at = excluded.at`,
-      [JSON.stringify(rl), now],
-    );
+    stamp(db, now, rl);
     return true;
   } catch {
     // An undocumented endpoint is allowed to disappear. The header degrades to
     // what the turn stream reports and the system does not notice.
     return false;
   }
+}
+
+/** Upsert the row. A null reading records the attempt and keeps the last good one. */
+function stamp(db: DB, now: number, rl: RateLimitInfo | null): void {
+  db.run(
+    `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', ?, ?)
+     ON CONFLICT (runtime) DO UPDATE SET json = ${rl ? "excluded.json" : "usage_snapshot.json"},
+       at = excluded.at`,
+    [JSON.stringify(rl ?? {}), now],
+  );
 }
