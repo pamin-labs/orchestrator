@@ -21,7 +21,6 @@ function turnUsage(over: Partial<TurnResult> = {}): TurnResult {
     terminalReason: "completed",
     text: "done",
     usage: { input: 10, output: 20, cacheRead: 300_000, cacheCreate: 100, thinking: 0 },
-    costUsd: 0.01,
     numTurns: 1,
     permissionDenials: [],
     toolSummaries: [],
@@ -43,7 +42,7 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     sched,
     gitLock: new RepoLock(),
     waiters: new Map(),
-    config: { language: cfg.language, difficultyModel: cfg.difficultyModel, workRoot: cfg.workRoot },
+    config: { language: cfg.language, workRoot: cfg.workRoot },
   };
   const deps: ExecDeps = {
     ctx,
@@ -81,13 +80,14 @@ test("session_tokens only counts input+cacheCreate, so heavy cacheRead never tri
 });
 
 test("rotating a session zeroes session_tokens instead of carrying it forward", async () => {
-  const { db, sched } = harness(async () => turnUsage());
+  const { db, sched, specs } = harness(async () => turnUsage());
   sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   // Two turns in the same session: accumulated, not reset.
   expect(db.query<{ t: number }, []>("SELECT session_tokens AS t FROM agent").get()!.t).toBe(220);
+  expect(specs[1]!.resumeSessionId).toBe(specs[0]!.newSessionId);
 
   // Force a rotation the same way a stale stable hash or an explicit request does.
   sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer", rotate: true } });
