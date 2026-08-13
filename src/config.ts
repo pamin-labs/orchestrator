@@ -21,6 +21,16 @@ export interface RoleDef {
   tier?: "trivial" | "normal" | "hard";
   /** A concrete model id, pinned. Wins over `tier` and over difficulty. */
   model?: string;
+  /**
+   * Tool rounds this role gets, overriding `maxTurnsPerJob`.
+   *
+   * Measured: tool results are 90% of everything in a transcript, and every round
+   * re-reads all of them, so rounds are the token bill. But the right number is
+   * not one number — a review reads a diff and files a verdict, while an engineer
+   * runs a test-fix loop. One cap for both has to be the engineer's, and the
+   * reviewers spend it.
+   */
+  maxTurns?: number;
   thinking?: "off" | "low" | "medium" | "high";
   prompt: string;
   /** Overrides the default whitelist from clearance.ts when present. */

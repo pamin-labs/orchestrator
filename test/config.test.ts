@@ -112,3 +112,15 @@ test("ctxBudgetChars actually reaches the thing it configures", () => {
   expect(wired).toContain("ctxBudgetChars: cfg.ctxBudgetChars");
   expect(readFileSync("src/api.ts", "utf8")).toContain("ctx.config.ctxBudgetChars");
 });
+
+test("a reviewer does not get the writer's tool budget", () => {
+  // Measured over 259 turns: tool results are 90% of everything in a transcript,
+  // and every round re-reads all of them. One cap for every role has to be the
+  // engineer's, and the reviewers spend it going through the repo — which is the
+  // one thing QA is defined not to do.
+  const roles = loadRoles();
+  expect(roles.get("qa")!.maxTurns).toBe(20);
+  expect(roles.get("auditor")!.maxTurns).toBe(20);
+  // The Engineer keeps the global cap: a test-fix loop is what rounds are for.
+  expect(roles.get("engineer")!.maxTurns).toBeUndefined();
+});

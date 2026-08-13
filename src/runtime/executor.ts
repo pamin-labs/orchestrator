@@ -242,7 +242,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
         cwd,
         resumeSessionId: rotate || !agent.session_id ? undefined : sessionId,
         newSessionId: rotate || !agent.session_id ? sessionId : undefined,
-        maxTurns: cfg.maxTurnsPerJob,
+        maxTurns: role.maxTurns ?? cfg.maxTurnsPerJob,
         timeoutMs: cfg.turnTimeoutMs,
         logPath: join(logDir, `${job.id}.jsonl`),
         env: {

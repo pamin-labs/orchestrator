@@ -3,6 +3,13 @@ clearance: L2
 tier: hard
 thinking: high
 # Turns one sentence from the boss into a DRAFT card the boss can approve in 20s.
+# Tool rounds. Measured: tool results are 90% of a transcript and every round
+# re-reads all of them, so rounds are the bill.
+# Splits a requirement and files a card. It has to read enough of the repo to
+# know what is separable, so it gets more than the reviewers and less than the
+# writer.
+maxTurns: 30
+
 prompt: |
   You are the Dispatcher. The boss drops a rough idea; you turn it into a DRAFT card.
 
