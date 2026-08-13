@@ -1,5 +1,52 @@
-import type { Frame, State } from "../lib/api";
+import { memo } from "react";
+import { groupedRows, type Frame, type State } from "../lib/api";
 import { cn, clock } from "../lib/utils";
+
+/** One event row. Memoized so a new frame arriving only mounts its own row —
+ *  every other row keeps the same `f` reference and the same booleans, so
+ *  React bails out before touching their DOM. Without this, Timeline's
+ *  re-render on every SSE message would re-run every row's JSX, and
+ *  DevTools' Highlight Updates would flag the whole list on each frame. */
+export const TimelineRow = memo(function TimelineRow({
+  f, showHeader, showDivider,
+}: {
+  f: Frame; showHeader: boolean; showDivider: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "fade-in grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2 py-1 text-[0.75rem]",
+        showDivider && "border-t border-rule-soft",
+      )}
+    >
+      <span className="pt-px font-mono text-[0.625rem] text-ink-3">{showHeader ? clock(f.at) : ""}</span>
+      <div className="min-w-0">
+        {showHeader && (
+          <>
+            <span className={cn("font-semibold", f.author === "boss" && "text-accent")}>{f.author}</span>
+            {f.target && <span className="text-ink-3"> → {f.target}</span>}
+            {f.intent && f.intent !== "inform" && (
+              <span className="ml-1 font-mono text-[0.5625rem] uppercase tracking-[0.06em] text-ink-3">
+                {f.intent}
+              </span>
+            )}{" "}
+          </>
+        )}
+        <span
+          className={cn(
+            "break-words",
+            f.cls === "say" && "text-ink",
+            f.cls === "state" && "text-ok",
+            f.cls === "ask" && "text-warn",
+            (f.cls === "tool" || f.cls === "partial") && "font-mono text-[0.6875rem] text-ink-3",
+          )}
+        >
+          {f.text}
+        </span>
+      </div>
+    </div>
+  );
+});
 
 /**
  * A timeline, not a log.
@@ -44,46 +91,10 @@ export function Timeline({
         事件流 <span className="truncate font-normal text-ink-3">{label}</span>
       </h2>
       {!shown.length && <div className="text-[0.75rem] text-ink-3">无事件</div>}
-      <div className="max-h-[calc(100vh-11rem)] overflow-y-auto overscroll-contain">
-        {shown.map((f, i) => {
-          const prev = shown[i - 1];
-          const same = prev && prev.author === f.author && prev.at - f.at < 60_000;
-          return (
-            <div
-              key={`${f.at}-${i}`}
-              className={cn(
-                "fade-in grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2 py-1 text-[0.75rem]",
-                !same && i > 0 && "border-t border-rule-soft",
-              )}
-            >
-              <span className="pt-px font-mono text-[0.625rem] text-ink-3">{same ? "" : clock(f.at)}</span>
-              <div className="min-w-0">
-                {!same && (
-                  <>
-                    <span className={cn("font-semibold", f.author === "boss" && "text-accent")}>{f.author}</span>
-                    {f.target && <span className="text-ink-3"> → {f.target}</span>}
-                    {f.intent && f.intent !== "inform" && (
-                      <span className="ml-1 font-mono text-[0.5625rem] uppercase tracking-[0.06em] text-ink-3">
-                        {f.intent}
-                      </span>
-                    )}{" "}
-                  </>
-                )}
-                <span
-                  className={cn(
-                    "break-words",
-                    f.cls === "say" && "text-ink",
-                    f.cls === "state" && "text-ok",
-                    f.cls === "ask" && "text-warn",
-                    (f.cls === "tool" || f.cls === "partial") && "font-mono text-[0.6875rem] text-ink-3",
-                  )}
-                >
-                  {f.text}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+      <div className="max-h-[calc(100vh-11rem)] overflow-y-auto overscroll-contain [&>*:first-child]:border-t-0">
+        {groupedRows(shown).map(({ f, showHeader, showDivider }) => (
+          <TimelineRow key={f.id} f={f} showHeader={showHeader} showDivider={showDivider} />
+        ))}
       </div>
     </div>
   );
