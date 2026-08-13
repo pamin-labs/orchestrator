@@ -74,6 +74,21 @@ test("a gate failing across several groups is a project problem", () => {
   expect(item.body).toContain("likely the project");
 });
 
+test("a gate that has since gone green stops being reported", () => {
+  const db = seed();
+  const a = grp(db, "a", ["src/a/**"]);
+  const b = grp(db, "b", ["src/b/**"]);
+  db.run("INSERT INTO resource (name, template) VALUES ('test', 'true')");
+  const ins = db.prepare("INSERT INTO lease (resource, grp_id, state, enqueued_at) VALUES ('test', ?, ?, 0)");
+  ins.run(a, "failed");
+  ins.run(b, "failed");
+  // Both fixed it. Counting every failed row ever recorded left this on the
+  // boss's notification forever, with nothing that could clear it.
+  ins.run(a, "done");
+  ins.run(b, "done");
+  expect(runStandup(db, NOW).some((i) => i.kind === "repeat_failure")).toBe(false);
+});
+
 test("one group failing its own gate is not a standup item", () => {
   const db = seed();
   const a = grp(db, "a", ["src/a/**"]);
