@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { rememberSecrets } from "./mech/scrub.ts";
 
 /**
  * Single source of truth for the schema. See PLAN.md §3.
@@ -481,6 +482,10 @@ export function open(path = "data/orchestrator.sqlite"): DB {
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   migrate(db);
+  // Whatever was stored before this process started still has to be masked out
+  // of everything it prints. Registered once, here, because every path into the
+  // database comes through this function.
+  rememberSecrets(db);
   return db;
 }
 

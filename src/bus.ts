@@ -1,4 +1,5 @@
 import type { DB } from "./db.ts";
+import { scrub } from "./mech/scrub.ts";
 
 /**
  * Append-only event log plus fan-out.
@@ -54,8 +55,16 @@ export class Bus {
     return () => this.sinks.delete(sink);
   }
 
-  /** Persist and fan out. Returns the assigned seq. */
+  /**
+   * Persist and fan out. Returns the assigned seq.
+   *
+   * The body is scrubbed before it is written, not on the way to a reader: an
+   * event is append-only, so a credential that reaches this table is there for
+   * good. `claude setup-token` prints the token it mints and the login streams
+   * the CLI's output, which is how one got here.
+   */
   emit(e: EventInput): StoredEvent {
+    e = { ...e, body: scrub(e.body ?? "") };
     const at = Date.now();
     const row = this.db
       .query<
@@ -82,9 +91,14 @@ export class Bus {
     return stored;
   }
 
-  /** Fan out without persisting. */
+  /**
+   * Fan out without persisting.
+   *
+   * Scrubbed too. It never reaches the database, but it does reach every open
+   * browser, a screenshot, and whatever the boss pastes that screenshot into.
+   */
   live(f: Omit<LiveFrame, "type">): void {
-    this.fan({ type: "live", ...f });
+    this.fan({ type: "live", ...f, body: scrub(f.body) });
   }
 
   since(seq: number, limit = 500): StoredEvent[] {

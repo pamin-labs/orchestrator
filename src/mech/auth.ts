@@ -2,6 +2,7 @@ import type { DB } from "../db.ts";
 import type { Credential } from "./sandbox.ts";
 import { join } from "node:path";
 import { accessToken, decoyAuth, isStale, parseAuth, renew, seedHome } from "./chatgpt.ts";
+import { maskValue } from "./scrub.ts";
 
 /**
  * Where each runtime's credential comes from, and how it reaches the model.
@@ -89,6 +90,9 @@ export function wrongShape(runtime: string, mode: AuthMode, secret: string): str
 }
 
 export function saveAuth(db: DB, a: RuntimeAuth): void {
+  // Registered the moment it is stored, so the masker knows this value before
+  // anything has a chance to print it. Same order as `::add-mask::`.
+  maskValue(a.secret);
   db.run(
     `INSERT INTO runtime_auth (runtime, mode, secret, base_url, updated_at)
      VALUES (?, ?, ?, ?, unixepoch() * 1000)
