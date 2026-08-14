@@ -23,13 +23,14 @@ import { Queue } from "./views/queue";
 import { Requirement } from "./views/requirement";
 import { Timeline } from "./views/timeline";
 import { CostView, Desk, Owns } from "./views/tables";
+import { Workspace } from "./views/workspace";
 
 // `req` is a drill-in, not a tab: it only exists with a requirement selected, and
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
 type View =
   | "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes"
-  | "settings" | "config" | "skills";
+  | "settings" | "config" | "skills" | "work";
 
 /**
  * Views that keep something pinned and scroll the rest themselves.
@@ -38,7 +39,7 @@ type View =
  * long list moves past it. Everything else scrolls whole, which is right when the
  * page has no controls of its own to lose.
  */
-const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req"]);
+const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req", "work"]);
 
 /**
  * The two hashes that open the settings dialog rather than a view.
@@ -219,6 +220,7 @@ export function App() {
   const VIEWS: [View, string][] = [
     ["progress", "需求"],
     ["desk", "工位墙"],
+    ["work", "工作区"],
     ["notes", "记录"],
     ["owns", "所有权"],
     ["cost", "成本"],
@@ -479,6 +481,8 @@ export function App() {
             )
           ) : view === "desk" ? (
             <Desk st={st} frames={frames} projectId={sel.p!} />
+          ) : view === "work" ? (
+            <Workspace st={st} frames={frames} projectId={sel.p!} />
           ) : view === "notes" ? (
             <Notes projectId={sel.p!} tab={sel.t} onTab={(t) => go({ t })} />
           ) : view === "owns" ? (

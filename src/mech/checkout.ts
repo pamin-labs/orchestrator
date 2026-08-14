@@ -2,7 +2,8 @@ import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Ctx } from "../api.ts";
-import { execIn, getBytes, putBytes, WORK, type Scope } from "./sandbox.ts";
+import { execIn, execLines, getBytes, putBytes, WORK, type Scope } from "./sandbox.ts";
+import { sandboxLog } from "./sandboxlog.ts";
 import { shq } from "./shq.ts";
 import { detectBaseBranch, type GitRunner } from "./worktree.ts";
 
@@ -154,6 +155,40 @@ export async function seedBranch(
   }
 }
 
+/**
+ * Run a command in the sandbox and put every line of it on the group's log.
+ *
+ * The buffered `execIn` is right for the dozen small git calls around this; it is
+ * wrong for the two that take minutes, because "nothing has printed yet" and "it
+ * is stuck" look identical from outside.
+ */
+async function streamed(
+  ctx: Ctx,
+  scope: Scope,
+  cmd: string,
+  opts: { timeoutMs?: number; env?: Record<string, string> },
+): Promise<{ code: number; out: string }> {
+  const grpId = "grp" in scope ? scope.grp : null;
+  if (grpId == null) {
+    const r = await execIn(ctx, scope, cmd, { ...opts, cwd: undefined });
+    return { code: r.code, out: `${r.out}${r.err}` };
+  }
+  sandboxLog(ctx, grpId, "cmd", cmd);
+  const stream = execLines(ctx, scope, cmd, opts);
+  const seen: string[] = [];
+  for (;;) {
+    const step = await stream.next();
+    if (step.done) {
+      if (step.value.err) sandboxLog(ctx, grpId, "out", step.value.err.slice(-400));
+      sandboxLog(ctx, grpId, "end", step.value.code === 0 ? "ok" : `exit ${step.value.code}`);
+      return { code: step.value.code, out: [...seen, step.value.err].filter(Boolean).join("\n") };
+    }
+    seen.push(step.value);
+    if (seen.length > 400) seen.shift();
+    sandboxLog(ctx, grpId, "out", step.value);
+  }
+}
+
 export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec): Promise<void> {
   const already = await execIn(ctx, scope, `test -d ${WORK}/.git && echo yes`);
   if (already.out.trim() === "yes") return;
@@ -162,11 +197,14 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
   // stops on "could not read Username" and the group waits on a prompt nobody
   // will ever answer. Failing is the useful answer — it means the read
   // credential is missing, which preflight and the settings page can say.
-  const clone = await execIn(ctx, scope, `git clone ${JSON.stringify(spec.remote)} ${WORK}`, {
-    timeoutMs: 600_000,
-    env: { GIT_TERMINAL_PROMPT: "0" },
-  });
-  if (clone.code !== 0) throw new Error(`git clone failed: ${(clone.err || clone.out).slice(-400)}`);
+  //
+  // `--progress` and streamed, not awaited in silence: a clone of a real
+  // repository is the longest minute of a group's life and the panel showed a
+  // grey dash for all of it. git writes its progress to stderr, which `--progress`
+  // is what keeps on when stdout is not a terminal.
+  const cloneCmd = `git clone --progress ${JSON.stringify(spec.remote)} ${WORK}`;
+  const clone = await streamed(ctx, scope, cloneCmd, { timeoutMs: 600_000, env: { GIT_TERMINAL_PROMPT: "0" } });
+  if (clone.code !== 0) throw new Error(`git clone failed: ${clone.out.slice(-400)}`);
 
   // Three places the branch can be, in the order that loses nothing:
   //   1. on the host — a group mid-flight whose sandbox was replaced, and every

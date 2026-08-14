@@ -148,12 +148,18 @@ export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
     // second one. This flag is what makes the deny-list profile — and every
     // silent refusal it used to cause — unnecessary.
     "--dangerously-skip-permissions",
-    // Exclude user-level settings. Measured: inheriting the boss's global
-    // CLAUDE.md, plugins and skills pushed a trivial haiku turn to ~195k cached
-    // input tokens. Agents should follow their role prompt, not the boss's
-    // personal setup.
+    // `user` is included, and inside the container that means something different
+    // than it did on this machine. Measured on the host, inheriting the boss's
+    // global CLAUDE.md, plugins and skills pushed a trivial haiku turn to ~195k
+    // cached input tokens — which is why this said `project,local` for months.
+    // A turn runs in a container now, where HOME is `/root` and the only thing in
+    // it is what we put there: the read-only mount of the skills the boss ticked.
+    //
+    // It has to be here, measured: with `project,local` the CLI does not look at
+    // `$HOME/.claude/skills` at all, so the mount was invisible and every ticked
+    // skill did nothing.
     "--setting-sources",
-    "project,local",
+    "user,project,local",
     "--strict-mcp-config",
     "--append-system-prompt",
     s.systemAppend,

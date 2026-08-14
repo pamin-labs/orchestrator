@@ -8,7 +8,8 @@ import { poolSizes, type Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
-import { execIn, killSandbox, putFile, serverKeyOnDisk, WORK } from "./mech/sandbox.ts";
+import { execIn, killSandbox, putFile, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox.ts";
+import { clearSandboxLog, sandboxLines } from "./mech/sandboxlog.ts";
 import { listAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
 import { loginRuntimes, startLogin } from "./mech/login.ts";
 import { preflight } from "./mech/preflight.ts";
@@ -2436,6 +2437,8 @@ const postGroupControl: Handler = async (ctx, req, params) => {
     // allowed, or is holding a credential that has since been replaced.
     case "rebuild": {
       await killSandbox(ctx, { grp: grpId });
+      // The old lines described a container that no longer exists.
+      clearSandboxLog(grpId);
       ctx.bus.emit({
         grpId,
         author: "boss",
@@ -3199,6 +3202,41 @@ const getProjectConfig: Handler = async (ctx, _req, params) => {
   });
 };
 
+/**
+ * One group's container: what it is, and what it has been saying.
+ *
+ * The lines are in memory and capped (`sandboxlog.ts`) — this is the machine
+ * setting itself up, which is worth watching and scrolling back through, not
+ * worth a table. The panel says so rather than pretending the log is durable.
+ */
+const getSandbox: Handler = async (ctx, req) => {
+  const grpId = Number(new URL(req.url).searchParams.get("grp") ?? 0);
+  const grp = ctx.db
+    .query<
+      { id: number; name: string; status: string; project_id: number; sandbox_id: string | null; sandbox_at: number | null; branch: string | null },
+      [number]
+    >("SELECT id, name, status, project_id, sandbox_id, sandbox_at, branch FROM grp WHERE id = ?")
+    .get(grpId);
+  if (!grp) return text("no such group", 404);
+  const spec = specFor(ctx, grp.project_id);
+  return json({
+    group: { id: grp.id, name: grp.name, status: grp.status, branch: grp.branch },
+    sandbox: {
+      id: grp.sandbox_id,
+      at: grp.sandbox_at,
+      image: spec.image,
+      cpu: spec.cpu,
+      memory: spec.memory,
+      ttlSeconds: spec.ttlSeconds,
+      mounts: [
+        ...Object.entries(spec.cacheDirs).map(([mountPath, hostPath]) => ({ mountPath, hostPath, readOnly: false })),
+        ...skillMounts(ctx).map((m) => ({ mountPath: m.mountPath, hostPath: m.host?.path ?? "", readOnly: true })),
+      ],
+    },
+    lines: sandboxLines(grpId),
+  });
+};
+
 const getPreflight: Handler = async (ctx) =>
   json({
     checks: await preflight({
@@ -3213,6 +3251,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/auth$/, postAuth],
   ["POST", /^\/api\/auth\/login$/, postLogin],
   ["GET", /^\/api\/preflight$/, getPreflight],
+  ["GET", /^\/api\/sandbox$/, getSandbox],
   ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
   ["POST", /^\/api\/project\/(?<id>\d+)\/config$/, patchProjectConfig],
   ["POST", /^\/orch\/status$/, postStatus],

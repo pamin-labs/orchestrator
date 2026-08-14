@@ -218,6 +218,12 @@ export function toolsFromAllowed(allowed: string[]): string[] {
     const name = a.includes("(") ? a.slice(0, a.indexOf("(")) : a;
     if (name.trim()) set.add(name.trim());
   }
+  // `Skill`, for every role, not per role yaml. Measured: `--tools` without it
+  // loads no skill catalogue at all — asked to list its skills the model answers
+  // NONE — so the mount, the tick boxes and the settings page were all decoration.
+  // It is not a permission (that is `allowedTools`, and the container is the
+  // boundary anyway); it is the one entry that makes a staged skill reachable.
+  set.add("Skill");
   return [...set];
 }
 

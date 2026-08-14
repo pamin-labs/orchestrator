@@ -5,6 +5,7 @@ import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execLines, WORK } from "./sandbox.ts";
 import { baseRefFor } from "./checkout.ts";
+import { sandboxLog } from "./sandboxlog.ts";
 
 /** `project.config_json.install`, or null. Same reader shape as `gatesFor`. */
 function installFor(ctx: Ctx, projectId: number): string | null {
@@ -82,7 +83,7 @@ export async function runInstall(
   cmd: string,
 ): Promise<{ ok: boolean; tail: string }> {
   const seen: string[] = [];
-  ctx.bus.live({ grpId, agentId: null, role: "orchestrator", kind: "status", body: `$ ${cmd}` });
+  sandboxLog(ctx, grpId, "cmd", cmd);
   const stream = execLines(ctx, { grp: grpId }, cmd, {
     cwd: WORK,
     timeoutMs: ctx.config.installTimeoutMs ?? 10_800_000,
@@ -96,8 +97,9 @@ export async function runInstall(
     }
     seen.push(step.value);
     if (seen.length > 400) seen.shift();
-    ctx.bus.live({ grpId, agentId: null, role: "orchestrator", kind: "tool", body: step.value });
+    sandboxLog(ctx, grpId, "out", step.value);
   }
+  sandboxLog(ctx, grpId, "end", end.code === 0 ? "ok" : `exit ${end.code}`);
   const tail = [...seen.slice(-12), ...(end.err ? [end.err.slice(-400)] : [])].join("\n");
   ctx.bus.emit({
     grpId,

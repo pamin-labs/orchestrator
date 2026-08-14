@@ -116,10 +116,13 @@ test("changing the loaded tool set rotates the session", () => {
   expect(needsRotation(base.hash, fewer)).toBe(true);
 });
 
-test("the loaded tool set defaults to exactly what the whitelist implies", () => {
+test("the loaded tool set is the whitelist, plus the one tool skills need", () => {
   const s = buildStable(parts());
-  // `Bash(orch *)` needs Bash loaded; nothing else should be paid for.
-  expect(s.tools.sort()).toEqual(["Bash", "Edit", "Read"]);
+  // `Bash(orch *)` needs Bash loaded; nothing else should be paid for — except
+  // `Skill`, which is not in any role yaml and is what the whole staged-skill
+  // mount hangs on. Measured: without it in `--tools` the CLI loads no catalogue
+  // at all and an agent asked to list its skills answers NONE.
+  expect(s.tools.sort()).toEqual(["Bash", "Edit", "Read", "Skill"]);
 });
 
 test("a skill the boss pointed at lands in the delta, never in the cached prefix", () => {
