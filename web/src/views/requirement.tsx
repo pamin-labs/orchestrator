@@ -921,15 +921,23 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
       </AccordionTrigger>
 
       <AccordionBody className="px-4 pb-3">
-        {/* Six lines, then a click. A watchdog escalation quotes three QA verdicts
+        {/* An exchange: what was asked on the left, what you say back on the
+            right. The page already showed a stand-in's answers this way and this
+            is the same thing one step earlier — a question, a proposed reply, and
+            the box you actually send from. Read as a form (question, draft box,
+            composer, three buttons) it was four blocks; read as two sides it is
+            one conversation with a gap where your answer goes.
+
+            Six lines, then a click. A watchdog escalation quotes three QA verdicts
             verbatim and runs to fifteen — the decision is usually made by line
             three, with the rest there to check the reasoning against. */}
-        <div className="max-w-[72ch]">
+        <div className="max-w-[46rem] rounded-2xl rounded-tl-sm border border-rule-soft px-3.5 py-2">
           <Clamp lines={6}>
             <WithAttachments body={e.question} className="text-[0.8125rem]" />
           </Clamp>
         </div>
         <Suggested escId={e.id} onUse={setSeed} />
+        <div className="ml-auto mt-2 max-w-[46rem]">
         <Composer
           key={seed}
           initial={seed}
@@ -968,6 +976,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             </>
           )}
         />
+        </div>
       </AccordionBody>
     </>
   );
@@ -1047,13 +1056,15 @@ function Suggested({ escId, onUse }: { escId: number; onUse: (t: string) => void
     void pull<{ text: string }>(`/api/escalations/${escId}/draft`).then((r) => setText(r?.text?.trim() || ""));
   }, [escId]);
 
-  if (text === null) return <Meta className="my-2 block">AI 在替你想一个答复…</Meta>;
+  if (text === null) return <Meta className="my-2 ml-auto block w-fit">AI 在替你想一个答复…</Meta>;
   if (!text) return null;
   return (
     // A recessed well: this is the one block here nobody wrote, machine text
     // between the agent's question and the boss's answer, and it has to be told
     // apart from both at a glance.
-    <div className="my-2 max-w-[72ch] rounded-md bg-sunk px-3 py-2">
+    // On your side of the exchange, because that is what it is: a reply nobody
+    // has sent. Dashed, so it cannot be mistaken for one that went out.
+    <div className="my-2 ml-auto max-w-[46rem] rounded-2xl rounded-tr-sm border border-dashed border-rule bg-sunk/60 px-3.5 py-2">
       <div className="flex items-baseline gap-2">
         <Tip label="按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改">
           <Meta className="cursor-help">AI 替你拟的答复</Meta>
