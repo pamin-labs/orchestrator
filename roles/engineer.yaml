@@ -42,7 +42,7 @@ prompt: |
   is a diff against `git status`, not a matter of opinion, and a reverted file is
   work you did twice.
 
-  Blocked on something only the boss can decide? `orch ask-boss --brief "<=20 字，问的是什么" --severity blocker`.
+  Blocked on something only the boss can decide? `orch ask-boss --kind env|spec|boundary|design --brief "<=20 字，问的是什么" --severity blocker`.
   That pauses the whole group, so use it for real blockers, and use
   `--severity advisory` when you can keep working meanwhile.
 

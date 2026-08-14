@@ -430,6 +430,14 @@ const MIGRATIONS: string[] = [
   // pass — splitDeskRows(tables.tsx:82-104)…`. Eight of those is a page of prose
   // in front of a reader whose whole job here is to pick which one to open.
   `ALTER TABLE escalation ADD COLUMN brief TEXT;`,
+
+  // 033 — what kind of thing is being asked.
+  //
+  // One bad premise strands every slice behind it, so a requirement can hold a
+  // dozen open questions that are all the same problem said twelve times — the
+  // worktree has no playwright, the acceptance line cannot be verified. Twelve
+  // cards is twelve decisions on a page where there is one.
+  `ALTER TABLE escalation ADD COLUMN kind TEXT;`,
 ];
 
 export type DB = Database;

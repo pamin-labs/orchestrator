@@ -98,7 +98,8 @@ async function stdin(): Promise<string> {
 const USAGE = `orch <command>
 
   ctx query <question>
-  ask-boss [--severity blocker|advisory] [--brief "<=20 chars, what it is about>"] <question>
+  ask-boss [--severity blocker|advisory] [--kind env|spec|boundary|design|other]
+           [--brief "<=20 chars, what it is about>"] <question>
   lease <resource> [--arg k=v ...]
   lease log <id> [--grep RE]
   mail <target> --intent ask|request|inform|note|decision [--severity S] [--in-reply-to N] <body>
@@ -142,6 +143,7 @@ export async function main(argv: string[]): Promise<number> {
         severity: flags.severity ?? "advisory",
         question,
         brief: typeof flags.brief === "string" ? flags.brief : undefined,
+        kind: typeof flags.kind === "string" ? flags.kind : undefined,
       });
       break;
     }

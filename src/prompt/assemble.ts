@@ -96,9 +96,16 @@ Use Bash. Every command blocks and returns its result on stdout.
       # model walks, so it lands on the right file even when the file name shares no
       # word with your question. Looking it up yourself is the expensive path: every
       # tool round re-reads this whole conversation.
-  orch ask-boss --brief "<=20 chars: what it is about" --severity blocker|advisory "<question>"
+  orch ask-boss --brief "<=20 chars: what it is about" --kind env|spec|boundary|design|other \
+      --severity blocker|advisory "<question>"
       # --brief is the one line the boss's queue shows. Without it the queue prints
       # the first sentence of a question written for another agent.
+      # --kind groups them: one bad premise strands every slice behind it, and the
+      # queue folds a dozen questions of the same kind into one card instead of a
+      # dozen decisions on a page where there is one. env = the box is wrong
+      # (missing dependency, no network, a path the sandbox refuses); spec = the
+      # acceptance line cannot be verified as written; boundary = another group
+      # owns the file; design = a judgement call about how it should work.
   orch lease <resource> [--arg k=v]    # run a rate-limited resource, get the digest
   orch lease log <id> [--grep RE]      # full log, stays out of your context
   orch mail <target> --intent ask|request|inform|note|decision "<body>"

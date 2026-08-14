@@ -961,8 +961,8 @@ function handleDenials(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult)
   if (!open) {
     const row = ctx.db
       .query<{ id: number }, [number | null, number, string]>(
-        `INSERT INTO escalation (grp_id, agent_id, severity, question, brief, created_at)
-         VALUES (?, ?, 'advisory', ?, '被 clearance 挡住了', unixepoch() * 1000) RETURNING id`,
+        `INSERT INTO escalation (grp_id, agent_id, severity, question, brief, kind, created_at)
+         VALUES (?, ?, 'advisory', ?, '被 clearance 挡住了', 'env', unixepoch() * 1000) RETURNING id`,
       )
       .get(job.grp_id, agent.id, `blocked by clearance: ${summary}`)!;
     // Route it, or it sits at the default chain_state forever: the PM it was

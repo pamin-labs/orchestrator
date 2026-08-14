@@ -110,3 +110,11 @@ export const asksOf = (st: State, id: number): Escalation[] =>
 
 /** Of those, the ones actually waiting on the boss. */
 export const mineOf = (asks: Escalation[]): Escalation[] => asks.filter((e) => e.chain_state === "boss");
+
+/** What a question is about, in the boss's words. `other` gets no label. */
+export const KIND_ZH: Record<string, string> = {
+  env: "环境",
+  spec: "验收口径",
+  boundary: "边界",
+  design: "设计取舍",
+};

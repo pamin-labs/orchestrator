@@ -6,7 +6,7 @@ import { post, pull } from "../lib/api";
 import { usePaged } from "../lib/page";
 import type { State } from "../lib/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "../lib/rank";
-import { pending, prUrl } from "../lib/select";
+import { KIND_ZH, pending, prUrl } from "../lib/select";
 import { brief, cn, K } from "../lib/utils";
 
 /**
@@ -33,6 +33,8 @@ interface Item {
   who?: string;
   /** Blocking work, or merely asking. Two shapes, not two paragraphs. */
   hard?: boolean;
+  /** env | spec | boundary | design | other — what the question is about. */
+  about?: string;
   grpId: number | null;
   points: number;
   reasons: Reason[];
@@ -149,6 +151,7 @@ export function Queue({
       what: e.brief?.trim() || brief(e.question),
       who: e.asker ?? "系统",
       hard: e.severity === "blocker",
+      about: e.kind ?? "other",
       // The question was the only thing on the row, so a two-paragraph one filled
       // the card and never said which requirement was asking it.
       where: e.grp_id ? groupName(st, e.grp_id) : "常驻岗",
@@ -263,11 +266,15 @@ function Cluster({
   const g = st.groups.find((x) => x.id === c.grpId);
   const hard = c.items.filter((i) => i.hard).length;
   // A requirement with thirty open questions is a real state — one bad premise
-  // strands every slice behind it — and thirty cards in one row is a horizontal
-  // wall that pushes every other requirement off the screen. Blockers first, six
-  // shown, and the rest counted rather than hidden: what the boss decides here is
-  // which requirement to open, and six cards already answers it.
-  const shown = [...c.items].sort((a, b) => Number(b.hard) - Number(a.hard)).slice(0, 6);
+  // strands every slice behind it — and thirty of them are usually the same
+  // problem said thirty times: the worktree has no playwright, the acceptance
+  // line cannot be verified. Fold by what they are about, so the row says how
+  // many problems there are rather than how many messages.
+  //
+  // Blockers first; six cards, and the rest counted rather than hidden. What the
+  // boss decides here is which requirement to open, and six answers it.
+  const folded = fold(c.items);
+  const shown = folded.slice(0, 6);
   return (
     <div
       onClick={() => !standing && onOpen(c.grpId)}
@@ -291,12 +298,12 @@ function Cluster({
       </div>
 
       <div className="flex min-w-0 flex-wrap items-stretch gap-1.5 max-[60rem]:col-span-full">
-        {shown.map((i) => (
-          <Ticket key={i.key} item={i} refresh={refresh} standing={standing} />
+        {shown.map(({ item, n }) => (
+          <Ticket key={item.key} item={item} n={n} refresh={refresh} standing={standing} />
         ))}
-        {c.items.length > shown.length && (
+        {folded.length > shown.length && (
           <span className="self-center font-mono text-[0.6875rem] text-ink-3">
-            还有 {c.items.length - shown.length} 条
+            还有 {folded.length - shown.length} 条
           </span>
         )}
       </div>
@@ -316,10 +323,27 @@ function Cluster({
  * bad edge: it is not a louder version of a question, it is a different fact —
  * the group behind it is stopped until this is answered.
  */
+/**
+ * Same requirement, same kind, same role: one problem, however many times it was
+ * asked. The newest one leads, because it is the one that has the current facts —
+ * an environment question filed an hour ago has usually been overtaken by the one
+ * filed ten minutes ago.
+ */
+function fold(items: Item[]): { item: Item; n: number }[] {
+  const by = new Map<string, { item: Item; n: number }>();
+  for (const i of items) {
+    const key = i.about && i.about !== "other" ? `${i.kind}:${i.about}:${i.who}` : i.key;
+    const seen = by.get(key);
+    if (seen) seen.n += 1;
+    else by.set(key, { item: i, n: 1 });
+  }
+  return [...by.values()].sort((a, b) => Number(b.item.hard) - Number(a.item.hard));
+}
+
 function Ticket({
-  item, refresh, standing,
+  item, n, refresh, standing,
 }: {
-  item: Item; refresh: () => void; standing: boolean;
+  item: Item; n: number; refresh: () => void; standing: boolean;
 }) {
   return (
     <Tip label={item.what}>
@@ -332,6 +356,10 @@ function Ticket({
       >
         <span className="flex items-center gap-1 font-mono text-[0.625rem] text-ink-3">
           {item.who ?? item.kind}
+          {/* What it is about, and how many said the same thing. `环境 ×12` is one
+              decision; twelve cards saying it is twelve. */}
+          {item.about && KIND_ZH[item.about] && <span className="text-ink-2">{KIND_ZH[item.about]}</span>}
+          {n > 1 && <span className="font-semibold text-ink-2">×{n}</span>}
           <span className="grow" />
           {item.reasons.find((r) => r.why.startsWith("等了"))?.why.replace("等了 ", "")}
         </span>

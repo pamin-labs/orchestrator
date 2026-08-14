@@ -6,7 +6,7 @@ import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { brief, landGroup, makeApp, type Ctx } from "../src/api.ts";
+import { askKind, brief, landGroup, makeApp, type Ctx } from "../src/api.ts";
 import { listSkills } from "../src/mech/skills.ts";
 import { landed } from "../src/mech/mergequeue.ts";
 import { sweepApproved } from "../src/mech/start.ts";
@@ -1157,4 +1157,15 @@ test("a question carries one line for the queue, given or derived", () => {
   expect(brief(undefined, "S2 的验收跑不了。原因是 worktree 里没装 playwright")).toBe("S2 的验收跑不了");
   // Long: cut, with the cut marked.
   expect(brief("x".repeat(60), "q")).toBe(`${"x".repeat(39)}…`);
+});
+
+test("what a question is about comes from a closed set", () => {
+  // Closed because the queue groups by it: free text gives twelve spellings of
+  // "environment" and groups nothing.
+  expect(askKind("env")).toBe("env");
+  expect(askKind(" spec ")).toBe("spec");
+  // Unknown or missing falls to `other` rather than being rejected. An agent
+  // must never be stuck on a taxonomy — same rule as the brief.
+  expect(askKind("环境")).toBe("other");
+  expect(askKind(undefined)).toBe("other");
 });

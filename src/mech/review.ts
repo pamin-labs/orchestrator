@@ -192,8 +192,8 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
     // no reason attached. Observed on pm-ai-agent: a blocker filed two hours
     // earlier that the boss had no way to see.
     ctx.db.run(
-      `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
-       VALUES (?, 'blocker', ?, ?, 'boss', unixepoch() * 1000)`,
+      `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
+       VALUES (?, 'blocker', ?, ?, 'spec', 'boss', unixepoch() * 1000)`,
       [
         slice.grp_id,
         `S${slice.seq} "${slice.title}" failed ${from} ${retries} times. Latest:\n${feedback}`,
@@ -526,8 +526,8 @@ function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string
 
   ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
   ctx.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
-     VALUES (?, 'blocker', ?, ?, 'boss', unixepoch() * 1000)`,
+    `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
+     VALUES (?, 'blocker', ?, ?, 'spec', 'boss', unixepoch() * 1000)`,
     [
       grpId,
       `整个分支被 ${from} 打回 ${n} 次了。多半是验收口径本身有问题，不是代码：\n${why}`,
