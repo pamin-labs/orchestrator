@@ -66,7 +66,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: Record<string
 
   return (
     <>
-      <Head title="闸门" note="从上往下跑，全绿才算过。拖动改顺序" />
+      <Head title="闸门" note="从上往下跑，拖着改顺序" />
       {!d.resources.length ? (
         <Meta className="block py-2">没探到可跑的命令。</Meta>
       ) : (
@@ -160,7 +160,7 @@ export function Sandbox({
 
   return (
     <>
-      <Head title="沙盒" note="留空就用默认，默认写在灰字里" />
+      <Head title="沙盒" note="灰字是默认值" />
       <FieldGroup className="[--label:5rem]">
         <Row
           label="装依赖"

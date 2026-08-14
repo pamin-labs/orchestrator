@@ -63,8 +63,8 @@ const RUNTIMES: Runtime[] = [
     login: "oauth_token",
     urlEnv: "ANTHROPIC_BASE_URL",
     modes: [
-      { mode: "oauth_token", label: "订阅", how: "claude setup-token", cost: "一年有效，走订阅额度" },
-      { mode: "api_key", label: "API key", how: "console.anthropic.com", cost: "按量计费，不显示额度" },
+      { mode: "oauth_token", label: "订阅", how: "claude setup-token", cost: "一年有效" },
+      { mode: "api_key", label: "API key", how: "console.anthropic.com", cost: "不显示额度" },
     ],
   },
   {
@@ -73,8 +73,8 @@ const RUNTIMES: Runtime[] = [
     login: "chatgpt",
     urlEnv: "OPENAI_BASE_URL",
     modes: [
-      { mode: "chatgpt", label: "订阅", how: "codex login", cost: "走订阅额度，本机统一刷新" },
-      { mode: "api_key", label: "API key", how: "platform.openai.com", cost: "按量计费" },
+      { mode: "chatgpt", label: "订阅", how: "codex login", cost: "本机统一刷新" },
+      { mode: "api_key", label: "API key", how: "platform.openai.com", cost: "不显示额度" },
     ],
   },
 ];
@@ -83,7 +83,9 @@ const RUNTIMES: Runtime[] = [
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
 
 const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: true }> = [
-  { key: "cred", zh: "凭据", icon: KeyRound },
+  // 凭据 named the storage, not the thing: what is picked here is which account
+  // the fleet works as, and the boss thinks of it as an account.
+  { key: "cred", zh: "账号", icon: KeyRound },
   { key: "host", zh: "环境", icon: MonitorCog },
   { key: "server", zh: "沙盒服务器", icon: Server },
   { key: "gates", zh: "闸门", icon: ListChecks, project: true },
@@ -178,7 +180,9 @@ export function SettingsDialog({
               ))}
             </Group>
             {projectId && (
-              <Group label={projectName ?? "这个项目"} note={proj?.repoPath}>
+              // Same shape as 服务器 above it: the group names the scope, the small
+              // line says which one, and the path is a hover away.
+              <Group label="项目" note={projectName} hint={proj?.repoPath}>
                 {items.filter((n) => n.project).map((n) => (
                   <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => setSection(n.key)} />
                 ))}
@@ -199,7 +203,7 @@ export function SettingsDialog({
             <Pane>
               {here === "cred" ? (
                 <>
-                  <Head title="凭据" note="agent 用哪个账号干活；真 token 不进沙盒" />
+                  <Head title="账号" note="真 token 不进沙盒" />
                   {RUNTIMES.map((r) => (
                     <Credential
                       key={r.key}
@@ -232,11 +236,20 @@ export function SettingsDialog({
   );
 }
 
-function Group({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
+function Group({
+  label, note, hint, children,
+}: {
+  label: string;
+  note?: string;
+  /** The long version, on hover. Never `title=`: see ui/tooltip.tsx. */
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  const line = <Meta className="mb-1.5 block truncate px-2">{note}</Meta>;
   return (
     <div>
       <H2 className="mb-1 truncate px-2">{label}</H2>
-      {note && <Meta className="mb-1.5 block truncate px-2" title={note}>{note}</Meta>}
+      {note && (hint ? <Tip label={hint}>{line}</Tip> : line)}
       {children}
     </div>
   );
@@ -365,9 +378,23 @@ function Credential(props: {
 
       <FieldGroup className="[--label:4.5rem]">
         <Field className="py-1.5" orientation={mode === "chatgpt" ? "vertical" : "horizontal"}>
-          <FieldLabel htmlFor={`${r.key}-secret`} className="text-ink-3">
-            {mode === "chatgpt" ? "auth.json" : "token"}
-          </FieldLabel>
+          {/* The label is what this mode calls the thing. It said `token` under an
+              API key too, which is two words for one field. */}
+          {mode === "chatgpt" ? (
+            <span className="flex items-center gap-2">
+              <FieldLabel htmlFor={`${r.key}-secret`} className="text-ink-3">
+                auth.json
+              </FieldLabel>
+              <span className="grow" />
+              {/* Beside the label, because the box below is a block and the button
+                  is the other way to fill it. */}
+              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={login} />}
+            </span>
+          ) : (
+            <FieldLabel htmlFor={`${r.key}-secret`} className="text-ink-3">
+              {mode === "api_key" ? "API key" : "token"}
+            </FieldLabel>
+          )}
           {mode === "chatgpt" ? (
             <Textarea
               id={`${r.key}-secret`}
@@ -387,31 +414,10 @@ function Credential(props: {
                 onChange={(e) => setSecret(e.target.value)}
               />
               {/* The alternative to pasting, next to the box it replaces. */}
-              {r.login === mode && (
-                <Tip label="在这台机器上跑一次官方 CLI 的登录，用它本地的登录信息换出 token。仅限官方账号；自建网关走 API key。">
-                  <Button size="sm" disabled={busy || props.waiting} onClick={login}>
-                    {busy || props.waiting ? "等你在浏览器里批准…" : "从本机登录"}
-                  </Button>
-                </Tip>
-              )}
+              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={login} />}
             </InputGroup>
           )}
         </Field>
-
-        {/* The textarea is a block, so the button that fills it in cannot sit
-            beside it — it gets the next row, still under the same label column. */}
-        {mode === "chatgpt" && r.login === mode && (
-          <Field className="py-1.5">
-            <span />
-            <FieldContent>
-              <Tip label="在这台机器上跑一次 codex login，把它写下的 auth.json 直接收进来。">
-                <Button size="sm" disabled={busy || props.waiting} onClick={login}>
-                  {busy || props.waiting ? "等你在浏览器里批准…" : "从本机登录"}
-                </Button>
-              </Tip>
-            </FieldContent>
-          </Field>
-        )}
 
         {link && (
           <Field className="py-1.5">
@@ -484,11 +490,22 @@ function Credential(props: {
   );
 }
 
+/** Run the official CLI's login here and keep what it hands back. */
+function Login({ busy, waiting, onClick }: { busy: boolean; waiting: boolean; onClick: () => void }) {
+  return (
+    <Tip label="在这台机器上跑一次官方 CLI 的登录，拿它换出凭据。仅限官方账号；自建网关走 API key。">
+      <Button size="sm" disabled={busy || waiting} onClick={onClick}>
+        {busy || waiting ? "等你在浏览器里批准…" : "从本机登录"}
+      </Button>
+    </Tip>
+  );
+}
+
 /** Can this machine build a sandbox at all. Four facts, one line each. */
 function Env({ checks }: { checks: HostCheck[] }) {
   return (
     <>
-      <Head title="环境" note="沙盒要用到的东西，装没装" />
+      <Head title="环境" note="沙盒要用的" />
       {!checks.length && <Meta className="block py-2">检查中…</Meta>}
       {checks.map((c) => (
         <div key={c.name} className="border-t border-rule-soft py-2 first:border-t-0">
@@ -544,7 +561,7 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
 
   return (
     <>
-      <Head title="沙盒服务器" note="宿主上那个开容器的服务，和它对暗号用的" />
+      <Head title="沙盒服务器" note="开容器的那个服务" />
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="sandbox-key">
