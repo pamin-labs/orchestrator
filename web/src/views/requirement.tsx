@@ -17,6 +17,7 @@ import { activityOf } from "../lib/activity";
 import { WithAttachments } from "../ui/attachments";
 import { useEffect, useState } from "react";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
+import { Segment, Segments } from "../ui/segment";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
 
@@ -53,6 +54,10 @@ export function Requirement({
   // `""` when the open one is shut, which is the state the default would
   // otherwise fall straight back to.
   const [openAsk, setOpenAsk] = useState<string | null>(null);
+  // Which of the three the boss is looking at. `null` = whatever there is, in the
+  // order that matters: a decision first, then what somebody else is holding,
+  // then what was answered for you.
+  const [subPick, setSubPick] = useState<string | null>(null);
 
   // The LAST slice that has actually produced something — work moves down the
   // list, so the newest one carrying evidence is where it has got to. Two states
@@ -77,6 +82,9 @@ export function Requirement({
   const active = tab ?? (mine.length ? "ask" : "slice");
   /** Open questions somebody else in the chain is still holding. */
   const others = asks.filter((a) => !mine.includes(a));
+  const answered = st.answered.filter((a) => a.grp_id === g.id);
+  const sub = subPick ?? (mine.length ? "mine" : others.length ? "held" : "done");
+  const setSub = (v: string) => v && setSubPick(v);
   // The record is fetched by the panel that shows it, so the tab has to be told.
   const [notes, setNotes] = useState<number | null>(null);
 
@@ -145,46 +153,50 @@ export function Requirement({
             )}
           </TabPanel>
 
-          {/* Two lists, not one. Everything used to sit in a single accordion at
-              one weight: a question the boss has to answer, a question the
-              Architect is still holding, and a stand-in's old answer, each with
-              the same tint, the same type and the same click. The Architect's read
-              like work — it is not, and its body is a shell command the boss can
-              do nothing with.
+          {/* Three kinds of thing, one at a time, with their counts on the switch.
+              Stacked down one scroll they were invisible: at the top of the page
+              nothing said a question was being held by the Architect or that a
+              stand-in had answered two of them — you found out by scrolling past
+              the box you came to type in. A switch says it in three words without
+              moving anything.
 
-              So: the decisions, in full, each with its answer box. Then what
-              somebody else is holding, one line each, quiet. Then who answered for
-              you, only if anyone has. */}
-          {/* One scroll for the whole tab, not a capped box per section. The
-              questions box owned the scroll, so a long question pushed the answer
-              box it belongs to below the box's own bottom edge — the boss saw a
-              question cut mid-sentence and no way to reply to it. */}
-          <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden pb-2 pr-1">
-            {mine.length > 0 && (
-              <div className="shrink-0 overflow-hidden rounded-lg border border-accent">
-                <Accordion value={openAsk ?? String(mine[0]!.id)} onValueChange={setOpenAsk}>
-                  {mine.map((e) => (
-                    <AccordionItem key={e.id} value={String(e.id)}>
-                      <Ask e={e} refresh={refresh} open={String(e.id) === (openAsk ?? String(mine[0]!.id))} />
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              </div>
-            )}
+              Not a second tab strip (this page already has one): the same quiet
+              ToggleGroup the evidence panel uses, for the same reason. */}
+          <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col gap-2">
+            <Segments value={sub} onValueChange={setSub} className="-ml-2 shrink-0">
+              {mine.length > 0 && <Segment value="mine">待你决策 {mine.length}</Segment>}
+              {others.length > 0 && <Segment value="held">别人在处理 {others.length}</Segment>}
+              {answered.length > 0 && <Segment value="done">替你答过 {answered.length}</Segment>}
+            </Segments>
 
-            {others.length > 0 && <Held rows={others} />}
-
-            {!asks.length && (
-              <div className="text-[0.8125rem] text-ink-3">没有开着的问题。这一组的人现在不等你。</div>
-            )}
-
-            {/* An answer a stand-in gave for the boss belongs with the questions,
-                which is where someone goes looking for it. It used to sit in a
-                roster tab: 这个组的人 listed role, activity, turns and tokens for
-                every agent in the group — the 工位墙 in miniature, one column
-                narrower, on a page about a requirement rather than about people.
-                The tab is gone; this was the only part of it doing work. */}
-            <Delegated rows={st.answered.filter((a) => a.grp_id === g.id)} refresh={refresh} />
+            {/* One scroll for the pane, not a capped box per section: a long
+                question used to push its own answer box below the box's bottom
+                edge, so the boss saw a question cut mid-sentence and no way to
+                reply to it. */}
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-1">
+              {!asks.length && !answered.length && (
+                <div className="text-[0.8125rem] text-ink-3">没有开着的问题。这一组的人现在不等你。</div>
+              )}
+              {sub === "mine" && mine.length > 0 && (
+                <div className="overflow-hidden rounded-lg border border-accent">
+                  <Accordion value={openAsk ?? String(mine[0]!.id)} onValueChange={setOpenAsk}>
+                    {mine.map((e) => (
+                      <AccordionItem key={e.id} value={String(e.id)}>
+                        <Ask e={e} refresh={refresh} open={String(e.id) === (openAsk ?? String(mine[0]!.id))} />
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                </div>
+              )}
+              {sub === "held" && <Held rows={others} />}
+              {/* An answer a stand-in gave for the boss belongs with the questions,
+                  which is where someone goes looking for it. It used to sit in a
+                  roster tab: 这个组的人 listed role, activity, turns and tokens for
+                  every agent in the group — the 工位墙 in miniature, one column
+                  narrower, on a page about a requirement rather than about people.
+                  The tab is gone; this was the only part of it doing work. */}
+              {sub === "done" && <Delegated rows={answered} refresh={refresh} />}
+            </div>
           </TabPanel>
 
           <TabPanel value="notes" className="flex min-h-0 flex-1 flex-col">
@@ -577,9 +589,7 @@ function Delegated({
   // the question the boss was there to answer.
   if (!rows.length) return null;
   return (
-    <div className="shrink-0">
-      <Meta className="block px-1 pb-1">替你答过 {rows.length} 条</Meta>
-      <div className="overflow-hidden rounded-lg border border-rule-soft">
+    <div className="overflow-hidden rounded-lg border border-rule-soft">
         {rows.map((a) => (
           // Question, then answer, in the order they happened, at a measure that
           // can be read. Both used to run the full width of the page, the question
@@ -617,7 +627,6 @@ function Delegated({
             </div>
           </div>
         ))}
-      </div>
     </div>
   );
 }
@@ -897,6 +906,18 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
   // button did nothing — which is exactly when you press it: after editing the
   // draft into something worse and wanting it back.
   const [seed, setSeed] = useState<{ n: number; text: string }>({ n: 0, text: "" });
+  // Asked for, never automatic. Opening a question used to fire a model call —
+  // one per open, on every question the boss so much as looked at — and most of
+  // them are read and answered without wanting anybody's draft. The button is in
+  // the composer's own row, where the other writing aids are.
+  const [draft, setDraft] = useState<{ busy: boolean; text?: string }>({ busy: false });
+  const askDraft = () => {
+    if (draft.busy) return;
+    setDraft({ busy: true });
+    void pull<{ text: string }>(`/api/escalations/${e.id}/draft`).then((r) =>
+      setDraft({ busy: false, text: r?.text?.trim() || "没能拟出来，这条得你自己写。" }),
+    );
+  };
   return (
     <>
       {/* Who is waiting, how long, and what it costs — in that order, because the
@@ -932,7 +953,25 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             <WithAttachments body={e.question} className="text-[0.8125rem]" />
           </Clamp>
         </div>
-        <Suggested escId={e.id} onUse={(t) => setSeed((p) => ({ n: p.n + 1, text: t }))} />
+        {draft.busy && <Typing label="AI 在替你想" />}
+        {draft.text && (
+          // On your side of the exchange, because that is what it is: a reply
+          // nobody has sent. Dashed, so it cannot be mistaken for one that went.
+          <div className="my-2 ml-auto max-w-[46rem] rounded-2xl rounded-tr-sm border border-dashed border-rule bg-paper px-3.5 py-2">
+            <div className="flex items-baseline gap-2">
+              <Tip label="按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改">
+                <Meta className="cursor-help">AI 替你拟的答复</Meta>
+              </Tip>
+              <span className="grow" />
+              <Button size="sm" onClick={() => setSeed((p) => ({ n: p.n + 1, text: draft.text! }))}>
+                填进输入框
+              </Button>
+            </div>
+            <div className="mt-1 whitespace-pre-wrap break-words text-[0.8125rem] text-ink-2">
+              <Clamp lines={3}>{nl(draft.text)}</Clamp>
+            </div>
+          </div>
+        )}
         <div className="ml-auto mt-2 max-w-[46rem]">
         <Composer
           key={seed.n}
@@ -947,6 +986,11 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
           }}
           actions={({ text, busy }) => (
             <>
+              <Tip label="用这一组的黑板现算一份草稿，不会发出去">
+                <Button size="sm" variant="quiet" disabled={draft.busy} onClick={askDraft}>
+                  {draft.text ? "再拟一份" : "让 AI 拟一份"}
+                </Button>
+              </Tip>
               <Tip label="技术选型和架构边界归 Architect 判断，它答不了会自己回来">
                 <Button size="sm"
                   onClick={async () => { await post(`/api/escalations/${e.id}/delegate`, { to: "architect" }); refresh(); }}>
@@ -992,102 +1036,26 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
  * asked. Reference, not work.
  */
 function Held({ rows }: { rows: Escalation[] }) {
-  const [open, setOpen] = useState("");
   return (
-    <div className="shrink-0">
-      <Meta className="block px-1 pb-1">别人还在处理 {rows.length} 条</Meta>
-      {/* Quiet, but it opens. Reading the question is not the same as answering
-          it — the boss opens one of these to decide whether to take it over, and
-          a row that ends in `…` with no way to see the rest cannot answer that. */}
-      <div className="overflow-hidden rounded-lg border border-rule-soft">
-        <Accordion value={open} onValueChange={setOpen}>
-          {rows.map((e) => (
-            <AccordionItem key={e.id} value={String(e.id)}>
-              <AccordionTrigger className="flex flex-wrap items-baseline gap-x-2 px-4 py-1.5 transition-colors hover:bg-rail/60">
-                <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">
-                  {e.asker ?? "系统"} · {waited(e.created_at)} · {WHERE_ZH[e.chain_state] ?? e.chain_state}
-                </span>
-                {String(e.id) !== open && (
-                  <span className="min-w-0 flex-1 truncate text-[0.75rem] text-ink-3">{nl(e.question)}</span>
-                )}
-              </AccordionTrigger>
-              <AccordionBody className="bg-paper px-4 pb-2.5">
-                {/* Same bubble as everywhere else: this is somebody asking, and
-                    the only thing different about it is that they are not asking
-                    you. */}
-                <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2">
-                  <Clamp lines={8}>
-                    <WithAttachments body={e.question} className="text-[0.8125rem] text-ink-2" />
-                  </Clamp>
-                </div>
-                {/* The reply is being written by whoever holds it, so it gets the
-                    same unsent bubble the drafted answer gets. This is the whole
-                    reason these rows are worth opening: not to act, but to see
-                    that somebody is on it. */}
-                <Typing label={`${WHERE_ZH[e.chain_state] ?? e.chain_state}`} />
-              </AccordionBody>
-            </AccordionItem>
-          ))}
-        </Accordion>
-      </div>
-    </div>
-  );
-}
-
-/**
- * What the answer probably is, worked out for you before you got here.
- *
- * Most of what reaches this box is not a judgement call — it is a question whose
- * answer is already on the blackboard, asked by an agent that could not find it.
- * Writing that out by hand is the boss doing retrieval, which is the one job the
- * system exists to do for them.
- *
- * Fetched on open, every open, never stored: the blackboard moves while a
- * question waits, and a draft written an hour ago can be arguing from facts that
- * have since been overturned. Nothing is sent from here — the button fills the
- * composer, where it is edited and sent by hand like any other answer. A draft
- * that does not arrive leaves no trace.
- *
- * It was labelled 参考答复 · 便宜模型现算，没发出去: three facts, two of them about
- * the implementation. What the boss needs to know is who wrote it and that it has
- * not gone anywhere, and the rest belongs on hover.
- */
-function Suggested({ escId, onUse }: { escId: number; onUse: (t: string) => void }) {
-  const [text, setText] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    setText(null);
-    void pull<{ text: string }>(`/api/escalations/${escId}/draft`).then((r) => setText(r?.text?.trim() || ""));
-  }, [escId]);
-
-  // A bubble with three dots in it, on the side the answer will land on. It was a
-  // line of grey text at the left margin, which reads as a status line about the
-  // page rather than as the reply being written.
-  if (text === null) return <Typing label="AI 在替你想" />;
-  if (!text) return null;
-  return (
-    // A recessed well: this is the one block here nobody wrote, machine text
-    // between the agent's question and the boss's answer, and it has to be told
-    // apart from both at a glance.
-    // On your side of the exchange, because that is what it is: a reply nobody
-    // has sent. Dashed, so it cannot be mistaken for one that went out.
-    <div className="my-2 ml-auto max-w-[46rem] rounded-2xl rounded-tr-sm border border-dashed border-rule bg-paper px-3.5 py-2">
-      <div className="flex items-baseline gap-2">
-        <Tip label="按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改">
-          <Meta className="cursor-help">AI 替你拟的答复</Meta>
-        </Tip>
-        <span className="grow" />
-        <Button size="sm" onClick={() => onUse(text)}>填进输入框</Button>
-      </div>
-      <div
-        onClick={() => setOpen(!open)}
-        className={cn(
-          "mt-1 cursor-pointer whitespace-pre-wrap break-words text-[0.8125rem] text-ink-2",
-          !open && "line-clamp-3",
-        )}
-      >
-        {nl(text)}
-      </div>
+    <div className="overflow-hidden rounded-lg border border-rule-soft">
+      {rows.map((e) => (
+        // Open, always. Folding is for a list you choose from, and there is
+        // nothing to choose here — no button, no box, nothing the boss does. The
+        // question and the fact that somebody is writing back are the whole
+        // content, so they are on the screen.
+        <div key={e.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[0.6875rem] text-ink-3">
+            <span className="text-ink-2">{e.asker ?? "系统"}</span>
+            <span>{waited(e.created_at)}</span>
+          </div>
+          <div className="mt-1.5 max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2">
+            <Clamp lines={6}>
+              <WithAttachments body={e.question} className="text-[0.8125rem] text-ink-2" />
+            </Clamp>
+          </div>
+          <Typing label={`${WHERE_ZH[e.chain_state] ?? e.chain_state}`} />
+        </div>
+      ))}
     </div>
   );
 }
