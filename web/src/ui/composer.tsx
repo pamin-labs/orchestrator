@@ -367,7 +367,10 @@ export function Composer({
         ref={box}
         autoFocus={autoFocus}
         rows={rows}
-        style={{ height: h ? `${h}px` : undefined, maxHeight: "18rem" }}
+        // 36rem, not 18: an answer to a watchdog escalation quotes three verdicts
+        // and runs past twenty lines, and a box that stops growing at half of that
+        // is a window you write a page through.
+        style={{ height: h ? `${h}px` : undefined, maxHeight: "36rem" }}
         className="resize-none overflow-y-auto rounded-b-none border-0 font-sans text-[0.875rem] focus:ring-0"
         placeholder={placeholder}
         value={text}
