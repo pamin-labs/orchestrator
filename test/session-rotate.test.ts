@@ -12,6 +12,7 @@ import { makeExecutor, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult } from "../src/runtime/claude.ts";
 import type { TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 // A big cacheRead per turn, small input/cacheCreate — the pattern that made
 // overTokenBudget trip every turn when session_tokens counted all four fields.
@@ -31,6 +32,7 @@ function turnUsage(over: Partial<TurnResult> = {}): TurnResult {
 
 function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   const db = openMemory();
+  seedAuth(db);
   const bus = new Bus(db);
   const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-data-")) };
   const specs: TurnSpec[] = [];

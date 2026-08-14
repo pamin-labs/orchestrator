@@ -5,6 +5,7 @@ import { RepoLock } from "../src/mech/gitlock.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 /**
  * PLAN.md §7: the lesson list is injected into every later group's prompt, so an
@@ -13,6 +14,7 @@ import { fakeSandbox } from "./fake-sandbox.ts";
  */
 function harness() {
   const db = openMemory();
+  seedAuth(db);
   const ctx: Ctx = {
     db,
     bus: new Bus(db),

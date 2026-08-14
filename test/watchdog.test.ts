@@ -20,9 +20,11 @@ import { join } from "node:path";
 import { Scheduler } from "../src/scheduler.ts";
 import type { Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
   const db: DB = openMemory();
+  seedAuth(db);
   const bus = new Bus(db);
   const sched = new Scheduler(db, async () => {});
   const cfg = { ...loadConfig(), ...over };

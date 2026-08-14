@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 function seed(db: DB, groups: number, status = "RUNNING"): number[] {
+  seedAuth(db);
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   const ids: number[] = [];
   for (let i = 1; i <= groups; i++) {

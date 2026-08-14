@@ -11,9 +11,11 @@ import { listSkills } from "../src/mech/skills.ts";
 import { landed } from "../src/mech/mergequeue.ts";
 import { sweepApproved } from "../src/mech/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 function harness(opts: { worktree?: string } = {}) {
   const db: DB = openMemory();
+  seedAuth(db);
   const bus = new Bus(db);
   const ran: Job[] = [];
   const sched = new Scheduler(db, async (j) => void ran.push(j));

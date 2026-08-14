@@ -7,9 +7,11 @@ import { dispatchFeedback, GH_MISSING, openPr, pollPrs, prBody, preflightPr, typ
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 function harness() {
   const db = openMemory();
+  seedAuth(db);
   const cfg = loadConfig();
   const ctx: Ctx = {
     db,

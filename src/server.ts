@@ -228,6 +228,7 @@ export function start(overrides: Partial<Config> = {}): Started {
       feedbackSediment: cfg.feedbackSedimentThreshold,
       port: cfg.port,
       sandbox: cfg.sandbox,
+      installTimeoutMs: cfg.installTimeoutMs,
       ctxBudgetChars: cfg.ctxBudgetChars,
     },
   };

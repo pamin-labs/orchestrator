@@ -12,6 +12,7 @@ import { LOST_SESSION, makeExecutor, cacheRatio, hire, type ExecDeps } from "../
 import type { TurnResult } from "../src/runtime/claude.ts";
 import type { TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 function ok(over: Partial<TurnResult> = {}): TurnResult {
   return {
@@ -29,6 +30,7 @@ function ok(over: Partial<TurnResult> = {}): TurnResult {
 
 function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   const db = openMemory();
+  seedAuth(db);
   const bus = new Bus(db);
   const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-data-")) };
   const specs: TurnSpec[] = [];

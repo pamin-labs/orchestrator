@@ -11,6 +11,7 @@ import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { gatesFor } from "../src/mech/gate.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 const repo = (files: Record<string, string>) => {
   const dir = mkdtempSync(join(tmpdir(), "orch-det-"));
@@ -83,6 +84,7 @@ test("workspace and lockfiles are detected as shared", () => {
 test("registering a project wires its gates and resources with no manual SQL", async () => {
   const dir = repo({ "Cargo.toml": "[package]" });
   const db = openMemory();
+  seedAuth(db);
   const cfg = loadConfig();
   const ctx: Ctx = {
     db,

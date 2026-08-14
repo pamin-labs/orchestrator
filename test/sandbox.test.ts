@@ -31,6 +31,7 @@ const BASE = {
   memory: "8Gi",
   ttlSeconds: 3600,
   denyDomains: [],
+  cacheDirs: {},
 };
 
 test("cpu defaults to a quarter of the host rather than the SDK's one core", () => {
@@ -89,4 +90,19 @@ test("an SSH remote is rewritten, because a sandbox has no key and should not", 
   // Already fine, or not ours to guess at.
   expect(httpsRemote("https://github.com/owner/repo.git")).toBe("https://github.com/owner/repo.git");
   expect(httpsRemote("/srv/mirrors/repo.git")).toBe("/srv/mirrors/repo.git");
+});
+
+test("a project can share a package cache, and gets none unless it asks", () => {
+  // Off by default on purpose. This repo's worst outage was every worktree
+  // sharing one node_modules through a symlink: two gates installed at once and
+  // a group read `Failed to link jiti: EEXIST` as its own build being broken. A
+  // package cache is not that — bun's is content-addressed and built for
+  // concurrent readers — but it is close enough to be a deliberate choice.
+  expect(specFor(ctx({ sandbox: BASE }), 1).cacheDirs).toEqual({});
+
+  const c = ctx({ sandbox: BASE });
+  c.db.run(
+    `UPDATE project SET config_json = '{"sandbox":{"cacheDirs":{"/root/.bun/install/cache":"/var/tmp/orch-cache"}}}' WHERE id = 1`,
+  );
+  expect(specFor(c, 1).cacheDirs).toEqual({ "/root/.bun/install/cache": "/var/tmp/orch-cache" });
 });

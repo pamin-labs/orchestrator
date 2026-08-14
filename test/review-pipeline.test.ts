@@ -20,6 +20,7 @@ import {
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { WORK } from "../src/mech/sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 const git = makeGitRunner(new RepoLock());
 
@@ -56,6 +57,8 @@ async function harness(opts: { gates?: string[] } = {}) {
   const wt = { worktree: work, branch: "orch/g1" };
 
   const db = openMemory();
+
+  seedAuth(db);
   const bus = new Bus(db);
   const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-rp-data-")), gateRetries: 2 };
   const specs: TurnSpec[] = [];

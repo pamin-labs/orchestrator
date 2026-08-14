@@ -10,6 +10,7 @@ import { makeGitRunner } from "../src/mech/worktree.ts";
 import type { Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 /**
  * PLAN.md §7 L3: "打断并回滚" must end with the worktree back at the checkpoint the
@@ -30,6 +31,7 @@ function repo() {
 
 function harness(worktree: string, repoPath: string, checkpoint: string) {
   const db = openMemory();
+  seedAuth(db);
   const ctx: Ctx = {
     db,
     bus: new Bus(db),

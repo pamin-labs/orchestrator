@@ -44,6 +44,25 @@ export interface SandboxSpec {
    * costs nothing in credential safety. The real tokens are never in here.
    */
   denyDomains: string[];
+  /**
+   * Host directories shared by every sandbox of this project, by mount path.
+   *
+   * For package-manager caches, and only those. Measured on this repo, a second
+   * group's `bun install`: 2.9s cold against 1.2s with the cache shared — small
+   * here because the repo is small, and the whole point on a monorepo where the
+   * install is minutes.
+   *
+   * Off by default, and the reason is this repo's own worst outage: every
+   * worktree shared one `node_modules` through a symlink, two gates installed at
+   * once, and the group read `Failed to link jiti: EEXIST` as its own build
+   * being broken. A package cache is not that — bun's and npm's are
+   * content-addressed and built for concurrent readers — but the shape is close
+   * enough that it should be something a project turns on deliberately.
+   *
+   * The sandbox server must also list the host path under `allowed_host_paths`,
+   * or creation fails outright.
+   */
+  cacheDirs: Record<string, string>;
 }
 
 /** `1` is the SDK default and makes a typecheck 3.7x slower (005). */
@@ -60,6 +79,7 @@ const DEFAULTS = {
   memory: "8Gi",
   ttlSeconds: 86400,
   denyDomains: [] as string[],
+  cacheDirs: {} as Record<string, string>,
 };
 
 /** Config, then the project's override. Adding a knob is a yaml key. */
@@ -84,6 +104,7 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
     memory: over.memory || base.memory,
     ttlSeconds: over.ttlSeconds || base.ttlSeconds,
     denyDomains: over.denyDomains ?? base.denyDomains ?? [],
+    cacheDirs: over.cacheDirs ?? base.cacheDirs ?? {},
   };
 }
 
@@ -174,6 +195,11 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
     },
     // `grp-1`, not `grp:1`: metadata values must be alphanumeric plus `-_.`, and
     // a colon is a 400 at creation — which fails the group, not the label.
+    volumes: Object.entries(spec.cacheDirs).map(([mountPath, hostPath], i) => ({
+      name: `cache-${i}`,
+      host: { path: hostPath },
+      mountPath,
+    })),
     metadata: { owner: `${holder(scope).table}-${holder(scope).id}` },
   });
   live.set(sb.id, sb);

@@ -3,7 +3,7 @@ import { say } from "../lang.ts";
 import { createCheckout, remoteUrl } from "./checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
-import { execIn, WORK } from "./sandbox.ts";
+import { execLines, WORK } from "./sandbox.ts";
 import { defaultBase } from "./worktree.ts";
 
 /** `project.config_json.install`, or null. Same reader shape as `gatesFor`. */
@@ -66,6 +66,48 @@ export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
   });
 }
 
+/**
+ * Install the project's dependencies, out loud.
+ *
+ * Streamed rather than awaited in silence: this is the first minute of a
+ * requirement and the longest thing that happens before any work, so a panel
+ * that shows nothing until it ends looks like a panel that is broken. Each line
+ * goes out as a live frame — the same channel a turn's output uses, so the
+ * timeline already knows how to render it — and only the tail is kept durably,
+ * because an install log is worth watching and not worth storing.
+ */
+export async function runInstall(
+  ctx: Ctx,
+  grpId: number,
+  cmd: string,
+): Promise<{ ok: boolean; tail: string }> {
+  const seen: string[] = [];
+  ctx.bus.live({ grpId, agentId: null, role: "orchestrator", kind: "status", body: `$ ${cmd}` });
+  const stream = execLines(ctx, { grp: grpId }, cmd, {
+    cwd: WORK,
+    timeoutMs: ctx.config.installTimeoutMs ?? 10_800_000,
+  });
+  let end = { code: -1, err: "" };
+  for (;;) {
+    const step = await stream.next();
+    if (step.done) {
+      end = step.value;
+      break;
+    }
+    seen.push(step.value);
+    if (seen.length > 400) seen.shift();
+    ctx.bus.live({ grpId, agentId: null, role: "orchestrator", kind: "tool", body: step.value });
+  }
+  const tail = [...seen.slice(-12), ...(end.err ? [end.err.slice(-400)] : [])].join("\n");
+  ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "state_change",
+    body: end.code === 0 ? `装好了：${cmd}` : `装失败了（exit ${end.code}）：${cmd}\n${tail}`,
+  });
+  return { ok: end.code === 0, tail };
+}
+
 /** Sandbox, checkout, RUNNING, first slice. Returns an error message, or null. */
 export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null> {
   const grp = ctx.db
@@ -99,14 +141,14 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         // so there is nothing left for the orchestrator to do on its behalf.
         const known = installFor(ctx, grp.project_id);
         if (known) {
-          const dep = await execIn(ctx, { grp: grpId }, known, { cwd: WORK, timeoutMs: 900_000 });
-          if (dep.code !== 0)
+          const dep = await runInstall(ctx, grpId, known);
+          if (!dep.ok)
             ctx.sched.enqueue("agent_turn", {
               grp_id: grpId,
               priority: 9,
               payload: {
                 role: "bootstrap",
-                rejection: `记下来的安装命令跑不通了：${known}\n${(dep.err || dep.out).slice(-400)}`,
+                rejection: `记下来的安装命令跑不通了：${known}\n${dep.tail}`,
               },
             });
         } else {

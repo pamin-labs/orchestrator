@@ -8,6 +8,7 @@ import { sendBack } from "../src/mech/review.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 /**
  * The deadlock that stopped eight groups at once, from both ends.
@@ -25,6 +26,7 @@ import { fakeSandbox } from "./fake-sandbox.ts";
 
 function harness() {
   const db: DB = openMemory();
+  seedAuth(db);
   const bus = new Bus(db);
   const ran: Job[] = [];
   const sched = new Scheduler(db, async (j) => void ran.push(j));

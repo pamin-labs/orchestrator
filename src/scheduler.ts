@@ -220,6 +220,7 @@ export class Scheduler {
       // Only a group-scoped job has a status and a budget to check.
       if (job.grp_id !== null && !this.admits(job)) continue;
       if (job.kind === "agent_turn" && this.providerHeld(job)) continue;
+      if (job.kind === "agent_turn" && this.credentialMissing(job)) continue;
       busyGroups.add(slot);
       out.push(job);
     }
@@ -286,6 +287,31 @@ export class Scheduler {
       )
       .get(job.agent_id);
     return !!row?.hold_until && row.hold_until > this.now();
+  }
+
+  /**
+   * Is there a credential for this turn's provider at all?
+   *
+   * Same shape as a rate-limit hold, and for the same reason: without it every
+   * group spends a turn discovering the wall, one at a time, and the only sign
+   * is a queue full of failures that all say 401. A turn that cannot possibly
+   * work should not be dispatched — preflight and the settings page are where
+   * this is said out loud, and both name the command that fixes it.
+   *
+   * An unhired job has not chosen a provider yet, so the question becomes
+   * whether *any* credential exists: with none, nothing it could be hired onto
+   * would run either.
+   */
+  private credentialMissing(job: Job): boolean {
+    const runtime = job.agent_id
+      ? (this.db
+          .query<{ runtime: string }, [number]>("SELECT runtime FROM agent WHERE id = ?")
+          .get(job.agent_id)?.runtime ?? null)
+      : null;
+    const n = runtime
+      ? this.db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM runtime_auth WHERE runtime = ?").get(runtime)
+      : this.db.query<{ n: number }, []>("SELECT count(*) AS n FROM runtime_auth").get();
+    return (n?.n ?? 0) === 0;
   }
 
   /** Admission check: group status is a barrier, budget is a hard stop. */

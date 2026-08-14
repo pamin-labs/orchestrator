@@ -80,6 +80,18 @@ export interface Config {
   gateRetries: number;
   /** Wall clock for one leased command. A big compile is hours, not minutes. */
   leaseTimeoutMs: number;
+  /**
+   * Wall clock for installing a project's dependencies.
+   *
+   * The same class of thing as a lease, so the same order of magnitude. It was
+   * 15 minutes, which is fine for this repo and wrong for the projects that
+   * need the headroom: a monorepo's pnpm install, pip building numpy from
+   * source, dotnet restore on a large solution. Too short fails as "this
+   * project is broken" rather than as "that took longer than allowed", and the
+   * group is blocked either way — so the default is generous and the install is
+   * streamed, which is what makes a long one watchable instead of silent.
+   */
+  installTimeoutMs: number;
   /** Start the next slice when QA passes, without waiting for the boss to accept. */
   autoAdvance: boolean;
   /** Difficulty tags accepted automatically once all three gates pass. */
@@ -129,6 +141,8 @@ export interface Config {
     memory: string;
     ttlSeconds: number;
     denyDomains: string[];
+    /** mount path -> host path, shared by every sandbox. Package caches only. */
+    cacheDirs: Record<string, string>;
   };
   workRoot: string;
   dataDir: string;
@@ -164,6 +178,7 @@ const DEFAULTS: Config = {
   watchdogIntervalMs: 30_000,
   gateRetries: 2,
   leaseTimeoutMs: 10_800_000,
+  installTimeoutMs: 10_800_000,
   // On by default: "approved" should buy a night of work. Accepting a slice was what
   // started the next one, so with this off a group did exactly one slice and then
   // waited until morning — which defeats the reason the system exists. The slice still
@@ -201,6 +216,7 @@ const DEFAULTS: Config = {
     memory: "8Gi",
     ttlSeconds: 86400,
     denyDomains: [],
+    cacheDirs: {},
   },
   workRoot: "/var/tmp/orch/worktrees",
   dataDir: "data",

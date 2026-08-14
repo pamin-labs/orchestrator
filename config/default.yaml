@@ -80,6 +80,13 @@ gateRetries: 2
 # few, so one wedged command stops every group from gating again.
 leaseTimeoutMs: 10800000
 
+# 装依赖的墙钟。和 lease 同一个量级，因为是同一类东西 —— 真的在编译。
+# 原来是 15 分钟，对这个仓库够，对需要余量的项目不够：monorepo 的 pnpm install、
+# 从源码编 numpy 的 pip install、大 solution 的 dotnet restore。
+# 卡太紧的失败长得像「这个项目坏了」，不像「超时了」，而组两种情况下都卡住。
+# 所以默认给足，并且装的过程是流式的 —— 那才是让「装很久」可看而不是可疑的东西。
+installTimeoutMs: 10800000
+
 # 每个组一个沙盒。agent 碰不到宿主机，宿主机只通过 orch 暴露有限动作。
 # 实测在 docs/decisions/005，几条和 OpenSandbox 官方文档相反的结论也在那儿。
 sandbox:
@@ -98,6 +105,15 @@ sandbox:
   # 黑名单，不是白名单 —— 白名单才是穷举不完的那个（每个 registry、每个文档站）。
   # 凭据安全不靠它：真 token 在 sidecar 里，沙盒里是假值。
   denyDomains: []
+  # 所有沙盒共享的宿主目录，「容器里的挂载点: 宿主路径」。只放包管理器缓存。
+  # 实测这个仓库第二个组的 bun install：不共享 2.9s，共享 1.2s —— 这里小是因为仓库小，
+  # 到 monorepo 上就是分钟级的差别。
+  # 默认关，理由是这个仓库最惨的那次事故：所有 worktree 通过软链共用一份 node_modules，
+  # 两个闸门同时装，组把 `Failed to link jiti: EEXIST` 当成自己的 build 坏了。
+  # 包缓存不是那个东西（bun/npm 的缓存是内容寻址、为并发设计的），但形状够像，
+  # 所以要项目主动开。另外 opensandbox-server 的 allowed_host_paths 也得列上这个路径。
+  # 例：{ /root/.bun/install/cache: /var/tmp/orch-cache }
+  cacheDirs: {}
 
 # Where group worktrees live. Outside $HOME on purpose: the sandbox is deny-only,
 # so denying $HOME is how writes get confined (docs/decisions/001).

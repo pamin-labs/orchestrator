@@ -6,6 +6,7 @@ import { OVERLAP_FLOOR, sameComplaint, sediment, terms } from "../src/mech/lesso
 import { bossFact, type Ctx } from "../src/api.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 /**
  * PLAN.md §7③. Without this the boss's dissatisfaction produces N isolated facts:
@@ -14,6 +15,7 @@ import { fakeSandbox } from "./fake-sandbox.ts";
  */
 function harness() {
   const db = openMemory();
+  seedAuth(db);
   const ran: Job[] = [];
   const ctx: Ctx = {
     db,

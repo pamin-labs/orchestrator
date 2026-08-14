@@ -17,7 +17,7 @@ import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triag
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
 import { extractClaimedFiles } from "./mech/reconcile.ts";
 import { acceptSlice } from "./mech/review.ts";
-import { dropGroup, startGroup, sweepApproved } from "./mech/start.ts";
+import { dropGroup, runInstall, startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
 import { detectGates, detectInstall, detectShared } from "./mech/detect.ts";
@@ -86,6 +86,8 @@ export interface Ctx {
     ctxBudgetChars?: number;
     /** Where the orchestrator listens; the mailbox replays agent calls to it. */
     port?: number;
+    /** Wall clock for a dependency install. See config.ts for why it is generous. */
+    installTimeoutMs?: number;
     /** Where turns run. See mech/sandbox.ts and docs/decisions/005. */
     sandbox?: {
       server: string;
@@ -95,6 +97,7 @@ export interface Ctx {
       memory: string;
       ttlSeconds: number;
       denyDomains: string[];
+      cacheDirs: Record<string, string>;
     };
   };
 }
@@ -588,23 +591,18 @@ const postSetup: Handler = async (ctx, req) => {
 
   const cmd = (b.cmd ?? "").trim();
   if (!cmd) return bad('setup needs --cmd "<command>" or --none');
-  const r = await execIn(ctx, { grp: a.grp_id }, cmd, { cwd: WORK, timeoutMs: 900_000 });
-  const out = (r.err || r.out).slice(-400);
-  ctx.bus.emit({
-    grpId: a.grp_id,
-    author: a.role,
-    kind: "state_change",
-    body: r.code === 0 ? `装好了：${cmd}` : `装失败了：${cmd}\n${out}`,
-  });
+  // Same streamed install the first turn gets: the boss watches this one too,
+  // and an agent's own attempt is the one most likely to need watching.
+  const r = await runInstall(ctx, a.grp_id, cmd);
   // Remembered on the project, so the next group does not pay for the same
   // reading — and so the boss can see and correct what its groups run.
-  if (r.code === 0) {
+  if (r.ok) {
     ctx.db.run("UPDATE project SET config_json = json_set(config_json, '$.install', ?) WHERE id = ?", [
       cmd,
       grp.project_id,
     ]);
   }
-  return r.code === 0 ? text("ok") : bad(`install failed (exit ${r.code}):\n${out}`);
+  return r.ok ? text("ok") : bad(`install failed:\n${r.tail}`);
 };
 
 /** Extra registries a project needs, from `config_json.installDomains`. */

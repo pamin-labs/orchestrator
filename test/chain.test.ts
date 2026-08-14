@@ -7,9 +7,11 @@ import { abstain, answer, entryPoint, isReserved, revoke, route, triage } from "
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { seedAuth } from "./seed-auth.ts";
 
 function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: boolean } = {}) {
   const db: DB = openMemory();
+  seedAuth(db);
   const bus = new Bus(db);
   const sched = new Scheduler(db, async () => {});
   const cfg = loadConfig();
