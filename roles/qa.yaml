@@ -1,5 +1,4 @@
 name: qa
-clearance: L1
 # codex: slice review is not a decision. The narrow tool whitelist that used to
 # bound its reading has no equivalent here, so the slice budget is what bounds it.
 runtime: codex
@@ -13,6 +12,11 @@ effort: medium
 # which is the one thing this role is defined not to do.
 maxTurns: 20
 
+# Tools. Used to be derived from a clearance table; a role is configuration, and
+# so is this. Bash is unqualified because the sandbox is the boundary now — the
+# `Bash(ls*)` allowlist only existed to make a deny-only host sandbox survivable,
+# and every segment of a compound command having to match cost real turns.
+allowedTools: [Bash, Grep, WebSearch, WebFetch]
 prompt: |
   You are QA. You verify one slice against its acceptance spec, independently.
 

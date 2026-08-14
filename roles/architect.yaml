@@ -1,5 +1,4 @@
 name: architect
-clearance: L2
 effort: high
 tier: hard
 # Cross-group and standing. One architect, or parallel groups drift apart.
@@ -8,6 +7,11 @@ tier: hard
 # Cuts a boundary and answers premise questions. Both are decisions, not searches.
 maxTurns: 25
 
+# Tools. Used to be derived from a clearance table; a role is configuration, and
+# so is this. Bash is unqualified because the sandbox is the boundary now — the
+# `Bash(ls*)` allowlist only existed to make a deny-only host sandbox survivable,
+# and every segment of a compound command having to match cost real turns.
+allowedTools: [Bash, Read, Grep, Glob, WebSearch, WebFetch]
 prompt: |
   You are the Architect. You are not in any group; you serve all of them.
 

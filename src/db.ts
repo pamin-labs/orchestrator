@@ -438,6 +438,39 @@ const MIGRATIONS: string[] = [
   // worktree has no playwright, the acceptance line cannot be verified. Twelve
   // cards is twelve decisions on a page where there is one.
   `ALTER TABLE escalation ADD COLUMN kind TEXT;`,
+
+  // 034 — the group's sandbox.
+  //
+  // Durable because the Sandbox object is not: a restarted orchestrator has to
+  // reconnect to the container that is still running, or the turn's session —
+  // and with it the cached prefix the whole cost model rests on — dies with the
+  // process that happened to create it.
+  //
+  // Two columns, not a join table: a sandbox has exactly two possible owners.
+  // A group is the usual one; standing roles (Architect, CoS, Dispatcher) have
+  // no group and still must not run on the host, so they share one per project.
+  `
+  ALTER TABLE grp ADD COLUMN sandbox_id TEXT;
+  ALTER TABLE project ADD COLUMN sandbox_id TEXT;
+  `,
+
+  // 035 — where each runtime's credentials come from.
+  //
+  // The value never enters the sandbox: it is written to the egress sidecar's
+  // vault and injected on the way out (docs/decisions/005). It never enters an
+  // event, a prompt or a log either, and the API only ever returns it masked.
+  //
+  // `base_url` is what makes an OpenAI-compatible endpoint a configuration
+  // rather than a fork.
+  `
+  CREATE TABLE runtime_auth (
+    runtime    TEXT PRIMARY KEY,
+    mode       TEXT NOT NULL,
+    secret     TEXT NOT NULL,
+    base_url   TEXT,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 export type DB = Database;

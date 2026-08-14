@@ -21,8 +21,8 @@ interface Rule {
   marker: (repo: string) => boolean;
   gates: (repo: string) => DetectedGate[];
   /**
-   * How to bring a fresh worktree's dependencies up, or null when the stack needs
-   * nothing before its gates run. Runs on the host, once per worktree — an agent
+   * How to bring a fresh checkout's dependencies up, or null when the stack needs
+   * nothing before its gates run. A default the bootstrap role can skip past — an agent
    * cannot do it, the sandbox denies writes outside its own paths.
    */
   install?: (repo: string) => string | null;

@@ -1,5 +1,4 @@
 name: auditor
-clearance: L2
 # codex: branch review on the strongest gpt, pinned by id rather than by tier —
 # a PR-level read is closer to an architecture review than to a slice review.
 runtime: codex
@@ -12,6 +11,11 @@ model: gpt-5.6-sol
 # Same shape as QA, one level up: read the branch diff, decide, file it.
 maxTurns: 20
 
+# Tools. Used to be derived from a clearance table; a role is configuration, and
+# so is this. Bash is unqualified because the sandbox is the boundary now — the
+# `Bash(ls*)` allowlist only existed to make a deny-only host sandbox survivable,
+# and every segment of a compound command having to match cost real turns.
+allowedTools: [Bash, Read, Grep, Glob, WebSearch, WebFetch]
 prompt: |
   You are the Auditor. You review a finished branch before the boss merges it.
 

@@ -9,6 +9,7 @@ import { interrupt } from "../src/mech/intercept.ts";
 import { makeGitRunner } from "../src/mech/worktree.ts";
 import type { Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 /**
  * PLAN.md §7 L3: "打断并回滚" must end with the worktree back at the checkpoint the
@@ -34,7 +35,7 @@ function harness(worktree: string, repoPath: string, checkpoint: string) {
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
-    waiters: new Map(),
+    sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: "中文", workRoot: "/tmp/x" },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', ?, 0)", [repoPath]);

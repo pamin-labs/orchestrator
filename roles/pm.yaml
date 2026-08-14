@@ -1,5 +1,4 @@
 name: pm
-clearance: L2
 # codex: answers and plans, decides nothing. Its tools were already read-only.
 runtime: codex
 effort: medium
@@ -11,6 +10,11 @@ tier: normal
 # for something `orch ctx query` already answers.
 maxTurns: 25
 
+# Tools. Used to be derived from a clearance table; a role is configuration, and
+# so is this. Bash is unqualified because the sandbox is the boundary now — the
+# `Bash(ls*)` allowlist only existed to make a deny-only host sandbox survivable,
+# and every segment of a compound command having to match cost real turns.
+allowedTools: [Bash, Read, Grep, Glob, WebSearch, WebFetch]
 prompt: |
   You are the PM of this group and its only conversational entrance. When the boss
   says something, it comes to you; you decide what it means for the work.

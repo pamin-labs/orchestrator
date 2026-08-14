@@ -11,6 +11,7 @@ import { Scheduler } from "../src/scheduler.ts";
 import { makeExecutor, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult } from "../src/runtime/claude.ts";
 import type { TurnSpec } from "../src/runtime/claude.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 // A big cacheRead per turn, small input/cacheCreate — the pattern that made
 // overTokenBudget trip every turn when session_tokens counted all four fields.
@@ -22,7 +23,6 @@ function turnUsage(over: Partial<TurnResult> = {}): TurnResult {
     text: "done",
     usage: { input: 10, output: 20, cacheRead: 300_000, cacheCreate: 100, thinking: 0 },
     numTurns: 1,
-    permissionDenials: [],
     toolSummaries: [],
     filesTouched: [],
     ...over,
@@ -41,7 +41,7 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     bus,
     sched,
     gitLock: new RepoLock(),
-    waiters: new Map(),
+    sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: cfg.language, workRoot: cfg.workRoot },
   };
   const deps: ExecDeps = {

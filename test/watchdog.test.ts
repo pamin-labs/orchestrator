@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Scheduler } from "../src/scheduler.ts";
 import type { Ctx } from "../src/api.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
   const db: DB = openMemory();
@@ -31,7 +32,10 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     sched,
     gitLock: new RepoLock(),
     git: async () => ({ code: 0, out: "" }),
-    waiters: new Map(),
+    // `merge-base --is-ancestor` runs in the group's checkout, which lives in its
+    // sandbox. Not an ancestor = the group has not rebased yet, which is the
+    // condition every rule below is about.
+    sandbox: fakeSandbox((cmd) => (cmd.includes("merge-base") ? { code: 1 } : { code: 0 })), waiters: new Map(),
     config: { language: cfg.language, workRoot: "/tmp/x" },
   };
   // No network on a watchdog tick in tests: the usage endpoint hung on its 10s
@@ -235,9 +239,9 @@ test("pausing an idle group settles immediately", () => {
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("RUNNING");
 });
 
-test("park drops queued turns, retires sessions, keeps the worktree", () => {
+test("park drops queued turns and retires sessions, keeping the checkout", () => {
   const h = harness();
-  h.db.run("UPDATE grp SET worktree = '/tmp/wt/g1' WHERE id = 1");
+  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
   h.db.run("UPDATE agent SET session_id = 'live', session_tokens = 5000 WHERE id = 1");
   h.sched.enqueue("agent_turn", { grp_id: 1 });
   h.sched.enqueue("agent_turn", { grp_id: 1 });
@@ -248,7 +252,8 @@ test("park drops queued turns, retires sessions, keeps the worktree", () => {
   const a = h.db.query<{ session_id: string | null }, []>("SELECT session_id FROM agent").get()!;
   expect(a.session_id).toBeNull();
   // Park is resource reclamation, not an approval step: nothing is lost.
-  expect(h.db.query<{ worktree: string }, []>("SELECT worktree FROM grp").get()!.worktree).toBe("/tmp/wt/g1");
+  // Parking is not dissolving: the sandbox, and the work in it, stay.
+  expect(h.db.query<{ s: string }, []>("SELECT sandbox_id AS s FROM grp").get()!.s).toBe("sb-1");
 });
 
 // ------------------------------------------------------------------ notifier
@@ -592,8 +597,8 @@ test("main moving under a running group sends it to rebase, once per commit", as
   // terminal. Six groups spent a day on a base fifteen commits stale and would each
   // have found out at PR time, one conflict apiece.
   const h = harness();
-  h.db.run("UPDATE grp SET worktree = '/tmp/wt/g1' WHERE id = 1");
-  // repo HEAD answers with a sha; the worktree says it is not an ancestor.
+  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
+  // repo HEAD answers with a sha; the checkout says it is not an ancestor.
   h.ctx.git = async (_repo, argv) =>
     argv[0] === "rev-parse" ? { code: 0, out: "abc1234567" } : { code: 1, out: "" };
   const deps = { ...h.deps, git: h.ctx.git! };
@@ -675,7 +680,7 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
   // news. And the base was read from the local checkout's HEAD, so a push from
   // another machine was invisible however often this ran.
   const h = harness();
-  h.db.run("UPDATE grp SET status = 'PR_OPEN', worktree = '/tmp/wt/g1' WHERE id = 1");
+  h.db.run("UPDATE grp SET status = 'PR_OPEN', sandbox_id = 'sb-1' WHERE id = 1");
   // Its own repo path: the fetch throttle is keyed by repo and lives for the
   // process, so it would otherwise still be holding the previous test's stamp.
   h.db.run("UPDATE project SET repo_path = '/tmp/p-pr' WHERE id = 1");
@@ -685,7 +690,7 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
     if (argv[0] === "remote") return { code: 0, out: "origin" };
     if (argv[0] === "symbolic-ref") return { code: 0, out: "refs/remotes/origin/master" };
     if (argv[0] === "rev-parse") return { code: 0, out: "abc1234567" };
-    return { code: 1, out: "" }; // not an ancestor of the worktree
+    return { code: 1, out: "" }; // not an ancestor of the checkout
   };
   const deps = { ...h.deps, git: h.ctx.git! };
 
@@ -707,7 +712,7 @@ test("rule 15 checks defaultBase, not the primary checkout's own HEAD", async ()
   // what made the check unsatisfiable: the group rebases exactly what the
   // rejection tells it to and the watchdog still disagrees next tick.
   const h = harness();
-  h.db.run("UPDATE grp SET worktree = '/tmp/wt/g1' WHERE id = 1");
+  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
   const baseSha = "def4560000000000000000000000000000000000";
   const staleLocalHeadSha = "aaa1110000000000000000000000000000000000";
   h.ctx.git = async (_repo, argv) => {
@@ -718,11 +723,12 @@ test("rule 15 checks defaultBase, not the primary checkout's own HEAD", async ()
     }
     if (argv[0] === "rev-parse" && argv[1] === "origin/main") return { code: 0, out: baseSha };
     if (argv[0] === "rev-parse" && argv[1] === "HEAD") return { code: 0, out: staleLocalHeadSha };
-    // defaultBase (origin/main) is already an ancestor of the group's branch.
-    if (argv[0] === "merge-base") return { code: 0, out: "" };
     return { code: 1, out: "" };
   };
   const deps = { ...h.deps, git: h.ctx.git! };
+  // defaultBase (origin/main) is already an ancestor of the group's branch, and
+  // that check runs in the group's own checkout — inside its sandbox.
+  h.ctx.sandbox = fakeSandbox(() => ({ code: 0 }));
 
   const f = await runWatchdog(deps);
   expect(f.map((x) => x.rule)).not.toContain("base_moved");
@@ -756,7 +762,7 @@ test("turn logs are compressed after a day and dropped after two weeks", () => {
 
 test("a burst of pushes costs one rebase turn, and never delays one", async () => {
   const h = harness();
-  h.db.run("UPDATE grp SET worktree = '/tmp/wt/g1' WHERE id = 1");
+  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
   h.db.run("UPDATE project SET repo_path = '/tmp/p-burst' WHERE id = 1");
   let sha = "aaaa111111";
   h.ctx.git = async (_r, argv) => (argv[0] === "rev-parse" ? { code: 0, out: sha } : { code: 1, out: "" });
@@ -813,23 +819,17 @@ test("a question on a group that is still working is left alone", async () => {
   ).toBe("boss");
 });
 
-test("a dissolved group's worktree is removed, and a merged one takes its branch with it", async () => {
-  // `removeWorktree` had two callers and both were tests: twelve dead checkouts
-  // on disk, each still in `git worktree list` holding its branch, which is what
-  // stops a later group of the same name from creating one.
+test("a dissolved group's sandbox is killed, so it stops holding two containers", async () => {
   const h = harness();
-  const dir = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const removed: string[][] = [];
-  h.ctx.git = async (_repo, argv) => {
-    removed.push(argv);
-    return { code: 0, out: "" };
-  };
-  h.db.run("UPDATE grp SET status = 'DISSOLVED', worktree = ?, branch = 'orch/g1', pr_number = 7 WHERE id = 1", [dir]);
+  // Nothing removed one, ever, in the worktree era: twelve dead checkouts sat on
+  // disk holding their branches. A sandbox is worse — two containers and their
+  // memory, until a TTL a day out.
+  h.db.run("UPDATE grp SET status = 'DISSOLVED', sandbox_id = 'sb-1', branch = 'orch/g1', pr_number = 7 WHERE id = 1");
 
-  const f = await runWatchdog({ ...h.deps, git: h.ctx.git });
-  expect(f.map((x) => x.rule)).toContain("worktree_swept");
-  expect(removed.some((a) => a[0] === "worktree" && a[1] === "remove")).toBe(true);
-  expect(removed.some((a) => a[0] === "branch" && a[1] === "-D")).toBe(true);
-  // Cleared, so the next tick does not try again.
-  expect(h.db.query<{ w: string | null }, []>("SELECT worktree AS w FROM grp WHERE id = 1").get()!.w).toBeNull();
+  const killed: string[] = [];
+  h.ctx.sandbox = { ...h.ctx.sandbox!, kill: async (_c, scope) => { killed.push(JSON.stringify(scope)); } };
+
+  const findings = await runWatchdog(h.deps);
+  expect(findings.map((x) => x.rule)).toContain("sandbox_swept");
+  expect(killed).toEqual(['{"grp":1}']);
 });

@@ -1,4 +1,5 @@
 import type { StablePrompt } from "../prompt/assemble.ts";
+import { shq } from "../mech/shq.ts";
 
 /**
  * `claude -p` as one subprocess per turn.
@@ -54,12 +55,6 @@ export interface TurnResult {
   text: string;
   usage: Usage;
   numTurns: number;
-  /**
-   * Non-empty means the agent tried something its clearance forbids. Headless
-   * runs never prompt, so a denial is silent and the agent will invent a
-   * workaround — the orchestrator turns these into escalations (PLAN.md §5).
-   */
-  permissionDenials: unknown[];
   /** Present when the CLI reported quota state; drives downgrade/suspend. */
   rateLimit?: RateLimitInfo;
   /** From modelUsage — the denominator for session rotation. */
@@ -80,9 +75,32 @@ export interface TurnHandlers {
   onTool?: (t: ToolSummary) => void;
   /** The CLI's own status pings (requesting, …). */
   onStatus?: (status: string) => void;
-  /** Called once the child exists, so intercept L3 can kill it. */
-  onPid?: (pid: number) => void;
+  /** Called once the turn is running, so intercept L3 can stop it. */
+  onAbort?: (abort: () => void) => void;
 }
+
+/**
+ * How a turn actually runs.
+ *
+ * The CLI runs inside the group's sandbox, not on this machine, so an adapter
+ * cannot spawn — it hands a command to whoever owns the boundary. Two methods
+ * because that is all a turn needs: somewhere to put the prompt (the exec API
+ * has no stdin) and a stream of stdout lines to parse.
+ *
+ * `mech/sandbox.ts` implements it; tests pass a fake.
+ */
+export interface TurnRunner {
+  /** Write a file inside the sandbox. Cheap — measured at ~5ms. */
+  put(path: string, data: string): Promise<void>;
+  /** Run a shell command, yielding stdout a line at a time. */
+  lines(
+    cmd: string,
+    opts: { cwd?: string; timeoutMs?: number; env?: Record<string, string>; signal?: AbortSignal },
+  ): AsyncGenerator<string, { code: number; err: string }, void>;
+}
+
+/** Where a turn's prompt lands inside the sandbox. Overwritten every turn. */
+export const PROMPT_PATH = "/tmp/orch-prompt.txt";
 
 export interface TurnSpec {
   stable: StablePrompt;
@@ -106,20 +124,17 @@ export interface TurnSpec {
    */
   images?: string[];
   /**
-   * CODEX_HOME for this turn — a directory holding the login and nothing else.
-   * codex-only; see codexHome() in codex.ts for why it is not the boss's ~/.codex.
-   */
-  codexHome?: string;
-  /**
    * Extra environment for the child. This is how the agent learns where the
    * orchestrator is and who it is (ORCH_URL / ORCH_TOKEN) — identity travels in
    * the process environment, never in a request body the agent could edit.
    */
   env?: Record<string, string>;
   signal?: AbortSignal;
+  /** The sandbox this turn runs in. */
+  runner: TurnRunner;
 }
 
-export function buildArgv(spec: TurnSpec): string[] {
+export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
   const s = spec.stable;
   const argv = [
     "-p",
@@ -129,10 +144,10 @@ export function buildArgv(spec: TurnSpec): string[] {
     "--verbose", // required alongside stream-json in print mode
     "--model",
     s.model,
-    "--settings",
-    s.settingsPath,
-    "--permission-mode",
-    "acceptEdits",
+    // The container is the boundary, so the process inside it does not need a
+    // second one. This flag is what makes the deny-list profile — and every
+    // silent refusal it used to cause — unnecessary.
+    "--dangerously-skip-permissions",
     // Exclude user-level settings. Measured: inheriting the boss's global
     // CLAUDE.md, plugins and skills pushed a trivial haiku turn to ~195k cached
     // input tokens. Agents should follow their role prompt, not the boss's
@@ -183,45 +198,50 @@ type Line = {
   num_turns?: number;
   usage?: Record<string, any>;
   modelUsage?: Record<string, { contextWindow?: number }>;
-  permission_denials?: unknown[];
 };
 
 const WRITE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 
 export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult> {
-  const proc = Bun.spawn(["claude", ...buildArgv(spec)], {
-    cwd: spec.cwd,
-    stdin: new TextEncoder().encode(spec.prompt),
-    stdout: "pipe",
-    stderr: "pipe",
-    env: spec.env ? { ...process.env, ...spec.env } : undefined,
-    signal: spec.signal,
-  });
-  h.onPid?.(proc.pid);
+  // The exec API has no stdin, so the prompt travels as a file. It is the same
+  // bytes either way, and the agent can already read everything in its own
+  // sandbox.
+  await spec.runner.put(PROMPT_PATH, spec.prompt);
+  const cmd = `claude ${buildArgv(spec).map(shq).join(" ")} < ${PROMPT_PATH}`;
 
-  const timer = spec.timeoutMs
-    ? setTimeout(() => proc.kill("SIGTERM"), spec.timeoutMs)
-    : undefined;
+  const ac = new AbortController();
+  spec.signal?.addEventListener("abort", () => ac.abort(), { once: true });
+  h.onAbort?.(() => ac.abort());
 
   const log = spec.logPath ? Bun.file(spec.logPath).writer() : undefined;
   const acc = newAccumulator(spec);
 
+  const stream = spec.runner.lines(cmd, {
+    cwd: spec.cwd,
+    timeoutMs: spec.timeoutMs,
+    env: spec.env,
+    signal: ac.signal,
+  });
+  let tail = { code: -1, err: "" };
   try {
-    for await (const line of ndjson(proc.stdout)) {
+    while (true) {
+      const step = await stream.next();
+      if (step.done) {
+        tail = step.value;
+        break;
+      }
+      const line = safeParse(step.value);
       log?.write(JSON.stringify(trimForLog(line)) + "\n");
       consume(line, acc, h);
     }
-    await proc.exited;
   } finally {
-    if (timer) clearTimeout(timer);
     await log?.end();
   }
 
   if (!acc.sawResult) {
-    const stderr = await new Response(proc.stderr).text();
     acc.result.ok = false;
     acc.result.terminalReason = acc.result.terminalReason || "no_result";
-    acc.result.text ||= stderr.trim().split("\n").slice(-5).join("\n");
+    acc.result.text ||= tail.err.trim().split("\n").slice(-5).join("\n");
   }
   return acc.result;
 }
@@ -243,7 +263,6 @@ function newAccumulator(spec: TurnSpec): Acc {
       text: "",
       usage: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 },
       numTurns: 0,
-      permissionDenials: [],
       toolSummaries: [],
       filesTouched: [],
       logPath: spec.logPath,
@@ -317,7 +336,6 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
       r.terminalReason = l.terminal_reason ?? (r.ok ? "completed" : "error");
       if (typeof l.result === "string" && l.result) r.text = l.result;
       r.numTurns = l.num_turns ?? 0;
-      r.permissionDenials = l.permission_denials ?? [];
       const u = l.usage ?? {};
       r.usage = {
         input: u.input_tokens ?? 0,
@@ -402,35 +420,6 @@ function unwrapShell(cmd: string): string {
 function clip(s: string, n: number): string {
   const one = s.replace(/\s+/g, " ").trim();
   return one.length > n ? one.slice(0, n - 1) + "…" : one;
-}
-
-/** Split a byte stream into lines, tolerating partial reads. */
-export async function* ndjsonLines(
-  stream: ReadableStream<Uint8Array>,
-): AsyncGenerator<string, void, unknown> {
-  const dec = new TextDecoder();
-  let buf = "";
-  // Bun's ReadableStream is async-iterable; the DOM lib's type is not, and the
-  // web sources need that lib. Asserting here beats excluding web/ from the
-  // typecheck, which is how `ROW is not defined` reached a running page.
-  for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
-    buf += dec.decode(chunk, { stream: true });
-    let nl: number;
-    while ((nl = buf.indexOf("\n")) !== -1) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (line) yield line;
-    }
-  }
-  const tail = buf.trim();
-  if (tail) yield tail;
-}
-
-/** Split a byte stream into JSON values, one per line, tolerating partial reads. */
-export async function* ndjson(
-  stream: ReadableStream<Uint8Array>,
-): AsyncGenerator<Line, void, unknown> {
-  for await (const line of ndjsonLines(stream)) yield safeParse(line);
 }
 
 function safeParse(line: string): Line {

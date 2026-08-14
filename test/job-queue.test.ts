@@ -291,20 +291,20 @@ test("a turn left running by a dead server is reclaimed, not left holding the sl
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1, 1, 'qa', 'm', 'running', 0)",
   );
-  // Started just now, so it is the dead pid that identifies the orphan rather
-  // than the age check.
+  // Started just now, so what identifies the orphan is that nothing is reading
+  // the turn, rather than the age check.
   db.run(
-    "INSERT INTO job (kind, grp_id, state, pid, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 89992, ?, 0)",
+    "INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', ?, 0)",
     [Date.now()],
   );
   db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('reconcile', 1, 'pending', 0)");
 
   const { reclaimOrphans } = await import("../src/scheduler.ts");
-  // The pid belongs to nothing: the previous server exited mid-turn.
+  // Nobody is holding this turn's stream: the previous server exited mid-turn.
   expect(reclaimOrphans(db, { alive: () => false })).toHaveLength(1);
 
   const j = db.query<{ error: string }, []>("SELECT error FROM job WHERE id = 1").get()!;
-  expect(j.error).toContain("process 89992 is gone");
+  expect(j.error).toContain("nothing is reading this turn");
   // The agent believed it was mid-turn too, and a running agent is skipped forever.
   expect(db.query<{ state: string }, []>("SELECT state FROM agent").get()!.state).toBe("idle");
 

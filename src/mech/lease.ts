@@ -32,6 +32,8 @@ export interface ResourceDef {
   /** Lines matching this are lifted into the digest. */
   errorRegex?: string;
   cwd?: string;
+  /** Pools, plus `host` to opt out of the sandbox — see `runResource`. */
+  tags?: string[];
 }
 
 export interface ResolvedCommand {
@@ -251,41 +253,42 @@ export interface RunOutcome {
 /** 124 is what `timeout(1)` returns, so the number already means this. */
 export const LEASE_TIMEOUT_CODE = 124;
 
+/** Where a group's checkout lives. Mirrors mech/sandbox.ts; importing it here would be a cycle. */
+const WORK_DEFAULT = "/work";
+
+/**
+ * Runs one resolved command. The sandbox supplies this; nothing runs on the host.
+ *
+ * A timeout is the caller's, not ours: the exec API enforces one server-side, so
+ * there is no SIGTERM-then-SIGKILL dance left to write.
+ */
+export type ResourceExec = (
+  argv: string[],
+  opts: { cwd: string; timeoutMs?: number },
+) => Promise<{ code: number; out: string }>;
+
 export async function runResource(
   def: ResourceDef,
   args: Record<string, unknown>,
-  opts: { cwd?: string; logPath?: string; timeoutMs?: number } = {},
+  opts: {
+    exec: ResourceExec;
+    cwd?: string;
+    logPath?: string;
+    timeoutMs?: number;
+  },
 ): Promise<RunOutcome | Invalid> {
   const resolved = resolveLease(def, args);
   if (!resolved.ok) return resolved;
 
-  const proc = Bun.spawn(resolved.argv, {
-    cwd: opts.cwd ?? resolved.cwd ?? process.cwd(),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  // Without this a hung command holds the lease slot forever, and lease slots are
-  // global and few: one wedged build stops every group from ever gating again.
-  let timedOut = false;
+  const cwd = opts.cwd ?? resolved.cwd ?? WORK_DEFAULT;
   const limit = opts.timeoutMs ?? 0;
-  const timer = limit
-    ? setTimeout(() => {
-        timedOut = true;
-        proc.kill("SIGTERM");
-        // SIGTERM is a request. A build that ignores it still has to die.
-        setTimeout(() => proc.kill("SIGKILL"), 5_000);
-      }, limit)
-    : undefined;
-
-  const [so, se] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const exitCode = await proc.exited;
-  if (timer) clearTimeout(timer);
-  const output = so + se;
+  const { code, out: output } = await opts.exec(resolved.argv, { cwd, timeoutMs: limit || undefined });
   if (opts.logPath) await Bun.write(opts.logPath, output);
-  if (timedOut) {
+
+  // 124 is what the exec API's own timeout reports, and what `timeout(1)` has
+  // always meant. Either way the lease slot is what a hang costs, and slots are
+  // global and few: one wedged build stops every group from gating again.
+  if (limit && code === LEASE_TIMEOUT_CODE) {
     const mins = Math.round(limit / 60_000);
     const base = digestOutput(LEASE_TIMEOUT_CODE, output, def.errorRegex, opts.logPath);
     return {
@@ -299,5 +302,5 @@ export async function runResource(
       logPath: opts.logPath,
     };
   }
-  return { exitCode, digest: digestOutput(exitCode, output, def.errorRegex, opts.logPath), logPath: opts.logPath };
+  return { exitCode: code, digest: digestOutput(code, output, def.errorRegex, opts.logPath), logPath: opts.logPath };
 }

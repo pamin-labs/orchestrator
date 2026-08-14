@@ -16,8 +16,9 @@
 - **web = React + Tailwind v4 + shadcn/ui**（Radix 行为层），`bun run build:web` 出 `web/dist`。视觉语言是自己的（见 `DESIGN.md`），shadcn 只负责行为：焦点陷阱、Esc、aria、菜单、toast。手写过一遍，不值得
 - **页面仍然不 fetch 任何外部资源** —— 字体用本机已有的，脚本样式只从 `web/dist` 出，`test/smoke.test.ts` 守着
 - agent runtime = **CLI 子进程**（`claude -p` / `codex exec`），不用 Agent SDK
-- agent ↔ orchestrator = **`orch` CLI over Bash**，不用 MCP、不用 sentinel JSON
-- 沙盒 = **Claude Code 内置 Seatbelt**（`sandbox` / `denyRead` / `denyWrite` / `autoAllowBashIfSandboxed`），不自造策略引擎
+- agent ↔ orchestrator = **`orch` CLI**，不用 MCP、不用 sentinel JSON。传输是**文件信箱**（sandbox 里写请求文件，宿主轮询回信）—— `host.docker.internal` 只有 Docker Desktop 有，Linux 没有
+- 沙盒 = **一个组一个 OpenSandbox 容器**（`docs/decisions/005`）。宿主碰不到，宿主只通过 `orch` 暴露有限动作。CLI 在里面用 `--dangerously-skip-permissions` —— 容器已经是边界，进程内再自我约束就是那堆静默拒绝的来源
+- 凭据 = **egress sidecar 的 Credential Vault**。真 token 永不进沙盒，沙盒里是格式合法的假值，出站时 sidecar 替换 header
 
 ## 命令
 
@@ -37,13 +38,13 @@ bun test test/xxx.test.ts     # 单个
 | `note` | 黑板静态部分（fact / decision / journal / retro / onboarding / lesson） |
 | `task` / `slice` | 工作单元 + 状态机；`slice` 是可独立验收的交付单元 |
 
-**没有 mail 表**（合入 `event`）。**没有独立的 group 实体**（= task 子树 + branch + worktree + roster + 预算）。
+**没有 mail 表**（合入 `event`）。**没有独立的 group 实体**（= task 子树 + branch + sandbox + roster + 预算）。
 
 ## 不许违反的硬约束
 
 1. **注入的 delta 一律追加到最新一条 user message 末尾。** 塞进 system prompt 或历史前部会击穿 prompt cache，成本翻 3-5 倍且功能完全正常 —— 最隐蔽的故障。所有 prompt 组装必须走 `src/prompt/assemble.ts`，回归测试是 `test/cache-position.test.ts`。
-2. **`orch lease` 永不接受自由命令。** 资源是 `resource` 表里预定义的模板，agent 只能选资源名 + 传经 `arg_schema` 校验的参数。Runner 跑在 host 上有真权限，这是沙盒的唯一缺口。
-3. **凡能用 `if` 拦的，绝不写进 prompt 求 agent 自觉。** journal ≤6 行、DRAFT 卡 ≤12 行、clearance、看门狗、file ownership、对账 —— 全部确定性强制。提示词会在第 20 个 turn 被忘掉。
+2. **`orch lease` 永不接受自由命令。** 资源是 `resource` 表里预定义的模板，agent 只能选资源名 + 传经 `arg_schema` 校验的参数。以前的理由是「Runner 跑在 host 上有真权限，这是沙盒的唯一缺口」；现在它跑在组自己的沙盒里，理由反过来了 —— **`orch` 是 agent 唯一的接口**，它的校验就是整条边界。
+3. **凡能用 `if` 拦的，绝不写进 prompt 求 agent 自觉。** journal ≤6 行、DRAFT 卡 ≤12 行、沙盒边界、看门狗、file ownership、对账 —— 全部确定性强制。提示词会在第 20 个 turn 被忘掉。
 4. **组件行为不许自己造，有 shadcn 就用 shadcn。** 优先级：shadcn 组件 > 自己造 > 裸 HTML 标签。dialog / menu / toast / 命令面板 / accordion / button / input 一律走 shadcn（Radix + cmdk + sonner）。手写过一遍 confirm、toast、下拉，结果是没有焦点陷阱、Esc 不响应、aria 全缺 —— 视觉语言是我们的（`DESIGN.md`），行为不是我们该发明的。加组件先看 shadcn 有没有。
 5. **要老板做的决定必须把证据摆在按钮旁边。** 查收给 diff + QA 判词 + 闸门日志；不可逆动作（确认已合入）先让服务端向 GitHub 核对；被卡住的状态（预算烧穿、退回的 DRAFT、代答）必须有出路按钮。只给标题就让人批 = 橡皮图章，前面三道闸白跑。
 6. **`if` 和 prompt 说的话必须一致，不一致时模型听 `if`。** 改校验器时同步改对应的 role prompt，反过来也一样。实测：dispatcher prompt 写着「真的不可分就交一片，凑三片更糟」，而校验器拒收 1-2 片 —— 模型只能凑，还把凑出来的切片当风险写在自己卡上。**prompt 给的许可如果校验器不认，就是在教模型撒谎。**

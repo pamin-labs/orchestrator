@@ -6,6 +6,7 @@ import { RepoLock } from "../src/mech/gitlock.ts";
 import { abstain, answer, entryPoint, isReserved, revoke, route, triage } from "../src/mech/chain.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: boolean } = {}) {
   const db: DB = openMemory();
@@ -19,7 +20,7 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
     sched,
     gitLock: new RepoLock(),
     git: async () => ({ code: 0, out: "abc123" }),
-    waiters: new Map(),
+    sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: "中文", workRoot: "/tmp/x" },
     notifyBoss: (id) => void notified.push(id),
   };

@@ -386,3 +386,46 @@ UI 这轮的三件事，写进了 `DESIGN.md`：
 - **accordion 归 Radix**（CLAUDE.md 硬约束 4 里补了 accordion）。手写的 `<button>` + boolean 少了 `aria-expanded`/`aria-controls`、方向键、`data-state`。
 
 顺带：闸门日志改成整份局部滚动（服务端 tail 400 → 4000 行），不再把通过的行藏在计数后面；待办每一行整行可点开需求；agent 写出来的字面量 `\n` 在渲染处还原成换行。
+
+## OpenSandbox Phase 0：探针跑完，边界要换
+
+宿主 deny-list 那条路 001 自己写着天花板：**一条没人想到去 deny 的路径就是可写的**。换成容器边界，命题反过来 —— agent 碰不到宿主，宿主只通过 `orch` 暴露有限动作。实测结论全在 `docs/decisions/005-opensandbox-is-the-boundary.md`，几条和官方文档相反的：
+
+- **Credential Vault 在 `defaultAction: allow` 下照样注入**（文档说必须 deny）。所以「网随便上」和「凭据不进 sandbox」不是二选一，是都要。注入是**替换** `Authorization` 头，沙盒里的假值不上线。
+- **`allow "*"` 匹配不到任何东西** —— 通配符只有 `*.domain` 形式。要全放行就 `defaultAction: allow` + 项目黑名单。
+- **`claude` 不本地校验 token**：格式合法的假 token 拿到的是服务端 `401 OAuth access token is invalid`。vault 这条路对 claude 成立。
+- **`pause`/`resume` 是真的 `docker pause`**，文件系统和 vault 都活着（文档那句「resume 后 vault 空」是 K8s 的事）。但它**不释放任何资源**，容器还在 —— 解散组只能 `kill`。
+- **`host.docker.internal` 不是答案**：Docker Desktop 才有，Linux 原生 Docker 没有。通道改用 **files API 文件信箱**（write 5ms / read 1ms / search 1ms，处处一样）；`commands.run` 约 1s/次，那是给 turn 和闸门用的，不是给闲聊用的。
+- **默认 `cpu: "1"`** —— 这个仓库的 `tsc --noEmit` 因此 7.6s（宿主 2.07s）。给到 6 核就是 3.2s。慢的是配置不是虚拟化，没有 bind mount，checkout 在容器自己的 overlay 上。
+- 文档里的阿里云 registry 这边拉不动（auth EOF），Docker Hub 的 `opensandbox/*` 才是真源。`code-interpreter` 镜像 **7.04GB**，自己做个小的（要 bun + node + git，`tsc` 需要 node）。
+- 一个 sandbox = **两个容器**（本体 + egress sidecar），起一个 2.2–2.6s。orchestrator 崩了会漏，得有看门狗规则（硬约束 7）。
+
+下一步 Phase 1：`src/mech/sandbox.ts` + `grp.sandbox_id`，两个 adapter 的 `Bun.spawn` 换成 `execIn`。
+
+## OpenSandbox 落地：边界换掉了，clearance 整个删了
+
+Phase 0 的实测在 `docs/decisions/005`。这一轮把它做完了，净效果是删代码。
+
+**边界**：一个组一个容器。`ensureSandbox` / `execIn` / `execLines` / `putFile` / `killSandbox` 全在 `src/mech/sandbox.ts`，那是唯一知道 OpenSandbox 存在的文件。驱动挂在 `Ctx.sandbox` 上，和 `git`/`gh`/`ask` 一个模式 —— 单元测试注一个假的（`test/fake-sandbox.ts`），真的连不上就报错，不静默兜底。
+
+**代码是 clone 不是 worktree**。worktree 的 `.git` 指向主仓库，容器里要 commit 就得把主仓库也 mount 进去，边界当场又开。从 remote main clone，出来走 **git bundle** —— 沙盒里**没有能写远端的凭据**，宿主 fetch 完自己 push。这条是硬约束 3：给了 push 凭据，「不许直推 main」就只能写在 prompt 里求它自觉。
+
+**通道是文件信箱**。`orch` 在沙盒里写请求文件、轮询回信，宿主 `startMailbox` 每 150ms 扫一遍、拿同一套 HTTP 路由回放。`host.docker.internal` 只有 Docker Desktop 有，Linux 没有 —— 建在它上面等于宣布只支持 mac/Windows。files API 到处一样，实测 1-5ms。
+
+**凭据不进沙盒**。真 token 写进 egress sidecar 的 Credential Vault，沙盒环境里是格式合法的假值（`sk-ant-oat01-AAA…`），出站命中绑定时 sidecar 替换 header。claude 不本地校验 token，这是这条路成立的前提。设置页在「设置」标签，存下会回收所有在跑的沙盒 —— 它们 sidecar 里还是旧凭据。凭据失效 → 组 PAUSED + escalation 指向设置页。
+
+**删掉的**：`clearance.ts`（191 行）、`denyOutsideOwns`、`handleDenials`/`denialSummary`、`confine`/`INSTALL_DOMAINS`/`installDeps`/`SEED`、`setupRefusal`/`SETUP_BINS`、`postGit`/`reservedGitAction`、`codexHome`、codex 的沙盒参数块 + `REFUSAL` 正则、`ContainerSpec`/`containerArgv`、gate 里那条 node_modules 必须是软链的硬拦、`providers.confinesWrites`、`@anthropic-ai/sandbox-runtime` 依赖、宿主的 orch shim。
+
+**保留但换了理由**：`reconcileOwnership` 从「codex 拦不住写的补救」变成**唯一**的 ownership 机制（容器不知道文件归属）；`orch` 的 arg_schema 校验从「沙盒唯一的缺口」变成**唯一的接口**；`allowedTools` 从 clearance 表移进 `roles/*.yaml`，因为它本来就不是安全，是这个角色给多少工具。WebSearch/WebFetch 现在**所有角色都有** —— 控制点换成了 egress 域名黑名单，而且 MITM 下每个出站域名都有日志。
+
+**看门狗**：规则 17 从「删 worktree」改成「kill 沙盒」（pause 是真 `docker pause`，容器和磁盘都还在，不省任何东西）；新增规则 18 给活着的组续 TTL —— TTL 短才能兜住崩溃泄漏，短了就得有人续。
+
+**新增的 check**：`test/sandbox.test.ts`（规格 + 行重组）、`test/auth.test.ts`（真值不外泄、假值格式对、失效识别、preflight 说人话）、`test/mailbox.test.ts`（请求文件的形状、阻塞语义、非 200 不吞）。`bun test test/` 464 pass。
+
+**还没做**：`orch setup` 的端到端、真实容器里跑通一整个需求。要 `uvx opensandbox-server`（`dns+nft` 模式）起着，镜像还得自己做一个（bun + node + git，`tsc` 需要 node；官方 code-interpreter 7GB 太大）。
+
+### 最后一米：vault 目前不能开
+
+拿真 token 跑端到端，撞上一个上游 bug，隔离干净了：**只要 vault 绑了任何凭据，带 `%2f` 的 scoped 包请求全 403**。npm 和 bun 都中招，绑定只写了 `api.anthropic.com` 也照样影响 `registry.npmjs.org`，加 `paths` 收窄没用。sidecar 在对所有 host 规范化 URL 编码。
+
+矩阵和结论在 `docs/decisions/005`。意味着：**vault 那套代码全在（decoy、设置页、过期升级、check 都绿），但现在开不了** —— 开了 JS 项目装不了依赖。要么上游修，要么这条决策得重开：真 token 进沙盒，靠 egress 黑名单挡外传。这个取舍比原来弱，不该我替你选。

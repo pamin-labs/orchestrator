@@ -2,14 +2,14 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeApp, reservedGitAction, type Ctx } from "../src/api.ts";
+import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
 import { gateState } from "../src/mech/gate.ts";
 import { handToBoss } from "../src/mech/review.ts";
-import { makeGitRunner, createWorktree, checkpoint } from "../src/mech/worktree.ts";
+import { makeGitRunner, checkpoint } from "../src/mech/worktree.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import {
   makeAuditVerdict,
@@ -18,6 +18,7 @@ import {
   type ExecDeps,
 } from "../src/runtime/executor.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 const git = makeGitRunner(new RepoLock());
 
@@ -29,7 +30,6 @@ function turnOk(): TurnResult {
     text: "done",
     usage: { input: 1, output: 1, cacheRead: 0, cacheCreate: 0, thinking: 0 },
     numTurns: 1,
-    permissionDenials: [],
     toolSummaries: [],
     filesTouched: [],
   };
@@ -45,8 +45,14 @@ async function harness(opts: { gates?: string[] } = {}) {
   await git(repo, ["add", "-A"]);
   await git(repo, ["commit", "-q", "-m", "init"]);
 
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-rp-wt-"));
-  const wt = await createWorktree(git, { repoPath: repo, workRoot, group: "g1" });
+  // The group's checkout: a clone, the way it is inside a sandbox.
+  const wtDir = mkdtempSync(join(tmpdir(), "orch-rp-wt-"));
+  const work = join(wtDir, "work");
+  await git(wtDir, ["clone", "-q", repo, work]);
+  await git(work, ["config", "user.email", "a@orch.local"], work);
+  await git(work, ["config", "user.name", "orch agent"], work);
+  await git(work, ["checkout", "-q", "-b", "orch/g1"], work);
+  const wt = { worktree: work, branch: "orch/g1" };
 
   const db = openMemory();
   const bus = new Bus(db);
@@ -60,8 +66,18 @@ async function harness(opts: { gates?: string[] } = {}) {
     sched,
     gitLock: new RepoLock(),
     git,
-    waiters: new Map(),
-    config: { language: cfg.language, workRoot },
+    // The gates run in the group's sandbox. Here they run in this process, which
+    // is all these tests need: what is under test is what the pipeline does with
+    // an exit code, not how a command is spawned.
+    sandbox: fakeSandbox((cmd) => {
+      const p = Bun.spawnSync(["sh", "-c", cmd], { stdout: "pipe", stderr: "pipe" });
+      return {
+        code: p.exitCode,
+        out: p.stdout.toString(),
+        err: p.stderr.toString(),
+      };
+    }), waiters: new Map(),
+    config: { language: cfg.language, workRoot: wtDir },
   };
   const deps: ExecDeps = {
     ctx,
@@ -249,33 +265,6 @@ test("a slice with open tasks does not enter review", async () => {
   await h.sched.drain();
   // Reviewing half a slice spends judgement on work that is about to change.
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'gate'").get()!.c).toBe(0);
-});
-
-test("reserved git actions are refused at the orch boundary", async () => {
-  const h = await harness();
-  for (const argv of [
-    ["push", "origin", "HEAD"],
-    ["merge", "main"],
-    ["push", "--force"],
-    ["reset", "--hard", "HEAD~3"],
-  ]) {
-    const r = await h.post("/orch/git", { argv }, "tok-eng");
-    expect(r.status).toBe(422);
-    expect(await r.text()).toContain("refused");
-  }
-  // A refusal is visible to the boss, not silent — the agent will otherwise go
-  // looking for a way around it.
-  expect(
-    h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE kind = 'escalation'").get()!.c,
-  ).toBe(4);
-});
-
-test("ordinary git work still goes through", () => {
-  expect(reservedGitAction(["commit", "-m", "x"])).toBeNull();
-  expect(reservedGitAction(["status"])).toBeNull();
-  expect(reservedGitAction(["diff", "--name-only"])).toBeNull();
-  // Rebasing your own branch onto main is normal and stays allowed.
-  expect(reservedGitAction(["rebase", "origin/main"])).toBeNull();
 });
 
 test("accepting the last slice starts PR review; accepting an earlier one does not", async () => {

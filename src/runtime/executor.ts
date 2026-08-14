@@ -7,12 +7,15 @@ import type { Config, RoleDef } from "../config.ts";
 import { DEFAULT_PROVIDER, contextWindowFor, modelFor } from "../config.ts";
 import type { Executor, Job } from "../scheduler.ts";
 import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
-import { allowedToolsFor, writeProfile, type Clearance } from "../mech/clearance.ts";
 import { say } from "../lang.ts";
 import { listSkills, readSkill } from "../mech/skills.ts";
-import { denyOutsideOwns, outsideOwns, parseOwns } from "../mech/ownership.ts";
+import { outsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
+import { MAILBOX_DIR, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
+import { sandboxGit } from "../mech/checkout.ts";
+import { track, untrack } from "./running.ts";
+import { isAuthFailure, vaultFor } from "../mech/auth.ts";
 import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/watchdog.ts";
 import { runStandup } from "../mech/standup.ts";
 import { route } from "../mech/chain.ts";
@@ -25,7 +28,6 @@ import {
   sendBack,
 } from "../mech/review.ts";
 import { type TurnResult } from "./claude.ts";
-import { codexHome } from "./codex.ts";
 import { clampEffort, providerFor, type Provider } from "./providers.ts";
 
 /**
@@ -53,7 +55,6 @@ interface AgentRow {
   project_id: number | null;
   role: string;
   model: string;
-  clearance: string;
   session_id: string | null;
   session_tokens: number;
   cwd: string | null;
@@ -113,7 +114,7 @@ export function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
   return hire(deps, job.grp_id, roleName, job.slice_id, payloadProject);
 }
 
-const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, runtime, clearance, session_id, session_tokens, cwd, token, stable_hash, context_window FROM agent`;
+const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, runtime, session_id, session_tokens, cwd, token, stable_hash, context_window FROM agent`;
 const SELECT_AGENT = `${SELECT_AGENT_BASE} WHERE id = ?`;
 
 export function hire(
@@ -132,17 +133,13 @@ export function hire(
         ?.difficulty ?? null)
     : null;
   const grp = grpId
-    ? ctx.db
-        .query<{ project_id: number; worktree: string | null }, [number]>(
-          "SELECT project_id, worktree FROM grp WHERE id = ?",
-        )
-        .get(grpId)
+    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
     : null;
 
   const row = ctx.db
-    .query<{ id: number }, [number | null, number | null, string, string, string, string, string, string | null]>(
-      `INSERT INTO agent (project_id, grp_id, role, model, runtime, clearance, token, cwd, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
+    .query<{ id: number }, [number | null, number | null, string, string, string, string, string]>(
+      `INSERT INTO agent (project_id, grp_id, role, model, runtime, token, cwd, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
     .get(
       grp?.project_id ?? projectId ?? null,
@@ -153,9 +150,10 @@ export function hire(
       // queued turn would spend without loading roles/*.yaml, and the role could
       // be re-pointed at another provider while this agent is mid-slice.
       role.runtime ?? DEFAULT_PROVIDER,
-      role.clearance,
       mintToken(),
-      grp?.worktree ?? null,
+      // Every agent works in its sandbox's checkout; there is no host path left
+      // for one to sit in.
+      WORK,
     )!;
 
   ctx.bus.emit({
@@ -198,7 +196,10 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
             .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
             .get(agent.id)?.project_id ?? null,
         )?.repo_path ?? null);
-  const cwd = grp?.worktree ?? project?.repo_path ?? standingRepo ?? process.cwd();
+  // Always the sandbox's own checkout. There is no host path a turn can run in
+  // any more, which is the point: nothing an agent does touches this machine.
+  const cwd = WORK;
+  const scope: Scope = job.grp_id ? { grp: job.grp_id } : { project: agent.project_id ?? 0 };
   const stable = buildStableFor(deps, agent, role, grp, project?.repo_path ?? standingRepo ?? cwd, job);
 
   // A changed stable half means the cached prefix is dead. Rotating is cheaper
@@ -219,10 +220,9 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   // these survive into review whenever squashWip declines (an agent that wrote
   // one real commit keeps all of them). A checkpoint is still a checkpoint, so
   // it stays marked `wip`, but the rest of the line is the work.
-  const before =
-    grp?.worktree && project
-      ? await checkpoint(git, project.repo_path, grp.worktree, checkpointLabel(ctx, agent, job))
-      : null;
+  const before = job.grp_id
+    ? await checkpoint(sandboxGit(ctx, scope), WORK, WORK, checkpointLabel(ctx, agent, job))
+    : null;
 
   // Reconcile compares against what changed *in this slice*, so the baseline is
   // whatever HEAD was when the slice's first turn began.
@@ -278,15 +278,19 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
         maxTurns: role.maxTurns ?? cfg.maxTurnsPerJob,
         timeoutMs: cfg.turnTimeoutMs,
         images: imagePaths(prompt),
-        codexHome: provider.name === "codex" ? codexHome(cfg.dataDir) : undefined,
         logPath,
+        // Every turn runs inside a sandbox: the group's, or the project's when
+        // the role is a standing one with no group. Nothing runs on the host.
+        runner: runnerFor(ctx, scope),
         env: {
-          ORCH_URL: process.env.ORCH_URL ?? `http://127.0.0.1:${cfg.port}`,
+          // The mailbox, not a URL: the sandbox has no route to this machine on
+          // any platform we can rely on, and the files API has one everywhere.
+          ORCH_MAILBOX: MAILBOX_DIR,
           ORCH_TOKEN: agent.token ?? "",
           ORCH_GRP_ID: String(job.grp_id ?? ""),
-          // `orch` has to be a real executable on PATH; the shim is written at
-          // server start so it always matches the running source.
-          PATH: `${process.env.ORCH_BIN_DIR ?? join(cfg.dataDir, "bin")}:${process.env.PATH ?? ""}`,
+          // Format-plausible fakes. The real values are in the egress sidecar
+          // and get swapped in on the way out; nothing in here is worth stealing.
+          ...vaultFor(ctx.db).env,
         },
       },
       {
@@ -301,10 +305,11 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
           ctx.bus.live({ grpId: job.grp_id, projectId: agent.project_id ?? null, agentId: agent.id, role: agent.role, kind: "tool", body: t.detail });
         },
         onStatus: (s) => ctx.bus.live({ grpId: job.grp_id, projectId: agent.project_id ?? null, agentId: agent.id, role: agent.role, kind: "status", body: s }),
-        onPid: (pid) => ctx.db.run("UPDATE job SET pid = ? WHERE id = ?", [pid, job.id]),
+        onAbort: (stop) => track(job.id, stop),
       },
     );
   } finally {
+    untrack(job.id);
     ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ? AND state = 'running'", [agent.id]);
     // Compress now rather than a day later. Nothing reads these while they are
     // warm — every consumer is a human debugging afterwards — and 24h of raw
@@ -330,12 +335,13 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   recordCost(deps, agent, job, result, stable.hash);
   recordProgress(deps, agent, job, result);
   await narrate(deps, agent, job, grp, project?.repo_path ?? null, before, result);
-  handleDenials(deps, agent, job, result);
   handleRateLimit(deps, agent, job, result);
+  handleAuthFailure(deps, agent, job, result);
   recordSubscriptionUsage(deps, provider.name, result);
-  // The sandbox cannot hold this provider to the group's paths, so the check runs
-  // after the fact instead of before it. No-op for a provider whose profile did.
-  if (!provider.confinesWrites) await reconcileOwnership(deps, agent, job, grp, cwd);
+  // Always, for every provider. The container is the write boundary and it knows
+  // nothing about which files this group owns, so the reconcile runs after the
+  // fact — it is not a codex workaround any more, it is the mechanism.
+  await reconcileOwnership(deps, agent, job, grp, cwd);
 
   // A session whose transcript is gone on disk.
   //
@@ -389,6 +395,12 @@ function checkpointLabel(ctx: Ctx, agent: AgentRow, job: Job): string {
   return task ? `${head} — ${task.slice(0, 60)}` : head;
 }
 
+/**
+ * The project's gate container, if it has one.
+ *
+ * `config_json.container` = `{"image":"oven/bun:1"}`, optionally with
+ * `network`, `depsVolume` and `depsPath`. Absent means the host.
+ */
 function buildStableFor(
   deps: ExecDeps,
   agent: AgentRow,
@@ -407,23 +419,6 @@ function buildStableFor(
     .all(job.grp_id)
     .map((r) => r.worktree!)
     .filter(Boolean);
-
-  const clearance = (agent.clearance as Clearance) ?? "L1";
-
-  // Confine the group to the paths it owns. Deny-only sandbox, so this is the
-  // complement: the worktree's top-level entries the group did not claim.
-  const owns = parseOwns(grp?.owns_json ?? null);
-  const extraDenyWrite = owns.length
-    ? denyOutsideOwns(worktree, owns, (rel) => topLevel(rel ? join(worktree, rel) : worktree))
-    : [];
-
-  const settingsPath = writeProfile(join(cfg.dataDir, "profiles"), `${agent.id}-${clearance}`, {
-    clearance,
-    worktree,
-    repoPath,
-    siblingWorktrees: siblings,
-    extraDenyWrite,
-  });
 
   const projectId = ctx.db
     .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
@@ -446,12 +441,12 @@ function buildStableFor(
     // Clamped to what this role's provider accepts before it is hashed, so the
     // prefix hash describes the turn that was actually sent.
     effort: clampEffort(agent.runtime ?? role.runtime, role.effort),
-    allowedTools: role.allowedTools ?? allowedToolsFor(agent.role, clearance),
-    settingsPath,
-    // Attachments the boss sent with the idea live in the data dir, so the agent
-    // has to be allowed to open them. Without this, a screenshot is a path the
-    // sandbox refuses to read.
-    addDirs: [worktree, join(deps.cfg.dataDir, "attachments")],
+    // A role's own list, always. There is no clearance table behind it any more:
+    // the sandbox is the boundary, so this only decides which tool definitions
+    // are loaded into the prefix and which roles may search the web.
+    allowedTools: role.allowedTools ?? ["Bash", "Read", "Grep", "Glob"],
+    settingsPath: "",
+    addDirs: [WORK],
   });
 }
 
@@ -942,8 +937,8 @@ async function narrate(
   }
 
   let files = r.filesTouched;
-  if (before && grp?.worktree && repoPath) {
-    const changed = await changedSince(git, repoPath, grp.worktree, before);
+  if (before && job.grp_id) {
+    const changed = await changedSince(sandboxGit(ctx, { grp: job.grp_id }), WORK, WORK, before);
     if (changed.length) files = changed;
   }
   if (files.length) {
@@ -963,111 +958,50 @@ async function narrate(
  * the boss ever finds out.
  */
 /**
- * What was denied, in a line a human can read.
+ * The credential stopped working.
  *
- * The raw payload went straight into the escalation text, so the question the
- * boss was asked to answer opened with `[{"tool_name":"Bash","tool_use_id":…` and
- * was truncated mid-JSON. Shape differs per adapter (claude: `tool_name` +
- * `tool_input`, codex: `tool` + `message`), so read defensively.
+ * A year-long OAuth token expires exactly once, and when it does every group
+ * fails at the same moment with what reads like a model error. Retrying is the
+ * one thing that cannot help, so the group stops and the question points at the
+ * settings page — this is a decision only the boss can make.
  */
-export function denialSummary(denials: unknown[]): string {
-  return denials
-    .map((d) => {
-      const o = (d ?? {}) as Record<string, any>;
-      const tool = o.tool_name ?? o.tool ?? "tool";
-      const what = o.tool_input?.command ?? o.message ?? o.tool_input?.file_path ?? JSON.stringify(o.tool_input ?? o);
-      return `${tool}: ${String(what).split("\n")[0]!.trim().slice(0, 120)}`;
-    })
-    .join("; ")
-    .slice(0, 500);
-}
-
-function handleDenials(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
-  if (r.permissionDenials.length === 0) {
-    // It found a legal route. Nothing else ever closed these, so they accumulated
-    // as advisories nobody would ever answer — and an open question is not inert:
-    // it counts as "this group is waiting on someone" everywhere that looks.
-    deps.ctx.db.run(
-      `UPDATE escalation SET chain_state = 'answered', answered_by = 'orchestrator',
-         answer = 'the agent found a permitted route on a later turn'
-       WHERE agent_id = ? AND answer IS NULL AND question LIKE 'blocked by clearance:%'`,
-      [agent.id],
-    );
-    deps.ctx.db.run("UPDATE agent SET denial_turns = 0 WHERE id = ?", [agent.id]);
-    return;
-  }
+function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
+  if (r.ok || !isAuthFailure(r.text)) return;
   const { ctx } = deps;
-  const summary = denialSummary(r.permissionDenials);
-
-  // A first denial is not a question. Almost every one of them is an agent
-  // reaching for a shape it was never going to get — `sqlite3` on the server's own
-  // database, a write outside its boundary — and the next turn it takes a legal
-  // route by itself. Filing one asks three roles in the chain to read a group's
-  // context and think about it: measured, that is three turns at ~3M tokens each,
-  // for a question that answers itself.
-  const repeat = ctx.db
-    .query<{ n: number }, [number]>("SELECT denial_turns AS n FROM agent WHERE id = ?")
-    .get(agent.id)!.n;
-  ctx.db.run("UPDATE agent SET denial_turns = denial_turns + 1 WHERE id = ?", [agent.id]);
-  if (repeat === 0) {
-    ctx.bus.emit({
-      grpId: job.grp_id,
-      author: agent.role,
-      kind: "tool_summary",
-      body: `clearance blocked a call, trying another route: ${summary}`,
-    });
-    return;
+  const runtime = agent.runtime ?? DEFAULT_PROVIDER;
+  if (job.grp_id) {
+    ctx.db.run(
+      "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ? AND status = 'RUNNING'",
+      [job.grp_id],
+    );
   }
-
-  // One row per agent, not one per denial. An agent that keeps reaching for the
-  // same forbidden shape files the same escalation every turn — nine of them piled
-  // up on one group, none answered, all of them reading as work waiting on someone.
-  // A repeat is a reminder, not a new problem.
   const open = ctx.db
-    .query<{ id: number }, [number]>(
-      "SELECT id FROM escalation WHERE agent_id = ? AND answer IS NULL AND question LIKE 'blocked by clearance:%'",
+    .query<{ id: number }, [string]>(
+      "SELECT id FROM escalation WHERE answer IS NULL AND question LIKE ?",
     )
-    .get(agent.id);
-  if (!open) {
-    const row = ctx.db
-      .query<{ id: number }, [number | null, number, string]>(
-        `INSERT INTO escalation (grp_id, agent_id, severity, question, brief, kind, created_at)
-         VALUES (?, ?, 'advisory', ?, '被 clearance 挡住了', 'env', unixepoch() * 1000) RETURNING id`,
-      )
-      .get(job.grp_id, agent.id, `blocked by clearance: ${summary}`)!;
-    // Route it, or it sits at the default chain_state forever: the PM it was
-    // addressed to is never told, and it never climbs to anyone who could answer.
-    route({ ctx }, row.id);
-  }
-  // Escalate the agent, not the whole group: the PM or Architect can often
-  // point at a legal route, and stopping everyone for one denial is noisy.
-  ctx.db.run("UPDATE agent SET state = 'blocked' WHERE id = ?", [agent.id]);
+    .get(`${runtime} 的凭据%`);
+  if (open) return;
+  ctx.db.run(
+    `INSERT INTO escalation (grp_id, agent_id, severity, question, brief, kind, created_at)
+     VALUES (?, ?, 'blocker', ?, ?, 'env', unixepoch() * 1000)`,
+    [
+      job.grp_id,
+      agent.id,
+      `${runtime} 的凭据不好使了：${r.text.slice(0, 200)}\n` +
+        `去设置页重新配一个（claude 跑 \`claude setup-token\`，一年有效），配完这一组会自己接着走。`,
+      `${runtime} 凭据过期`,
+    ],
+  );
   ctx.bus.emit({
     grpId: job.grp_id,
-    author: agent.role,
+    author: "orchestrator",
     kind: "escalation",
     intent: "ask",
-    severity: "advisory",
-    body: `clearance blocked a call: ${summary}`,
+    severity: "blocker",
+    body: `${runtime} credentials rejected`,
   });
 }
 
-/**
- * Hitting the account's rate limit: wait for the reset, not for the boss.
- *
- * It used to drop a tier and carry on, and the reasoning was that work should keep
- * happening while the boss is asleep. It does not survive contact with how these
- * accounts actually work. The windows are per account, not per model, so a cheaper
- * model does not restore quota — it spends the same exhausted pool a little slower,
- * and only if there is any left, which at a rate limit there is not. What the
- * downgrade reliably did instead was silently change which model was doing the
- * work, mid-slice, at 01:00, with nobody choosing it: the boss tagged that slice
- * `hard` for a reason.
- *
- * So the only honest move is the one this always had as its fallback. Record when
- * the window reopens and let the watchdog restart it — nobody has to be awake for
- * that, which was the real requirement.
- */
 function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult): void {
   const rl = r.rateLimit;
   if (!rl || rl.status === "allowed") return;
@@ -1203,14 +1137,15 @@ async function runLease(deps: ExecDeps, job: Job): Promise<void> {
   const resolved = resolveLease(def, safeJson(lease.args_json));
   if (!resolved.ok) return finishLease(deps, leaseId, 126, resolved.error, undefined);
 
-  const cwd = leaseCwd(ctx, def, lease.grp_id);
+  const cwd = leaseCwd(def);
   const logDir = join(cfg.dataDir, "leases");
   mkdirSync(logDir, { recursive: true });
   const logPath = join(logDir, `${leaseId}.log`);
 
   // Stamp the commit this ran against: two failures at the same sha mean the
   // environment is the variable, not the code.
-  const head = await deps.git(cwd, ["rev-parse", "HEAD"], cwd);
+  const scope: Scope = lease.grp_id ? { grp: lease.grp_id } : { project: 0 };
+  const head = await sandboxGit(ctx, scope)(cwd, ["rev-parse", "HEAD"], cwd);
   ctx.db.run(
     "UPDATE lease SET state = 'running', head_sha = ?, started_at = unixepoch() * 1000 WHERE id = ?",
     [head.code === 0 ? head.out.trim() : null, leaseId],
@@ -1228,6 +1163,10 @@ async function runLease(deps: ExecDeps, job: Job): Promise<void> {
     cwd,
     logPath,
     timeoutMs: cfg.leaseTimeoutMs,
+    // The group's own sandbox. A lease used to be the one thing that ran on the
+    // boss's machine with the boss's permissions — PLAN.md called the runner the
+    // sandbox's only hole. There is no hole now.
+    exec: resourceExec(ctx, scope),
   });
   if (!("digest" in out)) return finishLease(deps, leaseId, 126, out.error, logPath);
   finishLease(deps, leaseId, out.exitCode, out.digest.text, logPath);
@@ -1263,15 +1202,8 @@ function finishLease(
   w?.(digest);
 }
 
-function leaseCwd(ctx: Ctx, def: ResourceDef, grpId: number | null): string {
-  if (def.cwd) return def.cwd;
-  if (grpId) {
-    const g = ctx.db
-      .query<{ worktree: string | null }, [number]>("SELECT worktree FROM grp WHERE id = ?")
-      .get(grpId);
-    if (g?.worktree) return g.worktree;
-  }
-  return process.cwd();
+function leaseCwd(def: ResourceDef): string {
+  return def.cwd ?? WORK;
 }
 
 function loadResource(ctx: Ctx, name: string): ResourceDef | null {

@@ -1,4 +1,8 @@
 import { expect, test } from "bun:test";
+import type { ResourceExec } from "../src/mech/lease.ts";
+
+/** These check ordering and reporting, never a real command. */
+const noExec: ResourceExec = async () => ({ code: 0, out: "" });
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,7 +44,7 @@ test("gates come from project config, not from anything an agent can set", () =>
 
 test("no configured gates is a failure, not a free pass", async () => {
   const db = seed([]);
-  const out = await runGates({ db, projectId: 1, cwd: "/tmp", dataDir: dataDir(), sliceId: 1 });
+  const out = await runGates({ db, projectId: 1, cwd: "/tmp", dataDir: dataDir(), sliceId: 1, exec: noExec });
   // A project with nothing deterministic to check has no floor under its LLM
   // reviewers, and silently passing would hide that.
   expect(out.pass).toBe(false);
@@ -56,7 +60,7 @@ test("all gates passing is a pass", async () => {
     projectId: 1,
     cwd: "/tmp",
     dataDir: dataDir(),
-    sliceId: 1,
+    sliceId: 1, exec: noExec,
     run: fakeRun({ test: { code: 0, out: "2 pass" }, lint: { code: 0, out: "" } }),
   });
   expect(out.pass).toBe(true);
@@ -71,7 +75,7 @@ test("the first failure stops the run — later output would be noise", async ()
     projectId: 1,
     cwd: "/tmp",
     dataDir: dataDir(),
-    sliceId: 1,
+    sliceId: 1, exec: noExec,
     run: fakeRun({
       typecheck: { code: 2, out: "error TS2345: wrong type\nsomething else" },
       test: { code: 0, out: "would be misleading" },
@@ -91,7 +95,7 @@ test("feedback carries the failing lines, never the whole log", async () => {
     projectId: 1,
     cwd: "/tmp",
     dataDir: dataDir(),
-    sliceId: 1,
+    sliceId: 1, exec: noExec,
     run: fakeRun({ test: { code: 1, out: `${noise}\nFAIL test/mw.test.ts` } }),
   });
   expect(out.pass).toBe(false);
@@ -104,7 +108,7 @@ test("feedback carries the failing lines, never the whole log", async () => {
 
 test("an unknown gate resource fails loudly instead of being skipped", async () => {
   const db = seed(["nope"]);
-  const out = await runGates({ db, projectId: 1, cwd: "/tmp", dataDir: dataDir(), sliceId: 1 });
+  const out = await runGates({ db, projectId: 1, cwd: "/tmp", dataDir: dataDir(), sliceId: 1, exec: noExec });
   expect(out.pass).toBe(false);
   expect(out.feedback).toContain("unknown gate resource nope");
 });
@@ -117,25 +121,3 @@ test("gate verdicts merge into gates_json without clobbering other layers", () =
   expect(gateState(db, 1)).toEqual({ self: "pass", gate: "pass" });
 });
 
-test("a worktree with its own node_modules is refused before any gate runs", async () => {
-  // It fails as something else otherwise: `playwright is not installed`, an hour
-  // after the main checkout installed it. One group filed a blocker with exactly
-  // the right diagnosis and the boss had to act on it, which is a message the gate
-  // could have written itself.
-  const wt = mkdtempSync(join(tmpdir(), "orch-nm-"));
-  mkdirSync(join(wt, "node_modules"));
-  const db = seed(["test"]);
-  resource(db, "test");
-  const r = await runGates({
-    db,
-    projectId: 1,
-    sliceId: 1,
-    cwd: wt,
-    dataDir: dataDir(),
-    run: async () => ({ exitCode: 0, digest: { errorLines: [], tail: [] } }) as any,
-  });
-  expect(r.pass).toBe(false);
-  expect(r.feedback).toContain("not the symlink");
-  // The fix is in the message, not in a doc somewhere.
-  expect(r.feedback).toContain("rm -rf");
-});

@@ -1,5 +1,4 @@
 name: bootstrap
-clearance: L1
 # codex: cheapest tier. Reads three files and runs one command.
 runtime: codex
 effort: low
@@ -8,6 +7,11 @@ tier: trivial
 # the common case, so most of these turns end in one tool call.
 maxTurns: 8
 
+# Tools. Used to be derived from a clearance table; a role is configuration, and
+# so is this. Bash is unqualified because the sandbox is the boundary now — the
+# `Bash(ls*)` allowlist only existed to make a deny-only host sandbox survivable,
+# and every segment of a compound command having to match cost real turns.
+allowedTools: [Bash, Read, Grep, Glob, WebSearch, WebFetch]
 prompt: |
   You get a fresh worktree and one job: leave it able to build and test.
 

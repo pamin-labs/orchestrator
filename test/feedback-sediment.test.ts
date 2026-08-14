@@ -5,6 +5,7 @@ import { RepoLock } from "../src/mech/gitlock.ts";
 import { OVERLAP_FLOOR, sameComplaint, sediment, terms } from "../src/mech/lessons.ts";
 import { bossFact, type Ctx } from "../src/api.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 /**
  * PLAN.md §7③. Without this the boss's dissatisfaction produces N isolated facts:
@@ -19,7 +20,7 @@ function harness() {
     bus: new Bus(db),
     sched: new Scheduler(db, async (j) => void ran.push(j)),
     gitLock: new RepoLock(),
-    waiters: new Map(),
+    sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: "中文", workRoot: "/tmp/x", feedbackSediment: 3 },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");

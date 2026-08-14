@@ -7,7 +7,11 @@ import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
-import { abortStaleRebase, installDeps, sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
+import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
+import { execIn, killSandbox, putFile, WORK } from "./mech/sandbox.ts";
+import { listAuth, saveAuth } from "./mech/auth.ts";
+import { preflight } from "./mech/preflight.ts";
+import { sandboxGit } from "./mech/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
@@ -41,6 +45,8 @@ export interface Ctx {
   waiters: Map<string, (value: string) => void>;
   /** Runs git under the repo write lock. Absent in unit tests that need no repo. */
   git?: GitRunner;
+  /** Where turns, gates and leases run. Absent in unit tests that need no container. */
+  sandbox?: import("./mech/sandbox.ts").SandboxDriver;
   /** Runs `gh`. Absent in unit tests that need no GitHub. */
   gh?: (argv: string[], cwd: string) => Promise<{ code: number; out: string }>;
   /** One cheap model call, for PageIndex navigation. Absent in unit tests. */
@@ -78,6 +84,18 @@ export interface Ctx {
     feedbackSediment?: number;
     /** Chars an `orch ctx query` answer may spend. Was a setting that changed nothing. */
     ctxBudgetChars?: number;
+    /** Where the orchestrator listens; the mailbox replays agent calls to it. */
+    port?: number;
+    /** Where turns run. See mech/sandbox.ts and docs/decisions/005. */
+    sandbox?: {
+      server: string;
+      apiKey: string;
+      image: string;
+      cpu: string;
+      memory: string;
+      ttlSeconds: number;
+      denyDomains: string[];
+    };
   };
 }
 
@@ -179,8 +197,8 @@ const postJournal: Handler = async (ctx, req) => {
 
   const grp = a.grp_id
     ? ctx.db
-        .query<{ name: string; project_id: number; worktree: string | null }, [number]>(
-          "SELECT name, project_id, worktree FROM grp WHERE id = ?",
+        .query<{ name: string; project_id: number }, [number]>(
+          "SELECT name, project_id FROM grp WHERE id = ?",
         )
         .get(a.grp_id)
     : null;
@@ -196,17 +214,17 @@ const postJournal: Handler = async (ctx, req) => {
   // journal/retro live in the repo so they merge with the PR and the next group
   // can grep them; the rest stay on the blackboard only.
   let exportPath: string | null = null;
-  if ((v.kind === "journal" || v.kind === "retro" || v.kind === "decision") && grp?.worktree) {
+  if ((v.kind === "journal" || v.kind === "retro" || v.kind === "decision") && a.grp_id) {
     const seq = ctx.db
       .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ?")
       .get(a.grp_id!)!.c;
-    exportPath = join("docs", "journal", grp.name, `${String(seq + 1).padStart(3, "0")}-${v.kind}.md`);
-    const abs = join(grp.worktree, exportPath);
+    exportPath = join("docs", "journal", grp!.name, `${String(seq + 1).padStart(3, "0")}-${v.kind}.md`);
     const fm = Object.entries(frontmatter)
       .map(([k, val]) => `${k}: ${Array.isArray(val) ? `[${val.join(", ")}]` : val}`)
       .join("\n");
-    await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, `---\n${fm}\n---\n${v.body}\n`, "utf8");
+    // Into the sandbox's checkout, so it merges with the PR like any other file.
+    await execIn(ctx, { grp: a.grp_id }, `mkdir -p ${WORK}/${dirname(exportPath)}`);
+    await putFile(ctx, { grp: a.grp_id }, `${WORK}/${exportPath}`, `---\n${fm}\n---\n${v.body}\n`);
   }
 
   ctx.db.run(
@@ -505,21 +523,10 @@ const postAskBoss: Handler = async (ctx, req) => {
     .get(a.grp_id, a.id, severity, b.question, brief(b.brief, b.question), askKind(b.kind))!;
 
   // The commit the question was asked at, so a stand-in's answer can be undone.
-  if (ctx.git && a.grp_id) {
-    const grp = ctx.db
-      .query<{ worktree: string | null; project_id: number }, [number]>(
-        "SELECT worktree, project_id FROM grp WHERE id = ?",
-      )
-      .get(a.grp_id);
-    const repo = grp
-      ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(grp.project_id)
-          ?.repo_path
-      : undefined;
-    if (repo && grp?.worktree) {
-      const head = await ctx.git(repo, ["rev-parse", "HEAD"], grp.worktree);
-      if (head.code === 0) {
-        ctx.db.run("UPDATE escalation SET checkpoint_sha = ? WHERE id = ?", [head.out.trim(), row.id]);
-      }
+  if (a.grp_id) {
+    const head = await sandboxGit(ctx, { grp: a.grp_id })(WORK, ["rev-parse", "HEAD"], WORK);
+    if (head.code === 0) {
+      ctx.db.run("UPDATE escalation SET checkpoint_sha = ? WHERE id = ?", [head.out.trim(), row.id]);
     }
   }
   ctx.db.run("UPDATE escalation SET chain_state = ? WHERE id = ?", [entryPoint(b.question), row.id]);
@@ -550,64 +557,25 @@ const postAskBoss: Handler = async (ctx, req) => {
 };
 
 /**
- * The fallback check, for a machine with no sandbox binary.
- *
- * A setup command is confined by `srt` — deny-by-default filesystem and network
- * at the OS level, see `installDeps` — and that is the defence. This list is what
- * stands in for it when `srt` is not installed, and it is a blocklist, so it is
- * only as good as the last thing somebody thought of. That is exactly why it is
- * not the primary: `orch lease` never takes a free command (PLAN.md hard
- * constraint 2), and a turn that can run anything on the host is the sandbox with
- * a door in it.
- */
-const SETUP_BINS = new Set([
-  "bun", "npm", "pnpm", "yarn", "corepack", "node",
-  "python", "python3", "pip", "pip3", "poetry", "uv", "pdm", "pipenv", "hatch", "conda",
-  "go", "cargo", "dotnet", "swift", "gradle", "gradlew", "mvn", "sbt",
-  "bundle", "gem", "composer", "mix", "rebar3", "stack", "cabal",
-  "make", "just", "task", "mise", "asdf", "direnv", "nix-shell", "devbox",
-]);
-
-export function setupRefusal(cmd: string): string | null {
-  const trimmed = cmd.trim();
-  if (!trimmed) return "setup needs --cmd \"<command>\" or --none";
-  if (trimmed.length > 400) return "that is not a setup command";
-  // A pipe or a redirect is how `curl … | sh` gets in, and every real setup
-  // command is a program with flags. `&&` is allowed: setup is sometimes two
-  // steps, and both halves are checked.
-  if (/[|><`$]|\$\(|;|\bsudo\b|\bcurl\b|\bwget\b/.test(trimmed)) {
-    return "no pipes, redirects, substitutions, sudo, curl or wget in a setup command — ask the boss instead";
-  }
-  for (const part of trimmed.split("&&")) {
-    const bin = part.trim().split(/\s+/)[0] ?? "";
-    if (!SETUP_BINS.has(bin.replace(/^\.\//, ""))) {
-      return `${bin || "that"} is not a package manager this can run on the host — ask the boss instead`;
-    }
-  }
-  return null;
-}
-
-/**
- * The bootstrap role's one verb: make this worktree buildable.
+ * The bootstrap role's one verb: make this checkout buildable.
  *
  * The command comes from the agent because nobody can enumerate them — bun,
  * poetry, uv, mise, a Makefile target — and the repo says which one it is. It
- * runs on the host because the sandbox denies the agent's own process the writes
- * an install needs.
+ * used to be checked against a list of package-manager names before running on
+ * the host; it runs inside the group's own sandbox now, so what it *is* stopped
+ * mattering. What is worth keeping is the answer, so the next group does not pay
+ * to read the same repo again.
  */
 const postSetup: Handler = async (ctx, req) => {
   const b = await body<{ cmd?: string; none?: boolean }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
-  if (a.role !== "bootstrap") return bad(`${a.role} does not set up worktrees`);
-  const grp = a.grp_id
-    ? ctx.db
-        .query<{ worktree: string | null; project_id: number }, [number]>(
-          "SELECT worktree, project_id FROM grp WHERE id = ?",
-        )
-        .get(a.grp_id)
-    : null;
-  if (!grp?.worktree) return bad("this agent has no worktree");
+  if (a.role !== "bootstrap") return bad(`${a.role} does not set this project up`);
+  if (!a.grp_id) return bad("this agent has no group");
+  const grp = ctx.db
+    .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
+    .get(a.grp_id);
+  if (!grp) return bad("this agent has no group");
 
   if (b.none) {
     ctx.db.run(
@@ -619,37 +587,24 @@ const postSetup: Handler = async (ctx, req) => {
   }
 
   const cmd = (b.cmd ?? "").trim();
-  const repo = ctx.db
-    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-    .get(grp.project_id)?.repo_path;
-  // Checked BEFORE it runs, and only when there is no boundary to run it inside:
-  // under `srt` the command is confined to this worktree and the registries, so
-  // what it *is* matters less than what it can reach.
-  if (!existsSync(join(repo ?? process.cwd(), "node_modules/.bin/srt"))) {
-    const refusal = setupRefusal(cmd);
-    if (refusal) return bad(`${refusal} (no sandbox binary on this machine)`);
-  }
-  const r = await installDeps(
-    grp.worktree,
-    cmd,
-    join(ctx.config.dataDir ?? "data", "gates", `install-${a.grp_id}.log`),
-    { domains: installDomains(ctx, grp.project_id), repoRoot: repo },
-  );
+  if (!cmd) return bad('setup needs --cmd "<command>" or --none');
+  const r = await execIn(ctx, { grp: a.grp_id }, cmd, { cwd: WORK, timeoutMs: 900_000 });
+  const out = (r.err || r.out).slice(-400);
   ctx.bus.emit({
     grpId: a.grp_id,
     author: a.role,
     kind: "state_change",
-    body: r.ok ? `装好了：${cmd}` : `装失败了：${cmd}\n${r.out.slice(-400)}`,
+    body: r.code === 0 ? `装好了：${cmd}` : `装失败了：${cmd}\n${out}`,
   });
-  // Remembered on the project, so the next worktree does not pay for the same
-  // reading — and so the boss can see and correct what runs on their machine.
-  if (r.ok) {
+  // Remembered on the project, so the next group does not pay for the same
+  // reading — and so the boss can see and correct what its groups run.
+  if (r.code === 0) {
     ctx.db.run("UPDATE project SET config_json = json_set(config_json, '$.install', ?) WHERE id = ?", [
       cmd,
       grp.project_id,
     ]);
   }
-  return r.ok ? text("ok") : bad(`setup failed:\n${r.out.slice(-1200)}`);
+  return r.code === 0 ? text("ok") : bad(`install failed (exit ${r.code}):\n${out}`);
 };
 
 /** Extra registries a project needs, from `config_json.installDomains`. */
@@ -911,7 +866,7 @@ const postDraft: Handler = async (ctx, req) => {
  * mergeable, separately rejectable. Splitting IS decomposition, which makes it the
  * Dispatcher's job — so it gets a verb rather than a prompt telling it to cope.
  *
- * Only before work exists. After a card is approved there is a branch and a worktree,
+ * Only before work exists. After a card is approved there is a branch and a checkout,
  * and re-cutting then is `respec`, not a split.
  */
 const MAX_SPLIT = 6;
@@ -925,8 +880,8 @@ const postSplit: Handler = async (ctx, req) => {
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
   const grp = ctx.db
-    .query<{ project_id: number; name: string; status: string; worktree: string | null }, [number]>(
-      "SELECT project_id, name, status, worktree FROM grp WHERE id = ?",
+    .query<{ project_id: number; name: string; status: string; branch: string | null }, [number]>(
+      "SELECT project_id, name, status, branch FROM grp WHERE id = ?",
     )
     .get(gid);
   if (!grp) return text("no such group", 404);
@@ -939,7 +894,7 @@ const postSplit: Handler = async (ctx, req) => {
   const hasWork = ctx.db
     .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ?")
     .get(gid)!.c;
-  if (hasWork > 0 || grp.worktree) return bad(`${grp.name} already has slices or a worktree; split before that`);
+  if (hasWork > 0 || grp.branch) return bad(`${grp.name} already has slices or a branch; split before that`);
 
   const items = (b.requirements ?? []).filter((r) => r?.idea?.trim());
   if (items.length < 2) {
@@ -1279,86 +1234,6 @@ const postAudit: Handler = async (ctx, req) => {
   return text("ok");
 };
 
-/**
- * Actions no agent may take, whatever its clearance and whoever asked it to.
- *
- * Written as a list in code rather than a line in a prompt, because a prompt
- * rule is a suggestion by turn 20. These four are the git-shaped members of the
- * six reserved actions in PLAN.md §7; secrets are handled by the sandbox and
- * spending has no mechanism to abuse yet.
- */
-export function reservedGitAction(argv: string[]): string | null {
-  const sub = argv.find((a) => !a.startsWith("-"));
-  if (sub === "push") return "pushing is the boss's call — open a PR instead";
-  if (sub === "merge" || sub === "rebase") {
-    const ontoMain = argv.some((a) => /^(origin\/)?(main|master)$/.test(a));
-    if (sub === "merge") return "merging is reserved for the boss";
-    if (ontoMain) return null; // rebasing your own branch onto main is fine
-  }
-  if (argv.some((a) => a === "--force" || a === "-f" || a === "--force-with-lease")) {
-    return "force is never allowed: it destroys history someone else may hold";
-  }
-  if (sub === "reset" && argv.includes("--hard")) {
-    return "hard reset discards work — ask the boss to interrupt-and-roll-back instead";
-  }
-  return null;
-}
-
-const postGit: Handler = async (ctx, req) => {
-  const b = await body<{ argv: string[] }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
-
-  const reserved = reservedGitAction(b.argv ?? []);
-  if (reserved) {
-    ctx.bus.emit({
-      grpId: a.grp_id,
-      author: a.role,
-      kind: "escalation",
-      intent: "ask",
-      severity: "advisory",
-      body: `blocked: git ${(b.argv ?? []).join(" ")} — ${reserved}`,
-    });
-    return bad(`refused: ${reserved}`);
-  }
-  const grp = a.grp_id
-    ? ctx.db
-        .query<{ worktree: string | null; project_id: number }, [number]>(
-          "SELECT worktree, project_id FROM grp WHERE id = ?",
-        )
-        .get(a.grp_id)
-    : null;
-  const repo =
-    (grp &&
-      ctx.db
-        .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-        .get(grp.project_id)?.repo_path) ||
-    process.cwd();
-  const cwd = grp?.worktree ?? repo;
-
-  // An agent's own rebase can be interrupted the same way ours can — the server
-  // stops, the watchdog kills the turn, the agent runs out of turns mid-conflict
-  // — and then `rebase-merge/` sits there and every later rebase in that
-  // worktree refuses with "I am stopping in case you still have something
-  // valuable there". The group can never move again and says the same sentence
-  // once per attempt. Ours aborts it in `rebaseOntoBase`; this is the other door
-  // into the same wall.
-  if (ctx.git && grp?.worktree && (b.argv ?? []).includes("rebase") && !b.argv.some((x) => x.startsWith("--"))) {
-    await abortStaleRebase(ctx.git, repo, grp.worktree);
-  }
-
-  const out = await ctx.gitLock.run(repo, b.argv, async () => {
-    const p = Bun.spawn(["git", ...b.argv], { cwd, stdout: "pipe", stderr: "pipe" });
-    const [so, se] = await Promise.all([
-      new Response(p.stdout).text(),
-      new Response(p.stderr).text(),
-    ]);
-    const code = await p.exited;
-    return { code, out: (so + se).trimEnd() };
-  });
-  return text(`exit ${out.code}\n${out.out}`, out.code === 0 ? 200 : 200);
-};
-
 const postCtxQuery: Handler = async (ctx, req) => {
   const b = await body<{ question: string; limit?: number }>(req);
   const a = agentOf(ctx, req);
@@ -1684,11 +1559,18 @@ const postReview: Handler = async (ctx, req) => {
 function loadResource(ctx: Ctx, name: string): ResourceDef | null {
   const r = ctx.db
     .query<
-      { name: string; template: string; concurrency: number; arg_schema_json: string; error_regex: string | null; cwd: string | null },
+      {
+        name: string; template: string; concurrency: number; arg_schema_json: string;
+        error_regex: string | null; cwd: string | null; tags_json: string;
+      },
       [string]
     >("SELECT * FROM resource WHERE name = ?")
     .get(name);
   if (!r) return null;
+  let tags: string[] = [];
+  try {
+    tags = JSON.parse(r.tags_json ?? "[]");
+  } catch {}
   return {
     name: r.name,
     template: r.template,
@@ -1696,6 +1578,7 @@ function loadResource(ctx: Ctx, name: string): ResourceDef | null {
     argSchema: JSON.parse(r.arg_schema_json),
     errorRegex: r.error_regex ?? undefined,
     cwd: r.cwd ?? undefined,
+    tags,
   };
 }
 
@@ -1714,7 +1597,7 @@ export function snapshot(ctx: Ctx) {
     projects: db.query("SELECT id, name, repo_path, remote FROM project").all(),
     groups: db
       .query(
-        `SELECT id, project_id, name, branch, worktree, status, owns_json, budget_tokens,
+        `SELECT id, project_id, name, branch, status, owns_json, budget_tokens,
                 spent_tokens, pr_number, approved_at FROM grp WHERE status != 'DISSOLVED'`,
       )
       .all(),
@@ -2564,15 +2447,6 @@ const getEvidence: Handler = async (ctx, _req, params) => {
     .get(id);
   if (!sl) return text("no such slice", 404);
 
-  const grp = ctx.db
-    .query<{ project_id: number; worktree: string | null }, [number]>(
-      "SELECT project_id, worktree FROM grp WHERE id = ?",
-    )
-    .get(sl.grp_id);
-  const repo = grp
-    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(grp.project_id)
-        ?.repo_path
-    : undefined;
 
   let stat = "";
   let diff = "";
@@ -2581,13 +2455,14 @@ const getEvidence: Handler = async (ctx, _req, params) => {
   // old main and the diff picks up every other group's landed work. See
   // `sliceDiffBase`.
   let scope: "slice" | "branch" = "slice";
-  if (ctx.git && repo && grp?.worktree) {
-    const from = await sliceDiffBase(ctx.git, repo, grp.worktree, sl.base_sha);
+  {
+    const git = sandboxGit(ctx, { grp: sl.grp_id });
+    const from = await sliceDiffBase(git, WORK, WORK, sl.base_sha);
     if (from) {
       scope = from.scope;
       const [s, d] = await Promise.all([
-        ctx.git(repo, ["diff", "--stat", from.base, "--"], grp.worktree),
-        ctx.git(repo, ["diff", from.base, "--"], grp.worktree),
+        git(WORK, ["diff", "--stat", from.base, "--"], WORK),
+        git(WORK, ["diff", from.base, "--"], WORK),
       ]);
       stat = s.code === 0 ? s.out.trim() : "";
       diff = d.code === 0 ? d.out : "";
@@ -2608,7 +2483,10 @@ const getEvidence: Handler = async (ctx, _req, params) => {
 
   // The gate wrote these itself (gate.ts logPath). Tail only: a build log is
   // megabytes and the useful part is at the end.
-  const gates = gatesFor(ctx.db, grp?.project_id ?? 0).flatMap((name) => {
+  const projectId =
+    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(sl.grp_id)
+      ?.project_id ?? 0;
+  const gates = gatesFor(ctx.db, projectId).flatMap((name) => {
     const path = join(ctx.config.dataDir ?? "data", "gates", `${id}-${name}.log`);
     if (!existsSync(path)) return [];
     const raw = Bun.file(path);
@@ -2776,15 +2654,20 @@ const postProject: Handler = async (ctx, req) => {
       // thing an agent may hand it is data (PLAN.md, hard constraint 2).
       JSON.stringify({ steps: { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$", maxLength: 200 } }),
       "FAIL:",
+      // No `host` tag any more. It used to need one — the old sandbox refused the
+      // loopback a browser driving a local server needs — and it was the last
+      // thing in the fleet still running on the boss's machine. Inside a
+      // container loopback is free. Its other confinement is unchanged: the arg
+      // schema takes a steps file, never a command.
       JSON.stringify(["browser"]),
     );
   }
 
   const gates = b.gates ?? detected.map((g) => g.name);
-  // How a fresh worktree gets its dependencies. Detected and written into config
+  // How a fresh checkout gets its dependencies. Detected and written into config
   // rather than hardcoded, because it is the one command that differs between
-  // every stack — and it runs on the host, since the sandbox denies an agent the
-  // writes an install needs.
+  // every stack — and it is a default the bootstrap role can skip past, since
+  // only the repo knows which of bun / poetry / uv / mise / make it really is.
   const config = { gates, shared: detectShared(b.repo_path), install: detectInstall(b.repo_path) };
 
   const r = ctx.db
@@ -3038,7 +2921,61 @@ const getStream: Handler = async (ctx, req) => {
 
 // ---------------------------------------------------------------------- router
 
+/**
+ * Which runtime is configured, and how. Never the secret.
+ *
+ * The value only ever leaves this process into an egress sidecar's vault, so
+ * even the page that sets it reads back a masked tail — enough to tell two
+ * tokens apart, which is the only question anyone asks of one they pasted.
+ */
+const getAuth: Handler = async (ctx) => json({ runtimes: listAuth(ctx.db) });
+
+const postAuth: Handler = async (ctx, req) => {
+  const b = await body<{ runtime?: string; mode?: string; secret?: string; baseUrl?: string }>(req);
+  const runtime = (b.runtime ?? "").trim();
+  const secret = (b.secret ?? "").trim();
+  if (!runtime) return bad("which runtime?");
+  if (!secret) return bad("paste the token or key");
+  if (b.mode !== "oauth_token" && b.mode !== "api_key") return bad("mode is oauth_token or api_key");
+  if (b.baseUrl) {
+    try {
+      new URL(b.baseUrl);
+    } catch {
+      return bad(`${b.baseUrl} is not a URL`);
+    }
+  }
+  saveAuth(ctx.db, { runtime, mode: b.mode, secret, baseUrl: b.baseUrl || undefined });
+  // Existing sandboxes hold the old value in their sidecars. Killing them is the
+  // cheap half of the fix — the next turn makes a new one and binds the new
+  // credential — and leaving them would mean "I changed it and nothing happened".
+  for (const g of ctx.db
+    .query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL")
+    .all()) {
+    await killSandbox(ctx, { grp: g.id });
+  }
+  ctx.db.run(
+    `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = 'reconfigured',
+       answered_at = unixepoch() * 1000
+     WHERE answer IS NULL AND question LIKE ?`,
+    [`${runtime} 的凭据%`],
+  );
+  ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE status = 'PAUSED' AND paused_at IS NOT NULL");
+  ctx.sched.tick();
+  return text("ok");
+};
+
+const getPreflight: Handler = async (ctx) =>
+  json({
+    checks: await preflight({
+      db: ctx.db,
+      sandbox: ctx.config.sandbox ?? { server: "127.0.0.1:8080", apiKey: "", image: "" },
+    }),
+  });
+
 const ROUTES: Array<[string, RegExp, Handler]> = [
+  ["GET", /^\/api\/auth$/, getAuth],
+  ["POST", /^\/api\/auth$/, postAuth],
+  ["GET", /^\/api\/preflight$/, getPreflight],
   ["POST", /^\/orch\/status$/, postStatus],
   ["POST", /^\/orch\/journal$/, postJournal],
   ["POST", /^\/orch\/mail$/, postMail],
@@ -3046,7 +2983,6 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/setup$/, postSetup],
   ["POST", /^\/orch\/lease$/, postLease],
   ["GET", /^\/orch\/lease\/(?<id>\d+)\/log$/, getLeaseLog],
-  ["POST", /^\/orch\/git$/, postGit],
   ["POST", /^\/orch\/ctx\/query$/, postCtxQuery],
   ["GET", /^\/orch\/task$/, getTasks],
   ["POST", /^\/orch\/task\/claim$/, postTaskClaim],

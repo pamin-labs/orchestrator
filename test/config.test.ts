@@ -18,15 +18,14 @@ test("the shipped roles all parse and declare what the runtime needs", () => {
     const r = roles.get(name);
     expect(r).toBeDefined();
     expect(r!.prompt.length).toBeGreaterThan(50);
-    expect(["L1", "L2"]).toContain(r!.clearance);
+    expect(r!.allowedTools!.length).toBeGreaterThan(0);
   }
 });
 
-test("dataDir is absolute, because subprocesses run somewhere else", () => {
-  // The clearance profile goes to `claude --settings`, and that process runs in
-  // the group's worktree. A relative "data/profiles/N-L2.json" resolved there, and
-  // every turn inside a worktree died with "Settings file not found" while
-  // planning roles (cwd = repo root) went on working.
+test("dataDir is absolute, because the things that read it run elsewhere", () => {
+  // Turn logs, gate logs and attachments are all written by paths built off this
+  // while the work itself happens in a sandbox. A relative one resolved against
+  // whatever the cwd happened to be, which was never the same twice.
   expect(isAbsolute(loadConfig().dataDir)).toBe(true);
   expect(isAbsolute(withAbsoluteDataDir({ ...loadConfig(), dataDir: "data" }).dataDir)).toBe(true);
 });
@@ -34,8 +33,12 @@ test("dataDir is absolute, because subprocesses run somewhere else", () => {
 test("only the engineer is allowed to be a writer", () => {
   const roles = loadRoles("roles");
   // One writer per group is what makes the scheduler's per-group serialisation
-  // equivalent to "no write conflicts".
-  expect(roles.get("engineer")!.clearance).toBe("L1");
+  // equivalent to "no write conflicts". The sandbox cannot enforce it — it knows
+  // nothing about roles — so the tool list is where it is said.
+  expect(roles.get("engineer")!.allowedTools).toContain("Write");
+  for (const other of ["qa", "auditor", "pm", "architect", "cos", "dispatcher", "librarian"]) {
+    expect(roles.get(other)!.allowedTools).not.toContain("Write");
+  }
   expect(roles.get("qa")!.prompt).toContain("Do NOT read the Engineer's self-review");
 });
 

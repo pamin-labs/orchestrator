@@ -8,15 +8,29 @@ import { isWrite } from "../src/mech/gitlock.ts";
 import {
   changedSince,
   checkpoint,
-  createWorktree,
-  installDeps,
   makeGitRunner,
   rebaseOntoBase,
-  removeWorktree,
   rollbackTo,
   sliceDiffBase,
   squashWip,
 } from "../src/mech/worktree.ts";
+
+/**
+ * A group's checkout, as a plain clone.
+ *
+ * It is a clone in a sandbox in production and a clone in a temp dir here, and
+ * every helper below takes its git runner rather than assuming one — which is
+ * exactly what makes the two interchangeable.
+ */
+async function checkout(origin: string, branch = "orch/g1"): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const work = join(dir, "work");
+  await git(dir, ["clone", "-q", origin, work]);
+  await git(work, ["config", "user.email", "a@orch.local"], work);
+  await git(work, ["config", "user.name", "orch agent"], work);
+  await git(work, ["checkout", "-q", "-b", branch], work);
+  return work;
+}
 
 const git = makeGitRunner(new RepoLock());
 
@@ -63,21 +77,6 @@ test("the repo lock serialises writes and survives a failing one", async () => {
   expect(order).toEqual(["first", "second"]);
 });
 
-test("a worktree is created on its own branch, outside the main checkout", async () => {
-  const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "auth-refactor" });
-
-  expect(wt.branch).toBe("orch/auth-refactor");
-  expect(existsSync(join(wt.worktree, "a.txt"))).toBe(true);
-  // Outside the main checkout, so denying the main checkout confines the group.
-  expect(wt.worktree.startsWith(workRoot)).toBe(true);
-  expect(wt.worktree.startsWith(dir)).toBe(false);
-
-  await removeWorktree(git, dir, wt.worktree, { deleteBranch: wt.branch });
-  expect(existsSync(wt.worktree)).toBe(false);
-});
-
 test("a worktree installs its own dependencies and keeps them out of git", async () => {
   const dir = await repo();
   mkdirSync(join(dir, "node_modules"), { recursive: true });
@@ -86,52 +85,34 @@ test("a worktree installs its own dependencies and keeps them out of git", async
   writeFileSync(join(dir, ".gitignore"), "node_modules/\nweb/dist/\n");
   await git(dir, ["add", "-A"]);
   await git(dir, ["commit", "-q", "-m", "ignore built things"]);
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
-  // Nothing is shared any more. node_modules used to be a symlink to the main
-  // checkout, and that one symlink caused the worst class of failure this system
-  // has had: two gates installing at once raced on one tree and the group read
-  // `Failed to link jiti: EEXIST` as its own build being broken.
+  // A group's checkout starts with nothing built in it. It used to start with a
+  // `node_modules` symlink to the main checkout, and that one symlink caused the
+  // worst class of failure this system has had: every worktree of a repo shared
+  // one dependency tree, so two gates installing at once raced on it and the
+  // group read `Failed to link jiti: EEXIST` as its own build being broken.
   expect(existsSync(join(wt.worktree, "node_modules"))).toBe(false);
   expect(existsSync(join(wt.worktree, "web/dist"))).toBe(false);
 
-  // The install runs on the host, because the sandbox denies an agent the writes
-  // it needs — `bun install` came back `EPERM failed to link`.
-  const dep = await installDeps(wt.worktree, "mkdir -p node_modules && echo x > node_modules/marker");
-  expect(dep.ok).toBe(true);
-  expect(existsSync(join(wt.worktree, "node_modules/marker"))).toBe(true);
-
-  // And git must not see it. `.gitignore` says `node_modules/`, which the turn
-  // checkpoint's `git add -A` swallowed once the path was tracked; `info/exclude`
-  // covers every worktree of the repo and is never committed.
-  expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out).toBe("");
-
-  // A stack that needs nothing is not a failure.
-  expect((await installDeps(wt.worktree, null)).ok).toBe(true);
+  // Whatever the install writes must stay invisible to git, or the turn
+  // checkpoint's `git add -A` commits it and QA rejects a slice over a file the
+  // group never touched.
+  mkdirSync(join(wt.worktree, "node_modules"), { recursive: true });
+  writeFileSync(join(wt.worktree, "node_modules/marker"), "x");
+  expect((await git(wt.worktree, ["status", "--porcelain"], wt.worktree)).out).toBe("");
 });
 
 test("a repo that has never been built still gets a worktree", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
   expect(existsSync(join(wt.worktree, "a.txt"))).toBe(true);
   expect(existsSync(join(wt.worktree, "node_modules"))).toBe(false);
 });
 
-test("two groups get separate worktrees and separate branches", async () => {
-  const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const a = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
-  const b = await createWorktree(git, { repoPath: dir, workRoot, group: "g2" });
-  expect(a.worktree).not.toBe(b.worktree);
-  expect(a.branch).not.toBe(b.branch);
-});
-
 test("checkpoint commits dirty work and returns a sha to come back to", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
   const before = await checkpoint(git, dir, wt.worktree, "engineer turn");
   expect(before).toMatch(/^[0-9a-f]{40}$/);
@@ -146,8 +127,7 @@ test("checkpoint commits dirty work and returns a sha to come back to", async ()
 
 test("checkpoint on a clean tree does not create an empty commit", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
   const a = await checkpoint(git, dir, wt.worktree, "turn");
   const b = await checkpoint(git, dir, wt.worktree, "turn");
   expect(a).toBe(b);
@@ -155,8 +135,7 @@ test("checkpoint on a clean tree does not create an empty commit", async () => {
 
 test("rollback discards a turn's work — this is intercept L3", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
   const before = (await checkpoint(git, dir, wt.worktree, "turn"))!;
 
   writeFileSync(join(wt.worktree, "half-done.txt"), "abandoned\n");
@@ -173,8 +152,7 @@ test("rollback discards a turn's work — this is intercept L3", async () => {
 
 test("changedSince sees uncommitted work — reconcile runs before any commit", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
   const base = (await checkpoint(git, dir, wt.worktree, "start"))!;
 
   // Exactly the state reconcile sees: the turn wrote files and marked the task
@@ -190,8 +168,7 @@ test("changedSince sees uncommitted work — reconcile runs before any commit", 
 
 test("wip checkpoints are squashed into one commit, and the tree survives", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
   for (const [file, body] of [["b.txt", "one\n"], ["c.txt", "two\n"], ["d.txt", "three\n"]]) {
     writeFileSync(join(wt.worktree, file!), body!);
@@ -211,8 +188,7 @@ test("wip checkpoints are squashed into one commit, and the tree survives", asyn
 
 test("a real commit message is never squashed away", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
   writeFileSync(join(wt.worktree, "b.txt"), "one\n");
   await checkpoint(git, dir, wt.worktree, "engineer turn");
@@ -228,8 +204,7 @@ test("a real commit message is never squashed away", async () => {
 
 test("a rebased branch stops reporting other groups' landed work as this slice's diff", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
   // Where the slice started: the branch tip at the time, which here is main.
   const base = (await git(dir, ["rev-parse", "HEAD"], wt.worktree)).out.trim();
@@ -240,14 +215,17 @@ test("a rebased branch stops reporting other groups' landed work as this slice's
   expect(await sliceDiffBase(git, dir, wt.worktree, base)).toEqual({ base, scope: "slice" });
 
   // Another group lands on main, and this branch is rebased onto it (rule 15).
+  // The base is `origin/main`: a clone's own `main` does not move when the
+  // remote does, which is the whole reason rule 15 fetches first.
   writeFileSync(join(dir, "theirs.txt"), "somebody else\n");
   await git(dir, ["add", "-A"]);
   await git(dir, ["commit", "-q", "-m", "other group"]);
-  await rebaseOntoBase(git, dir, wt.worktree, "main");
+  await git(wt.worktree, ["fetch", "-q", "origin"], wt.worktree);
+  await rebaseOntoBase(git, wt.worktree, wt.worktree, "origin/main");
 
   // The recorded base is now a commit on main, so diffing from it would call
   // `theirs.txt` part of this slice. Fall back to the fork point instead.
-  const after = await sliceDiffBase(git, dir, wt.worktree, base);
+  const after = await sliceDiffBase(git, wt.worktree, wt.worktree, base);
   expect(after?.scope).toBe("branch");
   const files = (await git(dir, ["diff", "--name-only", after!.base], wt.worktree)).out;
   expect(files).toContain("mine.txt");
@@ -277,8 +255,7 @@ test("a repo with only AGENTS.md gets CLAUDE.md, and the other way round", async
 
 test("a turn's checkpoint says which slice and what the work was", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
   writeFileSync(join(wt.worktree, "b.txt"), "one\n");
 
   // `wip: engineer turn` eight times is a branch log that says nothing, and these
@@ -290,8 +267,7 @@ test("a turn's checkpoint says which slice and what the work was", async () => {
 
 test("a rebase nobody finished does not wedge the group forever", async () => {
   const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
   // Two edits to one line, one on each side: the rebase stops on the conflict and
   // leaves rebase-merge/ behind, which is what a turn killed mid-rebase leaves.
@@ -299,39 +275,14 @@ test("a rebase nobody finished does not wedge the group forever", async () => {
   await checkpoint(git, dir, wt.worktree, "engineer turn");
   writeFileSync(join(dir, "a.txt"), "ours\n");
   await git(dir, ["commit", "-qam", "main moves"]);
-  const stuck = await rebaseOntoBase(git, dir, wt.worktree, "main");
+  await git(wt.worktree, ["fetch", "-q", "origin"], wt.worktree);
+  const stuck = await rebaseOntoBase(git, wt.worktree, wt.worktree, "origin/main");
   expect(stuck.code).not.toBe(0);
-  expect(existsSync(join(dir, ".git/worktrees/g1/rebase-merge"))).toBe(true);
+  expect(existsSync(join(wt.worktree, ".git/rebase-merge"))).toBe(true);
 
   // Live, every later wake said "there is already a rebase-merge directory … I am
   // stopping in case you still have something valuable there" — forever.
-  const again = await rebaseOntoBase(git, dir, wt.worktree, "main");
+  const again = await rebaseOntoBase(git, wt.worktree, wt.worktree, "origin/main");
   expect(again.out).not.toContain("already a rebase-merge directory");
 });
 
-test("a setup command runs inside a boundary, not just past a word list", async () => {
-  const dir = await repo();
-  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
-
-  // A blocklist of command shapes is only as good as the last thing somebody
-  // thought of. `srt` is deny-by-default at the OS level: seatbelt here,
-  // bubblewrap on Linux. Measured — a write outside the worktree comes back
-  // `Operation not permitted`.
-  const inside = await installDeps(wt.worktree, "echo ok > probe.txt", undefined, { repoRoot: process.cwd() });
-  expect(inside.sandboxed).toBe(true);
-  expect(inside.ok).toBe(true);
-  expect(existsSync(join(wt.worktree, "probe.txt"))).toBe(true);
-
-  const escape = join(tmpdir(), `orch-escape-${Date.now()}.txt`);
-  const outside = await installDeps(wt.worktree, `echo bad > ${escape.replace("/tmp", "/private/etc/orch-nope")}`, undefined, {
-    repoRoot: process.cwd(),
-  });
-  expect(outside.ok).toBe(false);
-
-  // And the settings file it needs is not in the worktree: `git add -A` in the
-  // turn checkpoint would commit it, and our plumbing in the diff reads as the
-  // group's own change.
-  expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out).toContain("probe.txt");
-  expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out).not.toContain("srt");
-});

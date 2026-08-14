@@ -6,6 +6,7 @@ import { RepoLock } from "../src/mech/gitlock.ts";
 import { dispatchFeedback, GH_MISSING, openPr, pollPrs, prBody, preflightPr, type GhRunner } from "../src/mech/prwatch.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 function harness() {
   const db = openMemory();
@@ -15,6 +16,10 @@ function harness() {
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
+    // `git bundle create` is what carries a branch out of the sandbox; the host
+    // then fetches from the bundle and pushes. Nothing here has a real one, so
+    // the file is a stub and the fetch is `okGit`.
+    sandbox: fakeSandbox(() => ({ code: 0, out: "" })),
     waiters: new Map(),
     config: { language: "中文", workRoot: "/tmp/x" },
   };
@@ -120,7 +125,13 @@ test("a push that fails names the branch, and no PR is attempted", async () => {
       ghCalled = true;
       return { code: 0, out: "{}" };
     },
-    git: async () => ({ code: 1, out: "remote: Permission to x/y denied\nfatal: unable to access" }),
+    // Only the push fails. Taking the branch out of the sandbox is a local fetch
+    // from a bundle and has no remote to be refused by — which is the point of
+    // splitting them: the sandbox never holds a credential that can push.
+    git: async (_repo, argv) =>
+      argv[0] === "push"
+        ? { code: 1, out: "remote: Permission to x/y denied\nfatal: unable to access" }
+        : { code: 0, out: "" },
     repo: "/tmp/p",
     grpId: 1,
     title: "t",

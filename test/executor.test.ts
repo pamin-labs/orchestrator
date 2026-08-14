@@ -11,6 +11,7 @@ import { Scheduler } from "../src/scheduler.ts";
 import { LOST_SESSION, makeExecutor, cacheRatio, hire, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult } from "../src/runtime/claude.ts";
 import type { TurnSpec } from "../src/runtime/claude.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 function ok(over: Partial<TurnResult> = {}): TurnResult {
   return {
@@ -20,7 +21,6 @@ function ok(over: Partial<TurnResult> = {}): TurnResult {
     text: "done",
     usage: { input: 10, output: 20, cacheRead: 5000, cacheCreate: 100, thinking: 0 },
     numTurns: 1,
-    permissionDenials: [],
     toolSummaries: [],
     filesTouched: [],
     ...over,
@@ -39,7 +39,7 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     bus,
     sched,
     gitLock: new RepoLock(),
-    waiters: new Map(),
+    sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: cfg.language, workRoot: cfg.workRoot },
   };
   const deps: ExecDeps = {
@@ -170,31 +170,6 @@ test("cost lands on the agent, the slice and the group", async () => {
   expect(db.query<{ t: number }, []>("SELECT spent_tokens AS t FROM grp").get()!.t).toBe(total);
 });
 
-test("one denial is not a question; the second one is", async () => {
-  const { db, sched } = harness(async () =>
-    ok({ permissionDenials: [{ tool: "Bash", command: "git push" }] }),
-  );
-  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
-  await sched.drain();
-
-  // Almost every first denial is an agent reaching for a shape it was never going
-  // to get, and taking a legal route by itself next turn. Filing it wakes three
-  // roles in the chain to read a group's context — three turns at ~3M tokens each,
-  // for a question that answers itself. It is said in the feed and nothing else.
-  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM escalation").get()!.c).toBe(0);
-  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE body LIKE '%another route%'").get()!.c)
-    .toBe(1);
-
-  // Twice running means it is actually stuck.
-  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
-  await sched.drain();
-  const esc = db.query<{ question: string }, []>("SELECT question FROM escalation").get()!;
-  expect(esc.question).toContain("git push");
-  // The agent stops, the group keeps going: one denial should not halt everyone.
-  expect(db.query<{ state: string }, []>("SELECT state FROM agent").get()!.state).toBe("blocked");
-  expect(db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("RUNNING");
-});
-
 test("a rate limit holds the whole provider, not just the group that hit it", async () => {
   const resetsAt = Math.floor(Date.now() / 1000) + 3600;
   const { db, sched, specs } = harness(async () =>
@@ -275,7 +250,10 @@ test("a lease runs its template and unblocks the waiting agent", async () => {
   await sched.drain();
 
   expect(digest).toContain("exit 0");
-  expect(digest).toContain("hello-lease");
+  // The template reached the sandbox as argv, quoted, with nothing shell-parsed
+  // on the way — that is the whole of hard constraint 2 now that `orch` is the
+  // only interface an agent has.
+  expect((ctx.sandbox as any).commands.at(-1)).toBe("'echo' 'hello-lease'");
   const row = db.query<{ state: string; exit_code: number }, []>("SELECT state, exit_code FROM lease").get()!;
   expect(row.state).toBe("done");
   expect(row.exit_code).toBe(0);

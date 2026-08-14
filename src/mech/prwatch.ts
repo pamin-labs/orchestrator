@@ -1,6 +1,8 @@
 import type { Ctx } from "../api.ts";
 import { say } from "../lang.ts";
-import { squashWip } from "./worktree.ts";
+import { defaultBase, squashWip } from "./worktree.ts";
+import { publishBranch, sandboxGit } from "./checkout.ts";
+import { WORK } from "./sandbox.ts";
 
 /**
  * The PR as a feedback channel.
@@ -40,7 +42,7 @@ export function makeGhRunner(): GhRunner {
 export interface OpenPrInput {
   ctx: Ctx;
   gh: GhRunner;
-  /** Under the repo write lock: a push writes refs, and worktrees share one `.git`. */
+  /** Under the repo write lock: a push writes refs. */
   git: (repo: string, argv: string[], cwd?: string) => Promise<{ code: number; out: string }>;
   repo: string;
   grpId: number;
@@ -52,21 +54,24 @@ export interface OpenPrInput {
 export async function openPr(input: OpenPrInput): Promise<{ number: number } | { error: string }> {
   const { ctx, gh, git, grpId } = input;
   const grp = ctx.db
-    .query<{ worktree: string | null; branch: string | null; pr_number: number | null }, [number]>(
-      "SELECT worktree, branch, pr_number FROM grp WHERE id = ?",
+    .query<{ branch: string | null; pr_number: number | null }, [number]>(
+      "SELECT branch, pr_number FROM grp WHERE id = ?",
     )
     .get(grpId);
-  if (!grp?.worktree || !grp.branch) return { error: "group has no worktree or branch" };
+  if (!grp?.branch) return { error: "group has no branch" };
   if (grp.pr_number) {
     // Already open, so this is a retry after rework: refresh what the PR says
     // rather than leaving a description written before the last three slices.
-    await gh(["pr", "edit", String(grp.pr_number), "--title", input.title, "--body", input.body], grp.worktree);
+    await gh(["pr", "edit", String(grp.pr_number), "--title", input.title, "--body", input.body], input.repo);
     return { number: grp.pr_number };
   }
 
-  // Every turn left a `wip:` commit behind. Squash before pushing, or the PR is
-  // a dozen commits all called "wip: engineer turn".
-  const sq = await squashWip(git, input.repo, grp.worktree, `${input.title}\n\n${input.body}`);
+  const scope = { grp: grpId } as const;
+  const sandbox = sandboxGit(ctx, scope);
+
+  // Every turn left a `wip:` commit behind. Squash before publishing, or the PR
+  // is a dozen commits all called "wip: engineer turn".
+  const sq = await squashWip(sandbox, WORK, WORK, `${input.title}\n\n${input.body}`);
   ctx.bus.emit({
     grpId,
     author: "orchestrator",
@@ -74,18 +79,25 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     body: sq.squashed ? `squashed ${sq.reason}` : `no squash (${sq.reason})`,
   });
 
-  // Nothing else in the system pushes a group's branch, and `gh pr create` will
-  // not do it for you outside a TTY — it aborts with "you must first push the
-  // current branch". So the branch exists only locally until right here.
-  const pushed = await git(input.repo, ["push", "-u", "origin", grp.branch], grp.worktree);
+  // Out of the sandbox as a bundle, then pushed from here. The sandbox has no
+  // credential that can write to the remote — see publishBranch for why that is
+  // deliberate rather than an oversight.
+  const base = await defaultBase(git, input.repo);
+  const moved = await publishBranch(ctx, scope, git, input.repo, grp.branch, `origin/${base}`);
+  if (!moved.ok) return { error: `could not take ${grp.branch} out of the sandbox: ${moved.reason}` };
+
+  const pushed = await git(input.repo, ["push", "-u", "origin", grp.branch]);
   if (pushed.code !== 0) {
     return { error: `could not push ${grp.branch}: ${pushed.out.split("\n").slice(-3).join("\n")}` };
   }
 
-  const push = await gh(["pr", "create", "--fill-first", "--title", input.title, "--body", input.body], grp.worktree);
+  const push = await gh(
+    ["pr", "create", "--head", grp.branch, "--fill-first", "--title", input.title, "--body", input.body],
+    input.repo,
+  );
   if (push.code !== 0) return { error: push.out.split("\n").slice(-3).join("\n") };
 
-  const view = await gh(["pr", "view", "--json", "number"], grp.worktree);
+  const view = await gh(["pr", "view", grp.branch, "--json", "number"], input.repo);
   let number = 0;
   try {
     number = JSON.parse(view.out).number ?? 0;
@@ -206,11 +218,15 @@ export interface Feedback {
  * seconds would be a turn each time, which is how a quiet PR becomes expensive.
  */
 export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
+  // `gh` needs a checkout to infer the repository from; the host's own is the
+  // only one left, and every group's PR lives in it.
+  const repo =
+    ctx.db.query<{ repo_path: string }, []>("SELECT repo_path FROM project ORDER BY id LIMIT 1").get()
+      ?.repo_path ?? process.cwd();
   const groups = ctx.db
     .query<
       {
         id: number;
-        worktree: string | null;
         pr_number: number | null;
         status: string;
         pr_seen_at: number;
@@ -226,17 +242,16 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
       // window, nobody was watching, and it stayed RUNNING for hours hiring turns
       // for a branch already byte-identical to main. A pr_number is the thing worth
       // polling on; the status is not.
-      `SELECT id, status, worktree, pr_number, pr_seen_at, pr_checks_sig FROM grp
+      `SELECT id, status, pr_number, pr_seen_at, pr_checks_sig FROM grp
        WHERE status != 'DISSOLVED' AND pr_number IS NOT NULL`,
     )
     .all();
 
   const out: Feedback[] = [];
   for (const g of groups) {
-    if (!g.worktree) continue;
     const r = await gh(
       ["pr", "view", String(g.pr_number), "--json", "state,mergeable,comments,reviews,statusCheckRollup"],
-      g.worktree,
+      repo,
     );
     if (r.code !== 0) continue;
 

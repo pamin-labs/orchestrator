@@ -18,6 +18,7 @@ import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
 import { Picker } from "./views/picker";
 import { Notes } from "./views/notes";
+import { Settings } from "./views/settings";
 import { Progress } from "./views/progress";
 import { Queue } from "./views/queue";
 import { Requirement } from "./views/requirement";
@@ -27,7 +28,7 @@ import { CostView, Desk, Owns } from "./views/tables";
 // `req` is a drill-in, not a tab: it only exists with a requirement selected, and
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
-type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes";
+type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes" | "settings";
 
 /**
  * Views that keep something pinned and scroll the rest themselves.
@@ -36,7 +37,7 @@ type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "
  * long list moves past it. Everything else scrolls whole, which is right when the
  * page has no controls of its own to lose.
  */
-const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req"]);
+const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req", "settings"]);
 interface Sel { p: number | null; view: View; g: number | null; t: string | null }
 
 const readHash = (): Sel => {
@@ -187,6 +188,7 @@ export function App() {
     ["notes", "记录"],
     ["owns", "所有权"],
     ["cost", "成本"],
+    ["settings", "设置"],
   ];
   const openGroup = sel.g ? st.groups.find((g) => g.id === sel.g) : undefined;
 
@@ -421,6 +423,8 @@ export function App() {
             <Notes projectId={sel.p!} tab={sel.t} onTab={(t) => go({ t })} />
           ) : view === "owns" ? (
             <Owns st={st} projectId={sel.p!} />
+          ) : view === "settings" ? (
+            <Settings />
           ) : (
             <CostView cost={cost} />
           )}

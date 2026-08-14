@@ -1,6 +1,11 @@
 # 001 orch talks over localhost TCP, not a unix socket
 
-**Status**: accepted
+**Status**: superseded in part by [005](005-opensandbox-is-the-boundary.md)
+
+The transport finding still holds. The write-confinement half does not: the
+deny-only ceiling recorded below is exactly why the boundary moved into a
+container, so nothing generates these profiles any more.
+
 **Date**: 2026-08-13
 **Deviates from**: PLAN.md §2 and §10, which specified a unix socket.
 

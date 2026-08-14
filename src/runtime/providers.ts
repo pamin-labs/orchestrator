@@ -24,17 +24,6 @@ export interface Provider {
    * five plus `ultra` on gpt-5.6-sol.
    */
   efforts: Effort[];
-  /**
-   * True when the sandbox this provider runs under can be told which paths the
-   * turn may write, so file ownership is enforced before the write happens.
-   *
-   * claude's settings profile takes a denyWrite list, so it can. codex cannot:
-   * `sandbox_workspace_write.writable_roots` only adds roots and cwd stays
-   * writable no matter what (probed on 0.147), so ownership there is a
-   * post-turn reconcile in the executor instead. Stated as a capability rather
-   * than as `if (name === "codex")` so a third provider has to answer it.
-   */
-  confinesWrites: boolean;
 }
 
 /** Weakest to strongest. The clamp below is an index comparison on this. */
@@ -43,8 +32,8 @@ export const EFFORT_LADDER: Effort[] = ["low", "medium", "high", "xhigh", "max",
 const CLAUDE_EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
 
 export const PROVIDERS: Record<string, Provider> = {
-  claude: { name: "claude", run: runClaude, efforts: CLAUDE_EFFORTS, confinesWrites: true },
-  codex: { name: "codex", run: runCodex, efforts: EFFORT_LADDER, confinesWrites: false },
+  claude: { name: "claude", run: runClaude, efforts: CLAUDE_EFFORTS },
+  codex: { name: "codex", run: runCodex, efforts: EFFORT_LADDER },
 };
 
 export function providerFor(name?: string | null): Provider {

@@ -1,8 +1,6 @@
-import { existsSync, mkdirSync, symlinkSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary } from "./claude.ts";
-import { ndjsonLines, summarizeTool } from "./claude.ts";
+import { PROMPT_PATH, summarizeTool } from "./claude.ts";
+import { shq } from "../mech/shq.ts";
 
 /**
  * `codex exec --json` behind the same interface as the claude adapter.
@@ -21,7 +19,7 @@ import { ndjsonLines, summarizeTool } from "./claude.ts";
  * has to tolerate junk lines rather than assume clean JSONL.
  */
 
-export function buildArgv(spec: TurnSpec): string[] {
+export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
   const argv = spec.resumeSessionId
     ? ["exec", "resume", spec.resumeSessionId, "--json"]
     : ["exec", "--json"];
@@ -33,7 +31,7 @@ export function buildArgv(spec: TurnSpec): string[] {
   // The boss's own setup is not this agent's. Same reason as the claude adapter's
   // `--setting-sources project,local`: inheriting a personal config.toml means the
   // role's model and effort are silently overridden, and the skill catalogue is
-  // prefix tax on every turn. (CODEX_HOME does the rest — see codexHome().)
+  // prefix tax on every turn.
   argv.push("--ignore-user-config", "--ignore-rules");
   // Web search, by the same rule as the claude side: `allowedTools` is a Claude
   // Code concept, but it is the one place that records which roles may look
@@ -47,62 +45,13 @@ export function buildArgv(spec: TurnSpec): string[] {
   // So this is written as a denial, not a grant. Everything else in the sandbox
   // is deny-only for the same reason: the default has to be the safe one.
   argv.push("-c", spec.stable.allowedTools.includes("WebSearch") ? 'web_search="live"' : 'web_search="disabled"');
-  // Sandbox. Measured on codex 0.147 (docs/decisions/006):
-  //   - the default and `-s read-only` have no network AT ALL, not even loopback,
-  //     and `orch` is HTTP to 127.0.0.1 — a read-only agent is a mute agent
-  //   - the old `-c sandbox_permissions=[]` here was a no-op; 0.147 does not know
-  //     that key, and passing "network-full-access" changed nothing either
-  //   - config.toml's network_access is ignored by the macOS seatbelt (codex#10390),
-  //     so this has to travel as argv
-  // ponytail: the shape we actually want is the beta permission profiles
-  // (base="read-only" + network.allow_local_binding + a domain allowlist). They
-  // SIGABRT on 0.147. Until they land, the ceiling is "a codex role can reach the
-  // public internet", which is also how it does web research.
-  // `-s` only exists on `codex exec`. `codex exec resume` takes the same setting
-  // as a config key and rejects the flag outright — so the first turn of every
-  // codex agent ran and every turn after it died with `turn failed (no_result)`
-  // and "tip: to pass -s as a value, use -- -s". Found by the Architect on a live
-  // run, which is the only place it could be found: the flag is valid argv, the
-  // model is fine, and the failure looks like an idle agent rather than an error.
-  if (spec.resumeSessionId) argv.push("-c", 'sandbox_mode="workspace-write"');
-  else argv.push("-s", "workspace-write");
-  argv.push("-c", "sandbox_workspace_write.network_access=true");
+  // No sandbox flags. The container is the boundary; asking the CLI to confine
+  // itself inside one is the arrangement that produced silent refusals, a
+  // no-op `sandbox_permissions` key and a macOS-only network override.
+  argv.push("--dangerously-bypass-approvals-and-sandbox");
   for (const img of spec.images ?? []) argv.push("-i", img);
   return argv;
 }
-
-/**
- * A CODEX_HOME holding nothing but the login.
- *
- * `--ignore-user-config` only drops config.toml. Skills still load from
- * $CODEX_HOME/skills — a live run announced "Skill descriptions were shortened to
- * fit the skills context budget", which is the same prefix tax that measured 46k
- * tokens a turn on the claude side. Pointing CODEX_HOME at a directory containing
- * one symlink removes them, and the symlink is what keeps the login shared: both
- * this and the boss's own codex refresh the same auth.json, so the OAuth refresh
- * token rotates in one place.
- *
- * ponytail: if codex ever replaces auth.json by atomic rename the symlink becomes
- * a private copy and the two logins drift. It shows up as an auth failure, and the
- * fix is to re-link after each turn.
- */
-export function codexHome(dataDir: string, home = homedir()): string {
-  const dir = join(dataDir, "codex-home");
-  mkdirSync(dir, { recursive: true });
-  const link = join(dir, "auth.json");
-  if (!existsSync(link)) {
-    try {
-      symlinkSync(join(home, ".codex/auth.json"), link);
-    } catch {
-      // No login to borrow yet. codex will say so far more clearly than we can.
-    }
-  }
-  return dir;
-}
-
-/** Refusal-shaped, as opposed to informational. */
-const REFUSAL =
-  /\b(not permitted|permission|denied|refus|forbidden|blocked|sandbox|not allowed|unauthorized|policy)\b/i;
 
 const clip = (s: string, n = 120) => {
   const one = s.replace(/\s+/g, " ").trim();
@@ -160,17 +109,14 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
     ? spec.prompt
     : `${spec.stable.systemAppend}\n\n---\n\n${spec.prompt}`;
 
-  const proc = Bun.spawn(["codex", ...buildArgv(spec)], {
-    cwd: spec.cwd,
-    stdin: new TextEncoder().encode(input),
-    stdout: "pipe",
-    stderr: "pipe",
-    env: { ...process.env, ...(spec.codexHome ? { CODEX_HOME: spec.codexHome } : {}), ...spec.env },
-    signal: spec.signal,
-  });
-  h.onPid?.(proc.pid);
+  // No stdin on the exec API, so the prompt travels as a file in the sandbox.
+  await spec.runner.put(PROMPT_PATH, input);
+  const cmd = `codex ${buildArgv(spec).map(shq).join(" ")} < ${PROMPT_PATH}`;
 
-  const timer = spec.timeoutMs ? setTimeout(() => proc.kill("SIGTERM"), spec.timeoutMs) : undefined;
+  const ac = new AbortController();
+  spec.signal?.addEventListener("abort", () => ac.abort(), { once: true });
+  h.onAbort?.(() => ac.abort());
+
   const log = spec.logPath ? Bun.file(spec.logPath).writer() : undefined;
 
   const result: TurnResult = {
@@ -180,16 +126,28 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
     text: "",
     usage: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 },
     numTurns: 0,
-    permissionDenials: [],
     toolSummaries: [],
     filesTouched: [],
     logPath: spec.logPath,
   };
   const files = new Set<string>();
 
+  const stream = spec.runner.lines(cmd, {
+    cwd: spec.cwd,
+    timeoutMs: spec.timeoutMs,
+    env: spec.env,
+    signal: ac.signal,
+  });
+  let tail = { code: -1, err: "" };
   try {
-    for await (const raw of ndjsonLines(proc.stdout)) {
-      if (!raw.startsWith("{")) continue; // the stdin banner and friends
+    while (true) {
+      const step = await stream.next();
+      if (step.done) {
+        tail = step.value;
+        break;
+      }
+      const raw = step.value;
+      if (!raw.startsWith("{")) continue; // banners and friends
       let l: Line;
       try {
         l = JSON.parse(raw) as Line;
@@ -211,13 +169,7 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
             result.text = it.text;
             h.onText?.(it.text);
           } else if (it.type === "error") {
-            // codex uses `error` items for refusals AND for notices. Live, a
-            // "skill descriptions were shortened" notice became a permission
-            // denial and would have escalated to the boss for nothing, so only
-            // refusal-shaped messages count.
-            const msg = it.message ?? "";
-            if (REFUSAL.test(msg)) result.permissionDenials.push({ tool: "codex", message: msg });
-            else result.toolSummaries.push({ name: "notice", detail: clip(msg) });
+            result.toolSummaries.push({ name: "notice", detail: clip(it.message ?? "") });
           } else if (it.type) {
             const t: ToolSummary = summarizeTool(it.type, {
               command: it.command,
@@ -270,17 +222,14 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
           break;
       }
     }
-    await proc.exited;
   } finally {
-    if (timer) clearTimeout(timer);
     await log?.end();
   }
 
   result.filesTouched = [...files];
   if (!result.terminalReason) {
-    const stderr = await new Response(proc.stderr).text();
     result.terminalReason = "no_result";
-    result.text ||= stderr.trim().split("\n").slice(-5).join("\n");
+    result.text ||= tail.err.trim().split("\n").slice(-5).join("\n");
   }
   return result;
 }

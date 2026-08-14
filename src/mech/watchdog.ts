@@ -6,7 +6,8 @@ import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
 import { pollUsage } from "./subusage.ts";
-import { removeWorktree } from "./worktree.ts";
+import { killSandbox, renewSandbox, WORK } from "./sandbox.ts";
+import { sandboxGit } from "./checkout.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -603,10 +604,10 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // be excluded — so a stale PR sat in the queue until GitHub called it
   // CONFLICTING, which is the late half of the same news.
   for (const g of ctx.db
-    .query<{ id: number; name: string; worktree: string; repo: string; seen: string | null }, []>(
-      `SELECT g.id, g.name, g.worktree, p.repo_path AS repo, g.rebase_seen AS seen
+    .query<{ id: number; name: string; repo: string; seen: string | null }, []>(
+      `SELECT g.id, g.name, p.repo_path AS repo, g.rebase_seen AS seen
        FROM grp g JOIN project p ON p.id = g.project_id
-       WHERE g.status IN ('RUNNING','PR_OPEN') AND g.worktree IS NOT NULL
+       WHERE g.status IN ('RUNNING','PR_OPEN') AND g.sandbox_id IS NOT NULL
          -- Coalesce on the nudge that is already queued, not on a clock. Three
          -- pushes a minute apart were three shas and three rebase turns; a timer
          -- would fix that by making a group wait to be told, and a group whose PR
@@ -625,7 +626,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     if (head.code !== 0) continue;
     const sha = head.out.trim();
     if (!sha || sha === g.seen) continue;
-    const merged = await deps.git(g.repo, ["merge-base", "--is-ancestor", sha, "HEAD"], g.worktree);
+    const merged = await sandboxGit(ctx, { grp: g.id })(WORK, ["merge-base", "--is-ancestor", sha, "HEAD"], WORK);
     if (merged.code === 0) continue; // already on it
 
     ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [sha, now(), g.id]);
@@ -668,36 +669,42 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     });
   }
 
-  // 17. A dissolved group's worktree.
+  // 17. A dissolved group's sandbox.
   //
-  // Nothing removed one, ever: `removeWorktree` existed and had two callers, both
-  // in tests. Twelve of them on disk here, and they outlive the group by
-  // definition — DISSOLVED means the branch is in main, so the checkout is a copy
-  // of history with a stale index. They also stay in `git worktree list` and keep
-  // their branch alive, which is the half that actually bites: a later group with
-  // the same name cannot create its worktree.
+  // Two containers per group — the sandbox and its egress sidecar — and neither
+  // goes away on its own until the TTL runs out, which is a day. DISSOLVED means
+  // the work is either merged or dropped, so nothing in there is wanted; what is
+  // left is memory, CPU and disk held against every group that comes next.
   //
-  // The branch goes with it only when the group merged (`pr_number` set and
-  // DISSOLVED): dropped work is not something to delete on a timer.
+  // `pause` is not the cheap alternative it looks like: measured, it is a real
+  // `docker pause`, so the container and its disk both stay (docs/decisions/005).
+  // Only kill frees anything.
   for (const g of ctx.db
-    .query<{ id: number; name: string; worktree: string; branch: string | null; pr: number | null; repo: string }, []>(
-      `SELECT g.id, g.name, g.worktree, g.branch, g.pr_number AS pr, p.repo_path AS repo
-       FROM grp g JOIN project p ON p.id = g.project_id
-       WHERE g.status = 'DISSOLVED' AND g.worktree IS NOT NULL`,
+    .query<{ id: number; name: string }, []>(
+      `SELECT id, name FROM grp WHERE status = 'DISSOLVED' AND sandbox_id IS NOT NULL`,
     )
     .all()) {
-    if (!existsSync(g.worktree)) {
-      ctx.db.run("UPDATE grp SET worktree = NULL WHERE id = ?", [g.id]);
-      continue;
-    }
-    await removeWorktree(deps.git, g.repo, g.worktree, { deleteBranch: g.pr ? (g.branch ?? undefined) : undefined });
-    ctx.db.run("UPDATE grp SET worktree = NULL WHERE id = ?", [g.id]);
+    await killSandbox(ctx, { grp: g.id });
     findings.push({
-      rule: "worktree_swept",
+      rule: "sandbox_swept",
       grpId: g.id,
       severity: "advisory",
-      body: `${g.name} 合入后的 worktree 清掉了`,
+      body: `${g.name} 解散了，沙盒回收`,
     });
+  }
+
+  // 18. A live group's sandbox expiring under it.
+  //
+  // The TTL is what stops a crashed orchestrator leaking containers forever, so
+  // it has to be short enough to matter and therefore short enough to reap a
+  // group that is simply thinking. Renewing on every tick is the other half of
+  // that bargain: while something is watching, nothing expires.
+  for (const g of ctx.db
+    .query<{ id: number }, []>(
+      `SELECT id FROM grp WHERE status IN ('RUNNING','PR_OPEN','PAUSED') AND sandbox_id IS NOT NULL`,
+    )
+    .all()) {
+    await renewSandbox(ctx, { grp: g.id });
   }
 
   // 16. A question the work has already gone past.

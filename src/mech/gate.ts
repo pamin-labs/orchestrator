@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { existsSync, lstatSync, mkdirSync } from "node:fs";
 import type { DB } from "../db.ts";
-import { runResource, type ResourceDef } from "./lease.ts";
+import { type ResourceExec, runResource, type ResourceDef } from "./lease.ts";
 
 /**
  * The deterministic gate: build, test, lint, typecheck, secret scan.
@@ -81,6 +81,8 @@ export interface RunGatesOptions {
   cwd: string;
   dataDir: string;
   sliceId: number;
+  /** How to run a gate. The group's sandbox, or a fake in tests. */
+  exec: ResourceExec;
   /** Injected in tests. */
   run?: typeof runResource;
   timeoutMs?: number;
@@ -108,24 +110,6 @@ export async function runGates(opts: RunGatesOptions): Promise<GateOutcome> {
     };
   }
 
-  // A worktree with its own node_modules is a gate failure waiting to happen, and
-  // it fails as something else: `playwright is not installed` when the main
-  // checkout installed it an hour ago. Measured — one group filed a blocker with
-  // the right diagnosis and the boss had to act on it. Say it here, once, in the
-  // words of the fix.
-  const nm = join(opts.cwd, "node_modules");
-  if (existsSync(nm) && !lstatSync(nm).isSymbolicLink()) {
-    return {
-      pass: false,
-      results: [],
-      feedback:
-        `${opts.cwd}/node_modules is a real directory, not the symlink to the main checkout. ` +
-        `It will be missing anything installed since it was created, and the gate that trips on that ` +
-        `reports a missing package rather than a stale tree. Fix: rm -rf that directory and ` +
-        `symlink the main checkout's in its place.`,
-    };
-  }
-
   const logDir = join(opts.dataDir, "gates");
   mkdirSync(logDir, { recursive: true });
 
@@ -136,7 +120,7 @@ export async function runGates(opts: RunGatesOptions): Promise<GateOutcome> {
       break;
     }
     const logPath = join(logDir, `${opts.sliceId}-${name}.log`);
-    const out = await run(def, {}, { cwd: opts.cwd, logPath, timeoutMs: opts.timeoutMs });
+    const out = await run(def, {}, { exec: opts.exec, cwd: opts.cwd, logPath, timeoutMs: opts.timeoutMs });
     if (!("digest" in out)) {
       results.push({ name, pass: false, exitCode: 126, errorLines: [out.error] });
       break;

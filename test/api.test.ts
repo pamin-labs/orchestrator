@@ -10,6 +10,7 @@ import { askKind, brief, landGroup, makeApp, type Ctx } from "../src/api.ts";
 import { listSkills } from "../src/mech/skills.ts";
 import { landed } from "../src/mech/mergequeue.ts";
 import { sweepApproved } from "../src/mech/start.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 function harness(opts: { worktree?: string } = {}) {
   const db: DB = openMemory();
@@ -21,7 +22,7 @@ function harness(opts: { worktree?: string } = {}) {
     bus,
     sched,
     gitLock: new RepoLock(),
-    waiters: new Map(),
+    sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: "中文", workRoot: "/tmp/orch-test/wt" },
   };
   const app = makeApp(ctx);
@@ -65,9 +66,9 @@ test("an over-long journal is rejected with a reason the agent can act on", asyn
   expect(await r.text()).toContain("max 6");
 });
 
-test("journal writes a note and exports journal/retro into the worktree", async () => {
+test("journal writes a note and exports journal/retro into the checkout", async () => {
   const wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const { app, db } = harness({ worktree: wt });
+  const { app, db, ctx } = harness({ worktree: wt });
 
   const r = await post(
     app,
@@ -79,7 +80,9 @@ test("journal writes a note and exports journal/retro into the worktree", async 
   const out = await r.text();
   expect(out).toContain("docs/journal/g1/001-journal.md");
 
-  const written = await Bun.file(join(wt, "docs/journal/g1/001-journal.md")).text();
+  // Into the group's own checkout, which is inside its sandbox — so it merges
+  // with the PR like any other file the group wrote.
+  const written = (ctx.sandbox as any).files.get("/work/docs/journal/g1/001-journal.md") as string;
   expect(written).toContain("kind: journal");
   expect(written).toContain("files: [auth/mw.ts]");
   expect(written).toContain("Moved token check into middleware.");
@@ -1170,22 +1173,3 @@ test("what a question is about comes from a closed set", () => {
   expect(askKind(undefined)).toBe("other");
 });
 
-test("an agent's own rebase clears a wedged one first", async () => {
-  // Ours aborts it in rebaseOntoBase; `orch git -- rebase origin/main` is the
-  // other door into the same wall, and it is the door the watchdog tells every
-  // group to use.
-  const h = harness({ worktree: "/tmp/wt" });
-  const seen: string[][] = [];
-  h.ctx.git = async (_repo, argv) => {
-    seen.push(argv);
-    return { code: 0, out: "" };
-  };
-  await h.app(
-    new Request("http://x/orch/git", {
-      method: "POST",
-      headers: { "x-orch-token": "tok-eng", "content-type": "application/json" },
-      body: JSON.stringify({ argv: ["rebase", "origin/main"] }),
-    }),
-  );
-  expect(seen.some((a) => a[0] === "rev-parse" && a.includes("rebase-merge"))).toBe(true);
-});

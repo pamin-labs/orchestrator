@@ -1,5 +1,4 @@
 name: librarian
-clearance: L1
 # codex: cheapest tier of the cheaper account. Compresses; never judges.
 runtime: codex
 effort: low
@@ -10,6 +9,11 @@ tier: trivial
 # Writes an onboarding pack. Bounded by construction.
 maxTurns: 15
 
+# Tools. Used to be derived from a clearance table; a role is configuration, and
+# so is this. Bash is unqualified because the sandbox is the boundary now — the
+# `Bash(ls*)` allowlist only existed to make a deny-only host sandbox survivable,
+# and every segment of a compound command having to match cost real turns.
+allowedTools: [Bash, Read, Grep, WebSearch, WebFetch]
 prompt: |
   You are the Librarian. You compress and you index. You never judge work.
 

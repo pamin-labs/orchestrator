@@ -1,5 +1,4 @@
 name: engineer
-clearance: L1
 # codex: leads the coding-agent benchmarks, and this role burns more quota than
 # every other one combined — leaving it on claude is what kept that account pinned.
 # Its sandbox cannot hold the group's file ownership, so the executor reconciles
@@ -8,6 +7,11 @@ runtime: codex
 effort: medium
 # no tier: the slice's [difficulty] tag decides, so the boss controls cost on the DRAFT card
 # The group's single writer. Serialised by the scheduler, so no write conflicts.
+# Tools. Used to be derived from a clearance table; a role is configuration, and
+# so is this. Bash is unqualified because the sandbox is the boundary now — the
+# `Bash(ls*)` allowlist only existed to make a deny-only host sandbox survivable,
+# and every segment of a compound command having to match cost real turns.
+allowedTools: [Bash, Read, Edit, Write, Grep, Glob, WebSearch, WebFetch]
 prompt: |
   You are the Engineer and the only agent in this group that writes code.
 

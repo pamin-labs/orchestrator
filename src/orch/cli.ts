@@ -6,13 +6,13 @@
  * (Bash already exists), real blocking calls with real return values on stdout,
  * identical shape for codex, and it can be exercised by hand from a terminal.
  *
- * Transport is localhost TCP, not a unix socket — the sandbox blocks unix
- * sockets and cannot be told to allow just one, while opening them all would
- * also open the Docker socket. See docs/decisions/001.
+ * Transport is the mailbox when `ORCH_MAILBOX` is set, which it always is inside
+ * a sandbox — see viaMailbox below and docs/decisions/005. The HTTP path is what
+ * a human gets running this by hand against a local orchestrator.
  *
- * The URL and this agent's token arrive in the environment, injected by whoever
- * spawned the turn. The token is the identity: anything else on 127.0.0.1 could
- * otherwise claim to be any agent.
+ * The token arrives in the environment, injected by whoever spawned the turn. It
+ * is the identity: anything else with a mailbox could otherwise claim to be any
+ * agent.
  */
 
 const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
@@ -76,11 +76,50 @@ export function kvArgs(v: string | true | undefined): Record<string, string> {
   return out;
 }
 
+/**
+ * The mailbox: a request is a file, and so is its answer.
+ *
+ * An agent runs inside a sandbox now, and the only portable way out is the one
+ * OpenSandbox already gives the host — the files API. `host.docker.internal`
+ * works on Docker Desktop and does not exist on Linux, so building on it would
+ * make the orchestrator macOS-and-Windows-only.
+ *
+ * Latency is the host's poll interval plus a couple of file operations, which
+ * were measured at 1-5ms (docs/decisions/005). A lease that blocks for an hour
+ * blocks here exactly as it did over HTTP.
+ */
+const MAILBOX = process.env.ORCH_MAILBOX ?? "";
+
+async function viaMailbox(
+  method: string,
+  path: string,
+  payload?: unknown,
+): Promise<{ status: number; text: string }> {
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const res = `${MAILBOX}/res/${id}.json`;
+  await Bun.write(
+    `${MAILBOX}/req/${id}.json`,
+    JSON.stringify({ id, method, path, token: TOKEN, body: payload }),
+  );
+  // Poll the local filesystem, which costs nothing — the host is the one doing
+  // real work between these checks.
+  for (;;) {
+    const f = Bun.file(res);
+    if (await f.exists()) {
+      const answer = JSON.parse(await f.text()) as { status: number; text: string };
+      await f.delete().catch(() => {});
+      return answer;
+    }
+    await Bun.sleep(120);
+  }
+}
+
 async function call(
   method: "GET" | "POST",
   path: string,
   payload?: unknown,
 ): Promise<{ status: number; text: string }> {
+  if (MAILBOX) return viaMailbox(method, path, payload);
   const headers: Record<string, string> = { "x-orch-token": TOKEN };
   if (payload !== undefined) headers["content-type"] = "application/json";
   const res = await fetch(`${URL_BASE}${path}`, {
@@ -118,7 +157,7 @@ const USAGE = `orch <command>
   drop <group_id> --why "…" --duplicate <group> | --commit <sha>
                                          # already covered; the boss confirms
   status <one line>
-  git -- <args...>`;
+`;
 
 export async function main(argv: string[]): Promise<number> {
   const { flags, args, rest } = parseArgs(argv);
@@ -137,7 +176,7 @@ export async function main(argv: string[]): Promise<number> {
       break;
     }
     case "setup": {
-      // The bootstrap role's one verb. Runs on the host, in this worktree.
+      // The bootstrap role's one verb: what installs this project's dependencies.
       if (flags.none) r = await call("POST", "/orch/setup", { none: true });
       else if (typeof flags.cmd === "string") r = await call("POST", "/orch/setup", { cmd: flags.cmd });
       else return usageError('setup needs --cmd "<command>" or --none');
@@ -323,12 +362,6 @@ export async function main(argv: string[]): Promise<number> {
     }
     case "status": {
       r = await call("POST", "/orch/status", { text: args.slice(1).join(" ") });
-      break;
-    }
-    case "git": {
-      const argvGit = rest.length ? rest : args.slice(1);
-      if (!argvGit.length) return usageError("git needs arguments");
-      r = await call("POST", "/orch/git", { argv: argvGit });
       break;
     }
     default:

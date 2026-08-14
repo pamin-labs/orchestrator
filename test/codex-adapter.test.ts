@@ -30,26 +30,23 @@ const LINES = [
   }),
 ];
 
-function fakeSpawn(lines: string[], stderr = "") {
-  return () => ({
-    pid: 99,
-    stdout: new ReadableStream<Uint8Array>({
-      start(c) {
-        const bytes = new TextEncoder().encode(lines.join("\n") + "\n");
-        c.enqueue(bytes.slice(0, 21));
-        c.enqueue(bytes.slice(21));
-        c.close();
-      },
-    }),
-    stderr: new ReadableStream<Uint8Array>({
-      start(c) {
-        if (stderr) c.enqueue(new TextEncoder().encode(stderr));
-        c.close();
-      },
-    }),
-    exited: Promise.resolve(0),
-    kill() {},
-  });
+/**
+ * A sandbox that replays canned stdout.
+ *
+ * `wrote` is what the adapter put in the prompt file — the exec API has no
+ * stdin, so that is where the delta travels now.
+ */
+function fakeRunner(lines: string[], stderr = "") {
+  const r: any = { cmd: "", wrote: "" };
+  r.put = async (_path: string, data: string) => {
+    r.wrote = data;
+  };
+  r.lines = async function* (cmd: string) {
+    r.cmd = cmd;
+    for (const l of lines) yield l;
+    return { code: stderr ? 1 : 0, err: stderr };
+  };
+  return r;
 }
 
 test("argv resumes a thread when there is one, and starts one otherwise", () => {
@@ -61,22 +58,23 @@ test("argv resumes a thread when there is one, and starts one otherwise", () => 
   expect(resumed[resumed.indexOf("-m") + 1]).toBe("gpt-5-codex");
 });
 
-test("resume takes the sandbox as config, because the flag does not exist there", () => {
-  // `codex exec resume --help` has no -s/--sandbox. Passing it anyway made the
-  // first turn of every codex agent work and every turn after it fail with
-  // `turn failed (no_result)` — an agent that looks idle rather than broken.
-  const resumed = buildArgv({ stable, prompt: "p", cwd: "/tmp", resumeSessionId: "t1" });
-  expect(resumed).not.toContain("-s");
-  expect(resumed).toContain('sandbox_mode="workspace-write"');
-  expect(resumed).toContain("sandbox_workspace_write.network_access=true");
+test("the CLI does not sandbox itself, because the container already did", () => {
+  // Two boundaries were one too many. codex's own confinement is what produced
+  // silent refusals, a `sandbox_permissions` key that turned out to be a no-op,
+  // and a network override that only worked as argv on macOS — all inside a
+  // container that already stops everything they were aiming at.
+  for (const argv of [
+    buildArgv({ stable, prompt: "p", cwd: "/tmp" }),
+    buildArgv({ stable, prompt: "p", cwd: "/tmp", resumeSessionId: "t1" }),
+  ]) {
+    expect(argv).toContain("--dangerously-bypass-approvals-and-sandbox");
+    expect(argv).not.toContain("-s");
+    expect(argv.join(" ")).not.toContain("sandbox_mode");
+  }
 });
 
 test("argv keeps the agent reachable and the boss's own setup out", () => {
   const argv = buildArgv({ stable, prompt: "p", cwd: "/tmp", images: ["/tmp/a.png"] });
-  // Measured on codex 0.147: read-only has no network at all, not even loopback,
-  // and `orch` is HTTP to 127.0.0.1 — read-only would make every codex agent mute.
-  expect(argv[argv.indexOf("-s") + 1]).toBe("workspace-write");
-  expect(argv).toContain("sandbox_workspace_write.network_access=true");
   // config.toml is the boss's, not the agent's.
   expect(argv).toContain("--ignore-user-config");
   expect(argv).toContain("--ignore-rules");
@@ -113,17 +111,14 @@ test("token_count is the one place a real quota percentage arrives", async () =>
       secondary: { used_percent: 12.25, window_minutes: 10079, resets_in_seconds: 604740 },
     },
   });
-  // @ts-expect-error swap in a fake child
-  Bun.spawn = fakeSpawn([...LINES, quota]);
-  try {
-    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp" });
+  const runner = fakeRunner([...LINES, quota]);
+  {
+    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp", runner });
     expect(r.rateLimit?.fiveHourPercent).toBe(34.5);
     expect(r.rateLimit?.weeklyPercent).toBe(12.25);
     // "allowed" matters: handleRateLimit must not read a routine usage ping as a
     // throttle and downgrade the agent's model.
     expect(r.rateLimit?.status).toBe("allowed");
-  } finally {
-    Bun.spawn = spawned;
   }
 });
 
@@ -137,86 +132,51 @@ test("the log keeps the shape of a turn without its command output", () => {
 });
 
 test("the non-JSON banner does not derail the parse", async () => {
-  const spawned = Bun.spawn;
-  // @ts-expect-error swap in a fake child
-  Bun.spawn = fakeSpawn(LINES);
-  try {
-    const r = await runTurn({ stable, prompt: "do S1", cwd: "/tmp" });
+  const runner = fakeRunner(LINES);
+  {
+    const r = await runTurn({ stable, prompt: "do S1", cwd: "/tmp", runner });
     expect(r.ok).toBe(true);
     expect(r.sessionId).toBe("019ff72d-e984-7053");
     expect(r.text).toBe("moved the check");
-  } finally {
-    Bun.spawn = spawned;
   }
 });
 
 test("usage maps onto the same shape the claude adapter produces", async () => {
-  const spawned = Bun.spawn;
-  // @ts-expect-error swap in a fake child
-  Bun.spawn = fakeSpawn(LINES);
-  try {
-    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp" });
+  const runner = fakeRunner(LINES);
+  {
+    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp", runner });
     expect(r.usage).toEqual({ input: 27330, output: 5, cacheRead: 6912, cacheCreate: 0, thinking: 2 });
     // codex reports tokens but not money; inventing a number here would be worse
     // than attributing cost from tokens upstream.
     expect(r.filesTouched).toEqual(["auth/mw.ts"]);
     expect(r.toolSummaries.map((t) => t.name)).toEqual(["command_execution", "file_change"]);
-  } finally {
-    Bun.spawn = spawned;
-  }
-});
-
-test("an error item becomes a denial, so it escalates rather than vanishing", async () => {
-  const spawned = Bun.spawn;
-  // @ts-expect-error swap in a fake child
-  Bun.spawn = fakeSpawn([
-    JSON.stringify({ type: "thread.started", thread_id: "t" }),
-    JSON.stringify({ type: "item.completed", item: { type: "error", message: "refused to write outside sandbox" } }),
-    JSON.stringify({ type: "turn.completed", usage: {} }),
-  ]);
-  try {
-    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp" });
-    expect(r.permissionDenials.length).toBe(1);
-    expect(JSON.stringify(r.permissionDenials[0])).toContain("outside sandbox");
-  } finally {
-    Bun.spawn = spawned;
   }
 });
 
 test("turn.failed is a failure with the reason kept", async () => {
-  const spawned = Bun.spawn;
-  // @ts-expect-error swap in a fake child
-  Bun.spawn = fakeSpawn([
+  const runner = fakeRunner([
     JSON.stringify({ type: "thread.started", thread_id: "t" }),
     JSON.stringify({ type: "turn.failed", error: { message: "model not supported for this account" } }),
   ]);
-  try {
-    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp" });
+  {
+    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp", runner });
     expect(r.ok).toBe(false);
     expect(r.text).toContain("not supported");
-  } finally {
-    Bun.spawn = spawned;
   }
 });
 
 test("a child that says nothing at all fails loudly", async () => {
-  const spawned = Bun.spawn;
-  // @ts-expect-error swap in a fake child
-  Bun.spawn = fakeSpawn(["Reading prompt from stdin..."], "codex: command failed\n");
-  try {
-    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp" });
+  const runner = fakeRunner(["Reading prompt from stdin..."], "codex: command failed\n");
+  {
+    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp", runner });
     expect(r.ok).toBe(false);
     expect(r.terminalReason).toBe("no_result");
     expect(r.text).toContain("command failed");
-  } finally {
-    Bun.spawn = spawned;
   }
 });
 
-test("an informational error item is a notice, not a permission denial", async () => {
-  const spawned = Bun.spawn;
-  // @ts-expect-error fake child
-  Bun.spawn = fakeSpawn([
+test("an error item is a notice on the timeline, not a failed turn", async () => {
+  const runner = fakeRunner([
     JSON.stringify({ type: "thread.started", thread_id: "t" }),
     // Verbatim from a real run: this became a denial and would have escalated to
     // the boss for nothing.
@@ -234,13 +194,15 @@ test("an informational error item is a notice, not a permission denial", async (
     }),
     JSON.stringify({ type: "turn.completed", usage: {} }),
   ]);
-  try {
-    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp" });
-    expect(r.permissionDenials.length).toBe(1);
-    expect(JSON.stringify(r.permissionDenials[0])).toContain("not permitted");
-    expect(r.toolSummaries.some((t) => t.name === "notice")).toBe(true);
-  } finally {
-    Bun.spawn = spawned;
+  {
+    const r = await runTurn({ stable, prompt: "x", cwd: "/tmp", runner });
+    // Both are notices now. codex used `error` items for refusals AND for
+    // notices, and telling them apart needed a regex over prose — which read
+    // "skill descriptions were shortened" as a permission denial and would have
+    // escalated it to the boss. Inside a container there are no refusals left to
+    // find, so the guess goes with them.
+    expect(r.toolSummaries.filter((t) => t.name === "notice").length).toBe(2);
+    expect(r.ok).toBe(true);
   }
 });
 
@@ -259,25 +221,19 @@ test("an empty model means whatever the account allows", () => {
 });
 
 test("a resumed thread is not re-sent the stable half", async () => {
-  const spawned = Bun.spawn;
-  let sent = "";
-  // @ts-expect-error swap in a fake child that records what it was fed
-  Bun.spawn = (_argv: string[], opts: any) => {
-    sent = new TextDecoder().decode(opts.stdin);
-    return fakeSpawn(LINES)();
-  };
-  try {
-    await runTurn({ stable, prompt: "do S2", cwd: "/tmp", resumeSessionId: "t1" });
+  const runner = fakeRunner(LINES);
+  {
+    await runTurn({ stable, prompt: "do S2", cwd: "/tmp", resumeSessionId: "t1", runner });
+    let sent = runner.wrote;
     // The thread already holds the role prompt and the contract; sending them
     // again pays for them twice and moves the prefix the provider could have
     // matched. The first turn of a session still carries them.
     expect(sent).toBe("do S2");
     expect(sent).not.toContain("You are the Engineer.");
 
-    await runTurn({ stable, prompt: "do S1", cwd: "/tmp" });
+    await runTurn({ stable, prompt: "do S1", cwd: "/tmp", runner });
+    sent = runner.wrote;
     expect(sent).toContain("You are the Engineer.");
     expect(sent.endsWith("do S1")).toBe(true);
-  } finally {
-    Bun.spawn = spawned;
   }
 });

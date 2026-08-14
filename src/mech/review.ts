@@ -6,6 +6,7 @@ import { say } from "../lang.ts";
 import { runGates, recordGate, gateState } from "./gate.ts";
 import { extractClaimedFiles, reconcile } from "./reconcile.ts";
 import { changedSince, filesAt, type GitRunner } from "./worktree.ts";
+import { resourceExec, WORK } from "./sandbox.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 
 /**
@@ -115,9 +116,10 @@ export async function runDeterministicReview(
   const out = await runGates({
     db: ctx.db,
     projectId: grp!.project_id,
-    cwd: grp?.worktree ?? repo ?? process.cwd(),
+    cwd: WORK,
     dataDir: cfg.dataDir,
     sliceId,
+    exec: resourceExec(ctx, { grp: slice.grp_id }),
     timeoutMs: cfg.leaseTimeoutMs,
   });
   recordGate(ctx.db, sliceId, "gate", out.pass ? "pass" : "fail");
@@ -444,9 +446,10 @@ export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void
   const gateOut = await runGates({
     db: ctx.db,
     projectId: grp.project_id,
-    cwd: grp.worktree ?? process.cwd(),
+    cwd: WORK,
     dataDir: cfg.dataDir,
     sliceId: 0,
+    exec: resourceExec(ctx, { grp: grpId }),
     timeoutMs: cfg.leaseTimeoutMs,
   });
   if (!gateOut.pass) {

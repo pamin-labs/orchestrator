@@ -1,9 +1,10 @@
-import { join } from "node:path";
 import type { Ctx } from "../api.ts";
 import { say } from "../lang.ts";
+import { createCheckout, remoteUrl } from "./checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
-import { createWorktree, installDeps } from "./worktree.ts";
+import { execIn, WORK } from "./sandbox.ts";
+import { defaultBase } from "./worktree.ts";
 
 /** `project.config_json.install`, or null. Same reader shape as `gatesFor`. */
 function installFor(ctx: Ctx, projectId: number): string | null {
@@ -65,58 +66,55 @@ export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
   });
 }
 
-/** Worktree, RUNNING, first slice. Returns an error message, or null on success. */
+/** Sandbox, checkout, RUNNING, first slice. Returns an error message, or null. */
 export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null> {
-  // The worktree lives under workRoot (outside $HOME) because the sandbox is
-  // deny-only: denying $HOME is how writes get confined at all.
   const grp = ctx.db
-    .query<{ name: string; project_id: number; worktree: string | null }, [number]>(
-      "SELECT name, project_id, worktree FROM grp WHERE id = ?",
+    .query<{ name: string; project_id: number; branch: string | null }, [number]>(
+      "SELECT name, project_id, branch FROM grp WHERE id = ?",
     )
     .get(grpId);
-  if (grp && !grp.worktree && ctx.git) {
+  if (grp && !grp.branch && ctx.git) {
     const repo = ctx.db
       .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
       .get(grp.project_id);
     if (repo) {
       try {
-        const wt = await createWorktree(ctx.git, {
-          repoPath: repo.repo_path,
-          workRoot: ctx.config.workRoot,
-          group: grp.name,
-        });
-        ctx.db.run("UPDATE grp SET worktree = ?, branch = ? WHERE id = ?", [wt.worktree, wt.branch, grpId]);
+        const remote = await remoteUrl(ctx.git, repo.repo_path);
+        if (!remote) return "project has no `origin` remote; a group clones from it";
+        const branch = `orch/${grp.name}`;
+        const base = await defaultBase(ctx.git, repo.repo_path);
+        await createCheckout(ctx, { grp: grpId }, { remote, branch, base: `origin/${base}` });
+        ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
         ctx.bus.emit({
           grpId,
           author: "orchestrator",
           kind: "state_change",
-          body: say(ctx.config?.language, "group.worktree", { branch: wt.branch }),
+          body: say(ctx.config?.language, "group.worktree", { branch }),
         });
 
-        // Dependencies, before the first engineer turn. A worktree is a bare
-        // checkout and the agent that gets it cannot fix that: the sandbox denies
-        // the writes an install needs, so every gate then fails for a reason the
-        // group did not cause and cannot see. One group sat on that for hours.
-        //
-        // A role, not a table of stacks. bun, pnpm, poetry, uv, pdm, mise, a
-        // Makefile target — nobody enumerates those, and the repo says which one
-        // it is: a lockfile, the README's setup section, the CI workflow. The
-        // detected guess is a default it can skip past, not the answer.
+        // Dependencies, before the first engineer turn — still a role, not a
+        // table of stacks. bun, pnpm, poetry, uv, pdm, mise, a Makefile target:
+        // nobody enumerates those, and the repo says which one it is. What
+        // changed is where it runs: the agent installs inside its own sandbox,
+        // so there is nothing left for the orchestrator to do on its behalf.
         const known = installFor(ctx, grp.project_id);
         if (known) {
-          const dep = await installDeps(
-            wt.worktree,
-            known,
-            join(ctx.config.dataDir ?? "data", "gates", `install-${grpId}.log`),
-          );
-          if (!dep.ok) ctx.sched.enqueue("agent_turn", { grp_id: grpId, priority: 9, payload: { role: "bootstrap", rejection: `记下来的安装命令跑不通了：${known}\n${dep.out.slice(-400)}` } });
+          const dep = await execIn(ctx, { grp: grpId }, known, { cwd: WORK, timeoutMs: 900_000 });
+          if (dep.code !== 0)
+            ctx.sched.enqueue("agent_turn", {
+              grp_id: grpId,
+              priority: 9,
+              payload: {
+                role: "bootstrap",
+                rejection: `记下来的安装命令跑不通了：${known}\n${(dep.err || dep.out).slice(-400)}`,
+              },
+            });
         } else {
           ctx.sched.enqueue("agent_turn", { grp_id: grpId, priority: 9, payload: { role: "bootstrap" } });
         }
       } catch (e: any) {
-        // Refuse to start rather than run the group in the main checkout, where
-        // it would write straight into the boss's working tree.
-        return `could not create a worktree: ${e?.message ?? e}`;
+        // Refuse to start rather than let the group run without its own checkout.
+        return `could not prepare the group's checkout: ${e?.message ?? e}`;
       }
     }
   }

@@ -1,5 +1,6 @@
 import type { Ctx } from "../api.ts";
 import { rollbackTo, type GitRunner } from "./worktree.ts";
+import { abortJob } from "../runtime/running.ts";
 import { say } from "../lang.ts";
 
 /**
@@ -89,14 +90,9 @@ export async function interrupt(
   const jobs = runningJobs(ctx, grpId);
   let killed = 0;
   for (const j of jobs) {
-    if (j.pid) {
-      try {
-        process.kill(j.pid, "SIGTERM");
-        killed++;
-      } catch {
-        // Already gone; the job will settle on its own.
-      }
-    }
+    // A turn runs in the group's sandbox, not on this machine, so there is no
+    // pid to signal — stopping it means abandoning the stream we are reading.
+    if (abortJob(j.id)) killed++;
     ctx.db.run("UPDATE job SET state = 'cancelled', error = ?, ended_at = unixepoch() * 1000 WHERE id = ?", [
       `interrupted (${mode})`,
       j.id,

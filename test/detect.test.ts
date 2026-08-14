@@ -10,6 +10,7 @@ import { RepoLock } from "../src/mech/gitlock.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { gatesFor } from "../src/mech/gate.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 
 const repo = (files: Record<string, string>) => {
   const dir = mkdtempSync(join(tmpdir(), "orch-det-"));
@@ -88,7 +89,7 @@ test("registering a project wires its gates and resources with no manual SQL", a
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
-    waiters: new Map(),
+    sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: "中文", workRoot: "/tmp/x" },
   };
   const app = makeApp(ctx);
@@ -115,7 +116,7 @@ test("a project with nothing detectable says so instead of failing silently late
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
-    waiters: new Map(),
+    sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: "中文", workRoot: "/tmp/x" },
   };
   const r = await makeApp(ctx)(

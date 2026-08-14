@@ -1,6 +1,5 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import type { Clearance } from "./mech/clearance.ts";
 
 /**
  * Roles are configuration, not code.
@@ -33,7 +32,6 @@ export const DEFAULT_PROVIDER = "claude";
 
 export interface RoleDef {
   name: string;
-  clearance: Clearance;
   /**
    * Which tier this role always needs, regardless of slice difficulty. The
    * Dispatcher is `hard` because a badly split requirement costs more than the
@@ -55,7 +53,7 @@ export interface RoleDef {
   /** How hard the model thinks per turn. Part of the cached prefix, see assemble.ts. */
   effort?: Effort;
   prompt: string;
-  /** Overrides the default whitelist from clearance.ts when present. */
+  /** Which tools this role gets. The sandbox is the boundary; this is the budget. */
   allowedTools?: string[];
   /** Which CLI runs this role's turns. A role is config, so this is too. */
   runtime?: Runtime;
@@ -116,6 +114,22 @@ export interface Config {
    * this table; this is what the first turn of a session has to go on.
    */
   contextWindow: Record<string, number>;
+  /**
+   * One sandbox per group — the write boundary (docs/decisions/005).
+   *
+   * `cpu` empty means a quarter of the host's cores; the SDK's own default of
+   * "1" made this repo's typecheck 3.7x slower than the host. Per-project
+   * overrides live in `project.config_json.sandbox`.
+   */
+  sandbox: {
+    server: string;
+    apiKey: string;
+    image: string;
+    cpu: string;
+    memory: string;
+    ttlSeconds: number;
+    denyDomains: string[];
+  };
   workRoot: string;
   dataDir: string;
 }
@@ -179,6 +193,15 @@ const DEFAULTS: Config = {
     "gpt-5.6-terra": 272_000,
     "gpt-5.6-luna": 272_000,
   },
+  sandbox: {
+    server: "127.0.0.1:8080",
+    apiKey: "",
+    image: "ghcr.io/orch/agent:1",
+    cpu: "",
+    memory: "8Gi",
+    ttlSeconds: 86400,
+    denyDomains: [],
+  },
   workRoot: "/var/tmp/orch/worktrees",
   dataDir: "data",
 };
@@ -217,7 +240,7 @@ export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {
     if (!f.endsWith(".yaml") && !f.endsWith(".yml")) continue;
     const r = Bun.YAML.parse(readFileSync(join(dir, f), "utf8")) as RoleDef;
     if (!r?.name || !r?.prompt) throw new Error(`${f}: a role needs at least name and prompt`);
-    out.set(r.name, { ...r, clearance: r.clearance ?? "L1" });
+    out.set(r.name, r);
   }
   return out;
 }

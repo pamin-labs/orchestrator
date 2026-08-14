@@ -7,18 +7,23 @@ import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from ".
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
+import { REAL } from "./mech/sandbox.ts";
+import { startMailbox } from "./mech/mailbox.ts";
+import { preflight, report } from "./mech/preflight.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
 import { bothRead, modelAsk, noteLeaves, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
+import { abortAll } from "./runtime/running.ts";
 
 /**
  * Wires the pieces together and serves them.
  *
  * One process: HTTP + SSE for the web UI, the same routes for `orch`, the job
- * queue, and the subprocesses it spawns. Bound to 127.0.0.1 — the sandbox
- * allows localhost TCP but no unix sockets (docs/decisions/001).
+ * queue, and the sandboxes it drives. Bound to 127.0.0.1: nothing outside this
+ * machine needs it, and agents reach it through the mailbox rather than the
+ * network (docs/decisions/005).
  */
 
 export interface Started {
@@ -206,6 +211,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     gitLock,
     git,
     gh,
+    sandbox: REAL,
     // Cheapest tier: navigating a tree of one-line summaries is not a reasoning
     // job, and this runs on every `orch ctx query`.
     ask: modelAsk(cfg.indexModel, ROOT),
@@ -220,6 +226,8 @@ export function start(overrides: Partial<Config> = {}): Started {
       maxGroups: cfg.maxGroups,
       leaseSlots: cfg.leaseSlots,
       feedbackSediment: cfg.feedbackSedimentThreshold,
+      port: cfg.port,
+      sandbox: cfg.sandbox,
       ctxBudgetChars: cfg.ctxBudgetChars,
     },
   };
@@ -340,8 +348,6 @@ export function start(overrides: Partial<Config> = {}): Started {
     });
   };
 
-  process.env.ORCH_BIN_DIR = installOrchShim(cfg.dataDir);
-
   // Before the first tick: a turn that was in flight when the last server stopped
   // still holds its group's only slot, and that group would never move again.
   const orphans = reclaimOrphans(db, { maxAgeMs: cfg.turnTimeoutMs * 4 });
@@ -395,6 +401,19 @@ export function start(overrides: Partial<Config> = {}): Started {
     });
   }, cfg.watchdogIntervalMs);
 
+  // The agents' only way out. Nothing in a sandbox can reach this process
+  // directly, so their requests arrive as files and are replayed against these
+  // same routes.
+  const stopMailbox = startMailbox(ctx);
+
+  // Say what is missing here, once, rather than letting every group discover it
+  // one failed turn at a time. Not fatal: the panel can be opened and the
+  // settings page is where three of these are fixed.
+  void preflight({ db, sandbox: cfg.sandbox }).then((checks) => {
+    const bad = report(checks);
+    if (bad) console.log(`preflight:\n${bad}`);
+  });
+
   sched.tick();
   return {
     ctx,
@@ -403,23 +422,10 @@ export function start(overrides: Partial<Config> = {}): Started {
     notifier,
     stop: () => {
       clearInterval(tick);
+      stopMailbox();
       server.stop(true);
     },
   };
-}
-
-/**
- * Agents invoke a plain `orch`, so one has to exist on their PATH. A two-line
- * shim beats shipping a compiled binary: it always matches the running source.
- */
-export function installOrchShim(dataDir: string): string {
-  const binDir = join(dataDir, "bin");
-  mkdirSync(binDir, { recursive: true });
-  const cli = join(ROOT, "src/orch/cli.ts");
-  const path = join(binDir, "orch");
-  writeFileSync(path, `#!/bin/sh\nexec bun run ${JSON.stringify(cli)} "$@"\n`, "utf8");
-  chmodSync(path, 0o755);
-  return binDir;
 }
 
 if (import.meta.main) {
@@ -438,21 +444,13 @@ if (import.meta.main) {
     if (newest > dist) console.log(`web/dist is older than web/src — run \`bun run build:web\`, or the page is stale`);
   }
 
-  // Ctrl-C left the turns' subprocesses running. Next boot then saw a live pid and
-  // declined to reclaim the job — so the group stayed wedged for four turn timeouts
-  // while an unowned `claude` kept writing into its worktree. Only installed here:
-  // `start()` is called many times per test run, and each would add a listener.
+  // Let go of every turn we are reading before exiting, so the next boot sees
+  // them as orphans and requeues instead of leaving the group wedged behind a
+  // job that nothing will ever finish. Only installed here: `start()` is called
+  // many times per test run, and each would add a listener.
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
     process.on(sig, () => {
-      for (const j of ctx.db
-        .query<{ pid: number }, []>("SELECT pid FROM job WHERE state = 'running' AND pid IS NOT NULL")
-        .all()) {
-        try {
-          process.kill(j.pid, "SIGTERM");
-        } catch {
-          // Already gone.
-        }
-      }
+      abortAll();
       stop();
       process.exit(0);
     });

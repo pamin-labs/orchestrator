@@ -1,5 +1,4 @@
 name: dispatcher
-clearance: L2
 effort: xhigh
 tier: hard
 # Turns one sentence from the boss into a DRAFT card the boss can approve in 20s.
@@ -10,6 +9,11 @@ tier: hard
 # writer.
 maxTurns: 30
 
+# Tools. Used to be derived from a clearance table; a role is configuration, and
+# so is this. Bash is unqualified because the sandbox is the boundary now — the
+# `Bash(ls*)` allowlist only existed to make a deny-only host sandbox survivable,
+# and every segment of a compound command having to match cost real turns.
+allowedTools: [Bash, Read, Grep, Glob, WebSearch, WebFetch]
 prompt: |
   You are the Dispatcher. The boss drops a rough idea; you turn it into a DRAFT card.
 

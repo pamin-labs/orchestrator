@@ -80,6 +80,23 @@ gateRetries: 2
 # few, so one wedged command stops every group from gating again.
 leaseTimeoutMs: 10800000
 
+# 每个组一个沙盒。agent 碰不到宿主机，宿主机只通过 orch 暴露有限动作。
+# 实测在 docs/decisions/005，几条和 OpenSandbox 官方文档相反的结论也在那儿。
+sandbox:
+  server: 127.0.0.1:8080     # opensandbox-server，必须 dns+nft 模式，否则凭据注入静默失效
+                             # egress sidecar 必须 >= v1.1.6：v1.1.4（官方示例配置钉的那个）
+                             # 一旦绑了凭据就 403 掉所有 scoped 包，症状是「这个项目装不上依赖」
+  apiKey: ""                 # 空 = server 没开鉴权
+  image: ghcr.io/orch/agent:1  # 要 bun + node + git（tsc 需要 node）
+  # 留空 = 宿主核数的 1/4。SDK 默认是 "1"，这个仓库的 tsc --noEmit 因此 7.6s（6 核 3.2s）。
+  cpu: ""
+  memory: 8Gi
+  # 沙盒活多久。turn 开始时续期，所以这是「没人管了多久回收」，不是任务上限。
+  ttlSeconds: 86400
+  # 黑名单，不是白名单 —— 白名单才是穷举不完的那个（每个 registry、每个文档站）。
+  # 凭据安全不靠它：真 token 在 sidecar 里，沙盒里是假值。
+  denyDomains: []
+
 # Where group worktrees live. Outside $HOME on purpose: the sandbox is deny-only,
 # so denying $HOME is how writes get confined (docs/decisions/001).
 #

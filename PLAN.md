@@ -148,16 +148,16 @@ claude -p --output-format stream-json --include-partial-messages \
 ```
 codex 走 `codex exec resume <id> -m <model>` + `codex sandbox`，同一个 adapter 接口。
 
-**clearance = 按组生成的 sandbox settings profile**（用内置沙盒键，不自造策略引擎）。
-⚠️ 实测结论（`docs/decisions/001`，与本节原始设想不同）：**沙盒只有 deny 语义** —— `allowWrite` 无法在更宽的 `denyWrite` 里开口子，且不加 `denyWrite` 时写 cwd 之外是**允许**的。所以「只有 worktree 可写」表达不出来，只能反向 deny：主 checkout + 其他组 worktree + `$HOME` 敏感目录。worktree 因此放在 `$HOME` 之外。
+**边界 = 一个组一个容器**（`docs/decisions/005`，取代本节原来的 clearance 设计）。
 
-| 级 | 谁 | sandbox 配置要点 |
-|---|---|---|
-| **L1 执行** | Engineer / QA / Librarian / PR-watcher | `denyWrite` 主 checkout + 兄弟 worktree + `$HOME` 敏感目录 + 自己 worktree 里的 `package.json`/`.github`；`denyRead` secrets；`autoAllowBashIfSandboxed: true`；不能 push |
-| **L2 主管** | PM / Architect / Dispatcher / Auditor / CoS | 可改依赖和配置；仍不能 merge、不能读 secrets |
-| **L3** | **只有你** | secrets、花钱、merge to main。**永不授予 agent** |
+原来的设想是「按组生成一份 sandbox settings profile」。001 实测把它否掉了：**内置沙盒只有 deny 语义** —— `allowWrite` 无法在更宽的 `denyWrite` 里开口子，所以「只有 worktree 可写」根本表达不出来，只能反向一条条 deny，而天花板写在 001 里：**一条没人想到去 deny 的路径就是可写的**。
 
-`failIfUnavailable: true` 是**必须的** —— 实测每一种配错都是**静默失效**（沙盒直接不存在），看起来和成功一模一样。
+换成容器后命题反过来：**agent 碰不到宿主机，宿主机只通过 `orch` 暴露有限动作**。于是：
+
+- **clearance 这个概念没了。** L1/L2 的三样东西各自去处：deny-list profile 删掉；worktree 内的文件归属退回 `reconcileOwnership`（事后 git revert）；工具白名单进 `roles/*.yaml` —— 它本来就不是安全，是「这个角色给多少工具」。
+- **L3 不变**：secrets、花钱、merge to main 永不授予 agent。secrets 现在由 Credential Vault 保证 —— 真 token 在 egress sidecar 里，沙盒里是假值；merge 由「沙盒没有能写远端的凭据」保证 —— 代码用 git bundle 出来，宿主 push。
+- **代码不是 worktree 是 clone。** worktree 的 `.git` 指向主仓库，要在容器里 commit 就得把主仓库也 mount 进去，边界当场又开。
+- **失败必须响。** 001 那句「每一种配错都是静默失效，看起来和成功一模一样」现在的形态是 preflight：docker / opensandbox-server / 每个 runtime 的凭据，缺哪个说哪个、附上修法，**绝不静默降级回宿主模式**。
 
 **每个角色都需要只读 shell**（`ls`/`cat`/`find`/`grep`/只读 git）。实测：只给 `Bash(orch *)` 时，规划岗的 `ls`、`cat` 全被拒，而 headless 下拒绝是**静默的**，它们只是看起来很困惑并白烧 turn。`orch` 仍是唯一能改变世界的通道。
 **管道要把 `orch` 放最前面** —— 权限检查读命令行开头，`orch journal add <<'EOF'` 过，`cat f | orch journal add` 不过。

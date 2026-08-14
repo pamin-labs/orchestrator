@@ -1,4 +1,5 @@
 import type { DB } from "./db.ts";
+import { isRunning } from "./runtime/running.ts";
 
 export type JobKind =
   | "agent_turn"
@@ -354,8 +355,14 @@ export class Scheduler {
  * turn was in flight — permanently wedges the group, silently: the queue looks
  * healthy and simply never moves. Observed exactly that way.
  *
- * A job is an orphan when its process is gone, or when it has no pid, or when it
+ * A job is an orphan when this process is no longer reading its turn, or when it
  * has been "running" longer than any turn is allowed to.
+ *
+ * "Reading it" replaced "its pid is alive" when turns moved into sandboxes: the
+ * CLI is not a child of this process any more, so liveness is about the stream,
+ * not about a process table. After a restart nothing is being read, which is the
+ * right answer — the command inside the sandbox runs on into the void until its
+ * own timeout, and the requeued turn sees whatever it wrote.
  *
  * Returns the reclaimed jobs so the caller can put them back: freeing the slot
  * only un-wedges the *queue*. The work itself was still dropped — the slice stayed
@@ -364,24 +371,15 @@ export class Scheduler {
  */
 export function reclaimOrphans(
   db: DB,
-  opts: { maxAgeMs?: number; alive?: (pid: number) => boolean; now?: () => number } = {},
+  opts: { maxAgeMs?: number; alive?: (jobId: number) => boolean; now?: () => number } = {},
 ): Job[] {
   const maxAge = opts.maxAgeMs ?? 3_600_000;
   const now = opts.now ?? (() => Date.now());
-  const alive =
-    opts.alive ??
-    ((pid: number) => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    });
+  const alive = opts.alive ?? isRunning;
 
   const running = db
-    .query<Job & { pid: number | null; started_at: number | null }, []>(
-      `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state, pid, started_at
+    .query<Job & { started_at: number | null }, []>(
+      `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state, started_at
        FROM job WHERE state = 'running'`,
     )
     .all();
@@ -389,14 +387,11 @@ export function reclaimOrphans(
   const reclaimed: Job[] = [];
   for (const j of running) {
     const tooOld = j.started_at !== null && now() - j.started_at > maxAge;
-    if (j.pid !== null && !tooOld && alive(j.pid)) continue;
+    if (!tooOld && alive(j.id)) continue;
 
-    const why =
-      j.pid === null
-        ? "orphaned: no process was ever recorded"
-        : tooOld
-          ? `orphaned: still running after ${Math.round(maxAge / 60000)} min`
-          : `orphaned: process ${j.pid} is gone`;
+    const why = tooOld
+      ? `orphaned: still running after ${Math.round(maxAge / 60000)} min`
+      : "orphaned: nothing is reading this turn any more";
     db.run(
       `UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = 'running'`,
       [now(), why, j.id],

@@ -1,22 +1,13 @@
-import { basename, dirname, isAbsolute, join } from "node:path";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
 import type { RepoLock } from "./gitlock.ts";
 
 /**
- * One worktree per group, created under `workRoot` — deliberately outside
- * `$HOME`, because the sandbox is deny-only and denying `$HOME` is how writes
- * get confined (docs/decisions/001).
+ * git operations on a group's checkout.
+ *
+ * The checkout used to be a worktree on this machine and is now a clone inside
+ * the group's sandbox (mech/checkout.ts), so every function here takes its
+ * runner rather than assuming one: `sandboxGit` for a group's own history, the
+ * host runner for the repository the boss actually owns.
  */
-
-export interface WorktreeSpec {
-  repoPath: string;
-  workRoot: string;
-  group: string;
-  /** Branch to create. Defaults to `orch/<group>`. */
-  branch?: string;
-  baseRef?: string;
-}
 
 export interface GitRun {
   code: number;
@@ -38,52 +29,6 @@ export function makeGitRunner(lock: RepoLock): GitRunner {
     });
 }
 
-export async function createWorktree(
-  git: GitRunner,
-  spec: WorktreeSpec,
-): Promise<{ worktree: string; branch: string }> {
-  const branch = spec.branch ?? `orch/${spec.group}`;
-  const worktree = join(spec.workRoot, spec.group);
-  mkdirSync(spec.workRoot, { recursive: true });
-
-  // Attach to the branch if it already exists — that is the unpark path, and
-  // also what happens when a previous attempt failed after creating the branch.
-  const exists = await git(spec.repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
-  const argv =
-    exists.code === 0
-      ? ["worktree", "add", worktree, branch]
-      : // Branch from the freshest base, not from whatever HEAD happens to be:
-        // a group that starts stale pays for it at merge time.
-        ["worktree", "add", "-b", branch, worktree, spec.baseRef ?? (await defaultBase(git, spec.repoPath))];
-
-  const add = await git(spec.repoPath, argv);
-  if (add.code !== 0) throw new Error(`git worktree add failed: ${add.out}`);
-  seedIgnored(spec.repoPath, worktree);
-  return { worktree, branch };
-}
-
-/**
- * Paths a worktree must keep out of git but does not get from `git checkout`.
- *
- * Nothing is symlinked in any more. `node_modules` used to be, pointing at the
- * main checkout, and that one symlink caused the worst class of failure this
- * system has had: every worktree of a repo shared one dependency tree, so two
- * gates installing at once raced on it and a group read `Failed to link jiti:
- * EEXIST` as its own build being broken. Each worktree installs its own now —
- * 144ms and no extra disk on this repo, because bun hardlinks from its cache.
- *
- * `web/dist` was never seeded for the same shape of reason: a shared bundle meant
- * a group's gate served the main checkout's UI, so its own change was invisible
- * to its own test.
- *
- * These still have to be excluded, or the turn checkpoint's `git add -A` commits
- * them: `.gitignore` says `web/dist/` with a trailing slash, which matches a
- * directory and not a symlink, and once a path is tracked no ignore rule applies
- * again — QA rejected a slice over `web/dist` the group never touched.
- */
-const SEED: string[] = [];
-const EXCLUDE = ["node_modules", "web/dist"];
-
 /**
  * Without these the gates fail for a reason the group did not cause and cannot
  * fix: `denyOutsideOwns` denies every path outside the group's own boundary, so
@@ -94,21 +39,6 @@ const EXCLUDE = ["node_modules", "web/dist"];
  * Writing through them is denied by `denyWrite: <repoPath>/**`, so a group
  * cannot dirty the main checkout this way.
  */
-export function seedIgnored(repoPath: string, worktree: string): void {
-  excludeSeeds(repoPath);
-  for (const rel of SEED) {
-    const src = join(repoPath, rel);
-    const dst = join(worktree, rel);
-    if (!existsSync(src) || existsSync(dst)) continue;
-    mkdirSync(dirname(dst), { recursive: true });
-    try {
-      symlinkSync(src, dst);
-    } catch {
-      // A worktree that starts without one artifact is worse off, not broken.
-    }
-  }
-}
-
 /**
  * `.gitignore` does not cover these symlinks, and `info/exclude` does.
  *
@@ -119,21 +49,6 @@ export function seedIgnored(repoPath: string, worktree: string): void {
  * common git dir, so one write covers every worktree, is never committed, and
  * does not depend on what the branch's `.gitignore` happens to say.
  */
-function excludeSeeds(repoPath: string): void {
-  const path = join(repoPath, ".git/info/exclude");
-  try {
-    const have = existsSync(path) ? readFileSync(path, "utf8") : "";
-    const lines = have.split("\n").map((l) => l.trim());
-    const missing = EXCLUDE.filter((s) => !lines.includes(s));
-    if (missing.length) {
-      appendFileSync(path, `${have.endsWith("\n") || !have ? "" : "\n"}${missing.join("\n")}\n`);
-    }
-  } catch {
-    // A bare or unusual repo layout: the worktree still works, its build output is
-    // just visible to git.
-  }
-}
-
 /**
  * Bring a fresh worktree's dependencies up, on the host.
  *
@@ -156,15 +71,6 @@ function excludeSeeds(repoPath: string): void {
  * network error the boss can read, while a missing entry in a blocklist is a hole
  * nobody finds. Extend per project with `config_json.installDomains`.
  */
-export const INSTALL_DOMAINS = [
-  "registry.npmjs.org", "registry.yarnpkg.com", "npm.pkg.github.com",
-  "pypi.org", "files.pythonhosted.org",
-  "proxy.golang.org", "sum.golang.org", "storage.googleapis.com",
-  "crates.io", "static.crates.io", "index.crates.io",
-  "api.nuget.org", "repo.maven.apache.org", "rubygems.org",
-  "github.com", "codeload.github.com", "objects.githubusercontent.com", "raw.githubusercontent.com",
-];
-
 /**
  * Run a setup command with a boundary around it.
  *
@@ -182,68 +88,22 @@ export const INSTALL_DOMAINS = [
  * If `srt` is missing the command still runs — an unsandboxed install is what
  * this repo did for months — and the caller's own check is what stands in for it.
  */
-export async function installDeps(
-  worktree: string,
-  cmd: string | null | undefined,
-  logPath?: string,
-  opts: { domains?: string[]; repoRoot?: string } = {},
-): Promise<{ ok: boolean; out: string; sandboxed: boolean }> {
-  if (!cmd?.trim()) return { ok: true, out: "", sandboxed: false };
-  const srt = join(opts.repoRoot ?? process.cwd(), "node_modules/.bin/srt");
-  const sandboxed = existsSync(srt);
-  let argv = ["sh", "-lc", cmd];
-  if (sandboxed) {
-    const home = homedir();
-    // Not in the worktree: the turn checkpoint's `git add -A` would commit it,
-    // and a settings file in the diff is the group being blamed for our plumbing.
-    const settings = join(tmpdir(), `orch-srt-${basename(worktree)}.json`);
-    writeFileSync(
-      settings,
-      JSON.stringify({
-        network: { allowedDomains: [...INSTALL_DOMAINS, ...(opts.domains ?? [])], deniedDomains: [] },
-        filesystem: {
-          allowWrite: [
-            worktree,
-            "/tmp",
-            join(home, ".bun/install/cache"),
-            join(home, ".npm"),
-            join(home, ".cache"),
-            join(home, "Library/Caches"),
-            join(home, ".cargo/registry"),
-            join(home, "go/pkg/mod"),
-            join(home, ".nuget/packages"),
-            join(home, ".m2/repository"),
-          ],
-          denyWrite: [],
-          denyRead: [join(home, ".ssh"), join(home, ".aws"), join(home, ".config/gh")],
-        },
-      }),
-    );
-    argv = [srt, "-s", settings, "-c", cmd];
-  }
-  const p = Bun.spawn(argv, { cwd: worktree, stdout: "pipe", stderr: "pipe" });
-  const [so, se] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-  const out = (so + se).trimEnd();
-  const ok = (await p.exited) === 0;
-  if (logPath) {
-    try {
-      mkdirSync(dirname(logPath), { recursive: true });
-      appendFileSync(logPath, `$ ${cmd}${sandboxed ? " (sandboxed)" : ""}\n${out}\n`);
-    } catch {}
-  }
-  return { ok, out, sandboxed };
-}
-
-export async function removeWorktree(
-  git: GitRunner,
-  repoPath: string,
-  worktree: string,
-  opts: { deleteBranch?: string } = {},
-): Promise<void> {
-  await git(repoPath, ["worktree", "remove", "--force", worktree]);
-  if (opts.deleteBranch) await git(repoPath, ["branch", "-D", opts.deleteBranch]);
-}
-
+/**
+ * Wrap argv in the boundary, or hand it back unchanged.
+ *
+ * One function for the two places a command an agent chose reaches the host: the
+ * setup command, and every lease (the gates — which run the test suite the agent
+ * just edited, on the boss's machine, with the boss's permissions).
+ *
+ * `srt` is off-the-shelf and deny-by-default, so nothing here decides what is
+ * dangerous. It only says what the command legitimately needs: write this
+ * worktree and the package caches, reach the package registries, read nothing
+ * secret. Measured on this machine — a write outside the worktree comes back
+ * `Operation not permitted`, a fetch to an unlisted host cannot connect.
+ *
+ * `sandboxed: false` when the binary is absent. An unsandboxed run is what this
+ * repo did for months; the caller decides whether that is acceptable.
+ */
 /** Rebase the group's branch onto the latest base. Used at start and on unpark. */
 export async function rebaseOntoBase(
   git: GitRunner,
@@ -272,15 +132,11 @@ export async function rebaseOntoBase(
  * HEAD, which is exactly the state the caller assumes.
  */
 export async function abortStaleRebase(git: GitRunner, repoPath: string, worktree: string): Promise<boolean> {
-  for (const dir of ["rebase-merge", "rebase-apply"]) {
-    const p = await git(repoPath, ["rev-parse", "--git-path", dir], worktree);
-    if (p.code !== 0) continue;
-    const path = p.out.trim();
-    if (!path || !existsSync(isAbsolute(path) ? path : join(worktree, path))) continue;
-    await git(repoPath, ["rebase", "--abort"], worktree);
-    return true;
-  }
-  return false;
+  // Ask git rather than look for `.git/rebase-merge` on disk: the checkout lives
+  // in the group's sandbox now, and `--abort` on a repository that is not
+  // rebasing is a harmless error. One round trip either way.
+  const r = await git(repoPath, ["rebase", "--abort"], worktree);
+  return r.code === 0;
 }
 
 export async function defaultBase(git: GitRunner, repoPath: string): Promise<string> {
