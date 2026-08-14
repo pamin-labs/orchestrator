@@ -812,3 +812,24 @@ test("a question on a group that is still working is left alone", async () => {
     h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state,
   ).toBe("boss");
 });
+
+test("a dissolved group's worktree is removed, and a merged one takes its branch with it", async () => {
+  // `removeWorktree` had two callers and both were tests: twelve dead checkouts
+  // on disk, each still in `git worktree list` holding its branch, which is what
+  // stops a later group of the same name from creating one.
+  const h = harness();
+  const dir = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const removed: string[][] = [];
+  h.ctx.git = async (_repo, argv) => {
+    removed.push(argv);
+    return { code: 0, out: "" };
+  };
+  h.db.run("UPDATE grp SET status = 'DISSOLVED', worktree = ?, branch = 'orch/g1', pr_number = 7 WHERE id = 1", [dir]);
+
+  const f = await runWatchdog({ ...h.deps, git: h.ctx.git });
+  expect(f.map((x) => x.rule)).toContain("worktree_swept");
+  expect(removed.some((a) => a[0] === "worktree" && a[1] === "remove")).toBe(true);
+  expect(removed.some((a) => a[0] === "branch" && a[1] === "-D")).toBe(true);
+  // Cleared, so the next tick does not try again.
+  expect(h.db.query<{ w: string | null }, []>("SELECT worktree AS w FROM grp WHERE id = 1").get()!.w).toBeNull();
+});

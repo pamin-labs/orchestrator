@@ -142,10 +142,12 @@ export const GRP_INVARIANTS = rows<GrpState>(
   },
   {
     state: "DISSOLVED",
-    must: "nothing is queued for it and its paths are free",
+    must: "nothing is queued for it, its paths are free, and its worktree is gone",
     // Terminal, but not inert: a mail landing after the drop enqueues a turn that
-    // no dissolved status can dispatch, and it sits pending in every count.
-    driver: "watchdog rule 9 cancels what is still queued; ownership frees the paths",
+    // no dissolved status can dispatch, and it sits pending in every count. The
+    // worktree is the other half — nothing removed one for the first six months,
+    // so twelve dead checkouts sat on disk holding their branches.
+    driver: "watchdog rule 9 cancels what is still queued; rule 17 removes the worktree; ownership frees the paths",
   },
 );
 

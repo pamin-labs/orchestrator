@@ -6,6 +6,7 @@ import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
 import { pollUsage } from "./subusage.ts";
+import { removeWorktree } from "./worktree.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -664,6 +665,38 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       grpId: g.id,
       severity: "advisory",
       body: `${g.name} 封存了 ${Math.round((now() - g.paused_at) / 3_600_000)} 小时，唤醒还是不做了？`,
+    });
+  }
+
+  // 17. A dissolved group's worktree.
+  //
+  // Nothing removed one, ever: `removeWorktree` existed and had two callers, both
+  // in tests. Twelve of them on disk here, and they outlive the group by
+  // definition — DISSOLVED means the branch is in main, so the checkout is a copy
+  // of history with a stale index. They also stay in `git worktree list` and keep
+  // their branch alive, which is the half that actually bites: a later group with
+  // the same name cannot create its worktree.
+  //
+  // The branch goes with it only when the group merged (`pr_number` set and
+  // DISSOLVED): dropped work is not something to delete on a timer.
+  for (const g of ctx.db
+    .query<{ id: number; name: string; worktree: string; branch: string | null; pr: number | null; repo: string }, []>(
+      `SELECT g.id, g.name, g.worktree, g.branch, g.pr_number AS pr, p.repo_path AS repo
+       FROM grp g JOIN project p ON p.id = g.project_id
+       WHERE g.status = 'DISSOLVED' AND g.worktree IS NOT NULL`,
+    )
+    .all()) {
+    if (!existsSync(g.worktree)) {
+      ctx.db.run("UPDATE grp SET worktree = NULL WHERE id = ?", [g.id]);
+      continue;
+    }
+    await removeWorktree(deps.git, g.repo, g.worktree, { deleteBranch: g.pr ? (g.branch ?? undefined) : undefined });
+    ctx.db.run("UPDATE grp SET worktree = NULL WHERE id = ?", [g.id]);
+    findings.push({
+      rule: "worktree_swept",
+      grpId: g.id,
+      severity: "advisory",
+      body: `${g.name} 合入后的 worktree 清掉了`,
     });
   }
 
