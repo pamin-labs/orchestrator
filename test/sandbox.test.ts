@@ -1,15 +1,17 @@
 import { expect, test } from "bun:test";
 import { open } from "../src/db.ts";
 import { lineSplitter, specFor } from "../src/mech/sandbox.ts";
+import { httpsRemote } from "../src/mech/checkout.ts";
 import type { Ctx } from "../src/api.ts";
 
 /**
  * The boundary's own checks.
  *
- * The live half — a real container refusing a write to the host — needs a
- * running opensandbox-server, so it lives in test/sandbox-probe.ts alongside the
- * clearance probe. What is checked here is everything that can be wrong without
- * one: the spec a group gets, and the line reassembly the turn stream depends on.
+ * The live half — a real container, a real clone, a real mailbox round trip —
+ * needs a running opensandbox-server, so it lives in test/sandbox-live.test.ts
+ * and skips loudly without one. What is checked here is everything that can be
+ * wrong without a server: the spec a group gets, the line reassembly the turn
+ * stream depends on, and the remote a sandbox is asked to clone.
  */
 
 function ctx(config: Partial<NonNullable<Ctx["config"]>> = {}): Ctx {
@@ -75,4 +77,16 @@ test("blank lines never reach the parser", () => {
   const s = lineSplitter();
   expect(s.push("\n\n{\"a\":1}\n\n")).toEqual(['{"a":1}']);
   expect(s.rest()).toBe("");
+});
+
+test("an SSH remote is rewritten, because a sandbox has no key and should not", () => {
+  // An SSH key cannot be injected by the credential vault — injection works on
+  // HTTP headers — so a sandbox given an SSH remote can only fail. Over HTTPS a
+  // read-only token is bound at the sidecar and the container holds nothing.
+  expect(httpsRemote("git@github.com:owner/repo.git")).toBe("https://github.com/owner/repo.git");
+  expect(httpsRemote("ssh://git@github.com/owner/repo.git")).toBe("https://github.com/owner/repo.git");
+  expect(httpsRemote("git@gitlab.example.com:group/sub/repo")).toBe("https://gitlab.example.com/group/sub/repo.git");
+  // Already fine, or not ours to guess at.
+  expect(httpsRemote("https://github.com/owner/repo.git")).toBe("https://github.com/owner/repo.git");
+  expect(httpsRemote("/srv/mirrors/repo.git")).toBe("/srv/mirrors/repo.git");
 });

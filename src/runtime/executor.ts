@@ -11,9 +11,9 @@ import { say } from "../lang.ts";
 import { listSkills, readSkill } from "../mech/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
-import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
+import { checkpoint, changedSince, defaultBase, type GitRunner } from "../mech/worktree.ts";
 import { MAILBOX_DIR, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
-import { sandboxGit } from "../mech/checkout.ts";
+import { ensureCheckout, publishBranch, sandboxGit } from "../mech/checkout.ts";
 import { track, untrack } from "./running.ts";
 import { isAuthFailure, vaultFor } from "../mech/auth.ts";
 import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/watchdog.ts";
@@ -174,9 +174,9 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   const grp = job.grp_id
     ? ctx.db
         .query<
-          { id: number; name: string; project_id: number; worktree: string | null; owns_json: string },
+          { id: number; name: string; project_id: number; branch: string | null; owns_json: string },
           [number]
-        >("SELECT id, name, project_id, worktree, owns_json FROM grp WHERE id = ?")
+        >("SELECT id, name, project_id, branch, owns_json FROM grp WHERE id = ?")
         .get(job.grp_id)
     : null;
   const project = grp
@@ -211,6 +211,17 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
 
   const sessionId = rotate || !agent.session_id ? crypto.randomUUID() : agent.session_id;
   const delta = buildDeltaFor(deps, agent, job, rotate);
+
+  // A turn cannot run in an empty checkout, and an empty one is the normal state
+  // after a sandbox is replaced — or for any group that predates this design and
+  // has a branch but never had a clone. Idempotent, so this is one cheap exec.
+  if (job.grp_id) {
+    try {
+      await ensureCheckout(ctx, job.grp_id);
+    } catch (e: any) {
+      throw new Error(`could not prepare the group's checkout: ${e?.message ?? e}`);
+    }
+  }
 
   // Checkpoint first: intercept L3's rollback and "undo a stand-in's answer"
   // both need a consistent state that exists before the turn starts.
@@ -332,6 +343,23 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     ctx.db.run("UPDATE agent SET session_id = ? WHERE id = ?", [result.sessionId, agent.id]);
   }
 
+  // The group's commits, back on the host, every turn. A sandbox is disposable
+  // and this is what makes that true: a container that dies costs the turn in
+  // flight and nothing else. Publishing only at PR time would have meant losing
+  // everything since the last one, because a group's branch does not reach the
+  // remote until then.
+  if (job.grp_id && grp?.branch && project?.repo_path && git) {
+    const kept = await publishBranch(ctx, scope, git, project.repo_path, grp.branch, `origin/${await defaultBase(git, project.repo_path)}`);
+    if (!kept.ok && kept.reason && !/empty bundle/i.test(kept.reason)) {
+      ctx.bus.emit({
+        grpId: job.grp_id,
+        author: "orchestrator",
+        kind: "state_change",
+        body: `could not take ${grp.branch} out of the sandbox: ${kept.reason}`,
+      });
+    }
+  }
+
   recordCost(deps, agent, job, result, stable.hash);
   recordProgress(deps, agent, job, result);
   await narrate(deps, agent, job, grp, project?.repo_path ?? null, before, result);
@@ -405,20 +433,11 @@ function buildStableFor(
   deps: ExecDeps,
   agent: AgentRow,
   role: RoleDef,
-  grp: { worktree: string | null; name: string; owns_json?: string } | null | undefined,
+  grp: { name: string; owns_json?: string } | null | undefined,
   repoPath: string,
   job: Job,
 ) {
   const { ctx, cfg } = deps;
-  const worktree = grp?.worktree ?? repoPath;
-
-  const siblings = ctx.db
-    .query<{ worktree: string | null }, [number | null]>(
-      "SELECT worktree FROM grp WHERE worktree IS NOT NULL AND id IS NOT ?",
-    )
-    .all(job.grp_id)
-    .map((r) => r.worktree!)
-    .filter(Boolean);
 
   const projectId = ctx.db
     .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
@@ -926,7 +945,7 @@ async function narrate(
   deps: ExecDeps,
   agent: AgentRow,
   job: Job,
-  grp: { worktree: string | null } | null | undefined,
+  grp: { name: string } | null | undefined,
   repoPath: string | null,
   before: string | null,
   r: TurnResult,

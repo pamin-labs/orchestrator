@@ -172,7 +172,9 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
       defaultAction: "allow",
       egress: spec.denyDomains.map((target) => ({ action: "deny" as const, target })),
     },
-    metadata: { owner: `${holder(scope).table}:${holder(scope).id}` },
+    // `grp-1`, not `grp:1`: metadata values must be alphanumeric plus `-_.`, and
+    // a colon is a 400 at creation — which fails the group, not the label.
+    metadata: { owner: `${holder(scope).table}-${holder(scope).id}` },
   });
   live.set(sb.id, sb);
   remember(ctx, scope, sb.id);
@@ -201,6 +203,17 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   return sb;
 }
 
+/**
+ * File modes, as the API wants them: the octal digits, not the value.
+ *
+ * `0o644` is 420 in decimal, the SDK sends the number as a string, and the
+ * server parses that string as octal — so it rejects "420" outright and would
+ * have silently meant something else if it had not. Writing the digits is the
+ * only form that survives the round trip.
+ */
+export const FILE_MODE = 644;
+const EXEC_MODE = 755;
+
 /** Where a group's checkout lives inside its sandbox. */
 export const WORK = "/work";
 
@@ -224,8 +237,8 @@ async function provision(sb: Sandbox): Promise<void> {
     { path: WORK },
   ]);
   await sb.files.writeFiles([
-    { path: "/opt/orch/cli.ts", data: cli, mode: 0o644 },
-    { path: "/usr/local/bin/orch", data: '#!/bin/sh\nexec bun run /opt/orch/cli.ts "$@"\n', mode: 0o755 },
+    { path: "/opt/orch/cli.ts", data: cli, mode: FILE_MODE },
+    { path: "/usr/local/bin/orch", data: '#!/bin/sh\nexec bun run /opt/orch/cli.ts "$@"\n', mode: EXEC_MODE },
   ]);
 }
 
@@ -243,6 +256,7 @@ export interface SandboxDriver {
   put(ctx: Ctx, scope: Scope, path: string, data: string): Promise<void>;
   get(ctx: Ctx, scope: Scope, path: string): Promise<string | null>;
   getBytes(ctx: Ctx, scope: Scope, path: string): Promise<Uint8Array | null>;
+  putBytes(ctx: Ctx, scope: Scope, path: string, data: Uint8Array): Promise<void>;
   bind(ctx: Ctx, scope: Scope, creds: Credential[]): Promise<void>;
   kill(ctx: Ctx, scope: Scope): Promise<void>;
   renew(ctx: Ctx, scope: Scope): Promise<void>;
@@ -401,7 +415,13 @@ export function runnerFor(ctx: Ctx, scope: Scope): TurnRunner {
 
 async function realPut(ctx: Ctx, scope: Scope, path: string, data: string): Promise<void> {
   const sb = await ensureSandbox(ctx, scope);
-  await sb.files.writeFiles([{ path, data, mode: 0o644 }]);
+  await sb.files.writeFiles([{ path, data, mode: FILE_MODE }]);
+}
+
+/** Binary write, for the same reason as `getBytes`. */
+async function realPutBytes(ctx: Ctx, scope: Scope, path: string, data: Uint8Array): Promise<void> {
+  const sb = await ensureSandbox(ctx, scope);
+  await sb.files.writeFiles([{ path, data, mode: FILE_MODE }]);
 }
 
 /** Binary read. A git bundle is not text and must not go through a decoder. */
@@ -496,6 +516,7 @@ export const REAL: SandboxDriver = {
   put: realPut,
   get: realGet,
   getBytes: realGetBytes,
+  putBytes: realPutBytes,
   bind: realBind,
   kill: realKill,
   renew: realRenew,
@@ -506,6 +527,7 @@ export const execLines = (ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts) 
 export const putFile = (ctx: Ctx, scope: Scope, path: string, data: string) => driver(ctx).put(ctx, scope, path, data);
 export const getFile = (ctx: Ctx, scope: Scope, path: string) => driver(ctx).get(ctx, scope, path);
 export const getBytes = (ctx: Ctx, scope: Scope, path: string) => driver(ctx).getBytes(ctx, scope, path);
+export const putBytes = (ctx: Ctx, scope: Scope, path: string, data: Uint8Array) => driver(ctx).putBytes(ctx, scope, path, data);
 export const bindCredentials = (ctx: Ctx, scope: Scope, creds: Credential[]) => driver(ctx).bind(ctx, scope, creds);
 export const killSandbox = (ctx: Ctx, scope: Scope) => driver(ctx).kill(ctx, scope);
 export const renewSandbox = (ctx: Ctx, scope: Scope) => driver(ctx).renew(ctx, scope);

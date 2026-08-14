@@ -2,9 +2,9 @@ import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Ctx } from "../api.ts";
-import { execIn, getBytes, WORK, type Scope } from "./sandbox.ts";
+import { execIn, getBytes, putBytes, WORK, type Scope } from "./sandbox.ts";
 import { shq } from "./shq.ts";
-import type { GitRunner } from "./worktree.ts";
+import { defaultBase, type GitRunner } from "./worktree.ts";
 
 /**
  * A group's code, inside its sandbox.
@@ -34,10 +34,28 @@ export function sandboxGit(ctx: Ctx, scope: Scope): GitRunner {
   };
 }
 
-/** `git remote get-url origin`, which is what the sandbox will clone. */
+/**
+ * `origin`, as a URL a sandbox can actually clone.
+ *
+ * The boss's own remote is usually SSH (`git@github.com:owner/repo.git`), and a
+ * sandbox has no key — nor should it: an SSH key is not something the credential
+ * vault can inject, because injection works on HTTP headers. Over HTTPS a
+ * read-only token can be bound at the sidecar instead, so the sandbox clones
+ * without ever holding a credential.
+ *
+ * Rewritten rather than refused, because the boss's remote is theirs and this is
+ * only how *we* reach it.
+ */
+export function httpsRemote(url: string): string {
+  const scp = /^(?:ssh:\/\/)?(?:[\w.-]+@)?([\w.-]+)[:/](.+?)(?:\.git)?\/?$/.exec(url);
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  if (!scp) return url;
+  return `https://${scp[1]}/${scp[2]}.git`;
+}
+
 export async function remoteUrl(git: GitRunner, repoPath: string): Promise<string | null> {
   const r = await git(repoPath, ["remote", "get-url", "origin"]);
-  return r.code === 0 && r.out.trim() ? r.out.trim() : null;
+  return r.code === 0 && r.out.trim() ? httpsRemote(r.out.trim()) : null;
 }
 
 export interface CheckoutSpec {
@@ -45,6 +63,9 @@ export interface CheckoutSpec {
   branch: string;
   /** What to branch from. `origin/main` unless a group was told otherwise. */
   base: string;
+  /** Host git and repo, so a branch only the host has can be seeded in. */
+  git?: GitRunner;
+  repoPath?: string;
 }
 
 /**
@@ -53,26 +74,70 @@ export interface CheckoutSpec {
  * Cloning shallow would be cheaper and is wrong here — a slice's diff is taken
  * against the merge base with main, and `rebaseOntoBase` needs real history.
  */
+/**
+ * Put a branch the host already has into the sandbox.
+ *
+ * The mirror of `publishBranch`, and the reason a sandbox is disposable: a
+ * group's commits live on the host between turns, so a container that dies —
+ * TTL, a crash, a restart — costs the turn in flight and nothing else. Without
+ * this everything since the last PR would go with it, because a group's branch
+ * does not reach the remote until then.
+ */
+export async function seedBranch(
+  ctx: Ctx,
+  scope: Scope,
+  git: GitRunner,
+  repoPath: string,
+  branch: string,
+): Promise<boolean> {
+  const onHost = join(tmpdir(), `orch-seed-${branch.replaceAll("/", "-")}.bundle`);
+  const made = await git(repoPath, ["bundle", "create", onHost, branch]);
+  if (made.code !== 0) return false;
+  try {
+    const bytes = await Bun.file(onHost).arrayBuffer();
+    const inSandbox = `/tmp/seed-${branch.replaceAll("/", "-")}.bundle`;
+    await putBytes(ctx, scope, inSandbox, new Uint8Array(bytes));
+    const fetched = await execIn(ctx, scope, `git fetch ${shq(inSandbox)} ${shq(`+${branch}:${branch}`)}`, { cwd: WORK });
+    if (fetched.code !== 0) return false;
+    return (await execIn(ctx, scope, `git checkout ${shq(branch)}`, { cwd: WORK })).code === 0;
+  } finally {
+    rmSync(onHost, { force: true });
+  }
+}
+
 export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec): Promise<void> {
   const already = await execIn(ctx, scope, `test -d ${WORK}/.git && echo yes`);
   if (already.out.trim() === "yes") return;
 
+  // `GIT_TERMINAL_PROMPT=0`: without it a repository the sandbox cannot read
+  // stops on "could not read Username" and the group waits on a prompt nobody
+  // will ever answer. Failing is the useful answer — it means the read
+  // credential is missing, which preflight and the settings page can say.
   const clone = await execIn(ctx, scope, `git clone ${JSON.stringify(spec.remote)} ${WORK}`, {
     timeoutMs: 600_000,
+    env: { GIT_TERMINAL_PROMPT: "0" },
   });
   if (clone.code !== 0) throw new Error(`git clone failed: ${(clone.err || clone.out).slice(-400)}`);
 
-  // Attach to the branch if the remote already has it — that is the unpark path,
-  // and also what happens when a previous attempt died after its first push.
-  const exists = await execIn(ctx, scope, `git ls-remote --exit-code --heads origin ${spec.branch}`, {
-    cwd: WORK,
-  });
-  const checkout =
-    exists.code === 0
-      ? `git checkout ${spec.branch}`
-      : `git checkout -b ${spec.branch} ${spec.base}`;
-  const co = await execIn(ctx, scope, checkout, { cwd: WORK });
-  if (co.code !== 0) throw new Error(`git checkout failed: ${(co.err || co.out).slice(-400)}`);
+  // Three places the branch can be, in the order that loses nothing:
+  //   1. on the host — a group mid-flight whose sandbox was replaced, and every
+  //      group that predates this design. Its commits exist nowhere else.
+  //   2. on the remote — it has been through a PR already.
+  //   3. nowhere — a new group, so cut it from the base.
+  if (spec.git && spec.repoPath && (await seedBranch(ctx, scope, spec.git, spec.repoPath, spec.branch))) {
+    // Seeded and checked out.
+  } else {
+    const onRemote = await execIn(ctx, scope, `git ls-remote --exit-code --heads origin ${shq(spec.branch)}`, {
+      cwd: WORK,
+    });
+    const co = await execIn(
+      ctx,
+      scope,
+      onRemote.code === 0 ? `git checkout ${shq(spec.branch)}` : `git checkout -b ${shq(spec.branch)} ${shq(spec.base)}`,
+      { cwd: WORK },
+    );
+    if (co.code !== 0) throw new Error(`git checkout failed: ${(co.err || co.out).slice(-400)}`);
+  }
 
   // An agent commits as itself, not as whoever last configured this machine.
   await execIn(
@@ -120,4 +185,37 @@ export async function publishBranch(
   const fetched = await git(repoPath, ["fetch", onHost, `+refs/heads/${branch}:refs/heads/${branch}`]);
   rmSync(onHost, { force: true });
   return fetched.code === 0 ? { ok: true } : { ok: false, reason: fetched.out.slice(-300) };
+}
+
+/**
+ * The group's checkout, wherever the group is in its life.
+ *
+ * `startGroup` is not the only way a turn happens: a group can outlive its
+ * sandbox (TTL, a killed container, a restarted orchestrator), and a group that
+ * predates this design has a branch but has never had a clone. Both look the
+ * same from here — an empty `/work` — and both are fixed the same way.
+ *
+ * `createCheckout` returns early when `.git` is already there, so this is one
+ * cheap exec on the ordinary path.
+ */
+export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
+  const grp = ctx.db
+    .query<{ name: string; project_id: number; branch: string | null }, [number]>(
+      "SELECT name, project_id, branch FROM grp WHERE id = ?",
+    )
+    .get(grpId);
+  if (!grp || !ctx.git) return;
+  const repo = ctx.db
+    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
+    .get(grp.project_id);
+  if (!repo) return;
+  const remote = await remoteUrl(ctx.git, repo.repo_path);
+  if (!remote) return;
+  await createCheckout(ctx, { grp: grpId }, {
+    remote,
+    branch: grp.branch ?? `orch/${grp.name}`,
+    base: `origin/${await defaultBase(ctx.git, repo.repo_path)}`,
+    git: ctx.git,
+    repoPath: repo.repo_path,
+  });
 }

@@ -106,6 +106,19 @@ env, the real token injected at the sidecar.
 | does `pause` free resources? | **no** — the container still exists, disk is not reclaimed. Only `kill` frees anything |
 | TTL | `expiresAt` is the backstop; a crashed spike left a sandbox + sidecar running until removed by hand |
 
+### The sandbox is a working research environment
+
+Measured from inside, with `defaultAction: allow`:
+
+| From the sandbox | Result |
+|---|---|
+| `bun.sh/docs`, `api.github.com`, `registry.npmjs.org` | 200 |
+| `api.anthropic.com/v1/models` with no credential | 401 — reached, and refused by the API rather than the network |
+| a domain in the project's `denyDomains` | blocked outright |
+
+So WebFetch and an agent's own `curl` both work, and the blocklist is a real
+control rather than a decorative one.
+
 ### Cost of a turn's worth of work
 
 `files` API is cheap, `commands.run` is not:
@@ -146,8 +159,10 @@ overlay fs, which is why the usual macOS Docker filesystem penalty never appears
    Requires `egress:v1.1.6` or later — preflight should check it, because on
    v1.1.4 the failure is "this project cannot install its dependencies", which
    nobody traces back to a credential.
-5. **Our own small image**, not `code-interpreter` — 7GB for what needs bun,
-   node and git. `tsc` needs node, so `oven/bun:1` alone is not enough.
+5. **Our own image** (`docker/agent.Dockerfile`, 1.5GB), not `code-interpreter`
+   (7GB) and not a bare `ubuntu:24.04`. Measured per sandbox: **3.8s** to a
+   usable one, against **340.9s** for ubuntu plus apt plus npm — the bare image
+   is the smaller pull, paid once, and the larger cost, paid by every group.
 6. **`pause` is not a resource-release mechanism.** Dissolving a group means
    `kill`. TTL + renew is the liveness story, and it needs a watchdog rule
    (hard constraint 7) or a crashed orchestrator leaks two containers per group.

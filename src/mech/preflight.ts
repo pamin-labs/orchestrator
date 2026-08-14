@@ -96,12 +96,24 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // install its dependencies" — which nobody traces back to a sidecar version.
   // Checked by image tag rather than by probing, because probing it means
   // creating a sandbox on every boot (docs/decisions/005).
+  // Which tag the sidecar actually runs is in the sandbox server's own TOML,
+  // which is not ours to read — so this reports what is available rather than
+  // what is configured. Having a good one is the part we can check; pointing at
+  // it is the part the fix line has to say out loud.
   const egress = probe("docker") ? egressImages() : [];
-  const stale = egress.filter((tag) => !newEnough(tag));
+  const good = egress.filter((t) => newEnough(t));
+  const stale = egress.filter((t) => !newEnough(t));
   out.push({
     name: "egress sidecar",
-    ok: egress.length > 0 && stale.length === 0,
-    detail: egress.length === 0 ? "no opensandbox/egress image pulled" : stale.length ? `${stale.join(", ")} is too old` : egress.join(", "),
+    ok: good.length > 0,
+    detail:
+      egress.length === 0
+        ? "no opensandbox/egress image pulled"
+        : good.length === 0
+          ? `only ${stale.join(", ")}, which is too old`
+          : stale.length
+            ? `${good.join(", ")} (also has ${stale.join(", ")} — check [egress] image)`
+            : good.join(", "),
     fix: "docker pull opensandbox/egress:v1.1.6, and point [egress] image at it. v1.1.4 breaks scoped npm/bun installs whenever a credential is bound.",
   });
 

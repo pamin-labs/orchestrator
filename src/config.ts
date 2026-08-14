@@ -196,7 +196,7 @@ const DEFAULTS: Config = {
   sandbox: {
     server: "127.0.0.1:8080",
     apiKey: "",
-    image: "ghcr.io/orch/agent:1",
+    image: "orch/agent:1",
     cpu: "",
     memory: "8Gi",
     ttlSeconds: 86400,
@@ -227,10 +227,22 @@ export const ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..");
  */
 export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: resolve(ROOT, c.dataDir) });
 
+/**
+ * The sandbox server's API key comes from the environment, not the yaml.
+ *
+ * config/default.yaml is committed, and a key in a committed file is a key that
+ * leaks. An empty one means the server has no auth, which is the usual local
+ * setup and is fine — preflight reports what it finds either way.
+ */
+const SANDBOX_API_KEY_ENV = "ORCH_SANDBOX_API_KEY";
+
 export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
-  if (!existsSync(path)) return withAbsoluteDataDir({ ...DEFAULTS });
-  const parsed = Bun.YAML.parse(readFileSync(path, "utf8")) as Partial<Config> | null;
-  return withAbsoluteDataDir({ ...DEFAULTS, ...(parsed ?? {}) });
+  const parsed = existsSync(path)
+    ? ((Bun.YAML.parse(readFileSync(path, "utf8")) as Partial<Config> | null) ?? {})
+    : {};
+  const cfg = withAbsoluteDataDir({ ...DEFAULTS, ...parsed });
+  const key = process.env[SANDBOX_API_KEY_ENV];
+  return key ? { ...cfg, sandbox: { ...cfg.sandbox, apiKey: key } } : cfg;
 }
 
 export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {

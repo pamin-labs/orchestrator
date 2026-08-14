@@ -26,6 +26,11 @@ const BINDINGS: Record<string, { hosts: string[]; header?: string }> = {
   // An OAuth token travels as `Authorization: Bearer`; an API key as `x-api-key`.
   claude: { hosts: ["api.anthropic.com"] },
   codex: { hosts: ["api.openai.com", "chatgpt.com"] },
+  // Read-only, and only for the clone. A sandbox must never hold something that
+  // can write to the remote — see publishBranch for why that is load-bearing
+  // rather than tidy. Bound here so a private repository can be cloned over
+  // HTTPS without the token being inside the container.
+  github: { hosts: ["github.com", "api.github.com"] },
 };
 
 /** A value the CLI will accept as well-formed and the API will reject. */
@@ -88,6 +93,11 @@ export function vaultFor(db: DB): { credentials: Credential[]; env: Record<strin
       hosts: a.baseUrl ? [...b.hosts, new URL(a.baseUrl).hostname] : b.hosts,
       header: a.mode === "api_key" && runtime === "claude" ? "x-api-key" : b.header,
     });
+    if (runtime === "github") {
+      // git sends `Authorization: Basic`, so the decoy has to be a username the
+      // sidecar can replace rather than an env var the CLI reads.
+      continue;
+    }
     if (runtime === "claude") {
       if (a.mode === "oauth_token") env.CLAUDE_CODE_OAUTH_TOKEN = decoy(runtime, a.mode);
       else env.ANTHROPIC_API_KEY = decoy(runtime, a.mode);

@@ -1,0 +1,172 @@
+import { expect, test } from "bun:test";
+import { openMemory } from "../src/db.ts";
+import { makeApp, type Ctx } from "../src/api.ts";
+import { Bus } from "../src/bus.ts";
+import { Scheduler } from "../src/scheduler.ts";
+import { RepoLock } from "../src/mech/gitlock.ts";
+import { loadConfig } from "../src/config.ts";
+import { createCheckout, httpsRemote, sandboxGit } from "../src/mech/checkout.ts";
+import { startMailbox } from "../src/mech/mailbox.ts";
+import { ConnectionConfig, SandboxManager } from "@alibaba-group/opensandbox";
+import {
+  closeAll,
+  execIn,
+  getFile,
+  killSandbox,
+  MAILBOX_DIR,
+  putFile,
+  REAL,
+  WORK,
+} from "../src/mech/sandbox.ts";
+
+/**
+ * The whole boundary, against a real container.
+ *
+ * Everything else in the suite runs against a fake driver, which proves the
+ * orchestrator's half and nothing about OpenSandbox's. This proves the seam:
+ * a sandbox is created, provisioned, given a checkout, runs commands in it, and
+ * cannot reach this machine.
+ *
+ * Skipped unless a server is up, because it needs one — and it says so rather
+ * than passing quietly, since a green suite that silently skipped the only test
+ * of the real thing is the failure this whole design exists to avoid.
+ *
+ *   uvx opensandbox-server --config <toml>   # [egress] mode = "dns+nft", image >= v1.1.6
+ *   docker build -f docker/agent.Dockerfile -t orch/agent:1 .
+ */
+
+const cfg = loadConfig();
+
+/**
+ * Usable, not merely listening.
+ *
+ * The first version of this asked whether the port answered, which it does even
+ * when the API key is wrong — so the tests ran and failed on 401 instead of
+ * skipping. "Can I drive it" is the only question worth asking.
+ */
+async function serverUp(): Promise<boolean> {
+  try {
+    const m = await SandboxManager.create({
+      connectionConfig: new ConnectionConfig({
+        domain: cfg.sandbox.server,
+        protocol: "http",
+        apiKey: cfg.sandbox.apiKey || undefined,
+        requestTimeoutSeconds: 5,
+      }),
+    });
+    await m.listSandboxInfos({ pageSize: 1 });
+    await m.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ctx(): Ctx {
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'live', 'RUNNING', 0)");
+  const sched = new Scheduler(db, async () => {});
+  return {
+    db,
+    bus: new Bus(db),
+    sched,
+    gitLock: new RepoLock(),
+    sandbox: REAL,
+    waiters: new Map(),
+    config: { language: "中文", workRoot: cfg.workRoot, port: cfg.port, sandbox: cfg.sandbox },
+  } as unknown as Ctx;
+}
+
+const up = await serverUp();
+const live = up ? test : test.skip;
+if (!up)
+  console.log(
+    `\n[sandbox-live] skipped: cannot drive opensandbox-server on ${cfg.sandbox.server}` +
+      ` (not running, or ORCH_SANDBOX_API_KEY is unset/wrong)\n`,
+  );
+
+live(
+  "a sandbox is a boundary: it gets a checkout, runs its gates, and cannot touch this machine",
+  async () => {
+    const c = ctx();
+    const scope = { grp: 1 } as const;
+    try {
+      // Provisioning: the mailbox and a matching `orch` land before anything else.
+      const orch = await execIn(c, scope, "test -x /usr/local/bin/orch && ls /var/orch");
+      expect(orch.code).toBe(0);
+      expect(orch.out).toContain("req");
+
+      // The toolchain the gates need. `tsc` is why node is in the image at all.
+      const tools = await execIn(c, scope, "bun --version && node --version && git --version");
+      expect(tools.code).toBe(0);
+
+      // The host is not reachable. This is the whole point: whatever the agent
+      // does, it does inside here.
+      const escape = await execIn(c, scope, `ls ${import.meta.dir} 2>&1; echo rc=$?`);
+      expect(escape.out).not.toContain("sandbox-live.test.ts");
+
+      // A checkout, cloned rather than mounted. Public repo: this asserts the
+      // clone path, not GitHub credentials.
+      await createCheckout(c, scope, {
+        remote: "https://github.com/octocat/Hello-World.git",
+        branch: "orch/live",
+        base: "origin/HEAD",
+      });
+      const git = sandboxGit(c, scope);
+      expect((await git(WORK, ["rev-parse", "--abbrev-ref", "HEAD"], WORK)).out.trim()).toBe("orch/live");
+
+      // And it is a real repository the agent can commit to — which a mounted
+      // `git worktree` could not have been without opening the boundary.
+      await putFile(c, scope, `${WORK}/NOTE.md`, "written by the agent\n");
+      const committed = await git(WORK, ["add", "-A"], WORK);
+      expect(committed.code).toBe(0);
+      expect((await git(WORK, ["commit", "-q", "-m", "wip: live check"], WORK)).code).toBe(0);
+      expect((await git(WORK, ["log", "-1", "--format=%s"], WORK)).out.trim()).toBe("wip: live check");
+
+      // Files in and out, which is what the mailbox and the bundle both ride on.
+      expect(await getFile(c, scope, `${WORK}/NOTE.md`)).toContain("written by the agent");
+    } finally {
+      await killSandbox(c, scope).catch(() => {});
+      await closeAll();
+    }
+  },
+  240_000,
+);
+
+live(
+  "an agent reaches the orchestrator through the mailbox, with no route to this machine",
+  async () => {
+    const c = ctx();
+    const scope = { grp: 1 } as const;
+    // A real orchestrator, on the port the mailbox replays to.
+    const app = makeApp(c);
+    const server = Bun.serve({ hostname: "127.0.0.1", port: cfg.port, fetch: (req) => app(req) });
+    const stop = startMailbox(c);
+    try {
+      await execIn(c, scope, "true"); // create the sandbox so the poller sees it
+
+      // Straight at the port: refused, because nothing routes there from inside.
+      const direct = await execIn(
+        c,
+        scope,
+        `curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:${cfg.port}/api/state`,
+      );
+      expect(direct.out.trim()).not.toBe("200");
+
+      // Through the mailbox: answered. `orch status` needs an agent token, so a
+      // 422 is the orchestrator replying — which is what is under test here.
+      const viaOrch = await execIn(c, scope, `orch status live-check 2>&1; echo rc=$?`, {
+        env: { ORCH_MAILBOX: MAILBOX_DIR, ORCH_TOKEN: "not-a-real-agent" },
+        timeoutMs: 60_000,
+      });
+      expect(viaOrch.out).toContain("agent");
+    } finally {
+      stop();
+      server.stop(true);
+      await killSandbox(c, scope).catch(() => {});
+      await closeAll();
+    }
+  },
+  240_000,
+);

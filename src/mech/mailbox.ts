@@ -1,5 +1,5 @@
 import type { Ctx } from "../api.ts";
-import { liveSandboxes, MAILBOX_DIR } from "./sandbox.ts";
+import { FILE_MODE, liveSandboxes, MAILBOX_DIR } from "./sandbox.ts";
 
 /**
  * The host end of the agent's only way out.
@@ -59,7 +59,7 @@ async function serve(sb: ReturnType<typeof liveSandboxes>[number], base: string,
     answer = { status: 502, text: `orchestrator unreachable: ${e}` };
   }
   await sb.files
-    .writeFiles([{ path: `${MAILBOX_DIR}/res/${env.id}.json`, data: JSON.stringify(answer), mode: 0o644 }])
+    .writeFiles([{ path: `${MAILBOX_DIR}/res/${env.id}.json`, data: JSON.stringify(answer), mode: FILE_MODE }])
     .catch(() => {});
 }
 

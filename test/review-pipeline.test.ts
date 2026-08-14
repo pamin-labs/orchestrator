@@ -19,6 +19,7 @@ import {
 } from "../src/runtime/executor.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { WORK } from "../src/mech/sandbox.ts";
 
 const git = makeGitRunner(new RepoLock());
 
@@ -69,8 +70,10 @@ async function harness(opts: { gates?: string[] } = {}) {
     // The gates run in the group's sandbox. Here they run in this process, which
     // is all these tests need: what is under test is what the pipeline does with
     // an exit code, not how a command is spawned.
-    sandbox: fakeSandbox((cmd) => {
-      const p = Bun.spawnSync(["sh", "-c", cmd], { stdout: "pipe", stderr: "pipe" });
+    sandbox: fakeSandbox((cmd, cwd) => {
+      // In the group's checkout, never in this process's. Without the cwd these
+      // spawns ran `git add -A && git commit` in the orchestrator's own repo.
+      const p = Bun.spawnSync(["sh", "-c", cmd], { cwd: cwd === WORK || !cwd ? work : cwd, stdout: "pipe", stderr: "pipe" });
       return {
         code: p.exitCode,
         out: p.stdout.toString(),

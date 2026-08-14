@@ -424,8 +424,53 @@ Phase 0 的实测在 `docs/decisions/005`。这一轮把它做完了，净效果
 
 **还没做**：`orch setup` 的端到端、真实容器里跑通一整个需求。要 `uvx opensandbox-server`（`dns+nft` 模式）起着，镜像还得自己做一个（bun + node + git，`tsc` 需要 node；官方 code-interpreter 7GB 太大）。
 
-### 最后一米：vault 目前不能开
+### 最后一米：是 sidecar 镜像旧了，v1.1.6 修好了
 
-拿真 token 跑端到端，撞上一个上游 bug，隔离干净了：**只要 vault 绑了任何凭据，带 `%2f` 的 scoped 包请求全 403**。npm 和 bun 都中招，绑定只写了 `api.anthropic.com` 也照样影响 `registry.npmjs.org`，加 `paths` 收窄没用。sidecar 在对所有 host 规范化 URL 编码。
+拿真 token 跑端到端时撞上：**只要 vault 绑了凭据，带 `%2f` 的 scoped 包请求全 403**（npm 和 bun 都中招）。绑定只写了 `api.anthropic.com`，挂的却是 `registry.npmjs.org`。
 
-矩阵和结论在 `docs/decisions/005`。意味着：**vault 那套代码全在（decoy、设置页、过期升级、check 都绿），但现在开不了** —— 开了 JS 项目装不了依赖。要么上游修，要么这条决策得重开：真 token 进沙盒，靠 egress 黑名单挡外传。这个取舍比原来弱，不该我替你选。
+先排掉了更严重的那个可能：**不是泄漏**。拿 postman-echo（未绑定的 host、会回显收到的请求）验过，没有多出来的 Authorization 头，也没有凭据的影子 —— 注入是按 host 正确隔离的。
+
+然后是 `%2f` 的路径重写。上游 `main` 的 addon（`components/egress/mitmscripts/system.py`）里有 `allow_single_encoded_slash`，注释直接写着「npm scoped 包的合法形式」—— 也就是修过了，只是没进我们钉的那个版本。**`opensandbox/egress:v1.1.4` → `v1.1.6`，三行全绿。**
+
+而 v1.1.4 正是 `opensandbox-server init-config --example docker` 写出来的版本。所以 preflight 加了一条**查 egress 镜像版本** —— 这个 bug 的症状是「这个项目装不上依赖」，没人会往 sidecar 版本上想。`newEnough()` 有 check。
+
+### 镜像做出来了，实测两条对着真容器过了
+
+`docker/agent.Dockerfile` —— bun 1.3.14 + node 20（`tsc` 需要）+ git + 预装两个 CLI，**1.51GB**（官方 code-interpreter 是 7.04GB）。之前配置里那个 `ghcr.io/orch/agent:1` 是占位符，拉不下来，等于第一个组必挂。
+
+`test/sandbox-live.test.ts` 驱动真代码打真容器，没 server 就**大声跳过**（打印为什么），不静默绿：
+
+1. 沙盒建起来、provision 到位（`/usr/local/bin/orch` + `/var/orch`）、工具链齐、**够不到宿主机的文件**、从 remote clone 出 checkout、agent 在里面 commit、文件进出。
+2. **agent 通过信箱够到 orchestrator，直连 47821 不通。**
+
+顺手抓到三个只有真跑才会暴露的 bug：
+- metadata 值不许有冒号 —— `grp:1` 400，改 `grp-1`
+- `mode: 0o644` 被序列化成十进制 `420`，服务端按八进制字符串解析 —— 要传八进制**数字面值**（`644`/`755`）
+- `git clone` 没有凭据时停在 `could not read Username` **等一个永远不会有人答的提示** —— 加 `GIT_TERMINAL_PROMPT=0`，失败才是有用的回答
+
+还有一个设计缺口：`origin` 通常是 SSH（`git@github.com:...`），而沙盒没有 key，**SSH 也没法走 vault 注入**（那是 HTTP 头的机制）。`httpsRemote()` 改写成 HTTPS，GitHub 的只读 token 绑在 sidecar 上 —— 私有仓库能 clone，而容器里依旧什么凭据都没有。
+
+`ORCH_SANDBOX_API_KEY` 走环境变量：`config/default.yaml` 是提交进仓库的，密钥写那儿就是泄漏。
+
+`bun test test/` 468 pass（带 key），466 pass + 2 skip（不带）。
+
+### 镜像为什么自己做，以及沙盒里能不能上网 —— 都量了
+
+**自己做 vs 裸 ubuntu**，每个沙盒：
+
+```
+orch/agent:1                     3.8s 就能用
+ubuntu:24.04                     2.4s 建出来
+  + git/node/npm (apt)         297.9s
+  + claude + codex (npm)        40.6s
+                               ------
+                               340.9s，而且每个组都要再付一次
+```
+
+裸镜像是「小的那个成本，付一次」，工具链是「大的那个成本，每组付一次」。1.5GB 磁盘换每个需求开头省下五分半。写进 `docker/agent.Dockerfile` 的注释里了。
+
+**web research 能用**（`defaultAction: allow`）：`bun.sh/docs` / `api.github.com` / `registry.npmjs.org` 全 200；`api.anthropic.com` 无凭据回 401 —— 说明网络通到了，是 API 拒的不是网络拒的。**黑名单是真拦**：配了 `denyDomains: [example.com]` 之后 example.com 直接不通，同一个沙盒里 bun.sh 照样 200。
+
+镜像刷到最新：`execd v1.0.22`、`egress v1.1.6`，agent 镜像 `--pull` 重建。468 pass。
+
+preflight 那条改准了：本地留着旧 egress 不再误报 —— server 用哪个 tag 写在它自己的 toml 里，我们看不到，所以报「有没有够新的」并把「记得把 [egress] image 指过去」写进修法。
