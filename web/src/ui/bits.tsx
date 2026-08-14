@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 
 /**
@@ -69,3 +70,47 @@ export const Textarea = ({
 export const Pane = ({ children, className }: { children: React.ReactNode; className?: string }) => (
   <div className={cn("min-h-0 flex-1 overflow-y-auto pr-1", className)}>{children}</div>
 );
+
+/**
+ * Long prose, cut to a few lines until asked for the rest.
+ *
+ * Everything an agent writes to the boss is a paragraph: a QA verdict names every
+ * file it checked, a watchdog escalation quotes three of them verbatim. The
+ * decision is usually made by line three and the rest is there to check the
+ * reasoning against, so it is one click away rather than half a screen.
+ *
+ * The toggle only appears when the text is actually longer than the clamp —
+ * otherwise every two-word question grows a 展开 that does nothing.
+ */
+export function Clamp({ lines = 2, children }: { lines?: number; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [over, setOver] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (el && !open) setOver(el.scrollHeight > el.clientHeight + 2);
+  });
+  return (
+    <>
+      <div
+        ref={box}
+        style={
+          open
+            ? undefined
+            : { display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden" }
+        }
+      >
+        {children}
+      </div>
+      {(over || open) && (
+        <button
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
+        >
+          {open ? "收起" : "展开"}
+        </button>
+      )}
+    </>
+  );
+}

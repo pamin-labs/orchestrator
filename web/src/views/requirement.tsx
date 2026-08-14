@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Button, LinkButton } from "../ui/button";
 import { Menu, MenuItem } from "../ui/menu";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
-import { H2, Meta, Textarea, Working, Pane } from "../ui/bits";
+import { Clamp, H2, Meta, Textarea, Working, Pane } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Card, CardBody, CardTitle } from "../ui/card";
 import { Bar } from "../ui/table";
@@ -557,17 +557,16 @@ function Delegated({
 }: {
   rows: State["answered"]; refresh: () => void;
 }) {
+  // Quiet, and only where it belongs: this teaches what the block is for, under a
+  // list of live questions that are the actual work. It was body text at the same
+  // weight as a question.
   if (!rows.length) {
-    return (
-      <div className="text-[0.8125rem] text-ink-3">
-        没有代答。PM → Architect → CoS 任一级答了会出现在这里，每条都能撤销并接管。
-      </div>
-    );
+    return <Meta className="block border-t border-rule-soft px-4 py-2">没有代答。PM / Architect / CoS 谁替你答了都会出现在这里，能撤销并接管。</Meta>;
   }
   return (
     <>
       {rows.map((a) => (
-        <div key={a.id} className="border-t border-rule-soft py-2 first:border-t-0">
+        <div key={a.id} className="border-t border-rule-soft px-4 py-2 first:border-t-0">
           <div className="flex items-baseline gap-2">
             <Meta>{a.answered_by}</Meta>
             <span className="min-w-0 grow text-[0.8125rem]">{a.question}</span>
@@ -582,7 +581,10 @@ function Delegated({
               refresh();
             }}>撤销并接管</Button>
           </div>
-          <div className="mt-px border-l border-rule pl-2.5 text-[0.75rem] text-ink-2">{a.answer}</div>
+          {/* Somebody else's words, on the surface everything not written by the
+              boss sits on. It was a left-ruled quote block, which is the one
+              decoration DESIGN.md names outright. */}
+          <div className="mt-1 rounded-md bg-sunk px-2.5 py-1.5 text-[0.75rem] text-ink-2">{a.answer}</div>
         </div>
       ))}
     </>
@@ -877,13 +879,20 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
       >
         {mine && <span className="size-1.5 shrink-0 self-center rounded-full bg-accent" />}
         <span className={cn("shrink-0 font-mono text-[0.6875rem]", e.severity === "blocker" ? "text-bad" : "text-ink-3")}>
-          {e.asker ?? "?"} · {waited(e.created_at)}
+          {/* A watchdog escalation has no agent behind it, and `?` read like a bug.
+              Same word the queue uses for it. */}
+          {e.asker ?? "系统"} · {waited(e.created_at)}
           {!mine && ` · ${WHERE_ZH[e.chain_state] ?? e.chain_state}`}
         </span>
         {!open && <span className="min-w-0 truncate text-[0.8125rem] text-ink-2">{e.question}</span>}
       </AccordionTrigger>
       <AccordionBody className="px-4 pb-3">
-      <WithAttachments body={e.question} className="my-1 text-[0.8125rem]" />
+      {/* Six lines, then a click. A watchdog escalation quotes three QA verdicts
+          verbatim and runs to fifteen — and the decision is usually made by line
+          three, with the rest there to check the reasoning against. */}
+      <Clamp lines={6}>
+        <WithAttachments body={e.question} className="my-1 text-[0.8125rem]" />
+      </Clamp>
       {mine && <Suggested escId={e.id} onUse={setSeed} />}
       {mine && (
         <Composer
@@ -909,8 +918,10 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                   is wrong, a shared fixture is broken. Answering it means typing the
                   fix into a chat box for an agent that is not allowed to apply it, so
                   these sat in 待办 until the boss did the work by hand. */}
+              {/* Not `go`. Two filled violet buttons side by side — 开成需求 and
+                  回答 — is two primaries, and answering is the primary here. */}
               <Tip label="开成一条需求去做，这一组等它落地后自动继续">
-                <Button size="sm" variant="go" disabled={busy} onClick={async () => {
+                <Button size="sm" disabled={busy} onClick={async () => {
                   const r = await post(`/api/escalations/${e.id}/requirement`, { text });
                   refresh();
                   if (r.ok) toast.success(r.text);
