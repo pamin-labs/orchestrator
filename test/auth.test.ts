@@ -73,6 +73,9 @@ test("preflight names what is missing and how to fix it, rather than degrading",
   });
   const by = Object.fromEntries(checks.map((c) => [c.name, c]));
   expect(by.docker!.ok).toBe(false);
+  // The fix for a missing server is a uvx command, so a machine without uv has
+  // two problems that look like one.
+  expect(by["uv / python"]!.ok).toBe(false);
   expect(by["opensandbox-server"]!.ok).toBe(false);
   expect(by["claude credentials"]!.ok).toBe(false);
   // Every failure carries the command that fixes it. Without that this is a

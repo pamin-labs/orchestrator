@@ -18,7 +18,6 @@ import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
 import { Picker } from "./views/picker";
 import { Notes } from "./views/notes";
-import { Tab, TabList, TabPanel, Tabs } from "./ui/tabs";
 import { Settings } from "./views/settings";
 import { ProjectSettings } from "./views/project";
 import { Progress } from "./views/progress";
@@ -30,7 +29,7 @@ import { CostView, Desk, Owns } from "./views/tables";
 // `req` is a drill-in, not a tab: it only exists with a requirement selected, and
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
-type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes" | "settings";
+type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes" | "settings" | "config";
 
 /**
  * Views that keep something pinned and scroll the rest themselves.
@@ -39,7 +38,7 @@ type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "
  * long list moves past it. Everything else scrolls whole, which is right when the
  * page has no controls of its own to lose.
  */
-const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req", "settings"]);
+const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req", "settings", "config"]);
 interface Sel { p: number | null; view: View; g: number | null; t: string | null }
 
 const readHash = (): Sel => {
@@ -190,6 +189,9 @@ export function App() {
     ["notes", "记录"],
     ["owns", "所有权"],
     ["cost", "成本"],
+    // Per-repository, so it is a peer of the other project views rather than a
+    // tab under one of them: gates and the sandbox are not a kind of ownership.
+    ["config", "配置"],
   ];
   const openGroup = sel.g ? st.groups.find((g) => g.id === sel.g) : undefined;
 
@@ -442,21 +444,9 @@ export function App() {
           ) : view === "notes" ? (
             <Notes projectId={sel.p!} tab={sel.t} onTab={(t) => go({ t })} />
           ) : view === "owns" ? (
-            /* Project-level configuration, one view: who may write where, and
-               what a group of this project gets. Both are answers to "how does
-               this repo work", which is not what the other four views ask. */
-            <Tabs value={sel.t ?? "owns"} onValueChange={(t) => go({ t })} className="flex min-h-0 flex-1 flex-col">
-              <TabList>
-                <Tab value="owns">所有权</Tab>
-                <Tab value="config">闸门与沙盒</Tab>
-              </TabList>
-              <TabPanel value="owns" className="min-h-0 flex-1">
-                <Owns st={st} projectId={sel.p!} />
-              </TabPanel>
-              <TabPanel value="config" className="min-h-0 flex-1">
-                <ProjectSettings projectId={sel.p!} />
-              </TabPanel>
-            </Tabs>
+            <Owns st={st} projectId={sel.p!} />
+          ) : view === "config" ? (
+            <ProjectSettings projectId={sel.p!} />
           ) : view === "settings" ? (
             <Settings />
           ) : (

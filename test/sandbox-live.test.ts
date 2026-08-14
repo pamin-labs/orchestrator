@@ -62,7 +62,7 @@ async function serverUp(): Promise<boolean> {
   }
 }
 
-function ctx(): Ctx {
+function ctx(port = cfg.port): Ctx {
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'live', 'RUNNING', 0)");
@@ -74,7 +74,10 @@ function ctx(): Ctx {
     gitLock: new RepoLock(),
     sandbox: REAL,
     waiters: new Map(),
-    config: { language: "中文", workRoot: cfg.workRoot, port: cfg.port, sandbox: cfg.sandbox },
+    // An ephemeral port, not the configured one: this test serves the routes
+    // itself, and a fixed port collides with a real orchestrator or with the
+    // previous run's socket still in TIME_WAIT.
+    config: { language: "中文", workRoot: cfg.workRoot, port, sandbox: cfg.sandbox },
   } as unknown as Ctx;
 }
 
@@ -137,11 +140,12 @@ live(
 live(
   "an agent reaches the orchestrator through the mailbox, with no route to this machine",
   async () => {
-    const c = ctx();
+    const port = 40000 + Math.floor(Math.random() * 20000);
+    const c = ctx(port);
     const scope = { grp: 1 } as const;
     // A real orchestrator, on the port the mailbox replays to.
     const app = makeApp(c);
-    const server = Bun.serve({ hostname: "127.0.0.1", port: cfg.port, fetch: (req) => app(req) });
+    const server = Bun.serve({ hostname: "127.0.0.1", port, fetch: (req) => app(req) });
     const stop = startMailbox(c);
     try {
       await execIn(c, scope, "true"); // create the sandbox so the poller sees it
@@ -150,7 +154,7 @@ live(
       const direct = await execIn(
         c,
         scope,
-        `curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:${cfg.port}/api/state`,
+        `curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:${port}/api/state`,
       );
       expect(direct.out.trim()).not.toBe("200");
 

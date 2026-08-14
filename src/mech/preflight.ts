@@ -83,6 +83,17 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     fix: "Install Docker (or Colima/Podman with a docker socket) and start it.",
   });
 
+  // Only ever consulted when the server is down, but reported always: the fix
+  // for a missing server is `uvx opensandbox-server`, and a machine without uv
+  // cannot run that either. Two failures that look identical from the panel.
+  const uvx = probe("uvx");
+  out.push({
+    name: "uv / python",
+    ok: uvx,
+    detail: uvx ? "uvx available" : "no uvx on PATH",
+    fix: "brew install uv (or pipx install uv). opensandbox-server is a Python package; without it there is nothing to start.",
+  });
+
   const server = await reachable(`http://${input.sandbox.server}`, input.sandbox.apiKey);
   out.push({
     name: "opensandbox-server",

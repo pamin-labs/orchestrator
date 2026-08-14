@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Check, CircleAlert, ExternalLink } from "lucide-react";
-import { Empty, H2, Input, Meta, Pane, Textarea } from "../ui/bits";
+import { Check, CircleAlert } from "lucide-react";
+import { H2, Input, Meta, Pane, Textarea } from "../ui/bits";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { Button } from "../ui/button";
 import { Segment, Segments } from "../ui/segment";
@@ -9,17 +9,19 @@ import { pull, post } from "../lib/api";
 import { clock, cn } from "../lib/utils";
 
 /**
- * The wiring, on one page, because it is one question: can this machine work?
+ * Can this machine work? Two credentials and five facts.
  *
- * Two credentials and a handful of facts about the host. Every one of them is
- * either fine or blocking, nothing in between, so the page is a list of rows
- * that say which. The accent — everywhere else "waiting on the boss" — is exactly
- * right on a credential nobody has pasted: the fleet is stopped until they do.
+ * Everything here is a label and a value, so everything is one grid: a fixed
+ * first column, values aligned down the page, a hairline between rows. The
+ * alignment is the design — a heading and a paragraph per field is what made
+ * the first version read as a questionnaire.
  *
- * No cards. A row is a hairline and a gutter; the form opens under the row it
- * belongs to, on `rail`, so the fields have a visible owner. Disclosure and the
- * mode selector are Radix (硬约束 4) — hand-rolled they lose arrow keys,
- * `aria-expanded` and the pressed state, which is exactly what nobody notices.
+ * State is carried by ink, not by badges. A credential nobody has pasted is the
+ * accent, because the fleet is stopped until they do, and that is the only thing
+ * the accent means anywhere on this page.
+ *
+ * Behaviour is Radix (硬约束 4). The explanations that used to sit under every
+ * field are in the code now; the page keeps the command and the cost.
  */
 
 type Mode = "oauth_token" | "api_key" | "chatgpt";
@@ -32,7 +34,7 @@ interface AuthRow {
   updatedAt: number;
 }
 
-interface Check {
+interface HostCheck {
   name: string;
   ok: boolean;
   detail: string;
@@ -42,10 +44,9 @@ interface Check {
 interface Runtime {
   key: string;
   label: string;
-  /** The mode the orchestrator can obtain by running the CLI on this machine. */
+  /** The mode this machine can obtain by running the CLI itself. */
   login?: Mode;
-  modes: Array<{ mode: Mode; label: string; how: string; note: string }>;
-  /** What a custom endpoint becomes inside the sandbox. */
+  modes: Array<{ mode: Mode; label: string; how: string; cost: string }>;
   urlEnv: string;
 }
 
@@ -56,18 +57,8 @@ const RUNTIMES: Runtime[] = [
     login: "oauth_token",
     urlEnv: "ANTHROPIC_BASE_URL",
     modes: [
-      {
-        mode: "oauth_token",
-        label: "订阅",
-        how: "claude setup-token",
-        note: "一年有效，走订阅额度。顶上的 5 小时/周额度也只有这条路有数。",
-      },
-      {
-        mode: "api_key",
-        label: "API key",
-        how: "console.anthropic.com → API keys",
-        note: "按 token 计费，不占订阅额度，顶上不显示额度条。",
-      },
+      { mode: "oauth_token", label: "订阅", how: "claude setup-token", cost: "一年有效，走订阅额度" },
+      { mode: "api_key", label: "API key", how: "console.anthropic.com", cost: "按量计费，不显示额度" },
     ],
   },
   {
@@ -76,27 +67,24 @@ const RUNTIMES: Runtime[] = [
     login: "chatgpt",
     urlEnv: "OPENAI_BASE_URL",
     modes: [
-      {
-        mode: "chatgpt",
-        label: "订阅",
-        how: "codex login，或粘贴 ~/.codex/auth.json",
-        note: "走 ChatGPT 订阅。刷新由这台机器一家做：codex 自己的文档说别把同一份登录分给并发任务，而一支车队正好是十个。",
-      },
-      { mode: "api_key", label: "API key", how: "platform.openai.com → API keys", note: "按 token 计费。" },
+      { mode: "chatgpt", label: "订阅", how: "codex login", cost: "走订阅额度，本机统一刷新" },
+      { mode: "api_key", label: "API key", how: "platform.openai.com", cost: "按量计费" },
     ],
   },
 ];
 
+/** The grid every row on this page sits on. */
+export const ROW = "grid grid-cols-[6.5rem_minmax(0,1fr)] items-baseline gap-x-4";
+
 export function Settings() {
   const [rows, setRows] = useState<AuthRow[]>([]);
-  const [checks, setChecks] = useState<Check[]>([]);
-  /** `""` = everything shut, which is the Radix accordion's own empty value. */
+  const [checks, setChecks] = useState<HostCheck[]>([]);
   const [open, setOpen] = useState("");
 
   const load = async () => {
     const [a, p] = await Promise.all([
       pull<{ runtimes: AuthRow[] }>("/api/auth"),
-      pull<{ checks: Check[] }>("/api/preflight"),
+      pull<{ checks: HostCheck[] }>("/api/preflight"),
     ]);
     setRows(a?.runtimes ?? []);
     setChecks(p?.checks ?? []);
@@ -105,35 +93,28 @@ export function Settings() {
     void load();
   }, []);
 
-  const missing = RUNTIMES.filter((r) => !rows.some((x) => x.runtime === r.key));
-
   return (
-    <Pane className="max-w-[52rem]">
-      <H2>凭据</H2>
-      {missing.length > 0 && (
-        <Empty>
-          {missing.map((r) => r.label).join(" 和 ")}还没配。没有凭据的 turn 根本不会被派出去，队列会等着
-          —— 不会烧掉一轮去撞 401。
-        </Empty>
-      )}
-      <Accordion value={open ?? ""} onValueChange={setOpen} className="mt-2 border-t border-rule">
+    <Pane className="max-w-[46rem]">
+      <H2 className="mb-1.5">凭据</H2>
+      <Accordion value={open} onValueChange={setOpen} className="border-t border-rule">
         {RUNTIMES.map((r) => (
           <Credential key={r.key} runtime={r} current={rows.find((x) => x.runtime === r.key)} onSaved={load} />
         ))}
       </Accordion>
 
-      <H2 className="mt-9">沙盒服务器</H2>
-      <SandboxKey current={rows.find((x) => x.runtime === "sandbox")} onSaved={load} />
-
-      <H2 className="mt-9">这台机器</H2>
+      <H2 className="mt-9 mb-1.5">环境</H2>
       <div className="border-t border-rule">
         {checks.map((c) => (
-          <div key={c.name} className="flex items-baseline gap-3 border-b border-rule-soft py-2">
-            <span className={cn("shrink-0 translate-y-0.5", c.ok ? "text-ok" : "text-bad")}>
-              {c.ok ? <Check size={13} strokeWidth={2.5} /> : <CircleAlert size={13} strokeWidth={2.5} />}
+          <div key={c.name} className={cn(ROW, "border-b border-rule-soft py-2")}>
+            <span className={cn("flex items-baseline gap-1.5 text-[0.8125rem]", c.ok ? "text-ink" : "text-accent")}>
+              {c.ok ? (
+                <Check size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-ok" />
+              ) : (
+                <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5" />
+              )}
+              <span className="min-w-0 truncate">{c.name}</span>
             </span>
-            <span className="w-36 shrink-0 text-[0.8125rem] text-ink">{c.name}</span>
-            <span className="min-w-0 flex-1">
+            <span className="min-w-0">
               <Meta className="break-all">{c.detail}</Meta>
               {!c.ok && c.fix && (
                 <span className="mt-1 block rounded bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
@@ -145,6 +126,9 @@ export function Settings() {
         ))}
         {!checks.length && <Meta className="block py-2">检查中…</Meta>}
       </div>
+
+      <H2 className="mt-9 mb-1.5">沙盒服务器</H2>
+      <SandboxKey current={rows.find((x) => x.runtime === "sandbox")} onSaved={load} />
     </Pane>
   );
 }
@@ -178,7 +162,7 @@ function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () =>
       url = null;
     }
     setLink(url);
-    // Opened for you and printed as text: a popup blocker eating the one
+    // Opened for you and printed as well: a popup blocker eating the one
     // actionable thing on the page is worse than a link nobody clicks.
     if (url) window.open(url, "_blank", "noopener");
     setBusy(false);
@@ -187,10 +171,12 @@ function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () =>
 
   return (
     <AccordionItem value={r.key} className="border-b border-rule-soft">
-      <AccordionTrigger className="flex items-baseline gap-3 px-2 py-2.5">
-        <span className="w-36 shrink-0 text-[0.8125rem] font-medium text-ink">{r.label}</span>
-        {cur ? (
-          <>
+      <AccordionTrigger className={cn(ROW, "py-2")}>
+        <span className={cn("text-[0.8125rem]", cur ? "text-ink" : "font-medium text-accent")}>
+          {cur ? r.label : `${r.label} 没配`}
+        </span>
+        {cur && (
+          <span className="flex min-w-0 items-baseline gap-2">
             <span className="text-[0.75rem] text-ink-2">
               {r.modes.find((m) => m.mode === cur.mode)?.label ?? cur.mode}
             </span>
@@ -198,15 +184,13 @@ function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () =>
             {cur.baseUrl && <Meta className="min-w-0 truncate">{cur.baseUrl}</Meta>}
             <span className="grow" />
             <Meta>{clock(cur.updatedAt)}</Meta>
-          </>
-        ) : (
-          <span className="text-[0.75rem] font-medium text-accent">没配</span>
+          </span>
         )}
       </AccordionTrigger>
 
       <AccordionBody>
-        <div className="px-2 pt-1 pb-3.5">
-          <div className="flex flex-wrap items-center gap-1">
+        <div className="space-y-2 pt-2 pb-3.5">
+          <div className={ROW}>
             <Segments value={mode} onValueChange={(v) => setMode(v as Mode)}>
               {r.modes.map((m) => (
                 <Segment key={m.mode} value={m.mode}>
@@ -214,39 +198,39 @@ function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () =>
                 </Segment>
               ))}
             </Segments>
-            <span className="grow" />
-            {r.login === mode && (
-              <Tip label="在这台机器上跑一次官方 CLI 的登录，用它本地的登录信息换出 token。仅限官方账号；自建网关走 API key。">
-                <Button size="sm" disabled={busy} onClick={login}>
-                  {busy ? "等浏览器…" : "从本机登录"}
-                </Button>
-              </Tip>
-            )}
-          </div>
-
-          <div className="mt-2 text-[0.75rem] leading-relaxed text-ink-3">
-            <span className="font-mono text-ink-2">{spec.how}</span>
-            <span className="mx-1.5">·</span>
-            {spec.note}
+            <span className="flex min-w-0 items-baseline gap-2">
+              <Meta className="text-ink-2">{spec.how}</Meta>
+              <Meta className="min-w-0 truncate">{spec.cost}</Meta>
+              <span className="grow" />
+              {r.login === mode && (
+                <Tip label="在这台机器上跑一次官方 CLI 的登录，用它本地的登录信息换出 token。仅限官方账号；自建网关走 API key。">
+                  <Button size="sm" disabled={busy} onClick={login}>
+                    {busy ? "等浏览器…" : "从本机登录"}
+                  </Button>
+                </Tip>
+              )}
+            </span>
           </div>
 
           {link && (
-            <div className="mt-2 flex items-baseline gap-1.5 text-[0.75rem] text-ink-3">
-              <ExternalLink size={12} strokeWidth={1.75} className="shrink-0 translate-y-0.5" />
-              <span className="min-w-0 break-all">
-                没自己打开的话点这里：
-                <a href={link} target="_blank" rel="noopener" className="font-mono text-accent underline">
-                  {link}
-                </a>
-                。批准完这一页会自己更新。
-              </span>
+            <div className={ROW}>
+              <Meta>没自动打开</Meta>
+              <a
+                href={link}
+                target="_blank"
+                rel="noopener"
+                className="min-w-0 break-all font-mono text-[0.75rem] text-accent underline"
+              >
+                {link}
+              </a>
             </div>
           )}
 
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <div className={ROW}>
+            <Meta>{mode === "chatgpt" ? "auth.json" : "token"}</Meta>
             {mode === "chatgpt" ? (
               <Textarea
-                className="min-h-20 w-full"
+                className="min-h-16"
                 placeholder="~/.codex/auth.json 的完整内容"
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
@@ -254,27 +238,28 @@ function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () =>
             ) : (
               <Input
                 type="password"
-                className="min-w-0 flex-1 font-mono"
-                placeholder="粘贴进来，存下之后就看不到了"
+                className="font-mono"
+                placeholder="粘贴进来，存下之后看不到"
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
               />
             )}
-            <Input
-              className="min-w-0 flex-1 font-mono"
-              placeholder={`API 地址（可选，自建网关填这里 → ${r.urlEnv}）`}
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-            />
-            <Button variant="go" size="sm" disabled={busy || !secret.trim()} onClick={save}>
-              存下
-            </Button>
           </div>
 
-          <Meta className="mt-2 block leading-relaxed">
-            真值只写进沙盒外面的 egress sidecar，容器里放的是格式对、值是假的那一份。存下会回收正在跑的沙盒
-            —— 它们的 sidecar 里还是旧凭据 —— 下一轮自动重建。
-          </Meta>
+          <div className={ROW}>
+            <Meta>API 地址</Meta>
+            <span className="flex items-center gap-2">
+              <Input
+                className="min-w-0 flex-1 font-mono"
+                placeholder={`可选，自建网关 → ${r.urlEnv}`}
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+              />
+              <Button variant="go" size="sm" disabled={busy || !secret.trim()} onClick={save}>
+                存下
+              </Button>
+            </span>
+          </div>
         </div>
       </AccordionBody>
     </AccordionItem>
@@ -284,12 +269,9 @@ function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () =>
 /**
  * The key this orchestrator uses to drive opensandbox-server.
  *
- * Two ends have to agree and only one of them is ours, so the page generates the
- * value, stores our half, and prints the line for theirs. Generated here rather
- * than typed: a key somebody invents is a key like `orch123`, and this one is
- * the only thing standing between a local port and "create a container".
- *
- * 32 bytes from the platform CSPRNG, base64url so it survives a TOML string.
+ * Generated rather than typed: a key somebody invents is `orch123`, and this one
+ * is what stands between a local port and "create a container". 32 bytes from
+ * the platform CSPRNG, base64url so it survives a TOML string.
  */
 function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
   const [key, setKey] = useState("");
@@ -304,37 +286,39 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
     setBusy(true);
     await post("/api/auth", { runtime: "sandbox", mode: "api_key", secret: key.trim() });
     setBusy(false);
+    setKey("");
     props.onSaved();
   };
 
   return (
-    <div className="border-t border-rule pt-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          className="min-w-0 flex-1 font-mono"
-          placeholder={props.current ? `已设 ${props.current.hint}，留空保持不变` : "留空 = 服务器没开鉴权"}
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-        />
-        <Button size="sm" onClick={generate}>
-          随机生成
-        </Button>
-        <Button variant="go" size="sm" disabled={busy || !key.trim()} onClick={save}>
-          存下
-        </Button>
+    <div className="border-t border-rule">
+      <div className={cn(ROW, "border-b border-rule-soft py-2")}>
+        <Meta>{props.current ? props.current.hint : "没设"}</Meta>
+        <span className="flex items-center gap-2">
+          <Input
+            className="min-w-0 flex-1 font-mono"
+            placeholder="留空 = 服务器没开鉴权"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+          />
+          <Tip label="32 字节，来自浏览器的密码学随机源">
+            <Button size="sm" onClick={generate}>
+              生成
+            </Button>
+          </Tip>
+          <Button variant="go" size="sm" disabled={busy || !key.trim()} onClick={save}>
+            存下
+          </Button>
+        </span>
       </div>
       {key.trim() && (
-        <div className="mt-2 rounded bg-sunk px-2 py-1.5 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
-          <div className="text-ink-3">~/.sandbox.toml</div>
-          [server]
-          <br />
-          api_key = "{key.trim()}"
+        <div className={cn(ROW, "py-2")}>
+          <Meta>另一半</Meta>
+          <span className="min-w-0 rounded bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed break-all text-ink-2">
+            ~/.sandbox.toml → [server] api_key = "{key.trim()}"
+          </span>
         </div>
       )}
-      <Meta className="mt-1 block leading-relaxed">
-        两边得一样：上面这行贴进 opensandbox-server 的配置再重启它，「存下」写我们这半边。留空两边都不设也能跑
-        —— 本机自己用，服务器只听 127.0.0.1。
-      </Meta>
     </div>
   );
 }
