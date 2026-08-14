@@ -225,13 +225,17 @@ const BUILD_OUTPUTS = ["web/dist"];
 /**
  * Written by the orchestrator into every worktree, not by the agent in it.
  *
- * AGENTS.md is the symlink that lets a codex turn read the project's CLAUDE.md.
+ * AGENTS.md / CLAUDE.md: whichever of the two the project does not ship is a
+ * symlink we create, so a turn on either runtime reads the project's
+ * instructions. Only the link is ours — an agent editing the real file is a
+ * normal change and reconcile still sees it, because the link is what gets
+ * skipped, not the target.
  * The reconcile exists to catch what an agent wrote outside its boundary, and this
  * is ours — without the exemption it was reverted after every turn, recreated
  * before the next one, and escalated to the boss each time. Observed live, once
  * per turn, forever.
  */
-const HARNESS_FILES = ["AGENTS.md"];
+const HARNESS_FILES = ["AGENTS.md", "CLAUDE.md"];
 
 export function denyOutsideOwns(
   worktree: string,

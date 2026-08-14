@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, existsSync, mkdirSync, lstatSync, readFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RepoLock } from "../src/mech/gitlock.ts";
+import { linkAgentsMd } from "../src/runtime/executor.ts";
 import { isWrite } from "../src/mech/gitlock.ts";
 import {
   changedSince,
@@ -246,4 +247,25 @@ test("a rebased branch stops reporting other groups' landed work as this slice's
   const files = (await git(dir, ["diff", "--name-only", after!.base], wt.worktree)).out;
   expect(files).toContain("mine.txt");
   expect(files).not.toContain("theirs.txt");
+});
+
+test("a repo with only AGENTS.md gets CLAUDE.md, and the other way round", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "orch-md-"));
+  writeFileSync(join(dir, "AGENTS.md"), "rules\n");
+  linkAgentsMd(dir);
+  // A codex-native repo: a claude turn used to run with no project instructions
+  // at all, which looks exactly like a project that has none.
+  expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("rules\n");
+
+  const other = mkdtempSync(join(tmpdir(), "orch-md-"));
+  writeFileSync(join(other, "CLAUDE.md"), "rules\n");
+  linkAgentsMd(other);
+  expect(readFileSync(join(other, "AGENTS.md"), "utf8")).toBe("rules\n");
+
+  // A repo shipping both is left alone: it said what it wanted.
+  const both = mkdtempSync(join(tmpdir(), "orch-md-"));
+  writeFileSync(join(both, "CLAUDE.md"), "for claude\n");
+  writeFileSync(join(both, "AGENTS.md"), "for codex\n");
+  linkAgentsMd(both);
+  expect(readFileSync(join(both, "AGENTS.md"), "utf8")).toBe("for codex\n");
 });
