@@ -27,10 +27,24 @@ path in the message points at the host's home directory, which is not there.
 Both paths, for different jobs.
 
 1. **Mounted.** `stageSkills` copies the ticked user-scope skills into
-   `<dataDir>/skills` on the host, and every sandbox mounts that directory
-   read-only at `/root/.claude/skills` and `$CODEX_HOME/skills`. The CLIs
-   discover them the way they discover any skill. `--disable-slash-commands` is
-   gone.
+   `skillsDir` on the host — `/var/tmp/orch-cache/skills`, not under `dataDir`,
+   because the sandbox server only mounts host paths on its own
+   `allowed_host_paths` — and every sandbox mounts that directory read-only at
+   `/root/.claude/skills` and `$CODEX_HOME/skills`. The CLIs discover them the way
+   they discover any skill.
+
+   Three flags had to change together, and each was measured, because any one of
+   them alone leaves the feature doing nothing:
+
+   - `--disable-slash-commands` is gone. Its help line is `Disable all skills`.
+   - `Skill` is in `--tools`, for every role. With `--tools` set and `Skill` not
+     in it, no catalogue loads at all: an agent asked to list its skills answers
+     NONE.
+   - `--setting-sources` includes `user`. Under `project,local` the CLI does not
+     look at `$HOME/.claude/skills`, which is where the mount is. That flag
+     excluded `user` because inheriting the boss's home measured ~195k cached
+     tokens on a trivial turn — but that was on this machine. In a container HOME
+     is `/root` and the only thing in it is what we put there.
 2. **Injected.** Unchanged. A skill named in a requirement is still read on the
    host and appended to that turn's delta — including one that is not ticked.
 
@@ -67,8 +81,11 @@ so they are visible whatever this page says.
 
 - `SKILL.md`'s mtime stands for the whole skill when deciding whether to re-copy. A
   touched `reference/*.md` alone is missed until 重新扫描 or a re-tick.
-- The mount needs the sandbox server's `allowed_host_paths` to include the staged
-  path, or container creation fails outright. Preflight names the exact path rather
-  than pretending to have checked the server's own TOML.
+- The mount needs the sandbox server's `allowed_host_paths` to include
+  `skillsDir`, or container creation fails outright. Preflight names the exact
+  path rather than pretending to have checked the server's own TOML, and a
+  creation rejected for that reason retries once without the skills and says
+  which path to allow — every group failing to start is a worse outcome than a
+  feature none of them needs to run.
 - codex reading `$CODEX_HOME/skills` is a directory convention, not something its
   docs state. `test/sandbox-live.test.ts` is what decides whether that half holds.

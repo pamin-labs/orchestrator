@@ -132,7 +132,11 @@ orch status "<一句话>"               # 工位墙上的当前意图
 - **挂进去的**：老板在设置里勾中的全局技能，宿主解引用复制到 `<dataDir>/skills`，每个沙盒**只读挂**在 `/root/.claude/skills` 和 `$CODEX_HOME/skills`，CLI 自己发现自己用。代价是勾中的每个技能的 name+description 进每个 turn 的缓存前缀 —— 所以设置页把「勾了几个 · 大约多少 token」摆在勾选框旁边。
 - **塞进去的**：老板在输入框里 `/` 选技能时，**orchestrator 在 host 上读 SKILL.md，把正文追加进那一个 turn 的 delta**（消息末尾，不进 stable 半边）。用一次付一次，没勾选的技能也能这么给。
 
-不继承用户级设置这条不变（`--setting-sources project,local`，实测继承老板全局设置让一个 haiku turn 涨到 ~195k）—— 那个 flag 管的是 settings，不管技能发现。
+三个 flag 必须一起改，少一个整套就是摆设，每条都是实测：
+
+- `--disable-slash-commands` 去掉 —— 它的 help 原文就是 "Disable all skills"。
+- `--tools` 里必须有 `Skill`。设了 `--tools` 而不带它，技能目录根本不加载：问 agent「你有哪些技能」答 NONE。
+- `--setting-sources` 要带 `user`。只给 `project,local` 时 CLI 压根不看 `$HOME/.claude/skills`，而挂载点就在那儿。当初排除 `user` 是因为继承老板家目录让一个 haiku turn 涨到 ~195k —— 那是在**宿主**上量的；容器里 HOME 是 `/root`，里面只有我们放进去的东西。
 
 **`lease` 永不接受自由命令**：以前的理由是「Runner 跑在 host 上有真权限，这是沙盒的唯一缺口」；现在它跑在组自己的沙盒里，理由反过来 —— **`orch` 是 agent 唯一的接口，它的校验就是整条边界**（`docs/decisions/005`）。资源是 `resource` 表里**预定义的命令模板**，agent 只能选资源名 + 传经 `arg_schema` 校验的参数，**永远不能传自由命令**。agent 确实需要新命令时发 escalation，你在 UI 上看完整命令行点批准，批了可选存成新模板。
 

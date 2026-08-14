@@ -534,6 +534,8 @@ preflight 那条改准了：本地留着旧 egress 不再误报 —— server �
 
 **顺手**：主题从 nav 挪进设置的「偏好」（三态 Segments，比原来那个循环图标说得清；`startTheme()` 在 `main.tsx` 里先跑，避免首屏闪一下别的主题）。`bunfig.toml` 加 `[test] root = "test"` —— `bun test` 不加路径会把 `data/` 里别人的 `*.test.ts` 当成我们的（一直有 27 个无关失败，加上技能暂存目录只会更多）。
 
+**后来实测出来的三条**（少一条整套就是摆设）：`--tools` 不带 `Skill` 时技能目录根本不加载（问 agent「你有哪些技能」答 NONE）；`--setting-sources project,local` 下 CLI 不看 `$HOME/.claude/skills`，而挂载点就在那儿 —— 容器里 HOME 是 `/root`，`user` scope 就是我们挂的那个目录，195k 那个数是在宿主上量的；暂存目录不能放 `dataDir` 底下，sandbox 服务端只挂 `allowed_host_paths` 里的路径（默认只有 `/var/tmp/orch-cache`），所以走 `skillsDir` 配置，挂不上时先不挂技能把组开起来并明说要放行哪条路径。
+
 **还没验的**：codex 读不读 `$CODEX_HOME/skills` 只有目录约定，没有文档；`test/sandbox-live.test.ts` 要补三条 —— 挂载可见、只读（`touch` 失败）、摘掉 flag 前后各跑一个 haiku turn 记前缀差值。沙盒服务端的 `allowed_host_paths` 必须包含 `<dataDir>/skills`，preflight 会把这条路径原样说出来（服务端自己的 TOML 不是我们能读的，所以只报要求，不假装检查过）。
 
 `bun test` 504 pass。
