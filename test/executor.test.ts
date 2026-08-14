@@ -8,7 +8,7 @@ import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { makeExecutor, cacheRatio, hire, type ExecDeps } from "../src/runtime/executor.ts";
+import { LOST_SESSION, makeExecutor, cacheRatio, hire, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult } from "../src/runtime/claude.ts";
 import type { TurnSpec } from "../src/runtime/claude.ts";
 
@@ -116,7 +116,9 @@ test("the second turn resumes the session instead of starting one", async () => 
 
   expect(specs[0]!.newSessionId).toBeTruthy();
   expect(specs[0]!.resumeSessionId).toBeUndefined();
-  expect(specs[1]!.resumeSessionId).toBe(specs[0]!.newSessionId);
+  // The id the runtime reported, not the one we minted — codex starts a thread of
+  // its own and only that id is resumable.
+  expect(specs[1]!.resumeSessionId).toBe("s1");
   // Same stable half both times, or the cache would have died between turns.
   expect(specs[1]!.stable.hash).toBe(specs[0]!.stable.hash);
 });
@@ -407,4 +409,36 @@ test("the Architect is told which requirement belongs to which group", async () 
   expect(p).toContain("orch owns 2 --path");
   // And the failure mode a files-only boundary causes.
   expect(p).toContain("not a list of files that already exist");
+});
+
+test("a session whose transcript is gone is not resumed forever", () => {
+  // Live: composer-file-picker failed eight turns in a row on
+  // `thread/resume: no rollout found for thread id 02627e60-…` and looked
+  // healthy the whole time — an agent on the roster, no error anywhere except
+  // inside a rejection body nobody parses.
+  expect(LOST_SESSION.test("Error: thread/resume: thread/resume failed: no rollout found for thread id 02627e60")).toBe(true);
+  expect(LOST_SESSION.test("No conversation found with session ID: abc")).toBe(true);
+  // Not every failure is this one: clearing a live session costs an uncached
+  // prefix, so the match has to be the actual message.
+  expect(LOST_SESSION.test("turn failed (max_turns): ...")).toBe(false);
+  expect(LOST_SESSION.test("rebase failed: conflict in src/api.ts")).toBe(false);
+});
+
+test("the session id stored is the one the runtime actually used", async () => {
+  // claude honours `--session-id <uuid>`, so minting one is correct there. codex
+  // does not: `codex exec` starts a thread of its own and `codex exec resume`
+  // wants THAT id. We stored the minted one, so every codex agent's second turn
+  // ran `resume <our-uuid>` and died with `no rollout found for thread id …` —
+  // thirty agents in the live database, not one of them holding a codex id.
+  const { db, sched, specs } = harness(async () => ok({ sessionId: "019ffb87-a288-7263-a7df-4b214098ae24" }));
+  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+  expect(db.query<{ session_id: string }, []>("SELECT session_id FROM agent").get()!.session_id).toBe(
+    "019ffb87-a288-7263-a7df-4b214098ae24",
+  );
+
+  // And the next turn resumes with it, rather than with whatever we minted.
+  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+  expect(specs.at(-1)!.resumeSessionId).toBe("019ffb87-a288-7263-a7df-4b214098ae24");
 });

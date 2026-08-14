@@ -87,7 +87,9 @@ test("rotating a session zeroes session_tokens instead of carrying it forward", 
   await sched.drain();
   // Two turns in the same session: accumulated, not reset.
   expect(db.query<{ t: number }, []>("SELECT session_tokens AS t FROM agent").get()!.t).toBe(220);
-  expect(specs[1]!.resumeSessionId).toBe(specs[0]!.newSessionId);
+  // What the runtime reported, not what we minted: codex starts a thread of its
+  // own and only that id is resumable.
+  expect(specs[1]!.resumeSessionId).toBe("s1");
 
   // Force a rotation the same way a stale stable hash or an explicit request does.
   sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer", rotate: true } });

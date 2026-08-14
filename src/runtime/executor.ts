@@ -306,6 +306,21 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     gzipTurnLog(logPath);
   }
 
+  // The id the runtime actually used, which is not always the one we minted.
+  //
+  // claude takes `--session-id <uuid>` and honours it, so minting one and storing
+  // it is correct there. codex does not: `codex exec` starts a thread of its own
+  // and reports it as `thread.started.thread_id`, and `codex exec resume` wants
+  // THAT id. We stored the minted one, so every codex agent's second turn ran
+  // `resume <our-uuid>` and died with `no rollout found for thread id …` — thirty
+  // agents in this database, none of them holding a codex thread id. It reads as
+  // an environment fault (a missing file, a lost session) rather than as a turn
+  // that was never resumable, which is why it survived: the group looks healthy,
+  // the engineer is on the roster, and the error is inside a rejection body.
+  if (result.sessionId && result.sessionId !== sessionId) {
+    ctx.db.run("UPDATE agent SET session_id = ? WHERE id = ?", [result.sessionId, agent.id]);
+  }
+
   recordCost(deps, agent, job, result, stable.hash);
   recordProgress(deps, agent, job, result);
   await narrate(deps, agent, job, grp, project?.repo_path ?? null, before, result);
@@ -316,8 +331,35 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   // after the fact instead of before it. No-op for a provider whose profile did.
   if (!provider.confinesWrites) await reconcileOwnership(deps, agent, job, grp, cwd);
 
+  // A session whose transcript is gone on disk.
+  //
+  // Both CLIs resume by id and both fail the whole turn when the file behind it
+  // is missing — codex with `thread/resume: no rollout found for thread id …`,
+  // claude with `No conversation found with session ID`. `session_id` still
+  // points at it, and rotation only fires on a changed prefix, a token budget or
+  // an explicit flag, so every turn after that resumes the same dead id and dies
+  // the same way. Live: composer-file-picker failed eight turns in a row and
+  // looked healthy the whole time — an agent on the roster, no error anywhere
+  // except inside a rejection body nobody parses.
+  //
+  // Clearing the id is the whole repair: the next turn starts a session. It
+  // costs one uncached prefix, which is what a lost transcript costs.
+  if (!result.ok && LOST_SESSION.test(result.text)) {
+    ctx.db.run("UPDATE agent SET session_id = NULL, stable_hash = NULL WHERE id = ?", [agent.id]);
+    ctx.bus.emit({
+      grpId: job.grp_id,
+      author: "orchestrator",
+      kind: "state_change",
+      body: `${agent.role} 的会话记录没了，下一轮从新会话开始`,
+      meta: { agent_id: agent.id, lost_session: sessionId },
+    });
+  }
+
   if (!result.ok) throw new Error(`turn failed (${result.terminalReason}): ${clip(result.text)}`);
 }
+
+/** Both CLIs, both spellings. */
+export const LOST_SESSION = /no rollout found for thread|No conversation found with session ID/i;
 
 function buildStableFor(
   deps: ExecDeps,
