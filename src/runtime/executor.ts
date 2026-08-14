@@ -227,7 +227,12 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   // turn started from, even after the process is gone.
   if (before) ctx.db.run("UPDATE job SET checkpoint_sha = ? WHERE id = ?", [before, job.id]);
 
-  ctx.db.run("UPDATE agent SET state = 'running', session_id = ? WHERE id = ?", [sessionId, agent.id]);
+  ctx.db.run(
+    rotate
+      ? "UPDATE agent SET state = 'running', session_id = ?, session_tokens = 0 WHERE id = ?"
+      : "UPDATE agent SET state = 'running', session_id = ? WHERE id = ?",
+    [sessionId, agent.id],
+  );
 
   const logDir = join(cfg.dataDir, "turns");
   mkdirSync(logDir, { recursive: true });
@@ -774,11 +779,15 @@ async function reconcileOwnership(
 function recordCost(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult, stableHash: string): void {
   const { ctx } = deps;
   const total = r.usage.input + r.usage.output + r.usage.cacheRead + r.usage.cacheCreate;
+  // session_tokens tracks context occupancy, not billing: output and cacheRead
+  // don't sit in the next turn's prompt, so counting them makes overTokenBudget
+  // trip every turn once a session has run long (see grp7 risk note).
+  const contextTokens = r.usage.input + r.usage.cacheCreate;
   ctx.db.run(
     `UPDATE agent SET session_tokens = session_tokens + ?, total_tokens = total_tokens + ?,
      stable_hash = ?, context_window = coalesce(?, context_window)
      WHERE id = ?`,
-    [total, total, stableHash, r.contextWindow ?? null, agent.id],
+    [contextTokens, total, stableHash, r.contextWindow ?? null, agent.id],
   );
   if (job.slice_id) {
     ctx.db.run("UPDATE slice SET spent_tokens = spent_tokens + ? WHERE id = ?", [total, job.slice_id]);
