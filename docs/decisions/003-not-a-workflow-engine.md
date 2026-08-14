@@ -1,5 +1,9 @@
 # 003 — Not a workflow engine (n8n / DAG / LangChain / LangGraph)
 
+**Status**: accepted. Two details are dated by 005 — admission control no longer
+has a clearance dimension, and the sandbox is a container rather than the CLI's
+own Seatbelt profile. Neither changes the answer.
+
 **Question that keeps coming back**: should the substrate be an AI workflow engine
 instead of a job queue plus sqlite?
 
@@ -18,15 +22,15 @@ A DAG engine is for a known graph of steps with data on the edges. Here:
 - **Intercept must work at any instant** (PLAN.md §7). That is possible only
   because exactly one serial dispatch point exists. A DAG's equivalent is
   cancelling a run and reconstructing where it was.
-- **Admission control is per group, per budget, per clearance.** Those are checks
-  before dequeue, not properties of an edge.
+- **Admission control is per group and per budget.** Those are checks before
+  dequeue, not properties of an edge.
 
 ## LangChain / LangGraph want to own the model call, and we want the CLI to
 
 The agent runtime is deliberately `claude -p` / `codex exec` as a subprocess
 (PLAN.md §2): per-turn model switch is one flag, a crashed agent cannot take down
-the orchestrator, and the CLI's own hooks, skills, `CLAUDE.md`, settings and
-Seatbelt sandbox all keep working. A framework that wraps the model call throws
+the orchestrator, and the CLI's own hooks, skills, `CLAUDE.md` and settings all
+keep working inside the container. A framework that wraps the model call throws
 that away and gives back nothing this system needs.
 
 **The decisive one: prompt assembly.** Hard constraint #1 is that the injected
@@ -49,8 +53,8 @@ owns it and `test/cache-position.test.ts` guards it.
 ## n8n specifically
 
 Different product. It integrates SaaS APIs behind a visual editor. The hard parts
-here are per-agent sandbox profiles, a lease queue for host-level resources, git
-worktrees and a serial merge queue. None of that is an n8n node.
+here are a container per group, a lease queue for contended resources, git
+checkouts and a serial merge queue. None of that is an n8n node.
 
 ## When this decision should be revisited
 

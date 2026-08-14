@@ -1,6 +1,6 @@
 # 005 the sandbox is the boundary, not a deny-list
 
-**Status**: accepted and implemented, except the vault (see Open)
+**Status**: accepted and implemented, vault included (PROGRESS.md 记的落地过程)
 **Date**: 2026-08-14
 **Supersedes**: 001's write-confinement half. 001's transport finding (localhost
 TCP over unix socket) stays true for the host-mode code that still exists.
@@ -169,9 +169,10 @@ overlay fs, which is why the usual macOS Docker filesystem penalty never appears
 
 ## Open
 
-- **No end-to-end run yet.** It needs a purpose-built image (bun + node + git;
-  the official code-interpreter is 7GB and `tsc` needs node) and a server left
-  running in `dns+nft` mode.
+- **A whole requirement has not been driven through a real container yet.** The
+  image, the mailbox, the checkout and the credential vault each have; the loop
+  end to end has not (`test/sandbox-live.test.ts` covers the container, and skips
+  when no server is running).
 
 ## Ceiling
 
@@ -185,3 +186,8 @@ overlay fs, which is why the usual macOS Docker filesystem penalty never appears
 - The vault's protection assumes the egress sidecar is in the path. If a future
   config drops `credentialProxy.enabled` the failure mode is a 401, not a visible
   "vault off". Preflight asserts it.
+- The mailbox replays whatever path the request file names, and `/api/*` (the
+  boss's own routes) takes no token — it was only ever reachable from a browser on
+  127.0.0.1, and the mailbox made the sandbox reachable the same way. `serve()`
+  refuses anything outside `/orch/`; without that an agent approves its own DRAFT.
+  Moving the transport moved the trust boundary with it.

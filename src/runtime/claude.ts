@@ -157,15 +157,15 @@ export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
     "--strict-mcp-config",
     "--append-system-prompt",
     s.systemAppend,
-    // `--allowedTools` gates permission; it does NOT trim the tool definitions
-    // injected into the prompt. Measured: the built-in set plus skills and slash
-    // commands is ~46k cached tokens of prefix on every turn. `--tools` picks
-    // the built-in set, and `--disable-slash-commands` drops the skill catalogue.
+    // What is loaded, not what is permitted: `--dangerously-skip-permissions`
+    // above bypasses every permission check, so `--allowedTools` alongside it is
+    // inert. `--tools` is the one that pays — measured, the built-in set plus
+    // skills and slash commands is ~46k cached tokens of prefix on every turn, so
+    // this picks the built-in set and `--disable-slash-commands` drops the skill
+    // catalogue. `allowedTools` in the role yaml still feeds it (assemble.ts).
     "--tools",
     s.tools.join(","),
     "--disable-slash-commands",
-    "--allowedTools",
-    ...s.allowedTools,
   ];
   // Already clamped to what this provider accepts (providers.ts), because effort
   // is part of the hashed prefix and the hash has to describe what was sent.

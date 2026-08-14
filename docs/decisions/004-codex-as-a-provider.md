@@ -1,6 +1,11 @@
 # 004 codex agents run workspace-write with network, and ownership is checked after the turn
 
-**Status**: accepted
+**Status**: accepted; decisions 1, 2 and 4 superseded by 005. codex now runs
+`--dangerously-bypass-approvals-and-sandbox` inside the group's container, so
+there is no `-s workspace-write` line, no `Provider.confinesWrites` and no host
+`CODEX_HOME` — the decoy `auth.json` is written into the container instead.
+Decision 3 (ownership checked after the turn) is now how it works for **both**
+runtimes, not just codex.
 **Date**: 2026-08-13
 **Extends**: 001, which measured the claude sandbox. This is the same exercise for the other CLI.
 

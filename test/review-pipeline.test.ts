@@ -113,10 +113,10 @@ async function harness(opts: { gates?: string[] } = {}) {
     "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 1, 'S1', 'a.txt says two', 'trivial', 'running', 0)",
   );
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'engineer', 'm', 'L1', 'tok-eng', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 'tok-eng', 0)",
   );
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'qa', 'm', 'L1', 'tok-qa', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'qa', 'm', 'tok-qa', 0)",
   );
   db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (1, 1, 'edit a.txt', 0)");
 
@@ -312,10 +312,10 @@ test("with a retro and a green branch gate, the Auditor is called in", async () 
 test("an auditor may not audit its own group", async () => {
   const h = await harness();
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'auditor', 'm', 'L2', 'tok-in', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'auditor', 'm', 'tok-in', 0)",
   );
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'L2', 'tok-out', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'tok-out', 0)",
   );
   // Sharing the group's context means reviewing your own reasoning.
   expect((await h.post("/orch/audit", { group_id: 1, verdict: "pass" }, "tok-in")).status).toBe(422);
@@ -325,7 +325,7 @@ test("an auditor may not audit its own group", async () => {
 test("a failed audit reopens the group and sends the PM back", async () => {
   const h = await harness();
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'L2', 'tok-aud', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'tok-aud', 0)",
   );
   h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1");
   await h.post("/orch/audit", { group_id: 1, verdict: "fail", note: "S2's promise is not in the diff" }, "tok-aud");

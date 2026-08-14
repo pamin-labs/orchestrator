@@ -6,7 +6,6 @@ const stable = buildStable({
   rolePrompt: "You are the Engineer.",
   model: "gpt-5-codex",
   allowedTools: ["Bash(orch *)", "Read", "Edit"],
-  settingsPath: "unused-by-codex",
   addDirs: ["/tmp/wt/g1"],
 });
 
@@ -90,7 +89,6 @@ test("effort travels as a config override", () => {
     model: "gpt-5.6-sol",
     effort: "xhigh",
     allowedTools: ["Bash(orch *)"],
-    settingsPath: "unused",
     addDirs: [],
   });
   const argv = buildArgv({ stable: withEffort, prompt: "p", cwd: "/tmp" });
@@ -213,7 +211,6 @@ test("an empty model means whatever the account allows", () => {
     rolePrompt: "x",
     model: "",
     allowedTools: ["Read"],
-    settingsPath: "u",
     addDirs: ["/tmp"],
   });
   expect(buildArgv({ stable: blank, prompt: "p", cwd: "/tmp" })).not.toContain("-m");

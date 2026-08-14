@@ -240,12 +240,11 @@ export const ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..");
 /**
  * dataDir is absolute from here on.
  *
- * Everything under it is handed to a subprocess — the clearance profile as
- * `--settings`, the `orch` shim as a PATH entry — and those subprocesses run in
- * the group's worktree. A relative `data/profiles/19-L2.json` resolved against
- * the worktree, where nothing of the sort exists, and every turn in a worktree
- * died with "Settings file not found" while planning roles (cwd = repo root)
- * kept working. Same lesson as ROOT above, one directory over.
+ * Paths under it are handed to subprocesses that do not run where the server
+ * does — gate logs, lease logs, attachments, the sqlite file itself. A relative
+ * one resolved against whatever cwd the child happened to have, and the failure
+ * was a file "not found" that existed. Same lesson as ROOT above, one directory
+ * over.
  */
 export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: resolve(ROOT, c.dataDir) });
 

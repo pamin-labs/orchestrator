@@ -36,10 +36,10 @@ function harness(opts: { worktree?: string } = {}) {
   // Identity is the token, never a body field: the server listens on localhost
   // TCP, so anything else on 127.0.0.1 could otherwise claim to be any agent.
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'L1', 'tok-eng', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'tok-eng', 0)",
   );
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'qa', 'sonnet', 'L1', 'tok-qa', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'qa', 'sonnet', 'tok-qa', 0)",
   );
   return { db, bus, sched, ctx, app, ran, engineer: "tok-eng", qa: "tok-qa" };
 }
@@ -223,7 +223,7 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
 名字 : group-approval-planning`;
   // Filing the card is what moves the group to DRAFT, and DRAFT blocks.
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
     [grp_id],
   );
   const filed = await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
@@ -267,7 +267,7 @@ test("a malformed card is refused both when filed and when approved", async () =
   const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = (await r.json()) as { grp_id: number };
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
     [grp_id],
   );
 
@@ -391,7 +391,7 @@ test("filing the card drops the group's other queued planning turns", async () =
   const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = (await r.json()) as { grp_id: number };
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
     [grp_id],
   );
   sched.enqueue("agent_turn", { grp_id, payload: { role: "architect" } });
@@ -435,7 +435,7 @@ test("a group can be named instead of numbered, everywhere it is referenced", as
   const { grp_id } = (await r.json()) as { grp_id: number };
   const name = db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grp_id)!.name;
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
     [grp_id],
   );
 
@@ -463,7 +463,7 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   const r = await post(app, "/api/ideas", { project_id: 1, text: "greet lang" });
   const { grp_id } = (await r.json()) as { grp_id: number };
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
     [grp_id],
   );
   const card = `目标 : 支持 zh
@@ -489,7 +489,7 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   // the objection arrived a minute later and said the plan contradicted its own
   // acceptance criterion.
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'architect', 'm', 'L2', 'tok-arch', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
   );
   await post(
     app,
@@ -559,7 +559,7 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
   const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
   const { grp_id } = (await r.json()) as { grp_id: number };
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'L2', 'tok-d', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-d', 0)",
     [grp_id],
   );
   const card = `目标 : x
@@ -670,7 +670,7 @@ test("the Architect re-cutting someone else's boundary starts the approved group
   const h = harness();
   const grpId = await blocked(h);
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'architect', 'm', 'L2', 'tok-a', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'architect', 'm', 'tok-a', 0)",
   );
   // The re-cut moves group 1 off the contested path. Nothing touches group 2 —
   // sweeping only the group `owns` names would leave it waiting.
@@ -713,7 +713,7 @@ test("a planner may propose dropping already-covered work, but only with evidenc
   // the boss still presses the button.
   const h = harness();
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'L2', 'tok-d', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-d', 0)",
   );
   h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'other', 'RUNNING', 0)");
   const drop = (b: unknown, tok = "tok-d") => post(h.app, "/orch/drop", b, tok);
@@ -903,7 +903,7 @@ test("a sent-back DRAFT stops being approvable", async () => {
 test("the boss can talk to the team, and triage decides what the words mean", async () => {
   const { app, db, ran } = harness();
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'pm', 'sonnet', 'L2', 'tok-pm', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'pm', 'sonnet', 'tok-pm', 0)",
   );
   expect((await post(app, "/api/say", { group_id: 1, body: "" })).status).toBe(422);
 
@@ -974,7 +974,7 @@ test("one box holding several unrelated asks becomes several requirements", asyn
     "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'fact', '中文', '记住我；导出 CSV；顺便问下缓存怎么配', 1)",
   );
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'dispatcher', 'opus', 'L2', 'tok-disp', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'opus', 'tok-disp', 0)",
   );
 
   // A split of one is not a split.

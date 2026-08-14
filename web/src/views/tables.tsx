@@ -14,8 +14,7 @@ import { cn, K } from "../lib/utils";
 import { activityOf } from "../lib/activity";
 
 /**
- * Per PLAN.md §8: current slice, turn count, the live last line, model, clearance,
- * spend.
+ * Per PLAN.md §8: current slice, turn count, the live last line, model, spend.
  *
  * The turn count and the last line are what separate a working agent from a stuck
  * one — "in_progress" looks identical either way, and turn 19 on one slice is the
@@ -164,10 +163,10 @@ function Desks({
                   a.state === "running" ? "text-ink" : "text-ink-3 opacity-70",
                 )}
               >
-                {/* Clearance and the session count moved into this label: neither
-                    answers "who is working on what", and two more columns for them
-                    is what made this table nine wide. */}
-                <Tip label={`权限 ${a.clearance} · 本 session ${K(a.session_tokens)} tokens · ${a.model}`}>
+                {/* The session count moved into this label: it does not answer
+                    "who is working on what", and a column for it is part of what
+                    made this table nine wide. */}
+                <Tip label={`本 session ${K(a.session_tokens)} tokens · ${a.model}`}>
                   <span className="flex min-w-0 items-baseline gap-1.5">
                     <span className="shrink-0 truncate text-[0.8125rem] font-medium">{a.role}</span>
                     {/* A chip, because which model an agent is on is the second

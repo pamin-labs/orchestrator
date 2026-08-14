@@ -17,7 +17,7 @@ export interface Slice {
 }
 export interface Task { id: number; grp_id: number; slice_id: number | null; title: string; status: string }
 export interface Agent {
-  id: number; grp_id: number | null; role: string; model: string; clearance: string; state: string;
+  id: number; grp_id: number | null; role: string; model: string; state: string;
   activity: string | null; session_tokens: number; total_tokens: number;
   turns: number; slice_id: number | null;
 }

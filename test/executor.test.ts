@@ -67,13 +67,10 @@ test("a turn hires the role's agent on first use, with a token", async () => {
   await sched.drain();
 
   const a = db
-    .query<{ role: string; token: string | null; model: string; clearance: string }, []>(
-      "SELECT role, token, model, clearance FROM agent",
-    )
+    .query<{ role: string; token: string | null; model: string }, []>("SELECT role, token, model FROM agent")
     .get()!;
   expect(a.role).toBe("engineer");
   expect(a.token).toBeTruthy();
-  expect(a.clearance).toBe("L1");
 });
 
 test("the slice's difficulty picks the model — the boss's cost knob", async () => {

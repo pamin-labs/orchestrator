@@ -38,7 +38,9 @@ const MIGRATIONS: string[] = [
   -- status: PLANNING | DRAFT | RUNNING | PAUSING | PAUSED | PARKED | PR_OPEN | DISSOLVED
   --   PLANNING: the Dispatcher/Architect are still working; DRAFT: the card awaits the boss
 
-  -- Agent identity is durable (role/group/clearance/cost); the session is disposable.
+  -- Agent identity is durable (role/group/cost); the session is disposable.
+  -- clearance is dropped by migration 022; it is left here because the base
+  -- schema is what the first migration ran against, not a description of today.
   CREATE TABLE agent (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id     INTEGER REFERENCES project(id),
@@ -488,6 +490,18 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE grp ADD COLUMN sandbox_at INTEGER;
   ALTER TABLE project ADD COLUMN sandbox_at INTEGER;
+  `,
+
+  // 022 — the last two columns of the clearance era.
+  //
+  // Neither was ever written: `clearance` stayed 'L1' on every row an insert ever
+  // made, and the panel printed it as 「权限 L1」 — a permission level shown to the
+  // boss by a system that has no permission levels. `denial_turns` counted
+  // permission refusals, which cannot happen inside a container the CLI is told
+  // to skip its own checks in. A column nobody writes is a claim nobody checks.
+  `
+  ALTER TABLE agent DROP COLUMN clearance;
+  ALTER TABLE agent DROP COLUMN denial_turns;
   `,
 ];
 

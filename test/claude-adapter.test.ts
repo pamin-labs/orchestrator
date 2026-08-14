@@ -6,7 +6,6 @@ const stable = buildStable({
   rolePrompt: "Engineer",
   model: "sonnet",
   allowedTools: ["Bash(orch *)", "Read", "Edit"],
-  settingsPath: "profiles/L1.json",
   addDirs: ["/tmp/wt/g1"],
 });
 

@@ -43,7 +43,7 @@
 3. **agent 不监听频道**，turn 开始时注入 delta，其余按需 `orch ctx query` 自取。ambient chat 变成有界拉取，token 花销与实际需要成正比。
 
 **「组」不是独立重实体** = task 子树 + branch + worktree + roster 引用 + 预算。
-**`role` 是配置不是代码** = `roles/*.yaml`（prompt / model / clearance / 触发规则 / tool 白名单）。加「作曲」「美术」「翻译」零代码。
+**`role` 是配置不是代码** = `roles/*.yaml`（prompt / model / 触发规则 / tool 白名单）。加「作曲」「美术」「翻译」零代码。
 
 ---
 
@@ -53,16 +53,16 @@
 |---|---|---|
 | orchestrator | **bun + TypeScript** 单进程 | HTTP + `bun:sqlite` + 进程管理 + SSE 全内置，零依赖起步 |
 | agent runtime | **CLI 子进程**，非 SDK | per-turn 换 model 只是 flag；进程崩不带走 orchestrator；codex 同形状；hooks/skills/CLAUDE.md 原样生效 |
-| agent↔orchestrator | **`orch` CLI over Bash**，走 **localhost TCP + 每 agent token** | 零新 tool schema（Bash 已有）；阻塞 + 真返回值（stdout）；codex 同样能用；终端可手测。**不是 unix socket** —— 沙盒无法只放通一个 socket，全放通会连带打开 docker.sock（实测，见 `docs/decisions/001`） |
+| agent↔orchestrator | **`orch` CLI over Bash**，走**文件信箱**（沙盒里写请求文件，宿主轮询回信）+ 每 agent token | 零新 tool schema（Bash 已有）；阻塞 + 真返回值（stdout）；codex 同样能用；终端可手测。**不是 localhost TCP** —— `host.docker.internal` 只有 Docker Desktop 有（`docs/decisions/005`）。信箱只放通 `/orch/*`，`/api/*` 是老板的界面，沙盒够不着 |
 | state | **sqlite (WAL)** + journal 落 git | 易变的进 DB；journal 进 repo 跟 PR merge，可 diff 可 grep |
-| 沙盒 | **Claude Code 内置 Seatbelt** + `codex sandbox` | 已装好；能碰 macOS 原生工具链；`SandboxProvider` 接口预留 OpenSandbox |
+| 沙盒 | **一个组一个 OpenSandbox 容器** | 内置沙盒只有 deny 语义，「只有这个 checkout 可写」压根表达不出来（`docs/decisions/001`）。容器把它反过来：宿主碰不到，宿主只通过 `orch` 暴露有限动作（`docs/decisions/005`）。CLI 在容器里用 `--dangerously-skip-permissions` —— 进程内再自我约束就是那堆静默拒绝的来源 |
 | UI | **React + Tailwind v4 + shadcn/ui**（Radix 行为层）+ SSE | 手写组件层试过了，弹窗/菜单/焦点管理自己实现一遍不如用 Radix。视觉语言仍是自己的（`DESIGN.md`），shadcn 只提供行为 |
 | PR | GitHub private repo + `gh` | 所有项目（含非代码）统一。注册项目时**预检** remote 和 `gh` 登录，不等分支做完才发现没地方去 |
 | gate | 注册时**自动探测** | 从 package.json / Cargo.toml / go.mod / pyproject / csproj / justfile / Makefile 推断，并注册对应 resource 模板。探测不出来就明说「没有 gate」，不瞎猜命令 |
 
 **不用 MCP**：tool schema 每 session 注入 + sentinel JSON 无返回值语义（`lease` 需 mid-turn 返回，否则每次申请编译都要一个 turn 边界）。`orch` CLI 两个问题都没有。
 
-**不用 OpenSandbox**（v1）：macOS 上它是 Docker/Linux VM，而受限资源恰是 macOS 原生的（Unity/Xcode/原生编译）。Apple Silicon 嵌套 gVisor 太重。留接口，将来上 Linux 机器再换。
+**曾经不用 OpenSandbox**（v1 的判断）：macOS 上它是 Docker/Linux VM，而受限资源恰是 macOS 原生的（Unity/Xcode/原生编译）。这条已被 `docs/decisions/005` 推翻 —— 内置沙盒的 deny-only 天花板比跨平台的代价贵。macOS 原生工具链的项目现在是「这台机器跑不了」，不是「放开边界」。
 
 ---
 
@@ -77,7 +77,7 @@ grp(id, project_id, name, branch, worktree, status, owns_json, budget_tokens, sp
   --   a second source of truth for the same edge
 
 -- agent 身份持久，session 一次性
-agent(id, project_id, grp_id, role, model, clearance, session_id, session_tokens, cwd, activity, state)
+agent(id, project_id, grp_id, role, model, session_id, session_tokens, cwd, activity, state)
   -- state: idle | running | waiting_lease | blocked | retired
 
 -- 四个一等公民
@@ -130,7 +130,7 @@ orch git -- <cmd>                    # repo 级 git 写锁，串行化
 
 **技能（skill）不走 slash 命令**：agent 带 `--disable-slash-commands` 且不继承用户级设置（实测技能目录 + slash 命令 = 每 turn ~46k 缓存前缀；继承老板全局设置让一个 haiku turn 涨到 ~195k）。老板在输入框里 `/` 选技能时，**orchestrator 在 host 上读 SKILL.md，把正文追加进那一个 turn 的 delta**（消息末尾，不进 stable 半边）。于是：用一次付一次、缓存前缀不动、`~/.claude/skills` 里的技能也能给到看不见该文件的 agent。
 
-**`lease` 是沙盒的唯一缺口，必须堵死**：Runner 跑在 host 上有真权限。资源是 `resource` 表里**预定义的命令模板**，agent 只能选资源名 + 传经 `arg_schema` 校验的参数，**永远不能传自由命令**。agent 确实需要新命令时发 escalation，你在 UI 上看完整命令行点批准，批了可选存成新模板。
+**`lease` 永不接受自由命令**：以前的理由是「Runner 跑在 host 上有真权限，这是沙盒的唯一缺口」；现在它跑在组自己的沙盒里，理由反过来 —— **`orch` 是 agent 唯一的接口，它的校验就是整条边界**（`docs/decisions/005`）。资源是 `resource` 表里**预定义的命令模板**，agent 只能选资源名 + 传经 `arg_schema` 校验的参数，**永远不能传自由命令**。agent 确实需要新命令时发 escalation，你在 UI 上看完整命令行点批准，批了可选存成新模板。
 
 **`lease` 返回只给三段**：exit code + 尾 200 行 + `error_regex` 抽出的失败行。全量日志落盘。几 MB 的编译日志一次能炸掉半个 context。
 
@@ -141,12 +141,13 @@ orch git -- <cmd>                    # repo 级 git 写锁，串行化
 **spawn（每 turn 一个进程）：**
 ```bash
 claude -p --output-format stream-json --include-partial-messages \
-  --resume <session_id> --model <role.model> \
-  --settings <clearance-profile.json> --add-dir <worktree> \
-  --allowedTools "Bash(orch *) Read Edit Grep Glob" --max-turns N \
-  --permission-mode acceptEdits --setting-sources project,local
+  --resume <session_id> --model <role.model> --add-dir /work \
+  --dangerously-skip-permissions \
+  --setting-sources project,local --strict-mcp-config \
+  --tools "Bash,Read,Edit,Grep,Glob" --disable-slash-commands --max-turns N
 ```
-codex 走 `codex exec resume <id> -m <model>` + `codex sandbox`，同一个 adapter 接口。
+在容器里跑。`--dangerously-skip-permissions`：容器已经是边界，进程内再自我约束就是那堆静默拒绝的来源。`--tools` 是省前缀的（~46k/turn），不是权限 —— 权限已经被上一行关掉了。
+codex 走 `codex exec resume <id> -m <model>` + `--dangerously-bypass-approvals-and-sandbox`，同一个 adapter 接口。
 
 **边界 = 一个组一个容器**（`docs/decisions/005`，取代本节原来的 clearance 设计）。
 
@@ -165,24 +166,24 @@ codex 走 `codex exec resume <id> -m <model>` + `codex sandbox`，同一个 adap
 **session 主动轮换（不做这条，跑到第三天开始鬼打墙）**：
 **主触发是「切片完成」**，不是 token 阈值 —— 切片是天然语义边界，交接最干净且最省（见 §7 token 经济学 #2）。token 过上限 60% 作为兜底触发。
 轮换流程：写交接 journal → `--session-id <new>` 开全新 session → 开场 = 任务卡 + 入职包 + 教训清单 + 交接 + `ctx query` 提示（**全部放在消息末尾**）。
-**agent 身份持久（角色/归属/clearance/累计成本），session 一次性。**
+**agent 身份持久（角色/归属/累计成本），session 一次性。**
 
-**沙盒违规**：内置沙盒写进 `SandboxViolationStore`，orchestrator 读取 → **升级单个 agent 走代答链，不停全组**（PM/Architect 常常能直接指个合法路子）。
+**沙盒违规这一节没了**：内置沙盒的静默拒绝连同 `SandboxViolationStore`、`handleDenials` 一起删掉了。容器里 agent 想干什么就干什么，越界的形态变成两条：写到 owns 之外（`reconcileOwnership` 事后 revert 并说出来），和想要一个不存在的 resource（`orch lease` 直接拒，agent 发 escalation）。
 
 ---
 
 ## 六、编制（`roles/*.yaml`，11 行配置）
 
-| 层 | 岗 | model | clearance | 触发 |
-|---|---|---|---|---|
-| 常驻 | **Chief of Staff** | opus | L2 | 你说话 / escalation 积压 |
-| 常驻 | **Architect** | opus | L2 | 建组前切边界 / 设计变更 / env_suspect |
-| 常驻 | **Dispatcher** | opus | L2 | 新想法进来 / `respec` 退回 |
-| 常驻 | **Auditor** | sonnet | L2 只读 | PR 级审查（跨组，不共享 context） |
-| 常驻 | **Librarian** | haiku | L1 | 定期 / log 超阈值 |
-| 小队 | **PM** | sonnet | L2 | 组的唯一对话入口；自行深挖 |
-| 小队 | **Engineer** | sonnet | L1 | 唯一写方 |
-| 小队 | **QA** | sonnet | L1 只读 | 切片级审查（独立 session） |
+| 层 | 岗 | model | 触发 |
+|---|---|---|---|
+| 常驻 | **Chief of Staff** | opus | 你说话 / escalation 积压 |
+| 常驻 | **Architect** | opus | 建组前切边界 / 设计变更 / env_suspect |
+| 常驻 | **Dispatcher** | opus | 新想法进来 / `respec` 退回 |
+| 常驻 | **Auditor**（不给 Write/Edit） | sonnet | PR 级审查（跨组，不共享 context） |
+| 常驻 | **Librarian** | haiku | 定期 / log 超阈值 |
+| 小队 | **PM** | sonnet | 组的唯一对话入口；自行深挖 |
+| 小队 | **Engineer**（唯一有 Write/Edit 的角色） | sonnet | 唯一写方 |
+| 小队 | **QA**（不给 Write/Edit） | sonnet | 切片级审查（独立 session） |
 
 **降级为纯代码，不用 agent**（确定性逻辑，用 LLM 是浪费且不可靠）：
 - **Integrator** → file ownership 重叠检测 + 串行 merge queue，都是 `if`
@@ -296,7 +297,7 @@ deterministic gate（build / test / lint / typecheck / secrets 扫描 / 依赖�
 1. Architect 建组时切出**路径所有权**（glob 列表），写进 `grp.owns_json`
 2. orchestrator 检测与其他 `RUNNING`/`PAUSED`/`PARKED` 组的重叠
 3. 重叠 → **不许并行**：要么串行排队（后者等前者 merge），要么退回 Architect 重切边界
-4. Engineer 写到 owns 之外的路径 → 沙盒 `denyWrite` 直接挡住（clearance profile 按组动态生成），触发 escalation
+4. Engineer 写到 owns 之外的路径 → 容器不知道文件归属，所以是**事后**的：`reconcileOwnership` 按 `git status` 回滚越界文件并在频道里说出来（`docs/decisions/005` §Ceiling）
 5. 组开工时和 park 唤醒时都 rebase 到最新 main，避免基线漂移
 
 **公共文件**（`package.json`、schema、共享 types）永远不进任何组的 owns —— 需要改就走 escalation，你或 Architect 决定谁改。
@@ -445,7 +446,7 @@ Librarian（haiku）把长 event 流压成 `note` + digest，压缩过程本身�
 一眼能答三个问题：**整个需求走到哪 / 卡在哪道闸 / 谁在等我**。
 
 ### 其余视图
-- **工位墙** —— 每个 agent：当前切片 / turn 数 / 正在跑什么工具 / 实时输出最后一行 / token / 花费 / clearance / model
+- **工位墙** —— 每个 agent：当前切片 / turn 数 / 正在跑什么工具 / 实时输出最后一行 / token / 花费 / model
 - **看板** —— `DRAFT` 列（≤12 行卡片，三按钮：批准 / 改完批准 / 打回重拆；可直接改难度标签）+ `待查收` 列
 - **事件流侧栏**（可折叠）—— 原来的时间轴，现在是补充不是主角
 - **所有权视图** —— 各组 `owns` glob 与重叠状态（多组并行看冲突）
@@ -491,7 +492,7 @@ Librarian（haiku）把长 event 流压成 `note` + digest，压缩过程本身�
 **验收链**：加项目 → 在 `#boss` 丢一句话 → Dispatcher 拆 → PM 自行深挖并切片 → 落 `DRAFT` 列（≤12 行）→ **你批准** → 三 agent 干活 → `orch lease test` 跑一次 → 第一个切片过 self-review + gate + QA → 通知你查收 → 你说不满意 → 修正后再查收 → 开 PR → 你 merge → 组归档（含 retro）。
 
 ### M2 — 安全边界与两级 review
-三份 clearance sandbox profile + `SandboxProvider` 接口 + 沙盒违规检测与升级 + 不可代答硬清单 + session 主动轮换 + repo 级 git 锁 + lease 命令模板与参数校验 + 输出三段截断 + **切片级 review**（self-review / gate / QA）+ **PR 级 review**（reconcile / Auditor）+ DRAFT 卡 ≤12 行硬校验。
+边界（原本是三份 clearance profile，`docs/decisions/005` 之后是一个组一个容器）+ 不可代答硬清单 + session 主动轮换 + repo 级 git 锁 + lease 命令模板与参数校验 + 输出三段截断 + **切片级 review**（self-review / gate / QA）+ **PR 级 review**（reconcile / Auditor）+ DRAFT 卡 ≤12 行硬校验。
 
 ### M3 — Intercept 与看门狗
 三级 intercept + `wip:` checkpoint + 打断保留/回滚 + 看门狗 6 条规则 + park/唤醒 + 通知分级与退避去重 + 预算熔断。
@@ -500,7 +501,7 @@ Librarian（haiku）把长 event 流压成 `note` + digest，压缩过程本身�
 `roles/*.yaml` 配置化 + CoS / Architect / Dispatcher / Librarian 四个常驻岗 + 代答链与弃权 + 撤销并接管 + escalation 批处理 + `ctx query` + Librarian 压缩 + **CoS 反馈分诊**（`patch` / `respec` / `reject`，`respec` 退回 Dispatcher 重新深挖）。
 
 ### M5 — 多组并行与落地
-**file ownership 声明与重叠检测**（Architect 切边界，重叠禁止并行）+ 按组动态生成 `denyWrite` profile + 并发槽（默认 3）+ 串行 merge queue（纯代码）+ PR-watcher（`gh` 轮询，有评论唤醒 PM）+ 打回重试计数 + 跨组拉 PM 代表 + 开工/唤醒时 rebase 到最新 main。
+**file ownership 声明与重叠检测**（Architect 切边界，重叠禁止并行）+ 事后对账回滚越界写 + 并发槽（默认 3）+ 串行 merge queue（纯代码）+ PR-watcher（`gh` 轮询，有评论唤醒 PM）+ 打回重试计数 + 跨组拉 PM 代表 + 开工/唤醒时 rebase 到最新 main。
 
 ### M6 — 组织闭环、可观测与收尾
 工位墙 + 看板 + 收件箱 + journal 流 + SSE 实时 token 流 + retro 强制 + 组解散归档 + ntfy 开关 + codex adapter
@@ -523,19 +524,20 @@ orchestrator/
   src/
     server.ts            # bun HTTP + SSE + 静态
     db.ts                # bun:sqlite schema + 迁移
-    scheduler.ts         # job 队列、并发槽、准入检查（预算/clearance）
+    scheduler.ts         # job 队列、并发槽、准入检查（预算）
     runtime/
       adapter.ts         # AgentAdapter 接口
       claude.ts          # claude -p 子进程 + stream-json 解析
       codex.ts           # codex exec 子进程
-      sandbox.ts         # SandboxProvider: seatbelt | opensandbox | none
+      # 沙盒不在 runtime/ 下：mech/sandbox.ts 是唯一知道 OpenSandbox 存在的地方
       session.ts         # session 轮换与退休
     orch/
-      cli.ts             # orch 入口（localhost TCP + x-orch-token）
+      cli.ts             # orch 入口（文件信箱 + x-orch-token；只放通 /orch/*）
       ctx.ts lease.ts journal.ts mail.ts git.ts
     mech/
       intercept.ts watchdog.ts escalate.ts reconcile.ts gate.ts mergequeue.ts park.ts notify.ts
-      clearance.ts        # 按组生成 sandbox profile（deny-only）
+      sandbox.ts          # 一个组一个 OpenSandbox 容器；唯一知道它存在的文件
+      mailbox.ts          # 沙盒 ↔ 宿主的文件信箱，只转发 /orch/*
       ownership.ts        # file ownership 重叠检测
       standup.ts          # 确定性扫描：相似路径 / 停滞 task / 重复 gate 失败
       lessons.ts          # retro → 教训清单 → 注入；≤20 条淘汰
@@ -545,8 +547,6 @@ orchestrator/
     views/
       timeline.ts wall.ts board.ts
   roles/                 # 11 个 *.yaml，加岗零代码
-  # profiles/ 不是静态文件：clearance profile 按组生成（src/mech/clearance.ts），
-  #   否则静态文件会和 owns/兄弟 worktree 的实际情况漂移
   config/
     default.yaml         # 并发、语种、预算、resource 模板、通知
   web/
@@ -603,8 +603,8 @@ orchestrator/
 | 里程碑 | 一个 runnable check |
 |---|---|
 | M1 | `test/job-queue.test.ts` — 并发槽不超限、job 状态机不会卡在 running |
-| M2 | `test/clearance.test.ts` — profile 必须 deny 主 checkout / 兄弟 worktree / secrets，且 `failIfUnavailable` 为真 |
-| M2 | `test/sandbox-probe.sh` — 实跑沙盒矩阵（不进 `bun test`，花真 token；沙盒实现变了才跑） |
+| M2 | `test/sandbox.test.ts` + `test/sandbox-live.test.ts` — 容器创建/重连/回收，后者对真容器跑（server 不在就跳过） |
+| M2 | `test/mailbox.test.ts` — 信箱只转发 `/orch/*`，老板路由从沙盒里够不着 |
 | M2 | `test/lease-args.test.ts` — 自由命令注入被 `arg_schema` 拒绝 |
 | M3 | `test/intercept.test.ts` — L3 kill 后回滚到 checkpoint，工作树干净 |
 | M3 | `test/watchdog.test.ts` — 连续零产出 3 turn 触发掐断 |
@@ -640,7 +640,7 @@ orchestrator/
 
 ## 十四、明确不做
 
-- 不自造权限/沙盒策略引擎（用内置 Seatbelt 键）
+- 不自造权限/沙盒策略引擎（边界是容器，`orch` 是唯一接口）
 - 不上 MCP、不上 sentinel JSON（用 `orch` CLI）
 - 不做 speaker-selection、不解析文本里的 `@`（收件人是显式参数）
 - intent 不超过 5 种（多出来的都是正交字段，不是新 intent）

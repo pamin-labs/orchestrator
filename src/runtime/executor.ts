@@ -474,7 +474,6 @@ function buildStableFor(
     // the sandbox is the boundary, so this only decides which tool definitions
     // are loaded into the prefix and which roles may search the web.
     allowedTools: role.allowedTools ?? ["Bash", "Read", "Grep", "Glob"],
-    settingsPath: "",
     addDirs: [WORK],
   });
 }
@@ -829,13 +828,14 @@ function recordSubscriptionUsage(deps: ExecDeps, provider: string, r: TurnResult
 }
 
 /**
- * File ownership, enforced after the fact for providers whose sandbox cannot.
+ * File ownership, enforced after the fact. The only mechanism there is.
  *
- * The deny-list handed to claude's settings stops the write; codex has no
- * equivalent (cwd is writable whatever `writable_roots` says, probed on 0.147),
- * so the same rule runs against `git status` here and the offending files go
- * back. Deliberately deterministic: asking a role prompt to respect a boundary
- * is the thing this codebase does not do.
+ * The container is the write boundary, and it knows nothing about which group
+ * owns which file — a deny-list used to stop the write before it happened, and
+ * decision 005 §Ceiling accepted the trade. So the rule runs against
+ * `git status` here and the offending files go back. Deliberately deterministic:
+ * asking a role prompt to respect a boundary is the thing this codebase does not
+ * do.
  *
  * Rolled back, then said out loud — a silent revert would have the agent puzzling
  * over work that keeps vanishing.

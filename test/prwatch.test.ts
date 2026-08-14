@@ -229,7 +229,7 @@ test("the lessons list is capped where it is written", async () => {
   const h = harness();
   const app = makeApp(h.ctx);
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'librarian', 'm', 'L1', 'tok-lib', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'librarian', 'm', 'tok-lib', 0)",
   );
   const ins = h.db.prepare("INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'lesson', 'zh', ?, ?)");
   for (let i = 0; i < LESSON_CAP; i++) ins.run(`lesson ${i}`, i);

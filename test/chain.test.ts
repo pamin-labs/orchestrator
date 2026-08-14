@@ -33,17 +33,17 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
   );
   if (opts.withPm !== false) {
     db.run(
-      "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'pm', 'm', 'L2', 'tok-pm', 0)",
+      "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'pm', 'm', 'tok-pm', 0)",
     );
   }
   if (opts.withArchitect) {
     db.run(
-      "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'architect', 'm', 'L2', 'tok-arch', 0)",
+      "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
     );
   }
   if (opts.withCos) {
     db.run(
-      "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'cos', 'm', 'L2', 'tok-cos', 0)",
+      "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'cos', 'm', 'tok-cos', 0)",
     );
   }
 
@@ -294,7 +294,7 @@ test("mailing a role that has no agent yet hires one instead of doing nothing", 
     hired.push(role);
     return h.db
       .query<{ id: number }, [string]>(
-        "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, ?, 'm', 'L2', hex(randomblob(8)), 0) RETURNING id",
+        "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, ?, 'm', hex(randomblob(8)), 0) RETURNING id",
       )
       .get(role)!.id;
   };
@@ -327,7 +327,7 @@ test("an unhired standing level is a level, not a reason to bother the boss", ()
   h.ctx.hire = (_g, role) =>
     h.db
       .query<{ id: number }, [string]>(
-        "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, ?, 'm', 'L2', hex(randomblob(8)), 0) RETURNING id",
+        "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, ?, 'm', hex(randomblob(8)), 0) RETURNING id",
       )
       .get(role)!.id;
   const id = h.ask("where should the seam go?");
@@ -344,10 +344,10 @@ test("a reply reaches the existing holder of a role instead of hiring a second o
     return 99;
   };
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-disp', 0)",
   );
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'architect', 'm', 'L2', 'tok-arch', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
   );
 
   // The Architect has no group, so a role lookup scoped to its own group would
@@ -365,10 +365,10 @@ test("a standing agent's mail is filed under the recipient's group, not nowhere"
   const h = harness();
   h.ctx.knownRoles = () => ["pm", "dispatcher", "architect"];
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'L2', 'tok-disp', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-disp', 0)",
   );
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'architect', 'm', 'L2', 'tok-arch', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
   );
 
   await h.post("/orch/mail", { target: "dispatcher", intent: "inform", body: "反对：locale 推断与验收冲突" }, "tok-arch");
@@ -388,7 +388,7 @@ test("an empty mail body is refused instead of waking someone with nothing to re
   const h = harness();
   h.ctx.knownRoles = () => ["architect"];
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'engineer', 'm', 'L1', 'tok-e', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 'tok-e', 0)",
   );
   // What a real run produced: the Dispatcher invented `--wait`, the parser took
   // it as a flag, and the mail went out with no message at all.
@@ -404,7 +404,7 @@ test("the boss can hand a question to the Architect instead of answering it", as
   const h = harness();
   h.ctx.knownRoles = () => ["pm", "architect", "cos"];
   h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, NULL, 'architect', 'm', 'L2', 'tok-arch', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
   );
   const id = h.ask("用哪个校验库？");
   const r = await h.post(`/api/escalations/${id}/delegate`, { to: "architect" });

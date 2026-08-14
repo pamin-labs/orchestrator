@@ -142,7 +142,6 @@ export function agentOf(ctx: Ctx, req: Request): Caller | null {
   );
 }
 
-/** A fresh token for a newly hired agent. */
 /** What the boss first asked for, for this group. */
 function firstIdea(ctx: Ctx, grpId: number): string {
   return (
@@ -154,6 +153,7 @@ function firstIdea(ctx: Ctx, grpId: number): string {
   );
 }
 
+/** A fresh token for a newly hired agent. */
 export function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
@@ -605,19 +605,6 @@ const postSetup: Handler = async (ctx, req) => {
   }
   return r.ok ? text("ok") : bad(`install failed:\n${r.tail}`);
 };
-
-/** Extra registries a project needs, from `config_json.installDomains`. */
-function installDomains(ctx: Ctx, projectId: number): string[] {
-  try {
-    const row = ctx.db
-      .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-      .get(projectId);
-    const v = JSON.parse(row?.config_json ?? "{}").installDomains;
-    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
 
 const postLease: Handler = async (ctx, req) => {
   const b = await body<{ resource: string; args?: Record<string, unknown> }>(req);
@@ -1639,7 +1626,7 @@ export function snapshot(ctx: Ctx) {
     // a busy one — "in_progress" looks identical either way.
     agents: db
       .query(
-        `SELECT a.id, a.grp_id, a.role, a.model, a.clearance, a.state, a.activity, a.session_tokens,
+        `SELECT a.id, a.grp_id, a.role, a.model, a.state, a.activity, a.session_tokens,
                 a.total_tokens,
                 (SELECT count(*) FROM job j WHERE j.agent_id = a.id AND j.kind = 'agent_turn'
                   AND j.state IN ('done','failed')) AS turns,

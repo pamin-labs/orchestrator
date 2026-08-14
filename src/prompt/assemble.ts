@@ -33,7 +33,6 @@ export interface StablePrompt {
    */
   tools: string[];
   allowedTools: string[];
-  settingsPath: string;
   addDirs: string[];
   /** sha256 of everything above. Stored on the session; compared each turn. */
   hash: string;
@@ -81,7 +80,6 @@ export interface StableParts {
   effort?: string;
   tools?: string[];
   allowedTools: string[];
-  settingsPath: string;
   addDirs: string[];
 }
 
@@ -181,7 +179,6 @@ export function buildStable(parts: StableParts): StablePrompt {
     effort: parts.effort,
     tools: [...(parts.tools ?? toolsFromAllowed(parts.allowedTools))],
     allowedTools: [...parts.allowedTools],
-    settingsPath: parts.settingsPath,
     addDirs: [...parts.addDirs],
   };
   return { ...stable, hash: hashStable(stable) };
@@ -203,8 +200,6 @@ export function hashStable(s: Omit<StablePrompt, "hash">): string {
   h.update(s.tools.join(","));
   h.update(SEP);
   h.update(s.allowedTools.join(","));
-  h.update(SEP);
-  h.update(s.settingsPath);
   h.update(SEP);
   h.update(s.addDirs.join(","));
   return h.digest("hex");

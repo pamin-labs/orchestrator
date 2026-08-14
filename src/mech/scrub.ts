@@ -6,7 +6,8 @@ import type { DB } from "../db.ts";
  * `claude setup-token` prints the token it just minted, and the login streams the
  * CLI's output to the panel so the boss can see the link — so the token went on
  * screen, in full, and on a failure it went into the `event` table with the last
- * 300 characters of output. db.ts:459 already promised this could not happen; it
+ * 300 characters of output. Migration 035 in db.ts already promised a stored
+ * credential reaches no event, prompt or log; it
  * was a promise with nothing enforcing it (硬约束 3).
  *
  * Two passes, in GitHub Actions' order and for its reason. Actions masks by

@@ -3,7 +3,6 @@ import { openMemory, type DB } from "../src/db.ts";
 import {
   canStart,
   claimsShared,
-  denyOutsideOwns,
   overlaps,
   outsideOwns,
   sharedFor,
@@ -125,56 +124,6 @@ test("a project may declare extra shared paths", () => {
   expect(canStart(db, 1).ok).toBe(false);
 });
 
-const tree: Record<string, string[]> = {
-  "": ["src", "web", "docs", ".git", "README.md"],
-  src: ["auth", "ui", "db"],
-  "src/auth": ["mw.ts", "tokens.ts"],
-  web: ["src", "dist", "index.html"],
-};
-const listDir = (rel: string) => tree[rel] ?? [];
-
-test("denial walks down the owned path, not just the top level", () => {
-  const deny = denyOutsideOwns("/wt/g1", ["src/auth/**"], listDir);
-  expect(deny).toContain("/wt/g1/docs/**");
-  // `web` holds the build output, so it is denied entry by entry instead of whole:
-  // the build gate runs for every group and has to be able to write what the gate
-  // then checks, and allowWrite cannot carve a hole in a broader denyWrite.
-  expect(deny).toContain("/wt/g1/web/src/**");
-  expect(deny).toContain("/wt/g1/web/index.html");
-  expect(deny).not.toContain("/wt/g1/web/**");
-  expect(deny.some((d) => d.includes("/web/dist"))).toBe(false);
-  // The case top-level-only denial missed, and the likeliest place to wander: a
-  // sibling module one level in.
-  expect(deny).toContain("/wt/g1/src/ui/**");
-  expect(deny).toContain("/wt/g1/src/db/**");
-  // Its own path stays writable at every level, and .git is never listed.
-  expect(deny.some((d) => d.includes("/src/auth"))).toBe(false);
-  expect(deny.some((d) => d === "/wt/g1/src/**")).toBe(false);
-  expect(deny.some((d) => d.includes(".git"))).toBe(false);
-});
-
-test("files are denied as well as directories", () => {
-  const deny = denyOutsideOwns("/wt/g1", ["src/auth/**"], listDir);
-  // A stray edit to a top-level file is as unwanted as one to a sibling module.
-  expect(deny).toContain("/wt/g1/README.md");
-});
-
-test("a wildcard stops the walk — everything below it is owned", () => {
-  expect(denyOutsideOwns("/wt/g1", ["**/*.ts"], listDir)).toEqual([]);
-  const src = denyOutsideOwns("/wt/g1", ["src/*"], listDir);
-  expect(src).toContain("/wt/g1/web/src/**");
-  // Nothing inside the owned src is denied: the group owns all of it. (`web/src`
-  // is a different directory and stays denied.)
-  expect(src.some((d) => d.startsWith("/wt/g1/src/"))).toBe(false);
-});
-
-test("two owned paths keep both branches writable", () => {
-  const deny = denyOutsideOwns("/wt/g1", ["src/auth/**", "src/db/**"], listDir);
-  expect(deny).toContain("/wt/g1/src/ui/**");
-  expect(deny.some((d) => d.includes("/src/auth"))).toBe(false);
-  expect(deny.some((d) => d.includes("/src/db"))).toBe(false);
-});
-
 // -------------------------------------------------------------- merge queue
 
 test("branches merge in the order they passed audit", () => {
@@ -249,10 +198,9 @@ test("a group granted one shared path by name may start; everyone else still may
   expect(canStart(db, 3).sharedClaimed).toContain("tsconfig.json");
 });
 
-test("after-the-fact ownership catches what a deny-list would have blocked", () => {
-  // codex cannot be told which paths a turn may write — cwd stays writable
-  // whatever writable_roots says — so the same rule runs against `git status`
-  // once the turn is over. These are the cases denyOutsideOwns covers up front.
+test("after-the-fact ownership catches a write outside the boundary", () => {
+  // The container knows nothing about which group owns which file, so this rule
+  // runs against `git status` once the turn is over. It is the only clock left.
   const owns = ["src/auth/**", "docs/auth.md"];
   const changed = [
     "src/auth/mw.ts", // owned, deep
@@ -267,7 +215,7 @@ test("after-the-fact ownership catches what a deny-list would have blocked", () 
   expect(outsideOwns(["src/a/b.ts"], ["src/*"])).toEqual(["src/a/b.ts"]);
   expect(outsideOwns(["src/a/b.ts"], ["src/**"])).toEqual([]);
 
-  // A group that declared no boundary is not policed here, exactly as
-  // denyOutsideOwns declines to build a deny-list for one.
+  // A group that declared no boundary is not policed here: nothing to police it
+  // against, and reverting everything it wrote is worse than reverting nothing.
   expect(outsideOwns(changed, [])).toEqual([]);
 });

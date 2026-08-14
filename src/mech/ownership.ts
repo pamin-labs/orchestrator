@@ -89,17 +89,15 @@ export function claimsShared(owns: string[], shared: string[]): string[] {
 /**
  * Which of these repo-relative paths the group had no business writing.
  *
- * The deny-list in denyOutsideOwns() stops the write before it happens, but only
- * where the sandbox takes a deny-list. codex's does not — cwd stays writable
- * whatever `writable_roots` says — so for those providers the same rule is
- * applied to `git status` after the turn instead, and the offending files are
- * rolled back. Same rule, later clock.
+ * Checked after the turn, against `git status`, and the offending files are
+ * rolled back. There is no earlier clock left: a deny-list used to stop the write
+ * before it happened, but the container knows nothing about which group owns
+ * which file, so this is the only mechanism (decision 005, §Ceiling).
  *
  * A group that declared nothing owns nothing in particular and is not policed
- * here; that is the same reading denyOutsideOwns takes. Build outputs are exempt
- * for the same reason they are exempt there: the gate writes them on every run,
- * for every group, and it has to be able to produce the thing it then checks. So
- * are the files the orchestrator itself puts in the worktree.
+ * here. Build outputs are exempt: the gate writes them on every run, for every
+ * group, and it has to be able to produce the thing it then checks. So are the
+ * files the orchestrator itself puts in the worktree.
  */
 export function outsideOwns(changed: string[], owns: string[]): string[] {
   if (!owns.length) return [];
@@ -201,24 +199,11 @@ export function canStart(db: DB, grpId: number): StartCheck {
 }
 
 /**
- * Extra denyWrite entries that keep a group inside its own paths.
+ * Never counted as a stray write, whatever the group owns.
  *
- * The sandbox is deny-only, so "only these globs are writable" cannot be stated
- * directly. What can be stated is the complement: walk down the owned paths and
- * deny every sibling encountered on the way. `src/auth/**` therefore denies
- * `web/`, `docs/` at the top and `src/ui/`, `src/db/` one level in — which is the
- * case top-level-only denial missed entirely, and the likeliest place for a group
- * to wander.
- *
- * Wildcards stop the walk: a group owning `src/*` owns everything under src, and
- * there is no sibling to deny there.
- */
-/**
- * Never denied inside a worktree, whatever the group owns.
- *
- * The build gate writes here on every run, and it runs for every group. Denying it
- * to everyone who does not own `web/**` meant the gate could not produce the thing
- * the gate then checks.
+ * The build gate writes here on every run, and it runs for every group. Reverting
+ * it for everyone who does not own `web/**` meant the gate could not produce the
+ * thing the gate then checks.
  */
 const BUILD_OUTPUTS = ["web/dist"];
 
@@ -236,54 +221,3 @@ const BUILD_OUTPUTS = ["web/dist"];
  * per turn, forever.
  */
 const HARNESS_FILES = ["AGENTS.md", "CLAUDE.md"];
-
-export function denyOutsideOwns(
-  worktree: string,
-  owns: string[],
-  listDir: (relative: string) => string[],
-): string[] {
-  // Each owned glob contributes the chain of directories leading to it.
-  const ownedAt = new Map<string, Set<string>>(); // dir -> entries that must stay writable
-  const stopAt = new Set<string>(); // dirs whose contents are wholly owned
-
-  for (const glob of owns) {
-    const segs = glob.split("/").filter(Boolean);
-    let dir = "";
-    for (const [i, seg] of segs.entries()) {
-      if (seg.includes("*") || seg.includes("?")) {
-        // Everything at this level is in scope; nothing here to deny.
-        stopAt.add(dir);
-        break;
-      }
-      if (!ownedAt.has(dir)) ownedAt.set(dir, new Set());
-      ownedAt.get(dir)!.add(seg);
-      dir = dir ? `${dir}/${seg}` : seg;
-      if (i === segs.length - 1) stopAt.add(dir);
-    }
-  }
-
-  const deny: string[] = [];
-  for (const [dir, keep] of ownedAt) {
-    if (stopAt.has(dir)) continue;
-    for (const entry of listDir(dir)) {
-      if (entry === ".git" || keep.has(entry)) continue;
-      const rel = dir ? `${dir}/${entry}` : entry;
-      // The build gate writes its output on every run, for every group, so a blanket
-      // denial of the directory above it meant the gate could not produce the thing
-      // the gate then checks. `allowWrite` cannot carve an exception out of a
-      // broader `denyWrite` (see clearance.ts), so the denial has to step around it:
-      // deny this directory's entries one by one, minus the output.
-      if (BUILD_OUTPUTS.includes(rel)) continue;
-      if (BUILD_OUTPUTS.some((b) => b.startsWith(`${rel}/`))) {
-        for (const inner of listDir(rel)) {
-          const innerRel = `${rel}/${inner}`;
-          if (BUILD_OUTPUTS.includes(innerRel)) continue;
-          deny.push(`${worktree}/${innerRel}/**`, `${worktree}/${innerRel}`);
-        }
-        continue;
-      }
-      deny.push(`${worktree}/${rel}/**`, `${worktree}/${rel}`);
-    }
-  }
-  return [...new Set(deny)];
-}

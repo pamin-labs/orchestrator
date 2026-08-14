@@ -51,8 +51,8 @@ function harness() {
 /** A writer that has already delivered this card once. */
 function delivered(db: DB, opts: { owner: "live" | "retired" } = { owner: "live" }) {
   db.run(
-    `INSERT INTO agent (project_id, grp_id, role, model, clearance, token, state, created_at)
-     VALUES (1, 1, 'engineer', 'm', 'L1', 'tok-old', ?, 0)`,
+    `INSERT INTO agent (project_id, grp_id, role, model, token, state, created_at)
+     VALUES (1, 1, 'engineer', 'm', 'tok-old', ?, 0)`,
     [opts.owner === "retired" ? "retired" : "idle"],
   );
   const agentId = db.query<{ id: number }, []>("SELECT max(id) AS id FROM agent").get()!.id;
@@ -92,8 +92,8 @@ test("the writer can claim and close the card it was handed back", async () => {
   // The retry is a fresh session, so it is a fresh agent row. Ownership used to be
   // the old row's id, which nothing could ever release.
   h.db.run(
-    `INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at)
-     VALUES (1, 1, 'engineer', 'm', 'L1', 'tok-new', 0)`,
+    `INSERT INTO agent (project_id, grp_id, role, model, token, created_at)
+     VALUES (1, 1, 'engineer', 'm', 'tok-new', 0)`,
   );
 
   expect(await (await post(h.app, "/orch/task/claim", { task_id: 1 }, "tok-new")).text()).toBe("ok");
@@ -114,8 +114,8 @@ test("a card whose owner retired is not locked away from the group", async () =>
   delivered(h.db, { owner: "retired" });
   h.db.run("UPDATE task SET status = 'in_progress' WHERE id = 1");
   h.db.run(
-    `INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at)
-     VALUES (1, 1, 'engineer', 'm', 'L1', 'tok-new', 0)`,
+    `INSERT INTO agent (project_id, grp_id, role, model, token, created_at)
+     VALUES (1, 1, 'engineer', 'm', 'tok-new', 0)`,
   );
 
   const done = await post(

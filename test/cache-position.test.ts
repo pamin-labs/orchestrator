@@ -23,7 +23,6 @@ const parts = (over: Partial<StableParts> = {}): StableParts => ({
   language: "中文",
   model: "sonnet",
   allowedTools: ["Bash(orch *)", "Read", "Edit"],
-  settingsPath: "profiles/L1.json",
   addDirs: ["/tmp/wt/g1"],
   ...over,
 });
@@ -87,7 +86,7 @@ test("changing the stable half forces session rotation, not a silent edit", () =
     buildStable(parts({ onboarding: "different onboarding" })),
     buildStable(parts({ model: "opus" })),
     buildStable(parts({ allowedTools: ["Bash(orch *)"] })),
-    buildStable(parts({ settingsPath: "profiles/L2.json" })),
+    buildStable(parts({ effort: "high" })),
     buildStable(parts({ addDirs: ["/tmp/wt/g2"] })),
   ];
   for (const c of changed) {
@@ -146,7 +145,6 @@ test("a skill the boss pointed at lands in the delta, never in the cached prefix
     rolePrompt: "engineer",
     model: "claude-sonnet-5",
     allowedTools: ["Bash(orch *)", "Read"],
-    settingsPath: "/tmp/s.json",
     addDirs: ["/tmp/wt"],
   });
   const { prompt } = assemble(stable, { card: "S1", skills: body });

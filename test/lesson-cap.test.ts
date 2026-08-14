@@ -26,7 +26,7 @@ function harness() {
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, token, created_at) VALUES (1, 1, 'librarian', 'haiku', 'L1', 'tok-lib', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'librarian', 'haiku', 'tok-lib', 0)",
   );
   return { db, ctx, app: makeApp(ctx) };
 }

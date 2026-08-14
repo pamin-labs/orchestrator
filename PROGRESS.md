@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-**PLAN.md 全部实现完毕，354 checks 绿。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
+**PLAN.md 全部实现完毕，`bun test test/` 498 checks 绿。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
 
 **你只需要三个动作**：丢想法 → 批 DRAFT 卡（20 秒）→ 查收切片。gate 探测、入职包、PR 权限预检都在注册项目时自动完成。
 
@@ -504,3 +504,17 @@ preflight 那条改准了：本地留着旧 egress 不再误报 —— server �
 顺带修的：存下按钮挂在「API 地址」行上却存 token 且 `disabled={!secret.trim()}`，于是只改自建网关地址存不下去；存失败也照样清空输入框，被拒的 token 直接没了只剩一个 toast。
 
 `bun test test/` 475 pass。
+
+### 容器化留下的旧防线，扫掉；顺手堵上信箱开的窟窿
+
+**先说结论：没有一层安全措施是重复的。** 容器 / 凭据 / `orch` 校验三层各管各的，容器之前那套宿主补偿（`clearance.ts`、`confine()`/srt、`setupRefusal`、`handleDenials`、`postGit`）在 005 那轮就删干净了。这轮扫出来的是**残骸**，加一个反向的发现。
+
+**窟窿：信箱把老板的路由也送进了沙盒。** `serve()` 拿请求文件里的 path 原样重放给本机 server，而 `/api/*` 不做 token 检查 —— 它本来只有 127.0.0.1 上的浏览器够得着，信箱让沙盒也成了 127.0.0.1。于是沙盒里的 agent 可以 `POST /api/draft/<id>/approve` 自己批自己的卡、`/api/slices/<id>/accept` 自己查收自己的切片、`/api/auth` 覆盖老板的凭据 —— 三道闸门从边界内部整个绕过去。**换传输的时候信任边界跟着换了，没人跟上。** 现在 `serve()` 只放 `/orch/`，其余回 403（不是丢掉：丢掉的话 agent 永远等回信）。`test/mailbox.test.ts` 两条守着。
+
+**删掉的残骸**：`denyOutsideOwns`（005 的记录里写着删了，其实只有测试在引用它，53 行）、`worktree.ts` 里六个函数早没了、说明还在的孤儿注释块（76 行）、`api.ts` 的 `installDomains`、`settingsPath`（永远是 `""`，两个 adapter 都不读，却还进 prefix hash）、`test/sandbox-probe.sh`（探的是 Claude 内置 seatbelt）、`--allowedTools`（`--dangerously-skip-permissions` 之下它管的事不存在了；`--tools` 才是省 46k 前缀的那个）。
+
+**两个从来没被写过的列**（migration 022 DROP）：`clearance` 每行都是默认 `'L1'`，工位墙照着它显示「权限 L1」—— 一个没有权限等级的系统在给老板看权限等级；`denial_turns` 数的是权限拒绝的连续次数，而容器里不会再有权限拒绝。
+
+**文档扫尾**：PLAN.md 的 §2/§4/§5/§8/§10/§12 还在写 Seatbelt、`--settings <clearance-profile.json>`、「Runner 跑在 host 上有真权限」、`denyWrite` 挡住越界写；decisions 003/004 重新标了 status（004 的三条决定有两条被 005 取代）；005 的 header 说 vault 还开着，其实早落了，Ceiling 里补上信箱这条。**不扫的话，下一个人照着 PLAN.md 会把 clearance 那套建回来。**
+
+`bun test test/` 498 pass。注意 `bun test` 不加路径会把 `data/codex-home/` 里的插件模板也当测试跑（27 个无关失败）—— 一直如此，跑 `bun test test/`。

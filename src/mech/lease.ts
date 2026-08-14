@@ -2,9 +2,9 @@ import { resolve as resolvePath, relative, isAbsolute } from "node:path";
 import type { Invalid, Result } from "./validate.ts";
 
 /**
- * The Runner runs on the host with real privileges while agents sit in a
- * sandbox, so this module is the sandbox's only opening. Two structural
- * defences, not one:
+ * A lease runs in the group's own sandbox, so this is no longer the host's only
+ * opening — it is the agent's only interface. The reason inverted, the rules did
+ * not (hard constraint 2). Two structural defences, not one:
  *
  *  1. A resource is a *template* from config. An agent picks a name and passes
  *     args; it can never supply a command.
@@ -32,7 +32,7 @@ export interface ResourceDef {
   /** Lines matching this are lifted into the digest. */
   errorRegex?: string;
   cwd?: string;
-  /** Pools, plus `host` to opt out of the sandbox — see `runResource`. */
+  /** Pool names. One global slot count cannot fit a browser and a typecheck. */
   tags?: string[];
 }
 

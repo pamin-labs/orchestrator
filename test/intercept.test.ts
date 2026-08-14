@@ -45,7 +45,7 @@ function harness(worktree: string, repoPath: string, checkpoint: string) {
     worktree,
   ]);
   db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, clearance, state, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'L1', 'running', 0)",
+    "INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'running', 0)",
   );
   db.run(
     `INSERT INTO job (kind, grp_id, agent_id, state, checkpoint_sha, pid, enqueued_at, started_at)
