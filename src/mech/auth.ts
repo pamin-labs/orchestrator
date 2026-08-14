@@ -122,7 +122,10 @@ export function listAuth(db: DB): Array<{ runtime: string; mode: AuthMode; hint:
     .map((r) => ({
       runtime: r.runtime,
       mode: r.mode as AuthMode,
-      hint: `…${r.secret.slice(-6)}`,
+      // A token's tail identifies it. A pasted auth.json's tail is `11Z" }`,
+      // which identifies nothing — for that one the account it logged in as is
+      // the only thing worth showing.
+      hint: r.mode === "chatgpt" ? chatgptHint(r.secret) : `…${r.secret.slice(-6)}`,
       baseUrl: r.base_url ?? undefined,
       updatedAt: r.updated_at,
     }));
@@ -234,6 +237,12 @@ export async function vaultBindings(db: DB, dataDir: string): Promise<{ credenti
       },
     ],
   };
+}
+
+function chatgptHint(secret: string): string {
+  const a = parseAuth(secret);
+  const id = a?.tokens?.account_id;
+  return id ? `账号 …${id.slice(-6)}` : "auth.json";
 }
 
 /** Real credentials for the vault, and the fakes that go in the environment. */

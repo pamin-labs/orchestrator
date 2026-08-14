@@ -18,7 +18,13 @@ import { cn } from "../lib/utils";
  */
 
 export function FieldGroup({ className, ...rest }: React.ComponentProps<"div">) {
-  return <div data-slot="field-group" className={cn("flex w-full flex-col border-t border-rule", className)} {...rest} />;
+  return (
+    <div
+      data-slot="field-group"
+      className={cn("flex w-full flex-col border-t border-rule", className)}
+      {...rest}
+    />
+  );
 }
 
 export function Field({
@@ -33,8 +39,10 @@ export function Field({
       data-orientation={orientation}
       className={cn(
         "group/field gap-x-4 border-b border-rule-soft py-2",
+        // The label column is a variable so a narrower context — two settings
+        // blocks side by side — can tighten it without a second Field.
         orientation === "horizontal"
-          ? "grid grid-cols-[10rem_minmax(0,1fr)] items-baseline"
+          ? "grid grid-cols-[var(--label,10rem)_minmax(0,1fr)] items-baseline"
           : "flex flex-col gap-y-1.5",
         // A value the boss has to act on, said by the label's ink rather than by
         // a badge next to it.
@@ -69,7 +77,9 @@ export function FieldTitle({ className, ...rest }: React.ComponentProps<"div">) 
 
 /** The value side. Anything wider than one control goes in here. */
 export function FieldContent({ className, ...rest }: React.ComponentProps<"div">) {
-  return <div data-slot="field-content" className={cn("flex min-w-0 items-center gap-2", className)} {...rest} />;
+  return (
+    <div data-slot="field-content" className={cn("flex min-w-0 items-center gap-2", className)} {...rest} />
+  );
 }
 
 /**
@@ -80,5 +90,11 @@ export function FieldContent({ className, ...rest }: React.ComponentProps<"div">
  * two-boxes-around-one-thing rule.
  */
 export function InputGroup({ className, ...rest }: React.ComponentProps<"div">) {
-  return <div data-slot="input-group" className={cn("flex min-w-0 flex-1 items-center gap-2", className)} {...rest} />;
+  return (
+    <div
+      data-slot="input-group"
+      className={cn("flex min-w-0 flex-1 items-center gap-2", className)}
+      {...rest}
+    />
+  );
 }

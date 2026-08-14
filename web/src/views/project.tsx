@@ -54,95 +54,101 @@ export function ProjectSettings({ projectId }: { projectId: number }) {
   const set = (k: string, v: unknown) => patch({ sandbox: { ...sandbox, [k]: v } });
 
   return (
-    <Pane className="max-w-[46rem]">
-      <H2 className="mb-1.5">闸门</H2>
-      <Toggles
-        value={gates}
-        // Pressed order is running order, so a gate switched back on goes to the
-        // end rather than back to wherever it used to sit.
-        onValueChange={(next) => patch({ gates: next })}
-        className="border-t border-rule"
-      >
-        {d.resources.map((res) => (
-          <Toggle
-            key={res.name}
-            value={res.name}
-            className="grid grid-cols-[10rem_minmax(0,1fr)] items-baseline gap-x-4"
+    <Pane className="@container">
+      <div className="grid max-w-[72rem] grid-cols-1 gap-x-12 gap-y-9 @3xl:grid-cols-2">
+        <section>
+          <H2 className="mb-1.5">闸门</H2>
+          <Toggles
+            value={gates}
+            // Pressed order is running order, so a gate switched back on goes to the
+            // end rather than back to wherever it used to sit.
+            onValueChange={(next) => patch({ gates: next })}
+            className="border-t border-rule"
           >
-            <span className="text-[0.8125rem]">{res.name}</span>
-            <span className="flex min-w-0 items-baseline gap-2">
-              <Meta className="min-w-0 flex-1 truncate">{res.template}</Meta>
-              {gates.includes(res.name) && <Meta>第 {gates.indexOf(res.name) + 1} 道</Meta>}
-            </span>
-          </Toggle>
-        ))}
-      </Toggles>
-      {!d.resources.length && <Meta className="block py-2">没探到可跑的命令。</Meta>}
-      {d.resources.length > 0 && !gates.length && (
-        <Meta className="mt-1.5 block text-accent">一道都没开，LLM 审阅底下就没有地板。</Meta>
-      )}
+            {d.resources.map((res) => (
+              <Toggle
+                key={res.name}
+                value={res.name}
+                className="grid grid-cols-[7rem_minmax(0,1fr)] items-baseline gap-x-4"
+              >
+                <span className="text-[0.8125rem]">{res.name}</span>
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <Meta className="min-w-0 flex-1 truncate">{res.template}</Meta>
+                  {gates.includes(res.name) && <Meta>第 {gates.indexOf(res.name) + 1} 道</Meta>}
+                </span>
+              </Toggle>
+            ))}
+          </Toggles>
+          {!d.resources.length && <Meta className="block py-2">没探到可跑的命令。</Meta>}
+          {d.resources.length > 0 && !gates.length && (
+            <Meta className="mt-1.5 block text-accent">一道都没开，LLM 审阅底下就没有地板。</Meta>
+          )}
+        </section>
 
-      <H2 className="mt-9 mb-1.5">沙盒</H2>
-      <FieldGroup>
-        <Row
-          label="装依赖"
-          value={d.config.install ?? ""}
-          placeholder="留空由 bootstrap 读仓库判断"
-          busy={busy}
-          onSave={(v) => patch({ install: v || null })}
-        />
-        <Row
-          label="镜像"
-          value={sandbox.image ?? ""}
-          placeholder="orch/agent:1"
-          busy={busy}
-          onSave={(v) => set("image", v || undefined)}
-        />
-        <Row
-          label="CPU"
-          value={sandbox.cpu ?? ""}
-          placeholder="宿主核数的 1/4"
-          busy={busy}
-          onSave={(v) => set("cpu", v || undefined)}
-        />
-        <Row
-          label="内存"
-          value={sandbox.memory ?? ""}
-          placeholder="8Gi"
-          busy={busy}
-          onSave={(v) => set("memory", v || undefined)}
-        />
-        <Row
-          label="禁止访问"
-          value={(sandbox.denyDomains ?? []).join(" ")}
-          placeholder="域名，空格分隔"
-          busy={busy}
-          onSave={(v) => set("denyDomains", v.split(/\s+/).filter(Boolean))}
-        />
-        <Row
-          label="共享缓存"
-          value={Object.entries(sandbox.cacheDirs ?? {})
-            .map(([k, v]) => `${k}:${v}`)
-            .join(" ")}
-          placeholder="/root/.bun/install/cache:/var/tmp/orch-cache"
-          busy={busy}
-          onSave={(v) =>
-            set(
-              "cacheDirs",
-              Object.fromEntries(
-                v
-                  .split(/\s+/)
-                  .filter(Boolean)
-                  .map((pair) => {
-                    const i = pair.lastIndexOf(":");
-                    return i > 0 ? [pair.slice(0, i), pair.slice(i + 1)] : [pair, ""];
-                  })
-                  .filter(([, host]) => host),
-              ),
-            )
-          }
-        />
-      </FieldGroup>
+        <section>
+          <H2 className="mb-1.5">沙盒</H2>
+          <FieldGroup className="[--label:5rem]">
+            <Row
+              label="装依赖"
+              value={d.config.install ?? ""}
+              placeholder="留空由 bootstrap 读仓库判断"
+              busy={busy}
+              onSave={(v) => patch({ install: v || null })}
+            />
+            <Row
+              label="镜像"
+              value={sandbox.image ?? ""}
+              placeholder="orch/agent:1"
+              busy={busy}
+              onSave={(v) => set("image", v || undefined)}
+            />
+            <Row
+              label="CPU"
+              value={sandbox.cpu ?? ""}
+              placeholder="宿主核数的 1/4"
+              busy={busy}
+              onSave={(v) => set("cpu", v || undefined)}
+            />
+            <Row
+              label="内存"
+              value={sandbox.memory ?? ""}
+              placeholder="8Gi"
+              busy={busy}
+              onSave={(v) => set("memory", v || undefined)}
+            />
+            <Row
+              label="禁止访问"
+              value={(sandbox.denyDomains ?? []).join(" ")}
+              placeholder="域名，空格分隔"
+              busy={busy}
+              onSave={(v) => set("denyDomains", v.split(/\s+/).filter(Boolean))}
+            />
+            <Row
+              label="共享缓存"
+              value={Object.entries(sandbox.cacheDirs ?? {})
+                .map(([k, v]) => `${k}:${v}`)
+                .join(" ")}
+              placeholder="/root/.bun/install/cache:/var/tmp/orch-cache"
+              busy={busy}
+              onSave={(v) =>
+                set(
+                  "cacheDirs",
+                  Object.fromEntries(
+                    v
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .map((pair) => {
+                        const i = pair.lastIndexOf(":");
+                        return i > 0 ? [pair.slice(0, i), pair.slice(i + 1)] : [pair, ""];
+                      })
+                      .filter(([, host]) => host),
+                  ),
+                )
+              }
+            />
+          </FieldGroup>
+        </section>
+      </div>
     </Pane>
   );
 }
