@@ -1,5 +1,6 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Tip } from "./tooltip";
 import { cn } from "../lib/utils";
 
 /**
@@ -47,18 +48,31 @@ export function ThemeToggle() {
     return () => mq.removeEventListener("change", onChange);
   }, [pref]);
 
+  // Its own listener rather than a prop from the shell: the state it flips lives
+  // here, and lifting it would be a second copy to keep in step.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== "l") return;
+      e.preventDefault();
+      setPref((p) => NEXT[p]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const Icon = pref === "system" ? Monitor : pref === "light" ? Sun : Moon;
   return (
-    <button
-      onClick={() => setPref((p) => NEXT[p])}
-      title={`主题：${ZH[pref]}（点击切到${ZH[NEXT[pref]]}）`}
-      aria-label={`主题：${ZH[pref]}`}
-      className={cn(
-        "grid size-6.5 cursor-pointer place-items-center rounded-md text-ink-3",
-        "transition-colors hover:bg-sunk hover:text-ink",
-      )}
-    >
-      <Icon size={14} strokeWidth={1.75} />
-    </button>
+    <Tip label={`主题：${ZH[pref]}，点一下切到${ZH[NEXT[pref]]} ⌘⇧L`}>
+      <button
+        onClick={() => setPref((p) => NEXT[p])}
+        aria-label={`主题：${ZH[pref]}`}
+        className={cn(
+          "grid size-6.5 cursor-pointer place-items-center rounded-md text-ink-3",
+          "transition-colors hover:bg-sunk hover:text-ink",
+        )}
+      >
+        <Icon size={14} strokeWidth={1.75} />
+      </button>
+    </Tip>
   );
 }

@@ -141,10 +141,21 @@ export function App() {
   // wrong thing at exactly the depth it is most useful.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "k" || !(e.metaKey || e.ctrlKey)) return;
-      e.preventDefault();
-      if (sel.view === "req" && sel.g) setPickReq((v) => !v);
-      else setPickProject((v) => !v);
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      // The three controls at the right of the bar are the ones reached most and
+      // named least — an icon each. ⌘S rather than ⌘, because the browser owns
+      // the comma on this platform and a page cannot take it back.
+      if (e.key === "b") {
+        e.preventDefault();
+        setSide((v) => !v);
+      } else if (e.key === "s") {
+        e.preventDefault();
+        go({ view: "settings" });
+      } else if (e.key === "k") {
+        e.preventDefault();
+        if (sel.view === "req" && sel.g) setPickReq((v) => !v);
+        else setPickProject((v) => !v);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -363,7 +374,7 @@ export function App() {
         )}
         <span className="ml-2 flex items-center gap-1 border-l border-rule pl-3">
         {!home && (
-          <Tip label={side ? "收起事件流" : "展开事件流：谁跟谁说了什么，按时间倒序"}>
+          <Tip label={`${side ? "收起事件流" : "展开事件流：谁跟谁说了什么，按时间倒序"} ⌘B`}>
             <button
               onClick={() => setSide((v) => !v)}
               aria-label="事件流"
@@ -380,7 +391,7 @@ export function App() {
             answers "is this wired up", which is asked once and then never again
             until something breaks — and when it does break, the accent says so
             from here. It opens over the work rather than replacing it. */}
-        <Tip label="设置：凭据、环境、这个项目的闸门和沙盒">
+        <Tip label="设置：账号、环境、这个项目的闸门和沙盒 ⌘S">
           <button
             onClick={() => go({ view: "settings" })}
             aria-label="设置"
