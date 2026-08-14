@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { H2, Input, Meta, Pane } from "../ui/bits";
 import { Button } from "../ui/button";
+import { Field, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
 import { Toggle, Toggles } from "../ui/segment";
-import { ROW } from "./settings";
 import { pull, post } from "../lib/api";
-import { cn } from "../lib/utils";
 
 /**
  * What this repository does differently, and nothing that is true of all of them.
@@ -65,7 +64,11 @@ export function ProjectSettings({ projectId }: { projectId: number }) {
         className="border-t border-rule"
       >
         {d.resources.map((res) => (
-          <Toggle key={res.name} value={res.name} className={ROW}>
+          <Toggle
+            key={res.name}
+            value={res.name}
+            className="grid grid-cols-[10rem_minmax(0,1fr)] items-baseline gap-x-4"
+          >
             <span className="text-[0.8125rem]">{res.name}</span>
             <span className="flex min-w-0 items-baseline gap-2">
               <Meta className="min-w-0 flex-1 truncate">{res.template}</Meta>
@@ -80,43 +83,43 @@ export function ProjectSettings({ projectId }: { projectId: number }) {
       )}
 
       <H2 className="mt-9 mb-1.5">沙盒</H2>
-      <div className="border-t border-rule">
-        <Field
+      <FieldGroup>
+        <Row
           label="装依赖"
           value={d.config.install ?? ""}
           placeholder="留空由 bootstrap 读仓库判断"
           busy={busy}
           onSave={(v) => patch({ install: v || null })}
         />
-        <Field
+        <Row
           label="镜像"
           value={sandbox.image ?? ""}
           placeholder="orch/agent:1"
           busy={busy}
           onSave={(v) => set("image", v || undefined)}
         />
-        <Field
+        <Row
           label="CPU"
           value={sandbox.cpu ?? ""}
           placeholder="宿主核数的 1/4"
           busy={busy}
           onSave={(v) => set("cpu", v || undefined)}
         />
-        <Field
+        <Row
           label="内存"
           value={sandbox.memory ?? ""}
           placeholder="8Gi"
           busy={busy}
           onSave={(v) => set("memory", v || undefined)}
         />
-        <Field
+        <Row
           label="禁止访问"
           value={(sandbox.denyDomains ?? []).join(" ")}
           placeholder="域名，空格分隔"
           busy={busy}
           onSave={(v) => set("denyDomains", v.split(/\s+/).filter(Boolean))}
         />
-        <Field
+        <Row
           label="共享缓存"
           value={Object.entries(sandbox.cacheDirs ?? {})
             .map(([k, v]) => `${k}:${v}`)
@@ -139,13 +142,13 @@ export function ProjectSettings({ projectId }: { projectId: number }) {
             )
           }
         />
-      </div>
+      </FieldGroup>
     </Pane>
   );
 }
 
 /** Label, value, and a save that only appears once there is something to save. */
-function Field(props: {
+function Row(props: {
   label: string;
   value: string;
   placeholder: string;
@@ -156,11 +159,13 @@ function Field(props: {
   useEffect(() => setV(props.value), [props.value]);
   const dirty = v.trim() !== props.value.trim();
 
+  const id = `cfg-${props.label}`;
   return (
-    <div className={cn(ROW, "border-b border-rule-soft py-2")}>
-      <span className="text-[0.8125rem] text-ink">{props.label}</span>
-      <span className="flex items-center gap-2">
+    <Field>
+      <FieldLabel htmlFor={id}>{props.label}</FieldLabel>
+      <InputGroup>
         <Input
+          id={id}
           className="min-w-0 flex-1 font-mono"
           placeholder={props.placeholder}
           value={v}
@@ -177,7 +182,7 @@ function Field(props: {
             存下
           </Button>
         )}
-      </span>
-    </div>
+      </InputGroup>
+    </Field>
   );
 }

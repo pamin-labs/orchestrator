@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, CircleAlert } from "lucide-react";
 import { H2, Input, Meta, Pane, Textarea } from "../ui/bits";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../ui/field";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { Button } from "../ui/button";
 import { Segment, Segments } from "../ui/segment";
@@ -73,9 +74,6 @@ const RUNTIMES: Runtime[] = [
   },
 ];
 
-/** The grid every row on this page sits on. */
-export const ROW = "grid grid-cols-[10rem_minmax(0,1fr)] items-baseline gap-x-4";
-
 /** Host facts only. The credential rows are the 凭据 section, said once. */
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
 
@@ -132,29 +130,31 @@ export function Settings() {
       </Accordion>
 
       <H2 className="mt-9 mb-1.5">环境</H2>
-      <div className="border-t border-rule">
-        {checks.filter((c) => !isCredential(c)).map((c) => (
-          <div key={c.name} className={cn(ROW, "border-b border-rule-soft py-2")}>
-            <span className={cn("flex items-baseline gap-1.5 text-[0.8125rem]", c.ok ? "text-ink" : "text-accent")}>
-              {c.ok ? (
-                <Check size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-ok" />
-              ) : (
-                <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5" />
-              )}
-              <span className="min-w-0">{c.name}</span>
-            </span>
-            <span className="min-w-0">
-              <Meta className="break-all">{c.detail}</Meta>
-              {!c.ok && c.fix && (
-                <span className="mt-1 block rounded bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
-                  {c.fix}
-                </span>
-              )}
-            </span>
-          </div>
-        ))}
+      <FieldGroup>
+        {checks
+          .filter((c) => !isCredential(c))
+          .map((c) => (
+            <Field key={c.name} data-invalid={!c.ok}>
+              <FieldTitle>
+                {c.ok ? (
+                  <Check size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-ok" />
+                ) : (
+                  <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5" />
+                )}
+                {c.name}
+              </FieldTitle>
+              <div className="min-w-0">
+                <Meta className="break-all">{c.detail}</Meta>
+                {!c.ok && c.fix && (
+                  <span className="mt-1 block rounded bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
+                    {c.fix}
+                  </span>
+                )}
+              </div>
+            </Field>
+          ))}
         {!checks.length && <Meta className="block py-2">检查中…</Meta>}
-      </div>
+      </FieldGroup>
 
       <H2 className="mt-9 mb-1.5">沙盒服务器</H2>
       <SandboxKey current={rows.find((x) => x.runtime === "sandbox")} onSaved={load} />
@@ -210,8 +210,13 @@ function Credential(props: {
 
   return (
     <AccordionItem value={r.key} className="border-b border-rule-soft">
-      <AccordionTrigger className={cn(ROW, "py-2")}>
-        <span className="text-[0.8125rem] text-ink">{r.label}</span>
+      <AccordionTrigger
+        className={cn(
+          "grid grid-cols-[10rem_minmax(0,1fr)] items-baseline gap-x-4 py-2",
+          !cur && "[&_[data-slot=field-label]]:text-accent",
+        )}
+      >
+        <FieldTitle>{r.label}</FieldTitle>
         <span className="flex min-w-0 items-baseline gap-2">
           {cur ? (
             <>
@@ -230,10 +235,10 @@ function Credential(props: {
       </AccordionTrigger>
 
       <AccordionBody>
-        <div className="space-y-2 pt-2 pb-3.5">
-          <div className={ROW}>
-            <Meta>怎么拿</Meta>
-            <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        <FieldGroup className="border-t-0 pb-1">
+          <Field className="border-b-0 pt-0">
+            <FieldTitle className="text-ink-3">怎么拿</FieldTitle>
+            <FieldContent className="flex-wrap gap-x-3 gap-y-1">
               <Segments value={mode} onValueChange={(v) => setMode(v as Mode)}>
                 {r.modes.map((m) => (
                   <Segment key={m.mode} value={m.mode}>
@@ -251,12 +256,12 @@ function Credential(props: {
                   </Button>
                 </Tip>
               )}
-            </span>
-          </div>
+            </FieldContent>
+          </Field>
 
           {link && (
-            <div className={ROW}>
-              <Meta>登录页</Meta>
+            <Field className="border-b-0">
+              <FieldTitle className="text-ink-3">登录页</FieldTitle>
               {/* One line: the address is 400 characters of PKCE and nobody
                   reads it. It stays selectable for the case where the browser
                   that opened it is not the one you want to log in with. */}
@@ -266,13 +271,16 @@ function Credential(props: {
                 </a>
                 <Meta className="min-w-0 truncate">{link}</Meta>
               </span>
-            </div>
+            </Field>
           )}
 
-          <div className={ROW}>
-            <Meta>{mode === "chatgpt" ? "auth.json" : "token"}</Meta>
+          <Field className="border-b-0" orientation={mode === "chatgpt" ? "vertical" : "horizontal"}>
+            <FieldLabel htmlFor={`${r.key}-secret`} className="text-ink-3">
+              {mode === "chatgpt" ? "auth.json" : "token"}
+            </FieldLabel>
             {mode === "chatgpt" ? (
               <Textarea
+                id={`${r.key}-secret`}
                 className="min-h-16"
                 placeholder="~/.codex/auth.json 的完整内容"
                 value={secret}
@@ -280,6 +288,7 @@ function Credential(props: {
               />
             ) : (
               <Input
+                id={`${r.key}-secret`}
                 type="password"
                 className="font-mono"
                 placeholder="粘贴进来，存下之后看不到"
@@ -287,12 +296,15 @@ function Credential(props: {
                 onChange={(e) => setSecret(e.target.value)}
               />
             )}
-          </div>
+          </Field>
 
-          <div className={ROW}>
-            <Meta>API 地址</Meta>
-            <span className="flex items-center gap-2">
+          <Field className="border-b-0 pb-3.5">
+            <FieldLabel htmlFor={`${r.key}-url`} className="text-ink-3">
+              API 地址
+            </FieldLabel>
+            <InputGroup>
               <Input
+                id={`${r.key}-url`}
                 className="min-w-0 flex-1 font-mono"
                 placeholder={`可选，自建网关 → ${r.urlEnv}`}
                 value={baseUrl}
@@ -316,9 +328,9 @@ function Credential(props: {
               <Button variant="go" size="sm" disabled={busy || !secret.trim()} onClick={save}>
                 存下
               </Button>
-            </span>
-          </div>
-        </div>
+            </InputGroup>
+          </Field>
+        </FieldGroup>
       </AccordionBody>
     </AccordionItem>
   );
@@ -349,14 +361,15 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
   };
 
   return (
-    <div className="border-t border-rule">
-      <div className={cn(ROW, "border-b border-rule-soft py-2")}>
-        <span className="flex items-baseline gap-2 text-[0.8125rem] text-ink">
+    <FieldGroup>
+      <Field>
+        <FieldLabel htmlFor="sandbox-key">
           密钥
           <Meta>{props.current ? props.current.hint : "没设"}</Meta>
-        </span>
-        <span className="flex items-center gap-2">
+        </FieldLabel>
+        <InputGroup>
           <Input
+            id="sandbox-key"
             className="min-w-0 flex-1 font-mono"
             placeholder="留空 = 服务器没开鉴权"
             value={key}
@@ -370,16 +383,16 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
           <Button variant="go" size="sm" disabled={busy || !key.trim()} onClick={save}>
             存下
           </Button>
-        </span>
-      </div>
+        </InputGroup>
+      </Field>
       {key.trim() && (
-        <div className={cn(ROW, "py-2")}>
-          <Meta>另一半</Meta>
+        <Field className="border-b-0">
+          <FieldTitle className="text-ink-3">另一半</FieldTitle>
           <span className="min-w-0 rounded bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed break-all text-ink-2">
             ~/.sandbox.toml → [server] api_key = "{key.trim()}"
           </span>
-        </div>
+        </Field>
       )}
-    </div>
+    </FieldGroup>
   );
 }

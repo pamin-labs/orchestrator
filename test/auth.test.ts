@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
-import { absorbCodexHome, CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX_KEY, saveAuth, vaultFor } from "../src/mech/auth.ts";
+import { absorbCodexHome, CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX_KEY, saveAuth, vaultFor, wrongShape } from "../src/mech/auth.ts";
 import { newEnough, preflight, report } from "../src/mech/preflight.ts";
 import { accessToken, isStale, parseAuth, renew } from "../src/mech/chatgpt.ts";
 import { loginRuntimes, startLogin } from "../src/mech/login.ts";
@@ -216,4 +216,22 @@ test("the sandbox server key is stored like a secret, not in the committed yaml"
   expect(JSON.stringify(env)).not.toContain("generated-key");
   // And the settings page sees a tail, like every other secret.
   expect(listAuth(db).find((r) => r.runtime === SANDBOX_KEY)!.hint).toBe("…ed-key");
+});
+
+test("a secret that cannot be right is refused before it is stored", () => {
+  // The one that actually happened: the login URL pasted into the token box. It
+  // saved cleanly, the page said configured, and every turn afterwards failed
+  // with a 401 that reads like an expired subscription.
+  expect(wrongShape("claude", "oauth_token", "https://claude.com/cai/oauth/authorize?code=true")).toContain("网址");
+  expect(wrongShape("claude", "oauth_token", "sk-ant-api03-x")).toContain("sk-ant-oat01-");
+  expect(wrongShape("claude", "api_key", "sk-proj-x")).toContain("sk-ant-");
+  expect(wrongShape("codex", "api_key", "not-a-key")).toContain("sk-");
+  expect(wrongShape("codex", "chatgpt", "{}")).toContain("refresh_token");
+  expect(wrongShape("codex", "chatgpt", "half a file")).toContain("JSON");
+  expect(wrongShape("claude", "oauth_token", "  ")).toBe("空的");
+
+  // And the shapes that are right.
+  expect(wrongShape("claude", "oauth_token", `sk-ant-oat01-${"A".repeat(40)}`)).toBeNull();
+  expect(wrongShape("codex", "api_key", "sk-abc")).toBeNull();
+  expect(wrongShape("codex", "chatgpt", JSON.stringify({ tokens: { refresh_token: "r" } }))).toBeNull();
 });
