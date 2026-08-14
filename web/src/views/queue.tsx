@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
-import { Badge } from "../ui/badge";
 import { Tip } from "../ui/tooltip";
-import { CardRow } from "../ui/card";
 import { Meta } from "../ui/bits";
 import { post, pull } from "../lib/api";
 import type { State } from "../lib/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "../lib/rank";
 import { pending, prUrl } from "../lib/select";
 import { cn } from "../lib/utils";
-import { RejectSlice } from "./requirement";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
@@ -101,14 +98,10 @@ export function Queue({
         halted(s.grp_id) && REASONS.halted(),
         s.awaiting_at ? REASONS.waited(now - s.awaiting_at) : null,
       ]),
-      actions: (
-        <>
-          {/* 查收 happens on the requirement page, next to the diff and the verdicts:
-              accepting from a list is accepting a title. */}
-          <Button variant="go" onClick={() => onOpen(s.grp_id)}>去查收</Button>
-          <RejectSlice sliceId={s.id} refresh={refresh} />
-        </>
-      ),
+      // 查收 and 不满意 both happen on the requirement page, next to the diff and
+      // the verdicts: accepting from a list is accepting a title, and rejecting
+      // from one is rejecting a title.
+      actions: <Button variant="go" onClick={() => onOpen(s.grp_id)}>去查收</Button>,
     });
   }
   for (const m of w.merges) {
@@ -162,11 +155,11 @@ export function Queue({
       // asking: nothing is hanging on the reply and there is no requirement to
       // reply about. A 回答 box there is a text field whose text goes nowhere.
       fyi: !e.grp_id && e.severity !== "blocker",
-      // One button. 去回答 used to be the only one and it called onOpen(null) for a
-      // standing agent, so the one class of question with nowhere to navigate to
-      // was also the one the boss could not clear. Answering happens here; the row
-      // title still opens the requirement for anyone who wants the context.
-      actions: null,
+      // Answering happens where the question is readable in full, next to the
+      // group's slices and its record — not from a row that shows two lines of
+      // it. A standing agent has no requirement to go to, and `Cluster` gives
+      // those the inline reply box instead.
+      actions: e.grp_id ? <Button variant="go" onClick={() => onOpen(e.grp_id!)}>去回答</Button> : null,
     });
   }
 
@@ -186,10 +179,22 @@ export function Queue({
       points: c.points,
       node: <Cluster key={`g${c.grpId}`} st={st} c={c} onOpen={onOpen} refresh={refresh} />,
     })),
-    ...loose.map((i) => ({
-      points: i.points,
-      node: <Row key={i.key} item={i} onOpen={() => i.grpId != null && onOpen(i.grpId)} refresh={refresh} />,
-    })),
+    // A question from a standing agent has no requirement to sit under, so it
+    // gets one row of its own rather than a second shape in the list.
+    ...(loose.length
+      ? [{
+          points: Math.max(...loose.map((i) => i.points)),
+          node: (
+            <Cluster
+              key="standing"
+              st={st}
+              c={{ grpId: -1, items: loose }}
+              onOpen={onOpen}
+              refresh={refresh}
+            />
+          ),
+        }]
+      : []),
   ].sort((a, b) => b.points - a.points);
 
   // No card, no second 待办 label: the tab this renders into already carries the
@@ -198,101 +203,76 @@ export function Queue({
   // The sort order used to be printed above the list. Every row already carries
   // the reason it sits where it does, which is the same fact said once instead of
   // twice — and said on the row that has to justify itself.
-  return <div className="overflow-hidden rounded-md border border-rule-soft">{blocks.map((b) => b.node)}</div>;
+  return <div className="overflow-hidden rounded-lg border border-rule-soft">{blocks.map((b) => b.node)}</div>;
 }
 
-/** Several things on one requirement: go there once. */
+/**
+ * One requirement, one line, one way in.
+ *
+ * The boss decides; the agents write. Printing three lines of an agent's question
+ * on every row made the queue a wall of somebody else's prose — eight items, two
+ * hundred words, and the actual decision ("open nav or open the PR first") buried
+ * under all of it. TL;DR is the correct response to that page, and the answer is
+ * not smaller type.
+ *
+ * So the queue answers only what it is for: which requirement, what kind of
+ * decision, why now, and the way in. The words are one click away, on the page
+ * built to show them next to their evidence.
+ */
 function Cluster({
   st, c, onOpen, refresh,
 }: {
   st: State; c: { grpId: number; items: Item[] }; onOpen: (id: number) => void; refresh: () => void;
 }) {
+  const standing = c.grpId < 0;
   const g = st.groups.find((x) => x.id === c.grpId);
+  // Counted by kind, in the order the pipeline runs them.
+  const kinds = ["计划", "作废", "切片", "提问", "PR"]
+    .map((k) => ({ k, n: c.items.filter((i) => i.kind === k).length }))
+    .filter((x) => x.n > 0);
+  const top = c.items[0]!;
+  const stopped = top.reasons.some((r) => r.points >= 80);
   return (
-    <>
-      <div className="flex flex-wrap items-baseline gap-x-2 border-t border-rule-soft bg-sunk px-3.5 py-1.5">
-        <button
-          onClick={() => onOpen(c.grpId)}
-          className="cursor-pointer font-display text-[0.9375rem] font-semibold hover:text-accent"
-        >
-          {groupName(st, c.grpId)}
-        </button>
-        {/* The count, not a sentence about it. `2 件都在这个需求上，一趟处理完` was
-            the layout explaining itself: the rows are already under one name. */}
-        {c.items.length > 1 && <Meta>{c.items.length} 件</Meta>}
-        {g?.branch && <Meta className="ml-auto">{g.branch}</Meta>}
-      </div>
-      {c.items.map((i) => (
-        <Row key={i.key} item={i} onOpen={() => onOpen(c.grpId)} refresh={refresh} nested />
-      ))}
-    </>
-  );
-}
-
-function Row({
-  item, onOpen, refresh, nested,
-}: {
-  item: Item; onOpen: () => void; refresh: () => void; nested?: boolean;
-}) {
-  const top = item.reasons[0];
-  const stopped = item.reasons.some((r) => r.points >= 60);
-  return (
-    // Below ~52rem the buttons stop fitting beside the text and the row was pushing the
-    // whole page into a horizontal scroll. They wrap under instead.
-    <CardRow
-      onClick={onOpen}
+    <div
+      onClick={() => !standing && onOpen(c.grpId)}
       className={cn(
-        "grid cursor-pointer grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 transition-colors",
-        "max-[52rem]:grid-cols-[2.75rem_minmax(0,1fr)]",
-        // Tint marks work that is stopped, not membership of a list.
-        stopped ? "bg-accent-soft/60 hover:bg-accent-soft" : "bg-paper hover:bg-sunk",
-        nested && "pl-6",
+        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-t border-rule-soft",
+        "px-3.5 py-2.5 transition-colors first:border-t-0",
+        standing ? "" : "cursor-pointer hover:bg-rail/60",
       )}
     >
-      <span className={cn("font-mono text-[0.6875rem]", stopped ? "text-accent" : "text-ink-3")}>{item.kind}</span>
       <div className="min-w-0">
-        {/* Which requirement, on its own line and in the same weight the list of
-            requirements uses. It was a grey run-in ahead of the reasons, so the
-            first question a row has to answer — whose problem is this — was the
-            least visible thing on it. Suppressed inside a cluster, where the header
-            two rows up already says it. */}
-        {item.where && !nested && (
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="font-display text-[0.9375rem] font-semibold">{item.where}</span>
-            {item.flag && <Badge tone="mine">{item.flag}</Badge>}
-          </div>
-        )}
-        {/* Clamped, not truncated to one line: these are questions, and the first
-            line of one is rarely the part that says what is being asked. Two lines
-            is enough to decide whether to open it, and the card stays a card. */}
-        <button
-          onClick={onOpen}
-          className="line-clamp-2 cursor-pointer text-left text-[0.8125rem] text-ink-2 hover:text-accent"
-        >
-          {item.what} {(!item.where || nested) && item.flag && <Badge tone="mine">{item.flag}</Badge>}
-        </button>
-        <div className="truncate text-[0.75rem] text-ink-3">
-          {/* The reason, not the score. A number nobody can interrogate reorders rows
-              for reasons nobody can check, and the first time it looks wrong the whole
-              ordering stops being trusted. */}
-          {top && <span className={cn("font-medium", stopped ? "text-accent" : "text-ink-2")}>{top.why}</span>}
-          {item.reasons.slice(1, 3).map((r) => (
-            <span key={r.why}> · {r.why}</span>
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          {/* The accent marks what is stopped, not what is on the list — every row
+              here is on the list. */}
+          {stopped && <i className="size-1.5 shrink-0 rounded-full bg-accent" />}
+          <span className="truncate font-display text-[0.9375rem] font-semibold">
+            {standing ? "常驻岗" : groupName(st, c.grpId)}
+          </span>
+          {kinds.map(({ k, n }) => (
+            <span key={k} className="font-mono text-[0.6875rem] text-ink-2">
+              {k}
+              {n > 1 ? ` ${n}` : ""}
+            </span>
           ))}
-          {item.sub && <span> · {item.sub}</span>}
         </div>
+        {/* One reason, the one that put this row where it is. Three of them was
+            the row justifying itself at length to somebody who had already
+            decided to open it. */}
+        <Meta className="block truncate">
+          {top.reasons[0]?.why}
+          {g?.branch ? ` · ${g.branch}` : ""}
+        </Meta>
       </div>
-      {/* The row opens the requirement; the buttons on it do their own thing. It
-          used to be only the question text that navigated, which is a click target
-          the width of the words inside a row the width of the screen. */}
-      <span
-        onClick={(e) => e.stopPropagation()}
-        className="flex flex-wrap items-center gap-1.5 max-[52rem]:col-start-2"
-      >
-        {item.escId != null && <Reply escId={item.escId} fyi={item.fyi} refresh={refresh} />}
-        {item.actions}
+
+      <span onClick={(e) => e.stopPropagation()} className="flex flex-wrap items-center gap-1.5">
+        {/* A standing agent has no requirement to open, so the reply box is the
+            only way to clear it and it stays on the row. */}
+        {standing
+          ? c.items.map((i) => i.escId != null && <Reply key={i.key} escId={i.escId} fyi={i.fyi} refresh={refresh} />)
+          : top.actions}
       </span>
-    </CardRow>
+    </div>
   );
 }
 

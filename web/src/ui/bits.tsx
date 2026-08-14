@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Button } from "./button";
 import { cn } from "../lib/utils";
 
 /**
@@ -103,13 +104,9 @@ export function Clamp({ lines = 2, children }: { lines?: number; children: React
         {children}
       </div>
       {(over || open) && (
-        <button
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-          className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
-        >
+        <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? "收起" : "展开"}
-        </button>
+        </Button>
       )}
     </>
   );

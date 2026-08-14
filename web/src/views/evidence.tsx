@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Meta } from "../ui/bits";
+import { Button } from "../ui/button";
 import { Segment, Segments } from "../ui/segment";
 import { Tip } from "../ui/tooltip";
 import { DiffView } from "../ui/diff";
@@ -179,13 +180,9 @@ function VerdictRow({ author, body }: { author: string; body: string }) {
         </span>
         <span className="grow" />
         {long && (
-          <button
-            aria-expanded={open}
-            onClick={() => setOpen(!open)}
-            className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
-          >
+          <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
             {open ? "收起" : "展开"}
-          </button>
+          </Button>
         )}
       </div>
       <div

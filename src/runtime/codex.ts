@@ -35,12 +35,18 @@ export function buildArgv(spec: TurnSpec): string[] {
   // role's model and effort are silently overridden, and the skill catalogue is
   // prefix tax on every turn. (CODEX_HOME does the rest — see codexHome().)
   argv.push("--ignore-user-config", "--ignore-rules");
-  // Web search, where the role is allowed it. `allowedTools` is a Claude Code
-  // concept and means nothing to codex, but it is the one place that already
-  // says which roles may look things up, so it decides for both runtimes rather
-  // than the two drifting apart. `tools.web_search` is codex's own key; an
-  // unknown -c key is ignored by older builds, so this is safe to send.
-  if (spec.stable.allowedTools.includes("WebSearch")) argv.push("-c", "tools.web_search=true");
+  // Web search, by the same rule as the claude side: `allowedTools` is a Claude
+  // Code concept, but it is the one place that records which roles may look
+  // things up, and two lists would drift.
+  //
+  // Measured on codex-cli 0.147, all four combinations run live:
+  //   - search is ON by default, so granting it needs no flag
+  //   - the documented `tools.web_search=true|false` key is ignored entirely —
+  //     `false` still searched, which is the failure worth knowing about
+  //   - `web_search="disabled"` works, and `web_search="live"` works
+  // So this is written as a denial, not a grant. Everything else in the sandbox
+  // is deny-only for the same reason: the default has to be the safe one.
+  argv.push("-c", spec.stable.allowedTools.includes("WebSearch") ? 'web_search="live"' : 'web_search="disabled"');
   // Sandbox. Measured on codex 0.147 (docs/decisions/006):
   //   - the default and `-s read-only` have no network AT ALL, not even loopback,
   //     and `orch` is HTTP to 127.0.0.1 — a read-only agent is a mute agent

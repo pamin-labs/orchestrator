@@ -142,9 +142,9 @@ test("a codex role gets the web search tool exactly when its clearance allows it
       allowedTools: allowedToolsFor(role, "L2"),
     });
   const argv = (role: string) => buildArgv({ stable: stable(role), prompt: "hi", cwd: "/tmp" } as never);
-  // `allowedTools` is a Claude Code concept, but it is the one place that says
-  // which roles may look things up — so it decides for both runtimes instead of
-  // the two drifting apart.
-  expect(argv("architect").join(" ")).toContain("tools.web_search=true");
-  expect(argv("engineer").join(" ")).not.toContain("web_search");
+  // Written as a denial: codex 0.147 has search ON by default, so a role that
+  // may not search has to be told so. Measured — `tools.web_search=false` is
+  // ignored by that build and searched anyway.
+  expect(argv("architect").join(" ")).toContain('web_search="live"');
+  expect(argv("engineer").join(" ")).toContain('web_search="disabled"');
 });
