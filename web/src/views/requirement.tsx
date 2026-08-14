@@ -17,6 +17,7 @@ import { activityOf } from "../lib/activity";
 import { WithAttachments } from "../ui/attachments";
 import { useEffect, useState } from "react";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
+import { AnswerAll } from "./answer-all";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
 
@@ -158,6 +159,16 @@ export function Requirement({
               box it belongs to below the box's own bottom edge — the boss saw a
               question cut mid-sentence and no way to reply to it. */}
           <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden pb-2 pr-1">
+            {/* Two questions on one requirement are usually two halves of one
+                problem. Answering them one at a time is reading the same context
+                twice — this reads it once. */}
+            {mine.length > 1 && (
+              <div className="flex shrink-0 items-center gap-2">
+                <Meta>{mine.length} 条待你决策</Meta>
+                <span className="grow" />
+                <AnswerAll rows={mine} refresh={refresh} />
+              </div>
+            )}
             {mine.length > 0 && (
               <div className="shrink-0 overflow-hidden rounded-lg border border-accent">
                 <Accordion value={openAsk ?? String(mine[0]!.id)} onValueChange={setOpenAsk}>
