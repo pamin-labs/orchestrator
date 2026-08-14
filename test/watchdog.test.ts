@@ -667,7 +667,7 @@ test("a pending slice under an idle group is started rather than waited on", asy
   ).toBeGreaterThan(0);
 });
 
-test("a stale PR branch is told to rebase too, and the base comes from the remote", async () => {
+test("a stale PR branch is told to rebase too, with the measured remote base in its instructions", async () => {
   // PR_OPEN used to be excluded, so the one branch that has to merge only learned
   // main had moved when GitHub called it CONFLICTING — the late half of the same
   // news. And the base was read from the local checkout's HEAD, so a push from
@@ -681,7 +681,7 @@ test("a stale PR branch is told to rebase too, and the base comes from the remot
   h.ctx.git = async (_repo, argv) => {
     seen.push(argv);
     if (argv[0] === "remote") return { code: 0, out: "origin" };
-    if (argv[0] === "symbolic-ref") return { code: 0, out: "refs/remotes/origin/main" };
+    if (argv[0] === "symbolic-ref") return { code: 0, out: "refs/remotes/origin/master" };
     if (argv[0] === "rev-parse") return { code: 0, out: "abc1234567" };
     return { code: 1, out: "" }; // not an ancestor of the worktree
   };
@@ -689,7 +689,45 @@ test("a stale PR branch is told to rebase too, and the base comes from the remot
 
   expect((await runWatchdog(deps)).map((x) => x.rule)).toContain("base_moved");
   expect(seen.some((a) => a[0] === "fetch")).toBe(true);
-  expect(seen.some((a) => a[0] === "rev-parse" && a[1] === "origin/main")).toBe(true);
+  expect(seen.some((a) => a[0] === "rev-parse" && a[1] === "origin/master")).toBe(true);
+  const job = h.db
+    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn' AND state = 'pending'")
+    .get()!;
+  expect(JSON.parse(job.payload_json).rejection).toContain("origin/master moved to abc12345");
+  expect(JSON.parse(job.payload_json).rejection).toContain("orch git -- fetch origin master");
+  expect(JSON.parse(job.payload_json).rejection).toContain("orch git -- rebase origin/master");
+});
+
+test("rule 15 checks defaultBase, not the primary checkout's own HEAD", async () => {
+  // The primary checkout can be on a different local sha than the branch the
+  // group should actually rebase onto (detached HEAD, a stale local main, or
+  // just mid-command). Comparing against that sha instead of defaultBase is
+  // what made the check unsatisfiable: the group rebases exactly what the
+  // rejection tells it to and the watchdog still disagrees next tick.
+  const h = harness();
+  h.db.run("UPDATE grp SET worktree = '/tmp/wt/g1' WHERE id = 1");
+  const baseSha = "def4560000000000000000000000000000000000";
+  const staleLocalHeadSha = "aaa1110000000000000000000000000000000000";
+  h.ctx.git = async (_repo, argv) => {
+    if (argv[0] === "remote") return { code: 0, out: "origin\n" };
+    if (argv[0] === "symbolic-ref") return { code: 1, out: "" };
+    if (argv[0] === "rev-parse" && argv[1] === "--verify") {
+      return argv[3] === "origin/main" ? { code: 0, out: "" } : { code: 1, out: "" };
+    }
+    if (argv[0] === "rev-parse" && argv[1] === "origin/main") return { code: 0, out: baseSha };
+    if (argv[0] === "rev-parse" && argv[1] === "HEAD") return { code: 0, out: staleLocalHeadSha };
+    // defaultBase (origin/main) is already an ancestor of the group's branch.
+    if (argv[0] === "merge-base") return { code: 0, out: "" };
+    return { code: 1, out: "" };
+  };
+  const deps = { ...h.deps, git: h.ctx.git! };
+
+  const f = await runWatchdog(deps);
+  expect(f.map((x) => x.rule)).not.toContain("base_moved");
+  const jobs = h.db
+    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn'")
+    .all();
+  expect(jobs.map((j) => JSON.parse(j.payload_json).role)).not.toContain("engineer");
 });
 
 test("turn logs are compressed after a day and dropped after two weeks", () => {
