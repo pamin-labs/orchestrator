@@ -155,7 +155,14 @@ function owner(ctx: Ctx, scope: Scope): { sandboxId: string | null; projectId: n
 
 function remember(ctx: Ctx, scope: Scope, id: string | null): void {
   const h = holder(scope);
-  ctx.db.run(`UPDATE ${h.table} SET sandbox_id = ? WHERE id = ?`, [id, h.id]);
+  // The timestamp is what makes a stale binding visible. A sidecar is loaded
+  // with the credentials that existed at this moment and never again, so a
+  // sandbox older than the newest credential is one nobody has rebound.
+  ctx.db.run(`UPDATE ${h.table} SET sandbox_id = ?, sandbox_at = ? WHERE id = ?`, [
+    id,
+    id ? Date.now() : null,
+    h.id,
+  ]);
 }
 
 /**

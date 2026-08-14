@@ -472,6 +472,23 @@ const MIGRATIONS: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+
+  // 036 — when a sandbox was built, so it can be told from the credential in it.
+  //
+  // A sidecar is loaded with the credentials that existed when its sandbox was
+  // created and never again. Storing one therefore has to kill the running
+  // sandboxes, and exactly one of the two ways to store one did — a login from
+  // the panel saved the token and stopped, so every group kept a sidecar bound
+  // to the credential that was still missing and every turn came back
+  // "Authentication credentials are invalid" against a token that was fine.
+  //
+  // The fix that lasts is not a third call to the same helper. It is a fact on
+  // the row: a sandbox older than the newest credential is stale, whoever stored
+  // it and however they got there, and the watchdog reaps it on the next tick.
+  `
+  ALTER TABLE grp ADD COLUMN sandbox_at INTEGER;
+  ALTER TABLE project ADD COLUMN sandbox_at INTEGER;
+  `,
 ];
 
 export type DB = Database;

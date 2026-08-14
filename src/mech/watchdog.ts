@@ -693,6 +693,48 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     });
   }
 
+  // 17b. A sandbox older than the credential it is supposed to be using.
+  //
+  // A sidecar is loaded once, when its sandbox is built, and never again — so
+  // storing a credential has to kill the running sandboxes, and exactly one of
+  // the two ways to store one did. A login from the panel saved the token and
+  // stopped, so every group kept a sidecar bound to the credential that was
+  // still missing and every turn came back `Authentication credentials are
+  // invalid` against a token that was perfectly good.
+  //
+  // Both callers do the right thing now, and that is still not the fix: the next
+  // way to store a credential — an import, a refresh, a CLI — would have to
+  // remember, and this is the class of bug where forgetting looks healthy. The
+  // durable form is a fact about the row, checked here, true no matter which
+  // path stored it, for every project that will ever be added.
+  const newestCredential =
+    ctx.db.query<{ at: number | null }, []>("SELECT max(updated_at) at FROM runtime_auth").get()?.at ?? 0;
+  if (newestCredential) {
+    for (const g of ctx.db
+      .query<{ id: number; name: string }, [number]>(
+        // Not the dissolved ones: the sweep above already took theirs, and
+        // killing the same container twice is a finding the boss cannot act on.
+        `SELECT id, name FROM grp
+         WHERE sandbox_id IS NOT NULL AND status <> 'DISSOLVED' AND coalesce(sandbox_at, 0) < ?`,
+      )
+      .all(newestCredential)) {
+      await killSandbox(ctx, { grp: g.id });
+      findings.push({
+        rule: "sandbox_stale_credential",
+        grpId: g.id,
+        severity: "advisory",
+        body: `${g.name} 的沙盒绑的是旧凭据，回收了，下一轮重建`,
+      });
+    }
+    for (const p of ctx.db
+      .query<{ id: number }, [number]>(
+        `SELECT id FROM project WHERE sandbox_id IS NOT NULL AND coalesce(sandbox_at, 0) < ?`,
+      )
+      .all(newestCredential)) {
+      await killSandbox(ctx, { project: p.id });
+    }
+  }
+
   // 18. A live group's sandbox expiring under it.
   //
   // The TTL is what stops a crashed orchestrator leaking containers forever, so
