@@ -56,15 +56,17 @@ export function Requirement({
   const [openAsk, setOpenAsk] = useState<string | null>(null);
 
   // The LAST slice that has actually produced something — work moves down the
-  // list, so the newest one carrying evidence is where it has got to. `running`
-  // with no gate mark is a slice that has been handed out and written nothing:
-  // opening that one puts an empty evidence panel in front of the boss while the
-  // slice above it sits waiting to be accepted. Nothing worked on yet: everything
-  // stays shut rather than defaulting to a slice with nothing under it.
+  // list, so the newest one carrying evidence is where it has got to. Two states
+  // are excluded and only two: `pending` has not started, and `running` with no
+  // gate mark yet is a slice that was handed out and has written nothing, so
+  // opening it puts an empty panel in front of the boss.
+  //
+  // `accepted` is NOT excluded. A finished requirement is all accepted slices,
+  // and excluding them left the page blank under a green row — the diff you just
+  // approved is the thing you go back to look at. Nothing worked on at all:
+  // everything stays shut rather than opening something with nothing under it.
   const worked = [...slices].reverse().find(
-    (s) =>
-      ["self_review", "gate", "qa", "awaiting_boss", "rejected"].includes(s.status) ||
-      (s.status === "running" && Object.keys(gates(s)).length > 0),
+    (s) => s.status !== "pending" && (s.status !== "running" || Object.keys(gates(s)).length > 0),
   );
   // `null` = nobody has clicked, take the default. `"none"` = the boss shut the
   // default one; without a distinct value that click falls straight back to the
