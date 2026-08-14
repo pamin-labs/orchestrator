@@ -68,6 +68,42 @@ export interface Draft {
  *
  * Files are uploaded on drop and referenced by path; contents never enter a prompt.
  */
+/**
+ * The skill list, fetched once per project for the life of the page.
+ *
+ * Without a project this returns the user-level ones. A box that takes a
+ * screenshot and a box that takes an idea are the same box (that is why there is
+ * one component), and half of them silently had no `/` because whoever wired them
+ * up did not have a project id to hand.
+ *
+ * Cached at module scope because composers mount constantly — every reseed is a
+ * remount — and the list changes when a file lands on disk, not between two
+ * clicks.
+ */
+const SKILLS = new Map<string, Skill[]>();
+const SKILLS_IN_FLIGHT = new Map<string, Promise<Skill[]>>();
+
+const cachedSkills = (projectId?: number): Skill[] | null => SKILLS.get(String(projectId ?? "")) ?? null;
+
+function loadSkills(projectId?: number): Promise<Skill[]> {
+  const key = String(projectId ?? "");
+  const done = SKILLS.get(key);
+  if (done) return Promise.resolve(done);
+  const going = SKILLS_IN_FLIGHT.get(key);
+  if (going) return going;
+  const p = fetch(`/api/skills?project=${key}`)
+    .then((r) => (r.ok ? r.json() : { skills: [] }))
+    .then((d) => (d.skills ?? []) as Skill[])
+    .catch(() => [] as Skill[])
+    .then((list) => {
+      SKILLS.set(key, list);
+      SKILLS_IN_FLIGHT.delete(key);
+      return list;
+    });
+  SKILLS_IN_FLIGHT.set(key, p);
+  return p;
+}
+
 export function Composer({
   placeholder,
   rows = 3,
@@ -99,7 +135,11 @@ export function Composer({
   const [files, setFiles] = useState<Attached[]>([]);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
-  const [skills, setSkills] = useState<Skill[] | null>(null);
+  // Read from the module cache synchronously, so a composer that remounts (every
+  // 填进输入框 does) starts with the list it had. Without it the 插技能 button
+  // popped in a beat after the other two on every open — the fetch is fast, but
+  // "fast" is exactly the timing that reads as a flicker.
+  const [skills, setSkills] = useState<Skill[] | null>(cachedSkills(projectId));
   const [slash, setSlash] = useState<{ from: number; q: string } | null>(null);
   const [picking, setPicking] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -127,14 +167,7 @@ export function Composer({
    */
   useEffect(() => {
     if (skills) return;
-    // Without a project this returns the user-level ones. A box that takes a
-    // screenshot and a box that takes an idea are the same box (that is why there
-    // is one component), and half of them silently had no `/` because whoever
-    // wired them up did not have a project id to hand.
-    void fetch(`/api/skills?project=${projectId ?? ""}`)
-      .then((r) => (r.ok ? r.json() : { skills: [] }))
-      .then((d) => setSkills(d.skills ?? []))
-      .catch(() => setSkills([]));
+    void loadSkills(projectId).then(setSkills);
   }, [projectId, skills]);
 
   const onType = (v: string, caret: number) => {

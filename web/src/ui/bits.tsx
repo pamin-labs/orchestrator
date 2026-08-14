@@ -114,3 +114,22 @@ export function Clamp({ lines = 2, children }: { lines?: number; children: React
     </>
   );
 }
+
+/**
+ * Somebody is writing a reply, on the side the reply will land on.
+ *
+ * A wait is worth animating exactly once on this page: when the thing being
+ * waited for is a sentence somebody (or something) is composing right now. It
+ * reads as a chat bubble because that is what it is — a message that has not
+ * arrived. Opacity only, like `breathe`; nothing here moves the layout.
+ */
+export const Typing = ({ label }: { label: string }) => (
+  <div className="my-2 ml-auto flex w-fit items-center gap-2 rounded-2xl rounded-tr-sm border border-dashed border-rule bg-paper px-3.5 py-2.5">
+    <Meta>{label}</Meta>
+    <span className="typing flex gap-1">
+      <span className="size-1.5 rounded-full bg-ink-3" />
+      <span className="size-1.5 rounded-full bg-ink-3" />
+      <span className="size-1.5 rounded-full bg-ink-3" />
+    </span>
+  </div>
+);

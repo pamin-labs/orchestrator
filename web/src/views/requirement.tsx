@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Button, LinkButton } from "../ui/button";
 import { Menu, MenuItem } from "../ui/menu";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
-import { Clamp, H2, Meta, Textarea, Working, Pane } from "../ui/bits";
+import { Clamp, H2, Meta, Textarea, Typing, Working, Pane } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Card, CardBody, CardTitle } from "../ui/card";
 import { Bar } from "../ui/table";
@@ -1031,6 +1031,11 @@ function Held({ rows }: { rows: Escalation[] }) {
                     <WithAttachments body={e.question} className="text-[0.8125rem] text-ink-2" />
                   </Clamp>
                 </div>
+                {/* The reply is being written by whoever holds it, so it gets the
+                    same unsent bubble the drafted answer gets. This is the whole
+                    reason these rows are worth opening: not to act, but to see
+                    that somebody is on it. */}
+                <Typing label={`${WHERE_ZH[e.chain_state] ?? e.chain_state}`} />
               </AccordionBody>
             </AccordionItem>
           ))}
@@ -1069,18 +1074,7 @@ function Suggested({ escId, onUse }: { escId: number; onUse: (t: string) => void
   // A bubble with three dots in it, on the side the answer will land on. It was a
   // line of grey text at the left margin, which reads as a status line about the
   // page rather than as the reply being written.
-  if (text === null) {
-    return (
-      <div className="my-2 ml-auto flex w-fit items-center gap-2 rounded-2xl rounded-tr-sm border border-dashed border-rule bg-paper px-3.5 py-2.5">
-        <Meta>AI 在替你想</Meta>
-        <span className="typing flex gap-1">
-          <span className="size-1.5 rounded-full bg-ink-3" />
-          <span className="size-1.5 rounded-full bg-ink-3" />
-          <span className="size-1.5 rounded-full bg-ink-3" />
-        </span>
-      </div>
-    );
-  }
+  if (text === null) return <Typing label="AI 在替你想" />;
   if (!text) return null;
   return (
     // A recessed well: this is the one block here nobody wrote, machine text
