@@ -150,7 +150,7 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
       detail: row ? row.mode : "没配",
       fix:
         runtime === "claude"
-          ? "claude setup-token，把吐出来的 token 存进凭据。一年有效。"
+          ? "claude setup-token，把吐出来的令牌存进设置里的账号。一年有效。"
           : "codex login，或者贴一个 API key。",
     });
   }

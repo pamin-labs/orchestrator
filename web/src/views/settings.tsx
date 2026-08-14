@@ -595,15 +595,17 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
       <Head title="沙盒服务器" note="开容器的那个服务" />
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="sandbox-key">
-            密钥
-            <Meta>{props.current ? props.current.hint : "没设"}</Meta>
-          </FieldLabel>
+          <FieldLabel htmlFor="sandbox-key">密钥</FieldLabel>
           <InputGroup>
             <Input
               id="sandbox-key"
               className="min-w-0 flex-1 font-mono"
-              placeholder="留空 = 服务器没开鉴权"
+              // What is stored, in the box that stores it — same as the accounts.
+              placeholder={
+                props.current
+                  ? `已存 ${props.current.hint}，粘新的就换掉`
+                  : "留空 = 服务器没开鉴权"
+              }
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
