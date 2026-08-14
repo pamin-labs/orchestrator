@@ -1,7 +1,7 @@
+import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Tip } from "../ui/tooltip";
-import { Badge } from "../ui/badge";
 import { Meta } from "../ui/bits";
 import { post, pull } from "../lib/api";
 import type { State } from "../lib/api";
@@ -89,7 +89,8 @@ export function Queue({
         spend(g.id) > 0 && REASONS.sunk(spend(g.id)),
       ]),
       flag: st.lateObjections.some((o) => o.grpId === g.id) ? "有反对意见" : undefined,
-      actions: <Button variant="go" onClick={() => onOpen(g.id)}>去审阅</Button>,
+      // No button: the row is the way in. See `Cluster`.
+      actions: null,
     });
   }
   for (const s of w.slices) {
@@ -108,7 +109,7 @@ export function Queue({
       // 查收 and 不满意 both happen on the requirement page, next to the diff and
       // the verdicts: accepting from a list is accepting a title, and rejecting
       // from one is rejecting a title.
-      actions: <Button variant="go" onClick={() => onOpen(s.grp_id)}>去查收</Button>,
+      actions: null,
     });
   }
   for (const m of w.merges) {
@@ -173,7 +174,7 @@ export function Queue({
       // group's slices and its record — not from a row that shows two lines of
       // it. A standing agent has no requirement to go to, and `Cluster` gives
       // those the inline reply box instead.
-      actions: e.grp_id ? <Button variant="go" onClick={() => onOpen(e.grp_id!)}>去回答</Button> : null,
+      actions: null,
     });
   }
 
@@ -221,16 +222,18 @@ export function Queue({
 }
 
 /**
- * One requirement, and the things waiting on it under its name.
+ * One requirement's items, as rows of one table.
  *
- * Three facts decide whether the boss opens this one first: whose requirement,
- * which role is stuck, and what about. The rest — the agent's paragraph, the
- * branch, the token count — is not a reason to click and was competing with the
- * three that are.
+ * The version before this had two shapes: a heading with a button, and rows under
+ * it. With seven single-item requirements that is fourteen lines to say seven
+ * things, three different left edges (name, role, text) and seven violet buttons
+ * scattered down the page at different heights. Nothing was wrong with any one
+ * row; the page had no rhythm because every row was a small layout of its own.
  *
- * The severity of each item is a mark, not a sentence: a blocker has the whole
- * group stopped behind it, and that is the only distinction on this page that
- * changes what you do next.
+ * One grid, four columns, every row the same shape: which requirement, who is
+ * stuck, what about, how long. The name is printed once per requirement and left
+ * blank underneath — the way a table groups — so a requirement with three
+ * questions reads as one block without a second kind of row to draw it.
  */
 function Cluster({
   st, c, onOpen, refresh,
@@ -238,65 +241,58 @@ function Cluster({
   st: State; c: { grpId: number; items: Item[] }; onOpen: (id: number) => void; refresh: () => void;
 }) {
   const standing = c.grpId < 0;
+  const name = standing ? "常驻岗" : groupName(st, c.grpId);
   return (
-    <section className="border-t border-rule-soft px-3.5 py-3 first:border-t-0">
-      {/* One way in per requirement, not one per row. Six violet buttons down the
-          right edge is a column of the loudest thing on the page, and they all go
-          to the same place. */}
-      <div className="mb-1 flex items-baseline gap-2">
-        <button
+    <>
+      {c.items.map((i, n) => (
+        <div
+          key={i.key}
           onClick={() => !standing && onOpen(c.grpId)}
-          className={cn("min-w-0 text-left", !standing && "cursor-pointer")}
+          className={cn(
+            "group grid grid-cols-[13rem_5rem_minmax(0,1fr)_auto_auto] items-baseline gap-x-3",
+            "px-3.5 py-2 transition-colors",
+            // The rule separates requirements, not rows: three questions on one
+            // requirement are one block.
+            n === 0 && "border-t border-rule-soft",
+            !standing && "cursor-pointer hover:bg-rail/70",
+            "max-[64rem]:grid-cols-[minmax(0,1fr)_auto]",
+          )}
         >
-          <span className="truncate font-display text-[0.9375rem] font-semibold hover:text-accent">
-            {standing ? "常驻岗" : groupName(st, c.grpId)}
+          <span
+            className={cn(
+              "truncate font-display text-[0.875rem] font-semibold",
+              n > 0 && "opacity-0 max-[64rem]:hidden",
+            )}
+          >
+            {name}
           </span>
-        </button>
-        {c.items.length > 1 && <Meta>{c.items.length} 件</Meta>}
-        <span className="grow" />
-        <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
-          {c.items[0]!.actions}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        {c.items.map((i) => (
-          <Line key={i.key} item={i} onOpen={() => !standing && onOpen(c.grpId)} refresh={refresh} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/** One thing to do: who is stuck, and what about. */
-function Line({ item, onOpen, refresh }: { item: Item; onOpen: () => void; refresh: () => void }) {
-  return (
-    <div
-      onClick={onOpen}
-      className={cn(
-        "grid cursor-pointer grid-cols-[6rem_minmax(0,1fr)_auto] items-baseline gap-x-3",
-        "rounded-md px-2 py-1 transition-colors hover:bg-rail",
-        "max-[52rem]:grid-cols-[6rem_minmax(0,1fr)]",
-      )}
-    >
-      {/* Role first, and red when the whole group is stopped behind it. A badge
-          saying 停 on every row is a mark that never varies, which is a mark that
-          says nothing — six of them read as decoration. */}
-      <span className={cn("truncate font-mono text-[0.6875rem]", item.hard ? "text-bad" : "text-ink-3")}>
-        {item.who ?? item.kind}
-      </span>
-      <span className="truncate text-[0.8125rem] text-ink-2">{item.what}</span>
-      <Meta className="shrink-0 max-[52rem]:col-start-2">
-        {item.reasons.find((r) => r.why.startsWith("等了"))?.why}
-      </Meta>
-      {/* A standing agent has no requirement to open, so its reply box is the only
-          way to clear it and it stays on the row. */}
-      {item.escId != null && item.grpId == null && (
-        <span onClick={(e) => e.stopPropagation()} className="max-[52rem]:col-start-2">
-          <Reply escId={item.escId} fyi={item.fyi} refresh={refresh} />
-        </span>
-      )}
-    </div>
+          {/* Red when the whole group is stopped behind it: the one distinction on
+              this page that changes what you do next. */}
+          <span className={cn("truncate font-mono text-[0.6875rem]", i.hard ? "text-bad" : "text-ink-3")}>
+            {i.who ?? i.kind}
+          </span>
+          <span className="truncate text-[0.8125rem] text-ink-2 max-[64rem]:col-span-full">{i.what}</span>
+          <Meta className="shrink-0 tabular-nums">{i.reasons.find((r) => r.why.startsWith("等了"))?.why}</Meta>
+          {/* The way in is the row. A button per row was seven violet blocks that
+              all went to the same place; a chevron says the row is a door. */}
+          {i.actions ? (
+            <span onClick={(e) => e.stopPropagation()} className="justify-self-end">
+              {i.actions}
+            </span>
+          ) : standing && i.escId != null ? (
+            <span onClick={(e) => e.stopPropagation()} className="justify-self-end">
+              <Reply escId={i.escId} fyi={i.fyi} refresh={refresh} />
+            </span>
+          ) : (
+            <ChevronRight
+              size={13}
+              strokeWidth={2}
+              className="justify-self-end text-rule opacity-0 transition-opacity group-hover:opacity-100"
+            />
+          )}
+        </div>
+      ))}
+    </>
   );
 }
 
