@@ -213,9 +213,15 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
 
   // Checkpoint first: intercept L3's rollback and "undo a stand-in's answer"
   // both need a consistent state that exists before the turn starts.
+  //
+  // The label says which slice and what the writer had claimed it was doing.
+  // `wip: engineer turn` eight times is a branch log that says nothing — and
+  // these survive into review whenever squashWip declines (an agent that wrote
+  // one real commit keeps all of them). A checkpoint is still a checkpoint, so
+  // it stays marked `wip`, but the rest of the line is the work.
   const before =
     grp?.worktree && project
-      ? await checkpoint(git, project.repo_path, grp.worktree, `${agent.role} turn`)
+      ? await checkpoint(git, project.repo_path, grp.worktree, checkpointLabel(ctx, agent, job))
       : null;
 
   // Reconcile compares against what changed *in this slice*, so the baseline is
@@ -360,6 +366,28 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
 
 /** Both CLIs, both spellings. */
 export const LOST_SESSION = /no rollout found for thread|No conversation found with session ID/i;
+
+/**
+ * What a turn's checkpoint commit says about itself.
+ *
+ * `wip(S2): engineer — 闸门放行的卡 enqueue 一个 cos turn`. The slice number is
+ * where the reviewer looks first, the role is who did it, and the task title is
+ * the only sentence anyone wrote about this particular piece of work.
+ */
+function checkpointLabel(ctx: Ctx, agent: AgentRow, job: Job): string {
+  const seq = job.slice_id
+    ? ctx.db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(job.slice_id)?.seq
+    : undefined;
+  const task = job.slice_id
+    ? ctx.db
+        .query<{ title: string }, [number]>(
+          "SELECT title FROM task WHERE slice_id = ? AND status != 'done' ORDER BY id LIMIT 1",
+        )
+        .get(job.slice_id)?.title
+    : undefined;
+  const head = seq ? `S${seq}: ${agent.role}` : `${agent.role} turn`;
+  return task ? `${head} — ${task.slice(0, 60)}` : head;
+}
 
 function buildStableFor(
   deps: ExecDeps,

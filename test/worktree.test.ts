@@ -269,3 +269,16 @@ test("a repo with only AGENTS.md gets CLAUDE.md, and the other way round", async
   linkAgentsMd(both);
   expect(readFileSync(join(both, "AGENTS.md"), "utf8")).toBe("for codex\n");
 });
+
+test("a turn's checkpoint says which slice and what the work was", async () => {
+  const dir = await repo();
+  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+  writeFileSync(join(wt.worktree, "b.txt"), "one\n");
+
+  // `wip: engineer turn` eight times is a branch log that says nothing, and these
+  // survive into review whenever squashWip declines.
+  await checkpoint(git, dir, wt.worktree, "S2: engineer — 闸门放行的卡 enqueue");
+  const log = (await git(dir, ["log", "-1", "--format=%s"], wt.worktree)).out.trim();
+  expect(log).toBe("wip: S2: engineer — 闸门放行的卡 enqueue");
+});
