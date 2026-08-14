@@ -598,13 +598,19 @@ function Delegated({
                 refresh();
               }}>撤销并接管</Button>
             </div>
-            <div className="mt-1 max-w-[72ch] text-[0.75rem] text-ink-3">
-              <Clamp lines={2}>{nl(a.question)}</Clamp>
-            </div>
-            {/* The answer is the half worth reading, so it is the darker of the
-                two, on the surface everything not written by the boss sits on. */}
-            <div className="mt-1 max-w-[72ch] rounded-md bg-sunk px-2.5 py-1.5 text-[0.8125rem] text-ink-2">
-              <Clamp lines={3}>{nl(a.answer)}</Clamp>
+            {/* One question, one answer, labelled — not a paragraph above a grey
+                slab. The slab put a block of padding between two things that are
+                the same exchange, and at 72ch inside a full-width row it left a
+                field of empty on the right of both. */}
+            <div className="mt-1 grid max-w-[76ch] grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2 gap-y-1">
+              <span className="font-mono text-[0.6875rem] text-ink-3">问</span>
+              <div className="min-w-0 text-[0.75rem] text-ink-3">
+                <Clamp lines={2}>{nl(a.question)}</Clamp>
+              </div>
+              <span className="font-mono text-[0.6875rem] text-ok">答</span>
+              <div className="min-w-0 text-[0.8125rem] text-ink-2">
+                <Clamp lines={3}>{nl(a.answer)}</Clamp>
+              </div>
             </div>
           </div>
         ))}
