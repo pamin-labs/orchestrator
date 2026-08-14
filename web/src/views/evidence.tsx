@@ -7,11 +7,12 @@ import { pull, type Evidence } from "../lib/api";
 import { cn } from "../lib/utils";
 
 /**
- * Left edge of the slice title above: `px-3` + the 2rem `S1` column + the 3-gap.
- * Every line of evidence starts under the title it belongs to, which is what says
- * "this body is that row's" now that the panel has no box around it.
+ * One gutter, both sides, the same as the row above. It was `pl-14 pr-3` for a
+ * version — indented to the slice title on the left, hard against the edge on the
+ * right — and an asymmetric gutter reads as a mistake even when the reason for it
+ * is real. What ties the body to its row is the row's own tint, not an indent.
  */
-const PAD = "pl-14 pr-3";
+const PAD = "px-4";
 
 /**
  * The evidence behind one slice, in the order a reviewer reads it.
@@ -56,7 +57,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
     // Flat, and full width. This opens inside a slice row inside a bordered list,
     // so a rounded panel here was the third box drawn around the same content —
     // DESIGN.md: hairlines and spacing instead of card borders, cards never
-    // nested. Rules and the title indent carry the structure instead.
+    // nested. Rules and the three surfaces carry the structure instead.
     <div>
       {/* What you are being asked to agree to, then the measurements of it, then
           the button. The acceptance line used to be last on a header that opened
@@ -66,7 +67,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
           the verdict on everything below them, and scrolling down to read the QA
           line and the diff scrolled the buttons — and the acceptance line they
           answer — off the top. */}
-      <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule-soft bg-paper py-2.5")}>
+      <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule bg-paper py-2.5")}>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
           <span className="min-w-0 text-[0.8125rem] text-ink">{ev.accept_spec}</span>
           <span className="grow" />
@@ -110,7 +111,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
       </div>
 
       {ev.verdicts.length > 0 && (
-        <div className={cn(PAD, "border-b border-rule-soft py-2")}>
+        <div className={cn(PAD, "border-b border-rule py-2")}>
           {ev.verdicts.map((v, i) => {
             const bad = /\bfail\b/i.test(v.body);
             return (
@@ -136,7 +137,9 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
             没有 diff 可读。这一片没有记下基线 commit，或者 worktree 已经清掉了。
           </div>
         ) : (
-          <div className="h-[34rem]">
+          // Machine surface: a transcript is a different substance from the
+          // sentences above it, and depth says so without another border.
+          <div className="h-[34rem] bg-sunk">
             <DiffView diff={ev.diff} truncated={ev.truncated} />
           </div>
         )
@@ -174,16 +177,16 @@ function Verdict({ body, bad }: { body: string; bad: boolean }) {
 }
 
 /**
- * The gate's log, read the way anyone actually reads one.
+ * The gate's log, whole, in a pane that scrolls.
  *
- * It was a `<pre>` of 29k characters: four hundred `(pass) … [0.08ms]` lines with
- * the one failure somewhere inside. Nobody opens a gate log to read the passes —
- * they open it to find what broke, and scrolling for it is the whole cost.
+ * It used to hide the passing lines behind a count — "342 条通过没列出来，搜索会翻到"
+ * — on the theory that nobody reads passes. But the pane scrolls locally now, so
+ * hiding them buys nothing and costs the one thing a log is for: what ran, in the
+ * order it ran. Cutting the log to show it in a box that could have shown the log
+ * is the box deciding what the question was.
  *
- * So: counts first, failures and their error lines shown, passes collapsed behind
- * their own number, and a filter for the case where the failure is not the point.
- * Same idea as the diff viewer next door — structure the thing instead of dumping
- * it, and put colour on the row rather than the text.
+ * What stays is the verdict up top and a filter, because "find the line that says
+ * X" is a real move in a four-thousand-line log.
  */
 function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
   const [text, setText] = useState<string | null>(null);
@@ -197,36 +200,20 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
   }, [sliceId, name]);
 
   const lines = (text ?? "").split("\n");
-  const passes = lines.filter((l) => /^\s*\(pass\)/.test(l));
   const fails = lines.filter((l) => /^\s*\(fail\)/.test(l));
-  // Everything that is neither: error bodies, stack lines, tsc diagnostics, the
-  // runner's own summary. This is the half that says why.
-  const rest = lines.filter((l) => l.trim() && !/^\s*\((pass|fail)\)/.test(l));
-  // Nobody opens a gate log to read the passes, so they are not in the default
-  // view — but a search is someone looking for a specific line, and refusing to
-  // look in 373 of them because they passed is the filter deciding what the
-  // question was. Typing searches everything; empty shows what broke.
-  const body = q
-    ? lines.filter((l) => l.toLowerCase().includes(q.toLowerCase()))
-    : [...fails, ...rest];
+  const body = q ? lines.filter((l) => l.toLowerCase().includes(q.toLowerCase())) : lines;
 
   if (text === null) return <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>读日志…</div>;
 
   return (
-    // Same shape as the diff next door: the log fills the width and its own
-    // controls sit on a ruled strip. It used to be a rounded box inset inside the
-    // panel's rounded box, which is the nesting this pass removed.
     <div>
-      {/* One verdict and one field. A 没过/全部 segment sat here for a version: on a
-          passing gate it read 没过 0 / 全部 373, which is two buttons offering to
-          filter for nothing and to show you 373 lines of the word "pass". */}
-      <div className={cn(PAD, "flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-rule-soft py-1.5")}>
+      <div className={cn(PAD, "flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-rule py-1.5")}>
         {fails.length > 0 ? (
-          <span className="text-[0.6875rem] font-semibold text-bad">{fails.length} 条没过</span>
+          <span className="text-[0.75rem] font-semibold text-bad">{fails.length} 条没过</span>
         ) : (
-          <span className="text-[0.6875rem] font-semibold text-ok">全过</span>
+          <span className="text-[0.75rem] font-semibold text-ok">全过</span>
         )}
-        <span className="text-[0.6875rem] text-ink-3">{passes.length} 条通过没列出来，搜索会翻到</span>
+        <Meta>{lines.length} 行</Meta>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -234,7 +221,10 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
           className="ml-auto w-44 rounded-md border border-rule bg-paper px-2 py-0.5 text-[0.6875rem] outline-none focus-visible:border-accent"
         />
       </div>
-      <pre className={cn(PAD, "max-h-[34rem] overflow-auto py-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2")}>
+      {/* Machine output, on the machine surface — same recessed pane as the diff,
+          so the eye knows without reading that this half is a transcript and the
+          half above it is a judgement. */}
+      <pre className={cn(PAD, "h-[34rem] overflow-auto bg-sunk py-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2")}>
         {body.length === 0 ? "没有匹配的行" : body.map((l, i) => (
           <div key={i} className={cn(/^\s*\(fail\)/.test(l) && "bg-bad-soft", /error|Error/.test(l) && "text-bad")}>
             {l || " "}

@@ -2472,7 +2472,10 @@ const getGateLog: Handler = async (ctx, req, params) => {
   const raw = await Bun.file(path).text();
   const grep = new URL(req.url).searchParams.get("grep");
   const lines = raw.split("\n");
-  return text(grep ? lines.filter((l) => new RegExp(grep).test(l)).slice(0, 400).join("\n") : lines.slice(-400).join("\n"));
+  // The panel scrolls this locally, so the tail is about not shipping a 200MB
+  // build log, not about what is worth reading. 400 lines was the latter, and it
+  // cut a `bun test` run in half.
+  return text(grep ? lines.filter((l) => new RegExp(grep).test(l)).slice(0, 4000).join("\n") : lines.slice(-4000).join("\n"));
 };
 
 const postSliceDecision: Handler = async (ctx, req, params) => {
