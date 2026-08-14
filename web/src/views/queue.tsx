@@ -1,4 +1,3 @@
-import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Tip } from "../ui/tooltip";
@@ -7,7 +6,7 @@ import { post, pull } from "../lib/api";
 import type { State } from "../lib/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "../lib/rank";
 import { pending, prUrl } from "../lib/select";
-import { brief, cn } from "../lib/utils";
+import { brief, cn, K } from "../lib/utils";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
@@ -218,22 +217,20 @@ export function Queue({
   // The sort order used to be printed above the list. Every row already carries
   // the reason it sits where it does, which is the same fact said once instead of
   // twice — and said on the row that has to justify itself.
-  return <div className="overflow-hidden rounded-lg border border-rule-soft">{blocks.map((b) => b.node)}</div>;
+  return <div>{blocks.map((b) => b.node)}</div>;
 }
 
 /**
- * One requirement's items, as rows of one table.
+ * One requirement and everything waiting on it, in the shape 进行中 already uses.
  *
- * The version before this had two shapes: a heading with a button, and rows under
- * it. With seven single-item requirements that is fourteen lines to say seven
- * things, three different left edges (name, role, text) and seven violet buttons
- * scattered down the page at different heights. Nothing was wrong with any one
- * row; the page had no rhythm because every row was a small layout of its own.
+ * Identity on the left, the things themselves as cards in a track, the way out on
+ * the right. That page reads well because the eye lands on one fixed column of
+ * names and then scans a row of discrete objects; the queue was a table of text
+ * columns instead, so the two halves of the same tab were two different pages.
  *
- * One grid, four columns, every row the same shape: which requirement, who is
- * stuck, what about, how long. The name is printed once per requirement and left
- * blank underneath — the way a table groups — so a requirement with three
- * questions reads as one block without a second kind of row to draw it.
+ * Severity lives on the card, because that is the thing it belongs to: a card
+ * with a red edge is a group stopped behind that one question. Counting them is
+ * how the boss decides which requirement to open.
  */
 function Cluster({
   st, c, onOpen, refresh,
@@ -241,58 +238,77 @@ function Cluster({
   st: State; c: { grpId: number; items: Item[] }; onOpen: (id: number) => void; refresh: () => void;
 }) {
   const standing = c.grpId < 0;
-  const name = standing ? "常驻岗" : groupName(st, c.grpId);
+  const g = st.groups.find((x) => x.id === c.grpId);
+  const hard = c.items.filter((i) => i.hard).length;
   return (
-    <>
-      {c.items.map((i, n) => (
-        <div
-          key={i.key}
-          onClick={() => !standing && onOpen(c.grpId)}
-          className={cn(
-            "group grid grid-cols-[13rem_4.5rem_minmax(0,1fr)_3rem_auto] items-baseline gap-x-4",
-            "px-4 py-2 transition-colors",
-            n === 0 && "border-t border-rule-soft",
-            !standing && "cursor-pointer hover:bg-rail/70",
-            "max-[64rem]:grid-cols-[minmax(0,1fr)_auto]",
-          )}
-        >
-          <span className={cn("flex min-w-0 items-baseline gap-1.5", n > 0 && "max-[64rem]:hidden")}>
-            {/* Once per requirement, not once per row: a mark repeated on every
-                line of the page is a mark that never varies. */}
-            {n === 0 && c.items.some((x) => x.hard) && (
-              <i className="size-1.5 shrink-0 translate-y-[-1px] rounded-full bg-bad" />
-            )}
-            <span className={cn("truncate font-display text-[0.9375rem] font-semibold", n > 0 && "opacity-0")}>
-              {name}
-            </span>
-          </span>
-          <span className="truncate font-mono text-[0.6875rem] text-ink-3">{i.who ?? i.kind}</span>
-          {/* The line the reader is actually here for, so it is the only thing at
-              body weight. */}
-          <span className="truncate text-[0.8125rem] text-ink-2 max-[64rem]:col-span-full">{i.what}</span>
-          {/* `等了` seven times down one column is the column labelling itself on
-              every row. The duration is the fact. */}
-          <Meta className="shrink-0 text-right tabular-nums">
-            {i.reasons.find((r) => r.why.startsWith("等了"))?.why.replace("等了 ", "")}
-          </Meta>
-          {i.actions ? (
-            <span onClick={(e) => e.stopPropagation()} className="justify-self-end">
-              {i.actions}
-            </span>
-          ) : standing && i.escId != null ? (
-            <span onClick={(e) => e.stopPropagation()} className="justify-self-end">
-              <Reply escId={i.escId} fyi={i.fyi} refresh={refresh} />
-            </span>
-          ) : (
-            <ChevronRight
-              size={13}
-              strokeWidth={2}
-              className="justify-self-end text-rule opacity-0 transition-opacity group-hover:opacity-100"
-            />
-          )}
+    <div
+      onClick={() => !standing && onOpen(c.grpId)}
+      className={cn(
+        "grid grid-cols-[14rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2",
+        "border-t border-rule-soft px-2 py-2.5 transition-colors first:border-t-0",
+        !standing && "cursor-pointer hover:bg-sunk",
+        "max-[60rem]:grid-cols-[minmax(0,1fr)_auto]",
+      )}
+    >
+      <div className="min-w-0">
+        <div className="truncate font-display text-[0.9375rem] font-semibold">
+          {standing ? "常驻岗" : groupName(st, c.grpId)}
         </div>
-      ))}
-    </>
+        <Meta>
+          {hard > 0 ? `${hard} 条卡着全组` : `${c.items.length} 条等你`}
+          {g?.spent_tokens ? ` · ${K(g.spent_tokens)} tokens` : ""}
+        </Meta>
+      </div>
+
+      <div className="flex min-w-0 flex-wrap items-stretch gap-1.5 max-[60rem]:col-span-full">
+        {c.items.map((i) => (
+          <Ticket key={i.key} item={i} refresh={refresh} standing={standing} />
+        ))}
+      </div>
+
+      <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 whitespace-nowrap">
+        {c.items.find((i) => i.actions)?.actions}
+        <Meta>{g?.branch ?? ""}</Meta>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * One thing waiting, as a card the size of a slice card next door.
+ *
+ * Who is stuck on the first line, what about on the second. A blocker takes the
+ * bad edge: it is not a louder version of a question, it is a different fact —
+ * the group behind it is stopped until this is answered.
+ */
+function Ticket({
+  item, refresh, standing,
+}: {
+  item: Item; refresh: () => void; standing: boolean;
+}) {
+  return (
+    <Tip label={item.what}>
+      <span
+        className={cn(
+          "w-[13rem] shrink-0 rounded-[0.3125rem] border px-1.5 py-1",
+          item.hard ? "border-bad/70 bg-bad-soft/40" : "border-rule-soft bg-sunk",
+        )}
+      >
+        <span className="flex items-center gap-1 font-mono text-[0.625rem] text-ink-3">
+          {item.who ?? item.kind}
+          <span className="grow" />
+          {item.reasons.find((r) => r.why.startsWith("等了"))?.why.replace("等了 ", "")}
+        </span>
+        <span className="mt-px block truncate text-[0.6875rem] text-ink-2">{item.what}</span>
+        {/* A standing agent has no requirement to open, so its reply box is the
+            only way to clear it and it stays on the card. */}
+        {standing && item.escId != null && (
+          <span onClick={(e) => e.stopPropagation()} className="mt-1 block">
+            <Reply escId={item.escId} fyi={item.fyi} refresh={refresh} />
+          </span>
+        )}
+      </span>
+    </Tip>
   );
 }
 
