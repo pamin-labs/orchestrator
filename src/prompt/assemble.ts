@@ -156,6 +156,22 @@ export function buildStable(parts: StableParts): StablePrompt {
         `error strings: English.`,
     );
   }
+  // Said only where it is true. `WebSearch` is a Claude Code tool name and
+  // reaches the CLI through `--allowedTools`; a codex-run agent gets neither the
+  // flag nor the tool. Written into the role's yaml the sentence followed the
+  // role instead of the runtime, so a pm dispatched to codex was told it had a
+  // tool that does not exist there — it would try, fail, and invent a reason
+  // (CLAUDE.md 硬约束 6: the `if` and the prompt must agree).
+  if (parts.allowedTools.includes("WebSearch")) {
+    sections.push(
+      `## WebSearch
+
+You can search the web. Use it when the answer is outside this repo and has ` +
+        `to be current — a library's API today, whether an approach is still recommended, what a ` +
+        `version actually broke. Never for something the codebase or the blackboard answers: a ` +
+        `search is slower and less authoritative than reading the file.`,
+    );
+  }
   sections.push(ORCH_CONTRACT);
   if (parts.onboarding?.trim()) {
     sections.push(`## Project onboarding\n\n${parts.onboarding.trim()}`);

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { buildStable } from "../src/prompt/assemble.ts";
 import { homedir } from "node:os";
 import { allowedToolsFor, buildProfile, writeProfile } from "../src/mech/clearance.ts";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -128,4 +129,19 @@ test("only architect and pm can search the web, and never fetch a URL", () => {
   for (const role of ["engineer", "qa", "cos", "dispatcher", "librarian"]) {
     expect(allowedToolsFor(role, "L2")).not.toContain("WebSearch");
   }
+});
+
+test("the WebSearch line is in the prompt only when the tool is", () => {
+  const base = {
+    rolePrompt: "You are the PM.",
+    model: "claude-opus-5",
+    settingsPath: "/tmp/p.json",
+    addDirs: [],
+  };
+  const withIt = buildStable({ ...base, allowedTools: allowedToolsFor("pm", "L2") });
+  const without = buildStable({ ...base, allowedTools: allowedToolsFor("engineer", "L2") });
+  // A codex-run role never gets `--allowedTools`, so this is also what stops the
+  // prompt claiming a tool that does not exist on that runtime.
+  expect(withIt.systemAppend).toContain("WebSearch");
+  expect(without.systemAppend).not.toContain("WebSearch");
 });
