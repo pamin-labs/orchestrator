@@ -2970,9 +2970,23 @@ const postAuth: Handler = async (ctx, req) => {
     }
   }
   saveAuth(ctx.db, { runtime, mode: b.mode, secret, baseUrl: b.baseUrl || undefined });
-  // Existing sandboxes hold the old value in their sidecars. Killing them is the
-  // cheap half of the fix — the next turn makes a new one and binds the new
-  // credential — and leaving them would mean "I changed it and nothing happened".
+  await credentialChanged(ctx, runtime);
+  return text("ok");
+};
+
+/**
+ * What has to happen after a credential is stored, wherever it was stored.
+ *
+ * Existing sandboxes hold the old value in their sidecars. Killing them is the
+ * cheap half of the fix — the next turn makes a new one and binds the new
+ * credential — and leaving them would mean "I changed it and nothing happened".
+ *
+ * It lives here rather than inline because there are two ways in and only one of
+ * them used to do this: a login from the panel stored the token and stopped,
+ * so every running group kept a sidecar bound to the credential that was missing
+ * and every turn came back `Authentication credentials are invalid`.
+ */
+async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
   for (const g of ctx.db
     .query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL")
     .all()) {
@@ -2986,8 +3000,7 @@ const postAuth: Handler = async (ctx, req) => {
   );
   ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE status = 'PAUSED' AND paused_at IS NOT NULL");
   ctx.sched.tick();
-  return text("ok");
-};
+}
 
 /**
  * Log in from the panel, by running the CLI that already knows how.
@@ -3007,8 +3020,10 @@ const postLogin: Handler = async (ctx, req) => {
   const run = startLogin(ctx, runtime);
   if (!run) return bad(`no login for ${runtime}`);
   inFlight.set(runtime, run);
-  void run.done.then((r) => {
+  void run.done.then(async (r) => {
     inFlight.delete(runtime);
+    // The token is stored by then; the sandboxes still hold the old one.
+    if (r.ok) await credentialChanged(ctx, runtime);
     ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
