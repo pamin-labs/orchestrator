@@ -35,6 +35,12 @@ export function buildArgv(spec: TurnSpec): string[] {
   // role's model and effort are silently overridden, and the skill catalogue is
   // prefix tax on every turn. (CODEX_HOME does the rest — see codexHome().)
   argv.push("--ignore-user-config", "--ignore-rules");
+  // Web search, where the role is allowed it. `allowedTools` is a Claude Code
+  // concept and means nothing to codex, but it is the one place that already
+  // says which roles may look things up, so it decides for both runtimes rather
+  // than the two drifting apart. `tools.web_search` is codex's own key; an
+  // unknown -c key is ignored by older builds, so this is safe to send.
+  if (spec.stable.allowedTools.includes("WebSearch")) argv.push("-c", "tools.web_search=true");
   // Sandbox. Measured on codex 0.147 (docs/decisions/006):
   //   - the default and `-s read-only` have no network AT ALL, not even loopback,
   //     and `orch` is HTTP to 127.0.0.1 — a read-only agent is a mute agent

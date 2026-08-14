@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { buildStable } from "../src/prompt/assemble.ts";
+import { buildArgv } from "../src/runtime/codex.ts";
 import { homedir } from "node:os";
 import { allowedToolsFor, buildProfile, writeProfile } from "../src/mech/clearance.ts";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -131,17 +132,19 @@ test("only architect and pm can search the web, and never fetch a URL", () => {
   }
 });
 
-test("the WebSearch line is in the prompt only when the tool is", () => {
-  const base = {
-    rolePrompt: "You are the PM.",
-    model: "claude-opus-5",
-    settingsPath: "/tmp/p.json",
-    addDirs: [],
-  };
-  const withIt = buildStable({ ...base, allowedTools: allowedToolsFor("pm", "L2") });
-  const without = buildStable({ ...base, allowedTools: allowedToolsFor("engineer", "L2") });
-  // A codex-run role never gets `--allowedTools`, so this is also what stops the
-  // prompt claiming a tool that does not exist on that runtime.
-  expect(withIt.systemAppend).toContain("WebSearch");
-  expect(without.systemAppend).not.toContain("WebSearch");
+test("a codex role gets the web search tool exactly when its clearance allows it", () => {
+  const stable = (role: string) =>
+    buildStable({
+      rolePrompt: "x",
+      model: "gpt-5.6-luna",
+      settingsPath: "/tmp/p.json",
+      addDirs: [],
+      allowedTools: allowedToolsFor(role, "L2"),
+    });
+  const argv = (role: string) => buildArgv({ stable: stable(role), prompt: "hi", cwd: "/tmp" } as never);
+  // `allowedTools` is a Claude Code concept, but it is the one place that says
+  // which roles may look things up — so it decides for both runtimes instead of
+  // the two drifting apart.
+  expect(argv("architect").join(" ")).toContain("tools.web_search=true");
+  expect(argv("engineer").join(" ")).not.toContain("web_search");
 });
