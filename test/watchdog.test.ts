@@ -34,12 +34,14 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     waiters: new Map(),
     config: { language: cfg.language, workRoot: "/tmp/x" },
   };
+  // No network on a watchdog tick in tests: the usage endpoint hung on its 10s
+  // timeout inside a gate sandbox and took the whole suite red with it.
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 't', 0)",
   );
-  const deps = { ctx, cfg, git: ctx.git!, now: () => 1_000_000 };
+  const deps = { ctx, cfg, git: ctx.git!, now: () => 1_000_000, pollUsage: async () => {} };
   return { db, ctx, sched, cfg, deps };
 }
 

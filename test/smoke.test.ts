@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start, type Started } from "../src/server.ts";
@@ -143,4 +143,16 @@ test("state stays queryable after a reconnect", async () => {
   const s = await (await fetch(`${srv.url}/api/state`)).json();
   expect(s.lastSeq).toBeGreaterThan(0);
   expect(Array.isArray(s.channels)).toBe(true);
+});
+
+test("no build step resolves a package at gate time", () => {
+  // `bunx @tailwindcss/cli` re-resolves and installs into node_modules on every
+  // run. Worktrees share one node_modules by symlink, so two gates running at
+  // once raced on it: `error: Failed to link jiti: EEXIST`, five times on one
+  // slice, and the group read it as its own build being broken. The binaries are
+  // already in `node_modules/.bin` — a dependency is a dependency.
+  const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> };
+  for (const [name, cmd] of Object.entries(pkg.scripts)) {
+    expect(`${name}: ${cmd}`).not.toContain("bunx");
+  }
 });

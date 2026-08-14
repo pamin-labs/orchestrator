@@ -282,3 +282,24 @@ test("a turn's checkpoint says which slice and what the work was", async () => {
   const log = (await git(dir, ["log", "-1", "--format=%s"], wt.worktree)).out.trim();
   expect(log).toBe("wip: S2: engineer — 闸门放行的卡 enqueue");
 });
+
+test("a rebase nobody finished does not wedge the group forever", async () => {
+  const dir = await repo();
+  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+
+  // Two edits to one line, one on each side: the rebase stops on the conflict and
+  // leaves rebase-merge/ behind, which is what a turn killed mid-rebase leaves.
+  writeFileSync(join(wt.worktree, "a.txt"), "theirs\n");
+  await checkpoint(git, dir, wt.worktree, "engineer turn");
+  writeFileSync(join(dir, "a.txt"), "ours\n");
+  await git(dir, ["commit", "-qam", "main moves"]);
+  const stuck = await rebaseOntoBase(git, dir, wt.worktree, "main");
+  expect(stuck.code).not.toBe(0);
+  expect(existsSync(join(dir, ".git/worktrees/g1/rebase-merge"))).toBe(true);
+
+  // Live, every later wake said "there is already a rebase-merge directory … I am
+  // stopping in case you still have something valuable there" — forever.
+  const again = await rebaseOntoBase(git, dir, wt.worktree, "main");
+  expect(again.out).not.toContain("already a rebase-merge directory");
+});

@@ -27,6 +27,8 @@ export interface WatchdogDeps {
   cfg: Config;
   git: GitRunner;
   now?: () => number;
+  /** The only network call on the tick. Tests pass a no-op; see the call site. */
+  pollUsage?: typeof pollUsage;
 }
 
 export interface Finding {
@@ -377,7 +379,12 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // so the only way to put the two side by side in the header is to ask. Rate
   // limited to five minutes inside, and it swallows its own failures — the
   // endpoint is undocumented and nothing here may depend on it.
-  await pollUsage(ctx.db, cfg.dataDir, now());
+  // Injectable, because it is the one thing in this tick that talks to the
+  // network. `test/watchdog.test.ts` ran it for real: the endpoint hung on its
+  // 10s timeout inside a gate sandbox, the test blew bun's 5s limit, and the
+  // slice was rejected for a red test that had nothing to do with its change.
+  // Two slices lost to it, on two different requirements.
+  await (deps.pollUsage ?? pollUsage)(ctx.db, cfg.dataDir, now());
 
   // 7e. Keep the shared repo map current.
   //

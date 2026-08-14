@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, symlinkSync } from "node:fs";
 import type { RepoLock } from "./gitlock.ts";
 
@@ -140,7 +140,35 @@ export async function rebaseOntoBase(
   baseRef?: string,
 ): Promise<GitRun> {
   const base = baseRef ?? (await defaultBase(git, repoPath));
+  await abortStaleRebase(git, repoPath, worktree);
   return git(repoPath, ["rebase", base], worktree);
+}
+
+/**
+ * A rebase nobody is going to finish.
+ *
+ * A turn killed mid-rebase — the server stopped, the watchdog took the process,
+ * the agent hit its turn cap — leaves `rebase-merge/` in the worktree, and every
+ * later rebase refuses with "there is already a rebase-merge directory … I am
+ * stopping in case you still have something valuable there". Right for a human
+ * at a terminal; here it means the group can never wake, and it says so once per
+ * wake attempt forever. Observed on response-aiagent-markdown.
+ *
+ * Nothing valuable is in there: whatever the interrupted rebase was replaying is
+ * still in the branch it was replaying from, and this is called at the start of a
+ * rebase that is about to redo the work anyway. `--abort` restores the pre-rebase
+ * HEAD, which is exactly the state the caller assumes.
+ */
+export async function abortStaleRebase(git: GitRunner, repoPath: string, worktree: string): Promise<boolean> {
+  for (const dir of ["rebase-merge", "rebase-apply"]) {
+    const p = await git(repoPath, ["rev-parse", "--git-path", dir], worktree);
+    if (p.code !== 0) continue;
+    const path = p.out.trim();
+    if (!path || !existsSync(isAbsolute(path) ? path : join(worktree, path))) continue;
+    await git(repoPath, ["rebase", "--abort"], worktree);
+    return true;
+  }
+  return false;
 }
 
 export async function defaultBase(git: GitRunner, repoPath: string): Promise<string> {

@@ -55,7 +55,7 @@ bun test test/xxx.test.ts     # 单个
 
 ## 代码风格
 
-- **ponytail**：先问「这需要存在吗」，然后 stdlib / 已有依赖 / 一行 / 最小实现。不加只有一个实现的接口，不为「以后」搭脚手架。deliberate 的取巧用 `ponytail:` 注释标注天花板和升级路径。
+- **写完用 `/ponytail:ponytail` 过一遍**（改代码、加依赖、做设计都算）。先问「这需要存在吗」，然后 stdlib / 已有依赖 / 一行 / 最小实现。不加只有一个实现的接口，不为「以后」搭脚手架。deliberate 的取巧用 `ponytail:` 注释标注天花板和升级路径。
 - **caveman lite**：注释和文档去冠词去客套。代码、commit message、PR、错误信息**用英文**。
 - 非平凡逻辑留一条 runnable check（`bun test`，不上框架、不写 fixture 地狱）。
 
