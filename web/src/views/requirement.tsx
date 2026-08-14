@@ -902,7 +902,12 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
   // Seeding by remount: the composer owns its text once the boss starts typing,
   // and a controlled value here would fight them for it. Nothing is sent by the
   // draft — its button fills the box and the boss sends it.
-  const [seed, setSeed] = useState("");
+  //
+  // Keyed by a counter, not by the text. Keyed by the text, pressing 填进输入框 a
+  // second time produced the same key, so the composer never remounted and the
+  // button did nothing — which is exactly when you press it: after editing the
+  // draft into something worse and wanting it back.
+  const [seed, setSeed] = useState<{ n: number; text: string }>({ n: 0, text: "" });
   return (
     <>
       {/* Who is waiting, how long, and what it costs — in that order, because the
@@ -938,11 +943,11 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             <WithAttachments body={e.question} className="text-[0.8125rem]" />
           </Clamp>
         </div>
-        <Suggested escId={e.id} onUse={setSeed} />
+        <Suggested escId={e.id} onUse={(t) => setSeed((p) => ({ n: p.n + 1, text: t }))} />
         <div className="ml-auto mt-2 max-w-[46rem]">
         <Composer
-          key={seed}
-          initial={seed}
+          key={seed.n}
+          initial={seed.text}
           rows={2}
           placeholder="答复。发出去直接解开被阻塞的 agent。⌘Enter 发送"
           submit="回答"
@@ -1017,8 +1022,11 @@ function Held({ rows }: { rows: Escalation[] }) {
                   <span className="min-w-0 flex-1 truncate text-[0.75rem] text-ink-3">{nl(e.question)}</span>
                 )}
               </AccordionTrigger>
-              <AccordionBody className="bg-paper px-4 pb-2">
-                <div className="max-w-[72ch]">
+              <AccordionBody className="bg-paper px-4 pb-2.5">
+                {/* Same bubble as everywhere else: this is somebody asking, and
+                    the only thing different about it is that they are not asking
+                    you. */}
+                <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2">
                   <Clamp lines={8}>
                     <WithAttachments body={e.question} className="text-[0.8125rem] text-ink-2" />
                   </Clamp>
@@ -1058,7 +1066,21 @@ function Suggested({ escId, onUse }: { escId: number; onUse: (t: string) => void
     void pull<{ text: string }>(`/api/escalations/${escId}/draft`).then((r) => setText(r?.text?.trim() || ""));
   }, [escId]);
 
-  if (text === null) return <Meta className="my-2 ml-auto block w-fit">AI 在替你想一个答复…</Meta>;
+  // A bubble with three dots in it, on the side the answer will land on. It was a
+  // line of grey text at the left margin, which reads as a status line about the
+  // page rather than as the reply being written.
+  if (text === null) {
+    return (
+      <div className="my-2 ml-auto flex w-fit items-center gap-2 rounded-2xl rounded-tr-sm border border-dashed border-rule bg-paper px-3.5 py-2.5">
+        <Meta>AI 在替你想</Meta>
+        <span className="typing flex gap-1">
+          <span className="size-1.5 rounded-full bg-ink-3" />
+          <span className="size-1.5 rounded-full bg-ink-3" />
+          <span className="size-1.5 rounded-full bg-ink-3" />
+        </span>
+      </div>
+    );
+  }
   if (!text) return null;
   return (
     // A recessed well: this is the one block here nobody wrote, machine text

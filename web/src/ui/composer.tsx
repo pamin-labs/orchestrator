@@ -103,6 +103,17 @@ export function Composer({
   const [slash, setSlash] = useState<{ from: number; q: string } | null>(null);
   const [picking, setPicking] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
+  // Measured from the element rather than counted from the text: a wrapped line
+  // is a line, and counting `\n` gets that wrong on exactly the long answers
+  // this box exists for.
+  const [h, setH] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "0px";
+    setH(Math.max(el.scrollHeight, rows * 22));
+    el.style.height = "";
+  }, [text, rows]);
 
   /**
    * `/` offers the skills the orchestrator can hand an agent.
@@ -315,11 +326,16 @@ export function Composer({
         }
       }}
     >
+      {/* Grows with what is in it, up to a point, and never smaller than `rows`.
+          A fixed box meant a four-line answer was written through a two-line
+          window with a drag handle nobody uses, and the drafted answer that
+          arrives in it is usually three or four lines long. */}
       <Textarea
         ref={box}
         autoFocus={autoFocus}
         rows={rows}
-        className="rounded-b-none border-0 font-sans text-[0.875rem] focus:ring-0"
+        style={{ height: h ? `${h}px` : undefined, maxHeight: "18rem" }}
+        className="resize-none overflow-y-auto rounded-b-none border-0 font-sans text-[0.875rem] focus:ring-0"
         placeholder={placeholder}
         value={text}
         onChange={(e) => onType(e.target.value, e.target.selectionStart ?? e.target.value.length)}

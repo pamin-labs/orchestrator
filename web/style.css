@@ -143,4 +143,26 @@
   .fade-in {
     animation: fade-in 200ms var(--ease-out-quint);
   }
+  /* Three dots, staggered: the one place a wait is worth animating, because the
+     answer being drafted is the thing the boss is standing there for. Same rule
+     as `breathe` — opacity only, nothing that moves the layout. */
+  @keyframes typing {
+    0%,
+    70%,
+    100% {
+      opacity: 0.25;
+    }
+    35% {
+      opacity: 1;
+    }
+  }
+  .typing > span {
+    animation: typing 1.3s var(--ease-out-quint) infinite;
+  }
+  .typing > span:nth-child(2) {
+    animation-delay: 0.18s;
+  }
+  .typing > span:nth-child(3) {
+    animation-delay: 0.36s;
+  }
 }
