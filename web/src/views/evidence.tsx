@@ -49,7 +49,9 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
   // `+94 −2`. Printing the whole stat in both places is the same three numbers
   // twice, 200px apart.
   const bad = ev.verdicts.some(failed);
-  const files = summary.split(",")[0]?.trim() ?? "";
+  // `18 files changed` is git's words, on a panel that speaks Chinese to the
+  // boss everywhere else. The numbers are the fact; the noun is ours.
+  const files = Number(summary.match(/(\d+) files? changed/)?.[1] ?? 0);
   const plus = Number(summary.match(/(\d+) insertion/)?.[1] ?? 0);
   const minus = Number(summary.match(/(\d+) deletion/)?.[1] ?? 0);
 
@@ -83,7 +85,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
               label for `typecheck` and disappeared when you opened a log — but it
               is a fact about the slice, not about which pane is open. */}
           <Meta className="shrink-0">
-            {files || "无改动"}
+            {files ? `${files} 个文件` : "无改动"}
             {ev.diff && ` · +${plus} −${minus}`}
           </Meta>
           {ev.retries > 0 && <Meta className="shrink-0 text-warn">被打回过 {ev.retries} 次</Meta>}
@@ -101,19 +103,16 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
             joined them rather than three of them getting invented names. */}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           <Segments value={view} onValueChange={setView} className="-ml-2">
-            <Segment value="diff">diff</Segment>
-            {/* The judgements are a pane, not a block above the panes. Stacked,
-                three of them pushed the change they are about off the screen and
-                a passing one said nothing the gate ticks on the row had not
-                already said — while a failing one is the whole reason to look. */}
+            {/* First, because it is the one that opens by itself when something
+                failed — and because "did it pass" is read before "what changed". */}
             {ev.verdicts.length > 0 && (
               <Segment value="verdicts">
-                {/* English, like everything else on this row. 判词 next to build
-                    test typecheck was the mixed row again — and the gate names
-                    come out of config, so they are the half that cannot move. */}
+                {/* English, like the rest of this row: the gate names come out of
+                    config and cannot move, so everything else joined them. */}
                 <span className={bad ? "text-bad" : undefined}>verdicts {ev.verdicts.length}</span>
               </Segment>
             )}
+            <Segment value="diff">diff</Segment>
             {ev.gates.map((g) => (
               <Segment key={g.name} value={g.name}>
                 {g.name}
