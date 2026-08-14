@@ -1,7 +1,9 @@
 # DESIGN
 
-The web page. One file, `web/index.html`, no framework, no build step, nothing
-fetched at runtime.
+The web page. React and Tailwind v4 built into `web/dist`, shadcn/Radix for
+behaviour only, nothing fetched at runtime — the fonts are the ones already on
+the machine and `test/smoke.test.ts` fails if a remote origin appears in the
+served HTML.
 
 ## The scene that decides everything
 
@@ -113,10 +115,12 @@ controls), 0.875 (base), 0.9375 (group name), 1.375 (the one big number in 成�
 ## Layout
 
 - One header row: project trail, the five views, subscription usage, waiting
-  count, connection. It was two rows for a while and the second was a tab strip
+  count, connection. 设置 is the gear, not a sixth view — it opens over the work. It was two rows for a while and the second was a tab strip
   above pages that had their own tab strips. Spend is not here — it belongs in
   成本, where it can be attributed. Usage is, because it is a constraint on what
-  to start next.
+  to start next — and only for an account that has a window. A per-token key or a
+  self-hosted gateway shows nothing there rather than a percentage read off some
+  other subscription.
 - The views are peers, one at a time. Crowding them onto one screen is how an
   earlier version became seven boxes each reporting an absence.
 - **The window never scrolls; a pane inside a view does.** The shell is one
@@ -157,7 +161,18 @@ all, the page is one panel with the one field it needs, not a tutorial.
 
 Side-stripe accent borders, gradient text, decorative glass, hero metrics,
 identical card grids, modal-as-first-thought, decorative motion, em dashes in
-copy. The one `—` that remains is inside the DRAFT card placeholder, because the
+copy.
+
+The one dialog that is not a view is 设置, and it took four page versions to earn
+it. A view is 76rem wide and settings is a dozen fields, so every page version
+was mostly white, and the two scopes — this server, this repository — read as the
+same thing because they were built from the same three components. A dialog sizes
+itself, so its density is designed rather than inherited from the window; and one
+left rail holds both scopes as two groups, which is the thing neither page could
+say about itself. It is also the only surface here nobody is ever *in*: you come
+to fix something and go back to the work, which is what closing a dialog does and
+what navigating back from a view does not. Modal-as-first-thought stays banned;
+this was the fifth. The one `—` that remains is inside the DRAFT card placeholder, because the
 validator parses `标题 [normal] — 验收方式` and the placeholder must show real
 syntax.
 

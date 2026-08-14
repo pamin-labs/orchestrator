@@ -490,3 +490,17 @@ preflight 那条改准了：本地留着旧 egress 不再误报 —— server �
 顺带修的：`vaultFor` 里 `chatgpt` 模式的跳过写在了 push 之后，于是整份 auth.json 被当成 bearer token 绑上去了 —— 测试抓到的。
 
 `bun test test/` 474 pass。
+
+### 设置收进一个 dialog，用量只算订阅账号
+
+**两页并一个 dialog。** 『设置』（齿轮）和『配置』（tab）是两个作用域 —— 这台服务器 vs 这个仓库 —— 但它们由同一套 `Pane + 2 列网格 + H2 + Field` 拼出来，长得一模一样，谁也没说自己管到哪。而且视图有 76rem 宽、内容只有十来个字段，四版页面每一版都是右下角一片死白。
+
+现在是一个 dialog：左栏两组（`服务器` / `这个项目 · <名字>` + repo 路径），右栏一节内容。作用域由分组说，不由每页自我介绍。`#v=settings` 和 `#v=config` 都还能开，各自落在原来那一节；`配置` 从头部 tab 条摘掉了。DESIGN.md 的 modal 禁令加了这一条例外的来由 —— 这是第五版，不是第一想法。
+
+**闸门看得出是开关了。** 之前按 `resource` 表的字母序渲染、却给每行标运行序号，屏幕上是 4/1/3/2。现在开的排上面、按运行序编号、有拖拽手柄，关的在一条 rule 底下没有序号。拖拽是原生 HTML5 DnD（手柄 draggable，不是整行 —— 整行是那个开关，drag 结束还会当成 click 把闸门关掉），键盘 `Alt+↑/↓`。没加依赖。
+
+**用量条只对订阅账号拉了。** `subusage.ts` 读的是宿主机自己的 Claude Code keychain，跟设置页存的 `runtime_auth` 是两回事 —— Claude 配成 API key 而你本机登着 Claude Code，头部显示的是你个人订阅的额度，不是舰队在烧的那张 key。Codex 只是碰巧对（api_key 的 rollout 文件里没有 `rate_limits`）。现在两家都过 `subscriptionAccount()`：模式是订阅 **且** base_url 为空或官方 host（自建网关后面是另一个账号），否则连行一起删掉。头部永远不出现钱 —— `spent_usd` 在 migration 023 就删了，要出美元只能写死单价。
+
+顺带修的：存下按钮挂在「API 地址」行上却存 token 且 `disabled={!secret.trim()}`，于是只改自建网关地址存不下去；存失败也照样清空输入框，被拒的 token 直接没了只剩一个 toast。
+
+`bun test test/` 475 pass。

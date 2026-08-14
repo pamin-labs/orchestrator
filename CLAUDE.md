@@ -54,6 +54,27 @@ bun test test/xxx.test.ts     # 单个
 
    **表里只放活性（liveness）：谁推。** 健康检查（turn 超时、原地打转、预算、env_suspect）留在 `watchdog.ts` —— 那是「它还好吗」，不是「有没有人在推它」。两者混在一起，任何一边都会变成垃圾堆。
 
+## 开工前挂档（按任务难度）
+
+**启动时**先挂 `pua` 档位，再动手。挑不动就往难的那档挑 —— 多跑一个命令的成本，远小于第 20 个 turn 才发现方向错了。
+
+| 这次要干的事 | 启动命令 |
+|---|---|
+| 日常改动、查 bug、一两个文件 | `/pua`（核心引擎：三条红线、L0-L4、7 项清单） |
+| 执行一个已经定好方案的子任务 | `/pua:p7`（方案驱动 + 3 问自检） |
+| 写 prompt、带一队 agent（改 `roles/*.yaml`、调度、编排） | `/pua:p9` |
+| 定架构、切模块边界、动 `PLAN.md` 的形状 | `/pua:p10` |
+| 大任务放着自己跑 | `/pua:loop`（最多 30 轮） |
+| 派给子 agent / 短会话，要把要点塞进去 | `/pua:shot` |
+
+**动手时**再按领域挂 skill：
+
+- 全部：`/ponytail:ponytail`。
+- 前端：`/shadcn`（先查有没有现成组件，硬约束 4）+ `/impeccable <critique|layout|polish|harden|clarify>` + `/frontend-design`。
+- 状态机 / 调度 / 模块边界：`mattpocock-skills:codebase-design`；方案有分歧先 `mattpocock-skills:grilling` 打一遍，结论落 `docs/decisions/`。
+
+**收尾**：`/ponytail:ponytail-review`（只抓过度设计）或 `/code-review`（抓正确性）过一遍。
+
 ## 代码风格
 
 - **写完用 `/ponytail:ponytail` 过一遍**（改代码、加依赖、做设计都算）。先问「这需要存在吗」，然后 stdlib / 已有依赖 / 一行 / 最小实现。不加只有一个实现的接口，不为「以后」搭脚手架。deliberate 的取巧用 `ponytail:` 注释标注天花板和升级路径。
