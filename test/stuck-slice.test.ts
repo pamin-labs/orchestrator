@@ -152,7 +152,9 @@ test("a reopened card says what it already delivered, and how to close it", asyn
   delivered(h.db);
   sendBack(h.deps as never, 1, "gate said no", "gate");
 
-  const list = await (await h.app(new Request("http://x/orch/task?grp=1"))).text();
+  const list = await (
+    await h.app(new Request("http://x/orch/task", { headers: { "x-orch-token": "tok-old" } }))
+  ).text();
   expect(list).toContain("src/one.ts");
   expect(list).toContain("--already-done");
   // The old owner is retired-or-gone either way; showing `engineer` there reads as

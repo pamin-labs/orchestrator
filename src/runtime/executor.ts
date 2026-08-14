@@ -379,7 +379,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   // Always, for every provider. The container is the write boundary and it knows
   // nothing about which files this group owns, so the reconcile runs after the
   // fact — it is not a codex workaround any more, it is the mechanism.
-  await reconcileOwnership(deps, agent, job, grp, cwd);
+  await reconcileOwnership(deps, agent, job, grp);
 
   // A session whose transcript is gone on disk.
   //
@@ -839,18 +839,22 @@ function recordSubscriptionUsage(deps: ExecDeps, provider: string, r: TurnResult
  *
  * Rolled back, then said out loud — a silent revert would have the agent puzzling
  * over work that keeps vanishing.
+ *
+ * `sandboxGit`, not the host runner: the checkout is `/work` inside the group's
+ * container and there is no such path on this machine. Pointing the host runner at
+ * it threw on every turn, in the one mechanism that has no second line of defence.
  */
-async function reconcileOwnership(
+export async function reconcileOwnership(
   deps: ExecDeps,
   agent: AgentRow,
   job: Job,
   grp: { owns_json?: string } | null | undefined,
-  worktree: string,
 ): Promise<void> {
   const owns = parseOwns(grp?.owns_json ?? null);
-  if (!owns.length) return;
+  if (!owns.length || !job.grp_id) return;
 
-  const status = await deps.git(worktree, ["status", "--porcelain"], worktree);
+  const git = sandboxGit(deps.ctx, { grp: job.grp_id });
+  const status = await git(WORK, ["status", "--porcelain"], WORK);
   if (status.code !== 0) return;
   // "XY path" and "XY old -> new"; the destination is the one that exists now.
   const changed = status.out
@@ -864,8 +868,8 @@ async function reconcileOwnership(
   if (!stray.length) return;
 
   // Untracked files have nothing to check out, so they are removed instead.
-  await deps.git(worktree, ["checkout", "--", ...stray], worktree);
-  await deps.git(worktree, ["clean", "-fd", "--", ...stray], worktree);
+  await git(WORK, ["checkout", "--", ...stray], WORK);
+  await git(WORK, ["clean", "-fd", "--", ...stray], WORK);
   deps.ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",

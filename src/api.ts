@@ -27,6 +27,7 @@ import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/pageindex.ts";
 import { gatesFor, recordGate } from "./mech/gate.ts";
 import { listSkills, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/skills.ts";
+import { shq } from "./mech/shq.ts";
 import { sediment } from "./mech/lessons.ts";
 import { say } from "./lang.ts";
 import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/validate.ts";
@@ -227,7 +228,9 @@ const postJournal: Handler = async (ctx, req) => {
       .map(([k, val]) => `${k}: ${Array.isArray(val) ? `[${val.join(", ")}]` : val}`)
       .join("\n");
     // Into the sandbox's checkout, so it merges with the PR like any other file.
-    await execIn(ctx, { grp: a.grp_id }, `mkdir -p ${WORK}/${dirname(exportPath)}`);
+    // Quoted: the path carries `grp.name`, and a group can name its own children
+    // (`orch split`). Unquoted this was one `;` away from being a command.
+    await execIn(ctx, { grp: a.grp_id }, `mkdir -p ${shq(`${WORK}/${dirname(exportPath)}`)}`);
     await putFile(ctx, { grp: a.grp_id }, `${WORK}/${exportPath}`, `---\n${fm}\n---\n${v.body}\n`);
   }
 
@@ -636,18 +639,29 @@ const postLease: Handler = async (ctx, req) => {
 };
 
 const getLeaseLog: Handler = async (ctx, req, params) => {
+  // Whose lease this is. Unchecked, any sandbox could read any group's build log
+  // by counting up from 1 — the `/orch/` prefix gate on the mailbox is about
+  // which routes are reachable, not about who is reaching them.
+  const me = agentOf(ctx, req);
+  if (!me) return text("no agent", 401);
   const row = ctx.db
-    .query<{ log_path: string | null }, [number]>("SELECT log_path FROM lease WHERE id = ?")
+    .query<{ log_path: string | null; grp_id: number | null }, [number]>(
+      "SELECT log_path, grp_id FROM lease WHERE id = ?",
+    )
     .get(Number(params.id));
   if (!row?.log_path) return text("no log", 404);
+  if (row.grp_id !== me.grp_id) return text("not this group's lease", 403);
   const raw = await Bun.file(row.log_path).text();
+  // A substring, not a regex. `new RegExp` on an agent-supplied string runs on the
+  // host, in the single process everything else is waiting on, and one nested
+  // quantifier stalls the whole orchestrator. Nobody greps a build log for
+  // anything a substring cannot find.
   const grep = new URL(req.url).searchParams.get("grep");
   if (!grep) return text(raw.split("\n").slice(-200).join("\n"));
-  const re = new RegExp(grep);
   return text(
     raw
       .split("\n")
-      .filter((l) => re.test(l))
+      .filter((l) => l.includes(grep))
       .slice(0, 200)
       .join("\n"),
   );
@@ -905,7 +919,10 @@ const postSplit: Handler = async (ctx, req) => {
 
   const made: { id: number; name: string }[] = [];
   for (const item of items) {
-    const name = (item.name?.trim() || slug(item.idea)).slice(0, 40);
+    // Slugged even when the agent supplied it. A group name becomes a branch
+    // (`orch/<name>`), a path under docs/journal and an argument to host git —
+    // "whatever 40 characters an agent felt like" is not a shape any of those want.
+    const name = slug(item.name?.trim() || item.idea);
     const child = ctx.db
       .query<{ id: number }, [number, string]>(
         "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'PLANNING', unixepoch() * 1000) RETURNING id",
@@ -1269,7 +1286,13 @@ const postCtxQuery: Handler = async (ctx, req) => {
 export const CTX_BUDGET_CHARS = DEFAULT_BUDGET;
 
 const getTasks: Handler = async (ctx, req) => {
-  const grp = Number(new URL(req.url).searchParams.get("grp") ?? 0);
+  // The caller's own group, not the one it asked for. Every other `/orch` route
+  // checks the token; these two never did, and the `/orch/` prefix gate on the
+  // mailbox made them look as if they had — so any sandbox could enumerate any
+  // group's cards by putting a number in a query string.
+  const me = agentOf(ctx, req);
+  if (!me?.grp_id) return text("no agent", 401);
+  const grp = me.grp_id;
   // Only the slice being worked, plus anything not tied to a slice. Showing the
   // whole plan's tasks let the writer mark future slices done, which pushed
   // slices that had never started into review.

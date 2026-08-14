@@ -9,6 +9,9 @@ import {
   staticPrefix,
 } from "../src/mech/ownership.ts";
 import { head, joinQueue, landed, position, queue } from "../src/mech/mergequeue.ts";
+import { reconcileOwnership } from "../src/runtime/executor.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
+import type { Ctx } from "../src/api.ts";
 
 function seed(groups: Array<{ name: string; owns: string[]; status?: string }>): DB {
   const db = openMemory();
@@ -218,4 +221,42 @@ test("after-the-fact ownership catches a write outside the boundary", () => {
   // A group that declared no boundary is not policed here: nothing to police it
   // against, and reverting everything it wrote is worse than reverting nothing.
   expect(outsideOwns(changed, [])).toEqual([]);
+});
+
+test("the revert actually runs, against the group's own checkout", async () => {
+  // The rule was right and unreachable: the reconcile ran the HOST git runner
+  // against `/work`, a path that exists only inside the container, so the one
+  // mechanism enforcing file ownership after 005 threw on every turn. Nothing
+  // asserted the wiring, only the pure function above it.
+  const db = seed([{ name: "g1", owns: ["src/auth/**"] }]);
+  // shq quotes every argument, so the command is `git 'status' '--porcelain'`.
+  const cwds: string[] = [];
+  const sandbox = fakeSandbox((cmd, cwd) => {
+    cwds.push(cwd);
+    return cmd.includes("'status'") ? { out: " M src/auth/mw.ts\n?? web/stray.ts\n" } : {};
+  });
+  const said: string[] = [];
+  const ctx = {
+    db,
+    bus: { emit: (e: { body: string }) => said.push(e.body) },
+    sandbox,
+    config: { language: "中文" },
+  } as unknown as Ctx;
+
+  await reconcileOwnership(
+    { ctx } as never,
+    { role: "engineer" } as never,
+    { grp_id: 1 } as never,
+    { owns_json: JSON.stringify(["src/auth/**"]) },
+  );
+
+  const ran = sandbox.commands.join("\n");
+  // The group's own checkout, inside its container. There is no `/work` here.
+  expect(new Set(cwds)).toEqual(new Set(["/work"]));
+  expect(ran).toContain("'checkout' '--' 'web/stray.ts'");
+  expect(ran).toContain("'clean' '-fd' '--' 'web/stray.ts'");
+  // What it kept: the owned file is not in either repair command.
+  expect(ran).not.toContain("src/auth/mw.ts");
+  // Said out loud, or the agent watches its own work vanish.
+  expect(said.join(" ")).toContain("web/stray.ts");
 });

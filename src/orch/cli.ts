@@ -141,7 +141,7 @@ const USAGE = `orch <command>
   ask-boss [--severity blocker|advisory] [--kind env|spec|boundary|design|other]
            [--brief "<=20 chars, what it is about>"] <question>
   lease <resource> [--arg k=v ...]
-  lease log <id> [--grep RE]
+  lease log <id> [--grep TEXT]
   mail <target> --intent ask|request|inform|note|decision [--severity S] [--in-reply-to N] <body>
   journal add --kind decision|journal|retro|risk|fact [--file P ...] [--slice N]   # body on stdin
   task list | claim <id>
@@ -228,7 +228,9 @@ export async function main(argv: string[]): Promise<number> {
     }
     case "task": {
       if (sub === "list" || sub === undefined) {
-        r = await call("GET", `/orch/task?grp=${process.env.ORCH_GRP_ID ?? ""}`);
+        // No group id: the token says which group is asking, and a number in a
+        // query string was a way to read another group's cards.
+        r = await call("GET", "/orch/task");
       } else if (sub === "claim") {
         const id = Number(args[2]);
         if (!Number.isInteger(id)) {

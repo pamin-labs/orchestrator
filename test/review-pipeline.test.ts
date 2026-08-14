@@ -378,7 +378,9 @@ test("a task on a slice that has not started cannot be listed or completed", asy
   const h = await harness();
   h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
   h.db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (1, 2, 'later work', 0)");
-  const list = await (await h.app(new Request("http://x/orch/task?grp=1"))).text();
+  const list = await (
+    await h.app(new Request("http://x/orch/task", { headers: { "x-orch-token": "tok-eng" } }))
+  ).text();
   // Showing the whole plan let the writer close future slices' tasks, which
   // pushed slices that had never started into review.
   expect(list).toContain("edit a.txt");
