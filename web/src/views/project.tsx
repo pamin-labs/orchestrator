@@ -30,6 +30,10 @@ export interface ProjectConfig {
   repoPath: string;
   config: Config;
   resources: Array<{ name: string; template: string }>;
+  /** What the boss pinned, or null for "ask the remote". */
+  baseBranch: string | null;
+  /** What that resolves to right now. */
+  baseBranchNow: string;
 }
 
 /** Handle, order, name, command. Fixed, so the commands line up down the page. */
@@ -162,6 +166,17 @@ export function Sandbox({
     <>
       <Head title="沙盒" note="灰字是默认值" />
       <FieldGroup className="[--label:5rem]">
+        {/* Every new group is cut from this branch, every rebase goes onto it, and
+            every diff the boss reads is measured against it. Empty means whatever
+            the remote's HEAD says, which is re-checked when the remote renames it. */}
+        <Row
+          label="基线分支"
+          value={d.baseBranch ?? ""}
+          placeholder={`${d.baseBranchNow}（远端说的）`}
+          width="max-w-[14rem]"
+          busy={busy}
+          onSave={(v) => patch({ baseBranch: v || null })}
+        />
         <Row
           label="装依赖"
           value={d.config.install ?? ""}

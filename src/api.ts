@@ -12,7 +12,7 @@ import { execIn, killSandbox, putFile, serverKeyOnDisk, WORK } from "./mech/sand
 import { listAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
 import { loginRuntimes, startLogin } from "./mech/login.ts";
 import { preflight } from "./mech/preflight.ts";
-import { sandboxGit } from "./mech/checkout.ts";
+import { baseBranch, baseRefFor, sandboxGit } from "./mech/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
@@ -77,6 +77,8 @@ export interface Ctx {
     /** difficulty -> token cap written onto each new slice. */
     sliceBudgetTokens?: Record<string, number>;
     dataDir?: string;
+    /** Where ticked skills are staged for the sandboxes to mount. */
+    skillsDir?: string;
     autoAdvance?: boolean;
     autoAcceptTiers?: string[];
     /** Surfaced to the panel: how many groups may run at once, and lease slots. */
@@ -2427,6 +2429,22 @@ const postGroupControl: Handler = async (ctx, req, params) => {
       if (!ctx.git) return bad("no git runner");
       await unpark(ctx, grpId);
       return text("ok");
+    // Throw the container away; the next turn builds a fresh one and
+    // `restoreWorkspace` puts the checkout and the dependencies back (the branch
+    // itself lives in the boss's repo, so nothing on it is at risk). The way out
+    // of a container that is wedged, is missing a mount the boss has just
+    // allowed, or is holding a credential that has since been replaced.
+    case "rebuild": {
+      await killSandbox(ctx, { grp: grpId });
+      ctx.bus.emit({
+        grpId,
+        author: "boss",
+        kind: "state_change",
+        body: say(ctx.config?.language, "sandbox.rebuild"),
+      });
+      ctx.sched.tick();
+      return text("ok");
+    }
     case "interrupt": {
       const b = await body<{ mode?: string }>(req);
       const mode = b.mode === "rollback" ? "rollback" : "keep";
@@ -2476,7 +2494,19 @@ const getEvidence: Handler = async (ctx, _req, params) => {
   let scope: "slice" | "branch" = "slice";
   {
     const git = sandboxGit(ctx, { grp: sl.grp_id });
-    const from = await sliceDiffBase(git, WORK, WORK, sl.base_sha);
+    // The project's base branch, not whatever the sandbox's clone thinks the
+    // default is: the boss is reading this diff against the branch this work
+    // will land on, and a project that develops on `develop` says so once.
+    const projectId = ctx.db
+      .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
+      .get(sl.grp_id)?.project_id;
+    const from = await sliceDiffBase(
+      git,
+      WORK,
+      WORK,
+      sl.base_sha,
+      projectId ? await baseRefFor(ctx, projectId) : undefined,
+    );
     if (from) {
       scope = from.scope;
       const [s, d] = await Promise.all([
@@ -2848,7 +2878,7 @@ const postSkill: Handler = async (ctx, req) => {
   // No name is a rescan: the boss installed or removed a skill outside this
   // process, and the staged copy is the only thing that does not know yet.
   if (b.name) setSkillOff(ctx.db, b.name, b.on === false);
-  const { staged, failed } = restageSkills(ctx.db, ctx.config?.dataDir ?? "data");
+  const { staged, failed } = restageSkills(ctx.db, ctx.config?.skillsDir ?? "/var/tmp/orch-cache/skills");
   return json({ staged: staged.length, failed });
 };
 
@@ -3121,6 +3151,14 @@ const patchProjectConfig: Handler = async (ctx, req, params) => {
   const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
   if (!row) return text("no such project", 404);
   const patch = await body<Record<string, unknown>>(req);
+  // A column, not a config_json key: it is read on every clone, rebase and diff,
+  // and it is re-detected and written back when the remote renames it. Empty
+  // means "ask the remote", which is what a fresh project starts as.
+  if ("baseBranch" in patch) {
+    const want = String(patch.baseBranch ?? "").trim();
+    ctx.db.run("UPDATE project SET base_branch = ? WHERE id = ?", [want || null, id]);
+    delete patch.baseBranch;
+  }
   let current: Record<string, unknown> = {};
   try {
     current = JSON.parse(row.config_json || "{}");
@@ -3137,8 +3175,8 @@ const patchProjectConfig: Handler = async (ctx, req, params) => {
 
 const getProjectConfig: Handler = async (ctx, _req, params) => {
   const row = ctx.db
-    .query<{ config_json: string; repo_path: string }, [number]>(
-      "SELECT config_json, repo_path FROM project WHERE id = ?",
+    .query<{ config_json: string; repo_path: string; base_branch: string | null }, [number]>(
+      "SELECT config_json, repo_path, base_branch FROM project WHERE id = ?",
     )
     .get(Number(params.id));
   if (!row) return text("no such project", 404);
@@ -3151,7 +3189,14 @@ const getProjectConfig: Handler = async (ctx, _req, params) => {
   const resources = ctx.db
     .query<{ name: string; template: string }, []>("SELECT name, template FROM resource ORDER BY name")
     .all();
-  return json({ repoPath: row.repo_path, config, resources });
+  return json({
+    repoPath: row.repo_path,
+    config,
+    resources,
+    baseBranch: row.base_branch,
+    // What it resolves to right now, so an empty box is not a mystery.
+    baseBranchNow: await baseBranch(ctx, Number(params.id)),
+  });
 };
 
 const getPreflight: Handler = async (ctx) =>
@@ -3159,7 +3204,7 @@ const getPreflight: Handler = async (ctx) =>
     checks: await preflight({
       db: ctx.db,
       sandbox: ctx.config.sandbox ?? { server: "127.0.0.1:8080", apiKey: "", image: "" },
-      dataDir: ctx.config.dataDir,
+      skillsDir: ctx.config.skillsDir,
     }),
   });
 
@@ -3207,7 +3252,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   // No `landed`: whether a PR is merged is GitHub's answer, and `pollPrs` asks it
   // every tick. A button for it was a boss confirming by hand what the server
   // already knew — and one mis-click dissolved a group whose PR was still open.
-  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|budget|drop|newpr)$/, postGroupControl],
+  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|budget|drop|newpr|rebuild)$/, postGroupControl],
   ["GET", /^\/api\/slices\/(?<id>\d+)\/evidence$/, getEvidence],
   ["GET", /^\/api\/slices\/(?<id>\d+)\/gate\/(?<name>[\w.-]+)$/, getGateLog],
   ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],

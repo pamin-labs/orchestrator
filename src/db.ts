@@ -8,7 +8,14 @@ import { rememberSecrets } from "./mech/scrub.ts";
  * `note` (the static blackboard), `task`/`slice` (units of work).
  * Everything else is support.
  */
-const MIGRATIONS: string[] = [
+/**
+ * A migration is SQL, or a function when the change is not expressible in it.
+ *
+ * The function form exists for one case so far: rewriting the skill paths stored
+ * in old message bodies, where the old and new forms differ by the skill's name
+ * and SQLite has no regex.
+ */
+const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // 001 — initial schema
   `
   CREATE TABLE project (
@@ -529,9 +536,46 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE grp DROP COLUMN worktree;
   `,
+
+  // 025 — which branch this project is cut from and measured against.
+  //
+  // It was detected on every call and the detection returned `origin/main` where
+  // four callers then wrote `origin/${...}`. NULL means "ask the remote", which is
+  // resolved once and written back here — so the diff baseline is the same value
+  // on the day a slice was cut and on the day the boss reads it.
+  `
+  ALTER TABLE project ADD COLUMN base_branch TEXT;
+  `,
+
+  // 026 — skill paths in old messages point at a machine the agent cannot see.
+  //
+  // The composer used to insert `.claude/skills/<name>/SKILL.md`, a path relative
+  // to the boss's home. That was readable when turns ran on this machine. They run
+  // in a container now, where the boss's skills are mounted somewhere else — so
+  // every one of those paths is a file the agent is told to read and cannot. These
+  // bodies are re-injected into later turns, which is why this is worth rewriting
+  // rather than leaving as history: `/name` is what both CLIs resolve, wherever
+  // the skill actually sits.
+  rewriteSkillPaths,
 ];
 
 export type DB = Database;
+
+/** Migration 026, exported so it can be run against a database that has rows. */
+export function rewriteSkillPaths(db: DB): void {
+  const like = "%skills/%/SKILL.md";
+  for (const table of ["note", "event"] as const) {
+    const key = table === "note" ? "id" : "seq";
+    const rows = db
+      .query<{ id: number; body: string }, [string]>(`SELECT ${key} AS id, body FROM ${table} WHERE body LIKE ?`)
+      .all(like);
+    const set = db.prepare(`UPDATE ${table} SET body = ? WHERE ${key} = ?`);
+    for (const r of rows) {
+      const next = r.body.replace(/(?:^|(?<=\s))\.(?:claude|agents)\/skills\/([\w.:-]+)\/SKILL\.md/g, "/$1");
+      if (next !== r.body) set.run(next, r.id);
+    }
+  }
+}
 
 /** Open (or create) the database and bring it up to the latest migration. */
 export function open(path = "data/orchestrator.sqlite"): DB {
@@ -551,11 +595,12 @@ export function migrate(db: DB): void {
   db.exec("CREATE TABLE IF NOT EXISTS migration (n INTEGER PRIMARY KEY, at INTEGER NOT NULL)");
   const applied = db.query<{ n: number }, []>("SELECT n FROM migration").all().map((r) => r.n);
   const stamp = db.prepare("INSERT INTO migration (n, at) VALUES (?, ?)");
-  for (const [i, sql] of MIGRATIONS.entries()) {
+  for (const [i, step] of MIGRATIONS.entries()) {
     const n = i + 1;
     if (applied.includes(n)) continue;
     db.transaction(() => {
-      db.exec(sql);
+      if (typeof step === "string") db.exec(step);
+      else step(db);
       stamp.run(n, Date.now());
     })();
   }

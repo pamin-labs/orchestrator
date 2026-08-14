@@ -280,36 +280,58 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   }
 
   const spec = specFor(ctx, projectId);
-  const sb = await Sandbox.create({
-    connectionConfig: connection(ctx),
-    image: spec.image,
-    timeoutSeconds: spec.ttlSeconds,
-    resource: { cpu: spec.cpu, memory: spec.memory },
-    // Required for credential injection; without it the tokens would have to be
-    // real inside the sandbox, and the failure mode is a 401 rather than an
-    // obvious "vault off". Preflight asserts the server side of this.
-    credentialProxy: { enabled: true },
-    networkPolicy: {
-      defaultAction: "allow",
-      egress: spec.denyDomains.map((target) => ({ action: "deny" as const, target })),
-    },
-    // `grp-1`, not `grp:1`: metadata values must be alphanumeric plus `-_.`, and
-    // a colon is a 400 at creation — which fails the group, not the label.
-    volumes: [
-      ...Object.entries(spec.cacheDirs).map(([mountPath, hostPath], i) => ({
-        name: `cache-${i}`,
-        host: { path: hostPath },
-        mountPath,
-      })),
-      // The boss's own skills, staged into one dereferenced directory on the host
-      // (`stageSkills`) and mounted where each CLI looks for them, so the agent
-      // finds and invokes a skill by itself instead of waiting to be handed one.
-      // Read-only: what the boss ticks is the whole contract, and a group editing
-      // the set every other group mounts is not part of it.
-      ...skillMounts(ctx),
-    ],
-    metadata: { owner: `${holder(scope).table}-${holder(scope).id}` },
-  });
+  const cacheVolumes = Object.entries(spec.cacheDirs).map(([mountPath, hostPath], i) => ({
+    name: `cache-${i}`,
+    host: { path: hostPath },
+    mountPath,
+  }));
+  const make = (volumes: Volume[]) =>
+    Sandbox.create({
+      connectionConfig: connection(ctx),
+      image: spec.image,
+      timeoutSeconds: spec.ttlSeconds,
+      resource: { cpu: spec.cpu, memory: spec.memory },
+      // Required for credential injection; without it the tokens would have to be
+      // real inside the sandbox, and the failure mode is a 401 rather than an
+      // obvious "vault off". Preflight asserts the server side of this.
+      credentialProxy: { enabled: true },
+      networkPolicy: {
+        defaultAction: "allow",
+        egress: spec.denyDomains.map((target) => ({ action: "deny" as const, target })),
+      },
+      volumes,
+      // `grp-1`, not `grp:1`: metadata values must be alphanumeric plus `-_.`, and
+      // a colon is a 400 at creation — which fails the group, not the label.
+      metadata: { owner: `${holder(scope).table}-${holder(scope).id}` },
+    });
+
+  // The boss's own skills, staged into one dereferenced directory on the host
+  // (`stageSkills`) and mounted where each CLI looks for them, so the agent finds
+  // and invokes a skill by itself instead of waiting to be handed one. Read-only:
+  // what the boss ticks is the whole contract, and a group editing the set every
+  // other group mounts is not part of it.
+  const skills = skillMounts(ctx);
+  let sb: Sandbox;
+  try {
+    sb = await make([...cacheVolumes, ...skills]);
+  } catch (e) {
+    // The server mounts host paths only from its own `allowed_host_paths`, and a
+    // path missing from it fails creation outright — which would take every
+    // group down for a feature no group needs to run. So: one retry without the
+    // skills, said out loud with the exact path to allow. Not a silent fallback
+    // (005) — the fleet keeps working and the boss is told what is switched off.
+    if (!skills.length || !isPathNotAllowed(e)) throw e;
+    ctx.bus?.emit({
+      grpId: "grp" in scope ? scope.grp : null,
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "blocker",
+      body:
+        `技能没挂进沙盒：opensandbox-server 的 allowed_host_paths 不含 ${skills[0]!.host?.path}。` +
+        `加上它再重开这个组的容器；在那之前 agent 只能用你在输入框里点名的技能。`,
+    });
+    sb = await make(cacheVolumes);
+  }
   live.set(sb.id, sb);
   remember(ctx, scope, sb.id);
   await provision(sb);
@@ -374,6 +396,11 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
 export const FILE_MODE = 644;
 const EXEC_MODE = 755;
 
+/** The one creation failure worth degrading for rather than failing the group. */
+function isPathNotAllowed(e: unknown): boolean {
+  return /not under any allowed prefix|allowed_host_paths/i.test(String(e));
+}
+
 /** Where a group's checkout lives inside its sandbox. */
 export const WORK = "/work";
 
@@ -385,9 +412,11 @@ export const WORK = "/work";
  * and neither CLI cares which of the two directories the boss installed it into.
  */
 export function skillMounts(ctx: Ctx): Volume[] {
-  // Absolute: the sandbox server reads this as its own filesystem path and
-  // rejects anything that does not start with `/`.
-  const path = resolve(ctx.config?.dataDir ?? "data", "skills");
+  // Absolute, and on the server's own allowlist: it reads this as its own
+  // filesystem path, rejects anything not starting with `/`, and rejects
+  // anything outside `allowed_host_paths` — which is why this is not under
+  // `dataDir`. A repo checkout is never on that list.
+  const path = resolve(ctx.config?.skillsDir ?? "/var/tmp/orch-cache/skills");
   if (!existsSync(path)) return [];
   return [
     { name: "skills-claude", host: { path }, mountPath: "/root/.claude/skills", readOnly: true },

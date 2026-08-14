@@ -36,7 +36,7 @@ export async function rebaseOntoBase(
   worktree: string,
   baseRef?: string,
 ): Promise<GitRun> {
-  const base = baseRef ?? (await defaultBase(git, repoPath));
+  const base = baseRef ?? `origin/${await detectBaseBranch(git, repoPath)}`;
   await abortStaleRebase(git, repoPath, worktree);
   return git(repoPath, ["rebase", base], worktree);
 }
@@ -64,13 +64,34 @@ export async function abortStaleRebase(git: GitRunner, repoPath: string, worktre
   return r.code === 0;
 }
 
-export async function defaultBase(git: GitRunner, repoPath: string): Promise<string> {
+/**
+ * The default branch's **bare** name — `main`, `master`, `trunk`, whatever this
+ * remote actually calls it.
+ *
+ * Bare, and that is the whole point of the rewrite: this used to return
+ * `origin/main` when `origin/HEAD` was set and `main` when it was not, while four
+ * of its callers wrote `origin/${await defaultBase(...)}`. On any repository where
+ * `origin/HEAD` exists — which is every clone — those asked git for
+ * `origin/origin/main`.
+ *
+ * Asked in the order that is right rather than convenient: the remote's own HEAD
+ * first (a repo whose default is `trunk` says so here), then whichever of
+ * main/master exists on the remote, then locally. `HEAD` last, for a repository
+ * with no branches yet.
+ */
+export async function detectBaseBranch(git: GitRunner, repoPath: string): Promise<string> {
   const hasOrigin = await git(repoPath, ["remote"]);
   if (hasOrigin.code === 0 && hasOrigin.out.includes("origin")) {
     const head = await git(repoPath, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
-    if (head.code === 0 && head.out.trim()) return head.out.trim().replace("refs/remotes/", "");
-    for (const b of ["origin/main", "origin/master"]) {
-      const ok = await git(repoPath, ["rev-parse", "--verify", "--quiet", b]);
+    const local = head.code === 0 ? head.out.trim().replace("refs/remotes/origin/", "") : "";
+    if (local) return local;
+    // `origin/HEAD` is not set in every clone, and a rename on the remote does not
+    // update it. Ask the remote itself before guessing.
+    const remote = await git(repoPath, ["ls-remote", "--symref", "origin", "HEAD"]);
+    const named = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(remote.out)?.[1];
+    if (remote.code === 0 && named) return named;
+    for (const b of ["main", "master"]) {
+      const ok = await git(repoPath, ["rev-parse", "--verify", "--quiet", `origin/${b}`]);
       if (ok.code === 0) return b;
     }
   }
@@ -128,7 +149,7 @@ export async function squashWip(
   message: string,
   baseRef?: string,
 ): Promise<SquashResult> {
-  const base = baseRef ?? (await defaultBase(git, repoPath));
+  const base = baseRef ?? `origin/${await detectBaseBranch(git, repoPath)}`;
   const mb = await git(repoPath, ["merge-base", base, "HEAD"], worktree);
   if (mb.code !== 0 || !mb.out.trim()) return { squashed: 0, reason: `no merge base with ${base}` };
   const from = mb.out.trim();
@@ -207,8 +228,9 @@ export async function sliceDiffBase(
   repoPath: string,
   worktree: string,
   baseSha: string | null,
+  baseRef?: string,
 ): Promise<{ base: string; scope: "slice" | "branch" } | null> {
-  const ref = await defaultBase(git, repoPath);
+  const ref = baseRef ?? `origin/${await detectBaseBranch(git, repoPath)}`;
   const forkRun = await git(repoPath, ["merge-base", ref, "HEAD"], worktree);
   const fork = forkRun.code === 0 ? forkRun.out.trim() : "";
   if (!baseSha) return fork ? { base: fork, scope: "branch" } : null;

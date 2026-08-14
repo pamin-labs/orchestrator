@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/skills.ts";
-import { openMemory } from "../src/db.ts";
+import { pathInSandbox, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/skills.ts";
+import { openMemory, rewriteSkillPaths } from "../src/db.ts";
 
 /**
  * The staging directory the sandbox mounts.
@@ -41,7 +41,7 @@ function farm(): { home: string; ref: (name: string) => SkillRef } {
 
 test("staged skills are dereferenced, not symlinked", () => {
   const f = farm();
-  const data = mkdtempSync(join(tmpdir(), "orch-data-"));
+  const data = join(mkdtempSync(join(tmpdir(), "orch-data-")), "skills");
   const { dir, staged, failed } = stageSkills(data, [f.ref("alpha")]);
 
   expect(staged).toEqual(["alpha"]);
@@ -54,7 +54,7 @@ test("staged skills are dereferenced, not symlinked", () => {
 
 test("unticked skills leave, and the directory itself is never replaced", () => {
   const f = farm();
-  const data = mkdtempSync(join(tmpdir(), "orch-data-"));
+  const data = join(mkdtempSync(join(tmpdir(), "orch-data-")), "skills");
   const alpha = f.ref("alpha");
   const beta = f.ref("beta");
 
@@ -70,11 +70,11 @@ test("unticked skills leave, and the directory itself is never replaced", () => 
 
 test("an unchanged skill is not copied again", () => {
   const f = farm();
-  const data = mkdtempSync(join(tmpdir(), "orch-data-"));
+  const data = join(mkdtempSync(join(tmpdir(), "orch-data-")), "skills");
   const alpha = f.ref("alpha");
 
   stageSkills(data, [alpha]);
-  const copied = join(data, "skills", "alpha", "SKILL.md");
+  const copied = join(data, "alpha", "SKILL.md");
   // Mark the copy. A re-copy would overwrite it; a skip leaves it alone.
   writeFileSync(copied, "marked");
   utimesSync(copied, new Date(), new Date());
@@ -85,14 +85,14 @@ test("an unchanged skill is not copied again", () => {
 
 test("a dangling skill is skipped, not fatal", () => {
   const f = farm();
-  const data = mkdtempSync(join(tmpdir(), "orch-data-"));
+  const data = join(mkdtempSync(join(tmpdir(), "orch-data-")), "skills");
   const alpha = f.ref("alpha");
   const gone: SkillRef = { ...alpha, name: "gone", file: join(f.home, "skills", "gone", "SKILL.md") };
 
   const { staged, failed } = stageSkills(data, [gone, alpha]);
   expect(failed).toEqual(["gone"]);
   expect(staged).toEqual(["alpha"]);
-  expect(existsSync(join(data, "skills", "gone"))).toBe(false);
+  expect(existsSync(join(data, "gone"))).toBe(false);
 });
 
 test("what is stored is the off list, so a skill installed tomorrow is on tomorrow", () => {
@@ -106,4 +106,37 @@ test("what is stored is the off list, so a skill installed tomorrow is on tomorr
   expect(skillsOff(db)).toEqual(["impeccable"]);
   setSkillOff(db, "impeccable", false);
   expect(skillsOff(db)).toEqual([]);
+});
+
+test("a skill's path is where the agent can actually read it", () => {
+  // `ref.file` is a path on the boss's machine and `ref.rel` is relative to the
+  // boss's home. A turn runs in a container: a project skill travels in the
+  // checkout, a user skill is on the read-only mount, and neither is either of
+  // those two.
+  const base = { file: "/Users/boss/.claude/skills/impeccable/SKILL.md", description: "d", name: "impeccable" };
+  expect(pathInSandbox({ ...base, rel: ".claude/skills/impeccable/SKILL.md", scope: "user" })).toBe(
+    "/root/.claude/skills/impeccable/SKILL.md",
+  );
+  expect(pathInSandbox({ ...base, rel: ".claude/skills/impeccable/SKILL.md", scope: "project" })).toBe(
+    ".claude/skills/impeccable/SKILL.md",
+  );
+});
+
+test("old messages stop pointing at a machine the agent cannot see", () => {
+  // The stored bodies are re-injected into later turns, so a path that resolved
+  // on the host is an instruction to read a file that is not there.
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  db.run(
+    "INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'fact', 'zh', ?, 0)",
+    ["按 .claude/skills/impeccable/SKILL.md 来做，再看 .agents/skills/ponytail/SKILL.md"],
+  );
+  db.run("INSERT INTO event (author, kind, body, at) VALUES ('boss', 'boss_say', ?, 0)", [
+    "用 .claude/skills/tdd/SKILL.md",
+  ]);
+  rewriteSkillPaths(db);
+  expect(db.query<{ body: string }, []>("SELECT body FROM note").get()!.body).toBe(
+    "按 /impeccable 来做，再看 /ponytail",
+  );
+  expect(db.query<{ body: string }, []>("SELECT body FROM event").get()!.body).toBe("用 /tdd");
 });

@@ -3,10 +3,13 @@ import { mkdtempSync, writeFileSync, existsSync, mkdirSync, lstatSync, readFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { LINK_AGENTS_MD } from "../src/mech/checkout.ts";
+import { baseBranch, LINK_AGENTS_MD } from "../src/mech/checkout.ts";
+import { openMemory } from "../src/db.ts";
+import type { Ctx } from "../src/api.ts";
 import { isWrite } from "../src/mech/gitlock.ts";
 import {
   changedSince,
+  detectBaseBranch,
   checkpoint,
   makeGitRunner,
   rebaseOntoBase,
@@ -256,4 +259,44 @@ test("a repo with only AGENTS.md gets CLAUDE.md, and the other way round", () =>
   writeFileSync(join(both, "AGENTS.md"), "for codex\n");
   link(both);
   expect(readFileSync(join(both, "AGENTS.md"), "utf8")).toBe("for codex\n");
+});
+
+test("the base branch is a bare name, whatever the remote calls it", async () => {
+  // The bug: this returned `origin/main` when `origin/HEAD` was set and `main`
+  // when it was not, while four callers wrote `origin/${...}` around it. On any
+  // ordinary clone they were asking git for `origin/origin/main`.
+  const origin = await repo();
+  await git(origin, ["branch", "-m", "main", "trunk"]);
+  const dir = mkdtempSync(join(tmpdir(), "orch-base-"));
+  const work = join(dir, "work");
+  await git(dir, ["clone", "-q", origin, work]);
+
+  expect(await detectBaseBranch(git, work)).toBe("trunk");
+  // Without origin/HEAD it has to ask the remote rather than guess main.
+  await git(work, ["update-ref", "-d", "refs/remotes/origin/HEAD"], work);
+  expect(await detectBaseBranch(git, work)).toBe("trunk");
+});
+
+test("a renamed default branch is picked up rather than breaking every clone", async () => {
+  const origin = await repo();
+  const dir = mkdtempSync(join(tmpdir(), "orch-base2-"));
+  const work = join(dir, "work");
+  await git(dir, ["clone", "-q", origin, work]);
+
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', ?, 0)", [work]);
+  const said: string[] = [];
+  const ctx = { db, git, bus: { emit: (e: { body: string }) => said.push(e.body) } } as unknown as Ctx;
+
+  // Resolved once, then stored: the diff baseline has to mean the same thing on
+  // the day a slice was cut and the day the boss reads it.
+  expect(await baseBranch(ctx, 1)).toBe("main");
+  expect(db.query<{ b: string | null }, []>("SELECT base_branch AS b FROM project").get()!.b).toBe("main");
+
+  // master -> main, the other way round: the stored ref stops existing, and
+  // every clone, rebase and diff would resolve against nothing.
+  await git(origin, ["branch", "-m", "main", "mainline"]);
+  await git(work, ["fetch", "-q", "--prune", "origin"], work);
+  expect(await baseBranch(ctx, 1)).toBe("mainline");
+  expect(said.join(" ")).toContain("mainline");
 });

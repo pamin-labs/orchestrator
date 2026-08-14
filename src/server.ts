@@ -224,6 +224,7 @@ export function start(overrides: Partial<Config> = {}): Started {
       workRoot: cfg.workRoot,
       sliceBudgetTokens: cfg.sliceBudgetTokens,
       dataDir: cfg.dataDir,
+      skillsDir: cfg.skillsDir,
       autoAdvance: cfg.autoAdvance,
       autoAcceptTiers: cfg.autoAcceptTiers,
       maxGroups: cfg.maxGroups,
@@ -413,13 +414,13 @@ export function start(overrides: Partial<Config> = {}): Started {
   // The directory every sandbox mounts read-only. Rebuilt here because the boss
   // installs and uninstalls skills outside this process; a tick box rebuilds it
   // again, and neither needs a container restarted.
-  const skills = restageSkills(db, cfg.dataDir);
+  const skills = restageSkills(db, cfg.skillsDir);
   if (skills.failed.length) consola.warn(`skills skipped (dangling): ${skills.failed.join(", ")}`);
 
   // Say what is missing here, once, rather than letting every group discover it
   // one failed turn at a time. Not fatal: the panel can be opened and the
   // settings page is where three of these are fixed.
-  void preflight({ db, sandbox: cfg.sandbox, dataDir: cfg.dataDir }).then((checks) => {
+  void preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir }).then((checks) => {
     const bad = report(checks);
     if (bad) consola.warn(`preflight:\n${bad}`);
   });

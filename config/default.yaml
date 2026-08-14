@@ -127,6 +127,15 @@ sandbox:
 # default for the next one.
 workRoot: /var/tmp/orch/worktrees
 
+# 勾中的技能复制到这里，每个沙盒只读挂在 /root/.claude/skills 和 $CODEX_HOME/skills，
+# CLI 自己发现自己用（决策 006）。
+#
+# 不放在 dataDir 底下：opensandbox-server 只挂它自己 allowed_host_paths 里的宿主路径，
+# 而仓库 checkout 永远不在那个名单上。它的默认名单就是 /var/tmp/orch-cache，所以默认指这儿。
+# 换路径的话，服务端的 allowed_host_paths 要跟着改 —— 不然开容器直接失败，
+# 面板会明说是哪条路径没放行，同时先不挂技能把组开起来。
+skillsDir: /var/tmp/orch-cache/skills
+
 # 批准之后就别叫我：查收不再挡住下一片开工。默认开 —— 「批了」就该买到一夜的活，
 # 关掉的话一个组做完一片就停到早上，等于放弃了这套系统存在的理由。
 # 代价说清楚：某一片方向错了，后面几片是在它基础上做的。你退回那一片时全组会停下并说明，

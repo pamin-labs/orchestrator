@@ -119,8 +119,9 @@ export function listSkills(repoPath?: string | null): SkillRef[] {
 /**
  * Which skills a message points at.
  *
- * The composer inserts the path, so the path is what is matched; a bare `/name` is
- * accepted too, because that is what a boss types from muscle memory.
+ * `/name` is what the composer inserts and what a boss types from muscle memory.
+ * The paths are still matched because older messages carry them — see migration
+ * 026, which rewrites the ones that pointed at this machine.
  */
 export function referencedSkills(text: string, all: SkillRef[]): SkillRef[] {
   if (!text) return [];
@@ -133,18 +134,30 @@ export function referencedSkills(text: string, all: SkillRef[]): SkillRef[] {
   return hit.slice(0, 3);
 }
 
+/**
+ * Where this skill sits **inside the sandbox**.
+ *
+ * Not `ref.file`, which is a path on the boss's machine, and not `ref.rel` for a
+ * user skill, which is relative to the boss's home. A project skill travels in the
+ * checkout the turn runs in; a user skill is on the read-only mount.
+ */
+export function pathInSandbox(ref: SkillRef): string {
+  return ref.scope === "project" ? ref.rel : `/root/.claude/skills/${ref.name}/SKILL.md`;
+}
+
 /** The skill's own text, capped, with its path so the agent can read the rest. */
 export function readSkill(ref: SkillRef): string {
+  const where = pathInSandbox(ref);
   let body = "";
   try {
     body = readFileSync(ref.file, "utf8");
   } catch {
-    return `(${ref.rel} could not be read)`;
+    return `(${where} could not be read)`;
   }
   const cut = body.length > SKILL_CAP;
   return (
-    `### ${ref.name}  (${ref.rel})\n\n${body.slice(0, SKILL_CAP)}` +
-    (cut ? `\n\n(truncated — the rest is in ${ref.rel}, open it with Read if you need it)` : "")
+    `### ${ref.name}  (${where})\n\n${body.slice(0, SKILL_CAP)}` +
+    (cut ? `\n\n(truncated — the rest is in ${where}, open it with Read if you need it)` : "")
   );
 }
 
@@ -181,9 +194,9 @@ export function setSkillOff(db: DB, name: string, off: boolean): string[] {
 }
 
 /** Stage what is ticked. Called at boot and after every tick. */
-export function restageSkills(db: DB, dataDir: string): ReturnType<typeof stageSkills> {
+export function restageSkills(db: DB, dir: string): ReturnType<typeof stageSkills> {
   const off = new Set(skillsOff(db));
-  return stageSkills(dataDir, listSkills().filter((s) => !off.has(s.name)));
+  return stageSkills(dir, listSkills().filter((s) => !off.has(s.name)));
 }
 
 /**
@@ -202,8 +215,7 @@ export function restageSkills(db: DB, dataDir: string): ReturnType<typeof stageS
  * and mounting a second copy over it is how two versions of one skill start
  * disagreeing.
  */
-export function stageSkills(dataDir: string, want: SkillRef[]): { dir: string; staged: string[]; failed: string[] } {
-  const dir = join(dataDir, "skills");
+export function stageSkills(dir: string, want: SkillRef[]): { dir: string; staged: string[]; failed: string[] } {
   mkdirSync(dir, { recursive: true });
   const keep = new Set(want.map((s) => s.name));
 

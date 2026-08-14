@@ -396,6 +396,21 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
               封存
             </MenuItem>
           )}
+          <MenuItem
+            hint="容器卡住、少挂了东西、或换过凭据时用。下一个 turn 重新 clone + 装依赖，分支在宿主仓库里不会丢"
+            onSelect={async () => {
+              const go = await ask({
+                title: "重开容器",
+                body: `${g.name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖，要几分钟。没提交的改动会丢。`,
+                yes: "重开",
+              });
+              if (!go) return;
+              await post(`/api/groups/${g.id}/rebuild`);
+              refresh();
+            }}
+          >
+            重开容器
+          </MenuItem>
           {/* 退回重拆 sends it back to the Dispatcher, which writes another card for
               work nobody wants. A requirement that turned out to be a duplicate, or
               that someone already fixed, needs to leave the board instead. */}

@@ -1,7 +1,7 @@
 import type { Ctx } from "../api.ts";
 import { say } from "../lang.ts";
-import { defaultBase, squashWip } from "./worktree.ts";
-import { publishBranch, sandboxGit } from "./checkout.ts";
+import { squashWip } from "./worktree.ts";
+import { baseRefFor, publishBranch, sandboxGit } from "./checkout.ts";
 import { WORK } from "./sandbox.ts";
 
 /**
@@ -54,8 +54,8 @@ export interface OpenPrInput {
 export async function openPr(input: OpenPrInput): Promise<{ number: number } | { error: string }> {
   const { ctx, gh, git, grpId } = input;
   const grp = ctx.db
-    .query<{ branch: string | null; pr_number: number | null }, [number]>(
-      "SELECT branch, pr_number FROM grp WHERE id = ?",
+    .query<{ branch: string | null; pr_number: number | null; project_id: number }, [number]>(
+      "SELECT branch, pr_number, project_id FROM grp WHERE id = ?",
     )
     .get(grpId);
   if (!grp?.branch) return { error: "group has no branch" };
@@ -82,8 +82,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   // Out of the sandbox as a bundle, then pushed from here. The sandbox has no
   // credential that can write to the remote — see publishBranch for why that is
   // deliberate rather than an oversight.
-  const base = await defaultBase(git, input.repo);
-  const moved = await publishBranch(ctx, scope, git, input.repo, grp.branch, `origin/${base}`);
+  const moved = await publishBranch(ctx, scope, git, input.repo, grp.branch, await baseRefFor(ctx, grp.project_id));
   if (!moved.ok) return { error: `could not take ${grp.branch} out of the sandbox: ${moved.reason}` };
 
   const pushed = await git(input.repo, ["push", "-u", "origin", grp.branch]);

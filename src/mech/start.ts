@@ -4,7 +4,7 @@ import { createCheckout, remoteUrl } from "./checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execLines, WORK } from "./sandbox.ts";
-import { defaultBase } from "./worktree.ts";
+import { baseRefFor } from "./checkout.ts";
 
 /** `project.config_json.install`, or null. Same reader shape as `gatesFor`. */
 function installFor(ctx: Ctx, projectId: number): string | null {
@@ -151,7 +151,7 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
   await createCheckout(ctx, { grp: grpId }, {
     remote,
     branch: grp.branch,
-    base: `origin/${await defaultBase(ctx.git, repo.repo_path)}`,
+    base: await baseRefFor(ctx, grp.project_id),
     git: ctx.git,
     repoPath: repo.repo_path,
   });
@@ -189,8 +189,8 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         const remote = await remoteUrl(ctx.git, repo.repo_path);
         if (!remote) return "project has no `origin` remote; a group clones from it";
         const branch = `orch/${grp.name}`;
-        const base = await defaultBase(ctx.git, repo.repo_path);
-        await createCheckout(ctx, { grp: grpId }, { remote, branch, base: `origin/${base}` });
+        const base = await baseRefFor(ctx, grp.project_id);
+        await createCheckout(ctx, { grp: grpId }, { remote, branch, base });
         ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
         ctx.bus.emit({
           grpId,

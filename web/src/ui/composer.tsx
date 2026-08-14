@@ -212,7 +212,10 @@ export function Composer({
       location.hash = h.toString();
       return;
     }
-    const next = `${text.slice(0, slash.from)}${sk.path} `;
+    // `/name`, not the path. The path was a file on this machine; a turn runs in a
+    // container where the boss's skills are mounted somewhere else entirely, and
+    // `/name` is what both CLIs resolve wherever the skill actually sits.
+    const next = `${text.slice(0, slash.from)}/${sk.name} `;
     setText(next + text.slice(slash.from + slash.q.length + 1));
     setSlash(null);
     box.current?.focus();

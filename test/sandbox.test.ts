@@ -138,7 +138,7 @@ test("staged skills mount read-only, on an absolute path, at both CLIs' paths", 
   // one group editing the set every other group mounts is not a thing to allow.
   const dir = mkdtempSync(join(tmpdir(), "orch-sk-mount-"));
   mkdirSync(join(dir, "skills", "alpha"), { recursive: true });
-  const mounts = skillMounts(ctx({ dataDir: relative(process.cwd(), dir) }));
+  const mounts = skillMounts(ctx({ skillsDir: relative(process.cwd(), join(dir, "skills")) }));
 
   expect(mounts.map((m) => m.mountPath)).toEqual(["/root/.claude/skills", "/root/.codex/skills"]);
   for (const m of mounts) {
@@ -146,5 +146,5 @@ test("staged skills mount read-only, on an absolute path, at both CLIs' paths", 
     expect(m.host?.path).toBe(join(dir, "skills"));
   }
   // Nothing ticked: no mount rather than a mount of a directory that is not there.
-  expect(skillMounts(ctx({ dataDir: join(dir, "nope") }))).toEqual([]);
+  expect(skillMounts(ctx({ skillsDir: join(dir, "nope") }))).toEqual([]);
 });

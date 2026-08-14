@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Ctx } from "../api.ts";
 import { execIn, getBytes, putBytes, WORK, type Scope } from "./sandbox.ts";
 import { shq } from "./shq.ts";
-import { defaultBase, type GitRunner } from "./worktree.ts";
+import { detectBaseBranch, type GitRunner } from "./worktree.ts";
 
 /**
  * A group's code, inside its sandbox.
@@ -18,6 +18,55 @@ import { defaultBase, type GitRunner } from "./worktree.ts";
  * The host keeps its own copy of the branch by fetching it from the remote, so
  * review, gates-on-merge and the PR still run against ordinary local refs.
  */
+
+/**
+ * Which branch this project's work is cut from and measured against.
+ *
+ * Stored, not detected every time, for two reasons. It is a decision — a project
+ * that develops on `develop` says so once — and it is the diff baseline, so it has
+ * to be the same value on the day a slice was cut and on the day the boss reads
+ * its diff. `project.base_branch` NULL means "whatever the remote's HEAD says",
+ * which is resolved once and written back.
+ *
+ * Re-detected when the stored name no longer exists on the remote: a default
+ * branch that was renamed (master -> main) or repointed otherwise leaves every
+ * clone, rebase and diff resolving against a ref that is not there, and the
+ * symptom is a group that cannot start rather than anything mentioning branches.
+ * Said out loud when it changes, because it changes what every later diff means.
+ */
+export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
+  const row = ctx.db
+    .query<{ repo_path: string; base_branch: string | null }, [number]>(
+      "SELECT repo_path, base_branch FROM project WHERE id = ?",
+    )
+    .get(projectId);
+  if (!row) return "main";
+  const git = ctx.git;
+  if (!git) return row.base_branch ?? "main";
+
+  if (row.base_branch) {
+    const there = await git(row.repo_path, ["rev-parse", "--verify", "--quiet", `origin/${row.base_branch}`]);
+    if (there.code === 0) return row.base_branch;
+  }
+  const found = await detectBaseBranch(git, row.repo_path);
+  if (found !== row.base_branch) {
+    ctx.db.run("UPDATE project SET base_branch = ? WHERE id = ?", [found, projectId]);
+    if (row.base_branch) {
+      ctx.bus?.emit({
+        grpId: null,
+        author: "orchestrator",
+        kind: "state_change",
+        severity: "advisory",
+        body: `基线分支从 ${row.base_branch} 改成 ${found}（远端上找不到 origin/${row.base_branch} 了）。往后的 clone、rebase 和 diff 都对着它。`,
+      });
+    }
+  }
+  return found;
+}
+
+/** The same thing as a ref to hand git. */
+export const baseRefFor = async (ctx: Ctx, projectId: number): Promise<string> =>
+  `origin/${await baseBranch(ctx, projectId)}`;
 
 /**
  * git, but inside the sandbox.
@@ -230,7 +279,7 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
   await createCheckout(ctx, { grp: grpId }, {
     remote,
     branch: grp.branch ?? `orch/${grp.name}`,
-    base: `origin/${await defaultBase(ctx.git, repo.repo_path)}`,
+    base: await baseRefFor(ctx, grp.project_id),
     git: ctx.git,
     repoPath: repo.repo_path,
   });

@@ -133,12 +133,22 @@ function jwtExpiry(token?: string): number | null {
 export interface PreflightInput {
   db: DB;
   sandbox: { server: string; apiKey: string; image: string };
-  /** Where the staged skills live; its parent is what the server must allow. */
-  dataDir?: string;
+  /** Where the staged skills live; the server must allow this path. */
+  skillsDir?: string;
   /** Injected in tests. */
   probe?: (bin: string) => boolean;
   /** Injected in tests: the real one asks the provider whether it still works. */
   verify?: (runtime: string, auth: RuntimeAuth) => Promise<{ ok: boolean; detail: string }>;
+}
+
+/** Is this exact image:tag on this machine? */
+function localImages(ref: string): boolean {
+  try {
+    const p = Bun.spawnSync(["docker", "image", "inspect", ref], { stdout: "ignore", stderr: "ignore" });
+    return p.exitCode === 0;
+  } catch {
+    return false;
+  }
 }
 
 /** Tags of the egress images on this machine. */
@@ -232,12 +242,25 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
   });
 
+  // The image every group's container is made from. It is built here, not
+  // pulled — there is no registry behind `orch/agent:1` — so a machine that has
+  // never built it fails every sandbox with a pull error that reads like a
+  // network problem. Checked by tag rather than by creating a sandbox.
+  const image = input.sandbox.image;
+  const built = docker ? localImages(image) : false;
+  out.push({
+    name: "agent image",
+    ok: built,
+    detail: built ? image : `${image} 不在本机`,
+    fix: `docker build -f docker/agent.Dockerfile -t ${image} . —— 这个镜像是本地构建的，没有 registry 可拉。`,
+  });
+
   // The skills mount, reported the same way as the sidecar image: the server's
   // `allowed_host_paths` is in its own TOML, which is not ours to read, so this
   // says which path has to be in it rather than pretending to have checked. A
   // path that is not allowed fails sandbox creation outright — loudly, but for
   // every group at once, which is a bad way to learn it.
-  const staged = resolve(input.dataDir ?? "data", "skills");
+  const staged = resolve(input.skillsDir ?? "/var/tmp/orch-cache/skills");
   const skills = existsSync(staged) ? readdirSync(staged).length : 0;
   out.push({
     name: "skills mount",

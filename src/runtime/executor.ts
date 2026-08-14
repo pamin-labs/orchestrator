@@ -11,9 +11,9 @@ import { say } from "../lang.ts";
 import { listSkills, readSkill } from "../mech/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
-import { checkpoint, changedSince, defaultBase, type GitRunner } from "../mech/worktree.ts";
+import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
 import { getFile, MAILBOX_DIR, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
-import { ensureCheckout, publishBranch, sandboxGit } from "../mech/checkout.ts";
+import { baseRefFor, ensureCheckout, publishBranch, sandboxGit } from "../mech/checkout.ts";
 import { track, untrack } from "./running.ts";
 import { absorbCodexHome, CODEX_HOME, isAuthFailure, vaultFor } from "../mech/auth.ts";
 import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/watchdog.ts";
@@ -346,7 +346,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   // everything since the last one, because a group's branch does not reach the
   // remote until then.
   if (job.grp_id && grp?.branch && project?.repo_path && git) {
-    const kept = await publishBranch(ctx, scope, git, project.repo_path, grp.branch, `origin/${await defaultBase(git, project.repo_path)}`);
+    const kept = await publishBranch(ctx, scope, git, project.repo_path, grp.branch, await baseRefFor(ctx, grp.project_id));
     if (!kept.ok && kept.reason && !/empty bundle/i.test(kept.reason)) {
       ctx.bus.emit({
         grpId: job.grp_id,

@@ -7,13 +7,13 @@ import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
 import { pollUsage } from "./subusage.ts";
 import { killSandbox, renewSandbox, WORK } from "./sandbox.ts";
-import { sandboxGit } from "./checkout.ts";
+import { baseRefFor, sandboxGit } from "./checkout.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { buildMap, renderMap, saveMap } from "./repomap.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
-import { defaultBase, type GitRunner } from "./worktree.ts";
+import type { GitRunner } from "./worktree.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.
@@ -604,8 +604,8 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // be excluded — so a stale PR sat in the queue until GitHub called it
   // CONFLICTING, which is the late half of the same news.
   for (const g of ctx.db
-    .query<{ id: number; name: string; repo: string; seen: string | null }, []>(
-      `SELECT g.id, g.name, p.repo_path AS repo, g.rebase_seen AS seen
+    .query<{ id: number; name: string; repo: string; seen: string | null; project_id: number }, []>(
+      `SELECT g.id, g.name, p.repo_path AS repo, g.rebase_seen AS seen, g.project_id
        FROM grp g JOIN project p ON p.id = g.project_id
        WHERE g.status IN ('RUNNING','PR_OPEN') AND g.sandbox_id IS NOT NULL
          -- Coalesce on the nudge that is already queued, not on a clock. Three
@@ -621,7 +621,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     // somebody pushes from another machine, and nothing here ever fetched, so
     // that half was invisible.
     await refreshOrigin(deps, g.repo);
-    const baseRef = await defaultBase(deps.git, g.repo);
+    const baseRef = await baseRefFor(ctx, g.project_id);
     const head = await deps.git(g.repo, ["rev-parse", baseRef], g.repo);
     if (head.code !== 0) continue;
     const sha = head.out.trim();

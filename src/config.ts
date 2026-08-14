@@ -152,6 +152,14 @@ export type Config = {
   };
   workRoot: string;
   dataDir: string;
+  /**
+   * Where the ticked skills are staged for the sandboxes to mount.
+   *
+   * Not under `dataDir`: the sandbox server only mounts host paths on its own
+   * `allowed_host_paths` allowlist, and a repo checkout is never on it. Its
+   * default list is `/var/tmp/orch-cache`, which is where this points.
+   */
+  skillsDir: string;
 };
 
 const DEFAULTS: Config = {
@@ -226,6 +234,7 @@ const DEFAULTS: Config = {
   },
   workRoot: "/var/tmp/orch/worktrees",
   dataDir: "data",
+  skillsDir: "/var/tmp/orch-cache/skills",
 };
 
 /**
