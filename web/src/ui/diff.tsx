@@ -5,6 +5,7 @@ import * as Collapsible from "@radix-ui/react-collapsible";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Button } from "./button";
 import { Meta } from "./bits";
+import { Tip } from "./tooltip";
 import { cn } from "../lib/utils";
 
 /**
@@ -323,9 +324,9 @@ function Folder({ dir, depth, here, go }: { dir: Dir; depth: number; here: numbe
         className="flex w-full cursor-pointer items-baseline gap-1 py-0.5 pr-2 text-left font-mono text-[0.625rem] text-ink-3 hover:text-accent"
       >
         <span className="w-2 shrink-0">{open ? "▾" : "▸"}</span>
-        <span className="min-w-0 truncate" title={dir.name}>
-          {dir.name}
-        </span>
+        <Tip label={dir.name}>
+          <span className="min-w-0 truncate">{dir.name}</span>
+        </Tip>
       </Collapsible.Trigger>
       <Collapsible.Content>
         <Branch dir={dir} depth={depth + 1} here={here} go={go} />

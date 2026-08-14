@@ -147,7 +147,11 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
           {showKind && <Badge>{ZH.get(n.kind) ?? n.kind}</Badge>}
           <Meta>{clock(n.at)}</Meta>
         </div>
-        {n.group && <div className="truncate text-[0.75rem] text-ink-2" title={n.group}>{n.group}</div>}
+        {n.group && (
+          <Tip label={n.group}>
+            <div className="truncate text-[0.75rem] text-ink-2">{n.group}</div>
+          </Tip>
+        )}
       </div>
       <div className="min-w-0">
         <Body text={n.body} />
@@ -164,7 +168,9 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
               </Meta>
             )}
             {files.map((f) => (
-              <Meta key={f} className="min-w-0 truncate font-mono" title={f}>{f}</Meta>
+              <Tip key={f} label={f}>
+                <Meta className="min-w-0 truncate font-mono">{f}</Meta>
+              </Tip>
             ))}
             {n.exportPath && (
               <Tip label={n.exportPath}>

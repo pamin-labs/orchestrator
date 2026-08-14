@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X } from "lucide-react";
+import { Tip } from "./tooltip";
 import { splitAttachments, type Attached } from "../lib/attach";
 import { cn, nl } from "../lib/utils";
 
@@ -37,10 +38,9 @@ export function Attachments({ files }: { files: Attached[] }) {
       {images.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {images.map((f) => (
+            <Tip key={f.path} label={f.name}>
             <button
-              key={f.path}
               onClick={() => setFull(f)}
-              title={f.name}
               className={cn(
                 "relative block h-24 cursor-zoom-in overflow-hidden rounded-md border border-rule bg-sunk",
                 "transition-colors hover:border-accent",
@@ -55,6 +55,7 @@ export function Attachments({ files }: { files: Attached[] }) {
                 </span>
               )}
             </button>
+            </Tip>
           ))}
         </div>
       )}

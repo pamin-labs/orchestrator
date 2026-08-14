@@ -121,15 +121,16 @@ function Desks({
         {runners > 0 && <i className="breathe size-1.5 shrink-0 self-center rounded-full bg-ok" />}
         {/* The requirement is the thing being scanned for, so it gets the weight —
             it was the same size and colour as the shell command beside it. */}
-        <span
-          className={cn(
-            "truncate font-display text-[0.9375rem] font-semibold",
-            runners === 0 && "text-ink-3",
-          )}
-          title={name}
-        >
-          {name}
-        </span>
+        <Tip label={name}>
+          <span
+            className={cn(
+              "truncate font-display text-[0.9375rem] font-semibold",
+              runners === 0 && "text-ink-3",
+            )}
+          >
+            {name}
+          </span>
+        </Tip>
         {/* Who is running, by role. "2 在跑" makes you open the row to learn the
             one thing you opened it for. */}
         <Meta className="truncate">
@@ -296,9 +297,13 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
                          py-2.5 first:border-t-0 max-[52rem]:grid-cols-1 max-[52rem]:gap-y-1"
             >
               <div className="min-w-0">
-                <div className="truncate font-display text-[0.875rem] font-semibold" title={g.name}>{g.name}</div>
+                <Tip label={g.name}>
+                  <div className="truncate font-display text-[0.875rem] font-semibold">{g.name}</div>
+                </Tip>
                 {others.length > 0 && (
-                  <Meta className="truncate text-bad" title={others.join("、")}>压着 {others.join("、")}</Meta>
+                  <Tip label={others.join("、")}>
+                    <Meta className="truncate text-bad">压着 {others.join("、")}</Meta>
+                  </Tip>
                 )}
               </div>
               {/* Chips that wrap, not a stack: eight owned paths were eight rows of
@@ -491,7 +496,9 @@ function Flat({ rows }: { rows: { label: string; tokens: number }[] }) {
     <>
       {list.map((r) => (
         <div key={r.label} className={cn(ROW, "border-t border-rule-soft py-2.5 first:border-t-0")}>
-          <span className="truncate pl-[1.125rem] text-[0.8125rem]" title={r.label}>{r.label}</span>
+          <Tip label={r.label}>
+            <span className="truncate pl-[1.125rem] text-[0.8125rem]">{r.label}</span>
+          </Tip>
           <span className="text-right font-mono text-[0.8125rem]">{K(r.tokens)}</span>
           <Meta className="text-right">{list.length > 1 ? `${Math.round((r.tokens / sum) * 100)}%` : ""}</Meta>
           <Bar frac={r.tokens / top} className="max-[52rem]:hidden" />
@@ -558,7 +565,9 @@ function Node({
               list.length ? "text-ink-3" : "invisible",
             )}
           />
-          <span className="truncate text-[0.8125rem]" title={label}>{label}</span>
+          <Tip label={label}>
+            <span className="truncate text-[0.8125rem]">{label}</span>
+          </Tip>
           {note && <Meta className="truncate max-[52rem]:hidden">{note}</Meta>}
         </span>
         <span className="text-right font-mono text-[0.8125rem]">{K(tokens)}</span>
