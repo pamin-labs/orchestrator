@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Meta } from "../ui/bits";
+import { Clamp, Meta } from "../ui/bits";
 import { Segment, Segments } from "../ui/segment";
 import { Tip } from "../ui/tooltip";
 import { DiffView } from "../ui/diff";
 import { pull, type Evidence } from "../lib/api";
-import { cn } from "../lib/utils";
+import { cn, nl } from "../lib/utils";
 
 /**
  * One gutter, both sides, the same as the row above. It was `pl-14 pr-3` for a
@@ -155,23 +155,12 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
  *
  * QA writes a paragraph naming every file and line it checked, and three of those
  * stacked is a wall of prose above the diff they are about — the panel's own
- * point is the change, not the report on it. The first two lines are the verdict;
- * the rest is the working, one click away.
+ * point is the change, not the report on it.
  */
 function Verdict({ body, bad }: { body: string; bad: boolean }) {
-  const [open, setOpen] = useState(false);
-  const long = body.length > 140;
   return (
-    <span
-      onClick={long ? () => setOpen(!open) : undefined}
-      className={cn(
-        "min-w-0 break-words",
-        bad ? "text-bad" : "text-ink-2",
-        long && "cursor-pointer",
-        long && !open && "line-clamp-2",
-      )}
-    >
-      {body}
+    <span className={cn("min-w-0 break-words", bad ? "text-bad" : "text-ink-2")}>
+      <Clamp lines={2}>{nl(body)}</Clamp>
     </span>
   );
 }

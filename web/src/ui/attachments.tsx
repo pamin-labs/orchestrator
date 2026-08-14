@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { splitAttachments, type Attached } from "../lib/attach";
-import { cn } from "../lib/utils";
+import { cn, nl } from "../lib/utils";
 
 /**
  * A message, and the files that came with it.
@@ -21,7 +21,7 @@ export function WithAttachments({ body, className }: { body: string; className?:
   const { text, files } = splitAttachments(body);
   return (
     <>
-      {text && <div className={cn("whitespace-pre-wrap break-words", className)}>{text}</div>}
+      {text && <div className={cn("whitespace-pre-wrap break-words", className)}>{nl(text)}</div>}
       <Attachments files={files} />
     </>
   );

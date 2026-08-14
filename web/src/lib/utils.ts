@@ -25,3 +25,14 @@ export const waited = (ms: number) => {
   const m = Math.round((Date.now() - ms) / 60000);
   return m < 1 ? "刚刚" : m < 60 ? `等待 ${m}m` : `等待 ${Math.round(m / 60)}h`;
 };
+
+/**
+ * A newline an agent wrote as two characters.
+ *
+ * Models emit `\n` inside a string they think they are quoting, and the text
+ * lands in the blackboard with the backslash intact. It reaches the boss as
+ * `…通过。\n验收 2（被挡卡不可代批）…` in the middle of a sentence they have to
+ * read to make a decision. Fixing it where it is written would mean fixing every
+ * path that writes agent prose; fixing it where it is read is one function.
+ */
+export const nl = (s: string) => s.replace(/\\n/g, "\n");
