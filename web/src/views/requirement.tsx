@@ -10,12 +10,12 @@ import { Bar } from "../ui/table";
 import { Tip } from "../ui/tooltip";
 import { ask } from "../ui/confirm";
 import { Composer, ComposerDialog } from "../ui/composer";
-import { post, pull, type Escalation, type Group, type Slice, type State } from "../lib/api";
+import { post, pull, type Escalation, type Frame, type Group, type Slice, type State } from "../lib/api";
 import { STOPS, WHERE_ZH, asksOf, gates, heldApproved, mineOf, prUrl, statusLabel } from "../lib/select";
 import { cn, K, nl, waited } from "../lib/utils";
 import { activityOf } from "../lib/activity";
 import { WithAttachments } from "../ui/attachments";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { Segment, Segments } from "../ui/segment";
 import { EvidencePanel } from "./evidence";
@@ -38,9 +38,9 @@ import { Notes } from "./notes";
  * what needs you, and what to type — in that order.
  */
 export function Requirement({
-  st, g, refresh, open, tab, onTab,
+  st, g, frames, refresh, open, tab, onTab,
 }: {
-  st: State; g: Group; refresh: () => void; open: boolean;
+  st: State; g: Group; frames: Frame[]; refresh: () => void; open: boolean;
   /** From the hash: leaving the drill-in and coming back kept unmounting this. */
   tab?: string | null; onTab?: (t: string) => void;
 }) {
@@ -98,6 +98,7 @@ export function Requirement({
     // the text breaks now.
     <section className="flex min-h-0 flex-1 flex-col">
       <Header st={st} g={g} refresh={refresh} slices={slices} />
+      <Bootstrap frames={frames} grpId={g.id} />
       {broke && <BudgetWall g={g} refresh={refresh} />}
 
       {draft ? (
@@ -223,6 +224,56 @@ export function Requirement({
 }
 
 /** Identity and state on the left, the one useful control on the right, the rest in a menu. */
+/**
+ * The sandbox being built back up, while it happens.
+ *
+ * A group's container is replaceable — the TTL reaps an idle one, a credential
+ * change kills it — and what follows a rebuild is a clone and an install that
+ * can run for minutes. Until this pane existed the page said nothing for all of
+ * it: the requirement simply sat there, which is indistinguishable from stuck.
+ *
+ * Live frames only, so it is gone on reload and the outcome line in the record
+ * is what remains. Nothing here is stored twice.
+ */
+function Bootstrap({ frames, grpId }: { frames: Frame[]; grpId: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  const lines = frames.filter(
+    (f) => f.grpId === grpId && f.cls === "tool" && f.author === "orchestrator" && f.agentId == null,
+  );
+  const last = lines[lines.length - 1];
+  // The outcome arrives as a stored event, so it is what ends the pane rather
+  // than a timer that has to guess how long an install takes.
+  const done = frames.filter(
+    (f) => f.grpId === grpId && f.cls === "state" && /^装好了|^装失败了/.test(f.text),
+  ).pop();
+  const running = !!last && (!done || done.at < last.at);
+
+  useEffect(() => {
+    const el = box.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lines.length]);
+
+  if (!running) return null;
+  return (
+    <div className="mb-3">
+      <div className="mb-1.5 flex items-baseline gap-2">
+        <Working>沙盒在装环境</Working>
+        <Meta className="min-w-0 truncate">{lines[0]?.text}</Meta>
+      </div>
+      {/* `sunk`, because every line of it is a machine talking. */}
+      <div
+        ref={box}
+        className="max-h-40 overflow-y-auto rounded-md bg-sunk px-2.5 py-2 font-mono text-[0.6875rem]
+                   leading-relaxed text-ink-2"
+      >
+        {lines.slice(-200).map((f) => (
+          <div key={f.id} className="break-all whitespace-pre-wrap">{f.text}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () => void; slices: Slice[] }) {
   const inQueue = st.mergeQueue.some((m) => m.grpId === g.id);
   const url = prUrl(st, g);

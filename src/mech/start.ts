@@ -108,6 +108,71 @@ export async function runInstall(
   return { ok: end.code === 0, tail };
 }
 
+/**
+ * Put back what a fresh container does not have.
+ *
+ * A sandbox is where the work lives — the clone and everything installed into
+ * it — and it is replaceable: the TTL reaps an idle one, a credential change
+ * kills it, the server it runs on restarts. `ensureSandbox` already builds
+ * another, and until now that was the whole story, so the next turn woke up in
+ * an empty container with no checkout and no dependencies and reported that the
+ * repository was broken.
+ *
+ * Called from `ensureSandbox` rather than from each of its callers: a caller
+ * that has to remember to restore is a caller that will not, and the ones that
+ * matter are three levels down inside a turn.
+ *
+ * Inline rather than queued, because the turn that triggered the rebuild cannot
+ * do anything useful until this finishes. `createCheckout` is idempotent, and
+ * the install streams, which is what makes a long one watchable.
+ */
+export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
+  const grp = ctx.db
+    .query<{ project_id: number; branch: string | null }, [number]>(
+      "SELECT project_id, branch FROM grp WHERE id = ?",
+    )
+    .get(grpId);
+  // No branch means the group has not started; `startGroup` owns that path and
+  // is in the middle of it.
+  if (!grp?.branch || !ctx.git) return;
+  const repo = ctx.db
+    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
+    .get(grp.project_id);
+  if (!repo) return;
+  const remote = await remoteUrl(ctx.git, repo.repo_path);
+  if (!remote) return;
+
+  ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "state_change",
+    body: `沙盒是新的，把 ${grp.branch} 和依赖装回去`,
+  });
+  await createCheckout(ctx, { grp: grpId }, {
+    remote,
+    branch: grp.branch,
+    base: `origin/${await defaultBase(ctx.git, repo.repo_path)}`,
+    git: ctx.git,
+    repoPath: repo.repo_path,
+  });
+
+  const known = installFor(ctx, grp.project_id);
+  if (known) {
+    const dep = await runInstall(ctx, grpId, known);
+    if (dep.ok) return;
+  }
+  // No recorded command, or the recorded one stopped working: the same role that
+  // works it out the first time works it out again, with the failure in hand.
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: grpId,
+    priority: 9,
+    payload: {
+      role: "bootstrap",
+      ...(known ? { rejection: `沙盒重建后，记下来的安装命令跑不通：${known}` } : {}),
+    },
+  });
+}
+
 /** Sandbox, checkout, RUNNING, first slice. Returns an error message, or null. */
 export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null> {
   const grp = ctx.db

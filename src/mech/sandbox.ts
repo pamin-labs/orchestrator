@@ -216,6 +216,8 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   live.set(sb.id, sb);
   remember(ctx, scope, sb.id);
   await provision(sb);
+  // Remembered before this line, so the restore below re-enters here and finds
+  // the sandbox it is restoring into rather than building a second one.
   // A credential the CLI can only read from a file. See `filesFor` for why codex
   // is the exception to everything else here.
   const files = filesFor(ctx.db);
@@ -245,6 +247,21 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         // Reported by preflight, not swallowed here — but a group that cannot
         // bind must still be a group, or one bad config wedges the whole fleet.
       });
+  }
+  // A container this fresh has no clone and nothing installed. Imported here
+  // rather than at the top because `start.ts` reads this module too, and the
+  // cycle only resolves if neither side needs the other while it is loading.
+  if ("grp" in scope) {
+    const { restoreWorkspace } = await import("./start.ts");
+    await restoreWorkspace(ctx, scope.grp).catch((e: unknown) => {
+      ctx.bus.emit({
+        grpId: scope.grp,
+        author: "orchestrator",
+        kind: "state_change",
+        severity: "warn",
+        body: `沙盒重建了，但工作区没装回去：${(e as Error)?.message ?? e}`,
+      });
+    });
   }
   return sb;
 }

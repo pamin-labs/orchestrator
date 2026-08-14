@@ -473,7 +473,7 @@ export function App() {
             )
           ) : view === "req" ? (
             openGroup ? (
-              <Requirement st={st} g={openGroup} refresh={refresh} open tab={sel.t} onTab={(t) => go({ t })} />
+              <Requirement st={st} g={openGroup} frames={frames} refresh={refresh} open tab={sel.t} onTab={(t) => go({ t })} />
             ) : (
               <div className="text-[0.8125rem] text-ink-3">这个需求已经归档或不存在了。</div>
             )
