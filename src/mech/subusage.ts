@@ -27,23 +27,33 @@ const ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
 const BETA = "oauth-2025-04-20";
 
 /**
- * One minute. The windows move in hours, so this is already generous — what it
- * really buys is that the header is never more than a minute stale when the boss
- * glances at it. Every read in between comes from usage_snapshot, not the network:
- * the panel polls /api/state on its own clock and must never turn into traffic
- * here. codex needs none of this; it reports both windows in every turn it runs.
+ * Ten minutes, which is as often as this endpoint will actually answer.
+ *
+ * It was one minute, on the reasoning that the windows move in hours and a
+ * minute-fresh number costs one request. What that ignores is the endpoint's own
+ * budget: it answers a 30-60s poller with 429 and then keeps answering 429, which
+ * is the failure mode every community monitor hits
+ * (anthropics/claude-code#31637, #31021, #30930). Live here the row sat on
+ * `"error":"rate_limited"` with numbers 8 minutes old and no way out, because the
+ * retry after the backoff was itself too soon.
+ *
+ * The boss's own `/status` in the CLI spends from the same budget, so polling
+ * hard also makes their check fail. Ten minutes inside a five-hour window is a
+ * 3% error at worst.
  */
-export const POLL_EVERY_MS = 60_000;
+export const POLL_EVERY_MS = 10 * 60_000;
 
 /**
  * After a 429, back off hard.
  *
  * The endpoint answers a too-frequent read with 429 and it is not ours to tune,
- * so the polite response to being told to slow down is to slow down — a minute
- * later would just earn another one. The header keeps showing the last good
- * reading meanwhile, which is what it should do: the window moves in hours.
+ * so the polite response to being told to slow down is to slow down. Ten minutes
+ * was not enough to clear it — the throttle is per account and the boss's own CLI
+ * is spending from it too — and a retry that earns another 429 restarts the
+ * lockout. The header keeps showing the last good reading meanwhile, which is
+ * what it should do: the window moves in hours.
  */
-export const BACKOFF_MS = 10 * 60_000;
+export const BACKOFF_MS = 45 * 60_000;
 
 type Window = { utilization?: number; resets_at?: string | null };
 

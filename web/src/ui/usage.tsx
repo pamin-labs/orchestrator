@@ -66,8 +66,8 @@ export function UsageBar({ usage }: { usage: Usage[] }) {
       {rows.map((u) => (
         <Fragment key={u.runtime}>
           <span className="truncate text-right text-ink-3">{u.runtime}</span>
-          <Ring label="5h" v={u.fiveHourPercent} at={u.resetsAt} stale={staleMark(u)} why={u.error} />
-          <Ring label="周" v={u.weeklyPercent} at={u.weeklyResetsAt} stale={staleMark(u)} why={u.error} />
+          <Ring label="5h" v={u.fiveHourPercent} at={u.resetsAt} read={u.at} stale={staleMark(u)} why={u.error} />
+          <Ring label="周" v={u.weeklyPercent} at={u.weeklyResetsAt} read={u.at} stale={staleMark(u)} why={u.error} />
         </Fragment>
       ))}
     </span>
@@ -88,9 +88,9 @@ const C = 2 * Math.PI * R;
  * this needs none of them.
  */
 function Ring({
-  label, v, at, stale, why,
+  label, v, at, read, stale, why,
 }: {
-  label: string; v?: number; at?: number; stale: boolean; why?: string;
+  label: string; v?: number; at?: number; read?: number; stale: boolean; why?: string;
 }) {
   const known = v !== undefined;
   // An account without this window holds the column open and says nothing in it.
@@ -101,7 +101,13 @@ function Ring({
   // Terse: a number and when it resets. The sentence it replaced said "5 小时窗口"
   // next to a ring already labelled 5h, and repeated the failure text under every
   // window it had already been shown for.
-  const label2 = known ? `${Math.round(v)}%${at ? ` · ${until(at)}后重置` : ""}` : (WHY[why ?? ""] ?? "读不到");
+  // How old the number is, because the poll is deliberately slow: the endpoint
+  // 429s anything faster and then stays 429. Without this the boss cannot tell a
+  // window that has not moved from a reading that has not been refreshed.
+  const age = read ? Math.round((Date.now() - read) / 60_000) : 0;
+  const label2 = known
+    ? `${Math.round(v)}%${at ? ` · ${until(at)}后重置` : ""}${age >= 1 ? ` · ${age}m 前读到` : ""}`
+    : (WHY[why ?? ""] ?? "读不到");
   return (
     <Tip label={label2}>
       <span className="flex cursor-default items-center gap-1.5">
