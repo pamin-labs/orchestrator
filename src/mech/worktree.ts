@@ -265,6 +265,40 @@ export async function filesAt(git: GitRunner, repoPath: string, worktree: string
   return r.code === 0 ? r.out.split("\n").map((l) => l.trim()).filter(Boolean) : [];
 }
 
+/**
+ * What to diff a slice against, after somebody has rebased the branch.
+ *
+ * `slice.base_sha` is the branch tip when the slice started, and it is the right
+ * base right up until a rebase rewrites the branch onto a newer main. Then the
+ * recorded commit is no longer a point on this branch — it is an ancestor of
+ * main — and `git diff <base_sha>` starts reporting every other group's landed
+ * work as this slice's change. Groups here rebase on every main push (watchdog
+ * rule 15), so that is the normal case, not the rare one.
+ *
+ * Rule: keep `base_sha` only while it still sits on this branch at or after the
+ * fork from main. Otherwise diff from the fork point — the whole branch against
+ * origin/main, which is exactly what the PR will show. Says which one it used,
+ * because "this slice" and "this branch" are different claims and the boss is
+ * accepting one of them.
+ */
+export async function sliceDiffBase(
+  git: GitRunner,
+  repoPath: string,
+  worktree: string,
+  baseSha: string | null,
+): Promise<{ base: string; scope: "slice" | "branch" } | null> {
+  const ref = await defaultBase(git, repoPath);
+  const forkRun = await git(repoPath, ["merge-base", ref, "HEAD"], worktree);
+  const fork = forkRun.code === 0 ? forkRun.out.trim() : "";
+  if (!baseSha) return fork ? { base: fork, scope: "branch" } : null;
+  const [onBranch, afterFork] = await Promise.all([
+    git(repoPath, ["merge-base", "--is-ancestor", baseSha, "HEAD"], worktree),
+    fork ? git(repoPath, ["merge-base", "--is-ancestor", fork, baseSha], worktree) : Promise.resolve(null),
+  ]);
+  if (onBranch.code === 0 && (!fork || afterFork?.code === 0)) return { base: baseSha, scope: "slice" };
+  return fork ? { base: fork, scope: "branch" } : { base: baseSha, scope: "slice" };
+}
+
 export async function changedSince(
   git: GitRunner,
   repoPath: string,
