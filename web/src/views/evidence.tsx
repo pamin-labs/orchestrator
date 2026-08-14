@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
 import { Meta } from "../ui/bits";
 import { Segment, Segments } from "../ui/segment";
-import { Card, CardHeader } from "../ui/card";
+import { Tip } from "../ui/tooltip";
 import { DiffView } from "../ui/diff";
 import { pull, type Evidence } from "../lib/api";
 import { cn } from "../lib/utils";
+
+/**
+ * Left edge of the slice title above: `px-3` + the 2rem `S1` column + the 3-gap.
+ * Every line of evidence starts under the title it belongs to, which is what says
+ * "this body is that row's" now that the panel has no box around it.
+ */
+const PAD = "pl-14 pr-3";
 
 /**
  * The evidence behind one slice, in the order a reviewer reads it.
@@ -26,33 +33,88 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
     void pull<Evidence>(`/api/slices/${sliceId}/evidence`).then(setEv);
   }, [sliceId]);
 
-  if (!ev) return <div className="py-2 text-[0.75rem] text-ink-3">读改动…</div>;
+  if (!ev) return <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>读改动…</div>;
 
   const summary = ev.stat.split("\n").filter(Boolean).at(-1)?.trim() ?? "";
+  // `5 files changed, 94 insertions(+), 2 deletions(-)` split in two: the file
+  // count stays on the pinned line, the line counts go on the switch below it as
+  // `+94 −2`. Printing the whole stat in both places is the same three numbers
+  // twice, 200px apart.
+  const files = summary.split(",")[0]?.trim() ?? "";
+  const plus = Number(summary.match(/(\d+) insertion/)?.[1] ?? 0);
+  const minus = Number(summary.match(/(\d+) deletion/)?.[1] ?? 0);
+
+  // Nothing has been recorded against this slice yet, so the card is an
+  // acceptance line the lane row above already shows, a diffstat that says 无改动
+  // 记录, a one-segment switch, and a paragraph explaining there is no diff. Four
+  // ways of saying "not started".
+  if (!actions && !ev.diff && !ev.verdicts.length && !ev.gates.length) {
+    return <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>这一片还没跑出改动，也还没有判词。</div>;
+  }
 
   return (
-    <Card tone="sunk" className="mt-1.5">
+    // Flat, and full width. This opens inside a slice row inside a bordered list,
+    // so a rounded panel here was the third box drawn around the same content —
+    // DESIGN.md: hairlines and spacing instead of card borders, cards never
+    // nested. Rules and the title indent carry the structure instead.
+    <div>
       {/* What you are being asked to agree to, then the measurements of it, then
           the button. The acceptance line used to be last on a header that opened
-          with the panel's own name and a diffstat. */}
-      <CardHeader className="gap-y-1.5">
-        <span className="min-w-0">
-          <span className="block text-[0.8125rem] text-ink">{ev.accept_spec}</span>
-          <span className="flex flex-wrap items-baseline gap-x-3">
-            <Meta>{summary || "无改动记录"}</Meta>
-            {ev.retries > 0 && <Meta className="text-warn">被打回过 {ev.retries} 次</Meta>}
-          </span>
-        </span>
-        <span className="grow" />
-        {actions}
-      </CardHeader>
+          with the panel's own name and a diffstat.
+
+          Pinned for the same reason the lanes above it are: the two buttons are
+          the verdict on everything below them, and scrolling down to read the QA
+          line and the diff scrolled the buttons — and the acceptance line they
+          answer — off the top. */}
+      <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule-soft bg-paper py-2.5")}>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
+          <span className="min-w-0 text-[0.8125rem] text-ink">{ev.accept_spec}</span>
+          <span className="grow" />
+          {actions}
+        </div>
+
+        {/* The switch and the size of what it switches to, on one line. They were
+            two rows and a bordered strip: 5 files changed, 94 insertions(+) above
+            四个带体积的段 — every number printed twice and the loudest thing in the
+            panel was the pane selector.
+
+            One language across the row, too. It read 改动 build test typecheck,
+            the first in Chinese and the rest in whatever the gates are called in
+            config. Gate names are identifiers and stay as written, so the diff
+            joins them rather than three of them getting invented names. */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Segments value={view} onValueChange={setView} className="-ml-2">
+            <Segment value="diff">diff</Segment>
+            {ev.gates.map((g) => (
+              <Segment key={g.name} value={g.name}>
+                {g.name}
+              </Segment>
+            ))}
+          </Segments>
+          {view === "diff" && (
+            <Meta>
+              {files || "无改动"}
+              {ev.diff && ` · +${plus} −${minus}`}
+            </Meta>
+          )}
+          {/* Which claim the diff is making. Per-slice while the branch is intact,
+              whole-branch after a rebase rewrites it — the boss is accepting one
+              of those two things and they are not the same thing. */}
+          {ev.scope === "branch" && (
+            <Tip label="切片基线被 rebase 冲掉了，这里是整条分支相对 origin/main 的改动">
+              <Meta className="cursor-help underline decoration-dotted">整条分支</Meta>
+            </Tip>
+          )}
+          {ev.retries > 0 && <Meta className="text-warn">被打回过 {ev.retries} 次</Meta>}
+        </div>
+      </div>
 
       {ev.verdicts.length > 0 && (
-        <div className="border-b border-rule-soft px-3.5 py-2">
+        <div className={cn(PAD, "border-b border-rule-soft py-2")}>
           {ev.verdicts.map((v, i) => {
             const bad = /\bfail\b/i.test(v.body);
             return (
-              <div key={i} className="grid grid-cols-[1.5rem_6rem_minmax(0,1fr)] gap-x-2 py-0.5 text-[0.75rem]">
+              <div key={i} className="grid grid-cols-[2rem_5rem_minmax(0,1fr)] gap-x-2 py-1 text-[0.75rem]">
                 {/* The verdict, as a mark. It was carried by the colour of the
                     sentence alone, which is the one cue a reader skimming for a
                     fail does not get until they have read the sentence. */}
@@ -61,32 +123,16 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
                 </span>
                 {/* Wide enough for "orchestrator": at w-16 it ran into the verdict. */}
                 <span className="truncate font-mono text-[0.6875rem] text-ink-3">{v.author}</span>
-                <span className={cn("min-w-0 break-words", bad ? "text-bad" : "text-ink-2")}>{v.body}</span>
+                <Verdict body={v.body} bad={bad} />
               </div>
             );
           })}
         </div>
       )}
 
-      {/* The diff and the gate logs are the same kind of thing — the machine's
-          record of what happened — and they were stacked, so reading a log meant
-          scrolling past a 3000-line diff to reach it and scrolling back. One
-          switch, one pane. Not a tab strip: this page already has one, and a
-          second under it stops reading as navigation. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-rule-soft px-3.5 py-2">
-        <Segments value={view} onValueChange={setView}>
-          <Segment value="diff">改动</Segment>
-          {ev.gates.map((g) => (
-            <Segment key={g.name} value={g.name} count={`${Math.round(g.size / 1024)}k`}>
-              {g.name}
-            </Segment>
-          ))}
-        </Segments>
-      </div>
-
       {view === "diff" ? (
         !ev.diff ? (
-          <div className="px-3.5 py-2 text-[0.75rem] text-ink-3">
+          <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>
             没有 diff 可读。这一片没有记下基线 commit，或者 worktree 已经清掉了。
           </div>
         ) : (
@@ -95,11 +141,35 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
           </div>
         )
       ) : (
-        <div className="px-3.5 pb-3 pt-1">
-          <GateLog key={view} sliceId={sliceId} name={view} />
-        </div>
+        <GateLog key={view} sliceId={sliceId} name={view} />
       )}
-    </Card>
+    </div>
+  );
+}
+
+/**
+ * A verdict, two lines of it.
+ *
+ * QA writes a paragraph naming every file and line it checked, and three of those
+ * stacked is a wall of prose above the diff they are about — the panel's own
+ * point is the change, not the report on it. The first two lines are the verdict;
+ * the rest is the working, one click away.
+ */
+function Verdict({ body, bad }: { body: string; bad: boolean }) {
+  const [open, setOpen] = useState(false);
+  const long = body.length > 140;
+  return (
+    <span
+      onClick={long ? () => setOpen(!open) : undefined}
+      className={cn(
+        "min-w-0 break-words",
+        bad ? "text-bad" : "text-ink-2",
+        long && "cursor-pointer",
+        long && !open && "line-clamp-2",
+      )}
+    >
+      {body}
+    </span>
   );
 }
 
@@ -140,14 +210,17 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
     ? lines.filter((l) => l.toLowerCase().includes(q.toLowerCase()))
     : [...fails, ...rest];
 
-  if (text === null) return <div className="mt-2 text-[0.75rem] text-ink-3">读日志…</div>;
+  if (text === null) return <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>读日志…</div>;
 
   return (
-    <div className="overflow-hidden rounded-md border border-rule-soft bg-sunk">
+    // Same shape as the diff next door: the log fills the width and its own
+    // controls sit on a ruled strip. It used to be a rounded box inset inside the
+    // panel's rounded box, which is the nesting this pass removed.
+    <div>
       {/* One verdict and one field. A 没过/全部 segment sat here for a version: on a
           passing gate it read 没过 0 / 全部 373, which is two buttons offering to
           filter for nothing and to show you 373 lines of the word "pass". */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-rule-soft px-2 py-1.5">
+      <div className={cn(PAD, "flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-rule-soft py-1.5")}>
         {fails.length > 0 ? (
           <span className="text-[0.6875rem] font-semibold text-bad">{fails.length} 条没过</span>
         ) : (
@@ -161,7 +234,7 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
           className="ml-auto w-44 rounded-md border border-rule bg-paper px-2 py-0.5 text-[0.6875rem] outline-none focus-visible:border-accent"
         />
       </div>
-      <pre className="max-h-64 overflow-auto p-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2">
+      <pre className={cn(PAD, "max-h-[34rem] overflow-auto py-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2")}>
         {body.length === 0 ? "没有匹配的行" : body.map((l, i) => (
           <div key={i} className={cn(/^\s*\(fail\)/.test(l) && "bg-bad-soft", /error|Error/.test(l) && "text-bad")}>
             {l || " "}

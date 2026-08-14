@@ -29,32 +29,30 @@ export function Segments({
       value={value}
       // A toggle group can be empty; this one is a selector, so refuse to unpress.
       onValueChange={(v) => v && onValueChange(v)}
-      className={cn("flex overflow-hidden rounded-md border border-rule", className)}
+      className={cn("flex items-center gap-0.5", className)}
     >
       {children}
     </TG.Root>
   );
 }
 
-export function Segment({
-  value, children, count,
-}: {
-  value: string;
-  children: React.ReactNode;
-  /** A size or a tally, kept quiet: it qualifies the label, it is not the label. */
-  count?: string;
-}) {
+/**
+ * Quiet by default, filled when chosen. It was an enclosed strip with a black
+ * pressed item and a size on every label — four bordered boxes and four numbers
+ * to say which of four panes is open, louder than the evidence it switches
+ * between. The pressed item carries the state; nothing else has to.
+ */
+export function Segment({ value, children }: { value: string; children: React.ReactNode }) {
   return (
     <TG.Item
       value={value}
       className={cn(
-        "flex cursor-pointer items-baseline gap-1.5 border-r border-rule px-2.5 py-1 text-[0.75rem] last:border-r-0",
-        "text-ink-3 transition-colors hover:bg-sunk hover:text-ink",
-        "data-[state=on]:bg-ink data-[state=on]:text-paper data-[state=on]:hover:bg-ink",
+        "cursor-pointer rounded-md px-2 py-0.5 font-mono text-[0.75rem]",
+        "text-ink-3 transition-colors hover:text-ink",
+        "data-[state=on]:bg-sunk data-[state=on]:font-medium data-[state=on]:text-ink",
       )}
     >
       {children}
-      {count && <span className="font-mono text-[0.625rem] opacity-70">{count}</span>}
     </TG.Item>
   );
 }
