@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { cpus } from "node:os";
+import { existsSync, readFileSync, readlinkSync } from "node:fs";
+import { cpus, homedir } from "node:os";
 import { join } from "node:path";
 import { ConnectionConfig, Sandbox } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../api.ts";
@@ -106,6 +106,95 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
     denyDomains: over.denyDomains ?? base.denyDomains ?? [],
     cacheDirs: over.cacheDirs ?? base.cacheDirs ?? {},
   };
+}
+
+/**
+ * The key the sandbox server is actually running with, read from its own config.
+ *
+ * Generating one here and asking the boss to copy it into the server's file is
+ * how a whole night went: the panel had a key, the server had another, and every
+ * turn, gate and diff came back 401 as "Authentication credentials are invalid",
+ * which reads as a model problem. The server owns this value. We are its client,
+ * so we read it.
+ *
+ * Where a running server was pointed is not ours to know — it takes `--config`
+ * and may be started from anywhere — so this looks in the three places one is
+ * conventionally found, in the order the server itself would.
+ *
+ * A regex rather than a TOML parser: one key, one line, and a dependency for
+ * that is a dependency for that.
+ */
+export function serverKeyOnDisk(home = homedir()): { key: string; path: string } | null {
+  const paths = [
+    process.env.OPENSANDBOX_CONFIG,
+    join(process.cwd(), "sandbox.toml"),
+    join(home, ".sandbox.toml"),
+    // Last, and the one that actually matters: a server started by hand from
+    // wherever, with `--config ./sandbox.toml` relative to a directory nobody
+    // will remember. Asking the running process beats asking the boss.
+    runningServerConfig(),
+  ].filter((p): p is string => !!p);
+  for (const path of paths) {
+    const key = keyInConfig(path);
+    if (key) return { key, path };
+  }
+  return null;
+}
+
+/**
+ * `api_key` out of one config file, or null.
+ *
+ * A regex rather than a TOML parser: one key, one line, and a dependency for
+ * that is a dependency for that. The `^\s*` matters — the example config ships
+ * the line commented out, and taking that would store a value the server is not
+ * using and lock the fleet out just as thoroughly as a generated one.
+ */
+export function keyInConfig(path: string): string | null {
+  try {
+    return /^[ \t]*api_key[ \t]*=[ \t]*"([^"]+)"/m.exec(readFileSync(path, "utf8"))?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The config path of the opensandbox-server that is running right now.
+ *
+ * ponytail: shells out to `ps`, and resolves a relative `--config` against the
+ * process's own working directory (`/proc` on Linux, `lsof` on macOS). Both are
+ * best-effort and return null when they cannot answer — the caller has three
+ * static paths before this one. If it ever needs to be more than this, the
+ * server should be publishing its own config path over its API instead.
+ */
+function runningServerConfig(): string | null {
+  try {
+    const ps = Bun.spawnSync(["ps", "-Ao", "pid=,args="], { stdout: "pipe" }).stdout.toString();
+    const line = ps.split("\n").find((l) => l.includes("opensandbox-server") && l.includes("--config"));
+    if (!line) return null;
+    const pid = line.trim().split(/\s+/)[0]!;
+    const arg = /--config[= ]+(\S+)/.exec(line)?.[1];
+    if (!arg) return null;
+    if (arg.startsWith("/")) return arg;
+    const cwd = processCwd(pid);
+    return cwd ? join(cwd, arg) : null;
+  } catch {
+    return null;
+  }
+}
+
+function processCwd(pid: string): string | null {
+  try {
+    const link = `/proc/${pid}/cwd`;
+    if (existsSync(link)) return readlinkSync(link);
+  } catch {
+    // Not Linux, or not permitted.
+  }
+  try {
+    const out = Bun.spawnSync(["lsof", "-a", "-d", "cwd", "-p", pid, "-Fn"], { stdout: "pipe" }).stdout.toString();
+    return out.split("\n").find((l) => l.startsWith("n"))?.slice(1) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function connection(ctx: Ctx): ConnectionConfig {

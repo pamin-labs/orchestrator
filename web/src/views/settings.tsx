@@ -572,14 +572,13 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const generate = () => {
-    const raw = crypto.getRandomValues(new Uint8Array(32));
-    setKey(
-      btoa(String.fromCharCode(...raw))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/, ""),
-    );
+  /** Read it out of the server's own config, server-side. */
+  const adopt = async () => {
+    setBusy(true);
+    const res = await post("/api/auth", { runtime: "sandbox", mode: "api_key", adopt: true });
+    setBusy(false);
+    if (res.ok) setKey("");
+    props.onSaved();
   };
 
   const save = async () => {
@@ -609,24 +608,42 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
-            <Tip label="32 字节，来自浏览器的密码学随机源">
-              <Button size="sm" onClick={generate}>
-                生成
+            {/* The server owns this value, so it is read rather than invented.
+                A key generated here would be one the server has never heard of,
+                and the panel cannot restart the server to teach it. */}
+            <Tip label="从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。">
+              <Button size="sm" disabled={busy} onClick={adopt}>
+                从服务器读
               </Button>
             </Tip>
+            {/* A key nobody told the server about locks the whole fleet out, and
+                until this button existed there was no way back from the panel
+                that put it there. */}
+            {props.current && (
+              <Button
+                size="sm"
+                variant="quiet"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  await post("/api/auth", { runtime: "sandbox", clear: true });
+                  setBusy(false);
+                  setKey("");
+                  props.onSaved();
+                }}
+              >
+                清掉
+              </Button>
+            )}
             <Button variant="go" size="sm" disabled={busy || !key.trim()} onClick={save}>
               存下
             </Button>
           </InputGroup>
         </Field>
-        {key.trim() && (
-          <Field className="border-b-0">
-            <span className="text-[0.8125rem] text-ink-3">另一半</span>
-            <span className="min-w-0 rounded bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed break-all text-ink-2">
-              ~/.sandbox.toml → [server] api_key = "{key.trim()}"
-            </span>
-          </Field>
-        )}
+        {/* No "now put this in the server's config" line any more: that
+            instruction is what got followed halfway, and a key only this side
+            knows locks the fleet out of every container.存下 refuses a key the
+            server rejects. */}
       </FieldGroup>
     </>
   );

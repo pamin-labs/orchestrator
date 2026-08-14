@@ -1,4 +1,6 @@
 import type { DB } from "../db.ts";
+import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "./auth.ts";
+import { parseAuth } from "./chatgpt.ts";
 
 /**
  * What has to be true before any agent can run, checked once.
@@ -22,15 +24,107 @@ export interface Check {
   fix?: string;
 }
 
+/**
+ * Can we actually drive this server, not merely reach it.
+ *
+ * It used to GET `/openapi.json` with an `x-api-key` header, and both halves of
+ * that were wrong: the doc endpoint is unauthenticated, so a server that
+ * rejected every real call reported `reachable`, and the header it authenticates
+ * by is `OPEN-SANDBOX-API-KEY`. A panel showing a green tick while every turn,
+ * every gate and every diff came back 401 is worse than no check at all.
+ *
+ * `/v1/sandboxes` is the cheapest authenticated call — a list, no side effect.
+ */
 async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; detail: string }> {
   try {
-    const res = await fetch(`${url}/openapi.json`, {
-      headers: apiKey ? { "x-api-key": apiKey } : {},
+    const res = await fetch(`${url}/v1/sandboxes`, {
+      headers: apiKey ? { "OPEN-SANDBOX-API-KEY": apiKey } : {},
       signal: AbortSignal.timeout(3000),
     });
-    return { ok: res.ok, detail: res.ok ? "reachable" : `HTTP ${res.status}` };
+    if (res.ok) return { ok: true, detail: "reachable" };
+    // The two the boss can act on, said in their own words.
+    if (res.status === 401) {
+      const why = await res.text().catch(() => "");
+      return {
+        ok: false,
+        detail: why.includes("MISSING") ? "服务器开了鉴权，我们没带密钥" : "密钥不对，服务器不认",
+      };
+    }
+    return { ok: false, detail: `HTTP ${res.status}` };
   } catch (e) {
     return { ok: false, detail: String(e).slice(0, 120) };
+  }
+}
+
+/**
+ * Does the provider accept this credential, right now.
+ *
+ * Existence was the old check, and a token that expired last week exists. The
+ * failure it missed is the expensive one: everything looks configured, and every
+ * turn dies at the API with a message the boss sees as an agent problem.
+ *
+ * `GET /v1/models` on both sides — a list, free, no side effect, and it answers
+ * 401 for exactly the thing being asked. A ChatGPT login is checked without a
+ * request at all: what expires is inside the JWT it stores.
+ *
+ * Cached, because the settings page asks on every open and a preflight that
+ * costs two round trips per glance is one nobody leaves on.
+ */
+const seen = new Map<string, { at: number; ok: boolean; detail: string }>();
+const CACHE_MS = 5 * 60_000;
+
+async function accepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+  // Hashed, not a tail: a pasted auth.json ends in `"}}` no matter whose login
+  // it is, so two different credentials shared a cache entry and the second one
+  // was reported with the first one's verdict.
+  const key = `${runtime}:${auth.mode}:${Bun.hash(auth.secret)}:${auth.baseUrl ?? ""}`;
+  const hit = seen.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return { ok: hit.ok, detail: hit.detail };
+
+  const out = await ask(runtime, auth);
+  seen.set(key, { at: Date.now(), ...out });
+  return out;
+}
+
+async function ask(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+  // The refresh token is what matters and it is not ours to test; the access
+  // token carries its own expiry, and codex rotates it from the host.
+  if (auth.mode === "chatgpt") {
+    const exp = jwtExpiry(parseAuth(auth.secret)?.tokens?.access_token);
+    if (!exp) return { ok: true, detail: "存着" };
+    const days = Math.round((exp - Date.now()) / 86_400_000);
+    return exp > Date.now()
+      ? { ok: true, detail: days >= 1 ? `还有 ${days} 天` : "快过期了" }
+      : { ok: false, detail: "过期了，重新登录一次" };
+  }
+  const base = auth.baseUrl?.replace(/\/+$/, "") ?? (runtime === "claude" ? "https://api.anthropic.com" : "https://api.openai.com");
+  const headers: Record<string, string> =
+    runtime === "claude"
+      ? auth.mode === "api_key"
+        ? { "x-api-key": auth.secret, "anthropic-version": "2023-06-01" }
+        : { Authorization: `Bearer ${auth.secret}`, "anthropic-version": "2023-06-01" }
+      : { Authorization: `Bearer ${auth.secret}` };
+  try {
+    const r = await fetch(`${base}/v1/models?limit=1`, { headers, signal: AbortSignal.timeout(6000) });
+    if (r.ok) return { ok: true, detail: "能用" };
+    if (r.status === 401 || r.status === 403) return { ok: false, detail: "对面不认这个凭据" };
+    // A gateway that answers something else is not a credential problem, and
+    // saying it is would send the boss to re-paste a token that was fine.
+    return { ok: true, detail: `没验成（HTTP ${r.status}）` };
+  } catch {
+    return { ok: true, detail: "连不上，没验" };
+  }
+}
+
+/** `exp` out of a JWT, in ms. Null when it is not one. */
+function jwtExpiry(token?: string): number | null {
+  const body = token?.split(".")[1];
+  if (!body) return null;
+  try {
+    const json = JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
   }
 }
 
@@ -39,6 +133,8 @@ export interface PreflightInput {
   sandbox: { server: string; apiKey: string; image: string };
   /** Injected in tests. */
   probe?: (bin: string) => boolean;
+  /** Injected in tests: the real one asks the provider whether it still works. */
+  verify?: (runtime: string, auth: RuntimeAuth) => Promise<{ ok: boolean; detail: string }>;
 }
 
 /** Tags of the egress images on this machine. */
@@ -94,7 +190,11 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     fix: "brew install uv —— opensandbox-server 是个 Python 包，没有它就没东西可启动。",
   });
 
-  const server = await reachable(`http://${input.sandbox.server}`, input.sandbox.apiKey);
+  // The same order `connection()` resolves it in: panel, then environment, then
+  // the yaml. Checking a different key than the one the turns use is how a green
+  // tick sat next to a fleet that could not open a single container.
+  const key = loadAuth(input.db, SANDBOX_KEY)?.secret || input.sandbox.apiKey;
+  const server = await reachable(`http://${input.sandbox.server}`, key);
   out.push({
     name: "opensandbox-server",
     ok: server.ok,
@@ -129,7 +229,8 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   });
 
   // Credentials are per runtime and live in the DB, never in an event or a
-  // prompt. The value is not read here — only whether one exists.
+  // prompt. Whether one *exists* was the whole check, and existing is not the
+  // question anyone is asking — a token that expired last week exists.
   const runtimes = new Set(
     input.db
       .query<{ runtime: string }, []>("SELECT DISTINCT runtime FROM agent WHERE runtime IS NOT NULL")
@@ -139,15 +240,14 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   runtimes.add("claude");
   runtimes.add("codex");
   for (const runtime of [...runtimes].sort()) {
-    const row = input.db
-      .query<{ mode: string }, [string]>("SELECT mode FROM runtime_auth WHERE runtime = ?")
-      .get(runtime);
+    const auth = loadAuth(input.db, runtime);
+    const live = auth ? await (input.verify ?? accepted)(runtime, auth) : { ok: false, detail: "没配" };
     out.push({
       // `credential:` so a caller that shows both this and its own credential
       // list can drop these rather than printing the same fact twice.
       name: `credential:${runtime}`,
-      ok: Boolean(row),
-      detail: row ? row.mode : "没配",
+      ok: live.ok,
+      detail: auth ? `${auth.mode} · ${live.detail}` : live.detail,
       fix:
         runtime === "claude"
           ? "claude setup-token，把吐出来的令牌存进设置里的账号。一年有效。"

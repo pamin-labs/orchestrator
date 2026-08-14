@@ -70,6 +70,9 @@ test("preflight names what is missing and how to fix it, rather than degrading",
     db,
     sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
     probe: () => false,
+    // Injected: whether a provider still accepts a token is a network fact, and
+    // a test that asks the network is a test that fails on a train.
+    verify: async () => ({ ok: true, detail: "能用" }),
   });
   const by = Object.fromEntries(checks.map((c) => [c.name, c]));
   expect(by.docker!.ok).toBe(false);
@@ -85,7 +88,12 @@ test("preflight names what is missing and how to fix it, rather than degrading",
   expect(report(checks)).toContain("opensandbox-server");
 
   saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: REAL });
-  const after = await preflight({ db, sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" }, probe: () => false });
+  const after = await preflight({
+    db,
+    sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
+    probe: () => false,
+    verify: async () => ({ ok: true, detail: "能用" }),
+  });
   expect(after.find((c) => c.name === "credential:claude")!.ok).toBe(true);
 });
 
@@ -234,4 +242,24 @@ test("a secret that cannot be right is refused before it is stored", () => {
   expect(wrongShape("claude", "oauth_token", `sk-ant-oat01-${"A".repeat(40)}`)).toBeNull();
   expect(wrongShape("codex", "api_key", "sk-abc")).toBeNull();
   expect(wrongShape("codex", "chatgpt", JSON.stringify({ tokens: { refresh_token: "r" } }))).toBeNull();
+});
+
+test("a chatgpt login is judged by the expiry it carries, without a request", async () => {
+  // The refresh token is what matters and it is not ours to test; the access
+  // token says when it dies, and codex rotates it from the host. Checking that
+  // offline is what keeps the settings page from costing a round trip per open.
+  const db = openMemory();
+  const jwt = (exp: number) =>
+    `x.${btoa(JSON.stringify({ exp })).replace(/=+$/, "")}.y`;
+  const auth = (exp: number) => JSON.stringify({ tokens: { refresh_token: "r", access_token: jwt(exp) } });
+
+  saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: auth(Math.floor(Date.now() / 1000) + 86_400 * 9) });
+  const good = await preflight({ db, sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" }, probe: () => false });
+  expect(good.find((c) => c.name === "credential:codex")!.ok).toBe(true);
+
+  saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: auth(Math.floor(Date.now() / 1000) - 60) });
+  const dead = await preflight({ db, sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" }, probe: () => false });
+  const row = dead.find((c) => c.name === "credential:codex")!;
+  expect(row.ok).toBe(false);
+  expect(row.detail).toContain("过期");
 });

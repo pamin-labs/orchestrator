@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { open } from "../src/db.ts";
-import { lineSplitter, specFor } from "../src/mech/sandbox.ts";
+import { keyInConfig, lineSplitter, specFor } from "../src/mech/sandbox.ts";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { httpsRemote } from "../src/mech/checkout.ts";
 import type { Ctx } from "../src/api.ts";
 
@@ -105,4 +108,25 @@ test("a project can share a package cache, and gets none unless it asks", () => 
     `UPDATE project SET config_json = '{"sandbox":{"cacheDirs":{"/root/.bun/install/cache":"/var/tmp/orch-cache"}}}' WHERE id = 1`,
   );
   expect(specFor(c, 1).cacheDirs).toEqual({ "/root/.bun/install/cache": "/var/tmp/orch-cache" });
+});
+
+test("the sandbox key is read from the server's own config, not invented here", () => {
+  // A key generated in the panel is one the server has never heard of, and the
+  // panel cannot restart the server to teach it — so every container request
+  // 401s with "Authentication credentials are invalid", which reads as a model
+  // problem. The server owns the value; this reads it.
+  const dir = mkdtempSync(join(tmpdir(), "orch-sbkey-"));
+  const f = join(dir, "sandbox.toml");
+  writeFileSync(f, '[server]\nhost = "127.0.0.1"\napi_key = "spike-local-key"\n');
+  expect(keyInConfig(f)).toBe("spike-local-key");
+  expect(keyInConfig(join(dir, "nope.toml"))).toBeNull();
+});
+
+test("a commented-out key is not a key", () => {
+  // The example config ships that line commented out; taking it would store a
+  // value the server is not using and lock the fleet out just as thoroughly.
+  const dir = mkdtempSync(join(tmpdir(), "orch-sbkey-"));
+  const f = join(dir, "sandbox.toml");
+  writeFileSync(f, '[server]\n# api_key = "example"\napi_key = ""\n');
+  expect(keyInConfig(f)).toBeNull();
 });

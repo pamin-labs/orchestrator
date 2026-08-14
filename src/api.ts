@@ -8,7 +8,7 @@ import { poolSizes, type Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
-import { execIn, killSandbox, putFile, WORK } from "./mech/sandbox.ts";
+import { execIn, killSandbox, putFile, serverKeyOnDisk, WORK } from "./mech/sandbox.ts";
 import { listAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
 import { loginRuntimes, startLogin } from "./mech/login.ts";
 import { preflight } from "./mech/preflight.ts";
@@ -2940,10 +2940,26 @@ const getStream: Handler = async (ctx, req) => {
 const getAuth: Handler = async (ctx) => json({ runtimes: listAuth(ctx.db) });
 
 const postAuth: Handler = async (ctx, req) => {
-  const b = await body<{ runtime?: string; mode?: string; secret?: string; baseUrl?: string; clear?: boolean }>(req);
+  const b = await body<{
+    runtime?: string; mode?: string; secret?: string; baseUrl?: string; clear?: boolean; adopt?: boolean;
+  }>(req);
   const runtime = (b.runtime ?? "").trim();
-  const secret = (b.secret ?? "").trim();
+  let secret = (b.secret ?? "").trim();
   if (!runtime) return bad("which runtime?");
+  // Read the sandbox server's key out of the server's own config rather than
+  // asking the boss to copy one across. Generating a key here and trusting a
+  // human to mirror it is how the fleet spent a night 401ing: the panel had one
+  // value, the server had another, and nothing on either side could see both.
+  // The value never reaches the browser — it goes config file to store.
+  if (b.adopt) {
+    if (runtime !== SANDBOX_KEY) return bad("adopt is only for the sandbox server");
+    const found = serverKeyOnDisk();
+    if (!found)
+      return bad(
+        "没找到沙盒服务器的配置。它是用 --config 启动的，把那个文件的路径放进 OPENSANDBOX_CONFIG，或者放在 ./sandbox.toml、~/.sandbox.toml。",
+      );
+    secret = found.key;
+  }
   // Something wrong got stored — a login URL pasted into the token box, an old
   // account. Removing it is the only way back to "not configured", which is a
   // state the scheduler and the panel both understand.
@@ -2969,10 +2985,37 @@ const postAuth: Handler = async (ctx, req) => {
       return bad(`${b.baseUrl} is not a URL`);
     }
   }
+  // The sandbox key is the one credential whose owner we can ask, and the one
+  // where a wrong value is silent and total: it overrides the environment, so
+  // generating one here and not telling the server made every turn, every gate
+  // and every diff 401 — reported as "Authentication credentials are invalid",
+  // which reads as a model problem. Refused rather than stored.
+  if (runtime === SANDBOX_KEY) {
+    const said = await sandboxKeyWorks(ctx.config.sandbox?.server ?? "127.0.0.1:8080", secret);
+    if (said === "invalid") return bad("沙盒服务器不认这个密钥。它自己的配置里写的是哪个，这里就得填哪个。");
+  }
   saveAuth(ctx.db, { runtime, mode: b.mode, secret, baseUrl: b.baseUrl || undefined });
   await credentialChanged(ctx, runtime);
   return text("ok");
 };
+
+/**
+ * Ask the sandbox server whether it would accept this key.
+ *
+ * `unknown` when it cannot be reached: a server that is down is a preflight
+ * finding, not a reason to refuse a key that may well be right.
+ */
+async function sandboxKeyWorks(server: string, key: string): Promise<"ok" | "invalid" | "unknown"> {
+  try {
+    const r = await fetch(`http://${server}/v1/sandboxes`, {
+      headers: { "OPEN-SANDBOX-API-KEY": key },
+      signal: AbortSignal.timeout(3000),
+    });
+    return r.ok ? "ok" : r.status === 401 ? "invalid" : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 /**
  * What has to happen after a credential is stored, wherever it was stored.
