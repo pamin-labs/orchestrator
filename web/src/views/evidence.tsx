@@ -14,6 +14,9 @@ import { cn, nl } from "../lib/utils";
  */
 const PAD = "px-4";
 
+/** QA and the gates write their verdict as prose; `fail` in it is the machine part. */
+const failed = (v: { body: string }) => /\bfail\b/i.test(v.body);
+
 /**
  * The evidence behind one slice, in the order a reviewer reads it.
  *
@@ -30,8 +33,11 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
 
   useEffect(() => {
     setEv(null);
-    setView("diff");
-    void pull<Evidence>(`/api/slices/${sliceId}/evidence`).then(setEv);
+    void pull<Evidence>(`/api/slices/${sliceId}/evidence`).then((r) => {
+      setEv(r);
+      // A failed judgement is the reason to look; everything else, the change is.
+      setView(r?.verdicts.some(failed) ? "verdicts" : "diff");
+    });
   }, [sliceId]);
 
   if (!ev) return <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>读改动…</div>;
@@ -41,6 +47,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
   // count stays on the pinned line, the line counts go on the switch below it as
   // `+94 −2`. Printing the whole stat in both places is the same three numbers
   // twice, 200px apart.
+  const bad = ev.verdicts.some(failed);
   const files = summary.split(",")[0]?.trim() ?? "";
   const plus = Number(summary.match(/(\d+) insertion/)?.[1] ?? 0);
   const minus = Number(summary.match(/(\d+) deletion/)?.[1] ?? 0);
@@ -86,6 +93,15 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           <Segments value={view} onValueChange={setView} className="-ml-2">
             <Segment value="diff">diff</Segment>
+            {/* The judgements are a pane, not a block above the panes. Stacked,
+                three of them pushed the change they are about off the screen and
+                a passing one said nothing the gate ticks on the row had not
+                already said — while a failing one is the whole reason to look. */}
+            {ev.verdicts.length > 0 && (
+              <Segment value="verdicts">
+                <span className={bad ? "text-bad" : undefined}>判词 {ev.verdicts.length}</span>
+              </Segment>
+            )}
             {ev.gates.map((g) => (
               <Segment key={g.name} value={g.name}>
                 {g.name}
@@ -110,28 +126,26 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
         </div>
       </div>
 
-      {ev.verdicts.length > 0 && (
-        <div className={cn(PAD, "border-b border-rule py-2")}>
+      {view === "verdicts" ? (
+        <div className={cn(PAD, "py-1.5")}>
           {ev.verdicts.map((v, i) => {
-            const bad = /\bfail\b/i.test(v.body);
+            const no = failed(v);
             return (
               <div key={i} className="grid grid-cols-[2rem_5rem_minmax(0,1fr)] gap-x-2 py-1 text-[0.75rem]">
                 {/* The verdict, as a mark. It was carried by the colour of the
                     sentence alone, which is the one cue a reader skimming for a
                     fail does not get until they have read the sentence. */}
-                <span className={cn("font-mono text-[0.6875rem]", bad ? "text-bad" : "text-ok")}>
-                  {bad ? "没过" : "过"}
+                <span className={cn("font-mono text-[0.6875rem]", no ? "text-bad" : "text-ok")}>
+                  {no ? "没过" : "过"}
                 </span>
                 {/* Wide enough for "orchestrator": at w-16 it ran into the verdict. */}
                 <span className="truncate font-mono text-[0.6875rem] text-ink-3">{v.author}</span>
-                <Verdict body={v.body} bad={bad} />
+                <Verdict body={v.body} bad={no} />
               </div>
             );
           })}
         </div>
-      )}
-
-      {view === "diff" ? (
+      ) : view === "diff" ? (
         !ev.diff ? (
           <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>
             没有 diff 可读。这一片没有记下基线 commit，或者 worktree 已经清掉了。
@@ -188,7 +202,9 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
     );
   }, [sliceId, name]);
 
-  const lines = (text ?? "").split("\n");
+  // Trailing newline is one empty row on a pane whose whole job is to look like
+  // the file it came from.
+  const lines = (text ?? "").replace(/\s+$/, "").split("\n");
   const fails = lines.filter((l) => /^\s*\(fail\)/.test(l));
   const body = q ? lines.filter((l) => l.toLowerCase().includes(q.toLowerCase())) : lines;
 
@@ -212,9 +228,12 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
       </div>
       {/* Machine output, on the machine surface — same recessed pane as the diff,
           so the eye knows without reading that this half is a transcript and the
-          half above it is a judgement. */}
-      <pre className={cn(PAD, "h-[34rem] overflow-auto bg-sunk py-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2")}>
-        {body.length === 0 ? "没有匹配的行" : body.map((l, i) => (
+          half above it is a judgement.
+
+          `max-h`, not `h`: a typecheck gate that printed one line was drawing a
+          34rem field of empty grey under it. */}
+      <pre className={cn(PAD, "max-h-[34rem] overflow-auto bg-sunk py-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2")}>
+        {body.length === 0 ? (q ? "没有匹配的行" : "这份日志是空的") : body.map((l, i) => (
           <div key={i} className={cn(/^\s*\(fail\)/.test(l) && "bg-bad-soft", /error|Error/.test(l) && "text-bad")}>
             {l || " "}
           </div>
