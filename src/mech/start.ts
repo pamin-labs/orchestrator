@@ -93,28 +93,25 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
           body: say(ctx.config?.language, "group.worktree", { branch: wt.branch }),
         });
 
-        // Dependencies, on the host, before the first turn. A worktree is a bare
-        // checkout and the agent cannot fix that itself: the sandbox denies the
-        // writes an install needs, so every gate fails for a reason the group did
-        // not cause and cannot see. One group sat on that blocker for hours.
-        const install = installFor(ctx, grp.project_id);
-        const dep = await installDeps(
-          wt.worktree,
-          install,
-          join(ctx.config.dataDir ?? "data", "gates", `install-${grpId}.log`),
-        );
-        if (!dep.ok) {
-          // Not fatal: some projects need nothing, and a gate failing with the
-          // real error is more useful than a group that never starts. But it has
-          // to be visible, or it reads as the group's own code being broken.
-          ctx.bus.emit({
-            grpId,
-            author: "orchestrator",
-            kind: "escalation",
-            intent: "inform",
-            severity: "advisory",
-            body: `装依赖失败了（${install}）：闸门大概会跟着红。\n${dep.out.slice(-400)}`,
-          });
+        // Dependencies, before the first engineer turn. A worktree is a bare
+        // checkout and the agent that gets it cannot fix that: the sandbox denies
+        // the writes an install needs, so every gate then fails for a reason the
+        // group did not cause and cannot see. One group sat on that for hours.
+        //
+        // A role, not a table of stacks. bun, pnpm, poetry, uv, pdm, mise, a
+        // Makefile target — nobody enumerates those, and the repo says which one
+        // it is: a lockfile, the README's setup section, the CI workflow. The
+        // detected guess is a default it can skip past, not the answer.
+        const known = installFor(ctx, grp.project_id);
+        if (known) {
+          const dep = await installDeps(
+            wt.worktree,
+            known,
+            join(ctx.config.dataDir ?? "data", "gates", `install-${grpId}.log`),
+          );
+          if (!dep.ok) ctx.sched.enqueue("agent_turn", { grp_id: grpId, priority: 9, payload: { role: "bootstrap", rejection: `记下来的安装命令跑不通了：${known}\n${dep.out.slice(-400)}` } });
+        } else {
+          ctx.sched.enqueue("agent_turn", { grp_id: grpId, priority: 9, payload: { role: "bootstrap" } });
         }
       } catch (e: any) {
         // Refuse to start rather than run the group in the main checkout, where

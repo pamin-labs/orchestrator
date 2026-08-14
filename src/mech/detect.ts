@@ -50,6 +50,10 @@ const globExists = (repo: string, re: RegExp) => {
 const RULES: Rule[] = [
   {
     marker: (repo) => hasFile(repo, "package.json"),
+    // Only where a lockfile names the manager outright. Anything less certain is
+    // the bootstrap role's job — it reads the README, the CI workflow and the
+    // Makefile, which is how you tell poetry from pdm from a plain venv without
+    // a table in here that is wrong for somebody.
     install: (repo) =>
       hasFile(repo, "bun.lock") || hasFile(repo, "bun.lockb")
         ? "bun install --frozen-lockfile"
@@ -57,7 +61,9 @@ const RULES: Rule[] = [
           ? "npm ci"
           : hasFile(repo, "pnpm-lock.yaml")
             ? "pnpm install --frozen-lockfile"
-            : "npm install",
+            : hasFile(repo, "yarn.lock")
+              ? "yarn install --frozen-lockfile"
+              : null,
     gates: (repo) => {
       const pkg = readJson(join(repo, "package.json")) ?? {};
       const scripts: Record<string, string> = pkg.scripts ?? {};
@@ -123,13 +129,9 @@ const RULES: Rule[] = [
   },
   {
     marker: (repo) => hasFile(repo, "pyproject.toml") || hasFile(repo, "setup.cfg"),
-    // A venv per worktree, because the interpreter is the environment here and two
-    // groups sharing one would fight over versions. `-e .` so the tests import the
-    // checkout they are testing rather than an installed copy of it.
-    install: (repo) =>
-      hasFile(repo, "uv.lock")
-        ? "uv sync"
-        : "python3 -m venv .venv && .venv/bin/pip install -q -e .",
+    // uv.lock is unambiguous. `pyproject.toml` alone is not — poetry, pdm, hatch,
+    // rye and a plain venv all use it — so that one goes to the bootstrap role.
+    install: (repo) => (hasFile(repo, "uv.lock") ? "uv sync" : null),
     gates: () => [{ name: "test", template: "pytest -q", errorRegex: "^(E |FAILED|ERROR)" }],
   },
   {

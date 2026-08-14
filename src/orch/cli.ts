@@ -98,6 +98,7 @@ async function stdin(): Promise<string> {
 const USAGE = `orch <command>
 
   ctx query <question>
+  setup --cmd "<install command>" | --none        # bootstrap only, first turn
   ask-boss [--severity blocker|advisory] [--kind env|spec|boundary|design|other]
            [--brief "<=20 chars, what it is about>"] <question>
   lease <resource> [--arg k=v ...]
@@ -133,6 +134,13 @@ export async function main(argv: string[]): Promise<number> {
     case "ctx": {
       if (sub !== "query") return usageError(`unknown ctx subcommand ${sub}`);
       r = await call("POST", "/orch/ctx/query", { question: args.slice(2).join(" ") });
+      break;
+    }
+    case "setup": {
+      // The bootstrap role's one verb. Runs on the host, in this worktree.
+      if (flags.none) r = await call("POST", "/orch/setup", { none: true });
+      else if (typeof flags.cmd === "string") r = await call("POST", "/orch/setup", { cmd: flags.cmd });
+      else return usageError('setup needs --cmd "<command>" or --none');
       break;
     }
     case "ask-boss": {

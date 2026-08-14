@@ -159,6 +159,12 @@ test("every stack says how to install, or says it needs nothing", () => {
   writeFileSync(join(go, "go.mod"), "module x\n");
   expect(detectInstall(go)).toBe("go mod download");
 
+  // pyproject.toml alone names no manager — poetry, pdm, hatch, rye and a plain
+  // venv all use it — so it goes to the bootstrap role rather than to a guess.
+  const py = mkdtempSync(join(tmpdir(), "orch-i-"));
+  writeFileSync(join(py, "pyproject.toml"), "[project]\n");
+  expect(detectInstall(py)).toBeNull();
+
   // cargo fetches on build: nothing up front, and that is an answer, not a gap.
   const rust = mkdtempSync(join(tmpdir(), "orch-i-"));
   writeFileSync(join(rust, "Cargo.toml"), "[package]\n");

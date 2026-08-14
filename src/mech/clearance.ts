@@ -172,6 +172,11 @@ export function allowedToolsFor(role: string, clearance: Clearance): string[] {
       return [...base, "Read", "Grep", "Glob"];
     case "librarian":
       return [...base, "Read", "Grep"];
+    // Reads the repo to work out how it is installed, then hands the command to
+    // `orch setup`. It never writes: the install itself runs on the host, because
+    // the sandbox denies this process the writes an install needs.
+    case "bootstrap":
+      return [...base, "Read", "Grep", "Glob"];
     default:
       return clearance === "L2" ? [...base, "Read", "Grep", "Glob"] : [...base, "Read"];
   }

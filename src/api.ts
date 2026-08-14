@@ -7,7 +7,7 @@ import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
-import { abortStaleRebase, sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
+import { abortStaleRebase, installDeps, sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
@@ -547,6 +547,101 @@ const postAskBoss: Handler = async (ctx, req) => {
   });
   ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ?", [a.id]);
   return text(answer);
+};
+
+/**
+ * Package managers a setup command may start with.
+ *
+ * The point of the bootstrap role is that nobody can enumerate setup commands —
+ * bun, pnpm, poetry, uv, pdm, mise, asdf, gradle, a Makefile target — so the
+ * agent reads the repo and writes the command. What is enumerable is the set of
+ * programs that are package managers, and that is what this checks: the first
+ * word, not the command.
+ *
+ * `orch lease` never takes a free command (PLAN.md hard constraint 2) and this
+ * does, which is the reason for the list rather than a shrug: a turn that can run
+ * anything on the host is the sandbox with a door in it. `curl … | sh` is the
+ * exact shape that door is for, so pipes and redirects are refused outright and
+ * the boss is asked instead.
+ */
+const SETUP_BINS = new Set([
+  "bun", "npm", "pnpm", "yarn", "corepack", "node",
+  "python", "python3", "pip", "pip3", "poetry", "uv", "pdm", "pipenv", "hatch", "conda",
+  "go", "cargo", "dotnet", "swift", "gradle", "gradlew", "mvn", "sbt",
+  "bundle", "gem", "composer", "mix", "rebar3", "stack", "cabal",
+  "make", "just", "task", "mise", "asdf", "direnv", "nix-shell", "devbox",
+]);
+
+export function setupRefusal(cmd: string): string | null {
+  const trimmed = cmd.trim();
+  if (!trimmed) return "setup needs --cmd \"<command>\" or --none";
+  if (trimmed.length > 400) return "that is not a setup command";
+  // A pipe or a redirect is how `curl … | sh` gets in, and every real setup
+  // command is a program with flags. `&&` is allowed: setup is sometimes two
+  // steps, and both halves are checked.
+  if (/[|><`$]|\$\(|;|\bsudo\b|\bcurl\b|\bwget\b/.test(trimmed)) {
+    return "no pipes, redirects, substitutions, sudo, curl or wget in a setup command — ask the boss instead";
+  }
+  for (const part of trimmed.split("&&")) {
+    const bin = part.trim().split(/\s+/)[0] ?? "";
+    if (!SETUP_BINS.has(bin.replace(/^\.\//, ""))) {
+      return `${bin || "that"} is not a package manager this can run on the host — ask the boss instead`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The bootstrap role's one verb: make this worktree buildable.
+ *
+ * The command comes from the agent because nobody can enumerate them — bun,
+ * poetry, uv, mise, a Makefile target — and the repo says which one it is. It
+ * runs on the host because the sandbox denies the agent's own process the writes
+ * an install needs.
+ */
+const postSetup: Handler = async (ctx, req) => {
+  const b = await body<{ cmd?: string; none?: boolean }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  if (a.role !== "bootstrap") return bad(`${a.role} does not set up worktrees`);
+  const grp = a.grp_id
+    ? ctx.db
+        .query<{ worktree: string | null; project_id: number }, [number]>(
+          "SELECT worktree, project_id FROM grp WHERE id = ?",
+        )
+        .get(a.grp_id)
+    : null;
+  if (!grp?.worktree) return bad("this agent has no worktree");
+
+  if (b.none) {
+    ctx.db.run(
+      "UPDATE project SET config_json = json_set(config_json, '$.install', json('null')) WHERE id = ?",
+      [grp.project_id],
+    );
+    ctx.bus.emit({ grpId: a.grp_id, author: a.role, kind: "state_change", body: "这个仓库不需要装什么" });
+    return text("ok");
+  }
+
+  const cmd = (b.cmd ?? "").trim();
+  const refusal = setupRefusal(cmd);
+  if (refusal) return bad(refusal);
+
+  const r = await installDeps(grp.worktree, cmd, join(ctx.config.dataDir ?? "data", "gates", `install-${a.grp_id}.log`));
+  ctx.bus.emit({
+    grpId: a.grp_id,
+    author: a.role,
+    kind: "state_change",
+    body: r.ok ? `装好了：${cmd}` : `装失败了：${cmd}\n${r.out.slice(-400)}`,
+  });
+  // Remembered on the project, so the next worktree does not pay for the same
+  // reading — and so the boss can see and correct what runs on their machine.
+  if (r.ok) {
+    ctx.db.run("UPDATE project SET config_json = json_set(config_json, '$.install', ?) WHERE id = ?", [
+      cmd,
+      grp.project_id,
+    ]);
+  }
+  return r.ok ? text("ok") : bad(`setup failed:\n${r.out.slice(-1200)}`);
 };
 
 const postLease: Handler = async (ctx, req) => {
@@ -2927,6 +3022,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/journal$/, postJournal],
   ["POST", /^\/orch\/mail$/, postMail],
   ["POST", /^\/orch\/ask-boss$/, postAskBoss],
+  ["POST", /^\/orch\/setup$/, postSetup],
   ["POST", /^\/orch\/lease$/, postLease],
   ["GET", /^\/orch\/lease\/(?<id>\d+)\/log$/, getLeaseLog],
   ["POST", /^\/orch\/git$/, postGit],
