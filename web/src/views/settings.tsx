@@ -64,7 +64,7 @@ const RUNTIMES: Runtime[] = [
     urlEnv: "ANTHROPIC_BASE_URL",
     modes: [
       { mode: "oauth_token", label: "订阅", how: "claude setup-token", cost: "一年有效" },
-      { mode: "api_key", label: "API key", how: "console.anthropic.com", cost: "不显示额度" },
+      { mode: "api_key", label: "API 密钥", how: "console.anthropic.com", cost: "不显示额度" },
     ],
   },
   {
@@ -74,12 +74,12 @@ const RUNTIMES: Runtime[] = [
     urlEnv: "OPENAI_BASE_URL",
     modes: [
       { mode: "chatgpt", label: "订阅", how: "codex login", cost: "本机统一刷新" },
-      { mode: "api_key", label: "API key", how: "platform.openai.com", cost: "不显示额度" },
+      { mode: "api_key", label: "API 密钥", how: "platform.openai.com", cost: "不显示额度" },
     ],
   },
 ];
 
-/** Host facts only. The credential rows are the 凭据 section, said once. */
+/** Host facts only. The credential rows are the 账号 section, said once. */
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
 
 const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: true }> = [
@@ -108,8 +108,16 @@ export function SettingsDialog({
   const [checks, setChecks] = useState<HostCheck[]>([]);
   const [proj, setProj] = useState<ProjectConfig | null>(null);
   const [busy, setBusy] = useState(false);
-  /** Until when to keep asking, because a login finishes in another window. */
-  const [pollUntil, setPollUntil] = useState(0);
+  /**
+   * The login in flight: which account, what its row said before it started, and
+   * when to give up asking.
+   *
+   * `since` is what ends it. A login that has landed is a row with a newer
+   * `updatedAt` than the one we started from — the panel polled on a timer alone
+   * before, so the credential arrived, the row updated, and both buttons stayed
+   * "等你在浏览器里批准…" for the rest of the five minutes.
+   */
+  const [signin, setSignin] = useState<{ runtime: string; since: number; until: number } | null>(null);
 
   const load = async () => {
     const [a, p, c] = await Promise.all([
@@ -134,13 +142,20 @@ export function SettingsDialog({
    * that runs forever is a poll somebody has to remember to stop.
    */
   useEffect(() => {
-    if (!pollUntil) return;
+    if (!signin) return;
     const t = setInterval(() => {
-      if (Date.now() > pollUntil) setPollUntil(0);
+      if (Date.now() > signin.until) setSignin(null);
       else void load();
     }, 2000);
     return () => clearInterval(t);
-  }, [pollUntil]);
+  }, [signin]);
+
+  /** It landed. Stop asking, and give the button back. */
+  useEffect(() => {
+    if (!signin) return;
+    const row = rows.find((r) => r.runtime === signin.runtime);
+    if (row && row.updatedAt > signin.since) setSignin(null);
+  }, [rows, signin]);
 
   const patch = async (body: Record<string, unknown>) => {
     setBusy(true);
@@ -203,15 +218,19 @@ export function SettingsDialog({
             <Pane>
               {here === "cred" ? (
                 <>
-                  <Head title="账号" note="真 token 不进沙盒" />
+                  <Head title="账号" note="真令牌不进沙盒" />
                   {RUNTIMES.map((r) => (
                     <Credential
                       key={r.key}
                       runtime={r}
                       current={rows.find((x) => x.runtime === r.key)}
-                      waiting={pollUntil > Date.now()}
+                      // Only the account being logged into. One flag for both meant
+                      // a claude login also froze codex's button for five minutes.
+                      waiting={signin?.runtime === r.key}
                       onSaved={load}
-                      onWaitForLogin={() => setPollUntil(Date.now() + 300_000)}
+                      onWaitForLogin={(since) =>
+                        setSignin({ runtime: r.key, since, until: Date.now() + 300_000 })
+                      }
                     />
                   ))}
                 </>
@@ -300,7 +319,7 @@ function Credential(props: {
   /** A login is in flight; the page is asking every couple of seconds. */
   waiting: boolean;
   onSaved: () => void;
-  onWaitForLogin: () => void;
+  onWaitForLogin: (since: number) => void;
 }) {
   const r = props.runtime;
   const cur = props.current;
@@ -311,6 +330,18 @@ function Credential(props: {
   const [link, setLink] = useState<string | null>(null);
   const spec = r.modes.find((m) => m.mode === mode) ?? r.modes[0]!;
   const dirty = !!secret.trim() || baseUrl.trim() !== (cur?.baseUrl ?? "");
+  // The OAuth address is worth showing until the credential it fetches arrives,
+  // and not one render longer.
+  useEffect(() => setLink(null), [cur?.updatedAt]);
+  /**
+   * What is stored, in the box that stores it.
+   *
+   * The secret itself never comes back from the server, so the box is empty after
+   * a login and read as "nothing was saved". The masked tail is what the boss has
+   * to tell two tokens apart, and it belongs where the value would be — the same
+   * mode's row is the only place it is now said.
+   */
+  const held = cur?.mode === mode ? `已存 ${cur.hint}，粘新的就换掉` : null;
 
   const save = async () => {
     setBusy(true);
@@ -344,7 +375,7 @@ function Credential(props: {
     setBusy(false);
     // The credential arrives on its own once the browser comes back; from here
     // the only job is to notice.
-    if (url) props.onWaitForLogin();
+    if (url) props.onWaitForLogin(cur?.updatedAt ?? 0);
     props.onSaved();
   };
 
@@ -357,7 +388,7 @@ function Credential(props: {
             <span className="text-[0.75rem] text-ink-2">
               {r.modes.find((m) => m.mode === cur.mode)?.label ?? cur.mode}
             </span>
-            <Meta className="min-w-0 truncate">{cur.hint}</Meta>
+            {/* The masked tail is in the box it was pasted into, not here as well. */}
             <Meta>{clock(cur.updatedAt)}</Meta>
           </>
         ) : (
@@ -392,14 +423,14 @@ function Credential(props: {
             </span>
           ) : (
             <FieldLabel htmlFor={`${r.key}-secret`} className="text-ink-3">
-              {mode === "api_key" ? "API key" : "token"}
+              {mode === "api_key" ? "API 密钥" : "令牌"}
             </FieldLabel>
           )}
           {mode === "chatgpt" ? (
             <Textarea
               id={`${r.key}-secret`}
               className="min-h-16"
-              placeholder="~/.codex/auth.json 的完整内容"
+              placeholder={held ?? "~/.codex/auth.json 的完整内容"}
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
             />
@@ -409,7 +440,7 @@ function Credential(props: {
                 id={`${r.key}-secret`}
                 type="password"
                 className="min-w-0 flex-1 font-mono"
-                placeholder="粘贴进来，存下之后看不到"
+                placeholder={held ?? "粘贴进来，存下之后看不到"}
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
               />
