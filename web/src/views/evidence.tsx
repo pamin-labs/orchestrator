@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clamp, Meta } from "../ui/bits";
+import { Meta } from "../ui/bits";
 import { Segment, Segments } from "../ui/segment";
 import { Tip } from "../ui/tooltip";
 import { DiffView } from "../ui/diff";
@@ -74,7 +74,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
           the verdict on everything below them, and scrolling down to read the QA
           line and the diff scrolled the buttons — and the acceptance line they
           answer — off the top. */}
-      <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule bg-paper py-2.5")}>
+      <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule bg-rail py-2.5")}>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
           <span className="min-w-0 text-[0.8125rem] text-ink">{ev.accept_spec}</span>
           {/* The size of the delivery, on the line that says what was delivered.
@@ -131,26 +131,10 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
       </div>
 
       {view === "verdicts" ? (
-        /* Three columns of `过 | qa | 1800px of prose` is a paragraph set to four
-           times a readable measure, with the mark that matters at the far left of
-           it. Author and verdict on one line, the words under them at 72ch. */
         <div className={cn(PAD, "py-1")}>
-          {ev.verdicts.map((v, i) => {
-            const no = failed(v);
-            return (
-              <div key={i} className="max-w-[72ch] border-t border-rule-soft py-2 first:border-t-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-[0.6875rem] text-ink-3">{v.author}</span>
-                  <span className={cn("text-[0.6875rem] font-semibold", no ? "text-bad" : "text-ok")}>
-                    {no ? "没过" : "过"}
-                  </span>
-                </div>
-                <div className={cn("mt-0.5 text-[0.8125rem]", no ? "text-bad" : "text-ink-2")}>
-                  <Clamp lines={3}>{nl(v.body)}</Clamp>
-                </div>
-              </div>
-            );
-          })}
+          {ev.verdicts.map((v, i) => (
+            <VerdictRow key={i} author={v.author} body={v.body} />
+          ))}
         </div>
       ) : view === "diff" ? (
         !ev.diff ? (
@@ -167,6 +151,52 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
       ) : (
         <GateLog key={view} sliceId={sliceId} name={view} />
       )}
+    </div>
+  );
+}
+
+/**
+ * One judgement: who, whether it passed, and what they said about it.
+ *
+ * Three shapes were tried and each failed the same way. `过 | qa | 1800px of
+ * prose` set the paragraph to four times a readable measure. Stacking author,
+ * verdict and body left the toggle dangling on a line of its own under the text,
+ * which reads as a fourth item rather than a control on the third. The toggle
+ * belongs with the name, at the other end of the line it governs.
+ */
+function VerdictRow({ author, body }: { author: string; body: string }) {
+  const [open, setOpen] = useState(false);
+  const no = failed({ body });
+  // Roughly four lines at this measure. Below that the toggle is a control that
+  // does nothing visible, which is worse than no toggle.
+  const long = body.length > 200;
+  return (
+    <div className="border-t border-rule-soft py-2.5 first:border-t-0">
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono text-[0.6875rem] text-ink-3">{author}</span>
+        <span className={cn("text-[0.6875rem] font-semibold", no ? "text-bad" : "text-ok")}>
+          {no ? "没过" : "过"}
+        </span>
+        <span className="grow" />
+        {long && (
+          <button
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
+          >
+            {open ? "收起" : "展开"}
+          </button>
+        )}
+      </div>
+      <div
+        className={cn(
+          "mt-1 max-w-[72ch] whitespace-pre-wrap break-words text-[0.8125rem]",
+          no ? "text-bad" : "text-ink-2",
+          !open && "line-clamp-3",
+        )}
+      >
+        {nl(body)}
+      </div>
     </div>
   );
 }

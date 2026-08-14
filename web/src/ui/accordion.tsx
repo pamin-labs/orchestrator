@@ -49,16 +49,17 @@ export function AccordionTrigger({ className, children }: { className?: string; 
 }
 
 /**
- * The open body, and the line that ends it.
+ * The open body, on the open item's own surface.
  *
- * Body and rows are both on paper, so with the body's last pane collapsed to a
- * sentence the reader could not tell where the open item stopped and the next row
- * began. `data-[state=open]` puts the strong rule there only while it is open —
- * a closed item keeps the hairline its neighbours have.
+ * Body and rows were both on paper, so with the last pane collapsed to a sentence
+ * the reader could not tell where the open item stopped and the next row began —
+ * a 2px rule under it was not enough, because a rule is what separates every row
+ * from every other row. `rail` for the whole open block instead: one tinted
+ * region with a start and an end, the machine panes inside it recessed further.
  */
 export function AccordionBody({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <A.Content className={cn("data-[state=open]:border-b-2 data-[state=open]:border-rule", className)}>
+    <A.Content className={cn("bg-rail data-[state=open]:border-b data-[state=open]:border-rule", className)}>
       {children}
     </A.Content>
   );
