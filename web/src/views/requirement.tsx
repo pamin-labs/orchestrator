@@ -153,9 +153,13 @@ export function Requirement({
               So: the decisions, in full, each with its answer box. Then what
               somebody else is holding, one line each, quiet. Then who answered for
               you, only if anyone has. */}
-          <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col gap-3">
+          {/* One scroll for the whole tab, not a capped box per section. The
+              questions box owned the scroll, so a long question pushed the answer
+              box it belongs to below the box's own bottom edge — the boss saw a
+              question cut mid-sentence and no way to reply to it. */}
+          <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden pb-2 pr-1">
             {mine.length > 0 && (
-              <div className="min-h-0 max-h-full overflow-y-auto overflow-x-hidden rounded-lg border border-accent">
+              <div className="shrink-0 overflow-hidden rounded-lg border border-accent">
                 <Accordion value={openAsk ?? String(mine[0]!.id)} onValueChange={setOpenAsk}>
                   {mine.map((e) => (
                     <AccordionItem key={e.id} value={String(e.id)}>
@@ -567,35 +571,43 @@ function Delegated({
 }) {
   // Nothing at all when nobody has answered for you. A sentence explaining what
   // an empty block would have contained is the page reporting an absence, which
-  // is exactly what PRODUCT.md says an empty state must not do — and this one sat
-  // under the question the boss was there to answer.
+  // is what PRODUCT.md says an empty state must not do — and this one sat under
+  // the question the boss was there to answer.
   if (!rows.length) return null;
   return (
     <div className="shrink-0">
       <Meta className="block px-1 pb-1">替你答过 {rows.length} 条</Meta>
       <div className="overflow-hidden rounded-lg border border-rule-soft">
-      {rows.map((a) => (
-        <div key={a.id} className="border-t border-rule-soft px-4 py-2 first:border-t-0">
-          <div className="flex items-baseline gap-2">
-            <Meta>{a.answered_by}</Meta>
-            <span className="min-w-0 grow text-[0.8125rem]">{a.question}</span>
-            <Button variant="quiet" onClick={async () => {
-              const go = await ask({
-                title: "撤销并接管",
-                body: "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。",
-                yes: "撤销并接管", danger: true,
-              });
-              if (!go) return;
-              await post(`/api/escalations/${a.id}/revoke`);
-              refresh();
-            }}>撤销并接管</Button>
+        {rows.map((a) => (
+          // Question, then answer, in the order they happened, at a measure that
+          // can be read. Both used to run the full width of the page, the question
+          // in body text and the answer in a grey slab under it — two paragraphs
+          // of somebody else's words at the weight of live work.
+          <div key={a.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-[0.6875rem] text-ink-3">{a.answered_by} 代答</span>
+              <span className="grow" />
+              <Button variant="quiet" size="sm" onClick={async () => {
+                const go = await ask({
+                  title: "撤销并接管",
+                  body: "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。",
+                  yes: "撤销并接管", danger: true,
+                });
+                if (!go) return;
+                await post(`/api/escalations/${a.id}/revoke`);
+                refresh();
+              }}>撤销并接管</Button>
+            </div>
+            <div className="mt-1 max-w-[72ch] text-[0.75rem] text-ink-3">
+              <Clamp lines={2}>{nl(a.question)}</Clamp>
+            </div>
+            {/* The answer is the half worth reading, so it is the darker of the
+                two, on the surface everything not written by the boss sits on. */}
+            <div className="mt-1 max-w-[72ch] rounded-md bg-sunk px-2.5 py-1.5 text-[0.8125rem] text-ink-2">
+              <Clamp lines={3}>{nl(a.answer)}</Clamp>
+            </div>
           </div>
-          {/* Somebody else's words, on the surface everything not written by the
-              boss sits on. It was a left-ruled quote block, which is the one
-              decoration DESIGN.md names outright. */}
-          <div className="mt-1 max-w-[72ch] rounded-md bg-sunk px-2.5 py-1.5 text-[0.75rem] text-ink-2">{nl(a.answer)}</div>
-        </div>
-      ))}
+        ))}
       </div>
     </div>
   );

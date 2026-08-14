@@ -159,9 +159,15 @@ export function allowedToolsFor(role: string, clearance: Clearance): string[] {
       return [...base, "Grep"];
     case "engineer":
       return [...base, "Read", "Edit", "Write", "Grep", "Glob"];
-    case "pm":
-    case "dispatcher":
     case "architect":
+    case "pm":
+      // The two roles whose questions are about the world outside this repo — a
+      // library's current API, whether a pattern is still recommended, what a
+      // breaking change actually broke. WebSearch only: it queries Anthropic's
+      // index and returns text. `WebFetch` would let an agent GET any URL it
+      // composes, which is a way out of the sandbox for anything it has read.
+      return [...base, "Read", "Grep", "Glob", "WebSearch"];
+    case "dispatcher":
     case "cos":
       return [...base, "Read", "Grep", "Glob"];
     case "librarian":

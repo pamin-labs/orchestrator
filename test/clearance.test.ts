@@ -115,3 +115,17 @@ test("writeProfile emits valid JSON at the path handed to --settings", () => {
   expect(parsed.sandbox.enabled).toBe(true);
   expect(p.endsWith("g1-L1.json")).toBe(true);
 });
+
+test("only architect and pm can search the web, and never fetch a URL", () => {
+  for (const role of ["architect", "pm"]) {
+    expect(allowedToolsFor(role, "L2")).toContain("WebSearch");
+  }
+  // WebFetch is a GET to any URL an agent composes, which is a way out of the
+  // sandbox for anything it has read. Nobody gets it.
+  for (const role of ["architect", "pm", "engineer", "qa", "cos", "dispatcher", "librarian", "auditor"]) {
+    expect(allowedToolsFor(role, "L2")).not.toContain("WebFetch");
+  }
+  for (const role of ["engineer", "qa", "cos", "dispatcher", "librarian"]) {
+    expect(allowedToolsFor(role, "L2")).not.toContain("WebSearch");
+  }
+});

@@ -101,12 +101,13 @@ function Ring({
   // Terse: a number and when it resets. The sentence it replaced said "5 小时窗口"
   // next to a ring already labelled 5h, and repeated the failure text under every
   // window it had already been shown for.
-  // How old the number is, because the poll is deliberately slow: the endpoint
-  // 429s anything faster and then stays 429. Without this the boss cannot tell a
-  // window that has not moved from a reading that has not been refreshed.
+  // The age only when it is old enough to matter. The poll is deliberately slow
+  // — the endpoint 429s anything faster and then stays 429 — so a number can be
+  // twenty minutes old, and at that point "the window has not moved" and "this
+  // has not been refreshed" stop being the same sentence.
   const age = read ? Math.round((Date.now() - read) / 60_000) : 0;
   const label2 = known
-    ? `${Math.round(v)}%${at ? ` · ${until(at)}后重置` : ""}${age >= 1 ? ` · ${age}m 前读到` : ""}`
+    ? `${Math.round(v)}%${at ? ` · ${until(at)}后重置` : ""}${age >= 15 ? ` · ${age}m 前` : ""}`
     : (WHY[why ?? ""] ?? "读不到");
   return (
     <Tip label={label2}>
