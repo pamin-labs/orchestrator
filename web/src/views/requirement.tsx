@@ -118,8 +118,13 @@ export function Requirement({
                  under S3 and the row it answers was two rows away from the two
                  buttons that answer it. One accordion: rows and the one open body
                  in the same scroll, the evidence header pinned inside it so the
-                 verdict buttons stay reachable while you read the diff. */
-              <Pane className="overflow-x-hidden rounded-lg border border-rule">
+                 verdict buttons stay reachable while you read the diff.
+
+                 The box hugs its rows and is capped at what is left of the screen
+                 — not `flex-1`, which drew an 800px empty frame under three closed
+                 rows. The scroll still lives here once the open slice outgrows
+                 the pane. */
+              <div className="min-h-0 max-h-full overflow-y-auto overflow-x-hidden rounded-lg border border-rule">
                 <Accordion value={shown ? String(shown.id) : ""} onValueChange={(v) => setPicked(v ? Number(v) : "none")}>
                   {slices.map((s) => (
                     <AccordionItem key={s.id} value={String(s.id)}>
@@ -130,7 +135,7 @@ export function Requirement({
                     </AccordionItem>
                   ))}
                 </Accordion>
-              </Pane>
+              </div>
             ) : (
               <Pane>
                 <Working>正在拆解</Working>
@@ -148,7 +153,7 @@ export function Requirement({
 
                 Everything in one scroll: a `shrink-0` block above a pane is a
                 region with no way down. */}
-            <Pane className="overflow-x-hidden rounded-lg border border-rule">
+            <div className="min-h-0 max-h-full overflow-y-auto overflow-x-hidden rounded-lg border border-rule">
               {asks.length ? (
                 <Accordion
                   value={openAsk ?? (mine[0] ? String(mine[0].id) : "")}
@@ -170,7 +175,7 @@ export function Requirement({
                   narrower, on a page about a requirement rather than about people.
                   The tab is gone; this was the only part of it doing work. */}
               <Delegated rows={st.answered.filter((a) => a.grp_id === g.id)} refresh={refresh} />
-            </Pane>
+            </div>
           </TabPanel>
 
           <TabPanel value="notes" className="flex min-h-0 flex-1 flex-col">
