@@ -598,18 +598,19 @@ function Delegated({
                 refresh();
               }}>撤销并接管</Button>
             </div>
-            {/* One question, one answer, labelled — not a paragraph above a grey
-                slab. The slab put a block of padding between two things that are
-                the same exchange, and at 72ch inside a full-width row it left a
-                field of empty on the right of both. */}
-            <div className="mt-1 grid max-w-[76ch] grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2 gap-y-1">
-              <span className="font-mono text-[0.6875rem] text-ink-3">问</span>
-              <div className="min-w-0 text-[0.75rem] text-ink-3">
-                <Clamp lines={2}>{nl(a.question)}</Clamp>
+            {/* An exchange, laid out as one: what was asked on the left, what was
+                said back on the right. Labelled rows in a gutter (`问` / `答`) read
+                as a form, and a paragraph over a grey slab read as two unrelated
+                blocks — this is a conversation the boss was not in, and the shape
+                everyone already knows for that is two sides. */}
+            <div className="mt-1.5 space-y-1.5">
+              <div className="max-w-[46rem] rounded-2xl rounded-tl-sm border border-rule-soft px-3 py-1.5 text-[0.75rem] text-ink-3">
+                <Clamp lines={3}>{nl(a.question)}</Clamp>
               </div>
-              <span className="font-mono text-[0.6875rem] text-ok">答</span>
-              <div className="min-w-0 text-[0.8125rem] text-ink-2">
-                <Clamp lines={3}>{nl(a.answer)}</Clamp>
+              <div className="flex justify-end">
+                <div className="max-w-[46rem] rounded-2xl rounded-tr-sm bg-sunk px-3 py-1.5 text-[0.8125rem] text-ink-2">
+                  <Clamp lines={3}>{nl(a.answer)}</Clamp>
+                </div>
               </div>
             </div>
           </div>

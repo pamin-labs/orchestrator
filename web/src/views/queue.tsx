@@ -217,7 +217,9 @@ function Cluster({
         >
           {groupName(st, c.grpId)}
         </button>
-        <Meta>{c.items.length} 件都在这个需求上，一趟处理完</Meta>
+        {/* The count, not a sentence about it. `2 件都在这个需求上，一趟处理完` was
+            the layout explaining itself: the rows are already under one name. */}
+        <Meta>{c.items.length} 件</Meta>
         {g?.branch && <Meta className="ml-auto">{g.branch}</Meta>}
       </div>
       {c.items.map((i) => (

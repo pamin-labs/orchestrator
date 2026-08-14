@@ -742,3 +742,33 @@ test("a burst of pushes costs one rebase turn, and never delays one", async () =
   await runWatchdog(deps);
   expect(turns()).toBe(2);
 });
+
+test("a question the work went past is closed rather than left in 待办", async () => {
+  // review.ts files a blocker when a slice fails QA three times and pauses the
+  // group. Nothing closed it if the group recovered: live, src-mech-watchdog-ts
+  // had a merge-ready PR and an open blocker on the same requirement, in the same
+  // list, asking the boss to unblock a group that was finished.
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1");
+  h.db.run(
+    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+     VALUES (1, 'blocker', 'S1 failed qa 3 times', 'boss', 0)`,
+  );
+  const f = await runWatchdog(h.deps);
+  expect(f.map((x) => x.rule)).toContain("stale_ask");
+  expect(
+    h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state,
+  ).toBe("revoked");
+});
+
+test("a question on a group that is still working is left alone", async () => {
+  const h = harness();
+  h.db.run(
+    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
+     VALUES (1, 'blocker', 'which library?', 'boss', 0)`,
+  );
+  await runWatchdog(h.deps);
+  expect(
+    h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state,
+  ).toBe("boss");
+});

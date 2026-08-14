@@ -225,8 +225,11 @@ export const ESCALATION_INVARIANTS = rows<EscalationState>(
   { state: "cos", must: "same, one level up", driver: "route(); abstain climbs to the boss" },
   {
     state: "boss",
-    must: "it is in the queue and the boss is reminded",
-    driver: "the boss answers; batchForBoss notifies and waiting_* nudges after 4h",
+    must: "it is in the queue and the boss is reminded, or the work went past it",
+    driver:
+      "the boss answers; batchForBoss notifies and waiting_* nudges after 4h; " +
+      "watchdog rule 16 revokes it once the group reaches PR_OPEN or DISSOLVED, " +
+      "where there is no longer anyone to unblock",
   },
   { state: "answered", must: "the caller is unblocked and the group resumed", driver: null },
   { state: "revoked", must: "the boss took it back and is answering it themselves", driver: null },

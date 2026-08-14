@@ -658,6 +658,40 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     });
   }
 
+  // 16. A question the work has already gone past.
+  //
+  // `review.ts` files a blocker when a slice fails QA three times, and it is
+  // right to: the acceptance criteria are usually wrong. But nothing closes it if
+  // the group recovers — the slice is re-run, accepted, the branch goes to PR —
+  // and the question sits in 待办 forever asking the boss to unblock a group that
+  // is finished. Live: src-mech-watchdog-ts had an open blocker and a merge-ready
+  // PR on the same requirement, in the same list.
+  //
+  // A group at PR_OPEN or DISSOLVED has no caller left to unblock. Answering it
+  // would change nothing, so the queue must stop asking.
+  for (const e of ctx.db
+    .query<{ id: number; grp_id: number; name: string }, []>(
+      `SELECT e.id, e.grp_id, g.name FROM escalation e JOIN grp g ON g.id = e.grp_id
+       WHERE e.chain_state NOT IN ('answered','revoked') AND g.status IN ('PR_OPEN','DISSOLVED')`,
+    )
+    .all()) {
+    ctx.db.run(
+      `UPDATE escalation SET chain_state = 'revoked', answered_by = 'orchestrator',
+         answer = ?, answered_at = unixepoch() * 1000 WHERE id = ?`,
+      ["这条需求已经走到 PR，问题过期了，没人再等这个答复。", e.id],
+    );
+    // Whatever asked is long gone, but a waiter left hanging keeps a job row alive.
+    const w = ctx.waiters.get(`escalation:${e.id}`);
+    ctx.waiters.delete(`escalation:${e.id}`);
+    w?.("stale: the group reached PR");
+    findings.push({
+      rule: "stale_ask",
+      grpId: e.grp_id,
+      severity: "advisory",
+      body: `${e.name} 已经走到 PR，那条还挂着的问题过期了，自动关掉`,
+    });
+  }
+
   // 13. The three places that wait on the boss, with a clock on each.
   //
   // DRAFT waiting for approval, a slice waiting to be accepted, and the head of
