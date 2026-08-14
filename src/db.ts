@@ -454,3 +454,44 @@ export function migrate(db: DB): void {
 export function openMemory(): DB {
   return open(":memory:");
 }
+
+/**
+ * What happens to a row that points at a slice being dropped.
+ *
+ * Re-approving a DRAFT rewrites the plan, which means the old slices go. They
+ * are pointed at from four places and the delete only cleared one of them, so
+ * approving a card for a group that had already run failed with the least
+ * actionable message SQLite has: `FOREIGN KEY constraint failed`. Nothing said
+ * which key, and the boss's only move was to click again.
+ *
+ * `null` = the row survives and forgets the slice (history: what ran, what was
+ * written down). `delete` = the row was part of the plan being replaced.
+ *
+ * `test/drop-slices.test.ts` reads `PRAGMA foreign_key_list` for every table and
+ * fails if one references `slice` without a line here — so the next table to
+ * grow a `slice_id` cannot reintroduce this bug quietly.
+ */
+export const SLICE_REFS: Record<string, Record<string, "null" | "delete">> = {
+  task: { slice_id: "delete" },
+  job: { slice_id: "null" },
+  note: { slice_id: "null" },
+  slice: { depends_on: "null" },
+};
+
+/** Drop a group's slices and everything that was planned with them. */
+export function dropSlices(db: DB, grpId: number): void {
+  const pick = "SELECT id FROM slice WHERE grp_id = ?";
+  db.transaction(() => {
+    for (const [table, cols] of Object.entries(SLICE_REFS)) {
+      for (const [col, how] of Object.entries(cols)) {
+        db.run(
+          how === "null"
+            ? `UPDATE ${table} SET ${col} = NULL WHERE ${col} IN (${pick})`
+            : `DELETE FROM ${table} WHERE ${col} IN (${pick})`,
+          [grpId],
+        );
+      }
+    }
+    db.run("DELETE FROM slice WHERE grp_id = ?", [grpId]);
+  })();
+}

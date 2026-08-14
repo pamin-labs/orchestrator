@@ -2,7 +2,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cp, mkdir, writeFile } from "node:fs/promises";
-import type { DB } from "./db.ts";
+import { dropSlices, type DB } from "./db.ts";
 import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
@@ -2127,11 +2127,11 @@ const postDraftDecision: Handler = async (ctx, req, params) => {
   if (card) {
     const v = validateDraftCard(card);
     if (!v.ok) return bad(v.error);
-    // Tasks reference slices and foreign keys are on, so dropping the slices while
-    // their tasks are still there is a constraint error — which is what a second
-    // approve always was, and the refusal below tells the boss to approve again.
-    ctx.db.run("DELETE FROM task WHERE slice_id IN (SELECT id FROM slice WHERE grp_id = ?)", [grpId]);
-    ctx.db.run("DELETE FROM slice WHERE grp_id = ?", [grpId]);
+    // Four tables point at a slice, not one. Clearing only `task` left `job`,
+    // `note` and `slice.depends_on` holding references, so re-approving a group
+    // that had already run died on `FOREIGN KEY constraint failed` — see
+    // `SLICE_REFS`.
+    dropSlices(ctx.db, grpId);
     // A cap, per difficulty, written at birth. Until this, `budget_tokens` was
     // never INSERTed anywhere, so it was NULL on every row and both admission
     // checks in scheduler.ts had never stopped a single turn. It matters more now
