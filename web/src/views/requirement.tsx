@@ -12,7 +12,7 @@ import { ask } from "../ui/confirm";
 import { Composer, ComposerDialog } from "../ui/composer";
 import { post, pull, type Escalation, type Group, type Slice, type State } from "../lib/api";
 import { STOPS, WHERE_ZH, asksOf, gates, heldApproved, mineOf, prUrl, statusLabel } from "../lib/select";
-import { cn, K, waited } from "../lib/utils";
+import { cn, K, nl, waited } from "../lib/utils";
 import { activityOf } from "../lib/activity";
 import { WithAttachments } from "../ui/attachments";
 import { useEffect, useState } from "react";
@@ -143,39 +143,42 @@ export function Requirement({
             )}
           </TabPanel>
 
-          <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col">
-            {/* Same accordion as the slices, for the same reason. Two questions on
-                the boss meant two draft answers and two composers open at once,
-                about two screens of them, and the block that held the ones waiting
-                on the boss sat outside the scroll pane — so with two of them the
-                second could not be reached at all. One question open, its answer
-                box under it, the rest one line each.
+          {/* Two lists, not one. Everything used to sit in a single accordion at
+              one weight: a question the boss has to answer, a question the
+              Architect is still holding, and a stand-in's old answer, each with
+              the same tint, the same type and the same click. The Architect's read
+              like work — it is not, and its body is a shell command the boss can
+              do nothing with.
 
-                Everything in one scroll: a `shrink-0` block above a pane is a
-                region with no way down. */}
-            <div className="min-h-0 max-h-full overflow-y-auto overflow-x-hidden rounded-lg border border-rule">
-              {asks.length ? (
-                <Accordion
-                  value={openAsk ?? (mine[0] ? String(mine[0].id) : "")}
-                  onValueChange={setOpenAsk}
-                >
-                  {asks.map((e) => (
+              So: the decisions, in full, each with its answer box. Then what
+              somebody else is holding, one line each, quiet. Then who answered for
+              you, only if anyone has. */}
+          <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col gap-3">
+            {mine.length > 0 && (
+              <div className="min-h-0 max-h-full overflow-y-auto overflow-x-hidden rounded-lg border border-accent">
+                <Accordion value={openAsk ?? String(mine[0]!.id)} onValueChange={setOpenAsk}>
+                  {mine.map((e) => (
                     <AccordionItem key={e.id} value={String(e.id)}>
-                      <Ask e={e} refresh={refresh} open={String(e.id) === (openAsk ?? String(mine[0]?.id))} />
+                      <Ask e={e} refresh={refresh} open={String(e.id) === (openAsk ?? String(mine[0]!.id))} />
                     </AccordionItem>
                   ))}
                 </Accordion>
-              ) : (
-                <div className="px-3 py-2 text-[0.8125rem] text-ink-3">没有开着的问题。</div>
-              )}
-              {/* An answer a stand-in gave for the boss belongs with the questions,
-                  which is where someone goes looking for it. It used to sit in a
-                  roster tab: 这个组的人 listed role, activity, turns and tokens for
-                  every agent in the group — the 工位墙 in miniature, one column
-                  narrower, on a page about a requirement rather than about people.
-                  The tab is gone; this was the only part of it doing work. */}
-              <Delegated rows={st.answered.filter((a) => a.grp_id === g.id)} refresh={refresh} />
-            </div>
+              </div>
+            )}
+
+            {others.length > 0 && <Held rows={others} />}
+
+            {!asks.length && (
+              <div className="text-[0.8125rem] text-ink-3">没有开着的问题。这一组的人现在不等你。</div>
+            )}
+
+            {/* An answer a stand-in gave for the boss belongs with the questions,
+                which is where someone goes looking for it. It used to sit in a
+                roster tab: 这个组的人 listed role, activity, turns and tokens for
+                every agent in the group — the 工位墙 in miniature, one column
+                narrower, on a page about a requirement rather than about people.
+                The tab is gone; this was the only part of it doing work. */}
+            <Delegated rows={st.answered.filter((a) => a.grp_id === g.id)} refresh={refresh} />
           </TabPanel>
 
           <TabPanel value="notes" className="flex min-h-0 flex-1 flex-col">
@@ -562,14 +565,15 @@ function Delegated({
 }: {
   rows: State["answered"]; refresh: () => void;
 }) {
-  // Quiet, and only where it belongs: this teaches what the block is for, under a
-  // list of live questions that are the actual work. It was body text at the same
-  // weight as a question.
-  if (!rows.length) {
-    return <Meta className="block border-t border-rule-soft px-4 py-2">没有代答。PM / Architect / CoS 谁替你答了都会出现在这里，能撤销并接管。</Meta>;
-  }
+  // Nothing at all when nobody has answered for you. A sentence explaining what
+  // an empty block would have contained is the page reporting an absence, which
+  // is exactly what PRODUCT.md says an empty state must not do — and this one sat
+  // under the question the boss was there to answer.
+  if (!rows.length) return null;
   return (
-    <>
+    <div className="shrink-0">
+      <Meta className="block px-1 pb-1">替你答过 {rows.length} 条</Meta>
+      <div className="overflow-hidden rounded-lg border border-rule-soft">
       {rows.map((a) => (
         <div key={a.id} className="border-t border-rule-soft px-4 py-2 first:border-t-0">
           <div className="flex items-baseline gap-2">
@@ -589,10 +593,11 @@ function Delegated({
           {/* Somebody else's words, on the surface everything not written by the
               boss sits on. It was a left-ruled quote block, which is the one
               decoration DESIGN.md names outright. */}
-          <div className="mt-1 rounded-md bg-sunk px-2.5 py-1.5 text-[0.75rem] text-ink-2">{a.answer}</div>
+          <div className="mt-1 max-w-[72ch] rounded-md bg-sunk px-2.5 py-1.5 text-[0.75rem] text-ink-2">{nl(a.answer)}</div>
         </div>
       ))}
-    </>
+      </div>
+    </div>
   );
 }
 
@@ -862,44 +867,39 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
  * into a horizontal scroll — the content was there, just off the left edge.
  */
 function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: boolean }) {
-  const mine = e.chain_state === "boss";
   // Seeding by remount: the composer owns its text once the boss starts typing,
-  // and a controlled value here would fight them for it. Nothing is sent by this
-  // path — 用这个 fills the box and the boss sends it.
+  // and a controlled value here would fight them for it. Nothing is sent by the
+  // draft — its button fills the box and the boss sends it.
   const [seed, setSeed] = useState("");
   return (
     <>
-      {/* One line of who and how long. It read `qa · 阻塞 · 待你决策 · 等待 3h`
-          inside the tab called 待你决策 — the tab already said the third, and 等待
-          is what a duration means. Blocking is the colour. */}
-      {/* The tint marks the row, not the whole body. A question on the boss used to
-          wash its question, its draft answer and its composer in one violet block
-          half a screen tall — the accent means "needs you", and a field of it means
-          nothing. A dot and a tinted row say the same in two marks. */}
-      <AccordionTrigger
-        className={cn(
-          "flex items-baseline gap-2 px-4 py-2 transition-colors",
-          mine ? "bg-accent-soft/60 hover:bg-accent-soft" : open ? "bg-rail" : "hover:bg-rail/60",
-        )}
-      >
-        {mine && <span className="size-1.5 shrink-0 self-center rounded-full bg-accent" />}
-        <span className={cn("shrink-0 font-mono text-[0.6875rem]", e.severity === "blocker" ? "text-bad" : "text-ink-3")}>
-          {/* A watchdog escalation has no agent behind it, and `?` read like a bug.
-              Same word the queue uses for it. */}
-          {e.asker ?? "系统"} · {waited(e.created_at)}
-          {!mine && ` · ${WHERE_ZH[e.chain_state] ?? e.chain_state}`}
-        </span>
-        {!open && <span className="min-w-0 truncate text-[0.8125rem] text-ink-2">{e.question}</span>}
+      {/* Who is waiting, how long, and what it costs — in that order, because the
+          cost is what decides which of two questions to open first. It read
+          `qa · 阻塞 · 待你决策 · 等待 3h` inside the tab called 待你决策: the tab
+          already said the third and 等待 is what a duration means.
+
+          Collapsed, the question gets two lines rather than one truncated one. A
+          question cut mid-clause cannot be triaged, which is the only thing a
+          closed row is for. */}
+      <AccordionTrigger className="block px-4 py-2.5 transition-colors hover:bg-accent-soft">
+        <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[0.6875rem]">
+          <span className="text-ink-2">{e.asker ?? "系统"}</span>
+          <span className="text-ink-3">等了 {waited(e.created_at)}</span>
+          {e.severity === "blocker" && <span className="font-semibold text-bad">全组停着</span>}
+        </div>
+        {!open && <div className="mt-1 line-clamp-2 max-w-[72ch] text-[0.8125rem] text-ink-2">{nl(e.question)}</div>}
       </AccordionTrigger>
+
       <AccordionBody className="px-4 pb-3">
-      {/* Six lines, then a click. A watchdog escalation quotes three QA verdicts
-          verbatim and runs to fifteen — and the decision is usually made by line
-          three, with the rest there to check the reasoning against. */}
-      <Clamp lines={6}>
-        <WithAttachments body={e.question} className="my-1 text-[0.8125rem]" />
-      </Clamp>
-      {mine && <Suggested escId={e.id} onUse={setSeed} />}
-      {mine && (
+        {/* Six lines, then a click. A watchdog escalation quotes three QA verdicts
+            verbatim and runs to fifteen — the decision is usually made by line
+            three, with the rest there to check the reasoning against. */}
+        <div className="max-w-[72ch]">
+          <Clamp lines={6}>
+            <WithAttachments body={e.question} className="text-[0.8125rem]" />
+          </Clamp>
+        </div>
+        <Suggested escId={e.id} onUse={setSeed} />
         <Composer
           key={seed}
           initial={seed}
@@ -922,9 +922,10 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
               {/* The commonest blocker here is one no answer resolves — a config file
                   is wrong, a shared fixture is broken. Answering it means typing the
                   fix into a chat box for an agent that is not allowed to apply it, so
-                  these sat in 待办 until the boss did the work by hand. */}
-              {/* Not `go`. Two filled violet buttons side by side — 开成需求 and
-                  回答 — is two primaries, and answering is the primary here. */}
+                  these sat in 待办 until the boss did the work by hand.
+
+                  Not `go`: two filled violet buttons side by side is two primaries,
+                  and answering is the primary here. */}
               <Tip label="开成一条需求去做，这一组等它落地后自动继续">
                 <Button size="sm" disabled={busy} onClick={async () => {
                   const r = await post(`/api/escalations/${e.id}/requirement`, { text });
@@ -937,15 +938,44 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             </>
           )}
         />
-      )}
       </AccordionBody>
     </>
   );
 }
 
+/**
+ * Questions somebody else in the chain is still holding.
+ *
+ * Nothing here is the boss's move — the PM or the Architect will answer it, or
+ * abstain and pass it up, at which point it moves to the list above. They sat in
+ * that list at the same weight, with the same tint and the same answer box, and
+ * the commonest one is an Architect quoting the shell command a clearance rule
+ * blocked: a paragraph of `git ls-tree -r main --name-only | grep -i markdown`
+ * the boss can do nothing with.
+ *
+ * One line each: who is holding it, how long, and the first line of what was
+ * asked. Reference, not work.
+ */
+function Held({ rows }: { rows: Escalation[] }) {
+  return (
+    <div className="shrink-0">
+      <Meta className="block px-1 pb-1">别人还在处理 {rows.length} 条</Meta>
+      <div className="overflow-hidden rounded-lg border border-rule-soft">
+        {rows.map((e) => (
+          <div key={e.id} className="flex flex-wrap items-baseline gap-x-2 border-t border-rule-soft px-4 py-1.5 first:border-t-0">
+            <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">
+              {e.asker ?? "系统"} · 等了 {waited(e.created_at)} · {WHERE_ZH[e.chain_state] ?? e.chain_state}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[0.75rem] text-ink-3">{nl(e.question)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
- * What the answer probably is, from the cheapest model there is.
+ * What the answer probably is, worked out for you before you got here.
  *
  * Most of what reaches this box is not a judgement call — it is a question whose
  * answer is already on the blackboard, asked by an agent that could not find it.
@@ -954,29 +984,33 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
  *
  * Fetched on open, every open, never stored: the blackboard moves while a
  * question waits, and a draft written an hour ago can be arguing from facts that
- * have since been overturned. Nothing is sent by this component — 用这个 puts the
- * text in the composer, where it is edited and sent by hand like any other
- * answer. A draft that does not arrive leaves no trace.
+ * have since been overturned. Nothing is sent from here — the button fills the
+ * composer, where it is edited and sent by hand like any other answer. A draft
+ * that does not arrive leaves no trace.
+ *
+ * It was labelled 参考答复 · 便宜模型现算，没发出去: three facts, two of them about
+ * the implementation. What the boss needs to know is who wrote it and that it has
+ * not gone anywhere, and the rest belongs on hover.
  */
 function Suggested({ escId, onUse }: { escId: number; onUse: (t: string) => void }) {
   const [text, setText] = useState<string | null>(null);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     setText(null);
     void pull<{ text: string }>(`/api/escalations/${escId}/draft`).then((r) => setText(r?.text?.trim() || ""));
   }, [escId]);
 
-  if (text === null) return <Meta className="my-1 block">在替你想一个答复…</Meta>;
+  if (text === null) return <Meta className="my-2 block">AI 在替你想一个答复…</Meta>;
   if (!text) return null;
   return (
-    // A recessed well, because this is the one block on the page nobody wrote:
-    // machine text sitting between the agent's question and the boss's answer, and
-    // it has to be told apart from both at a glance. Two lines of it, expanded by
-    // a click — it used to open at full length, eight lines of a draft nobody had
-    // asked to read, above the box they actually type in.
-    <div className="my-2 rounded-md bg-sunk px-3 py-2">
+    // A recessed well: this is the one block here nobody wrote, machine text
+    // between the agent's question and the boss's answer, and it has to be told
+    // apart from both at a glance.
+    <div className="my-2 max-w-[72ch] rounded-md bg-sunk px-3 py-2">
       <div className="flex items-baseline gap-2">
-        <Meta>参考答复 · 便宜模型现算，没发出去</Meta>
+        <Tip label="按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改">
+          <Meta className="cursor-help">AI 替你拟的答复</Meta>
+        </Tip>
         <span className="grow" />
         <Button size="sm" onClick={() => onUse(text)}>填进输入框</Button>
       </div>
@@ -984,10 +1018,10 @@ function Suggested({ escId, onUse }: { escId: number; onUse: (t: string) => void
         onClick={() => setOpen(!open)}
         className={cn(
           "mt-1 cursor-pointer whitespace-pre-wrap break-words text-[0.8125rem] text-ink-2",
-          !open && "line-clamp-2",
+          !open && "line-clamp-3",
         )}
       >
-        {text}
+        {nl(text)}
       </div>
     </div>
   );
