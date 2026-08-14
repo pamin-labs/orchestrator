@@ -1,3 +1,4 @@
+import { defu } from "defu";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -59,7 +60,12 @@ export interface RoleDef {
   runtime?: Runtime;
 }
 
-export interface Config {
+/**
+ * A type alias rather than an interface, on purpose: an interface has no
+ * implicit index signature, so nothing typed can read it key by key without a
+ * cast — and the config checker's whole job is to walk it key by key.
+ */
+export type Config = {
   language: string;
   maxGroups: number;
   /** One number for the whole Runner pool, or one pool per resource tag. */
@@ -146,7 +152,7 @@ export interface Config {
   };
   workRoot: string;
   dataDir: string;
-}
+};
 
 const DEFAULTS: Config = {
   language: "中文",
@@ -252,11 +258,20 @@ export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: reso
  */
 const SANDBOX_API_KEY_ENV = "ORCH_SANDBOX_API_KEY";
 
+/** The defaults, for the checker that reads types and legal keys off them. */
+export const DEFAULTS_FOR_CHECK: Config = DEFAULTS;
+
+
 export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
   const parsed = existsSync(path)
     ? ((Bun.YAML.parse(readFileSync(path, "utf8")) as Partial<Config> | null) ?? {})
     : {};
-  const cfg = withAbsoluteDataDir({ ...DEFAULTS, ...parsed });
+  // Key by key, not block by block: a spread means a `sandbox:` naming two of
+  // its eight fields drops the other six to `undefined`, and the symptom is a
+  // container that will not start rather than a config error. `defu` is exactly
+  // this and nothing else — arrays and scalars replace, plain objects recurse —
+  // and JS has no stdlib deep merge worth hand-rolling around.
+  const cfg = withAbsoluteDataDir(defu(parsed, DEFAULTS));
   const key = process.env[SANDBOX_API_KEY_ENV];
   return key ? { ...cfg, sandbox: { ...cfg.sandbox, apiKey: key } } : cfg;
 }

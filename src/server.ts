@@ -3,7 +3,9 @@ import { dirname, join, resolve } from "node:path";
 import { landGroup, makeApp, type Ctx } from "./api.ts";
 import { joinQueue } from "./mech/mergequeue.ts";
 import { Bus } from "./bus.ts";
+import { consola } from "consola";
 import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "./config.ts";
+import { changed, checkConfig, checkRoles } from "./mech/checkconfig.ts";
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
@@ -412,7 +414,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   // settings page is where three of these are fixed.
   void preflight({ db, sandbox: cfg.sandbox }).then((checks) => {
     const bad = report(checks);
-    if (bad) console.log(`preflight:\n${bad}`);
+    if (bad) consola.warn(`preflight:\n${bad}`);
   });
 
   sched.tick();
@@ -429,9 +431,34 @@ export function start(overrides: Partial<Config> = {}): Started {
   };
 }
 
+/**
+ * Say what the yaml got wrong, here, before anything reads it.
+ *
+ * Only on a real boot: `start()` is also called by tests and by browse.ts with
+ * overrides, and a config report from those is noise about a file they are not
+ * using. Fatal findings stop the process — a port of 0 or a string where a
+ * number belongs surfaces half an hour later as something that looks unrelated.
+ */
+function reportConfig(cfg: Config): void {
+  const path = join(ROOT, "config/default.yaml");
+  const { findings } = checkConfig(path);
+  const all = [...findings, ...checkRoles(loadRoles(), Object.keys(cfg.difficultyModel))];
+  for (const f of all) {
+    const line = `${f.key} — ${f.says}`;
+    if (f.level === "fatal") consola.error(line);
+    else consola.warn(line);
+  }
+  if (all.some((f) => f.level === "fatal")) {
+    consola.box("配置有问题，起不来。改完 config/default.yaml 再跑一次。");
+    process.exit(1);
+  }
+  consola.success(`配置 config/default.yaml · ${changed(cfg)} 项改过默认值`);
+}
+
 if (import.meta.main) {
+  reportConfig(loadConfig());
   const { ctx, url, stop } = start();
-  console.log(`orchestrator on ${url}`);
+  consola.info(`orchestrator on ${url}`);
   // The panel is served from `web/dist`, and nothing rebuilds it. A UI change that
   // is committed, tested and typechecked still shows the old page, which reads as
   // "the fix did not work" — measured, on a button that had already been deleted.
@@ -442,7 +469,7 @@ if (import.meta.main) {
     const newest = readdirSync(join(ROOT, "web/src"), { recursive: true, withFileTypes: true })
       .filter((e) => e.isFile())
       .reduce((m, e) => Math.max(m, statSync(join(e.parentPath, e.name)).mtimeMs), 0);
-    if (newest > dist) console.log(`web/dist is older than web/src — run \`bun run build:web\`, or the page is stale`);
+    if (newest > dist) consola.warn("web/dist 比 web/src 旧 —— 跑一次 `bun run build:web`，不然页面是旧的");
   }
 
   // Let go of every turn we are reading before exiting, so the next boot sees
