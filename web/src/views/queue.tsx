@@ -249,32 +249,32 @@ function Cluster({
           key={i.key}
           onClick={() => !standing && onOpen(c.grpId)}
           className={cn(
-            "group grid grid-cols-[13rem_5rem_minmax(0,1fr)_auto_auto] items-baseline gap-x-3",
-            "px-3.5 py-2 transition-colors",
-            // The rule separates requirements, not rows: three questions on one
-            // requirement are one block.
+            "group grid grid-cols-[13rem_4.5rem_minmax(0,1fr)_3rem_auto] items-baseline gap-x-4",
+            "px-4 py-2 transition-colors",
             n === 0 && "border-t border-rule-soft",
             !standing && "cursor-pointer hover:bg-rail/70",
             "max-[64rem]:grid-cols-[minmax(0,1fr)_auto]",
           )}
         >
-          <span
-            className={cn(
-              "truncate font-display text-[0.875rem] font-semibold",
-              n > 0 && "opacity-0 max-[64rem]:hidden",
+          <span className={cn("flex min-w-0 items-baseline gap-1.5", n > 0 && "max-[64rem]:hidden")}>
+            {/* Once per requirement, not once per row: a mark repeated on every
+                line of the page is a mark that never varies. */}
+            {n === 0 && c.items.some((x) => x.hard) && (
+              <i className="size-1.5 shrink-0 translate-y-[-1px] rounded-full bg-bad" />
             )}
-          >
-            {name}
+            <span className={cn("truncate font-display text-[0.9375rem] font-semibold", n > 0 && "opacity-0")}>
+              {name}
+            </span>
           </span>
-          {/* Red when the whole group is stopped behind it: the one distinction on
-              this page that changes what you do next. */}
-          <span className={cn("truncate font-mono text-[0.6875rem]", i.hard ? "text-bad" : "text-ink-3")}>
-            {i.who ?? i.kind}
-          </span>
+          <span className="truncate font-mono text-[0.6875rem] text-ink-3">{i.who ?? i.kind}</span>
+          {/* The line the reader is actually here for, so it is the only thing at
+              body weight. */}
           <span className="truncate text-[0.8125rem] text-ink-2 max-[64rem]:col-span-full">{i.what}</span>
-          <Meta className="shrink-0 tabular-nums">{i.reasons.find((r) => r.why.startsWith("等了"))?.why}</Meta>
-          {/* The way in is the row. A button per row was seven violet blocks that
-              all went to the same place; a chevron says the row is a door. */}
+          {/* `等了` seven times down one column is the column labelling itself on
+              every row. The duration is the fact. */}
+          <Meta className="shrink-0 text-right tabular-nums">
+            {i.reasons.find((r) => r.why.startsWith("等了"))?.why.replace("等了 ", "")}
+          </Meta>
           {i.actions ? (
             <span onClick={(e) => e.stopPropagation()} className="justify-self-end">
               {i.actions}
