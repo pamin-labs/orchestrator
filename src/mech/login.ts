@@ -15,7 +15,18 @@ import { saveAuth, type AuthMode } from "./auth.ts";
  * the browser is this one. Nothing about it belongs in a sandbox.
  */
 
-const URL_RE = /https?:\/\/\S+/;
+/**
+ * Terminal escapes, gone before anything is matched.
+ *
+ * `claude setup-token` prints its URL as an OSC 8 hyperlink — the address twice,
+ * once inside `ESC ] 8 ; ; … ST` and once as the visible label — so a naive
+ * match on the raw line captures both plus the escape bytes between them. What
+ * reached the panel was a link twice its own length ending in `]8;;`.
+ */
+const ANSI = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b\[[0-9;?]*[a-zA-Z]/g;
+const clean = (s: string) => s.replace(ANSI, " ");
+
+const URL_RE = /https?:\/\/[^\s\u0007\u001b"'<>]+/;
 const CLAUDE_TOKEN_RE = /sk-ant-oat01-[A-Za-z0-9_-]+/;
 
 export interface LoginRun {
@@ -82,13 +93,15 @@ export function startLogin(ctx: Ctx, runtime: string, home = homedir()): LoginRu
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
         if (!line) continue;
-        say(line);
-        if (!run.url) run.url = line.match(URL_RE)?.[0] ?? null;
+        const plain = clean(line);
+        if (plain.trim()) say(plain.trim());
+        if (!run.url) run.url = plain.match(URL_RE)?.[0] ?? null;
       }
     }
-    if (buf.trim()) {
-      say(buf.trim());
-      if (!run.url) run.url = buf.match(URL_RE)?.[0] ?? null;
+    const tail = clean(buf).trim();
+    if (tail) {
+      say(tail);
+      if (!run.url) run.url = tail.match(URL_RE)?.[0] ?? null;
     }
     return all;
   };
@@ -100,7 +113,7 @@ export function startLogin(ctx: Ctx, runtime: string, home = homedir()): LoginRu
       return { ok: false, detail: `${spec.argv[0]} exited ${code}: ${(err || out).trim().slice(-300)}` };
     }
     const secret =
-      spec.capture(`${out}\n${err}`) ??
+      spec.capture(clean(`${out}\n${err}`)) ??
       (runtime === "codex" ? await Bun.file(join(home, ".codex/auth.json")).text().catch(() => "") : "");
     if (!secret.trim()) {
       return { ok: false, detail: `${spec.argv[0]} finished but produced no credential` };

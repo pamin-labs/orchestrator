@@ -80,7 +80,7 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     name: "docker",
     ok: docker,
     detail: docker ? "running" : "not reachable",
-    fix: "Install Docker (or Colima/Podman with a docker socket) and start it.",
+    fix: "装 Docker（或 Colima / Podman，任何提供 docker socket 的都行）并启动。",
   });
 
   // Only ever consulted when the server is down, but reported always: the fix
@@ -91,7 +91,7 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     name: "uv / python",
     ok: uvx,
     detail: uvx ? "uvx available" : "no uvx on PATH",
-    fix: "brew install uv (or pipx install uv). opensandbox-server is a Python package; without it there is nothing to start.",
+    fix: "brew install uv —— opensandbox-server 是个 Python 包，没有它就没东西可启动。",
   });
 
   const server = await reachable(`http://${input.sandbox.server}`, input.sandbox.apiKey);
@@ -99,7 +99,7 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     name: "opensandbox-server",
     ok: server.ok,
     detail: server.detail,
-    fix: `uvx opensandbox-server --config ~/.sandbox.toml (listening on ${input.sandbox.server}), with [egress] mode = "dns+nft"`,
+    fix: `uvx opensandbox-server --config ~/.sandbox.toml，监听 ${input.sandbox.server}，[egress] mode 要是 "dns+nft"`,
   });
 
   // The version the example config ships (v1.1.4) 403s every scoped package
@@ -125,7 +125,7 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
           : stale.length
             ? `${good.join(", ")} (also has ${stale.join(", ")} — check [egress] image)`
             : good.join(", "),
-    fix: "docker pull opensandbox/egress:v1.1.6, and point [egress] image at it. v1.1.4 breaks scoped npm/bun installs whenever a credential is bound.",
+    fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
   });
 
   // Credentials are per runtime and live in the DB, never in an event or a
@@ -143,13 +143,15 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
       .query<{ mode: string }, [string]>("SELECT mode FROM runtime_auth WHERE runtime = ?")
       .get(runtime);
     out.push({
-      name: `${runtime} credentials`,
+      // `credential:` so a caller that shows both this and its own credential
+      // list can drop these rather than printing the same fact twice.
+      name: `credential:${runtime}`,
       ok: Boolean(row),
-      detail: row ? row.mode : "not configured",
+      detail: row ? row.mode : "没配",
       fix:
         runtime === "claude"
-          ? "Run `claude setup-token` and paste the token into Settings. It lasts a year."
-          : "Paste an API key (or the contents of ~/.codex/auth.json) into Settings.",
+          ? "claude setup-token，把吐出来的 token 存进凭据。一年有效。"
+          : "codex login，或者贴一个 API key。",
     });
   }
 

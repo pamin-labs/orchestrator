@@ -56,6 +56,38 @@ export function decoy(runtime: string, mode: AuthMode): string {
   return `sk-${"A".repeat(48)}`;
 }
 
+/**
+ * Is this the shape the provider will accept?
+ *
+ * Checked here because the alternative is finding out hours later, in a
+ * container, as a 401 that reads like an expired subscription. A login URL
+ * pasted into the token box is the one that actually happened: it saved, it
+ * looked configured, and every turn after it failed.
+ *
+ * Prefixes only. Length and character set drift; the prefix is what each
+ * provider stamps on the thing so it can be told apart from everything else.
+ */
+export function wrongShape(runtime: string, mode: AuthMode, secret: string): string | null {
+  const v = secret.trim();
+  if (!v) return "空的";
+  if (/^https?:\/\//.test(v)) return "这是个网址，不是凭据 —— 登录页的地址不是 token";
+  if (mode === "chatgpt") {
+    try {
+      const parsed = JSON.parse(v) as { tokens?: { refresh_token?: string } };
+      if (!parsed?.tokens?.refresh_token) return "auth.json 里没有 tokens.refresh_token，续不了期";
+      return null;
+    } catch {
+      return "要的是 ~/.codex/auth.json 的完整内容，那是一段 JSON";
+    }
+  }
+  if (runtime === "claude") {
+    if (mode === "oauth_token" && !v.startsWith("sk-ant-oat01-")) return "订阅 token 是 sk-ant-oat01- 开头的";
+    if (mode === "api_key" && !v.startsWith("sk-ant-")) return "Anthropic 的 API key 是 sk-ant- 开头的";
+  }
+  if (runtime === "codex" && mode === "api_key" && !v.startsWith("sk-")) return "OpenAI 的 API key 是 sk- 开头的";
+  return null;
+}
+
 export function saveAuth(db: DB, a: RuntimeAuth): void {
   db.run(
     `INSERT INTO runtime_auth (runtime, mode, secret, base_url, updated_at)

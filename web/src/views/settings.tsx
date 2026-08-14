@@ -74,12 +74,17 @@ const RUNTIMES: Runtime[] = [
 ];
 
 /** The grid every row on this page sits on. */
-export const ROW = "grid grid-cols-[6.5rem_minmax(0,1fr)] items-baseline gap-x-4";
+export const ROW = "grid grid-cols-[10rem_minmax(0,1fr)] items-baseline gap-x-4";
+
+/** Host facts only. The credential rows are the 凭据 section, said once. */
+const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
 
 export function Settings() {
   const [rows, setRows] = useState<AuthRow[]>([]);
   const [checks, setChecks] = useState<HostCheck[]>([]);
   const [open, setOpen] = useState("");
+  /** Until when to keep asking, because a login finishes in another window. */
+  const [pollUntil, setPollUntil] = useState(0);
 
   const load = async () => {
     const [a, p] = await Promise.all([
@@ -93,18 +98,42 @@ export function Settings() {
     void load();
   }, []);
 
+  /**
+   * A login lands in another window, so nothing here can know when.
+   *
+   * The CLI stores the credential itself the moment it exits; the only missing
+   * piece is the panel noticing. Two seconds is well inside the time it takes to
+   * click through an OAuth screen, and the window closes on its own — a poll
+   * that runs forever is a poll somebody has to remember to stop.
+   */
+  useEffect(() => {
+    if (!pollUntil) return;
+    const t = setInterval(() => {
+      if (Date.now() > pollUntil) setPollUntil(0);
+      else void load();
+    }, 2000);
+    return () => clearInterval(t);
+  }, [pollUntil]);
+
   return (
     <Pane className="max-w-[46rem]">
       <H2 className="mb-1.5">凭据</H2>
       <Accordion value={open} onValueChange={setOpen} className="border-t border-rule">
         {RUNTIMES.map((r) => (
-          <Credential key={r.key} runtime={r} current={rows.find((x) => x.runtime === r.key)} onSaved={load} />
+          <Credential
+            key={r.key}
+            runtime={r}
+            current={rows.find((x) => x.runtime === r.key)}
+            waiting={pollUntil > Date.now()}
+            onSaved={load}
+            onWaitForLogin={() => setPollUntil(Date.now() + 300_000)}
+          />
         ))}
       </Accordion>
 
       <H2 className="mt-9 mb-1.5">环境</H2>
       <div className="border-t border-rule">
-        {checks.map((c) => (
+        {checks.filter((c) => !isCredential(c)).map((c) => (
           <div key={c.name} className={cn(ROW, "border-b border-rule-soft py-2")}>
             <span className={cn("flex items-baseline gap-1.5 text-[0.8125rem]", c.ok ? "text-ink" : "text-accent")}>
               {c.ok ? (
@@ -112,7 +141,7 @@ export function Settings() {
               ) : (
                 <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5" />
               )}
-              <span className="min-w-0 truncate">{c.name}</span>
+              <span className="min-w-0">{c.name}</span>
             </span>
             <span className="min-w-0">
               <Meta className="break-all">{c.detail}</Meta>
@@ -133,7 +162,14 @@ export function Settings() {
   );
 }
 
-function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () => void }) {
+function Credential(props: {
+  runtime: Runtime;
+  current?: AuthRow;
+  /** A login is in flight; the page is asking every couple of seconds. */
+  waiting: boolean;
+  onSaved: () => void;
+  onWaitForLogin: () => void;
+}) {
   const r = props.runtime;
   const cur = props.current;
   const [mode, setMode] = useState<Mode>(cur?.mode ?? r.modes[0]!.mode);
@@ -161,51 +197,57 @@ function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () =>
     } catch {
       url = null;
     }
+    // Not opened from here. Both CLIs open the browser themselves, so doing it
+    // too gives the boss two tabs of the same OAuth flow — and finishing the
+    // wrong one leaves the other waiting forever.
     setLink(url);
-    // Opened for you and printed as well: a popup blocker eating the one
-    // actionable thing on the page is worse than a link nobody clicks.
-    if (url) window.open(url, "_blank", "noopener");
     setBusy(false);
+    // The credential arrives on its own once the browser comes back; from here
+    // the only job is to notice.
+    if (url) props.onWaitForLogin();
     props.onSaved();
   };
 
   return (
     <AccordionItem value={r.key} className="border-b border-rule-soft">
       <AccordionTrigger className={cn(ROW, "py-2")}>
-        <span className={cn("text-[0.8125rem]", cur ? "text-ink" : "font-medium text-accent")}>
-          {cur ? r.label : `${r.label} 没配`}
+        <span className="text-[0.8125rem] text-ink">{r.label}</span>
+        <span className="flex min-w-0 items-baseline gap-2">
+          {cur ? (
+            <>
+              <span className="text-[0.75rem] text-ink-2">
+                {r.modes.find((m) => m.mode === cur.mode)?.label ?? cur.mode}
+              </span>
+              <Meta>{cur.hint}</Meta>
+              {cur.baseUrl && <Meta className="min-w-0 truncate">{cur.baseUrl}</Meta>}
+              <span className="grow" />
+              <Meta>{clock(cur.updatedAt)}</Meta>
+            </>
+          ) : (
+            <span className="text-[0.75rem] font-medium text-accent">没配</span>
+          )}
         </span>
-        {cur && (
-          <span className="flex min-w-0 items-baseline gap-2">
-            <span className="text-[0.75rem] text-ink-2">
-              {r.modes.find((m) => m.mode === cur.mode)?.label ?? cur.mode}
-            </span>
-            <Meta>{cur.hint}</Meta>
-            {cur.baseUrl && <Meta className="min-w-0 truncate">{cur.baseUrl}</Meta>}
-            <span className="grow" />
-            <Meta>{clock(cur.updatedAt)}</Meta>
-          </span>
-        )}
       </AccordionTrigger>
 
       <AccordionBody>
         <div className="space-y-2 pt-2 pb-3.5">
           <div className={ROW}>
-            <Segments value={mode} onValueChange={(v) => setMode(v as Mode)}>
-              {r.modes.map((m) => (
-                <Segment key={m.mode} value={m.mode}>
-                  {m.label}
-                </Segment>
-              ))}
-            </Segments>
-            <span className="flex min-w-0 items-baseline gap-2">
+            <Meta>怎么拿</Meta>
+            <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <Segments value={mode} onValueChange={(v) => setMode(v as Mode)}>
+                {r.modes.map((m) => (
+                  <Segment key={m.mode} value={m.mode}>
+                    {m.label}
+                  </Segment>
+                ))}
+              </Segments>
               <Meta className="text-ink-2">{spec.how}</Meta>
               <Meta className="min-w-0 truncate">{spec.cost}</Meta>
               <span className="grow" />
               {r.login === mode && (
                 <Tip label="在这台机器上跑一次官方 CLI 的登录，用它本地的登录信息换出 token。仅限官方账号；自建网关走 API key。">
-                  <Button size="sm" disabled={busy} onClick={login}>
-                    {busy ? "等浏览器…" : "从本机登录"}
+                  <Button size="sm" disabled={busy || props.waiting} onClick={login}>
+                    {busy || props.waiting ? "等你在浏览器里批准…" : "从本机登录"}
                   </Button>
                 </Tip>
               )}
@@ -214,15 +256,16 @@ function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () =>
 
           {link && (
             <div className={ROW}>
-              <Meta>没自动打开</Meta>
-              <a
-                href={link}
-                target="_blank"
-                rel="noopener"
-                className="min-w-0 break-all font-mono text-[0.75rem] text-accent underline"
-              >
-                {link}
-              </a>
+              <Meta>登录页</Meta>
+              {/* One line: the address is 400 characters of PKCE and nobody
+                  reads it. It stays selectable for the case where the browser
+                  that opened it is not the one you want to log in with. */}
+              <span className="flex min-w-0 items-baseline gap-2">
+                <a href={link} target="_blank" rel="noopener" className="shrink-0 text-[0.75rem] text-accent underline">
+                  浏览器没开就点这里
+                </a>
+                <Meta className="min-w-0 truncate">{link}</Meta>
+              </span>
             </div>
           )}
 
@@ -255,6 +298,21 @@ function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () =>
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
               />
+              {cur && (
+                <Button
+                  size="sm"
+                  variant="quiet"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    await post("/api/auth", { runtime: r.key, clear: true });
+                    setBusy(false);
+                    props.onSaved();
+                  }}
+                >
+                  清掉
+                </Button>
+              )}
               <Button variant="go" size="sm" disabled={busy || !secret.trim()} onClick={save}>
                 存下
               </Button>
@@ -293,7 +351,10 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
   return (
     <div className="border-t border-rule">
       <div className={cn(ROW, "border-b border-rule-soft py-2")}>
-        <Meta>{props.current ? props.current.hint : "没设"}</Meta>
+        <span className="flex items-baseline gap-2 text-[0.8125rem] text-ink">
+          密钥
+          <Meta>{props.current ? props.current.hint : "没设"}</Meta>
+        </span>
         <span className="flex items-center gap-2">
           <Input
             className="min-w-0 flex-1 font-mono"

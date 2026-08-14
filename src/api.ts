@@ -9,7 +9,7 @@ import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
 import { execIn, killSandbox, putFile, WORK } from "./mech/sandbox.ts";
-import { listAuth, saveAuth } from "./mech/auth.ts";
+import { listAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
 import { loginRuntimes, startLogin } from "./mech/login.ts";
 import { preflight } from "./mech/preflight.ts";
 import { sandboxGit } from "./mech/checkout.ts";
@@ -2940,21 +2940,27 @@ const getStream: Handler = async (ctx, req) => {
 const getAuth: Handler = async (ctx) => json({ runtimes: listAuth(ctx.db) });
 
 const postAuth: Handler = async (ctx, req) => {
-  const b = await body<{ runtime?: string; mode?: string; secret?: string; baseUrl?: string }>(req);
+  const b = await body<{ runtime?: string; mode?: string; secret?: string; baseUrl?: string; clear?: boolean }>(req);
   const runtime = (b.runtime ?? "").trim();
   const secret = (b.secret ?? "").trim();
   if (!runtime) return bad("which runtime?");
+  // Something wrong got stored — a login URL pasted into the token box, an old
+  // account. Removing it is the only way back to "not configured", which is a
+  // state the scheduler and the panel both understand.
+  if (b.clear) {
+    ctx.db.run("DELETE FROM runtime_auth WHERE runtime = ?", [runtime]);
+    for (const g of ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL").all()) {
+      await killSandbox(ctx, { grp: g.id });
+    }
+    return text("ok");
+  }
   if (!secret) return bad("paste the token or key");
   if (b.mode !== "oauth_token" && b.mode !== "api_key" && b.mode !== "chatgpt")
     return bad("mode is oauth_token, api_key or chatgpt");
-  // A pasted auth.json that is not JSON fails hours later as a login error, in
-  // a container, on somebody else's turn. Refuse it here instead.
-  if (b.mode === "chatgpt") {
-    try {
-      JSON.parse(secret);
-    } catch {
-      return bad("chatgpt wants the contents of ~/.codex/auth.json, which is JSON");
-    }
+  // The sandbox key is ours, not a provider's, so it has no shape to check.
+  if (runtime !== SANDBOX_KEY) {
+    const wrong = wrongShape(runtime, b.mode, secret);
+    if (wrong) return bad(wrong);
   }
   if (b.baseUrl) {
     try {

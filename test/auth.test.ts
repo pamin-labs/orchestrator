@@ -77,7 +77,7 @@ test("preflight names what is missing and how to fix it, rather than degrading",
   // two problems that look like one.
   expect(by["uv / python"]!.ok).toBe(false);
   expect(by["opensandbox-server"]!.ok).toBe(false);
-  expect(by["claude credentials"]!.ok).toBe(false);
+  expect(by["credential:claude"]!.ok).toBe(false);
   // Every failure carries the command that fixes it. Without that this is a
   // list of nouns, and the failure mode it replaces — agents that silently do
   // nothing — is already hard enough to read.
@@ -86,7 +86,7 @@ test("preflight names what is missing and how to fix it, rather than degrading",
 
   saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: REAL });
   const after = await preflight({ db, sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" }, probe: () => false });
-  expect(after.find((c) => c.name === "claude credentials")!.ok).toBe(true);
+  expect(after.find((c) => c.name === "credential:claude")!.ok).toBe(true);
 });
 
 test("the egress sidecar version is checked, because its failure reads as a project problem", () => {
