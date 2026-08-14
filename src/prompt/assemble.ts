@@ -96,7 +96,9 @@ Use Bash. Every command blocks and returns its result on stdout.
       # model walks, so it lands on the right file even when the file name shares no
       # word with your question. Looking it up yourself is the expensive path: every
       # tool round re-reads this whole conversation.
-  orch ask-boss --severity blocker|advisory "<question>"
+  orch ask-boss --brief "<=20 chars: what it is about" --severity blocker|advisory "<question>"
+      # --brief is the one line the boss's queue shows. Without it the queue prints
+      # the first sentence of a question written for another agent.
   orch lease <resource> [--arg k=v]    # run a rate-limited resource, get the digest
   orch lease log <id> [--grep RE]      # full log, stays out of your context
   orch mail <target> --intent ask|request|inform|note|decision "<body>"

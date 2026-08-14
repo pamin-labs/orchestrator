@@ -98,7 +98,7 @@ async function stdin(): Promise<string> {
 const USAGE = `orch <command>
 
   ctx query <question>
-  ask-boss [--severity blocker|advisory] <question>
+  ask-boss [--severity blocker|advisory] [--brief "<=20 chars, what it is about>"] <question>
   lease <resource> [--arg k=v ...]
   lease log <id> [--grep RE]
   mail <target> --intent ask|request|inform|note|decision [--severity S] [--in-reply-to N] <body>
@@ -138,7 +138,11 @@ export async function main(argv: string[]): Promise<number> {
       const question = args.slice(1).join(" ");
       if (!question) return usageError("ask-boss needs a question");
       // Blocks until answered — that is the point.
-      r = await call("POST", "/orch/ask-boss", { severity: flags.severity ?? "advisory", question });
+      r = await call("POST", "/orch/ask-boss", {
+        severity: flags.severity ?? "advisory",
+        question,
+        brief: typeof flags.brief === "string" ? flags.brief : undefined,
+      });
       break;
     }
     case "lease": {

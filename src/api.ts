@@ -464,18 +464,32 @@ function resolveTarget(
   return hired === null ? null : { agentId: hired, grpId: null };
 }
 
+/**
+ * The line the queue shows.
+ *
+ * Asked for with `--brief`, because the agent knows what its question is about
+ * and the queue cannot work it out from prose written for another agent. Derived
+ * when it is missing rather than rejected: a question that cannot be filed is an
+ * agent stuck on a formatting rule, and the fallback is right often enough — the
+ * first sentence of a question usually names the problem.
+ */
+export function brief(given: string | undefined, question: string): string {
+  const raw = (given ?? question.split(/[\n。.!?！？]/)[0] ?? "").trim();
+  return raw.length > 40 ? `${raw.slice(0, 39)}…` : raw;
+}
+
 const postAskBoss: Handler = async (ctx, req) => {
-  const b = await body<{ severity?: string; question: string }>(req);
+  const b = await body<{ severity?: string; question: string; brief?: string }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
   const severity = b.severity === "blocker" ? "blocker" : "advisory";
 
   const row = ctx.db
-    .query<{ id: number }, [number | null, number, string, string]>(
-      `INSERT INTO escalation (grp_id, agent_id, severity, question, created_at)
-       VALUES (?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
+    .query<{ id: number }, [number | null, number, string, string, string]>(
+      `INSERT INTO escalation (grp_id, agent_id, severity, question, brief, created_at)
+       VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
-    .get(a.grp_id, a.id, severity, b.question)!;
+    .get(a.grp_id, a.id, severity, b.question, brief(b.brief, b.question))!;
 
   // The commit the question was asked at, so a stand-in's answer can be undone.
   if (ctx.git && a.grp_id) {
@@ -1654,7 +1668,7 @@ export function snapshot(ctx: Ctx) {
       .all(),
     escalations: db
       .query(
-        `SELECT e.id, e.grp_id, e.severity, e.question, e.chain_state, e.answered_by, e.answer,
+        `SELECT e.id, e.grp_id, e.severity, e.question, e.brief, e.chain_state, e.answered_by, e.answer,
                 e.created_at, a.role AS asker, a.project_id AS asker_project
          FROM escalation e LEFT JOIN agent a ON a.id = e.agent_id
          WHERE e.chain_state NOT IN ('answered', 'revoked') ORDER BY e.created_at`,

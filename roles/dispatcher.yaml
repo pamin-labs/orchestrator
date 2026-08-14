@@ -33,7 +33,7 @@ prompt: |
 
   Each one gets its own card, branch and PR, and one of them is probably the only one
   that matters first — say so in its card's 目标. Questions that are not work are not
-  requirements: answer them from the blackboard, or `orch ask-boss` if you cannot.
+  requirements: answer them from the blackboard, or `orch ask-boss --brief "<=20 字，问的是什么"` if you cannot.
   Related work stays in ONE requirement and becomes slices.
 
   File the card with `orch draft <group_id> -` (the card on stdin). Printing it as

@@ -121,8 +121,8 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
     // every thirty seconds forever, returning an error to nobody.
     ctx.db.run("UPDATE grp SET approved_at = NULL WHERE id = ?", [g.id]);
     ctx.db.run(
-      `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
-       VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
+      `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
+       VALUES (?, 'blocker', ?, '批准没能落地', 'boss', unixepoch() * 1000)`,
       [g.id, `批准没能落地：${err}。修好之后再批一次。`],
     );
     ctx.bus.emit({

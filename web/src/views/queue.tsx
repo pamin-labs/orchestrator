@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Tip } from "../ui/tooltip";
+import { Badge } from "../ui/badge";
 import { Meta } from "../ui/bits";
 import { post, pull } from "../lib/api";
 import type { State } from "../lib/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "../lib/rank";
 import { pending, prUrl } from "../lib/select";
-import { cn } from "../lib/utils";
+import { brief, cn } from "../lib/utils";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.
@@ -28,6 +29,10 @@ interface Item {
   /** Which requirement it came from. A question with no home reads as the system's. */
   where?: string;
   sub: string;
+  /** Who is stuck. The boss reads a queue by role before anything else. */
+  who?: string;
+  /** Blocking work, or merely asking. Two shapes, not two paragraphs. */
+  hard?: boolean;
   grpId: number | null;
   points: number;
   reasons: Reason[];
@@ -75,6 +80,7 @@ export function Queue({
       kind: drop ? "作废" : "计划",
       where: g.name,
       what: drop ? drop.body.split("\n")[0]! : goal || "计划卡未提交",
+      who: "dispatcher",
       sub: "",
       grpId: g.id,
       ...rank([
@@ -92,6 +98,7 @@ export function Queue({
       kind: "切片",
       where: groupName(st, s.grp_id),
       what: s.title,
+      who: "qa",
       sub: s.accept_spec,
       grpId: s.grp_id,
       ...rank([
@@ -117,6 +124,7 @@ export function Queue({
       kind: "PR",
       where: m.name,
       what: m.branch ?? "等你合入",
+      who: "auditor",
       sub: url ? "" : "未找到 PR 链接",
       grpId: m.grpId,
       ...rank([
@@ -133,7 +141,13 @@ export function Queue({
     items.push({
       key: `a${e.id}`,
       kind: "提问",
-      what: e.question,
+      // The one line whoever filed it wrote for this list. The question itself is
+      // an agent writing to another agent — `S2 "常驻岗独立分段" failed qa 3 times.
+      // Latest: 结构: pass — splitDeskRows(tables.tsx:82-104)…` — and eight of
+      // those is a page of prose in front of someone choosing what to open.
+      what: e.brief?.trim() || brief(e.question),
+      who: e.asker ?? "系统",
+      hard: e.severity === "blocker",
       // The question was the only thing on the row, so a two-paragraph one filled
       // the card and never said which requirement was asking it.
       where: e.grp_id ? groupName(st, e.grp_id) : "常驻岗",
@@ -207,17 +221,16 @@ export function Queue({
 }
 
 /**
- * One requirement, one line, one way in.
+ * One requirement, and the things waiting on it under its name.
  *
- * The boss decides; the agents write. Printing three lines of an agent's question
- * on every row made the queue a wall of somebody else's prose — eight items, two
- * hundred words, and the actual decision ("open nav or open the PR first") buried
- * under all of it. TL;DR is the correct response to that page, and the answer is
- * not smaller type.
+ * Three facts decide whether the boss opens this one first: whose requirement,
+ * which role is stuck, and what about. The rest — the agent's paragraph, the
+ * branch, the token count — is not a reason to click and was competing with the
+ * three that are.
  *
- * So the queue answers only what it is for: which requirement, what kind of
- * decision, why now, and the way in. The words are one click away, on the page
- * built to show them next to their evidence.
+ * The severity of each item is a mark, not a sentence: a blocker has the whole
+ * group stopped behind it, and that is the only distinction on this page that
+ * changes what you do next.
  */
 function Cluster({
   st, c, onOpen, refresh,
@@ -225,53 +238,64 @@ function Cluster({
   st: State; c: { grpId: number; items: Item[] }; onOpen: (id: number) => void; refresh: () => void;
 }) {
   const standing = c.grpId < 0;
-  const g = st.groups.find((x) => x.id === c.grpId);
-  // Counted by kind, in the order the pipeline runs them.
-  const kinds = ["计划", "作废", "切片", "提问", "PR"]
-    .map((k) => ({ k, n: c.items.filter((i) => i.kind === k).length }))
-    .filter((x) => x.n > 0);
-  const top = c.items[0]!;
-  const stopped = top.reasons.some((r) => r.points >= 80);
   return (
-    <div
-      onClick={() => !standing && onOpen(c.grpId)}
-      className={cn(
-        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-t border-rule-soft",
-        "px-3.5 py-2.5 transition-colors first:border-t-0",
-        standing ? "" : "cursor-pointer hover:bg-rail/60",
-      )}
-    >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          {/* The accent marks what is stopped, not what is on the list — every row
-              here is on the list. */}
-          {stopped && <i className="size-1.5 shrink-0 rounded-full bg-accent" />}
-          <span className="truncate font-display text-[0.9375rem] font-semibold">
+    <section className="border-t border-rule-soft px-3.5 py-3 first:border-t-0">
+      {/* One way in per requirement, not one per row. Six violet buttons down the
+          right edge is a column of the loudest thing on the page, and they all go
+          to the same place. */}
+      <div className="mb-1 flex items-baseline gap-2">
+        <button
+          onClick={() => !standing && onOpen(c.grpId)}
+          className={cn("min-w-0 text-left", !standing && "cursor-pointer")}
+        >
+          <span className="truncate font-display text-[0.9375rem] font-semibold hover:text-accent">
             {standing ? "常驻岗" : groupName(st, c.grpId)}
           </span>
-          {kinds.map(({ k, n }) => (
-            <span key={k} className="font-mono text-[0.6875rem] text-ink-2">
-              {k}
-              {n > 1 ? ` ${n}` : ""}
-            </span>
-          ))}
-        </div>
-        {/* One reason, the one that put this row where it is. Three of them was
-            the row justifying itself at length to somebody who had already
-            decided to open it. */}
-        <Meta className="block truncate">
-          {top.reasons[0]?.why}
-          {g?.branch ? ` · ${g.branch}` : ""}
-        </Meta>
+        </button>
+        {c.items.length > 1 && <Meta>{c.items.length} 件</Meta>}
+        <span className="grow" />
+        <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+          {c.items[0]!.actions}
+        </span>
       </div>
 
-      <span onClick={(e) => e.stopPropagation()} className="flex flex-wrap items-center gap-1.5">
-        {/* A standing agent has no requirement to open, so the reply box is the
-            only way to clear it and it stays on the row. */}
-        {standing
-          ? c.items.map((i) => i.escId != null && <Reply key={i.key} escId={i.escId} fyi={i.fyi} refresh={refresh} />)
-          : top.actions}
+      <div className="flex flex-col gap-1">
+        {c.items.map((i) => (
+          <Line key={i.key} item={i} onOpen={() => !standing && onOpen(c.grpId)} refresh={refresh} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** One thing to do: who is stuck, and what about. */
+function Line({ item, onOpen, refresh }: { item: Item; onOpen: () => void; refresh: () => void }) {
+  return (
+    <div
+      onClick={onOpen}
+      className={cn(
+        "grid cursor-pointer grid-cols-[6rem_minmax(0,1fr)_auto] items-baseline gap-x-3",
+        "rounded-md px-2 py-1 transition-colors hover:bg-rail",
+        "max-[52rem]:grid-cols-[6rem_minmax(0,1fr)]",
+      )}
+    >
+      {/* Role first, and red when the whole group is stopped behind it. A badge
+          saying 停 on every row is a mark that never varies, which is a mark that
+          says nothing — six of them read as decoration. */}
+      <span className={cn("truncate font-mono text-[0.6875rem]", item.hard ? "text-bad" : "text-ink-3")}>
+        {item.who ?? item.kind}
       </span>
+      <span className="truncate text-[0.8125rem] text-ink-2">{item.what}</span>
+      <Meta className="shrink-0 max-[52rem]:col-start-2">
+        {item.reasons.find((r) => r.why.startsWith("等了"))?.why}
+      </Meta>
+      {/* A standing agent has no requirement to open, so its reply box is the only
+          way to clear it and it stays on the row. */}
+      {item.escId != null && item.grpId == null && (
+        <span onClick={(e) => e.stopPropagation()} className="max-[52rem]:col-start-2">
+          <Reply escId={item.escId} fyi={item.fyi} refresh={refresh} />
+        </span>
+      )}
     </div>
   );
 }

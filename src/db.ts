@@ -422,6 +422,14 @@ const MIGRATIONS: string[] = [
   ALTER TABLE slice DROP COLUMN spent_usd;
   ALTER TABLE agent DROP COLUMN total_usd;
   `,
+
+  // 032 — one line of what a question is about, for the queue.
+  //
+  // 待办 showed the first two lines of the question itself, which is an agent
+  // writing to another agent: `S2 "常驻岗独立分段" failed qa 3 times. Latest: 结构:
+  // pass — splitDeskRows(tables.tsx:82-104)…`. Eight of those is a page of prose
+  // in front of a reader whose whole job here is to pick which one to open.
+  `ALTER TABLE escalation ADD COLUMN brief TEXT;`,
 ];
 
 export type DB = Database;

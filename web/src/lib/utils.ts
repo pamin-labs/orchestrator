@@ -36,3 +36,16 @@ export const waited = (ms: number) => {
  * path that writes agent prose; fixing it where it is read is one function.
  */
 export const nl = (s: string) => s.replace(/\\n/g, "\n");
+
+/**
+ * One line of what a long agent message is about.
+ *
+ * The server asks for `--brief` and derives one when it is missing, but every
+ * question filed before that column existed has none — and those are exactly the
+ * ones sitting in the queue today. Same rule on this side: the first sentence
+ * usually names the problem.
+ */
+export const brief = (s: string, max = 44): string => {
+  const first = (s.split(/[\n。.!?！？]/)[0] ?? s).trim() || s.trim();
+  return first.length > max ? `${first.slice(0, max - 1)}…` : first;
+};

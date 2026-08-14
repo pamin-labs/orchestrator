@@ -37,6 +37,8 @@ export interface Evidence {
 }
 export interface Escalation {
   id: number; grp_id: number | null; severity: string; question: string; chain_state: string;
+  /** One line of what it is about, for the queue. Written by whoever filed it. */
+  brief: string | null;
   answered_by: string | null; answer: string | null; created_at: number; asker: string | null;
   /** Which project the asker belongs to. A standing agent has no group, so this is
       the only thing that tells one project's question from another's. */

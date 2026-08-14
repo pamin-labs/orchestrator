@@ -323,8 +323,8 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
         .get(g.id)!.c;
       if (open === 0) {
         ctx.db.run(
-          `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
-           VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
+          `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
+           VALUES (?, 'blocker', ?, '预算烧穿了，加不加', 'boss', unixepoch() * 1000)`,
           [
             g.id,
             `budget: ${g.name} 用完了 ${g.budget_tokens} tokens，全组已挂起。` +

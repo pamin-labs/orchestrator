@@ -78,8 +78,8 @@ function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifi
     [grpId],
   );
   ctx.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
-     VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
+    `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
+     VALUES (?, 'blocker', ?, 'PR 被关掉了，要不要重开', 'boss', unixepoch() * 1000)`,
     [
       grpId,
       `PR #${prNumber} 被关掉了（没有合入）。这一组已经停下并让出了合入队列。\n` +
@@ -258,8 +258,8 @@ export function start(overrides: Partial<Config> = {}): Started {
           // mechanism, and no button that only exists for this.
           db.run("UPDATE grp SET merge_seq = NULL, merge_seq_at = NULL, status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
           db.run(
-            `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
-             VALUES (?, 'blocker', ?, 'boss', unixepoch() * 1000)`,
+            `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
+             VALUES (?, 'blocker', ?, 'PR 开不出来', 'boss', unixepoch() * 1000)`,
             [grpId, `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`],
           );
           ctx.bus.emit({

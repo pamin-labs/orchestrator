@@ -6,7 +6,7 @@ import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { landGroup, makeApp, type Ctx } from "../src/api.ts";
+import { brief, landGroup, makeApp, type Ctx } from "../src/api.ts";
 import { listSkills } from "../src/mech/skills.ts";
 import { landed } from "../src/mech/mergequeue.ts";
 import { sweepApproved } from "../src/mech/start.ts";
@@ -1147,4 +1147,14 @@ test("a worktree that cannot be created withdraws the approval instead of retryi
     .query<{ chain_state: string; question: string }, []>("SELECT chain_state, question FROM escalation").get()!;
   expect(esc.chain_state).toBe("boss");
   expect(esc.question).toContain("批准没能落地");
+});
+
+test("a question carries one line for the queue, given or derived", () => {
+  // Given: whatever the agent wrote, capped.
+  expect(brief("卡在 playwright 没装", "long question…")).toBe("卡在 playwright 没装");
+  // Missing: the first sentence, which usually names the problem. A question that
+  // cannot be filed for want of a flag is an agent stuck on formatting.
+  expect(brief(undefined, "S2 的验收跑不了。原因是 worktree 里没装 playwright")).toBe("S2 的验收跑不了");
+  // Long: cut, with the cut marked.
+  expect(brief("x".repeat(60), "q")).toBe(`${"x".repeat(39)}…`);
 });
