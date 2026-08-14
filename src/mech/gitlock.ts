@@ -1,10 +1,14 @@
 /**
  * All git *writes* for one repo run one at a time.
  *
- * Multiple worktrees share a single `.git`, so concurrent fetch / rebase / ref
- * writes from different groups corrupt each other. Reads (status, diff, log)
- * are safe and deliberately not serialised — locking them would make the desk
- * wall block on whatever group is rebasing.
+ * Not the groups' checkouts — each of those is a clone inside its own container,
+ * with nothing to share. This is the boss's own repository, which the host still
+ * writes to from three places that run concurrently: the watchdog's
+ * `fetch origin`, ingesting a group's bundle, and the push behind a PR. Same
+ * `.git`, three writers, so they queue.
+ *
+ * Reads (status, diff, log) are safe and deliberately not serialised — locking
+ * them would make the desk wall block on whatever group is being pushed.
  */
 
 const WRITE_SUBCOMMANDS = new Set([

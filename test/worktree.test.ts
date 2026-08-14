@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, existsSync, mkdirSync, lstatSync, readFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { linkAgentsMd } from "../src/runtime/executor.ts";
+import { LINK_AGENTS_MD } from "../src/mech/checkout.ts";
 import { isWrite } from "../src/mech/gitlock.ts";
 import {
   changedSince,
@@ -232,57 +232,28 @@ test("a rebased branch stops reporting other groups' landed work as this slice's
   expect(files).not.toContain("theirs.txt");
 });
 
-test("a repo with only AGENTS.md gets CLAUDE.md, and the other way round", async () => {
+test("a repo with only AGENTS.md gets CLAUDE.md, and the other way round", () => {
+  // Runs inside the checkout, in the container — this used to be a host
+  // `symlinkSync` against `/work`, which does not exist here, so it silently did
+  // nothing for every turn. The command itself is what is checked.
+  const link = (dir: string) => Bun.spawnSync(["sh", "-c", LINK_AGENTS_MD], { cwd: dir });
+
   const dir = mkdtempSync(join(tmpdir(), "orch-md-"));
   writeFileSync(join(dir, "AGENTS.md"), "rules\n");
-  linkAgentsMd(dir);
+  link(dir);
   // A codex-native repo: a claude turn used to run with no project instructions
   // at all, which looks exactly like a project that has none.
   expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("rules\n");
 
   const other = mkdtempSync(join(tmpdir(), "orch-md-"));
   writeFileSync(join(other, "CLAUDE.md"), "rules\n");
-  linkAgentsMd(other);
+  link(other);
   expect(readFileSync(join(other, "AGENTS.md"), "utf8")).toBe("rules\n");
 
   // A repo shipping both is left alone: it said what it wanted.
   const both = mkdtempSync(join(tmpdir(), "orch-md-"));
   writeFileSync(join(both, "CLAUDE.md"), "for claude\n");
   writeFileSync(join(both, "AGENTS.md"), "for codex\n");
-  linkAgentsMd(both);
+  link(both);
   expect(readFileSync(join(both, "AGENTS.md"), "utf8")).toBe("for codex\n");
 });
-
-test("a turn's checkpoint says which slice and what the work was", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
-  writeFileSync(join(wt.worktree, "b.txt"), "one\n");
-
-  // `wip: engineer turn` eight times is a branch log that says nothing, and these
-  // survive into review whenever squashWip declines.
-  await checkpoint(git, dir, wt.worktree, "S2: engineer — 闸门放行的卡 enqueue");
-  const log = (await git(dir, ["log", "-1", "--format=%s"], wt.worktree)).out.trim();
-  expect(log).toBe("wip: S2: engineer — 闸门放行的卡 enqueue");
-});
-
-test("a rebase nobody finished does not wedge the group forever", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
-
-  // Two edits to one line, one on each side: the rebase stops on the conflict and
-  // leaves rebase-merge/ behind, which is what a turn killed mid-rebase leaves.
-  writeFileSync(join(wt.worktree, "a.txt"), "theirs\n");
-  await checkpoint(git, dir, wt.worktree, "engineer turn");
-  writeFileSync(join(dir, "a.txt"), "ours\n");
-  await git(dir, ["commit", "-qam", "main moves"]);
-  await git(wt.worktree, ["fetch", "-q", "origin"], wt.worktree);
-  const stuck = await rebaseOntoBase(git, wt.worktree, wt.worktree, "origin/main");
-  expect(stuck.code).not.toBe(0);
-  expect(existsSync(join(wt.worktree, ".git/rebase-merge"))).toBe(true);
-
-  // Live, every later wake said "there is already a rebase-merge directory … I am
-  // stopping in case you still have something valuable there" — forever.
-  const again = await rebaseOntoBase(git, wt.worktree, wt.worktree, "origin/main");
-  expect(again.out).not.toContain("already a rebase-merge directory");
-});
-

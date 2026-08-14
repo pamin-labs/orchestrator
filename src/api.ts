@@ -2291,7 +2291,7 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
       grp_id: id,
       payload: {
         role: "engineer",
-        rejection: "main moved: rebase onto it with `orch git -- rebase` before doing anything else.",
+        rejection: "main moved: `git fetch origin main` and `git rebase origin/main` before doing anything else.",
         rotate: true,
       },
     });

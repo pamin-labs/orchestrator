@@ -146,7 +146,23 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
     `git config user.name "orch agent" && git config user.email "agent@orch.local"`,
     { cwd: WORK },
   );
+
+  // codex reads AGENTS.md where claude reads CLAUDE.md: same instructions, two
+  // names. Linked rather than copied so editing one cannot leave a stale twin,
+  // and both ways because both kinds of repo exist — a codex-native repo ships
+  // only AGENTS.md, and a claude turn in it otherwise runs with no project
+  // instructions at all, silently. A repo that ships both is left alone.
+  //
+  // Here, not per turn on the host: this used to be a host `symlinkSync` against
+  // `/work`, a path that only exists inside the container, guarded by an
+  // `existsSync` that made it a permanent no-op.
+  await execIn(ctx, scope, LINK_AGENTS_MD, { cwd: WORK });
 }
+
+/** Exported so the check can run it in a temp directory, verbatim. */
+export const LINK_AGENTS_MD =
+  "[ -f CLAUDE.md ] && [ ! -e AGENTS.md ] && ln -s CLAUDE.md AGENTS.md;" +
+  " [ -f AGENTS.md ] && [ ! -e CLAUDE.md ] && ln -s AGENTS.md CLAUDE.md; true";
 
 /**
  * Move a group's commits from its sandbox onto the host, as a bundle.

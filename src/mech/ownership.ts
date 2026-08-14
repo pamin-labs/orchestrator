@@ -208,7 +208,7 @@ export function canStart(db: DB, grpId: number): StartCheck {
 const BUILD_OUTPUTS = ["web/dist"];
 
 /**
- * Written by the orchestrator into every worktree, not by the agent in it.
+ * Written by the orchestrator into every checkout, not by the agent in it.
  *
  * AGENTS.md / CLAUDE.md: whichever of the two the project does not ship is a
  * symlink we create, so a turn on either runtime reads the project's

@@ -129,16 +129,19 @@ Use Bash. Every command blocks and returns its result on stdout.
   orch answer <esc_id> --answer "…" [--ref <note_id>]     # answer a question routed to you
   orch answer <esc_id> --abstain --why "…"                # pass it up instead of guessing
   orch status "<one line>"             # what you are doing, for the desk wall
-  orch git -- <cmd>                    # all git writes go through here (repo lock)
+
+Git is plain \`git\`, in your own checkout. There is no \`orch git\`, and no
+credential here can write to the remote — the orchestrator takes the branch out of
+this sandbox and pushes it, so do not look for a way to push.
 
 Do not read whole files when \`orch ctx query\` can point you at the lines.
 
 A criterion about what the page does ("the menu opens", "the row is clickable") is
 checkable and reading the JSX is not the check: write the steps to a JSON file and
-\`orch lease browser --arg steps=qa-steps.json\`. It boots this worktree on a random
+\`orch lease browser --arg steps=qa-steps.json\`. It boots this checkout on a random
 port against a throwaway database, so \`api\` steps seed whatever state you need, and
 a failing step screenshots itself. Steps are data, never a command — that is what
-makes running it on the host safe.
+keeps \`orch\` a fixed set of actions rather than a shell.
 
 Put \`orch\` first in the command when piping into it — \`orch journal add --kind
 decision <<'EOF'\` is permitted, \`cat file | orch journal add\` is not, because the

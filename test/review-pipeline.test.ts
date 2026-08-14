@@ -152,7 +152,7 @@ test("a truthful claim with a passing gate reaches QA, not the boss", async () =
   const h = await harness();
   h.gate(0);
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
-  await h.post("/orch/git", { argv: ["commit", "-qam", "edit"] }, "tok-eng");
+  await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
 
   await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
   await h.sched.drain();
@@ -191,7 +191,7 @@ test("a failing gate sends the slice back with the failing lines", async () => {
   const h = await harness();
   h.gate(1, "FAIL_mw_test");
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
-  await h.post("/orch/git", { argv: ["commit", "-qam", "edit"] }, "tok-eng");
+  await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
   await doneClaim(h.post, { files: ["a.txt"] });
   await h.sched.drain();
 
@@ -203,7 +203,7 @@ test("repeated failures escalate to the boss instead of looping forever", async 
   const h = await harness();
   h.gate(1, "FAIL_again");
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
-  await h.post("/orch/git", { argv: ["commit", "-qam", "edit"] }, "tok-eng");
+  await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
 
   for (let i = 0; i < 3; i++) {
     h.db.run("UPDATE task SET status = 'done' WHERE id = 1");

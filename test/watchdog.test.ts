@@ -703,8 +703,8 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
     .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn' AND state = 'pending'")
     .get()!;
   expect(JSON.parse(job.payload_json).rejection).toContain("origin/master moved to abc12345");
-  expect(JSON.parse(job.payload_json).rejection).toContain("orch git -- fetch origin master");
-  expect(JSON.parse(job.payload_json).rejection).toContain("orch git -- rebase origin/master");
+  expect(JSON.parse(job.payload_json).rejection).toContain("git fetch origin master");
+  expect(JSON.parse(job.payload_json).rejection).toContain("git rebase origin/master");
 });
 
 test("rule 15 checks defaultBase, not the primary checkout's own HEAD", async () => {

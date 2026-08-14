@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import type { Ctx } from "../api.ts";
 import { imagePaths, mintToken } from "../api.ts";
@@ -271,11 +271,6 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   // starting every turn with "Model metadata for claude-sonnet-5 not found".
   const provider = providerFor(agent.runtime ?? role.runtime);
   const run: Provider["run"] = deps.runTurn ?? provider.run;
-  // codex reads AGENTS.md where claude reads CLAUDE.md. Same repo instructions,
-  // different filename, so link them rather than asking every project to keep two.
-  // Both runtimes, not just codex: the link that was missing is the one a claude
-  // turn needs in a repo that only has AGENTS.md.
-  linkAgentsMd(cwd);
   const logPath = join(logDir, `${job.id}.jsonl`);
   let result: TurnResult;
   try {
@@ -765,31 +760,6 @@ function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null, cfg?: Confi
     [agent.id, ch.id, last],
   );
   return rows.map((r) => `${r.author}${r.intent ? ` (${r.intent})` : ""}: ${r.body}`).join("\n") + tail;
-}
-
-/**
- * codex reads AGENTS.md; claude reads CLAUDE.md. Same instructions, two names.
- *
- * A symlink rather than a copy, so a project that edits one does not have a stale
- * twin, and both directions because both kinds of project exist: a codex-native
- * repo ships only AGENTS.md, and a claude turn in it used to run with no project
- * instructions at all — silently, since a missing memory file looks exactly like a
- * project that has none. A repo that already ships both is left alone: it said
- * what it wanted.
- */
-export function linkAgentsMd(worktree: string): void {
-  const pairs: [string, string][] = [
-    ["CLAUDE.md", "AGENTS.md"],
-    ["AGENTS.md", "CLAUDE.md"],
-  ];
-  for (const [real, alias] of pairs) {
-    if (!existsSync(join(worktree, real)) || existsSync(join(worktree, alias))) continue;
-    try {
-      symlinkSync(real, join(worktree, alias));
-    } catch {
-      // Read-only checkout, a race with another turn — not worth failing a turn.
-    }
-  }
 }
 
 /**

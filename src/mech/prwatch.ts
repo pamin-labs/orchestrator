@@ -353,9 +353,10 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
           conflict: true,
           rejection:
             `PR #${f.prNumber} no longer merges into main. Rebase onto it before anything else:\n` +
-            `\`orch git -- fetch origin main\` then \`orch git -- rebase origin/main\`, resolve every conflict, ` +
-            `re-run the gates, then \`orch git -- push --force-with-lease\`. Keep both sides' intent — main moved ` +
-            `for a reason and so did this branch.\n\n` +
+            `\`git fetch origin main\` then \`git rebase origin/main\`, resolve every conflict, re-run the ` +
+            `gates, and stop there — the orchestrator takes the branch from your checkout and pushes it, ` +
+            `so do not look for a way to push. Keep both sides' intent — main moved for a reason and so ` +
+            `did this branch.\n\n` +
             `If main removed or reshaped something this slice was built on, STOP — do not invent a way to ` +
             `keep compiling. Say which premise is gone with \`orch ask-boss\`; that reaches the Architect, ` +
             `who decides whether this slice still makes sense. Guessing produces code that builds and is ` +

@@ -42,7 +42,7 @@
 2. **turn 即事务**：一个 agent turn = 读黑板 → 想 → 写黑板，有界（`--max-turns` + 墙钟超时 + token 预算）。打断 = 丢弃该事务，黑板停在上一致状态。
 3. **agent 不监听频道**，turn 开始时注入 delta，其余按需 `orch ctx query` 自取。ambient chat 变成有界拉取，token 花销与实际需要成正比。
 
-**「组」不是独立重实体** = task 子树 + branch + worktree + roster 引用 + 预算。
+**「组」不是独立重实体** = task 子树 + branch + 沙盒 + roster 引用 + 预算。
 **`role` 是配置不是代码** = `roles/*.yaml`（prompt / model / 触发规则 / tool 白名单）。加「作曲」「美术」「翻译」零代码。
 
 ---
@@ -71,7 +71,7 @@
 ```sql
 -- 项目与组
 project(id, name, repo_path, remote, config_json)
-grp(id, project_id, name, branch, worktree, status, owns_json, budget_tokens, spent_tokens, spent_usd)
+grp(id, project_id, name, branch, sandbox_id, status, owns_json, budget_tokens, spent_tokens, spent_usd)
   -- status: DRAFT | RUNNING | PAUSING | PAUSED | PARKED | PR_OPEN | DISSOLVED
   -- no channel_id: `channel.grp_id` is the only link, a reverse pointer would be
   --   a second source of truth for the same edge
@@ -125,7 +125,6 @@ orch review <slice_id> --verdict …   # QA 判决（值，不是散文）
 orch audit <group_id> --verdict …    # Auditor PR 级判决
 orch answer <esc_id> --answer … | --abstain --why …
 orch status "<一句话>"               # 工位墙上的当前意图
-orch git -- <cmd>                    # repo 级 git 写锁，串行化
 ```
 
 **技能（skill）两条路，各管一件事**（`docs/decisions/006`）：
@@ -225,7 +224,7 @@ L3 两个按钮：**打断并保留**（脏改动留着，下个 turn 告知「�
 每条代答带 **「撤销并接管」**：回滚到该 escalation 的 `checkpoint_sha`，你重答，从那里重跑。没这个按钮你不敢开代答。
 
 ### 不可代答硬清单（写死在 `orch`，六条）
-花钱 / merge to main / 读写 secrets / 不可恢复操作（force push、drop table、rm 出 worktree）/ 对外发布 / 需求范围变更。
+花钱 / merge to main / 读写 secrets / 不可恢复操作（force push、drop table、rm 出 checkout）/ 对外发布 / 需求范围变更。
 
 ### 看门狗（`watchdog` job，零 LLM 成本）
 | 条件 | 动作 |
@@ -238,7 +237,7 @@ L3 两个按钮：**打断并保留**（脏改动留着，下个 turn 告知「�
 | 组 `PAUSED` > 2h | **park** |
 
 ### park（自动，不需你审批）
-PM 写交接 journal → 退休全部 session → 撤销该组 pending job → 释放并发槽 → `PARKED`。**worktree + checkpoint 原地不动，工作零丢失。** 你答了问题点「唤醒」，开新 session 接上。
+PM 写交接 journal → 退休全部 session → 撤销该组 pending job → 释放并发槽 → `PARKED`。**沙盒里的代码 + checkpoint 原地不动，工作零丢失。** 你答了问题点「唤醒」，开新 session 接上。
 **你的批准点只有三个**：`DRAFT`（20 秒批 12 行）、切片查收、PR merge。其余时候你只是「丢想法」和「不满意就说」。
 
 ### 对账（`reconcile` job，比整个 Auditor 都值钱）
@@ -327,7 +326,7 @@ deterministic gate（build / test / lint / typecheck / secrets 扫描 / 依赖�
 
 ### merge
 **串行 merge queue（纯代码）**：一个 PR 进 main 且 gate 全绿才放下一个。跨组语义冲突时拉两个 PM 的**代表**进来（file ownership 已经挡掉大部分，这里只剩语义冲突）。
-**repo 级 git 写锁**：所有 git 写操作走 `orch git --`（多 worktree 共用一个 `.git`，并发 fetch/rebase/写 ref 会打架）。只读的 status/diff/log 不加锁。
+**repo 级 git 写锁**：锁的不是各组的 checkout —— 那是各自容器里的 clone，没有共享的东西。锁的是**老板自己的仓库**，宿主还在三处并发写它：watchdog 的 `fetch origin`、收组的 bundle、开 PR 时的 push。同一个 `.git`、三个写者，所以排队。只读的 status/diff/log 不加锁。沙盒里的 agent 直接用 `git`，没有 `orch git` 这个动词。
 
 ### journal（确定性强制）
 ```markdown
@@ -602,7 +601,7 @@ orchestrator/
 5. **主动验证阻塞**：让 Engineer 撞一个必须问你的点（或手动发 `blocker`），确认全组 `RUNNING → PAUSING → PAUSED`，你答完回 `RUNNING`
 6. **主动验证 lease**：`orch lease test`，确认 stdout 只有三段（exit code / 尾 200 行 / 抽取的失败行），全量日志在磁盘上
 7. 确认 PR 开出来，`docs/journal/<group>/` 里有 journal + retro，正文都 ≤ 6 行
-8. 你 merge，确认组归档、session 全部退休、worktree 清理
+8. 你 merge，确认组归档、session 全部退休、沙盒回收
 
 **自动化检查（每个里程碑留一个，不上框架）**
 | 里程碑 | 一个 runnable check |

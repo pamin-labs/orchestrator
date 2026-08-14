@@ -631,7 +631,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
 
     ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [sha, now(), g.id]);
     const remoteBranch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : null;
-    const fetchStep = remoteBranch ? `\`orch git -- fetch origin ${remoteBranch}\` then ` : "";
+    const fetchStep = remoteBranch ? `\`git fetch origin ${remoteBranch}\` then ` : "";
     ctx.sched.enqueue("agent_turn", {
       grp_id: g.id,
       priority: 4,
@@ -640,7 +640,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
         conflict: true,
         rejection:
           `${baseRef} moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
-          `${fetchStep}\`orch git -- rebase ${baseRef}\`, then carry on. ` +
+          `${fetchStep}\`git rebase ${baseRef}\`, then carry on. ` +
           `If ${baseRef} removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
           `with \`orch ask-boss\`; that reaches the Architect.`,
       },

@@ -20,7 +20,7 @@
 
 PLAN §13 风险⑥「系统自己是最大的那个项目」现在是实际情况：
 
-1. **跑着的进程持有旧代码。** agent 在 worktree 里改的是源码；PR 合进 main 之后，**你手上这个 server 还是旧的**，要重启（`bun run dev`）才生效。合了 migration 就更要重启 —— 新列只在 `open()` 时补。
+1. **跑着的进程持有旧代码。** agent 在自己沙盒的 checkout 里改的是源码；PR 合进 main 之后，**你手上这个 server 还是旧的**，要重启（`bun run dev`）才生效。合了 migration 就更要重启 —— 新列只在 `open()` 时补。
 2. **`data/` 和 `web/dist/` 不进任何组的 owns**，公共文件同理（`package.json`、`src/db.ts` 的 MIGRATIONS 数组）。改这些要走 escalation，不然两个组同时加 migration 会撞号。
 
 ## 组的状态机
@@ -208,7 +208,7 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 - ✅ **注册项目必须有 GitHub origin**。原来没有 remote 也放行，只发一条「只有 PR 这步不能用」的提醒 —— 那是整个交付环节：分支做完没地方去。而且 `project.remote` 只在前端传了才写，preflight 明明 `git remote get-url origin` 读到了却不回存，于是 `prUrl()` 永远返回 null，「打开 PR」按钮在任何页面都不出现。现在没有 origin / origin 不是 GitHub 直接拒绝注册；gh 没装没登录仍是提醒（那个不用重新注册就能修）。
 - ✅ **删掉「确认已合入」按钮**。合没合是 GitHub 的答案，`pollPrs` 每跳都在问，MERGED 自己收尾。那个按钮是让老板手动确认服务端已经知道的事，而且点错一次就把 PR 还开着的组归档了。现在只剩「去合并 PR ↗」一个链接。
 - ✅ **Runner 池按标签分**（`resource.tags_json` + `leaseSlots: {default: 2, browser: 1}`）。一个全局数字只能取所有资源里最小的那个：按浏览器取 1，全队门禁排在一张截图后面；按门禁取 4，浏览器互相拖死。标签描述「争的是什么」，每个标签一个池；无标签走 `default`；一个租约占它所有标签的名额，任一满就排队；未知标签回落到 default 而不是「无限制」。
-- ✅ **无头浏览器成了一等资源**（`scripts/browse.ts` + `browser` 资源）。前端切片的验收几乎都是「菜单能弹」「行能点开」，而全项目没有任何角色能验 —— QA 只能读 JSX，Auditor 因证据不足退回分支，最后让老板自己点。三组同时卡在这上面。现在 QA 写一个 JSON 步骤文件（`api` 播种 / `goto` / `click` / `expect` / `missing` / `shot`）然后 `orch lease browser --arg steps=qa-steps.json`：它在**本 worktree** 起服务器（随机端口 + 一次性数据库），跑 Chromium，失败自动截图。**步骤是数据不是脚本** —— Runner 跑在 host 上有真权限，这是硬约束 2 的唯一走法。实测跑通：`click text=更多` → `expect 不做了` PASS，截图为证。
+- ✅ **无头浏览器成了一等资源**（`scripts/browse.ts` + `browser` 资源）。前端切片的验收几乎都是「菜单能弹」「行能点开」，而全项目没有任何角色能验 —— QA 只能读 JSX，Auditor 因证据不足退回分支，最后让老板自己点。三组同时卡在这上面。现在 QA 写一个 JSON 步骤文件（`api` 播种 / `goto` / `click` / `expect` / `missing` / `shot`）然后 `orch lease browser --arg steps=qa-steps.json`：它在**本 worktree** 起服务器（随机端口 + 一次性数据库），跑 Chromium，失败自动截图。**步骤是数据不是脚本**（当时的理由是 Runner 跑在 host 上有真权限；005 之后它跑在组自己的沙盒里，而「agent 只能选资源名 + 校验过的参数」这条不变 —— 理由反过来了，规则没变）。实测跑通：`click text=更多` → `expect 不做了` PASS，截图为证。
 
 - ✅ **状态机有了不变量表**（`src/mech/states.ts` + `src/mech/invariants.ts`）。每条 watchdog 规则都是一次事故换来的，而它们形状完全一样：某个转移只有一条路径会触发，那条没跑，状态就永久停住且**看起来健康**。表里一个状态一行：什么必须成立 / 谁推它 / 幂等 repair；`test/invariants.test.ts` 断言 `states.ts` 的四台机器（grp / slice / job / escalation）全被覆盖 —— 加状态不填表就构建失败。**表里只放活性**，健康检查（超时/打转/预算/env_suspect）留在 watchdog。
 - ✅ **PageIndex 取代了 BM25 做「东西在哪」**（`src/mech/pageindex.ts`）。带 LLM 摘要的树 + 模型走树导航（VectifyAI 那套方法，不是向量、不是词法）。仓库文件和黑板 note（journal/retro/decision/fact/lesson）**在同一棵树**上，叶子 id 是路径或 `notes/<scope>/<kind>/<id>`。按 signature 增量，静止的仓库零调用，每跳最多 12 次 haiku。导航失败/超时降级到词法。走到 note 直接把正文带回来（journal 本来就 ≤6 行，让 agent 再取一次就是多一轮）。
@@ -284,11 +284,11 @@ bun run src/server.ts                     # 起服务
 
 
 - 新增状态 `PLANNING`
-- `grp` 无 `channel_id`；增加 `owns_json` / `spent_usd` / `paused_at` / `merge_seq` / `pr_number` / `pr_seen_at` / `pr_checks_sig`
+- `grp` 无 `channel_id`；`worktree` 列被 024 删掉（从来没被写过）；增加 `owns_json` / `spent_usd` / `paused_at` / `merge_seq` / `pr_number` / `pr_seen_at` / `pr_checks_sig`
 - `agent` 增加 `token` / `stable_hash` / `idle_turns` / `loop_file` / `loop_count`
 - `slice` 增加 `gates_json` / `depends_on` / `base_sha` / `retries`；`job` 增加 `slice_id` / `checkpoint_sha`；`lease` 增加 `head_sha`
-- 传输层从 unix socket 改成 **localhost TCP**（决策 001）
-- `profiles/` 不是静态文件，按组生成
+- 传输层从 unix socket 改成 localhost TCP（决策 001），再改成**文件信箱**（决策 005：`host.docker.internal` 只有 Docker Desktop 有）
+- `profiles/` 按组生成 —— 后来整个删了（决策 005，容器就是边界）
 - **intent 只有 5 种**（`ask`/`request`/`inform`/`note`/`decision` + 正交字段）
 - 迁移共 8 条，全部 append-only
 
@@ -537,3 +537,25 @@ preflight 那条改准了：本地留着旧 egress 不再误报 —— server �
 **还没验的**：codex 读不读 `$CODEX_HOME/skills` 只有目录约定，没有文档；`test/sandbox-live.test.ts` 要补三条 —— 挂载可见、只读（`touch` 失败）、摘掉 flag 前后各跑一个 haiku turn 记前缀差值。沙盒服务端的 `allowed_host_paths` 必须包含 `<dataDir>/skills`，preflight 会把这条路径原样说出来（服务端自己的 TOML 不是我们能读的，所以只报要求，不假装检查过）。
 
 `bun test` 504 pass。
+
+## 边界收尾：三个真 bug，加四条从来没跑过的路径
+
+005 把边界换成容器之后，宿主侧留下的东西分两种：**还在守着的**（信箱前缀闸、token、lease 模板校验、`shq`、凭据金库、只读 GitHub token + bundle-out、`scrub`、watchdog 17/17b、组间路径冲突、repo 写锁）和**看起来在守、其实早就断了的**。这轮扫的是后者。
+
+**`reconcileOwnership` 从来没跑成功过。** 005 之后它是文件归属的**唯一**强制手段（deny-list 删了，`engineer.yaml` 还在对 agent 承诺这件事），而它拿**宿主**的 git runner 去打 `/work` —— 宿主上没这个目录，每个 turn 都抛。断言只覆盖了纯函数 `outsideOwns`，接线没有任何 check。现在是 `sandboxGit`，并且补了那条接线 check。
+
+**两条 `/orch` 读路由从来不看 token。** `GET /orch/task` 和 `GET /orch/lease/:id/log` 不调 `agentOf` —— 信箱的 `/orch/` 前缀闸管的是「哪些路由够得着」，不管「谁在够」，所以任意组在 URL 里换个数字就能读别的组的任务卡和构建日志。lease log 还拿 agent 给的字符串 `new RegExp` 在宿主单进程里跑（一个嵌套量词就能卡死整个 orchestrator）—— 构建日志用子串匹配就够。
+
+**`orch split` 的组名是 agent 给什么算什么**（`.trim().slice(0,40)`）。这个名字会变成 `orch/<name>` 分支、`docs/journal/<name>/` 路径、和一条 shell 命令的参数。现在一律走 `slug()`，journal 的 `mkdir` 也套上 `shq`。
+
+**四条路径读的是一个从来没被写过的列。** `grp.worktree` 在 schema 里、被四处读、全库没有一处写。四处全部 `if (grp?.worktree)` 守着：「打断并回滚」只打断不回滚、封存唤醒不 rebase、撤销代答不撤销工作、**reconcile 闸门拿空变更集给每条 claim 打分**（= 全过）。全部换成 `sandboxGit` + `/work`，列删掉（024）。
+
+**为什么测试一直是绿的**：它们自己在 fixture 里写 `worktree`，指向一个宿主临时目录，然后断言那个目录变了 —— 一个生产环境从来没产生过的状态。现在断言的是发到组沙盒里的命令。
+
+**`orch git --` 这个动词不存在**，而 prompt 的 `orch` 速查表里有它，watchdog 和 PR 冲突的退回话术里也在教 agent 用它（硬约束 6：prompt 给的许可校验器不认，就是在教模型撒谎）。沙盒里 `git` 就是 `git`，push 不到远端 —— 宿主从 bundle 里取分支再 push。
+
+`linkAgentsMd` 同样是宿主对 `/work` 做 `symlinkSync`，`existsSync` 守卫让它静默空转 —— 挪进 `createCheckout`，一条 `ln -s`，check 直接跑那个命令串本身。
+
+**没动、但记在这儿**：信箱没有大小上限也没有超时；`env.id` 不校验就拼进 `/var/orch/res/${id}.json`（容器内路径穿越，agent 本来就有 shell）；token 不和来源沙盒绑定（同组共用一个容器，跨组不行）；`orch mail` 打给一个没雇的角色会雇一个，没有成本上限。都是 DoS / 自伤级别，不是越界。
+
+`bun test` 506 pass（3 条 sandbox-live 没有服务器，跳过）。
