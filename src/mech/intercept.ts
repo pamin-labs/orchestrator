@@ -1,5 +1,7 @@
 import type { Ctx } from "../api.ts";
-import { rollbackTo, type GitRunner } from "./worktree.ts";
+import { rebaseOntoBase, rollbackTo } from "./worktree.ts";
+import { sandboxGit } from "./checkout.ts";
+import { WORK } from "./sandbox.ts";
 import { abortJob } from "../runtime/running.ts";
 import { say } from "../lang.ts";
 
@@ -83,7 +85,6 @@ export function resume(ctx: Ctx, grpId: number): void {
  */
 export async function interrupt(
   ctx: Ctx,
-  git: GitRunner,
   grpId: number,
   mode: InterruptMode = "keep",
 ): Promise<{ killed: number; rolledBackTo?: string }> {
@@ -107,18 +108,11 @@ export async function interrupt(
   let rolledBackTo: string | undefined;
   if (mode === "rollback") {
     const sha = jobs.map((j) => j.checkpoint_sha).find(Boolean) ?? undefined;
-    const grp = ctx.db
-      .query<{ worktree: string | null; project_id: number }, [number]>(
-        "SELECT worktree, project_id FROM grp WHERE id = ?",
-      )
-      .get(grpId);
-    const repo = grp
-      ? ctx.db
-          .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-          .get(grp.project_id)?.repo_path
-      : undefined;
-    if (sha && repo && grp?.worktree) {
-      const back = await rollbackTo(git, repo, grp.worktree, sha);
+    // The group's own checkout, where the checkpoint was taken. This used to be
+    // gated on `grp.worktree`, a column nothing writes, so "interrupt and roll
+    // back" only ever interrupted.
+    if (sha) {
+      const back = await rollbackTo(sandboxGit(ctx, { grp: grpId }), WORK, WORK, sha);
       if (back.ok) rolledBackTo = sha;
       else {
         // "Interrupt and roll back" that only interrupted leaves a dirty tree
@@ -129,7 +123,7 @@ export async function interrupt(
           kind: "escalation",
           intent: "inform",
           severity: "blocker",
-          body: `interrupted, but the rollback to ${sha.slice(0, 8)} failed: ${back.error}. The worktree is dirty.`,
+          body: `interrupted, but the rollback to ${sha.slice(0, 8)} failed: ${back.error}. The checkout is dirty.`,
         });
       }
     }
@@ -192,32 +186,19 @@ export function park(ctx: Ctx, grpId: number, reason: string): void {
 }
 
 /** Wake a parked group. Rebasing on the way back in avoids a stale baseline. */
-export async function unpark(ctx: Ctx, git: GitRunner, grpId: number): Promise<void> {
-  const grp = ctx.db
-    .query<{ worktree: string | null; project_id: number }, [number]>(
-      "SELECT worktree, project_id FROM grp WHERE id = ?",
-    )
-    .get(grpId);
-  const repo = grp
-    ? ctx.db
-        .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-        .get(grp.project_id)?.repo_path
-    : undefined;
-  if (repo && grp?.worktree) {
-    const { rebaseOntoBase } = await import("./worktree.ts");
-    const r = await rebaseOntoBase(git, repo, grp.worktree);
-    if (r.code !== 0) {
-      // A conflicting rebase is the boss's call, not something to paper over.
-      ctx.bus.emit({
-        grpId,
-        author: "orchestrator",
-        kind: "escalation",
-        intent: "ask",
-        severity: "blocker",
-        body: `rebase onto the base branch failed while waking up:\n${r.out.slice(0, 500)}`,
-      });
-      return;
-    }
+export async function unpark(ctx: Ctx, grpId: number): Promise<void> {
+  const r = await rebaseOntoBase(sandboxGit(ctx, { grp: grpId }), WORK, WORK);
+  if (r.code !== 0) {
+    // A conflicting rebase is the boss's call, not something to paper over.
+    ctx.bus.emit({
+      grpId,
+      author: "orchestrator",
+      kind: "escalation",
+      intent: "ask",
+      severity: "blocker",
+      body: `rebase onto the base branch failed while waking up:\n${r.out.slice(0, 500)}`,
+    });
+    return;
   }
   ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE id = ?", [grpId]);
   ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "woken up" });

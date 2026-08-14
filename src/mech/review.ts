@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import type { Ctx } from "../api.ts";
 import type { Config } from "../config.ts";
 import { say } from "../lang.ts";
@@ -7,6 +5,7 @@ import { runGates, recordGate, gateState } from "./gate.ts";
 import { extractClaimedFiles, reconcile } from "./reconcile.ts";
 import { changedSince, filesAt, type GitRunner } from "./worktree.ts";
 import { resourceExec, WORK } from "./sandbox.ts";
+import { sandboxGit } from "./checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 
 /**
@@ -63,15 +62,8 @@ export async function runDeterministicReview(
   if (!slice) return { pass: false, feedback: "slice disappeared" };
 
   const grp = ctx.db
-    .query<{ project_id: number; worktree: string | null }, [number]>(
-      "SELECT project_id, worktree FROM grp WHERE id = ?",
-    )
+    .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
     .get(slice.grp_id);
-  const repo = grp
-    ? ctx.db
-        .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-        .get(grp.project_id)?.repo_path
-    : undefined;
 
   // --- reconcile: what was claimed against what git shows for THIS slice
   const claims = ctx.db
@@ -83,15 +75,21 @@ export async function runDeterministicReview(
 
   let changed: string[] = [];
   let absent: string[] = [];
-  if (repo && grp?.worktree && slice.base_sha) {
-    changed = await changedSince(git, repo, grp.worktree, slice.base_sha);
-    // A path that is in neither the branch point nor the worktree: a scratch file
+  if (slice.base_sha) {
+    // The group's own checkout, in its own container. This used to read
+    // `grp.worktree` — a column nothing has ever written — so the guard was always
+    // false, the change set was always empty, and the gate scored every claim
+    // against nothing at all.
+    const sgit = sandboxGit(ctx, { grp: slice.grp_id });
+    changed = await changedSince(sgit, WORK, WORK, slice.base_sha);
+    // A path that is in neither the branch point nor the change set: a scratch file
     // created and then deleted inside this slice. Git has no record of it either
     // way, so it cannot be a delivery — and it must not be scored as a lie.
-    const known = new Set(await filesAt(git, repo, grp.worktree, slice.base_sha));
-    absent = extractClaimedFiles(claims).filter(
-      (c) => !known.has(c) && !existsSync(join(grp.worktree!, c)),
-    );
+    // (`changed` already carries the untracked files, so anything that exists now
+    // is in one list or the other; no filesystem check is needed.)
+    const known = new Set(await filesAt(sgit, WORK, WORK, slice.base_sha));
+    const seen = new Set(changed);
+    absent = extractClaimedFiles(claims).filter((c) => !known.has(c) && !seen.has(c));
   }
   const rec = reconcile({ claims, changedFiles: changed, absent });
   recordGate(ctx.db, sliceId, "reconcile", rec.pass ? "pass" : "fail");
@@ -411,8 +409,8 @@ function safeJson(s: string | null): unknown {
 export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void> {
   const { ctx, cfg, git } = deps;
   const grp = ctx.db
-    .query<{ project_id: number; worktree: string | null; branch: string | null; name: string }, [number]>(
-      "SELECT project_id, worktree, branch, name FROM grp WHERE id = ?",
+    .query<{ project_id: number; branch: string | null; name: string }, [number]>(
+      "SELECT project_id, branch, name FROM grp WHERE id = ?",
     )
     .get(grpId);
   if (!grp) return;

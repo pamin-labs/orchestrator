@@ -1,49 +1,38 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
 import { interrupt } from "../src/mech/intercept.ts";
-import { makeGitRunner } from "../src/mech/worktree.ts";
 import type { Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
 /**
- * PLAN.md §7 L3: "打断并回滚" must end with the worktree back at the checkpoint the
+ * PLAN.md §7 L3: "打断并回滚" must end with the checkout back at the checkpoint the
  * turn started from. The pieces were tested apart — rollbackTo in worktree.test.ts,
- * the chain's revoke in chain.test.ts — and this end of it, kill plus rollback plus a
- * clean tree, never was.
+ * the chain's revoke in chain.test.ts — and this end of it, kill plus rollback,
+ * never was.
+ *
+ * The checkout is `/work` inside the group's container now. This asserted a host
+ * directory before, which is why it kept passing while the real path was gated on
+ * `grp.worktree` — a column nothing has ever written, so the rollback never ran.
  */
-function repo() {
-  const dir = mkdtempSync(join(tmpdir(), "orch-l3-"));
-  const sh = (...a: string[]) => Bun.spawnSync(a, { cwd: dir });
-  sh("git", "init", "-q", "-b", "main");
-  writeFileSync(join(dir, "a.txt"), "one\n");
-  sh("git", "add", "-A");
-  sh("git", "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-qm", "init");
-  const sha = new TextDecoder().decode(sh("git", "rev-parse", "HEAD").stdout).trim();
-  return { dir, sha, sh };
-}
-
-function harness(worktree: string, repoPath: string, checkpoint: string) {
+function harness(checkpoint: string) {
   const db = openMemory();
   seedAuth(db);
+  const sandbox = fakeSandbox();
   const ctx: Ctx = {
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
-    sandbox: fakeSandbox(), waiters: new Map(),
+    sandbox,
+    waiters: new Map(),
     config: { language: "中文", workRoot: "/tmp/x" },
-  };
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', ?, 0)", [repoPath]);
-  db.run("INSERT INTO grp (project_id, name, status, worktree, created_at) VALUES (1, 'g1', 'RUNNING', ?, 0)", [
-    worktree,
-  ]);
+  } as unknown as Ctx;
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'running', 0)",
   );
@@ -52,40 +41,64 @@ function harness(worktree: string, repoPath: string, checkpoint: string) {
      VALUES ('agent_turn', 1, 1, 'running', ?, NULL, 0, 0)`,
     [checkpoint],
   );
-  return { db, ctx };
+  return { db, ctx, sandbox };
 }
 
-test("打断并回滚 returns the worktree to the checkpoint and leaves it clean", async () => {
-  const r = repo();
-  const h = harness(r.dir, r.dir, r.sha);
-  // A turn's half-finished work: one tracked file edited, one new file added.
-  writeFileSync(join(r.dir, "a.txt"), "one\ntwo — half a thought\n");
-  writeFileSync(join(r.dir, "scratch.txt"), "leftover\n");
+const SHA = "0123456789abcdef0123456789abcdef01234567";
 
-  const out = await interrupt(h.ctx, makeGitRunner(h.ctx.gitLock), 1, "rollback");
-  expect(out.rolledBackTo).toBe(r.sha);
-  expect(readFileSync(join(r.dir, "a.txt"), "utf8")).toBe("one\n");
-  const status = new TextDecoder().decode(r.sh("git", "status", "--porcelain").stdout).trim();
-  expect(status).toBe("");
+test("打断并回滚 resets the group's own checkout to the checkpoint", async () => {
+  const h = harness(SHA);
 
-  // And the queue is consistent: the turn is cancelled, the writer is idle, the group
-  // is paused. A rolled-back tree under a still-"running" job is how two turns end up
-  // writing over each other.
-  const job = h.db.query<{ state: string; error: string }, []>("SELECT state, error FROM job").get()!;
-  expect(job.state).toBe("cancelled");
-  expect(job.error).toContain("rollback");
-  expect(h.db.query<{ state: string }, []>("SELECT state FROM agent").get()!.state).toBe("idle");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PAUSED");
+  const out = await interrupt(h.ctx, 1, "rollback");
+
+  expect(out.rolledBackTo).toBe(SHA);
+  const ran = h.sandbox.commands.join("\n");
+  expect(ran).toContain(`git 'reset' '--hard' '${SHA}'`);
+  // Untracked leftovers go too, or the next turn inherits a scratch file it
+  // never wrote and reasons about it as its own.
+  expect(ran).toContain("git 'clean' '-fd'");
 });
 
-test("打断保留 keeps the work and says nothing was rolled back", async () => {
-  const r = repo();
-  const h = harness(r.dir, r.dir, r.sha);
-  writeFileSync(join(r.dir, "a.txt"), "one\ntwo — worth keeping\n");
+test("a rollback that fails says so instead of reporting a clean tree", async () => {
+  const db = openMemory();
+  seedAuth(db);
+  // `reset` refusing is the case that matters: "interrupted and rolled back" that
+  // only interrupted leaves a dirty tree the boss believes is clean.
+  const sandbox = fakeSandbox((cmd) => (cmd.includes("'reset'") ? { code: 1, out: "fatal: bad object" } : {}));
+  const ctx: Ctx = {
+    db,
+    bus: new Bus(db),
+    sched: new Scheduler(db, async () => {}),
+    gitLock: new RepoLock(),
+    sandbox,
+    waiters: new Map(),
+    config: { language: "中文", workRoot: "/tmp/x" },
+  } as unknown as Ctx;
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'running', 0)",
+  );
+  db.run(
+    `INSERT INTO job (kind, grp_id, agent_id, state, checkpoint_sha, pid, enqueued_at, started_at)
+     VALUES ('agent_turn', 1, 1, 'running', ?, NULL, 0, 0)`,
+    [SHA],
+  );
 
-  const out = await interrupt(h.ctx, makeGitRunner(h.ctx.gitLock), 1, "keep");
+  const out = await interrupt(ctx, 1, "rollback");
   expect(out.rolledBackTo).toBeUndefined();
-  // The default is keep precisely because a half-done change usually has value.
-  expect(readFileSync(join(r.dir, "a.txt"), "utf8")).toContain("worth keeping");
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("PAUSED");
+  const said = db.query<{ body: string }, []>("SELECT body FROM event WHERE kind = 'escalation'").all();
+  expect(said.map((e) => e.body).join(" ")).toContain("fatal: bad object");
+});
+
+test("打断但保留 leaves the work and tells the next turn", async () => {
+  const h = harness(SHA);
+
+  const out = await interrupt(h.ctx, 1, "keep");
+
+  // A half-done change usually has value, so nothing touches the checkout.
+  expect(out.rolledBackTo).toBeUndefined();
+  expect(h.sandbox.commands.join("\n")).not.toContain("reset");
+  // ...and the group still stops.
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSED");
 });

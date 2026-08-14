@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 export interface Project { id: number; name: string; repo_path: string; remote: string | null }
 export interface Group {
-  id: number; project_id: number; name: string; branch: string | null; worktree: string | null;
+  id: number; project_id: number; name: string; branch: string | null;
   status: string; owns_json: string; budget_tokens: number; spent_tokens: number;
   pr_number: number | null;
   /** The boss approved, but a boundary is holding it. Cleared when it starts. */

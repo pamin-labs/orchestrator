@@ -390,15 +390,10 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
           )}
           {["RUNNING", "PAUSING", "PAUSED"].includes(g.status) && (
             <MenuItem
-              hint="释放并发槽，worktree 和 checkpoint 原地不动"
+              hint="释放并发槽，沙盒里的代码和 checkpoint 原地不动"
               onSelect={() => act("park")}
             >
               封存
-            </MenuItem>
-          )}
-          {slices.length > 0 && (
-            <MenuItem hint="打开这一组的 worktree 路径" onSelect={() => navigator.clipboard?.writeText(g.worktree ?? "")}>
-              复制 worktree 路径
             </MenuItem>
           )}
           {/* 退回重拆 sends it back to the Dispatcher, which writes another card for
@@ -406,11 +401,11 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
               that someone already fixed, needs to leave the board instead. */}
           <MenuItem
             danger
-            hint="排队的 turn 全取消，占的路径交还给别的组。worktree、分支和记录都留着"
+            hint="排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着"
             onSelect={async () => {
               const go = await ask({
                 title: "不做了",
-                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。worktree 和记录留着，组不会再被拉起。`,
+                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录留着，组不会再被拉起。`,
                 yes: "不做了",
                 danger: true,
               });
@@ -869,7 +864,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
             <Button variant="go" size="sm" onClick={async () => {
               const go = await ask({
                 title: "作废这条需求",
-                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。worktree 和记录都留着。`,
+                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
                 yes: "作废", danger: true,
               });
               if (!go) return;
@@ -971,7 +966,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
               <Button size="sm" disabled={busy} onClick={async () => {
                 const go = await ask({
                   title: "不做了",
-                  body: `${g.name} 会从看板上消失，排队的 turn 全部取消。worktree 和记录都留着。`,
+                  body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
                   yes: "不做了", danger: true,
                 });
                 if (!go) return;

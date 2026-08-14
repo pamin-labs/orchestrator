@@ -165,10 +165,9 @@ test("no stand-in may answer a reserved question, precedent or not", () => {
   expect(answer(h.deps, { escId: id, by: "boss", answer: "no" }).ok).toBe(true);
 });
 
-test("revoking a stand-in's answer reopens it and rolls the worktree back", async () => {
+test("revoking a stand-in's answer reopens it and rolls the checkout back", async () => {
   const h = harness({ withCos: true });
   const id = h.ask("keep the legacy path?");
-  h.db.run("UPDATE grp SET worktree = '/tmp/wt/g1' WHERE id = 1");
   h.db.run("UPDATE escalation SET checkpoint_sha = 'deadbeef' WHERE id = ?", [id]);
   h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'decision', 'zh', 'x', 0)");
   answer(h.deps, { escId: id, by: "cos", answer: "keep it", refNoteId: 1 });

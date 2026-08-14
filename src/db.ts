@@ -20,12 +20,14 @@ const MIGRATIONS: string[] = [
     created_at  INTEGER NOT NULL
   );
 
-  -- A "group" is not a heavy entity: branch + worktree + roster + budget + owned paths.
+  -- A "group" is not a heavy entity: branch + sandbox + roster + budget + owned paths.
   CREATE TABLE grp (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id    INTEGER NOT NULL REFERENCES project(id),
     name          TEXT    NOT NULL,
     branch        TEXT,
+    -- worktree is dropped by migration 024; like clearance below, it stays here
+    -- because the base schema records what the first migration ran, not today.
     worktree      TEXT,
     status        TEXT    NOT NULL DEFAULT 'DRAFT',
     owns_json     TEXT    NOT NULL DEFAULT '[]',
@@ -515,6 +517,17 @@ const MIGRATIONS: string[] = [
     k TEXT PRIMARY KEY,
     v TEXT NOT NULL
   );
+  `,
+
+  // 024 — the checkout moved into the container and this column stayed behind.
+  //
+  // Nothing ever wrote it. Four code paths read it and were gated on it being
+  // non-null: the rollback behind "interrupt and roll back", the rebase on the way
+  // out of PARKED, the rollback behind a revoked answer, and the change set the
+  // reconcile gate scores claims against — that last one silently passed every
+  // claim for as long as the column has existed.
+  `
+  ALTER TABLE grp DROP COLUMN worktree;
   `,
 ];
 

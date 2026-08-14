@@ -103,8 +103,7 @@ async function harness(opts: { gates?: string[] } = {}) {
     repo,
     JSON.stringify({ gates: opts.gates ?? ["test"] }),
   ]);
-  db.run("INSERT INTO grp (project_id, name, status, worktree, branch, created_at) VALUES (1, 'g1', 'RUNNING', ?, ?, 0)", [
-    wt.worktree,
+  db.run("INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'RUNNING', ?, 0)", [
     wt.branch,
   ]);
   // 'running' is what startNextSlice sets: a task whose slice has not started

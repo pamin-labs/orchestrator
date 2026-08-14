@@ -13,7 +13,7 @@ import { sweepApproved } from "../src/mech/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
-function harness(opts: { worktree?: string } = {}) {
+function harness() {
   const db: DB = openMemory();
   seedAuth(db);
   const bus = new Bus(db);
@@ -30,9 +30,7 @@ function harness(opts: { worktree?: string } = {}) {
   const app = makeApp(ctx);
 
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, worktree, created_at) VALUES (1, 'g1', 'RUNNING', ?, 0)", [
-    opts.worktree ?? null,
-  ]);
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   // Identity is the token, never a body field: the server listens on localhost
   // TCP, so anything else on 127.0.0.1 could otherwise claim to be any agent.
   db.run(
@@ -72,7 +70,7 @@ test("an over-long journal is rejected with a reason the agent can act on", asyn
 
 test("journal writes a note and exports journal/retro into the checkout", async () => {
   const wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const { app, db, ctx } = harness({ worktree: wt });
+  const { app, db, ctx } = harness();
 
   const r = await post(
     app,
@@ -98,7 +96,7 @@ test("journal writes a note and exports journal/retro into the checkout", async 
 
 test("a fact never gets exported to git — only journal/retro/decision do", async () => {
   const wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const { app, db } = harness({ worktree: wt });
+  const { app, db } = harness();
   await post(app, "/orch/journal", { kind: "fact", body: "boss prefers iteration" }, "tok-eng");
   const note = db.query<{ export_path: string | null }, []>("SELECT export_path FROM note").get()!;
   expect(note.export_path).toBeNull();
@@ -818,7 +816,7 @@ test("an unreadable path is an error with the reason, not an empty list", async 
 
 test("a closed PR whose branch cannot be reopened can still get a new one", async () => {
   const { app, db, ctx } = harness();
-  db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, worktree = '/tmp/wt', branch = 'orch/g1' WHERE id = 1");
+  db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, branch = 'orch/g1' WHERE id = 1");
   ctx.git = async () => ({ code: 0, out: "" });
   ctx.gh = async (argv) => (argv[1] === "view" ? { code: 0, out: '{"number":9}' } : { code: 0, out: "created" });
 
@@ -838,7 +836,7 @@ test("a closed PR whose branch cannot be reopened can still get a new one", asyn
 
 test("a failed second PR leaves the old number in place rather than none at all", async () => {
   const { app, db, ctx } = harness();
-  db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, worktree = '/tmp/wt', branch = 'orch/g1' WHERE id = 1");
+  db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, branch = 'orch/g1' WHERE id = 1");
   ctx.git = async () => ({ code: 1, out: "remote: Permission denied" });
   ctx.gh = async () => ({ code: 0, out: "{}" });
 
@@ -848,7 +846,7 @@ test("a failed second PR leaves the old number in place rather than none at all"
 
 test("nobody confirms a merge by hand: GitHub is the only source, and it winds the group up", async () => {
   const { app, db, ctx } = harness();
-  db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 7, worktree = '/tmp/wt', merge_seq = 1 WHERE id = 1");
+  db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = 7, merge_seq = 1 WHERE id = 1");
 
   // The button that asked the boss to confirm is gone. It dissolved a group on
   // trust, and one mis-click archived a branch whose PR was still open.

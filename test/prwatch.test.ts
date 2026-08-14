@@ -27,7 +27,7 @@ function harness() {
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run(
-    "INSERT INTO grp (project_id, name, status, worktree, branch, created_at) VALUES (1, 'g1', 'PR_OPEN', '/tmp/wt/g1', 'orch/g1', 0)",
+    "INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'PR_OPEN', 'orch/g1', 0)",
   );
   return { db, ctx };
 }

@@ -1,5 +1,7 @@
 import type { Ctx } from "../api.ts";
-import { rollbackTo, type GitRunner } from "./worktree.ts";
+import { rollbackTo } from "./worktree.ts";
+import { sandboxGit } from "./checkout.ts";
+import { WORK } from "./sandbox.ts";
 import { dropGroup } from "./start.ts";
 
 /**
@@ -44,7 +46,6 @@ export interface ChainDeps {
   /** Wired by api.ts: records a boss fact and checks whether it is the third of its kind. */
   bossFact?: (grpId: number | null, body: string) => void;
   ctx: Ctx;
-  git?: GitRunner;
   /** Tell the boss. Wired to the notifier by the server. */
   notifyBoss?: (escId: number, question: string, severity: string) => void;
 }
@@ -252,30 +253,20 @@ export async function revoke(
   if (esc.grp_id) ctx.sched.cancelPending(esc.grp_id, "answer revoked");
 
   let rolledBackTo: string | undefined;
-  if (esc.checkpoint_sha && esc.grp_id && deps.git) {
-    const grp = ctx.db
-      .query<{ worktree: string | null; project_id: number }, [number]>(
-        "SELECT worktree, project_id FROM grp WHERE id = ?",
-      )
-      .get(esc.grp_id);
-    const repo = grp
-      ? ctx.db
-          .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-          .get(grp.project_id)?.repo_path
-      : undefined;
-    if (repo && grp?.worktree) {
-      const back = await rollbackTo(deps.git, repo, grp.worktree, esc.checkpoint_sha);
-      if (back.ok) rolledBackTo = esc.checkpoint_sha;
-      else {
-        ctx.bus.emit({
-          grpId: esc.grp_id,
-          author: "orchestrator",
-          kind: "escalation",
-          intent: "inform",
-          severity: "advisory",
-          body: `answer revoked, but the rollback to ${esc.checkpoint_sha.slice(0, 8)} failed: ${back.error}`,
-        });
-      }
+  // The group's own checkout. Gated on `grp.worktree` before — a column nothing
+  // writes — so revoking an answer never actually revoked the work done on it.
+  if (esc.checkpoint_sha && esc.grp_id) {
+    const back = await rollbackTo(sandboxGit(ctx, { grp: esc.grp_id }), WORK, WORK, esc.checkpoint_sha);
+    if (back.ok) rolledBackTo = esc.checkpoint_sha;
+    else {
+      ctx.bus.emit({
+        grpId: esc.grp_id,
+        author: "orchestrator",
+        kind: "escalation",
+        intent: "inform",
+        severity: "advisory",
+        body: `answer revoked, but the rollback to ${esc.checkpoint_sha.slice(0, 8)} failed: ${back.error}`,
+      });
     }
   }
   ctx.bus.emit({

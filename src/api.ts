@@ -413,7 +413,7 @@ const postSay: Handler = async (ctx, req) => {
     if (!grpId) return bad("triage needs a requirement");
     ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
     triage(
-      { ctx, git: ctx.git, bossFact: (g, body) => bossFact(ctx, g, body) },
+      { ctx, bossFact: (g, body) => bossFact(ctx, g, body) },
       grpId,
       b.as as Triage,
       said,
@@ -554,7 +554,7 @@ const postAskBoss: Handler = async (ctx, req) => {
     meta: { escalation_id: row.id },
   });
 
-  route({ ctx, git: ctx.git, notifyBoss: ctx.notifyBoss }, row.id);
+  route({ ctx, notifyBoss: ctx.notifyBoss }, row.id);
 
   const answer = await new Promise<string>((resolve) => {
     ctx.waiters.set(`escalation:${row.id}`, resolve);
@@ -671,7 +671,7 @@ const postAnswer2: Handler = async (ctx, req) => {
   const b = await body<{ escalation_id: number; answer?: string; abstain?: boolean; why?: string; ref?: number }>(req);
   const a = agentOf(ctx, req);
   if (!a) return bad("unknown or missing agent token");
-  const deps = { ctx, git: ctx.git, notifyBoss: ctx.notifyBoss };
+  const deps = { ctx, notifyBoss: ctx.notifyBoss };
 
   if (b.abstain) {
     // Abstaining is the expected move when a level is unsure: a guess made on
@@ -697,7 +697,7 @@ const postTriage: Handler = async (ctx, req) => {
   if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
-  triage({ ctx, git: ctx.git, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as as Triage, b.note ?? "");
+  triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as as Triage, b.note ?? "");
   return text("ok");
 };
 
@@ -781,7 +781,7 @@ const postEscalationRequirement: Handler = async (ctx, req, params) => {
 };
 
 const postRevoke: Handler = async (ctx, _req, params) => {
-  const out = await revoke({ ctx, git: ctx.git }, Number(params.id));
+  const out = await revoke({ ctx }, Number(params.id));
   return json(out);
 };
 
@@ -1778,7 +1778,7 @@ const postAnswer: Handler = async (ctx, req, params) => {
   // The boss answers through the same path a stand-in would, so unblocking the
   // caller and un-pausing the group cannot drift between the two.
   const r = chainAnswer(
-    { ctx, git: ctx.git },
+    { ctx },
     { escId: id, by: b.answered_by ?? "boss", answer: withAttachments(b.answer ?? "", b.attachments) },
   );
   return r.ok ? text("ok") : bad(r.error);
@@ -1894,7 +1894,7 @@ const postDelegate: Handler = async (ctx, req, params) => {
   });
   // route() skips a level with nobody in it, so this cannot strand the question:
   // worst case it comes straight back.
-  const landed = route({ ctx, git: ctx.git, notifyBoss: ctx.notifyBoss }, id);
+  const landed = route({ ctx, notifyBoss: ctx.notifyBoss }, id);
   return text(landed);
 };
 
@@ -2425,13 +2425,13 @@ const postGroupControl: Handler = async (ctx, req, params) => {
     }
     case "wake":
       if (!ctx.git) return bad("no git runner");
-      await unpark(ctx, ctx.git, grpId);
+      await unpark(ctx, grpId);
       return text("ok");
     case "interrupt": {
       const b = await body<{ mode?: string }>(req);
       const mode = b.mode === "rollback" ? "rollback" : "keep";
       if (!ctx.git) return bad("no git runner");
-      const out = await interrupt(ctx, ctx.git, grpId, mode);
+      const out = await interrupt(ctx, grpId, mode);
       return json(out);
     }
     default:

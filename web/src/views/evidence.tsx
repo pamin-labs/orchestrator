@@ -139,7 +139,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
       ) : view === "diff" ? (
         !ev.diff ? (
           <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>
-            没有 diff 可读。这一片没有记下基线 commit，或者 worktree 已经清掉了。
+            没有 diff 可读。这一片没有记下基线 commit，或者沙盒已经回收了。
           </div>
         ) : (
           // Machine surface: a transcript is a different substance from the

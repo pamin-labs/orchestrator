@@ -280,7 +280,7 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
           );
         })}
         {truncated && (
-          <Meta className="block px-3.5 py-2">改动超过 400k 字符，尾部没取回来，剩下的在 worktree 里</Meta>
+          <Meta className="block px-3.5 py-2">改动超过 400k 字符，尾部没取回来，剩下的在沙盒的 checkout 里</Meta>
         )}
         </div>
       </Panel>

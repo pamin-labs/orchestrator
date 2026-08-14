@@ -239,7 +239,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       severity: "advisory",
       body: t("wd.turn_timeout", { min: Math.round(cfg.turnTimeoutMs / 60000) }),
     });
-    if (j.grp_id) await interrupt(ctx, deps.git, j.grp_id, "keep");
+    if (j.grp_id) await interrupt(ctx, j.grp_id, "keep");
   }
 
   // 2. Consecutive turns that wrote nothing to the blackboard.
@@ -500,7 +500,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
          AND g.status NOT IN ('PLANNING', 'RUNNING', 'PR_OPEN')`,
     )
     .all();
-  for (const e of stranded) route({ ctx, git: deps.git, notifyBoss: ctx.notifyBoss }, e.id);
+  for (const e of stranded) route({ ctx, notifyBoss: ctx.notifyBoss }, e.id);
 
   // 10. The group it was waiting on has landed.
   //
@@ -584,7 +584,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     .all();
   for (const g of revivable) {
     if (!deps.ctx.git) break;
-    await unpark(ctx, deps.ctx.git, g.id);
+    await unpark(ctx, g.id);
     findings.push({ rule: "unparked", grpId: g.id, severity: "advisory", body: t("wd.unparked", { name: g.name }) });
   }
 
