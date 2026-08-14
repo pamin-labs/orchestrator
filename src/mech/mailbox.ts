@@ -33,7 +33,11 @@ const POLL_MS = 150;
  * request file is deleted first, which is what keeps a slow call from being
  * dispatched twice on the next tick.
  */
-async function serve(sb: ReturnType<typeof liveSandboxes>[number], base: string, path: string): Promise<void> {
+export async function serve(
+  sb: ReturnType<typeof liveSandboxes>[number],
+  base: string,
+  path: string,
+): Promise<void> {
   let env: Envelope;
   try {
     env = JSON.parse(await sb.files.readFile(path)) as Envelope;
@@ -44,6 +48,16 @@ async function serve(sb: ReturnType<typeof liveSandboxes>[number], base: string,
   await sb.files.deleteFiles([path]).catch(() => {});
 
   let answer: { status: number; text: string };
+  // `/orch/*` checks a token on every route; `/api/*` checks nothing, because
+  // its only caller was a browser on 127.0.0.1. The mailbox made the sandbox a
+  // caller on 127.0.0.1 too, and `orch` is not the only thing that can drop a
+  // file in `req/` — so without this an agent answers its own DRAFT, accepts its
+  // own slices and overwrites the boss's credentials. Hard constraint 3: this is
+  // an `if`, not a line in a role prompt.
+  if (!env.path.startsWith("/orch/")) {
+    await reply(sb, env.id, { status: 403, text: `not reachable from a sandbox: ${env.path}` });
+    return;
+  }
   try {
     const headers: Record<string, string> = { "x-orch-token": env.token ?? "" };
     if (env.body !== undefined) headers["content-type"] = "application/json";
@@ -58,8 +72,17 @@ async function serve(sb: ReturnType<typeof liveSandboxes>[number], base: string,
     // never come. Blocking forever is the one outcome worse than an error.
     answer = { status: 502, text: `orchestrator unreachable: ${e}` };
   }
-  await sb.files
-    .writeFiles([{ path: `${MAILBOX_DIR}/res/${env.id}.json`, data: JSON.stringify(answer), mode: FILE_MODE }])
+  await reply(sb, env.id, answer);
+}
+
+/** Every path out of `serve` writes one, or the agent blocks forever. */
+function reply(
+  sb: ReturnType<typeof liveSandboxes>[number],
+  id: string,
+  answer: { status: number; text: string },
+): Promise<unknown> {
+  return sb.files
+    .writeFiles([{ path: `${MAILBOX_DIR}/res/${id}.json`, data: JSON.stringify(answer), mode: FILE_MODE }])
     .catch(() => {});
 }
 

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { serve } from "../src/mech/mailbox.ts";
 
 /**
  * The agent's only way out.
@@ -60,6 +61,50 @@ test("a call becomes a request file and blocks until an answer appears", async (
   // The CLI clears its own answer. Otherwise a restarted orchestrator would see
   // a directory full of stale files it has no way to date.
   expect(existsSync(join(mb, "res", `${env.id}.json`))).toBe(false);
+});
+
+/**
+ * A sandbox is a `files` API and nothing else, as far as `serve` is concerned.
+ * `writes` is the assertion: the answer the agent would read back.
+ */
+function fakeFiles(req: Record<string, unknown>) {
+  const writes: Array<{ path: string; data: string }> = [];
+  return {
+    writes,
+    sb: {
+      files: {
+        readFile: async () => JSON.stringify(req),
+        deleteFiles: async () => {},
+        writeFiles: async (fs: Array<{ path: string; data: string }>) => writes.push(...fs),
+      },
+    } as any,
+  };
+}
+
+test("a sandbox cannot reach the boss's routes through the mailbox", async () => {
+  // `/api/*` takes no token — its only caller was a browser on 127.0.0.1. Without
+  // the guard this replays, and the agent approves its own DRAFT.
+  const { writes, sb } = fakeFiles({
+    id: "x",
+    method: "POST",
+    path: "/api/draft/1/approve",
+    token: "tok-1",
+  });
+  await serve(sb, "http://127.0.0.1:1", "/var/orch/req/x.json");
+
+  expect(writes).toHaveLength(1);
+  const answer = JSON.parse(writes[0]!.data);
+  // 403, not silence: a dropped request leaves the agent blocked forever.
+  expect(answer.status).toBe(403);
+  // 502 would mean it tried the fetch and the (unreachable) port refused it.
+  expect(answer.text).not.toContain("unreachable");
+});
+
+test("an /orch route still goes through", async () => {
+  const { writes, sb } = fakeFiles({ id: "y", method: "POST", path: "/orch/status", token: "tok-1" });
+  await serve(sb, "http://127.0.0.1:1", "/var/orch/req/y.json");
+  // Nothing is listening on port 1, so reaching the fetch at all is the assertion.
+  expect(JSON.parse(writes[0]!.data).status).toBe(502);
 });
 
 test("a non-200 answer is passed through as a failure, not swallowed", async () => {
