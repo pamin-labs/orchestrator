@@ -99,7 +99,10 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
                 already said — while a failing one is the whole reason to look. */}
             {ev.verdicts.length > 0 && (
               <Segment value="verdicts">
-                <span className={bad ? "text-bad" : undefined}>判词 {ev.verdicts.length}</span>
+                {/* English, like everything else on this row. 判词 next to build
+                    test typecheck was the mixed row again — and the gate names
+                    come out of config, so they are the half that cannot move. */}
+                <span className={bad ? "text-bad" : undefined}>verdicts {ev.verdicts.length}</span>
               </Segment>
             )}
             {ev.gates.map((g) => (
@@ -127,20 +130,23 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
       </div>
 
       {view === "verdicts" ? (
-        <div className={cn(PAD, "py-1.5")}>
+        /* Three columns of `过 | qa | 1800px of prose` is a paragraph set to four
+           times a readable measure, with the mark that matters at the far left of
+           it. Author and verdict on one line, the words under them at 72ch. */
+        <div className={cn(PAD, "py-1")}>
           {ev.verdicts.map((v, i) => {
             const no = failed(v);
             return (
-              <div key={i} className="grid grid-cols-[2rem_5rem_minmax(0,1fr)] gap-x-2 py-1 text-[0.75rem]">
-                {/* The verdict, as a mark. It was carried by the colour of the
-                    sentence alone, which is the one cue a reader skimming for a
-                    fail does not get until they have read the sentence. */}
-                <span className={cn("font-mono text-[0.6875rem]", no ? "text-bad" : "text-ok")}>
-                  {no ? "没过" : "过"}
-                </span>
-                {/* Wide enough for "orchestrator": at w-16 it ran into the verdict. */}
-                <span className="truncate font-mono text-[0.6875rem] text-ink-3">{v.author}</span>
-                <Verdict body={v.body} bad={no} />
+              <div key={i} className="max-w-[72ch] border-t border-rule-soft py-2 first:border-t-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-[0.6875rem] text-ink-3">{v.author}</span>
+                  <span className={cn("text-[0.6875rem] font-semibold", no ? "text-bad" : "text-ok")}>
+                    {no ? "没过" : "过"}
+                  </span>
+                </div>
+                <div className={cn("mt-0.5 text-[0.8125rem]", no ? "text-bad" : "text-ink-2")}>
+                  <Clamp lines={3}>{nl(v.body)}</Clamp>
+                </div>
               </div>
             );
           })}
@@ -161,21 +167,6 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
         <GateLog key={view} sliceId={sliceId} name={view} />
       )}
     </div>
-  );
-}
-
-/**
- * A verdict, two lines of it.
- *
- * QA writes a paragraph naming every file and line it checked, and three of those
- * stacked is a wall of prose above the diff they are about — the panel's own
- * point is the change, not the report on it.
- */
-function Verdict({ body, bad }: { body: string; bad: boolean }) {
-  return (
-    <span className={cn("min-w-0 break-words", bad ? "text-bad" : "text-ink-2")}>
-      <Clamp lines={2}>{nl(body)}</Clamp>
-    </span>
   );
 }
 
@@ -209,6 +200,11 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
   const body = q ? lines.filter((l) => l.toLowerCase().includes(q.toLowerCase())) : lines;
 
   if (text === null) return <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>读日志…</div>;
+  // An empty log is a sentence, not a pane. The strip plus an empty transcript
+  // surface drew three rules and a grey band around the word "nothing".
+  if (!lines.some((l) => l.trim())) {
+    return <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>{name} 没有输出。</div>;
+  }
 
   return (
     <div>
