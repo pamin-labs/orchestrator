@@ -14,6 +14,28 @@ be the category reflex ("AI tool, therefore dark"), and it is wrong for a page
 read in daylight next to an editor. A dark variant exists because the tool stays
 open into the evening, but it is the same design in dark ink, not a second design.
 
+## Less is more. 克制。
+
+The rule that outranks every other rule here: **add nothing the boss did not need
+to see.** Not fewer features, fewer marks on the screen for the same fact.
+
+Concretely, on every change ask:
+
+- Is this number already on the screen? A diffstat above a pane switch that
+  repeats it is the same three numbers twice, 200px apart. Print it once.
+- Is this box doing work? A border, a radius and a fill around content that
+  already sits inside a bordered list is three frames drawn around one thing.
+  Hairlines and a shared left edge say the same and cost nothing.
+- Is this control louder than what it controls? A black pressed pill switching
+  between panes competes with the diff it switches to. State can be carried by a
+  tint.
+- Would a sentence do what a paragraph is doing? QA's report is the working, not
+  the verdict. Two lines, the rest one click away.
+- Is this the whole label, or the whole label plus an explanation? Say it once.
+
+Density is not crowding. Dense means many facts, each stated once, aligned so the
+eye can compare them. Crowded means one fact stated three ways.
+
 ## Abstraction: a decision queue plus one pipeline per requirement
 
 Not a kanban. A board models moving cards between columns and the boss never

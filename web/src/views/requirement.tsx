@@ -47,16 +47,22 @@ export function Requirement({
   const mine = mineOf(asks);
   const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
 
-  // Select what needs the boss; failing that, what is moving; failing that, the first.
-  const wants = slices.find((s) => s.status === "awaiting_boss");
-  // The LAST one in flight. Work moves down the list, so the newest one that is
-  // not finished is where it has got to; the first is usually long accepted.
-  const moving = [...slices].reverse().find((s) => !["accepted", "pending"].includes(s.status));
-  const [picked, setPicked] = useState<number | null>(null);
-  // Falls back to the LAST slice, not the first. Something waiting on the boss
-  // or currently moving still wins, but with neither the interesting one is where
-  // the work has got to — the first slice is usually accepted and closed.
-  const shown = slices.find((s) => s.id === picked) ?? moving ?? wants ?? slices.at(-1);
+  // The LAST slice that has actually produced something — work moves down the
+  // list, so the newest one carrying evidence is where it has got to. `running`
+  // with no gate mark is a slice that has been handed out and written nothing:
+  // opening that one puts an empty evidence panel in front of the boss while the
+  // slice above it sits waiting to be accepted. Nothing worked on yet: everything
+  // stays shut rather than defaulting to a slice with nothing under it.
+  const worked = [...slices].reverse().find(
+    (s) =>
+      ["self_review", "gate", "qa", "awaiting_boss", "rejected"].includes(s.status) ||
+      (s.status === "running" && Object.keys(gates(s)).length > 0),
+  );
+  // `null` = nobody has clicked, take the default. `"none"` = the boss shut the
+  // default one; without a distinct value that click falls straight back to the
+  // default and the row will not close.
+  const [picked, setPicked] = useState<number | "none" | null>(null);
+  const shown = picked === "none" ? undefined : slices.find((s) => s.id === picked) ?? worked;
 
   const draft = g.status === "DRAFT" || g.status === "PLANNING";
   const active = tab ?? (mine.length ? "ask" : "slice");
@@ -100,30 +106,28 @@ export function Requirement({
 
           <TabPanel value="slice" className="flex min-h-0 flex-1 flex-col">
             {slices.length ? (
-              <>
-                {/* The lanes stay put; the evidence under them scrolls. They were
-                    in the same scroll pane, so reading a diff scrolled away the
-                    row that says which slice it belongs to — and the lanes are
-                    how you switch between them. Capped at 40% so eight slices
-                    cannot take the pane they select into. */}
-                <div className="max-h-[40%] shrink-0 overflow-y-auto overflow-x-hidden rounded-lg border border-rule">
-                  {slices.map((s) => (
+              /* The evidence opens under the row it belongs to. It used to sit in
+                 a second pane below the whole list, so the diff for S2 was drawn
+                 under S3 and the row it answers was two rows away from the two
+                 buttons that answer it. One accordion: rows and the one open body
+                 in the same scroll, the evidence header pinned inside it so the
+                 verdict buttons stay reachable while you read the diff. */
+              <Pane className="rounded-lg border border-rule">
+                {slices.map((s) => (
+                  <div key={s.id} className="border-t border-rule-soft first:border-t-0">
                     <SliceRow
-                      key={s.id}
                       st={st}
                       g={g}
                       s={s}
                       selected={s.id === shown?.id}
-                      onPick={() => setPicked(s.id === shown?.id ? null : s.id)}
+                      onPick={() => setPicked(s.id === shown?.id ? "none" : s.id)}
                     />
-                  ))}
-                </div>
-                {shown && (
-                  <Pane className="mt-2">
-                    <SliceDetail key={shown.id} st={st} g={g} s={shown} refresh={refresh} />
-                  </Pane>
-                )}
-              </>
+                    {s.id === shown?.id && (
+                      <SliceDetail key={s.id} st={st} g={g} s={s} refresh={refresh} />
+                    )}
+                  </div>
+                ))}
+              </Pane>
             ) : (
               <Pane>
                 <Working>正在拆解</Working>
@@ -299,9 +303,10 @@ function SliceRow({
   return (
     <button
       onClick={onPick}
+      aria-expanded={selected}
       className={cn(
         "grid w-full cursor-pointer grid-cols-[2rem_minmax(0,1fr)_auto_auto] items-center gap-x-3",
-        "border-t border-rule-soft px-3 py-2 text-left transition-colors first:border-t-0",
+        "px-3 py-2 text-left transition-colors",
         "max-[52rem]:grid-cols-[2rem_minmax(0,1fr)_auto]",
         selected ? "bg-sunk" : "hover:bg-sunk/60",
         waiting && "bg-accent-soft/60 hover:bg-accent-soft",
@@ -391,14 +396,14 @@ function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; ref
   ) : null;
 
   if (s.status === "pending") {
-    return <div className="mt-2 text-[0.75rem] text-ink-3">还没开工，等前面的切片查收。</div>;
+    return <div className="border-t border-rule-soft py-2 pl-14 pr-3 text-[0.75rem] text-ink-3">还没开工，等前面的切片查收。</div>;
   }
   return (
-    <div className="mt-1">
+    <div className="border-t border-rule-soft">
       {/* Only when it says something the slice title does not: one task whose title
           is the slice's own is the same line twice with a tick in front. */}
       {(tasks.length > 1 || (tasks[0] && tasks[0].title !== s.title)) && (
-        <ul className="list-none pb-1">
+        <ul className="list-none border-b border-rule-soft py-1.5 pl-14 pr-3">
           {tasks.map((t) => (
             <li key={t.id} className="flex gap-2 py-px text-[0.75rem]">
               <span className={cn("font-mono", t.status === "done" ? "text-ok" : "text-ink-3")}>
