@@ -579,7 +579,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     findings.push({ rule: "unparked", grpId: g.id, severity: "advisory", body: t("wd.unparked", { name: g.name }) });
   }
 
-  // 15. main moved under a group that is still working on it.
+  // 15. The group's base moved while it is still working.
   //
   // `landGroup` tells the groups still in the merge queue to rebase, which covers
   // the case where another group merged. It does not cover the boss pushing to
@@ -612,8 +612,8 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     // somebody pushes from another machine, and nothing here ever fetched, so
     // that half was invisible.
     await refreshOrigin(deps, g.repo);
-    const base = await defaultBase(deps.git, g.repo);
-    const head = await deps.git(g.repo, ["rev-parse", base], g.repo);
+    const baseRef = await defaultBase(deps.git, g.repo);
+    const head = await deps.git(g.repo, ["rev-parse", baseRef], g.repo);
     if (head.code !== 0) continue;
     const sha = head.out.trim();
     if (!sha || sha === g.seen) continue;
@@ -621,6 +621,8 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     if (merged.code === 0) continue; // already on it
 
     ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [sha, now(), g.id]);
+    const remoteBranch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : null;
+    const fetchStep = remoteBranch ? `\`orch git -- fetch origin ${remoteBranch}\` then ` : "";
     ctx.sched.enqueue("agent_turn", {
       grp_id: g.id,
       priority: 4,
@@ -628,9 +630,9 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
         role: "engineer",
         conflict: true,
         rejection:
-          `main moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
-          `\`orch git -- fetch origin main\` then \`orch git -- rebase origin/main\`, then carry on. ` +
-          `If main removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
+          `${baseRef} moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
+          `${fetchStep}\`orch git -- rebase ${baseRef}\`, then carry on. ` +
+          `If ${baseRef} removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
           `with \`orch ask-boss\`; that reaches the Architect.`,
       },
     });
@@ -638,7 +640,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       rule: "base_moved",
       grpId: g.id,
       severity: "advisory",
-      body: `main 动到了 ${sha.slice(0, 8)}，${g.name} 的基线落后了，已经让它先 rebase`,
+      body: `${baseRef} 动到了 ${sha.slice(0, 8)}，${g.name} 的基线落后了，已经让它先 rebase`,
     });
   }
 
