@@ -1,7 +1,5 @@
-import { Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Tip } from "./tooltip";
-import { cn } from "../lib/utils";
+import { Segment, Segments } from "./segment";
 
 /**
  * Light / dark / follow the system.
@@ -11,11 +9,19 @@ import { cn } from "../lib/utils";
  * happened to be when you first clicked. The stored value is the preference; the
  * `data-theme` attribute is always resolved to a concrete light or dark, which is
  * why the stylesheet needs one dark block instead of three.
+ *
+ * The control lives in settings, not in the header. It was an icon in the top
+ * right that cycled through three states one click at a time — a permanent
+ * control for a thing set once, and a cycle button cannot show what the other two
+ * options are. Applying the stored theme is separate from showing the control
+ * (`startTheme`, called at boot), because the page has to come up in the right
+ * theme whether or not anyone opens settings.
  */
 type Pref = "system" | "light" | "dark";
 const KEY = "orch.theme";
 const NEXT: Record<Pref, Pref> = { system: "light", light: "dark", dark: "system" };
 const ZH: Record<Pref, string> = { system: "跟随系统", light: "浅色", dark: "深色" };
+const CHANGED = "orch:theme";
 
 const read = (): Pref => {
   try {
@@ -31,48 +37,56 @@ const apply = (p: Pref) => {
   document.documentElement.dataset.theme = dark ? "dark" : "light";
 };
 
-export function ThemeToggle() {
+function set(p: Pref) {
+  try {
+    localStorage.setItem(KEY, p);
+  } catch {}
+  apply(p);
+  // So a control that is open follows the keyboard shortcut, and the other way
+  // round. One stored value, no second copy in React state to keep in step.
+  window.dispatchEvent(new CustomEvent(CHANGED));
+}
+
+/**
+ * Apply the stored theme and keep it applied. Called once, at boot.
+ *
+ * On "system" the OS can change under us — at sunset, on a schedule — and the
+ * page has to follow without a reload.
+ */
+export function startTheme(): void {
+  apply(read());
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (read() === "system") apply("system");
+  });
+  window.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== "l") return;
+    e.preventDefault();
+    set(NEXT[read()]);
+  });
+}
+
+/** The three states, said out loud. ⌘⇧L still cycles them from anywhere. */
+export function ThemeChoice() {
   const [pref, setPref] = useState<Pref>(read);
-
   useEffect(() => {
-    apply(pref);
-    try {
-      localStorage.setItem(KEY, pref);
-    } catch {}
-    if (pref !== "system") return;
-    // On "system" the OS can change under us — at sunset, on a schedule — and the
-    // page has to follow without a reload.
-    const mq = matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => apply("system");
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, [pref]);
-
-  // Its own listener rather than a prop from the shell: the state it flips lives
-  // here, and lifting it would be a second copy to keep in step.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== "l") return;
-      e.preventDefault();
-      setPref((p) => NEXT[p]);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const sync = () => setPref(read());
+    window.addEventListener(CHANGED, sync);
+    return () => window.removeEventListener(CHANGED, sync);
   }, []);
 
-  const Icon = pref === "system" ? Monitor : pref === "light" ? Sun : Moon;
   return (
-    <Tip label={`主题：${ZH[pref]}，点一下切到${ZH[NEXT[pref]]} ⌘⇧L`}>
-      <button
-        onClick={() => setPref((p) => NEXT[p])}
-        aria-label={`主题：${ZH[pref]}`}
-        className={cn(
-          "grid size-6.5 cursor-pointer place-items-center rounded-md text-ink-3",
-          "transition-colors hover:bg-sunk hover:text-ink",
-        )}
-      >
-        <Icon size={14} strokeWidth={1.75} />
-      </button>
-    </Tip>
+    <Segments
+      value={pref}
+      onValueChange={(v) => {
+        set(v as Pref);
+        setPref(v as Pref);
+      }}
+    >
+      {(Object.keys(ZH) as Pref[]).map((p) => (
+        <Segment key={p} value={p}>
+          {ZH[p]}
+        </Segment>
+      ))}
+    </Segments>
   );
 }

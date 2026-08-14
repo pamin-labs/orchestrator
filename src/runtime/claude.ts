@@ -159,13 +159,16 @@ export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
     s.systemAppend,
     // What is loaded, not what is permitted: `--dangerously-skip-permissions`
     // above bypasses every permission check, so `--allowedTools` alongside it is
-    // inert. `--tools` is the one that pays — measured, the built-in set plus
-    // skills and slash commands is ~46k cached tokens of prefix on every turn, so
-    // this picks the built-in set and `--disable-slash-commands` drops the skill
-    // catalogue. `allowedTools` in the role yaml still feeds it (assemble.ts).
+    // inert. `--tools` is the one that pays, so this picks the built-in set.
+    // `allowedTools` in the role yaml still feeds it (assemble.ts).
+    //
+    // `--disable-slash-commands` used to sit here too. Its help line is "Disable
+    // all skills", which is exactly what it did: an agent could not use a skill at
+    // all. Now the boss picks which skills get staged into the read-only mount
+    // (`skills.ts`), so the catalogue in the prefix is the set that was ticked
+    // rather than the ~180 on the boss's machine that measured ~46k tokens.
     "--tools",
     s.tools.join(","),
-    "--disable-slash-commands",
   ];
   // Already clamped to what this provider accepts (providers.ts), because effort
   // is part of the hashed prefix and the hash has to describe what was sent.

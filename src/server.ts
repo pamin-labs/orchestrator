@@ -12,6 +12,7 @@ import { makeGitRunner } from "./mech/worktree.ts";
 import { REAL } from "./mech/sandbox.ts";
 import { startMailbox } from "./mech/mailbox.ts";
 import { preflight, report } from "./mech/preflight.ts";
+import { restageSkills } from "./mech/skills.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
 import { bothRead, modelAsk, noteLeaves, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
@@ -409,10 +410,16 @@ export function start(overrides: Partial<Config> = {}): Started {
   // same routes.
   const stopMailbox = startMailbox(ctx);
 
+  // The directory every sandbox mounts read-only. Rebuilt here because the boss
+  // installs and uninstalls skills outside this process; a tick box rebuilds it
+  // again, and neither needs a container restarted.
+  const skills = restageSkills(db, cfg.dataDir);
+  if (skills.failed.length) consola.warn(`skills skipped (dangling): ${skills.failed.join(", ")}`);
+
   // Say what is missing here, once, rather than letting every group discover it
   // one failed turn at a time. Not fatal: the panel can be opened and the
   // settings page is where three of these are fixed.
-  void preflight({ db, sandbox: cfg.sandbox }).then((checks) => {
+  void preflight({ db, sandbox: cfg.sandbox, dataDir: cfg.dataDir }).then((checks) => {
     const bad = report(checks);
     if (bad) consola.warn(`preflight:\n${bad}`);
   });

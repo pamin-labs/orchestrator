@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readlinkSync } from "node:fs";
 import { cpus, homedir } from "node:os";
-import { join } from "node:path";
-import { ConnectionConfig, Sandbox } from "@alibaba-group/opensandbox";
+import { join, resolve } from "node:path";
+import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../api.ts";
 import { ROOT } from "../config.ts";
 import type { ResourceExec } from "./lease.ts";
@@ -295,11 +295,19 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
     },
     // `grp-1`, not `grp:1`: metadata values must be alphanumeric plus `-_.`, and
     // a colon is a 400 at creation — which fails the group, not the label.
-    volumes: Object.entries(spec.cacheDirs).map(([mountPath, hostPath], i) => ({
-      name: `cache-${i}`,
-      host: { path: hostPath },
-      mountPath,
-    })),
+    volumes: [
+      ...Object.entries(spec.cacheDirs).map(([mountPath, hostPath], i) => ({
+        name: `cache-${i}`,
+        host: { path: hostPath },
+        mountPath,
+      })),
+      // The boss's own skills, staged into one dereferenced directory on the host
+      // (`stageSkills`) and mounted where each CLI looks for them, so the agent
+      // finds and invokes a skill by itself instead of waiting to be handed one.
+      // Read-only: what the boss ticks is the whole contract, and a group editing
+      // the set every other group mounts is not part of it.
+      ...skillMounts(ctx),
+    ],
     metadata: { owner: `${holder(scope).table}-${holder(scope).id}` },
   });
   live.set(sb.id, sb);
@@ -368,6 +376,24 @@ const EXEC_MODE = 755;
 
 /** Where a group's checkout lives inside its sandbox. */
 export const WORK = "/work";
+
+/**
+ * The staged skills, mounted where each CLI already looks.
+ *
+ * HOME is `/root` in the image, so both are the container's user scope. One host
+ * directory, two mount paths: a skill is a directory with a SKILL.md either way,
+ * and neither CLI cares which of the two directories the boss installed it into.
+ */
+export function skillMounts(ctx: Ctx): Volume[] {
+  // Absolute: the sandbox server reads this as its own filesystem path and
+  // rejects anything that does not start with `/`.
+  const path = resolve(ctx.config?.dataDir ?? "data", "skills");
+  if (!existsSync(path)) return [];
+  return [
+    { name: "skills-claude", host: { path }, mountPath: "/root/.claude/skills", readOnly: true },
+    { name: "skills-codex", host: { path }, mountPath: `${CODEX_HOME}/skills`, readOnly: true },
+  ];
+}
 
 /** The agent's only way out: a request is a file here, the answer is another. */
 export const MAILBOX_DIR = "/var/orch";

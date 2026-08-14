@@ -5,7 +5,6 @@ import { Button } from "./ui/button";
 import { AskHost } from "./ui/confirm";
 import { Switcher } from "./ui/switcher";
 import { STATUS_ZH } from "./lib/select";
-import { ThemeToggle } from "./ui/theme";
 import { UsageBar } from "./ui/usage";
 import { Tip, TipRoot } from "./ui/tooltip";
 import { Card, CardBody, CardTitle } from "./ui/card";
@@ -28,7 +27,9 @@ import { CostView, Desk, Owns } from "./views/tables";
 // `req` is a drill-in, not a tab: it only exists with a requirement selected, and
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
-type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes" | "settings" | "config";
+type View =
+  | "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes"
+  | "settings" | "config" | "skills";
 
 /**
  * Views that keep something pinned and scroll the rest themselves.
@@ -47,7 +48,7 @@ const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", 
  * They are one dialog now, two groups in its left rail — but every link already
  * sent still lands, on the section it used to be.
  */
-const DIALOG: Partial<Record<View, Section>> = { settings: "cred", config: "gates" };
+const DIALOG: Partial<Record<View, Section>> = { settings: "cred", config: "gates", skills: "skills" };
 interface Sel { p: number | null; view: View; g: number | null; t: string | null }
 
 const readHash = (): Sel => {
@@ -391,7 +392,7 @@ export function App() {
             answers "is this wired up", which is asked once and then never again
             until something breaks — and when it does break, the accent says so
             from here. It opens over the work rather than replacing it. */}
-        <Tip label="设置：账号、环境、这个项目的闸门和沙盒 ⌘S">
+        <Tip label="设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S">
           <button
             onClick={() => go({ view: "settings" })}
             aria-label="设置"
@@ -406,7 +407,6 @@ export function App() {
             )}
           </button>
         </Tip>
-        <ThemeToggle />
         </span>
       </header>
 

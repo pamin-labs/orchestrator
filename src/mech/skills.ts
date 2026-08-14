@@ -1,25 +1,26 @@
-import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import type { DB } from "../db.ts";
 
 /**
- * Skills, materialised into the turn instead of loaded as a catalogue.
+ * Skills reach an agent two ways, and both are needed.
  *
- * Agents run with `--disable-slash-commands` and `--setting-sources project,local`,
- * both measured: the skill catalogue plus slash commands is ~46k cached tokens of
- * prefix on EVERY turn, and inheriting the boss's user-level setup pushed a trivial
- * haiku turn to ~195k. So "/impeccable" typed at an agent does nothing, and turning
- * the catalogue back on would tax every turn for a skill used in one.
+ * **Mounted.** `stageSkills` builds one directory of the skills the boss ticked
+ * and the sandbox mounts it read-only at both CLIs' skill paths, so the agent
+ * discovers and invokes them itself. This is prefix: every skill in there costs
+ * name + description on EVERY turn of EVERY agent (measured: the boss's whole
+ * ~180-skill set plus slash commands was ~46k cached tokens). That is the bill the
+ * tick boxes control, and why the settings page states it out loud.
  *
- * What the boss actually wants is narrower than a catalogue: *this* skill, on *this*
- * requirement. So the orchestrator reads the SKILL.md itself — on the host, where it
- * has the whole filesystem, including `~/.claude/skills` that the agent deliberately
- * cannot see — and appends the text to that turn's delta. One turn pays for one
- * skill, the cache prefix is untouched, and a user-level skill reaches an agent that
- * was never given access to it.
+ * **Injected.** The boss naming a skill in a requirement still makes the
+ * orchestrator read that SKILL.md on the host and append it to that one turn's
+ * delta (`executor.ts`). Narrower than the catalogue and free: one turn pays for
+ * one skill, and it works for a skill that was never ticked.
  *
- * The path travels with the message too, so anything the skill references (its
- * reference/*.md, its scripts) is one `Read` away for a role that has Read.
+ * `--setting-sources project,local` stays on regardless — that flag governs
+ * settings, not skill discovery, and inheriting the boss's user-level setup
+ * measured ~195k cached tokens on a trivial haiku turn.
  */
 
 export interface SkillRef {
@@ -150,4 +151,88 @@ export function readSkill(ref: SkillRef): string {
 /** Names to carry on a job payload; the text is read at turn time, not stored. */
 export function skillNames(text: string, repoPath?: string | null): string[] {
   return referencedSkills(text, listSkills(repoPath)).map((s) => s.name);
+}
+
+const OFF_KEY = "skills.off";
+
+/**
+ * Which skills the boss unticked.
+ *
+ * The off-list, not the on-list: a skill installed tomorrow is available tomorrow
+ * without anyone going back to tick it.
+ */
+export function skillsOff(db: DB): string[] {
+  const row = db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(OFF_KEY);
+  try {
+    return JSON.parse(row?.v ?? "[]") as string[];
+  } catch {
+    return [];
+  }
+}
+
+export function setSkillOff(db: DB, name: string, off: boolean): string[] {
+  const next = skillsOff(db).filter((n) => n !== name);
+  if (off) next.push(name);
+  db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
+    OFF_KEY,
+    JSON.stringify(next),
+  ]);
+  return next;
+}
+
+/** Stage what is ticked. Called at boot and after every tick. */
+export function restageSkills(db: DB, dataDir: string): ReturnType<typeof stageSkills> {
+  const off = new Set(skillsOff(db));
+  return stageSkills(dataDir, listSkills().filter((s) => !off.has(s.name)));
+}
+
+/**
+ * The one directory every sandbox mounts, built from the skills still ticked.
+ *
+ * Copied, not symlinked, and copied with `dereference` — both skill directories on
+ * a real machine are symlink farms (`~/.claude/skills/impeccable ->
+ * ../../.agents/skills/impeccable`, codex's point into its plugin cache), and a
+ * symlink whose target was never mounted is a dangling link inside the container.
+ *
+ * Updated in place rather than rebuilt beside and renamed: the container mounted
+ * this directory, so a rename leaves every running sandbox looking at the old one.
+ *
+ * Callers pass `listSkills()` minus what the boss unticked — user scope only. A
+ * project's own `.claude/skills` is inside the checkout the CLI already runs in,
+ * and mounting a second copy over it is how two versions of one skill start
+ * disagreeing.
+ */
+export function stageSkills(dataDir: string, want: SkillRef[]): { dir: string; staged: string[]; failed: string[] } {
+  const dir = join(dataDir, "skills");
+  mkdirSync(dir, { recursive: true });
+  const keep = new Set(want.map((s) => s.name));
+
+  for (const name of readdirSync(dir)) {
+    if (!keep.has(name)) rmSync(join(dir, name), { recursive: true, force: true });
+  }
+
+  const staged: string[] = [];
+  const failed: string[] = [];
+  for (const s of want) {
+    const dst = join(dir, s.name);
+    try {
+      // ponytail: SKILL.md's mtime stands for the whole skill. A touched
+      // reference/*.md alone is missed until the skill is re-ticked; re-copying
+      // 2.7MB of plugin skills on every boot to catch that is the worse trade.
+      const src = statSync(s.file).mtimeMs;
+      if (existsSync(join(dst, "SKILL.md")) && statSync(join(dst, "SKILL.md")).mtimeMs >= src) {
+        staged.push(s.name);
+        continue;
+      }
+      rmSync(dst, { recursive: true, force: true });
+      cpSync(dirname(s.file), dst, { recursive: true, dereference: true });
+      staged.push(s.name);
+    } catch {
+      // A dangling symlink, or a skill uninstalled mid-scan. Skipping one skill
+      // beats failing the mount every other skill depends on.
+      rmSync(dst, { recursive: true, force: true });
+      failed.push(s.name);
+    }
+  }
+  return { dir, staged, failed };
 }

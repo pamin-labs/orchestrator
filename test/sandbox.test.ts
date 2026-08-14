@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { open } from "../src/db.ts";
-import { keyInConfig, lineSplitter, specFor } from "../src/mech/sandbox.ts";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { keyInConfig, lineSplitter, skillMounts, specFor } from "../src/mech/sandbox.ts";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { httpsRemote } from "../src/mech/checkout.ts";
 import type { Ctx } from "../src/api.ts";
 
@@ -129,4 +129,22 @@ test("a commented-out key is not a key", () => {
   const f = join(dir, "sandbox.toml");
   writeFileSync(f, '[server]\n# api_key = "example"\napi_key = ""\n');
   expect(keyInConfig(f)).toBeNull();
+});
+
+test("staged skills mount read-only, on an absolute path, at both CLIs' paths", () => {
+  // Relative is the trap: the sandbox server resolves this against its own
+  // filesystem and rejects anything that does not start with `/`, which fails
+  // container creation for every group at once. Read-only is the other half —
+  // one group editing the set every other group mounts is not a thing to allow.
+  const dir = mkdtempSync(join(tmpdir(), "orch-sk-mount-"));
+  mkdirSync(join(dir, "skills", "alpha"), { recursive: true });
+  const mounts = skillMounts(ctx({ dataDir: relative(process.cwd(), dir) }));
+
+  expect(mounts.map((m) => m.mountPath)).toEqual(["/root/.claude/skills", "/root/.codex/skills"]);
+  for (const m of mounts) {
+    expect(m.readOnly).toBe(true);
+    expect(m.host?.path).toBe(join(dir, "skills"));
+  }
+  // Nothing ticked: no mount rather than a mount of a directory that is not there.
+  expect(skillMounts(ctx({ dataDir: join(dir, "nope") }))).toEqual([]);
 });

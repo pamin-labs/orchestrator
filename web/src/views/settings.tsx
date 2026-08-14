@@ -1,6 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useState } from "react";
-import { Box, Check, CircleAlert, KeyRound, ListChecks, MonitorCog, Server, X } from "lucide-react";
+import {
+  Box, Check, CircleAlert, KeyRound, ListChecks, MonitorCog, Server, SlidersHorizontal, Sparkles, X,
+} from "lucide-react";
 import { H2, Head, Input, Meta, Pane, Textarea } from "../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
 import { Button } from "../ui/button";
@@ -8,7 +10,9 @@ import { Segment, Segments } from "../ui/segment";
 import { Tip } from "../ui/tooltip";
 import { pull, post } from "../lib/api";
 import { clock, cn } from "../lib/utils";
+import { ThemeChoice } from "../ui/theme";
 import { Gates, Sandbox, type ProjectConfig } from "./project";
+import { Skills } from "./skills";
 
 /**
  * Everything that is configured rather than worked on, in one dialog.
@@ -30,7 +34,7 @@ import { Gates, Sandbox, type ProjectConfig } from "./project";
  */
 
 type Mode = "oauth_token" | "api_key" | "chatgpt";
-export type Section = "cred" | "host" | "server" | "gates" | "sandbox";
+export type Section = "cred" | "host" | "server" | "skills" | "prefs" | "gates" | "sandbox";
 
 interface AuthRow {
   runtime: string;
@@ -88,6 +92,10 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   { key: "cred", zh: "账号", icon: KeyRound },
   { key: "host", zh: "环境", icon: MonitorCog },
   { key: "server", zh: "沙盒服务器", icon: Server },
+  // This machine's skills, not this project's: the same staged directory is
+  // mounted into every group of every project.
+  { key: "skills", zh: "技能", icon: Sparkles },
+  { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
   { key: "gates", zh: "闸门", icon: ListChecks, project: true },
   { key: "sandbox", zh: "沙盒", icon: Box, project: true },
 ];
@@ -238,6 +246,20 @@ export function SettingsDialog({
                 <Env checks={checks.filter((c) => !isCredential(c))} />
               ) : here === "server" ? (
                 <SandboxKey current={rows.find((x) => x.runtime === "sandbox")} onSaved={load} />
+              ) : here === "skills" ? (
+                <Skills projectId={projectId} />
+              ) : here === "prefs" ? (
+                <>
+                  <Head title="偏好" note="只在这台机器上，不跟着项目走" />
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel>主题</FieldLabel>
+                      <FieldContent>
+                        <ThemeChoice />
+                      </FieldContent>
+                    </Field>
+                  </FieldGroup>
+                </>
               ) : proj ? (
                 here === "gates" ? (
                   <Gates d={proj} patch={patch} />

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "./button";
 import { Textarea } from "./bits";
 import { Card, CardHeader, CardTitle } from "./card";
+import { ask } from "./confirm";
 import { cn } from "../lib/utils";
 import { FilePicker } from "../views/picker";
 
@@ -50,7 +51,11 @@ async function walk(items: DataTransferItemList): Promise<Picked[]> {
   await Promise.all(roots.map((r) => one(r, "")));
   return out;
 }
-export interface Skill { name: string; path: string; description: string; scope: "project" | "user" }
+export interface Skill {
+  name: string; path: string; description: string; scope: "project" | "user";
+  /** Staged into the sandbox mount, so an agent can reach for it unprompted. */
+  on: boolean;
+}
 export interface Draft {
   text: string;
   attachments: { name: string; path: string; type: string; label: string }[];
@@ -84,6 +89,9 @@ const SKILLS = new Map<string, Skill[]>();
 const SKILLS_IN_FLIGHT = new Map<string, Promise<Skill[]>>();
 
 const cachedSkills = (projectId?: number): Skill[] | null => SKILLS.get(String(projectId ?? "")) ?? null;
+
+/** Ticking a skill in settings changes `on` here; the cache would say otherwise. */
+export const forgetSkills = () => SKILLS.clear();
 
 function loadSkills(projectId?: number): Promise<Skill[]> {
   const key = String(projectId ?? "");
@@ -178,8 +186,32 @@ export function Composer({
     setSlash(m && (skills?.length ?? 0) > 0 ? { from: caret - m[1]!.length - 1, q: m[1]!.toLowerCase() } : null);
   };
 
-  const insertSkill = (sk: Skill) => {
+  /** Drop the `/query` that opened the picker, leaving the rest of the sentence. */
+  const dropSlash = () => {
     if (!slash) return;
+    setText(text.slice(0, slash.from) + text.slice(slash.from + slash.q.length + 1));
+    setSlash(null);
+    box.current?.focus();
+  };
+
+  const insertSkill = async (sk: Skill) => {
+    if (!slash) return;
+    // An unticked skill is not in the sandbox mount. Naming it here still works —
+    // the text is injected into this one turn — but the agent cannot reach for it
+    // on its own afterwards, and that difference is invisible from the picker.
+    if (!sk.on) {
+      const go = await ask({
+        title: `${sk.name} 没启用`,
+        body: "没勾选的技能不在沙盒里，agent 自己找不到它。去设置里勾上，还是取消这次插入？",
+        yes: "去设置",
+      });
+      dropSlash();
+      if (!go) return;
+      const h = new URLSearchParams(location.hash.slice(1));
+      h.set("v", "skills");
+      location.hash = h.toString();
+      return;
+    }
     const next = `${text.slice(0, slash.from)}${sk.path} `;
     setText(next + text.slice(slash.from + slash.q.length + 1));
     setSlash(null);
@@ -414,6 +446,9 @@ export function Composer({
               <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">
                 {sk.scope === "project" ? "项目" : "全局"}
               </span>
+              {/* Still offerable — the text is injected either way — but the agent
+                  cannot reach for this one by itself until it is ticked. */}
+              {!sk.on && <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">未启用</span>}
               <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{sk.description}</span>
               <span className="shrink-0 font-mono text-[0.625rem] text-ink-3">Tab</span>
             </button>

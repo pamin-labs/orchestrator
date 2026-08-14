@@ -92,7 +92,7 @@ QA 的判决有内容不是盖章：`S2 pass: Unknown lang values explicitly fal
 - 沙盒**只有 deny 语义**：`allowWrite` 无法在 `denyWrite` 里开口子；不加 `denyWrite` 时写 cwd 之外是**允许**的
 - `allowUnixSockets` 无效；`allowAllUnixSockets: true` 会连带打开 `/var/run/docker.sock`（一行逃逸）；`excludedCommands` 让**整条命令行**脱离沙盒。→ **localhost TCP + 每 agent token**
 - `failIfUnavailable: true` 必开 —— 每种配错都是**静默**失效
-- `--allowedTools` 只管权限、不裁 tool 定义。加 `--tools` + `--disable-slash-commands` + `--setting-sources project,local`：前缀 46k → 17.6k tokens、成本 $0.117 → $0.059
+- `--allowedTools` 只管权限、不裁 tool 定义。加 `--tools` + `--disable-slash-commands` + `--setting-sources project,local`：前缀 46k → 17.6k tokens、成本 $0.117 → $0.059。（`--disable-slash-commands` 后来撤了 —— 它的 help 原文是 "Disable all skills"，省下的这部分是拿整个技能功能换的，见 `docs/decisions/006`）
 - **每个角色都要只读 shell**（`ls`/`cat`/`find`/`grep`/只读 git）。只给 `Bash(orch *)` 时规划岗的 `ls`、`cat` 全被拒，而 headless 下拒绝是**静默的** —— 它们只是看起来困惑并白烧 turn
 - **管道把 `orch` 放最前面**：权限检查读命令行开头
 - **复合命令要求每一段都命中规则**，所以少一个只读 builtin 就废掉整行 —— Auditor 的 `ls && cat package.json && (test -f tsconfig.json && …)` 被整条拒。`cd`/`pwd`/`test`/`basename`/`dirname` 现在都在只读白名单里
@@ -517,4 +517,23 @@ preflight 那条改准了：本地留着旧 egress 不再误报 —— server �
 
 **文档扫尾**：PLAN.md 的 §2/§4/§5/§8/§10/§12 还在写 Seatbelt、`--settings <clearance-profile.json>`、「Runner 跑在 host 上有真权限」、`denyWrite` 挡住越界写；decisions 003/004 重新标了 status（004 的三条决定有两条被 005 取代）；005 的 header 说 vault 还开着，其实早落了，Ceiling 里补上信箱这条。**不扫的话，下一个人照着 PLAN.md 会把 clearance 那套建回来。**
 
-`bun test test/` 498 pass。注意 `bun test` 不加路径会把 `data/codex-home/` 里的插件模板也当测试跑（27 个无关失败）—— 一直如此，跑 `bun test test/`。
+`bun test test/` 498 pass。
+
+## 技能进沙盒（决策 006）
+
+**`--disable-slash-commands` 的 help 原文是 "Disable all skills"。** 002 用它省前缀，省下来的那部分是拿整个技能功能换的 —— 打给 agent 的 `/impeccable` 一直什么都不发生，而 PLAN.md 把这件事写成「技能不走 slash 命令」，读起来像个设计选择。剩下的那条注入路径（老板在输入框提到技能名 → 宿主读 SKILL.md → 塞进那一个 turn 的 delta）是好的，但只有老板能发起：agent 干到第 20 个 turn 时，不知道有哪个技能能帮它。005 之后还更糟 —— 技能正文里指的 `reference/*.md` 是宿主 home 里的路径，容器里根本不存在。
+
+现在两条路并存：
+
+- **挂的**：勾中的全局技能，宿主解引用复制到 `<dataDir>/skills`，每个沙盒只读挂在 `/root/.claude/skills` 和 `$CODEX_HOME/skills`，CLI 自己发现。
+- **塞的**：不变，没勾选的技能照样能这么给。
+
+**必须是复制不是挂原目录**：`~/.claude/skills` 和 `~/.codex/skills` 两边全是符号链接（本机 93 + 89 个，指向 `.agents/skills` 和 plugin cache），直接挂进容器是一目录断链。`cpSync({dereference:true})` 一步解决，去重顺手就完成了。**暂存目录必须原地增量改** —— 容器挂的是 inode，重建再 rename 会让所有在跑的沙盒盯着旧的。
+
+**勾选存的是关掉的那些**（`setting` 表，migration 023），所以明天装的技能明天就能用，不用回去勾。设置页把「勾了几个 · 每 turn 前缀约多少」摆在勾选框旁边 —— 这是老板自己的账单，硬约束 5。输入框的 `/` 面板照旧列全部技能，点到没勾的先问一句：去设置勾上，还是取消这次插入。
+
+**顺手**：主题从 nav 挪进设置的「偏好」（三态 Segments，比原来那个循环图标说得清；`startTheme()` 在 `main.tsx` 里先跑，避免首屏闪一下别的主题）。`bunfig.toml` 加 `[test] root = "test"` —— `bun test` 不加路径会把 `data/` 里别人的 `*.test.ts` 当成我们的（一直有 27 个无关失败，加上技能暂存目录只会更多）。
+
+**还没验的**：codex 读不读 `$CODEX_HOME/skills` 只有目录约定，没有文档；`test/sandbox-live.test.ts` 要补三条 —— 挂载可见、只读（`touch` 失败）、摘掉 flag 前后各跑一个 haiku turn 记前缀差值。沙盒服务端的 `allowed_host_paths` 必须包含 `<dataDir>/skills`，preflight 会把这条路径原样说出来（服务端自己的 TOML 不是我们能读的，所以只报要求，不假装检查过）。
+
+`bun test` 504 pass。

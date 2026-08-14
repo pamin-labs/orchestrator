@@ -1,0 +1,5 @@
+[test]
+# `bun test` with no path scans the whole tree, and the whole tree includes
+# `data/` — the codex home and the staged skills, both full of other people's
+# `*.test.ts`. Those failed as ours and buried the real result.
+root = "test"

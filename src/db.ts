@@ -503,6 +503,19 @@ const MIGRATIONS: string[] = [
   ALTER TABLE agent DROP COLUMN clearance;
   ALTER TABLE agent DROP COLUMN denial_turns;
   `,
+
+  // 023 — server-scope settings that are not a project's and not the yaml's.
+  //
+  // The skill tick boxes are the first: which of the boss's own skills get staged
+  // into the directory every sandbox mounts. It belongs to this machine, not to a
+  // project, and the boss edits it in the panel — so neither `project.config_json`
+  // nor the config yaml is the right home.
+  `
+  CREATE TABLE setting (
+    k TEXT PRIMARY KEY,
+    v TEXT NOT NULL
+  );
+  `,
 ];
 
 export type DB = Database;

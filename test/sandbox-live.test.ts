@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
@@ -7,6 +9,8 @@ import { RepoLock } from "../src/mech/gitlock.ts";
 import { loadConfig } from "../src/config.ts";
 import { createCheckout, httpsRemote, sandboxGit } from "../src/mech/checkout.ts";
 import { startMailbox } from "../src/mech/mailbox.ts";
+import { stageSkills } from "../src/mech/skills.ts";
+import { CODEX_HOME } from "../src/mech/auth.ts";
 import { ConnectionConfig, SandboxManager } from "@alibaba-group/opensandbox";
 import {
   closeAll,
@@ -168,6 +172,42 @@ live(
     } finally {
       stop();
       server.stop(true);
+      await killSandbox(c, scope).catch(() => {});
+      await closeAll();
+    }
+  },
+  240_000,
+);
+
+live(
+  "the staged skills are there, and the sandbox cannot write to them",
+  async () => {
+    const c = ctx();
+    const scope = { grp: 1 } as const;
+    // Stage one skill of our own, so this asserts the mount rather than whatever
+    // the machine running it happens to have installed.
+    const { dir } = stageSkills(cfg.dataDir, [
+      {
+        name: "live-check",
+        file: join(import.meta.dir, "fixtures", "live-check", "SKILL.md"),
+        rel: ".claude/skills/live-check/SKILL.md",
+        description: "d",
+        scope: "user",
+      },
+    ]);
+    expect(existsSync(join(dir, "live-check", "SKILL.md"))).toBe(true);
+    try {
+      // Both CLIs look in their own place; one host directory answers both.
+      for (const at of ["/root/.claude/skills", `${CODEX_HOME}/skills`]) {
+        const ls = await execIn(c, scope, `ls ${at}`);
+        expect(ls.out).toContain("live-check");
+        // Read-only: what the boss ticked is the contract, and one group editing
+        // the set every other group mounts is not part of it.
+        const w = await execIn(c, scope, `touch ${at}/nope 2>&1; echo rc=$?`);
+        expect(w.out).toContain("rc=1");
+      }
+    } finally {
+      rmSync(join(dir, "live-check"), { recursive: true, force: true });
       await killSandbox(c, scope).catch(() => {});
       await closeAll();
     }

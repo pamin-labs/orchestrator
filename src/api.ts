@@ -26,7 +26,7 @@ import { openPr, prBody, preflightPr } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/pageindex.ts";
 import { gatesFor, recordGate } from "./mech/gate.ts";
-import { listSkills, skillNames } from "./mech/skills.ts";
+import { listSkills, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/skills.ts";
 import { sediment } from "./mech/lessons.ts";
 import { say } from "./lang.ts";
 import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/validate.ts";
@@ -2787,25 +2787,46 @@ const getNotes: Handler = async (ctx, req) => {
 };
 
 /**
- * Skills the project carries, by path.
+ * Every skill on this machine, and whether agents can see it.
  *
- * Agents run with `--disable-slash-commands` and `--setting-sources project,local`
- * on purpose: the skill catalogue is ~46k cached tokens of prefix on every turn, and
- * inheriting the boss's user-level skills measured at ~195k on a trivial haiku turn.
- * So "/impeccable" typed into a requirement would do exactly nothing.
- *
- * What does work is the path: every role has Read, so naming the SKILL.md costs a
- * dozen tokens now and one read later, only in the turn that needs it. This route
- * exists so the composer can offer those paths instead of the boss remembering them.
+ * `on` is what the boss ticked: those get staged into the directory every sandbox
+ * mounts, so an agent discovers and invokes them itself. Unticked ones are still
+ * listed — naming one in a requirement injects it into that single turn — which is
+ * why the composer offers all of them and asks before using an unticked one.
  */
 const getSkills: Handler = async (ctx, req) => {
   const id = Number(new URL(req.url).searchParams.get("project"));
   const repo = ctx.db
     .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
     .get(id)?.repo_path;
+  const off = new Set(skillsOff(ctx.db));
   return json({
-    skills: listSkills(repo).map(({ name, rel, description, scope }) => ({ name, path: rel, description, scope })),
+    skills: listSkills(repo).map(({ name, rel, description, scope }) => ({
+      name,
+      path: rel,
+      description,
+      scope,
+      // A project skill lives in the checkout the CLI already runs in, so it is
+      // always visible and there is nothing to tick.
+      on: scope === "project" || !off.has(name),
+    })),
   });
+};
+
+/**
+ * Tick or untick one skill, then rebuild the staging directory.
+ *
+ * Rebuilt now rather than at the next sandbox: the mount is a directory, so what
+ * changes here is visible to every running container as soon as the next turn's CLI
+ * process starts. No sandbox is rebuilt for a tick box.
+ */
+const postSkill: Handler = async (ctx, req) => {
+  const b = (await req.json().catch(() => ({}))) as { name?: string; on?: boolean };
+  // No name is a rescan: the boss installed or removed a skill outside this
+  // process, and the staged copy is the only thing that does not know yet.
+  if (b.name) setSkillOff(ctx.db, b.name, b.on === false);
+  const { staged, failed } = restageSkills(ctx.db, ctx.config?.dataDir ?? "data");
+  return json({ staged: staged.length, failed });
 };
 
 const getDirs: Handler = async (ctx, req) => {
@@ -3115,6 +3136,7 @@ const getPreflight: Handler = async (ctx) =>
     checks: await preflight({
       db: ctx.db,
       sandbox: ctx.config.sandbox ?? { server: "127.0.0.1:8080", apiKey: "", image: "" },
+      dataDir: ctx.config.dataDir,
     }),
   });
 
@@ -3152,6 +3174,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/dirs$/, getDirs],
   ["GET", /^\/api\/notes$/, getNotes],
   ["GET", /^\/api\/skills$/, getSkills],
+  ["POST", /^\/api\/skills$/, postSkill],
   ["POST", /^\/api\/projects$/, postProject],
   ["POST", /^\/api\/ideas$/, postIdea],
   ["POST", /^\/api\/attach$/, postAttach],

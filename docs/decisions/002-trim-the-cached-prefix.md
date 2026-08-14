@@ -1,6 +1,10 @@
 # 002 Trim the prompt prefix: --tools, --disable-slash-commands, --setting-sources
 
-**Status**: accepted
+**Status**: accepted; the `--disable-slash-commands` half is superseded by 006.
+Its help line is "Disable all skills", and that is what it did — the saving below
+was paid for with the whole skill feature. Skills are now a read-only mount of the
+set the boss ticked, so the prefix carries what was chosen rather than everything
+or nothing. The `--tools` and `--setting-sources` findings still hold.
 **Date**: 2026-08-13
 **Adds to**: PLAN.md §7 token economics (a lever that section did not have).
 
