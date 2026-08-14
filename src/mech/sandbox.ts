@@ -5,7 +5,7 @@ import { ConnectionConfig, Sandbox } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../api.ts";
 import { ROOT } from "../config.ts";
 import type { ResourceExec } from "./lease.ts";
-import { vaultFor } from "./auth.ts";
+import { CODEX_HOME, filesFor, vaultBindings } from "./auth.ts";
 import { shq } from "./shq.ts";
 import type { TurnRunner } from "../runtime/claude.ts";
 
@@ -205,10 +205,19 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   live.set(sb.id, sb);
   remember(ctx, scope, sb.id);
   await provision(sb);
+  // A credential the CLI can only read from a file. See `filesFor` for why codex
+  // is the exception to everything else here.
+  const files = filesFor(ctx.db);
+  if (Object.keys(files).length) {
+    await sb.files.createDirectories([{ path: CODEX_HOME }]).catch(() => {});
+    await sb.files
+      .writeFiles(Object.entries(files).map(([path, data]) => ({ path, data, mode: 600 })))
+      .catch(() => {});
+  }
   // The real tokens go to the sidecar, never inside. Bound at creation because
   // `resume` rebuilds the sidecar with an empty vault, and a sandbox with no
   // vault answers 401 rather than saying the vault is missing.
-  const { credentials } = vaultFor(ctx.db);
+  const { credentials } = await vaultBindings(ctx.db);
   if (credentials.length) {
     await sb.credentialVault
       .create({

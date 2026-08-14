@@ -474,3 +474,19 @@ ubuntu:24.04                     2.4s 建出来
 镜像刷到最新：`execd v1.0.22`、`egress v1.1.6`，agent 镜像 `--pull` 重建。468 pass。
 
 preflight 那条改准了：本地留着旧 egress 不再误报 —— server 用哪个 tag 写在它自己的 toml 里，我们看不到，所以报「有没有够新的」并把「记得把 [egress] image 指过去」写进修法。
+
+### 凭据：两边都是 OAuth，都在 web 里点，都不进沙盒
+
+**claude** —— `claude setup-token` 的一年期 token，贴进设置页，真值只进 egress sidecar。
+
+**codex** —— 之前以为订阅走不通 vault，因为它的凭据是一对会自己刷新的 access/refresh token。查了官方 CI 文档（`learn.chatgpt.com/docs/auth/ci-cd-auth`）：官方做法就是「把 auth.json 放到 runner 上，让 codex 自己刷新，刷完存回去」—— 和我第一版做的一样。但同一篇里还有一句直接打在这个设计上：
+
+> Do not share the same file across concurrent jobs or multiple machines.
+
+一支车队正好是十个并发。所以改成：**refresh token 留在宿主，orchestrator 一家负责刷新**（`auth.openai.com/oauth/token` + client id `app_EMoamEEZ73f0CkXaXp7hrann`，两个都是从 codex 二进制里读出来的，不是猜的），沙盒拿到的是形状对、值是假的 auth.json，真 access token 由 sidecar 出站时换上。和 claude 完全同一个形状。
+
+**都不用你敲命令了。** 设置页每个 runtime 一个「点这里登录」：服务端在这台机器上跑一次官方 CLI 的登录，把它打印的链接推到界面上、顺手替你打开浏览器，你批准完凭据自己存下。不重实现 OAuth —— 两个 CLI 本来就会「打印链接、等浏览器、交出凭据」，重写一遍只会得到一份和上游脱节的实现。
+
+顺带修的：`vaultFor` 里 `chatgpt` 模式的跳过写在了 push 之后，于是整份 auth.json 被当成 bearer token 绑上去了 —— 测试抓到的。
+
+`bun test test/` 474 pass。

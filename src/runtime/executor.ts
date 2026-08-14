@@ -12,10 +12,10 @@ import { listSkills, readSkill } from "../mech/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, defaultBase, type GitRunner } from "../mech/worktree.ts";
-import { MAILBOX_DIR, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
+import { getFile, MAILBOX_DIR, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
 import { ensureCheckout, publishBranch, sandboxGit } from "../mech/checkout.ts";
 import { track, untrack } from "./running.ts";
-import { isAuthFailure, vaultFor } from "../mech/auth.ts";
+import { absorbCodexHome, CODEX_HOME, isAuthFailure, vaultFor } from "../mech/auth.ts";
 import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/watchdog.ts";
 import { runStandup } from "../mech/standup.ts";
 import { route } from "../mech/chain.ts";
@@ -302,6 +302,8 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
           // Format-plausible fakes. The real values are in the egress sidecar
           // and get swapped in on the way out; nothing in here is worth stealing.
           ...vaultFor(ctx.db).env,
+          // codex reads its login from a file, so it has to be told where.
+          CODEX_HOME,
         },
       },
       {
@@ -358,6 +360,14 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
         body: `could not take ${grp.branch} out of the sandbox: ${kept.reason}`,
       });
     }
+  }
+
+  // codex rotates its own tokens and rewrites auth.json, so the copy inside the
+  // sandbox runs ahead of ours within hours. Reading it back is what keeps the
+  // next sandbox able to log in at all.
+  if (provider.name === "codex" && job.grp_id) {
+    const rotated = await getFile(ctx, scope, `${CODEX_HOME}/auth.json`).catch(() => null);
+    if (rotated) absorbCodexHome(ctx.db, rotated);
   }
 
   recordCost(deps, agent, job, result, stable.hash);

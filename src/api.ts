@@ -10,6 +10,7 @@ import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
 import { execIn, killSandbox, putFile, WORK } from "./mech/sandbox.ts";
 import { listAuth, saveAuth } from "./mech/auth.ts";
+import { loginRuntimes, startLogin } from "./mech/login.ts";
 import { preflight } from "./mech/preflight.ts";
 import { sandboxGit } from "./mech/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
@@ -2934,7 +2935,17 @@ const postAuth: Handler = async (ctx, req) => {
   const secret = (b.secret ?? "").trim();
   if (!runtime) return bad("which runtime?");
   if (!secret) return bad("paste the token or key");
-  if (b.mode !== "oauth_token" && b.mode !== "api_key") return bad("mode is oauth_token or api_key");
+  if (b.mode !== "oauth_token" && b.mode !== "api_key" && b.mode !== "chatgpt")
+    return bad("mode is oauth_token, api_key or chatgpt");
+  // A pasted auth.json that is not JSON fails hours later as a login error, in
+  // a container, on somebody else's turn. Refuse it here instead.
+  if (b.mode === "chatgpt") {
+    try {
+      JSON.parse(secret);
+    } catch {
+      return bad("chatgpt wants the contents of ~/.codex/auth.json, which is JSON");
+    }
+  }
   if (b.baseUrl) {
     try {
       new URL(b.baseUrl);
@@ -2962,6 +2973,39 @@ const postAuth: Handler = async (ctx, req) => {
   return text("ok");
 };
 
+/**
+ * Log in from the panel, by running the CLI that already knows how.
+ *
+ * Returns as soon as there is a link to click, because the CLI blocks until the
+ * browser comes back and a button that waits silently for two minutes reads as
+ * broken. The rest arrives on the live feed, and the credential stores itself.
+ */
+const inFlight = new Map<string, ReturnType<typeof startLogin>>();
+
+const postLogin: Handler = async (ctx, req) => {
+  const b = await body<{ runtime?: string }>(req);
+  const runtime = (b.runtime ?? "").trim();
+  if (!loginRuntimes().includes(runtime)) return bad(`no login for ${runtime || "(nothing)"}`);
+  inFlight.get(runtime)?.cancel();
+
+  const run = startLogin(ctx, runtime);
+  if (!run) return bad(`no login for ${runtime}`);
+  inFlight.set(runtime, run);
+  void run.done.then((r) => {
+    inFlight.delete(runtime);
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: r.ok ? `${runtime} 登录好了` : `${runtime} 登录没成：${r.detail}`,
+    });
+  });
+
+  // A few hundred ms of waiting buys the link itself, which is the only part
+  // the boss can act on.
+  for (let i = 0; i < 60 && !run.url; i++) await Bun.sleep(100);
+  return json({ url: run.url, waiting: true });
+};
+
 const getPreflight: Handler = async (ctx) =>
   json({
     checks: await preflight({
@@ -2973,6 +3017,7 @@ const getPreflight: Handler = async (ctx) =>
 const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/auth$/, getAuth],
   ["POST", /^\/api\/auth$/, postAuth],
+  ["POST", /^\/api\/auth\/login$/, postLogin],
   ["GET", /^\/api\/preflight$/, getPreflight],
   ["POST", /^\/orch\/status$/, postStatus],
   ["POST", /^\/orch\/journal$/, postJournal],

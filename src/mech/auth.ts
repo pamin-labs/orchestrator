@@ -1,5 +1,6 @@
 import type { DB } from "../db.ts";
 import type { Credential } from "./sandbox.ts";
+import { accessToken, decoyAuth, isStale, parseAuth, refresh } from "./chatgpt.ts";
 
 /**
  * Where each runtime's credential comes from, and how it reaches the model.
@@ -12,7 +13,22 @@ import type { Credential } from "./sandbox.ts";
  * which together are what make this work at all.
  */
 
-export type AuthMode = "oauth_token" | "api_key";
+/**
+ * `chatgpt` is the odd one, and deliberately so.
+ *
+ * codex has exactly two non-interactive credential paths: an API key, or an
+ * `auth.json` in `$CODEX_HOME`. A ChatGPT-account login is the second — a pair
+ * of access and refresh tokens that codex itself rotates and rewrites — so it
+ * cannot go in the vault: what you would bind is one access token that expires
+ * in hours with nothing to renew it. claude's `setup-token` works precisely
+ * because it hands over a year-long token instead.
+ *
+ * So a ChatGPT subscription is stored whole, refreshed here on the host, and
+ * reaches the model as an injected header like everything else — the sandbox
+ * gets a decoy file. Its own mode because what is stored is a login rather than
+ * a key, and because only this one can go stale on its own.
+ */
+export type AuthMode = "oauth_token" | "api_key" | "chatgpt";
 
 export interface RuntimeAuth {
   runtime: string;
@@ -79,6 +95,94 @@ export function listAuth(db: DB): Array<{ runtime: string; mode: AuthMode; hint:
     }));
 }
 
+/** Where codex looks for its login inside a sandbox. */
+export const CODEX_HOME = "/root/.codex";
+
+/**
+ * Files a sandbox needs because the CLI reads a file and nothing else.
+ *
+ * codex is the only one, and what it gets is a decoy: enough to start and
+ * believe it is logged in, while the sidecar swaps in the real access token on
+ * the way out. The alternative — the real auth.json in every sandbox — is what
+ * codex's own CI guidance warns against, because each copy refreshes and they
+ * invalidate each other.
+ */
+export function filesFor(db: DB): Record<string, string> {
+  const a = loadAuth(db, "codex");
+  if (a?.mode !== "chatgpt") return {};
+  const parsed = parseAuth(a.secret);
+  if (!parsed) return {};
+  return {
+    [`${CODEX_HOME}/auth.json`]: decoyAuth(parsed),
+    // Without this codex looks for the login in the OS keychain instead.
+    [`${CODEX_HOME}/config.toml`]: 'cli_auth_credentials_store = "file"\n',
+  };
+}
+
+/**
+ * Refresh the stored ChatGPT login if it is getting old, and hand back the
+ * access token the sidecar should inject.
+ *
+ * One refresher, on the host, because there is one login: ten sandboxes each
+ * refreshing their own copy is precisely the thing codex's CI guidance says not
+ * to do. A failed refresh keeps what we had — a network blip must not throw
+ * away a working login — and shows up later as the 401 that pauses the group.
+ */
+export async function currentChatgptToken(db: DB, now = Date.now()): Promise<string | null> {
+  const a = loadAuth(db, "codex");
+  if (a?.mode !== "chatgpt") return null;
+  let parsed = parseAuth(a.secret);
+  if (!parsed) return null;
+  if (isStale(parsed, now)) {
+    const next = await refresh(parsed);
+    if (next) {
+      saveAuth(db, { ...a, secret: JSON.stringify(next) });
+      parsed = next;
+    }
+  }
+  return accessToken(parsed);
+}
+
+/**
+ * The refreshed login, if the sandbox rotated it.
+ *
+ * codex refreshes its own tokens and rewrites auth.json, so the copy in the
+ * sandbox drifts ahead of ours within hours. Reading it back keeps the next
+ * sandbox working. The boss's own `~/.codex/auth.json` is never touched — it is
+ * theirs, and the same login refreshed in two places will eventually invalidate
+ * one of them whatever we do.
+ */
+export function absorbCodexHome(db: DB, contents: string): boolean {
+  const a = loadAuth(db, "codex");
+  if (a?.mode !== "chatgpt" || !contents.trim() || contents === a.secret) return false;
+  try {
+    JSON.parse(contents);
+  } catch {
+    return false;
+  }
+  saveAuth(db, { ...a, secret: contents });
+  return true;
+}
+
+/**
+ * Everything the sidecar should inject, including the refreshed ChatGPT token.
+ *
+ * Async because that one may have to be renewed first, and renewing it is a
+ * network call. Every other credential is a stored string.
+ */
+export async function vaultBindings(db: DB): Promise<{ credentials: Credential[]; env: Record<string, string> }> {
+  const base = vaultFor(db);
+  const token = await currentChatgptToken(db);
+  if (!token) return base;
+  return {
+    env: base.env,
+    credentials: [
+      ...base.credentials,
+      { name: "codex", value: token, hosts: BINDINGS.codex!.hosts },
+    ],
+  };
+}
+
 /** Real credentials for the vault, and the fakes that go in the environment. */
 export function vaultFor(db: DB): { credentials: Credential[]; env: Record<string, string> } {
   const credentials: Credential[] = [];
@@ -86,6 +190,9 @@ export function vaultFor(db: DB): { credentials: Credential[]; env: Record<strin
   for (const runtime of Object.keys(BINDINGS)) {
     const a = loadAuth(db, runtime);
     if (!a) continue;
+    // Its credential is a file, not a header; nothing to bind and nothing to fake.
+    // Handled as a file plus an injected header; see filesFor and vaultBindings.
+    if (a.mode === "chatgpt") continue;
     const b = BINDINGS[runtime]!;
     credentials.push({
       name: runtime,
