@@ -9,6 +9,7 @@ import {
   changedSince,
   checkpoint,
   createWorktree,
+  installDeps,
   makeGitRunner,
   rebaseOntoBase,
   removeWorktree,
@@ -77,33 +78,37 @@ test("a worktree is created on its own branch, outside the main checkout", async
   expect(existsSync(wt.worktree)).toBe(false);
 });
 
-test("a new worktree gets the dependency tree it cannot install itself", async () => {
+test("a worktree installs its own dependencies and keeps them out of git", async () => {
   const dir = await repo();
   mkdirSync(join(dir, "node_modules"), { recursive: true });
   mkdirSync(join(dir, "web/dist"), { recursive: true });
   writeFileSync(join(dir, "web/dist/main.js"), "built\n");
-  // Exactly what this repo ships: trailing slashes, so directories only.
   writeFileSync(join(dir, ".gitignore"), "node_modules/\nweb/dist/\n");
   await git(dir, ["add", "-A"]);
   await git(dir, ["commit", "-q", "-m", "ignore built things"]);
   const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
   const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
 
-  // node_modules is a symlink: the main checkout's install is what every worktree
-  // uses. web/dist deliberately is NOT seeded — a symlinked bundle meant a group's
-  // gate served the main checkout's UI, so its own change was invisible to its own
-  // test. The build gate produces it per worktree instead.
-  expect(lstatSync(join(wt.worktree, "node_modules")).isSymbolicLink()).toBe(true);
+  // Nothing is shared any more. node_modules used to be a symlink to the main
+  // checkout, and that one symlink caused the worst class of failure this system
+  // has had: two gates installing at once raced on one tree and the group read
+  // `Failed to link jiti: EEXIST` as its own build being broken.
+  expect(existsSync(join(wt.worktree, "node_modules"))).toBe(false);
   expect(existsSync(join(wt.worktree, "web/dist"))).toBe(false);
 
-  // And git must not see them. `.gitignore` here says `web/dist/`, which matches a
-  // directory and not the symlink — the turn checkpoint's `git add -A` committed it
-  // into the branch, and QA rejected the slice for a file the group never touched.
+  // The install runs on the host, because the sandbox denies an agent the writes
+  // it needs — `bun install` came back `EPERM failed to link`.
+  const dep = await installDeps(wt.worktree, "mkdir -p node_modules && echo x > node_modules/marker");
+  expect(dep.ok).toBe(true);
+  expect(existsSync(join(wt.worktree, "node_modules/marker"))).toBe(true);
+
+  // And git must not see it. `.gitignore` says `node_modules/`, which the turn
+  // checkpoint's `git add -A` swallowed once the path was tracked; `info/exclude`
+  // covers every worktree of the repo and is never committed.
   expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out).toBe("");
 
-  // Removing the worktree unlinks the symlink; the target survives.
-  await removeWorktree(git, dir, wt.worktree, { deleteBranch: wt.branch });
-  expect(existsSync(join(dir, "web/dist/main.js"))).toBe(true);
+  // A stack that needs nothing is not a failure.
+  expect((await installDeps(wt.worktree, null)).ok).toBe(true);
 });
 
 test("a repo that has never been built still gets a worktree", async () => {

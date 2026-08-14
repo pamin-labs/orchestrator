@@ -62,16 +62,26 @@ export async function createWorktree(
 }
 
 /**
- * Gitignored build prerequisites a fresh worktree does not get from `git`.
+ * Paths a worktree must keep out of git but does not get from `git checkout`.
  *
- * `web/dist` is deliberately NOT here any more: a symlinked bundle meant a group's
- * gate served the main checkout's UI, so its own change was invisible to its own
- * test. The build gate produces it per worktree instead.
+ * Nothing is symlinked in any more. `node_modules` used to be, pointing at the
+ * main checkout, and that one symlink caused the worst class of failure this
+ * system has had: every worktree of a repo shared one dependency tree, so two
+ * gates installing at once raced on it and a group read `Failed to link jiti:
+ * EEXIST` as its own build being broken. Each worktree installs its own now —
+ * 144ms and no extra disk on this repo, because bun hardlinks from its cache.
  *
- * ponytail: hardcoded for this repo shape; move to project config when a second
- * project needs different artifacts.
+ * `web/dist` was never seeded for the same shape of reason: a shared bundle meant
+ * a group's gate served the main checkout's UI, so its own change was invisible
+ * to its own test.
+ *
+ * These still have to be excluded, or the turn checkpoint's `git add -A` commits
+ * them: `.gitignore` says `web/dist/` with a trailing slash, which matches a
+ * directory and not a symlink, and once a path is tracked no ignore rule applies
+ * again — QA rejected a slice over `web/dist` the group never touched.
  */
-const SEED = ["node_modules"];
+const SEED: string[] = [];
+const EXCLUDE = ["node_modules", "web/dist"];
 
 /**
  * Without these the gates fail for a reason the group did not cause and cannot
@@ -113,13 +123,47 @@ function excludeSeeds(repoPath: string): void {
   try {
     const have = existsSync(path) ? readFileSync(path, "utf8") : "";
     const lines = have.split("\n").map((l) => l.trim());
-    const missing = SEED.filter((s) => !lines.includes(s));
+    const missing = EXCLUDE.filter((s) => !lines.includes(s));
     if (missing.length) {
       appendFileSync(path, `${have.endsWith("\n") || !have ? "" : "\n"}${missing.join("\n")}\n`);
     }
   } catch {
-    // A bare or unusual repo layout: the symlink still works, it is just visible.
+    // A bare or unusual repo layout: the worktree still works, its build output is
+    // just visible to git.
   }
+}
+
+/**
+ * Bring a fresh worktree's dependencies up, on the host.
+ *
+ * A worktree is a bare checkout: no `node_modules`, no `.venv`, nothing fetched.
+ * The agent cannot fix that itself — the sandbox denies writes outside the
+ * group's own paths, so `bun install` comes back `EPERM failed to link` — and
+ * every gate then fails for a reason the group did not cause and cannot see.
+ * Measured: one group sat on that blocker for hours.
+ *
+ * So the orchestrator does it, before the first turn, with real permissions. The
+ * command comes from the project's config (detected, correctable) rather than
+ * from a guess in here, because "how do you install this" is the one thing that
+ * differs between every stack.
+ */
+export async function installDeps(
+  worktree: string,
+  cmd: string | null | undefined,
+  logPath?: string,
+): Promise<{ ok: boolean; out: string }> {
+  if (!cmd?.trim()) return { ok: true, out: "" };
+  const p = Bun.spawn(["sh", "-lc", cmd], { cwd: worktree, stdout: "pipe", stderr: "pipe" });
+  const [so, se] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const out = (so + se).trimEnd();
+  const ok = (await p.exited) === 0;
+  if (logPath) {
+    try {
+      mkdirSync(dirname(logPath), { recursive: true });
+      appendFileSync(logPath, `$ ${cmd}\n${out}\n`);
+    } catch {}
+  }
+  return { ok, out };
 }
 
 export async function removeWorktree(

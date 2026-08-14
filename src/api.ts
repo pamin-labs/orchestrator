@@ -16,7 +16,7 @@ import { acceptSlice } from "./mech/review.ts";
 import { dropGroup, startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
-import { detectGates, detectShared } from "./mech/detect.ts";
+import { detectGates, detectInstall, detectShared } from "./mech/detect.ts";
 import { openPr, prBody, preflightPr } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/pageindex.ts";
@@ -2665,7 +2665,11 @@ const postProject: Handler = async (ctx, req) => {
   }
 
   const gates = b.gates ?? detected.map((g) => g.name);
-  const config = { gates, shared: detectShared(b.repo_path) };
+  // How a fresh worktree gets its dependencies. Detected and written into config
+  // rather than hardcoded, because it is the one command that differs between
+  // every stack — and it runs on the host, since the sandbox denies an agent the
+  // writes an install needs.
+  const config = { gates, shared: detectShared(b.repo_path), install: detectInstall(b.repo_path) };
 
   const r = ctx.db
     .query<{ id: number }, [string, string, string | null, string]>(

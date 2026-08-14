@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectGates, detectShared } from "../src/mech/detect.ts";
+import { detectGates, detectInstall, detectShared } from "../src/mech/detect.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
@@ -138,4 +138,32 @@ test("no detected gate reaches for bunx or npx", () => {
   for (const r of detectGates(repo)) {
     expect(`${r.name}: ${r.template}`).not.toMatch(/\b(bunx|npx)\b/);
   }
+});
+
+test("every stack says how to install, or says it needs nothing", () => {
+  // A worktree is a bare checkout and the agent cannot fix that: the sandbox
+  // denies the writes an install needs, so `bun install` came back `EPERM failed
+  // to link` and every gate failed for a reason the group did not cause. One
+  // group sat on that blocker for hours.
+  const bun = mkdtempSync(join(tmpdir(), "orch-i-"));
+  writeFileSync(join(bun, "package.json"), "{}");
+  writeFileSync(join(bun, "bun.lock"), "");
+  expect(detectInstall(bun)).toBe("bun install --frozen-lockfile");
+
+  const npm = mkdtempSync(join(tmpdir(), "orch-i-"));
+  writeFileSync(join(npm, "package.json"), "{}");
+  writeFileSync(join(npm, "package-lock.json"), "{}");
+  expect(detectInstall(npm)).toBe("npm ci");
+
+  const go = mkdtempSync(join(tmpdir(), "orch-i-"));
+  writeFileSync(join(go, "go.mod"), "module x\n");
+  expect(detectInstall(go)).toBe("go mod download");
+
+  // cargo fetches on build: nothing up front, and that is an answer, not a gap.
+  const rust = mkdtempSync(join(tmpdir(), "orch-i-"));
+  writeFileSync(join(rust, "Cargo.toml"), "[package]\n");
+  expect(detectInstall(rust)).toBeNull();
+
+  // An unknown stack must not guess.
+  expect(detectInstall(mkdtempSync(join(tmpdir(), "orch-i-")))).toBeNull();
 });

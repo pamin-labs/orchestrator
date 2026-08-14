@@ -20,6 +20,12 @@ export interface DetectedGate {
 interface Rule {
   marker: (repo: string) => boolean;
   gates: (repo: string) => DetectedGate[];
+  /**
+   * How to bring a fresh worktree's dependencies up, or null when the stack needs
+   * nothing before its gates run. Runs on the host, once per worktree — an agent
+   * cannot do it, the sandbox denies writes outside its own paths.
+   */
+  install?: (repo: string) => string | null;
 }
 
 const readJson = (p: string): any => {
@@ -44,6 +50,14 @@ const globExists = (repo: string, re: RegExp) => {
 const RULES: Rule[] = [
   {
     marker: (repo) => hasFile(repo, "package.json"),
+    install: (repo) =>
+      hasFile(repo, "bun.lock") || hasFile(repo, "bun.lockb")
+        ? "bun install --frozen-lockfile"
+        : hasFile(repo, "package-lock.json")
+          ? "npm ci"
+          : hasFile(repo, "pnpm-lock.yaml")
+            ? "pnpm install --frozen-lockfile"
+            : "npm install",
     gates: (repo) => {
       const pkg = readJson(join(repo, "package.json")) ?? {};
       const scripts: Record<string, string> = pkg.scripts ?? {};
@@ -92,6 +106,8 @@ const RULES: Rule[] = [
   },
   {
     marker: (repo) => hasFile(repo, "Cargo.toml"),
+    // cargo fetches on build; nothing to do up front.
+    install: () => null,
     gates: () => [
       { name: "test", template: "cargo test --quiet", errorRegex: "^(error|test result: FAILED)" },
       { name: "lint", template: "cargo clippy --quiet -- -D warnings", errorRegex: "^(error|warning)" },
@@ -99,6 +115,7 @@ const RULES: Rule[] = [
   },
   {
     marker: (repo) => hasFile(repo, "go.mod"),
+    install: () => "go mod download",
     gates: () => [
       { name: "test", template: "go test ./...", errorRegex: "^(--- FAIL|FAIL|.*\\.go:)" },
       { name: "vet", template: "go vet ./...", errorRegex: "\\.go:" },
@@ -106,10 +123,18 @@ const RULES: Rule[] = [
   },
   {
     marker: (repo) => hasFile(repo, "pyproject.toml") || hasFile(repo, "setup.cfg"),
+    // A venv per worktree, because the interpreter is the environment here and two
+    // groups sharing one would fight over versions. `-e .` so the tests import the
+    // checkout they are testing rather than an installed copy of it.
+    install: (repo) =>
+      hasFile(repo, "uv.lock")
+        ? "uv sync"
+        : "python3 -m venv .venv && .venv/bin/pip install -q -e .",
     gates: () => [{ name: "test", template: "pytest -q", errorRegex: "^(E |FAILED|ERROR)" }],
   },
   {
     marker: (repo) => globExists(repo, /\.(sln|csproj)$/),
+    install: () => "dotnet restore",
     gates: () => [
       { name: "test", template: "dotnet test --nologo", errorRegex: "(error|Failed!|\\s+Failed )" },
     ],
@@ -135,6 +160,12 @@ function hasMakeTarget(repo: string, target: string): boolean {
     }
   }
   return false;
+}
+
+/** The install command for whichever stack this repo is, or null. */
+export function detectInstall(repoPath: string): string | null {
+  for (const r of RULES) if (r.marker(repoPath)) return r.install?.(repoPath) ?? null;
+  return null;
 }
 
 export function detectGates(repoPath: string): DetectedGate[] {

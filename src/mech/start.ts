@@ -1,8 +1,22 @@
+import { join } from "node:path";
 import type { Ctx } from "../api.ts";
 import { say } from "../lang.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
-import { createWorktree } from "./worktree.ts";
+import { createWorktree, installDeps } from "./worktree.ts";
+
+/** `project.config_json.install`, or null. Same reader shape as `gatesFor`. */
+function installFor(ctx: Ctx, projectId: number): string | null {
+  const row = ctx.db
+    .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
+    .get(projectId);
+  try {
+    const v = JSON.parse(row?.config_json ?? "{}").install;
+    return typeof v === "string" && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The only way a group starts working.
@@ -78,6 +92,30 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
           kind: "state_change",
           body: say(ctx.config?.language, "group.worktree", { branch: wt.branch }),
         });
+
+        // Dependencies, on the host, before the first turn. A worktree is a bare
+        // checkout and the agent cannot fix that itself: the sandbox denies the
+        // writes an install needs, so every gate fails for a reason the group did
+        // not cause and cannot see. One group sat on that blocker for hours.
+        const install = installFor(ctx, grp.project_id);
+        const dep = await installDeps(
+          wt.worktree,
+          install,
+          join(ctx.config.dataDir ?? "data", "gates", `install-${grpId}.log`),
+        );
+        if (!dep.ok) {
+          // Not fatal: some projects need nothing, and a gate failing with the
+          // real error is more useful than a group that never starts. But it has
+          // to be visible, or it reads as the group's own code being broken.
+          ctx.bus.emit({
+            grpId,
+            author: "orchestrator",
+            kind: "escalation",
+            intent: "inform",
+            severity: "advisory",
+            body: `装依赖失败了（${install}）：闸门大概会跟着红。\n${dep.out.slice(-400)}`,
+          });
+        }
       } catch (e: any) {
         // Refuse to start rather than run the group in the main checkout, where
         // it would write straight into the boss's working tree.
