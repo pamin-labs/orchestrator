@@ -80,8 +80,15 @@ export function Toggles({
   );
 }
 
-/** A full-width row rather than a pill: these carry a second column. */
-export function Toggle({ value, className, children }: { value: string; className?: string; children: React.ReactNode }) {
+/**
+ * A full-width row rather than a pill: these carry a second column.
+ *
+ * Rest props are forwarded because the gate list makes these rows draggable, and
+ * `draggable` plus the drag handlers belong on the element the pointer is on.
+ */
+export function Toggle({
+  value, className, children, ...rest
+}: React.ComponentProps<typeof TG.Item> & { value: string }) {
   return (
     <TG.Item
       value={value}
@@ -90,6 +97,7 @@ export function Toggle({ value, className, children }: { value: string; classNam
         "text-ink-3 transition-colors hover:bg-rail data-[state=on]:text-ink",
         className,
       )}
+      {...rest}
     >
       {children}
     </TG.Item>

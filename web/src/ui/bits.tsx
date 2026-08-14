@@ -20,6 +20,27 @@ export const H3 = ({ children, className }: { children: React.ReactNode; classNa
   <h3 className={cn("mt-8 mb-2.5 font-display text-[1rem] font-semibold", className)}>{children}</h3>
 );
 
+/**
+ * A section's title band: what it is, one line of what it does, and whatever acts
+ * on it pushed to the right.
+ *
+ * Lifted out of 工位墙 and 所有权, which both had it inline. A heading with a count
+ * beside it and a control at the far end is the shape every pane here wants, and
+ * three hand-written copies of it drift.
+ */
+export const Head = ({
+  title, note, children,
+}: {
+  title: React.ReactNode; note?: React.ReactNode; children?: React.ReactNode;
+}) => (
+  <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
+    <H2 className="mb-0">{title}</H2>
+    {note && <Meta>{note}</Meta>}
+    <span className="grow" />
+    {children}
+  </div>
+);
+
 export const Meta = ({ children, className, ...rest }: React.HTMLAttributes<HTMLSpanElement>) => (
   <span className={cn("font-mono text-[0.6875rem] text-ink-3", className)} {...rest}>
     {children}
