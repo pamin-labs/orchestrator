@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
-import { absorbCodexHome, CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, saveAuth, vaultFor } from "../src/mech/auth.ts";
+import { absorbCodexHome, CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX_KEY, saveAuth, vaultFor } from "../src/mech/auth.ts";
 import { newEnough, preflight, report } from "../src/mech/preflight.ts";
 import { accessToken, isStale, parseAuth, renew } from "../src/mech/chatgpt.ts";
 import { loginRuntimes, startLogin } from "../src/mech/login.ts";
@@ -198,4 +198,19 @@ test("the panel knows which runtimes it can log in for, and refuses the rest", (
   const ctx = { db, bus: { live: () => {}, emit: () => {} }, sched: { tick: () => {} } } as unknown as Ctx;
   expect(startLogin(ctx, "nonesuch")).toBeNull();
   expect(loadAuth(db, "nonesuch")).toBeNull();
+});
+
+test("the sandbox server key is stored like a secret, not in the committed yaml", () => {
+  // Two ends have to agree and only one is ours. It is not a model credential —
+  // nothing binds it at a sidecar — but it is still a secret, so it lives in the
+  // same store rather than in config/default.yaml, which is committed.
+  const db = openMemory();
+  saveAuth(db, { runtime: SANDBOX_KEY, mode: "api_key", secret: "generated-key" });
+
+  // Nothing tries to inject it: it is absent from the bindings table.
+  const { credentials, env } = vaultFor(db);
+  expect(credentials.find((c) => c.name === SANDBOX_KEY)).toBeUndefined();
+  expect(JSON.stringify(env)).not.toContain("generated-key");
+  // And the settings page sees a tail, like every other secret.
+  expect(listAuth(db).find((r) => r.runtime === SANDBOX_KEY)!.hint).toBe("…ed-key");
 });

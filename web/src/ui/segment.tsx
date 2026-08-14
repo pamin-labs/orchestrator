@@ -56,3 +56,42 @@ export function Segment({ value, children }: { value: string; children: React.Re
     </TG.Item>
   );
 }
+
+/**
+ * Several of a kind, any number pressed.
+ *
+ * The same primitive as `Segments` with `type="multiple"`, which is what a list
+ * of gates is: pick the ones that run. A checkbox would want a new dependency,
+ * and `aria-pressed` on a toggle says the same thing to a screen reader as a
+ * checked box does.
+ */
+export function Toggles({
+  value, onValueChange, className, children,
+}: {
+  value: string[];
+  onValueChange: (v: string[]) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <TG.Root type="multiple" value={value} onValueChange={onValueChange} className={cn("block", className)}>
+      {children}
+    </TG.Root>
+  );
+}
+
+/** A full-width row rather than a pill: these carry a second column. */
+export function Toggle({ value, className, children }: { value: string; className?: string; children: React.ReactNode }) {
+  return (
+    <TG.Item
+      value={value}
+      className={cn(
+        "flex w-full cursor-pointer items-baseline gap-3 border-b border-rule-soft px-2 py-2 text-left",
+        "text-ink-3 transition-colors hover:bg-rail data-[state=on]:text-ink",
+        className,
+      )}
+    >
+      {children}
+    </TG.Item>
+  );
+}

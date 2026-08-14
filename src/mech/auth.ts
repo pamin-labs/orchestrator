@@ -96,6 +96,16 @@ export function listAuth(db: DB): Array<{ runtime: string; mode: AuthMode; hint:
     }));
 }
 
+/**
+ * The sandbox server's own key, stored beside the model credentials.
+ *
+ * Not a model credential — it never reaches a sidecar and is never injected —
+ * but it is a secret the boss has to set, and it has exactly one good home:
+ * the store that already keeps secrets out of the committed yaml. Absent from
+ * `BINDINGS`, so nothing tries to bind it.
+ */
+export const SANDBOX_KEY = "sandbox";
+
 /** Where codex looks for its login inside a sandbox. */
 export const CODEX_HOME = "/root/.codex";
 

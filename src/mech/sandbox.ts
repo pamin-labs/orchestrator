@@ -5,7 +5,7 @@ import { ConnectionConfig, Sandbox } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../api.ts";
 import { ROOT } from "../config.ts";
 import type { ResourceExec } from "./lease.ts";
-import { CODEX_HOME, filesFor, vaultBindings } from "./auth.ts";
+import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
 import { shq } from "./shq.ts";
 import type { TurnRunner } from "../runtime/claude.ts";
 
@@ -110,10 +110,14 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
 
 function connection(ctx: Ctx): ConnectionConfig {
   const [host, port] = (ctx.config.sandbox ?? DEFAULTS).server.split(":");
+  // Set from the panel first, then the environment, then the yaml. The yaml is
+  // committed, so a key that lives there is a key that leaks; the panel writes
+  // it to the same store every other credential uses.
+  const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || (ctx.config.sandbox ?? DEFAULTS).apiKey;
   return new ConnectionConfig({
     domain: `${host}:${port ?? 8080}`,
     protocol: "http",
-    apiKey: (ctx.config.sandbox ?? DEFAULTS).apiKey || undefined,
+    apiKey: key || undefined,
     // The SDK default is 30s, which an image pull blows straight through.
     requestTimeoutSeconds: 600,
   });

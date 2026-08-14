@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Empty, H2, Input, Meta, Pane } from "../ui/bits";
 import { Button } from "../ui/button";
+import { Toggle, Toggles } from "../ui/segment";
 import { pull, post } from "../lib/api";
-import { cn } from "../lib/utils";
 
 /**
  * What this project does differently, and nothing that is true of all of them.
@@ -61,33 +61,22 @@ export function ProjectSettings({ projectId }: { projectId: number }) {
       <Empty>
         每片切片按顺序跑，第一个不过就停下 —— 后面的输出只是噪音。名字来自 resource 表，注册项目时按栈自动探出来的。
       </Empty>
-      <div className="mt-2 border-t border-rule">
-        {d.resources.map((res) => {
-          const on = gates.includes(res.name);
-          return (
-            <label
-              key={res.name}
-              className="flex cursor-pointer items-baseline gap-3 border-b border-rule-soft py-2 pr-2 pl-2"
-            >
-              <input
-                type="checkbox"
-                checked={on}
-                disabled={busy}
-                onChange={() =>
-                  patch({ gates: on ? gates.filter((g) => g !== res.name) : [...gates, res.name] })
-                }
-                className="translate-y-0.5 accent-accent"
-              />
-              <span className={cn("w-36 shrink-0 text-[0.8125rem]", on ? "text-ink" : "text-ink-3")}>
-                {res.name}
-              </span>
-              <Meta className="min-w-0 flex-1 truncate">{res.template}</Meta>
-              {on && <Meta>第 {gates.indexOf(res.name) + 1} 道</Meta>}
-            </label>
-          );
-        })}
+      <Toggles
+        value={gates}
+        // Ordering is the running order, so a gate that goes back on returns to
+        // the end rather than to wherever it used to be.
+        onValueChange={(next) => patch({ gates: next })}
+        className="mt-2 border-t border-rule"
+      >
+        {d.resources.map((res) => (
+          <Toggle key={res.name} value={res.name}>
+            <span className="w-36 shrink-0 text-[0.8125rem]">{res.name}</span>
+            <Meta className="min-w-0 flex-1 truncate">{res.template}</Meta>
+            {gates.includes(res.name) && <Meta>第 {gates.indexOf(res.name) + 1} 道</Meta>}
+          </Toggle>
+        ))}
         {!d.resources.length && <Meta className="block py-2">这个项目没有探到可跑的命令。</Meta>}
-      </div>
+      </Toggles>
       {!gates.length && (
         <Meta className="mt-2 block leading-relaxed text-bad">
           一道都没开：没有确定性检查的项目，LLM 审阅底下就没有地板。

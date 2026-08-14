@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Check, CircleAlert, ExternalLink } from "lucide-react";
-import { Empty, H2, Input, Meta, Pane } from "../ui/bits";
+import { Empty, H2, Input, Meta, Pane, Textarea } from "../ui/bits";
+import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { Button } from "../ui/button";
+import { Segment, Segments } from "../ui/segment";
 import { Tip } from "../ui/tooltip";
 import { pull, post } from "../lib/api";
 import { clock, cn } from "../lib/utils";
@@ -15,7 +17,9 @@ import { clock, cn } from "../lib/utils";
  * right on a credential nobody has pasted: the fleet is stopped until they do.
  *
  * No cards. A row is a hairline and a gutter; the form opens under the row it
- * belongs to, on `rail`, so the fields have a visible owner.
+ * belongs to, on `rail`, so the fields have a visible owner. Disclosure and the
+ * mode selector are Radix (硬约束 4) — hand-rolled they lose arrow keys,
+ * `aria-expanded` and the pressed state, which is exactly what nobody notices.
  */
 
 type Mode = "oauth_token" | "api_key" | "chatgpt";
@@ -86,7 +90,8 @@ const RUNTIMES: Runtime[] = [
 export function Settings() {
   const [rows, setRows] = useState<AuthRow[]>([]);
   const [checks, setChecks] = useState<Check[]>([]);
-  const [open, setOpen] = useState<string | null>(null);
+  /** `""` = everything shut, which is the Radix accordion's own empty value. */
+  const [open, setOpen] = useState("");
 
   const load = async () => {
     const [a, p] = await Promise.all([
@@ -111,18 +116,14 @@ export function Settings() {
           —— 不会烧掉一轮去撞 401。
         </Empty>
       )}
-      <div className="mt-2 border-t border-rule">
+      <Accordion value={open ?? ""} onValueChange={setOpen} className="mt-2 border-t border-rule">
         {RUNTIMES.map((r) => (
-          <Credential
-            key={r.key}
-            runtime={r}
-            current={rows.find((x) => x.runtime === r.key)}
-            open={open === r.key}
-            onToggle={() => setOpen(open === r.key ? null : r.key)}
-            onSaved={load}
-          />
+          <Credential key={r.key} runtime={r} current={rows.find((x) => x.runtime === r.key)} onSaved={load} />
         ))}
-      </div>
+      </Accordion>
+
+      <H2 className="mt-9">沙盒服务器</H2>
+      <SandboxKey current={rows.find((x) => x.runtime === "sandbox")} onSaved={load} />
 
       <H2 className="mt-9">这台机器</H2>
       <div className="border-t border-rule">
@@ -148,13 +149,7 @@ export function Settings() {
   );
 }
 
-function Credential(props: {
-  runtime: Runtime;
-  current?: AuthRow;
-  open: boolean;
-  onToggle: () => void;
-  onSaved: () => void;
-}) {
+function Credential(props: { runtime: Runtime; current?: AuthRow; onSaved: () => void }) {
   const r = props.runtime;
   const cur = props.current;
   const [mode, setMode] = useState<Mode>(cur?.mode ?? r.modes[0]!.mode);
@@ -191,11 +186,8 @@ function Credential(props: {
   };
 
   return (
-    <div className={cn("border-b border-rule-soft", props.open && "bg-rail")}>
-      <button
-        onClick={props.onToggle}
-        className="flex w-full cursor-pointer items-baseline gap-3 px-2 py-2.5 text-left"
-      >
+    <AccordionItem value={r.key} className="border-b border-rule-soft">
+      <AccordionTrigger className="flex items-baseline gap-3 px-2 py-2.5">
         <span className="w-36 shrink-0 text-[0.8125rem] font-medium text-ink">{r.label}</span>
         {cur ? (
           <>
@@ -210,23 +202,18 @@ function Credential(props: {
         ) : (
           <span className="text-[0.75rem] font-medium text-accent">没配</span>
         )}
-      </button>
+      </AccordionTrigger>
 
-      {props.open && (
-        <div className="px-2 pb-3.5">
+      <AccordionBody>
+        <div className="px-2 pt-1 pb-3.5">
           <div className="flex flex-wrap items-center gap-1">
-            {r.modes.map((m) => (
-              <button
-                key={m.mode}
-                onClick={() => setMode(m.mode)}
-                className={cn(
-                  "cursor-pointer rounded px-2 py-0.5 text-[0.75rem] transition-colors",
-                  mode === m.mode ? "bg-sunk font-medium text-ink" : "text-ink-3 hover:text-ink",
-                )}
-              >
-                {m.label}
-              </button>
-            ))}
+            <Segments value={mode} onValueChange={(v) => setMode(v as Mode)}>
+              {r.modes.map((m) => (
+                <Segment key={m.mode} value={m.mode}>
+                  {m.label}
+                </Segment>
+              ))}
+            </Segments>
             <span className="grow" />
             {r.login === mode && (
               <Tip label="在这台机器上跑一次官方 CLI 的登录，用它本地的登录信息换出 token。仅限官方账号；自建网关走 API key。">
@@ -258,8 +245,8 @@ function Credential(props: {
 
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
             {mode === "chatgpt" ? (
-              <textarea
-                className="min-h-20 w-full resize-y rounded-md border border-rule bg-paper px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink transition-colors placeholder:text-ink-3 focus:border-accent focus:ring-3 focus:ring-accent-soft focus:outline-none"
+              <Textarea
+                className="min-h-20 w-full"
                 placeholder="~/.codex/auth.json 的完整内容"
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
@@ -289,7 +276,65 @@ function Credential(props: {
             —— 它们的 sidecar 里还是旧凭据 —— 下一轮自动重建。
           </Meta>
         </div>
+      </AccordionBody>
+    </AccordionItem>
+  );
+}
+
+/**
+ * The key this orchestrator uses to drive opensandbox-server.
+ *
+ * Two ends have to agree and only one of them is ours, so the page generates the
+ * value, stores our half, and prints the line for theirs. Generated here rather
+ * than typed: a key somebody invents is a key like `orch123`, and this one is
+ * the only thing standing between a local port and "create a container".
+ *
+ * 32 bytes from the platform CSPRNG, base64url so it survives a TOML string.
+ */
+function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const generate = () => {
+    const raw = crypto.getRandomValues(new Uint8Array(32));
+    setKey(btoa(String.fromCharCode(...raw)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
+  };
+
+  const save = async () => {
+    setBusy(true);
+    await post("/api/auth", { runtime: "sandbox", mode: "api_key", secret: key.trim() });
+    setBusy(false);
+    props.onSaved();
+  };
+
+  return (
+    <div className="border-t border-rule pt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="min-w-0 flex-1 font-mono"
+          placeholder={props.current ? `已设 ${props.current.hint}，留空保持不变` : "留空 = 服务器没开鉴权"}
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+        />
+        <Button size="sm" onClick={generate}>
+          随机生成
+        </Button>
+        <Button variant="go" size="sm" disabled={busy || !key.trim()} onClick={save}>
+          存下
+        </Button>
+      </div>
+      {key.trim() && (
+        <div className="mt-2 rounded bg-sunk px-2 py-1.5 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
+          <div className="text-ink-3">~/.sandbox.toml</div>
+          [server]
+          <br />
+          api_key = "{key.trim()}"
+        </div>
       )}
+      <Meta className="mt-1 block leading-relaxed">
+        两边得一样：上面这行贴进 opensandbox-server 的配置再重启它，「存下」写我们这半边。留空两边都不设也能跑
+        —— 本机自己用，服务器只听 127.0.0.1。
+      </Meta>
     </div>
   );
 }
