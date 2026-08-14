@@ -20,6 +20,7 @@ import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui
 import { Segment, Segments } from "../ui/segment";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
+import { bootstrapOf } from "../lib/bootstrap";
 
 /** One requirement in full: slices, their tasks, who is on it, and what it asks. */
 /**
@@ -237,40 +238,88 @@ export function Requirement({
  */
 function Bootstrap({ frames, grpId }: { frames: Frame[]; grpId: number }) {
   const box = useRef<HTMLDivElement>(null);
-  const lines = frames.filter(
-    (f) => f.grpId === grpId && f.cls === "tool" && f.author === "orchestrator" && f.agentId == null,
-  );
-  const last = lines[lines.length - 1];
-  // The outcome arrives as a stored event, so it is what ends the pane rather
-  // than a timer that has to guess how long an install takes.
-  const done = frames.filter(
-    (f) => f.grpId === grpId && f.cls === "state" && /^装好了|^装失败了/.test(f.text),
-  ).pop();
-  const running = !!last && (!done || done.at < last.at);
+  /** Stay pinned to the newest line only while the reader is already there. */
+  const pinned = useRef(true);
+  const [shut, setShut] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  // The install prints `$ cmd` as its first line and only runs once the clone
+  // has returned, so that one line marks both steps.
+  const { running, failed, cmd, lines, since, until } = bootstrapOf(frames, grpId);
+
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [running]);
 
   useEffect(() => {
     const el = box.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [lines.length]);
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [lines.length, shut]);
 
-  if (!running) return null;
+  // A failure stays on the page. It is the one outcome the boss might act on,
+  // and it used to be the one that made the pane disappear.
+  if (!running && !failed) return null;
+  const secs = Math.max(0, Math.round(((until ?? now) - (since || now)) / 1000));
+
   return (
-    <div className="mb-3">
-      <div className="mb-1.5 flex items-baseline gap-2">
-        <Working>沙盒在装环境</Working>
-        <Meta className="min-w-0 truncate">{lines[0]?.text}</Meta>
+    <div className="mt-3 border-t border-rule pt-2.5">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {/* The same marks the gate tracks use. Progress on this page is which
+            step passed, never a bar that fills. */}
+        <Step label="克隆" state={cmd ? "ok" : failed ? "bad" : "run"} />
+        <Step label="装依赖" state={!cmd ? "wait" : failed ? "bad" : until ? "ok" : "run"} />
+        <Meta className="min-w-0 flex-1 truncate">{cmd ?? "把这个组的分支和依赖装回新沙盒"}</Meta>
+        {/* Elapsed, because an install with no clock reads as stuck at minute
+            three. Seconds until it is worth minutes. */}
+        <Meta className={cn(failed && "text-bad")}>
+          {failed ? "装失败了" : secs < 90 ? `${secs}s` : `${Math.floor(secs / 60)}m${secs % 60}s`}
+        </Meta>
+        <Button variant="quiet" size="sm" aria-expanded={!shut} onClick={() => setShut((v) => !v)}>
+          {shut ? "看日志" : "收起"}
+        </Button>
       </div>
-      {/* `sunk`, because every line of it is a machine talking. */}
-      <div
-        ref={box}
-        className="max-h-40 overflow-y-auto rounded-md bg-sunk px-2.5 py-2 font-mono text-[0.6875rem]
-                   leading-relaxed text-ink-2"
-      >
-        {lines.slice(-200).map((f) => (
-          <div key={f.id} className="break-all whitespace-pre-wrap">{f.text}</div>
-        ))}
-      </div>
+      {!shut && lines.length > 0 && (
+        <div
+          ref={box}
+          role="log"
+          aria-label="装环境的输出"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+          }}
+          className={cn(
+            "mt-2 max-h-40 overflow-y-auto rounded-md bg-sunk px-2.5 py-2 font-mono text-[0.6875rem]",
+            "leading-relaxed text-ink-2",
+          )}
+        >
+          {lines.slice(-300).map((f) => (
+            <div key={f.id} className="break-all whitespace-pre-wrap">{f.text}</div>
+          ))}
+        </div>
+      )}
+      {failed && (
+        <Meta className="mt-1.5 block">交给 bootstrap 重试，它会带着上面的报错读一遍仓库</Meta>
+      )}
     </div>
+  );
+}
+
+/** One step of a rebuild, in the gate track's own marks. */
+function Step({ label, state }: { label: string; state: "wait" | "run" | "ok" | "bad" }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      <i
+        className={cn(
+          "tick",
+          state === "ok" && "bg-ok",
+          state === "bad" && "bg-bad",
+          state === "run" && "breathe bg-ink-3",
+        )}
+      />
+      <span className={cn("text-[0.75rem]", state === "wait" ? "text-ink-3" : "text-ink-2")}>{label}</span>
+    </span>
   );
 }
 
