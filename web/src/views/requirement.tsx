@@ -884,7 +884,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
       <AccordionTrigger className="block px-4 py-2.5 transition-colors hover:bg-accent-soft">
         <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[0.6875rem]">
           <span className="text-ink-2">{e.asker ?? "系统"}</span>
-          <span className="text-ink-3">等了 {waited(e.created_at)}</span>
+          <span className="text-ink-3">{waited(e.created_at)}</span>
           {e.severity === "blocker" && <span className="font-semibold text-bad">全组停着</span>}
         </div>
         {!open && <div className="mt-1 line-clamp-2 max-w-[72ch] text-[0.8125rem] text-ink-2">{nl(e.question)}</div>}
@@ -957,18 +957,35 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
  * asked. Reference, not work.
  */
 function Held({ rows }: { rows: Escalation[] }) {
+  const [open, setOpen] = useState("");
   return (
     <div className="shrink-0">
       <Meta className="block px-1 pb-1">别人还在处理 {rows.length} 条</Meta>
+      {/* Quiet, but it opens. Reading the question is not the same as answering
+          it — the boss opens one of these to decide whether to take it over, and
+          a row that ends in `…` with no way to see the rest cannot answer that. */}
       <div className="overflow-hidden rounded-lg border border-rule-soft">
-        {rows.map((e) => (
-          <div key={e.id} className="flex flex-wrap items-baseline gap-x-2 border-t border-rule-soft px-4 py-1.5 first:border-t-0">
-            <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">
-              {e.asker ?? "系统"} · 等了 {waited(e.created_at)} · {WHERE_ZH[e.chain_state] ?? e.chain_state}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[0.75rem] text-ink-3">{nl(e.question)}</span>
-          </div>
-        ))}
+        <Accordion value={open} onValueChange={setOpen}>
+          {rows.map((e) => (
+            <AccordionItem key={e.id} value={String(e.id)}>
+              <AccordionTrigger className="flex flex-wrap items-baseline gap-x-2 px-4 py-1.5 transition-colors hover:bg-rail/60">
+                <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">
+                  {e.asker ?? "系统"} · {waited(e.created_at)} · {WHERE_ZH[e.chain_state] ?? e.chain_state}
+                </span>
+                {String(e.id) !== open && (
+                  <span className="min-w-0 flex-1 truncate text-[0.75rem] text-ink-3">{nl(e.question)}</span>
+                )}
+              </AccordionTrigger>
+              <AccordionBody className="px-4 pb-2">
+                <div className="max-w-[72ch]">
+                  <Clamp lines={8}>
+                    <WithAttachments body={e.question} className="text-[0.8125rem] text-ink-2" />
+                  </Clamp>
+                </div>
+              </AccordionBody>
+            </AccordionItem>
+          ))}
+        </Accordion>
       </div>
     </div>
   );
