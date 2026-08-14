@@ -16,6 +16,7 @@ import { cn, K, waited } from "../lib/utils";
 import { activityOf } from "../lib/activity";
 import { WithAttachments } from "../ui/attachments";
 import { useEffect, useState } from "react";
+import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
 
@@ -43,9 +44,15 @@ export function Requirement({
   tab?: string | null; onTab?: (t: string) => void;
 }) {
   const slices = st.slices.filter((s) => s.grp_id === g.id);
-  const asks = asksOf(st, g.id);
+  // The ones on the boss first: the rest are reference, and reading order should
+  // not depend on which agent happened to ask first.
+  const asks = asksOf(st, g.id).sort((a, b) => Number(b.chain_state === "boss") - Number(a.chain_state === "boss"));
   const mine = mineOf(asks);
   const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
+  // `null` = untouched, open the first one waiting on the boss. Radix reports
+  // `""` when the open one is shut, which is the state the default would
+  // otherwise fall straight back to.
+  const [openAsk, setOpenAsk] = useState<string | null>(null);
 
   // The LAST slice that has actually produced something — work moves down the
   // list, so the newest one carrying evidence is where it has got to. `running`
@@ -112,21 +119,17 @@ export function Requirement({
                  buttons that answer it. One accordion: rows and the one open body
                  in the same scroll, the evidence header pinned inside it so the
                  verdict buttons stay reachable while you read the diff. */
-              <Pane className="rounded-lg border border-rule">
-                {slices.map((s) => (
-                  <div key={s.id} className="border-t border-rule-soft first:border-t-0">
-                    <SliceRow
-                      st={st}
-                      g={g}
-                      s={s}
-                      selected={s.id === shown?.id}
-                      onPick={() => setPicked(s.id === shown?.id ? "none" : s.id)}
-                    />
-                    {s.id === shown?.id && (
-                      <SliceDetail key={s.id} st={st} g={g} s={s} refresh={refresh} />
-                    )}
-                  </div>
-                ))}
+              <Pane className="overflow-x-hidden rounded-lg border border-rule">
+                <Accordion value={shown ? String(shown.id) : ""} onValueChange={(v) => setPicked(v ? Number(v) : "none")}>
+                  {slices.map((s) => (
+                    <AccordionItem key={s.id} value={String(s.id)}>
+                      <SliceRow st={st} g={g} s={s} selected={s.id === shown?.id} />
+                      <AccordionBody>
+                        <SliceDetail st={st} g={g} s={s} refresh={refresh} />
+                      </AccordionBody>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
               </Pane>
             ) : (
               <Pane>
@@ -136,22 +139,29 @@ export function Requirement({
           </TabPanel>
 
           <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col">
-            {/* The one waiting on you stays put; everything else scrolls under it.
-                They were in one pane, so the question with the answer box in it
-                scrolled away while you read the four below it that are somebody
-                else's problem — and the box is the reason you opened the tab. */}
-            {mine.length > 0 && (
-              <div className="shrink-0">
-                {mine.map((e) => (
-                  <Ask key={e.id} e={e} refresh={refresh} />
-                ))}
-              </div>
-            )}
-            <Pane className={mine.length && others.length ? "mt-2 border-t border-rule pt-2" : undefined}>
-              {others.length ? (
-                others.map((e) => <Ask key={e.id} e={e} refresh={refresh} />)
-              ) : mine.length ? null : (
-                <div className="text-[0.8125rem] text-ink-3">没有开着的问题。</div>
+            {/* Same accordion as the slices, for the same reason. Two questions on
+                the boss meant two draft answers and two composers open at once,
+                about two screens of them, and the block that held the ones waiting
+                on the boss sat outside the scroll pane — so with two of them the
+                second could not be reached at all. One question open, its answer
+                box under it, the rest one line each.
+
+                Everything in one scroll: a `shrink-0` block above a pane is a
+                region with no way down. */}
+            <Pane className="overflow-x-hidden rounded-lg border border-rule">
+              {asks.length ? (
+                <Accordion
+                  value={openAsk ?? (mine[0] ? String(mine[0].id) : "")}
+                  onValueChange={setOpenAsk}
+                >
+                  {asks.map((e) => (
+                    <AccordionItem key={e.id} value={String(e.id)}>
+                      <Ask e={e} refresh={refresh} open={String(e.id) === (openAsk ?? String(mine[0]?.id))} />
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              ) : (
+                <div className="px-3 py-2 text-[0.8125rem] text-ink-3">没有开着的问题。</div>
               )}
               {/* An answer a stand-in gave for the boss belongs with the questions,
                   which is where someone goes looking for it. It used to sit in a
@@ -292,24 +302,17 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
 }
 
 /** One line per slice: order, title, gates, and who is on it. */
-function SliceRow({
-  st, g, s, selected, onPick,
-}: {
-  st: State; g: Group; s: Slice; selected: boolean; onPick: () => void;
-}) {
+function SliceRow({ st, g, s, selected }: { st: State; g: Group; s: Slice; selected: boolean }) {
   const gs = gates(s);
   const waiting = s.status === "awaiting_boss";
   const on = st.agents.filter((a) => a.grp_id === g.id && a.state === "running");
   return (
-    <button
-      onClick={onPick}
-      aria-expanded={selected}
+    <AccordionTrigger
       className={cn(
-        "grid w-full cursor-pointer grid-cols-[2rem_minmax(0,1fr)_auto_auto] items-center gap-x-3",
-        "px-3 py-2 text-left transition-colors",
+        "grid grid-cols-[2rem_minmax(0,1fr)_auto_auto] items-center gap-x-3",
+        "px-4 py-2 transition-colors",
         "max-[52rem]:grid-cols-[2rem_minmax(0,1fr)_auto]",
-        selected ? "bg-sunk" : "hover:bg-sunk/60",
-        waiting && "bg-accent-soft/60 hover:bg-accent-soft",
+        waiting ? "bg-accent-soft/60 hover:bg-accent-soft" : selected ? "bg-rail" : "hover:bg-rail/60",
       )}
     >
       <span className="font-mono text-[0.75rem] text-ink-3">S{s.seq}</span>
@@ -335,9 +338,9 @@ function SliceRow({
       <ChevronRight
         size={13}
         strokeWidth={2}
-        className={cn("shrink-0 text-ink-3 transition-transform max-[52rem]:hidden", selected && "rotate-90")}
+        className="shrink-0 text-ink-3 transition-transform group-data-[state=open]:rotate-90 max-[52rem]:hidden"
       />
-    </button>
+    </AccordionTrigger>
   );
 }
 
@@ -851,17 +854,35 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
  * spaces in it, which sets a minimum width on the row and pushed the entire page
  * into a horizontal scroll — the content was there, just off the left edge.
  */
-function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
+function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: boolean }) {
   const mine = e.chain_state === "boss";
   // Seeding by remount: the composer owns its text once the boss starts typing,
-  // and a controlled value here would fight them for it.
+  // and a controlled value here would fight them for it. Nothing is sent by this
+  // path — 用这个 fills the box and the boss sends it.
   const [seed, setSeed] = useState("");
   return (
-    <div className="border-t border-rule-soft py-2.5 first:border-t-0">
-      <div className={cn("font-mono text-[0.6875rem]", e.severity === "blocker" ? "text-bad" : "text-ink-3")}>
-        {e.asker ?? "?"} · {e.severity === "blocker" ? "阻塞" : "非阻塞"} ·{" "}
-        {WHERE_ZH[e.chain_state] ?? e.chain_state} · {waited(e.created_at)}
-      </div>
+    <>
+      {/* One line of who and how long. It read `qa · 阻塞 · 待你决策 · 等待 3h`
+          inside the tab called 待你决策 — the tab already said the third, and 等待
+          is what a duration means. Blocking is the colour. */}
+      {/* The tint marks the row, not the whole body. A question on the boss used to
+          wash its question, its draft answer and its composer in one violet block
+          half a screen tall — the accent means "needs you", and a field of it means
+          nothing. A dot and a tinted row say the same in two marks. */}
+      <AccordionTrigger
+        className={cn(
+          "flex items-baseline gap-2 px-4 py-2 transition-colors",
+          mine ? "bg-accent-soft/60 hover:bg-accent-soft" : open ? "bg-rail" : "hover:bg-rail/60",
+        )}
+      >
+        {mine && <span className="size-1.5 shrink-0 self-center rounded-full bg-accent" />}
+        <span className={cn("shrink-0 font-mono text-[0.6875rem]", e.severity === "blocker" ? "text-bad" : "text-ink-3")}>
+          {e.asker ?? "?"} · {waited(e.created_at)}
+          {!mine && ` · ${WHERE_ZH[e.chain_state] ?? e.chain_state}`}
+        </span>
+        {!open && <span className="min-w-0 truncate text-[0.8125rem] text-ink-2">{e.question}</span>}
+      </AccordionTrigger>
+      <AccordionBody className="px-4 pb-3">
       <WithAttachments body={e.question} className="my-1 text-[0.8125rem]" />
       {mine && <Suggested escId={e.id} onUse={setSeed} />}
       {mine && (
@@ -901,7 +922,8 @@ function Ask({ e, refresh }: { e: Escalation; refresh: () => void }) {
           )}
         />
       )}
-    </div>
+      </AccordionBody>
+    </>
   );
 }
 
@@ -931,29 +953,26 @@ function Suggested({ escId, onUse }: { escId: number; onUse: (t: string) => void
   if (text === null) return <Meta className="my-1 block">在替你想一个答复…</Meta>;
   if (!text) return null;
   return (
-    <div className="my-1.5 rounded-md border border-rule-soft bg-sunk px-2.5 py-1.5">
+    // A recessed well, because this is the one block on the page nobody wrote:
+    // machine text sitting between the agent's question and the boss's answer, and
+    // it has to be told apart from both at a glance. Two lines of it, expanded by
+    // a click — it used to open at full length, eight lines of a draft nobody had
+    // asked to read, above the box they actually type in.
+    <div className="my-2 rounded-md bg-sunk px-3 py-2">
       <div className="flex items-baseline gap-2">
-        <Meta>参考答复 · 便宜模型现算的，没发出去</Meta>
+        <Meta>参考答复 · 便宜模型现算，没发出去</Meta>
         <span className="grow" />
-        <button
-          onClick={() => setOpen(!open)}
-          className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
-        >
-          {open ? "收起" : "展开"}
-        </button>
+        <Button size="sm" onClick={() => onUse(text)}>填进输入框</Button>
       </div>
-      {open && (
-        <>
-          <div className="mt-1 whitespace-pre-wrap break-words text-[0.8125rem] text-ink-2">{text}</div>
-          <Button
-            size="sm"
-            className="mt-1.5"
-            onClick={() => onUse(text)}
-          >
-            用这个
-          </Button>
-        </>
-      )}
+      <div
+        onClick={() => setOpen(!open)}
+        className={cn(
+          "mt-1 cursor-pointer whitespace-pre-wrap break-words text-[0.8125rem] text-ink-2",
+          !open && "line-clamp-2",
+        )}
+      >
+        {text}
+      </div>
     </div>
   );
 }

@@ -238,8 +238,9 @@ function Row({
     // Below ~52rem the buttons stop fitting beside the text and the row was pushing the
     // whole page into a horizontal scroll. They wrap under instead.
     <CardRow
+      onClick={onOpen}
       className={cn(
-        "grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 transition-colors",
+        "grid cursor-pointer grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 transition-colors",
         "max-[52rem]:grid-cols-[2.75rem_minmax(0,1fr)]",
         // Tint marks work that is stopped, not membership of a list.
         stopped ? "bg-accent-soft/60 hover:bg-accent-soft" : "bg-paper hover:bg-sunk",
@@ -279,7 +280,13 @@ function Row({
           {item.sub && <span> · {item.sub}</span>}
         </div>
       </div>
-      <span className="flex flex-wrap items-center gap-1.5 max-[52rem]:col-start-2">
+      {/* The row opens the requirement; the buttons on it do their own thing. It
+          used to be only the question text that navigated, which is a click target
+          the width of the words inside a row the width of the screen. */}
+      <span
+        onClick={(e) => e.stopPropagation()}
+        className="flex flex-wrap items-center gap-1.5 max-[52rem]:col-start-2"
+      >
         {item.escId != null && <Reply escId={item.escId} fyi={item.fyi} refresh={refresh} />}
         {item.actions}
       </span>

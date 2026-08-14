@@ -76,6 +76,31 @@ The accent is cool and deliberately far from red / amber / green so "needs you"
 can never be misread as a gate outcome. It marks the queue border, the waiting
 slice, primary buttons, and the current selection. Never decoration.
 
+## Surfaces: three depths, and they mean something
+
+Flattening the evidence panel removed the boxes and left everything looking the
+same: rows, verdicts, diffs and logs all hairline-separated text on paper. The
+fix is not more borders. It is depth, and each depth has one job:
+
+| Surface | What sits on it |
+|---|---|
+| `paper` | what you steer — list rows, questions, headers, the acceptance line |
+| `rail` | the row you are inside. An open accordion row is tinted so the body under it has a visible owner |
+| `sunk` | what a machine produced — diffs, gate logs, the drafted answer. Recessed, never authored by a person |
+
+Two rules that follow:
+
+- **Never two boxes around one thing.** A panel inside a bordered list inside a
+  row is three frames drawn around the same content. Depth plus one hairline says
+  it.
+- **`rule` between kinds, `rule-soft` between siblings.** Rows in a list are
+  siblings; a verdict block and the diff under it are not. Making both hairlines
+  the same weight is what made the panel read as one undifferentiated column.
+
+Gutters: one value, both sides, the same as the row above. An asymmetric gutter
+(`pl-14 pr-3`, indenting to a title on one side only) reads as a mistake even
+when the reason for it is real.
+
 ## Type
 
 One family: `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui`. Mono
