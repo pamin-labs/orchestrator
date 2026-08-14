@@ -1,22 +1,24 @@
 import { useEffect, useState } from "react";
-import { Meta, Pane } from "../ui/bits";
-import { Badge } from "../ui/badge";
+import { Check, CircleAlert, ExternalLink } from "lucide-react";
+import { Empty, H2, Input, Meta, Pane } from "../ui/bits";
 import { Button } from "../ui/button";
+import { Tip } from "../ui/tooltip";
 import { pull, post } from "../lib/api";
-import { clock } from "../lib/utils";
+import { clock, cn } from "../lib/utils";
 
 /**
- * Where the fleet's credentials are set, and what is missing before it can run.
+ * The wiring, on one page, because it is one question: can this machine work?
  *
- * Both halves are here because they fail together: a runtime with no credential
- * and a sandbox server that is not up look identical from the outside — agents
- * that do not answer. Naming the actual cause, with the command that fixes it,
- * is the difference between a five-second fix and an afternoon.
+ * Two credentials and a handful of facts about the host. Every one of them is
+ * either fine or blocking, nothing in between, so the page is a list of rows
+ * that say which. The accent — everywhere else "waiting on the boss" — is exactly
+ * right on a credential nobody has pasted: the fleet is stopped until they do.
  *
- * A pasted secret is never read back. The value goes to the egress sidecar's
- * vault and the sandbox itself only ever holds a decoy, so there is nothing to
- * show and nothing worth stealing from this page.
+ * No cards. A row is a hairline and a gutter; the form opens under the row it
+ * belongs to, on `rail`, so the fields have a visible owner.
  */
+
+type Mode = "oauth_token" | "api_key" | "chatgpt";
 
 interface AuthRow {
   runtime: string;
@@ -33,61 +35,50 @@ interface Check {
   fix?: string;
 }
 
-/**
- * How to get each credential, in the page that asks for it.
- *
- * Not a link: this page fetches nothing from a remote origin, and a URL is a
- * thing to go read somewhere else anyway. The command, what it produces and how
- * long it lasts is the whole answer.
- */
-type Mode = "oauth_token" | "api_key" | "chatgpt";
-
-interface RuntimeGuide {
+interface Runtime {
   key: string;
   label: string;
-  /** Every way this runtime can be paid for, in the order worth trying. */
+  /** The mode the orchestrator can obtain by running the CLI on this machine. */
+  login?: Mode;
   modes: Array<{ mode: Mode; label: string; how: string; note: string }>;
-  /** Modes the orchestrator can obtain by running the CLI for you. */
-  canLogin?: Mode;
+  /** What a custom endpoint becomes inside the sandbox. */
+  urlEnv: string;
 }
 
-const RUNTIMES: RuntimeGuide[] = [
+const RUNTIMES: Runtime[] = [
   {
     key: "claude",
     label: "Claude",
-    canLogin: "oauth_token",
+    login: "oauth_token",
+    urlEnv: "ANTHROPIC_BASE_URL",
     modes: [
       {
         mode: "oauth_token",
-        label: "订阅 token",
+        label: "订阅",
         how: "claude setup-token",
-        note: "在你自己的终端里跑，浏览器走一次 OAuth，吐出 sk-ant-oat01- 开头的 token。一年有效，吃订阅额度 —— 顶上的 5 小时/周额度也只有这条路有数。真值只进 egress sidecar，沙盒里是假的。",
+        note: "一年有效，走订阅额度。顶上的 5 小时/周额度也只有这条路有数。",
       },
       {
         mode: "api_key",
         label: "API key",
         how: "console.anthropic.com → API keys",
-        note: "sk-ant-api03- 开头，按 token 计费，不吃订阅额度（顶上不显示额度条）。兼容端点填 base URL。真值同样只进 sidecar。",
+        note: "按 token 计费，不占订阅额度，顶上不显示额度条。",
       },
     ],
   },
   {
     key: "codex",
     label: "Codex",
-    canLogin: "chatgpt",
+    login: "chatgpt",
+    urlEnv: "OPENAI_BASE_URL",
     modes: [
       {
-        mode: "api_key",
-        label: "API key",
-        how: "platform.openai.com → API keys",
-        note: "sk- 开头，按 token 计费。兼容端点填 base URL。真值只进 egress sidecar，沙盒里是假的 —— 和 claude 一样。",
-      },
-      {
         mode: "chatgpt",
-        label: "ChatGPT 订阅",
-        how: "codex login   然后把 ~/.codex/auth.json 整个文件内容粘进来",
-        note: "用你的 ChatGPT 订阅，不按量付费。里面那个 refresh token 留在这儿，由 orchestrator 一家去刷新 —— codex 自己的 CI 文档说「别把同一份 auth.json 分给并发的任务」，而一支车队正好是十个并发。沙盒拿到的是一份形状对但值是假的 auth.json，真的 access token 由 sidecar 在出站时换上，和 claude 一样。你自己那份 ~/.codex/auth.json 我们不碰；但同一个登录在两处刷新，早晚有一边要重新登录一次。",
+        label: "订阅",
+        how: "codex login，或粘贴 ~/.codex/auth.json",
+        note: "走 ChatGPT 订阅。刷新由这台机器一家做：codex 自己的文档说别把同一份登录分给并发任务，而一支车队正好是十个。",
       },
+      { mode: "api_key", label: "API key", how: "platform.openai.com → API keys", note: "按 token 计费。" },
     ],
   },
 ];
@@ -95,7 +86,7 @@ const RUNTIMES: RuntimeGuide[] = [
 export function Settings() {
   const [rows, setRows] = useState<AuthRow[]>([]);
   const [checks, setChecks] = useState<Check[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
 
   const load = async () => {
     const [a, p] = await Promise.all([
@@ -109,162 +100,196 @@ export function Settings() {
     void load();
   }, []);
 
-  return (
-    <div className="flex flex-col gap-4">
-      <Pane>
-        <Meta>环境</Meta>
-        <div className="mt-2 flex flex-col gap-2">
-          {checks.map((c) => (
-            <div key={c.name} className="flex items-start gap-2 text-[0.8125rem]">
-              <Badge tone={c.ok ? "muted" : "bad"}>{c.ok ? "OK" : "缺"}</Badge>
-              <div className="min-w-0">
-                <div className="text-ink-1">
-                  {c.name} <span className="text-ink-3">— {c.detail}</span>
-                </div>
-                {!c.ok && c.fix && (
-                  <div className="mt-0.5 break-all font-mono text-[0.75rem] text-ink-3">{c.fix}</div>
-                )}
-              </div>
-            </div>
-          ))}
-          {!checks.length && <div className="text-[0.8125rem] text-ink-3">检查中…</div>}
-        </div>
-      </Pane>
+  const missing = RUNTIMES.filter((r) => !rows.some((x) => x.runtime === r.key));
 
-      {RUNTIMES.map((g) => (
-        <RuntimeAuth
-          key={g.key}
-          guide={g}
-          current={rows.find((r) => r.runtime === g.key)}
-          busy={busy}
-          onSave={async (payload) => {
-            setBusy(true);
-            await post("/api/auth", { runtime: g.key, ...payload });
-            setBusy(false);
-            void load();
-          }}
-        />
-      ))}
-    </div>
+  return (
+    <Pane className="max-w-[52rem]">
+      <H2>凭据</H2>
+      {missing.length > 0 && (
+        <Empty>
+          {missing.map((r) => r.label).join(" 和 ")}还没配。没有凭据的 turn 根本不会被派出去，队列会等着
+          —— 不会烧掉一轮去撞 401。
+        </Empty>
+      )}
+      <div className="mt-2 border-t border-rule">
+        {RUNTIMES.map((r) => (
+          <Credential
+            key={r.key}
+            runtime={r}
+            current={rows.find((x) => x.runtime === r.key)}
+            open={open === r.key}
+            onToggle={() => setOpen(open === r.key ? null : r.key)}
+            onSaved={load}
+          />
+        ))}
+      </div>
+
+      <H2 className="mt-9">这台机器</H2>
+      <div className="border-t border-rule">
+        {checks.map((c) => (
+          <div key={c.name} className="flex items-baseline gap-3 border-b border-rule-soft py-2">
+            <span className={cn("shrink-0 translate-y-0.5", c.ok ? "text-ok" : "text-bad")}>
+              {c.ok ? <Check size={13} strokeWidth={2.5} /> : <CircleAlert size={13} strokeWidth={2.5} />}
+            </span>
+            <span className="w-36 shrink-0 text-[0.8125rem] text-ink">{c.name}</span>
+            <span className="min-w-0 flex-1">
+              <Meta className="break-all">{c.detail}</Meta>
+              {!c.ok && c.fix && (
+                <span className="mt-1 block rounded bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
+                  {c.fix}
+                </span>
+              )}
+            </span>
+          </div>
+        ))}
+        {!checks.length && <Meta className="block py-2">检查中…</Meta>}
+      </div>
+    </Pane>
   );
 }
 
-function RuntimeAuth(props: {
-  guide: RuntimeGuide;
+function Credential(props: {
+  runtime: Runtime;
   current?: AuthRow;
-  busy: boolean;
-  onSave: (p: { mode: string; secret: string; baseUrl?: string }) => Promise<void>;
+  open: boolean;
+  onToggle: () => void;
+  onSaved: () => void;
 }) {
-  const g = props.guide;
-  const [mode, setMode] = useState<Mode>(props.current?.mode ?? g.modes[0]!.mode);
+  const r = props.runtime;
+  const cur = props.current;
+  const [mode, setMode] = useState<Mode>(cur?.mode ?? r.modes[0]!.mode);
   const [secret, setSecret] = useState("");
-  const [baseUrl, setBaseUrl] = useState(props.current?.baseUrl ?? "");
-  const [loggingIn, setLoggingIn] = useState(false);
+  const [baseUrl, setBaseUrl] = useState(cur?.baseUrl ?? "");
+  const [busy, setBusy] = useState(false);
   const [link, setLink] = useState<string | null>(null);
-  const chosen = g.modes.find((m) => m.mode === mode) ?? g.modes[0]!;
+  const spec = r.modes.find((m) => m.mode === mode) ?? r.modes[0]!;
+
+  const save = async () => {
+    setBusy(true);
+    await post("/api/auth", { runtime: r.key, mode, secret: secret.trim(), baseUrl: baseUrl.trim() || undefined });
+    setBusy(false);
+    setSecret("");
+    props.onSaved();
+  };
+
+  const login = async () => {
+    setBusy(true);
+    setLink(null);
+    const res = await post("/api/auth/login", { runtime: r.key });
+    let url: string | null = null;
+    try {
+      url = res.ok ? (JSON.parse(res.text).url ?? null) : null;
+    } catch {
+      url = null;
+    }
+    setLink(url);
+    // Opened for you and printed as text: a popup blocker eating the one
+    // actionable thing on the page is worse than a link nobody clicks.
+    if (url) window.open(url, "_blank", "noopener");
+    setBusy(false);
+    props.onSaved();
+  };
 
   return (
-    <Pane>
-      <Meta>{g.label}</Meta>
-      {/* Where the value comes from, next to the box that wants it. */}
-      <div className="mt-2 rounded border border-rule-soft bg-sunk p-2">
-        <div className="font-mono text-[0.75rem] text-ink-1">{chosen.how}</div>
-        <div className="mt-1 text-[0.75rem] text-ink-3">{chosen.note}</div>
-      </div>
-      {props.current && (
-        <div className="mt-2 text-[0.75rem] text-ink-3">
-          现在用的是 <span className="font-mono">{props.current.mode}</span>{" "}
-          <span className="font-mono">{props.current.hint}</span>，{clock(props.current.updatedAt)} 配的
-        </div>
-      )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <select
-          className="rounded border border-rule bg-paper px-2 py-1 text-[0.8125rem] text-ink-1"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as Mode)}
-        >
-          {g.modes.map((m) => (
-            <option key={m.mode} value={m.mode}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-        {mode === "chatgpt" ? (
-          <textarea
-            className="min-h-24 w-full rounded border border-rule bg-paper px-2 py-1 font-mono text-[0.75rem] text-ink-1"
-            placeholder="~/.codex/auth.json 的完整内容"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-          />
+    <div className={cn("border-b border-rule-soft", props.open && "bg-rail")}>
+      <button
+        onClick={props.onToggle}
+        className="flex w-full cursor-pointer items-baseline gap-3 px-2 py-2.5 text-left"
+      >
+        <span className="w-36 shrink-0 text-[0.8125rem] font-medium text-ink">{r.label}</span>
+        {cur ? (
+          <>
+            <span className="text-[0.75rem] text-ink-2">
+              {r.modes.find((m) => m.mode === cur.mode)?.label ?? cur.mode}
+            </span>
+            <Meta>{cur.hint}</Meta>
+            {cur.baseUrl && <Meta className="min-w-0 truncate">{cur.baseUrl}</Meta>}
+            <span className="grow" />
+            <Meta>{clock(cur.updatedAt)}</Meta>
+          </>
         ) : (
-          <input
-            className="min-w-0 flex-1 rounded border border-rule bg-paper px-2 py-1 font-mono text-[0.8125rem] text-ink-1"
-            type="password"
-            placeholder="粘贴进来，存下就看不到了"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-          />
+          <span className="text-[0.75rem] font-medium text-accent">没配</span>
         )}
-      </div>
-      {mode === "api_key" && (
-        <input
-          className="mt-2 w-full rounded border border-rule bg-paper px-2 py-1 font-mono text-[0.8125rem] text-ink-1"
-          placeholder="base URL（可选，兼容端点填这里）"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-        />
-      )}
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <Button
-          variant="go"
-          disabled={props.busy || !secret.trim()}
-          onClick={async () => {
-            await props.onSave({ mode, secret: secret.trim(), baseUrl: baseUrl.trim() || undefined });
-            setSecret("");
-          }}
-        >
-          存下
-        </Button>
-        {g.canLogin === mode && (
-          <Button
-            disabled={loggingIn}
-            onClick={async () => {
-              setLoggingIn(true);
-              setLink(null);
-              const r = await post("/api/auth/login", { runtime: g.key });
-              let url: string | null = null;
-              try {
-                url = r.ok ? (JSON.parse(r.text).url ?? null) : null;
-              } catch {
-                url = null;
-              }
-              setLink(url);
-              // Opened for you, and shown as text as well: a popup blocker
-              // swallowing the one actionable thing on the page is worse than
-              // a link nobody clicks.
-              if (url) window.open(url, "_blank", "noopener");
-            }}
-          >
-            {loggingIn ? "等浏览器…" : "点这里登录"}
-          </Button>
-        )}
-        <div className="text-[0.75rem] text-ink-3">
-          {g.canLogin === mode
-            ? "「点这里登录」直接在这台机器上跑一次官方 CLI 的登录，不用你自己敲命令、不用复制粘贴。"
-            : "存下会回收所有正在跑的沙盒（它们的 sidecar 里还是旧凭据），下一轮自动重建。"}
+      </button>
+
+      {props.open && (
+        <div className="px-2 pb-3.5">
+          <div className="flex flex-wrap items-center gap-1">
+            {r.modes.map((m) => (
+              <button
+                key={m.mode}
+                onClick={() => setMode(m.mode)}
+                className={cn(
+                  "cursor-pointer rounded px-2 py-0.5 text-[0.75rem] transition-colors",
+                  mode === m.mode ? "bg-sunk font-medium text-ink" : "text-ink-3 hover:text-ink",
+                )}
+              >
+                {m.label}
+              </button>
+            ))}
+            <span className="grow" />
+            {r.login === mode && (
+              <Tip label="在这台机器上跑一次官方 CLI 的登录，用它本地的登录信息换出 token。仅限官方账号；自建网关走 API key。">
+                <Button size="sm" disabled={busy} onClick={login}>
+                  {busy ? "等浏览器…" : "从本机登录"}
+                </Button>
+              </Tip>
+            )}
+          </div>
+
+          <div className="mt-2 text-[0.75rem] leading-relaxed text-ink-3">
+            <span className="font-mono text-ink-2">{spec.how}</span>
+            <span className="mx-1.5">·</span>
+            {spec.note}
+          </div>
+
+          {link && (
+            <div className="mt-2 flex items-baseline gap-1.5 text-[0.75rem] text-ink-3">
+              <ExternalLink size={12} strokeWidth={1.75} className="shrink-0 translate-y-0.5" />
+              <span className="min-w-0 break-all">
+                没自己打开的话点这里：
+                <a href={link} target="_blank" rel="noopener" className="font-mono text-accent underline">
+                  {link}
+                </a>
+                。批准完这一页会自己更新。
+              </span>
+            </div>
+          )}
+
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {mode === "chatgpt" ? (
+              <textarea
+                className="min-h-20 w-full resize-y rounded-md border border-rule bg-paper px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink transition-colors placeholder:text-ink-3 focus:border-accent focus:ring-3 focus:ring-accent-soft focus:outline-none"
+                placeholder="~/.codex/auth.json 的完整内容"
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+              />
+            ) : (
+              <Input
+                type="password"
+                className="min-w-0 flex-1 font-mono"
+                placeholder="粘贴进来，存下之后就看不到了"
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+              />
+            )}
+            <Input
+              className="min-w-0 flex-1 font-mono"
+              placeholder={`API 地址（可选，自建网关填这里 → ${r.urlEnv}）`}
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+            />
+            <Button variant="go" size="sm" disabled={busy || !secret.trim()} onClick={save}>
+              存下
+            </Button>
+          </div>
+
+          <Meta className="mt-2 block leading-relaxed">
+            真值只写进沙盒外面的 egress sidecar，容器里放的是格式对、值是假的那一份。存下会回收正在跑的沙盒
+            —— 它们的 sidecar 里还是旧凭据 —— 下一轮自动重建。
+          </Meta>
         </div>
-      </div>
-      {link && (
-        <div className="mt-2 break-all text-[0.75rem] text-ink-3">
-          浏览器没自己打开的话，手动开这个：<span className="font-mono text-ink-1">{link}</span>
-          <div className="mt-1">批准之后凭据会自己存下 —— 这一页会自己变。</div>
-        </div>
       )}
-      {mode === "api_key" && (
-        <div className="mt-2 text-[0.75rem] text-ink-3">
-          用 API key 的话顶上不显示 5 小时/周额度 —— 那两个数只有订阅账号才报。
-        </div>
-      )}
-    </Pane>
+    </div>
   );
 }

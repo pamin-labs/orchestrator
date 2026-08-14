@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 /**
  * Refreshing a ChatGPT-account login, on the host, once.
  *
@@ -7,23 +9,20 @@
  * ten sandboxes, one login — so every sandbox refreshing its own copy means
  * they invalidate each other and the boss is asked to log in again.
  *
- * So the orchestrator is the one runner. It holds the file, refreshes it here,
- * and the sandbox gets a decoy while the sidecar injects the real access token
- * on the way out — the same arrangement as every other credential, which is
- * what keeps codex from being the one exception.
+ * So the orchestrator is the one runner. It holds the file and the sandboxes get
+ * decoys, with the sidecar injecting the real access token on the way out — the
+ * same arrangement as every other credential.
  *
- * Endpoint and client id are the CLI's own, read out of the shipped binary
- * rather than guessed: `https://auth.openai.com/oauth/token` and
- * `app_EMoamEEZ73f0CkXaXp7hrann`.
- *
- * ponytail: this reimplements one documented call of somebody else's auth flow.
- * If OpenAI changes it, the symptom is a 401 that pauses the group and points
- * at the settings page, which is the same place a genuinely expired login
- * lands — so it fails visibly rather than quietly.
+ * The renewal itself is done by codex, not by us. Posting the refresh token to
+ * `auth.openai.com` with the CLI's own client id would work — the endpoint and
+ * id are both in the shipped binary — but that is our code presenting itself as
+ * the official client, which is exactly the shape the subscription terms are
+ * about. One throwaway `codex exec` makes the real client refresh its own
+ * token, costs a few hundred tokens, and is needed roughly once a week.
  */
 
-const TOKEN_URL = "https://auth.openai.com/oauth/token";
-const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+/** Enough to make codex talk to the API, and nothing anyone has to read. */
+const NUDGE = ["exec", "--skip-git-repo-check", "-c", 'web_search="disabled"', "reply with: ok"];
 
 /** The shape codex writes. Only the parts anything here reads are typed. */
 export interface CodexAuth {
@@ -58,46 +57,57 @@ export function isStale(a: CodexAuth, now = Date.now(), maxAgeMs = 4 * 24 * 3600
 }
 
 /**
- * Exchange the refresh token for a new pair, and return the file to store.
+ * Make codex renew its own login, and hand back the file it wrote.
  *
- * Returns null when the refresh itself failed — the caller keeps what it had,
- * because a network blip must not throw away a working login.
+ * A real call is what triggers the refresh — `codex login status` reports the
+ * login without touching it — so this spends the smallest turn it can. Returns
+ * null when nothing was renewed, and the caller keeps what it had: a blocked
+ * network must not throw away a working login.
  */
-export async function refresh(
-  a: CodexAuth,
-  fetchImpl: typeof fetch = fetch,
-): Promise<CodexAuth | null> {
-  const refreshToken = a.tokens?.refresh_token;
-  if (!refreshToken) return null;
+export async function renew(codexHome: string, run = spawnCodex): Promise<CodexAuth | null> {
+  const before = await readAuth(codexHome);
+  if (!(await run(codexHome))) return null;
+  const after = await readAuth(codexHome);
+  if (!after) return null;
+  return after.last_refresh && after.last_refresh !== before?.last_refresh ? after : null;
+}
+
+async function spawnCodex(codexHome: string): Promise<boolean> {
   try {
-    const res = await fetchImpl(TOKEN_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-        client_id: CLIENT_ID,
-      }),
-      signal: AbortSignal.timeout(20_000),
+    const p = Bun.spawn(["codex", ...NUDGE], {
+      env: { ...process.env, CODEX_HOME: codexHome },
+      stdout: "ignore",
+      stderr: "ignore",
+      stdin: "ignore",
     });
-    if (!res.ok) return null;
-    const body = (await res.json()) as Record<string, string | undefined>;
-    if (!body.access_token) return null;
-    return {
-      ...a,
-      auth_mode: a.auth_mode ?? "chatgpt",
-      tokens: {
-        ...a.tokens,
-        access_token: body.access_token,
-        id_token: body.id_token ?? a.tokens?.id_token,
-        // Rotated on use: keeping the old one would work until it did not.
-        refresh_token: body.refresh_token ?? refreshToken,
-      },
-      last_refresh: new Date().toISOString(),
-    };
+    const timer = setTimeout(() => p.kill("SIGTERM"), 120_000);
+    const code = await p.exited;
+    clearTimeout(timer);
+    return code === 0;
   } catch {
-    return null;
+    return false;
   }
+}
+
+async function readAuth(codexHome: string): Promise<CodexAuth | null> {
+  const text = await Bun.file(join(codexHome, "auth.json")).text().catch(() => "");
+  return text ? parseAuth(text) : null;
+}
+
+/**
+ * The orchestrator's own copy of the login, so renewing it leaves the boss's
+ * `~/.codex` alone.
+ *
+ * Two copies of one login do drift — whichever refreshes last rotates the token
+ * out from under the other — but that is the price of using one subscription in
+ * two places, and the alternative is a fleet that silently logs the boss out of
+ * their own terminal.
+ */
+export async function seedHome(codexHome: string, authJson: string): Promise<void> {
+  mkdirSync(codexHome, { recursive: true });
+  await Bun.write(join(codexHome, "auth.json"), authJson);
+  // Without this codex looks in the OS keychain instead of the file.
+  await Bun.write(join(codexHome, "config.toml"), 'cli_auth_credentials_store = "file"\n');
 }
 
 /**

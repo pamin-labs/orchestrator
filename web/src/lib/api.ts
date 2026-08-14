@@ -48,6 +48,8 @@ export interface Escalation {
   asker_project: number | null;
 }
 export interface State {
+  /** A credential exists. Without one nothing dispatches, so the header says so. */
+  ready: boolean;
   projects: Project[]; groups: Group[]; slices: Slice[]; tasks: Task[]; agents: Agent[];
   escalations: Escalation[];
   /** unknownPaths: paths the card names that are not in the repo — new files, or a plan written from memory. */
@@ -97,6 +99,9 @@ export interface Cost {
 }
 
 const EMPTY: State = {
+  // Assume wired until told otherwise: a mark on the header before the first
+  // poll lands would flash on every reload.
+  ready: true,
   projects: [], groups: [], slices: [], tasks: [], agents: [], escalations: [],
   draftCards: [], lateObjections: [], approvedBlocked: [], dropProposals: [],
   ideas: [], answered: [], mergeQueue: [], archived: [], usage: [],

@@ -217,7 +217,7 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   // The real tokens go to the sidecar, never inside. Bound at creation because
   // `resume` rebuilds the sidecar with an empty vault, and a sandbox with no
   // vault answers 401 rather than saying the vault is missing.
-  const { credentials } = await vaultBindings(ctx.db);
+  const { credentials } = await vaultBindings(ctx.db, ctx.config.dataDir ?? "data");
   if (credentials.length) {
     await sb.credentialVault
       .create({

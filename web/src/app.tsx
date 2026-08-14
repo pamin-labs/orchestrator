@@ -1,4 +1,4 @@
-import { PanelRight } from "lucide-react";
+import { PanelRight, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { Button } from "./ui/button";
@@ -18,7 +18,9 @@ import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
 import { Picker } from "./views/picker";
 import { Notes } from "./views/notes";
+import { Tab, TabList, TabPanel, Tabs } from "./ui/tabs";
 import { Settings } from "./views/settings";
+import { ProjectSettings } from "./views/project";
 import { Progress } from "./views/progress";
 import { Queue } from "./views/queue";
 import { Requirement } from "./views/requirement";
@@ -188,7 +190,6 @@ export function App() {
     ["notes", "记录"],
     ["owns", "所有权"],
     ["cost", "成本"],
-    ["settings", "设置"],
   ];
   const openGroup = sel.g ? st.groups.find((g) => g.id === sel.g) : undefined;
 
@@ -346,6 +347,25 @@ export function App() {
             </button>
           </Tip>
         )}
+        {/* Not a sixth peer view. The five answer "where is the work"; this
+            answers "is this machine wired up", which is asked once and then
+            never again until something breaks — and when it does break, the
+            accent says so from here. */}
+        <Tip label="凭据和这台机器的环境">
+          <button
+            onClick={() => go({ view: "settings", g: null })}
+            aria-label="设置"
+            className={cn(
+              "relative grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
+              view === "settings" ? "text-ink" : "text-ink-3 hover:text-ink",
+            )}
+          >
+            <SlidersHorizontal size={14} strokeWidth={1.75} />
+            {!st.ready && (
+              <i className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-accent" aria-hidden />
+            )}
+          </button>
+        </Tip>
         <ThemeToggle />
         </span>
       </header>
@@ -422,7 +442,21 @@ export function App() {
           ) : view === "notes" ? (
             <Notes projectId={sel.p!} tab={sel.t} onTab={(t) => go({ t })} />
           ) : view === "owns" ? (
-            <Owns st={st} projectId={sel.p!} />
+            /* Project-level configuration, one view: who may write where, and
+               what a group of this project gets. Both are answers to "how does
+               this repo work", which is not what the other four views ask. */
+            <Tabs value={sel.t ?? "owns"} onValueChange={(t) => go({ t })} className="flex min-h-0 flex-1 flex-col">
+              <TabList>
+                <Tab value="owns">所有权</Tab>
+                <Tab value="config">闸门与沙盒</Tab>
+              </TabList>
+              <TabPanel value="owns" className="min-h-0 flex-1">
+                <Owns st={st} projectId={sel.p!} />
+              </TabPanel>
+              <TabPanel value="config" className="min-h-0 flex-1">
+                <ProjectSettings projectId={sel.p!} />
+              </TabPanel>
+            </Tabs>
           ) : view === "settings" ? (
             <Settings />
           ) : (

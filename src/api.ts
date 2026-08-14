@@ -1593,6 +1593,16 @@ const getCost: Handler = async (ctx, req) => {
 export function snapshot(ctx: Ctx) {
   const db = ctx.db;
   return {
+    /**
+     * Is there a credential at all?
+     *
+     * The scheduler refuses to dispatch a turn without one, so a fleet in this
+     * state is stopped and every view would look idle rather than blocked. One
+     * boolean, so the header can carry the mark instead of the boss discovering
+     * it in a queue that never moves. The deeper checks — docker, the sandbox
+     * server, the sidecar version — cost network and stay in the settings page.
+     */
+    ready: (db.query<{ n: number }, []>("SELECT count(*) AS n FROM runtime_auth").get()?.n ?? 0) > 0,
     projects: db.query("SELECT id, name, repo_path, remote FROM project").all(),
     groups: db
       .query(
@@ -3006,6 +3016,49 @@ const postLogin: Handler = async (ctx, req) => {
   return json({ url: run.url, waiting: true });
 };
 
+/**
+ * A project's own knobs: what it gates on, how it installs, what its sandboxes
+ * look like. Merged into `config_json` key by key, so a page that only knows
+ * about gates cannot blank the sandbox block on save.
+ */
+const patchProjectConfig: Handler = async (ctx, req, params) => {
+  const id = Number(params.id);
+  const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
+  if (!row) return text("no such project", 404);
+  const patch = await body<Record<string, unknown>>(req);
+  let current: Record<string, unknown> = {};
+  try {
+    current = JSON.parse(row.config_json || "{}");
+  } catch {
+    current = {};
+  }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete current[k];
+    else current[k] = v;
+  }
+  ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(current), id]);
+  return json(current);
+};
+
+const getProjectConfig: Handler = async (ctx, _req, params) => {
+  const row = ctx.db
+    .query<{ config_json: string; repo_path: string }, [number]>(
+      "SELECT config_json, repo_path FROM project WHERE id = ?",
+    )
+    .get(Number(params.id));
+  if (!row) return text("no such project", 404);
+  let config: Record<string, unknown> = {};
+  try {
+    config = JSON.parse(row.config_json || "{}");
+  } catch {
+    config = {};
+  }
+  const resources = ctx.db
+    .query<{ name: string; template: string }, []>("SELECT name, template FROM resource ORDER BY name")
+    .all();
+  return json({ repoPath: row.repo_path, config, resources });
+};
+
 const getPreflight: Handler = async (ctx) =>
   json({
     checks: await preflight({
@@ -3019,6 +3072,8 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/auth$/, postAuth],
   ["POST", /^\/api\/auth\/login$/, postLogin],
   ["GET", /^\/api\/preflight$/, getPreflight],
+  ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
+  ["POST", /^\/api\/project\/(?<id>\d+)\/config$/, patchProjectConfig],
   ["POST", /^\/orch\/status$/, postStatus],
   ["POST", /^\/orch\/journal$/, postJournal],
   ["POST", /^\/orch\/mail$/, postMail],

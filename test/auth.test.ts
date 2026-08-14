@@ -2,9 +2,12 @@ import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
 import { absorbCodexHome, CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, saveAuth, vaultFor } from "../src/mech/auth.ts";
 import { newEnough, preflight, report } from "../src/mech/preflight.ts";
-import { accessToken, isStale, parseAuth, refresh } from "../src/mech/chatgpt.ts";
+import { accessToken, isStale, parseAuth, renew } from "../src/mech/chatgpt.ts";
 import { loginRuntimes, startLogin } from "../src/mech/login.ts";
 import type { Ctx } from "../src/api.ts";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const REAL = `sk-ant-oat01-${"R".repeat(80)}`;
 
@@ -149,9 +152,11 @@ test("an api key for codex goes to the sidecar like everything else", () => {
   expect(filesFor(db)).toEqual({});
 });
 
-test("the ChatGPT login is renewed here, once, and a failed renewal keeps what worked", async () => {
+test("the ChatGPT login is renewed here, once, and by codex rather than by us", async () => {
   // Ten sandboxes each refreshing their own copy is what codex's CI guidance
-  // warns against, so there is one refresher and it is this process.
+  // warns against, so there is one refresher and it is this process. It renews
+  // by making the real CLI do it: posting the refresh token ourselves would
+  // work and would be our code presenting itself as the official client.
   const fresh = new Date().toISOString();
   const old = new Date(Date.now() - 9 * 24 * 3600_000).toISOString();
   expect(isStale(parseAuth(JSON.stringify({ last_refresh: fresh }))!)).toBe(false);
@@ -160,19 +165,27 @@ test("the ChatGPT login is renewed here, once, and a failed renewal keeps what w
   expect(isStale({})).toBe(true);
   expect(isStale({ last_refresh: "sometime last week" })).toBe(true);
 
-  const before = { auth_mode: "chatgpt", tokens: { access_token: "old", refresh_token: "r1" }, last_refresh: old };
-  const ok = await refresh(before, (async () =>
-    new Response(JSON.stringify({ access_token: "new", refresh_token: "r2" }), { status: 200 })) as any);
-  expect(accessToken(ok!)).toBe("new");
-  // Rotated on use, so keeping the old one would work until it did not.
-  expect(ok!.tokens!.refresh_token).toBe("r2");
-  expect(isStale(ok!)).toBe(false);
+  // The orchestrator's own CODEX_HOME, not the boss's: renewing must not log
+  // them out of their own terminal.
+  const dir = join(mkdtempSync(join(tmpdir(), "orch-codex-")), "codex-home");
+  mkdirSync(dir, { recursive: true });
+  const write = (v: unknown) => writeFileSync(join(dir, "auth.json"), JSON.stringify(v));
+  write({ auth_mode: "chatgpt", tokens: { access_token: "old" }, last_refresh: old });
 
-  // A blip must not throw away a working login: the caller keeps what it had.
-  expect(await refresh(before, (async () => new Response("nope", { status: 500 })) as any)).toBeNull();
-  expect(await refresh(before, (async () => { throw new Error("offline"); }) as any)).toBeNull();
-  expect(await refresh({ tokens: {} })).toBeNull();
+  // The CLI ran and rewrote the file: that is a renewal.
+  const done = await renew(dir, async () => {
+    write({ auth_mode: "chatgpt", tokens: { access_token: "new" }, last_refresh: fresh });
+    return true;
+  });
+  expect(accessToken(done!)).toBe("new");
+
+  // It ran and changed nothing, or it did not run at all. Neither is a renewal,
+  // and the caller keeps the login it already had rather than storing a
+  // regression.
+  expect(await renew(dir, async () => true)).toBeNull();
+  expect(await renew(dir, async () => false)).toBeNull();
 });
+
 
 test("the panel knows which runtimes it can log in for, and refuses the rest", () => {
   // Running the CLI beats reimplementing two OAuth flows against undocumented

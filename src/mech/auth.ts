@@ -1,6 +1,7 @@
 import type { DB } from "../db.ts";
 import type { Credential } from "./sandbox.ts";
-import { accessToken, decoyAuth, isStale, parseAuth, refresh } from "./chatgpt.ts";
+import { join } from "node:path";
+import { accessToken, decoyAuth, isStale, parseAuth, renew, seedHome } from "./chatgpt.ts";
 
 /**
  * Where each runtime's credential comes from, and how it reaches the model.
@@ -125,16 +126,19 @@ export function filesFor(db: DB): Record<string, string> {
  *
  * One refresher, on the host, because there is one login: ten sandboxes each
  * refreshing their own copy is precisely the thing codex's CI guidance says not
- * to do. A failed refresh keeps what we had — a network blip must not throw
- * away a working login — and shows up later as the 401 that pauses the group.
+ * to do. The renewal is done by codex itself rather than by us — see chatgpt.ts
+ * for why that distinction is worth a few hundred tokens a week. A failed one
+ * keeps what we had, and shows up later as the 401 that pauses the group.
  */
-export async function currentChatgptToken(db: DB, now = Date.now()): Promise<string | null> {
+export async function currentChatgptToken(db: DB, dataDir: string, now = Date.now()): Promise<string | null> {
   const a = loadAuth(db, "codex");
   if (a?.mode !== "chatgpt") return null;
   let parsed = parseAuth(a.secret);
   if (!parsed) return null;
   if (isStale(parsed, now)) {
-    const next = await refresh(parsed);
+    const codexHome = join(dataDir, "codex-home");
+    await seedHome(codexHome, a.secret);
+    const next = await renew(codexHome);
     if (next) {
       saveAuth(db, { ...a, secret: JSON.stringify(next) });
       parsed = next;
@@ -170,15 +174,22 @@ export function absorbCodexHome(db: DB, contents: string): boolean {
  * Async because that one may have to be renewed first, and renewing it is a
  * network call. Every other credential is a stored string.
  */
-export async function vaultBindings(db: DB): Promise<{ credentials: Credential[]; env: Record<string, string> }> {
+export async function vaultBindings(db: DB, dataDir: string): Promise<{ credentials: Credential[]; env: Record<string, string> }> {
   const base = vaultFor(db);
-  const token = await currentChatgptToken(db);
+  const token = await currentChatgptToken(db, dataDir);
   if (!token) return base;
+  const a = loadAuth(db, "codex")!;
   return {
-    env: base.env,
+    // A ChatGPT login can still be pointed at a gateway — someone running their
+    // own front end has one login and a different address for it.
+    env: { ...base.env, ...(a.baseUrl ? { OPENAI_BASE_URL: a.baseUrl } : {}) },
     credentials: [
       ...base.credentials,
-      { name: "codex", value: token, hosts: BINDINGS.codex!.hosts },
+      {
+        name: "codex",
+        value: token,
+        hosts: a.baseUrl ? [...BINDINGS.codex!.hosts, new URL(a.baseUrl).hostname] : BINDINGS.codex!.hosts,
+      },
     ],
   };
 }
