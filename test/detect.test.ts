@@ -125,3 +125,17 @@ test("a project with nothing detectable says so instead of failing silently late
   const esc = db.query<{ body: string }, []>("SELECT body FROM event WHERE kind = 'escalation'").get()!;
   expect(esc.body).toContain("no gates detected");
 });
+
+test("no detected gate reaches for bunx or npx", () => {
+  // `bunx tsc` re-resolves and installs on every call, and every worktree shares
+  // one node_modules by symlink: two gates at once raced on it and one came back
+  // `Failed to link jiti: EEXIST`. The group read that as its own build being
+  // broken and burned five retries on it.
+  const repo = mkdtempSync(join(tmpdir(), "orch-detect-"));
+  writeFileSync(join(repo, "package.json"), JSON.stringify({ scripts: { test: "bun test", "build:web": "x", lint: "x" } }));
+  writeFileSync(join(repo, "bun.lock"), "");
+  writeFileSync(join(repo, "tsconfig.json"), "{}");
+  for (const r of detectGates(repo)) {
+    expect(`${r.name}: ${r.template}`).not.toMatch(/\b(bunx|npx)\b/);
+  }
+});

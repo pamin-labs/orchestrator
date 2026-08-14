@@ -72,7 +72,11 @@ const RULES: Rule[] = [
       if (scripts.typecheck || scripts.tsc || hasFile(repo, "tsconfig.json")) {
         out.push({
           name: "typecheck",
-          template: runner === "bun" ? "bunx tsc --noEmit" : "npx tsc --noEmit",
+          // The local binary, not `bunx`/`npx`. Those re-resolve and install on
+          // every call, and every worktree shares one node_modules by symlink —
+          // two gates at once raced on it and one came back `Failed to link
+          // jiti: EEXIST`, which the group read as its own build being broken.
+          template: "node_modules/.bin/tsc --noEmit",
           errorRegex: "error TS",
         });
       }

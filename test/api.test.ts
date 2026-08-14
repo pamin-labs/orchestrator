@@ -1169,3 +1169,23 @@ test("what a question is about comes from a closed set", () => {
   expect(askKind("环境")).toBe("other");
   expect(askKind(undefined)).toBe("other");
 });
+
+test("an agent's own rebase clears a wedged one first", async () => {
+  // Ours aborts it in rebaseOntoBase; `orch git -- rebase origin/main` is the
+  // other door into the same wall, and it is the door the watchdog tells every
+  // group to use.
+  const h = harness({ worktree: "/tmp/wt" });
+  const seen: string[][] = [];
+  h.ctx.git = async (_repo, argv) => {
+    seen.push(argv);
+    return { code: 0, out: "" };
+  };
+  await h.app(
+    new Request("http://x/orch/git", {
+      method: "POST",
+      headers: { "x-orch-token": "tok-eng", "content-type": "application/json" },
+      body: JSON.stringify({ argv: ["rebase", "origin/main"] }),
+    }),
+  );
+  expect(seen.some((a) => a[0] === "rev-parse" && a.includes("rebase-merge"))).toBe(true);
+});

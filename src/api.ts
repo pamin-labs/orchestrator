@@ -7,7 +7,7 @@ import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
-import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
+import { abortStaleRebase, sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
@@ -1219,6 +1219,17 @@ const postGit: Handler = async (ctx, req) => {
         .get(grp.project_id)?.repo_path) ||
     process.cwd();
   const cwd = grp?.worktree ?? repo;
+
+  // An agent's own rebase can be interrupted the same way ours can — the server
+  // stops, the watchdog kills the turn, the agent runs out of turns mid-conflict
+  // — and then `rebase-merge/` sits there and every later rebase in that
+  // worktree refuses with "I am stopping in case you still have something
+  // valuable there". The group can never move again and says the same sentence
+  // once per attempt. Ours aborts it in `rebaseOntoBase`; this is the other door
+  // into the same wall.
+  if (ctx.git && grp?.worktree && (b.argv ?? []).includes("rebase") && !b.argv.some((x) => x.startsWith("--"))) {
+    await abortStaleRebase(ctx.git, repo, grp.worktree);
+  }
 
   const out = await ctx.gitLock.run(repo, b.argv, async () => {
     const p = Bun.spawn(["git", ...b.argv], { cwd, stdout: "pipe", stderr: "pipe" });
