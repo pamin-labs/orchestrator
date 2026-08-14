@@ -1,5 +1,6 @@
-import { dirname, isAbsolute, join } from "node:path";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, symlinkSync } from "node:fs";
+import { basename, dirname, isAbsolute, join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import type { RepoLock } from "./gitlock.ts";
 
 /**
@@ -147,23 +148,90 @@ function excludeSeeds(repoPath: string): void {
  * from a guess in here, because "how do you install this" is the one thing that
  * differs between every stack.
  */
+/**
+ * Registries a setup command may reach.
+ *
+ * Deny-by-default, which is the whole reason this list is acceptable where a list
+ * of dangerous commands was not: a missing entry here fails the install with a
+ * network error the boss can read, while a missing entry in a blocklist is a hole
+ * nobody finds. Extend per project with `config_json.installDomains`.
+ */
+export const INSTALL_DOMAINS = [
+  "registry.npmjs.org", "registry.yarnpkg.com", "npm.pkg.github.com",
+  "pypi.org", "files.pythonhosted.org",
+  "proxy.golang.org", "sum.golang.org", "storage.googleapis.com",
+  "crates.io", "static.crates.io", "index.crates.io",
+  "api.nuget.org", "repo.maven.apache.org", "rubygems.org",
+  "github.com", "codeload.github.com", "objects.githubusercontent.com", "raw.githubusercontent.com",
+];
+
+/**
+ * Run a setup command with a boundary around it.
+ *
+ * The command comes from an agent (see the bootstrap role), and the first version
+ * of this checked it against a list of package-manager names — which is the wrong
+ * shape of defence: a blocklist of command shapes is only as good as the last
+ * thing somebody thought of. `srt` (@anthropic-ai/sandbox-runtime) is the right
+ * shape: seatbelt on macOS, bubblewrap on Linux, deny-by-default filesystem and
+ * network, no container. Measured here: a write outside the worktree comes back
+ * `Operation not permitted` and a fetch to an unlisted host fails to connect.
+ *
+ * Caches have to be writable or every install fails, so they are allowed
+ * explicitly rather than by allowing `$HOME`.
+ *
+ * If `srt` is missing the command still runs — an unsandboxed install is what
+ * this repo did for months — and the caller's own check is what stands in for it.
+ */
 export async function installDeps(
   worktree: string,
   cmd: string | null | undefined,
   logPath?: string,
-): Promise<{ ok: boolean; out: string }> {
-  if (!cmd?.trim()) return { ok: true, out: "" };
-  const p = Bun.spawn(["sh", "-lc", cmd], { cwd: worktree, stdout: "pipe", stderr: "pipe" });
+  opts: { domains?: string[]; repoRoot?: string } = {},
+): Promise<{ ok: boolean; out: string; sandboxed: boolean }> {
+  if (!cmd?.trim()) return { ok: true, out: "", sandboxed: false };
+  const srt = join(opts.repoRoot ?? process.cwd(), "node_modules/.bin/srt");
+  const sandboxed = existsSync(srt);
+  let argv = ["sh", "-lc", cmd];
+  if (sandboxed) {
+    const home = homedir();
+    // Not in the worktree: the turn checkpoint's `git add -A` would commit it,
+    // and a settings file in the diff is the group being blamed for our plumbing.
+    const settings = join(tmpdir(), `orch-srt-${basename(worktree)}.json`);
+    writeFileSync(
+      settings,
+      JSON.stringify({
+        network: { allowedDomains: [...INSTALL_DOMAINS, ...(opts.domains ?? [])], deniedDomains: [] },
+        filesystem: {
+          allowWrite: [
+            worktree,
+            "/tmp",
+            join(home, ".bun/install/cache"),
+            join(home, ".npm"),
+            join(home, ".cache"),
+            join(home, "Library/Caches"),
+            join(home, ".cargo/registry"),
+            join(home, "go/pkg/mod"),
+            join(home, ".nuget/packages"),
+            join(home, ".m2/repository"),
+          ],
+          denyWrite: [],
+          denyRead: [join(home, ".ssh"), join(home, ".aws"), join(home, ".config/gh")],
+        },
+      }),
+    );
+    argv = [srt, "-s", settings, "-c", cmd];
+  }
+  const p = Bun.spawn(argv, { cwd: worktree, stdout: "pipe", stderr: "pipe" });
   const [so, se] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   const out = (so + se).trimEnd();
   const ok = (await p.exited) === 0;
   if (logPath) {
     try {
       mkdirSync(dirname(logPath), { recursive: true });
-      appendFileSync(logPath, `$ ${cmd}\n${out}\n`);
+      appendFileSync(logPath, `$ ${cmd}${sandboxed ? " (sandboxed)" : ""}\n${out}\n`);
     } catch {}
   }
-  return { ok, out };
+  return { ok, out, sandboxed };
 }
 
 export async function removeWorktree(

@@ -550,19 +550,15 @@ const postAskBoss: Handler = async (ctx, req) => {
 };
 
 /**
- * Package managers a setup command may start with.
+ * The fallback check, for a machine with no sandbox binary.
  *
- * The point of the bootstrap role is that nobody can enumerate setup commands —
- * bun, pnpm, poetry, uv, pdm, mise, asdf, gradle, a Makefile target — so the
- * agent reads the repo and writes the command. What is enumerable is the set of
- * programs that are package managers, and that is what this checks: the first
- * word, not the command.
- *
- * `orch lease` never takes a free command (PLAN.md hard constraint 2) and this
- * does, which is the reason for the list rather than a shrug: a turn that can run
- * anything on the host is the sandbox with a door in it. `curl … | sh` is the
- * exact shape that door is for, so pipes and redirects are refused outright and
- * the boss is asked instead.
+ * A setup command is confined by `srt` — deny-by-default filesystem and network
+ * at the OS level, see `installDeps` — and that is the defence. This list is what
+ * stands in for it when `srt` is not installed, and it is a blocklist, so it is
+ * only as good as the last thing somebody thought of. That is exactly why it is
+ * not the primary: `orch lease` never takes a free command (PLAN.md hard
+ * constraint 2), and a turn that can run anything on the host is the sandbox with
+ * a door in it.
  */
 const SETUP_BINS = new Set([
   "bun", "npm", "pnpm", "yarn", "corepack", "node",
@@ -623,10 +619,22 @@ const postSetup: Handler = async (ctx, req) => {
   }
 
   const cmd = (b.cmd ?? "").trim();
-  const refusal = setupRefusal(cmd);
-  if (refusal) return bad(refusal);
-
-  const r = await installDeps(grp.worktree, cmd, join(ctx.config.dataDir ?? "data", "gates", `install-${a.grp_id}.log`));
+  const repo = ctx.db
+    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
+    .get(grp.project_id)?.repo_path;
+  // Checked BEFORE it runs, and only when there is no boundary to run it inside:
+  // under `srt` the command is confined to this worktree and the registries, so
+  // what it *is* matters less than what it can reach.
+  if (!existsSync(join(repo ?? process.cwd(), "node_modules/.bin/srt"))) {
+    const refusal = setupRefusal(cmd);
+    if (refusal) return bad(`${refusal} (no sandbox binary on this machine)`);
+  }
+  const r = await installDeps(
+    grp.worktree,
+    cmd,
+    join(ctx.config.dataDir ?? "data", "gates", `install-${a.grp_id}.log`),
+    { domains: installDomains(ctx, grp.project_id), repoRoot: repo },
+  );
   ctx.bus.emit({
     grpId: a.grp_id,
     author: a.role,
@@ -643,6 +651,19 @@ const postSetup: Handler = async (ctx, req) => {
   }
   return r.ok ? text("ok") : bad(`setup failed:\n${r.out.slice(-1200)}`);
 };
+
+/** Extra registries a project needs, from `config_json.installDomains`. */
+function installDomains(ctx: Ctx, projectId: number): string[] {
+  try {
+    const row = ctx.db
+      .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
+      .get(projectId);
+    const v = JSON.parse(row?.config_json ?? "{}").installDomains;
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 const postLease: Handler = async (ctx, req) => {
   const b = await body<{ resource: string; args?: Record<string, unknown> }>(req);

@@ -308,3 +308,30 @@ test("a rebase nobody finished does not wedge the group forever", async () => {
   const again = await rebaseOntoBase(git, dir, wt.worktree, "main");
   expect(again.out).not.toContain("already a rebase-merge directory");
 });
+
+test("a setup command runs inside a boundary, not just past a word list", async () => {
+  const dir = await repo();
+  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+
+  // A blocklist of command shapes is only as good as the last thing somebody
+  // thought of. `srt` is deny-by-default at the OS level: seatbelt here,
+  // bubblewrap on Linux. Measured — a write outside the worktree comes back
+  // `Operation not permitted`.
+  const inside = await installDeps(wt.worktree, "echo ok > probe.txt", undefined, { repoRoot: process.cwd() });
+  expect(inside.sandboxed).toBe(true);
+  expect(inside.ok).toBe(true);
+  expect(existsSync(join(wt.worktree, "probe.txt"))).toBe(true);
+
+  const escape = join(tmpdir(), `orch-escape-${Date.now()}.txt`);
+  const outside = await installDeps(wt.worktree, `echo bad > ${escape.replace("/tmp", "/private/etc/orch-nope")}`, undefined, {
+    repoRoot: process.cwd(),
+  });
+  expect(outside.ok).toBe(false);
+
+  // And the settings file it needs is not in the worktree: `git add -A` in the
+  // turn checkpoint would commit it, and our plumbing in the diff reads as the
+  // group's own change.
+  expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out).toContain("probe.txt");
+  expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out).not.toContain("srt");
+});
