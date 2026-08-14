@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DB } from "../db.ts";
 import type { RateLimitInfo } from "../runtime/claude.ts";
+import { subscriptionAccount } from "./auth.ts";
 
 /**
  * How much of the claude subscription's windows is gone.
@@ -137,6 +138,14 @@ export async function fetchClaudeUsage(token: string): Promise<UsageRead> {
  * remember to wind. Returns whether it wrote, for the test.
  */
 export async function pollClaudeUsage(db: DB, now = Date.now()): Promise<boolean> {
+  // What the fleet spends is the credential on the settings page, not whatever
+  // this host is logged into — and this endpoint only reports on the provider's
+  // own subscriptions. An API key or a gateway therefore gets no bar, and any row
+  // left over from before the switch is deleted rather than left to age.
+  if (!subscriptionAccount(db, "claude")) {
+    db.run("DELETE FROM usage_snapshot WHERE runtime = 'claude'");
+    return false;
+  }
   const last = db
     .query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'")
     .get()?.at;
@@ -145,10 +154,10 @@ export async function pollClaudeUsage(db: DB, now = Date.now()): Promise<boolean
     .get()?.json;
   const throttled = !!prev && prev.includes('"error":"rate_limited"');
   if (last && now - last < (throttled ? BACKOFF_MS : POLL_EVERY_MS)) return false;
-  // No OAuth token means no subscription: this account is billed per token, has no
-  // window to run out of, and must not get a usage bar at all — an error state
-  // there would be reporting the absence of something it never had. Nothing is
-  // written, so the row never appears.
+  // Read-only, and from this host: Claude Code owns the token and refreshes it.
+  // Missing is a normal state — the boss may not have run the login on this
+  // machine — and it writes nothing rather than an error, because a failure to
+  // read is not news the header can act on.
   const token = await claudeToken();
   if (!token) return false;
 
@@ -309,6 +318,12 @@ function recentFiles(root: string, limit: number): string[] {
 /** Both providers, on the watchdog's clock. */
 export async function pollUsage(db: DB, dataDir: string, now = Date.now()): Promise<void> {
   await pollClaudeUsage(db, now);
+  // Same rule as claude, stated rather than inferred: an api_key session's rollout
+  // file happens to carry no `rate_limits`, so this used to be right by accident.
+  if (!subscriptionAccount(db, "codex")) {
+    db.run("DELETE FROM usage_snapshot WHERE runtime = 'codex'");
+    return;
+  }
   const rl = codexUsage(dataDir, now);
   if (!rl) return;
   db.run(

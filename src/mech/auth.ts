@@ -98,6 +98,31 @@ export function saveAuth(db: DB, a: RuntimeAuth): void {
   );
 }
 
+/**
+ * Does this runtime have a subscription window worth reading?
+ *
+ * Two conditions, and the second is the one that is easy to miss. A per-token key
+ * has no window to run out of. And the usage endpoint is the provider's own
+ * (subusage.ts), so once a self-hosted gateway is configured the quota it reports
+ * belongs to a different account than the one the fleet is spending — a number
+ * about somebody else's subscription, rendered as if it were the constraint on
+ * what to start next.
+ *
+ * No row at all is also false: nothing can run without a configured credential,
+ * so a bar sourced from whatever this host happens to be logged into would be
+ * about an account the fleet never touches.
+ */
+export function subscriptionAccount(db: DB, runtime: string): boolean {
+  const a = loadAuth(db, runtime);
+  if (!a || a.mode === "api_key") return false;
+  if (!a.baseUrl) return true;
+  try {
+    return BINDINGS[runtime]?.hosts.includes(new URL(a.baseUrl).hostname) ?? false;
+  } catch {
+    return false;
+  }
+}
+
 export function loadAuth(db: DB, runtime: string): RuntimeAuth | null {
   const r = db
     .query<{ runtime: string; mode: string; secret: string; base_url: string | null }, [string]>(
