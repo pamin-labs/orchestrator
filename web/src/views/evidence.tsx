@@ -77,19 +77,27 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
       <div className={cn(PAD, "sticky top-0 z-10 border-b border-rule bg-paper py-2.5")}>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
           <span className="min-w-0 text-[0.8125rem] text-ink">{ev.accept_spec}</span>
+          {/* The size of the delivery, on the line that says what was delivered.
+              It used to hang off the end of the pane switch, where it read as a
+              label for `typecheck` and disappeared when you opened a log — but it
+              is a fact about the slice, not about which pane is open. */}
+          <Meta className="shrink-0">
+            {files || "无改动"}
+            {ev.diff && ` · +${plus} −${minus}`}
+          </Meta>
+          {ev.retries > 0 && <Meta className="shrink-0 text-warn">被打回过 {ev.retries} 次</Meta>}
           <span className="grow" />
           {actions}
         </div>
 
-        {/* The switch and the size of what it switches to, on one line. They were
-            two rows and a bordered strip: 5 files changed, 94 insertions(+) above
-            四个带体积的段 — every number printed twice and the loudest thing in the
-            panel was the pane selector.
+        {/* Just the switch. It was a bordered strip with a byte count on every
+            segment, under a header that printed the diffstat a second time — the
+            loudest thing in the panel was the pane selector.
 
-            One language across the row, too. It read 改动 build test typecheck,
-            the first in Chinese and the rest in whatever the gates are called in
-            config. Gate names are identifiers and stay as written, so the diff
-            joins them rather than three of them getting invented names. */}
+            One language across the row: it read 改动 build test typecheck, the
+            first in Chinese and the rest in whatever the gates are called in
+            config. Gate names come out of config and cannot move, so the others
+            joined them rather than three of them getting invented names. */}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           <Segments value={view} onValueChange={setView} className="-ml-2">
             <Segment value="diff">diff</Segment>
@@ -111,12 +119,6 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
               </Segment>
             ))}
           </Segments>
-          {view === "diff" && (
-            <Meta>
-              {files || "无改动"}
-              {ev.diff && ` · +${plus} −${minus}`}
-            </Meta>
-          )}
           {/* Which claim the diff is making. Per-slice while the branch is intact,
               whole-branch after a rebase rewrites it — the boss is accepting one
               of those two things and they are not the same thing. */}
@@ -125,7 +127,6 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
               <Meta className="cursor-help underline decoration-dotted">整条分支</Meta>
             </Tip>
           )}
-          {ev.retries > 0 && <Meta className="text-warn">被打回过 {ev.retries} 次</Meta>}
         </div>
       </div>
 
