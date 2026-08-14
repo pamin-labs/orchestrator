@@ -9,8 +9,10 @@ import {
   checkpoint,
   createWorktree,
   makeGitRunner,
+  rebaseOntoBase,
   removeWorktree,
   rollbackTo,
+  sliceDiffBase,
   squashWip,
 } from "../src/mech/worktree.ts";
 
@@ -216,4 +218,32 @@ test("a real commit message is never squashed away", async () => {
   expect(r.squashed).toBe(0);
   expect(r.reason).toContain("real messages");
   expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out).toContain("fix: the actual bug");
+});
+
+test("a rebased branch stops reporting other groups' landed work as this slice's diff", async () => {
+  const dir = await repo();
+  const workRoot = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const wt = await createWorktree(git, { repoPath: dir, workRoot, group: "g1" });
+
+  // Where the slice started: the branch tip at the time, which here is main.
+  const base = (await git(dir, ["rev-parse", "HEAD"], wt.worktree)).out.trim();
+  writeFileSync(join(wt.worktree, "mine.txt"), "slice work\n");
+  await checkpoint(git, dir, wt.worktree, "engineer turn");
+
+  // Untouched branch: the recorded base is still a point on it.
+  expect(await sliceDiffBase(git, dir, wt.worktree, base)).toEqual({ base, scope: "slice" });
+
+  // Another group lands on main, and this branch is rebased onto it (rule 15).
+  writeFileSync(join(dir, "theirs.txt"), "somebody else\n");
+  await git(dir, ["add", "-A"]);
+  await git(dir, ["commit", "-q", "-m", "other group"]);
+  await rebaseOntoBase(git, dir, wt.worktree, "main");
+
+  // The recorded base is now a commit on main, so diffing from it would call
+  // `theirs.txt` part of this slice. Fall back to the fork point instead.
+  const after = await sliceDiffBase(git, dir, wt.worktree, base);
+  expect(after?.scope).toBe("branch");
+  const files = (await git(dir, ["diff", "--name-only", after!.base], wt.worktree)).out;
+  expect(files).toContain("mine.txt");
+  expect(files).not.toContain("theirs.txt");
 });

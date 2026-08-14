@@ -7,7 +7,7 @@ import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
-import type { GitRunner } from "./mech/worktree.ts";
+import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
@@ -2423,15 +2423,23 @@ const getEvidence: Handler = async (ctx, _req, params) => {
   let stat = "";
   let diff = "";
   let truncated = false;
-  if (ctx.git && repo && grp?.worktree && sl.base_sha) {
-    const [s, d] = await Promise.all([
-      ctx.git(repo, ["diff", "--stat", sl.base_sha, "--"], grp.worktree),
-      ctx.git(repo, ["diff", sl.base_sha, "--"], grp.worktree),
-    ]);
-    stat = s.code === 0 ? s.out.trim() : "";
-    diff = d.code === 0 ? d.out : "";
-    truncated = diff.length > DIFF_CAP;
-    if (truncated) diff = diff.slice(0, DIFF_CAP);
+  // Never `git diff <base_sha>` straight: after a rebase that base is a commit on
+  // old main and the diff picks up every other group's landed work. See
+  // `sliceDiffBase`.
+  let scope: "slice" | "branch" = "slice";
+  if (ctx.git && repo && grp?.worktree) {
+    const from = await sliceDiffBase(ctx.git, repo, grp.worktree, sl.base_sha);
+    if (from) {
+      scope = from.scope;
+      const [s, d] = await Promise.all([
+        ctx.git(repo, ["diff", "--stat", from.base, "--"], grp.worktree),
+        ctx.git(repo, ["diff", from.base, "--"], grp.worktree),
+      ]);
+      stat = s.code === 0 ? s.out.trim() : "";
+      diff = d.code === 0 ? d.out : "";
+      truncated = diff.length > DIFF_CAP;
+      if (truncated) diff = diff.slice(0, DIFF_CAP);
+    }
   }
 
   // Both reviewers file through the same route, so this is QA's verdict on a
@@ -2453,7 +2461,7 @@ const getEvidence: Handler = async (ctx, _req, params) => {
     return [{ name, path, size: raw.size }];
   });
 
-  return json({ ...sl, stat, diff, truncated, verdicts, gates });
+  return json({ ...sl, stat, diff, truncated, scope, verdicts, gates });
 };
 
 /** Tail of one gate's log, on demand: it is only opened when a verdict is doubted. */

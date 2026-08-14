@@ -29,6 +29,9 @@ export interface Archived {
 export interface Evidence {
   seq: number; title: string; accept_spec: string; retries: number;
   stat: string; diff: string; truncated: boolean;
+  /** `slice` = since this slice started. `branch` = the whole branch against
+      origin/main, which is what a rebase leaves recoverable. */
+  scope: "slice" | "branch";
   verdicts: { author: string; body: string; at: number }[];
   gates: { name: string; path: string; size: number }[];
 }
