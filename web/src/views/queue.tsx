@@ -3,6 +3,7 @@ import { Button, LinkButton } from "../ui/button";
 import { Tip } from "../ui/tooltip";
 import { Meta } from "../ui/bits";
 import { post, pull } from "../lib/api";
+import { usePaged } from "../lib/page";
 import type { State } from "../lib/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "../lib/rank";
 import { pending, prUrl } from "../lib/select";
@@ -217,7 +218,28 @@ export function Queue({
   // The sort order used to be printed above the list. Every row already carries
   // the reason it sits where it does, which is the same fact said once instead of
   // twice — and said on the row that has to justify itself.
-  return <div>{blocks.map((b) => b.node)}</div>;
+  return <Paged blocks={blocks} />;
+}
+
+/**
+ * Twenty requirements, then the rest one click away.
+ *
+ * The list is sorted by what ignoring each one costs, so the tail is cheap to
+ * defer — and never to hide: the count of what is not shown is on the button,
+ * because a silently truncated list reads as a complete one.
+ */
+function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
+  const { page, rest, more } = usePaged(blocks, 20);
+  return (
+    <div>
+      {page.map((b) => b.node)}
+      {rest > 0 && (
+        <div className="border-t border-rule-soft px-2 py-2">
+          <Button variant="quiet" size="sm" onClick={more}>还有 {rest} 条需求</Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -240,13 +262,21 @@ function Cluster({
   const standing = c.grpId < 0;
   const g = st.groups.find((x) => x.id === c.grpId);
   const hard = c.items.filter((i) => i.hard).length;
+  // A requirement with thirty open questions is a real state — one bad premise
+  // strands every slice behind it — and thirty cards in one row is a horizontal
+  // wall that pushes every other requirement off the screen. Blockers first, six
+  // shown, and the rest counted rather than hidden: what the boss decides here is
+  // which requirement to open, and six cards already answers it.
+  const shown = [...c.items].sort((a, b) => Number(b.hard) - Number(a.hard)).slice(0, 6);
   return (
     <div
       onClick={() => !standing && onOpen(c.grpId)}
       className={cn(
         "grid grid-cols-[14rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2",
         "border-t border-rule-soft px-2 py-2.5 transition-colors first:border-t-0",
-        !standing && "cursor-pointer hover:bg-sunk",
+        // `rail`, not `sunk`: the cards are on `sunk`, and a row that hovers to the
+        // card colour makes every card vanish under the cursor.
+        !standing && "cursor-pointer hover:bg-rail/70",
         "max-[60rem]:grid-cols-[minmax(0,1fr)_auto]",
       )}
     >
@@ -261,9 +291,14 @@ function Cluster({
       </div>
 
       <div className="flex min-w-0 flex-wrap items-stretch gap-1.5 max-[60rem]:col-span-full">
-        {c.items.map((i) => (
+        {shown.map((i) => (
           <Ticket key={i.key} item={i} refresh={refresh} standing={standing} />
         ))}
+        {c.items.length > shown.length && (
+          <span className="self-center font-mono text-[0.6875rem] text-ink-3">
+            还有 {c.items.length - shown.length} 条
+          </span>
+        )}
       </div>
 
       <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 whitespace-nowrap">
@@ -291,7 +326,8 @@ function Ticket({
       <span
         className={cn(
           "w-[13rem] shrink-0 rounded-[0.3125rem] border px-1.5 py-1",
-          item.hard ? "border-bad/70 bg-bad-soft/40" : "border-rule-soft bg-sunk",
+          // Opaque, so it survives whatever the row does on hover.
+          item.hard ? "border-bad/70 bg-bad-soft" : "border-rule-soft bg-sunk",
         )}
       >
         <span className="flex items-center gap-1 font-mono text-[0.625rem] text-ink-3">
