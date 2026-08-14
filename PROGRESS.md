@@ -374,3 +374,15 @@ codex 每个 turn 的 `token_count` 里自带 5h 和周窗口的 `used_percent`�
 - **合入了的组没人告诉它。** `pollPrs` 只查 `status IN ('PR_OPEN','PAUSED')`，MERGED 判断还压在 `if (g.status !== 'PR_OPEN') continue` 下面。组被打回 RUNNING 的窗口里 PR 合了 —— grp16 的 PR #2 进了 main，它继续给一个和 main 逐字节相同的分支派 turn。**MERGED 不该看组状态**，有 pr_number 才是该轮询的理由。
 
 check 在 `test/stuck-slice.test.ts`（五条，去掉任一修复都会红）+ `test/watchdog.test.ts` / `test/prwatch.test.ts` 各一条。
+
+## 切片证据面板：手风琴 + 三层表面 + rebase 后的 diff 基线
+
+`git diff <slice.base_sha>` 在规则 15 rebase 之后就不再是这一片的改动 —— base_sha 变成 main 的祖先，别的组已合入的东西全算到这片头上。`sliceDiffBase` 只在 base_sha 仍然落在本分支（且在与 main 的分叉点之后）时用它，否则从分叉点开始 diff（= 整条分支相对 origin/main，也就是 PR 会显示的东西），面板上标出用的是哪一种。check 在 `test/worktree.test.ts`。
+
+UI 这轮的三件事，写进了 `DESIGN.md`：
+
+- **less is more，克制** —— 砍的是屏幕上的记号，不是事实。同一个数字只印一次；已经在框里的东西不再套框；控件不许比它控制的内容更响。
+- **三层表面各有含义**：`paper` 你操作的东西（行、问题、表头）/ `rail` 你正打开的那一行 / `sunk` 机器产出的东西（diff、闸门日志、代拟答复）。分界线 `rule` 分种类、`rule-soft` 分同类，左右一样的 gutter。
+- **accordion 归 Radix**（CLAUDE.md 硬约束 4 里补了 accordion）。手写的 `<button>` + boolean 少了 `aria-expanded`/`aria-controls`、方向键、`data-state`。
+
+顺带：闸门日志改成整份局部滚动（服务端 tail 400 → 4000 行），不再把通过的行藏在计数后面；待办每一行整行可点开需求；agent 写出来的字面量 `\n` 在渲染处还原成换行。
