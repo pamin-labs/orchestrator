@@ -2635,7 +2635,18 @@ const postProject: Handler = async (ctx, req) => {
      ON CONFLICT (name) DO UPDATE SET template = excluded.template, error_regex = excluded.error_regex,
        arg_schema_json = excluded.arg_schema_json, tags_json = excluded.tags_json`,
   );
-  for (const g of detected) insRes.run(g.name, g.template, "{}", g.errorRegex, "[]");
+  // `repo`: one gate at a time per repository, whatever the gate is.
+  //
+  // Concurrency is per resource, so build and typecheck ran side by side — and
+  // both shell out to the project's own scripts, which install things. Every
+  // worktree shares one node_modules by symlink, so two installs at once raced
+  // and one came back `Failed to link jiti: EEXIST`. The group read that as its
+  // own build being broken and burned five retries on it.
+  //
+  // We can fix our own templates (and did), but not the scripts a project ships,
+  // so the guarantee has to be structural: gates of one repo do not overlap.
+  // Different repos still run in parallel — the pool is keyed by project.
+  for (const g of detected) insRes.run(g.name, g.template, "{}", g.errorRegex, JSON.stringify(["repo"]));
 
   // A project that ships the runner gets the browser resource. Without it, every
   // acceptance line of the form "the menu opens" is unverifiable by anyone in the

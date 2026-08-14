@@ -46,6 +46,8 @@ export interface SchedulerOptions {
 }
 
 export const DEFAULT_POOL = "default";
+/** Resources tagged with this run one at a time per repository. */
+export const REPO_POOL = "repo";
 
 /** `2` and `{default: 2}` mean the same thing; the rest is per tag. */
 export function poolSizes(slots: number | Record<string, number> | undefined): Record<string, number> {
@@ -237,15 +239,20 @@ export class Scheduler {
     } catch {}
     if (!leaseId) return [DEFAULT_POOL];
     const row = this.db
-      .query<{ tags_json: string }, [number]>(
-        "SELECT r.tags_json FROM lease l JOIN resource r ON r.name = l.resource WHERE l.id = ?",
+      .query<{ tags_json: string; project_id: number | null }, [number]>(
+        `SELECT r.tags_json, (SELECT project_id FROM grp WHERE id = l.grp_id) AS project_id
+         FROM lease l JOIN resource r ON r.name = l.resource WHERE l.id = ?`,
       )
       .get(leaseId);
     let tags: string[] = [];
     try {
       tags = JSON.parse(row?.tags_json ?? "[]");
     } catch {}
-    return tags.length ? tags : [DEFAULT_POOL];
+    if (!tags.length) return [DEFAULT_POOL];
+    // `repo` is one pool per repository, not one pool globally: two projects'
+    // gates have nothing to race over, and serialising them would make every
+    // extra project slower for nothing. See the tag's comment in api.ts.
+    return tags.map((t) => (t === REPO_POOL ? `${REPO_POOL}:${row?.project_id ?? 0}` : t));
   }
 
   private runningJobs(): Job[] {

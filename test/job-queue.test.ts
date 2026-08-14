@@ -381,3 +381,42 @@ test("a restart resumes the turn it interrupted, but only once", async () => {
     .all();
   expect(resumeReclaimed(sched, own)).toBe(0);
 });
+
+test("two gates of one repo do not run at once, but two repos still do", async () => {
+  const db = openMemory();
+  const { started, release, exec } = gate();
+  const sched = new Scheduler(db, exec);
+  db.run("INSERT INTO project (id, name, repo_path, created_at) VALUES (1,'a','/a',0), (2,'b','/b',0)");
+  db.run(
+    `INSERT INTO grp (id, project_id, name, status, created_at)
+     VALUES (1,1,'g1','RUNNING',0), (2,1,'g1b','RUNNING',0), (3,2,'g2','RUNNING',0)`,
+  );
+  db.run(
+    `INSERT INTO resource (name, template, concurrency, tags_json) VALUES
+       ('build','x',1,'["repo"]'), ('typecheck','y',1,'["repo"]')`,
+  );
+  const lease = (id: number, resource: string, grp: number) => {
+    db.run("INSERT INTO lease (id, resource, grp_id, state, enqueued_at) VALUES (?,?,?,'queued',0)", [id, resource, grp]);
+    sched.enqueue("lease", { grp_id: grp, payload: { lease_id: id } });
+  };
+  // Concurrency is per resource, so build and typecheck ran side by side — and
+  // both shell out to the project's own scripts, which install into a
+  // node_modules every worktree of that repo shares. One came back `Failed to
+  // link jiti: EEXIST` and the group read it as its own build being broken.
+  lease(1, "build", 1);
+  lease(2, "typecheck", 2);
+  lease(3, "build", 3);
+  sched.tick();
+  await started;
+
+  const inflight = db
+    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'running'")
+    .all()
+    .map((r) => JSON.parse(r.payload_json).lease_id as number);
+  expect(inflight).toContain(1);
+  // Same repo, different group, different gate: still waits.
+  expect(inflight).not.toContain(2);
+  // Another repo has nothing to race over.
+  expect(inflight).toContain(3);
+  release();
+});
