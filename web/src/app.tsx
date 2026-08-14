@@ -18,8 +18,7 @@ import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
 import { Picker } from "./views/picker";
 import { Notes } from "./views/notes";
-import { Settings } from "./views/settings";
-import { ProjectSettings } from "./views/project";
+import { SettingsDialog, type Section } from "./views/settings";
 import { Progress } from "./views/progress";
 import { Queue } from "./views/queue";
 import { Requirement } from "./views/requirement";
@@ -38,7 +37,17 @@ type View = "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "
  * long list moves past it. Everything else scrolls whole, which is right when the
  * page has no controls of its own to lose.
  */
-const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req", "settings", "config"]);
+const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req"]);
+
+/**
+ * The two hashes that open the settings dialog rather than a view.
+ *
+ * `config` was a peer tab and `settings` was the gear, and they were two pages
+ * built from the same three components that never said which scope they were.
+ * They are one dialog now, two groups in its left rail — but every link already
+ * sent still lands, on the section it used to be.
+ */
+const DIALOG: Partial<Record<View, Section>> = { settings: "cred", config: "gates" };
 interface Sel { p: number | null; view: View; g: number | null; t: string | null }
 
 const readHash = (): Sel => {
@@ -97,6 +106,15 @@ export function App() {
     } catch {}
   }, [side]);
 
+  // What the settings dialog is floating over. Remembered rather than derived:
+  // its own hash replaced the view, and closing has to put the boss back where
+  // they were rather than on a default.
+  const [behind, setBehind] = useState<View>("progress");
+  useEffect(() => {
+    const v: View = sel.view === "board" ? "progress" : sel.view;
+    if (!DIALOG[v]) setBehind(v === "progress" && sel.g ? "req" : v);
+  }, [sel.view, sel.g]);
+
   const go = (patch: Partial<Sel>) => setSel((s) => ({ ...s, ...patch }));
 
   // Push, don't replace: replacing meant Home → project → requirement left one
@@ -153,8 +171,18 @@ export function App() {
     };
   }, []);
 
+  // A notification sent before this split points at #v=progress&g=N.
+  // 概览 was 待办 plus the same requirement list 需求 shows, so it is gone and its
+  // queue sits on top of that list. Links already sent still work: the hash is
+  // rewritten rather than 404'd.
+  const asked: View = sel.view === "board" ? "progress" : sel.view;
+  // The dialog floats over whatever the boss was standing on, so its hash is not a
+  // view: the page underneath keeps rendering the last one that was.
+  const section = DIALOG[asked];
+  const view: View = section ? behind : asked === "progress" && sel.g ? "req" : asked;
+
   const proj = st.projects.find((p) => p.id === sel.p);
-  const home = sel.view === "home" || !proj;
+  const home = view === "home" || !proj;
   const groups = st.groups.filter((g) => g.project_id === sel.p);
   // Scoped to where the boss is standing: inside a project it is that project's
   // queue, on Home it is everything.
@@ -170,13 +198,6 @@ export function App() {
     // nothing.
     go({ p: g?.project_id ?? sel.p, view: "req", g: grpId, t: null });
   };
-  // A notification sent before this split points at #v=progress&g=N.
-  // 概览 was 待办 plus the same requirement list 需求 shows, so it is gone and its
-  // queue sits on top of that list. Links already sent still work: the hash is
-  // rewritten rather than 404'd.
-  const asked: View = sel.view === "board" ? "progress" : sel.view;
-  const view: View = asked === "progress" && sel.g ? "req" : asked;
-
   // No badge on 概览: the header already carries that count, and two copies of one
   // number is how a reader stops trusting either.
   // 「进展」 named a feeling, not a thing. The page is the list of requirements, and
@@ -189,9 +210,6 @@ export function App() {
     ["notes", "记录"],
     ["owns", "所有权"],
     ["cost", "成本"],
-    // Per-repository, so it is a peer of the other project views rather than a
-    // tab under one of them: gates and the sandbox are not a kind of ownership.
-    ["config", "配置"],
   ];
   const openGroup = sel.g ? st.groups.find((g) => g.id === sel.g) : undefined;
 
@@ -231,6 +249,15 @@ export function App() {
       {sel.p && (
         <NewRequirement open={adding} onOpenChange={setAdding} projectId={sel.p} onDone={refresh} />
       )}
+      {/* The hash names the way in, not the section the boss is standing on: once
+          it is open the left rail moves inside it. */}
+      <SettingsDialog
+        open={!!section}
+        onOpenChange={(o) => !o && go({ view: behind })}
+        initial={section ?? "cred"}
+        projectId={sel.p}
+        projectName={proj?.name}
+      />
 
       {/*
         The bar carries what the boss acts on, and nothing that is merely true.
@@ -350,16 +377,16 @@ export function App() {
           </Tip>
         )}
         {/* Not a sixth peer view. The five answer "where is the work"; this
-            answers "is this machine wired up", which is asked once and then
-            never again until something breaks — and when it does break, the
-            accent says so from here. */}
-        <Tip label="凭据和这台机器的环境">
+            answers "is this wired up", which is asked once and then never again
+            until something breaks — and when it does break, the accent says so
+            from here. It opens over the work rather than replacing it. */}
+        <Tip label="设置：凭据、环境、这个项目的闸门和沙盒">
           <button
-            onClick={() => go({ view: "settings", g: null })}
+            onClick={() => go({ view: "settings" })}
             aria-label="设置"
             className={cn(
               "relative grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
-              view === "settings" ? "text-ink" : "text-ink-3 hover:text-ink",
+              section ? "text-ink" : "text-ink-3 hover:text-ink",
             )}
           >
             <SlidersHorizontal size={14} strokeWidth={1.75} />
@@ -445,10 +472,6 @@ export function App() {
             <Notes projectId={sel.p!} tab={sel.t} onTab={(t) => go({ t })} />
           ) : view === "owns" ? (
             <Owns st={st} projectId={sel.p!} />
-          ) : view === "config" ? (
-            <ProjectSettings projectId={sel.p!} />
-          ) : view === "settings" ? (
-            <Settings />
           ) : (
             <CostView cost={cost} />
           )}

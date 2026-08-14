@@ -1,20 +1,20 @@
 import { useEffect, useState } from "react";
-import { H2, Input, Meta, Pane } from "../ui/bits";
+import { GripVertical } from "lucide-react";
+import { Head, Input, Meta } from "../ui/bits";
 import { Button } from "../ui/button";
 import { Field, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
 import { Toggle, Toggles } from "../ui/segment";
-import { pull, post } from "../lib/api";
+import { cn } from "../lib/utils";
 
 /**
  * What this repository does differently, and nothing that is true of all of them.
  *
- * Same grid as 设置, because it answers the same shape of question one scope
- * down: credentials and the host belong to the machine, gates and the sandbox
- * belong to the repo. Placeholders carry the defaults, so an empty field is a
- * statement rather than a blank waiting to be filled.
+ * Two sections of the settings dialog. The fetch lives in the dialog, because the
+ * left rail has to know whether a gate is configured before the section is opened
+ * — a dot that only appears once you have looked is a dot that does nothing.
  */
 
-interface Config {
+export interface Config {
   gates?: string[];
   install?: string | null;
   sandbox?: {
@@ -26,130 +26,205 @@ interface Config {
   };
 }
 
-interface Loaded {
+export interface ProjectConfig {
   repoPath: string;
   config: Config;
   resources: Array<{ name: string; template: string }>;
 }
 
-export function ProjectSettings({ projectId }: { projectId: number }) {
-  const [d, setD] = useState<Loaded | null>(null);
-  const [busy, setBusy] = useState(false);
+/** Handle, order, name, command. Fixed, so the commands line up down the page. */
+const GATE_ROW = "grid grid-cols-[1.25rem_1.5rem_7rem_minmax(0,1fr)] items-baseline gap-x-3 px-2";
 
-  const load = async () => setD(await pull<Loaded>(`/api/project/${projectId}/config`));
-  useEffect(() => {
-    void load();
-  }, [projectId]);
+/**
+ * Which checks run before a slice can be accepted, and in what order.
+ *
+ * The list used to render in the catalogue's alphabetical order while labelling
+ * each row with its position in the run order, so the screen read 4, 1, 3, 2. The
+ * order is the whole point of the section, so it is the order of the rows: the
+ * ones that run are on top, numbered, draggable; the ones that do not are under a
+ * rule, unnumbered. Position, number and the 关掉的 heading say the same thing
+ * three ways, which is what makes it unmistakable without inventing a checkbox.
+ *
+ * Reordering is the platform's own drag and drop. Radix has no drag primitive and
+ * a library for one list is a dependency for a hundred lines we would not read;
+ * `Alt` plus an arrow key does the same thing for the keyboard, which native drag
+ * does not cover on its own.
+ */
+export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: Record<string, unknown>) => void }) {
+  const [drag, setDrag] = useState<string | null>(null);
+  const gates = d.config.gates ?? [];
+  const on = gates.filter((g) => d.resources.some((r) => r.name === g));
+  const off = d.resources.filter((r) => !on.includes(r.name));
+  const tpl = (name: string) => d.resources.find((r) => r.name === name)?.template ?? "";
 
-  const patch = async (body: Record<string, unknown>) => {
-    setBusy(true);
-    await post(`/api/project/${projectId}/config`, body);
-    setBusy(false);
-    void load();
+  const move = (from: number, to: number) => {
+    if (from < 0 || to < 0 || from === to) return;
+    const next = [...on];
+    next.splice(to, 0, next.splice(from, 1)[0]!);
+    patch({ gates: next });
   };
 
-  if (!d) return <Meta className="block py-2">读取中…</Meta>;
-  const gates = d.config.gates ?? [];
+  return (
+    <>
+      <Head title="闸门" note="从上往下跑，全绿才算过。拖动改顺序" />
+      {!d.resources.length ? (
+        <Meta className="block py-2">没探到可跑的命令。</Meta>
+      ) : (
+        <>
+          <div
+            className={cn(
+              GATE_ROW,
+              "sticky top-0 z-10 border-b border-rule bg-paper pb-1.5 text-[0.6875rem] text-ink-3",
+            )}
+          >
+            <span />
+            <span>顺序</span>
+            <span>名字</span>
+            <span>命令</span>
+          </div>
+          <Toggles value={gates} onValueChange={(next) => patch({ gates: next })}>
+            {on.map((name, i) => (
+              <Toggle
+                key={name}
+                value={name}
+                className={cn(GATE_ROW, "py-2", drag === name && "opacity-50")}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (drag) move(on.indexOf(drag), i);
+                  setDrag(null);
+                }}
+                onKeyDown={(e) => {
+                  if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+                  e.preventDefault();
+                  move(i, i + (e.key === "ArrowUp" ? -1 : 1));
+                }}
+              >
+                {/* The handle drags, not the row: the row is the on/off switch, and
+                    a drag that ends on the element it started from also reads as a
+                    click, which would turn the gate off on every reorder. */}
+                <span
+                  draggable
+                  onDragStart={() => setDrag(name)}
+                  onDragEnd={() => setDrag(null)}
+                  className="cursor-grab active:cursor-grabbing"
+                >
+                  <GripVertical size={12} strokeWidth={2} className="translate-y-0.5 text-ink-3" />
+                </span>
+                {/* The digit alone. 「第 N 道」 wrapped to two lines in a column this
+                    narrow, and the header already says what the column is. */}
+                <Meta>{i + 1}</Meta>
+                <span className="truncate text-[0.8125rem]">{name}</span>
+                <Meta className="min-w-0 truncate">{tpl(name)}</Meta>
+              </Toggle>
+            ))}
+            {off.length > 0 && (
+              <div className="flex items-baseline gap-3 border-b border-rule px-2 pt-3 pb-1.5">
+                <Meta>关掉的</Meta>
+                <Meta className="text-ink-3">点一下加到最后一道</Meta>
+              </div>
+            )}
+            {off.map((res) => (
+              <Toggle key={res.name} value={res.name} className={cn(GATE_ROW, "py-2")}>
+                <span />
+                <span />
+                <span className="truncate text-[0.8125rem]">{res.name}</span>
+                <Meta className="min-w-0 truncate">{res.template}</Meta>
+              </Toggle>
+            ))}
+          </Toggles>
+          {!on.length && (
+            <Meta className="mt-2 block text-accent">一道都没开，LLM 审阅底下就没有地板。</Meta>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * The container every agent in this repository works inside.
+ *
+ * Widths follow the values. Six identical full-width boxes for `8Gi` and a path
+ * is a wall of frames that says nothing about what goes in them.
+ */
+export function Sandbox({
+  d, busy, patch,
+}: {
+  d: ProjectConfig;
+  busy: boolean;
+  patch: (b: Record<string, unknown>) => void;
+}) {
   const sandbox = d.config.sandbox ?? {};
   const set = (k: string, v: unknown) => patch({ sandbox: { ...sandbox, [k]: v } });
 
   return (
-    <Pane className="@container">
-      <div className="grid max-w-[72rem] grid-cols-1 gap-x-12 gap-y-9 @3xl:grid-cols-2">
-        <section>
-          <H2 className="mb-1.5">闸门</H2>
-          <Toggles
-            value={gates}
-            // Pressed order is running order, so a gate switched back on goes to the
-            // end rather than back to wherever it used to sit.
-            onValueChange={(next) => patch({ gates: next })}
-            className="border-t border-rule"
-          >
-            {d.resources.map((res) => (
-              <Toggle
-                key={res.name}
-                value={res.name}
-                className="grid grid-cols-[7rem_minmax(0,1fr)] items-baseline gap-x-4"
-              >
-                <span className="text-[0.8125rem]">{res.name}</span>
-                <span className="flex min-w-0 items-baseline gap-2">
-                  <Meta className="min-w-0 flex-1 truncate">{res.template}</Meta>
-                  {gates.includes(res.name) && <Meta>第 {gates.indexOf(res.name) + 1} 道</Meta>}
-                </span>
-              </Toggle>
-            ))}
-          </Toggles>
-          {!d.resources.length && <Meta className="block py-2">没探到可跑的命令。</Meta>}
-          {d.resources.length > 0 && !gates.length && (
-            <Meta className="mt-1.5 block text-accent">一道都没开，LLM 审阅底下就没有地板。</Meta>
-          )}
-        </section>
-
-        <section>
-          <H2 className="mb-1.5">沙盒</H2>
-          <FieldGroup className="[--label:5rem]">
-            <Row
-              label="装依赖"
-              value={d.config.install ?? ""}
-              placeholder="留空由 bootstrap 读仓库判断"
-              busy={busy}
-              onSave={(v) => patch({ install: v || null })}
-            />
-            <Row
-              label="镜像"
-              value={sandbox.image ?? ""}
-              placeholder="orch/agent:1"
-              busy={busy}
-              onSave={(v) => set("image", v || undefined)}
-            />
-            <Row
-              label="CPU"
-              value={sandbox.cpu ?? ""}
-              placeholder="宿主核数的 1/4"
-              busy={busy}
-              onSave={(v) => set("cpu", v || undefined)}
-            />
-            <Row
-              label="内存"
-              value={sandbox.memory ?? ""}
-              placeholder="8Gi"
-              busy={busy}
-              onSave={(v) => set("memory", v || undefined)}
-            />
-            <Row
-              label="禁止访问"
-              value={(sandbox.denyDomains ?? []).join(" ")}
-              placeholder="域名，空格分隔"
-              busy={busy}
-              onSave={(v) => set("denyDomains", v.split(/\s+/).filter(Boolean))}
-            />
-            <Row
-              label="共享缓存"
-              value={Object.entries(sandbox.cacheDirs ?? {})
-                .map(([k, v]) => `${k}:${v}`)
-                .join(" ")}
-              placeholder="/root/.bun/install/cache:/var/tmp/orch-cache"
-              busy={busy}
-              onSave={(v) =>
-                set(
-                  "cacheDirs",
-                  Object.fromEntries(
-                    v
-                      .split(/\s+/)
-                      .filter(Boolean)
-                      .map((pair) => {
-                        const i = pair.lastIndexOf(":");
-                        return i > 0 ? [pair.slice(0, i), pair.slice(i + 1)] : [pair, ""];
-                      })
-                      .filter(([, host]) => host),
-                  ),
-                )
-              }
-            />
-          </FieldGroup>
-        </section>
-      </div>
-    </Pane>
+    <>
+      <Head title="沙盒" note="留空就用默认，默认写在灰字里" />
+      <FieldGroup className="[--label:5rem]">
+        <Row
+          label="装依赖"
+          value={d.config.install ?? ""}
+          placeholder="留空由 bootstrap 读仓库判断"
+          busy={busy}
+          onSave={(v) => patch({ install: v || null })}
+        />
+        <Row
+          label="镜像"
+          value={sandbox.image ?? ""}
+          placeholder="orch/agent:1"
+          width="max-w-[22rem]"
+          busy={busy}
+          onSave={(v) => set("image", v || undefined)}
+        />
+        <Row
+          label="CPU"
+          value={sandbox.cpu ?? ""}
+          placeholder="宿主核数的 1/4"
+          width="max-w-[9rem]"
+          busy={busy}
+          onSave={(v) => set("cpu", v || undefined)}
+        />
+        <Row
+          label="内存"
+          value={sandbox.memory ?? ""}
+          placeholder="8Gi"
+          width="max-w-[9rem]"
+          busy={busy}
+          onSave={(v) => set("memory", v || undefined)}
+        />
+        <Row
+          label="禁止访问"
+          value={(sandbox.denyDomains ?? []).join(" ")}
+          placeholder="域名，空格分隔"
+          busy={busy}
+          onSave={(v) => set("denyDomains", v.split(/\s+/).filter(Boolean))}
+        />
+        <Row
+          label="共享缓存"
+          value={Object.entries(sandbox.cacheDirs ?? {})
+            .map(([k, v]) => `${k}:${v}`)
+            .join(" ")}
+          placeholder="/root/.bun/install/cache:/var/tmp/orch-cache"
+          busy={busy}
+          onSave={(v) =>
+            set(
+              "cacheDirs",
+              Object.fromEntries(
+                v
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .map((pair) => {
+                    const i = pair.lastIndexOf(":");
+                    return i > 0 ? [pair.slice(0, i), pair.slice(i + 1)] : [pair, ""];
+                  })
+                  .filter(([, host]) => host),
+              ),
+            )
+          }
+        />
+      </FieldGroup>
+    </>
   );
 }
 
@@ -158,6 +233,7 @@ function Row(props: {
   label: string;
   value: string;
   placeholder: string;
+  width?: string;
   busy: boolean;
   onSave: (v: string) => void;
 }) {
@@ -172,7 +248,7 @@ function Row(props: {
       <InputGroup>
         <Input
           id={id}
-          className="min-w-0 flex-1 font-mono"
+          className={cn("min-w-0 flex-1 font-mono", props.width)}
           placeholder={props.placeholder}
           value={v}
           disabled={props.busy}
