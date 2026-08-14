@@ -617,11 +617,11 @@ function Delegated({
                 blocks — this is a conversation the boss was not in, and the shape
                 everyone already knows for that is two sides. */}
             <div className="mt-1.5 space-y-1.5">
-              <div className="max-w-[46rem] rounded-2xl rounded-tl-sm border border-rule-soft px-3 py-1.5 text-[0.75rem] text-ink-3">
+              <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2 text-[0.75rem] text-ink-3">
                 <Clamp lines={3}>{nl(a.question)}</Clamp>
               </div>
               <div className="flex justify-end">
-                <div className="max-w-[46rem] rounded-2xl rounded-tr-sm bg-sunk px-3 py-1.5 text-[0.8125rem] text-ink-2">
+                <div className="max-w-[46rem] rounded-2xl rounded-tr-sm border border-rule bg-paper px-3.5 py-2 text-[0.8125rem] text-ink-2">
                   <Clamp lines={3}>{nl(a.answer)}</Clamp>
                 </div>
               </div>
@@ -922,7 +922,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
         {!open && <div className="mt-1 line-clamp-2 max-w-[72ch] text-[0.8125rem] text-ink-2">{nl(e.question)}</div>}
       </AccordionTrigger>
 
-      <AccordionBody className="px-4 pb-3">
+      <AccordionBody className="bg-paper px-4 pb-3">
         {/* An exchange: what was asked on the left, what you say back on the
             right. The page already showed a stand-in's answers this way and this
             is the same thing one step earlier — a question, a proposed reply, and
@@ -933,7 +933,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             Six lines, then a click. A watchdog escalation quotes three QA verdicts
             verbatim and runs to fifteen — the decision is usually made by line
             three, with the rest there to check the reasoning against. */}
-        <div className="max-w-[46rem] rounded-2xl rounded-tl-sm border border-rule-soft px-3.5 py-2">
+        <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2">
           <Clamp lines={6}>
             <WithAttachments body={e.question} className="text-[0.8125rem]" />
           </Clamp>
@@ -1017,7 +1017,7 @@ function Held({ rows }: { rows: Escalation[] }) {
                   <span className="min-w-0 flex-1 truncate text-[0.75rem] text-ink-3">{nl(e.question)}</span>
                 )}
               </AccordionTrigger>
-              <AccordionBody className="px-4 pb-2">
+              <AccordionBody className="bg-paper px-4 pb-2">
                 <div className="max-w-[72ch]">
                   <Clamp lines={8}>
                     <WithAttachments body={e.question} className="text-[0.8125rem] text-ink-2" />
@@ -1066,7 +1066,7 @@ function Suggested({ escId, onUse }: { escId: number; onUse: (t: string) => void
     // apart from both at a glance.
     // On your side of the exchange, because that is what it is: a reply nobody
     // has sent. Dashed, so it cannot be mistaken for one that went out.
-    <div className="my-2 ml-auto max-w-[46rem] rounded-2xl rounded-tr-sm border border-dashed border-rule bg-sunk/60 px-3.5 py-2">
+    <div className="my-2 ml-auto max-w-[46rem] rounded-2xl rounded-tr-sm border border-dashed border-rule bg-paper px-3.5 py-2">
       <div className="flex items-baseline gap-2">
         <Tip label="按这一组的黑板现算的，还没发给任何人。填进输入框后你可以改">
           <Meta className="cursor-help">AI 替你拟的答复</Meta>
