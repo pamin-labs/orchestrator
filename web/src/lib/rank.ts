@@ -62,11 +62,14 @@ export function rank(reasons: (Reason | null | false | undefined)[]): Ranked {
 }
 
 /**
- * Group the boss's list by requirement — but only where grouping earns its keep.
+ * Group the boss's list by requirement. Every requirement, including the ones
+ * with a single item.
  *
- * Grouping by requirement matters at scale: three items on one requirement means one
- * trip instead of three context switches. With one item each it is the opposite, a
- * header per row, so singletons stay flat.
+ * Grouping matters at scale: three items on one requirement means one trip
+ * instead of three context switches. Singletons were left flat on the theory
+ * that a header per row is noise — but then the list is two shapes, the name
+ * lives inline on some rows and above others, and with five requirements open
+ * the boss cannot see where one stops and the next begins.
  *
  * Not by agent. The boss acts on requirements, slices, cards and questions; an agent is
  * *who is waiting*, which belongs on the row as context and is not a thing to navigate
@@ -86,10 +89,9 @@ export function byRequirement<T extends { grpId: number | null; points: number }
   }
   const clustered: { grpId: number; items: T[]; points: number }[] = [];
   for (const [grpId, list] of groups) {
-    if (list.length < 2) {
-      loose.push(...list);
-      continue;
-    }
+    // One item gets a header too. Singletons used to render bare, with the
+    // requirement name inline on the row, so a list of five was three shapes and
+    // the boss could not see where one requirement stopped and the next began.
     list.sort((a, b) => b.points - a.points);
     // A cluster is as urgent as its most urgent member: burying a blocker under an
     // average would be the one mistake this ordering exists to avoid.
