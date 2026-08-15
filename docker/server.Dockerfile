@@ -81,7 +81,13 @@ COPY src/orch/cli.ts ./src/orch/cli.ts
 # process binds loopback. That is a real exposure: this service has no login, so
 # whoever reaches it is the boss. Publish it to 127.0.0.1 on the host
 # (`-p 127.0.0.1:47821:47821`), or put a reverse proxy with auth in front of it.
-ENV ORCH_HOST=0.0.0.0 \
+# `ORCH_IN_CONTAINER` is read by `inContainer()`. Three of the environment
+# checks — docker, uv, the egress image — are questions about the machine running
+# the sandbox server, and in here that machine is somebody else's: asked anyway
+# they answer "broken" about a deployment that works, and every fix they print is
+# a command for a host this process cannot see.
+ENV ORCH_IN_CONTAINER=1 \
+    ORCH_HOST=0.0.0.0 \
     ORCH_PORT=47821 \
     ORCH_DATA_DIR=/data
 

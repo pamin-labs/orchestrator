@@ -175,6 +175,24 @@ function jwtExpiry(token?: string): number | null {
   }
 }
 
+/**
+ * Is the orchestrator itself inside a container?
+ *
+ * It changes what this pane is even *about*. Three of these checks — docker, uv,
+ * the sidecar image — are questions about the machine that runs the sandbox
+ * server, and when the orchestrator ships as an image that machine is somebody
+ * else's: there is no docker socket in here, `uvx` is not installed and never
+ * will be, and pulling the sidecar here would put it in the wrong daemon. Asked
+ * anyway, they answer "broken" about a deployment that is working, and every fix
+ * they print (`brew install uv`) is a command for a host this process cannot see.
+ *
+ * `ORCH_IN_CONTAINER` is set by our own Dockerfile. `/.dockerenv` is the fallback
+ * for anyone who builds their own image or runs the binary in a container of
+ * their own.
+ */
+export const inContainer = (): boolean =>
+  process.env.ORCH_IN_CONTAINER === "1" || existsSync("/.dockerenv");
+
 export interface PreflightInput {
   db: DB;
   sandbox: { server: string; apiKey: string; image: string };
@@ -182,6 +200,8 @@ export interface PreflightInput {
   skillsDir?: string;
   /** Host paths mounted into every sandbox of a project; same allowlist applies. */
   cacheDirs?: Record<string, string>;
+  /** Injected in tests; defaults to `inContainer()`. */
+  contained?: boolean;
   /** Injected in tests. */
   /** `argv` defaults to `--version`; the docker check needs `info` (the daemon, not the binary). */
   probe?: (bin: string, argv?: string[]) => boolean;
@@ -223,6 +243,8 @@ export function newEnough(tag: string, min = [1, 1, 6]): boolean {
 
 export async function preflight(input: PreflightInput): Promise<Check[]> {
   const out: Check[] = [];
+  // Injectable so a test can assert both deployments without a container.
+  const contained = input.contained ?? inContainer();
   const probe =
     input.probe ??
     ((bin: string, argv: string[] = ["--version"]) => {
@@ -244,7 +266,7 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // installed at all is a download, installed but not started is one click.
   const docker = probe("docker", ["info"]);
   const installed = docker || probe("docker");
-  out.push({
+  if (!contained) out.push({
     name: "docker",
     ok: docker,
     detail: docker ? "running" : installed ? "装了，但没启动（daemon 不理人）" : "not reachable",
@@ -257,7 +279,7 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // for a missing server is `uvx opensandbox-server`, and a machine without uv
   // cannot run that either. Two failures that look identical from the panel.
   const uvx = probe("uvx");
-  out.push({
+  if (!contained) out.push({
     name: "uv / python",
     ok: uvx,
     detail: uvx ? "uvx available" : "no uvx on PATH",
@@ -273,8 +295,26 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     name: "opensandbox-server",
     ok: server.ok,
     detail: server.detail,
-    fix: `uvx opensandbox-server --config ~/.sandbox.toml，监听 ${input.sandbox.server}，[egress] mode 要是 "dns+nft"`,
+    fix: contained
+      ? `这个 orchestrator 跑在容器里，起不了沙盒服务器，也不该起 —— 它要的是宿主的 docker。` +
+        `在宿主上跑 uvx opensandbox-server，然后用 ORCH_SANDBOX_SERVER 指过去` +
+        `（Docker Desktop 上是 host.docker.internal:8080，Linux 上用宿主 IP 或 --network host）。`
+      : `uvx opensandbox-server --config ~/.sandbox.toml，监听 ${input.sandbox.server}，[egress] mode 要是 "dns+nft"`,
   });
+
+  // One row instead of the three above, and only in a container: docker, uv and
+  // the sidecar image are facts about the machine running the sandbox server,
+  // which is not this one. Said once rather than dropped silently — somebody
+  // reading this pane after a `docker run` should learn where those questions
+  // went, not wonder whether they are still being asked.
+  if (contained) {
+    out.push({
+      name: "宿主环境",
+      ok: true,
+      detail: "docker、uv、egress 镜像都归跑沙盒服务器的那台机器管，这儿看不到",
+      fix: "那台机器上要有：docker、uvx opensandbox-server、docker pull opensandbox/egress:v1.1.6。",
+    });
+  }
 
   // Answering without a key is not a configuration detail: this server creates
   // containers and runs commands inside them, and those containers hold the
@@ -304,10 +344,10 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // which is not ours to read — so this reports what is available rather than
   // what is configured. Having a good one is the part we can check; pointing at
   // it is the part the fix line has to say out loud.
-  const egress = probe("docker") ? egressImages() : [];
+  const egress = !contained && probe("docker") ? egressImages() : [];
   const good = egress.filter((t) => newEnough(t));
   const stale = egress.filter((t) => !newEnough(t));
-  out.push({
+  if (!contained) out.push({
     name: "egress sidecar",
     ok: good.length > 0,
     detail:
@@ -353,7 +393,11 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     name: "skills mount",
     ok: skills > 0,
     detail: skills ? `${skills} staged at ${staged}` : "没有勾选的技能",
-    fix: `沙盒服务器的 allowed_host_paths 要包含 ${staged}，否则每个组开容器都会失败。技能在设置里勾。`,
+    fix: contained
+      ? `${staged} 是这个容器里的路径，而挂载是沙盒服务器的 docker 做的 —— 它按自己看到的路径挂。` +
+        `两边要用同一个绝对路径（-v <宿主路径>:${staged}），并且写进沙盒服务器的 allowed_host_paths。` +
+        `不一致不会报错，只会挂个空目录。`
+      : `沙盒服务器的 allowed_host_paths 要包含 ${staged}，否则每个组开容器都会失败。技能在设置里勾。`,
   });
 
   // The line above says which path has to be allowed. This says whether it is.

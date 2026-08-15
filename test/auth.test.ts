@@ -367,3 +367,37 @@ test("the codex device login shows a code with its link, and stores what the con
   const again = await app(new Request("http://x/api/auth/codex/device", { method: "POST" }));
   expect(((await again.json()) as any).code).toBe("T5M2-76TFM");
 });
+
+test("in a container, preflight stops answering questions about somebody else's machine", async () => {
+  // Observed after the first `docker run` of the server image: docker `not
+  // reachable`, `no uvx on PATH`, `no opensandbox/egress image pulled` — three
+  // red rows about a deployment that was working, each with a fix (`brew install
+  // uv`) for a host the process cannot see. Those are facts about the machine
+  // running the sandbox server, and when the orchestrator ships as an image that
+  // machine is somebody else's.
+  const db = openMemory();
+  const input = {
+    db,
+    sandbox: { server: "127.0.0.1:9", apiKey: "", image: "ghcr.io/pamin-labs/orch-agent:latest" },
+    probe: () => false,
+    verify: async () => ({ ok: true, detail: "能用" }),
+  };
+  const host = await preflight({ ...input, contained: false });
+  const inside = await preflight({ ...input, contained: true });
+  const names = (c: Awaited<ReturnType<typeof preflight>>) => c.map((x) => x.name);
+
+  for (const n of ["docker", "uv / python", "egress sidecar"]) {
+    expect(names(host)).toContain(n);
+    expect(names(inside)).not.toContain(n);
+  }
+  // Said once rather than dropped silently: somebody reading this pane should
+  // learn where those questions went, not wonder whether they are still asked.
+  expect(names(inside)).toContain("宿主环境");
+
+  // The one check that still means something is reachability — and its fix has
+  // to stop telling a container to start a server it cannot start.
+  const server = (c: Awaited<ReturnType<typeof preflight>>) =>
+    c.find((x) => x.name === "opensandbox-server")!;
+  expect(server(host).fix).toContain("uvx opensandbox-server");
+  expect(server(inside).fix).toContain("ORCH_SANDBOX_SERVER");
+});
