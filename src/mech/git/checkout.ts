@@ -400,14 +400,40 @@ export async function removeMirror(ctx: Ctx, remote: string): Promise<boolean> {
  * built is a project whose map goes stale, not a reason to stop a tick.
  */
 export async function treeFiles(ctx: Ctx, remote: string, ref: string): Promise<string[]> {
+  return (await listTree(ctx, remote, ref)).files;
+}
+
+/**
+ * The same, with the reason it is empty.
+ *
+ * Four different things used to arrive as `[]` — the utility container being
+ * unreachable, the clone being refused, the ref not existing in the mirror, and
+ * the repository genuinely having no files at that ref — and the one caller that
+ * reports it had to guess between them. It guessed in prose, permanently, and
+ * the guess named the utility container and the GitHub login while the actual
+ * cause was neither.
+ *
+ * That is worth a second return value rather than a better sentence: an
+ * advisory that lists three possible causes is one the reader has to go and
+ * check three of, which is the work the check existed to do for them.
+ */
+export async function listTree(
+  ctx: Ctx,
+  remote: string,
+  ref: string,
+): Promise<{ files: string[]; why: string | null }> {
+  let mirror: string;
   try {
-    const mirror = await ensureMirror(ctx, remote);
-    const r = await utilGit(ctx, ["ls-tree", "-r", "--name-only", ref], mirror);
-    if (r.code !== 0) return [];
-    return r.out.split("\n").map((l) => l.trim()).filter(Boolean);
-  } catch {
-    return [];
+    mirror = await ensureMirror(ctx, remote);
+  } catch (e: any) {
+    return { files: [], why: String(e?.message ?? e).slice(0, 300) };
   }
+  const r = await utilGit(ctx, ["ls-tree", "-r", "--name-only", ref], mirror);
+  if (r.code !== 0) {
+    return { files: [], why: `git ls-tree ${ref} exited ${r.code}: ${(r.out || "no output").trim().slice(-300)}` };
+  }
+  const files = r.out.split("\n").map((l) => l.trim()).filter(Boolean);
+  return { files, why: files.length ? null : `${ref} lists no files — an empty repository, or the wrong ref` };
 }
 
 /**

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { indexable } from "../src/mech/knowledge/repomap.ts";
+import { buildMap, indexable } from "../src/mech/knowledge/repomap.ts";
 
 
 test("what belongs in an index is decided by exclusion, not by an extension list", () => {
@@ -49,4 +49,33 @@ test("a project can correct what detection got wrong", () => {
   expect(indexable("docs/a.md", ["docs/legacy/**"])).toBe(true);
   expect(indexable("gen/schema.ts", ["gen/*.ts"])).toBe(false);
   expect(indexable("gen/deep/schema.ts", ["gen/*.ts"])).toBe(true);
+});
+
+test("the map's symbols come from a reader the caller supplies, not from this machine", () => {
+  // The bug this exists to stop reappearing: `buildMap` read the file itself,
+  // with `readFileSync(join(repoPath, rel))`. Since 007 §2, `repo_path` is
+  // `owner/name` — a GitHub coordinate, not a directory — so every read threw,
+  // every throw was caught as "a file git knows about and the disk does not",
+  // and the map has rendered **paths with no symbols** ever since. It kept
+  // saying `repo map refreshed`, and the thing seven groups were rediscovering
+  // by grep was quietly back.
+  const files = ["src/a.ts", "src/b.go", "docs/x.md"];
+  const text: Record<string, string> = {
+    "src/a.ts": "export function alpha() {}\nexport const beta = 1;\n",
+    "src/b.go": "func Gamma() {}\n",
+  };
+
+  const withReader = buildMap("owner/repo", () => files, [], (rel) => text[rel]);
+  const a = withReader.find((n) => n.dir === "src")!.files.find((f) => f.name === "a.ts")!;
+  expect(a.symbols).toEqual(["alpha", "beta"]);
+  // Opportunistic, not universal: `EXPORTED` is JS/TS syntax, so a Go file gets
+  // a path and no names — which is still an answer to "where does X live".
+  expect(withReader.find((n) => n.dir === "src")!.files.find((f) => f.name === "b.go")!.symbols).toEqual([]);
+
+  // And a caller with no way to read contents gets a paths-only map rather than
+  // a silent one. This is the shape the whole system had, and it must be a
+  // choice a caller makes rather than an exception it never sees.
+  const pathsOnly = buildMap("owner/repo", () => files);
+  expect(pathsOnly.flatMap((n) => n.files.map((f) => f.name)).sort()).toEqual(["a.ts", "b.go", "x.md"]);
+  expect(pathsOnly.every((n) => n.files.every((f) => f.symbols.length === 0))).toBe(true);
 });

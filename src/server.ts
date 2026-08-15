@@ -16,7 +16,7 @@ import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from ".
 import { dispatchFeedback, openPr, pollPrs, prBody } from "./mech/git/prwatch.ts";
 import { makeGithub, repoHeld } from "./mech/git/github.ts";
 import { chargeIndex, HEAD_CHARS, modelAsk, noteLeaves, NOTE_PREFIX, saveTree, skeleton, summarise, loadTree } from "./mech/knowledge/pageindex.ts";
-import { indexable } from "./mech/knowledge/repomap.ts";
+import { indexable, indexExcludes } from "./mech/knowledge/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
 import { abortAll } from "./runtime/running.ts";
@@ -141,25 +141,6 @@ function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
  * on the cheapest tier catches up over a few minutes and then costs nothing.
  */
 const indexedAt = new Map<number, string>();
-
-/**
- * Per-project excludes for the index, on top of the built-in ones.
- *
- * Whatever `indexable` still gets wrong is the boss's to correct rather than
- * ours to keep guessing at — the same arrangement `detect.ts` uses for gates:
- * best-effort detection, written where it can be edited.
- */
-function indexExcludes(db: Ctx["db"], projectId: number): string[] {
-  const row = db
-    .query<{ config_json: string | null }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  try {
-    const globs = JSON.parse(row?.config_json ?? "{}")?.index?.exclude;
-    return Array.isArray(globs) ? globs.filter((g: unknown) => typeof g === "string") : [];
-  } catch {
-    return [];
-  }
-}
 
 /** Projects already told the index cannot be read here. Said once, not per tick. */
 const indexWarned = new Set<number>();

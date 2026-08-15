@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { DB } from "../../db.ts";
 
 /**
@@ -73,13 +71,48 @@ export function indexable(rel: string, exclude: string[] = []): boolean {
   return !exclude.some((g) => globToRe(g).test(rel));
 }
 
+/**
+ * Per-project excludes for the index, on top of the built-in ones.
+ *
+ * Whatever `indexable` still gets wrong is the boss's to correct rather than
+ * ours to keep guessing at — the same arrangement `detect.ts` uses for gates:
+ * best-effort detection, written where it can be edited.
+ */
+export function indexExcludes(db: DB, projectId: number): string[] {
+  const row = db
+    .query<{ config_json: string | null }, [number]>("SELECT config_json FROM project WHERE id = ?")
+    .get(projectId);
+  try {
+    const globs = JSON.parse(row?.config_json ?? "{}")?.index?.exclude;
+    return Array.isArray(globs) ? globs.filter((g: unknown) => typeof g === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface MapNode {
   dir: string;
   files: { name: string; symbols: string[] }[];
 }
 
-/** Tracked files only: build output and node_modules are noise, and git already knows. */
-export function buildMap(repoPath: string, list: (repo: string) => string[], exclude: string[] = []): MapNode[] {
+/**
+ * Tracked files only: build output and node_modules are noise, and git already knows.
+ *
+ * `read` is how the file's text arrives, and it is a parameter because there is
+ * no answer this module can work out for itself. It used to be
+ * `readFileSync(join(repoPath, rel))` — and since 007 made `repo_path` an
+ * `owner/name` rather than a directory, that path has not existed on this
+ * machine. Every read threw, every throw was caught, and the map has been
+ * **paths with no symbols** ever since, while still rendering as a map and still
+ * being written only when it "changed". A caller now has to say where the text
+ * comes from, and one that has none says so by passing nothing.
+ */
+export function buildMap(
+  repoPath: string,
+  list: (repo: string) => string[],
+  exclude: string[] = [],
+  read?: (rel: string) => string | undefined,
+): MapNode[] {
   const byDir = new Map<string, MapNode>();
   for (const rel of list(repoPath)) {
     // Symbols are opportunistic: `EXPORTED` is JS/TS syntax, so a Go file gets a
@@ -90,13 +123,8 @@ export function buildMap(repoPath: string, list: (repo: string) => string[], exc
     const cut = rel.lastIndexOf("/");
     const dir = cut < 0 ? "." : rel.slice(0, cut);
     const name = cut < 0 ? rel : rel.slice(cut + 1);
-    let symbols: string[] = [];
-    try {
-      const src = readFileSync(join(repoPath, rel), "utf8");
-      symbols = [...src.matchAll(EXPORTED)].map((m) => m[1]!).slice(0, 12);
-    } catch {
-      // A file git knows about and the disk does not is not worth failing over.
-    }
+    const src = read?.(rel);
+    const symbols = src ? [...src.matchAll(EXPORTED)].map((m) => m[1]!).slice(0, 12) : [];
     if (!byDir.has(dir)) byDir.set(dir, { dir, files: [] });
     byDir.get(dir)!.files.push({ name, symbols });
   }

@@ -8,11 +8,12 @@ import { runInvariants } from "./invariants.ts";
 import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
 import { CODEX_HOME } from "../sandbox/auth.ts";
 import { execIn, killSandbox, renewSandbox, restartServer, runningServer, UTIL, utilSandbox, WORK, type Scope } from "../sandbox/sandbox.ts";
-import { baseRefFor, sandboxGit, treeFiles } from "../git/checkout.ts";
+import { baseRefFor, listTree, sandboxGit, treeHeads } from "../git/checkout.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { buildMap, renderMap, saveMap } from "../knowledge/repomap.ts";
+import { buildMap, indexExcludes, renderMap, saveMap } from "../knowledge/repomap.ts";
+import { HEAD_CHARS } from "../knowledge/pageindex.ts";
 import { resumeReclaimed, type Job } from "../../scheduler.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { probe } from "../sandbox/net.ts";
@@ -625,11 +626,18 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         "SELECT id, repo_path, remote FROM project",
       )
       .all()) {
-      const files = p.remote ? await treeFiles(ctx, p.remote, await baseRefFor(ctx, p.id)) : [];
-      // The mirror is the corpus now. Nothing to list means no mirror could be
-      // built — said once per project rather than never (the map silently stops
-      // being refreshed and seven groups go back to grepping) and rather than
-      // every tick (a line every thirty seconds forever is a feed nobody reads).
+      const { files, why } = p.remote
+        ? await listTree(ctx, p.remote, await baseRefFor(ctx, p.id))
+        : { files: [], why: "这个项目没记下 remote，没有可以镜像的地址" };
+      // The mirror is the corpus now. Said once per project rather than never
+      // (the map silently stops being refreshed and seven groups go back to
+      // grepping) and rather than every tick (a line every thirty seconds
+      // forever is a feed nobody reads).
+      //
+      // And said with git's own words. This used to name two possible causes in
+      // prose — the utility container, or the GitHub login — which is a guess
+      // printed as a diagnosis: it was wrong in the first case anyone hit, and
+      // being wrong it sent the reader to check two things that were both fine.
       if (!files.length) {
         if (!mapWarned.has(p.id)) {
           mapWarned.add(p.id);
@@ -637,14 +645,30 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
             rule: "repo-map",
             grpId: null,
             severity: "advisory",
-            body: `仓库地图没法刷新了：${p.repo_path} 的镜像建不起来（工具容器起不来，或者这个登录读不到这个仓库）。`,
+            body: `仓库地图没法刷新了：${p.repo_path} —— ${why ?? "没有原因可说，这本身就是个 bug"}`,
           });
         }
         continue;
       }
       mapWarned.delete(p.id);
-      if (saveMap(ctx.db, p.id, renderMap(buildMap(p.repo_path, () => files)))) {
-        ctx.bus.emit({ author: "librarian", kind: "state_change", body: `repo map refreshed (${files.length} files)` });
+      // Symbols need file *contents*, and the only copy is in the project's own
+      // container: the mirror is `--filter=blob:none`, so reading through it is
+      // a network fetch per file, and this machine has no checkout at all. One
+      // exec for the whole corpus — the same call and the same head size the
+      // indexer already makes, so a map and a tree agree about what a file says.
+      //
+      // Empty is a legitimate answer (indexing off, or no container yet) and it
+      // means a paths-only map, which is still the thing seven groups were
+      // rediscovering by grep. It is no longer a *silent* answer: the count is
+      // in the line below.
+      const heads = await treeHeads(ctx, { project: p.id }, HEAD_CHARS).catch(() => new Map<string, string>());
+      const named = buildMap(p.repo_path, () => files, indexExcludes(ctx.db, p.id), (rel) => heads.get(rel));
+      if (saveMap(ctx.db, p.id, renderMap(named))) {
+        ctx.bus.emit({
+          author: "librarian",
+          kind: "state_change",
+          body: `repo map refreshed (${files.length} files, ${heads.size} read for symbols)`,
+        });
       }
     }
   });
