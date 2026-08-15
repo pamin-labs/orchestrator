@@ -55,7 +55,7 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # `git rev-parse` on the tag below needs the tags, and a shallow clone
           # has none of them.
@@ -105,7 +105,7 @@ jobs:
             file: docker/server.Dockerfile
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # `package.json` is where the running orchestrator reads its own version —
       # it is on the line every pull request carries. Left unbumped, a release
@@ -124,16 +124,16 @@ jobs:
             console.log("package.json -> " + p.version);
           '
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.file }}
@@ -156,7 +156,7 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ !inputs.dry_run }}
         with:
           name: digests-${{ matrix.image }}-${{ matrix.platform }}
@@ -175,14 +175,14 @@ jobs:
         image: [orch-agent, orch-server]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digests-${{ matrix.image }}-*
           merge-multiple: true
 
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -204,7 +204,7 @@ jobs:
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # The notes are computed from the range since the previous tag, so the
           # tags have to be here.
@@ -218,28 +218,38 @@ jobs:
             require("fs").writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
           '
 
-      - name: tag and publish
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # The tag first, and on the commit this run actually built — not on
+      # whatever `main` says by now. The first attempt failed here: `main` moved
+      # while the four image jobs were running, so `git push HEAD:main` was a
+      # non-fast-forward, `bash -e` stopped the step, and the tag was never
+      # created. Four builds paid for, nothing published, and the version still
+      # free only by luck.
+      #
+      # So the two are separated. The tag is the release and must point at the
+      # tree the images came from; moving the bump onto `main` is bookkeeping,
+      # and bookkeeping may not fail a release that has already been built.
+      - name: tag it
         run: |
           v="v${{ inputs.version }}"
-          # The bump is part of the release, so it is on the tagged commit
-          # rather than dangling in a runner's working tree.
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Only when there is a bump to commit. `package.json` may already carry
-          # this version — somebody bumped it by hand, or an earlier attempt got
-          # this far — and `git commit -am` on a clean tree exits non-zero, which
-          # would fail the release *after* the images were pushed and before the
-          # tag exists. The version is a decision; whether one file changed is not.
-          if git diff --quiet; then
-            echo "package.json already says ${{ inputs.version }}; nothing to commit"
-          else
+          # Only when there is a bump to make: `package.json` may already carry
+          # this version, and `git commit -am` on a clean tree exits non-zero —
+          # which under `bash -e` would lose the tag over a file that was already
+          # correct. `-s`, because `dco` is a required check and a tagged commit
+          # that cannot be merged back is a tag nobody can build on.
+          if ! git diff --quiet; then
             git commit -q -s -am "chore(release): ${{ inputs.version }}"
-            git push origin HEAD:main
           fi
           git tag "$v"
           git push origin "$v"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "BUMP=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
           # Written a line at a time rather than as one indented string: this
           # script is inside a YAML block scalar, so every leading space in a
           # multi-line argument ends up in the release body — and ten spaces in
@@ -257,7 +267,24 @@ jobs:
             > /tmp/notes.md
           # `--generate-notes` writes the merged pull requests and the first-time
           # contributors itself; this is only the part it cannot know.
-          gh release create "$v" \
-            --title "$v" \
+          gh release create "${{ env.VERSION }}" \
+            --title "${{ env.VERSION }}" \
             --generate-notes \
             --notes-file /tmp/notes.md
+
+      # Bookkeeping, and allowed to fail: the release exists either way. `main`
+      # moves on its own — this run took several minutes of image builds, and
+      # anything merged in that window is ahead of us.
+      - name: carry the bump onto main
+        continue-on-error: true
+        run: |
+          git fetch origin main
+          # Replay just the bump. A merge would drag this run's base commit along
+          # with it and rewrite what `main` is; a cherry-pick moves one file.
+          git checkout -q -B main origin/main
+          if git cherry-pick "${{ env.BUMP }}"; then
+            git push origin main
+          else
+            git cherry-pick --abort || true
+            echo "::warning::main already carries a different ${{ inputs.version }}; left alone"
+          fi
