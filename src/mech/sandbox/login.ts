@@ -1,9 +1,8 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { Ctx } from "../../api.ts";
-import { hostCodexHome, saveAuth, type AuthMode } from "./auth.ts";
+import { saveAuth } from "./auth.ts";
 import { REFRESH_HOME } from "./chatgpt.ts";
-import { execLines, getFile, UTIL } from "./sandbox.ts";
+import { execIn, execLines, getFile, putFile, UTIL } from "./sandbox.ts";
+import { shq } from "../util/shq.ts";
 
 /**
  * Logging in without leaving the panel.
@@ -13,8 +12,10 @@ import { execLines, getFile, UTIL } from "./sandbox.ts";
  * OAuth flows against undocumented client ids. The boss clicks a button, clicks
  * a link, and the token lands in the settings page by itself.
  *
- * On the host, deliberately: this is the boss's own login, and the machine with
- * the browser is this one. Nothing about it belongs in a sandbox.
+ * In the **utility container**, all of it. Both flows produce a real long-lived
+ * credential, and that container is the one with no agent, no mailbox and no
+ * `orch` in it — which is the entire reason it is allowed to hold one. The host
+ * runs the server and nothing else; the browser is still the boss's.
  */
 
 /**
@@ -122,93 +123,168 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
   return run;
 }
 
-const COMMANDS: Record<string, { argv: string[]; mode: AuthMode; capture: (out: string) => string | null }> = {
-  // Prints the token on stdout at the end. Mints a separate long-lived token
-  // rather than touching whatever this machine is already logged in as.
-  claude: {
-    argv: ["claude", "setup-token"],
-    mode: "oauth_token",
-    capture: (out) => out.match(CLAUDE_TOKEN_RE)?.[0] ?? null,
-  },
-  // Writes `$CODEX_HOME/auth.json` (default `~/.codex`) and prints nothing worth
-  // keeping, so the credential is read from where it landed. This does log this
-  // machine in, which is what `codex login` is for.
-  codex: {
-    argv: ["codex", "login"],
-    mode: "chatgpt",
-    capture: () => null,
-  },
-};
+/**
+ * A terminal, so a terminal program will talk.
+ *
+ * `claude setup-token` is a TUI. Run without one it prints **nothing** and exits
+ * 0 — measured, twice, in `orch/agent:1`:
+ *
+ *   claude setup-token < /dev/null   ->  (no output)   [exited with code 0]
+ *
+ * which is the worst possible shape: the panel had a "log in" button that
+ * succeeded instantly and stored nothing, and the only way to tell was that no
+ * credential appeared. Under a pty the same command prints its URL and then
+ * waits at `Paste code here if prompted >`.
+ *
+ * Two details are not incidental. **The window size** is set explicitly, because
+ * a pty with no parent defaults to 80 columns and the CLI wraps its URL across
+ * five lines mid-token — the link the boss is handed has to be one string.
+ * **Stdin** comes from a file this process appends to, because the sandbox SDK
+ * has no channel into a running command: `select` on the master fd plus
+ * `readline` on a file we `putFile` into is the whole mechanism by which the
+ * pasted code gets in.
+ *
+ * `script -qec` is in the image and does the pty part, and it was the first
+ * thing tried; it ignores `COLUMNS`, so the URL still arrived wrapped.
+ *
+ * **This runs the real CLI and nothing else.** No client id of ours, no URL we
+ * built, no call to a token endpoint — `claude setup-token` performs the entire
+ * OAuth exchange itself, exactly as it does in a terminal. A pty is a terminal;
+ * that is the only thing being supplied.
+ */
+const PTY_PATH = "/opt/orch/pty.py";
+const PTY_RUNNER = `import fcntl, os, pty, select, struct, sys, termios
+cmd = sys.argv[1:]
+inbox = os.environ.get("ORCH_PTY_IN", "")
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp(cmd[0], cmd)
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 200, 400, 0, 0))
+src = open(inbox, "rb") if inbox else None
+if src:
+    src.seek(0, 2)
+out = sys.stdout.buffer
+while True:
+    r, _, _ = select.select([fd], [], [], 0.2)
+    if fd in r:
+        try:
+            data = os.read(fd, 65536)
+        except OSError:
+            break
+        if not data:
+            break
+        out.write(data)
+        out.flush()
+    if src:
+        line = src.readline()
+        if line:
+            os.write(fd, line if line.endswith(b"\\n") else line + b"\\n")
+    if os.waitpid(pid, os.WNOHANG)[0]:
+        try:
+            while True:
+                d = os.read(fd, 65536)
+                if not d:
+                    break
+                out.write(d)
+                out.flush()
+        except OSError:
+            pass
+        break
+`;
 
-export function loginRuntimes(): string[] {
-  return Object.keys(COMMANDS);
-}
+/** Where the boss's pasted code is appended for the pty's stdin to pick up. */
+const CODE_FILE = "/tmp/orch-login-code";
+
+/** What the CLI is waiting for once the URL is out. Probed, and matched loosely. */
+const PASTE_RE = /paste code/i;
 
 /**
- * Start a login and stream it to the panel.
+ * Sign in to a Claude account, from the utility container.
  *
- * The URL is the whole point of streaming: the CLI blocks until the browser
- * comes back, so without showing the link the button would look like it hung.
+ * The last thing that needed a binary on the boss's own machine. It is here for
+ * the same reason the ChatGPT refresh is: what it produces is a real long-lived
+ * credential, and the utility container is the one with no agent, no mailbox and
+ * no `orch` in it — which is the entire reason it may hold one.
+ *
+ * `setup-token` mints a *separate* token rather than touching whatever session
+ * the container happens to hold, so running it here does not disturb anything.
+ *
+ * Two halves, minutes apart, same shape as the GitHub and codex flows: the URL
+ * comes back from `start`, and `submit` carries the code the boss pastes from
+ * the page — which is what the CLI is sitting at a prompt waiting for.
  */
-export function startLogin(ctx: Ctx, runtime: string, home = homedir()): LoginRun | null {
-  const spec = COMMANDS[runtime];
-  if (!spec) return null;
+let claudeLogin: (LoginRun & { submit: (code: string) => Promise<void> }) | null = null;
 
-  const proc = Bun.spawn(spec.argv, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
-  const run: LoginRun = {
+export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) => Promise<void> } {
+  if (claudeLogin) return claudeLogin;
+  const abort = new AbortController();
+  const run: LoginRun & { submit: (code: string) => Promise<void> } = {
     url: null,
-    cancel: () => proc.kill("SIGTERM"),
+    code: null,
+    cancel: () => abort.abort(),
+    // Appended, not overwritten: the runner holds the file open and reads from
+    // where it left off, so a second paste after a typo is a second line rather
+    // than a rewrite it will never see.
+    submit: async (code) => {
+      await execIn(ctx, UTIL, `printf '%s\\n' ${shq(code.trim())} >> ${CODE_FILE}`);
+    },
     done: Promise.resolve({ ok: false, detail: "" }),
   };
-
-  const say = (body: string) =>
-    ctx.bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body });
-
-  const read = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-    const dec = new TextDecoder();
-    let all = "";
-    let buf = "";
-    for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
-      const text = dec.decode(chunk, { stream: true });
-      all += text;
-      buf += text;
-      let nl: number;
-      while ((nl = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, nl).trim();
-        buf = buf.slice(nl + 1);
-        if (!line) continue;
-        const plain = clean(line);
-        if (plain.trim()) say(plain.trim());
-        if (!run.url) run.url = plain.match(URL_RE)?.[0] ?? null;
-      }
-    }
-    const tail = clean(buf).trim();
-    if (tail) {
-      say(tail);
-      if (!run.url) run.url = tail.match(URL_RE)?.[0] ?? null;
-    }
-    return all;
-  };
+  claudeLogin = run;
 
   run.done = (async () => {
-    const [out, err] = await Promise.all([read(proc.stdout), read(proc.stderr)]);
-    const code = await proc.exited;
-    if (code !== 0) {
-      return { ok: false, detail: `${spec.argv[0]} exited ${code}: ${(err || out).trim().slice(-300)}` };
+    try {
+      await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);
+      // The runner opens this before the CLI starts. Truncated, so a code from
+      // an abandoned attempt is not fed to this one.
+      await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
+      const stream = execLines(
+        ctx,
+        UTIL,
+        `ORCH_PTY_IN=${CODE_FILE} python3 ${PTY_PATH} claude setup-token`,
+        { timeoutMs: PASTE_TTL_MS + 60_000, signal: abort.signal },
+      );
+      let token: string | null = null;
+      let sawPrompt = false;
+      for (;;) {
+        const step = await stream.next();
+        if (step.done) {
+          if (!token && step.value.code !== 0) {
+            return {
+              ok: false,
+              detail: `claude setup-token exited ${step.value.code}: ${step.value.err.trim().slice(-300)}`,
+            };
+          }
+          break;
+        }
+        const plain = clean(step.value).trim();
+        if (!plain) continue;
+        ctx.bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
+        run.url ??= plain.match(URL_RE)?.[0] ?? null;
+        token ??= plain.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
+        sawPrompt ||= PASTE_RE.test(plain);
+      }
+      if (!token) {
+        // Said, not waited out. A CLI that stopped printing its URL and a CLI
+        // that stopped accepting a pasted code fail identically from here, and
+        // both are silent — which is what this whole function exists to stop.
+        return {
+          ok: false,
+          detail: sawPrompt
+            ? "claude setup-token asked for the code and never printed a token — the code may have been wrong or expired"
+            : "claude setup-token printed no token — run it under a pty in the image and see what changed",
+        };
+      }
+      saveAuth(ctx.db, { runtime: "claude", mode: "oauth_token", secret: token });
+      ctx.sched.tick(); // whatever was held for a missing credential can go now
+      return { ok: true, detail: "stored" };
+    } finally {
+      claudeLogin = null;
     }
-    const secret =
-      spec.capture(clean(`${out}\n${err}`)) ??
-      // `$CODEX_HOME` if the boss has one. Hardcoding `~/.codex` meant the login
-      // succeeded, wrote somewhere else, and this read nothing — surfacing as
-      // "finished but produced no credential", which reads like the CLI failed.
-      (runtime === "codex" ? await Bun.file(join(hostCodexHome(home), "auth.json")).text().catch(() => "") : "");
-    if (!secret.trim()) {
-      return { ok: false, detail: `${spec.argv[0]} finished but produced no credential` };
-    }
-    saveAuth(ctx.db, { runtime, mode: spec.mode, secret: secret.trim() });
-    ctx.sched.tick(); // whatever was held for a missing credential can go now
-    return { ok: true, detail: "stored" };
   })();
 
   return run;
 }
+
+/** The code on that page is short-lived; the panel's pending state should be too. */
+export const PASTE_TTL_MS = 10 * 60_000;

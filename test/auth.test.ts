@@ -4,7 +4,8 @@ import { CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX
 import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
 import { REFRESH_HOME } from "../src/mech/sandbox/chatgpt.ts";
 import { accessToken, isStale, parseAuth, renew } from "../src/mech/sandbox/chatgpt.ts";
-import { DEVICE_CODE_TTL_MS, loginRuntimes, startLogin } from "../src/mech/sandbox/login.ts";
+import { DEVICE_CODE_TTL_MS } from "../src/mech/sandbox/login.ts";
+import { readFileSync } from "node:fs";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
@@ -233,17 +234,25 @@ test("the ChatGPT login is renewed here, once, and by codex rather than by us", 
 
 
 
-test("the panel knows which runtimes it can log in for, and refuses the rest", () => {
-  // Running the CLI beats reimplementing two OAuth flows against undocumented
-  // client ids: both already print a URL, wait for the browser and hand back a
-  // credential. Only the refusal is checked here — starting a real login opens
-  // a browser and waits for a human, which is not something a test may do.
-  expect(loginRuntimes().sort()).toEqual(["claude", "codex"]);
-
-  const db = openMemory();
-  const ctx = { db, bus: { live: () => {}, emit: () => {} }, sched: { tick: () => {} } } as unknown as Ctx;
-  expect(startLogin(ctx, "nonesuch")).toBeNull();
-  expect(loadAuth(db, "nonesuch")).toBeNull();
+test("no login runs a CLI on this machine any more", () => {
+  // Running the real CLI beats reimplementing two OAuth flows against
+  // undocumented client ids — both already print a URL, wait for a browser and
+  // hand back a credential, and forging that exchange is how an account gets
+  // banned. What changed is only *where*: both now run in the utility
+  // container, which is the one with no agent, no mailbox and no `orch` in it.
+  //
+  // Read as text, because that is the only thing that can see it: a
+  // `Bun.spawn(["claude", …])` added back here would typecheck, pass every
+  // other test, and quietly reintroduce a second credential path — the boss's
+  // own CLI session instead of `runtime_auth`.
+  const src = readFileSync(new URL("../src/mech/sandbox/login.ts", import.meta.url).pathname, "utf8");
+  expect(src).not.toMatch(/Bun\.spawn/);
+  // And the CLI names appear only as arguments to a container exec.
+  for (const line of src.split("\n")) {
+    if (!/\b(claude|codex)\b/.test(line)) continue;
+    if (/^\s*(\*|\/\/|\/\*)/.test(line)) continue; // prose
+    expect(line).not.toMatch(/spawn|execFile|execSync/);
+  }
 });
 
 test("the sandbox server key is stored like a secret, not in the committed yaml", () => {

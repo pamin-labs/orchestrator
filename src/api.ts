@@ -11,7 +11,7 @@ import { execIn, killSandbox, putFile, relinkSkills, restartServer, runningServe
 import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
-import { DEVICE_CODE_TTL_MS, loginRuntimes, startCodexDeviceLogin, startLogin } from "./mech/sandbox/login.ts";
+import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "./mech/sandbox/login.ts";
 import { APP_SLUG, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
 import { baseBranch, baseRefFor, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
@@ -3258,38 +3258,66 @@ async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
 }
 
 /**
- * Log in from the panel, by running the CLI that already knows how.
+ * Sign in to a Claude account, from the utility container.
  *
- * Returns as soon as there is a link to click, because the CLI blocks until the
- * browser comes back and a button that waits silently for two minutes reads as
- * broken. The rest arrives on the live feed, and the credential stores itself.
+ * Three routes for one thing, because the interaction has three moments and
+ * they are minutes apart: the POST returns the link the moment the CLI prints
+ * it, the code route carries what the boss pastes back from that page, and
+ * cancel exists because a login nobody finished should not sit there holding
+ * the one slot.
+ *
+ * The CLI is `claude setup-token` itself, under a pty, in the container. Nothing
+ * here builds a URL or calls a token endpoint — see `startClaudeLogin`.
+ *
+ * No completion route: `run.done` writes `runtime_auth` itself, so the
+ * credential row the panel already polls **is** the confirmation.
  */
-const inFlight = new Map<string, ReturnType<typeof startLogin>>();
+interface ClaudeFlow {
+  url: string;
+  expiresAt: number;
+}
+let claudeFlow: ClaudeFlow | null = null;
 
-const postLogin: Handler = async (ctx, req) => {
-  const b = await body<{ runtime?: string }>(req);
-  const runtime = (b.runtime ?? "").trim();
-  if (!loginRuntimes().includes(runtime)) return bad(`no login for ${runtime || "(nothing)"}`);
-  inFlight.get(runtime)?.cancel();
-
-  const run = startLogin(ctx, runtime);
-  if (!run) return bad(`no login for ${runtime}`);
-  inFlight.set(runtime, run);
+const postClaudeLogin: Handler = async (ctx) => {
+  if (claudeFlow && claudeFlow.expiresAt > Date.now()) return json(claudeFlow);
+  const run = startClaudeLogin(ctx);
+  const startedAt = Date.now();
+  // A pty plus a TUI's first paint: the link is a second or two out, and a
+  // button that returns before it has one has nothing to show.
+  for (let i = 0; i < 150 && !run.url; i++) await Bun.sleep(100);
+  if (!run.url) {
+    run.cancel();
+    return bad(
+      "容器里的 claude 没打印出登录链接 —— 镜像里跑一下 `claude setup-token` 看看（它需要一个 pty，没有 pty 时它什么都不打印就退出 0）。",
+    );
+  }
+  claudeFlow = { url: run.url, expiresAt: startedAt + PASTE_TTL_MS };
   void run.done.then(async (r) => {
-    inFlight.delete(runtime);
-    // The token is stored by then; the sandboxes still hold the old one.
-    if (r.ok) await credentialChanged(ctx, runtime);
+    claudeFlow = null;
+    if (r.ok) await credentialChanged(ctx, "claude");
     ctx.bus.emit({
       author: "orchestrator",
       kind: "state_change",
-      body: r.ok ? `${runtime} 登录好了` : `${runtime} 登录没成：${r.detail}`,
+      body: r.ok ? "claude 登录好了" : `claude 登录没成：${r.detail}`,
     });
   });
+  return json(claudeFlow);
+};
 
-  // A few hundred ms of waiting buys the link itself, which is the only part
-  // the boss can act on.
-  for (let i = 0; i < 60 && !run.url; i++) await Bun.sleep(100);
-  return json({ url: run.url, waiting: true });
+/** The code off that page, handed to the prompt the CLI is sitting at. */
+const postClaudeCode: Handler = async (ctx, req) => {
+  const b = await body<{ code?: string }>(req);
+  const code = (b.code ?? "").trim();
+  if (!code) return bad("没有码");
+  if (!claudeFlow) return bad("没有在等码的登录 —— 先点登录");
+  await startClaudeLogin(ctx).submit(code);
+  return text("ok");
+};
+
+const postClaudeCancel: Handler = async (ctx) => {
+  startClaudeLogin(ctx).cancel();
+  claudeFlow = null;
+  return text("ok");
 };
 
 /**
@@ -3636,7 +3664,9 @@ const postSandboxServerRestart: Handler = async (ctx) => {
 const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/auth$/, getAuth],
   ["POST", /^\/api\/auth$/, postAuth],
-  ["POST", /^\/api\/auth\/login$/, postLogin],
+  ["POST", /^\/api\/auth\/claude\/login$/, postClaudeLogin],
+  ["POST", /^\/api\/auth\/claude\/login\/code$/, postClaudeCode],
+  ["POST", /^\/api\/auth\/claude\/login\/cancel$/, postClaudeCancel],
   ["GET", /^\/api\/auth\/github$/, getGithubLogin],
   ["GET", /^\/api\/github\/repos$/, getGithubRepos],
   ["POST", /^\/api\/auth\/github$/, postGithubLogin],

@@ -70,7 +70,7 @@ const RUNTIMES: Runtime[] = [
     login: "oauth_token",
     urlEnv: "ANTHROPIC_BASE_URL",
     modes: [
-      { mode: "oauth_token", label: "订阅", how: "claude setup-token", cost: "一年有效" },
+      { mode: "oauth_token", label: "订阅", how: "容器里跑 claude setup-token", cost: "一年有效" },
       { mode: "api_key", label: "API 密钥", how: "console.anthropic.com", cost: "不显示额度" },
     ],
   },
@@ -397,6 +397,8 @@ function Credential(props: {
   const [link, setLink] = useState<string | null>(null);
   /** codex's device login: a code, a link, and when it stops being either. */
   const [device, setDevice] = useState<{ code: string; url: string; expiresAt: number } | null>(null);
+  /** claude's: the code goes the other way, from that page back to the CLI. */
+  const [paste, setPaste] = useState("");
   const spec = r.modes.find((m) => m.mode === mode) ?? r.modes[0]!;
   const dirty = !!secret.trim() || baseUrl.trim() !== (cur?.baseUrl ?? "");
   // The OAuth address is worth showing until the credential it fetches arrives,
@@ -441,40 +443,32 @@ function Credential(props: {
   /**
    * Sign in, whichever way this runtime does it.
    *
-   * codex runs `codex login --device-auth` in the utility container — nothing
-   * has to be installed on this machine, and the refresh token it writes is the
-   * one credential no container with an agent in it may hold. claude still runs
-   * its own CLI here, which is what `setup-token` is for.
+   * Both run the official CLI in the utility container — nothing is installed on
+   * this machine and nothing forges an OAuth exchange. They differ in what the
+   * boss does with the page: codex prints a code to type there, claude prints a
+   * code to bring back, so claude gets the input below.
    */
-  const signIn = async () => {
-    if (r.key !== "codex") return login();
+  const sendCode = async () => {
+    const code = paste.trim();
+    if (!code) return;
     setBusy(true);
-    const res = await post("/api/auth/codex/device", {});
+    const res = await post("/api/auth/claude/login/code", { code });
     setBusy(false);
-    if (!res.ok) return;
-    setDevice(JSON.parse(res.text));
-    props.onWaitForLogin(cur?.updatedAt ?? 0);
+    if (res.ok) setPaste("");
   };
 
-  const login = async () => {
+  const signIn = async () => {
     setBusy(true);
-    setLink(null);
-    const res = await post("/api/auth/login", { runtime: r.key });
-    let url: string | null = null;
-    try {
-      url = res.ok ? (JSON.parse(res.text).url ?? null) : null;
-    } catch {
-      url = null;
-    }
-    // Not opened from here. Both CLIs open the browser themselves, so doing it
-    // too gives the boss two tabs of the same OAuth flow — and finishing the
-    // wrong one leaves the other waiting forever.
-    setLink(url);
+    const res = await post(r.key === "codex" ? "/api/auth/codex/device" : "/api/auth/claude/login", {});
     setBusy(false);
-    // The credential arrives on its own once the browser comes back; from here
-    // the only job is to notice.
-    if (url) props.onWaitForLogin(cur?.updatedAt ?? 0);
-    props.onSaved();
+    if (!res.ok) return;
+    const got = JSON.parse(res.text);
+    if (r.key === "codex") setDevice(got);
+    // Not opened from here. The CLI opens the browser itself, so doing it too
+    // gives the boss two tabs of the same OAuth flow — and finishing the wrong
+    // one leaves the other waiting forever.
+    else setLink(got.url ?? null);
+    props.onWaitForLogin(cur?.updatedAt ?? 0);
   };
 
   return (
@@ -517,7 +511,7 @@ function Credential(props: {
               <span className="grow" />
               {/* Beside the label, because the box below is a block and the button
                   is the other way to fill it. */}
-              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={signIn} container={r.key === "codex"} />}
+              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={signIn} />}
             </span>
           ) : (
             <FieldLabel htmlFor={`${r.key}-secret`} className="text-ink-3">
@@ -543,7 +537,7 @@ function Credential(props: {
                 onChange={(e) => setSecret(e.target.value)}
               />
               {/* The alternative to pasting, next to the box it replaces. */}
-              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={signIn} container={r.key === "codex"} />}
+              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={signIn} />}
             </InputGroup>
           )}
         </Field>
@@ -569,23 +563,64 @@ function Credential(props: {
         )}
 
         {link && (
-          <Field className="py-1.5">
-            <span className="text-[0.8125rem] text-ink-3">登录页</span>
-            {/* One line: the address is 400 characters of PKCE and nobody reads
-                it. It stays selectable for the case where the browser that opened
-                it is not the one you want to log in with. */}
-            <span className="flex min-w-0 items-baseline gap-2">
-              <a
-                href={link}
-                target="_blank"
-                rel="noopener"
-                className="shrink-0 text-[0.75rem] text-accent underline"
-              >
-                浏览器没开就点这里
-              </a>
-              <Meta className="min-w-0 truncate">{link}</Meta>
-            </span>
-          </Field>
+          <>
+            <Field className="py-1.5">
+              <span className="text-[0.8125rem] text-ink-3">登录页</span>
+              {/* One line: the address is 400 characters of PKCE and nobody reads
+                  it. It stays selectable for the case where the browser that opened
+                  it is not the one you want to log in with. */}
+              <span className="flex min-w-0 items-baseline gap-2">
+                <a
+                  href={link}
+                  target="_blank"
+                  rel="noopener"
+                  className="shrink-0 text-[0.75rem] text-accent underline"
+                >
+                  打开登录页
+                </a>
+                <Meta className="min-w-0 truncate">{link}</Meta>
+              </span>
+            </Field>
+            {/* The half that has no equivalent in the codex flow. `claude
+                setup-token` sits at `Paste code here` until something answers,
+                and the only thing that can is the boss — hard constraint 5: the
+                thing to do next is beside the evidence for doing it. */}
+            <Field className="py-1.5" orientation="vertical">
+              <FieldLabel htmlFor={`${r.key}-code`} className="text-ink-3">
+                页面给的码
+              </FieldLabel>
+              <InputGroup>
+                <Input
+                  id={`${r.key}-code`}
+                  className="min-w-0 flex-1 font-mono"
+                  placeholder="批准完那一页会给一串码，贴这儿"
+                  value={paste}
+                  onChange={(e) => setPaste(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void sendCode();
+                  }}
+                />
+                <Button size="sm" disabled={busy || !paste.trim()} onClick={() => void sendCode()}>
+                  交上去
+                </Button>
+              </InputGroup>
+              <div className="mt-1.5 flex items-baseline gap-2">
+                <Meta>10 分钟内有效，存下之后这一行自己会消失</Meta>
+                <span className="grow" />
+                <Button
+                  size="sm"
+                  variant="quiet"
+                  onClick={async () => {
+                    await post("/api/auth/claude/login/cancel", {});
+                    setLink(null);
+                    setPaste("");
+                  }}
+                >
+                  取消
+                </Button>
+              </div>
+            </Field>
+          </>
         )}
 
         <Field className="border-b-0 py-1.5">
@@ -832,28 +867,15 @@ function GithubPane() {
 /**
  * Run the official CLI's login and keep what it hands back.
  *
- * Where it runs differs by runtime and the label says so: codex's goes in the
- * utility container (`--device-auth`, nothing installed here), claude's still
- * runs `setup-token` on this machine.
+ * Both runtimes now go through the utility container — `codex login
+ * --device-auth` and `claude setup-token` under a pty. The real CLI does the
+ * whole OAuth exchange either way; nothing here forges one.
  */
-function Login({
-  busy, waiting, onClick, container,
-}: {
-  busy: boolean;
-  waiting: boolean;
-  onClick: () => void;
-  container?: boolean;
-}) {
+function Login({ busy, waiting, onClick }: { busy: boolean; waiting: boolean; onClick: () => void }) {
   return (
-    <Tip
-      label={
-        container
-          ? "在工具容器里跑一次官方登录，拿到的凭据存在这儿。本机不用装 codex。仅限官方账号；自建网关走 API key。"
-          : "在这台机器上跑一次官方 CLI 的登录，拿它换出凭据。仅限官方账号；自建网关走 API key。"
-      }
-    >
+    <Tip label="在工具容器里跑一次官方 CLI 的登录，拿到的凭据存在这儿。本机什么都不用装。仅限官方账号；自建网关走 API key。">
       <Button size="sm" disabled={busy || waiting} onClick={onClick}>
-        {busy || waiting ? "等你在浏览器里批准…" : container ? "登录" : "从本机登录"}
+        {busy || waiting ? "等你在浏览器里批准…" : "登录"}
       </Button>
     </Tip>
   );
