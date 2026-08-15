@@ -1,6 +1,6 @@
 import type { Ctx } from "../api.ts";
 import { say } from "../lang.ts";
-import { createCheckout, remoteUrl } from "./checkout.ts";
+import { createCheckout, remoteFor } from "./checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execLines, WORK } from "./sandbox.ts";
@@ -139,12 +139,8 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     .get(grpId);
   // No branch means the group has not started; `startGroup` owns that path and
   // is in the middle of it.
-  if (!grp?.branch || !ctx.git) return;
-  const repo = ctx.db
-    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-    .get(grp.project_id);
-  if (!repo) return;
-  const remote = await remoteUrl(ctx.git, repo.repo_path);
+  if (!grp?.branch) return;
+  const remote = remoteFor(ctx, grp.project_id);
   if (!remote) return;
 
   ctx.bus.emit({
@@ -153,12 +149,13 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     kind: "state_change",
     body: `沙盒是新的，把 ${grp.branch} 和依赖装回去`,
   });
+  // The branch comes back off the remote, not out of a bundle the host kept:
+  // `pushBranch` put it there at the last slice boundary, and `createCheckout`
+  // checks it out when `ls-remote` finds it.
   await createCheckout(ctx, { grp: grpId }, {
     remote,
     branch: grp.branch,
     base: await baseRefFor(ctx, grp.project_id),
-    git: ctx.git,
-    repoPath: repo.repo_path,
   });
 
   const known = installFor(ctx, grp.project_id);
@@ -185,14 +182,11 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
       "SELECT name, project_id, branch FROM grp WHERE id = ?",
     )
     .get(grpId);
-  if (grp && !grp.branch && ctx.git) {
-    const repo = ctx.db
-      .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-      .get(grp.project_id);
-    if (repo) {
+  if (grp && !grp.branch) {
+    {
       try {
-        const remote = await remoteUrl(ctx.git, repo.repo_path);
-        if (!remote) return "project has no `origin` remote; a group clones from it";
+        const remote = remoteFor(ctx, grp.project_id);
+        if (!remote) return "project has no remote recorded; a group clones from it";
         const branch = `orch/${grp.name}`;
         const base = await baseRefFor(ctx, grp.project_id);
         await createCheckout(ctx, { grp: grpId }, { remote, branch, base });

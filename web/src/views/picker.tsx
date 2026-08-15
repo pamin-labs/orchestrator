@@ -1,6 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useState } from "react";
-import { Button } from "../ui/button";
+import { Button, LinkButton } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { Menu, MenuItem } from "../ui/menu";
 import { Input } from "../ui/bits";
 import { post } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -187,51 +189,149 @@ function Shell({ open, onOpenChange, children }: {
   );
 }
 
-/** Add a project: one git repo, chosen by walking to it. */
+interface RepoRow {
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  pushedAt: number;
+  taken: boolean;
+}
+interface RepoList {
+  installations: { id: number; account: string; kind: string }[];
+  selected: number | null;
+  installUrl: string | null;
+  repos: RepoRow[];
+}
+
+const days = (t: number) => {
+  if (!t) return "";
+  const d = Math.round((Date.now() - t) / 86_400_000);
+  return d < 1 ? "今天" : d < 30 ? `${d} 天前` : `${Math.round(d / 30)} 个月前`;
+};
+
+/**
+ * Add a project: a repository this login can reach, not a directory on this host.
+ *
+ * The list is what the GitHub App is *installed* on, which is also why the org
+ * switcher is a list of installations rather than a second login — one token
+ * already sees all of them. A repository the app was never installed on is
+ * deliberately absent: it would add cleanly and fail at its first clone with a
+ * 404 that cannot say why.
+ */
 export function Picker({ open, onOpenChange, onAdded }: {
   open: boolean; onOpenChange: (v: boolean) => void; onAdded: () => void;
 }) {
-  const [name, setName] = useState("");
-  const submit = async (path: string, folder: string) => {
-    const r = await post("/api/projects", { name: (name.trim() || folder).slice(0, 40), repo_path: path });
+  const [d, setD] = useState<RepoList | null>(null);
+  const [err, setErr] = useState("");
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState("");
+
+  const load = async (installation?: number) => {
+    const r = await fetch(`/api/github/repos${installation ? `?installation=${installation}` : ""}`);
+    if (!r.ok) return setErr(await r.text());
+    setErr("");
+    setD((await r.json()) as RepoList);
+  };
+  useEffect(() => {
+    if (open) {
+      setQ("");
+      void load();
+    }
+  }, [open]);
+
+  const add = async (repo: string) => {
+    setBusy(repo);
+    const r = await post("/api/projects", { repo });
+    setBusy("");
     if (r.ok) {
-      setName("");
       onOpenChange(false);
       onAdded();
     }
   };
+
+  const here = d?.installations.find((i) => i.id === d.selected);
+  const shown = (d?.repos ?? []).filter((r) => r.fullName.toLowerCase().includes(q.trim().toLowerCase()));
+
   return (
     <Shell open={open} onOpenChange={onOpenChange}>
-      <Browse
-        title="选择仓库"
-        hint="git 仓库优先"
-        onOpenChange={onOpenChange}
-        // A repo picks itself; anything else is a step on the way.
-        onRow={(e) => {
-          if (!e.repo || e.taken) return false;
-          void submit(e.path, e.name);
-          return true;
-        }}
-        footer={(here) => (
-          <>
-            <Input
-              className="max-w-48"
-              placeholder="项目名，默认同目录名"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <span className="grow" />
-            <Button onClick={() => onOpenChange(false)}>取消</Button>
-            <Button
-              variant="go"
-              disabled={!here?.repo}
-              onClick={() => here && submit(here.path, here.path.split("/").pop() ?? "project")}
-            >
-              选这个
-            </Button>
-          </>
+      <div className="flex items-baseline gap-2 border-b border-rule p-3">
+        <Dialog.Title className="font-display text-[1.0625rem] font-semibold">选择仓库</Dialog.Title>
+        <span className="text-[0.75rem] text-ink-3">这个 App 装到哪儿，这儿就有哪些</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-rule-soft px-3 py-2">
+        {/* The org switcher. Behind one click because it is rare, and because a
+            row of accounts would outweigh the list it filters. */}
+        {d && d.installations.length > 1 ? (
+          <Menu label={here ? `${here.account}` : "选账号"}>
+            {d.installations.map((i) => (
+              <MenuItem
+                key={i.id}
+                hint={i.kind === "Organization" ? "组织" : "个人账号"}
+                onSelect={() => void load(i.id)}
+              >
+                {i.account}
+              </MenuItem>
+            ))}
+          </Menu>
+        ) : (
+          here && <span className="text-[0.8125rem] font-medium">{here.account}</span>
         )}
-      />
+        <Input
+          className="min-w-0 flex-1"
+          placeholder="筛一下"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+
+      <div className="max-h-[46vh] overflow-y-auto">
+        {err && <div className="p-3.5 text-[0.75rem] text-bad">{err}</div>}
+        {!d && !err && <div className="p-3.5 text-[0.75rem] text-ink-3">读取中…</div>}
+        {/* Authorized and installed are different things, and this is the second
+            one missing. An empty list with no explanation is the failure. */}
+        {d && !d.installations.length && (
+          <div className="space-y-2 p-3.5 text-[0.8125rem] text-ink-2">
+            <p>连上了，但这个 GitHub App 还没装到任何账号上，所以一个仓库也看不见。</p>
+            {d.installUrl ? (
+              <LinkButton href={d.installUrl}>去装上</LinkButton>
+            ) : (
+              <p className="text-[0.75rem] text-ink-3">去 GitHub → 这个 App → Install App，选要给它看的仓库。</p>
+            )}
+          </div>
+        )}
+        {d && !!d.installations.length && !shown.length && (
+          <div className="p-3.5 text-[0.75rem] text-ink-3">
+            {d.repos.length ? "没有匹配的" : "这个账号下，App 没被授权看任何仓库"}
+          </div>
+        )}
+        {shown.map((r) => (
+          <button
+            key={r.fullName}
+            disabled={r.taken || !!busy}
+            onClick={() => void add(r.fullName)}
+            className={cn(
+              "grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5",
+              "px-3.5 py-2 text-left text-[0.8125rem] transition-colors",
+              r.taken ? "text-ink-3" : "cursor-pointer hover:bg-sunk",
+            )}
+          >
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="truncate font-medium">{r.fullName}</span>
+              {r.private && <Badge>私有</Badge>}
+            </span>
+            <span className="text-[0.75rem] text-ink-3">{r.taken ? "已添加" : days(r.pushedAt)}</span>
+            <span className="col-start-1 font-mono text-[0.6875rem] text-ink-3">{r.defaultBranch}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-rule p-3">
+        <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">
+          {busy ? `正在添加 ${busy}…` : "点一行就添加"}
+        </span>
+        <Button onClick={() => onOpenChange(false)}>取消</Button>
+      </div>
     </Shell>
   );
 }

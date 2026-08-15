@@ -6,7 +6,7 @@ import { ensureCheckout } from "../src/mech/checkout.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 
 /**
- * Two ways a checkout goes wrong quietly.
+ * Three ways a checkout goes wrong quietly, and one way it goes wrong loudly.
  *
  * A shallow clone is faster and truncates history, which `rebaseOntoBase` and
  * `merge-base --is-ancestor` both need — and a future reader with a slow clone
@@ -14,29 +14,32 @@ import { fakeSandbox } from "./fake-sandbox.ts";
  *
  * `ensureCheckout` had four early returns before it could ever throw. When one
  * fired the group ran a whole turn against an empty `/work`: status RUNNING, an
- * agent on the roster, no error anywhere.
+ * agent on the roster, no error anywhere. There are three now — "the host has no
+ * git" stopped being a way this can fail when the remote stopped being read out
+ * of a host checkout (007 step 5).
  */
-function harness(opts: { git?: boolean; project?: boolean; grp?: boolean; remote?: boolean } = {}) {
+function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; modules?: boolean } = {}) {
   const db: DB = openMemory();
   const bus = new Bus(db);
-  const sandbox = fakeSandbox((cmd) => (cmd.includes("test -d") ? { out: "" } : {}));
+  const sandbox = fakeSandbox((cmd) => {
+    if (cmd.includes(".gitmodules")) return { out: opts.modules ? "yes" : "" };
+    if (cmd.includes("test -d")) return { out: "" };
+    // No branch on the remote yet, so the checkout cuts one from the base.
+    if (cmd.includes("ls-remote")) return { code: 2 };
+    return {};
+  });
   const ctx = {
     db,
     bus,
     sandbox,
     waiters: new Map(),
-    git:
-      opts.git === false
-        ? undefined
-        : ((async (_repo: string, argv: string[]) =>
-            argv[0] === "remote" && opts.remote !== false
-              ? { code: 0, out: "https://example.com/x.git", err: "" }
-              : { code: 1, out: "", err: "no" }) as never),
     config: { language: "中文" },
   } as unknown as Ctx;
 
   if (opts.project !== false) {
-    db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p', '/tmp/p', '{}', 0)");
+    db.run("INSERT INTO project (name, repo_path, remote, config_json, created_at) VALUES ('p', '/tmp/p', ?, '{}', 0)", [
+      opts.remote === false ? null : "https://github.com/me/x.git",
+    ]);
   } else {
     // A group whose project is gone. The foreign key is what normally stops
     // this; it does not stop a project deleted out from under a live group.
@@ -59,12 +62,10 @@ test("the clone is blobless, so history survives it", async () => {
 });
 
 test("every way out that is not a clone says which one it was", async () => {
-  // Group 2 does not exist; the other three are the rows and the remote missing.
   const cases: [string, Awaited<ReturnType<typeof harness>>, number][] = [
     ["组 2", harness(), 2],
-    ["git", harness({ git: false }), 1],
-    ["project", harness({ project: false }), 1],
-    ["remote origin", harness({ remote: false }), 1],
+    ["项目不在了", harness({ project: false }), 1],
+    ["没记下 remote", harness({ remote: false }), 1],
   ];
 
   for (const [needle, h, grpId] of cases) {
@@ -74,4 +75,25 @@ test("every way out that is not a clone says which one it was", async () => {
     expect(bodies.length).toBe(1);
     expect(bodies[0]).toContain(needle);
   }
+});
+
+test("submodules are initialised in two steps, and only when there are any", async () => {
+  // `git clone --recursive` is CVE-2024-32002 and CVE-2025-48384: a submodule
+  // checkout that lands a hook where git then looks for one. The two steps are
+  // the mitigation GitHub itself publishes, so collapsing them back into a flag
+  // is the regression this exists to catch.
+  const withModules = harness({ modules: true });
+  await ensureCheckout(withModules.ctx, 1);
+  const clone = withModules.sandbox.commands.find((c) => c.startsWith("git clone"))!;
+  expect(clone).not.toContain("--recursive");
+  expect(clone).not.toContain("--recurse-submodules");
+  const init = withModules.sandbox.commands.find((c) => c.includes("submodule update --init"))!;
+  expect(init).toContain("protocol.file.allow=user");
+  // Order: the working tree has to exist before `.gitmodules` can be read at all.
+  expect(withModules.sandbox.commands.indexOf(clone)).toBeLessThan(withModules.sandbox.commands.indexOf(init));
+
+  // A repository with no submodules pays one `test -f` and nothing else.
+  const without = harness();
+  await ensureCheckout(without.ctx, 1);
+  expect(without.sandbox.commands.some((c) => c.includes("submodule"))).toBe(false);
 });

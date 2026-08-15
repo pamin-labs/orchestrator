@@ -1,7 +1,7 @@
 import type { Ctx } from "../api.ts";
 import { say } from "../lang.ts";
 import { squashWip } from "./worktree.ts";
-import { baseBranch, baseRefFor, publishBranch, sandboxGit } from "./checkout.ts";
+import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
 import { parseRepo, type Github } from "./github.ts";
 import { WORK } from "./sandbox.ts";
 
@@ -41,9 +41,6 @@ function repoSlug(ctx: Ctx, projectId: number): string | null {
 export interface OpenPrInput {
   ctx: Ctx;
   gh: Github;
-  /** Under the repo write lock: a push writes refs. */
-  git: (repo: string, argv: string[], cwd?: string) => Promise<{ code: number; out: string }>;
-  repo: string;
   grpId: number;
   title: string;
   body: string;
@@ -51,7 +48,7 @@ export interface OpenPrInput {
 
 /** Open the PR once the audit passes. Returns its number, or null with a reason. */
 export async function openPr(input: OpenPrInput): Promise<{ number: number } | { error: string }> {
-  const { ctx, gh, git, grpId } = input;
+  const { ctx, gh, grpId } = input;
   const grp = ctx.db
     .query<{ branch: string | null; pr_number: number | null; project_id: number }, [number]>(
       "SELECT branch, pr_number, project_id FROM grp WHERE id = ?",
@@ -81,24 +78,17 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     body: sq.squashed ? `squashed ${sq.reason}` : `no squash (${sq.reason})`,
   });
 
-  // Two different things are called "repo" from here down, deliberately and only
-  // until 007 step 5: `input.repo` is a path on this host, and is git's — the
-  // bundle lands there and the push runs there. `slug` is `owner/repo`, and is
-  // GitHub's. They come from different columns (`repo_path`, `remote`), so a
-  // checkout whose `origin` disagrees with the stored remote would push the
-  // branch to one repository and open the PR on another. When the branch starts
-  // going straight to the remote, the host path and this whole half go with it.
+  // The seam that used to be here is gone with 007 step 5. Two different things
+  // were called "repo": a path on this host (git's) and `owner/repo` (GitHub's),
+  // read from two columns that could disagree — so a checkout whose `origin` was
+  // not the stored remote pushed the branch to one repository and opened the PR
+  // on another. There is one answer now, and it is the stored remote.
   //
-  // Out of the sandbox as a bundle, then pushed from here. The sandbox has no
-  // credential that can write to the remote — see publishBranch for why that is
-  // deliberate rather than an oversight.
-  const moved = await publishBranch(ctx, scope, git, input.repo, grp.branch, await baseRefFor(ctx, grp.project_id));
-  if (!moved.ok) return { error: `could not take ${grp.branch} out of the sandbox: ${moved.reason}` };
-
-  const pushed = await git(input.repo, ["push", "-u", "origin", grp.branch]);
-  if (pushed.code !== 0) {
-    return { error: `could not push ${grp.branch}: ${pushed.out.split("\n").slice(-3).join("\n")}` };
-  }
+  // Out of the group's container as a bundle, onto the remote from the utility
+  // container. The group still holds no credential that can write there; see
+  // `readOnlyGitPaths` for what enforces that and what it does not.
+  const pushed = await pushBranch(ctx, grpId);
+  if (!pushed.ok) return { error: `could not push ${grp.branch}: ${pushed.reason}` };
 
   const created = await gh.request<{ number?: number }>("POST", `/repos/${slug}/pulls`, {
     title: input.title,
@@ -109,7 +99,11 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   // The create answer carries the number, so the second call `gh` needed is gone.
   // It comes back for one case: a 422 saying a PR for this head already exists,
   // which is what a retry after a half-finished attempt looks like.
-  let number = created.ok ? (created.data.number ?? 0) : 0;
+  // `?.`, because a 200 with an empty body is a thing that happens — a proxy in
+  // front of GitHub, a 204, an ETag path that answers with nothing. Reading
+  // `.number` off it threw out of the whole route as a 500, which is the one
+  // answer that tells the boss nothing.
+  let number = created.ok ? (created.data?.number ?? 0) : 0;
   if (!created.ok) {
     const owner = slug.split("/")[0]!;
     const found = await gh.request<Array<{ number: number }>>(

@@ -12,7 +12,7 @@ import { execIn, killSandbox, putFile, serverKeyOnDisk, skillMounts, specFor, WO
 import { clearSandboxLog, sandboxLines } from "./mech/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
 import { loginRuntimes, startLogin } from "./mech/login.ts";
-import { githubAccount, githubInstallations, pollForToken, startDeviceFlow, NO_CLIENT_ID } from "./mech/ghlogin.ts";
+import { githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, NO_CLIENT_ID } from "./mech/ghlogin.ts";
 import { preflight } from "./mech/preflight.ts";
 import { baseBranch, baseRefFor, sandboxGit } from "./mech/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
@@ -2448,9 +2448,7 @@ const postGroupControl: Handler = async (ctx, req, params) => {
       const r = await openPr({
         ctx,
         gh: ctx.gh,
-        git: ctx.git,
-        repo: g.repo,
-        grpId,
+                grpId,
         title: `orch: ${g.name}`,
         body: prBody(ctx, grpId),
       });
@@ -2712,15 +2710,47 @@ export function checkRepoPath(p: string): string | null {
 }
 
 const postProject: Handler = async (ctx, req) => {
-  const b = await body<{ name: string; repo_path: string; remote?: string; gates?: string[] }>(req);
+  const b = await body<{ name: string; repo_path: string; repo?: string; remote?: string; gates?: string[] }>(req);
+
+  /**
+   * Added from the repo list, so there is no checkout on this host.
+   *
+   * **Seam, 007 step 6.** `repo_path` is still the project's identity everywhere
+   * (137 references), so a remote project puts `owner/name` in it — the shape
+   * step 6 moves every row to — rather than a path to a directory that does not
+   * exist. Until that step lands, everything here that *reads the disk* is
+   * skipped rather than run against a string that is not a path: gate/install
+   * detection, the `origin` lookup, the PR preflight. 007 §2 says the same
+   * thing about detection — it moves to after the first group's clone, and
+   * adding a project says so instead of silently guessing nothing.
+   */
+  const remoteOnly = !!(b.repo ?? "").trim();
+  let baseBranch: string | null = null;
+  if (remoteOnly) {
+    if (!ctx.gh) return bad("this server has no GitHub client");
+    // The API is asked rather than trusting what the browser posted: the default
+    // branch is written into the row, and a wrong one is a group that branches
+    // off nothing.
+    const r = await ctx.gh.request<{ full_name: string; default_branch: string; clone_url: string }>(
+      "GET",
+      `/repos/${(b.repo ?? "").trim()}`,
+    );
+    if (!r.ok) return bad(r.message);
+    b.repo_path = r.data.full_name;
+    b.remote = r.data.clone_url;
+    baseBranch = r.data.default_branch || null;
+    b.name ||= r.data.full_name.split("/")[1] ?? r.data.full_name;
+  }
   if (!b.name || !b.repo_path) return bad("name and repo_path required");
 
-  // The web form is a typed path — a browser cannot hand over a real filesystem
-  // path — so a typo is the expected mistake, not an exotic one. Checked here
-  // rather than discovered when the first group tries to create a worktree.
-  b.repo_path = expandHome(b.repo_path);
-  const pathProblem = checkRepoPath(b.repo_path);
-  if (pathProblem) return bad(pathProblem);
+  if (!remoteOnly) {
+    // The web form is a typed path — a browser cannot hand over a real filesystem
+    // path — so a typo is the expected mistake, not an exotic one. Checked here
+    // rather than discovered when the first group tries to create a worktree.
+    b.repo_path = expandHome(b.repo_path);
+    const pathProblem = checkRepoPath(b.repo_path);
+    if (pathProblem) return bad(pathProblem);
+  }
 
   const dup = ctx.db
     .query<{ name: string }, [string]>("SELECT name FROM project WHERE repo_path = ?")
@@ -2735,7 +2765,7 @@ const postProject: Handler = async (ctx, req) => {
   // merged" is answered by `gh pr view`, and the alternative was a button that
   // asked the boss to confirm a merge by hand.
   let remote = b.remote ?? null;
-  if (ctx.git) {
+  if (ctx.git && !remoteOnly) {
     const r = await ctx.git(b.repo_path, ["remote", "get-url", "origin"]);
     const url = r.code === 0 ? (r.out.trim().split("\n")[0] ?? "") : "";
     if (!url) return bad(`${b.repo_path} has no \`origin\` remote: a PR would have nowhere to go`);
@@ -2746,7 +2776,7 @@ const postProject: Handler = async (ctx, req) => {
   // A project with no gates fails every slice by design, so guessing them here
   // is the difference between "works out of the box" and "looks broken on day
   // one". The guess is written into config where it can be corrected.
-  const detected = detectGates(b.repo_path);
+  const detected = remoteOnly ? [] : detectGates(b.repo_path);
   const insRes = ctx.db.prepare(
     `INSERT INTO resource (name, template, arg_schema_json, error_regex, concurrency, tags_json)
      VALUES (?, ?, ?, ?, 1, ?)
@@ -2770,7 +2800,7 @@ const postProject: Handler = async (ctx, req) => {
   // acceptance line of the form "the menu opens" is unverifiable by anyone in the
   // fleet — measured, three groups stalled at once and the boss was asked to click.
   // Tagged `browser` so it draws from its own pool: each lease is a real Chromium.
-  if (existsSync(join(b.repo_path, "scripts/browse.ts"))) {
+  if (!remoteOnly && existsSync(join(b.repo_path, "scripts/browse.ts"))) {
     insRes.run(
       "browser",
       "bun run scripts/browse.ts --steps {steps}",
@@ -2792,16 +2822,32 @@ const postProject: Handler = async (ctx, req) => {
   // rather than hardcoded, because it is the one command that differs between
   // every stack — and it is a default the bootstrap role can skip past, since
   // only the repo knows which of bun / poetry / uv / mise / make it really is.
-  const config = { gates, shared: detectShared(b.repo_path), install: detectInstall(b.repo_path) };
+  const config = remoteOnly
+    ? { gates }
+    : { gates, shared: detectShared(b.repo_path), install: detectInstall(b.repo_path) };
 
+  // `base_branch` comes from the API for a remote project, rather than from the
+  // 30 lines of main/master/trunk heuristics a checkout needed. NULL still means
+  // "ask the remote", which is what a locally-added project stays as.
   const r = ctx.db
-    .query<{ id: number }, [string, string, string | null, string]>(
-      `INSERT INTO project (name, repo_path, remote, config_json, created_at)
-       VALUES (?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
+    .query<{ id: number }, [string, string, string | null, string, string | null]>(
+      `INSERT INTO project (name, repo_path, remote, config_json, base_branch, created_at)
+       VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
-    .get(b.name, b.repo_path, remote, JSON.stringify(config))!;
+    .get(b.name, b.repo_path, remote, JSON.stringify(config), baseBranch)!;
 
-  if (gates.length === 0) {
+  if (remoteOnly) {
+    // Not "no gates detected" — nothing was looked at. 007 §2: detection moves to
+    // after the first group's clone, and adding a project says so rather than
+    // silently guessing nothing.
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body:
+        `project ${b.name} (${b.repo_path}, ${baseBranch ?? "default branch"}): 还没有 checkout，` +
+        `闸门和安装命令等第一个组克隆完再猜。现在填也行：设置 → 闸门。`,
+    });
+  } else if (gates.length === 0) {
     // Say it plainly rather than letting the first slice fail with a puzzle.
     ctx.bus.emit({
       author: "orchestrator",
@@ -2822,7 +2868,8 @@ const postProject: Handler = async (ctx, req) => {
   }
   // The remote is settled above; what is left — `gh` installed, logged in, write
   // permission — is fixable without re-registering, so it is said, not refused.
-  if (ctx.git && ctx.gh) {
+  // Skipped for a remote project: this reads the host checkout, and there is none.
+  if (ctx.git && ctx.gh && !remoteOnly) {
     const pre = await preflightPr(b.repo_path, (argv, cwd) => ctx.git!(cwd, argv, cwd), ctx.gh);
     ctx.bus.emit(
       pre.ok
@@ -2840,20 +2887,25 @@ const postProject: Handler = async (ctx, req) => {
 
   // Write the onboarding pack before any group exists, so the first group does
   // not pay to explore the repo. Cheap role, cheap model, once per project.
-  ctx.sched.enqueue("agent_turn", {
-    priority: 4,
-    payload: {
-      role: "librarian",
-      project_id: r.id,
-      onboarding: b.repo_path,
-      idea:
-        `New project registered at ${b.repo_path}. Write its onboarding pack now ` +
-        `(\`orch journal add --kind onboarding\`): how to build, how to test, the conventions ` +
-        `actually in use, the known traps, and a short directory map. Six lines max — every ` +
-        `future agent reads this on its first turn, so it is the highest-leverage six lines ` +
-        `in the project.`,
-    },
-  });
+  // A remote project has nothing to read yet — the Librarian would explore a
+  // directory that does not exist — so it waits for the first clone, same as
+  // gate detection above.
+  if (!remoteOnly) {
+    ctx.sched.enqueue("agent_turn", {
+      priority: 4,
+      payload: {
+        role: "librarian",
+        project_id: r.id,
+        onboarding: b.repo_path,
+        idea:
+          `New project registered at ${b.repo_path}. Write its onboarding pack now ` +
+          `(\`orch journal add --kind onboarding\`): how to build, how to test, the conventions ` +
+          `actually in use, the known traps, and a short directory map. Six lines max — every ` +
+          `future agent reads this on its first turn, so it is the highest-leverage six lines ` +
+          `in the project.`,
+      },
+    });
+  }
   ctx.sched.tick();
   return json({ id: r.id, gates, detected });
 };
@@ -3276,31 +3328,66 @@ const postGithubLogin: Handler = async (ctx) => {
   return json({ userCode: d.userCode, verificationUri: d.verificationUri, expiresIn: d.expiresIn });
 };
 
+/** Where to install the app, when its slug is configured. */
+const installUrl = (ctx: Ctx): string | null => {
+  const slug = (ctx.config.github?.appSlug ?? "").trim();
+  return slug ? `https://github.com/apps/${slug}/installations/new` : null;
+};
+
 const getGithubLogin: Handler = async (ctx) => {
   const a = loadAuth(ctx.db, "github");
   // Asked of GitHub rather than read from a stored name: a name in the database
   // keeps saying "connected" for a token that was revoked last week, and an
   // expired GitHub token is the failure where every group breaks at once with a
   // different error each (决策 007 §6). No row, no request.
-  const account = a ? await githubAccount(a.secret) : null;
+  const account = a && ctx.gh ? await githubAccount(ctx.gh) : null;
   // Authorized is not installed. A GitHub App's user token reaches exactly the
   // repositories the app is installed on, so zero installations is the state
   // that looks like success and is not: a green 已连接 over a repo list that
   // can never fill.
-  const installs = a && account ? await githubInstallations(a.secret) : null;
-  const slug = (ctx.config.github?.appSlug ?? "").trim();
+  const installs = a && account && ctx.gh ? await listInstallations(ctx.gh) : null;
   return json({
     connected: !!a,
     account,
     /** The token is stored and GitHub no longer answers for it. */
     stale: !!a && !account,
     /** Authorized, but the app is not installed anywhere it could read. */
-    installed: installs === null ? null : installs > 0,
+    installed: installs?.ok ? installs.data.length > 0 : null,
     /** Where to fix that, when the app's slug is configured. */
-    installUrl: slug ? `https://github.com/apps/${slug}/installations/new` : null,
+    installUrl: installUrl(ctx),
     configured: !!(ctx.config.github?.clientId ?? "").trim(),
     pending: ghFlow && ghFlow.expiresAt > Date.now() ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri } : null,
     error: ghError,
+  });
+};
+
+/**
+ * What this login can actually open a project on.
+ *
+ * One route for both halves because they are one question: which account, and
+ * which of its repositories. Switching org is picking another installation, not
+ * logging in again — so the switcher's options and the list it drives arrive
+ * together rather than as two round trips that can disagree.
+ */
+const getGithubRepos: Handler = async (ctx, req) => {
+  if (!ctx.gh) return bad("this server has no GitHub client");
+  if (!loadAuth(ctx.db, "github")) return bad("还没连 GitHub，先去设置里连一下");
+  const inst = await listInstallations(ctx.gh);
+  if (!inst.ok) return bad(inst.message);
+
+  const asked = Number(new URL(req.url).searchParams.get("installation")) || 0;
+  const selected = inst.data.find((i) => i.id === asked)?.id ?? inst.data[0]?.id ?? null;
+  const repos = selected ? await listRepos(ctx.gh, selected) : null;
+  if (repos && !repos.ok) return bad(repos.message);
+
+  // Seam (007 step 6): a project's identity is still `repo_path`, which for a
+  // repository added here is `owner/name`.
+  const taken = new Set(ctx.db.query<{ repo_path: string }, []>("SELECT repo_path FROM project").all().map((r) => r.repo_path));
+  return json({
+    installations: inst.data,
+    selected,
+    installUrl: installUrl(ctx),
+    repos: (repos?.data ?? []).map((r) => ({ ...r, taken: taken.has(r.fullName) })),
   });
 };
 
@@ -3411,6 +3498,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/auth$/, postAuth],
   ["POST", /^\/api\/auth\/login$/, postLogin],
   ["GET", /^\/api\/auth\/github$/, getGithubLogin],
+  ["GET", /^\/api\/github\/repos$/, getGithubRepos],
   ["POST", /^\/api\/auth\/github$/, postGithubLogin],
   ["GET", /^\/api\/preflight$/, getPreflight],
   ["GET", /^\/api\/sandbox$/, getSandbox],

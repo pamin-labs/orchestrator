@@ -217,14 +217,37 @@ function connection(ctx: Ctx): ConnectionConfig {
  *
  * A group is the usual answer. Standing roles — Architect, CoS, Dispatcher —
  * have no group and still must not run on the host, so they share one per
- * project. Two columns rather than a join table: there are exactly two owners
- * and there is no third in sight.
+ * project.
+ *
+ * `util` is the third, and it is not a sandbox in the 005 sense. 007 narrows
+ * that decision by one word: **the boundary is a container that runs an agent**.
+ * This one runs none, checks out no working tree, and executes nothing that came
+ * out of a repository — it is a peer of the server that happens not to occupy
+ * the host's PATH. So it is the only container bound for GitHub *writes*, while
+ * every group's binding is scoped to the two request paths a fetch uses
+ * (`readOnlyGitPaths`). One per orchestrator, not per project: what it holds is
+ * the login, and there is one of those.
  */
-export type Scope = { grp: number } | { project: number };
+export type Scope = { grp: number } | { project: number } | { util: true };
 
-const holder = (s: Scope) => ("grp" in s ? { table: "grp", id: s.grp } : { table: "project", id: s.project });
+/** The utility container. Written out so no caller invents a second spelling. */
+export const UTIL: Scope = { util: true };
+export const isUtil = (s: Scope): s is { util: true } => "util" in s;
 
-function owner(ctx: Ctx, scope: Scope): { sandboxId: string | null; projectId: number } {
+/** It owns no row, so its id lives beside the other server-scope settings. */
+const UTIL_ID = "util_sandbox_id";
+const UTIL_AT = "util_sandbox_at";
+
+export function utilSandbox(db: Ctx["db"]): { id: string | null; at: number } {
+  const get = (k: string) => db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(k)?.v ?? null;
+  return { id: get(UTIL_ID), at: Number(get(UTIL_AT) ?? 0) };
+}
+
+const holder = (s: Scope) =>
+  isUtil(s) ? { table: "setting", id: 0 } : "grp" in s ? { table: "grp", id: s.grp } : { table: "project", id: s.project };
+
+function owner(ctx: Ctx, scope: Scope): { sandboxId: string | null; projectId: number | null } {
+  if (isUtil(scope)) return { sandboxId: utilSandbox(ctx.db).id, projectId: null };
   const h = holder(scope);
   if (h.table === "grp") {
     const row = ctx.db
@@ -243,15 +266,30 @@ function owner(ctx: Ctx, scope: Scope): { sandboxId: string | null; projectId: n
 }
 
 function remember(ctx: Ctx, scope: Scope, id: string | null): void {
-  const h = holder(scope);
   // The timestamp is what makes a stale binding visible. A sidecar is loaded
   // with the credentials that existed at this moment and never again, so a
   // sandbox older than the newest credential is one nobody has rebound.
-  ctx.db.run(`UPDATE ${h.table} SET sandbox_id = ?, sandbox_at = ? WHERE id = ?`, [
-    id,
-    id ? Date.now() : null,
-    h.id,
-  ]);
+  const at = id ? Date.now() : null;
+  if (isUtil(scope)) {
+    const put = (k: string, v: string | null) =>
+      v === null
+        ? ctx.db.run("DELETE FROM setting WHERE k = ?", [k])
+        : ctx.db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [k, v]);
+    put(UTIL_ID, id);
+    put(UTIL_AT, at === null ? null : String(at));
+    return;
+  }
+  const h = holder(scope);
+  ctx.db.run(`UPDATE ${h.table} SET sandbox_id = ?, sandbox_at = ? WHERE id = ?`, [id, at, h.id]);
+}
+
+/** The remote this scope's container may reach, for the read-only binding. */
+function remoteOf(ctx: Ctx, projectId: number | null): string | null {
+  if (projectId == null) return null;
+  return (
+    ctx.db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId)
+      ?.remote ?? null
+  );
 }
 
 /**
@@ -365,7 +403,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
       volumes,
       // `grp-1`, not `grp:1`: metadata values must be alphanumeric plus `-_.`, and
       // a colon is a 400 at creation — which fails the group, not the label.
-      metadata: { owner: `${holder(scope).table}-${holder(scope).id}` },
+      metadata: { owner: isUtil(scope) ? "util" : `${holder(scope).table}-${holder(scope).id}` },
     });
 
   // The boss's own skills, staged into one dereferenced directory on the host
@@ -373,7 +411,9 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   // and invokes a skill by itself instead of waiting to be handed one. Read-only:
   // what the boss ticks is the whole contract, and a group editing the set every
   // other group mounts is not part of it.
-  const skills = skillMounts(ctx);
+  // Not the utility container: nothing in there reads a skill, because nothing
+  // in there is an agent.
+  const skills = isUtil(scope) ? [] : skillMounts(ctx);
   let sb: Sandbox;
   try {
     sb = await make([...cacheVolumes, ...skills]);
@@ -397,7 +437,10 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   }
   live.set(sb.id, sb);
   remember(ctx, scope, sb.id);
-  await provision(sb);
+  // The utility container gets no mailbox and no `orch`: nothing in it is an
+  // agent, so the one interface an agent is allowed would be surface with no
+  // user — in the container that holds the real tokens.
+  if (!isUtil(scope)) await provision(sb);
   // Remembered before this line, so the restore below re-enters here and finds
   // the sandbox it is restoring into rather than building a second one.
   // A credential the CLI can only read from a file. See `filesFor` for why codex
@@ -412,18 +455,19 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   // The real tokens go to the sidecar, never inside. Bound at creation because
   // `resume` rebuilds the sidecar with an empty vault, and a sandbox with no
   // vault answers 401 rather than saying the vault is missing.
-  const { credentials } = await vaultBindings(ctx.db, ctx.config.dataDir ?? "data");
+  //
+  // `repo` is what makes a group container's GitHub binding read-only: with it,
+  // the token is injected on the two paths a fetch uses and on nothing else, so
+  // `git push` inside a group leaves with the decoy and GitHub refuses it. The
+  // utility container passes nothing and keeps the whole token.
+  const { credentials } = await vaultBindings(ctx.db, ctx.config.dataDir ?? "data", {
+    repo: isUtil(scope) ? null : remoteOf(ctx, projectId),
+  });
   if (credentials.length) {
     await sb.credentialVault
       .create({
         credentials: credentials.map((c) => ({ name: c.name, source: { type: "inline" as const, value: c.value } })),
-        bindings: credentials.map((c) => ({
-          name: c.name,
-          match: { schemes: ["https" as const], hosts: c.hosts },
-          auth: c.header
-            ? { type: "apiKey" as const, name: c.header, credential: c.name }
-            : { type: "bearer" as const, credential: c.name },
-        })),
+        bindings: credentials.map((c) => ({ name: c.name, match: matchFor(c), auth: authFor(c) })),
       })
       .catch(() => {
         // Reported by preflight, not swallowed here — but a group that cannot
@@ -538,7 +582,31 @@ export interface Credential {
   hosts: string[];
   /** Header name for an apiKey-style credential; omit for `Authorization: Bearer`. */
   header?: string;
+  /**
+   * Request paths this credential may be injected on. Absent means all of them.
+   *
+   * Read from the sidecar's own matcher rather than assumed: a pattern ending in
+   * `*` is a **prefix**, anything else is compared for equality, and the query
+   * string is cut off before the comparison. So a leading wildcard matches
+   * nothing at all, and a trailing one — the shape the upstream guide suggests,
+   * `/owner/repo.git` plus a star — is useless here, because a prefix does not
+   * stop at `/` and would readmit `git-receive-pack`.
+   * The path filter is ANDed with the host one and evaluated before it.
+   */
+  paths?: string[];
 }
+
+/** Both bind sites, so a binding cannot be built two ways. */
+const matchFor = (c: Credential) => ({
+  schemes: ["https" as const],
+  hosts: c.hosts,
+  ...(c.paths ? { paths: c.paths } : {}),
+});
+
+const authFor = (c: Credential) =>
+  c.header
+    ? ({ type: "apiKey" as const, name: c.header, credential: c.name })
+    : ({ type: "bearer" as const, credential: c.name });
 
 const driver = (ctx: Ctx): SandboxDriver => ctx.sandbox ?? REAL;
 
@@ -745,13 +813,7 @@ async function realBind(ctx: Ctx, scope: Scope, creds: Credential[]): Promise<vo
   const sb = await ensureSandbox(ctx, scope);
   await sb.credentialVault.create({
     credentials: creds.map((c) => ({ name: c.name, source: { type: "inline" as const, value: c.value } })),
-    bindings: creds.map((c) => ({
-      name: c.name,
-      match: { schemes: ["https" as const], hosts: c.hosts },
-      auth: c.header
-        ? { type: "apiKey" as const, name: c.header, credential: c.name }
-        : { type: "bearer" as const, credential: c.name },
-    })),
+    bindings: creds.map((c) => ({ name: c.name, match: matchFor(c), auth: authFor(c) })),
   });
 }
 

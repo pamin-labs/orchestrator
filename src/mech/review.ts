@@ -5,7 +5,7 @@ import { runGates, recordGate, gateState } from "./gate.ts";
 import { extractClaimedFiles, reconcile } from "./reconcile.ts";
 import { changedSince, filesAt, type GitRunner } from "./worktree.ts";
 import { resourceExec, WORK } from "./sandbox.ts";
-import { sandboxGit } from "./checkout.ts";
+import { pushBranch, sandboxGit } from "./checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 
 /**
@@ -329,6 +329,29 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
   });
 
   carryOver(ctx, sliceId, sl.grp_id);
+
+  // The slice boundary, and the only place a branch reaches the remote before
+  // its PR (007 step 5). Here rather than per turn: a turn is thirty seconds of
+  // work and a slice is a delivered unit, and a push per turn is a network round
+  // trip per turn for a ref nobody is reading yet.
+  //
+  // Not awaited — `acceptSlice` is the boss's button and a synchronous function,
+  // and the next slice must start whether or not GitHub is answering. A failure
+  // is said out loud and left to the next boundary; `openPr` pushes again before
+  // it creates the PR, so nothing ships on an unpushed branch.
+  // `pushBranch` returns its failures rather than throwing, so there is nothing
+  // for a `.catch` to do — and a floating rejection here would be one nobody
+  // sees, in a function the boss's button calls.
+  void pushBranch(ctx, sl.grp_id).then((r) => {
+    if (r.ok || /empty bundle/i.test(r.reason ?? "")) return;
+    ctx.bus.emit({
+      grpId: sl.grp_id,
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "warn",
+      body: `分支没推上远端（下一个切片验收时会再试）：${r.reason}`,
+    });
+  });
 
   // Accepting one slice is what starts the next.
   startNextSlice(ctx, sl.grp_id);

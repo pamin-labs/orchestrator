@@ -56,6 +56,8 @@ const ZH: Record<string, string> = {
   "rl.resumed": "额度恢复，自动继续",
   "net.lost": "宿主断网了，{n} 个 turn 挂起等联网 —— 需求还在跑的状态，活儿排着，通了自动接上",
   "net.back": "网络恢复，挂起的活自动继续",
+  "repo.held":
+    "GitHub 认不了这个登录了，{repo} 这个项目的活先全部挂起 —— 重试帮不上忙。去设置页重连 GitHub，好了自动接着走。别的项目不受影响。",
   "owns.reverted": "{role} 改了本组不拥有的 {n} 个文件（{files}），已回滚 —— 这个 CLI 的沙箱拦不住写入，只能事后对账",
   "unread.digest": "未读 {n} 条，已让 Librarian 压成摘要",
   "sediment": "同一类反馈第 {n} 次了，让 CoS 归纳成项目规约",
@@ -103,6 +105,8 @@ const EN: Record<string, string> = {
   "rl.resumed": "quota is back, resuming",
   "net.lost": "the host lost its network; {n} turn(s) held and re-queued, requirements left running",
   "net.back": "network is back, held work resumes",
+  "repo.held":
+    "GitHub no longer accepts this login, so every turn on {repo} is held — retrying cannot help. Reconnect GitHub in settings and they resume on their own. Other projects are unaffected.",
   "owns.reverted":
     "{role} wrote {n} files this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it",
   "unread.digest": "{n} unread — the Librarian is compressing them",

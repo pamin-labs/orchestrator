@@ -39,7 +39,31 @@ export const JOB_STATES = ["pending", "running", "done", "failed", "cancelled"] 
 /** `pm | architect | cos | boss` are in-flight; the last two are terminal. */
 export const ESCALATION_STATES = ["pm", "architect", "cos", "boss", "answered", "revoked"] as const;
 
+/**
+ * The utility container, which is one per orchestrator and belongs to no row.
+ *
+ * Two resting states and they are not symmetric. `down` is the ordinary one — it
+ * is built on demand and there is nothing to keep alive between pushes — but it
+ * is also what "nothing can reach GitHub any more" looks like, and those two
+ * must not be told apart by guessing.
+ */
+export const UTIL_STATES = ["down", "up"] as const;
+
+/**
+ * Whether a project's GitHub is answering (007 §6).
+ *
+ * `repo_held` is a resting state in the strict sense and the reason it is in this
+ * table: nothing dispatches for that project, and every group underneath it still
+ * reads RUNNING with an agent on the roster. It is not a column — the hold lives
+ * in memory, keyed by `owner/repo` — but the question this table asks is "if the
+ * way out never fires, who notices", and that question does not care where the
+ * state is stored.
+ */
+export const PROJECT_STATES = ["reachable", "repo_held"] as const;
+
 export type GrpState = (typeof GRP_STATES)[number];
+export type UtilState = (typeof UTIL_STATES)[number];
+export type ProjectState = (typeof PROJECT_STATES)[number];
 export type SliceState = (typeof SLICE_STATES)[number];
 export type JobState = (typeof JOB_STATES)[number];
 export type EscalationState = (typeof ESCALATION_STATES)[number];

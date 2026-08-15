@@ -4,37 +4,43 @@ import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
 import { dispatchFeedback, openPr, pollPrs, prBody, preflightPr } from "../src/mech/prwatch.ts";
+import { utilGit } from "../src/mech/checkout.ts";
 import type { GhResult, Github } from "../src/mech/github.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
-function harness() {
+function harness(handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}), calls?: string[]) {
   const db = openMemory();
   seedAuth(db);
   const cfg = loadConfig();
+  const sandbox = fakeSandbox((cmd) => {
+    calls?.push(cmd);
+    return handle(cmd);
+  });
   const ctx: Ctx = {
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
     gitLock: new RepoLock(),
-    // `git bundle create` is what carries a branch out of the sandbox; the host
-    // then fetches from the bundle and pushes. Nothing here has a real one, so
-    // the file is a stub and the fetch is `okGit`.
-    sandbox: fakeSandbox(() => ({ code: 0, out: "" })),
+    // `git bundle create` carries the branch out of the group's container; the
+    // utility container fetches from the bundle and pushes. Both are containers,
+    // so both are this one fake.
+    sandbox,
     waiters: new Map(),
     config: { language: "中文"},
   };
-  // The remote is what `owner/repo` is derived from — 007's seam. `repo_path` is
-  // still the host checkout the push runs in.
+  // The remote is what `owner/repo` is derived from, and since 007 step 5 it is
+  // also what the clone and the push use — one answer, not two columns that can
+  // disagree.
   db.run(
     "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'git@github.com:me/x.git', 0)",
   );
   db.run(
     "INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'PR_OPEN', 'orch/g1', 0)",
   );
-  return { db, ctx };
+  return { db, ctx, sandbox };
 }
 
 const ok = <T,>(data: T): GhResult<T> => ({ ok: true, status: 200, data });
@@ -118,8 +124,6 @@ test("a failed PR creation reports why instead of vanishing", async () => {
       "POST /repos/me/x/pulls": boom(422, "No commits between main and orch/g1"),
       "GET /repos/me/x/pulls": ok([]),
     }),
-    git: okGit,
-    repo: "/tmp/p",
     grpId: 1,
     title: "t",
     body: "b",
@@ -138,8 +142,6 @@ test("a create refused because the PR already exists finds the one that is there
       "POST /repos/me/x/pulls": boom(422, "A pull request already exists for me:orch/g1."),
       "GET /repos/me/x/pulls": ok([{ number: 13 }]),
     }),
-    git: okGit,
-    repo: "/tmp/p",
     grpId: 1,
     title: "t",
     body: "b",
@@ -153,8 +155,6 @@ test("a project with no GitHub remote says so instead of building a URL out of n
   const r = await openPr({
     ctx: h.ctx,
     gh: gh({}),
-    git: okGit,
-    repo: "/tmp/p",
     grpId: 1,
     title: "t",
     body: "b",
@@ -162,54 +162,76 @@ test("a project with no GitHub remote says so instead of building a URL out of n
   expect("error" in r && r.error).toContain("nowhere to go");
 });
 
-test("the branch is pushed under the lock before GitHub is asked to open a PR", async () => {
+test("the branch reaches the remote before GitHub is asked to open a PR", async () => {
   // Nothing else pushes a group's branch, and GitHub refuses to create a PR for
   // a head it has never heard of. If this order ever flips, every PR fails on a
   // real remote.
-  const h = harness();
   const calls: string[] = [];
+  const h = harness(() => ({}), calls);
   const r = await openPr({
     ctx: h.ctx,
     gh: gh({ "POST /repos/me/x/pulls": ok({ number: 9 }) }, calls),
-    git: async (repo, argv) => {
-      calls.push(`git(${repo}) ${argv.join(" ")}`);
-      return { code: 0, out: "" };
-    },
-    repo: "/tmp/p",
     grpId: 1,
     title: "t",
     body: "b",
   });
   expect(r).toEqual({ number: 9 });
-  const push = calls.indexOf("git(/tmp/p) push -u origin orch/g1");
+  const push = calls.findIndex((c) => c.includes("push '--force-with-lease' 'origin'"));
   const create = calls.indexOf("POST /repos/me/x/pulls");
   expect(push).toBeGreaterThan(-1);
-  // Order, not position: the squash runs before the push and adds git calls.
+  // Order, not position: the squash and the bundle both run before the push.
   expect(push).toBeLessThan(create);
-  expect(calls.indexOf("git(/tmp/p) log --format=%s main..HEAD")).toBeLessThan(push);
+  expect(calls.findIndex((c) => c.includes("bundle create"))).toBeLessThan(push);
 });
 
 test("a push that fails names the branch, and no PR is attempted", async () => {
-  const h = harness();
-  const calls: string[] = [];
+  const gcalls: string[] = [];
+  // Only the push fails. Taking the branch out of the group's container is a
+  // local fetch from a bundle with no remote to be refused by — which is the
+  // point of splitting them: the group holds no credential that can push.
+  const h = harness((cmd) =>
+    cmd.includes("push") ? { code: 1, out: "remote: Permission to x/y denied\nfatal: unable to access" } : {},
+  );
   const r = await openPr({
     ctx: h.ctx,
-    gh: gh({}, calls),
-    // Only the push fails. Taking the branch out of the sandbox is a local fetch
-    // from a bundle and has no remote to be refused by — which is the point of
-    // splitting them: the sandbox never holds a credential that can push.
-    git: async (_repo, argv) =>
-      argv[0] === "push"
-        ? { code: 1, out: "remote: Permission to x/y denied\nfatal: unable to access" }
-        : { code: 0, out: "" },
-    repo: "/tmp/p",
+    gh: gh({}, gcalls),
     grpId: 1,
     title: "t",
     body: "b",
   });
   expect("error" in r && r.error).toContain("could not push orch/g1");
   expect("error" in r && r.error).toContain("Permission");
-  expect(calls).toEqual([]);
+  expect(gcalls).toEqual([]);
+});
+
+test("the utility container never checks anything out, and never runs a hook", async () => {
+  // 007 narrows 005 by one word: the boundary is a container that runs an
+  // *agent*. This one runs none and holds the real token, so the two rules that
+  // buy that are `if`s — every invocation disables hooks, and the verb list has
+  // no way to produce a working tree from repository content. CVE-2024-32002 and
+  // CVE-2025-48384 are what a checkout here would be worth.
+  const calls: string[] = [];
+  const h = harness(() => ({}), calls);
+  await openPr({ ctx: h.ctx, gh: gh({ "POST /repos/me/x/pulls": ok({ number: 9 }) }), grpId: 1, title: "t", body: "b" });
+
+  const util = calls.filter((c) => c.includes("core.hooksPath=/dev/null"));
+  expect(util.length).toBeGreaterThan(0);
+  for (const c of util) {
+    expect(/git -c core\.hooksPath=\/dev\/null (clone|fetch|push|bundle)\b/.test(c)).toBe(true);
+  }
+  // The mirror is bare: nothing that came out of the repository is ever written
+  // somewhere something would run it.
+  const clone = calls.find((c) => c.includes("core.hooksPath=/dev/null") && c.includes("clone"));
+  expect(clone).toContain("--bare");
+  expect(calls.some((c) => c.includes("core.hooksPath=/dev/null") && /\b(checkout|submodule)\b/.test(c))).toBe(false);
+});
+
+test("the utility container refuses a verb that is not one of its four", async () => {
+  // The list is the boundary, so reaching past it has to throw rather than
+  // return an exit code somebody can ignore.
+  const h = harness();
+  await expect(utilGit(h.ctx, ["checkout", "main"])).rejects.toThrow(/may not run 'git checkout'/);
+  await expect(utilGit(h.ctx, ["submodule", "update", "--init"])).rejects.toThrow(/may not run/);
 });
 
 test("only new comments and failing checks come back", async () => {

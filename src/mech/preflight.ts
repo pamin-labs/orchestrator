@@ -109,6 +109,26 @@ async function ask(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; d
       ? { ok: true, detail: days >= 1 ? `还有 ${days} 天` : "快过期了" }
       : { ok: false, detail: "过期了，重新登录一次" };
   }
+  // GitHub is not a model provider and has no `/v1/models`. It is checked here
+  // anyway, and it is the one credential whose absence is silent everywhere
+  // else: the utility container is what pushes every branch, and it pushes with
+  // this. With no token it builds, mirrors, and is refused at the last step of
+  // every slice — which reads as a git problem rather than as a missing login.
+  if (runtime === "github") {
+    try {
+      const r = await fetch("https://api.github.com/user", {
+        headers: { authorization: `Bearer ${auth.secret}`, "user-agent": "orchestrator" },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (r.ok) return { ok: true, detail: "能用" };
+      // 404 included: GitHub answers it for a token that cannot see something,
+      // deliberately, so it is not evidence of anything being deleted.
+      if (r.status === 401 || r.status === 403 || r.status === 404) return { ok: false, detail: "GitHub 不认这个 token 了" };
+      return { ok: true, detail: `没验成（HTTP ${r.status}）` };
+    } catch {
+      return { ok: true, detail: "连不上，没验" };
+    }
+  }
   const base = auth.baseUrl?.replace(/\/+$/, "") ?? (runtime === "claude" ? "https://api.anthropic.com" : "https://api.openai.com");
   const headers: Record<string, string> =
     runtime === "claude"
@@ -290,6 +310,9 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   );
   runtimes.add("claude");
   runtimes.add("codex");
+  // Not a runtime, and here for the same reason the other two are: without it
+  // nothing reaches the remote and the failure surfaces four steps later.
+  runtimes.add("github");
   for (const runtime of [...runtimes].sort()) {
     const auth = loadAuth(input.db, runtime);
     const live = auth ? await (input.verify ?? accepted)(runtime, auth) : { ok: false, detail: "没配" };
@@ -302,7 +325,9 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
       fix:
         runtime === "claude"
           ? "claude setup-token，把吐出来的令牌存进设置里的账号。一年有效。"
-          : "codex login，或者贴一个 API key。",
+          : runtime === "github"
+            ? "设置页里连一次 GitHub。分支是靠它推上去的 —— 没有它，每个切片都会在最后一步被拒。"
+            : "codex login，或者贴一个 API key。",
     });
   }
 

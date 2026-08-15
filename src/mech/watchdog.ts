@@ -7,7 +7,7 @@ import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
 import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
 import { CODEX_HOME } from "./auth.ts";
-import { execIn, killSandbox, renewSandbox, WORK, type Scope } from "./sandbox.ts";
+import { execIn, killSandbox, renewSandbox, UTIL, utilSandbox, WORK, type Scope } from "./sandbox.ts";
 import { baseRefFor, sandboxGit } from "./checkout.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -848,31 +848,40 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       .all(newestCredential)) {
       await killSandbox(ctx, { project: p.id });
     }
+    // The utility container is the one that matters most here: its sidecar holds
+    // the GitHub token, so a rotated login leaves it pushing with the old one —
+    // and a push refused for authentication is exactly the boss-bucket failure
+    // 007 §6 says must never present as an agent problem.
+    const util = utilSandbox(ctx.db);
+    if (util.id && util.at < newestCredential) await killSandbox(ctx, UTIL);
   }
 
-  // 18. A live group's sandbox expiring under it.
+  // 18. A live container expiring under whatever is using it.
   //
   // The TTL is what stops a crashed orchestrator leaking containers forever, so
   // it has to be short enough to matter and therefore short enough to reap a
   // group that is simply thinking. Renewing on every tick is the other half of
   // that bargain: while something is watching, nothing expires.
-  for (const g of ctx.db
-    .query<{ id: number }, []>(
-      `SELECT id FROM grp WHERE status IN ('RUNNING','PR_OPEN','PAUSED') AND sandbox_id IS NOT NULL`,
-    )
-    .all()) {
-    await renewSandbox(ctx, { grp: g.id });
-  }
-  // Project sandboxes too. This loop only ever walked `grp`, which was survivable
-  // while the only thing in a project sandbox was a standing role's turn — that
-  // turn recreates it. The index runs there now, on a five-minute clock and with
-  // no turn behind it, so the container it needs would expire underneath it and
-  // every `orch ctx query` would pay a rebuild.
-  for (const p of ctx.db
-    .query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL")
-    .all()) {
-    await renewSandbox(ctx, { project: p.id });
-  }
+  //
+  // One loop over every kind there is, deliberately. This walked `grp` only, and
+  // the project containers had to be added when the index moved into one; adding
+  // a third loop for the utility container would guarantee the same omission a
+  // third time. `renewSandbox` is a no-op for a scope with no container, so the
+  // list can be built without asking which of them exist.
+  const alive: Scope[] = [
+    ...ctx.db
+      .query<{ id: number }, []>(
+        `SELECT id FROM grp WHERE status IN ('RUNNING','PR_OPEN','PAUSED') AND sandbox_id IS NOT NULL`,
+      )
+      .all()
+      .map((g) => ({ grp: g.id })),
+    ...ctx.db
+      .query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL")
+      .all()
+      .map((p) => ({ project: p.id })),
+    UTIL,
+  ];
+  for (const scope of alive) await renewSandbox(ctx, scope);
 
   // 16. A question the work has already gone past.
   //

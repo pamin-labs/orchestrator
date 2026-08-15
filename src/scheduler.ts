@@ -60,6 +60,17 @@ export interface SchedulerOptions {
    * time only one of them was true.
    */
   sandboxReady?: () => boolean;
+  /**
+   * Has GitHub stopped accepting us for this project?
+   *
+   * The fourth gate of the same shape, and the first that is **per project**:
+   * `online`, `sandboxReady` and `providerHeld` are all facts about the machine
+   * or the account, while a dead GitHub credential is a fact about one
+   * repository. One project's revoked org access must not stop a project whose
+   * credential is fine. Injected like the others, so no unit test needs a
+   * network — `repoHeld` in `github.ts` is what the server passes.
+   */
+  repoHeld?: (projectId: number) => boolean;
 }
 
 export const DEFAULT_POOL = "default";
@@ -113,6 +124,7 @@ export class Scheduler {
   private readonly now: () => number;
   private readonly online: () => boolean;
   private readonly sandboxReady: () => boolean;
+  private readonly repoHeld: (projectId: number) => boolean;
   private draining = false;
 
   constructor(
@@ -125,6 +137,7 @@ export class Scheduler {
     this.now = opts.now ?? (() => Date.now());
     this.online = opts.online ?? (() => true);
     this.sandboxReady = opts.sandboxReady ?? (() => true);
+    this.repoHeld = opts.repoHeld ?? (() => false);
   }
 
   enqueue(
@@ -250,6 +263,7 @@ export class Scheduler {
       if (job.kind === "agent_turn" && !this.sandboxReady()) continue;
       if (job.kind === "agent_turn" && this.providerHeld(job)) continue;
       if (job.kind === "agent_turn" && this.credentialMissing(job)) continue;
+      if (job.kind === "agent_turn" && this.repoLockedOut(job)) continue;
       busyGroups.add(slot);
       out.push(job);
     }
@@ -341,6 +355,25 @@ export class Scheduler {
       ? this.db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM runtime_auth WHERE runtime = ?").get(runtime)
       : this.db.query<{ n: number }, []>("SELECT count(*) AS n FROM runtime_auth").get();
     return (n?.n ?? 0) === 0;
+  }
+
+  /**
+   * Has GitHub locked this turn's project out?
+   *
+   * Only `agent_turn`, like `online` and `sandboxReady`: a lease is a gate or a
+   * typecheck in the group's own container and mostly needs no network at all,
+   * so holding those would stop work that would have succeeded.
+   *
+   * A job with no group belongs to no project and cannot be held — there is
+   * nothing to look up, and defaulting to held would stop housekeeping over
+   * somebody else's credential.
+   */
+  private repoLockedOut(job: Job): boolean {
+    if (!job.grp_id) return false;
+    const row = this.db
+      .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
+      .get(job.grp_id);
+    return !!row && this.repoHeld(row.project_id);
   }
 
   /** Admission check: group status is a barrier, budget is a hard stop. */

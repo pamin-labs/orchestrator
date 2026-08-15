@@ -35,18 +35,16 @@ function harness(opts: { install?: string | null; installFails?: boolean } = {})
     sched,
     sandbox,
     waiters: new Map(),
-    // Answers where origin is, and says the branch is not on this host — the
-    // bundle path is `seedBranch`'s and has its own tests.
-    git: (async (_repo: string, argv: string[]) =>
-      argv[0] === "remote"
-        ? { code: 0, out: "https://example.com/x.git", err: "" }
-        : { code: 1, out: "", err: "no such ref" }) as never,
     config: { language: "中文", installTimeoutMs: 1000 },
   } as unknown as Ctx;
 
-  db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p', '/tmp/p', ?, 0)", [
-    JSON.stringify(opts.install === undefined ? {} : { install: opts.install }),
-  ]);
+  // The remote is a column, not something read back out of a host checkout: the
+  // host stopped being a git participant at 007 step 5, and a rebuilt container
+  // gets its branch off the remote rather than out of a bundle the host kept.
+  db.run(
+    "INSERT INTO project (name, repo_path, remote, config_json, created_at) VALUES ('p', '/tmp/p', 'https://github.com/me/x.git', ?, 0)",
+    [JSON.stringify(opts.install === undefined ? {} : { install: opts.install })],
+  );
   db.run("INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'RUNNING', 'orch/g1', 0)");
   return { ctx, sandbox, queued, db };
 }
@@ -69,6 +67,25 @@ test("a recorded command that stopped working hands the failure to that role", a
   await restoreWorkspace(ctx, 1);
   const boot = queued.find((j) => (j as { payload?: { role?: string } }).payload?.role === "bootstrap");
   expect((boot as { payload?: { rejection?: string } })?.payload?.rejection).toContain("bun install");
+});
+
+test("a rebuilt container takes its branch off the remote, not out of a bundle", async () => {
+  // `seedBranch` is gone with 007 step 5. It existed because a group's commits
+  // lived on the host between turns, which was also the only reason the host
+  // held a checkout at all — and it was the one thing that carried a bundle
+  // *into* an agent's container. Bundles are one-way now: out, never in.
+  const { ctx, sandbox } = harness({ install: "bun install" });
+  await restoreWorkspace(ctx, 1);
+
+  // `ls-remote` finds it, so this is a checkout of an existing branch rather
+  // than cutting a new one from the base.
+  expect(sandbox.commands.some((c) => c.includes("ls-remote"))).toBe(true);
+  expect(sandbox.commands.some((c) => c.includes("git checkout 'orch/g1'"))).toBe(true);
+  expect(sandbox.commands.some((c) => c.includes("checkout -b"))).toBe(false);
+
+  // Nothing was written into the container, and nothing fetched from a file.
+  expect([...sandbox.files.keys()].filter((p) => p.endsWith(".bundle"))).toEqual([]);
+  expect(sandbox.commands.some((c) => c.includes("fetch") && c.includes(".bundle"))).toBe(false);
 });
 
 test("a group that never started is left to startGroup", async () => {

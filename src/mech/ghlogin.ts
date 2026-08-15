@@ -19,6 +19,8 @@
  * decision 007 made against `@octokit/rest` for eight endpoints.
  */
 
+import type { GhResult, Github } from "./github.ts";
+
 const DEVICE_CODE_URL = "https://github.com/login/device/code";
 const TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
@@ -122,17 +124,94 @@ export async function pollForToken(
   throw new Error("登录码过期了，重新点一次「连接 GitHub」");
 }
 
-/** A GET as this token. `null` for anything that is not an answer. */
-async function api(token: string, path: string, fetchFn: Fetcher): Promise<any> {
-  try {
-    const r = await fetchFn(`https://api.github.com${path}`, {
-      headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" },
-      signal: AbortSignal.timeout(8000),
-    });
-    return r.ok ? await r.json() : null;
-  } catch {
-    return null;
+/**
+ * Everything past the login is ordinary REST, so it goes through the one client
+ * (`mech/github.ts`) rather than a second `fetch` in this file: that one already
+ * carries the token, the ETags a 304 needs to stay off the rate limit, and the
+ * boss/agent/transient split.
+ */
+
+/** One place the app is installed: a user account or an org. The org switcher. */
+export interface Installation {
+  id: number;
+  account: string;
+  /** `User` or `Organization`. */
+  kind: string;
+}
+
+export interface RepoRow {
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  /** Epoch ms, 0 if it has never been pushed to. */
+  pushedAt: number;
+  cloneUrl: string;
+}
+
+/**
+ * Every page, not the first hundred.
+ *
+ * By page number rather than by the `Link` header: the shared client hands back
+ * parsed JSON and keeps the headers to itself, and a short page is the same
+ * end-of-list signal for these two endpoints. The cap is there so a bug in that
+ * reasoning costs ten requests instead of the hour's whole budget.
+ */
+const PER_PAGE = 100;
+async function pages<T>(gh: Github, path: string, pick: (body: any) => any[]): Promise<GhResult<any[]>> {
+  const out: any[] = [];
+  for (let page = 1; page <= 10; page++) {
+    const r = await gh.request<any>("GET", `${path}?per_page=${PER_PAGE}&page=${page}`);
+    if (!r.ok) return r;
+    const items = pick(r.data) ?? [];
+    out.push(...items);
+    if (items.length < PER_PAGE) break;
   }
+  return { ok: true, status: 200, data: out };
+}
+
+/**
+ * Where this login can work — one entry per account the app is installed on.
+ *
+ * Switching org is picking one of these, not logging in again: one user token
+ * already sees every installation the user can reach.
+ */
+export async function listInstallations(gh: Github): Promise<GhResult<Installation[]>> {
+  const r = await pages(gh, "/user/installations", (b) => b?.installations);
+  if (!r.ok) return r;
+  return {
+    ok: true,
+    status: r.status,
+    data: r.data.map((i: any) => ({
+      id: Number(i.id),
+      account: String(i.account?.login ?? "?"),
+      kind: String(i.account?.type ?? "User"),
+    })),
+  };
+}
+
+/**
+ * The repositories of one installation.
+ *
+ * `/user/installations/{id}/repositories`, **not** `/user/repos`. The second is
+ * the OAuth App answer and lists everything the *user* can see, including the
+ * repositories this app was never installed on — and a project made from one of
+ * those fails at its first clone with a 404 that cannot say why, because GitHub
+ * answers 404 rather than 403 for what a token cannot see.
+ */
+export async function listRepos(gh: Github, installationId: number): Promise<GhResult<RepoRow[]>> {
+  const r = await pages(gh, `/user/installations/${installationId}/repositories`, (b) => b?.repositories);
+  if (!r.ok) return r;
+  return {
+    ok: true,
+    status: r.status,
+    data: r.data.map((x: any) => ({
+      fullName: String(x.full_name),
+      private: !!x.private,
+      defaultBranch: String(x.default_branch || "main"),
+      pushedAt: x.pushed_at ? Date.parse(x.pushed_at) || 0 : 0,
+      cloneUrl: String(x.clone_url ?? `https://github.com/${x.full_name}.git`),
+    })),
+  };
 }
 
 /**
@@ -144,23 +223,7 @@ async function api(token: string, path: string, fetchFn: Fetcher): Promise<any> 
  * the token no longer answers — deliberately not split into why, because
  * GitHub answers 404 for "cannot see it" as well as "gone".
  */
-export async function githubAccount(token: string, fetchFn: Fetcher = fetch): Promise<string | null> {
-  return (await api(token, "/user", fetchFn))?.login ?? null;
-}
-
-/**
- * How many places this app is installed.
- *
- * Authorized and installed are different states, and only the second one can
- * reach a repository: a GitHub App's user token sees exactly the installations
- * the app has. Zero is the state that reads as success and is not — a green
- * 已连接 above a repo list that is permanently empty — so the panel asks, and
- * says "install it" rather than "connected".
- *
- * `null` is "could not tell" (the token is dead, or the network is), which the
- * caller already reports as a stale credential.
- */
-export async function githubInstallations(token: string, fetchFn: Fetcher = fetch): Promise<number | null> {
-  const b = await api(token, "/user/installations", fetchFn);
-  return b ? (Number(b.total_count) || 0) : null;
+export async function githubAccount(gh: Github): Promise<string | null> {
+  const r = await gh.request<{ login?: string }>("GET", "/user");
+  return r.ok ? (r.data?.login ?? null) : null;
 }

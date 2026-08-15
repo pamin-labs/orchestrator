@@ -15,7 +15,7 @@ import { preflight, report } from "./mech/preflight.ts";
 import { restageSkills } from "./mech/skills.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
-import { makeGithub } from "./mech/github.ts";
+import { makeGithub, repoHeld } from "./mech/github.ts";
 import { bothRead, chargeIndex, modelAsk, noteLeaves, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
 import { indexable } from "./mech/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
@@ -56,8 +56,10 @@ export function missingBinaries(): string[] {
   // preflight. Requiring it meant a headless box with docker, the image and a
   // pasted token refused to start, and said something false about why.
   //
-  // `git` stays: the host really does run it, for the bundle in and out and the
-  // push (`checkout.ts`, `prwatch.ts`).
+  // `git` stays, and what it is for shrank with 007 step 5: the bundle and the
+  // push moved into the utility container, so what is left on the host is the
+  // index (`server.ts` reads HEAD and `ls-files`) and reading a project's remote
+  // when it is added. Step 6 is where this list empties.
   return ["git"].filter((bin) => {
     try {
       Bun.spawnSync([bin, "--version"], { stdout: "ignore", stderr: "ignore" });
@@ -281,10 +283,13 @@ export function start(overrides: Partial<Config> = {}): Started {
     // Same shape, different fact: docker or the sandbox server being down holds
     // every turn instead of failing each group once.
     sandboxReady: () => !sandboxHeld(),
+    // Same shape a fifth time, and the first that is per project: one project's
+    // revoked org access must not stop a project whose credential is fine.
+    repoHeld: (projectId) => repoHeld(db, projectId),
   });
 
   const git = makeGitRunner(gitLock);
-  const gh = makeGithub(db);
+  const gh = makeGithub(db, undefined, cfg.language);
   const ctx: Ctx = {
     db,
     bus,
@@ -300,11 +305,15 @@ export function start(overrides: Partial<Config> = {}): Started {
     // bill the group's project; a project-scoped one bills itself.
     askIn: (scope) =>
       modelAsk(ctx, cfg.indexModel, scope, undefined, (u) => {
+        // No util case: nothing in the utility container asks a model — it has
+        // no agent in it, which is the entire reason it may hold real tokens.
         const projectId =
           "project" in scope
             ? scope.project
-            : db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)
-                ?.project_id;
+            : "grp" in scope
+              ? db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)
+                  ?.project_id
+              : undefined;
         if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u);
       }),
     waiters: new Map(),
@@ -338,9 +347,7 @@ export function start(overrides: Partial<Config> = {}): Started {
       void openPr({
         ctx,
         gh,
-        git,
-        repo: grp?.repo_path ?? "",
-        grpId,
+                grpId,
         title: `orch: ${grp?.name ?? "changes"}`,
         body: prBody(ctx, grpId),
       }).then((r) => {

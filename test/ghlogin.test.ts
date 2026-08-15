@@ -1,7 +1,15 @@
 import { expect, test } from "bun:test";
-import { openMemory } from "../src/db.ts";
+import { openMemory, type DB } from "../src/db.ts";
 import { listAuth, loadAuth, saveAuth, vaultFor } from "../src/mech/auth.ts";
-import { githubAccount, githubInstallations, pollForToken, startDeviceFlow, type Fetcher } from "../src/mech/ghlogin.ts";
+import { makeGithub, type Github } from "../src/mech/github.ts";
+import { makeApp, type Ctx } from "../src/api.ts";
+import { Bus } from "../src/bus.ts";
+import { Scheduler } from "../src/scheduler.ts";
+import { RepoLock } from "../src/mech/gitlock.ts";
+import { seedAuth } from "./seed-auth.ts";
+import {
+  githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Fetcher,
+} from "../src/mech/ghlogin.ts";
 
 /** A fetcher that answers from a script and records what it was sent. */
 function scripted(answers: any[]): { fetchFn: Fetcher; sent: Array<{ url: string; body: string }> } {
@@ -132,31 +140,179 @@ test("the token lands in runtime_auth like every other credential", async () => 
   expect(bound.hosts).toContain("github.com");
 });
 
-test("authorized is not installed, and only one of the two can reach a repo", async () => {
-  // The state that reads as success and is not: a GitHub App's user token sees
-  // exactly the installations the app has, so zero of them is a green 已连接
-  // over a repo list that can never fill.
-  const none = scripted([{ total_count: 0, installations: [] }]);
-  expect(await githubInstallations("gho_x", none.fetchFn)).toBe(0);
-  expect(none.sent[0]!.url).toBe("https://api.github.com/user/installations");
+/**
+ * A GitHub client whose answers are a table, and a log of what it asked.
+ *
+ * Everything past the login goes through `mech/github.ts`, so this is what a
+ * test injects — the same seam `prwatch` uses.
+ */
+function client(answer: (url: string) => unknown): { gh: Github; asked: string[]; db: DB } {
+  const db = openMemory();
+  saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
+  const asked: string[] = [];
+  const gh = makeGithub(db, async (url) => {
+    asked.push(url);
+    return new Response(JSON.stringify(answer(url)), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  return { gh, asked, db };
+}
 
-  const one = scripted([{ total_count: 1, installations: [{ id: 42 }] }]);
-  expect(await githubInstallations("gho_x", one.fetchFn)).toBe(1);
+const repo = (n: number) => ({
+  full_name: `acme/r${n}`,
+  private: n % 2 === 0,
+  default_branch: "trunk",
+  pushed_at: "2026-08-01T00:00:00Z",
+  clone_url: `https://github.com/acme/r${n}.git`,
+});
 
-  // Could not tell is neither: the panel already reports that as a stale token
-  // rather than as "not installed", which would send the boss to the wrong page.
-  const dead = scripted([{ status: 401 }]);
-  expect(await githubInstallations("gho_x", dead.fetchFn)).toBeNull();
+test("repositories come from the installation, never /user/repos", async () => {
+  // /user/repos is the OAuth App answer: it lists what the *user* can see,
+  // including repositories this app was never installed on. A project made from
+  // one of those fails at its first clone with a 404 that cannot say why.
+  const { gh, asked } = client(() => ({ total_count: 1, repositories: [repo(1)] }));
+  const r = await listRepos(gh, 77);
+  expect(r.ok && r.data).toEqual([
+    {
+      fullName: "acme/r1",
+      private: false,
+      defaultBranch: "trunk",
+      pushedAt: Date.parse("2026-08-01T00:00:00Z"),
+      cloneUrl: "https://github.com/acme/r1.git",
+    },
+  ]);
+  expect(asked[0]).toContain("/user/installations/77/repositories");
+  expect(asked.join(" ")).not.toContain("/user/repos");
+});
+
+test("a boss in several orgs gets past page one", async () => {
+  // Both endpoints paginate at 100. Stopping at the first page is the bug that
+  // looks like "that repo is not on GitHub".
+  const full = Array.from({ length: 100 }, (_, i) => repo(i));
+  const { gh, asked } = client((url) => ({
+    repositories: url.endsWith("page=1") ? full : [repo(999)],
+  }));
+  const r = await listRepos(gh, 1);
+  expect(r.ok && r.data.length).toBe(101);
+  expect(asked).toHaveLength(2);
+  expect(asked[1]).toContain("page=2");
+});
+
+test("installations are the org switcher, and an empty list is not an error", async () => {
+  const { gh, asked } = client(() => ({
+    total_count: 2,
+    installations: [
+      { id: 5, account: { login: "octocat", type: "User" } },
+      { id: 9, account: { login: "acme", type: "Organization" } },
+    ],
+  }));
+  const r = await listInstallations(gh);
+  expect(r.ok && r.data).toEqual([
+    { id: 5, account: "octocat", kind: "User" },
+    { id: 9, account: "acme", kind: "Organization" },
+  ]);
+  expect(asked[0]).toContain("/user/installations?");
+
+  // Authorized with nothing installed: a real answer, not a failure. The panel
+  // turns it into "install it somewhere" rather than an empty box.
+  const empty = client(() => ({ total_count: 0, installations: [] }));
+  const none = await listInstallations(empty.gh);
+  expect(none.ok && none.data).toEqual([]);
 });
 
 test("the account is asked of GitHub, and a dead token reads as no account", async () => {
-  const ok = scripted([{ login: "octocat" }]);
-  expect(await githubAccount("gho_x", ok.fetchFn)).toBe("octocat");
+  const { gh } = client(() => ({ login: "octocat" }));
+  expect(await githubAccount(gh)).toBe("octocat");
+
   // 404 as well as 401: GitHub answers 404 for what a token cannot see, so this
   // deliberately does not try to say which of the two it was.
-  const gone = scripted([{ status: 404, message: "Not Found" }]);
-  expect(await githubAccount("gho_x", gone.fetchFn)).toBeNull();
-  expect(await githubAccount("gho_x", async () => {
+  const db = openMemory();
+  saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
+  expect(await githubAccount(makeGithub(db, async () => new Response("{}", { status: 404 })))).toBeNull();
+  expect(await githubAccount(makeGithub(db, async () => {
     throw new Error("offline");
-  })).toBeNull();
+  }))).toBeNull();
+});
+
+/** Enough Ctx for the two routes, with GitHub answered from a table. */
+function server(answer: (url: string) => unknown) {
+  const db = openMemory();
+  seedAuth(db);
+  saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
+  const bus = new Bus(db);
+  const sched = new Scheduler(db, async () => {});
+  const asked: string[] = [];
+  const ctx = {
+    db, bus, sched,
+    gitLock: new RepoLock(),
+    waiters: new Map(),
+    gh: makeGithub(db, async (url) => {
+      asked.push(url);
+      return new Response(JSON.stringify(answer(url)), { status: 200, headers: { "content-type": "application/json" } });
+    }),
+    config: { language: "中文", github: { clientId: "Iv23li.x", appSlug: "orch" } },
+  } as unknown as Ctx;
+  return { db, ctx, app: makeApp(ctx), asked };
+}
+
+const get = (app: (r: Request) => Promise<Response>, path: string) => app(new Request(`http://x${path}`));
+
+test("a login with no installations lists nothing and says where to fix it", async () => {
+  // The empty box is the failure: authorized, green, and no repository will ever
+  // appear. The answer carries the install link instead.
+  const { app } = server(() => ({ total_count: 0, installations: [] }));
+  const r = await get(app, "/api/github/repos");
+  expect(r.status).toBe(200);
+  const b = (await r.json()) as any;
+  expect(b.installations).toEqual([]);
+  expect(b.repos).toEqual([]);
+  expect(b.selected).toBeNull();
+  expect(b.installUrl).toBe("https://github.com/apps/orch/installations/new");
+});
+
+test("switching installation changes the list", async () => {
+  const { app, asked } = server((url) =>
+    url.includes("/user/installations?")
+      ? {
+          installations: [
+            { id: 5, account: { login: "octocat", type: "User" } },
+            { id: 9, account: { login: "acme", type: "Organization" } },
+          ],
+        }
+      : { repositories: [{ full_name: url.includes("/9/") ? "acme/site" : "octocat/dotfiles", default_branch: "main" }] },
+  );
+
+  // No installation asked for: the first one, so the page has something to show.
+  const first = (await (await get(app, "/api/github/repos")).json()) as any;
+  expect(first.selected).toBe(5);
+  expect(first.repos.map((x: any) => x.fullName)).toEqual(["octocat/dotfiles"]);
+
+  // Picking the org is not a second login — same token, another installation.
+  const org = (await (await get(app, "/api/github/repos?installation=9")).json()) as any;
+  expect(org.selected).toBe(9);
+  expect(org.repos.map((x: any) => x.fullName)).toEqual(["acme/site"]);
+  expect(asked.some((u) => u.includes("/user/installations/9/repositories"))).toBe(true);
+});
+
+test("a project added from the list keeps GitHub's default branch, not a guess", async () => {
+  const { app, db } = server(() => ({ full_name: "acme/site", default_branch: "trunk", clone_url: "https://github.com/acme/site.git" }));
+  const r = await app(
+    new Request("http://x/api/projects", { method: "POST", body: JSON.stringify({ repo: "acme/site" }) }),
+  );
+  expect(r.status).toBe(200);
+  const row = db
+    .query<{ name: string; repo_path: string; remote: string; base_branch: string }, []>(
+      "SELECT name, repo_path, remote, base_branch FROM project ORDER BY id DESC LIMIT 1",
+    )
+    .get()!;
+  expect(row.base_branch).toBe("trunk");
+  expect(row.remote).toBe("https://github.com/acme/site.git");
+  // Seam (007 step 6): identity is still repo_path, holding `owner/name`.
+  expect(row.repo_path).toBe("acme/site");
+  expect(row.name).toBe("site");
+
+  // Adding it twice is the same project, whichever way it was picked.
+  const again = await app(
+    new Request("http://x/api/projects", { method: "POST", body: JSON.stringify({ repo: "acme/site" }) }),
+  );
+  expect(again.status).toBe(422);
 });

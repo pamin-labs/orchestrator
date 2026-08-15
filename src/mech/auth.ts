@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { DB } from "../db.ts";
 import type { Credential } from "./sandbox.ts";
 import { accessToken, decoyAuth, isStale, parseAuth, renew, seedHome } from "./chatgpt.ts";
+import { forgetHolds } from "./github.ts";
 import { maskValue } from "./scrub.ts";
 
 /**
@@ -45,12 +46,50 @@ const BINDINGS: Record<string, { hosts: string[]; header?: string }> = {
   // An OAuth token travels as `Authorization: Bearer`; an API key as `x-api-key`.
   claude: { hosts: ["api.anthropic.com"] },
   codex: { hosts: ["api.openai.com", "chatgpt.com"] },
-  // Read-only, and only for the clone. A sandbox must never hold something that
-  // can write to the remote — see publishBranch for why that is load-bearing
-  // rather than tidy. Bound here so a private repository can be cloned over
+  // Read-only in a group container, and that is enforced by `readOnlyGitPaths`
+  // rather than by the scope of the token — see it for why the host list alone
+  // was never enough. Bound here so a private repository can be cloned over
   // HTTPS without the token being inside the container.
   github: { hosts: ["github.com", "api.github.com"] },
 };
+
+/**
+ * The two request paths a clone and a fetch use, and no third.
+ *
+ * This is the whole of "a group container cannot write to the remote", so it is
+ * worth stating exactly what it does and does not stop. Git's smart HTTP is four
+ * requests:
+ *
+ *   fetch   GET  /owner/repo.git/info/refs?service=git-upload-pack
+ *           POST /owner/repo.git/git-upload-pack
+ *   push    GET  /owner/repo.git/info/refs?service=git-receive-pack
+ *           POST /owner/repo.git/git-receive-pack
+ *
+ * The two discovery requests differ only in the query string, and the sidecar
+ * cuts the query off before matching — so no rule can tell them apart, and a
+ * push's discovery *is* credentialed. What it cannot do is the second half: the
+ * `git-receive-pack` POST carries the packfile, matches nothing, goes out with
+ * the decoy, and GitHub answers 401. So the guarantee is **no write ever
+ * completes**, not "the token is never presented on a write path". The
+ * difference is worth one paragraph because it is the reason the utility
+ * container exists at all rather than every group simply pushing.
+ *
+ * Exact strings, never `/owner/repo.git*`: a trailing `*` is a prefix match that
+ * does not stop at `/`, so the shape the upstream guide suggests would readmit
+ * `git-receive-pack`.
+ *
+ * Known gap, stated rather than papered over: Git LFS lives under
+ * `/owner/repo.git/info/lfs/…` and is not in this list, so a private repository
+ * using LFS will fail to fetch its objects inside a group. Adding it would also
+ * admit LFS *uploads*, which share the path — so it waits for a repository that
+ * needs it.
+ */
+export function readOnlyGitPaths(remote: string): string[] | null {
+  const m = /github\.com[:/]+(.+?)(\.git)?\/?$/i.exec(remote.trim());
+  if (!m) return null;
+  const base = `/${m[1]}${m[2] ?? ""}`;
+  return [`${base}/info/refs`, `${base}/git-upload-pack`];
+}
 
 /** A value the CLI will accept as well-formed and the API will reject. */
 export function decoy(runtime: string, mode: AuthMode): string {
@@ -94,6 +133,10 @@ export function saveAuth(db: DB, a: RuntimeAuth): void {
   // Registered the moment it is stored, so the masker knows this value before
   // anything has a chance to print it. Same order as `::add-mask::`.
   maskValue(a.secret);
+  // Nothing learned from the old credential still applies. Without this a boss who
+  // reconnects GitHub watches nothing happen until the hold's clock lapses, which
+  // reads as the fix not having worked.
+  forgetHolds(a.runtime);
   db.run(
     `INSERT INTO runtime_auth (runtime, mode, secret, base_url, updated_at)
      VALUES (?, ?, ?, ?, unixepoch() * 1000)
@@ -325,8 +368,12 @@ export async function currentChatgptToken(db: DB, dataDir: string, now = Date.no
  * Async because that one may have to be renewed first, and renewing it is a
  * network call. Every other credential is a stored string.
  */
-export async function vaultBindings(db: DB, dataDir: string): Promise<{ credentials: Credential[]; env: Record<string, string> }> {
-  const base = vaultFor(db);
+export async function vaultBindings(
+  db: DB,
+  dataDir: string,
+  opts: VaultOpts = {},
+): Promise<{ credentials: Credential[]; env: Record<string, string> }> {
+  const base = vaultFor(db, opts);
   const token = await currentChatgptToken(db, dataDir);
   if (!token) return base;
   const a = loadAuth(db, "codex")!;
@@ -351,8 +398,20 @@ function chatgptHint(secret: string): string {
   return id ? `账号 …${id.slice(-6)}` : "auth.json";
 }
 
+export interface VaultOpts {
+  /**
+   * The one repository this container may read, as its remote URL.
+   *
+   * Given, the GitHub credential is bound to that repository's fetch paths and
+   * nothing else. Absent (the utility container, and every caller that only
+   * wants the environment) it keeps the whole token — which is right there and
+   * wrong in a container that runs an agent.
+   */
+  repo?: string | null;
+}
+
 /** Real credentials for the vault, and the fakes that go in the environment. */
-export function vaultFor(db: DB): { credentials: Credential[]; env: Record<string, string> } {
+export function vaultFor(db: DB, opts: VaultOpts = {}): { credentials: Credential[]; env: Record<string, string> } {
   const credentials: Credential[] = [];
   const env: Record<string, string> = {};
   for (const runtime of Object.keys(BINDINGS)) {
@@ -372,6 +431,7 @@ export function vaultFor(db: DB): { credentials: Credential[]; env: Record<strin
       value: basic ?? a.secret,
       hosts: a.baseUrl ? [...b.hosts, new URL(a.baseUrl).hostname] : b.hosts,
       header: basic ? "Authorization" : a.mode === "api_key" && runtime === "claude" ? "x-api-key" : b.header,
+      ...(runtime === "github" && opts.repo ? { paths: readOnlyGitPaths(opts.repo) ?? undefined } : {}),
     });
     if (runtime === "github") {
       // The decoy git will actually send is a stored credential file, not an env

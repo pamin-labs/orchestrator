@@ -2,15 +2,20 @@ import type { Ctx } from "../api.ts";
 import { settlePausing } from "./intercept.ts";
 import { joinQueue } from "./mergequeue.ts";
 import { reopenTasks, startNextSlice } from "./review.ts";
+import { clearEscalation, parseRepo, repoHeld } from "./github.ts";
 import {
   ESCALATION_STATES,
   GRP_STATES,
   JOB_STATES,
   SLICE_STATES,
+  PROJECT_STATES,
+  UTIL_STATES,
   type EscalationState,
   type GrpState,
   type JobState,
+  type ProjectState,
   type SliceState,
+  type UtilState,
 } from "./states.ts";
 
 /**
@@ -217,6 +222,65 @@ export const JOB_INVARIANTS = rows<JobState>(
   { state: "cancelled", must: "nothing is waiting on it", driver: null },
 );
 
+/**
+ * The utility container (007 step 4).
+ *
+ * It is the only container bound for GitHub writes, so when it is not there,
+ * every branch stops reaching the remote — and that failure has the shape this
+ * table exists for: the groups keep working, keep committing, keep looking
+ * healthy, and nothing on the boss's screen is red. What makes it survivable is
+ * that its absence is *cheap and self-correcting* — `ensureSandbox` builds one
+ * on the next call — and that the two ways it can fail to come back are both
+ * already reported: the sandbox hold when no container can be opened at all, and
+ * `credential:github` in preflight when there is nothing to bind.
+ */
+export const UTIL_INVARIANTS = rows<UtilState>(
+  {
+    state: "down",
+    must: "the next push builds one, and if it cannot, something says why",
+    driver:
+      "ensureSandbox builds it on demand; the sandbox hold reports a server that cannot open containers, " +
+      "and pushBranch's caller reports a push that had nowhere to go",
+  },
+  {
+    state: "up",
+    must: "its TTL is renewed while this server lives, and it is rebuilt when the GitHub credential changes",
+    driver:
+      "watchdog rule 18 renews it with the group and project containers; rule 17b kills it when a credential " +
+      "is newer than its sidecar, and the next push rebuilds it",
+  },
+);
+
+/**
+ * A project's GitHub reachability (007 §6).
+ *
+ * The hold exists because an expired token makes every group fail at the same
+ * moment, each reporting a different error, and retrying is the one thing that
+ * cannot help. It then has the deadlock this table is for: a held project runs no
+ * turns, so it makes no GitHub calls, so nothing would ever clear it. The clock
+ * is what breaks that, and the repair below is for the other half — the hold is
+ * in memory and the question is in the database, so a restart leaves a 待办 item
+ * behind nothing, which the boss cannot clear by fixing anything.
+ */
+export const PROJECT_INVARIANTS = rows<ProjectState>(
+  { state: "reachable", must: "GitHub answers for this project's owner/repo", driver: null },
+  {
+    state: "repo_held",
+    must: "no agent_turn dispatches for this project, and exactly one open question says why",
+    driver:
+      "REPO_HOLD_MS lapses and lets one turn re-test; any GitHub answer clears the hold and revokes the " +
+      "question; saving a credential forgets the hold at once, so a boss who just fixed it does not wait",
+    repair: (ctx) => {
+      for (const p of ctx.db
+        .query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project WHERE remote IS NOT NULL")
+        .all()) {
+        const slug = parseRepo(p.remote!);
+        if (slug && !repoHeld(ctx.db, p.id)) clearEscalation(ctx.db, slug);
+      }
+    },
+  },
+);
+
 export const ESCALATION_INVARIANTS = rows<EscalationState>(
   {
     state: "pm",
@@ -247,12 +311,16 @@ export function runInvariants(ctx: Ctx): void {
 }
 
 /** States with no row. The test fails on a non-empty result; nothing else calls it. */
-export function uncovered(): { grp: string[]; slice: string[]; job: string[]; escalation: string[] } {
+export function uncovered(): {
+  grp: string[]; slice: string[]; job: string[]; escalation: string[]; util: string[]; project: string[];
+} {
   const has = (rs: { state: string }[], s: string) => rs.some((r) => r.state === s);
   return {
     grp: GRP_STATES.filter((s) => !has(GRP_INVARIANTS, s)),
     slice: SLICE_STATES.filter((s) => !has(SLICE_INVARIANTS, s)),
     job: JOB_STATES.filter((s) => !has(JOB_INVARIANTS, s)),
     escalation: ESCALATION_STATES.filter((s) => !has(ESCALATION_INVARIANTS, s)),
+    util: UTIL_STATES.filter((s) => !has(UTIL_INVARIANTS, s)),
+    project: PROJECT_STATES.filter((s) => !has(PROJECT_INVARIANTS, s)),
   };
 }

@@ -29,7 +29,7 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
   };
   const app = makeApp(ctx);
 
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  db.run("INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'https://github.com/o/p.git', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   // Identity is the token, never a body field: the server listens on localhost
   // TCP, so anything else on 127.0.0.1 could otherwise claim to be any agent.
@@ -688,7 +688,7 @@ test("a token is only good for the scope it was hired into", async () => {
   // and are supposed to reach across their project.
   const h = harness();
   await blocked(h);
-  h.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('other', '/tmp/o', 0)");
+  h.db.run("INSERT INTO project (name, repo_path, remote, created_at) VALUES ('other', '/tmp/o', 'https://github.com/o/other.git', 0)");
   h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (2, 'elsewhere', 'RUNNING', 0)");
   const outsider = h.db.query<{ id: number }, []>("SELECT id FROM grp WHERE name = 'elsewhere'").get()!.id;
 
@@ -867,11 +867,22 @@ test("a closed PR whose branch cannot be reopened can still get a new one", asyn
 });
 
 test("a failed second PR leaves the old number in place rather than none at all", async () => {
-  const { app, db, ctx } = harness();
+  // The push is refused. Since 007 step 5 that happens in the utility container
+  // rather than on the host, so this is a sandbox command failing rather than
+  // `ctx.git` — the assertion is about what the group is left holding either way.
+  const { app, db, ctx } = harness((cmd) =>
+    cmd.includes("push") ? { code: 1, out: "remote: Permission denied" } : {},
+  );
   db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, branch = 'orch/g1' WHERE id = 1");
   db.run("UPDATE project SET remote = 'git@github.com:me/x.git' WHERE id = 1");
-  ctx.git = async () => ({ code: 1, out: "remote: Permission denied" });
-  ctx.gh = { remaining: () => null, request: async <T,>() => ({ ok: true, status: 200, data: null as T }) };
+  ctx.git = async () => ({ code: 0, out: "" });
+  // A GitHub that would happily open the PR. Without a number here the create
+  // answers "no PR number in it" and the route 422s for a reason that has
+  // nothing to do with the push — the test passes and asserts nothing.
+  ctx.gh = {
+    remaining: () => null,
+    request: async <T,>() => ({ ok: true, status: 200, data: { number: 9 } as T }),
+  };
 
   expect((await post(app, "/api/groups/1/newpr")).status).toBe(422);
   expect(db.query<{ pr_number: number }, []>("SELECT pr_number FROM grp WHERE id = 1").get()!.pr_number).toBe(7);
@@ -1191,10 +1202,10 @@ test("two groups cannot end up waiting on each other", async () => {
 test("a worktree that cannot be created withdraws the approval instead of retrying forever", async () => {
   // sweepApproved runs on the watchdog tick, so leaving the intent set retried a
   // permanent failure every thirty seconds and returned the error to nobody.
-  const h = harness();
-  h.ctx.git = async () => ({ code: 1, out: "fatal: disk full" });
+  // The clone is what cannot be created, and since 007 step 5 it fails inside
+  // the group's own container rather than as a host `git worktree`.
+  const h = harness((cmd) => (cmd.startsWith("git clone") ? { code: 1, err: "fatal: disk full" } : {}));
   h.db.run("UPDATE grp SET status = 'DRAFT', approved_at = 1 WHERE id = 1");
-  h.db.run("UPDATE project SET repo_path = '/tmp/nope' WHERE id = 1");
 
   await sweepApproved(h.ctx);
   const g = h.db

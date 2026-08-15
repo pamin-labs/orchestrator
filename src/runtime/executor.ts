@@ -13,7 +13,7 @@ import { outsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
 import { MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
-import { baseRefFor, ensureCheckout, publishBranch, sandboxGit } from "../mech/checkout.ts";
+import { baseRefFor, ensureCheckout, keepBranch, sandboxGit } from "../mech/checkout.ts";
 import { track, untrack } from "./running.ts";
 import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/auth.ts";
 import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/watchdog.ts";
@@ -344,13 +344,17 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     ctx.db.run("UPDATE agent SET session_id = ? WHERE id = ?", [result.sessionId, agent.id]);
   }
 
-  // The group's commits, back on the host, every turn. A sandbox is disposable
-  // and this is what makes that true: a container that dies costs the turn in
-  // flight and nothing else. Publishing only at PR time would have meant losing
-  // everything since the last one, because a group's branch does not reach the
-  // remote until then.
-  if (job.grp_id && grp?.branch && project?.repo_path && git) {
-    const kept = await publishBranch(ctx, scope, git, project.repo_path, grp.branch, await baseRefFor(ctx, grp.project_id));
+  // The group's commits, out of a container that can be replaced, every turn. A
+  // sandbox is disposable and this is what makes that true: one that dies costs
+  // the turn in flight and nothing else. Keeping them only at PR time would mean
+  // losing everything since the last one.
+  //
+  // Where they land changed and how often did not (007 step 5): the receiver is
+  // the utility container's bare mirror rather than a checkout on this host.
+  // This is not a push — `pushBranch` puts the branch on the remote, and that
+  // happens at slice boundaries, not thirty times a slice.
+  if (job.grp_id && grp?.branch) {
+    const kept = await keepBranch(ctx, job.grp_id);
     if (!kept.ok && kept.reason && !/empty bundle/i.test(kept.reason)) {
       ctx.bus.emit({
         grpId: job.grp_id,

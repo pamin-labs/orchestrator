@@ -1,8 +1,5 @@
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { Ctx } from "../api.ts";
-import { execIn, execLines, getBytes, putBytes, WORK, type Scope } from "./sandbox.ts";
+import { execIn, execLines, getBytes, putBytes, UTIL, WORK, type Scope } from "./sandbox.ts";
 import { sandboxLog } from "./sandboxlog.ts";
 import { shq } from "./shq.ts";
 import { detectBaseBranch, type GitRunner } from "./worktree.ts";
@@ -103,9 +100,20 @@ export function httpsRemote(url: string): string {
   return `https://${scp[1]}/${scp[2]}.git`;
 }
 
-export async function remoteUrl(git: GitRunner, repoPath: string): Promise<string | null> {
-  const r = await git(repoPath, ["remote", "get-url", "origin"]);
-  return r.code === 0 && r.out.trim() ? httpsRemote(r.out.trim()) : null;
+/**
+ * Where this project's code comes from.
+ *
+ * The stored remote, not `git remote get-url` against a host checkout. That was
+ * the last thing in the clone path that required the host to be a git
+ * participant, and it was also a way for two answers to disagree: the host
+ * checkout's `origin` and `project.remote` come from different places, so a
+ * group could clone one repository while its PR opened on another.
+ */
+export function remoteFor(ctx: Ctx, projectId: number): string | null {
+  const row = ctx.db
+    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
+    .get(projectId);
+  return row?.remote ? httpsRemote(row.remote) : null;
 }
 
 export interface CheckoutSpec {
@@ -113,46 +121,6 @@ export interface CheckoutSpec {
   branch: string;
   /** What to branch from. `origin/main` unless a group was told otherwise. */
   base: string;
-  /** Host git and repo, so a branch only the host has can be seeded in. */
-  git?: GitRunner;
-  repoPath?: string;
-}
-
-/**
- * Clone and branch. Idempotent: a re-entered group keeps the work it has.
- *
- * Cloning shallow would be cheaper and is wrong here — a slice's diff is taken
- * against the merge base with main, and `rebaseOntoBase` needs real history.
- */
-/**
- * Put a branch the host already has into the sandbox.
- *
- * The mirror of `publishBranch`, and the reason a sandbox is disposable: a
- * group's commits live on the host between turns, so a container that dies —
- * TTL, a crash, a restart — costs the turn in flight and nothing else. Without
- * this everything since the last PR would go with it, because a group's branch
- * does not reach the remote until then.
- */
-export async function seedBranch(
-  ctx: Ctx,
-  scope: Scope,
-  git: GitRunner,
-  repoPath: string,
-  branch: string,
-): Promise<boolean> {
-  const onHost = join(tmpdir(), `orch-seed-${branch.replaceAll("/", "-")}.bundle`);
-  const made = await git(repoPath, ["bundle", "create", onHost, branch]);
-  if (made.code !== 0) return false;
-  try {
-    const bytes = await Bun.file(onHost).arrayBuffer();
-    const inSandbox = `/tmp/seed-${branch.replaceAll("/", "-")}.bundle`;
-    await putBytes(ctx, scope, inSandbox, new Uint8Array(bytes));
-    const fetched = await execIn(ctx, scope, `git fetch ${shq(inSandbox)} ${shq(`+${branch}:${branch}`)}`, { cwd: WORK });
-    if (fetched.code !== 0) return false;
-    return (await execIn(ctx, scope, `git checkout ${shq(branch)}`, { cwd: WORK })).code === 0;
-  } finally {
-    rmSync(onHost, { force: true });
-  }
 }
 
 /**
@@ -218,25 +186,24 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
   const clone = await streamed(ctx, scope, cloneCmd, { timeoutMs: 600_000, env: { GIT_TERMINAL_PROMPT: "0" } });
   if (clone.code !== 0) throw new Error(`git clone failed: ${clone.out.slice(-400)}`);
 
-  // Three places the branch can be, in the order that loses nothing:
-  //   1. on the host — a group mid-flight whose sandbox was replaced, and every
-  //      group that predates this design. Its commits exist nowhere else.
-  //   2. on the remote — it has been through a PR already.
-  //   3. nowhere — a new group, so cut it from the base.
-  if (spec.git && spec.repoPath && (await seedBranch(ctx, scope, spec.git, spec.repoPath, spec.branch))) {
-    // Seeded and checked out.
-  } else {
-    const onRemote = await execIn(ctx, scope, `git ls-remote --exit-code --heads origin ${shq(spec.branch)}`, {
-      cwd: WORK,
-    });
-    const co = await execIn(
-      ctx,
-      scope,
-      onRemote.code === 0 ? `git checkout ${shq(spec.branch)}` : `git checkout -b ${shq(spec.branch)} ${shq(spec.base)}`,
-      { cwd: WORK },
-    );
-    if (co.code !== 0) throw new Error(`git checkout failed: ${(co.err || co.out).slice(-400)}`);
-  }
+  // Two places the branch can be, and there used to be three. The first was "on
+  // the host", because a group's commits lived there between turns — which was
+  // the entire reason the host held a checkout. They live on the remote now
+  // (`pushBranch`), so:
+  //   1. on the remote — this group has reached a slice boundary before, or a PR.
+  //   2. nowhere — a new group, so cut it from the base.
+  const onRemote = await execIn(ctx, scope, `git ls-remote --exit-code --heads origin ${shq(spec.branch)}`, {
+    cwd: WORK,
+  });
+  const co = await execIn(
+    ctx,
+    scope,
+    onRemote.code === 0 ? `git checkout ${shq(spec.branch)}` : `git checkout -b ${shq(spec.branch)} ${shq(spec.base)}`,
+    { cwd: WORK },
+  );
+  if (co.code !== 0) throw new Error(`git checkout failed: ${(co.err || co.out).slice(-400)}`);
+
+  await initSubmodules(ctx, scope);
 
   // An agent commits as itself, not as whoever last configured this machine.
   await execIn(
@@ -258,48 +225,215 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
   await execIn(ctx, scope, LINK_AGENTS_MD, { cwd: WORK });
 }
 
+/**
+ * Submodules, in two steps, in the container that is allowed to have them.
+ *
+ * `git clone --recursive` is CVE-2024-32002 and CVE-2025-48384: a repository can
+ * arrange for a submodule's checkout to land a `post-checkout` script where git
+ * then looks for hooks, and cloning it is remote code execution. GitHub's own
+ * mitigation leads with *run git against untrusted sources inside ephemeral,
+ * network-restricted containers*, which is what a group container already is —
+ * so this is supported here, and never in the utility container, which holds the
+ * real login and checks out nothing.
+ *
+ * The two steps **are** the mitigation, not caution about it: clone without
+ * `--recursive`, then init only after the working tree exists and `.gitmodules`
+ * can be read. Collapsing them back into one flag puts the exposure back.
+ *
+ * `protocol.file.allow=user` because a submodule with a relative URL resolves to
+ * a local path and git refuses those by default since the CVE. A repository with
+ * no `.gitmodules` pays one `test -f` and nothing else.
+ */
+async function initSubmodules(ctx: Ctx, scope: Scope): Promise<void> {
+  const has = await execIn(ctx, scope, `test -f ${WORK}/.gitmodules && echo yes`);
+  if (has.out.trim() !== "yes") return;
+  const r = await execIn(ctx, scope, `git -c protocol.file.allow=user submodule update --init`, {
+    cwd: WORK,
+    timeoutMs: 600_000,
+  });
+  if (r.code !== 0 && "grp" in scope) {
+    // Not fatal: a repository whose submodules will not init is still a
+    // repository the group can work in, and the agent bucket (007 §6) is where a
+    // failed init belongs — it is something a turn can be given and act on.
+    ctx.bus.emit({
+      grpId: scope.grp,
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "warn",
+      body: `子模块没拉起来，代码可能不全：${(r.err || r.out).slice(-300)}`,
+    });
+  }
+}
+
 /** Exported so the check can run it in a temp directory, verbatim. */
 export const LINK_AGENTS_MD =
   "[ -f CLAUDE.md ] && [ ! -e AGENTS.md ] && ln -s CLAUDE.md AGENTS.md;" +
   " [ -f AGENTS.md ] && [ ! -e CLAUDE.md ] && ln -s AGENTS.md CLAUDE.md; true";
 
 /**
- * Move a group's commits from its sandbox onto the host, as a bundle.
+ * git in the utility container, and the whole of what it is allowed to be.
  *
- * The sandbox is never given a credential that can write to the remote. It
- * could have been — the clone comes from there — but then "no direct push to
- * main" would be a sentence in a prompt rather than something the code can
- * stop, and hard constraint 3 says anything an `if` can catch must not be left
- * to the agent's good behaviour. A read-only clone in, a bundle out, and the
- * host stays the only thing that can push.
+ * Two rules, as `if`s rather than as a paragraph somebody has to remember:
  *
- * A bundle carries objects, not credentials, and only the commits the host does
- * not already have.
+ * - **`core.hooksPath=/dev/null` on every single invocation.** Not set once in a
+ *   config file, because the thing it defends against is a repository that
+ *   arranges for a hook to appear, and a config written before that happens is a
+ *   config the repository can outlive. `/dev/null/post-receive` cannot exist.
+ * - **These four verbs and no others.** This container holds the real GitHub
+ *   token; RCE in a group container buys the attacker what that agent already
+ *   had, and RCE here buys the whole system. `checkout`, `submodule` and
+ *   anything else that writes a working tree are not on the list, so no
+ *   repository content is ever executed. It throws rather than returning an
+ *   error code: reaching this line at all is a bug in us, not a condition.
  */
-export async function publishBranch(
-  ctx: Ctx,
-  scope: Scope,
-  git: GitRunner,
-  repoPath: string,
-  branch: string,
-  base: string,
-): Promise<{ ok: boolean; reason?: string }> {
-  const inSandbox = `/tmp/${branch.replaceAll("/", "-")}.bundle`;
-  const made = await execIn(ctx, scope, `git bundle create ${shq(inSandbox)} ${shq(branch)} --not ${shq(base)}`, {
+const UTIL_VERBS = new Set(["clone", "fetch", "push", "bundle"]);
+
+export async function utilGit(ctx: Ctx, argv: string[], cwd?: string): Promise<{ code: number; out: string }> {
+  const verb = argv[0] ?? "";
+  if (!UTIL_VERBS.has(verb)) {
+    throw new Error(`utility container may not run 'git ${verb}': it does fetch/push/bundle and nothing else`);
+  }
+  // The verb goes in unquoted because it has just been checked against a literal
+  // set, so it is one of four words and cannot carry a metacharacter. Everything
+  // after it is a branch name, a path or a URL and is quoted like everywhere else.
+  const cmd = `git -c core.hooksPath=/dev/null ${verb} ${argv.slice(1).map(shq).join(" ")}`;
+  const r = await execIn(ctx, UTIL, cmd, {
+    cwd,
+    timeoutMs: 600_000,
+    env: { GIT_TERMINAL_PROMPT: "0" },
+  });
+  return { code: r.code, out: `${r.out}${r.err}`.trimEnd() };
+}
+
+/** Where this project's bare mirror lives inside the utility container. */
+const mirrorPath = (remote: string): string => `/repos/${remote.replace(/[^\w.-]+/g, "-")}`;
+
+/**
+ * The project's mirror, made once.
+ *
+ * `--bare`: no working tree, so nothing in the repository is ever written to
+ * disk in a form anything would execute, and `--filter=blob:none` for the same
+ * reason it is on the group's clone — this one never needs file contents at all,
+ * only refs and the objects a bundle brings.
+ */
+async function ensureMirror(ctx: Ctx, remote: string): Promise<string> {
+  const path = mirrorPath(remote);
+  const there = await execIn(ctx, UTIL, `test -d ${shq(path)} && echo yes`);
+  if (there.out.trim() === "yes") return path;
+  const made = await utilGit(ctx, ["clone", "--bare", "--filter=blob:none", remote, path]);
+  if (made.code !== 0) throw new Error(`utility container could not mirror ${remote}: ${made.out.slice(-300)}`);
+  return path;
+}
+
+/**
+ * A group's commits, out of its container and into the mirror. No network.
+ *
+ * Called every turn, and that is deliberate: a sandbox is disposable, and this
+ * is what makes that true rather than expensive. A container that dies — TTL, a
+ * crash, a restart — costs the turn in flight and nothing else. What used to
+ * receive this was a checkout on the host, which is the thing 007 is removing;
+ * the receiver is now the one container that is allowed to hold a git
+ * repository nobody works in.
+ *
+ * A bundle carries objects and never a credential, which is why the direction is
+ * one-way: out of the agent's container, never in. That has not changed and is
+ * not negotiable — see `readOnlyGitPaths` for the other half of it.
+ */
+export async function keepBranch(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
+  // Every way out of here is a returned reason, never a throw. Two callers are a
+  // turn that has already finished its work and a slice acceptance that is not
+  // awaited — for both, a container that cannot be opened has to be a reported
+  // failure rather than an exception that takes the turn or the process with it.
+  try {
+    return await keep(ctx, grpId);
+  } catch (e) {
+    return { ok: false, reason: `${(e as Error)?.message ?? e}`.slice(-300) };
+  }
+}
+
+async function keep(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
+  const grp = ctx.db
+    .query<{ branch: string | null; project_id: number }, [number]>("SELECT branch, project_id FROM grp WHERE id = ?")
+    .get(grpId);
+  if (!grp?.branch) return { ok: false, reason: "group has no branch" };
+  const remote = remoteFor(ctx, grp.project_id);
+  if (!remote) return { ok: false, reason: "project has no remote" };
+  const branch = grp.branch;
+  const base = await baseRefFor(ctx, grp.project_id);
+
+  const scope = { grp: grpId } as const;
+  const name = `${branch.replaceAll("/", "-")}.bundle`;
+  const made = await execIn(ctx, scope, `git bundle create ${shq(`/tmp/${name}`)} ${shq(branch)} --not ${shq(base)}`, {
     cwd: WORK,
   });
   // "Refusing to create empty bundle" is the ordinary answer for a group that
   // has committed nothing yet, not a failure worth escalating.
   if (made.code !== 0) return { ok: false, reason: (made.err || made.out).slice(-300) };
 
-  const bytes = await getBytes(ctx, scope, inSandbox);
+  const bytes = await getBytes(ctx, scope, `/tmp/${name}`);
   if (!bytes) return { ok: false, reason: "bundle vanished between writing and reading it" };
 
-  const onHost = join(tmpdir(), `orch-${branch.replaceAll("/", "-")}.bundle`);
-  await Bun.write(onHost, bytes);
-  const fetched = await git(repoPath, ["fetch", onHost, `+refs/heads/${branch}:refs/heads/${branch}`]);
-  rmSync(onHost, { force: true });
-  return fetched.code === 0 ? { ok: true } : { ok: false, reason: fetched.out.slice(-300) };
+  const mirror = await ensureMirror(ctx, remote);
+  const inUtil = `/tmp/${name}`;
+  await putBytes(ctx, UTIL, inUtil, bytes);
+  const ref = `+refs/heads/${branch}:refs/heads/${branch}`;
+  const fetched = await utilGit(ctx, ["fetch", inUtil, ref], mirror);
+  if (fetched.code === 0) return { ok: true };
+
+  // "Repository lacks these prerequisite commits", and it is not a corrupt
+  // bundle. The bundle is cut `--not <base>`, so its prerequisites are commits
+  // on the base — and the group rebases onto a base it fetched itself, which
+  // this mirror has not seen since it was cloned. One `fetch origin` and a
+  // retry, only on this failure, so the ordinary turn still costs no network.
+  if (!/prerequisite/i.test(fetched.out)) return { ok: false, reason: fetched.out.slice(-300) };
+  await utilGit(ctx, ["fetch", "origin"], mirror);
+  const again = await utilGit(ctx, ["fetch", inUtil, ref], mirror);
+  return again.code === 0 ? { ok: true } : { ok: false, reason: again.out.slice(-300) };
+}
+
+/**
+ * The branch, on the remote. Slice boundaries and PR time, never every turn.
+ *
+ * This is what makes a container disposable without the host holding anything:
+ * a replaced container is `clone` plus `git checkout <branch>`, because the
+ * branch is where every other feature branch lives. The stated cost is that
+ * work-in-progress commits are visible on the remote before the PR opens, which
+ * is how every feature branch already works.
+ *
+ * `--force-with-lease` rather than `--force`: the group rebases onto the base
+ * routinely, so its branch legitimately diverges from what was pushed last time
+ * and a plain push would be refused forever. The lease is what keeps that from
+ * becoming "overwrite whatever is there" — and it needs the remote-tracking ref
+ * to be current, which is what the fetch above it is for. A lease that fails is
+ * somebody else writing this branch, which is worth stopping on.
+ */
+export async function pushBranch(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    return await push(ctx, grpId);
+  } catch (e) {
+    return { ok: false, reason: `${(e as Error)?.message ?? e}`.slice(-300) };
+  }
+}
+
+async function push(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
+  const kept = await keepBranch(ctx, grpId);
+  // An empty bundle means nothing new to push, not a failure — but the branch
+  // may still be unpushed from an earlier turn, so this carries on.
+  if (!kept.ok && !/empty bundle/i.test(kept.reason ?? "")) return kept;
+
+  const grp = ctx.db
+    .query<{ branch: string | null; project_id: number }, [number]>("SELECT branch, project_id FROM grp WHERE id = ?")
+    .get(grpId);
+  if (!grp?.branch) return { ok: false, reason: "group has no branch" };
+  const remote = remoteFor(ctx, grp.project_id);
+  if (!remote) return { ok: false, reason: "project has no remote" };
+  const mirror = await ensureMirror(ctx, remote);
+
+  // Not checked: the branch may not be on the remote at all yet, which is the
+  // ordinary first push and not a failure.
+  await utilGit(ctx, ["fetch", "origin", grp.branch], mirror);
+  const pushed = await utilGit(ctx, ["push", "--force-with-lease", "origin", `refs/heads/${grp.branch}`], mirror);
+  return pushed.code === 0 ? { ok: true } : { ok: false, reason: pushed.out.slice(-300) };
 }
 
 /**
@@ -313,16 +447,20 @@ export async function publishBranch(
  * `createCheckout` returns early when `.git` is already there, so this is one
  * cheap exec on the ordinary path.
  *
- * Every way out of here that is not a clone says so. All four used to `return`
- * silently, and the group then ran a whole turn against an empty `/work` —
- * RUNNING, an agent on the roster, nothing anywhere reporting a problem. Same
- * family as `reconcileOwnership`'s silent skip. They stay early returns rather
- * than throws: a clone that actually fails is `createCheckout`'s to throw, and
- * `executor.ts` already turns that into a failed turn.
+ * Every way out of here that is not a clone says so. All of them used to
+ * `return` silently, and the group then ran a whole turn against an empty
+ * `/work` — RUNNING, an agent on the roster, nothing anywhere reporting a
+ * problem. Same family as `reconcileOwnership`'s silent skip. They stay early
+ * returns rather than throws: a clone that actually fails is `createCheckout`'s
+ * to throw, and `executor.ts` already turns that into a failed turn.
+ *
+ * There were four; there are three. The fourth was "the host has no git", which
+ * stopped being a way this can fail when the remote stopped being read out of a
+ * host checkout.
  */
 export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
-  // `on`, not `grpId`, for exactly one of the four: `event.grp_id` is a foreign
-  // key to `grp`, so an event about a group that is not in the table cannot be
+  // `on`, not `grpId`, for exactly one of them: `event.grp_id` is a foreign key
+  // to `grp`, so an event about a group that is not in the table cannot be
   // written against it. That one goes out unscoped and names the id in its body.
   const report = (why: string, on: number | null = grpId): void => {
     ctx.bus.emit({
@@ -340,18 +478,17 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
     )
     .get(grpId);
   if (!grp) return report(`grp 表里找不到组 ${grpId}`, null);
-  if (!ctx.git) return report("宿主的 git 没接上（ctx.git 是空的）");
-  const repo = ctx.db
-    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
+  // Still two questions, not one: a project that is gone and a project with no
+  // remote recorded send the reader to different places.
+  const project = ctx.db
+    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
     .get(grp.project_id);
-  if (!repo) return report(`项目不在了（project ${grp.project_id} 查不到）`);
-  const remote = await remoteUrl(ctx.git, repo.repo_path);
-  if (!remote) return report(`${repo.repo_path} 没有 remote origin，无从 clone`);
+  if (!project) return report(`项目不在了（project ${grp.project_id} 查不到）`);
+  const remote = remoteFor(ctx, grp.project_id);
+  if (!remote) return report(`project ${grp.project_id} 没记下 remote，无从 clone`);
   await createCheckout(ctx, { grp: grpId }, {
     remote,
     branch: grp.branch ?? `orch/${grp.name}`,
     base: await baseRefFor(ctx, grp.project_id),
-    git: ctx.git,
-    repoPath: repo.repo_path,
   });
 }
