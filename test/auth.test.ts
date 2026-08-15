@@ -4,8 +4,10 @@ import { CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX
 import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
 import { REFRESH_HOME } from "../src/mech/sandbox/chatgpt.ts";
 import { accessToken, isStale, parseAuth, renew } from "../src/mech/sandbox/chatgpt.ts";
-import { loginRuntimes, startLogin } from "../src/mech/sandbox/login.ts";
-import type { Ctx } from "../src/api.ts";
+import { DEVICE_CODE_TTL_MS, loginRuntimes, startLogin } from "../src/mech/sandbox/login.ts";
+import { makeApp, type Ctx } from "../src/api.ts";
+import { Bus } from "../src/bus.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -295,4 +297,46 @@ test("a chatgpt login is judged by the expiry it carries, without a request", as
   const row = dead.find((c) => c.name === "credential:codex")!;
   expect(row.ok).toBe(false);
   expect(row.detail).toContain("过期");
+});
+
+test("the codex device login shows a code with its link, and stores what the container wrote", async () => {
+  // Nothing installed on this machine: `codex login --device-auth` runs in the
+  // utility container, prints a URL and a one-time code, and writes the refresh
+  // token there — the one credential no container with an agent in it may hold.
+  //
+  // The panel's half is the pair. A link on its own opens a page asking for a
+  // code the boss does not have.
+  const db = openMemory();
+  const bus = new Bus(db);
+  const sandbox = fakeSandbox((cmd) =>
+    cmd.includes("codex login")
+      ? { out: "1. Open https://chatgpt.com/device\n2. Enter code T5M2-76TFM\n" }
+      : {},
+  );
+  sandbox.files.set(`${REFRESH_HOME}/auth.json`, JSON.stringify({ tokens: { refresh_token: "REAL" } }));
+  const ctx = { db, bus, sandbox, sched: { tick: () => {} }, waiters: new Map(), config: { language: "中文" } } as unknown as Ctx;
+  const app = makeApp(ctx);
+
+  const r = await app(new Request("http://x/api/auth/codex/device", { method: "POST" }));
+  expect(r.status).toBe(200);
+  const b = (await r.json()) as { code: string; url: string; expiresAt: number };
+  expect(b.code).toBe("T5M2-76TFM");
+  expect(b.url).toBe("https://chatgpt.com/device");
+  // codex's own expiry, not a second number kept in step by hand.
+  expect(b.expiresAt - Date.now()).toBeGreaterThan(DEVICE_CODE_TTL_MS - 10_000);
+  expect(b.expiresAt - Date.now()).toBeLessThanOrEqual(DEVICE_CODE_TTL_MS);
+
+  // No completion route: the credential row is the confirmation.
+  for (let i = 0; i < 50 && !loadAuth(db, "codex"); i++) await Bun.sleep(10);
+  expect(loadAuth(db, "codex")).toEqual({
+    runtime: "codex",
+    mode: "chatgpt",
+    secret: JSON.stringify({ tokens: { refresh_token: "REAL" } }),
+    baseUrl: undefined,
+  });
+
+  // Single-flight: a second click hands back the same pair rather than printing
+  // a second code, which would invalidate the first.
+  const again = await app(new Request("http://x/api/auth/codex/device", { method: "POST" }));
+  expect(((await again.json()) as any).code).toBe("T5M2-76TFM");
 });

@@ -11,7 +11,7 @@ import { execIn, killSandbox, putFile, restartServer, runningServer, serverKeyOn
 import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
-import { loginRuntimes, startLogin } from "./mech/sandbox/login.ts";
+import { DEVICE_CODE_TTL_MS, loginRuntimes, startCodexDeviceLogin, startLogin } from "./mech/sandbox/login.ts";
 import { APP_SLUG, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
 import { baseBranch, baseRefFor, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
@@ -1698,7 +1698,10 @@ export function snapshot(ctx: Ctx) {
      * server, the sidecar version — cost network and stay in the settings page.
      */
     ready: (db.query<{ n: number }, []>("SELECT count(*) AS n FROM runtime_auth").get()?.n ?? 0) > 0,
-    projects: db.query("SELECT id, name, repo_path, remote FROM project").all(),
+    // `base_branch` rides along because it is the one thing add-a-project decided
+    // on the boss's behalf, and a decision taken silently has to be visible where
+    // its consequence starts — the new project's own page.
+    projects: db.query("SELECT id, name, repo_path, remote, base_branch FROM project").all(),
     groups: db
       .query(
         `SELECT id, project_id, name, branch, status, owns_json, budget_tokens,
@@ -3335,6 +3338,53 @@ const postGithubLogin: Handler = async (ctx) => {
 };
 
 /**
+ * Sign in to a ChatGPT account, from the utility container.
+ *
+ * Same shape as the GitHub flow above and deliberately so: a code, a link, and
+ * a pending state that dies with the code. A second shape for the same
+ * interaction is how a panel stops being learnable.
+ *
+ * No completion route. `run.done` writes `runtime_auth` itself, so the
+ * credential row the panel already polls **is** the confirmation, and the
+ * progress lines are already on the live feed.
+ */
+interface CodexFlow {
+  code: string;
+  url: string;
+  expiresAt: number;
+}
+let codexFlow: CodexFlow | null = null;
+
+const postCodexDevice: Handler = async (ctx) => {
+  if (codexFlow && codexFlow.expiresAt > Date.now()) return json(codexFlow);
+  const run = startCodexDeviceLogin(ctx);
+  const startedAt = Date.now();
+  // Both, or neither: the link alone opens a page asking for a code the boss
+  // does not have. codex prints them on two lines, so this waits for the second.
+  for (let i = 0; i < 100 && !(run.url && run.code); i++) await Bun.sleep(100);
+  if (!run.url || !run.code) {
+    run.cancel();
+    return bad("容器里的 codex 没打印出登录码 —— 镜像里跑一下 `codex login --device-auth` 看看。");
+  }
+  codexFlow = { code: run.code, url: run.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
+  void run.done.then((r) => {
+    codexFlow = null;
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: r.ok ? "codex 登录好了" : `codex 登录没成：${r.detail}`,
+    });
+  });
+  return json(codexFlow);
+};
+
+const postCodexDeviceCancel: Handler = async (ctx) => {
+  startCodexDeviceLogin(ctx).cancel();
+  codexFlow = null;
+  return text("ok");
+};
+
+/**
  * Each installation, with how many repositories it can see.
  *
  * One extra request per account, asking for a single item — only `total_count` is
@@ -3413,12 +3463,20 @@ const getGithubRepos: Handler = async (ctx, req) => {
 
   // Seam (007 step 6): a project's identity is still `repo_path`, which for a
   // repository added here is `owner/name`.
-  const taken = new Set(ctx.db.query<{ repo_path: string }, []>("SELECT repo_path FROM project").all().map((r) => r.repo_path));
+  // Which project, not whether. A greyed-out row saying 已添加 is a dead end: the
+  // boss came here to reach that repository and the answer is "it exists
+  // somewhere else". Naming it makes the row a route instead.
+  const taken = new Map(
+    ctx.db
+      .query<{ id: number; name: string; repo_path: string }, []>("SELECT id, name, repo_path FROM project")
+      .all()
+      .map((r) => [r.repo_path, { id: r.id, name: r.name }] as const),
+  );
   return json({
     installations: inst.data,
     selected,
     installUrl: INSTALL_URL,
-    repos: (repos?.data ?? []).map((r) => ({ ...r, taken: taken.has(r.fullName) })),
+    repos: (repos?.data ?? []).map((r) => ({ ...r, taken: taken.get(r.fullName) ?? null })),
   });
 };
 
@@ -3572,6 +3630,8 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/auth\/github$/, getGithubLogin],
   ["GET", /^\/api\/github\/repos$/, getGithubRepos],
   ["POST", /^\/api\/auth\/github$/, postGithubLogin],
+  ["POST", /^\/api\/auth\/codex\/device$/, postCodexDevice],
+  ["POST", /^\/api\/auth\/codex\/device\/cancel$/, postCodexDeviceCancel],
   ["GET", /^\/api\/preflight$/, getPreflight],
   ["GET", /^\/api\/sandbox-server$/, getSandboxServer],
   ["POST", /^\/api\/sandbox-server\/restart$/, postSandboxServerRestart],

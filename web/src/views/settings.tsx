@@ -80,7 +80,7 @@ const RUNTIMES: Runtime[] = [
     login: "chatgpt",
     urlEnv: "OPENAI_BASE_URL",
     modes: [
-      { mode: "chatgpt", label: "订阅", how: "codex login", cost: "本机统一刷新" },
+      { mode: "chatgpt", label: "订阅", how: "在容器里登录，本机不用装 codex", cost: "本机统一刷新" },
       { mode: "api_key", label: "API 密钥", how: "platform.openai.com", cost: "不显示额度" },
     ],
   },
@@ -395,11 +395,24 @@ function Credential(props: {
   const [baseUrl, setBaseUrl] = useState(cur?.baseUrl ?? "");
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState<string | null>(null);
+  /** codex's device login: a code, a link, and when it stops being either. */
+  const [device, setDevice] = useState<{ code: string; url: string; expiresAt: number } | null>(null);
   const spec = r.modes.find((m) => m.mode === mode) ?? r.modes[0]!;
   const dirty = !!secret.trim() || baseUrl.trim() !== (cur?.baseUrl ?? "");
   // The OAuth address is worth showing until the credential it fetches arrives,
   // and not one render longer.
-  useEffect(() => setLink(null), [cur?.updatedAt]);
+  useEffect(() => {
+    setLink(null);
+    setDevice(null);
+  }, [cur?.updatedAt]);
+  // Stop showing a code that has stopped working. An expired code that still
+  // looks live is the same failure as a panel saying the app is not installed
+  // after it has been.
+  useEffect(() => {
+    if (!device) return;
+    const t = setTimeout(() => setDevice(null), Math.max(0, device.expiresAt - Date.now()));
+    return () => clearTimeout(t);
+  }, [device?.expiresAt]);
   /**
    * What is stored, in the box that stores it.
    *
@@ -423,6 +436,24 @@ function Credential(props: {
     // toast explained why it was rejected, so the fix was to paste it again.
     if (res.ok) setSecret("");
     props.onSaved();
+  };
+
+  /**
+   * Sign in, whichever way this runtime does it.
+   *
+   * codex runs `codex login --device-auth` in the utility container — nothing
+   * has to be installed on this machine, and the refresh token it writes is the
+   * one credential no container with an agent in it may hold. claude still runs
+   * its own CLI here, which is what `setup-token` is for.
+   */
+  const signIn = async () => {
+    if (r.key !== "codex") return login();
+    setBusy(true);
+    const res = await post("/api/auth/codex/device", {});
+    setBusy(false);
+    if (!res.ok) return;
+    setDevice(JSON.parse(res.text));
+    props.onWaitForLogin(cur?.updatedAt ?? 0);
   };
 
   const login = async () => {
@@ -486,7 +517,7 @@ function Credential(props: {
               <span className="grow" />
               {/* Beside the label, because the box below is a block and the button
                   is the other way to fill it. */}
-              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={login} />}
+              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={signIn} container={r.key === "codex"} />}
             </span>
           ) : (
             <FieldLabel htmlFor={`${r.key}-secret`} className="text-ink-3">
@@ -512,10 +543,30 @@ function Credential(props: {
                 onChange={(e) => setSecret(e.target.value)}
               />
               {/* The alternative to pasting, next to the box it replaces. */}
-              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={login} />}
+              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={signIn} container={r.key === "codex"} />}
             </InputGroup>
           )}
         </Field>
+
+        {device && (
+          <Field className="py-1.5" orientation="vertical">
+            <DeviceCode code={device.code} url={device.url} go="去 ChatGPT 输入" />
+            <div className="mt-1.5 flex items-baseline gap-2">
+              <Meta>登录码 15 分钟内有效，批准完这一行自己会消失</Meta>
+              <span className="grow" />
+              <Button
+                size="sm"
+                variant="quiet"
+                onClick={async () => {
+                  await post("/api/auth/codex/device/cancel", {});
+                  setDevice(null);
+                }}
+              >
+                取消
+              </Button>
+            </div>
+          </Field>
+        )}
 
         {link && (
           <Field className="py-1.5">
@@ -585,6 +636,36 @@ function Credential(props: {
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * A device code, the way both flows show one.
+ *
+ * The code is the interaction, not the link: the link alone opens a page asking
+ * for a code the boss does not have. Large, monospace, wide tracking because it
+ * is typed into another window character by character, and one click from the
+ * clipboard.
+ */
+function DeviceCode({ code, url, go }: { code: string; url: string; go: string }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-rule bg-sunk px-3 py-2.5">
+      <code className="font-mono text-[1.375rem] leading-none font-semibold tracking-[0.3em] select-all">{code}</code>
+      <Button
+        size="sm"
+        variant="quiet"
+        onClick={() => {
+          void navigator.clipboard.writeText(code);
+          toast.success("登录码复制好了");
+        }}
+      >
+        复制
+      </Button>
+      <span className="grow" />
+      <LinkButton href={url} className="px-2 py-0.5 text-[0.75rem]">
+        {go}
+      </LinkButton>
+    </div>
   );
 }
 
@@ -704,29 +785,7 @@ function GithubPane() {
         </div>
         <Meta className="block">克隆私有仓库、推分支、开 PR 用的。一个连接管所有项目</Meta>
 
-        {pending && (
-          <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-rule bg-sunk px-3 py-2.5">
-            {/* The one thing to read on this screen. Wide tracking because the code
-                is typed into another window character by character. */}
-            <code className="font-mono text-[1.375rem] leading-none font-semibold tracking-[0.3em] select-all">
-              {pending.userCode}
-            </code>
-            <Button
-              size="sm"
-              variant="quiet"
-              onClick={() => {
-                void navigator.clipboard.writeText(pending.userCode);
-                toast.success("登录码复制好了");
-              }}
-            >
-              复制
-            </Button>
-            <span className="grow" />
-            <LinkButton href={pending.verificationUri} className="px-2 py-0.5 text-[0.75rem]">
-              去 GitHub 输入
-            </LinkButton>
-          </div>
-        )}
+        {pending && <DeviceCode code={pending.userCode} url={pending.verificationUri} go="去 GitHub 输入" />}
 
         {/* Why it did not land, beside the button that tries again. */}
         {!pending && s?.error && <Meta className="mt-1.5 block text-accent">{s.error}</Meta>}
@@ -770,12 +829,31 @@ function GithubPane() {
   );
 }
 
-/** Run the official CLI's login here and keep what it hands back. */
-function Login({ busy, waiting, onClick }: { busy: boolean; waiting: boolean; onClick: () => void }) {
+/**
+ * Run the official CLI's login and keep what it hands back.
+ *
+ * Where it runs differs by runtime and the label says so: codex's goes in the
+ * utility container (`--device-auth`, nothing installed here), claude's still
+ * runs `setup-token` on this machine.
+ */
+function Login({
+  busy, waiting, onClick, container,
+}: {
+  busy: boolean;
+  waiting: boolean;
+  onClick: () => void;
+  container?: boolean;
+}) {
   return (
-    <Tip label="在这台机器上跑一次官方 CLI 的登录，拿它换出凭据。仅限官方账号；自建网关走 API key。">
+    <Tip
+      label={
+        container
+          ? "在工具容器里跑一次官方登录，拿到的凭据存在这儿。本机不用装 codex。仅限官方账号；自建网关走 API key。"
+          : "在这台机器上跑一次官方 CLI 的登录，拿它换出凭据。仅限官方账号；自建网关走 API key。"
+      }
+    >
       <Button size="sm" disabled={busy || waiting} onClick={onClick}>
-        {busy || waiting ? "等你在浏览器里批准…" : "从本机登录"}
+        {busy || waiting ? "等你在浏览器里批准…" : container ? "登录" : "从本机登录"}
       </Button>
     </Tip>
   );
