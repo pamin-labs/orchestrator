@@ -863,3 +863,38 @@ test("an offline tick does not run the rules that need the network", async () =>
   const f = await runWatchdog({ ...h.deps, probe: async () => ({ online: false, changed: false }) });
   expect(f.map((x) => x.rule)).not.toContain("turn_timeout");
 });
+
+test("one rule throwing costs that rule, not the twenty-four after it", async () => {
+  // The tick is straight-line async: before this, a throw anywhere skipped every
+  // rule below it, and `invariants.ts` names the watchdog as the `driver` for
+  // about twelve states — so one bad rule meant twelve drivers silent for thirty
+  // seconds, and the report said only "the watchdog broke".
+  const h = harness();
+  // Rule 7d3 reads subscription usage. It is injected, so it is the one rule a
+  // test can make throw without pretending anything else is broken.
+  const deps = {
+    ...h.deps,
+    pollUsage: async () => {
+      throw new Error("usage endpoint exploded");
+    },
+  };
+  // Rule 8's condition, which is checked *after* 7d3: a RUNNING group whose last
+  // turn failed twice and has nothing queued.
+  h.db.run(
+    `INSERT INTO job (kind, grp_id, payload_json, state, error, enqueued_at)
+     VALUES ('agent_turn', 1, '{"role":"engineer"}', 'failed', 'boom', 0)`,
+  );
+  const first = await runWatchdog(deps);
+  // The rule that threw names itself, so the finding is actionable — "rule 7d3
+  // broke" rather than "the watchdog broke".
+  expect(first.map((x) => x.rule)).toContain("rule_broke:7d3");
+  expect(first.find((x) => x.rule === "rule_broke:7d3")!.body).toContain("usage endpoint exploded");
+
+  // The next tick, with 7d3 still throwing: the rules after it ran anyway, and
+  // the breakage is not reported a second time — once per REEMIT_MS, or a rule
+  // that throws every 30 seconds is 120 blocker lines an hour.
+  h.db.run("UPDATE job SET state = 'failed', error = 'boom' WHERE state = 'pending'");
+  const second = await runWatchdog(deps);
+  expect(second.map((x) => x.rule)).toContain("stalled");
+  expect(second.map((x) => x.rule)).not.toContain("rule_broke:7d3");
+});
