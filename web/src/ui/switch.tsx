@@ -26,7 +26,7 @@ export function Switch({ id, checked, onCheckedChange, disabled }: {
       onCheckedChange={onCheckedChange}
       disabled={disabled}
       className={cn(
-        "relative h-[1.125rem] w-8 shrink-0 cursor-pointer rounded-full transition-colors",
+        "relative h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors",
         "bg-rule data-[state=checked]:bg-accent",
         "outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
         "disabled:cursor-default disabled:opacity-40",
@@ -34,8 +34,8 @@ export function Switch({ id, checked, onCheckedChange, disabled }: {
     >
       <S.Thumb
         className={cn(
-          "block size-3.5 rounded-full bg-paper shadow-sm transition-transform",
-          "translate-x-[0.125rem] data-[state=checked]:translate-x-[1.0625rem]",
+          "block size-3 rounded-full bg-paper shadow-sm transition-transform",
+          "translate-x-[0.125rem] data-[state=checked]:translate-x-[0.875rem]",
         )}
       />
     </S.Root>

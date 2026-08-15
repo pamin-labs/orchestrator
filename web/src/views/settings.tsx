@@ -954,9 +954,9 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
       </Meta>
 
       <FieldGroup className="mt-1.5">
-        <Field orientation="horizontal">
+        <Field orientation="horizontal" className="items-center">
           <FieldLabel htmlFor="t-signoff">Sign-off</FieldLabel>
-          <FieldContent className="flex-row items-center gap-2">
+          <FieldContent>
             <Switch
               id="t-signoff"
               checked={s.trailers.signoff}
@@ -966,9 +966,9 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
             <Meta>开了 DCO 的仓库不收没有这行的提交</Meta>
           </FieldContent>
         </Field>
-        <Field orientation="horizontal">
+        <Field orientation="horizontal" className="items-center">
           <FieldLabel htmlFor="t-coauthor">Co-author</FieldLabel>
-          <FieldContent className="flex-row items-center gap-2">
+          <FieldContent>
             <Switch
               id="t-coauthor"
               checked={s.trailers.coauthor}
