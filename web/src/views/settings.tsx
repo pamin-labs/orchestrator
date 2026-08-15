@@ -497,7 +497,7 @@ function Credential(props: {
   };
 
   return (
-    <section className="border-t border-rule py-3.5 first:border-t-0 first:pt-0">
+    <section className="mt-6 first:mt-0">
       <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="font-display text-[0.9375rem] font-semibold">{r.label}</span>
         {cur ? (
@@ -536,7 +536,8 @@ function Credential(props: {
         </Meta>
       )}
 
-      <FieldGroup>
+      {/* The gap the group's own top rule used to stand in for. */}
+      <FieldGroup className="mt-1.5">
         <Field orientation={mode === "chatgpt" ? "vertical" : "horizontal"}>
           {/* The label is what this mode calls the thing. It said `token` under an
               API key too, which is two words for one field. */}
@@ -696,7 +697,7 @@ function Credential(props: {
         {props.claudeCoauthor !== undefined && (
           <Field className="items-center">
             <FieldLabel htmlFor="claude-coauthor" className="text-ink-3">
-              记成共同作者
+              Co-author
             </FieldLabel>
             <FieldContent>
               <Switch
@@ -710,7 +711,7 @@ function Credential(props: {
                   props.onSaved();
                 }}
               />
-              <Meta>Claude Code 自己提交时带上 Co-Authored-By: Claude</Meta>
+              <Meta>Claude Code 自己提交时写进 Co-Authored-By</Meta>
             </FieldContent>
           </Field>
         )}
@@ -756,7 +757,7 @@ function Credential(props: {
  */
 function DeviceCode({ code, url, go }: { code: string; url: string; go: string }) {
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-rule bg-sunk px-3 py-2.5">
+    <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md bg-sunk px-3 py-2.5">
       <code className="font-mono text-[1.375rem] leading-none font-semibold tracking-[0.3em] select-all">{code}</code>
       <Button
         size="sm"
@@ -911,11 +912,11 @@ function GithubPane() {
           can see. The boss asked "how do I install to several orgs" because the
           panel could not show that this is a list at all.
 
-          The rule belongs to this section, not to the one above: owned up there
-          it stayed on screen as a line with nothing under it every time this one
-          did not render. */}
+          No rule above it: the heading and the gap are the boundary. A rule here
+          was the same token as the one inside the list below, so the section and
+          its rows were drawn with the same mark. */}
       {s?.connected && !s.stale && (
-        <section className="mt-3 border-t border-rule pt-3">
+        <section className="mt-6">
           <div className="flex items-baseline gap-2">
             <H2>装在哪些账号上</H2>
             <span className="grow" />
@@ -934,13 +935,10 @@ function GithubPane() {
               一个也没有，这个连接看不见任何仓库。装的时候选所有仓库，或者挑几个。
             </p>
           ) : (
-            /* The list owns its rules, not the section. Every row carried its own
-               `border-t` while the closing line was the section's `border-b` — a
-               heavier token, and 12px of section padding below the last row. The
-               boxes were the same 33.5px, but rule to rule the last band measured
-               46.5px, which is the height the eye actually reads. `first:border-t-0`
-               never fired either: the section's first child is the heading. */
-            <div className="border-y border-rule-soft divide-y divide-rule-soft">
+            /* Between the rows only. The enclosing pair made this the one list in
+               the dialog wearing a frame, which is the mark a section boundary is
+               supposed to be. */
+            <div className="divide-y divide-rule-soft">
               {s.accounts.map((a) => (
                 <div key={a.id} className="flex items-baseline gap-2 py-1.5">
                   <span className="text-[0.8125rem]">{a.account}</span>
@@ -982,7 +980,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
   };
   const bot = s.identity.name === s.bot.name;
   return (
-    <section className="mt-3 border-t border-rule pt-3">
+    <section className="mt-6">
       <H2>提交</H2>
       <FieldGroup>
         {/* The author, stated rather than configured. It was a name in a yaml file
@@ -1021,7 +1019,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               disabled={busy}
               onCheckedChange={(v) => void set({ coauthor: v })}
             />
-            <Meta>把 {s.bot.name} 记成共同作者。Claude 自己那行在「模型账号」里</Meta>
+            <Meta>把 {s.bot.name} 写进 Co-Authored-By</Meta>
           </FieldContent>
         </Field>
       </FieldGroup>
@@ -1271,7 +1269,9 @@ function ServerPane(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
         </div>
       )}
 
-      <FieldGroup className="mt-3">
+      {/* The status band above is one section, these two values are another, and
+          the gap is what says so. */}
+      <FieldGroup className="mt-6">
         {/* The other way out of "that one is not ours", and the reason this is a
             control rather than a yaml key: the fix for a taken port is a
             different port, and an edit-and-restart is not a fix you make while

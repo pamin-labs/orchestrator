@@ -21,7 +21,12 @@ export function FieldGroup({ className, ...rest }: React.ComponentProps<"div">) 
   return (
     <div
       data-slot="field-group"
-      className={cn("flex w-full flex-col border-t border-rule", className)}
+      // A hairline means "next row" and nothing else, so the group draws them
+      // between its rows and no frame around itself. Its own top rule used to be
+      // the same token as the rule that opened the section above it, which is
+      // how a settings pane became four boundaries of equal weight with no way
+      // to tell a section from a row. Sections are separated by space now.
+      className={cn("flex w-full flex-col divide-y divide-rule-soft", className)}
       {...rest}
     />
   );
@@ -38,7 +43,10 @@ export function Field({
       data-slot="field"
       data-orientation={orientation}
       className={cn(
-        "group/field gap-x-4 border-b border-rule-soft py-2",
+        // No rule of its own: the group divides its children, so a row rendered
+        // last has no dangling edge and a row rendered conditionally cannot leave
+        // one behind.
+        "group/field gap-x-4 py-2",
         // The label column is a variable so a narrower context — two settings
         // blocks side by side — can tighten it without a second Field.
         orientation === "horizontal"

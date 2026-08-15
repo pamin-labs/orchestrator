@@ -82,7 +82,9 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: Record<string
           <div
             className={cn(
               GATE_ROW,
-              "sticky top-0 z-10 border-b border-rule bg-paper pb-1.5 text-[0.6875rem] text-ink-3",
+              // Same hairline as every row under it: this is the table's first
+              // row, not a boundary between two kinds of thing.
+              "sticky top-0 z-10 border-b border-rule-soft bg-paper pb-1.5 text-[0.6875rem] text-ink-3",
             )}
           >
             <span />
@@ -127,7 +129,10 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: Record<string
               </Toggle>
             ))}
             {off.length > 0 && (
-              <div className="flex items-baseline gap-3 border-b border-rule px-2 pt-3 pb-1.5">
+              // Space, not a rule: the rows below draw their own, and a heavier
+              // line here made the break between 开着的 and 关掉的 look like one
+              // more row boundary.
+              <div className="flex items-baseline gap-3 px-2 pt-6 pb-1.5">
                 <Meta>关掉的</Meta>
                 <Meta className="text-ink-3">点一下加到最后一道</Meta>
               </div>
