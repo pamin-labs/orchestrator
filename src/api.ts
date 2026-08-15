@@ -8,7 +8,8 @@ import { poolSizes, type Scheduler } from "./scheduler.ts";
 import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
-import { execIn, killSandbox, putFile, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox.ts";
+import { execIn, killSandbox, putFile, restartServer, runningServer, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox.ts";
+import { resetServerRestarts } from "./mech/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
 import { loginRuntimes, startLogin } from "./mech/login.ts";
@@ -3550,6 +3551,47 @@ const getPreflight: Handler = async (ctx) =>
     }),
   });
 
+/**
+ * The process that hands out containers, and what a restart of it would cost.
+ *
+ * Whether it is *healthy* is preflight's answer and stays preflight's answer —
+ * two things saying "is it up" that can disagree is worse than one that is
+ * occasionally stale. This is only what preflight cannot know: the pid, the
+ * argv it was started with, and therefore whether there is anything to restart
+ * it *with*. `runningServer` learns the argv by seeing the process, so an
+ * orchestrator that booted while the server was already down has never seen one
+ * and the button has to be dead rather than hopeful.
+ *
+ * The two counts are the evidence for that button (硬约束 5): a restart kills
+ * every container and every turn inside them.
+ */
+const getSandboxServer: Handler = async (ctx) => {
+  const live = runningServer();
+  const count = (sql: string) => ctx.db.query<{ c: number }, []>(sql).get()!.c;
+  return json({
+    running: !!live,
+    pid: live?.pid ?? null,
+    config: live?.config ?? null,
+    argv: live?.argv ?? [],
+    restartable: !!live?.argv.length,
+    containers: count("SELECT count(*) AS c FROM grp WHERE sandbox_id IS NOT NULL"),
+    runningTurns: count("SELECT count(*) AS c FROM job WHERE state = 'running'"),
+  });
+};
+
+const postSandboxServerRestart: Handler = async (ctx) => {
+  const live = runningServer();
+  if (!live?.argv.length) return bad("没见过这个服务器是怎么起来的，restart 无从谈起 —— 手动起一次，之后就有了。");
+  const err = await restartServer(live.argv);
+  // A deliberate restart clears the automatic counter, or the boss restarts by
+  // hand, it does not take, and the watchdog has already spent its three tries
+  // on the same problem.
+  resetServerRestarts();
+  if (err) return bad(err);
+  ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "沙盒服务器重启了，容器都没了" });
+  return json({ ok: true });
+};
+
 const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/auth$/, getAuth],
   ["POST", /^\/api\/auth$/, postAuth],
@@ -3559,6 +3601,8 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/auth\/github$/, postGithubLogin],
   ["POST", /^\/api\/auth\/github\/app$/, postGithubApp],
   ["GET", /^\/api\/preflight$/, getPreflight],
+  ["GET", /^\/api\/sandbox-server$/, getSandboxServer],
+  ["POST", /^\/api\/sandbox-server\/restart$/, postSandboxServerRestart],
   ["GET", /^\/api\/sandbox$/, getSandbox],
   ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
   ["POST", /^\/api\/project\/(?<id>\d+)\/config$/, patchProjectConfig],

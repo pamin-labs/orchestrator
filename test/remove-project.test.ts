@@ -203,3 +203,23 @@ test("attachments of the removed project go, and files it never named stay", asy
   // whatever one of them happens to say.
   expect(existsSync(outside)).toBe(true);
 });
+
+test("the restart button gets the two numbers it has to show, and never a guess", async () => {
+  // Restarting the sandbox server kills every container and every turn in them,
+  // so those two counts are the evidence beside the button (硬约束 5). They come
+  // from the database, which is the half that is the same on every machine —
+  // whether a server happens to be running here is not.
+  const h = harness();
+  const grp = populate(h.db, 1, "doomed");
+  h.db.run("UPDATE grp SET sandbox_id = 'sb-x' WHERE id = ?", [grp]);
+  h.db.run("UPDATE job SET state = 'running' WHERE grp_id = ?", [grp]);
+
+  const b = (await (await h.app(new Request("http://x/api/sandbox-server"))).json()) as any;
+  expect(b.containers).toBe(1);
+  expect(b.runningTurns).toBe(2);
+  // `restartable` is "we have seen this process's argv", never "we hope so": an
+  // orchestrator that booted while the server was down has nothing to restart
+  // with, and the button is dead rather than optimistic.
+  expect(typeof b.restartable).toBe("boolean");
+  expect(b.restartable).toBe(b.argv.length > 0);
+});

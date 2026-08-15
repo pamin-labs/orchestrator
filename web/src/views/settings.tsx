@@ -265,7 +265,7 @@ export function SettingsDialog({
               ) : here === "host" ? (
                 <Env checks={checks.filter((c) => !isCredential(c))} />
               ) : here === "server" ? (
-                <SandboxKey current={rows.find((x) => x.runtime === "sandbox")} onSaved={load} />
+                <SandboxKey current={rows.find((x) => x.runtime === "sandbox")} checks={checks} onSaved={load} />
               ) : here === "skills" ? (
                 <Skills projectId={projectId} />
               ) : here === "prefs" ? (
@@ -889,6 +889,112 @@ function Env({ checks }: { checks: HostCheck[] }) {
   );
 }
 
+interface ServerInfo {
+  running: boolean;
+  pid: string | null;
+  config: string | null;
+  /** Empty when this orchestrator has never seen the process running. */
+  argv: string[];
+  restartable: boolean;
+  containers: number;
+  runningTurns: number;
+}
+
+/**
+ * Is the container server up, is its config still right, and one button.
+ *
+ * Health is preflight's answer, read from preflight — a second source that can
+ * disagree about "is it up" is worse than one that is occasionally stale. What
+ * this asks the server route for is only what preflight cannot know: whether we
+ * ever saw the command line, and therefore whether there is anything to restart
+ * with.
+ *
+ * `allowed_host_paths` is the most valuable thing on the page and it is not a
+ * control: when the allowlist stops covering the staged skills directory,
+ * nothing fails loudly — every container mounts an empty directory instead, and
+ * the agents simply do not have the skills the boss ticked. Preflight builds the
+ * exact line to paste, so it is rendered selectable rather than described.
+ */
+function ServerState({ checks }: { checks: HostCheck[] }) {
+  const [d, setD] = useState<ServerInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = async () => setD(await pull<ServerInfo>("/api/sandbox-server"));
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const up = checks.find((c) => c.name === "opensandbox-server");
+  const paths = checks.find((c) => c.name === "allowed_host_paths");
+
+  const restart = async () => {
+    const yes = await ask({
+      title: "重启沙盒服务器？",
+      // The evidence beside the button: this is not a service bounce, it is
+      // every container going away and every turn inside them dying with it.
+      body:
+        `所有容器都会没：${d?.containers ?? 0} 个组的沙盒，还有 ${d?.runningTurns ?? 0} 个正在跑的 turn。` +
+        `\n\n没跑完的 turn 就白跑了，组会自己重开容器接着做，代码和分支不受影响。`,
+      yes: "重启",
+      danger: true,
+    });
+    if (!yes) return;
+    setBusy(true);
+    const r = await post("/api/sandbox-server/restart", {});
+    setBusy(false);
+    void load();
+    if (r.ok) toast.success("重启了，容器会按需重开");
+  };
+
+  return (
+    <section className="mb-1 border-b border-rule pb-3">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        {up ? (
+          <>
+            {up.ok ? (
+              <Check size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-ok" />
+            ) : (
+              <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
+            )}
+            <span className={cn("text-[0.8125rem]", !up.ok && "text-accent")}>{up.detail}</span>
+          </>
+        ) : (
+          <Meta>检查中…</Meta>
+        )}
+        <span className="grow" />
+        {d && !d.restartable ? (
+          // Nothing to restart *with*: the argv is remembered from having seen
+          // the process, and this orchestrator booted after it was already gone.
+          <Tip label="没见过它是怎么起来的（这个面板启动时它就不在了）。手动起一次，之后这个按钮就能用。">
+            <Button size="sm" disabled>
+              重启
+            </Button>
+          </Tip>
+        ) : (
+          <Button size="sm" disabled={busy || !d} onClick={restart}>
+            {busy ? "重启中…" : "重启"}
+          </Button>
+        )}
+      </div>
+      {d?.config && <Meta className="mt-1 block truncate font-mono text-[0.6875rem]">配置：{d.config}</Meta>}
+
+      {/* Silent when wrong, so it is loud here. */}
+      {paths && !paths.ok && (
+        <div className="mt-2 rounded-md border border-rule bg-sunk px-3 py-2">
+          <div className="text-[0.8125rem] text-accent">{paths.detail}</div>
+          <Meta className="mt-1 block">
+            容器不会报错，只会挂一个空目录 —— 勾上的技能就这么没了。把这行写进配置，然后重启：
+          </Meta>
+          {paths.fix && (
+            <pre className="mt-1.5 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-ink-2 select-all">
+              {paths.fix.split("\n").slice(-1)[0]!.trim()}
+            </pre>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /**
  * The key this orchestrator uses to drive opensandbox-server.
  *
@@ -896,7 +1002,7 @@ function Env({ checks }: { checks: HostCheck[] }) {
  * is what stands between a local port and "create a container". 32 bytes from
  * the platform CSPRNG, base64url so it survives a TOML string.
  */
-function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
+function SandboxKey(props: { current?: AuthRow; checks: HostCheck[]; onSaved: () => void }) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -920,6 +1026,7 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
   return (
     <>
       <Head title="沙盒服务器" note="开容器的那个服务" />
+      <ServerState checks={props.checks} />
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="sandbox-key">密钥</FieldLabel>
