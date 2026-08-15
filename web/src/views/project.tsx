@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GripVertical } from "lucide-react";
+import { GripVertical, X } from "lucide-react";
 import { Head, Input, Meta } from "../ui/bits";
 import { Button } from "../ui/button";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../ui/field";
@@ -212,12 +212,10 @@ export function Sandbox({
           busy={busy}
           onSave={(v) => set("memory", v || undefined)}
         />
-        <Row
-          label="禁止访问"
-          value={(sandbox.denyDomains ?? []).join(" ")}
-          placeholder="域名，空格分隔"
+        <DomainsRow
+          value={sandbox.denyDomains ?? []}
           busy={busy}
-          onSave={(v) => set("denyDomains", v.split(/\s+/).filter(Boolean))}
+          onSave={(v) => set("denyDomains", v.length ? v : undefined)}
         />
         <Row
           label="共享缓存"
@@ -248,6 +246,74 @@ export function Sandbox({
 }
 
 /** Label, value, and a save that only appears once there is something to save. */
+/**
+ * The domains this project's containers may not reach.
+ *
+ * A space-separated text box was the wrong shape twice over. It cannot show what
+ * is in the list — `api.openai.com registry.npmjs.org internal.corp` is one
+ * string the eye has to parse — and it cannot say that one entry is wrong, so a
+ * pasted `https://evil.example.com/x` was stored verbatim and matched nothing.
+ * Egress rules that silently match nothing are the worst kind: the pane says the
+ * domain is blocked and it is not.
+ *
+ * One chip per domain, each removable, and what is typed is reduced to a host
+ * before it lands. Nothing bigger: shadcn has no tag input, and this is an
+ * `<input>`, a list, and two keys.
+ */
+function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; onSave: (v: string[]) => void }) {
+  const [draft, setDraft] = useState("");
+
+  // Whatever is pasted, reduced to the thing the sidecar matches on. A URL, a
+  // trailing slash, a port, capitals — all of them are somebody meaning a host.
+  const host = (raw: string) =>
+    raw.trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "").replace(/:\d+$/, "");
+  const add = () => {
+    const h = host(draft);
+    setDraft("");
+    if (h && !value.includes(h)) onSave([...value, h]);
+  };
+
+  return (
+    <Field aria-labelledby="cfg-deny">
+      <FieldTitle id="cfg-deny">禁止访问</FieldTitle>
+      <FieldContent className="flex-col items-start gap-1.5">
+        {value.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {value.map((d) => (
+              <span key={d} className="flex items-center gap-1 rounded-sm bg-sunk py-px pr-1 pl-1.5 font-mono text-[0.6875rem] text-ink-2">
+                {d}
+                <button
+                  type="button"
+                  aria-label={`不再禁止 ${d}`}
+                  disabled={busy}
+                  onClick={() => onSave(value.filter((x) => x !== d))}
+                  className="cursor-pointer rounded-sm px-0.5 text-ink-3 hover:text-accent disabled:opacity-40"
+                >
+                  <X size={10} strokeWidth={2.5} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <Input
+          className="min-w-0 max-w-[22rem] flex-1 font-mono"
+          placeholder={value.length ? "再加一个" : "留空 = 出站不拦（README 那节）"}
+          value={draft}
+          disabled={busy}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={add}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") return add();
+            // The one thing a chip list has to get right: backspace on an empty
+            // box takes the last chip, or the only way to undo a typo is to aim.
+            if (e.key === "Backspace" && !draft && value.length) onSave(value.slice(0, -1));
+          }}
+        />
+      </FieldContent>
+    </Field>
+  );
+}
+
 interface ImageChoices {
   published: string[];
   local: string[];
@@ -292,7 +358,7 @@ function ImageRow({ value, busy, onSave }: { value: string; busy: boolean; onSav
           <Combobox
             value={value}
             options={options}
-            placeholder={c ? "ghcr.io/pamin-labs/orch-agent:latest（默认）" : "读取中…"}
+            placeholder={c ? "默认 orch-agent:latest" : "读取中…"}
             disabled={busy}
             width="max-w-[22rem]"
             onCommit={onSave}

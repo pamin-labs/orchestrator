@@ -65,8 +65,14 @@ export function Combobox({
     if (next !== value.trim()) onCommit(next);
   };
 
+  // `modal`, and it is not about focus: this control lives inside the settings
+  // dialog, and Radix's Dialog locks scrolling on everything outside its own
+  // content. The list is portalled to the body, so it was outside — the wheel
+  // did nothing over a list of twenty images, which reads as a list that simply
+  // ends. A modal popover brings its own scroll lock, which takes over for as
+  // long as it is open.
   return (
-    <P.Root open={open} onOpenChange={setOpen}>
+    <P.Root open={open} onOpenChange={setOpen} modal>
       <Command shouldFilter={false} className={cn("relative min-w-0 flex-1", width)}>
         <P.Anchor asChild>
           <div className="relative">

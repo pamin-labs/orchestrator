@@ -51,7 +51,7 @@ const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", 
 const DIALOG: Partial<Record<View, Section>> = {
   settings: "cred", config: "gates", skills: "skills", github: "github", sandbox: "sandbox",
 };
-interface Sel { p: number | null; view: View; g: number | null; t: string | null }
+interface Sel { p: number | null; view: View; g: number | null; t: string | null; s: string | null }
 
 const readHash = (): Sel => {
   const h = new URLSearchParams(location.hash.slice(1));
@@ -65,6 +65,11 @@ const readHash = (): Sel => {
     // — the boss's choice silently replaced by ours, at the one moment they were
     // navigating back to it.
     t: h.get("t"),
+    // Which pane of the settings dialog. Its own key rather than `t`: the dialog
+    // floats over a view that has tabs of its own, and writing the pane into `t`
+    // would replace the boss's tab choice underneath — the exact silent
+    // replacement the note above exists to prevent.
+    s: h.get("s"),
   };
 };
 
@@ -129,6 +134,7 @@ export function App() {
     h.set("v", sel.view);
     if (sel.g) h.set("g", String(sel.g));
     if (sel.t) h.set("t", sel.t);
+    if (sel.s) h.set("s", sel.s);
     const next = `#${h}`;
     if (next === location.hash) return;
     if (!location.hash) history.replaceState(null, "", next);
@@ -289,8 +295,9 @@ export function App() {
           it is open the left rail moves inside it. */}
       <SettingsDialog
         open={!!section}
-        onOpenChange={(o) => !o && go({ view: behind })}
-        initial={section ?? "cred"}
+        onOpenChange={(o) => !o && go({ view: behind, s: null })}
+        initial={(sel.s as Section) ?? section ?? "cred"}
+        onSection={(k) => go({ s: k })}
         projectId={sel.p}
         projectName={proj?.name}
         groupCount={st.groups.filter((g) => g.project_id === sel.p).length}

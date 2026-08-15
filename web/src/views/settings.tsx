@@ -117,12 +117,15 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
 ];
 
 export function SettingsDialog({
-  open, onOpenChange, initial, projectId, projectName, groupCount, onRemoved,
+  open, onOpenChange, initial, onSection, projectId, projectName, groupCount, onRemoved,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  /** Which section the hash asked for. After that the left rail owns it. */
+  /** Which section the hash asks for, and it keeps asking: the left rail writes
+   *  its choice back, or a reload lands on whichever pane the link was for
+   *  rather than the one that was being read. */
   initial: Section;
+  onSection?: (s: Section) => void;
   projectId: number | null;
   projectName?: string;
   /** How many requirements go with it. Evidence for the one button that erases. */
@@ -131,6 +134,10 @@ export function SettingsDialog({
 }) {
   const [section, setSection] = useState<Section>(initial);
   useEffect(() => setSection(initial), [initial]);
+  const pick = (k: Section) => {
+    setSection(k);
+    onSection?.(k);
+  };
   const [rows, setRows] = useState<AuthRow[]>([]);
   const [checks, setChecks] = useState<HostCheck[]>([]);
   const [proj, setProj] = useState<ProjectConfig | null>(null);
@@ -218,7 +225,7 @@ export function SettingsDialog({
           <nav className="flex min-h-0 flex-col gap-4 overflow-y-auto border-r border-rule bg-rail px-2.5 py-4">
             <Group label="服务器" note="所有项目共用">
               {items.filter((n) => !n.project).map((n) => (
-                <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => setSection(n.key)} />
+                <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => pick(n.key)} />
               ))}
             </Group>
             {projectId && (
@@ -226,7 +233,7 @@ export function SettingsDialog({
               // line says which one, and the path is a hover away.
               <Group label="项目" note={projectName} hint={proj?.repoPath}>
                 {items.filter((n) => n.project).map((n) => (
-                  <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => setSection(n.key)} />
+                  <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => pick(n.key)} />
                 ))}
               </Group>
             )}
