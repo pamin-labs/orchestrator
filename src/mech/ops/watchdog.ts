@@ -9,6 +9,7 @@ import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
 import { CODEX_HOME } from "../sandbox/auth.ts";
 import { execIn, killSandbox, renewSandbox, restartServer, runningServer, UTIL, utilSandbox, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { baseRefFor, listTree, sandboxGit, treeHeads } from "../git/checkout.ts";
+import { serverLogPath } from "../sandbox/server.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -1116,7 +1117,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       case "restart": {
         serverRestarts++;
         nextServerTry = now() + serverBackoffMs(serverRestarts);
-        const err = await restartServer(seenServerArgv!);
+        const err = await restartServer(seenServerArgv!, serverLogPath(ctx));
         findings.push({
           rule: "server_restarted",
           grpId: null,

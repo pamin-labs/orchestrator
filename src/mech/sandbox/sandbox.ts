@@ -176,6 +176,24 @@ export function keyInConfig(path: string): string | null {
  * is the server publishing its own config path over its API, not a shell parser
  * here.
  */
+/**
+ * Is this `ps` line the server, or a process talking about it.
+ *
+ * Measured the hard way: a shell whose argv contained
+ * `pkill -f opensandbox-server` was matched as the server itself, so the caller
+ * reported "already running" and never started one — on a machine with no server
+ * at all. Anything that names it as an *argument* (pkill, grep, an editor, a
+ * terminal title) is about the server, not the server.
+ *
+ * Pulled out so it can be checked without a machine in a particular state, which
+ * is the only reason that bug survived: reproducing it needed a specific process
+ * to exist at a specific moment.
+ */
+export function isServerLine(l: string): boolean {
+  if (!/(^|\/|\s)opensandbox-server(\s|$)/.test(l)) return false;
+  return !/\b(ps|grep|pkill|pgrep|kill|killall|tail|less|vim|nano|echo|which)\b/.test(l);
+}
+
 export function runningServer(): { pid: string; argv: string[]; config: string | null } | null {
   try {
     const ps = Bun.spawnSync(["ps", "-Ao", "pid=,args="], { stdout: "pipe" }).stdout.toString();
@@ -185,10 +203,7 @@ export function runningServer(): { pid: string; argv: string[]; config: string |
     // caller then reported "already running" and never started one. Anything
     // that mentions it as an *argument* — pkill, grep, kill, an editor, a
     // terminal title — is a process talking about the server, not the server.
-    const line = ps.split("\n").find((l) => {
-      if (!/(^|\/|\s)opensandbox-server(\s|$)/.test(l)) return false;
-      return !/\b(ps|grep|pkill|pgrep|kill|killall|tail|less|vim|nano|echo|which)\b/.test(l);
-    });
+    const line = ps.split("\n").find(isServerLine);
     if (!line) return null;
     const parts = line.trim().split(/\s+/);
     const pid = parts[0]!;
@@ -244,7 +259,7 @@ export const coveredBy = (allowed: string[], want: string): boolean =>
  * turn in flight. That is why the deliberate one is a button with hard
  * constraint 5's evidence beside it, and the automatic one below is narrow.
  */
-export async function restartServer(argv: string[]): Promise<string | null> {
+export async function restartServer(argv: string[], log?: string): Promise<string | null> {
   if (!argv.length) return "nothing recorded about how this server was started";
   const live = runningServer();
   if (live) {
@@ -263,7 +278,12 @@ export async function restartServer(argv: string[]): Promise<string | null> {
     }
   }
   try {
-    Bun.spawn(argv, { stdio: ["ignore", "ignore", "ignore"] }).unref();
+    // Its output goes somewhere readable, for the same reason the first start's
+    // does: a server that comes back up and immediately dies on its config
+    // leaves nothing behind otherwise, and the only report left is our own
+    // failed probe — which describes the symptom and none of the causes.
+    const out = log ? Bun.file(log) : "ignore";
+    Bun.spawn(argv, { stdout: out, stderr: out, stdin: "ignore" }).unref();
     return null;
   } catch (e) {
     return `could not start ${argv[0]}: ${(e as Error)?.message ?? e}`;

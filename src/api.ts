@@ -14,7 +14,7 @@ import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sa
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "./mech/sandbox/login.ts";
 import { APP_SLUG, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
-import { driftingPaths, ensureServer, inspectServer, ourArgv, setServerAddr } from "./mech/sandbox/server.ts";
+import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "./mech/sandbox/server.ts";
 import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/flow/chain.ts";
@@ -3685,6 +3685,9 @@ const getSandboxServer: Handler = async (ctx) => {
     // The silent one: a mount of a path missing from `allowed_host_paths`
     // succeeds and delivers an empty directory.
     drift,
+    // Its own last words, when there are any. Shown rather than summarised: the
+    // reason a start fails is almost always in here verbatim.
+    log: state.kind === "down" ? serverLogTail(ctx, 8) : "",
     containers: count("SELECT count(*) AS c FROM grp WHERE sandbox_id IS NOT NULL"),
     runningTurns: count("SELECT count(*) AS c FROM job WHERE state = 'running'"),
   });
@@ -3701,7 +3704,7 @@ const postSandboxServerRestart: Handler = async (ctx) => {
       "这个沙盒服务器不是我们起的，不会去动它 —— 它可能是你自己起的，配的是别的东西。要重启就自己重启，之后这里会认得它。",
     );
   }
-  const err = await restartServer(argv);
+  const err = await restartServer(argv, serverLogPath(ctx));
   // A deliberate restart clears the automatic counter, or the boss restarts by
   // hand, it does not take, and the watchdog has already spent its three tries
   // on the same problem.
