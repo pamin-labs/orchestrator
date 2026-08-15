@@ -102,7 +102,9 @@ export function Workspace({ frames, grpId }: { frames: Frame[]; grpId: number })
           onClick={async () => {
             const go = await ask({
               title: "重开容器",
-              body: "容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖，要几分钟。没提交的改动会丢。",
+              // No duration here: nothing times a rebuild, and clone plus install
+              // already says what it costs.
+              body: "容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。",
               yes: "重开",
             });
             if (!go) return;

@@ -127,7 +127,8 @@ export function Progress({
 
 /** Absence, with the reason it is absent. A bare "无" teaches nothing. */
 function emptyOf(key: string): string {
-  if (key === "mine") return "没有待办。有计划卡、待查收切片或待合入 PR 时会推送通知。";
+  // No `mine` case: that bucket renders the queue, which carries its own empty
+  // line. The copy that lived here was a second, drifting version of it.
   if (key === "live") return "没有在办的需求。右上角 ＋ 新需求。";
   return "没有停着的需求。预算用尽、或等你答问题超过 2 小时会封存到这里，工作不丢。";
 }

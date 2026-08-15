@@ -29,7 +29,7 @@ import { CostView, Desk, Owns } from "./views/tables";
 // every notification already sent) carry a group id, so they land on the drill-in.
 type View =
   | "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes"
-  | "settings" | "config" | "skills" | "github";
+  | "settings" | "config" | "skills" | "github" | "sandbox";
 
 /**
  * Views that keep something pinned and scroll the rest themselves.
@@ -48,7 +48,9 @@ const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", 
  * They are one dialog now, two groups in its left rail — but every link already
  * sent still lands, on the section it used to be.
  */
-const DIALOG: Partial<Record<View, Section>> = { settings: "cred", config: "gates", skills: "skills", github: "github" };
+const DIALOG: Partial<Record<View, Section>> = {
+  settings: "cred", config: "gates", skills: "skills", github: "github", sandbox: "sandbox",
+};
 interface Sel { p: number | null; view: View; g: number | null; t: string | null }
 
 const readHash = (): Sel => {
@@ -199,6 +201,10 @@ export function App() {
   const proj = st.projects.find((p) => p.id === sel.p);
   const home = view === "home" || !proj;
   const groups = st.groups.filter((g) => g.project_id === sel.p);
+  // A merged requirement leaves `groups` (the query excludes DISSOLVED) and lands in
+  // `archived`. Without this, a project that delivered three requirements and has
+  // nothing running is told it never had one.
+  const delivered = (st.archived ?? []).some((a) => a.project_id === sel.p);
   // Scoped to where the boss is standing: inside a project it is that project's
   // queue, on Home it is everything.
   const waiting = countWaiting(st, home ? null : sel.p);
@@ -247,13 +253,20 @@ export function App() {
         label="切换项目"
         placeholder="项目名…"
         empty="没有匹配的项目"
-        items={st.projects.map((p) => ({
-          id: p.id,
-          name: p.name,
-          meta: p.repo_path,
-          rtlMeta: true,
-          badge: countWaiting(st, p.id) > 0 ? `${countWaiting(st, p.id)} 件待办` : undefined,
-        }))}
+        // `owner/repo` alone when the name is just the repository's — which it is
+        // for every project added the normal way, so the second line was the first
+        // line again with an owner in front of it. Both only when the boss renamed
+        // the project, where they are genuinely two facts.
+        items={st.projects.map((p) => {
+          const same = p.repo_path.split("/").at(-1) === p.name;
+          return {
+            id: p.id,
+            name: same ? p.repo_path : p.name,
+            meta: same ? undefined : p.repo_path,
+            rtlMeta: true,
+            badge: countWaiting(st, p.id) > 0 ? `${countWaiting(st, p.id)} 件待办` : undefined,
+          };
+        })}
         onPick={(id) => go({ p: id, g: null, view: "board" })}
       />
       <Switcher
@@ -461,9 +474,13 @@ export function App() {
             <FirstProject onAdded={added} onSettings={() => go({ view: "github" })} />
           ) : home ? (
             <Home st={st} onEnter={(p) => go({ p, view: "progress", g: null })} onOpen={openReq}
+                  // Writing the first requirement without leaving the list: the row
+                  // that had nothing in it is where the state changes, so that is
+                  // where it should be watched changing.
+                  onNew={(p) => { go({ p }); setAdding(true); }}
                   onAdd={() => setPicking(true)} refresh={refresh} />
           ) : view === "progress" ? (
-            groups.length ? (
+            groups.length || delivered ? (
               <Progress
                 st={st}
                 projectId={sel.p!}
@@ -484,8 +501,10 @@ export function App() {
               <Card className="max-w-[40rem]">
                 <CardBody>
                   <CardTitle>还没有需求</CardTitle>
+                  {/* One sentence. The second one used to promise 20 秒, which
+                      nothing here measures — a number the page invented. */}
                   <div className="mt-1 text-[0.75rem] text-ink-3">
-                    写一句话就行。拆成计划卡再回来给你批，20 秒。
+                    写一句话，拆成计划卡再回来给你批。
                   </div>
                   <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-[0.75rem]">
                     <dt className="text-ink-3">仓库</dt>
@@ -497,7 +516,10 @@ export function App() {
                   </dl>
                   <div className="mt-3 flex items-center gap-2">
                     <Button variant="go" onClick={() => setAdding(true)}>＋ 新需求</Button>
-                    <Button variant="quiet" onClick={() => go({ view: "config" })}>改这些</Button>
+                    {/* Named for what it changes, not 改这些. It also went to 闸门,
+                        which is the one row here nothing can be done about yet —
+                        the branch and the install command live under 沙盒. */}
+                    <Button variant="quiet" onClick={() => go({ view: "sandbox" })}>改基线分支</Button>
                   </div>
                 </CardBody>
               </Card>

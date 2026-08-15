@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Head, Input, Meta } from "../ui/bits";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { pull, post } from "../lib/api";
 import { forgetSkills } from "../ui/composer";
@@ -43,7 +44,21 @@ export function Skills({ projectId }: { projectId: number | null }) {
     void load();
   }, [projectId]);
 
-  const on = useMemo(() => (rows ?? []).filter((r) => r.on), [rows]);
+  // Two different things, counted separately. `restageSkills` builds the mount from
+  // user-scope skills only, so a project skill was inflating a fraction that claims
+  // to say how many got staged. Both kinds do land in the cached prefix — the
+  // ticked ones through the mount, the repository's own through the checkout the
+  // CLI already runs in — so the token estimate counts both.
+  const tally = useMemo(() => {
+    const all = rows ?? [];
+    const user = all.filter((r) => r.scope === "user");
+    return {
+      staged: user.filter((r) => r.on).length,
+      user: user.length,
+      repo: all.length - user.length,
+      k: Math.round(cost(all.filter((r) => r.on)) / 100) / 10,
+    };
+  }, [rows]);
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows ?? [];
@@ -75,7 +90,9 @@ export function Skills({ projectId }: { projectId: number | null }) {
         title="技能"
         note={
           rows
-            ? `勾中的 ${on.length}/${rows.length} 个进沙盒，每 turn 前缀约 ${Math.round(cost(on) / 100) / 10}k tokens`
+            ? `勾中的 ${tally.staged}/${tally.user} 个进沙盒` +
+              (tally.repo ? `，仓库自带 ${tally.repo} 个` : "") +
+              `，每 turn 前缀约 ${tally.k}k tokens`
             : "读取中…"
         }
       >
@@ -93,28 +110,36 @@ export function Skills({ projectId }: { projectId: number | null }) {
       />
 
       <div className="divide-y divide-rule-soft">
-        {shown.map((r) => (
-          <label
-            key={r.path}
-            className={cn(
-              "flex cursor-pointer items-baseline gap-2 py-1.5",
-              r.scope === "project" && "cursor-default",
-            )}
-          >
-            <input
-              type="checkbox"
-              checked={r.on}
-              disabled={r.scope === "project" || busy === r.name}
-              onChange={() => void toggle(r)}
-              className="size-3.5 shrink-0 self-center accent-[var(--accent)] disabled:opacity-40"
-            />
-            <span className="font-mono text-[0.75rem] text-ink">{r.name}</span>
-            <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">
-              {r.scope === "project" ? "项目" : "全局"}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{r.description}</span>
-          </label>
-        ))}
+        {shown.map((r) => {
+          const fixed = r.scope === "project";
+          return (
+            <label
+              key={r.path}
+              className={cn("flex items-baseline gap-2 py-1.5", fixed ? "cursor-default" : "cursor-pointer")}
+            >
+              {/* A project skill had a ticked, disabled box — the one shape in this
+                  list that means "broken", used for the one row that is always on.
+                  It gets no control at all, and the marker says why. The slot stays
+                  the box's width so the names still line up. */}
+              {fixed ? (
+                <span className="size-3.5 shrink-0" aria-hidden />
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={r.on}
+                  disabled={busy === r.name}
+                  onChange={() => void toggle(r)}
+                  className="size-3.5 shrink-0 self-center accent-[var(--accent)] disabled:opacity-40"
+                />
+              )}
+              <span className="font-mono text-[0.75rem] text-ink">{r.name}</span>
+              {/* Only the exception is marked. 全局 on every other row was a word
+                  repeated a hundred and seventy-eight times to say "normal". */}
+              {fixed && <Badge className="shrink-0 self-center">随仓库</Badge>}
+              <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{r.description}</span>
+            </label>
+          );
+        })}
         {rows && !shown.length && <Meta className="block py-2">没有匹配的技能</Meta>}
       </div>
     </>

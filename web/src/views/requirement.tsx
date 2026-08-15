@@ -412,7 +412,7 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
             onSelect={async () => {
               const go = await ask({
                 title: "重开容器",
-                body: `${g.name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖，要几分钟。没提交的改动会丢。`,
+                body: `${g.name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。`,
                 yes: "重开",
               });
               if (!go) return;
@@ -871,7 +871,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           names it, so this is not an error — but a plan written from memory of the
           codebase instead of from reading it also names files that were never
           there, and that is the cheapest visible symptom of a decomposition
-          pointed the wrong way. The 20 seconds is where that gets caught. */}
+          pointed the wrong way. Reviewing the card is where that gets caught. */}
       {unknown.length > 0 && (
         <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]">
           <b className="font-semibold text-warn">卡里这些路径仓库里没有</b>{" "}

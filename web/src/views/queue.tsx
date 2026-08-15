@@ -181,12 +181,11 @@ export function Queue({
     });
   }
 
+  // Was the label plus an explanation of the label: a sentence naming the four
+  // things that would refill it and promising a notification. A queue that fills
+  // itself does not need a paragraph saying it will.
   if (!items.length) {
-    return (
-      <div className="text-[0.8125rem] text-ink-3">
-        <b className="text-ok">都处理完了。</b> 有计划卡待批、切片待查收、PR 待合入或 agent 提问时会推送通知。
-      </div>
-    );
+    return <div className="text-[0.8125rem] text-ok">都处理完了</div>;
   }
 
   const { clustered, loose } = byRequirement(items);

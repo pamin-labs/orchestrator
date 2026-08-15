@@ -325,8 +325,10 @@ function Group({
   return (
     <div>
       <H2 className="mb-1 truncate px-2">{label}</H2>
-      {note && (hint && !href ? <Tip label={hint}>{line}</Tip> : line)}
-      {href && (
+      {/* One line under the label, not two. The project's own name sat on top of
+          its owner/repo, and owner/repo is the one that says which checkout — the
+          name is already in the header trail two inches away. */}
+      {href ? (
         <a
           href={href}
           target="_blank"
@@ -335,6 +337,8 @@ function Group({
         >
           {hint}
         </a>
+      ) : (
+        note && (hint ? <Tip label={hint}>{line}</Tip> : line)
       )}
       {children}
     </div>
@@ -831,7 +835,7 @@ function GithubPane() {
           panel could not show that this is a list at all. */}
       {s?.connected && !s.stale && (
         <section className="border-b border-rule py-3">
-          <div className="mb-1.5 flex items-baseline gap-2">
+          <div className="flex items-baseline gap-2">
             <H2>装在哪些账号上</H2>
             <span className="grow" />
             {s.installUrl ? (
@@ -849,14 +853,25 @@ function GithubPane() {
               一个也没有。装上之前这个连接看不见任何仓库 —— 装的时候可以选「所有仓库」或者挑几个。
             </Meta>
           ) : (
-            s.accounts.map((a) => (
-              <div key={a.id} className="flex items-baseline gap-2 border-t border-rule-soft py-1.5 first:border-t-0">
-                <span className="text-[0.8125rem]">{a.account}</span>
-                <Badge>{a.kind === "Organization" ? "组织" : "个人"}</Badge>
-                <span className="grow" />
-                <Meta>{a.repos === null ? "数不出来" : `${a.repos} 个仓库`}</Meta>
-              </div>
-            ))
+            /* The list owns its rules, not the section. Every row carried its own
+               `border-t` while the closing line was the section's `border-b` — a
+               heavier token, and 12px of section padding below the last row. The
+               boxes were the same 33.5px, but rule to rule the last band measured
+               46.5px, which is the height the eye actually reads. `first:border-t-0`
+               never fired either: the section's first child is the heading. */
+            <div className="border-y border-rule-soft divide-y divide-rule-soft">
+              {s.accounts.map((a) => (
+                <div key={a.id} className="flex items-baseline gap-2 py-1.5">
+                  <span className="text-[0.8125rem]">{a.account}</span>
+                  <Badge>{a.kind === "Organization" ? "组织" : "个人"}</Badge>
+                  <span className="grow" />
+                  {/* Tabular figures: `86` and `5` share a right edge either way,
+                      but proportional digits make the two counts look like two
+                      different scales. */}
+                  <Meta className="tabular-nums">{a.repos === null ? "数不出来" : `${a.repos} 个仓库`}</Meta>
+                </div>
+              ))}
+            </div>
           )}
         </section>
       )}
@@ -1147,22 +1162,30 @@ function Remove({
 
   return (
     <>
-      <Head title="移除项目" note="只删这边的，GitHub 不动" />
-      <FieldGroup>
-        <Field className="border-b-0" orientation="vertical">
-          <Meta className="block leading-relaxed">
-            {repoPath} · {groups} 个需求。移除会停掉在跑的 turn、删掉容器，再把这个项目的
-            需求、切片、卡片、提问和附件一起删干净 —— 和「不做了」不一样，那个是封存，这个是删除。
-            <br />
-            GitHub 上的分支、PR、代码都留在原处，一个字节都不碰。
-          </Meta>
-          <div className="mt-3 flex">
-            <Button variant="danger" disabled={busy} onClick={go}>
-              {busy ? "移除中…" : "移除这个项目"}
-            </Button>
+      <Head title="移除项目" />
+      {/* Two columns, one measure: what goes, what stays. It was one paragraph of
+          running prose across the full panel, and a destructive decision read as
+          an essay puts all the weight on the button being red. The confirm still
+          says it in sentences — this is the part you scan before clicking. */}
+      <dl className="grid max-w-[34rem] grid-cols-[2.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 pt-1 text-[0.8125rem]">
+        <dt className="font-semibold text-bad">删掉</dt>
+        <dd className="min-w-0">
+          <span className="font-mono text-[0.75rem]">{repoPath}</span> 的 {groups} 个需求
+          <div className="mt-0.5 text-[0.75rem] text-ink-3">
+            在跑的 turn 会停，容器、切片、卡片、提问、附件一起删，找不回来
           </div>
-        </Field>
-      </FieldGroup>
+        </dd>
+        <dt className="font-semibold text-ok">留着</dt>
+        <dd className="min-w-0 text-ink-2">
+          GitHub 上的分支、PR、代码
+          {/* 不做了 archives and keeps every event. This does not, and the two
+              buttons are one dialog apart. */}
+          <div className="mt-0.5 text-[0.75rem] text-ink-3">想留下记录就用「不做了」封存，那个不删</div>
+        </dd>
+      </dl>
+      <Button variant="danger" className="mt-5" disabled={busy} onClick={go}>
+        {busy ? "移除中…" : "移除这个项目"}
+      </Button>
     </>
   );
 }

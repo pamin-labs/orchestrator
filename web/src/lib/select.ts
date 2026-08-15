@@ -79,12 +79,22 @@ export function pending(st: State, projectId: number | null) {
 export const countWaiting = (st: State, p: number | null) =>
   Object.values(pending(st, p)).reduce((a, x) => a + x.length, 0);
 
-/** A project's state, ordered by what should pull the eye. */
-export function projectState(st: State, p: number) {
+/**
+ * A project's state, ordered by what should pull the eye.
+ *
+ * `fresh` is "nothing was ever asked of this project", which is not the same as
+ * "no live group": a project whose requirements all merged also has none, and
+ * calling that 空着 denies the only work the system ever finished.
+ */
+export function projectState(st: State, p: number): { zh: string; mine: boolean; live?: boolean; fresh?: boolean } {
   const n = countWaiting(st, p);
   if (n) return { zh: `${n} 件待办`, mine: true };
   const gs = st.groups.filter((g) => g.project_id === p);
-  if (!gs.length) return { zh: "空着", mine: false };
+  if (!gs.length) {
+    return (st.archived ?? []).some((a) => a.project_id === p)
+      ? { zh: "都做完了", mine: false }
+      : { zh: "空着", mine: false, fresh: true };
+  }
   const live = gs.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
   if (live) return { zh: `${live} 个在跑`, mine: false, live: true };
   const held = gs.filter((g) => ["PAUSED", "PARKED"].includes(g.status)).length;
