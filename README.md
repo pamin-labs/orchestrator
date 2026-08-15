@@ -33,15 +33,15 @@ its own clone. If an agent runs `rm -rf`, it happens to a container.
 
 ## Quickstart
 
-Needs `bun`, Docker, [`uv`](https://docs.astral.sh/uv/), and a Claude and/or
-ChatGPT subscription.
+Needs [`bun`](https://bun.sh), [Docker](https://docs.docker.com/get-started/get-docker/),
+[`uv`](https://docs.astral.sh/uv/), and a Claude and/or ChatGPT subscription.
 
 ```bash
 bun install
 docker build -f docker/agent.Dockerfile -t orch/agent:1 .
 docker pull opensandbox/egress:v1.1.6      # v1.1.4 breaks scoped npm packages
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
-bun run dev                                       # → 127.0.0.1:47821
+bun start                                         # → 127.0.0.1:47821
 ```
 
 Then, once, in the panel:
@@ -59,17 +59,15 @@ Then, once, in the panel:
 
 ## The team
 
-| | |
-|---|---|
-| **Chief of Staff** | Works for you, not for a project. Batches every open question into one message. Blockers go straight through. |
-| **Dispatcher** | One sentence in, a plan out. Counts how many separate asks you actually typed, and splits the work into slices you accept one at a time. |
-| **Architect** | Standing, above every group. Assigns each group its own paths so two can't collide, then writes two lines on what's wrong with the plan — which you read before approving. |
-| **PM** | The group's one conversational entrance. You say something, one agent answers. |
-| **Engineer** | The only agent in a group that writes code. Serialised, so write conflicts don't exist. |
-| **QA** | Checks one slice against its acceptance criteria, from the diff and the test output — deliberately not from the whole repo. |
-| **Auditor** | Reviews the finished branch from outside the group, on a different model. Does it deliver what the card promised, did it reinvent something the codebase already has, do its own work notes match the real diff. |
-| **Librarian** | Keeps a project primer and a capped list of lessons learned, so a new agent starts already knowing the project. |
-| **Bootstrap** | Makes a fresh checkout buildable, working the install step out from the lockfile and CI config. |
+- **Chief of Staff** — Works for you, not for a project. Batches every open question into one message. Blockers go straight through.
+- **Dispatcher** — One sentence in, a plan out. Counts how many separate asks you actually typed, and splits the work into slices you accept one at a time.
+- **Architect** — Standing, above every group. Assigns each group its own paths so two can't collide, then writes two lines on what's wrong with the plan — which you read before approving.
+- **PM** — The group's one conversational entrance. You say something, one agent answers.
+- **Engineer** — The only agent in a group that writes code. Serialised, so write conflicts don't exist.
+- **QA** — Checks one slice against its acceptance criteria, from the diff and the test output — deliberately not from the whole repo.
+- **Auditor** — Reviews the finished branch from outside the group, on a different model. Does it deliver what the card promised, did it reinvent something the codebase already has, do its own work notes match the real diff.
+- **Librarian** — Keeps a project primer and a capped list of lessons learned, so a new agent starts already knowing the project.
+- **Bootstrap** — Makes a fresh checkout buildable, working the install step out from the lockfile and CI config.
 
 Adding a role is a YAML file, not code.
 

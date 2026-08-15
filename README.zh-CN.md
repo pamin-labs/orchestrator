@@ -32,15 +32,15 @@ agent 真跑了 `rm -rf`，炸的是一个容器。
 
 ## 跑起来
 
-需要 `bun`、Docker、[`uv`](https://docs.astral.sh/uv/)，
-以及一个 Claude 和/或 ChatGPT 订阅。
+需要 [`bun`](https://bun.sh)、[Docker](https://docs.docker.com/get-started/get-docker/)、
+[`uv`](https://docs.astral.sh/uv/)，以及一个 Claude 和/或 ChatGPT 订阅。
 
 ```bash
 bun install
 docker build -f docker/agent.Dockerfile -t orch/agent:1 .
 docker pull opensandbox/egress:v1.1.6      # v1.1.4 会搞坏 scoped npm 包
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode 要是 "dns+nft"
-bun run dev                                       # → 127.0.0.1:47821
+bun start                                         # → 127.0.0.1:47821
 ```
 
 然后在面板里做一次：
@@ -54,17 +54,15 @@ bun run dev                                       # → 127.0.0.1:47821
 
 ## 这支团队
 
-| | |
-|---|---|
-| **Chief of Staff** | 给你干活，不给项目干活。所有悬着的问题攒成一条消息，blocker 直接放行。 |
-| **Dispatcher** | 一句话进去，方案出来。先数你到底提了几件事，再拆成一片一片能单独验收的小改动。 |
-| **Architect** | 常驻，在所有组之上。给每个组分定路径，两个组撞不上。然后用两行写清这方案哪里不对，你批之前就看到。 |
-| **PM** | 一个组唯一的对话入口。你说一句，一个 agent 回你。 |
-| **Engineer** | 组里唯一写代码的。被串行化，写冲突不存在。 |
-| **QA** | 拿 diff 和测试结果，对着验收标准验其中一片，**刻意读不到**整个仓库。 |
-| **Auditor** | 从组外审完成的分支，换一个模型。卡上承诺的做没做、有没有另起炉灶造一套仓库里已经有的东西、它自己写的工作记录和真实 diff 对不对得上。 |
-| **Librarian** | 维护一份项目入门说明和一份有上限的经验清单，新 agent 一上来就懂这个项目。 |
-| **Bootstrap** | 把干净检出弄到能构建，从 lockfile 和 CI 配置里推出安装步骤。 |
+- **Chief of Staff** — 给你干活，不给项目干活。所有悬着的问题攒成一条消息，blocker 直接放行。
+- **Dispatcher** — 一句话进去，方案出来。先数你到底提了几件事，再拆成一片一片能单独验收的小改动。
+- **Architect** — 常驻，在所有组之上。给每个组分定路径，两个组撞不上。然后用两行写清这方案哪里不对，你批之前就看到。
+- **PM** — 一个组唯一的对话入口。你说一句，一个 agent 回你。
+- **Engineer** — 组里唯一写代码的。被串行化，写冲突不存在。
+- **QA** — 拿 diff 和测试结果，对着验收标准验其中一片，**刻意读不到**整个仓库。
+- **Auditor** — 从组外审完成的分支，换一个模型。卡上承诺的做没做、有没有另起炉灶造一套仓库里已经有的东西、它自己写的工作记录和真实 diff 对不对得上。
+- **Librarian** — 维护一份项目入门说明和一份有上限的经验清单，新 agent 一上来就懂这个项目。
+- **Bootstrap** — 把干净检出弄到能构建，从 lockfile 和 CI 配置里推出安装步骤。
 
 加一个角色是写一个 YAML，不是改代码。
 
