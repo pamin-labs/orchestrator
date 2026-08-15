@@ -339,19 +339,28 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
   // and the next slice must start whether or not GitHub is answering. A failure
   // is said out loud and left to the next boundary; `openPr` pushes again before
   // it creates the PR, so nothing ships on an unpushed branch.
-  // `pushBranch` returns its failures rather than throwing, so there is nothing
-  // for a `.catch` to do — and a floating rejection here would be one nobody
-  // sees, in a function the boss's button calls.
-  void pushBranch(ctx, sl.grp_id).then((r) => {
-    if (r.ok || /empty bundle/i.test(r.reason ?? "")) return;
-    ctx.bus.emit({
-      grpId: sl.grp_id,
-      author: "orchestrator",
-      kind: "state_change",
-      severity: "warn",
-      body: `分支没推上远端（下一个切片验收时会再试）：${r.reason}`,
+  //
+  // The `.catch` is not decoration. `pushBranch` returns its failures rather than
+  // throwing, but the reporting itself can throw: `event.grp_id` is a foreign key
+  // to `grp`, and this lands seconds later — by which time the group may have
+  // been dropped, or the process may be somewhere else entirely. An unhandled
+  // rejection from a detached promise surfaces against whatever is running when
+  // it fires, which is a failure with no relationship to its cause.
+  void pushBranch(ctx, sl.grp_id)
+    .then((r) => {
+      if (r.ok || /empty bundle/i.test(r.reason ?? "")) return;
+      ctx.bus.emit({
+        grpId: sl.grp_id,
+        author: "orchestrator",
+        kind: "state_change",
+        severity: "warn",
+        body: `分支没推上远端（下一个切片验收时会再试）：${r.reason}`,
+      });
+    })
+    .catch(() => {
+      // The group is gone, or the record is. Either way there is nobody left to
+      // tell, and this is the branch that must not take an unrelated caller down.
     });
-  });
 
   // Accepting one slice is what starts the next.
   startNextSlice(ctx, sl.grp_id);

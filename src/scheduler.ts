@@ -418,6 +418,13 @@ export class Scheduler {
     const p = this.exec({ ...job, state: "running" })
       .then(() => this.settle(job.id, "done"))
       .catch((e) => this.settle(job.id, "failed", String(e?.message ?? e)))
+      // `settle` writes to the database, so the handler above can throw as well —
+      // a handle closed during shutdown, a job row that is no longer there. This
+      // chain is detached, so an escape from it is an unhandled rejection that
+      // surfaces against whatever happens to be running when it lands, with no
+      // relationship to the job that caused it. There is nothing left to record
+      // by then: the row this wanted to write to is the thing that is gone.
+      .catch(() => {})
       .finally(() => {
         this.inflight.delete(job.id);
       });

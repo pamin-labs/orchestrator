@@ -3,3 +3,6 @@
 # `data/` — the codex home and the staged skills, both full of other people's
 # `*.test.ts`. Those failed as ours and buried the real result.
 root = "test"
+# Clears the module-scope holds before every test, so no file inherits one from
+# whatever ran before it. See test/setup.ts.
+preload = ["./test/setup.ts"]
