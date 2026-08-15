@@ -51,6 +51,15 @@ export interface SchedulerOptions {
    * Default is "yes": a scheduler nobody told about the network must not stop.
    */
   online?: () => boolean;
+  /**
+   * Can a container be opened right now?
+   *
+   * Separate from `online` and deliberately not folded into it: one is about
+   * this machine reaching the providers, the other about docker and the sandbox
+   * server being up. Conflating them would make both comments wrong the first
+   * time only one of them was true.
+   */
+  sandboxReady?: () => boolean;
 }
 
 export const DEFAULT_POOL = "default";
@@ -103,6 +112,7 @@ export class Scheduler {
   private readonly pools: Record<string, number>;
   private readonly now: () => number;
   private readonly online: () => boolean;
+  private readonly sandboxReady: () => boolean;
   private draining = false;
 
   constructor(
@@ -114,6 +124,7 @@ export class Scheduler {
     this.pools = poolSizes(opts.leaseSlots);
     this.now = opts.now ?? (() => Date.now());
     this.online = opts.online ?? (() => true);
+    this.sandboxReady = opts.sandboxReady ?? (() => true);
   }
 
   enqueue(
@@ -234,6 +245,9 @@ export class Scheduler {
       // lifts by itself when the probe says the network is back, so the boss is
       // not left with a fleet to restart by hand.
       if (job.kind === "agent_turn" && !this.online()) continue;
+      // Every turn opens a container, so a fleet with no docker would otherwise
+      // have each group discover that separately and file its own blocker.
+      if (job.kind === "agent_turn" && !this.sandboxReady()) continue;
       if (job.kind === "agent_turn" && this.providerHeld(job)) continue;
       if (job.kind === "agent_turn" && this.credentialMissing(job)) continue;
       busyGroups.add(slot);

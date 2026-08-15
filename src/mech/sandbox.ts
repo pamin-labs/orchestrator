@@ -262,7 +262,70 @@ function remember(ctx: Ctx, scope: Scope, id: string | null): void {
  * is what keeps a turn's session — and therefore its cached prefix — alive
  * across a restart.
  */
+/**
+ * Nothing can open a container right now.
+ *
+ * docker not running, `opensandbox-server` down, the key rejected. Preflight
+ * reports all three — and only as a console warning, so the fleet still finds
+ * out the expensive way: every group dispatches, `ensureSandbox` throws, the
+ * turn fails, the watchdog requeues it once and then files a blocker. Ten
+ * groups, ten blockers, one fact.
+ *
+ * So it is a hold, the same shape as the rate-limit and offline ones: the first
+ * group discovers the wall and the rest are simply not dispatched. Short,
+ * because the alternative to re-probing is staying down after docker comes
+ * back, and because a failure that was actually about one project's config
+ * should not hold everyone for long.
+ */
+const HOLD_MS = 60_000;
+let downUntil = 0;
+let saidDown = false;
+
+export const sandboxHeld = (now = Date.now()): boolean => downUntil > now;
+
+/** Tests only. */
+export function resetSandboxHold(): void {
+  downUntil = 0;
+  saidDown = false;
+}
+
+function markDown(ctx: Ctx, e: unknown, now = Date.now()): void {
+  downUntil = now + HOLD_MS;
+  if (saidDown) return;
+  saidDown = true;
+  // Once per outage, not once per attempt: a held job produces no attempt, and
+  // the same line every minute is how a feed stops being read.
+  ctx.bus?.emit({
+    author: "orchestrator",
+    kind: "escalation",
+    intent: "inform",
+    severity: "blocker",
+    body:
+      `开不了容器，所有 turn 先挂起：${String((e as Error)?.message ?? e).slice(0, 200)}\n` +
+      `多半是 docker 没起或者 opensandbox-server 没在跑 —— 设置页的自检那一栏会说是哪个。好了自动继续。`,
+  });
+}
+
+function markUp(ctx: Ctx): void {
+  if (saidDown) {
+    ctx.bus?.emit({ author: "orchestrator", kind: "state_change", body: "容器又能开了，挂起的活自动继续" });
+  }
+  downUntil = 0;
+  saidDown = false;
+}
+
 export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
+  try {
+    const sb = await openSandbox(ctx, scope);
+    markUp(ctx);
+    return sb;
+  } catch (e) {
+    markDown(ctx, e);
+    throw e;
+  }
+}
+
+async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   const { sandboxId, projectId } = owner(ctx, scope);
 
   if (sandboxId) {

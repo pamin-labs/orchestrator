@@ -9,7 +9,7 @@ import { changed, checkConfig, checkRoles } from "./mech/checkconfig.ts";
 import { open } from "./db.ts";
 import { RepoLock } from "./mech/gitlock.ts";
 import { makeGitRunner } from "./mech/worktree.ts";
-import { REAL } from "./mech/sandbox.ts";
+import { REAL, sandboxHeld } from "./mech/sandbox.ts";
 import { startMailbox } from "./mech/mailbox.ts";
 import { preflight, report } from "./mech/preflight.ts";
 import { restageSkills } from "./mech/skills.ts";
@@ -277,6 +277,9 @@ export function start(overrides: Partial<Config> = {}): Started {
     // The watchdog probes; this only reads the answer, so a tick never blocks a
     // dispatch decision on a DNS timeout.
     online: isOnline,
+    // Same shape, different fact: docker or the sandbox server being down holds
+    // every turn instead of failing each group once.
+    sandboxReady: () => !sandboxHeld(),
   });
 
   const git = makeGitRunner(gitLock);

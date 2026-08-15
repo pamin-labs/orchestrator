@@ -5,6 +5,7 @@ import { Scheduler, resumeReclaimed, type Job } from "../src/scheduler.ts";
 import { holdForOffline } from "../src/mech/watchdog.ts";
 import { probe, isOnline, resetNet, PROBE_EVERY_MS } from "../src/mech/net.ts";
 import { saveAuth } from "../src/mech/auth.ts";
+import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../src/mech/sandbox.ts";
 import type { Ctx } from "../src/api.ts";
 
 /**
@@ -175,4 +176,34 @@ test("while things work the probe is throttled, and while they do not it is not"
   });
   expect(downCalls).toBe(1);
   resetNet();
+});
+
+test("no container to open holds every turn instead of failing each group once", async () => {
+  // docker down, or `opensandbox-server` not running, or the key rejected.
+  // preflight reports all three — as a console warning — so the fleet still
+  // found out the expensive way: every group dispatched, `ensureSandbox` threw,
+  // the turn failed, the watchdog requeued it once and then filed a blocker. Ten
+  // groups, ten blockers, one fact.
+  resetSandboxHold();
+  const h = seed();
+  const sched = new Scheduler(h.db, async () => {}, { sandboxReady: () => !sandboxHeld() });
+  const id = sched.enqueue("agent_turn", { grp_id: 1, agent_id: 1, payload: { role: "engineer" } });
+
+  // Driven through the real `ensureSandbox` rather than by poking the flag: the
+  // failure this guards against is the wiring being absent, not the flag being
+  // wrong. Port 1 has nothing on it.
+  const ctx = { ...h.ctx, config: { language: "中文", sandbox: { server: "127.0.0.1:1", apiKey: "" } } } as Ctx;
+  await ensureSandbox(ctx, { grp: 1 }).catch(() => {});
+  expect(sandboxHeld()).toBe(true);
+
+  sched.tick();
+  expect(stateOf(h.db, id)).toBe("pending");
+
+  // Said once, not once per attempt — a held job makes no attempt, and the same
+  // line every minute is how a feed stops being read.
+  await ensureSandbox(ctx, { grp: 1 }).catch(() => {});
+  expect(
+    h.db.query<{ n: number }, []>("SELECT count(*) AS n FROM event WHERE kind = 'escalation'").get()!.n,
+  ).toBe(1);
+  resetSandboxHold();
 });

@@ -14,8 +14,18 @@ import { parseAuth } from "./chatgpt.ts";
  * with no credential configured looks like an agent that will not answer.
  *
  * Decision 001's lesson, one layer up: every quiet failure looked exactly like
- * success. So this refuses to start rather than degrading, and it never falls
- * back to running turns on the host — there is no host path left to fall back to.
+ * success. Nothing here ever falls back to running a turn on the host — there is
+ * no host path left to fall back to.
+ *
+ * It does **not** refuse to start, and said it did for a while. Refusing would
+ * take the panel down with it, and the panel is where three of these are fixed —
+ * the sandbox key is pasted there, so a server that will not boot without one
+ * cannot be given one. What enforces instead is the hold in `sandbox.ts`: with
+ * no container to open, turns are not dispatched at all, so the fleet waits
+ * rather than each group failing separately. This reports; that gates.
+ *
+ * `missingBinaries` in server.ts is the only fatal check, and it is down to
+ * `git`: the host really does run that one itself.
  */
 
 export interface Check {

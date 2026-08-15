@@ -675,3 +675,19 @@ server saw: /api/auth
 README 补一句：桌面通知是 macOS 的，其他平台走 ntfy，而那个 topic 名就是唯一的凭据。
 
 `bun test` 545 pass。
+
+### preflight 说自己会拒绝启动，它不会
+
+`missingBinaries()` 是唯一致命的检查，现在只剩 `git`。docker / uvx / opensandbox-server / egress 版本 / 镜像 / 技能路径 / 凭据全在 `preflight` 里 —— 而它是 `void preflight(...).then(consola.warn)`，一条 fire-and-forget 的控制台警告。**而 `preflight.ts` 自己的文档写着 "this refuses to start rather than degrading"。**
+
+后果是实的：docker 没起时每个组各自撞一次墙 —— 派发、`ensureSandbox` 抛、turn 失败、规则 8 重排一次、再给老板一条 blocker。十个组十条同样的话，一个事实。正是 `providerHeld` / `credentialMissing` / 断网闸存在的理由。
+
+**不改成拒绝启动**：拒绝会把面板一起带走，而面板正是这几条的修法所在 —— 沙盒密钥就是在那儿贴的，一个没有密钥就不启动的服务端没法被贴上密钥。
+
+改成**第四个同形状的闸**：`ensureSandbox` 失败就全局 hold 60 秒，第一个组撞墙，其余根本不派发；成功就解除。事件每次故障只发一条（被闸住的 job 不产生尝试，每分钟同一行是让 feed 失效的方式）。60 秒是因为两头都要防：docker 回来了要快速恢复，而万一那次失败其实只跟某个项目的配置有关，也不该长时间拖住所有人。
+
+`sandboxReady` 和 `online` 是**两个**注入项，不合并 —— 一个说的是这台机器够不够得着模型服务，一个说的是 docker 和沙盒服务端在不在。合并的话，第一次只有其中一个为真时，两边的注释就都错了。
+
+文档也改了：preflight **报告**，`sandbox.ts` 的 hold **执行**。
+
+`bun test` 546 pass。
