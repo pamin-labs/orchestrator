@@ -1,6 +1,6 @@
 # 007 GitHub is where a project comes from, and no agent-free container is a sandbox
 
-**Status**: implemented, except step 7. The path scoping the whole thing rests
+**Status**: implemented. The path scoping the whole thing rests
 on is measured against a live server (see below), and the host is no longer a
 git participant — `missingBinaries()` is `[]`, `gitlock.ts` and `makeGitRunner`
 are gone, and rule 15 reads the base from the API.
@@ -12,14 +12,30 @@ running against the group's clone *inside its container* where asking git is
 correct; and `httpsRemote` serves rows migration 037 left holding an SSH remote.
 A deletion list is a plan, not a fact about the code.
 
-**Step 7 is outstanding**: the codex refresher still spawns `codex` on the host
-(`sandbox/chatgpt.ts`). So "no external binary on the host" is true of what is
-*required* — a machine with docker, the image and a pasted key runs — and not of
-the ChatGPT-subscription path, which needs `codex` installed for as long as that
-refresher lives here. Preflight's `codex-refresher` check says so. Moving it
-means a container holding a real refresh token, which is the one credential this
-design has kept on the host deliberately, so it is a decision rather than a
-chore.
+**Step 7 landed too**, and further than planned. The codex refresher runs in the
+utility container; so does the ChatGPT login, via `codex login --device-auth` —
+codex's own headless flow, printed on the line after the localhost one it
+recommends against, so the real client runs the whole thing and the
+impersonation objection that kept this on the host does not apply. The usage
+poll moved with them, and that one was not a convenience: it was a host `fetch`
+carrying the real `runtime_auth` token, the last real model credential leaving
+this machine without the sidecar substituting it, which made the vault's stated
+premise false in a way reading the premise could not reveal.
+
+`claude setup-token` stays, and the reason is not OAuth. Measured: no callback
+listener at all (`code=true`), and without a pty it blocks silently forever —
+the browser shows a code the human pastes back into the CLI's **stdin**, and the
+exec API is request/response with no stdin channel. That is a transport gap, and
+scripting a paste around it is the workaround this decision refuses. The pasted
+token covers a headless machine, as the pasted `auth.json` did for codex before
+device-auth.
+
+So the host serves HTTP and SSE, owns sqlite, and polls the mailbox, with three
+stated exceptions: `claude setup-token` above; preflight's credential
+verification, which runs at boot before any container is guaranteed to exist, so
+moving it would make "can we open a container" a prerequisite for reporting that
+we cannot; and the GitHub REST client, which is not a model credential and which
+§1 chose over a binary deliberately.
 **Date**: 2026-08-15
 **Amends**: 005. That decision said "the container is the boundary". The line is
 one word narrower: **a container that runs an agent is the boundary**. A
