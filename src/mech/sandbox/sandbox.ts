@@ -179,8 +179,16 @@ export function keyInConfig(path: string): string | null {
 export function runningServer(): { pid: string; argv: string[]; config: string | null } | null {
   try {
     const ps = Bun.spawnSync(["ps", "-Ao", "pid=,args="], { stdout: "pipe" }).stdout.toString();
-    // Not this process's own `grep`-alike, and not a test harness mentioning it.
-    const line = ps.split("\n").find((l) => /opensandbox-server/.test(l) && !/\bps -Ao\b/.test(l));
+    // The name has to appear as a program being run, not merely somewhere on a
+    // command line. Measured the hard way: a shell whose argv contained
+    // `pkill -f opensandbox-server` was matched as the server itself, and the
+    // caller then reported "already running" and never started one. Anything
+    // that mentions it as an *argument* — pkill, grep, kill, an editor, a
+    // terminal title — is a process talking about the server, not the server.
+    const line = ps.split("\n").find((l) => {
+      if (!/(^|\/|\s)opensandbox-server(\s|$)/.test(l)) return false;
+      return !/\b(ps|grep|pkill|pgrep|kill|killall|tail|less|vim|nano|echo|which)\b/.test(l);
+    });
     if (!line) return null;
     const parts = line.trim().split(/\s+/);
     const pid = parts[0]!;
@@ -278,7 +286,7 @@ function processCwd(pid: string): string | null {
 }
 
 function connection(ctx: Ctx): ConnectionConfig {
-  const [host, port] = (ctx.config.sandbox ?? DEFAULTS).server.split(":");
+  const [host, port] = serverAddr(ctx).split(":");
   // Set from the panel first, then the environment, then the yaml. The yaml is
   // committed, so a key that lives there is a key that leaks; the panel writes
   // it to the same store every other credential uses.
@@ -799,6 +807,32 @@ for base in .claude .codex .agents; do
   done
 done
 } 2>/dev/null`;
+
+/**
+ * The one header opensandbox-server reads a key from.
+ *
+ * Not `Authorization: Bearer`. The server checks this header and nothing else
+ * (`middleware/auth.py`), so sending the wrong one is indistinguishable from
+ * holding the wrong key — 401 both ways, and the message says the key was
+ * rejected when it was never presented. Exported so the two probes that need it
+ * cannot drift apart.
+ */
+export const SANDBOX_API_KEY_HEADER = "OPEN-SANDBOX-API-KEY";
+
+/** Where the panel stores an address that overrides the yaml. */
+export const SANDBOX_ADDR = "sandbox_server_addr";
+
+/**
+ * Which server to drive.
+ *
+ * Settable from the panel, because "there is already one on 8080 and it is not
+ * ours" is a normal thing to walk into and the only two ways out are its key or
+ * a different address. A yaml-only knob makes the second one an edit-and-restart.
+ */
+export function serverAddr(ctx: Ctx): string {
+  const set = ctx.db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(SANDBOX_ADDR)?.v;
+  return (set || ctx.config?.sandbox?.server || DEFAULTS.server).trim();
+}
 
 /** The agent's only way out: a request is a file here, the answer is another. */
 export const MAILBOX_DIR = "/var/orch";

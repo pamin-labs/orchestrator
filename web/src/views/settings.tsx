@@ -927,6 +927,8 @@ function Env({ checks }: { checks: HostCheck[] }) {
 
 interface ServerInfo {
   running: boolean;
+  /** Which address we drive. Overridable, because the default may be taken. */
+  addr: string;
   /**
    * Which of the three cases this is, and it decides which control is offered:
    * a server we did not start is one we may report on and never act on.
@@ -1044,18 +1046,40 @@ function ServerState({ checks }: { checks: HostCheck[] }) {
         ) : null}
       </div>
 
-      {/* The reason, when there is one, because 驱动不了 alone sends nobody
-          anywhere. Most often: it has an api_key we were never given. */}
-      {d?.why && (
-        <div className="mt-2 rounded-md border border-rule bg-sunk px-3 py-2 text-[0.8125rem] text-ink-2">
+      {/* Only when it adds something. `没在跑` was rendering twice — once as the
+          status and once here — which reads as a stuck panel. */}
+      {d?.why && d.why !== st?.zh && (
+        <div className="mt-2 rounded-md border border-rule bg-sunk px-3 py-2 text-[0.8125rem] leading-relaxed text-ink-2">
           {d.why}
           {d.state === "stuck" && (
             <Meta className="mt-1 block">
-              没自动重启它，因为分不清它是不是你自己起的。它的配置：{d.config ?? "找不到"}
+              没自动重启它 —— 分不清它是不是你自己起的。它的配置：{d.config ?? "找不到"}
             </Meta>
           )}
         </div>
       )}
+
+      {/* The other way out of "that one is not ours", and the reason this is a
+          control rather than a yaml key: the fix for a taken port is a different
+          port, and an edit-and-restart is not a fix you make while reading this. */}
+      <Field className="mt-2">
+        <FieldLabel htmlFor="sb-addr">地址</FieldLabel>
+        <InputGroup>
+          <Input
+            id="sb-addr"
+            className="min-w-0 flex-1 font-mono"
+            placeholder="127.0.0.1:8080"
+            defaultValue={d?.addr ?? ""}
+            onKeyDown={async (e) => {
+              if (e.key !== "Enter") return;
+              const v = (e.target as HTMLInputElement).value;
+              const r = await post("/api/sandbox-server/addr", { addr: v });
+              void load();
+              if (r.ok) toast.success(v.trim() ? `改成 ${v.trim()} 了` : "改回配置文件里的了");
+            }}
+          />
+        </InputGroup>
+      </Field>
       {d?.config && !d.why && (
         <Meta className="mt-1 block truncate font-mono text-[0.6875rem]">配置：{d.config}</Meta>
       )}

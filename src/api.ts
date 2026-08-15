@@ -7,14 +7,14 @@ import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
 import { resolveLease, type ResourceDef } from "./mech/sandbox/lease.ts";
 import { sliceDiffBase } from "./mech/git/worktree.ts";
-import { execIn, killSandbox, putFile, relinkSkills, restartServer, runningServer, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
+import { execIn, killSandbox, putFile, relinkSkills, restartServer, runningServer, serverAddr, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "./mech/sandbox/login.ts";
 import { APP_SLUG, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
-import { driftingPaths, ensureServer, inspectServer, ourArgv } from "./mech/sandbox/server.ts";
+import { driftingPaths, ensureServer, inspectServer, ourArgv, setServerAddr } from "./mech/sandbox/server.ts";
 import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/flow/chain.ts";
@@ -3673,6 +3673,7 @@ const getSandboxServer: Handler = async (ctx) => {
   const drift = driftingPaths(ctx);
   return json({
     running: state.kind !== "down",
+    addr: serverAddr(ctx),
     state: state.kind,
     why: "why" in state ? state.why : null,
     pid: "pid" in state ? state.pid : (live?.pid ?? null),
@@ -3710,6 +3711,17 @@ const postSandboxServerRestart: Handler = async (ctx) => {
   return json({ ok: true });
 };
 
+/** Point us at another server. The way out of "that one is not ours". */
+const postSandboxServerAddr: Handler = async (ctx, req) => {
+  const b = await body<{ addr?: string }>(req);
+  const addr = (b.addr ?? "").trim();
+  // `host:port`, or empty to fall back to the yaml. Checked because a bad value
+  // here makes every container call fail somewhere far away from this box.
+  if (addr && !/^[\w.-]+:\d{2,5}$/.test(addr)) return bad("填 host:port，比如 127.0.0.1:8081");
+  setServerAddr(ctx, addr);
+  return json({ ok: true, addr: serverAddr(ctx) });
+};
+
 /** Start one when there is none. The panel's way out of the `down` state. */
 const postSandboxServerStart: Handler = async (ctx) => {
   const st = await ensureServer(ctx);
@@ -3737,6 +3749,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/sandbox-server$/, getSandboxServer],
   ["POST", /^\/api\/sandbox-server\/restart$/, postSandboxServerRestart],
   ["POST", /^\/api\/sandbox-server\/start$/, postSandboxServerStart],
+  ["POST", /^\/api\/sandbox-server\/addr$/, postSandboxServerAddr],
   ["GET", /^\/api\/sandbox$/, getSandbox],
   ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
   ["POST", /^\/api\/project\/(?<id>\d+)\/config$/, patchProjectConfig],

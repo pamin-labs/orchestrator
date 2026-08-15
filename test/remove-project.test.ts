@@ -215,10 +215,17 @@ test("the restart button gets the two numbers it has to show, and never a guess"
   const b = (await (await h.app(new Request("http://x/api/sandbox-server"))).json()) as any;
   expect(b.containers).toBe(1);
   expect(b.runningTurns).toBe(2);
-  // `restartable` is "we have seen this process's argv", never "we hope so": an
-  // orchestrator that booted while the server was down has nothing to restart
-  // with, and the button is dead rather than optimistic.
-  expect(typeof b.restartable).toBe("boolean");
-  expect(b.restartable).toBe(b.argv.length > 0);
+  // `restartable` used to mean "we have seen this process's argv". Seeing a
+  // command line is not permission to kill the process: opensandbox-server is
+  // machine-wide, it may be the user's own, and restarting it takes down
+  // whatever else was using it. It now means "we started this one", which is
+  // the only thing that makes it ours to bounce.
+  //
+  // Nothing was started by this harness, so it is false here regardless of what
+  // happens to be running on the machine the tests run on.
+  expect(b.restartable).toBe(false);
+  // And the state is named, because which of the cases it is decides which
+  // control the panel may show at all.
+  expect(["ours", "theirs", "stuck", "started", "down"]).toContain(b.state);
 });
 

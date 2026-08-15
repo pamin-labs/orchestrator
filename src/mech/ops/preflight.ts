@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DB } from "../../db.ts";
 import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "../sandbox/auth.ts";
-import { allowedHostPaths, coveredBy } from "../sandbox/sandbox.ts";
+import { allowedHostPaths, coveredBy , SANDBOX_API_KEY_HEADER } from "../sandbox/sandbox.ts";
 import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 
 /**
@@ -51,7 +51,7 @@ export interface Check {
 async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; detail: string }> {
   try {
     const res = await fetch(`${url}/v1/sandboxes`, {
-      headers: apiKey ? { "OPEN-SANDBOX-API-KEY": apiKey } : {},
+      headers: apiKey ? { [SANDBOX_API_KEY_HEADER]: apiKey } : {},
       signal: AbortSignal.timeout(3000),
     });
     if (res.ok) return { ok: true, detail: "reachable" };
