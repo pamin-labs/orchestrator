@@ -8,7 +8,7 @@
 # What it does, in order, and it stops at the first failure:
 #
 #   1. runs every check, because a broken release is worse than a late one
-#   2. builds and pushes the agent image to GHCR, tagged with this version
+#   2. builds both images, one job per platform, and merges each into a manifest
 #   3. tags the commit
 #   4. publishes a release, with the notes GitHub generates itself
 #
@@ -16,6 +16,15 @@
 # knows which pull requests merged since the previous tag and which of their
 # authors had never merged one before — that is the feature — so neither a
 # third-party action nor a script of ours has any work left to do.
+#
+# **On the shape of step 2**, because it is the whole cost of a release. This was
+# one job building `linux/amd64,linux/arm64` in a single step, which means arm64
+# under QEMU: every instruction of `bun install` and `bun build --compile`
+# emulated. Now each platform builds on a runner of its own architecture —
+# `ubuntu-24.04-arm` is free for public repositories — and `imagetools create`
+# joins the two digests into one manifest without rebuilding anything. More jobs,
+# less wall clock *and* fewer billed minutes, because emulation was paying
+# several times over for the same work.
 #
 # Release notes are English. The panel speaks whatever `output.language` says,
 # but a release is read by whoever finds the repository, and the PR titles it is
@@ -39,20 +48,17 @@ permissions:
   packages: write
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/orch-agent
-  # The orchestrator itself. Published with the agent image and from the same
-  # commit, because a server and the containers it drives are one version: the
-  # `orch` CLI it copies into every sandbox comes out of its own tree.
-  SERVER_IMAGE: ghcr.io/${{ github.repository_owner }}/orch-server
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
 
 jobs:
-  release:
+  # Everything that can say no, before anything is built or pushed.
+  checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
-          # The notes are computed from the range since the previous tag, so the
-          # tags have to be here. A shallow clone has none of them.
+          # `git rev-parse` on the tag below needs the tags, and a shallow clone
+          # has none of them.
           fetch-depth: 0
 
       - name: reject a version that already exists
@@ -62,30 +68,13 @@ jobs:
             echo "::error::$v already exists. A published version is not re-cut; pick the next one."
             exit 1
           fi
-          echo "VERSION=$v" >> "$GITHUB_ENV"
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      # `package.json` is where the running orchestrator reads its own version —
-      # it is on the line every pull request carries. Left unbumped, a release
-      # ships an image tagged 0.2.0 whose PRs say 0.1.0, and the mismatch is only
-      # ever noticed by whoever is debugging one of those PRs.
-      #
-      # Written here rather than asked of a human: a release input already says
-      # the version, and two places to keep in step is one place to forget.
-      - name: set the version
-        run: |
-          bun --print '
-            const p = require("./package.json");
-            p.version = "${{ inputs.version }}";
-            require("fs").writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
-            "package.json -> " + p.version
-          '
-
-      # The same checks CI runs. Duplicated deliberately: a release must not
-      # depend on someone having looked at a green tick on an earlier commit.
+      # `--frozen-lockfile`: a lockfile that does not match package.json is a
+      # difference between what was tested and what will run.
       - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit -p .
       - run: bunx oxlint@latest --deny-warnings src web/src test
@@ -93,6 +82,47 @@ jobs:
       # the built bundle is served, and with no `web/dist` it fails as a 404.
       - run: bun run build:web
       - run: bun test
+
+  # One job per image per architecture, each on a runner of that architecture.
+  # Pushed by digest with no tag: a tag here would publish half a release the
+  # moment the first job finished, and anyone pulling `:latest` in between would
+  # get whichever platform won the race.
+  build:
+    needs: checks
+    strategy:
+      fail-fast: true
+      matrix:
+        image: [orch-agent, orch-server]
+        platform: [amd64, arm64]
+        include:
+          - platform: amd64
+            runner: ubuntu-latest
+          - platform: arm64
+            runner: ubuntu-24.04-arm
+          - image: orch-agent
+            file: docker/agent.Dockerfile
+          - image: orch-server
+            file: docker/server.Dockerfile
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # `package.json` is where the running orchestrator reads its own version —
+      # it is on the line every pull request carries. Left unbumped, a release
+      # ships an image tagged 0.2.0 whose PRs say 0.1.0, and the mismatch is only
+      # ever noticed by whoever is debugging one of those PRs.
+      #
+      # Repeated in every job that builds rather than passed between them: it is
+      # one deterministic edit from one input, and an artifact carrying a two-line
+      # file between jobs costs more than the edit.
+      - name: set the version
+        run: |
+          node -e '
+            const p = require("./package.json");
+            p.version = "${{ inputs.version }}";
+            require("fs").writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+            console.log("package.json -> " + p.version);
+          '
 
       - uses: docker/setup-buildx-action@v3
 
@@ -102,41 +132,97 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # arm64 as well as amd64: the machines this is developed on are Apple
-      # silicon, and an amd64-only image runs there under emulation slowly
-      # enough to look like a hang.
-      - name: build and push the agent image
+      - id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/agent.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ !inputs.dry_run }}
-          tags: |
-            ${{ env.IMAGE }}:${{ inputs.version }}
-            ${{ env.IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          file: ${{ matrix.file }}
+          platforms: linux/${{ matrix.platform }}
+          # By digest; the manifest job below is what gives these names.
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=${{ !inputs.dry_run }}
+          # Per image *and* per architecture. One shared scope means the two
+          # platforms evict each other's layers every run — a cache that costs
+          # upload time and never hits.
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.platform }}
 
-      # Same platforms, same reason.
-      - name: build and push the server image
-        uses: docker/build-push-action@v6
+      # Named after the digest, so two jobs writing into one artifact cannot
+      # collide.
+      - name: hand the digest on
+        if: ${{ !inputs.dry_run }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.dry_run }}
         with:
-          context: .
-          file: docker/server.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ !inputs.dry_run }}
-          tags: |
-            ${{ env.SERVER_IMAGE }}:${{ inputs.version }}
-            ${{ env.SERVER_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          name: digests-${{ matrix.image }}-${{ matrix.platform }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # The two digests of one image, joined under the tags people actually pull.
+  # Nothing is built here — `imagetools create` writes a manifest list out of
+  # images already in the registry.
+  manifest:
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    strategy:
+      matrix:
+        image: [orch-agent, orch-server]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: join them
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ matrix.image }}:${{ inputs.version }} \
+            -t ${{ env.REGISTRY }}/${{ matrix.image }}:latest \
+            $(printf '${{ env.REGISTRY }}/${{ matrix.image }}@sha256:%s ' *)
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ matrix.image }}:${{ inputs.version }}
+
+  # Last, so a failed build never leaves a tag pointing at a release whose images
+  # do not exist.
+  publish:
+    needs: manifest
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The notes are computed from the range since the previous tag, so the
+          # tags have to be here.
+          fetch-depth: 0
+
+      - name: set the version
+        run: |
+          node -e '
+            const p = require("./package.json");
+            p.version = "${{ inputs.version }}";
+            require("fs").writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+          '
 
       - name: tag and publish
-        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          v="v${{ inputs.version }}"
           # The bump is part of the release, so it is on the tagged commit
           # rather than dangling in a runner's working tree.
           git config user.name  "github-actions[bot]"
@@ -144,16 +230,16 @@ jobs:
           # Only when there is a bump to commit. `package.json` may already carry
           # this version — somebody bumped it by hand, or an earlier attempt got
           # this far — and `git commit -am` on a clean tree exits non-zero, which
-          # would fail the release *after* the image was pushed and before the tag
-          # exists. The version is a decision; whether one file changed is not.
+          # would fail the release *after* the images were pushed and before the
+          # tag exists. The version is a decision; whether one file changed is not.
           if git diff --quiet; then
             echo "package.json already says ${{ inputs.version }}; nothing to commit"
           else
             git commit -q -s -am "chore(release): ${{ inputs.version }}"
             git push origin HEAD:main
           fi
-          git tag "${{ env.VERSION }}"
-          git push origin "${{ env.VERSION }}"
+          git tag "$v"
+          git push origin "$v"
           # Written a line at a time rather than as one indented string: this
           # script is inside a YAML block scalar, so every leading space in a
           # multi-line argument ends up in the release body — and ten spaces in
@@ -164,14 +250,14 @@ jobs:
             '' \
             '```bash' \
             'docker run -d -p 127.0.0.1:47821:47821 -v orch-data:/data \' \
-            '  ${{ env.SERVER_IMAGE }}:${{ inputs.version }}' \
+            "  ${{ env.REGISTRY }}/orch-server:${{ inputs.version }}" \
             '```' \
             '' \
-            'The agent image (`${{ env.IMAGE }}:${{ inputs.version }}`) is pulled by the sandbox server the first time it builds a container. Nothing to pull by hand.' \
+            "The agent image (\`${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}\`) is pulled by the sandbox server the first time it builds a container. Nothing to pull by hand." \
             > /tmp/notes.md
           # `--generate-notes` writes the merged pull requests and the first-time
           # contributors itself; this is only the part it cannot know.
-          gh release create "${{ env.VERSION }}" \
-            --title "${{ env.VERSION }}" \
+          gh release create "$v" \
+            --title "$v" \
             --generate-notes \
             --notes-file /tmp/notes.md
