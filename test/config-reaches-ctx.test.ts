@@ -35,7 +35,13 @@ test("every config key a handler can read is one the server copies in", () => {
   // Not an equality assertion: this file should not have to be edited every time
   // a key is added for the scheduler or the watchdog. It fails only when a key is
   // added to the config and to `Ctx`, and then not wired.
-  expect(missing.filter((k) => new RegExp(`config\\.${k}\\b`).test(readFileSync(
+  // `config?.` as well as `config.`, and that is not a detail: every handler
+  // reaching into an optional field writes the optional chain, so matching only
+  // the dotted form made this guard blind to precisely the code it exists to
+  // watch. It missed `leaseTimeoutMs` — read as `ctx.config?.leaseTimeoutMs`,
+  // never copied in, silently falling back to a three-hour default on the one
+  // deadline that stops an agent waiting forever.
+  expect(missing.filter((k) => new RegExp(`config\\??\\.${k}\\b`).test(readFileSync(
     new URL("../src/api.ts", import.meta.url).pathname, "utf8",
   )))).toEqual([]);
 });

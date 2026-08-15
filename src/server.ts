@@ -364,6 +364,7 @@ export function start(overrides: Partial<Config> = {}): Started {
       installTimeoutMs: cfg.installTimeoutMs,
       ctxBudgetChars: cfg.ctxBudgetChars,
       github: cfg.github,
+      leaseTimeoutMs: cfg.leaseTimeoutMs,
     },
   };
   const execDeps = {
@@ -418,7 +419,13 @@ export function start(overrides: Partial<Config> = {}): Started {
             url,
           });
         }
-      });
+      })
+        // Detached, and its handler writes rows and pushes notifications, so
+        // anything it throws surfaces against whoever is running when it lands
+        // rather than against the PR that caused it. The careful PAUSED path
+        // above is the answer to a *failed* PR; this is the answer to a failure
+        // while answering one.
+        .catch((e) => consola.warn(`opening the PR for ${grpId} threw: ${e?.message ?? e}`));
     },
   };
   exec = makeExecutor(execDeps);
