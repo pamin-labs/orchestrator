@@ -41,7 +41,14 @@ bun install
 bun run src/server.ts        # web 在 http://127.0.0.1:47821
 ```
 
-Web 上加项目（填本地 git 仓库的绝对路径），然后在输入框丢一句需求。gate 探测、入职包、PR 预检在注册那一刻自动完成 —— 有问题当场告诉你，不会等分支做完才发现。
+然后在设置里连一次 GitHub。两步，面板会带着走：
+
+1. **设置 → 账号 → 连接 GitHub** —— 出一个设备码，去 github.com/login/device 输进去。用的是设备流，所以**没有 client secret**，`client_id` 直接写在 `config/default.yaml` 里，你不需要注册任何东西。
+2. **去装上** —— 授权和安装是**两件事**，只授权的 token 一个仓库也看不见。这一步在 GitHub 自己的页面上选账号/org 和要交出去的仓库。面板在你只做了第一步时会明说，不会显示成已连接。
+
+想用自己的 App 而不是我们的，把 `github.clientId` / `github.appSlug` 换掉就行 —— 那两个都不是机密。
+
+连上之后加项目就是从仓库列表里挑一个。闸门和安装命令在第一个组克隆完之后自动猜，猜的结果写进项目配置，随时可以改。
 
 ```bash
 bun test                     # 326 checks
@@ -97,7 +104,10 @@ web/index.html           # 单文件，无框架无 build
 
 **挡住的**：
 - **写边界。** agent 跑在自己组的容器里，碰不到宿主文件系统。宿主只通过 `orch` 暴露有限动作，路由前缀之外一律 403。
-- **凭据。** 真 token 永远不进容器：容器里是格式合法的假值，出站时 egress sidecar 按 host 替换 header。GitHub 那份是只读的，分支靠 `git bundle` 出来、宿主推。
+- **凭据。** 真 token 永远不进容器：容器里是格式合法的假值，出站时 egress sidecar 按 host 替换 header。
+- **推送。** 跑 agent 的容器推不动远端：GitHub 凭据在 sidecar 上按**请求路径**限定，只绑 `info/refs` 和 `git-upload-pack`（取），不绑 `git-receive-pack`（推）。推走的是另一个容器 —— 一个不跑 agent、不检出工作区、不执行仓库里任何东西的工具容器（决策 007）。
+
+  说清楚这条**不是**什么：一次 push 的 ref 广告阶段和 fetch 只差 query string，而 sidecar 匹配前会把 query 剪掉，所以那一次请求**确实**带着真 token 出去。挡住的是携带 packfile 的那个 POST —— **写永远完不成**，但「token 从不出现在写路径上」并不成立。
 
 **不挡的**：
 - **数据出站。** 出站策略是 `defaultAction: allow` 加每项目黑名单（默认空）。agent 可以访问整个互联网 —— 这是刻意的取舍（决策 005：要能查文档、装依赖），代价是**它也可以把仓库内容、journal、DRAFT 卡发到任何地方**。凭据受控，数据不受控。要收紧就配 `sandbox.denyDomains`。
