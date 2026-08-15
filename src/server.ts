@@ -14,7 +14,8 @@ import { startMailbox } from "./mech/mailbox.ts";
 import { preflight, report } from "./mech/preflight.ts";
 import { restageSkills } from "./mech/skills.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
-import { dispatchFeedback, makeGhRunner, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
+import { dispatchFeedback, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
+import { makeGithub } from "./mech/github.ts";
 import { bothRead, chargeIndex, modelAsk, noteLeaves, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
 import { indexable } from "./mech/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
@@ -283,7 +284,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   });
 
   const git = makeGitRunner(gitLock);
-  const gh = makeGhRunner();
+  const gh = makeGithub(db);
   const ctx: Ctx = {
     db,
     bus,

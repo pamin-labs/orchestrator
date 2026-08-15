@@ -3,7 +3,8 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { dispatchFeedback, GH_MISSING, openPr, pollPrs, prBody, preflightPr, type GhRunner } from "../src/mech/prwatch.ts";
+import { dispatchFeedback, openPr, pollPrs, prBody, preflightPr } from "../src/mech/prwatch.ts";
+import type { GhResult, Github } from "../src/mech/github.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
@@ -25,32 +26,66 @@ function harness() {
     waiters: new Map(),
     config: { language: "中文"},
   };
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  // The remote is what `owner/repo` is derived from — 007's seam. `repo_path` is
+  // still the host checkout the push runs in.
+  db.run(
+    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'git@github.com:me/x.git', 0)",
+  );
   db.run(
     "INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'PR_OPEN', 'orch/g1', 0)",
   );
   return { db, ctx };
 }
 
-const gh = (script: Record<string, { code: number; out: string }>): GhRunner =>
-  async (argv) => {
-    const key = argv.slice(0, 2).join(" ");
-    return script[key] ?? { code: 0, out: "{}" };
-  };
+const ok = <T,>(data: T): GhResult<T> => ({ ok: true, status: 200, data });
+const boom = (status: number, message: string, bucket: "boss" | "agent" | "transient" = "agent"): GhResult<never> => ({
+  ok: false,
+  status,
+  bucket,
+  message,
+});
+
+/**
+ * A GitHub that answers from a table, keyed `METHOD /path` with the query
+ * dropped. Anything not in the table answers empty rather than undefined, which
+ * is what a PR with no comments and no checks actually looks like.
+ */
+const gh = (script: Record<string, GhResult<any>>, calls: string[] = []): Github => ({
+  remaining: () => 4999,
+  async request(method: string, path: string) {
+    const key = `${method} ${path.split("?")[0]}`;
+    calls.push(key);
+    if (script[key]) return script[key]!;
+    if (key.endsWith("/comments") || key.endsWith("/reviews")) return ok([]);
+    if (key.endsWith("/check-runs")) return ok({ check_runs: [] });
+    if (key.endsWith("/status")) return ok({ statuses: [] });
+    return ok(null);
+  },
+});
+
+/** The PR view every poll starts with. Open, mergeable, one head commit. */
+const pr = (over: Record<string, unknown> = {}) =>
+  ok({ state: "open", merged: false, mergeable: true, head: { sha: "deadbee" }, ...over });
 
 const okGit = async () => ({ code: 0, out: "" });
 
 test("opening a PR records its number once", async () => {
   const h = harness();
-  const runner = gh({ "pr create": { code: 0, out: "created" }, "pr view": { code: 0, out: '{"number":42}' } });
+  // The create answer carries the number, so there is no second lookup.
+  const calls: string[] = [];
+  const runner = gh({ "POST /repos/me/x/pulls": ok({ number: 42 }) }, calls);
   const base = { ctx: h.ctx, git: okGit, repo: "/tmp/p", grpId: 1, title: "t", body: "b" };
   const r = await openPr({ ...base, gh: runner });
   expect(r).toEqual({ number: 42 });
   expect(h.db.query<{ pr_number: number }, []>("SELECT pr_number FROM grp").get()!.pr_number).toBe(42);
+  expect(calls).toEqual(["POST /repos/me/x/pulls"]);
 
-  // Calling again is a no-op rather than a second PR.
-  const again = await openPr({ ...base, gh: gh({}) });
+  // Calling again is a no-op rather than a second PR — but it does refresh the
+  // description, which is three slices out of date by then.
+  const second: string[] = [];
+  const again = await openPr({ ...base, gh: gh({}, second) });
   expect(again).toEqual({ number: 42 });
+  expect(second).toEqual(["PATCH /repos/me/x/pulls/42"]);
 });
 
 test("the PR body is built from the record, not from a sentence", () => {
@@ -79,27 +114,63 @@ test("a failed PR creation reports why instead of vanishing", async () => {
   const h = harness();
   const r = await openPr({
     ctx: h.ctx,
-    gh: gh({ "pr create": { code: 1, out: "no upstream configured" } }),
+    gh: gh({
+      "POST /repos/me/x/pulls": boom(422, "No commits between main and orch/g1"),
+      "GET /repos/me/x/pulls": ok([]),
+    }),
     git: okGit,
     repo: "/tmp/p",
     grpId: 1,
     title: "t",
     body: "b",
   });
-  expect("error" in r && r.error).toContain("no upstream");
+  expect("error" in r && r.error).toContain("No commits between");
 });
 
-test("the branch is pushed under the lock before gh is asked to open a PR", async () => {
-  // Nothing else pushes a group's branch, and `gh pr create` refuses to do it
-  // outside a TTY. If this order ever flips, every PR fails on a real remote.
+test("a create refused because the PR already exists finds the one that is there", async () => {
+  // A retry after a half-finished attempt: the branch is pushed and the PR is
+  // open, but nothing wrote the number down. Without the lookup the group would
+  // be told it has no PR and could never get one.
+  const h = harness();
+  const r = await openPr({
+    ctx: h.ctx,
+    gh: gh({
+      "POST /repos/me/x/pulls": boom(422, "A pull request already exists for me:orch/g1."),
+      "GET /repos/me/x/pulls": ok([{ number: 13 }]),
+    }),
+    git: okGit,
+    repo: "/tmp/p",
+    grpId: 1,
+    title: "t",
+    body: "b",
+  });
+  expect(r).toEqual({ number: 13 });
+});
+
+test("a project with no GitHub remote says so instead of building a URL out of nothing", async () => {
+  const h = harness();
+  h.db.run("UPDATE project SET remote = NULL");
+  const r = await openPr({
+    ctx: h.ctx,
+    gh: gh({}),
+    git: okGit,
+    repo: "/tmp/p",
+    grpId: 1,
+    title: "t",
+    body: "b",
+  });
+  expect("error" in r && r.error).toContain("nowhere to go");
+});
+
+test("the branch is pushed under the lock before GitHub is asked to open a PR", async () => {
+  // Nothing else pushes a group's branch, and GitHub refuses to create a PR for
+  // a head it has never heard of. If this order ever flips, every PR fails on a
+  // real remote.
   const h = harness();
   const calls: string[] = [];
   const r = await openPr({
     ctx: h.ctx,
-    gh: async (argv) => {
-      calls.push(`gh ${argv.slice(0, 2).join(" ")}`);
-      return { code: 0, out: '{"number":9}' };
-    },
+    gh: gh({ "POST /repos/me/x/pulls": ok({ number: 9 }) }, calls),
     git: async (repo, argv) => {
       calls.push(`git(${repo}) ${argv.join(" ")}`);
       return { code: 0, out: "" };
@@ -111,7 +182,7 @@ test("the branch is pushed under the lock before gh is asked to open a PR", asyn
   });
   expect(r).toEqual({ number: 9 });
   const push = calls.indexOf("git(/tmp/p) push -u origin orch/g1");
-  const create = calls.indexOf("gh pr create");
+  const create = calls.indexOf("POST /repos/me/x/pulls");
   expect(push).toBeGreaterThan(-1);
   // Order, not position: the squash runs before the push and adds git calls.
   expect(push).toBeLessThan(create);
@@ -120,13 +191,10 @@ test("the branch is pushed under the lock before gh is asked to open a PR", asyn
 
 test("a push that fails names the branch, and no PR is attempted", async () => {
   const h = harness();
-  let ghCalled = false;
+  const calls: string[] = [];
   const r = await openPr({
     ctx: h.ctx,
-    gh: async () => {
-      ghCalled = true;
-      return { code: 0, out: "{}" };
-    },
+    gh: gh({}, calls),
     // Only the push fails. Taking the branch out of the sandbox is a local fetch
     // from a bundle and has no remote to be refused by — which is the point of
     // splitting them: the sandbox never holds a credential that can push.
@@ -141,72 +209,99 @@ test("a push that fails names the branch, and no PR is attempted", async () => {
   });
   expect("error" in r && r.error).toContain("could not push orch/g1");
   expect("error" in r && r.error).toContain("Permission");
-  expect(ghCalled).toBe(false);
+  expect(calls).toEqual([]);
 });
 
 test("only new comments and failing checks come back", async () => {
   const h = harness();
   h.db.run("UPDATE grp SET pr_number = 7, pr_seen_at = 1000 WHERE id = 1");
-  const payload = JSON.stringify({
-    comments: [
-      { author: { login: "alice" }, body: "old news", createdAt: new Date(500).toISOString() },
-      { author: { login: "bob" }, body: "needs a test", createdAt: new Date(2000).toISOString() },
-    ],
-    reviews: [],
-    statusCheckRollup: [
-      { name: "ci", conclusion: "FAILURE" },
-      { name: "lint", conclusion: "SUCCESS" },
-    ],
-  });
-  const fs = await pollPrs(h.ctx, gh({ "pr view": { code: 0, out: payload } }));
+  // REST field names, not `gh`'s GraphQL projection: `user.login` and
+  // `created_at`, and a lower-case `conclusion` where `gh` upper-cased it.
+  const payload = {
+    "GET /repos/me/x/pulls/7": pr(),
+    "GET /repos/me/x/issues/7/comments": ok([
+      { user: { login: "alice" }, body: "old news", created_at: new Date(500).toISOString() },
+      { user: { login: "bob" }, body: "needs a test", created_at: new Date(2000).toISOString() },
+    ]),
+    "GET /repos/me/x/commits/deadbee/check-runs": ok({
+      check_runs: [
+        { name: "ci", conclusion: "failure" },
+        { name: "lint", conclusion: "success" },
+      ],
+    }),
+  };
+  const fs = await pollPrs(h.ctx, gh(payload));
   expect(fs.length).toBe(1);
   expect(fs[0]!.comments.map((c) => c.author)).toEqual(["bob"]);
   expect(fs[0]!.failingChecks).toEqual(["ci"]);
 
   // The cursor advanced and the failing set is unchanged, so a PR that stays red
   // with nothing new said does not wake the PM every 30 seconds.
-  const again = await pollPrs(h.ctx, gh({ "pr view": { code: 0, out: payload } }));
+  const again = await pollPrs(h.ctx, gh(payload));
   expect(again.length).toBe(0);
 
-  // A newly broken check IS news.
-  const worse = JSON.stringify({
-    comments: [],
-    reviews: [],
-    statusCheckRollup: [
-      { name: "ci", conclusion: "FAILURE" },
-      { name: "lint", conclusion: "FAILURE" },
-    ],
-  });
-  const third = await pollPrs(h.ctx, gh({ "pr view": { code: 0, out: worse } }));
+  // A newly broken check IS news — and the older Status API counts as one too,
+  // which is the half of `statusCheckRollup` that REST keeps in its own endpoint.
+  const third = await pollPrs(
+    h.ctx,
+    gh({
+      ...payload,
+      "GET /repos/me/x/issues/7/comments": ok([]),
+      "GET /repos/me/x/commits/deadbee/status": ok({ statuses: [{ context: "lint", state: "failure" }] }),
+    }),
+  );
   expect(third[0]!.failingChecks.sort()).toEqual(["ci", "lint"]);
+});
+
+test("a checks request that fails is not a PR that went green", async () => {
+  // The four requests replacing one `gh pr view` are all-or-nothing on purpose:
+  // an empty failing set is news, and a 502 must not be reported as one.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 7, pr_checks_sig = 'ci' WHERE id = 1");
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "GET /repos/me/x/pulls/7": pr(),
+      "GET /repos/me/x/commits/deadbee/check-runs": boom(502, "bad gateway", "transient"),
+    }),
+  );
+  expect(fs).toEqual([]);
+  // And the cursor did not move, so the next tick asks again.
+  expect(h.db.query<{ s: string }, []>("SELECT pr_checks_sig AS s FROM grp").get()!.s).toBe("ci");
 });
 
 test("a PR closed on GitHub stops its group and lets the queue past; reopening puts it back", async () => {
   const h = harness();
   h.db.run("UPDATE grp SET pr_number = 7, merge_seq = 1 WHERE id = 1");
-  const view = (state: string) =>
-    gh({ "pr view": { code: 0, out: JSON.stringify({ state, comments: [], reviews: [], statusCheckRollup: [] }) } });
+  const view = (state: string) => gh({ "GET /repos/me/x/pulls/7": pr({ state }) });
 
-  const closed = await pollPrs(h.ctx, view("CLOSED"));
+  const closed = await pollPrs(h.ctx, view("closed"));
   expect(closed[0]!.closed).toBe(true);
 
   // The group has to actually be paused for the reopen half to be reachable —
   // that is what the server does with this feedback.
   h.db.run("UPDATE grp SET status = 'PAUSED', merge_seq = NULL WHERE id = 1");
   // Still closed: nothing new to say, and no second escalation.
-  expect(await pollPrs(h.ctx, view("CLOSED"))).toEqual([]);
+  expect(await pollPrs(h.ctx, view("closed"))).toEqual([]);
 
-  const back = await pollPrs(h.ctx, view("OPEN"));
+  const back = await pollPrs(h.ctx, view("open"));
   expect(back[0]!.reopened).toBe(true);
 });
 
 test("a quiet PR produces nothing at all", async () => {
   const h = harness();
   h.db.run("UPDATE grp SET pr_number = 7 WHERE id = 1");
-  const fs = await pollPrs(
-    h.ctx,
-    gh({ "pr view": { code: 0, out: JSON.stringify({ comments: [], reviews: [], statusCheckRollup: [] }) } }),
-  );
+  const fs = await pollPrs(h.ctx, gh({ "GET /repos/me/x/pulls/7": pr() }));
+  expect(fs).toEqual([]);
+});
+
+test("mergeable still being computed is not a conflict", async () => {
+  // REST answers `mergeable: null` while GitHub works it out in the background.
+  // Reading that as CONFLICTING would send an Engineer to rebase a branch that
+  // merges perfectly well, every time a PR is polled right after a push.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 7 WHERE id = 1");
+  const fs = await pollPrs(h.ctx, gh({ "GET /repos/me/x/pulls/7": pr({ mergeable: null }) }));
   expect(fs).toEqual([]);
 });
 
@@ -286,60 +381,66 @@ test("landing archives the group without deleting its history", () => {
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()!.c).toBeGreaterThan(0);
 });
 
+const origin = (url: string) => async () => ({ code: 0, out: url });
+
 test("preflight says up front whether a PR can ever be opened", async () => {
-  const noRemote = await preflightPr(
-    "/tmp/x",
-    async () => ({ code: 1, out: "" }),
-    async () => ({ code: 0, out: "" }),
-  );
+  const noRemote = await preflightPr("/tmp/x", async () => ({ code: 1, out: "" }), gh({}));
   // Discovering this when a branch is finished is the worst possible moment.
   expect(noRemote.ok).toBe(false);
   expect(noRemote.reason).toContain("nowhere to go");
 
-  const notGithub = await preflightPr(
-    "/tmp/x",
-    async () => ({ code: 0, out: "git@gitlab.com:me/x.git" }),
-    async () => ({ code: 0, out: "" }),
-  );
+  const notGithub = await preflightPr("/tmp/x", origin("git@gitlab.com:me/x.git"), gh({}));
   expect(notGithub.ok).toBe(false);
   expect(notGithub.reason).toContain("not GitHub");
 
   const notLoggedIn = await preflightPr(
     "/tmp/x",
-    async () => ({ code: 0, out: "git@github.com:me/x.git" }),
-    async () => ({ code: 1, out: "not logged in" }),
+    origin("git@github.com:me/x.git"),
+    gh({ "GET /user": boom(401, "Bad credentials", "boss") }),
   );
   expect(notLoggedIn.ok).toBe(false);
-  expect(notLoggedIn.reason).toContain("gh auth login");
+  expect(notLoggedIn.reason).toContain("Bad credentials");
 
   const ready = await preflightPr(
     "/tmp/x",
-    async () => ({ code: 0, out: "git@github.com:me/x.git" }),
-    async () => ({ code: 0, out: "Logged in" }),
+    origin("git@github.com:me/x.git"),
+    gh({ "GET /user": ok({ login: "me" }), "GET /repos/me/x": ok({ permissions: { push: true } }) }),
   );
   expect(ready).toEqual({ ok: true, remote: "git@github.com:me/x.git" });
 });
 
-test("gh missing is a preflight reason, not a thrown registration", async () => {
-  // Bun.spawn throws on a missing binary, so an unguarded runner crashes project
-  // registration instead of telling the boss to install gh.
+test("a repo the token cannot reach is a preflight reason that does not guess why", async () => {
+  // GitHub answers 404 for a private repo a token cannot see. It is the boss's
+  // to fix, and naming one of the four possible causes sends them to the wrong
+  // page — so it is reported, and it is reported honestly.
   const pre = await preflightPr(
     "/tmp/p",
-    async () => ({ code: 0, out: "git@github.com:me/x.git" }),
-    async () => ({ code: GH_MISSING, out: "gh is not installed: `brew install gh`, then `gh auth login`" }),
+    origin("git@github.com:someone/theirs.git"),
+    gh({
+      "GET /user": ok({ login: "me" }),
+      "GET /repos/someone/theirs": {
+        ok: false,
+        status: 404,
+        bucket: "boss",
+        message: "this login can no longer reach /repos/someone/theirs. …",
+      },
+    }),
   );
   expect(pre.ok).toBe(false);
-  expect(pre.reason).toContain("not installed");
+  expect(pre.reason).toContain("can no longer reach");
+  expect(pre.reason?.toLowerCase()).not.toContain("deleted");
 });
 
 test("auth is not push access — read-only permission is caught before any work", async () => {
+  // `viewerPermission: READ` in gh's projection is `permissions: {pull: true}`
+  // in REST's, and the boss reads the same sentence either way.
   const pre = await preflightPr(
     "/tmp/p",
-    async () => ({ code: 0, out: "git@github.com:someone/theirs.git" }),
-    async (argv) =>
-      argv[1] === "view"
-        ? { code: 0, out: '{"viewerPermission":"READ"}' }
-        : { code: 0, out: "logged in" },
+    origin("git@github.com:someone/theirs.git"),
+    gh({
+      "GET /user": ok({ login: "me" }),
+      "GET /repos/someone/theirs": ok({ permissions: { pull: true, push: false } }),
+    }),
   );
   expect(pre.ok).toBe(false);
   expect(pre.reason).toContain("no push access");
@@ -349,20 +450,19 @@ test("auth is not push access — read-only permission is caught before any work
 test("write access passes preflight", async () => {
   const pre = await preflightPr(
     "/tmp/p",
-    async () => ({ code: 0, out: "git@github.com:me/mine.git" }),
-    async (argv) =>
-      argv[1] === "view" ? { code: 0, out: '{"viewerPermission":"WRITE"}' } : { code: 0, out: "ok" },
+    origin("git@github.com:me/mine.git"),
+    gh({ "GET /user": ok({ login: "me" }), "GET /repos/me/mine": ok({ permissions: { push: true } }) }),
   );
   expect(pre.ok).toBe(true);
 });
 
-test("a repo view that fails does not block preflight", async () => {
-  // Old gh versions, or a repo gh cannot resolve: unknown is not the same as
-  // refused, and blocking registration on it would be worse than trying.
+test("a repo read that fails for a reason nobody controls does not block preflight", async () => {
+  // GitHub having a bad minute is not the same as refusing us, and blocking
+  // registration on it would be worse than trying.
   const pre = await preflightPr(
     "/tmp/p",
-    async () => ({ code: 0, out: "git@github.com:me/mine.git" }),
-    async (argv) => (argv[1] === "view" ? { code: 1, out: "could not resolve" } : { code: 0, out: "ok" }),
+    origin("git@github.com:me/mine.git"),
+    gh({ "GET /user": ok({ login: "me" }), "GET /repos/me/mine": boom(503, "unavailable", "transient") }),
   );
   expect(pre.ok).toBe(true);
 });
@@ -372,10 +472,8 @@ test("a branch that stopped merging wakes the Engineer, not the PM", async () =>
   // queue, and the only way anyone found out was the boss opening GitHub.
   const h = harness();
   h.db.run("UPDATE grp SET pr_number = 7 WHERE id = 1");
-  const fs = await pollPrs(
-    h.ctx,
-    gh({ "pr view": { code: 0, out: JSON.stringify({ state: "OPEN", mergeable: "CONFLICTING" }) } }),
-  );
+  const stale = gh({ "GET /repos/me/x/pulls/7": pr({ mergeable: false, mergeable_state: "dirty" }) });
+  const fs = await pollPrs(h.ctx, stale);
   expect(fs[0]!.conflicting).toBe(true);
 
   dispatchFeedback(h.ctx, fs[0]!);
@@ -388,10 +486,7 @@ test("a branch that stopped merging wakes the Engineer, not the PM", async () =>
   expect(p.rejection).toContain("rebase");
 
   // Still conflicting on the next poll is not new news; the group is already on it.
-  const again = await pollPrs(
-    h.ctx,
-    gh({ "pr view": { code: 0, out: JSON.stringify({ state: "OPEN", mergeable: "CONFLICTING" }) } }),
-  );
+  const again = await pollPrs(h.ctx, stale);
   expect(again).toHaveLength(0);
 });
 
@@ -404,12 +499,15 @@ test("a PR that merged after its group was knocked back is still seen", async ()
   // polling on.
   const h = harness();
   h.db.run("UPDATE grp SET pr_number = 2, status = 'RUNNING' WHERE id = 1");
-  const fs = await pollPrs(h.ctx, gh({ "pr view": { code: 0, out: JSON.stringify({ state: "MERGED" }) } }));
+  // REST has no MERGED state: a merged PR is `closed` with `merged: true`, and
+  // reading only `state` would file every merge as a close.
+  const merged = gh({ "GET /repos/me/x/pulls/2": pr({ state: "closed", merged: true }) });
+  const fs = await pollPrs(h.ctx, merged);
   expect(fs).toHaveLength(1);
   expect(fs[0]!.merged).toBe(true);
 
   // DISSOLVED is the one status that stops mattering: it has already been wound up.
   h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
-  const gone = await pollPrs(h.ctx, gh({ "pr view": { code: 0, out: JSON.stringify({ state: "MERGED" }) } }));
+  const gone = await pollPrs(h.ctx, merged);
   expect(gone).toHaveLength(0);
 });

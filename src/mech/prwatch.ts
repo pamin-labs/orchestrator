@@ -1,7 +1,8 @@
 import type { Ctx } from "../api.ts";
 import { say } from "../lang.ts";
 import { squashWip } from "./worktree.ts";
-import { baseRefFor, publishBranch, sandboxGit } from "./checkout.ts";
+import { baseBranch, baseRefFor, publishBranch, sandboxGit } from "./checkout.ts";
+import { parseRepo, type Github } from "./github.ts";
 import { WORK } from "./sandbox.ts";
 
 /**
@@ -10,38 +11,36 @@ import { WORK } from "./sandbox.ts";
  * Deliberately not an agent: "has anything been said since we last looked" is a
  * comparison of timestamps, and paying a model to make it would be paying for
  * arithmetic. What needs judgement is the reply, and that goes to the PM.
+ *
+ * GitHub is reached over REST rather than by shelling out to `gh` (007): one
+ * fewer host binary, one fewer separate login, and the failure buckets in
+ * `github.ts` instead of an exit code.
  */
 
+/** Just enough of a git runner's answer for the preflight below. */
 export interface GhRun {
   code: number;
   out: string;
 }
-export type GhRunner = (argv: string[], cwd: string) => Promise<GhRun>;
 
-/** `gh` is missing, as an exit code rather than an exception. 127 is the shell's. */
-export const GH_MISSING = 127;
-
-export function makeGhRunner(): GhRunner {
-  return async (argv, cwd) => {
-    let p;
-    try {
-      p = Bun.spawn(["gh", ...argv], { cwd, stdout: "pipe", stderr: "pipe" });
-    } catch {
-      // Bun.spawn throws on a missing binary, so without this a machine without
-      // `gh` crashes project registration instead of being told to install it.
-      return { code: GH_MISSING, out: "gh is not installed: `brew install gh`, then `gh auth login`" };
-    }
-    const [so, se] = await Promise.all([
-      new Response(p.stdout).text(),
-      new Response(p.stderr).text(),
-    ]);
-    return { code: await p.exited, out: (so + se).trim() };
-  };
+/**
+ * `owner/repo`, from the remote stored at registration.
+ *
+ * SEAM (007 step 2): `project.repo_path` is still a host filesystem path and
+ * `project.remote` is still whatever `git remote get-url origin` printed. When
+ * the schema changes to hold `owner/repo` directly, this function is the only
+ * thing that changes — everything below already speaks `owner/repo`.
+ */
+function repoSlug(ctx: Ctx, projectId: number): string | null {
+  const p = ctx.db
+    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
+    .get(projectId);
+  return p?.remote ? parseRepo(p.remote) : null;
 }
 
 export interface OpenPrInput {
   ctx: Ctx;
-  gh: GhRunner;
+  gh: Github;
   /** Under the repo write lock: a push writes refs. */
   git: (repo: string, argv: string[], cwd?: string) => Promise<{ code: number; out: string }>;
   repo: string;
@@ -59,10 +58,13 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     )
     .get(grpId);
   if (!grp?.branch) return { error: "group has no branch" };
+  const slug = repoSlug(ctx, grp.project_id);
+  if (!slug) return { error: "project has no GitHub remote: a PR has nowhere to go" };
+
   if (grp.pr_number) {
     // Already open, so this is a retry after rework: refresh what the PR says
     // rather than leaving a description written before the last three slices.
-    await gh(["pr", "edit", String(grp.pr_number), "--title", input.title, "--body", input.body], input.repo);
+    await gh.request("PATCH", `/repos/${slug}/pulls/${grp.pr_number}`, { title: input.title, body: input.body });
     return { number: grp.pr_number };
   }
 
@@ -79,6 +81,14 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     body: sq.squashed ? `squashed ${sq.reason}` : `no squash (${sq.reason})`,
   });
 
+  // Two different things are called "repo" from here down, deliberately and only
+  // until 007 step 5: `input.repo` is a path on this host, and is git's — the
+  // bundle lands there and the push runs there. `slug` is `owner/repo`, and is
+  // GitHub's. They come from different columns (`repo_path`, `remote`), so a
+  // checkout whose `origin` disagrees with the stored remote would push the
+  // branch to one repository and open the PR on another. When the branch starts
+  // going straight to the remote, the host path and this whole half go with it.
+  //
   // Out of the sandbox as a bundle, then pushed from here. The sandbox has no
   // credential that can write to the remote — see publishBranch for why that is
   // deliberate rather than an oversight.
@@ -90,18 +100,26 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     return { error: `could not push ${grp.branch}: ${pushed.out.split("\n").slice(-3).join("\n")}` };
   }
 
-  const push = await gh(
-    ["pr", "create", "--head", grp.branch, "--fill-first", "--title", input.title, "--body", input.body],
-    input.repo,
-  );
-  if (push.code !== 0) return { error: push.out.split("\n").slice(-3).join("\n") };
-
-  const view = await gh(["pr", "view", grp.branch, "--json", "number"], input.repo);
-  let number = 0;
-  try {
-    number = JSON.parse(view.out).number ?? 0;
-  } catch {}
-  if (!number) return { error: `opened, but could not read its number: ${view.out.slice(0, 200)}` };
+  const created = await gh.request<{ number?: number }>("POST", `/repos/${slug}/pulls`, {
+    title: input.title,
+    body: input.body,
+    head: grp.branch,
+    base: await baseBranch(ctx, grp.project_id),
+  });
+  // The create answer carries the number, so the second call `gh` needed is gone.
+  // It comes back for one case: a 422 saying a PR for this head already exists,
+  // which is what a retry after a half-finished attempt looks like.
+  let number = created.ok ? (created.data.number ?? 0) : 0;
+  if (!created.ok) {
+    const owner = slug.split("/")[0]!;
+    const found = await gh.request<Array<{ number: number }>>(
+      "GET",
+      `/repos/${slug}/pulls?state=open&head=${owner}:${encodeURIComponent(grp.branch)}`,
+    );
+    if (found.ok) number = found.data[0]?.number ?? 0;
+    if (!number) return { error: created.message };
+  }
+  if (!number) return { error: "opened, but GitHub's answer had no PR number in it" };
 
   ctx.db.run("UPDATE grp SET pr_number = ? WHERE id = ?", [number, grpId]);
   ctx.bus.emit({
@@ -211,17 +229,47 @@ export interface Feedback {
 }
 
 /**
+ * What REST answers with, where it differs from what `gh` answered with.
+ *
+ * `gh` returns a GraphQL projection: `state: MERGED`, `mergeable: CONFLICTING`,
+ * `author.login`, `createdAt`, and a `statusCheckRollup` that does not exist as
+ * an endpoint. REST returns the underlying records, and the mapping between them
+ * is where the bugs would be, so the shapes are written down.
+ */
+interface PullRest {
+  state?: string;
+  merged?: boolean;
+  /** true / false / **null while GitHub is still computing it**. */
+  mergeable?: boolean | null;
+  mergeable_state?: string;
+  head: { sha: string };
+}
+interface IssueCommentRest {
+  user?: { login?: string };
+  body?: string;
+  created_at?: string;
+}
+interface ReviewRest {
+  user?: { login?: string };
+  body?: string;
+  submitted_at?: string;
+}
+interface CheckRest {
+  name?: string;
+  conclusion?: string | null;
+}
+interface StatusRest {
+  context?: string;
+  state?: string;
+}
+
+/**
  * Poll every open PR for things said or broken since we last looked.
  *
  * Only a change wakes the PM. Re-reading the same review comment every 30
  * seconds would be a turn each time, which is how a quiet PR becomes expensive.
  */
-export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
-  // `gh` needs a checkout to infer the repository from; the host's own is the
-  // only one left, and every group's PR lives in it.
-  const repo =
-    ctx.db.query<{ repo_path: string }, []>("SELECT repo_path FROM project ORDER BY id LIMIT 1").get()
-      ?.repo_path ?? process.cwd();
+export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   const groups = ctx.db
     .query<
       {
@@ -230,6 +278,7 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
         status: string;
         pr_seen_at: number;
         pr_checks_sig: string | null;
+        remote: string | null;
       },
       []
     >(
@@ -241,27 +290,29 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
       // window, nobody was watching, and it stayed RUNNING for hours hiring turns
       // for a branch already byte-identical to main. A pr_number is the thing worth
       // polling on; the status is not.
-      `SELECT id, status, pr_number, pr_seen_at, pr_checks_sig FROM grp
-       WHERE status != 'DISSOLVED' AND pr_number IS NOT NULL`,
+      //
+      // The project comes along now: `gh` inferred the repository from a checkout,
+      // so every PR was looked up in whichever project happened to be first. A
+      // request names its repository, so each group's is its own.
+      `SELECT g.id, g.status, g.pr_number, g.pr_seen_at, g.pr_checks_sig, p.remote
+       FROM grp g JOIN project p ON p.id = g.project_id
+       WHERE g.status != 'DISSOLVED' AND g.pr_number IS NOT NULL`,
     )
     .all();
 
   const out: Feedback[] = [];
   for (const g of groups) {
-    const r = await gh(
-      ["pr", "view", String(g.pr_number), "--json", "state,mergeable,comments,reviews,statusCheckRollup"],
-      repo,
-    );
-    if (r.code !== 0) continue;
+    const repo = g.remote ? parseRepo(g.remote) : null;
+    if (!repo) continue;
+    const r = await gh.request<PullRest>("GET", `/repos/${repo}/pulls/${g.pr_number}`);
+    // Same as the old non-zero exit: whatever went wrong, nothing is known about
+    // this PR right now, and the next tick asks again.
+    if (!r.ok) continue;
+    const parsed = r.data;
 
-    let parsed: any = {};
-    try {
-      parsed = JSON.parse(r.out);
-    } catch {
-      continue;
-    }
-
-    const state = String(parsed.state ?? "").toUpperCase();
+    // `gh` reported one `state` of OPEN/CLOSED/MERGED; REST reports open/closed
+    // plus a separate `merged` flag, and a merged PR is `closed` there.
+    const state = parsed.merged ? "MERGED" : String(parsed.state ?? "").toUpperCase();
 
     // Closed without merging, and reopened again: both are the boss acting on
     // GitHub, which is the only place a PR can be closed. Neither used to be
@@ -288,22 +339,53 @@ export async function pollPrs(ctx: Ctx, gh: GhRunner): Promise<Feedback[]> {
     }
     if (g.status !== "PR_OPEN") continue;
 
-    const raw = [...(parsed.comments ?? []), ...(parsed.reviews ?? [])];
-    const comments = raw
-      .map((c: any) => ({
-        author: c.author?.login ?? c.user?.login ?? "?",
+    // `gh pr view --json comments,reviews,statusCheckRollup` was one request;
+    // REST has no equivalent single answer, so it is four — all conditional, so a
+    // quiet PR costs four 304s, which do not count against the rate limit at all.
+    // `since` does the "newer than we have seen" filtering server-side.
+    const since = new Date(Math.max(0, g.pr_seen_at)).toISOString();
+    const [issue, reviews, runs, statuses] = await Promise.all([
+      gh.request<IssueCommentRest[]>(
+        "GET",
+        `/repos/${repo}/issues/${g.pr_number}/comments?per_page=100&since=${since}`,
+      ),
+      gh.request<ReviewRest[]>("GET", `/repos/${repo}/pulls/${g.pr_number}/reviews?per_page=100`),
+      gh.request<{ check_runs?: CheckRest[] }>("GET", `/repos/${repo}/commits/${parsed.head.sha}/check-runs?per_page=100`),
+      gh.request<{ statuses?: StatusRest[] }>("GET", `/repos/${repo}/commits/${parsed.head.sha}/status?per_page=100`),
+    ]);
+    // All or nothing, the way one `gh` call was: a failed checks request would
+    // otherwise read as "the checks went green", which is news, and would wake the
+    // group to tell it something untrue.
+    if (!issue.ok || !reviews.ok || !runs.ok || !statuses.ok) continue;
+
+    const comments = [
+      ...issue.data.map((c) => ({ author: c.user?.login, body: c.body, at: c.created_at })),
+      ...reviews.data.map((c) => ({ author: c.user?.login, body: c.body, at: c.submitted_at })),
+    ]
+      .map((c) => ({
+        author: c.author ?? "?",
         body: String(c.body ?? "").slice(0, 1000),
-        at: Date.parse(c.createdAt ?? c.submittedAt ?? "") || 0,
+        at: Date.parse(c.at ?? "") || 0,
       }))
       .filter((c) => c.body && c.at > g.pr_seen_at);
 
-    const failingChecks = (parsed.statusCheckRollup ?? [])
-      .filter((c: any) => ["FAILURE", "ERROR", "TIMED_OUT"].includes(c.conclusion ?? c.state))
-      .map((c: any) => String(c.name ?? c.context ?? "check"));
+    // `statusCheckRollup` is `gh`'s own merge of two APIs that REST keeps apart:
+    // check runs (Actions and friends) and commit statuses (the older kind). Both
+    // are here, and both are lower-case where `gh` upper-cased them.
+    const failingChecks = [
+      ...(runs.data.check_runs ?? []).map((c) => ({ name: c.name, result: c.conclusion })),
+      ...(statuses.data.statuses ?? []).map((c) => ({ name: c.context, result: c.state })),
+    ]
+      .filter((c) => ["FAILURE", "ERROR", "TIMED_OUT"].includes(String(c.result ?? "").toUpperCase()))
+      .map((c) => String(c.name ?? "check"));
 
     // A conflict is news exactly like a red check is, and it goes through the same
     // signature so a stale branch does not wake the group every thirty seconds.
-    const conflicting = String(parsed.mergeable ?? "").toUpperCase() === "CONFLICTING";
+    //
+    // `mergeable` is null while GitHub works it out in the background — that is
+    // "not known yet", not "conflicting", and treating it as the latter would
+    // send an Engineer to rebase a branch that merges fine.
+    const conflicting = parsed.mergeable === false || parsed.mergeable_state === "dirty";
     const sig = [...failingChecks, ...(conflicting ? ["merge conflict"] : [])].sort().join(",");
     const checksChanged = sig !== (g.pr_checks_sig ?? "");
     if (comments.length === 0 && !checksChanged) continue;
@@ -382,31 +464,33 @@ export interface Preflight {
 export async function preflightPr(
   repoPath: string,
   run: (argv: string[], cwd: string) => Promise<GhRun>,
-  gh: GhRunner,
+  gh: Github,
 ): Promise<Preflight> {
   const remote = await run(["remote", "get-url", "origin"], repoPath);
   if (remote.code !== 0 || !remote.out.trim()) {
     return { ok: false, remote: null, reason: "no `origin` remote: a PR has nowhere to go" };
   }
   const url = remote.out.trim().split("\n")[0]!;
-  if (!/github\.com/i.test(url)) {
-    return { ok: false, remote: url, reason: `origin is not GitHub (${url}); \`gh pr create\` will not work` };
+  const slug = parseRepo(url);
+  if (!slug) {
+    return { ok: false, remote: url, reason: `origin is not GitHub (${url}); a PR cannot be opened for it` };
   }
-  const auth = await gh(["auth", "status"], repoPath);
-  if (auth.code === GH_MISSING) return { ok: false, remote: url, reason: auth.out };
-  if (auth.code !== 0) {
-    return { ok: false, remote: url, reason: "gh is not logged in: run `gh auth login`" };
+  const who = await gh.request<{ login?: string }>("GET", "/user");
+  if (!who.ok) {
+    return { ok: false, remote: url, reason: `GitHub does not accept the stored credential: ${who.message}` };
   }
 
   // Auth is not permission. A read-only token, or a repo you can only fork, gets
-  // past `auth status` and then fails at `git push` — after a group has done all
-  // its work. This is the last thing checkable without writing anything.
-  const perm = await gh(["repo", "view", "--json", "viewerPermission"], repoPath);
-  if (perm.code === 0) {
-    let level = "";
-    try {
-      level = String(JSON.parse(perm.out).viewerPermission ?? "");
-    } catch {}
+  // past `/user` and then fails at `git push` — after a group has done all its
+  // work. This is the last thing checkable without writing anything.
+  //
+  // `gh repo view --json viewerPermission` returned one word; REST returns the
+  // booleans that word is derived from, so it is derived back here — the message
+  // the boss reads is the same either way.
+  const repo = await gh.request<{ permissions?: Record<string, boolean> }>("GET", `/repos/${slug}`);
+  if (repo.ok) {
+    const p = repo.data.permissions ?? {};
+    const level = p.admin ? "ADMIN" : p.maintain ? "MAINTAIN" : p.push ? "WRITE" : p.triage ? "TRIAGE" : p.pull ? "READ" : "";
     if (level && !["ADMIN", "MAINTAIN", "WRITE"].includes(level)) {
       return {
         ok: false,
@@ -414,6 +498,9 @@ export async function preflightPr(
         reason: `no push access to ${url} (your permission is ${level}); the branch could not be pushed`,
       };
     }
+  } else if (repo.bucket === "boss") {
+    // 404 here is the trap: it means unreachable, never "deleted" — see github.ts.
+    return { ok: false, remote: url, reason: repo.message };
   }
   return { ok: true, remote: url };
 }

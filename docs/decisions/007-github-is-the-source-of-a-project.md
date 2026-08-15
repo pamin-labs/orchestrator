@@ -169,7 +169,7 @@ GitHub gets the same treatment, per project: a fifth admission gate beside
 | bucket | examples | who fixes | what happens |
 |---|---|---|---|
 | **boss** | token expired or revoked, org access pulled, repo unreachable, push refused by branch protection | boss | hold that project's turns, **one** escalation with a button, no retries |
-| **agent** | rebase conflict, red checks, review comment, failed submodule init | agent | a turn with the failure in hand — exists today for conflict and rejection |
+| **agent** | rebase conflict, red checks, review comment, failed submodule init, **422** | agent | a turn with the failure in hand — exists today for conflict and rejection |
 | **transient** | network, GitHub 5xx, secondary rate limit | nobody | backoff; after N attempts it becomes the boss's |
 
 Only the middle bucket is implemented today. That is the gap.
@@ -192,9 +192,15 @@ scope" are *the same response*. Never assert which one it was. The message says
 
 **Polling cost.** 5000 requests/hour authenticated. Send `If-None-Match` with a
 stored ETag: a **304 does not count against the primary rate limit**. ETags are
-cached per token, so rotating the login invalidates them — store them beside the
-credential, not beside the project. Read `x-ratelimit-remaining` and hold the same
-way `providerHeld` holds for model quota. Same shape a fourth time.
+cached per token, so the cache key has to include the token — rotating the login
+must invalidate them rather than replay someone else's. In memory is enough: a
+restart costs one full poll round, not correctness. Read `x-ratelimit-remaining`
+and hold the same way `providerHeld` holds for model quota. Same shape a fourth
+time.
+
+422 is the **agent's**, not the boss's: GitHub understood the request and refused
+its content ("No commits between…"), which is a fact about the branch rather than
+about the login.
 
 **Git failures that are not credentials.** `createCheckout` throws and
 `executor.ts:220` turns that into a failed turn, which is right. But

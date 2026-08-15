@@ -1,0 +1,133 @@
+import { expect, test } from "bun:test";
+import { openMemory } from "../src/db.ts";
+import { saveAuth } from "../src/mech/auth.ts";
+import { classify, makeGithub, parseRepo, type Fetcher } from "../src/mech/github.ts";
+
+/**
+ * The REST client, without the network.
+ *
+ * Everything here is a stubbed `fetch`: the point of injecting one is that a
+ * check for "does a 304 reuse the body" must not depend on GitHub being up, or
+ * on this machine having a token.
+ */
+
+function db(token = "ghp_one") {
+  const d = openMemory();
+  saveAuth(d, { runtime: "github", mode: "api_key", secret: token });
+  return d;
+}
+
+const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+  new Response(status === 304 ? null : JSON.stringify(body), { status, headers });
+
+test("a 404 says the login cannot reach it, and never that the repo was deleted", async () => {
+  // GitHub answers 404 rather than 403 for a private repo a token cannot see, so
+  // "deleted", "org revoked access", "removed from the org" and "lost its scope"
+  // are the same response. Naming one of them sends the boss to the wrong page.
+  const fetchFn: Fetcher = async () => json(404, { message: "Not Found" });
+  const r = await makeGithub(db(), fetchFn).request("GET", "/repos/me/gone");
+  expect(r.ok).toBe(false);
+  if (r.ok) throw new Error("unreachable");
+  expect(r.bucket).toBe("boss");
+  expect(r.message).toContain("can no longer reach");
+  expect(r.message).toContain("me/gone");
+  for (const claim of ["deleted", "was removed", "no longer exists", "has been"]) {
+    expect(r.message.toLowerCase()).not.toContain(claim);
+  }
+  // And it does list what to actually check.
+  expect(r.message).toContain("renam");
+  expect(r.message).toContain("organisation");
+});
+
+test("a 304 costs nothing and hands back the body we already had", async () => {
+  // A 304 does not count against the primary rate limit, which is the whole
+  // reason for the ETag: pollPrs runs against every open PR every tick.
+  const sent: Array<string | undefined> = [];
+  let hits = 0;
+  const fetchFn: Fetcher = async (_url, init) => {
+    sent.push(init.headers["if-none-match"]);
+    hits++;
+    return hits === 1
+      ? json(200, { number: 7 }, { etag: 'W/"abc"', "x-ratelimit-remaining": "4999" })
+      : json(304, null, { etag: 'W/"abc"', "x-ratelimit-remaining": "4999" });
+  };
+  const gh = makeGithub(db(), fetchFn);
+  const first = await gh.request<{ number: number }>("GET", "/repos/me/x/pulls/7");
+  const second = await gh.request<{ number: number }>("GET", "/repos/me/x/pulls/7");
+
+  expect(first.ok && first.data.number).toBe(7);
+  expect(second.ok && second.status).toBe(304);
+  // The body is the cached one — a 304 carries none.
+  expect(second.ok && second.data.number).toBe(7);
+  expect(sent).toEqual([undefined, 'W/"abc"']);
+  expect(gh.remaining()).toBe(4999);
+});
+
+test("rotating the login invalidates the ETags rather than reusing them", async () => {
+  // Cached per token, not per URL: a new login must not be handed the previous
+  // one's answers, and must not send its ETag either.
+  const sent: Array<string | undefined> = [];
+  const d = db("ghp_one");
+  const fetchFn: Fetcher = async (_url, init) => {
+    sent.push(init.headers["if-none-match"]);
+    return json(200, { login: init.headers.authorization }, { etag: 'W/"abc"' });
+  };
+  const gh = makeGithub(d, fetchFn);
+  await gh.request("GET", "/user");
+  await gh.request("GET", "/user");
+  expect(sent).toEqual([undefined, 'W/"abc"']);
+
+  saveAuth(d, { runtime: "github", mode: "api_key", secret: "ghp_two" });
+  const after = await gh.request<{ login: string }>("GET", "/user");
+  expect(sent[2]).toBeUndefined();
+  expect(after.ok && after.data.login).toContain("ghp_two");
+});
+
+test("the three buckets are the three different answers", () => {
+  // boss: nothing an agent or a retry can do.
+  expect(classify(401, "Bad credentials")).toBe("boss");
+  expect(classify(403, "Resource not accessible by integration")).toBe("boss");
+  expect(classify(404, "Not Found")).toBe("boss");
+  // transient: back off and it may well work.
+  expect(classify(0, "TypeError: fetch failed")).toBe("transient");
+  expect(classify(500, "")).toBe("transient");
+  expect(classify(502, "bad gateway")).toBe("transient");
+  expect(classify(429, "")).toBe("transient");
+  // The one 403 that is not the boss's: a secondary rate limit says so in the
+  // body, and holding the whole project for it would be wrong.
+  expect(classify(403, "You have exceeded a secondary rate limit")).toBe("transient");
+  // agent: GitHub understood us and refused the content.
+  expect(classify(422, "No commits between main and orch/g1")).toBe("agent");
+});
+
+test("a network throw is transient, not a bad credential", async () => {
+  const fetchFn: Fetcher = async () => {
+    throw new TypeError("fetch failed");
+  };
+  const r = await makeGithub(db(), fetchFn).request("GET", "/user");
+  expect(r.ok).toBe(false);
+  if (!r.ok) {
+    expect(r.bucket).toBe("transient");
+    expect(r.status).toBe(0);
+  }
+});
+
+test("no credential is the boss's, and nothing is sent", async () => {
+  let called = false;
+  const fetchFn: Fetcher = async () => {
+    called = true;
+    return json(200, {});
+  };
+  const r = await makeGithub(openMemory(), fetchFn).request("GET", "/user");
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.bucket).toBe("boss");
+  expect(called).toBe(false);
+});
+
+test("owner/repo comes out of whatever shape the remote is in", () => {
+  expect(parseRepo("git@github.com:me/x.git")).toBe("me/x");
+  expect(parseRepo("https://github.com/me/x.git")).toBe("me/x");
+  expect(parseRepo("https://github.com/me/x")).toBe("me/x");
+  expect(parseRepo("ssh://git@github.com/me/x.git")).toBe("me/x");
+  expect(parseRepo("git@gitlab.com:me/x.git")).toBeNull();
+});

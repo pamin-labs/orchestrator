@@ -50,8 +50,8 @@ export interface Ctx {
   git?: GitRunner;
   /** Where turns, gates and leases run. Absent in unit tests that need no container. */
   sandbox?: import("./mech/sandbox.ts").SandboxDriver;
-  /** Runs `gh`. Absent in unit tests that need no GitHub. */
-  gh?: (argv: string[], cwd: string) => Promise<{ code: number; out: string }>;
+  /** Talks to GitHub's REST API. Absent in unit tests that need no GitHub. */
+  gh?: import("./mech/github.ts").Github;
   /**
    * One cheap model call, for PageIndex navigation. Absent in unit tests.
    *

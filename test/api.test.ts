@@ -848,8 +848,9 @@ test("an unreadable path is an error with the reason, not an empty list", async 
 test("a closed PR whose branch cannot be reopened can still get a new one", async () => {
   const { app, db, ctx } = harness();
   db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, branch = 'orch/g1' WHERE id = 1");
+  db.run("UPDATE project SET remote = 'git@github.com:me/x.git' WHERE id = 1");
   ctx.git = async () => ({ code: 0, out: "" });
-  ctx.gh = async (argv) => (argv[1] === "view" ? { code: 0, out: '{"number":9}' } : { code: 0, out: "created" });
+  ctx.gh = { remaining: () => null, request: async <T,>() => ({ ok: true, status: 200, data: { number: 9 } as T }) };
 
   const r = await post(app, "/api/groups/1/newpr");
   expect(r.status).toBe(200);
@@ -868,8 +869,9 @@ test("a closed PR whose branch cannot be reopened can still get a new one", asyn
 test("a failed second PR leaves the old number in place rather than none at all", async () => {
   const { app, db, ctx } = harness();
   db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, branch = 'orch/g1' WHERE id = 1");
+  db.run("UPDATE project SET remote = 'git@github.com:me/x.git' WHERE id = 1");
   ctx.git = async () => ({ code: 1, out: "remote: Permission denied" });
-  ctx.gh = async () => ({ code: 0, out: "{}" });
+  ctx.gh = { remaining: () => null, request: async <T,>() => ({ ok: true, status: 200, data: null as T }) };
 
   expect((await post(app, "/api/groups/1/newpr")).status).toBe(422);
   expect(db.query<{ pr_number: number }, []>("SELECT pr_number FROM grp WHERE id = 1").get()!.pr_number).toBe(7);
