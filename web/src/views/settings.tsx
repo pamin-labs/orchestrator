@@ -598,8 +598,6 @@ interface GhStatus {
   installUrl: string | null;
   /** A GitHub App client id is configured at all. */
   configured: boolean;
-  /** Which app this orchestrator runs against; the yaml default unless overridden. */
-  app: { clientId: string; appSlug: string };
   /** Where it is installed, and how many repositories each one can see. */
   accounts: { id: number; account: string; kind: string; repos: number | null }[];
   pending: { userCode: string; verificationUri: string } | null;
@@ -749,7 +747,7 @@ function GithubPane() {
                 装到别的账号
               </LinkButton>
             ) : (
-              <Tip label="下面填上 App slug，这里就是个直达链接。">
+              <Tip label="config/default.yaml 里填上 github.appSlug，这里就是个直达链接。">
                 <Meta>去 GitHub → 这个 App → Install App</Meta>
               </Tip>
             )}
@@ -770,82 +768,7 @@ function GithubPane() {
           )}
         </section>
       )}
-
-      <AppFields app={s?.app} onSaved={load} />
     </>
-  );
-}
-
-/**
- * Which GitHub App this orchestrator runs against.
- *
- * Yaml is the default; what is typed here wins and is stored on this machine —
- * `config/default.yaml` is committed, so a self-hoster pointing at their own app
- * was editing a tracked file and losing it on the next pull. Changing the client
- * id drops the stored token with it: one app's token means nothing to another,
- * and keeping it would read as connected while every call 401s.
- */
-function AppFields({ app, onSaved }: { app?: { clientId: string; appSlug: string }; onSaved: () => void }) {
-  const [id, setId] = useState("");
-  const [slug, setSlug] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    setId(app?.clientId ?? "");
-    setSlug(app?.appSlug ?? "");
-  }, [app?.clientId, app?.appSlug]);
-  const dirty = id.trim() !== (app?.clientId ?? "") || slug.trim() !== (app?.appSlug ?? "");
-
-  return (
-    <section className="py-3">
-      <H2 className="mb-1.5">用哪个 App</H2>
-      <Meta className="mb-2 block leading-relaxed">
-        默认用仓库里配的那个。换成自己的：Developer settings → GitHub Apps → New，
-        勾上 Enable Device Flow，关掉 Optional Features 里的 user token 过期
-        （开着 8 小时就失效，续期要 client secret，公开仓库给不了）。换 Client ID 会把现在的登录一起清掉。
-      </Meta>
-      <FieldGroup className="[--label:5.5rem]">
-        <Field className="py-1.5">
-          <FieldLabel htmlFor="gh-client" className="text-ink-3">Client ID</FieldLabel>
-          <Input
-            id="gh-client"
-            className="min-w-0 flex-1 font-mono"
-            placeholder="Iv23li…"
-            value={id}
-            onChange={(e) => setId(e.target.value)}
-          />
-        </Field>
-        <Field className="border-b-0 py-1.5">
-          <FieldLabel htmlFor="gh-slug" className="text-ink-3">App slug</FieldLabel>
-          <Input
-            id="gh-slug"
-            className="min-w-0 flex-1 font-mono"
-            // Only used to build the install link, so an empty one degrades to
-            // instructions rather than breaking anything.
-            placeholder="github.com/apps/ 后面那一段，用来拼「去装上」的链接"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-          />
-        </Field>
-      </FieldGroup>
-      {dirty && (
-        <div className="mt-2 flex">
-          <span className="grow" />
-          <Button
-            variant="go"
-            size="sm"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await post("/api/auth/github/app", { clientId: id.trim(), appSlug: slug.trim() });
-              setBusy(false);
-              onSaved();
-            }}
-          >
-            存下
-          </Button>
-        </div>
-      )}
-    </section>
   );
 }
 

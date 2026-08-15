@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
 import { CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX_KEY, saveAuth, vaultFor, wrongShape } from "../src/mech/sandbox/auth.ts";
 import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
+import { REFRESH_HOME } from "../src/mech/sandbox/chatgpt.ts";
 import { accessToken, isStale, parseAuth, renew } from "../src/mech/sandbox/chatgpt.ts";
 import { loginRuntimes, startLogin } from "../src/mech/sandbox/login.ts";
 import type { Ctx } from "../src/api.ts";
@@ -181,32 +182,53 @@ test("the ChatGPT login is renewed here, once, and by codex rather than by us", 
   // work and would be our code presenting itself as the official client.
   const fresh = new Date().toISOString();
   const old = new Date(Date.now() - 9 * 24 * 3600_000).toISOString();
+  const fresher = new Date(Date.now() + 1000).toISOString();
   expect(isStale(parseAuth(JSON.stringify({ last_refresh: fresh }))!)).toBe(false);
   expect(isStale(parseAuth(JSON.stringify({ last_refresh: old }))!)).toBe(true);
   // Never refreshed, or a date nothing can parse: assume it needs one.
   expect(isStale({})).toBe(true);
   expect(isStale({ last_refresh: "sometime last week" })).toBe(true);
 
-  // The orchestrator's own CODEX_HOME, not the boss's: renewing must not log
-  // them out of their own terminal.
-  const dir = join(mkdtempSync(join(tmpdir(), "orch-codex-")), "codex-home");
-  mkdirSync(dir, { recursive: true });
-  const write = (v: unknown) => writeFileSync(join(dir, "auth.json"), JSON.stringify(v));
-  write({ auth_mode: "chatgpt", tokens: { access_token: "old" }, last_refresh: old });
+  // The refresher's own CODEX_HOME, inside the utility container: renewing must
+  // not touch the boss's own terminal login, and must not be a group's.
+  const files = new Map<string, string>([[`${REFRESH_HOME}/auth.json`, JSON.stringify({
+    auth_mode: "chatgpt", tokens: { access_token: "old" }, last_refresh: old,
+  })]]);
+  const io = (run: () => Promise<boolean>) => ({
+    read: async (p: string) => files.get(p) ?? null,
+    write: async (p: string, d: string) => void files.set(p, d),
+    remove: async (p: string) => void files.delete(p),
+    run,
+  });
+  const wrote = (v: unknown) => files.set(`${REFRESH_HOME}/auth.json`, JSON.stringify(v));
 
   // The CLI ran and rewrote the file: that is a renewal.
-  const done = await renew(dir, async () => {
-    write({ auth_mode: "chatgpt", tokens: { access_token: "new" }, last_refresh: fresh });
-    return true;
-  });
+  const done = await renew(
+    io(async () => {
+      wrote({ auth_mode: "chatgpt", tokens: { access_token: "new" }, last_refresh: fresh });
+      return true;
+    }),
+  );
   expect(accessToken(done!)).toBe("new");
 
-  // It ran and changed nothing, or it did not run at all. Neither is a renewal,
-  // and the caller keeps the login it already had rather than storing a
-  // regression.
-  expect(await renew(dir, async () => true)).toBeNull();
-  expect(await renew(dir, async () => false)).toBeNull();
+  // It ran and changed nothing: not a renewal, and the caller keeps what it had
+  // rather than storing a regression.
+  expect(await renew(io(async () => true))).toBeNull();
+
+  // It exited non-zero *and* the file moved on. That is a renewal too, and the
+  // one this had to learn: in the utility container the sidecar replaces the
+  // Authorization header with the token we already held, so the API call after a
+  // successful refresh can 401 while `auth.json` is already the new login.
+  // Reading the exit code instead of the file threw the refresh away.
+  const salvaged = await renew(
+    io(async () => {
+      wrote({ auth_mode: "chatgpt", tokens: { access_token: "newer" }, last_refresh: fresher });
+      return false;
+    }),
+  );
+  expect(accessToken(salvaged!)).toBe("newer");
 });
+
 
 
 test("the panel knows which runtimes it can log in for, and refuses the rest", () => {

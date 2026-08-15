@@ -57,40 +57,57 @@ export function isStale(a: CodexAuth, now = Date.now(), maxAgeMs = 4 * 24 * 3600
 }
 
 /**
+ * Where the refresher's own CODEX_HOME lives, inside the utility container.
+ *
+ * Not `CODEX_HOME` (`/root/.codex`): every container is given a **decoy**
+ * auth.json there, and the refresher needs the real one. Two directories rather
+ * than one conditional, so nothing can hand the real login to a codex that was
+ * started expecting the decoy.
+ */
+export const REFRESH_HOME = "/root/.codex-refresh";
+
+/**
+ * Reading and writing the refresher's home, and running codex in it.
+ *
+ * Injected rather than imported so this file stays free of the sandbox module:
+ * `sandbox.ts` already imports `auth.ts`, which imports this, and reaching back
+ * the other way closes a cycle. The implementation lives with the thing that
+ * knows about containers.
+ */
+export interface CodexHomeIO {
+  read(path: string): Promise<string | null>;
+  write(path: string, data: string): Promise<void>;
+  /** `rm -f` first, then write. See `seedHome` for why the removal matters. */
+  remove(path: string): Promise<void>;
+  /** Run `codex <argv>` with CODEX_HOME set. True on exit 0. */
+  run(argv: string[]): Promise<boolean>;
+}
+
+/**
  * Make codex renew its own login, and hand back the file it wrote.
  *
  * A real call is what triggers the refresh — `codex login status` reports the
  * login without touching it — so this spends the smallest turn it can. Returns
  * null when nothing was renewed, and the caller keeps what it had: a blocked
  * network must not throw away a working login.
+ *
+ * **The file is the answer, not the exit code.** The nudge can fail on its way
+ * out — in the utility container the sidecar replaces the Authorization header
+ * with the token we already had, so the API call after a successful refresh can
+ * still 401 — and discarding a refreshed `auth.json` because the errand that
+ * caused it came back non-zero would throw away the one thing this exists for.
+ * Refresh happens at `auth.openai.com`, which nothing binds.
  */
-export async function renew(codexHome: string, run = spawnCodex): Promise<CodexAuth | null> {
-  const before = await readAuth(codexHome);
-  if (!(await run(codexHome))) return null;
-  const after = await readAuth(codexHome);
+export async function renew(io: CodexHomeIO): Promise<CodexAuth | null> {
+  const before = await readAuth(io);
+  await io.run(NUDGE);
+  const after = await readAuth(io);
   if (!after) return null;
   return after.last_refresh && after.last_refresh !== before?.last_refresh ? after : null;
 }
 
-async function spawnCodex(codexHome: string): Promise<boolean> {
-  try {
-    const p = Bun.spawn(["codex", ...NUDGE], {
-      env: { ...process.env, CODEX_HOME: codexHome },
-      stdout: "ignore",
-      stderr: "ignore",
-      stdin: "ignore",
-    });
-    const timer = setTimeout(() => p.kill("SIGTERM"), 120_000);
-    const code = await p.exited;
-    clearTimeout(timer);
-    return code === 0;
-  } catch {
-    return false;
-  }
-}
-
-async function readAuth(codexHome: string): Promise<CodexAuth | null> {
-  const text = await Bun.file(join(codexHome, "auth.json")).text().catch(() => "");
+async function readAuth(io: CodexHomeIO): Promise<CodexAuth | null> {
+  const text = await io.read(`${REFRESH_HOME}/auth.json`);
   return text ? parseAuth(text) : null;
 }
 
@@ -103,9 +120,8 @@ async function readAuth(codexHome: string): Promise<CodexAuth | null> {
  * two places, and the alternative is a fleet that silently logs the boss out of
  * their own terminal.
  */
-export async function seedHome(codexHome: string, authJson: string): Promise<void> {
-  mkdirSync(codexHome, { recursive: true });
-  const authPath = join(codexHome, "auth.json");
+export async function seedHome(io: CodexHomeIO, authJson: string): Promise<void> {
+  const authPath = `${REFRESH_HOME}/auth.json`;
   // Never through a symlink.
   //
   // This directory holds an *output*: the credential comes from `runtime_auth`
@@ -118,14 +134,16 @@ export async function seedHome(codexHome: string, authJson: string): Promise<voi
   //
   // The link is removed rather than honoured: it is ours to write, and refusing
   // instead would leave the refresher permanently unable to run.
-  try {
-    if (lstatSync(authPath).isSymbolicLink()) rmSync(authPath, { force: true });
-  } catch {
-    // Not there at all, which is the normal first time.
-  }
-  await Bun.write(authPath, authJson);
+  //
+  // Still true now that this directory is inside the utility container rather
+  // than on the host. The container is ours and starts empty, so the boss's own
+  // `~/.codex` is out of reach by construction — but the removal costs one exec
+  // and the guarantee it makes is the one that was bought with an incident, so
+  // it stays rather than being argued away.
+  await io.remove(authPath);
+  await io.write(authPath, authJson);
   // Without this codex looks in the OS keychain instead of the file.
-  await Bun.write(join(codexHome, "config.toml"), 'cli_auth_credentials_store = "file"\n');
+  await io.write(`${REFRESH_HOME}/config.toml`, 'cli_auth_credentials_store = "file"\n');
 }
 
 /**

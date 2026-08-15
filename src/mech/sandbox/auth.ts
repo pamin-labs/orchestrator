@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DB } from "../../db.ts";
 import type { Credential } from "./sandbox.ts";
-import { accessToken, decoyAuth, isStale, parseAuth, renew, seedHome } from "./chatgpt.ts";
+import { accessToken, decoyAuth, isStale, parseAuth, renew, seedHome, type CodexHomeIO } from "./chatgpt.ts";
 import { forgetHolds } from "../git/github.ts";
 import { maskValue } from "../util/scrub.ts";
 
@@ -328,18 +328,46 @@ function gitFilesFor(db: DB): Record<string, string> {
  * for why that distinction is worth a few hundred tokens a week. A failed one
  * keeps what we had, and shows up later as the 401 that pauses the group.
  */
-export async function currentChatgptToken(db: DB, dataDir: string, now = Date.now()): Promise<string | null> {
+/**
+ * Re-entrancy guard, and the reason it has to exist.
+ *
+ * The refresh runs `codex` inside the **utility container**, and getting that
+ * container means `openSandbox`, which calls `vaultBindings`, which calls this —
+ * so the first stale refresh would recurse into itself forever, building a
+ * container in order to build a container. Nothing else in the loop notices,
+ * because each step is doing something reasonable.
+ *
+ * While a refresh is in flight, every other caller gets the token we already
+ * have. It is minutes from expiry at worst, and the alternative is a deadlock at
+ * the exact moment the fleet needs a credential.
+ */
+let refreshing = false;
+
+export async function currentChatgptToken(
+  db: DB,
+  io: CodexHomeIO | null,
+  now = Date.now(),
+): Promise<string | null> {
   const a = loadAuth(db, "codex");
   if (a?.mode !== "chatgpt") return null;
   let parsed = parseAuth(a.secret);
   if (!parsed) return null;
-  if (isStale(parsed, now)) {
-    const codexHome = join(dataDir, "codex-home");
-    await seedHome(codexHome, a.secret);
-    const next = await renew(codexHome);
-    if (next) {
-      saveAuth(db, { ...a, secret: JSON.stringify(next) });
-      parsed = next;
+  if (io && !refreshing && isStale(parsed, now)) {
+    refreshing = true;
+    try {
+      await seedHome(io, a.secret);
+      const next = await renew(io);
+      if (next) {
+        // One writer. The container is where the refresh *happens*; this row is
+        // where the login lives, and it is the only copy anything reads. The
+        // container's `auth.json` is scratch — a rebuilt one is reseeded from
+        // here — so the two-writers-one-token case codex warns about cannot
+        // arise: nothing else ever refreshes it.
+        saveAuth(db, { ...a, secret: JSON.stringify(next) });
+        parsed = next;
+      }
+    } finally {
+      refreshing = false;
     }
   }
   return accessToken(parsed);
@@ -370,11 +398,11 @@ export async function currentChatgptToken(db: DB, dataDir: string, now = Date.no
  */
 export async function vaultBindings(
   db: DB,
-  dataDir: string,
+  io: CodexHomeIO | null,
   opts: VaultOpts = {},
 ): Promise<{ credentials: Credential[]; env: Record<string, string> }> {
   const base = vaultFor(db, opts);
-  const token = await currentChatgptToken(db, dataDir);
+  const token = await currentChatgptToken(db, io);
   if (!token) return base;
   const a = loadAuth(db, "codex")!;
   return {

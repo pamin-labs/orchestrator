@@ -4,32 +4,42 @@ import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { preflight } from "../src/mech/ops/preflight.ts";
 
 
-test("a ChatGPT login with no codex on this host is called out before it goes stale", async () => {
-  // The one credential that needs a binary on this machine permanently. Renewal
-  // is deliberately done by running the real `codex` rather than posting the
-  // refresh token ourselves with the CLI's client id — so no codex, no renewal,
-  // and the failure is silent and hours late: the nudge throws, `renew` returns
-  // null, the stored token is kept, and every codex turn 401s looking like an
-  // expired account.
+test("a ChatGPT login is called out when it is old, not when the host lacks codex", async () => {
+  // This used to check `probe("codex")`. Since 007 step 7 the renewal runs real
+  // codex inside the **utility container** — codex is in the agent image because
+  // turns run it — so the host needs nothing, and a check asserting otherwise was
+  // reporting a requirement that had stopped existing.
+  //
+  // What can still go wrong is the login going stale with nothing able to renew
+  // it, and that failure is silent and hours late: every codex turn 401s looking
+  // like an expired account.
   const db = openMemory();
-  saveAuth(db, {
-    runtime: "codex",
-    mode: "chatgpt",
-    secret: JSON.stringify({ tokens: { refresh_token: "r" } }),
-  });
-  const run = (hasCodex: boolean) =>
-    preflight({
+  const withLogin = (lastRefresh: string) => {
+    saveAuth(db, {
+      runtime: "codex",
+      mode: "chatgpt",
+      secret: JSON.stringify({ tokens: { refresh_token: "r" }, last_refresh: lastRefresh }),
+    });
+    return preflight({
       db,
       sandbox: { server: "http://127.0.0.1:1", apiKey: "", image: "x" },
-      probe: (bin) => (bin === "codex" ? hasCodex : true),
+      // No codex on this host, and that is now fine.
+      probe: (bin) => bin !== "codex",
       verify: async () => ({ ok: true, detail: "ok" }),
     });
+  };
 
-  const without = (await run(false)).find((c) => c.name === "codex-refresher")!;
-  expect(without.ok).toBe(false);
-  expect(without.fix).toContain("API key");
-  expect((await run(true)).find((c) => c.name === "codex-refresher")!.ok).toBe(true);
+  const stale = (await withLogin(new Date(Date.now() - 9 * 24 * 3600_000).toISOString()))
+    .find((c) => c.name === "codex-refresher")!;
+  expect(stale.ok).toBe(false);
+  expect(stale.fix).toContain("API key");
+
+  const fresh = (await withLogin(new Date().toISOString())).find((c) => c.name === "codex-refresher")!;
+  expect(fresh.ok).toBe(true);
+  // And it says where the renewal happens, so nobody re-adds the host requirement.
+  expect(fresh.detail).toContain("工具容器");
 });
+
 
 test("the other credential modes need nothing on this host", async () => {
   // A pasted `sk-ant-oat01-` is good for a year and an API key does not expire,

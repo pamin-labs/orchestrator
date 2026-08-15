@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { DB } from "../../db.ts";
 import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "../sandbox/auth.ts";
 import { allowedHostPaths, coveredBy } from "../sandbox/sandbox.ts";
-import { parseAuth } from "../sandbox/chatgpt.ts";
+import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 
 /**
  * What has to be true before any agent can run, checked once.
@@ -387,12 +387,20 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // not expire.
   const codexAuth = loadAuth(input.db, "codex");
   if (codexAuth?.mode === "chatgpt") {
-    const hasCodex = probe("codex");
+    // No longer "is codex on this machine" — it moved into the utility container
+    // (007 step 7), and codex is in the agent image because turns run it. What
+    // is left to check is the thing that would now go wrong: the login itself
+    // going stale with nothing able to renew it. `isStale` is codex's own eight
+    // days halved, and past that the fleet is running on borrowed time.
+    const parsed = parseAuth(codexAuth.secret);
+    const stale = !parsed || isStale(parsed);
     out.push({
       name: "codex-refresher",
-      ok: hasCodex,
-      detail: hasCodex ? "在" : "ChatGPT 登录要靠本机的 codex 续期，而这台机器上没有",
-      fix: "装上 codex CLI，或者把 codex 换成 API key —— API key 不需要续期",
+      ok: !stale,
+      detail: stale
+        ? "这个 ChatGPT 登录已经旧到该续期了 —— 下一个容器起来时会自动续，续不上就要重新贴 auth.json"
+        : "登录还新，续期在工具容器里跑，本机不需要装 codex",
+      fix: "续期是在工具容器里跑真 codex 做的。如果一直续不上，去设置页重新贴一次 ~/.codex/auth.json，或者换成 API key —— API key 不需要续期。",
     });
   }
 

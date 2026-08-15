@@ -6,6 +6,7 @@ import type { Ctx } from "../../api.ts";
 import { ROOT } from "../../config.ts";
 import type { ResourceExec } from "./lease.ts";
 import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
+import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../util/shq.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
 
@@ -549,7 +550,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   // the token is injected on the two paths a fetch uses and on nothing else, so
   // `git push` inside a group leaves with the decoy and GitHub refuses it. The
   // utility container passes nothing and keeps the whole token.
-  const { credentials } = await vaultBindings(ctx.db, ctx.config.dataDir ?? "data", {
+  const { credentials } = await vaultBindings(ctx.db, codexHomeIO(ctx), {
     repo: isUtil(scope) ? null : remoteOf(ctx, projectId),
   });
   if (credentials.length) {
@@ -612,6 +613,38 @@ const EXEC_MODE = 755;
 /** The one creation failure worth degrading for rather than failing the group. */
 function isPathNotAllowed(e: unknown): boolean {
   return /not under any allowed prefix|allowed_host_paths/i.test(String(e));
+}
+
+/**
+ * The refresher's hands, inside the utility container.
+ *
+ * 007 step 7: the ChatGPT login was the last thing that needed a binary on the
+ * boss's own machine, and codex is already in the agent image because turns run
+ * `codex exec`. So the weekly renewal runs where every other credential already
+ * lives, and a host with docker and a pasted token needs nothing else.
+ *
+ * **The utility container, never a group's.** This is the real refresh token —
+ * the one credential 007 deliberately kept off every agent — and the utility
+ * container is the one with no agent, no mailbox and no `orch` in it, which is
+ * the entire reason it may hold real credentials.
+ *
+ * Lives here rather than in `chatgpt.ts` because that file must not import this
+ * one: `sandbox.ts` -> `auth.ts` -> `chatgpt.ts` already, and reaching back
+ * closes the cycle.
+ */
+export function codexHomeIO(ctx: Ctx): CodexHomeIO {
+  return {
+    read: (path) => getFile(ctx, UTIL, path),
+    write: (path, data) => putFile(ctx, UTIL, path, data),
+    remove: async (path) => void (await execIn(ctx, UTIL, `rm -f ${shq(path)}`)),
+    run: async (argv) => {
+      const r = await execIn(ctx, UTIL, `codex ${argv.map(shq).join(" ")}`, {
+        timeoutMs: 120_000,
+        env: { CODEX_HOME: REFRESH_HOME },
+      });
+      return r.code === 0;
+    },
+  };
 }
 
 /** Where a group's checkout lives inside its sandbox. */

@@ -3340,21 +3340,18 @@ const postGithubLogin: Handler = async (ctx) => {
 /**
  * Which GitHub App this orchestrator runs against.
  *
- * The yaml is the default and the `setting` table wins, because `config/default.yaml`
- * is committed: a self-hoster pointing at their own app was editing a tracked file
- * and losing it on every pull. Same store the skill ticks use — this machine's
- * choice, not a project's and not the repo's.
+ * One reader, one source: the committed yaml. It briefly also read a `setting`
+ * row a panel section wrote, on the reasoning that a self-hoster pointing at
+ * their own app loses the edit on the next pull — true, and the people it is
+ * true for are already editing config files, because they are self-hosting. The
+ * panel section served approximately nobody and dropped the stored token when
+ * touched, so it went and the override went with it: two sources and no way to
+ * tell which wins is worse than one that has to be edited in a file.
  */
-const GH_CLIENT_ID = "github_client_id";
-const GH_APP_SLUG = "github_app_slug";
-
-function ghApp(ctx: Ctx): { clientId: string; appSlug: string } {
-  const stored = (k: string) => ctx.db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(k)?.v;
-  return {
-    clientId: (stored(GH_CLIENT_ID) ?? ctx.config.github?.clientId ?? "").trim(),
-    appSlug: (stored(GH_APP_SLUG) ?? ctx.config.github?.appSlug ?? "").trim(),
-  };
-}
+const ghApp = (ctx: Ctx): { clientId: string; appSlug: string } => ({
+  clientId: (ctx.config.github?.clientId ?? "").trim(),
+  appSlug: (ctx.config.github?.appSlug ?? "").trim(),
+});
 
 /**
  * Each installation, with how many repositories it can see.
@@ -3382,31 +3379,6 @@ const installUrl = (ctx: Ctx): string | null => {
   return slug ? `https://github.com/apps/${slug}/installations/new` : null;
 };
 
-/**
- * Point at a different GitHub App.
- *
- * Changing it invalidates the login: a token minted by one app is meaningless to
- * another, and leaving the old one stored would present as "connected" while
- * every call 401s. So the credential goes with it, and the boss reconnects.
- */
-const postGithubApp: Handler = async (ctx, req) => {
-  const b = await body<{ clientId?: string; appSlug?: string }>(req);
-  const clientId = (b.clientId ?? "").trim();
-  // A slug is the last path segment of the app's page, so a pasted URL is the
-  // expected mistake rather than an exotic one.
-  const appSlug = (b.appSlug ?? "").trim().replace(/^https?:\/\/github\.com\/apps\//, "").replace(/\/.*$/, "");
-  const was = ghApp(ctx);
-  for (const [k, v] of [[GH_CLIENT_ID, clientId], [GH_APP_SLUG, appSlug]] as const) {
-    if (v) ctx.db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [k, v]);
-    else ctx.db.run("DELETE FROM setting WHERE k = ?", [k]);
-  }
-  if (clientId !== was.clientId && loadAuth(ctx.db, "github")) {
-    ctx.db.run("DELETE FROM runtime_auth WHERE runtime = 'github'");
-    await credentialChanged(ctx, "github");
-  }
-  return json(ghApp(ctx));
-};
-
 const getGithubLogin: Handler = async (ctx) => {
   const a = loadAuth(ctx.db, "github");
   // Asked of GitHub rather than read from a stored name: a name in the database
@@ -3429,7 +3401,6 @@ const getGithubLogin: Handler = async (ctx) => {
     /** Where to fix that, when the app's slug is configured. */
     installUrl: installUrl(ctx),
     configured: !!ghApp(ctx).clientId,
-    app: ghApp(ctx),
     /** Which accounts it is installed on, and how many repositories each can see. */
     accounts: installs?.ok ? await withCounts(ctx, installs.data) : [],
     pending: ghFlow && ghFlow.expiresAt > Date.now() ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri } : null,
@@ -3617,7 +3588,6 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/auth\/github$/, getGithubLogin],
   ["GET", /^\/api\/github\/repos$/, getGithubRepos],
   ["POST", /^\/api\/auth\/github$/, postGithubLogin],
-  ["POST", /^\/api\/auth\/github\/app$/, postGithubApp],
   ["GET", /^\/api\/preflight$/, getPreflight],
   ["GET", /^\/api\/sandbox-server$/, getSandboxServer],
   ["POST", /^\/api\/sandbox-server\/restart$/, postSandboxServerRestart],

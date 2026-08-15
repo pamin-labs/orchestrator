@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
 import { summarise, skeleton } from "../src/mech/knowledge/pageindex.ts";
 import { hostClaudeHome, hostCodexHome } from "../src/mech/sandbox/auth.ts";
-import { seedHome } from "../src/mech/sandbox/chatgpt.ts";
+import { REFRESH_HOME, seedHome } from "../src/mech/sandbox/chatgpt.ts";
 
 /**
  * One way to call a model, and it is inside a sandbox.
@@ -129,21 +129,40 @@ test("host CLI state is found where the CLI keeps it, not where we guessed", () 
   }
 });
 
-test("seeding the refresher's home never writes through a symlink", async () => {
+test("seeding the refresher's home removes what is there before writing", async () => {
   // Found on a real machine: `<dataDir>/codex-home/auth.json` linked to
   // `~/.codex/auth.json`. `Bun.write` follows a link, so the weekly refresh would
   // have overwritten and then re-refreshed the boss's own personal login — the
   // two-writers-one-token case codex's CI guidance warns about, through the back
-  // door. This directory holds an output, never an input.
-  const dir = mkdtempSync(join(tmpdir(), "orch-seed-"));
-  const victim = join(dir, "real-auth.json");
-  writeFileSync(victim, "THE BOSS'S OWN LOGIN");
-  const codexHome = join(dir, "codex-home");
-  mkdirSync(codexHome, { recursive: true });
-  symlinkSync(victim, join(codexHome, "auth.json"));
+  // door.
+  //
+  // The home is inside the utility container now (007 step 7), where the boss's
+  // own `~/.codex` is out of reach by construction. The guarantee stays anyway,
+  // as an unlink before every write: it costs one exec, and it is the ordering
+  // that was bought with the incident.
+  const calls: string[] = [];
+  const files = new Map<string, string>();
+  const io = {
+    read: async (p: string) => files.get(p) ?? null,
+    write: async (p: string, d: string) => {
+      calls.push(`write ${p}`);
+      files.set(p, d);
+    },
+    remove: async (p: string) => {
+      calls.push(`remove ${p}`);
+      files.delete(p);
+    },
+    run: async () => true,
+  };
 
-  await seedHome(codexHome, '{"tokens":{"refresh_token":"ours"}}');
+  await seedHome(io, '{"tokens":{"refresh_token":"ours"}}');
 
-  expect(readFileSync(victim, "utf8")).toBe("THE BOSS'S OWN LOGIN");
-  expect(readFileSync(join(codexHome, "auth.json"), "utf8")).toContain("ours");
+  expect(calls[0]).toBe(`remove ${REFRESH_HOME}/auth.json`);
+  expect(calls.indexOf(`remove ${REFRESH_HOME}/auth.json`)).toBeLessThan(
+    calls.indexOf(`write ${REFRESH_HOME}/auth.json`),
+  );
+  expect(files.get(`${REFRESH_HOME}/auth.json`)).toContain("ours");
+  // Without this codex reads the OS keychain instead of the file we just wrote.
+  expect(files.get(`${REFRESH_HOME}/config.toml`)).toContain("cli_auth_credentials_store");
 });
+

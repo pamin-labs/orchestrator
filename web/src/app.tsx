@@ -29,7 +29,7 @@ import { CostView, Desk, Owns } from "./views/tables";
 // every notification already sent) carry a group id, so they land on the drill-in.
 type View =
   | "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes"
-  | "settings" | "config" | "skills";
+  | "settings" | "config" | "skills" | "github";
 
 /**
  * Views that keep something pinned and scroll the rest themselves.
@@ -48,7 +48,7 @@ const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", 
  * They are one dialog now, two groups in its left rail — but every link already
  * sent still lands, on the section it used to be.
  */
-const DIALOG: Partial<Record<View, Section>> = { settings: "cred", config: "gates", skills: "skills" };
+const DIALOG: Partial<Record<View, Section>> = { settings: "cred", config: "gates", skills: "skills", github: "github" };
 interface Sel { p: number | null; view: View; g: number | null; t: string | null }
 
 const readHash = (): Sel => {
@@ -404,7 +404,7 @@ export function App() {
             from here. It opens over the work rather than replacing it. */}
         <Tip label="设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S">
           <button
-            onClick={() => go({ view: "settings" })}
+            onClick={() => go({ view: "github" })}
             aria-label="设置"
             className={cn(
               "relative grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
@@ -451,8 +451,17 @@ export function App() {
               <CardBody>
                 <CardTitle>添加项目</CardTitle>
                 <div className="mb-3 mt-1 text-[0.75rem] text-ink-3">
-                  从 GitHub 挑一个仓库 —— 装了这个 App 的账号下都能看到。不用先克隆到本机；
-                  闸门和安装命令等第一个组克隆完再猜。
+                  从 GitHub 挑一个仓库，不用先克隆到本机；闸门和安装命令等第一个组克隆完再猜。
+                  {/* Which accounts it can see is a list the GitHub page now shows,
+                      with a repo count each — better than a sentence describing it. */}
+                  一个也挑不出来的话，去{" "}
+                  <button
+                    className="cursor-pointer underline hover:text-accent"
+                    onClick={() => go({ view: "settings" })}
+                  >
+                    设置 → GitHub
+                  </button>{" "}
+                  看这个 App 装在哪些账号上。
                 </div>
                 <Button variant="go" onClick={() => setPicking(true)}>挑仓库…</Button>
               </CardBody>

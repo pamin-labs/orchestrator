@@ -385,11 +385,12 @@ test("a project that cannot be converted keeps its data and produces exactly one
   expect(esc[0]!.question).not.toContain("fine");
 });
 
-test("the app can be pointed somewhere else, and the old login does not survive it", async () => {
-  // config/default.yaml is committed, so a self-hoster who edits it loses the
-  // change on the next pull. What is typed in the panel is stored on this
-  // machine and wins over the yaml.
-  const { app, db } = server((url) =>
+test("the status carries which accounts it is installed on, and how much each can see", async () => {
+  // The app itself is not configurable from the panel: everyone goes through
+  // one app, and a box that drops the stored login when touched served nobody.
+  // What the page does need is the half the boss asked for — which accounts the
+  // app is installed on, and how many repositories each one can see.
+  const { app } = server((url) =>
     url.includes("/user/installations/")
       ? { total_count: 3 }
       : url.includes("/user/installations")
@@ -397,27 +398,16 @@ test("the app can be pointed somewhere else, and the old login does not survive 
         : { login: "octocat" },
   );
 
-  const before = (await (await get(app, "/api/auth/github")).json()) as any;
-  expect(before.app).toEqual({ clientId: "Iv23li.x", appSlug: "orch" });
-  expect(before.installUrl).toBe("https://github.com/apps/orch/installations/new");
-  // Which accounts, and how much each can see — the question the boss could not
-  // answer from the panel.
-  expect(before.accounts).toEqual([{ id: 5, account: "acme", kind: "Organization", repos: 3 }]);
+  const b = (await (await get(app, "/api/auth/github")).json()) as any;
+  expect(b.accounts).toEqual([{ id: 5, account: "acme", kind: "Organization", repos: 3 }]);
+  // The install link comes from the yaml's `appSlug`, which is now its only source.
+  expect(b.installUrl).toBe("https://github.com/apps/orch/installations/new");
+  expect(b.configured).toBe(true);
+  expect(b.app).toBeUndefined();
 
-  const r = await app(
-    new Request("http://x/api/auth/github/app", {
-      method: "POST",
-      // A pasted app URL is the expected mistake, not an exotic one.
-      body: JSON.stringify({ clientId: "Iv23li.mine", appSlug: "https://github.com/apps/mine/installations/new" }),
-    }),
+  // And the route that wrote the override is gone with the panel section.
+  const gone = await app(
+    new Request("http://x/api/auth/github/app", { method: "POST", body: JSON.stringify({ clientId: "x" }) }),
   );
-  expect(r.status).toBe(200);
-  expect((await r.json()) as any).toEqual({ clientId: "Iv23li.mine", appSlug: "mine" });
-
-  // One app's token means nothing to another: keeping it would read as connected
-  // while every call 401s.
-  expect(loadAuth(db, "github")).toBeNull();
-  const after = (await (await get(app, "/api/auth/github")).json()) as any;
-  expect(after.connected).toBe(false);
-  expect(after.installUrl).toBe("https://github.com/apps/mine/installations/new");
+  expect(gone.status).toBe(404);
 });
