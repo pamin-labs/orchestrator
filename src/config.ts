@@ -327,7 +327,12 @@ export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: reso
  * leaks. An empty one means the server has no auth, which is the usual local
  * setup and is fine — preflight reports what it finds either way.
  */
+// Two spellings for one value. `ORCH_SANDBOX_API_KEY` is the original;
+// `ORCH_SANDBOX_KEY` is what `docker-compose.yml` passes to both services, and
+// asking a compose file to spell the same secret two ways is how the two end up
+// disagreeing — which presents as every container failing to open with a 401.
 const SANDBOX_API_KEY_ENV = "ORCH_SANDBOX_API_KEY";
+const SANDBOX_API_KEY_ALT = "ORCH_SANDBOX_KEY";
 
 /**
  * The handful of keys a container deployment has to set without editing a file.
@@ -350,6 +355,12 @@ function fromEnv(cfg: Config): Config {
   if (dir) out.dataDir = resolve(dir);
   const server = process.env.ORCH_SANDBOX_SERVER?.trim();
   if (server) out.sandbox = { ...out.sandbox, server };
+  // Where the ticked skills are staged for the mount. An environment variable
+  // because the one deployment that has to set it cannot edit the yaml: in
+  // `docker-compose.yml` this path has to be identical on both sides of a bind
+  // mount, and a path baked into an image is the wrong one by definition.
+  const skills = process.env.ORCH_SKILLS_DIR?.trim();
+  if (skills) out.skillsDir = resolve(skills);
   return out;
 }
 
@@ -367,7 +378,7 @@ export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
   // this and nothing else — arrays and scalars replace, plain objects recurse —
   // and JS has no stdlib deep merge worth hand-rolling around.
   const cfg = fromEnv(withAbsoluteDataDir(defu(parsed, DEFAULTS)));
-  const key = process.env[SANDBOX_API_KEY_ENV];
+  const key = process.env[SANDBOX_API_KEY_ENV] || process.env[SANDBOX_API_KEY_ALT];
   return key ? { ...cfg, sandbox: { ...cfg.sandbox, apiKey: key } } : cfg;
 }
 

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathInSandbox, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/util/skills.ts";
@@ -77,7 +77,14 @@ test("an unchanged skill is not copied again", () => {
   const copied = join(data, "alpha", "SKILL.md");
   // Mark the copy. A re-copy would overwrite it; a skip leaves it alone.
   writeFileSync(copied, "marked");
-  utimesSync(copied, new Date(), new Date());
+  // Newer than the source *by construction*, not by asking the clock. `new
+  // Date()` failed on CI: the runner's filesystem stores a coarser mtime than
+  // the value it is handed, so "now" could land at or before a source written
+  // milliseconds earlier — a red build on a rule that was working, on whichever
+  // pull request happened to be open.
+  const src = statSync(alpha.file).mtimeMs;
+  const newer = new Date(src + 2000);
+  utimesSync(copied, newer, newer);
 
   stageSkills(data, [alpha]);
   expect(readFileSync(copied, "utf8")).toBe("marked");
