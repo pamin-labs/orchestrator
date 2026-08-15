@@ -717,3 +717,17 @@ README 补一句：桌面通知是 macOS 的，其他平台走 ntfy，而那个 
 6. 检出搬进工具容器，`gitlock.ts` 等一批删掉，`missingBinaries()` 清空
 7. codex 续期器搬进去（最后，真凭据）
 8. 规则 15 换成 API 基线
+
+#### 007 第 1-3 步落地（`b96c65e` / `231bd96` / `c11f702`）
+
+**568 pass / 3 skip / 0 fail**，`tsc` 干净，`build:web` 通过。三个 subagent 并行做的，文件互不重叠。
+
+**第 1 步 clone**：`--filter=blob:none`（不是 `--depth=1` —— shallow 更快但砍历史，`rebaseOntoBase` 和 `merge-base --is-ancestor` 都要真历史）。顺带把 `ensureCheckout` 那四个静默 `return` 改成各自报出是哪一个 —— 以前任何一个触发，组都会在空的 `/work` 里跑完一整个 turn，状态 RUNNING、有 agent、哪儿都不报错。
+
+**第 3 步 `gh` → REST**：`src/mech/github.ts`，八个端点的普通 JSON。转换过程中挡下三个会**静默出错**的形状差异：REST 里 `state: MERGED` 不存在（合并是 `closed` + `merged:true`，只读 `state` 就是 grp16 那个 bug 重演）；`mergeable` 在 GitHub 后台计算时是 `null`，当成冲突就是每次 push 后都派人 rebase 干净分支；REST **不大写**，`failure` 撞上匹配 `FAILURE` 的过滤器 = 每个红的 PR 报成绿的。失败带 boss/agent/transient 三桶。ETag 条件请求，key 带 token（304 不计限额，换登录不能重放旧缓存）。顺带修了一个既有 bug：`pollPrs` 原来拿**第一个项目**的检出当 `gh` 的 cwd，所有 PR 都在 `ORDER BY id LIMIT 1` 那个项目里查。
+
+**第 2 步设备流登录**：`src/mech/ghlogin.ts`，纯 `fetch`，无二进制、无 client secret。**注册的是 GitHub App 不是 OAuth App**，所以没有 scope —— 权限声明在 app 上、安装时选。两个 app 开关从我们这侧不可见，各在三处写明症状：Device Flow 没开 = 取码请求直接被拒；user token 过期没关 = 今天能用、明天全舰队 401，而刷新需要我们 ship 不了的 client secret。**「授权了」和「装上了」是两个状态**，只有后者够得到仓库 —— 授权但没装报成已连接，就是一条绿线配一个永远空的仓库列表。账号问 GitHub 而不是存下来（存下来的名字会替一个上周就吊销的 token 继续说「已连接」）。
+
+**没做**：仓库列表、org 切换（第 2 步的后半，依赖前面）；`client_id` 空着等注册。
+
+**上线前必须在真沙盒服务器上验的两条**（假设了就会失败）：控制面到底校不校验 `paths`（被静默忽略是 **fail-open** —— push 能成功而设计说它不能）；GitHub 的 301 重定向会不会让精确白名单丢掉注入。
