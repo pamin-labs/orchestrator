@@ -30,6 +30,7 @@ import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/knowledg
 import { gatesFor, recordGate } from "./mech/flow/gate.ts";
 import { forgetProjectSkills, listSkills, projectSkills, projectSkillsPending, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/util/skills.ts";
 import { shq } from "./mech/util/shq.ts";
+import { abortJob } from "./runtime/running.ts";
 import { sediment } from "./mech/knowledge/lessons.ts";
 import { say } from "./lang.ts";
 import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/flow/validate.ts";
@@ -2854,17 +2855,42 @@ const deleteProject: Handler = async (ctx, _req, params) => {
   if (!p) return text("no such project", 404);
   const grps = ctx.db.query<{ id: number }, [number]>("SELECT id FROM grp WHERE project_id = ?").all(id);
 
-  // 1. Nothing new starts, and what is running is marked done being run.
+  // 1. Nothing new starts, and what is running is actually stopped.
   //
-  // ponytail: a turn already in flight keeps its process until the container
-  // under it dies on the next line. Its own writes then land on rows that are
-  // gone and fail the way any other lost race does. Killing a turn mid-flight
-  // is a scheduler feature nothing else needs yet.
+  // Marking the row cancelled is not stopping it. The stream reader stays
+  // attached, the CLI keeps running until the container dies on the next line,
+  // and its writes then land on rows that are gone — a foreign key failure
+  // inside a turn whose group no longer exists, which surfaces as an unhandled
+  // rejection with nothing in the message about a project having been removed.
+  // `abortJob` is what the offline hold already uses for the same shape.
+  //
+  // Both scopes: a project's standing agents (Architect, CoS, Dispatcher) have
+  // `grp_id` NULL and `project_id` set, so a `grp_id IN (…)` filter left every
+  // one of their turns running against a project that was being erased.
+  const doomed = ctx.db
+    .query<{ id: number }, [number]>(
+      `SELECT id FROM job
+        WHERE state IN ('pending', 'running')
+          AND (grp_id IN (SELECT id FROM grp WHERE project_id = ?1)
+               OR agent_id IN (SELECT id FROM agent WHERE project_id = ?1))`,
+    )
+    .all(id);
+  let stopped = 0;
+  for (const j of doomed) if (abortJob(j.id)) stopped++;
   ctx.db.run(
     `UPDATE job SET state = 'cancelled', ended_at = unixepoch() * 1000, error = 'project removed'
-     WHERE state IN ('pending', 'running') AND grp_id IN (SELECT id FROM grp WHERE project_id = ?)`,
+      WHERE state IN ('pending', 'running')
+        AND (grp_id IN (SELECT id FROM grp WHERE project_id = ?1)
+             OR agent_id IN (SELECT id FROM agent WHERE project_id = ?1))`,
     [id],
   );
+  if (stopped) {
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: `${p.name}：${stopped} 个在跑的 turn 先掐掉了，再删数据`,
+    });
+  }
 
   // 2. Containers, while their ids are still readable.
   const failed: string[] = [];
