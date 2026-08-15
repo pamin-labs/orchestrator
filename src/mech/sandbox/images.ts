@@ -1,4 +1,4 @@
-import { PUBLISHED_REPO } from "./sandbox.ts";
+import { hasRegistry, PUBLISHED_REPO } from "./sandbox.ts";
 
 /**
  * What the image field may be set to, as two lists rather than a text box.
@@ -80,11 +80,7 @@ function local(): { tags: string[]; note?: string } {
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l && !l.includes("<none>"));
-    const head = (r: string) => r.split("/")[0]!;
-    const mine = all.filter((r) => {
-      const h = head(r);
-      return !(r.includes("/") && (h.includes(".") || h.includes(":") || h === "localhost"));
-    });
+    const mine = all.filter((r) => !hasRegistry(r));
     return { tags: mine, note: mine.length ? undefined : "本机没有可用的镜像 —— docker build 一个再回来" };
   } catch {
     return { tags: [], note: "这台机器上没有 docker" };

@@ -40,7 +40,7 @@ const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
  * editing the yaml and one fewer place for the two to disagree.
  */
 export const CLIENT_ID = "Iv23liUP6a00TszuLZvc";
-export const APP_SLUG = "orchestrator-connect";
+export const APP_SLUG = "orchestrator-agentic-app";
 
 /** Only the shape used here, so a test stub is a function rather than a cast. */
 export type Fetcher = (
@@ -254,7 +254,7 @@ export async function githubAccount(gh: Github): Promise<string | null> {
  * `orch agent <agent@orch.local>` was made up: the address routes nowhere and
  * the name belongs to nobody, so a `Signed-off-by` line carrying it certifies
  * nothing and a reviewer clicking the author gets a 404. This is the account the
- * App already commits as — id resolved from `/users/orchestrator-connect[bot]`,
+ * App already commits as — id resolved from `/users/orchestrator-agentic-app[bot]`,
  * in GitHub's own noreply form, the same shape `claude[bot]` uses.
  *
  * It is the fallback and the co-author, never a substitute for a connected
@@ -298,7 +298,7 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
  * lack `Signed-off-by`, and it refuses at the last step of a slice that already
  * passed every gate. Off only for a repository that would reject the trailer.
  *
- * **coauthor** — `Co-Authored-By: orchestrator-connect[bot]`. Not an attribution
+ * **coauthor** — `Co-Authored-By: orchestrator-agentic-app[bot]`. Not an attribution
  * flourish: a diff written by an agent should say so in the record, not only in
  * the pull request body, because the body is where a reader looks once and the
  * commit is where they look a year later. Off for anyone who would rather their

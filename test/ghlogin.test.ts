@@ -254,7 +254,7 @@ test("a login with no installations lists nothing and says where to fix it", asy
   expect(b.installations).toEqual([]);
   expect(b.repos).toEqual([]);
   expect(b.selected).toBeNull();
-  expect(b.installUrl).toBe("https://github.com/apps/orchestrator-connect/installations/new");
+  expect(b.installUrl).toBe("https://github.com/apps/orchestrator-agentic-app/installations/new");
 });
 
 test("switching installation changes the list", async () => {
@@ -419,7 +419,7 @@ test("the status carries which accounts it is installed on, and how much each ca
   const b = (await (await get(app, "/api/auth/github")).json()) as any;
   expect(b.accounts).toEqual([{ id: 5, account: "acme", kind: "Organization", repos: 3 }]);
   // The install link comes from the yaml's `appSlug`, which is now its only source.
-  expect(b.installUrl).toBe("https://github.com/apps/orchestrator-connect/installations/new");
+  expect(b.installUrl).toBe("https://github.com/apps/orchestrator-agentic-app/installations/new");
   expect(b.app).toBeUndefined();
 
   // And the route that wrote the override is gone with the panel section.

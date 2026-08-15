@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { GripVertical } from "lucide-react";
 import { Head, Input, Meta } from "../ui/bits";
 import { Button } from "../ui/button";
-import { Field, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
-import { Toggle, Toggles } from "../ui/segment";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../ui/field";
+import { Segment, Segments, Toggle, Toggles } from "../ui/segment";
 import { Combobox } from "../ui/combobox";
 import { cn } from "../lib/utils";
+import { pull } from "../lib/api";
 
 /**
  * What this repository does differently, and nothing that is true of all of them.
@@ -194,14 +195,7 @@ export function Sandbox({
           busy={busy}
           onSave={(v) => patch({ install: v || null })}
         />
-        <Row
-          label="镜像"
-          value={sandbox.image ?? ""}
-          placeholder="orch/agent:1"
-          width="max-w-[22rem]"
-          busy={busy}
-          onSave={(v) => set("image", v || undefined)}
-        />
+        <ImageRow value={sandbox.image ?? ""} busy={busy} onSave={(v) => set("image", v || undefined)} />
         <Row
           label="CPU"
           value={sandbox.cpu ?? ""}
@@ -254,6 +248,62 @@ export function Sandbox({
 }
 
 /** Label, value, and a save that only appears once there is something to save. */
+interface ImageChoices {
+  published: string[];
+  local: string[];
+  note: { published?: string; local?: string };
+}
+
+/**
+ * Which image a group's container is made from — picked, never typed.
+ *
+ * A typed image name is the shape of field that fails four steps later: the typo
+ * is not caught here, it is a container that will not create, on a group that
+ * has already been dispatched and told the boss it started. And the set of legal
+ * answers is small and knowable — the sandbox refuses anything that is not ours
+ * or built here — so both lists can just be shown.
+ *
+ * 远程 first because it is the answer for everybody who is not developing this
+ * project: the published image is pulled on first use and needs nothing on this
+ * machine. 本地 is the other half of that rule, and it is exactly what a bare
+ * tag means.
+ *
+ * Empty lists say which kind of empty they are. "Nothing published yet" and
+ * "could not reach ghcr.io" send a reader to different places.
+ */
+function ImageRow({ value, busy, onSave }: { value: string; busy: boolean; onSave: (v: string) => void }) {
+  const [src, setSrc] = useState<"remote" | "local">(value && !value.startsWith("ghcr.io/") ? "local" : "remote");
+  const [c, setC] = useState<ImageChoices | null>(null);
+  useEffect(() => {
+    void pull<ImageChoices>("/api/sandbox/images").then(setC);
+  }, []);
+
+  const options = (src === "remote" ? c?.published : c?.local) ?? [];
+  const note = src === "remote" ? c?.note.published : c?.note.local;
+  return (
+    <Field aria-labelledby="cfg-image">
+      <FieldTitle id="cfg-image">镜像</FieldTitle>
+      <FieldContent className="flex-col items-start gap-1.5">
+        <div className="flex w-full items-center gap-2">
+          <Segments value={src} onValueChange={(v) => setSrc(v as "remote" | "local")}>
+            <Segment value="remote">远程</Segment>
+            <Segment value="local">本地</Segment>
+          </Segments>
+          <Combobox
+            value={value}
+            options={options}
+            placeholder={c ? "ghcr.io/pamin-labs/orch-agent:latest（默认）" : "读取中…"}
+            disabled={busy}
+            width="max-w-[22rem]"
+            onCommit={onSave}
+          />
+        </div>
+        {note && <Meta>{note}</Meta>}
+      </FieldContent>
+    </Field>
+  );
+}
+
 function Row(props: {
   label: string;
   value: string;

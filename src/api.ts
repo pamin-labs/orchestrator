@@ -14,6 +14,7 @@ import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sa
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "./mech/sandbox/login.ts";
 import { APP_SLUG, BOT, commitIdentity, forgetIdentity, githubAccount, listInstallations, listRepos, pollForToken, setTrailers, startDeviceFlow, trailers, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
+import { imageChoices, type ImageChoices } from "./mech/sandbox/images.ts";
 import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "./mech/sandbox/server.ts";
 import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
@@ -3725,6 +3726,20 @@ const getPreflight: Handler = async (ctx) =>
   });
 
 /**
+ * What the image field may be set to. Two lists, never a text box.
+ *
+ * Cached for a minute: the remote half is two round trips to ghcr.io and the
+ * local half shells out to docker, and the settings dialog asks on every open.
+ */
+let imageCache: { at: number; v: ImageChoices } | null = null;
+const getImages: Handler = async () => {
+  if (!imageCache || Date.now() - imageCache.at > 60_000) {
+    imageCache = { at: Date.now(), v: await imageChoices() };
+  }
+  return json(imageCache.v);
+};
+
+/**
  * The process that hands out containers, and what a restart of it would cost.
  *
  * Whether it is *healthy* is preflight's answer and stays preflight's answer —
@@ -3831,6 +3846,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/auth\/codex\/device$/, postCodexDevice],
   ["POST", /^\/api\/auth\/codex\/device\/cancel$/, postCodexDeviceCancel],
   ["GET", /^\/api\/preflight$/, getPreflight],
+  ["GET", /^\/api\/sandbox\/images$/, getImages],
   ["GET", /^\/api\/sandbox-server$/, getSandboxServer],
   ["POST", /^\/api\/sandbox-server\/restart$/, postSandboxServerRestart],
   ["POST", /^\/api\/sandbox-server\/start$/, postSandboxServerStart],
