@@ -5,7 +5,6 @@ import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execIn, execLines, WORK } from "../sandbox/sandbox.ts";
 import { detectGates, detectInstall, detectShared, READS, type Root } from "../util/detect.ts";
-import { LINK_PROJECT_SKILLS } from "../util/skills.ts";
 import { shq } from "../util/shq.ts";
 import { baseRefFor } from "../git/checkout.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
@@ -160,7 +159,6 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     branch: grp.branch,
     base: await baseRefFor(ctx, grp.project_id),
   });
-  await linkProjectSkills(ctx, grpId);
 
   const known = installFor(ctx, grp.project_id);
   if (known) {
@@ -297,8 +295,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         const branch = `orch/${grp.name}`;
         const base = await baseRefFor(ctx, grp.project_id);
         await createCheckout(ctx, { grp: grpId }, { remote, branch, base });
-        await linkProjectSkills(ctx, grpId);
-        ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
+              ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
         ctx.bus.emit({
           grpId,
           author: "orchestrator",
@@ -386,20 +383,4 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
     });
   }
   return started;
-}
-
-/**
- * A repository that ships skills hands them to both CLIs, not just one.
- *
- * claude finds `.claude/skills` because the checkout is its working directory;
- * codex looks only in `$CODEX_HOME/skills`. One link inside the container closes
- * that, the same way `LINK_AGENTS_MD` closes the CLAUDE.md/AGENTS.md split — and
- * for the same reason it is a link rather than anything on the host: the files
- * only exist in there.
- *
- * Best-effort: a repo with no skills is the common case and costs one `for` loop
- * over nothing.
- */
-export async function linkProjectSkills(ctx: Ctx, grpId: number): Promise<void> {
-  await execIn(ctx, { grp: grpId }, LINK_PROJECT_SKILLS, { cwd: WORK });
 }

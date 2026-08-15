@@ -1,6 +1,6 @@
 import type { Ctx } from "../../api.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
-import { CODEX_HOME, hostClaudeHome, hostCodexHome } from "../sandbox/auth.ts";
+import { hostClaudeHome, hostCodexHome } from "../sandbox/auth.ts";
 import { dirname, join } from "node:path";
 import type { DB } from "../../db.ts";
 
@@ -123,6 +123,25 @@ export function listSkills(repoPath?: string | null): SkillRef[] {
   // left as an accident, and reported by the caller that has a bus
   // (`projectSkillsUnreachable`). Reading them out of the group's container is
   // 007 step 6.
+  // Removed rather than replaced, and this is the note that says why.
+  //
+  // A project's skills are **already delivered**: the repo is cloned to `/work`,
+  // a turn runs with that as its working directory, and claude discovers
+  // `.claude/skills` relative to it. This repository relies on exactly that for
+  // its own `git-commit`. Nothing needs staging, and staging would add a second
+  // source for something the CLI resolves natively.
+  //
+  // What is lost is *our* visibility: the settings page cannot list them and
+  // `/name` cannot resolve one, because the directory is not on this machine.
+  // `projectSkillsUnreachable` says so once per project.
+  //
+  // Two things measured, so nobody rebuilds either dead end:
+  // - codex does **not** read the checkout. Its native binary knows
+  //   `CODEX_HOME/skills` and `.codex/skills`, and no `.claude/skills` at all —
+  //   so a claude-convention repo's skills reach claude turns and not codex ones.
+  // - linking them into `$CODEX_HOME/skills` does not fix that: `skillMounts`
+  //   mounts that path **read-only**, so the link fails with EROFS whenever the
+  //   boss has any skill staged, which is the ordinary case.
   if (repoPath?.startsWith("/")) {
     scan(repoPath, ".claude/skills", "project", out);
     scan(repoPath, ".agents/skills", "project", out);
@@ -281,9 +300,6 @@ export function stageSkills(dir: string, want: SkillRef[]): { dir: string; stage
  * step 6 moves the read into the container, and a standing condition repeated
  * every poll is a feed nobody reads.
  */
-/** codex's own search path inside the container; claude uses the checkout. */
-const CODEX_SKILLS = `${CODEX_HOME}/skills`;
-
 const skillsWarned = new Set<number>();
 export function projectSkillsUnreachable(ctx: Ctx, projectId: number, repoPath?: string | null): void {
   if (!repoPath || repoPath.startsWith("/") || skillsWarned.has(projectId)) return;
@@ -302,22 +318,3 @@ export function projectSkillsUnreachable(ctx: Ctx, projectId: number, repoPath?:
   });
 }
 
-/**
- * Put the project's own skills where codex looks, inside the container.
- *
- * claude discovers `.claude/skills` relative to its working directory, and the
- * agent's working directory *is* the checkout — so a repository that ships
- * skills already hands them to a claude turn with nothing from us. This
- * repository relies on exactly that for its own `git-commit`.
- *
- * codex does not: its search path is `$CODEX_HOME/skills`, which is why the
- * boss's ticked skills are mounted at both. So a repo's skills reached claude
- * agents and not codex ones — the same asymmetry `LINK_AGENTS_MD` exists for,
- * fixed the same way and for the same reason: one link, in the container, rather
- * than a mechanism on the host.
- *
- * `-sfn` so a rebuilt container and a re-entered group both land the same way.
- */
-export const LINK_PROJECT_SKILLS =
-  `mkdir -p ${CODEX_SKILLS} && for d in .claude/skills/*/ .agents/skills/*/; do ` +
-  `[ -d "$d" ] && ln -sfn "$PWD/$d" ${CODEX_SKILLS}/"$(basename "$d")"; done; true`;
