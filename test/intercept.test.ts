@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { interrupt } from "../src/mech/intercept.ts";
 import type { Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
@@ -26,7 +25,6 @@ function harness(checkpoint: string) {
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
-    gitLock: new RepoLock(),
     sandbox,
     waiters: new Map(),
     config: { language: "中文"},
@@ -69,7 +67,6 @@ test("a rollback that fails says so instead of reporting a clean tree", async ()
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
-    gitLock: new RepoLock(),
     sandbox,
     waiters: new Map(),
     config: { language: "中文"},

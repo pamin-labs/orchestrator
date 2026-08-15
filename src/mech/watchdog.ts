@@ -8,7 +8,7 @@ import { runInvariants } from "./invariants.ts";
 import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
 import { CODEX_HOME } from "./auth.ts";
 import { execIn, killSandbox, renewSandbox, restartServer, runningServer, UTIL, utilSandbox, WORK, type Scope } from "./sandbox.ts";
-import { baseRefFor, sandboxGit } from "./checkout.ts";
+import { baseRefFor, sandboxGit, treeFiles } from "./checkout.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -16,7 +16,6 @@ import { buildMap, renderMap, saveMap } from "./repomap.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
 import { abortJob } from "../runtime/running.ts";
 import { probe } from "./net.ts";
-import type { GitRunner } from "./worktree.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.
@@ -30,7 +29,6 @@ import type { GitRunner } from "./worktree.ts";
 export interface WatchdogDeps {
   ctx: Ctx;
   cfg: Config;
-  git: GitRunner;
   now?: () => number;
   /** The only network call on the tick. Tests pass a no-op; see the call site. */
   pollUsage?: typeof pollUsage;
@@ -54,9 +52,6 @@ export const REEMIT_MS = 30 * 60 * 1000;
 export const NUDGE_AFTER_MS = 4 * 60 * 60 * 1000;
 /** And how often to say it again. Nagging every half hour is how a feed is ignored. */
 export const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
-
-/** How often the watchdog asks the remote what main is. Not every 30s tick. */
-export const FETCH_EVERY_MS = 5 * 60 * 1000;
 
 /**
  * How often the codex rollout sweep reaches into the containers.
@@ -121,20 +116,9 @@ export function serverAction(
 /** 30s, 2min, 8min. A server that needs three tries needs a person. */
 export const serverBackoffMs = (attempt: number): number => 30_000 * 4 ** (attempt - 1);
 
-// ponytail: in-memory, so a restart fetches once more than it needed to. A table
-// for this would be a row nobody ever reads.
-const lastFetch = new Map<string, number>();
-
 /** Projects already told about, so the repo-map failure is said once, not per tick. */
 const mapWarned = new Set<number>();
 
-async function refreshOrigin(deps: WatchdogDeps, repo: string): Promise<void> {
-  const at = deps.now?.() ?? Date.now();
-  if (at - (lastFetch.get(repo) ?? 0) < FETCH_EVERY_MS) return;
-  lastFetch.set(repo, at);
-  // Under the repo lock (makeGitRunner), because worktrees share one `.git`.
-  await deps.git(repo, ["fetch", "--quiet", "origin"], repo);
-}
 
 /**
  * Backstop, and a shorter shelf life.
@@ -594,29 +578,28 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // written when the render changed, so a quiet repo costs one comparison. This is
   // the thing seven groups were each rediscovering by grep.
   for (const p of ctx.db
-    .query<{ id: number; repo_path: string }, []>("SELECT id, repo_path FROM project")
+    .query<{ id: number; repo_path: string; remote: string | null }, []>(
+      "SELECT id, repo_path, remote FROM project",
+    )
     .all()) {
-    const ls = await deps.git(p.repo_path, ["ls-files"], p.repo_path);
-    // A project is `owner/name` now and its code lives in containers, so there is
-    // nothing on this host to list. Said once per project rather than never
-    // (the map silently stops being refreshed and seven groups go back to
-    // grepping) and rather than every tick (a line every thirty seconds forever
-    // is a feed nobody reads). Moving the read into the project's container is
-    // 007 step 6.
-    if (ls.code !== 0) {
+    const files = p.remote ? await treeFiles(ctx, p.remote, await baseRefFor(ctx, p.id)) : [];
+    // The mirror is the corpus now. Nothing to list means no mirror could be
+    // built — said once per project rather than never (the map silently stops
+    // being refreshed and seven groups go back to grepping) and rather than
+    // every tick (a line every thirty seconds forever is a feed nobody reads).
+    if (!files.length) {
       if (!mapWarned.has(p.id)) {
         mapWarned.add(p.id);
         findings.push({
           rule: "repo-map",
           grpId: null,
           severity: "advisory",
-          body: `仓库地图没法刷新了：${p.repo_path} 的代码只在容器里，宿主上读不到（${ls.out.slice(0, 120)}）。等 007 step 6 把这步搬进容器。`,
+          body: `仓库地图没法刷新了：${p.repo_path} 的镜像建不起来（工具容器起不来，或者这个登录读不到这个仓库）。`,
         });
       }
       continue;
     }
     mapWarned.delete(p.id);
-    const files = ls.out.split("\n").map((l) => l.trim()).filter(Boolean);
     if (saveMap(ctx.db, p.id, renderMap(buildMap(p.repo_path, () => files)))) {
       ctx.bus.emit({ author: "librarian", kind: "state_change", body: `repo map refreshed (${files.length} files)` });
     }
@@ -801,7 +784,6 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     )
     .all();
   for (const g of revivable) {
-    if (!deps.ctx.git) break;
     await unpark(ctx, g.id);
     findings.push({ rule: "unparked", grpId: g.id, severity: "advisory", body: t("wd.unparked", { name: g.name }) });
   }
@@ -835,14 +817,18 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
                            AND j.kind = 'agent_turn' AND j.payload_json LIKE '%"conflict":true%')`,
     )
     .all()) {
-    // Against the real base, not the local checkout's HEAD: main also moves when
-    // somebody pushes from another machine, and nothing here ever fetched, so
-    // that half was invisible.
-    await refreshOrigin(deps, g.repo);
+    // Against the real base, and asked of GitHub rather than of a checkout on
+    // this machine — there is none since 007 step 6. One conditional request per
+    // group per tick, and a repeat is a 304, which does not count against the
+    // rate limit. Main also moves when somebody pushes from another machine,
+    // which is the case a local `rev-parse` could never see.
     const baseRef = await baseRefFor(ctx, g.project_id);
-    const head = await deps.git(g.repo, ["rev-parse", baseRef], g.repo);
-    if (head.code !== 0) continue;
-    const sha = head.out.trim();
+    const branch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : baseRef;
+    const head = await ctx.gh?.request<{ commit?: { sha?: string } }>(
+      "GET",
+      `/repos/${g.repo}/branches/${branch}`,
+    );
+    const sha = head?.ok ? (head.data?.commit?.sha ?? "") : "";
     if (!sha || sha === g.seen) continue;
     // The clone has to know the object before it can be asked about it. It is a
     // separate `git clone` that never fetched, so `merge-base --is-ancestor`

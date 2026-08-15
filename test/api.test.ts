@@ -5,7 +5,6 @@ import { dirname, join } from "node:path";
 import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { askKind, brief, landGroup, makeApp, type Ctx } from "../src/api.ts";
 import { listSkills } from "../src/mech/skills.ts";
 import { landed } from "../src/mech/mergequeue.ts";
@@ -23,7 +22,6 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
     db,
     bus,
     sched,
-    gitLock: new RepoLock(),
     sandbox: fakeSandbox(handle), waiters: new Map(),
     config: { language: "中文"},
   };
@@ -864,7 +862,6 @@ test("a closed PR whose branch cannot be reopened can still get a new one", asyn
   const { app, db, ctx } = harness();
   db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, branch = 'orch/g1' WHERE id = 1");
   db.run("UPDATE project SET remote = 'git@github.com:me/x.git' WHERE id = 1");
-  ctx.git = async () => ({ code: 0, out: "" });
   ctx.gh = { remaining: () => null, request: async <T,>() => ({ ok: true, status: 200, data: { number: 9 } as T }) };
 
   const r = await post(app, "/api/groups/1/newpr");
@@ -890,7 +887,6 @@ test("a failed second PR leaves the old number in place rather than none at all"
   );
   db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, branch = 'orch/g1' WHERE id = 1");
   db.run("UPDATE project SET remote = 'git@github.com:me/x.git' WHERE id = 1");
-  ctx.git = async () => ({ code: 0, out: "" });
   // A GitHub that would happily open the PR. Without a number here the create
   // answers "no PR number in it" and the route 422s for a reason that has
   // nothing to do with the push — the test passes and asserts nothing.

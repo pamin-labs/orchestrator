@@ -5,8 +5,6 @@ import { join } from "node:path";
 import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
-import { makeGitRunner } from "../src/mech/worktree.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
@@ -29,7 +27,6 @@ function harness(dataDir?: string) {
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
-    gitLock: new RepoLock(),
     waiters: new Map(),
     sandbox: {
       ...base,
@@ -225,28 +222,3 @@ test("the restart button gets the two numbers it has to show, and never a guess"
   expect(b.restartable).toBe(b.argv.length > 0);
 });
 
-test("host git against a real project row comes back as a code, never a throw", async () => {
-  // The check this whole class of bug was waiting for. Every other test injects
-  // `deps.git`, so every one of them exercised a runner that cannot fail the way
-  // the real one does: `Bun.spawn` **throws** when `cwd` does not exist, and
-  // `repo_path` stopped being a directory when a project became `owner/name`.
-  // Every `if (r.code !== 0)` guard downstream was therefore dead code, and the
-  // watchdog tick died at its first project row with nothing anywhere saying so.
-  //
-  // No injection here: the real `makeGitRunner`, the real row.
-  const git = makeGitRunner(new RepoLock());
-  const row = { repo_path: "acme/doomed" };
-
-  const ls = await git(row.repo_path, ["ls-files"], row.repo_path);
-  expect(ls.code).not.toBe(0);
-  // And it says what is true. The thrown message was `posix_spawn 'git'`, which
-  // reads as "git is not installed" and sends the boss to `brew install git`.
-  expect(ls.out).toContain(row.repo_path);
-  expect(ls.out).not.toContain("posix_spawn");
-
-  // The same for every other shape a caller uses, including no cwd at all.
-  for (const argv of [["rev-parse", "HEAD"], ["remote", "get-url", "origin"], ["fetch", "--quiet", "origin"]]) {
-    const r = await git(row.repo_path, argv);
-    expect(`${argv[0]}: ${r.code === 0}`).toBe(`${argv[0]}: false`);
-  }
-});

@@ -1,13 +1,11 @@
-import { existsSync } from "node:fs";
-import type { RepoLock } from "./gitlock.ts";
 
 /**
  * git operations on a group's checkout.
  *
- * The checkout used to be a worktree on this machine and is now a clone inside
- * the group's sandbox (mech/checkout.ts), so every function here takes its
- * runner rather than assuming one: `sandboxGit` for a group's own history, the
- * host runner for the repository the boss actually owns.
+ * Every function takes its runner rather than assuming one, and since 007 step 6
+ * there is exactly one to hand it: `sandboxGit`, against the clone inside the
+ * group's container. The host runner and the repo write lock it needed are gone
+ * with the host checkout — one writer, one `.git`, nothing to serialise.
  */
 
 export interface GitRun {
@@ -17,40 +15,6 @@ export interface GitRun {
 
 export type GitRunner = (repo: string, argv: string[], cwd?: string) => Promise<GitRun>;
 
-/** Runs git under the repo write lock, so parallel groups cannot corrupt `.git`. */
-export function makeGitRunner(lock: RepoLock): GitRunner {
-  return (repo, argv, cwd) =>
-    lock.run(repo, argv, async () => {
-      try {
-        const p = Bun.spawn(["git", ...argv], { cwd: cwd ?? repo, stdout: "pipe", stderr: "pipe" });
-        const [so, se] = await Promise.all([
-          new Response(p.stdout).text(),
-          new Response(p.stderr).text(),
-        ]);
-        return { code: await p.exited, out: (so + se).trimEnd() };
-      } catch (e: any) {
-        // `Bun.spawn` **throws** when `cwd` does not exist — it does not come
-        // back with a non-zero code. Every caller in this codebase guards on
-        // `code !== 0`, so every one of those guards was dead the moment
-        // `repo_path` became `owner/name` (007 §2): a watchdog tick died at its
-        // first project row and took the twelve rules after it with it; the
-        // index refresher threw into a `void` call and blamed git in the boss's
-        // feed once per tick forever.
-        //
-        // And the message it throws with reads `posix_spawn 'git'`, which says
-        // git is not installed. It is; there is simply nowhere to run it. So the
-        // failure comes back as a code with a sentence that is true.
-        // Both cases are ENOENT and they send the boss to different places, so
-        // the one thing that tells them apart is checked here rather than
-        // guessed from a message: a missing directory is a project whose code
-        // only exists in containers; anything else really is the binary.
-        const where = cwd ?? repo;
-        return existsSync(where)
-          ? { code: 128, out: `git could not run in ${where}: ${e?.message ?? e}` }
-          : { code: 128, out: `git could not run in ${where}: no such directory on this host (${e?.code ?? "spawn failed"})` };
-      }
-    });
-}
 
 /** Rebase the group's branch onto the latest base. Used at start and on unpark. */
 export async function rebaseOntoBase(

@@ -1,17 +1,15 @@
 import { expect, test } from "bun:test";
+import { testGit } from "./git-runner.ts";
 import { mkdtempSync, writeFileSync, existsSync, mkdirSync, lstatSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { baseBranch, LINK_AGENTS_MD } from "../src/mech/checkout.ts";
 import { openMemory } from "../src/db.ts";
 import type { Ctx } from "../src/api.ts";
-import { isWrite } from "../src/mech/gitlock.ts";
 import {
   changedSince,
   detectBaseBranch,
   checkpoint,
-  makeGitRunner,
   rebaseOntoBase,
   rollbackTo,
   sliceDiffBase,
@@ -35,7 +33,7 @@ async function checkout(origin: string, branch = "orch/g1"): Promise<string> {
   return work;
 }
 
-const git = makeGitRunner(new RepoLock());
+const git = testGit;
 
 /** A real repo with one commit. Real git, because this plumbing is easy to fake wrong. */
 async function repo(): Promise<string> {
@@ -48,37 +46,6 @@ async function repo(): Promise<string> {
   await git(dir, ["commit", "-q", "-m", "init"]);
   return dir;
 }
-
-test("only git writes take the repo lock; reads pass straight through", () => {
-  expect(isWrite(["commit", "-m", "x"])).toBe(true);
-  // A value-taking global flag must not make its value look like the
-  // subcommand, or this write slips past the lock entirely.
-  expect(isWrite(["-C", "/tmp/x", "rebase", "main"])).toBe(true);
-  expect(isWrite(["-c", "user.name=x", "commit"])).toBe(true);
-  expect(isWrite(["--git-dir", "/tmp/x/.git", "fetch"])).toBe(true);
-  expect(isWrite(["-C", "/tmp/x", "status"])).toBe(false);
-  // Locking reads would make the desk wall block on whichever group is rebasing.
-  expect(isWrite(["status", "--porcelain"])).toBe(false);
-  expect(isWrite(["diff", "--name-only"])).toBe(false);
-  expect(isWrite(["log", "-1"])).toBe(false);
-});
-
-test("the repo lock serialises writes and survives a failing one", async () => {
-  const lock = new RepoLock();
-  const order: string[] = [];
-  const slow = lock.run("/r", ["commit"], async () => {
-    await Bun.sleep(20);
-    order.push("first");
-    throw new Error("boom");
-  });
-  const next = lock.run("/r", ["commit"], async () => {
-    order.push("second");
-  });
-  await expect(slow).rejects.toThrow("boom");
-  await next;
-  // A rejected write must not poison the chain for whoever is behind it.
-  expect(order).toEqual(["first", "second"]);
-});
 
 test("a worktree installs its own dependencies and keeps them out of git", async () => {
   const dir = await repo();

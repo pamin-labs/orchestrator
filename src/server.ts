@@ -7,16 +7,15 @@ import { consola } from "consola";
 import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "./config.ts";
 import { changed, checkConfig, checkRoles } from "./mech/checkconfig.ts";
 import { open } from "./db.ts";
-import { RepoLock } from "./mech/gitlock.ts";
-import { makeGitRunner } from "./mech/worktree.ts";
 import { REAL, sandboxHeld } from "./mech/sandbox.ts";
 import { startMailbox } from "./mech/mailbox.ts";
+import { baseRefFor, createCheckout, treeHeads } from "./mech/checkout.ts";
 import { preflight, report } from "./mech/preflight.ts";
 import { restageSkills } from "./mech/skills.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
 import { makeGithub, repoHeld } from "./mech/github.ts";
-import { bothRead, chargeIndex, modelAsk, noteLeaves, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
+import { chargeIndex, HEAD_CHARS, modelAsk, noteLeaves, NOTE_PREFIX, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
 import { indexable } from "./mech/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
@@ -41,33 +40,18 @@ export interface Started {
 }
 
 /**
- * Binaries without which nothing works, checked once instead of discovered per
- * turn. `Bun.spawn` throws on a missing executable, so a missing `claude` would
- * otherwise fail every job one at a time with the same error and no summary.
- * `gh` is deliberately not here — PR preflight reports that per project.
+ * Nothing. The host runs no binary of its own any more.
+ *
+ * It demanded `claude` until 005 (turns moved into containers) and `git` until
+ * 007 step 6 (the checkout, the bundle and the push moved with them). What is
+ * left on this machine is the server, sqlite and mailbox polling — so a
+ * headless box with docker, the image and a pasted token starts, which is the
+ * whole point of the decision. Kept as a function rather than deleted: it is
+ * the one place to name a host binary if one is ever needed again, and the
+ * caller already says the right thing when the list is not empty.
  */
 export function missingBinaries(): string[] {
-  // `git` only.
-  //
-  // This used to demand `claude` as well, on the reasoning quoted below: every
-  // turn would fail with the same error. That stopped being true at 005 — turns
-  // run `claude`/`codex` **inside the container**, and the only host uses left are
-  // the login button and the codex refresher, both optional and both reported by
-  // preflight. Requiring it meant a headless box with docker, the image and a
-  // pasted token refused to start, and said something false about why.
-  //
-  // `git` stays, and what it is for shrank with 007 step 5: the bundle and the
-  // push moved into the utility container, so what is left on the host is the
-  // index (`server.ts` reads HEAD and `ls-files`) and reading a project's remote
-  // when it is added. Step 6 is where this list empties.
-  return ["git"].filter((bin) => {
-    try {
-      Bun.spawnSync([bin, "--version"], { stdout: "ignore", stderr: "ignore" });
-      return false;
-    } catch {
-      return true;
-    }
-  });
+  return [];
 }
 
 /**
@@ -183,44 +167,44 @@ const indexWarned = new Set<number>();
 const indexModelDown = new Set<number>();
 
 async function refreshIndex(ctx: Ctx): Promise<void> {
-  if (!ctx.git || !ctx.askIn) return;
+  if (!ctx.askIn) return;
   for (const p of ctx.db
-    .query<{ id: number; repo_path: string }, []>("SELECT id, repo_path FROM project")
-    .all()) {
-    // Nothing to do when the repo has not moved. Without this the tick still read
-    // the head of every tracked file to compute signatures — no model calls, but
-    // 125 file reads every thirty seconds to prove nothing changed.
-    const head = await ctx.git(p.repo_path, ["rev-parse", "HEAD"], p.repo_path);
-    const at = head.code === 0 ? head.out.trim() : "";
-    if (at && indexedAt.get(p.id) === at) continue;
-
-    const ls = await ctx.git(p.repo_path, ["ls-files"], p.repo_path);
-    // The repository is `owner/name` and lives in containers now, so there is
-    // nothing on this host to index. Once per project: silently doing nothing
-    // leaves `orch ctx query` answering out of an index that stopped growing,
-    // and saying it every tick is a blocker line in the feed every thirty
-    // seconds forever — which is what the unhandled throw here used to do,
-    // blaming git for a file that was never missing. 007 step 6 moves the read
-    // into the project's container.
-    if (ls.code !== 0) {
+    .query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project").all()) {
+    if (!p.remote) continue;
+    // The corpus lives in the project's own container now. It is the one reader
+    // that needs file *contents* rather than names, so the utility container's
+    // mirror cannot serve it — that clone is `--filter=blob:none` and every read
+    // would be a network fetch.
+    const scope = { project: p.id } as const;
+    const base = await baseRefFor(ctx, p.id);
+    let heads: Map<string, string>;
+    try {
+      await createCheckout(ctx, scope, { remote: p.remote, branch: base.replace(/^origin\//, ""), base });
+      heads = await treeHeads(ctx, scope, HEAD_CHARS);
+    } catch (e: any) {
+      // Once per project: silently indexing nothing leaves `orch ctx query`
+      // answering out of a tree that stopped growing, and saying it every tick
+      // is a line in the feed every thirty seconds forever.
       if (!indexWarned.has(p.id)) {
         indexWarned.add(p.id);
         ctx.bus.emit({
           author: "orchestrator",
           kind: "state_change",
-          body: `索引刷不了：${p.repo_path} 的代码只在容器里，宿主上读不到。等 007 step 6 把这步搬进容器。`,
+          body: `索引刷不了：这个项目的容器起不来（${e?.message ?? e}）。`,
         });
       }
       continue;
     }
     indexWarned.delete(p.id);
+    // Nothing to do when the repo has not moved. Without this the tick still
+    // summarised the head of every tracked file to prove nothing changed.
+    const at = heads.size ? Bun.hash([...heads].map(([f, h]) => `${f}${h}`).join("\n")).toString(16) : "";
+    if (at && indexedAt.get(p.id) === at) continue;
+
     // Read once, not once per file: this is inside a `filter` over every tracked
     // path, and the excludes do not change while it runs.
     const excludes = indexExcludes(ctx.db, p.id);
-    const files = ls.out
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((f) => indexable(f, excludes));
+    const files = [...heads.keys()].filter((f) => indexable(f, excludes));
     // One tree over both corpora: the repo answers "where is the code" and the
     // blackboard answers "what did we already decide about it", and an agent
     // asking either question should not have to know which one it is asking.
@@ -232,7 +216,7 @@ async function refreshIndex(ctx: Ctx): Promise<void> {
     const ask = ctx.askIn({ project: p.id });
     const { tree, calls, failed } = await summarise(
       skeleton([...files, ...notes.ids]),
-      bothRead(p.repo_path, notes.read),
+      (id) => (id.startsWith(NOTE_PREFIX) ? notes.read(id) : (heads.get(id) ?? null)),
       ask,
       { previous: loadTree(ctx.db, p.id) ?? {}, maxCalls: 12 },
     );
@@ -300,7 +284,6 @@ export function start(overrides: Partial<Config> = {}): Started {
     } catch {}
   }
   const bus = new Bus(db);
-  const gitLock = new RepoLock();
   const roles = loadRoles();
 
   // The executor needs the ctx that the scheduler lives in, so the scheduler is
@@ -320,14 +303,11 @@ export function start(overrides: Partial<Config> = {}): Started {
     repoHeld: (projectId) => repoHeld(db, projectId),
   });
 
-  const git = makeGitRunner(gitLock);
   const gh = makeGithub(db, undefined, cfg.language);
   const ctx: Ctx = {
     db,
     bus,
     sched,
-    gitLock,
-    git,
     gh,
     sandbox: REAL,
     // Cheapest tier: navigating a tree of one-line summaries is not a reasoning
@@ -371,7 +351,6 @@ export function start(overrides: Partial<Config> = {}): Started {
     ctx,
     cfg,
     roles,
-    git,
     onAuditPass: (grpId: number) => {
       const grp = db
         .query<{ name: string; repo_path: string }, [number]>(

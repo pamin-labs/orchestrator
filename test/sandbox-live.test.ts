@@ -5,7 +5,6 @@ import { openMemory } from "../src/db.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { loadConfig } from "../src/config.ts";
 import { createCheckout, httpsRemote, keepBranch, sandboxGit, utilGit } from "../src/mech/checkout.ts";
 import { startMailbox } from "../src/mech/mailbox.ts";
@@ -76,7 +75,6 @@ function ctx(port = cfg.port): Ctx {
     db,
     bus: new Bus(db),
     sched,
-    gitLock: new RepoLock(),
     sandbox: REAL,
     waiters: new Map(),
     // An ephemeral port, not the configured one: this test serves the routes

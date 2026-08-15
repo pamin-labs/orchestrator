@@ -5,7 +5,6 @@ import { makeGithub, type Github } from "../src/mech/github.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { seedAuth } from "./seed-auth.ts";
 import {
   githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Fetcher,
@@ -243,7 +242,6 @@ function server(answer: (url: string) => unknown) {
   const asked: string[] = [];
   const ctx = {
     db, bus, sched,
-    gitLock: new RepoLock(),
     waiters: new Map(),
     gh: makeGithub(db, async (url) => {
       asked.push(url);

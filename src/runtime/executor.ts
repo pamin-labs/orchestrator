@@ -11,7 +11,7 @@ import { say } from "../lang.ts";
 import { listSkills, readSkill } from "../mech/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
-import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
+import { checkpoint, changedSince } from "../mech/worktree.ts";
 import { MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
 import { baseRefFor, ensureCheckout, keepBranch, sandboxGit } from "../mech/checkout.ts";
 import { track, untrack } from "./running.ts";
@@ -42,7 +42,6 @@ export interface ExecDeps {
   ctx: Ctx;
   cfg: Config;
   roles: Map<string, RoleDef>;
-  git: GitRunner;
   /** Wired by the server: opens the PR when a branch passes its audit. */
   onAuditPass?: (grpId: number) => void;
   /** Injectable for tests; defaults to whichever provider the role names. */
@@ -80,7 +79,7 @@ export function makeExecutor(deps: ExecDeps): Executor {
       case "reconcile":
         // PR level: every slice accepted, so reconcile and gate the whole branch
         // before the Auditor is asked for an opinion.
-        return job.grp_id ? runPrReview({ ctx: deps.ctx, cfg: deps.cfg, git: deps.git }, job.grp_id) : undefined;
+        return job.grp_id ? runPrReview({ ctx: deps.ctx, cfg: deps.cfg }, job.grp_id) : undefined;
       default:
         // watchdog / notify / digest land in M3. Doing nothing is correct for
         // now; failing would poison the queue.
@@ -166,7 +165,7 @@ export function hire(
 }
 
 async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
-  const { ctx, cfg, roles, git } = deps;
+  const { ctx, cfg, roles } = deps;
   const agent = resolveAgent(deps, job);
   const role = roles.get(agent.role);
   if (!role) throw new Error(`no role definition for ${agent.role}`);
@@ -1131,7 +1130,7 @@ function overTokenBudget(agent: AgentRow, cfg: Config): boolean {
  */
 async function runGateJob(deps: ExecDeps, job: Job): Promise<void> {
   if (!job.slice_id) return;
-  const rd = { ctx: deps.ctx, cfg: deps.cfg, git: deps.git };
+  const rd = { ctx: deps.ctx, cfg: deps.cfg };
   const out = await runDeterministicReview(rd, job.slice_id);
   if (out.pass) handToQa(rd, job.slice_id);
   else sendBack(rd, job.slice_id, out.feedback, "gate");
@@ -1142,7 +1141,7 @@ async function runGateJob(deps: ExecDeps, job: Job): Promise<void> {
  * pool: otherwise it could never fire on the very group that is stuck.
  */
 async function runWatchdogJob(deps: ExecDeps): Promise<void> {
-  const findings = await runWatchdog({ ctx: deps.ctx, cfg: deps.cfg, git: deps.git });
+  const findings = await runWatchdog({ ctx: deps.ctx, cfg: deps.cfg });
   for (const f of findings) deps.ctx.onFinding?.(f.rule, f.severity, f.body, f.grpId);
 
   // The standup rides along: same deterministic pass, and it sees across groups
@@ -1172,7 +1171,7 @@ async function runWatchdogJob(deps: ExecDeps): Promise<void> {
 export function makeAuditVerdict(deps: ExecDeps) {
   return (grpId: number, pass: boolean, note: string): void =>
     auditVerdict(
-      { ctx: deps.ctx, cfg: deps.cfg, git: deps.git, onAuditPass: deps.onAuditPass },
+      { ctx: deps.ctx, cfg: deps.cfg, onAuditPass: deps.onAuditPass },
       grpId,
       pass,
       note,
@@ -1182,7 +1181,7 @@ export function makeAuditVerdict(deps: ExecDeps) {
 /** Called by the server when QA files a verdict. */
 export function makeReviewVerdict(deps: ExecDeps) {
   return (sliceId: number, pass: boolean, note: string): void => {
-    const rd = { ctx: deps.ctx, cfg: deps.cfg, git: deps.git };
+    const rd = { ctx: deps.ctx, cfg: deps.cfg };
     if (pass) handToBoss(rd, sliceId);
     else sendBack(rd, sliceId, note || "QA rejected the slice", "qa");
   };

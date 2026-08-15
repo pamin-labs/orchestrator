@@ -3,7 +3,7 @@ import type { Config } from "../config.ts";
 import { say } from "../lang.ts";
 import { runGates, recordGate, gateState } from "./gate.ts";
 import { extractClaimedFiles, reconcile } from "./reconcile.ts";
-import { changedSince, filesAt, type GitRunner } from "./worktree.ts";
+import { changedSince, filesAt } from "./worktree.ts";
 import { resourceExec, WORK } from "./sandbox.ts";
 import { pushBranch, sandboxGit } from "./checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
@@ -21,7 +21,6 @@ import { joinQueue, position } from "./mergequeue.ts";
 export interface ReviewDeps {
   ctx: Ctx;
   cfg: Config;
-  git: GitRunner;
   /** Wired by the server: opens the PR once a branch passes its audit. */
   onAuditPass?: (grpId: number) => void;
 }
@@ -57,7 +56,7 @@ export async function runDeterministicReview(
   deps: ReviewDeps,
   sliceId: number,
 ): Promise<{ pass: boolean; feedback: string }> {
-  const { ctx, cfg, git } = deps;
+  const { ctx, cfg } = deps;
   const slice = loadSlice(ctx, sliceId);
   if (!slice) return { pass: false, feedback: "slice disappeared" };
 
@@ -439,7 +438,7 @@ function safeJson(s: string | null): unknown {
  * gated before the Auditor is asked for judgement.
  */
 export async function runPrReview(deps: ReviewDeps, grpId: number): Promise<void> {
-  const { ctx, cfg, git } = deps;
+  const { ctx, cfg } = deps;
   const grp = ctx.db
     .query<{ project_id: number; branch: string | null; name: string }, [number]>(
       "SELECT project_id, branch, name FROM grp WHERE id = ?",

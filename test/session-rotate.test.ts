@@ -6,7 +6,6 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeExecutor, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult } from "../src/runtime/claude.ts";
@@ -42,7 +41,6 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     db,
     bus,
     sched,
-    gitLock: new RepoLock(),
     sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: cfg.language},
   };
@@ -50,7 +48,6 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     ctx,
     cfg,
     roles: loadRoles("roles"),
-    git: async () => ({ code: 1, out: "" }),
     runTurn: async (spec) => {
       specs.push(spec);
       return turn(spec);

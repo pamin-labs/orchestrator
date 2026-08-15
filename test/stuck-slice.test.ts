@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { runInvariants } from "../src/mech/invariants.ts";
 import { sendBack } from "../src/mech/review.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
@@ -35,7 +34,6 @@ function harness() {
     db,
     bus,
     sched,
-    gitLock: new RepoLock(),
     sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: "中文"},
   };

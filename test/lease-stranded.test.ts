@@ -39,7 +39,7 @@ function stranded() {
     waiters: new Map<string, (v: string) => void>(),
     config: { language: "中文", sandbox: { ...cfg.sandbox, server: "127.0.0.1:9" } },
   } as unknown as Ctx;
-  exec = makeExecutor({ ctx, cfg, roles: new Map(), git: (async () => ({ code: 0, out: "" })) as never });
+  exec = makeExecutor({ ctx, cfg, roles: new Map() });
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'o/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   db.run(

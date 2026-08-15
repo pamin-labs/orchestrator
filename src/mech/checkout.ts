@@ -291,14 +291,19 @@ export const LINK_AGENTS_MD =
  *   config file, because the thing it defends against is a repository that
  *   arranges for a hook to appear, and a config written before that happens is a
  *   config the repository can outlive. `/dev/null/post-receive` cannot exist.
- * - **These four verbs and no others.** This container holds the real GitHub
+ * - **These five verbs and no others.** This container holds the real GitHub
  *   token; RCE in a group container buys the attacker what that agent already
  *   had, and RCE here buys the whole system. `checkout`, `submodule` and
  *   anything else that writes a working tree are not on the list, so no
  *   repository content is ever executed. It throws rather than returning an
  *   error code: reaching this line at all is a bug in us, not a condition.
+ *
+ *   `ls-tree` joined them at step 6, when the repo map lost its host checkout.
+ *   It reads names out of the object database and writes nothing anywhere —
+ *   the property that matters here is "never materialises a file", and it is
+ *   the reason this is a listing rather than a `checkout` plus a `find`.
  */
-const UTIL_VERBS = new Set(["clone", "fetch", "push", "bundle"]);
+const UTIL_VERBS = new Set(["clone", "fetch", "push", "bundle", "ls-tree"]);
 
 export async function utilGit(ctx: Ctx, argv: string[], cwd?: string): Promise<{ code: number; out: string }> {
   const verb = argv[0] ?? "";
@@ -358,6 +363,62 @@ export async function removeMirror(ctx: Ctx, remote: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Every tracked path at a ref, without a working tree anywhere.
+ *
+ * The repo map and the DRAFT card's path check used to read a checkout on the
+ * host — the third job 007 §2 says that checkout was doing, after bundle
+ * staging and the push channel. Those two moved at step 5; this is the third,
+ * and it needs no clone of its own: the utility container already keeps a bare
+ * mirror per project, and `ls-tree` answers "what files are there" against a
+ * bare repository exactly as `ls-files` does against a worktree.
+ *
+ * Empty on any failure, and the callers say so once — a mirror that cannot be
+ * built is a project whose map goes stale, not a reason to stop a tick.
+ */
+export async function treeFiles(ctx: Ctx, remote: string, ref: string): Promise<string[]> {
+  try {
+    const mirror = await ensureMirror(ctx, remote);
+    const r = await utilGit(ctx, ["ls-tree", "-r", "--name-only", ref], mirror);
+    if (r.code !== 0) return [];
+    return r.out.split("\n").map((l) => l.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The head of every tracked file, in one round trip.
+ *
+ * The index corpus was the third job the host checkout was doing (007 §2), and
+ * it is the one that needs file *contents* rather than names — so the mirror
+ * cannot serve it: that clone is `--filter=blob:none` and every read would be a
+ * network fetch. It reads the project's own container instead, which holds an
+ * ordinary clone.
+ *
+ * One exec for the whole corpus, not one per file. `summarise` reads the head of
+ * every tracked file to compute its signature — that is the incremental check
+ * that makes the whole thing affordable — so a read per file would be 125 round
+ * trips per tick to prove nothing changed.
+ */
+export async function treeHeads(ctx: Ctx, scope: Scope, bytes: number): Promise<Map<string, string>> {
+  const marker = "\u0001==";
+  const r = await execIn(
+    ctx,
+    scope,
+    `cd ${shq(WORK)} && git ls-files -z | while IFS= read -r -d "" f; do ` +
+      `printf '%s%s\n' ${shq(marker)} "$f"; head -c ${bytes} -- "$f"; printf '\n'; done`,
+  );
+  const out = new Map<string, string>();
+  if (r.code !== 0) return out;
+  for (const chunk of r.out.split(marker)) {
+    const nl = chunk.indexOf("\n");
+    if (nl <= 0) continue;
+    out.set(chunk.slice(0, nl).trim(), chunk.slice(nl + 1));
+  }
+  return out;
 }
 
 /**

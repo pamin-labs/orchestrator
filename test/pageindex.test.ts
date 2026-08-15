@@ -2,8 +2,9 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { openMemory } from "../src/db.ts";
-import { chargeIndex, fileRead, loadTree, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/pageindex.ts";
+import { chargeIndex, loadTree, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/pageindex.ts";
 import { Bus } from "../src/bus.ts";
 import { costReport } from "../src/mech/cost.ts";
 import type { Ctx } from "../src/api.ts";
@@ -15,6 +16,20 @@ function repo(): string {
   writeFileSync(join(d, "src/mech/gate.ts"), "export function runGates(){} // deterministic checks\n");
   return d;
 }
+/**
+ * The corpus used to come off the host's checkout (`fileRead`), which went with
+ * it at 007 step 6 — the server reads heads out of the project's container in
+ * one exec now. These tests are about the tree and the summarising, so they keep
+ * a directory and read it here.
+ */
+const dirRead = (dir: string) => (id: string) => {
+  try {
+    return readFileSync(join(dir, id), "utf8");
+  } catch {
+    return null;
+  }
+};
+
 const FILES = ["src/mech/notify.ts", "src/mech/gate.ts"];
 
 test("the tree is structure first, and every node gets one summary", async () => {
@@ -24,7 +39,7 @@ test("the tree is structure first, and every node gets one summary", async () =>
     asks.push(p);
     return p.includes("notify") ? "sends notifications to the boss" : "one line";
   };
-  const { tree, calls } = await summarise(skeleton(FILES), fileRead(dir), ask);
+  const { tree, calls } = await summarise(skeleton(FILES), dirRead(dir), ask);
 
   expect(Object.keys(tree).sort()).toEqual(["/", "src/", "src/mech/", "src/mech/gate.ts", "src/mech/notify.ts"]);
   expect(tree["src/mech/notify.ts"]!.summary).toBe("sends notifications to the boss");
@@ -38,15 +53,15 @@ test("the tree is structure first, and every node gets one summary", async () =>
 test("nothing changed, nothing re-summarised", async () => {
   const dir = repo();
   const ask: Ask = async () => "a summary";
-  const first = await summarise(skeleton(FILES), fileRead(dir), ask);
-  const again = await summarise(skeleton(FILES), fileRead(dir), ask, { previous: first.tree });
+  const first = await summarise(skeleton(FILES), dirRead(dir), ask);
+  const again = await summarise(skeleton(FILES), dirRead(dir), ask, { previous: first.tree });
   expect(again.calls).toBe(0);
   expect(again.tree["src/mech/gate.ts"]!.summary).toBe("a summary");
 });
 
 test("retrieval is the model walking the tree, not a similarity score", async () => {
   const dir = repo();
-  const { tree } = await summarise(skeleton(FILES), fileRead(dir), async (p) =>
+  const { tree } = await summarise(skeleton(FILES), dirRead(dir), async (p) =>
     p.startsWith("One line, under 20 words: what is src/mech/notify.ts")
       ? "the only place that talks to the OS notification centre"
       : "misc",
@@ -71,14 +86,14 @@ test("retrieval is the model walking the tree, not a similarity score", async ()
 
 test("a navigator that finds nothing relevant says so instead of guessing", async () => {
   const dir = repo();
-  const { tree } = await summarise(skeleton(FILES), fileRead(dir), async () => "s");
+  const { tree } = await summarise(skeleton(FILES), dirRead(dir), async () => "s");
   expect(await search(tree, "how do I file my taxes", async () => "NONE")).toEqual([]);
 });
 
 test("the tree survives a round trip through the note it lives in", async () => {
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  const { tree } = await summarise(skeleton(FILES), fileRead(repo()), async () => "s");
+  const { tree } = await summarise(skeleton(FILES), dirRead(repo()), async () => "s");
   saveTree(db, 1, tree);
   saveTree(db, 1, tree);
   expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'pageindex'").get()!.c).toBe(1);

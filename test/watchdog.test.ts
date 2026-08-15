@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { Notifier, notifiable, tierFor, batchForBoss } from "../src/mech/notify.ts";
 import { pause, resume, settlePausing, park } from "../src/mech/intercept.ts";
 import {
@@ -22,6 +21,13 @@ import type { Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
+/** A GitHub client that answers from a function and records the paths asked. */
+const gh = (answer: (path: string) => unknown) =>
+  ({
+    remaining: () => null,
+    request: async (_m: string, path: string) => ({ ok: true as const, status: 200, data: answer(path) as any }),
+  }) as unknown as Ctx["gh"];
+
 function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
   const db: DB = openMemory();
   seedAuth(db);
@@ -32,8 +38,6 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     db,
     bus,
     sched,
-    gitLock: new RepoLock(),
-    git: async () => ({ code: 0, out: "" }),
     // `merge-base --is-ancestor` runs in the group's checkout, which lives in its
     // sandbox. Not an ancestor = the group has not rebased yet, which is the
     // condition every rule below is about.
@@ -52,7 +56,6 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
   const deps = {
     ctx,
     cfg,
-    git: ctx.git!,
     now: () => 1_000_000,
     pollUsage: async () => {},
     probe: async () => ({ online: true, changed: false }),
@@ -609,10 +612,10 @@ test("main moving under a running group sends it to rebase, once per commit", as
   // have found out at PR time, one conflict apiece.
   const h = harness();
   h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
-  // repo HEAD answers with a sha; the checkout says it is not an ancestor.
-  h.ctx.git = async (_repo, argv) =>
-    argv[0] === "rev-parse" ? { code: 0, out: "abc1234567" } : { code: 1, out: "" };
-  const deps = { ...h.deps, git: h.ctx.git! };
+  // GitHub answers with the base branch's sha; the group's own clone says it is
+  // not an ancestor. There is no host checkout to ask since 007 step 6.
+  h.ctx.gh = gh(() => ({ commit: { sha: "abc1234567" } }));
+  const deps = h.deps;
 
   const f = await runWatchdog(deps);
   expect(f.map((x) => x.rule)).toContain("base_moved");
@@ -692,23 +695,20 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
   // another machine was invisible however often this ran.
   const h = harness();
   h.db.run("UPDATE grp SET status = 'PR_OPEN', sandbox_id = 'sb-1' WHERE id = 1");
-  // Its own repo path: the fetch throttle is keyed by repo and lives for the
-  // process, so it would otherwise still be holding the previous test's stamp.
   // The base branch is a column now, written from GitHub's `default_branch` at
   // registration — never detected with host git, which has no checkout to ask.
-  h.db.run("UPDATE project SET repo_path = '/tmp/p-pr', base_branch = 'master' WHERE id = 1");
-  const seen: string[][] = [];
-  h.ctx.git = async (_repo, argv) => {
-    seen.push(argv);
-    if (argv[0] === "remote") return { code: 0, out: "origin" };
-    if (argv[0] === "rev-parse") return { code: 0, out: "abc1234567" };
-    return { code: 1, out: "" }; // not an ancestor of the checkout
-  };
-  const deps = { ...h.deps, git: h.ctx.git! };
+  h.db.run("UPDATE project SET repo_path = 'acme/p-pr', base_branch = 'master' WHERE id = 1");
+  const asked: string[] = [];
+  h.ctx.gh = gh((path) => {
+    asked.push(path);
+    return { commit: { sha: "abc1234567" } };
+  });
+  const deps = h.deps;
 
   expect((await runWatchdog(deps)).map((x) => x.rule)).toContain("base_moved");
-  expect(seen.some((a) => a[0] === "fetch")).toBe(true);
-  expect(seen.some((a) => a[0] === "rev-parse" && a[1] === "origin/master")).toBe(true);
+  // The branch it asks about is the project's base, named, not whatever some
+  // checkout happens to be standing on.
+  expect(asked).toContain("/repos/acme/p-pr/branches/master");
   const job = h.db
     .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn' AND state = 'pending'")
     .get()!;
@@ -717,29 +717,16 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
   expect(JSON.parse(job.payload_json).rejection).toContain("git rebase origin/master");
 });
 
-test("rule 15 checks defaultBase, not the primary checkout's own HEAD", async () => {
-  // The primary checkout can be on a different local sha than the branch the
-  // group should actually rebase onto (detached HEAD, a stale local main, or
-  // just mid-command). Comparing against that sha instead of defaultBase is
-  // what made the check unsatisfiable: the group rebases exactly what the
-  // rejection tells it to and the watchdog still disagrees next tick.
+test("a group already on the base is not nudged", async () => {
+  // The sha comparison is the whole rule: a group that has rebased must not be
+  // told again, or an agent learns to skip the message. The old version of this
+  // test protected against comparing with a *local* checkout's HEAD, which no
+  // longer exists to be compared with.
   const h = harness();
   h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
-  const baseSha = "def4560000000000000000000000000000000000";
-  const staleLocalHeadSha = "aaa1110000000000000000000000000000000000";
-  h.ctx.git = async (_repo, argv) => {
-    if (argv[0] === "remote") return { code: 0, out: "origin\n" };
-    if (argv[0] === "symbolic-ref") return { code: 1, out: "" };
-    if (argv[0] === "rev-parse" && argv[1] === "--verify") {
-      return argv[3] === "origin/main" ? { code: 0, out: "" } : { code: 1, out: "" };
-    }
-    if (argv[0] === "rev-parse" && argv[1] === "origin/main") return { code: 0, out: baseSha };
-    if (argv[0] === "rev-parse" && argv[1] === "HEAD") return { code: 0, out: staleLocalHeadSha };
-    return { code: 1, out: "" };
-  };
-  const deps = { ...h.deps, git: h.ctx.git! };
-  // defaultBase (origin/main) is already an ancestor of the group's branch, and
-  // that check runs in the group's own checkout — inside its sandbox.
+  h.ctx.gh = gh(() => ({ commit: { sha: "def4560000000000000000000000000000000000" } }));
+  const deps = h.deps;
+  // `merge-base --is-ancestor` succeeds in the group's own clone: already on it.
   h.ctx.sandbox = fakeSandbox(() => ({ code: 0 }));
 
   const f = await runWatchdog(deps);
@@ -775,10 +762,10 @@ test("turn logs are compressed after a day and dropped after two weeks", () => {
 test("a burst of pushes costs one rebase turn, and never delays one", async () => {
   const h = harness();
   h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
-  h.db.run("UPDATE project SET repo_path = '/tmp/p-burst' WHERE id = 1");
+  h.db.run("UPDATE project SET repo_path = 'acme/p-burst' WHERE id = 1");
   let sha = "aaaa111111";
-  h.ctx.git = async (_r, argv) => (argv[0] === "rev-parse" ? { code: 0, out: sha } : { code: 1, out: "" });
-  const deps = { ...h.deps, git: h.ctx.git! };
+  h.ctx.gh = gh(() => ({ commit: { sha } }));
+  const deps = h.deps;
 
   // Count the turns, not the findings: a finding is suppressed as a re-emit for
   // half an hour, and what is being asserted here is what the group was made to do.

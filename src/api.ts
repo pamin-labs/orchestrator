@@ -5,9 +5,8 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dropSlices, type DB } from "./db.ts";
 import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
-import type { RepoLock } from "./mech/gitlock.ts";
 import { resolveLease, type ResourceDef } from "./mech/lease.ts";
-import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
+import { sliceDiffBase } from "./mech/worktree.ts";
 import { execIn, killSandbox, putFile, restartServer, runningServer, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox.ts";
 import { resetServerRestarts } from "./mech/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandboxlog.ts";
@@ -15,7 +14,7 @@ import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/au
 import { loginRuntimes, startLogin } from "./mech/login.ts";
 import { githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, NO_CLIENT_ID, type Installation } from "./mech/ghlogin.ts";
 import { preflight } from "./mech/preflight.ts";
-import { baseBranch, baseRefFor, removeMirror, sandboxGit } from "./mech/checkout.ts";
+import { baseBranch, baseRefFor, removeMirror, sandboxGit, treeFiles } from "./mech/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
@@ -45,11 +44,8 @@ export interface Ctx {
   db: DB;
   bus: Bus;
   sched: Scheduler;
-  gitLock: RepoLock;
   /** Resolves a blocking `ask-boss` / `lease` call. Keyed by "kind:id". */
   waiters: Map<string, (value: string) => void>;
-  /** Runs git under the repo write lock. Absent in unit tests that need no repo. */
-  git?: GitRunner;
   /** Where turns, gates and leases run. Absent in unit tests that need no container. */
   sandbox?: import("./mech/sandbox.ts").SandboxDriver;
   /** Talks to GitHub's REST API. Absent in unit tests that need no GitHub. */
@@ -879,18 +875,18 @@ const postDraft: Handler = async (ctx, req) => {
   // whatever branch the boss last had out, so `existsSync` was asking a working
   // tree nobody planned against, and the answer moved when the boss switched
   // branches. `ls-tree` of the base is the same thing the group will be cut from.
-  const repo = ctx.db
-    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-    .get(grp.project_id)?.repo_path;
+  const remote = ctx.db
+    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
+    .get(grp.project_id)?.remote;
   const claimed = extractClaimedFiles([b.card]);
   let unknown: string[] = [];
-  if (repo && ctx.git && claimed.length) {
-    const base = await baseRefFor(ctx, grp.project_id);
-    const ls = await ctx.git(repo, ["ls-tree", "-r", "--name-only", base], repo);
-    if (ls.code === 0) {
-      const inBase = new Set(ls.out.split("\n").map((l) => l.trim()).filter(Boolean));
-      unknown = claimed.filter((p) => !inBase.has(p)).slice(0, 8);
-    }
+  if (remote && claimed.length) {
+    // Out of the utility container's mirror, not a checkout on this host: there
+    // is none since step 6, and asking one that was not there threw rather than
+    // returning a code — which is how this handler used to 500 with the DRAFT
+    // card unfiled and nothing saying so.
+    const inBase = new Set(await treeFiles(ctx, remote, await baseRefFor(ctx, grp.project_id)));
+    if (inBase.size) unknown = claimed.filter((p) => !inBase.has(p)).slice(0, 8);
   }
 
   ctx.db.run(
@@ -2467,7 +2463,7 @@ const postGroupControl: Handler = async (ctx, req, params) => {
         )
         .get(grpId);
       if (!g) return text("no such group", 404);
-      if (!ctx.gh || !ctx.git) return bad("no gh runner on this server");
+      if (!ctx.gh) return bad("no GitHub client on this server");
       ctx.db.run("UPDATE grp SET pr_number = NULL WHERE id = ?", [grpId]);
       const r = await openPr({
         ctx,
@@ -2515,7 +2511,6 @@ const postGroupControl: Handler = async (ctx, req, params) => {
       return json({ started: await sweepApproved(ctx) });
     }
     case "wake":
-      if (!ctx.git) return bad("no git runner");
       await unpark(ctx, grpId);
       return text("ok");
     // Throw the container away; the next turn builds a fresh one and
@@ -2539,7 +2534,6 @@ const postGroupControl: Handler = async (ctx, req, params) => {
     case "interrupt": {
       const b = await body<{ mode?: string }>(req);
       const mode = b.mode === "rollback" ? "rollback" : "keep";
-      if (!ctx.git) return bad("no git runner");
       const out = await interrupt(ctx, grpId, mode);
       return json(out);
     }

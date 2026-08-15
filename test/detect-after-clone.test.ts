@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import type { Ctx } from "../src/api.ts";
 import { detectProject } from "../src/mech/start.ts";
 import { gatesFor } from "../src/mech/gate.ts";
@@ -25,7 +24,6 @@ function harness(files: Record<string, string>) {
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
-    gitLock: new RepoLock(),
     waiters: new Map(),
     // The container answers exactly what a shell would: a listing, the files
     // detection opens, and whether the browser runner is there.

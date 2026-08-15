@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { abstain, answer, entryPoint, isReserved, revoke, route, triage } from "../src/mech/chain.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
@@ -20,8 +19,6 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
     db,
     bus,
     sched,
-    gitLock: new RepoLock(),
-    git: async () => ({ code: 0, out: "abc123" }),
     sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: "中文"},
     notifyBoss: (id) => void notified.push(id),
@@ -65,7 +62,7 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
       }),
     );
 
-  return { db, ctx, sched, ask, notified, post, deps: { ctx, git: ctx.git, notifyBoss: ctx.notifyBoss } };
+  return { db, ctx, sched, ask, notified, post, deps: { ctx, notifyBoss: ctx.notifyBoss } };
 }
 
 const jobsFor = (db: DB) =>

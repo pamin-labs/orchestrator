@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { OVERLAP_FLOOR, sameComplaint, sediment, terms } from "../src/mech/lessons.ts";
 import { bossFact, type Ctx } from "../src/api.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
@@ -21,7 +20,6 @@ function harness() {
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async (j) => void ran.push(j)),
-    gitLock: new RepoLock(),
     sandbox: fakeSandbox(), waiters: new Map(),
     config: { language: "中文", feedbackSediment: 3 },
   };

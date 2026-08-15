@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { testGit } from "./git-runner.ts";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,10 +7,9 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { gateState } from "../src/mech/gate.ts";
 import { handToBoss } from "../src/mech/review.ts";
-import { makeGitRunner, checkpoint } from "../src/mech/worktree.ts";
+import { checkpoint } from "../src/mech/worktree.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import {
   makeAuditVerdict,
@@ -22,7 +22,7 @@ import { fakeSandbox } from "./fake-sandbox.ts";
 import { WORK } from "../src/mech/sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
-const git = makeGitRunner(new RepoLock());
+const git = testGit;
 
 function turnOk(): TurnResult {
   return {
@@ -68,8 +68,6 @@ async function harness(opts: { gates?: string[] } = {}) {
     db,
     bus,
     sched,
-    gitLock: new RepoLock(),
-    git,
     // The gates run in the group's sandbox. Here they run in this process, which
     // is all these tests need: what is under test is what the pipeline does with
     // an exit code, not how a command is spawned.
@@ -89,7 +87,6 @@ async function harness(opts: { gates?: string[] } = {}) {
     ctx,
     cfg,
     roles: loadRoles("roles"),
-    git,
     runTurn: async (spec) => {
       specs.push(spec);
       return turnOk();

@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
 import { dispatchFeedback, openPr, pollPrs, prBody, pushBlocked } from "../src/mech/prwatch.ts";
 import { utilGit } from "../src/mech/checkout.ts";
 import type { GhResult, Github } from "../src/mech/github.ts";
@@ -23,7 +22,6 @@ function harness(handle: (cmd: string) => { code?: number; out?: string; err?: s
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
-    gitLock: new RepoLock(),
     // `git bundle create` carries the branch out of the group's container; the
     // utility container fetches from the bundle and pushes. Both are containers,
     // so both are this one fake.

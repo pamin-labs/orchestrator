@@ -53,7 +53,8 @@ export type Read = (id: string) => string | null;
 /** Notes live under this prefix, so a leaf's id says which corpus it came from. */
 export const NOTE_PREFIX = "notes/";
 
-const HEAD_CHARS = 1800;
+/** How much of a file the signature and the summary are computed from. */
+export const HEAD_CHARS = 1800;
 
 /** Structure first, summaries second — the same order as the original. */
 export function skeleton(files: string[]): Tree {
@@ -395,16 +396,6 @@ export function chargeIndex(
 }
 
 /** The repo half of the corpus. */
-export function fileRead(repoPath: string): Read {
-  return (id) => {
-    if (id.startsWith(NOTE_PREFIX)) return null;
-    try {
-      return readFileSync(join(repoPath, id), "utf8");
-    } catch {
-      return null;
-    }
-  };
-}
 
 /**
  * The blackboard half: every journal, retro, decision and fact, as leaves under
@@ -431,10 +422,6 @@ export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; r
 }
 
 /** Both halves, one reader. */
-export function bothRead(repoPath: string, notes: Read): Read {
-  const files = fileRead(repoPath);
-  return (id) => (id.startsWith(NOTE_PREFIX) ? notes(id) : files(id));
-}
 
 // ------------------------------------------------------------------ storage
 
