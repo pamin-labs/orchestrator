@@ -1,13 +1,14 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useState } from "react";
 import {
-  Box, Check, CircleAlert, KeyRound, ListChecks, MonitorCog, Server, SlidersHorizontal, Sparkles, Trash2, X,
+  Box, Check, CircleAlert, GitBranch, KeyRound, ListChecks, MonitorCog, Server, SlidersHorizontal, Sparkles, Trash2, X,
 } from "lucide-react";
 import { H2, Head, Input, Meta, Pane, Textarea } from "../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
 import { Button, LinkButton } from "../ui/button";
 import { toast } from "sonner";
 import { Segment, Segments } from "../ui/segment";
+import { Badge } from "../ui/badge";
 import { Tip } from "../ui/tooltip";
 import { ask } from "../ui/confirm";
 import { pull, post, del } from "../lib/api";
@@ -36,7 +37,7 @@ import { Skills } from "./skills";
  */
 
 type Mode = "oauth_token" | "api_key" | "chatgpt";
-export type Section = "cred" | "host" | "server" | "skills" | "prefs" | "gates" | "sandbox" | "remove";
+export type Section = "cred" | "github" | "host" | "server" | "skills" | "prefs" | "gates" | "sandbox" | "remove";
 
 interface AuthRow {
   runtime: string;
@@ -90,8 +91,17 @@ const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
 
 const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: true }> = [
   // 凭据 named the storage, not the thing: what is picked here is which account
-  // the fleet works as, and the boss thinks of it as an account.
-  { key: "cred", zh: "账号", icon: KeyRound },
+  // the fleet works as, and the boss thinks of it as an account. 模型账号 rather
+  // than 模型, because which model runs a turn is `roles/*.yaml` and
+  // `difficultyModel` — one word for two things sends people here for the wrong
+  // control.
+  { key: "cred", zh: "模型账号", icon: KeyRound },
+  // Its own section, not a row in 模型账号. Those are interchangeable, metered,
+  // one per role and about to be six; this is one connection, not metered, with
+  // a two-step flow and a repository list. Named GitHub rather than 代码源
+  // because there is only GitHub, and the day there is a second one, renaming a
+  // nav item is one string.
+  { key: "github", zh: "GitHub", icon: GitBranch },
   { key: "host", zh: "环境", icon: MonitorCog },
   { key: "server", zh: "沙盒服务器", icon: Server },
   // This machine's skills, not this project's: the same staged directory is
@@ -234,7 +244,7 @@ export function SettingsDialog({
             <Pane>
               {here === "cred" ? (
                 <>
-                  <Head title="账号" note="真令牌不进沙盒" />
+                  <Head title="模型账号" note="真令牌不进沙盒" />
                   {RUNTIMES.map((r) => (
                     <Credential
                       key={r.key}
@@ -249,8 +259,9 @@ export function SettingsDialog({
                       }
                     />
                   ))}
-                  <Github />
                 </>
+              ) : here === "github" ? (
+                <GithubPane />
               ) : here === "host" ? (
                 <Env checks={checks.filter((c) => !isCredential(c))} />
               ) : here === "server" ? (
@@ -587,6 +598,10 @@ interface GhStatus {
   installUrl: string | null;
   /** A GitHub App client id is configured at all. */
   configured: boolean;
+  /** Which app this orchestrator runs against; the yaml default unless overridden. */
+  app: { clientId: string; appSlug: string };
+  /** Where it is installed, and how many repositories each one can see. */
+  accounts: { id: number; account: string; kind: string; repos: number | null }[];
   pending: { userCode: string; verificationUri: string } | null;
   error: string | null;
 }
@@ -599,10 +614,25 @@ interface GhStatus {
  * a paragraph is a broken login. The button next to it opens the page it goes in,
  * because those two facts are useless apart.
  */
-function Github() {
+function GithubPane() {
   const [s, setS] = useState<GhStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const load = async () => setS(await pull<GhStatus>("/api/auth/github"));
+
+  /**
+   * Look again when the boss comes back.
+   *
+   * Installing the app happens on github.com, in another window, and the panel
+   * had fetched once — so it went on saying "not installed anywhere" over a
+   * backend that already knew better. Focus is the event that means "they are
+   * back"; a timer is either slower than the person staring at the screen or
+   * spends the hour's request budget on nothing.
+   */
+  useEffect(() => {
+    const back = () => void load();
+    window.addEventListener("focus", back);
+    return () => window.removeEventListener("focus", back);
+  }, []);
   useEffect(() => {
     void load();
   }, []);
@@ -629,96 +659,191 @@ function Github() {
 
   const pending = s?.pending;
   return (
-    <section className="border-t border-rule py-3.5">
-      <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="font-display text-[0.9375rem] font-semibold">GitHub</span>
-        {!s?.connected ? (
-          <span className="text-[0.75rem] font-medium text-accent">没连</span>
-        ) : s.stale ? (
-          <span className="text-[0.75rem] font-medium text-accent">连过，但 GitHub 现在不认这个令牌了</span>
-        ) : s.installed === false ? (
-          // Authorized and installed are different acts, and only the second one
-          // can reach a repository. Saying 已连 here would be a green tick over a
-          // repo list that can never fill.
-          <span className="text-[0.75rem] font-medium text-accent">
-            {s.account ? `@${s.account} 授权了` : "授权了"}，但 App 还没装到任何仓库上
-          </span>
-        ) : (
-          <span className="text-[0.75rem] text-ink-2">{s.account ? `@${s.account}` : "已连"}</span>
+    <>
+      <Head title="GitHub" note="代码从这儿来，真令牌不进沙盒" />
+
+      <section className="border-b border-rule pb-3">
+        <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {!s ? (
+            <Meta>读取中…</Meta>
+          ) : !s.connected ? (
+            <span className="text-[0.8125rem] font-medium text-accent">没连</span>
+          ) : s.stale ? (
+            <span className="text-[0.8125rem] font-medium text-accent">连过，但 GitHub 现在不认这个令牌了</span>
+          ) : s.installed === false ? (
+            // Authorized and installed are different acts, and only the second one
+            // can reach a repository. Saying 已连 here would be a green tick over a
+            // repo list that can never fill.
+            <span className="text-[0.8125rem] font-medium text-accent">
+              {s.account ? `@${s.account} 授权了` : "授权了"}，但 App 还没装到任何账号上
+            </span>
+          ) : (
+            <span className="text-[0.8125rem]">
+              {s.account ? `@${s.account}` : "已连"}
+            </span>
+          )}
+          <span className="grow" />
+          {s?.connected && (
+            <Button
+              size="sm"
+              variant="quiet"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                await post("/api/auth", { runtime: "github", clear: true });
+                setBusy(false);
+                void load();
+              }}
+            >
+              断开
+            </Button>
+          )}
+          {/* A dead token is a stuck state, so the way out is on the row that says
+              so — not behind 断开 first. */}
+          {s && (!s.connected || s.stale) && (
+            <Button size="sm" disabled={busy || !!pending} onClick={connect}>
+              {pending ? "等你在 GitHub 上批准…" : busy ? "去拿登录码…" : s.stale ? "重新连接" : "连接 GitHub"}
+            </Button>
+          )}
+        </div>
+        <Meta className="block">克隆私有仓库、推分支、开 PR 用的。一个连接管所有项目</Meta>
+
+        {pending && (
+          <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-rule bg-sunk px-3 py-2.5">
+            {/* The one thing to read on this screen. Wide tracking because the code
+                is typed into another window character by character. */}
+            <code className="font-mono text-[1.375rem] leading-none font-semibold tracking-[0.3em] select-all">
+              {pending.userCode}
+            </code>
+            <Button
+              size="sm"
+              variant="quiet"
+              onClick={() => {
+                void navigator.clipboard.writeText(pending.userCode);
+                toast.success("登录码复制好了");
+              }}
+            >
+              复制
+            </Button>
+            <span className="grow" />
+            <LinkButton href={pending.verificationUri} className="px-2 py-0.5 text-[0.75rem]">
+              去 GitHub 输入
+            </LinkButton>
+          </div>
         )}
-        <span className="grow" />
-        {s?.connected && (
+
+        {/* Why it did not land, beside the button that tries again. */}
+        {!pending && s?.error && <Meta className="mt-1.5 block text-accent">{s.error}</Meta>}
+      </section>
+
+      {/* Which accounts this login can actually work in, and how much each one
+          can see. The boss asked "how do I install to several orgs" because the
+          panel could not show that this is a list at all. */}
+      {s?.connected && !s.stale && (
+        <section className="border-b border-rule py-3">
+          <div className="mb-1.5 flex items-baseline gap-2">
+            <H2>装在哪些账号上</H2>
+            <span className="grow" />
+            {s.installUrl ? (
+              <LinkButton href={s.installUrl} className="px-2 py-0.5 text-[0.75rem]">
+                装到别的账号
+              </LinkButton>
+            ) : (
+              <Tip label="下面填上 App slug，这里就是个直达链接。">
+                <Meta>去 GitHub → 这个 App → Install App</Meta>
+              </Tip>
+            )}
+          </div>
+          {!s.accounts.length ? (
+            <Meta className="block text-accent">
+              一个也没有。装上之前这个连接看不见任何仓库 —— 装的时候可以选「所有仓库」或者挑几个。
+            </Meta>
+          ) : (
+            s.accounts.map((a) => (
+              <div key={a.id} className="flex items-baseline gap-2 border-t border-rule-soft py-1.5 first:border-t-0">
+                <span className="text-[0.8125rem]">{a.account}</span>
+                <Badge>{a.kind === "Organization" ? "组织" : "个人"}</Badge>
+                <span className="grow" />
+                <Meta>{a.repos === null ? "数不出来" : `${a.repos} 个仓库`}</Meta>
+              </div>
+            ))
+          )}
+        </section>
+      )}
+
+      <AppFields app={s?.app} onSaved={load} />
+    </>
+  );
+}
+
+/**
+ * Which GitHub App this orchestrator runs against.
+ *
+ * Yaml is the default; what is typed here wins and is stored on this machine —
+ * `config/default.yaml` is committed, so a self-hoster pointing at their own app
+ * was editing a tracked file and losing it on the next pull. Changing the client
+ * id drops the stored token with it: one app's token means nothing to another,
+ * and keeping it would read as connected while every call 401s.
+ */
+function AppFields({ app, onSaved }: { app?: { clientId: string; appSlug: string }; onSaved: () => void }) {
+  const [id, setId] = useState("");
+  const [slug, setSlug] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setId(app?.clientId ?? "");
+    setSlug(app?.appSlug ?? "");
+  }, [app?.clientId, app?.appSlug]);
+  const dirty = id.trim() !== (app?.clientId ?? "") || slug.trim() !== (app?.appSlug ?? "");
+
+  return (
+    <section className="py-3">
+      <H2 className="mb-1.5">用哪个 App</H2>
+      <Meta className="mb-2 block leading-relaxed">
+        默认用仓库里配的那个。换成自己的：Developer settings → GitHub Apps → New，
+        勾上 Enable Device Flow，关掉 Optional Features 里的 user token 过期
+        （开着 8 小时就失效，续期要 client secret，公开仓库给不了）。换 Client ID 会把现在的登录一起清掉。
+      </Meta>
+      <FieldGroup className="[--label:5.5rem]">
+        <Field className="py-1.5">
+          <FieldLabel htmlFor="gh-client" className="text-ink-3">Client ID</FieldLabel>
+          <Input
+            id="gh-client"
+            className="min-w-0 flex-1 font-mono"
+            placeholder="Iv23li…"
+            value={id}
+            onChange={(e) => setId(e.target.value)}
+          />
+        </Field>
+        <Field className="border-b-0 py-1.5">
+          <FieldLabel htmlFor="gh-slug" className="text-ink-3">App slug</FieldLabel>
+          <Input
+            id="gh-slug"
+            className="min-w-0 flex-1 font-mono"
+            // Only used to build the install link, so an empty one degrades to
+            // instructions rather than breaking anything.
+            placeholder="github.com/apps/ 后面那一段，用来拼「去装上」的链接"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+          />
+        </Field>
+      </FieldGroup>
+      {dirty && (
+        <div className="mt-2 flex">
+          <span className="grow" />
           <Button
+            variant="go"
             size="sm"
-            variant="quiet"
             disabled={busy}
             onClick={async () => {
               setBusy(true);
-              await post("/api/auth", { runtime: "github", clear: true });
+              await post("/api/auth/github/app", { clientId: id.trim(), appSlug: slug.trim() });
               setBusy(false);
-              void load();
+              onSaved();
             }}
           >
-            断开
+            存下
           </Button>
-        )}
-        {/* The way out of "authorized but useless", beside the line that says it. */}
-        {s?.installed === false &&
-          (s.installUrl ? (
-            <LinkButton href={s.installUrl} className="px-2 py-0.5 text-[0.75rem]">
-              去装上
-            </LinkButton>
-          ) : (
-            <Tip label="config/default.yaml 里填上 github.appSlug，这里就是个直达链接。">
-              <Meta>去 GitHub → 这个 App → Install App</Meta>
-            </Tip>
-          ))}
-        {/* A dead token is a stuck state, so the way out is on the row that says
-            so — not behind 断开 first. */}
-        {(!s?.connected || s.stale) && (
-          <Button size="sm" disabled={busy || !!pending} onClick={connect}>
-            {pending ? "等你在 GitHub 上批准…" : busy ? "去拿登录码…" : s?.stale ? "重新连接" : "连接 GitHub"}
-          </Button>
-        )}
-      </div>
-      <Meta className="mb-1.5 block">
-        克隆私有仓库、推分支、开 PR 用的。真令牌不进沙盒，出站时才换上
-      </Meta>
-
-      {pending && (
-        <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-rule bg-sunk px-3 py-2.5">
-          {/* The one thing to read on this screen. Wide tracking because the code
-              is typed into another window character by character. */}
-          <code className="font-mono text-[1.375rem] leading-none font-semibold tracking-[0.3em] select-all">
-            {pending.userCode}
-          </code>
-          <Button
-            size="sm"
-            variant="quiet"
-            onClick={() => {
-              void navigator.clipboard.writeText(pending.userCode);
-              toast.success("登录码复制好了");
-            }}
-          >
-            复制
-          </Button>
-          <span className="grow" />
-          <LinkButton href={pending.verificationUri} className="px-2 py-0.5 text-[0.75rem]">
-            去 GitHub 输入
-          </LinkButton>
         </div>
-      )}
-
-      {/* Why it did not land, beside the button that tries again. */}
-      {!pending && s?.error && <Meta className="mt-1.5 block text-accent">{s.error}</Meta>}
-      {/* Both switches, because both are invisible from here and both fail later
-          rather than now — the expiry one works today and is dead tomorrow. */}
-      {s && !s.configured && !s.connected && (
-        <Meta className="mt-1.5 block">
-          还没配 GitHub App：Developer settings → GitHub Apps 建一个，勾上 Enable Device Flow，
-          关掉 Optional Features 里的 user token 过期（开着 8 小时就失效，续期要 client secret），
-          Client ID 填进 config/default.yaml 的 github.clientId
-        </Meta>
       )}
     </section>
   );

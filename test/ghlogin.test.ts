@@ -386,3 +386,40 @@ test("a project that cannot be converted keeps its data and produces exactly one
   for (const name of ["none", "empty", "gitlab"]) expect(esc[0]!.question).toContain(name);
   expect(esc[0]!.question).not.toContain("fine");
 });
+
+test("the app can be pointed somewhere else, and the old login does not survive it", async () => {
+  // config/default.yaml is committed, so a self-hoster who edits it loses the
+  // change on the next pull. What is typed in the panel is stored on this
+  // machine and wins over the yaml.
+  const { app, db } = server((url) =>
+    url.includes("/user/installations/")
+      ? { total_count: 3 }
+      : url.includes("/user/installations")
+        ? { installations: [{ id: 5, account: { login: "acme", type: "Organization" } }] }
+        : { login: "octocat" },
+  );
+
+  const before = (await (await get(app, "/api/auth/github")).json()) as any;
+  expect(before.app).toEqual({ clientId: "Iv23li.x", appSlug: "orch" });
+  expect(before.installUrl).toBe("https://github.com/apps/orch/installations/new");
+  // Which accounts, and how much each can see — the question the boss could not
+  // answer from the panel.
+  expect(before.accounts).toEqual([{ id: 5, account: "acme", kind: "Organization", repos: 3 }]);
+
+  const r = await app(
+    new Request("http://x/api/auth/github/app", {
+      method: "POST",
+      // A pasted app URL is the expected mistake, not an exotic one.
+      body: JSON.stringify({ clientId: "Iv23li.mine", appSlug: "https://github.com/apps/mine/installations/new" }),
+    }),
+  );
+  expect(r.status).toBe(200);
+  expect((await r.json()) as any).toEqual({ clientId: "Iv23li.mine", appSlug: "mine" });
+
+  // One app's token means nothing to another: keeping it would read as connected
+  // while every call 401s.
+  expect(loadAuth(db, "github")).toBeNull();
+  const after = (await (await get(app, "/api/auth/github")).json()) as any;
+  expect(after.connected).toBe(false);
+  expect(after.installUrl).toBe("https://github.com/apps/mine/installations/new");
+});
