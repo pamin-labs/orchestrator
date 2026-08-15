@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { existsSync, lstatSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import type { DB } from "../db.ts";
 import { type ResourceExec, runResource, type ResourceDef } from "./lease.ts";
 
@@ -149,8 +149,11 @@ function formatFeedback(results: GateResult[]): string {
         // Deduped: a failing suite repeats the same assertion once per case, and
         // twenty identical lines is twenty lines the agent re-reads every round for
         // one fact. The full log is on disk and deliberately not here.
+        // No host path in here. `logPath` is on the orchestrator's disk and this
+        // text is read inside a container, where opening it gets ENOENT — the
+        // lease digest already learned to name the verb instead of the file.
         `${r.name}: exit ${r.exitCode}\n${[...new Set(r.errorLines)].slice(0, 20).join("\n")}` +
-        (r.logPath ? `\n(full log: ${r.logPath})` : ""),
+        (r.logPath ? `\n(the boss can open the full log from the slice page)` : ""),
     )
     .join("\n\n");
 }

@@ -103,7 +103,11 @@ test("feedback carries the failing lines, never the whole log", async () => {
   // The rejection delta must stay small: a 5000-line log would eat the context
   // the retry needs to actually fix the failure.
   expect(out.feedback.length).toBeLessThan(2000);
-  expect(out.feedback).toContain("full log:");
+  // And it says where the rest is without naming a path: the log is on the
+  // orchestrator's disk, this text is read inside a container, and a host path
+  // there is an ENOENT the agent spends a round on.
+  expect(out.feedback).toContain("full log");
+  expect(out.feedback).not.toMatch(/\(?\/[\w.-]+\/.*\.log/);
 });
 
 test("an unknown gate resource fails loudly instead of being skipped", async () => {

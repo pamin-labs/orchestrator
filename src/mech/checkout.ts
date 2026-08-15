@@ -202,7 +202,11 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
   // repository is the longest minute of a group's life and the panel showed a
   // grey dash for all of it. git writes its progress to stderr, which `--progress`
   // is what keeps on when stdout is not a terminal.
-  const cloneCmd = `git clone --progress ${JSON.stringify(spec.remote)} ${WORK}`;
+  // `shq`, like every other command in this file. `JSON.stringify` was the one
+  // exception and it is not a quoter: it emits *double* quotes, under which `sh`
+  // still expands `$(…)`, backticks and `${…}` — and the remote can come from
+  // `postProject`'s request body, not only from `git remote get-url`.
+  const cloneCmd = `git clone --progress ${shq(spec.remote)} ${WORK}`;
   const clone = await streamed(ctx, scope, cloneCmd, { timeoutMs: 600_000, env: { GIT_TERMINAL_PROMPT: "0" } });
   if (clone.code !== 0) throw new Error(`git clone failed: ${clone.out.slice(-400)}`);
 

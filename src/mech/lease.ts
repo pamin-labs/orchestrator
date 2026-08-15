@@ -18,7 +18,13 @@ import type { Invalid, Result } from "./validate.ts";
 
 export type ArgSpec =
   | { type: "enum"; values: string[] }
-  | { type: "path"; root: string; mustExist?: boolean }
+  // `root` is confined against, and it is a path *inside the container* — the
+  // resolved value is substituted into a template that runs there. `mustExist`
+  // used to sit here too, checked by nothing: the check it implies would be a
+  // host `existsSync` against a container path, which is the pre-005 mistake this
+  // file is otherwise free of. If a resource ever needs it, it is a `test -e` in
+  // the sandbox, not a field.
+  | { type: "path"; root: string }
   | { type: "string"; pattern: string; maxLength?: number }
   | { type: "int"; min?: number; max?: number }
   | { type: "bool" };
@@ -31,6 +37,14 @@ export interface ResourceDef {
   argSchema: Record<string, ArgSpec>;
   /** Lines matching this are lifted into the digest. */
   errorRegex?: string;
+  /**
+   * Where the command runs, inside the container. Nothing writes it — the column
+   * exists, `postProject` never sets it, and every caller falls through to
+   * `/work`. Kept because a monorepo package will want it, and documented as a
+   * container path because that is exactly how `grp.worktree` went wrong: a
+   * column nothing wrote, read in four places, and the first host path anyone
+   * put in it would have been silently unreachable.
+   */
   cwd?: string;
   /** Pool names. One global slot count cannot fit a browser and a typecheck. */
   tags?: string[];
@@ -232,7 +246,10 @@ export function digestOutput(
   parts.push(
     `\n## tail (${tail.length}${truncated ? ` of ${lines.length}` : ""} lines)\n${tail.join("\n")}`,
   );
-  if (truncated && logPath) parts.push(`\nfull log: orch lease log <id> --grep RE  (${logPath})`);
+  // The verb, not the path: `logPath` is on the orchestrator's disk and this text
+  // is read inside a container, where that path does not exist. It was printed
+  // next to the verb "for reference" and reads as something to open.
+  if (truncated && logPath) parts.push(`\nfull log: orch lease log <id> --grep TEXT`);
 
   return { exitCode, errorLines, tail, truncated, text: parts.join("\n") };
 }
