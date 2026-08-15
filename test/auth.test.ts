@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
-import { absorbCodexHome, CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX_KEY, saveAuth, vaultFor, wrongShape } from "../src/mech/auth.ts";
+import { CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX_KEY, saveAuth, vaultFor, wrongShape } from "../src/mech/auth.ts";
 import { newEnough, preflight, report } from "../src/mech/preflight.ts";
 import { accessToken, isStale, parseAuth, renew } from "../src/mech/chatgpt.ts";
 import { loginRuntimes, startLogin } from "../src/mech/login.ts";
@@ -119,7 +119,12 @@ test("a ChatGPT login is refreshed on the host, and the sandbox only gets a deco
   const db = openMemory();
   const real = JSON.stringify({
     auth_mode: "chatgpt",
-    tokens: { access_token: "REAL-ACCESS", refresh_token: "REAL-REFRESH", account_id: "acct" },
+    tokens: {
+      access_token: "REAL-ACCESS",
+      refresh_token: "REAL-REFRESH",
+      id_token: "REAL-ID-TOKEN",
+      account_id: "acct",
+    },
     last_refresh: new Date().toISOString(),
   });
   saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: real });
@@ -128,6 +133,11 @@ test("a ChatGPT login is refreshed on the host, and the sandbox only gets a deco
   const written = files[`${CODEX_HOME}/auth.json`]!;
   expect(written).not.toContain("REAL-ACCESS");
   expect(written).not.toContain("REAL-REFRESH");
+  // The one that used to travel: a signed JWT identifying the account is a token,
+  // and it was passed through untouched next to two carefully faked ones.
+  expect(written).not.toContain("REAL-ID-TOKEN");
+  // Still shaped like a JWT, or anything that parses it decides the login is bad.
+  expect(JSON.parse(written).tokens.id_token.split(".")).toHaveLength(3);
   // Shaped like a login, or codex will not start.
   expect(JSON.parse(written).tokens.access_token.length).toBeGreaterThan(20);
   // And told to read the file rather than the OS keychain.
@@ -139,18 +149,19 @@ test("a ChatGPT login is refreshed on the host, and the sandbox only gets a deco
   expect(env.OPENAI_API_KEY).toBeUndefined();
 });
 
-test("a login codex refreshed inside the sandbox is written back, once it is really new", () => {
-  const db = openMemory();
-  const first = JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: "a", refresh_token: "r" } });
-  saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: first });
-
-  const rotated = JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: "a2", refresh_token: "r2" } });
-  expect(absorbCodexHome(db, rotated)).toBe(true);
-  expect(loadAuth(db, "codex")!.secret).toBe(rotated);
-  // Unchanged, or not a file at all, is not something to write back.
-  expect(absorbCodexHome(db, rotated)).toBe(false);
-  expect(absorbCodexHome(db, "half a file")).toBe(false);
-  expect(loadAuth(db, "codex")!.secret).toBe(rotated);
+test("nothing reads a credential back out of a sandbox", async () => {
+  // There used to be a write-back: after every codex turn the host read
+  // `$CODEX_HOME/auth.json` out of the container and stored it. But that file is
+  // the decoy this very module writes, and `decoyAuth` stamps `last_refresh` with
+  // now precisely so codex will not refresh it — so the read-back could only ever
+  // find our own fake, and it stored it over the real refresh token, which
+  // nothing else holds. The whole fleet then 401'd against `decoy-aaa…`.
+  //
+  // Asserted on the source, because the failure was two locally-correct pieces
+  // (the decoy is written; a rotated file is absorbed) with nothing joining them.
+  const src = await Bun.file(new URL("../src/runtime/executor.ts", import.meta.url)).text();
+  expect(src).not.toContain("absorbCodexHome");
+  expect(src).not.toContain(`${"$"}{CODEX_HOME}/auth.json`);
 });
 
 

@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { lstatSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 /**
  * Refreshing a ChatGPT-account login, on the host, once.
@@ -105,7 +105,25 @@ async function readAuth(codexHome: string): Promise<CodexAuth | null> {
  */
 export async function seedHome(codexHome: string, authJson: string): Promise<void> {
   mkdirSync(codexHome, { recursive: true });
-  await Bun.write(join(codexHome, "auth.json"), authJson);
+  const authPath = join(codexHome, "auth.json");
+  // Never through a symlink.
+  //
+  // This directory holds an *output*: the credential comes from `runtime_auth`
+  // and is written here so the host refresher has a CODEX_HOME to run in. Found
+  // on a real machine linked to `~/.codex/auth.json` — presumably to avoid
+  // re-running `codex login` — and `Bun.write` follows a link, so the weekly
+  // refresh would have overwritten and then re-refreshed the boss's own personal
+  // login. That is exactly the two-writers-one-token case codex's CI guidance
+  // warns about, arriving through the back door.
+  //
+  // The link is removed rather than honoured: it is ours to write, and refusing
+  // instead would leave the refresher permanently unable to run.
+  try {
+    if (lstatSync(authPath).isSymbolicLink()) rmSync(authPath, { force: true });
+  } catch {
+    // Not there at all, which is the normal first time.
+  }
+  await Bun.write(authPath, authJson);
   // Without this codex looks in the OS keychain instead of the file.
   await Bun.write(join(codexHome, "config.toml"), 'cli_auth_credentials_store = "file"\n');
 }
@@ -124,10 +142,29 @@ export function decoyAuth(a: CodexAuth): string {
     OPENAI_API_KEY: null,
     tokens: {
       access_token: `decoy-${"a".repeat(40)}`,
-      id_token: a.tokens?.id_token ?? `decoy-${"i".repeat(40)}`,
+      // Faked like the other two. This used to pass the *real* `id_token`
+      // through, which is a signed JWT identifying the account — a token, inside
+      // the sandbox, against the one rule this whole module exists to keep. The
+      // old no-real-value fallback was `decoy-iii…`, so codex tolerates a
+      // non-JWT here; a structurally valid one is strictly closer to real.
+      id_token: decoyIdToken(),
       refresh_token: `decoy-${"r".repeat(40)}`,
+      // Not faked, deliberately: `account_id` is an identifier, not a credential
+      // — nothing can be signed or replayed with it — and codex addresses the
+      // account with it. Faking it would break every codex turn to hide a value
+      // the account's own traffic carries anyway.
       account_id: a.tokens?.account_id ?? "",
     },
     last_refresh: new Date().toISOString(),
   });
+}
+
+/** A JWT in shape only: three base64url segments, no real claim in it. */
+function decoyIdToken(): string {
+  const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  return [
+    seg({ alg: "none", typ: "JWT" }),
+    seg({ sub: "decoy", exp: Math.floor(Date.now() / 1000) + 86_400 }),
+    "d".repeat(43),
+  ].join(".");
 }

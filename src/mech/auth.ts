@@ -1,6 +1,7 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { DB } from "../db.ts";
 import type { Credential } from "./sandbox.ts";
-import { join } from "node:path";
 import { accessToken, decoyAuth, isStale, parseAuth, renew, seedHome } from "./chatgpt.ts";
 import { maskValue } from "./scrub.ts";
 
@@ -127,6 +128,52 @@ export function subscriptionAccount(db: DB, runtime: string): boolean {
   }
 }
 
+/**
+ * Where a CLI keeps its own state *on this host*.
+ *
+ * Both tools let you move it — codex reads `$CODEX_HOME`, Claude Code reads
+ * `$CLAUDE_CONFIG_DIR` — and hardcoding `~/.codex` / `~/.claude` fails silently
+ * for anyone who has: `codex login` succeeds and the credential is read from a
+ * directory it did not write, so the panel says "finished but produced no
+ * credential"; every ticked skill stages zero files and the mount is empty.
+ * Honour the variable the CLI honours, then fall back to the conventional path.
+ *
+ * `homedir()` handles the platform difference; the env vars handle the
+ * install-somewhere-else one. Note these are the *host* paths — `CODEX_HOME`
+ * above is the path inside the container, which is ours to fix and never varies.
+ */
+export const hostCodexHome = (home = homedir()): string => process.env.CODEX_HOME || join(home, ".codex");
+export const hostClaudeHome = (home = homedir()): string =>
+  process.env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+
+/**
+ * The hosts a turn has to be able to reach, for the configured credentials.
+ *
+ * Derived rather than configured: these are exactly the hosts the vault binds,
+ * so a self-hosted gateway moves the probe with it and nobody has to keep a
+ * second list in step. Only credentials that exist count — probing a provider
+ * nobody configured would report the machine offline for a wall it will never
+ * hit.
+ */
+export function probeHosts(db: DB): string[] {
+  const out = new Set<string>();
+  for (const a of db
+    .query<{ runtime: string; base_url: string | null }, []>("SELECT runtime, base_url FROM runtime_auth")
+    .all()) {
+    if (a.base_url) {
+      try {
+        out.add(new URL(a.base_url).hostname);
+        continue;
+      } catch {}
+    }
+    for (const h of BINDINGS[a.runtime]?.hosts ?? []) out.add(h);
+  }
+  // github is bound for cloning, not for running a turn, and a repo host being
+  // unreachable is not a reason to stop every agent.
+  for (const h of BINDINGS.github!.hosts) out.delete(h);
+  return [...out];
+}
+
 export function loadAuth(db: DB, runtime: string): RuntimeAuth | null {
   const r = db
     .query<{ runtime: string; mode: string; secret: string; base_url: string | null }, [string]>(
@@ -222,25 +269,21 @@ export async function currentChatgptToken(db: DB, dataDir: string, now = Date.no
 }
 
 /**
- * The refreshed login, if the sandbox rotated it.
+ * There is no write-back from the sandbox, deliberately.
  *
- * codex refreshes its own tokens and rewrites auth.json, so the copy in the
- * sandbox drifts ahead of ours within hours. Reading it back keeps the next
- * sandbox working. The boss's own `~/.codex/auth.json` is never touched — it is
- * theirs, and the same login refreshed in two places will eventually invalidate
- * one of them whatever we do.
+ * `absorbCodexHome` used to read `$CODEX_HOME/auth.json` out of the container
+ * after every codex turn and store whatever it found, on the theory that codex
+ * rotates its own tokens. Since 005 that file is a decoy *we* wrote (`filesFor`
+ * below), and `decoyAuth` stamps `last_refresh` with now for the express purpose
+ * of stopping codex from refreshing it. So the only thing the read-back could
+ * ever find was our own fake — and it stored it, replacing the real refresh
+ * token, which nothing else holds. Every sandbox then got `decoy-aaa…` injected
+ * and the whole fleet 401'd, presenting as an expired account.
+ *
+ * One login, one refresher, on the host (`currentChatgptToken` below). A second
+ * writer for the same row is what this comment exists to prevent someone adding
+ * back.
  */
-export function absorbCodexHome(db: DB, contents: string): boolean {
-  const a = loadAuth(db, "codex");
-  if (a?.mode !== "chatgpt" || !contents.trim() || contents === a.secret) return false;
-  try {
-    JSON.parse(contents);
-  } catch {
-    return false;
-  }
-  saveAuth(db, { ...a, secret: contents });
-  return true;
-}
 
 /**
  * Everything the sidecar should inject, including the refreshed ChatGPT token.

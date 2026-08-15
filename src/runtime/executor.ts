@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import type { Ctx } from "../api.ts";
@@ -12,10 +12,10 @@ import { listSkills, readSkill } from "../mech/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, type GitRunner } from "../mech/worktree.ts";
-import { getFile, MAILBOX_DIR, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
+import { MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
 import { baseRefFor, ensureCheckout, publishBranch, sandboxGit } from "../mech/checkout.ts";
 import { track, untrack } from "./running.ts";
-import { absorbCodexHome, CODEX_HOME, isAuthFailure, vaultFor } from "../mech/auth.ts";
+import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/auth.ts";
 import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/watchdog.ts";
 import { runStandup } from "../mech/standup.ts";
 import { route } from "../mech/chain.ts";
@@ -258,11 +258,15 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   // An empty prompt is rejected outright by `claude -p`, and an agent woken with
   // nothing to read is a bug upstream — but crashing the turn hides it, so say
   // what happened instead.
-  const prompt =
+  const prompt = await stageAttachments(
+    deps,
+    scope,
     assemble(stable, delta).prompt.trim() ||
-    "You were woken with nothing new to read. Check `orch task list` and " +
-      "`orch ctx query` for your current situation, and if there is genuinely " +
-      "nothing to do, say so in one line and stop.";
+      "You were woken with nothing new to read. Check `orch task list` and " +
+        "`orch ctx query` for your current situation, and if there is genuinely " +
+        "nothing to do, say so in one line and stop.",
+    job.grp_id,
+  );
 
   // The agent's runtime, not the role's. `agent.model` was resolved against the
   // provider this agent was hired on and is frozen there; reading the CLI from the
@@ -357,17 +361,9 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     }
   }
 
-  // codex rotates its own tokens and rewrites auth.json, so the copy inside the
-  // sandbox runs ahead of ours within hours. Reading it back is what keeps the
-  // next sandbox able to log in at all.
-  if (provider.name === "codex" && job.grp_id) {
-    const rotated = await getFile(ctx, scope, `${CODEX_HOME}/auth.json`).catch(() => null);
-    if (rotated) absorbCodexHome(ctx.db, rotated);
-  }
-
   recordCost(deps, agent, job, result, stable.hash);
   recordProgress(deps, agent, job, result);
-  await narrate(deps, agent, job, grp, project?.repo_path ?? null, before, result);
+  await narrate(deps, agent, job, before, result);
   handleRateLimit(deps, agent, job, result);
   handleAuthFailure(deps, agent, job, result);
   recordSubscriptionUsage(deps, provider.name, result);
@@ -762,6 +758,59 @@ function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null, cfg?: Confi
   return rows.map((r) => `${r.author}${r.intent ? ` (${r.intent})` : ""}: ${r.body}`).join("\n") + tail;
 }
 
+/** Where a staged attachment lands inside the container. */
+export const ATTACH_DIR = `${MAILBOX_DIR}/attach`;
+
+/**
+ * Copy the turn's attachments into the sandbox and point the prompt at them.
+ *
+ * The boss attaches a screenshot; `withAttachments` writes its **host** path into
+ * the message, and since 005 that path does not exist where the turn runs. claude
+ * was asked to `Read` a missing file, failed silently and improvised around it;
+ * codex was handed `-i /Users/…/data/attachments/…` for a file that was not
+ * there. Nothing copied them in, and nothing said so — the feature had been dead
+ * for as long as the container had been the boundary.
+ *
+ * Only paths under `<dataDir>/attachments` are touched. That is the whole
+ * filter: it is exact, and it cannot mistake an agent's own bullet list for an
+ * attachment block the way parsing the header would.
+ */
+export async function stageAttachments(
+  deps: ExecDeps,
+  scope: Scope,
+  prompt: string,
+  grpId: number | null,
+): Promise<string> {
+  const root = resolve(join(deps.cfg.dataDir, "attachments"));
+  const wanted = new Set<string>();
+  for (const m of prompt.matchAll(/^- (?:\[[^\]]+\] )?(\/\S+)/gm)) {
+    const p = resolve(m[1]!);
+    if (p === root || p.startsWith(`${root}/`)) wanted.add(m[1]!);
+  }
+  if (wanted.size === 0) return prompt;
+
+  let out = prompt;
+  for (const host of wanted) {
+    const inside = `${ATTACH_DIR}/${basename(host)}`;
+    try {
+      await putBytes(deps.ctx, scope, inside, new Uint8Array(await Bun.file(host).arrayBuffer()));
+    } catch (e: any) {
+      // Said out loud rather than left as a path that goes nowhere: an attachment
+      // the agent cannot open is exactly the failure this function exists for.
+      deps.ctx.bus.emit({
+        grpId,
+        author: "orchestrator",
+        kind: "state_change",
+        severity: "blocker",
+        body: `could not put ${basename(host)} into the sandbox: ${e?.message ?? e}`,
+      });
+      continue;
+    }
+    out = out.split(host).join(inside);
+  }
+  return out;
+}
+
 /**
  * Compress a finished turn's log and drop the raw file.
  *
@@ -825,7 +874,21 @@ export async function reconcileOwnership(
 
   const git = sandboxGit(deps.ctx, { grp: job.grp_id });
   const status = await git(WORK, ["status", "--porcelain"], WORK);
-  if (status.code !== 0) return;
+  if (status.code !== 0) {
+    // Said out loud. This is the only file-ownership enforcement there is since
+    // 005 deleted the deny-list, and `engineer.yaml` promises it to the agent —
+    // so skipping silently means the boundary is off and everything reads normal.
+    // The same function was just fixed for pointing the host runner at `/work`;
+    // this line is the identical failure one layer down.
+    deps.ctx.bus.emit({
+      grpId: job.grp_id,
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "blocker",
+      body: `could not check file ownership this turn (git status in the sandbox: ${status.out.slice(0, 200)})`,
+    });
+    return;
+  }
   // "XY path" and "XY old -> new"; the destination is the one that exists now.
   const changed = status.out
     .split("\n")
@@ -929,12 +992,13 @@ async function narrate(
   deps: ExecDeps,
   agent: AgentRow,
   job: Job,
-  grp: { name: string } | null | undefined,
-  repoPath: string | null,
   before: string | null,
   r: TurnResult,
 ): Promise<void> {
-  const { ctx, git } = deps;
+  // No `repoPath` and no `git`: both were left over from when this read the host
+  // checkout, and the diff has come out of `sandboxGit(WORK)` since 005. A
+  // parameter nobody reads is the next reader's wrong mental model.
+  const { ctx } = deps;
   for (const t of r.toolSummaries.slice(0, 12)) {
     ctx.bus.emit({ grpId: job.grp_id, author: agent.role, kind: "tool_summary", body: t.detail });
   }
