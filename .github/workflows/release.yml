@@ -123,8 +123,17 @@ jobs:
           # rather than dangling in a runner's working tree.
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -q -s -am "chore(release): ${{ inputs.version }}"
-          git push origin HEAD:main
+          # Only when there is a bump to commit. `package.json` may already carry
+          # this version — somebody bumped it by hand, or an earlier attempt got
+          # this far — and `git commit -am` on a clean tree exits non-zero, which
+          # would fail the release *after* the image was pushed and before the tag
+          # exists. The version is a decision; whether one file changed is not.
+          if git diff --quiet; then
+            echo "package.json already says ${{ inputs.version }}; nothing to commit"
+          else
+            git commit -q -s -am "chore(release): ${{ inputs.version }}"
+            git push origin HEAD:main
+          fi
           git tag "${{ env.VERSION }}"
           git push origin "${{ env.VERSION }}"
           # One line above the generated list: how to run this version. That is

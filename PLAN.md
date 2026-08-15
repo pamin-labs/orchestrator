@@ -125,6 +125,7 @@ orch draft <group_id> -              # Dispatcher 交 DRAFT 卡（stdin），交
 orch owns <group_id> --path <glob>…  # Architect 切边界
 orch review <slice_id> --verdict …   # QA 判决（值，不是散文）
 orch audit <group_id> --verdict …    # Auditor PR 级判决
+orch pr <group_id> --title "…" -     # Scribe 交提交/PR 文案（stdin），交时校验；交完才开 PR
 orch answer <esc_id> --answer … | --abstain --why …
 orch status "<一句话>"               # 工位墙上的当前意图
 ```
@@ -190,6 +191,7 @@ codex 走 `codex exec resume <id> -m <model>` + `--dangerously-bypass-approvals-
 | 常驻 | **Architect** | opus | 建组前切边界 / 设计变更 / env_suspect |
 | 常驻 | **Dispatcher** | opus | 新想法进来 / `respec` 退回 |
 | 常驻 | **Auditor**（不给 Write/Edit） | sonnet | PR 级审查（跨组，不共享 context） |
+| 小队 | **Scribe**（不给 Write/Edit） | 最便宜的档 | 审计过了之后一轮，写 commit/PR 文案 |
 | 常驻 | **Librarian** | haiku | 定期 / log 超阈值 |
 | 小队 | **PM** | sonnet | 组的唯一对话入口；自行深挖 |
 | 小队 | **Engineer**（唯一有 Write/Edit 的角色） | sonnet | 唯一写方 |
