@@ -875,9 +875,35 @@ function runOpts(o: ExecOpts) {
 async function realExec(ctx: Ctx, scope: Scope, cmd: string, opts: ExecOpts = {}): Promise<ExecOutcome> {
   const sb = await ensureSandbox(ctx, scope);
   const e = await sb.commands.run(cmd, runOpts(opts), undefined, opts.signal);
-  const text = (k: "stdout" | "stderr") => (e.logs?.[k] ?? []).map((m) => m.text).join("");
+  const text = (k: "stdout" | "stderr") => (e.logs?.[k] ?? []).map(oneLine).join("\n");
   return { code: e.exitCode ?? -1, out: text("stdout"), err: text("stderr") };
 }
+
+/**
+ * One log message is one line, and its newline is gone. Put it back.
+ *
+ * Measured against the running server, twice, because the consequence is
+ * enormous and the shape is not documented anywhere:
+ *
+ *   printf 'a\\nbb\\nccc\\n'   ->  ["a", "bb", "ccc"]      three messages, no "\\n"
+ *   printf 'a\\nb'             ->  ["a", "b"]              a partial last line is not marked
+ *   printf 'a\\n\\n\\nb\\n'      ->  ["a", "\\n", "\\n", "b"]  a blank line arrives AS "\\n"
+ *   printf '1%%\\r42%%\\rdone\\n' ->  ["1%", "42%", "done"]   a CR splits too, and is eaten
+ *   300 KB with no newline    ->  one message                a long line is never split
+ *
+ * `join("")` therefore ran every line together. `git status --porcelain` came
+ * back as one string, `ls` came back as one string, and **every caller that
+ * splits `out` on newlines was reading a single line** — which does not throw,
+ * does not warn, and mostly yields "nothing matched". That is the shape this
+ * codebase keeps paying for: a wrong answer that looks like an empty one. It
+ * surfaced because a skills inventory of two lines came back as one.
+ *
+ * The last row is what makes `join("\\n")` safe rather than a guess: the server
+ * splits on line boundaries and nothing else, so one message is never half a
+ * line. The blank-line row is why each message is stripped first — a bare "\\n"
+ * joined with another "\\n" would double every blank line in a diff.
+ */
+const oneLine = (m: { text: string }): string => m.text.replace(/\r?\n$/, "");
 
 /**
  * Reassemble lines from chunks that split anywhere.
@@ -934,15 +960,21 @@ async function* realLines(
         // Handlers only: accumulating a whole turn's NDJSON in the Execution
         // object as well would double the memory for no reader.
         skipAccumulation: true,
+        // `+ "\n"` on both, for the reason in `oneLine`: the server hands over
+        // one line per message with the terminator removed, so a splitter fed
+        // the raw text holds **everything** in its buffer and emits it once, at
+        // the end, as a single run-on line. For an NDJSON turn that is every
+        // object of the turn concatenated into one unparseable string — the
+        // stream stops being a stream and the live timeline goes quiet.
         onStdout: (m) => {
-          queue.push(...split.push(m.text));
+          queue.push(...split.push(`${oneLine(m)}\n`));
           notify?.();
         },
         onStderr: (m) => {
-          stderr += m.text;
+          stderr += `${oneLine(m)}\n`;
           // git writes progress with `\r`, not `\n`, so a clone is one very long
-          // line until it ends. Split on both, or the watcher sees nothing.
-          if (opts.onStderr) for (const l of errSplit.push(m.text)) opts.onStderr(l);
+          // line until it ends. The server splits on that too, and eats it.
+          if (opts.onStderr) for (const l of errSplit.push(`${oneLine(m)}\n`)) opts.onStderr(l);
         },
       },
       opts.signal,

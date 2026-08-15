@@ -14,6 +14,7 @@ import {
   bindCredentials,
   closeAll,
   execIn,
+  execLines,
   getFile,
   killSandbox,
   MAILBOX_DIR,
@@ -295,6 +296,41 @@ live(
       }
     } finally {
       rmSync(join(dir, "live-check"), { recursive: true, force: true });
+      await killSandbox(c, scope).catch(() => {});
+      await closeAll();
+    }
+  },
+  240_000,
+);
+
+live(
+  "one line out of a container is still one line by the time it is read",
+  async () => {
+    // Measured, because it is not documented and the consequence is enormous:
+    // the sandbox server hands over stdout **one line per message with the
+    // newline stripped**. Joining those with "" ran every line together, so
+    // `git status --porcelain`, `ls`, and a skills inventory all arrived as a
+    // single line — and every caller that splits on newlines silently matched
+    // nothing. A wrong answer shaped exactly like an empty one.
+    const c = ctx();
+    const scope = { grp: 1 } as const;
+    try {
+      expect((await execIn(c, scope, `printf 'a\\nbb\\nccc\\n'`)).out.split("\n")).toEqual(["a", "bb", "ccc"]);
+      // A blank line arrives AS "\n", so a naive re-join doubles every one of
+      // them — which would have turned every diff hunk gap into two.
+      expect((await execIn(c, scope, `printf 'a\\n\\n\\nb\\n'`)).out.split("\n")).toEqual(["a", "", "", "b"]);
+      // And the streaming path, which is what a turn's NDJSON rides on: without
+      // the terminator every object of the turn accumulates and is emitted once,
+      // at the end, concatenated and unparseable.
+      const seen: string[] = [];
+      const stream = execLines(c, scope, `printf '{"i":1}\\n{"i":2}\\n{"i":3}\\n'`);
+      for (;;) {
+        const step = await stream.next();
+        if (step.done) break;
+        seen.push(step.value);
+      }
+      expect(seen.map((l) => JSON.parse(l).i)).toEqual([1, 2, 3]);
+    } finally {
       await killSandbox(c, scope).catch(() => {});
       await closeAll();
     }
