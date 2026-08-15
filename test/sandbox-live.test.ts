@@ -7,7 +7,7 @@ import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
 import { loadConfig } from "../src/config.ts";
-import { createCheckout, httpsRemote, sandboxGit } from "../src/mech/checkout.ts";
+import { createCheckout, httpsRemote, keepBranch, sandboxGit, utilGit } from "../src/mech/checkout.ts";
 import { startMailbox } from "../src/mech/mailbox.ts";
 import { CODEX_HOME } from "../src/mech/auth.ts";
 import { ConnectionConfig, SandboxManager } from "@alibaba-group/opensandbox";
@@ -20,6 +20,7 @@ import {
   MAILBOX_DIR,
   putFile,
   REAL,
+  UTIL,
   WORK,
 } from "../src/mech/sandbox.ts";
 
@@ -173,6 +174,49 @@ live(
       stop();
       server.stop(true);
       await killSandbox(c, scope).catch(() => {});
+      await closeAll();
+    }
+  },
+  240_000,
+);
+
+live(
+  "the utility container takes a commit out of a group and into its mirror",
+  async () => {
+    // The path that runs every turn, and the one nothing had ever executed: a
+    // container with no agent in it, a bare mirror, and a bundle carried between
+    // them with no network and no credential. It would otherwise have run for the
+    // first time at the boss's first slice boundary.
+    //
+    // A public repository, so this asserts the mechanism and not a token.
+    const c = ctx();
+    const grp = { grp: 1 } as const;
+    const remote = "https://github.com/octocat/Hello-World.git";
+    c.db.run("UPDATE project SET remote = ?, base_branch = 'master' WHERE id = 1", [remote]);
+    try {
+      // Not a sandbox in the 005 sense: no agent, so none of an agent's furniture.
+      const bare = await execIn(c, UTIL, "test -x /usr/local/bin/orch || test -d /var/orch || test -d /root/.claude/skills");
+      expect(bare.code).not.toBe(0);
+
+      // The verb allowlist, refusing for real rather than in a unit test.
+      await expect(utilGit(c, ["checkout", "main"])).rejects.toThrow(/may not run/);
+
+      const mirror = `/repos/${remote.replace(/[^\w.-]+/g, "-")}`;
+      expect((await utilGit(c, ["clone", "--bare", "--filter=blob:none", remote, mirror])).code).toBe(0);
+      // Bare: nothing that came out of the repository is written anywhere that
+      // anything would run it. That is what lets this container hold the login.
+      expect((await execIn(c, UTIL, `test -d ${mirror}/.git && echo worktree || echo bare`)).out.trim()).toBe("bare");
+
+      await createCheckout(c, grp, { remote, branch: "orch/live", base: "origin/master" });
+      await execIn(c, grp, "echo probe > PROBE.md && git add -A && git commit -qm 'wip: probe'", { cwd: WORK });
+      c.db.run("UPDATE grp SET branch = 'orch/live' WHERE id = 1");
+
+      expect(await keepBranch(c, 1)).toEqual({ ok: true });
+      const landed = await execIn(c, UTIL, `git -C ${mirror} log -1 --format=%s refs/heads/orch/live`);
+      expect(landed.out.trim()).toBe("wip: probe");
+    } finally {
+      await killSandbox(c, grp).catch(() => {});
+      await killSandbox(c, UTIL).catch(() => {});
       await closeAll();
     }
   },
