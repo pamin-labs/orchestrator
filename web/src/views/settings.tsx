@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Segment, Segments } from "../ui/segment";
 import { Tip } from "../ui/tooltip";
 import { pull, post } from "../lib/api";
-import { clock, cn } from "../lib/utils";
+import { clock, cn, repoHref } from "../lib/utils";
 import { ThemeChoice } from "../ui/theme";
 import { Gates, Sandbox, type ProjectConfig } from "./project";
 import { Skills } from "./skills";
@@ -288,11 +288,25 @@ function Group({
   hint?: string;
   children: React.ReactNode;
 }) {
+  // A GitHub project's origin is a place you can go, so it is a link rather than
+  // a hover string. A locally-added one keeps its path on the tooltip, which is
+  // still where that project actually is.
+  const href = repoHref(hint);
   const line = <Meta className="mb-1.5 block truncate px-2">{note}</Meta>;
   return (
     <div>
       <H2 className="mb-1 truncate px-2">{label}</H2>
-      {note && (hint ? <Tip label={hint}>{line}</Tip> : line)}
+      {note && (hint && !href ? <Tip label={hint}>{line}</Tip> : line)}
+      {href && (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="mb-1.5 block truncate px-2 text-[0.6875rem] text-ink-3 hover:text-accent hover:underline"
+        >
+          {hint}
+        </a>
+      )}
       {children}
     </div>
   );

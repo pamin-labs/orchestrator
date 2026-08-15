@@ -49,3 +49,16 @@ export const brief = (s: string, max = 44): string => {
   const first = (s.split(/[\n。.!?！？]/)[0] ?? s).trim() || s.trim();
   return first.length > max ? `${first.slice(0, max - 1)}…` : first;
 };
+
+/**
+ * Where a project came from, read off the one column that says.
+ *
+ * A project added from GitHub keeps `owner/name` in `repo_path`; one added the
+ * old way keeps an absolute host path (007 step 6 moves the second kind to the
+ * first). Nothing else distinguishes them, so every place that renders a
+ * project's origin asks here rather than guessing — a host path shown for a
+ * repository nobody cloned is the panel talking about a machine the work does
+ * not happen on any more.
+ */
+export const repoHref = (repoPath?: string | null): string | null =>
+  repoPath && /^[\w.-]+\/[\w.-]+$/.test(repoPath) ? `https://github.com/${repoPath}` : null;

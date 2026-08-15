@@ -444,9 +444,10 @@ export function App() {
               <CardBody>
                 <CardTitle>添加项目</CardTitle>
                 <div className="mb-3 mt-1 text-[0.75rem] text-ink-3">
-                  本地 git 仓库。注册时自动检测测试命令、写入职包、预检 PR 权限。
+                  从 GitHub 挑一个仓库 —— 装了这个 App 的账号下都能看到。不用先克隆到本机；
+                  闸门和安装命令等第一个组克隆完再猜。
                 </div>
-                <Button variant="go" onClick={() => setPicking(true)}>挑文件夹…</Button>
+                <Button variant="go" onClick={() => setPicking(true)}>挑仓库…</Button>
               </CardBody>
             </Card>
           ) : home ? (
