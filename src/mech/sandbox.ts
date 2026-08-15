@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readlinkSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
@@ -441,6 +441,10 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   // agent, so the one interface an agent is allowed would be surface with no
   // user — in the container that holds the real tokens.
   if (!isUtil(scope)) await provision(sb);
+  // Mounted is not the same as readable. Once per host path per process.
+  if (skills.length) {
+    await checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {});
+  }
   // Remembered before this line, so the restore below re-enters here and finds
   // the sandbox it is restoring into rather than building a second one.
   // A credential the CLI can only read from a file. See `filesFor` for why codex
@@ -448,9 +452,10 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   const files = filesFor(ctx.db);
   if (Object.keys(files).length) {
     await sb.files.createDirectories([{ path: CODEX_HOME }]).catch(() => {});
-    await sb.files
-      .writeFiles(Object.entries(files).map(([path, data]) => ({ path, data, mode: 600 })))
-      .catch(() => {});
+    await writeInto(
+      sb,
+      Object.entries(files).map(([path, data]) => ({ path, data, mode: 600 })),
+    ).catch(() => {});
   }
   // The real tokens go to the sidecar, never inside. Bound at creation because
   // `resume` rebuilds the sidecar with an empty vault, and a sandbox with no
@@ -511,6 +516,52 @@ function isPathNotAllowed(e: unknown): boolean {
 /** Where a group's checkout lives inside its sandbox. */
 export const WORK = "/work";
 
+/** Host paths already checked this process; every sandbox mounts the same one. */
+const mountChecked = new Set<string>();
+
+/**
+ * Did the skills mount actually bring the skills.
+ *
+ * A bind mount of a host path the container runtime cannot reach does not fail —
+ * it succeeds and delivers an **empty directory**. Measured on this machine:
+ * `/var/tmp/orch-cache/skills` holds 179 skills, `docker run -v` on that exact
+ * path sees 0, and inside the container the mount shows as an overlay with
+ * `lowerdir=/` rather than the host directory. macOS runs docker in a VM, and
+ * `/var/tmp` there is the VM's, not the Mac's; a path under `$HOME` binds fine.
+ *
+ * So every agent ran with no skills at all, `skillMounts` returned two correct
+ * mounts, creation succeeded, the degrade path never fired, and preflight
+ * reported "179 staged" — because it counts them on the host, which is the one
+ * place they definitely are. Nothing anywhere was wrong.
+ *
+ * One `ls` per host path per process, and only when the host directory has
+ * something in it: a boss who has ticked no skills gets no noise.
+ */
+async function checkSkillsMount(ctx: Ctx, sb: Sandbox, hostPath: string, at: string): Promise<void> {
+  if (mountChecked.has(hostPath)) return;
+  mountChecked.add(hostPath);
+  let onHost = 0;
+  try {
+    onHost = readdirSync(hostPath).length;
+  } catch {
+    return; // Nothing staged; `skillMounts` would not have mounted it.
+  }
+  if (!onHost) return;
+  const e = await sb.commands.run(`ls ${shq(at)} | wc -l`).catch(() => null);
+  const inside = Number((e?.logs?.stdout ?? []).map((m) => m.text).join("").trim());
+  if (!Number.isFinite(inside) || inside > 0) return;
+  ctx.bus?.emit({
+    author: "orchestrator",
+    kind: "state_change",
+    severity: "blocker",
+    body:
+      `技能挂进去了但里面是空的：宿主 ${hostPath} 有 ${onHost} 个，容器里 ${at} 有 0 个。\n` +
+      `容器运行时读不到这个路径 —— macOS 上 docker 跑在虚拟机里，/var/tmp 是虚拟机的，不是这台 Mac 的。` +
+      `把 skillsDir 指到一个能共享进去的路径（$HOME 下面的就行），并且让 opensandbox-server 的 ` +
+      `allowed_host_paths 也包含它。在那之前 agent 一个技能都用不上。`,
+  });
+}
+
 /**
  * The staged skills, mounted where each CLI already looks.
  *
@@ -550,10 +601,49 @@ async function provision(sb: Sandbox): Promise<void> {
     { path: "/opt/orch" },
     { path: WORK },
   ]);
-  await sb.files.writeFiles([
+  await writeInto(sb, [
     { path: "/opt/orch/cli.ts", data: cli, mode: FILE_MODE },
     { path: "/usr/local/bin/orch", data: '#!/bin/sh\nexec bun run /opt/orch/cli.ts "$@"\n', mode: EXEC_MODE },
   ]);
+}
+
+/**
+ * Every upload into a container, with one retry.
+ *
+ * The upload is an HTTP POST to a port on this same machine, and it resets. Live,
+ * from the boss's terminal:
+ *
+ *   error: The socket connection was closed unexpectedly.
+ *     path: "http://127.0.0.1:51394/proxy/44772/files/upload", code: "ECONNRESET"
+ *
+ * No stack, because nothing was awaiting it — and bun treats an unhandled
+ * rejection as fatal, so one flaky local socket to one container took the whole
+ * fleet down. The backstop in `server.ts` is what stops that being fatal; this is
+ * what stops it happening.
+ *
+ * One retry, which is what a reset local socket is worth: the far end is a
+ * container on this machine, not a network, so a reset is the transport hiccuping
+ * rather than anything being wrong with the request. A second failure is not a
+ * flake, so it throws — with the paths in the message, because the SDK's error
+ * carries a URL that says `files/upload` and nothing about which file.
+ *
+ * Every caller that writes into a container goes through here. Fixing it at the
+ * four call sites instead would leave the fifth one somebody adds next month.
+ */
+export async function writeInto(
+  sb: Sandbox,
+  files: Parameters<Sandbox["files"]["writeFiles"]>[0],
+): Promise<void> {
+  try {
+    await sb.files.writeFiles(files);
+  } catch {
+    try {
+      await sb.files.writeFiles(files);
+    } catch (e) {
+      const where = files.map((f) => f.path).join(", ");
+      throw new Error(`could not write ${where} into the container: ${(e as Error)?.message ?? e}`);
+    }
+  }
 }
 
 /**
@@ -771,13 +861,13 @@ export function runnerFor(ctx: Ctx, scope: Scope): TurnRunner {
 
 async function realPut(ctx: Ctx, scope: Scope, path: string, data: string): Promise<void> {
   const sb = await ensureSandbox(ctx, scope);
-  await sb.files.writeFiles([{ path, data, mode: FILE_MODE }]);
+  await writeInto(sb, [{ path, data, mode: FILE_MODE }]);
 }
 
 /** Binary write, for the same reason as `getBytes`. */
 async function realPutBytes(ctx: Ctx, scope: Scope, path: string, data: Uint8Array): Promise<void> {
   const sb = await ensureSandbox(ctx, scope);
-  await sb.files.writeFiles([{ path, data, mode: FILE_MODE }]);
+  await writeInto(sb, [{ path, data, mode: FILE_MODE }]);
 }
 
 /** Binary read. A git bundle is not text and must not go through a decoder. */

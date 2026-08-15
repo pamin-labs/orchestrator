@@ -1,5 +1,6 @@
 import { defu } from "defu";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 /**
@@ -65,6 +66,20 @@ export interface RoleDef {
  * implicit index signature, so nothing typed can read it key by key without a
  * cast — and the config checker's whole job is to walk it key by key.
  */
+/**
+ * Where skills can be staged such that a container actually sees them.
+ *
+ * `/var/tmp/orch-cache` matches opensandbox-server's own default allowlist and is
+ * right on Linux. On macOS the runtime is a VM and `/var/tmp` there is the VM's
+ * own, so the bind succeeds and delivers nothing — see `Config.skillsDir`. A path
+ * under `$HOME` is shared into the VM and works.
+ */
+export function defaultSkillsDir(): string {
+  return platform() === "darwin"
+    ? join(homedir(), ".orch-cache/skills")
+    : "/var/tmp/orch-cache/skills";
+}
+
 export type Config = {
   language: string;
   maxGroups: number;
@@ -169,7 +184,21 @@ export type Config = {
    *
    * Not under `dataDir`: the sandbox server only mounts host paths on its own
    * `allowed_host_paths` allowlist, and a repo checkout is never on it. Its
-   * default list is `/var/tmp/orch-cache`, which is where this points.
+   * default list is `/var/tmp/orch-cache`, which is where this pointed.
+   *
+   * **Under `$HOME` on macOS, and that is not cosmetic.** Docker there runs in a
+   * VM, and `/var/tmp` inside the VM is the VM's own — so binding it *succeeds*
+   * and hands the container an empty directory. Measured: 179 skills on the host,
+   * `ls` inside the container returns 0, and the mount reports
+   * `lowerdir=/`. Every agent on this machine had been running with no skills at
+   * all since 006, and nothing could say so — `skillMounts` returned two correct
+   * mounts, creation succeeded, and preflight counted the files on the host,
+   * which is the one place they certainly are.
+   *
+   * Changing it means the sandbox server's `allowed_host_paths` has to name the
+   * new path too. That failure is loud (creation is refused and the message names
+   * the path), which is the whole reason this is worth moving: a path the runtime
+   * cannot reach fails silently, a path the server has not allowed does not.
    */
   skillsDir: string;
 };
@@ -246,7 +275,7 @@ const DEFAULTS: Config = {
   },
   github: { clientId: "", appSlug: "" },
   dataDir: "data",
-  skillsDir: "/var/tmp/orch-cache/skills",
+  skillsDir: defaultSkillsDir(),
 };
 
 /**

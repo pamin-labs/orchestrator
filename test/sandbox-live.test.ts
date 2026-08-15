@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
@@ -9,7 +9,6 @@ import { RepoLock } from "../src/mech/gitlock.ts";
 import { loadConfig } from "../src/config.ts";
 import { createCheckout, httpsRemote, sandboxGit } from "../src/mech/checkout.ts";
 import { startMailbox } from "../src/mech/mailbox.ts";
-import { stageSkills } from "../src/mech/skills.ts";
 import { CODEX_HOME } from "../src/mech/auth.ts";
 import { ConnectionConfig, SandboxManager } from "@alibaba-group/opensandbox";
 import {
@@ -81,7 +80,7 @@ function ctx(port = cfg.port): Ctx {
     // An ephemeral port, not the configured one: this test serves the routes
     // itself, and a fixed port collides with a real orchestrator or with the
     // previous run's socket still in TIME_WAIT.
-    config: { language: "中文", port, sandbox: cfg.sandbox },
+    config: { language: "中文", port, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir },
   } as unknown as Ctx;
 }
 
@@ -184,17 +183,20 @@ live(
   async () => {
     const c = ctx();
     const scope = { grp: 1 } as const;
-    // Stage one skill of our own, so this asserts the mount rather than whatever
-    // the machine running it happens to have installed.
-    const { dir } = stageSkills(cfg.dataDir, [
-      {
-        name: "live-check",
-        file: join(import.meta.dir, "fixtures", "live-check", "SKILL.md"),
-        rel: ".claude/skills/live-check/SKILL.md",
-        description: "d",
-        scope: "user",
-      },
-    ]);
+    // One skill of our own, so this asserts the mount rather than whatever the
+    // machine running it happens to have installed.
+    //
+    // Into `skillsDir`, which is the directory `skillMounts` mounts. It used to
+    // stage into `dataDir` and assert against a container that had mounted
+    // `skillsDir` — two different directories, so the `ls` came back empty. The
+    // test had never run: it skips without a live server, and there was none
+    // until now.
+    //
+    // Copied rather than `stageSkills`, which prunes anything not in its list —
+    // against the real directory that is every skill the boss has ticked.
+    const dir = cfg.skillsDir;
+    mkdirSync(join(dir, "live-check"), { recursive: true });
+    cpSync(join(import.meta.dir, "fixtures", "live-check"), join(dir, "live-check"), { recursive: true });
     expect(existsSync(join(dir, "live-check", "SKILL.md"))).toBe(true);
     try {
       // Both CLIs look in their own place; one host directory answers both.

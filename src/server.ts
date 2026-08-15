@@ -582,6 +582,37 @@ if (import.meta.main) {
     if (newest > dist) consola.warn("web/dist 比 web/src 旧 —— 跑一次 `bun run build:web`，不然页面是旧的");
   }
 
+  // A detached rejection must not be the end of the fleet.
+  //
+  // bun exits the process on an unhandled rejection, which is right for a script
+  // and wrong for a server that is the only thing driving twelve containers.
+  // Observed: one `ECONNRESET` on a container's `files/upload` — a socket on this
+  // same machine — and every group stopped, mid-turn, with a two-line error and
+  // no stack.
+  //
+  // This is a backstop and not a licence. An unhandled rejection is still a bug:
+  // something detached failed and nobody was told, so it is logged and put on the
+  // record at `blocker` where the boss's own feed shows it. The fix for each one
+  // is still at its source — `writeInto` retries the upload, `Scheduler.start`
+  // and `acceptSlice` catch their own chains — because this line can only say
+  // that something went wrong, never what should have happened instead.
+  //
+  // Installed once, here, for the same reason as the signal handlers below.
+  process.on("unhandledRejection", (e) => {
+    const why = String((e as Error)?.stack ?? (e as Error)?.message ?? e).slice(0, 600);
+    consola.error(`unhandled rejection (kept running):\n${why}`);
+    try {
+      ctx.bus.emit({
+        author: "orchestrator",
+        kind: "state_change",
+        severity: "blocker",
+        body: `有个后台任务崩了，服务没跟着退出。这是个 bug，请把这段贴给开发：\n${why.slice(0, 400)}`,
+      });
+    } catch {
+      // The record is the thing that failed. The console line above is the report.
+    }
+  });
+
   // Let go of every turn we are reading before exiting, so the next boot sees
   // them as orphans and requeues instead of leaving the group wedged behind a
   // job that nothing will ever finish. Only installed here: `start()` is called

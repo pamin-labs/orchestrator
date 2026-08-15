@@ -141,7 +141,12 @@ github:
 # 而仓库 checkout 永远不在那个名单上。它的默认名单就是 /var/tmp/orch-cache，所以默认指这儿。
 # 换路径的话，服务端的 allowed_host_paths 要跟着改 —— 不然开容器直接失败，
 # 面板会明说是哪条路径没放行，同时先不挂技能把组开起来。
-skillsDir: /var/tmp/orch-cache/skills
+# 不写就按平台挑：Linux 用 /var/tmp/orch-cache/skills（opensandbox-server 默认允许的路径），
+# macOS 用 ~/.orch-cache/skills —— 那里的 docker 跑在虚拟机里，/var/tmp 是虚拟机自己的，
+# 绑上去会「成功」并给容器一个空目录（实测：宿主 179 个，容器里 0 个）。
+# 改这里就要同步改沙盒服务端的 allowed_host_paths，否则开容器直接失败 —— 而那是响的失败，
+# 比一个静默的空目录好得多。
+# skillsDir: /var/tmp/orch-cache/skills
 
 # 批准之后就别叫我：查收不再挡住下一片开工。默认开 —— 「批了」就该买到一夜的活，
 # 关掉的话一个组做完一片就停到早上，等于放弃了这套系统存在的理由。
