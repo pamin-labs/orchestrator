@@ -698,11 +698,42 @@ async function checkSkillsMount(ctx: Ctx, sb: Sandbox, hostPath: string, at: str
 }
 
 /**
- * The staged skills, mounted where each CLI already looks.
+ * Where the boss's staged skills land inside a container.
  *
- * HOME is `/root` in the image, so both are the container's user scope. One host
- * directory, two mount paths: a skill is a directory with a SKILL.md either way,
- * and neither CLI cares which of the two directories the boss installed it into.
+ * **Not** either CLI's own skills directory, and that is the whole change. It
+ * used to be mounted straight onto both of them, read-only — which worked for
+ * the boss's own skills and made the repository's own undeliverable, because a
+ * read-only mount is not a directory anything can add to. The one previous
+ * attempt at repo skills linked into it and got `EROFS`, swallowed by a
+ * `; true`, so the feature reported success and delivered nothing.
+ *
+ * So the mount is a staging path nothing reads directly, and `SKILL_SYNC` builds
+ * each CLI's real directory out of symlinks into it. That directory is ordinary
+ * container filesystem, so a repository's skills can join it.
+ */
+export const STAGED_SKILLS = "/opt/orch/skills";
+
+/**
+ * How `SKILL_SYNC` reports a repository's own skills back out.
+ *
+ * The linking has to happen in the container and the *listing* has to reach the
+ * host, or the settings page cannot show a repo's skills and `/name` cannot
+ * resolve one — which is the half that has been missing since `repo_path`
+ * became `owner/name` and the checkout stopped existing on this machine.
+ *
+ * One line per skill, on the same exec that was already probing the checkout, so
+ * the inventory costs no extra round trip. The head of the file rides along
+ * base64'd because the description lives in YAML frontmatter and
+ * `frontmatterDescription` already knows how to read it — parsing a block scalar
+ * in `sh` is the version of this that is wrong in a way nobody notices.
+ */
+export const SKILL_LINE = "ORCHSKILL";
+
+/**
+ * The staged skills, mounted where `SKILL_SYNC` will link them from.
+ *
+ * One mount now, not two: both CLIs' directories are built from it rather than
+ * being it.
  */
 export function skillMounts(ctx: Ctx): Volume[] {
   // Absolute, and on the server's own allowlist: it reads this as its own
@@ -711,11 +742,63 @@ export function skillMounts(ctx: Ctx): Volume[] {
   // `dataDir`. A repo checkout is never on that list.
   const path = resolve(ctx.config?.skillsDir ?? "/var/tmp/orch-cache/skills");
   if (!existsSync(path)) return [];
-  return [
-    { name: "skills-claude", host: { path }, mountPath: "/root/.claude/skills", readOnly: true },
-    { name: "skills-codex", host: { path }, mountPath: `${CODEX_HOME}/skills`, readOnly: true },
-  ];
+  return [{ name: "skills", host: { path }, mountPath: STAGED_SKILLS, readOnly: true }];
 }
+
+/**
+ * Both CLIs' skill directories, rebuilt from what is on disk right now.
+ *
+ * Measured against the two binaries in `orch/agent:1` (`claude 2.1.232`,
+ * `codex-cli 0.147.0`), by counting the paths each one actually contains:
+ *
+ *   claude   .claude/skills 93   .codex/skills 0   .agents/skills 0
+ *   codex    .codex/skills  3    .claude/skills 0  .agents/skills 0
+ *
+ * and codex's three are all one sentence — *"I will place it in
+ * `$CODEX_HOME/skills` (or `~/.codex/skills` when `CODEX_HOME` is unset)"*. So
+ * **codex has no project-local skills directory at all**, and claude's is
+ * `.claude/skills` under its working directory. The delivery matrix that leaves:
+ *
+ *   repo ships .claude/skills   claude: native   codex: nothing
+ *   repo ships .codex/skills    claude: nothing  codex: nothing
+ *   repo ships .agents/skills   claude: nothing  codex: nothing
+ *
+ * Two of the three conventions reached nobody, and the third reached one of two
+ * runtimes. The old comment in `skills.ts` had `.codex/skills` down as codex's
+ * project path; it is its home path, and that one word is the whole reason this
+ * looked delivered.
+ *
+ * Symlinks rather than copies: codex has a `skills_watcher`, both directories on
+ * a real machine are already symlink farms, and a link costs nothing to redo —
+ * which is what makes running this on every turn affordable.
+ *
+ * `.claude/skills` is deliberately **not** linked into claude's own directory:
+ * claude already reads it from the checkout, and a second entry would bill the
+ * same skill's name and description twice on every turn of that session.
+ *
+ * Never fails its caller. It is folded into the checkout probe, and a container
+ * whose skills did not link is a container that should still run its turn — the
+ * old `; true` was wrong because it hid a real error, not because it degraded.
+ */
+export const SKILL_SYNC = `{
+mkdir -p /root/.claude/skills ${CODEX_HOME}/skills
+find /root/.claude/skills ${CODEX_HOME}/skills -maxdepth 1 -type l -delete
+for s in ${STAGED_SKILLS}/*/; do
+  [ -f "$s/SKILL.md" ] || continue
+  n=$(basename "$s")
+  ln -sfn "\${s%/}" /root/.claude/skills/"$n"
+  ln -sfn "\${s%/}" ${CODEX_HOME}/skills/"$n"
+done
+for base in .claude .codex .agents; do
+  for s in ${WORK}/$base/skills/*/; do
+    [ -f "$s/SKILL.md" ] || continue
+    n=$(basename "$s")
+    [ "$base" = ".claude" ] || ln -sfn "\${s%/}" /root/.claude/skills/"$n"
+    ln -sfn "\${s%/}" ${CODEX_HOME}/skills/"$n"
+    echo "${SKILL_LINE} $base/skills/$n/SKILL.md $(head -c 800 "$s/SKILL.md" | base64 | tr -d '\\n')"
+  done
+done
+} 2>/dev/null`;
 
 /** The agent's only way out: a request is a file here, the answer is another. */
 export const MAILBOX_DIR = "/var/orch";
@@ -740,6 +823,16 @@ async function provision(sb: Sandbox): Promise<void> {
     { path: "/opt/orch/cli.ts", data: cli, mode: FILE_MODE },
     { path: "/usr/local/bin/orch", data: '#!/bin/sh\nexec bun run /opt/orch/cli.ts "$@"\n', mode: EXEC_MODE },
   ]);
+  // The boss's own skills, before the first turn. A group's container gets this
+  // again on every checkout probe (that is where a repository's own join in);
+  // a project's container has no checkout and this is the only time it runs,
+  // which is why re-running it is also what a skill being ticked triggers.
+  await sb.commands.run(SKILL_SYNC).catch(() => {});
+}
+
+/** Re-link every live container's skills. What a tick of the skills list does. */
+export async function relinkSkills(): Promise<void> {
+  await Promise.all([...live.values()].map((sb) => sb.commands.run(SKILL_SYNC).catch(() => {})));
 }
 
 /**

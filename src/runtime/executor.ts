@@ -8,11 +8,11 @@ import { DEFAULT_PROVIDER, contextWindowFor, modelFor } from "../config.ts";
 import type { Executor, Job } from "../scheduler.ts";
 import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
 import { say } from "../lang.ts";
-import { listSkills, readSkill } from "../mech/util/skills.ts";
+import { listSkills, projectSkills, readSkillIn } from "../mech/util/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
 import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/sandbox/lease.ts";
 import { checkpoint, changedSince } from "../mech/git/worktree.ts";
-import { MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
+import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
 import { baseRefFor, ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { track, untrack } from "./running.ts";
 import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
@@ -209,7 +209,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     Boolean(safeJson(job.payload_json).rotate);
 
   const sessionId = rotate || !agent.session_id ? crypto.randomUUID() : agent.session_id;
-  const delta = buildDeltaFor(deps, agent, job, rotate);
+  const delta = await buildDeltaFor(deps, agent, job, rotate, scope);
 
   // A turn cannot run in an empty checkout, and an empty one is the normal state
   // after a sandbox is replaced — or for any group that predates this design and
@@ -478,7 +478,13 @@ function buildStableFor(
  * Everything here is appended to the newest user message. Never merge any of it
  * into the stable half — that is the 3-5x mistake.
  */
-function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boolean): Delta {
+async function buildDeltaFor(
+  deps: ExecDeps,
+  agent: AgentRow,
+  job: Job,
+  rotated: boolean,
+  scope: Scope,
+): Promise<Delta> {
   const { ctx } = deps;
   const payload = safeJson(job.payload_json);
   const delta: Delta = {};
@@ -626,14 +632,21 @@ function buildDeltaFor(deps: ExecDeps, agent: AgentRow, job: Job, rotated: boole
   // on the next turn that asks for it.
   const wanted = Array.isArray(payload.skills) ? payload.skills.map(String) : [];
   if (wanted.length) {
-    const repo = ctx.db
-      .query<{ repo_path: string }, [number | null]>(
-        "SELECT p.repo_path FROM project p JOIN grp g ON g.project_id = p.id WHERE g.id = ?",
+    const row = ctx.db
+      .query<{ repo_path: string; project_id: number }, [number | null]>(
+        "SELECT p.repo_path, p.id AS project_id FROM project p JOIN grp g ON g.project_id = p.id WHERE g.id = ?",
       )
-      .get(job.grp_id ?? null)?.repo_path;
-    const all = listSkills(repo);
+      .get(job.grp_id ?? null);
+    const projectId = row?.project_id ?? agent.project_id ?? null;
+    const all = listSkills(row?.repo_path, projectSkills(ctx.db, projectId));
     const found = wanted.map((n) => all.find((s) => s.name === n)).filter((s): s is NonNullable<typeof s> => !!s);
-    if (found.length) delta.skills = found.map(readSkill).join("\n\n");
+    // A project skill's file exists only in this scope's container, so the read
+    // goes back through the files API rather than at this machine's filesystem.
+    if (found.length) {
+      delta.skills = (
+        await Promise.all(found.map((s) => readSkillIn((path) => getFile(ctx, scope, path), s)))
+      ).join("\n\n");
+    }
   }
 
   if (unread) delta.unread = unread;

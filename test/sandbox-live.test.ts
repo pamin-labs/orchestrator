@@ -20,9 +20,12 @@ import {
   MAILBOX_DIR,
   putFile,
   REAL,
+  SKILL_SYNC,
+  STAGED_SKILLS,
   UTIL,
   WORK,
 } from "../src/mech/sandbox/sandbox.ts";
+import { cacheProjectSkills } from "../src/mech/util/skills.ts";
 
 /**
  * The whole boundary, against a real container.
@@ -265,7 +268,7 @@ live(
 );
 
 live(
-  "the staged skills are there, and the sandbox cannot write to them",
+  "every skill reaches both CLIs, and the ones the boss ticked stay read-only",
   async () => {
     const c = ctx();
     const scope = { grp: 1 } as const;
@@ -285,15 +288,52 @@ live(
     cpSync(join(import.meta.dir, "fixtures", "live-check"), join(dir, "live-check"), { recursive: true });
     expect(existsSync(join(dir, "live-check", "SKILL.md"))).toBe(true);
     try {
-      // Both CLIs look in their own place; one host directory answers both.
+      // A repository that ships skills the way the ecosystem actually does.
+      // These are the two conventions that reached **neither** CLI: codex has no
+      // project-local skills directory at all, and claude reads only
+      // `.claude/skills`. Both were listed in the panel and delivered nowhere.
+      for (const [base, name] of [
+        [".codex", "repo-codex"],
+        [".agents", "repo-agents"],
+      ] as const) {
+        await execIn(c, scope, `mkdir -p ${WORK}/${base}/skills/${name}`);
+        await putFile(
+          c,
+          scope,
+          `${WORK}/${base}/skills/${name}/SKILL.md`,
+          `---\nname: ${name}\ndescription: |\n  shipped by the repository\n---\nbody\n`,
+        );
+      }
+      const synced = await execIn(c, scope, SKILL_SYNC);
+      expect(synced.code).toBe(0);
+
       for (const at of ["/root/.claude/skills", `${CODEX_HOME}/skills`]) {
         const ls = await execIn(c, scope, `ls ${at}`);
+        // The boss's own, through the staging mount.
         expect(ls.out).toContain("live-check");
-        // Read-only: what the boss ticked is the contract, and one group editing
-        // the set every other group mounts is not part of it.
-        const w = await execIn(c, scope, `touch ${at}/nope 2>&1; echo rc=$?`);
-        expect(w.out).toContain("rc=1");
+        // And the repository's, which is the whole point of the change.
+        expect(ls.out).toContain("repo-codex");
+        expect(ls.out).toContain("repo-agents");
+        // Readable through the link, not merely present: a bind mount the
+        // runtime cannot reach succeeds and delivers an empty directory, which
+        // is exactly how this looked correct while every agent had no skills.
+        const read = await execIn(c, scope, `cat ${at}/live-check/SKILL.md`);
+        expect(read.code).toBe(0);
+        expect(read.out.length).toBeGreaterThan(0);
       }
+
+      // Read-only where it counts: what the boss ticked is the contract, and one
+      // group editing the set every other group mounts is not part of it. The
+      // directory itself is now ordinary container filesystem — that is what
+      // lets a repository's skills join it — so the check is on the staged
+      // source, through the link.
+      const w = await execIn(c, scope, `touch /root/.claude/skills/live-check/nope 2>&1; echo rc=$?`);
+      expect(w.out).not.toContain("rc=0");
+      // And the listing travels back out, which is what the settings page and
+      // `/name` read. It cannot come from this machine: the checkout is in here.
+      const found = cacheProjectSkills(c.db, 1, synced.out).map((s) => s.name).sort();
+      expect(found).toEqual(["repo-agents", "repo-codex"]);
+      expect(cacheProjectSkills(c.db, 1, synced.out)[0]!.description).toBe("shipped by the repository");
     } finally {
       rmSync(join(dir, "live-check"), { recursive: true, force: true });
       await killSandbox(c, scope).catch(() => {});

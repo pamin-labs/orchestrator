@@ -158,6 +158,7 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
     remote,
     branch: grp.branch,
     base: await baseRefFor(ctx, grp.project_id),
+    projectId: grp.project_id,
   });
 
   const known = installFor(ctx, grp.project_id);
@@ -294,7 +295,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         if (!remote) return "project has no remote recorded; a group clones from it";
         const branch = `orch/${grp.name}`;
         const base = await baseRefFor(ctx, grp.project_id);
-        await createCheckout(ctx, { grp: grpId }, { remote, branch, base });
+        await createCheckout(ctx, { grp: grpId }, { remote, branch, base, projectId: grp.project_id });
               ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
         ctx.bus.emit({
           grpId,

@@ -179,7 +179,7 @@ async function refreshIndex(ctx: Ctx): Promise<void> {
     const base = await baseRefFor(ctx, p.id);
     let heads: Map<string, string>;
     try {
-      await createCheckout(ctx, scope, { remote: p.remote, branch: base.replace(/^origin\//, ""), base });
+      await createCheckout(ctx, scope, { remote: p.remote, branch: base.replace(/^origin\//, ""), base, projectId: p.id });
       heads = await treeHeads(ctx, scope, HEAD_CHARS);
     } catch (e: any) {
       // Once per project: silently indexing nothing leaves `orch ctx query`

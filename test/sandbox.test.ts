@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { open } from "../src/db.ts";
-import { keyInConfig, lineSplitter, skillMounts, specFor } from "../src/mech/sandbox/sandbox.ts";
+import { keyInConfig, lineSplitter, skillMounts, SKILL_LINE, SKILL_SYNC, specFor, STAGED_SKILLS } from "../src/mech/sandbox/sandbox.ts";
+import { CODEX_HOME } from "../src/mech/sandbox/auth.ts";
+import { cacheProjectSkills, projectSkills } from "../src/mech/util/skills.ts";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -145,20 +147,78 @@ test("a commented-out key is not a key", () => {
   expect(keyInConfig(f)).toBeNull();
 });
 
-test("staged skills mount read-only, on an absolute path, at both CLIs' paths", () => {
+test("staged skills mount read-only, on an absolute path, at neither CLI's own path", () => {
   // Relative is the trap: the sandbox server resolves this against its own
   // filesystem and rejects anything that does not start with `/`, which fails
   // container creation for every group at once. Read-only is the other half —
   // one group editing the set every other group mounts is not a thing to allow.
+  //
+  // And it lands on a staging path, not on `/root/.claude/skills`. Mounting it
+  // straight onto the CLI's own directory is what made a repository's own skills
+  // undeliverable: a read-only mount is not a directory anything can add to, so
+  // the one attempt at linking them in got EROFS, swallowed, and reported
+  // success. `SKILL_SYNC` builds both directories out of symlinks into this.
   const dir = mkdtempSync(join(tmpdir(), "orch-sk-mount-"));
   mkdirSync(join(dir, "skills", "alpha"), { recursive: true });
   const mounts = skillMounts(ctx({ skillsDir: relative(process.cwd(), join(dir, "skills")) }));
 
-  expect(mounts.map((m) => m.mountPath)).toEqual(["/root/.claude/skills", "/root/.codex/skills"]);
+  expect(mounts.map((m) => m.mountPath)).toEqual([STAGED_SKILLS]);
   for (const m of mounts) {
     expect(m.readOnly).toBe(true);
     expect(m.host?.path).toBe(join(dir, "skills"));
   }
   // Nothing ticked: no mount rather than a mount of a directory that is not there.
   expect(skillMounts(ctx({ skillsDir: join(dir, "nope") }))).toEqual([]);
+});
+
+test("the sync script links both CLIs' directories and lists what a repo ships", () => {
+  // Three claims the script has to keep, each measured against the binaries in
+  // `orch/agent:1` and each one the reason a convention reached nobody:
+  //
+  //   claude reads .claude/skills (93 hits) and neither of the other two
+  //   codex reads $CODEX_HOME/skills only — no project directory at all
+  //
+  // so a repo's `.codex/skills` and `.agents/skills` reached neither CLI, and
+  // its `.claude/skills` reached one of two.
+  for (const cli of ["/root/.claude/skills", `${CODEX_HOME}/skills`]) {
+    expect(SKILL_SYNC).toContain(cli);
+  }
+  // Every repository convention is linked into codex's directory, because codex
+  // has nowhere else to find one.
+  expect(SKILL_SYNC).toContain("for base in .claude .codex .agents");
+  // ...but `.claude/skills` is not linked into claude's own, because claude
+  // already reads it from the checkout and a second entry bills the same name
+  // and description twice on every turn of the session.
+  expect(SKILL_SYNC).toContain('[ "$base" = ".claude" ] ||');
+  // It rides on the checkout probe, so it must not be able to fail that command.
+  expect(SKILL_SYNC.trimEnd().endsWith("} 2>/dev/null")).toBe(true);
+});
+
+test("the inventory survives the trip back out of the container", () => {
+  // The container is the only thing that can see a repository's skills, so the
+  // listing the settings page and `/name` need has to travel as text on stdout.
+  const db = open(":memory:");
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'o/r', 0)");
+  const head = Buffer.from("---\nname: tidy\ndescription: |\n  keeps it neat\n---\nbody").toString("base64");
+  const out = `some git noise\n${SKILL_LINE} .agents/skills/tidy/SKILL.md ${head}\nmore noise\nyes\n`;
+
+  expect(cacheProjectSkills(db, 1, out)).toEqual([
+    {
+      name: "tidy",
+      file: "/work/.agents/skills/tidy/SKILL.md",
+      rel: ".agents/skills/tidy/SKILL.md",
+      // A block scalar, which a one-line `sed` in the shell would have returned
+      // as "|" — which is why the head travels and `frontmatterDescription`
+      // reads it here.
+      description: "keeps it neat",
+      scope: "project",
+    },
+  ]);
+  expect(projectSkills(db, 1).map((s) => s.name)).toEqual(["tidy"]);
+
+  // A repository that dropped its last skill must stop listing it. Treating an
+  // empty inventory as "leave the cache alone" is how a removed skill stays
+  // nameable forever.
+  expect(cacheProjectSkills(db, 1, "yes\n")).toEqual([]);
+  expect(projectSkills(db, 1)).toEqual([]);
 });

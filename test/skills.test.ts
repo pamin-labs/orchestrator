@@ -111,14 +111,18 @@ test("what is stored is the off list, so a skill installed tomorrow is on tomorr
 test("a skill's path is where the agent can actually read it", () => {
   // `ref.file` is a path on the boss's machine and `ref.rel` is relative to the
   // boss's home. A turn runs in a container: a project skill travels in the
-  // checkout, a user skill is on the read-only mount, and neither is either of
-  // those two.
+  // checkout, a user skill is linked into the CLI's own directory, and neither
+  // is either of those two.
+  //
+  // Absolute in both cases. A turn's working directory is `/work`, so the
+  // relative form resolved for a turn and not for a gate or a lease, which run
+  // the same instruction from somewhere else.
   const base = { file: "/Users/boss/.claude/skills/impeccable/SKILL.md", description: "d", name: "impeccable" };
   expect(pathInSandbox({ ...base, rel: ".claude/skills/impeccable/SKILL.md", scope: "user" })).toBe(
     "/root/.claude/skills/impeccable/SKILL.md",
   );
   expect(pathInSandbox({ ...base, rel: ".claude/skills/impeccable/SKILL.md", scope: "project" })).toBe(
-    ".claude/skills/impeccable/SKILL.md",
+    "/work/.claude/skills/impeccable/SKILL.md",
   );
 });
 

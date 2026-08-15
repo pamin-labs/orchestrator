@@ -1,6 +1,7 @@
 import type { Ctx } from "../../api.ts";
-import { execIn, execLines, getBytes, putBytes, UTIL, WORK, type Scope } from "../sandbox/sandbox.ts";
+import { execIn, execLines, getBytes, putBytes, SKILL_SYNC, UTIL, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
+import { cacheProjectSkills } from "../util/skills.ts";
 import { shq } from "../util/shq.ts";
 import type { GitRunner } from "./worktree.ts";
 
@@ -133,6 +134,12 @@ export interface CheckoutSpec {
   branch: string;
   /** What to branch from. `origin/main` unless a group was told otherwise. */
   base: string;
+  /**
+   * Whose skills cache this checkout's own `.claude/skills` and friends belong
+   * to. Omitted by a caller with no project — nothing is enumerated, and the
+   * linking still happens, because delivery is not the part that needs a row.
+   */
+  projectId?: number | null;
 }
 
 /**
@@ -171,8 +178,16 @@ async function streamed(
 }
 
 export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec): Promise<void> {
-  const already = await execIn(ctx, scope, `test -d ${WORK}/.git && echo yes`);
-  if (already.out.trim() === "yes") return;
+  // Folded into the probe that was already happening, so the repository's own
+  // skills are re-linked and re-listed on every turn for no extra round trip —
+  // and a skill pushed this morning is delivered this afternoon rather than
+  // whenever the container next happens to be rebuilt. `SKILL_SYNC` cannot fail
+  // this command; see its own note.
+  const already = await execIn(ctx, scope, `${SKILL_SYNC}; test -d ${WORK}/.git && echo yes`);
+  if (already.out.includes("yes")) {
+    cacheProjectSkills(ctx.db, spec.projectId, already.out);
+    return;
+  }
 
   // `GIT_TERMINAL_PROMPT=0`: without it a repository the sandbox cannot read
   // stops on "could not read Username" and the group waits on a prompt nobody
@@ -235,6 +250,12 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
   // `/work`, a path that only exists inside the container, guarded by an
   // `existsSync` that made it a permanent no-op.
   await execIn(ctx, scope, LINK_AGENTS_MD, { cwd: WORK });
+
+  // Again, now that there is a checkout to find them in. The probe above ran
+  // against an empty `/work`, so this is the run that actually links and lists a
+  // repository's own skills — every later turn's probe just keeps it current.
+  const synced = await execIn(ctx, scope, SKILL_SYNC);
+  cacheProjectSkills(ctx.db, spec.projectId, synced.out);
 }
 
 /**
@@ -586,5 +607,6 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
     remote,
     branch: grp.branch ?? `orch/${grp.name}`,
     base: await baseRefFor(ctx, grp.project_id),
+    projectId: grp.project_id,
   });
 }

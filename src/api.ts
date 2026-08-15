@@ -7,7 +7,7 @@ import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
 import { resolveLease, type ResourceDef } from "./mech/sandbox/lease.ts";
 import { sliceDiffBase } from "./mech/git/worktree.ts";
-import { execIn, killSandbox, putFile, restartServer, runningServer, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
+import { execIn, killSandbox, putFile, relinkSkills, restartServer, runningServer, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
@@ -28,7 +28,7 @@ import { forgetHolds } from "./mech/git/github.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/knowledge/pageindex.ts";
 import { gatesFor, recordGate } from "./mech/flow/gate.ts";
-import { listSkills, projectSkillsUnreachable, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/util/skills.ts";
+import { forgetProjectSkills, listSkills, projectSkills, projectSkillsPending, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/util/skills.ts";
 import { shq } from "./mech/util/shq.ts";
 import { sediment } from "./mech/knowledge/lessons.ts";
 import { say } from "./lang.ts";
@@ -434,9 +434,11 @@ const postSay: Handler = async (ctx, req) => {
     ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(project)
         ?.repo_path
     : null;
-  // A skill the boss pointed at is read on the host and inlined into that turn — for
-  // triage too, since "do it this way instead" is exactly when it matters.
-  const skills = skillNames(said, repo);
+  // A skill the boss pointed at is inlined into that turn — for triage too,
+  // since "do it this way instead" is exactly when it matters. `/name` resolves
+  // against the repository's own skills as well as this machine's: they are what
+  // a project ships to be used, and being unable to name one was the gap.
+  const skills = skillNames(said, repo, projectSkills(ctx.db, project));
 
   if (b.as) {
     if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
@@ -2910,7 +2912,10 @@ const deleteProject: Handler = async (ctx, _req, params) => {
   // 5. State that outlives the row. `holds` is keyed by `owner/repo` and would
   // hold a repository nobody has any more; clearing all of them costs at most
   // one extra failed turn on another held project, which is what re-arms it.
+  // The skills cache is keyed by project id, and ids are reused by SQLite —
+  // leaving it would hand the next project this one's skill list.
   forgetHolds("github");
+  forgetProjectSkills(ctx.db, id);
 
   ctx.bus.emit({
     author: "orchestrator",
@@ -2992,16 +2997,16 @@ const getSkills: Handler = async (ctx, req) => {
   const repo = ctx.db
     .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
     .get(id)?.repo_path;
-  projectSkillsUnreachable(ctx, id, repo);
+  projectSkillsPending(ctx, id, repo);
   const off = new Set(skillsOff(ctx.db));
   return json({
-    skills: listSkills(repo).map(({ name, rel, description, scope }) => ({
+    skills: listSkills(repo, projectSkills(ctx.db, id)).map(({ name, rel, description, scope }) => ({
       name,
       path: rel,
       description,
       scope,
-      // A project skill lives in the checkout the CLI already runs in, so it is
-      // always visible and there is nothing to tick.
+      // A project skill ships with the repository the group is working on, so it
+      // is always delivered and there is nothing to tick.
       on: scope === "project" || !off.has(name),
     })),
   });
@@ -3020,6 +3025,11 @@ const postSkill: Handler = async (ctx, req) => {
   // process, and the staged copy is the only thing that does not know yet.
   if (b.name) setSkillOff(ctx.db, b.name, b.on === false);
   const { staged, failed } = restageSkills(ctx.db, ctx.config?.skillsDir ?? "/var/tmp/orch-cache/skills");
+  // The mount is a staging path now, not either CLI's own directory, so a
+  // changed set is not visible until the links are rebuilt. Every live
+  // container, because a standing agent's container has no checkout and so no
+  // other moment that would ever redo them.
+  await relinkSkills();
   return json({ staged: staged.length, failed });
 };
 
