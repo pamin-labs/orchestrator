@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { digestOutput, resolveLease, tokenize, type ResourceDef, runResource, LEASE_TIMEOUT_CODE } from "../src/mech/lease.ts";
+import { digestOutput, resolveLease, tokenize, type ResourceDef, runResource, LEASE_TIMEOUT_CODE } from "../src/mech/sandbox/lease.ts";
 
 const testRes: ResourceDef = {
   name: "test",

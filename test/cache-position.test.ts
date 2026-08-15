@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { listSkills, readSkill, referencedSkills } from "../src/mech/skills.ts";
+import { listSkills, readSkill, referencedSkills } from "../src/mech/util/skills.ts";
 import {
   assemble,
   buildDelta,

@@ -1,26 +1,26 @@
 import { chmodSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { landGroup, makeApp, type Ctx } from "./api.ts";
-import { joinQueue } from "./mech/mergequeue.ts";
+import { joinQueue } from "./mech/flow/mergequeue.ts";
 import { Bus } from "./bus.ts";
 import { consola } from "consola";
 import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "./config.ts";
-import { changed, checkConfig, checkRoles } from "./mech/checkconfig.ts";
+import { changed, checkConfig, checkRoles } from "./mech/ops/checkconfig.ts";
 import { open } from "./db.ts";
-import { REAL, sandboxHeld } from "./mech/sandbox.ts";
-import { startMailbox } from "./mech/mailbox.ts";
-import { baseRefFor, createCheckout, treeHeads } from "./mech/checkout.ts";
-import { preflight, report } from "./mech/preflight.ts";
-import { restageSkills } from "./mech/skills.ts";
-import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
-import { dispatchFeedback, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
-import { makeGithub, repoHeld } from "./mech/github.ts";
-import { chargeIndex, HEAD_CHARS, modelAsk, noteLeaves, NOTE_PREFIX, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
-import { indexable } from "./mech/repomap.ts";
+import { REAL, sandboxHeld } from "./mech/sandbox/sandbox.ts";
+import { startMailbox } from "./mech/sandbox/mailbox.ts";
+import { baseRefFor, createCheckout, treeHeads } from "./mech/git/checkout.ts";
+import { preflight, report } from "./mech/ops/preflight.ts";
+import { restageSkills } from "./mech/util/skills.ts";
+import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
+import { dispatchFeedback, openPr, pollPrs, prBody } from "./mech/git/prwatch.ts";
+import { makeGithub, repoHeld } from "./mech/git/github.ts";
+import { chargeIndex, HEAD_CHARS, modelAsk, noteLeaves, NOTE_PREFIX, saveTree, skeleton, summarise, loadTree } from "./mech/knowledge/pageindex.ts";
+import { indexable } from "./mech/knowledge/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
 import { abortAll } from "./runtime/running.ts";
-import { isOnline } from "./mech/net.ts";
+import { isOnline } from "./mech/sandbox/net.ts";
 
 /**
  * Wires the pieces together and serves them.

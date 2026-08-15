@@ -1,5 +1,5 @@
 import type { DB } from "./db.ts";
-import { scrub } from "./mech/scrub.ts";
+import { scrub } from "./mech/util/scrub.ts";
 
 /**
  * Append-only event log plus fan-out.

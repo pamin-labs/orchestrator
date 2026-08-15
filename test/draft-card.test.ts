@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { criteriaIn, validateDraftCard, validateSelfReview } from "../src/mech/validate.ts";
+import { criteriaIn, validateDraftCard, validateSelfReview } from "../src/mech/flow/validate.ts";
 
 const good = `目标 : token 校验挪到 middleware
 不做 : 不动 legacy client 的鉴权协议

@@ -1,6 +1,6 @@
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary } from "./claude.ts";
 import { promptPath, summarizeTool } from "./claude.ts";
-import { shq } from "../mech/shq.ts";
+import { shq } from "../mech/util/shq.ts";
 
 /**
  * `codex exec --json` behind the same interface as the claude adapter.

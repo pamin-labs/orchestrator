@@ -3,7 +3,7 @@ import { testGit } from "./git-runner.ts";
 import { mkdtempSync, writeFileSync, existsSync, mkdirSync, lstatSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { baseBranch, LINK_AGENTS_MD } from "../src/mech/checkout.ts";
+import { baseBranch, LINK_AGENTS_MD } from "../src/mech/git/checkout.ts";
 import { openMemory } from "../src/db.ts";
 import type { Ctx } from "../src/api.ts";
 import {
@@ -14,7 +14,7 @@ import {
   rollbackTo,
   sliceDiffBase,
   squashWip,
-} from "../src/mech/worktree.ts";
+} from "../src/mech/git/worktree.ts";
 
 /**
  * A group's checkout, as a plain clone.

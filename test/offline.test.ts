@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../src/db.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler, resumeReclaimed, type Job } from "../src/scheduler.ts";
-import { holdForOffline } from "../src/mech/watchdog.ts";
-import { probe, isOnline, resetNet, PROBE_EVERY_MS } from "../src/mech/net.ts";
-import { saveAuth } from "../src/mech/auth.ts";
-import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../src/mech/sandbox.ts";
+import { holdForOffline } from "../src/mech/ops/watchdog.ts";
+import { probe, isOnline, resetNet, PROBE_EVERY_MS } from "../src/mech/sandbox/net.ts";
+import { saveAuth } from "../src/mech/sandbox/auth.ts";
+import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../src/mech/sandbox/sandbox.ts";
 import type { Ctx } from "../src/api.ts";
 
 /**

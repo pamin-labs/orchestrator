@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { detectGates, detectInstall, detectShared, type Root } from "../src/mech/detect.ts";
+import { detectGates, detectInstall, detectShared, type Root } from "../src/mech/util/detect.ts";
 
 /**
  * A repository root, as detection sees one.

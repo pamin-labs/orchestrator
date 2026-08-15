@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { OVERLAP_FLOOR, sameComplaint, sediment, terms } from "../src/mech/lessons.ts";
+import { OVERLAP_FLOOR, sameComplaint, sediment, terms } from "../src/mech/knowledge/lessons.ts";
 import { bossFact, type Ctx } from "../src/api.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";

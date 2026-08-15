@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 
 import { openMemory } from "../src/db.ts";
-import { saveAuth } from "../src/mech/auth.ts";
-import { POLL_EVERY_MS, objectsAfter, pollClaudeUsage, pollUsage, toRateLimit } from "../src/mech/subusage.ts";
+import { saveAuth } from "../src/mech/sandbox/auth.ts";
+import { POLL_EVERY_MS, objectsAfter, pollClaudeUsage, pollUsage, toRateLimit } from "../src/mech/ops/subusage.ts";
 import { seedAuth } from "./seed-auth.ts";
 
 // The real response, trimmed to the two windows this reads. Verbatim shape from

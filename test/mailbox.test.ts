@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { normalise, serve } from "../src/mech/mailbox.ts";
+import { normalise, serve } from "../src/mech/sandbox/mailbox.ts";
 
 /**
  * The agent's only way out.

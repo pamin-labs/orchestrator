@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { interrupt } from "../src/mech/intercept.ts";
+import { interrupt } from "../src/mech/flow/intercept.ts";
 import type { Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";

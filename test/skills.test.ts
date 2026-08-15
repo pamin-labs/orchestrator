@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathInSandbox, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/skills.ts";
+import { pathInSandbox, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/util/skills.ts";
 import { openMemory, rewriteSkillPaths } from "../src/db.ts";
 
 /**

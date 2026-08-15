@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
-import { saveAuth } from "../src/mech/auth.ts";
-import { preflight } from "../src/mech/preflight.ts";
+import { saveAuth } from "../src/mech/sandbox/auth.ts";
+import { preflight } from "../src/mech/ops/preflight.ts";
 
 
 test("a ChatGPT login with no codex on this host is called out before it goes stale", async () => {

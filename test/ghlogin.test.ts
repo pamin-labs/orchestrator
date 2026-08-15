@@ -1,14 +1,14 @@
 import { expect, test } from "bun:test";
 import { openMemory, slugRepoPaths, type DB } from "../src/db.ts";
-import { listAuth, loadAuth, saveAuth, vaultFor } from "../src/mech/auth.ts";
-import { makeGithub, type Github } from "../src/mech/github.ts";
+import { listAuth, loadAuth, saveAuth, vaultFor } from "../src/mech/sandbox/auth.ts";
+import { makeGithub, type Github } from "../src/mech/git/github.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
 import {
   githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Fetcher,
-} from "../src/mech/ghlogin.ts";
+} from "../src/mech/git/ghlogin.ts";
 
 /** A fetcher that answers from a script and records what it was sent. */
 function scripted(answers: any[]): { fetchFn: Fetcher; sent: Array<{ url: string; body: string }> } {

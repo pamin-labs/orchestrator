@@ -7,8 +7,8 @@ import {
   outsideOwns,
   sharedFor,
   staticPrefix,
-} from "../src/mech/ownership.ts";
-import { head, joinQueue, landed, position, queue } from "../src/mech/mergequeue.ts";
+} from "../src/mech/flow/ownership.ts";
+import { head, joinQueue, landed, position, queue } from "../src/mech/flow/mergequeue.ts";
 import { reconcileOwnership } from "../src/runtime/executor.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import type { Ctx } from "../src/api.ts";

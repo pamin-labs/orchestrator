@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
-import { CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX_KEY, saveAuth, vaultFor, wrongShape } from "../src/mech/auth.ts";
-import { newEnough, preflight, report } from "../src/mech/preflight.ts";
-import { accessToken, isStale, parseAuth, renew } from "../src/mech/chatgpt.ts";
-import { loginRuntimes, startLogin } from "../src/mech/login.ts";
+import { CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX_KEY, saveAuth, vaultFor, wrongShape } from "../src/mech/sandbox/auth.ts";
+import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
+import { accessToken, isStale, parseAuth, renew } from "../src/mech/sandbox/chatgpt.ts";
+import { loginRuntimes, startLogin } from "../src/mech/sandbox/login.ts";
 import type { Ctx } from "../src/api.ts";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

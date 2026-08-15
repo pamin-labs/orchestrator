@@ -1,5 +1,5 @@
 import type { DB } from "../src/db.ts";
-import { saveAuth } from "../src/mech/auth.ts";
+import { saveAuth } from "../src/mech/sandbox/auth.ts";
 
 /**
  * A fleet with no credential configured does not dispatch — that is the point of

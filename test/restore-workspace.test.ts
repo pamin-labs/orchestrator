@@ -3,7 +3,7 @@ import type { Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
-import { restoreWorkspace } from "../src/mech/start.ts";
+import { restoreWorkspace } from "../src/mech/flow/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 
 /**

@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { open } from "../src/db.ts";
-import { keyInConfig, lineSplitter, skillMounts, specFor } from "../src/mech/sandbox.ts";
+import { keyInConfig, lineSplitter, skillMounts, specFor } from "../src/mech/sandbox/sandbox.ts";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { httpsRemote } from "../src/mech/checkout.ts";
+import { httpsRemote } from "../src/mech/git/checkout.ts";
 import type { Ctx } from "../src/api.ts";
 
 /**

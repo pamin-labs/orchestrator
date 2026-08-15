@@ -8,7 +8,7 @@ import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
-import type { Scope } from "../src/mech/sandbox.ts";
+import type { Scope } from "../src/mech/sandbox/sandbox.ts";
 
 /**
  * Removing a project is the one place this codebase deletes rather than

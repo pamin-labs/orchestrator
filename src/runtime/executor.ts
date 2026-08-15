@@ -8,17 +8,17 @@ import { DEFAULT_PROVIDER, contextWindowFor, modelFor } from "../config.ts";
 import type { Executor, Job } from "../scheduler.ts";
 import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
 import { say } from "../lang.ts";
-import { listSkills, readSkill } from "../mech/skills.ts";
-import { outsideOwns, parseOwns } from "../mech/ownership.ts";
-import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
-import { checkpoint, changedSince } from "../mech/worktree.ts";
-import { MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox.ts";
-import { baseRefFor, ensureCheckout, keepBranch, sandboxGit } from "../mech/checkout.ts";
+import { listSkills, readSkill } from "../mech/util/skills.ts";
+import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
+import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/sandbox/lease.ts";
+import { checkpoint, changedSince } from "../mech/git/worktree.ts";
+import { MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
+import { baseRefFor, ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { track, untrack } from "./running.ts";
-import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/auth.ts";
-import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/watchdog.ts";
-import { runStandup } from "../mech/standup.ts";
-import { route } from "../mech/chain.ts";
+import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
+import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/ops/watchdog.ts";
+import { runStandup } from "../mech/flow/standup.ts";
+import { route } from "../mech/flow/chain.ts";
 import {
   auditVerdict,
   handToBoss,
@@ -26,7 +26,7 @@ import {
   runDeterministicReview,
   runPrReview,
   sendBack,
-} from "../mech/review.ts";
+} from "../mech/flow/review.ts";
 import { type TurnResult } from "./claude.ts";
 import { clampEffort, providerFor, type Provider } from "./providers.ts";
 
@@ -836,7 +836,7 @@ function gzipTurnLog(path: string): void {
  * The account's own quota state, for the header.
  *
  * Only codex volunteers this, and only in `token_count`. The claude side is
- * filled in by mech/subusage.ts on the watchdog's clock, since its stream carries
+ * filled in by mech/ops/subusage.ts on the watchdog's clock, since its stream carries
  * a status but never a percentage.
  */
 function recordSubscriptionUsage(deps: ExecDeps, provider: string, r: TurnResult): void {

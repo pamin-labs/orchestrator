@@ -9,7 +9,7 @@ import {
   JOB_INVARIANTS,
   SLICE_INVARIANTS,
   uncovered,
-} from "../src/mech/invariants.ts";
+} from "../src/mech/ops/invariants.ts";
 
 /**
  * The one check this table exists for.

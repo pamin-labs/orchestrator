@@ -1,4 +1,4 @@
-import type { SandboxDriver } from "../src/mech/sandbox.ts";
+import type { SandboxDriver } from "../src/mech/sandbox/sandbox.ts";
 
 /**
  * A sandbox that is just a map.

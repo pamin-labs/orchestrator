@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { clearSandboxLog, sandboxLines, sandboxLog } from "../src/mech/sandboxlog.ts";
+import { clearSandboxLog, sandboxLines, sandboxLog } from "../src/mech/sandbox/sandboxlog.ts";
 import type { Ctx } from "../src/api.ts";
 
 /**

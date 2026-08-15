@@ -6,7 +6,7 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../src/mech/sandbox.ts";
+import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../src/mech/sandbox/sandbox.ts";
 import { makeExecutor } from "../src/runtime/executor.ts";
 import type { Ctx } from "../src/api.ts";
 

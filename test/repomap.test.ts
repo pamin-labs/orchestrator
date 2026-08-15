@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { indexable } from "../src/mech/repomap.ts";
+import { indexable } from "../src/mech/knowledge/repomap.ts";
 
 
 test("what belongs in an index is decided by exclusion, not by an extension list", () => {

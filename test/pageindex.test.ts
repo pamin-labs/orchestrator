@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { openMemory } from "../src/db.ts";
-import { chargeIndex, loadTree, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/pageindex.ts";
+import { chargeIndex, loadTree, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/knowledge/pageindex.ts";
 import { Bus } from "../src/bus.ts";
-import { costReport } from "../src/mech/cost.ts";
+import { costReport } from "../src/mech/ops/cost.ts";
 import type { Ctx } from "../src/api.ts";
 
 function repo(): string {

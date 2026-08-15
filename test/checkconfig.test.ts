@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/config.ts";
-import { checkConfig, checkRoles } from "../src/mech/checkconfig.ts";
+import { checkConfig, checkRoles } from "../src/mech/ops/checkconfig.ts";
 
 const yaml = (body: string): string => {
   const f = join(mkdtempSync(join(tmpdir(), "orch-cfg-")), "default.yaml");

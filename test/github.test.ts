@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
-import { saveAuth } from "../src/mech/auth.ts";
-import { classify, makeGithub, parseRepo, type Fetcher } from "../src/mech/github.ts";
+import { saveAuth } from "../src/mech/sandbox/auth.ts";
+import { classify, makeGithub, parseRepo, type Fetcher } from "../src/mech/git/github.ts";
 
 /**
  * The REST client, without the network.

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
-import { rememberSecrets } from "./mech/scrub.ts";
-import { parseRepo } from "./mech/github.ts";
+import { rememberSecrets } from "./mech/util/scrub.ts";
+import { parseRepo } from "./mech/git/github.ts";
 
 /**
  * Single source of truth for the schema. See PLAN.md §3.

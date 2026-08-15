@@ -3,9 +3,9 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
-import { allowedHostPaths, coveredBy } from "../src/mech/sandbox.ts";
-import { preflight } from "../src/mech/preflight.ts";
-import { serverAction, serverBackoffMs, SERVER_RESTART_CAP } from "../src/mech/watchdog.ts";
+import { allowedHostPaths, coveredBy } from "../src/mech/sandbox/sandbox.ts";
+import { preflight } from "../src/mech/ops/preflight.ts";
+import { serverAction, serverBackoffMs, SERVER_RESTART_CAP } from "../src/mech/ops/watchdog.ts";
 
 /**
  * The sandbox server is the one host dependency that runs containers, and it

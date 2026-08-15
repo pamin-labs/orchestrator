@@ -6,9 +6,9 @@ import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { askKind, brief, landGroup, makeApp, type Ctx } from "../src/api.ts";
-import { listSkills } from "../src/mech/skills.ts";
-import { landed } from "../src/mech/mergequeue.ts";
-import { sweepApproved } from "../src/mech/start.ts";
+import { listSkills } from "../src/mech/util/skills.ts";
+import { landed } from "../src/mech/flow/mergequeue.ts";
+import { sweepApproved } from "../src/mech/flow/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 

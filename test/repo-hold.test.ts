@@ -1,8 +1,8 @@
 import { beforeEach, expect, test } from "bun:test";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
-import { saveAuth } from "../src/mech/auth.ts";
-import { makeGithub, repoHeld, resetRepoHolds, REPO_HOLD_MS, type Fetcher } from "../src/mech/github.ts";
+import { saveAuth } from "../src/mech/sandbox/auth.ts";
+import { makeGithub, repoHeld, resetRepoHolds, REPO_HOLD_MS, type Fetcher } from "../src/mech/git/github.ts";
 
 /**
  * The fifth admission gate: GitHub stopped accepting us.

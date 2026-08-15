@@ -7,9 +7,9 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { gateState } from "../src/mech/gate.ts";
-import { handToBoss } from "../src/mech/review.ts";
-import { checkpoint } from "../src/mech/worktree.ts";
+import { gateState } from "../src/mech/flow/gate.ts";
+import { handToBoss } from "../src/mech/flow/review.ts";
+import { checkpoint } from "../src/mech/git/worktree.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import {
   makeAuditVerdict,
@@ -19,7 +19,7 @@ import {
 } from "../src/runtime/executor.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
-import { WORK } from "../src/mech/sandbox.ts";
+import { WORK } from "../src/mech/sandbox/sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
 const git = testGit;
@@ -336,7 +336,7 @@ test("accepting a slice starts the next one, and only one runs at a time", async
   h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
   h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 3, 'S3', 'x', 0)");
 
-  const { startNextSlice } = await import("../src/mech/review.ts");
+  const { startNextSlice } = await import("../src/mech/flow/review.ts");
   // S1 is already running in the fixture, so nothing new may start: a second
   // in-flight slice would only queue behind the group's single writer and its
   // review would race the first one's.
@@ -358,7 +358,7 @@ test("a slice waits for the one it depends on", async () => {
   h.db.run(
     "INSERT INTO slice (grp_id, seq, title, accept_spec, depends_on, created_at) VALUES (1, 2, 'S2', 'x', 1, 0)",
   );
-  const { startNextSlice } = await import("../src/mech/review.ts");
+  const { startNextSlice } = await import("../src/mech/flow/review.ts");
   h.db.run("UPDATE slice SET status = 'accepted' WHERE id = 1");
   expect(startNextSlice(h.ctx, 1)).toBe(2);
 

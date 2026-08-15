@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { saveAuth } from "../src/mech/auth.ts";
-import { forgetSecrets, scrub } from "../src/mech/scrub.ts";
+import { saveAuth } from "../src/mech/sandbox/auth.ts";
+import { forgetSecrets, scrub } from "../src/mech/util/scrub.ts";
 
 // The *shape* of what `claude setup-token` prints on the line after "Store this
 // token securely" — the line the login streamed to the panel in full. Synthetic:

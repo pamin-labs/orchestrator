@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
-import { summarise, skeleton } from "../src/mech/pageindex.ts";
-import { hostClaudeHome, hostCodexHome } from "../src/mech/auth.ts";
-import { seedHome } from "../src/mech/chatgpt.ts";
+import { summarise, skeleton } from "../src/mech/knowledge/pageindex.ts";
+import { hostClaudeHome, hostCodexHome } from "../src/mech/sandbox/auth.ts";
+import { seedHome } from "../src/mech/sandbox/chatgpt.ts";
 
 /**
  * One way to call a model, and it is inside a sandbox.
@@ -31,7 +31,7 @@ test("nothing on the host spawns a model CLI, except login and the one refresher
   // Both exceptions are deliberate and documented where they live: `login.ts`
   // runs the interactive OAuth the boss started, and `chatgpt.ts` is the single
   // host-side refresher codex's own CI guidance asks for.
-  const allowed = new Set(["mech/login.ts", "mech/chatgpt.ts"]);
+  const allowed = new Set(["mech/sandbox/login.ts", "mech/sandbox/chatgpt.ts"]);
   const offenders: string[] = [];
   for (const file of sources(SRC)) {
     const rel = file.slice(SRC.length);

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
-import { readOnlyGitPaths, saveAuth, vaultFor } from "../src/mech/auth.ts";
-import { UTIL, isUtil, utilSandbox } from "../src/mech/sandbox.ts";
+import { readOnlyGitPaths, saveAuth, vaultFor } from "../src/mech/sandbox/auth.ts";
+import { UTIL, isUtil, utilSandbox } from "../src/mech/sandbox/sandbox.ts";
 
 /**
  * The third kind of container, and the one rule that pays for it.

@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { dispatchFeedback, openPr, pollPrs, prBody, pushBlocked } from "../src/mech/prwatch.ts";
-import { utilGit } from "../src/mech/checkout.ts";
-import type { GhResult, Github } from "../src/mech/github.ts";
+import { dispatchFeedback, openPr, pollPrs, prBody, pushBlocked } from "../src/mech/git/prwatch.ts";
+import { utilGit } from "../src/mech/git/checkout.ts";
+import type { GhResult, Github } from "../src/mech/git/github.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
@@ -385,7 +385,7 @@ test("landing archives the group without deleting its history", () => {
   );
   h.ctx.bus.emit({ grpId: 1, author: "engineer", kind: "say", body: "why we did it this way" });
 
-  const { landed } = require("../src/mech/mergequeue.ts");
+  const { landed } = require("../src/mech/flow/mergequeue.ts");
   landed(h.db, 1);
 
   const a = h.db.query<{ state: string; session_id: string | null; token: string | null }, []>(

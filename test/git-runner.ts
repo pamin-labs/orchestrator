@@ -1,4 +1,4 @@
-import type { GitRunner } from "../src/mech/worktree.ts";
+import type { GitRunner } from "../src/mech/git/worktree.ts";
 
 /**
  * Real git, on a real directory, for the tests that need one.

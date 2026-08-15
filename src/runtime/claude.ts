@@ -1,5 +1,5 @@
 import type { StablePrompt } from "../prompt/assemble.ts";
-import { shq } from "../mech/shq.ts";
+import { shq } from "../mech/util/shq.ts";
 
 /**
  * `claude -p` as one subprocess per turn.
@@ -23,7 +23,7 @@ export interface RateLimitInfo {
    * codex volunteers both in every `token_count` event. claude's stream never
    * carries a percentage — 267 real rate_limit_events in this repo's logs had
    * only status and a reset time — so on that side these are filled in by
-   * mech/subusage.ts and the fields stay undefined when it cannot reach the API.
+   * mech/ops/subusage.ts and the fields stay undefined when it cannot reach the API.
    */
   fiveHourPercent?: number;
   weeklyPercent?: number;
@@ -87,7 +87,7 @@ export interface TurnHandlers {
  * because that is all a turn needs: somewhere to put the prompt (the exec API
  * has no stdin) and a stream of stdout lines to parse.
  *
- * `mech/sandbox.ts` implements it; tests pass a fake.
+ * `mech/sandbox/sandbox.ts` implements it; tests pass a fake.
  */
 export interface TurnRunner {
   /** Write a file inside the sandbox. Cheap — measured at ~5ms. */

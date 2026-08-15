@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { abstain, answer, entryPoint, isReserved, revoke, route, triage } from "../src/mech/chain.ts";
+import { abstain, answer, entryPoint, isReserved, revoke, route, triage } from "../src/mech/flow/chain.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { declaredNoOp, extractClaimedFiles, reconcile } from "../src/mech/reconcile.ts";
+import { declaredNoOp, extractClaimedFiles, reconcile } from "../src/mech/flow/reconcile.ts";
 
 test("a scratch file created and deleted inside the slice is not a lie", () => {
   // Observed: the Engineer removed its own debug script and said so. Never

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { acceptSlice } from "../src/mech/review.ts";
+import { acceptSlice } from "../src/mech/flow/review.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import type { Ctx } from "../src/api.ts";
 

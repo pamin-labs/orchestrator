@@ -5,34 +5,34 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dropSlices, type DB } from "./db.ts";
 import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
-import { resolveLease, type ResourceDef } from "./mech/lease.ts";
-import { sliceDiffBase } from "./mech/worktree.ts";
-import { execIn, killSandbox, putFile, restartServer, runningServer, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox.ts";
-import { resetServerRestarts } from "./mech/watchdog.ts";
-import { clearSandboxLog, sandboxLines } from "./mech/sandboxlog.ts";
-import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
-import { loginRuntimes, startLogin } from "./mech/login.ts";
-import { githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, NO_CLIENT_ID, type Installation } from "./mech/ghlogin.ts";
-import { preflight } from "./mech/preflight.ts";
-import { baseBranch, baseRefFor, removeMirror, sandboxGit, treeFiles } from "./mech/checkout.ts";
-import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
-import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
-import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
-import { extractClaimedFiles } from "./mech/reconcile.ts";
-import { acceptSlice } from "./mech/review.ts";
-import { dropGroup, runInstall, startGroup, sweepApproved } from "./mech/start.ts";
-import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
-import { costReport } from "./mech/cost.ts";
-import { openPr, prBody, pushBlocked } from "./mech/prwatch.ts";
-import { forgetHolds } from "./mech/github.ts";
-import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
-import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/pageindex.ts";
-import { gatesFor, recordGate } from "./mech/gate.ts";
-import { listSkills, projectSkillsUnreachable, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/skills.ts";
-import { shq } from "./mech/shq.ts";
-import { sediment } from "./mech/lessons.ts";
+import { resolveLease, type ResourceDef } from "./mech/sandbox/lease.ts";
+import { sliceDiffBase } from "./mech/git/worktree.ts";
+import { execIn, killSandbox, putFile, restartServer, runningServer, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
+import { resetServerRestarts } from "./mech/ops/watchdog.ts";
+import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
+import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
+import { loginRuntimes, startLogin } from "./mech/sandbox/login.ts";
+import { githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, NO_CLIENT_ID, type Installation } from "./mech/git/ghlogin.ts";
+import { preflight } from "./mech/ops/preflight.ts";
+import { baseBranch, baseRefFor, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
+import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
+import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/flow/chain.ts";
+import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/flow/ownership.ts";
+import { extractClaimedFiles } from "./mech/flow/reconcile.ts";
+import { acceptSlice } from "./mech/flow/review.ts";
+import { dropGroup, runInstall, startGroup, sweepApproved } from "./mech/flow/start.ts";
+import { head, joinQueue, landed, position } from "./mech/flow/mergequeue.ts";
+import { costReport } from "./mech/ops/cost.ts";
+import { openPr, prBody, pushBlocked } from "./mech/git/prwatch.ts";
+import { forgetHolds } from "./mech/git/github.ts";
+import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/knowledge/ctx.ts";
+import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/knowledge/pageindex.ts";
+import { gatesFor, recordGate } from "./mech/flow/gate.ts";
+import { listSkills, projectSkillsUnreachable, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/util/skills.ts";
+import { shq } from "./mech/util/shq.ts";
+import { sediment } from "./mech/knowledge/lessons.ts";
 import { say } from "./lang.ts";
-import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/validate.ts";
+import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/flow/validate.ts";
 
 /**
  * One API, two clients: the web UI (the boss's main surface) and `orch` (what
@@ -47,9 +47,9 @@ export interface Ctx {
   /** Resolves a blocking `ask-boss` / `lease` call. Keyed by "kind:id". */
   waiters: Map<string, (value: string) => void>;
   /** Where turns, gates and leases run. Absent in unit tests that need no container. */
-  sandbox?: import("./mech/sandbox.ts").SandboxDriver;
+  sandbox?: import("./mech/sandbox/sandbox.ts").SandboxDriver;
   /** Talks to GitHub's REST API. Absent in unit tests that need no GitHub. */
-  gh?: import("./mech/github.ts").Github;
+  gh?: import("./mech/git/github.ts").Github;
   /**
    * One cheap model call, for PageIndex navigation. Absent in unit tests.
    *
@@ -58,7 +58,7 @@ export interface Ctx {
    * own CLI login — a second credential path nothing in the settings page could
    * see, whose failure mode was a permanently empty index that looked built.
    */
-  askIn?: (scope: import("./mech/sandbox.ts").Scope) => Ask;
+  askIn?: (scope: import("./mech/sandbox/sandbox.ts").Scope) => Ask;
   /** Wired by the server: advances the review pipeline on a QA verdict. */
   reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
   /** Wired by the server: the Auditor's PR-level verdict. */
@@ -101,7 +101,7 @@ export interface Ctx {
     installTimeoutMs?: number;
     /** The GitHub App the device-flow login runs against. A client id is not a secret. */
     github?: { clientId: string; appSlug: string };
-    /** Where turns run. See mech/sandbox.ts and docs/decisions/005. */
+    /** Where turns run. See mech/sandbox/sandbox.ts and docs/decisions/005. */
     sandbox?: {
       server: string;
       apiKey: string;

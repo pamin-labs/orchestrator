@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../src/db.ts";
-import { runStandup, STALL_MS } from "../src/mech/standup.ts";
-import { costReport, recentCacheRatio } from "../src/mech/cost.ts";
+import { runStandup, STALL_MS } from "../src/mech/flow/standup.ts";
+import { costReport, recentCacheRatio } from "../src/mech/ops/cost.ts";
 
 const NOW = 10_000_000;
 

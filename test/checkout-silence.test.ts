@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { ensureCheckout } from "../src/mech/checkout.ts";
+import { ensureCheckout } from "../src/mech/git/checkout.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 
 /**

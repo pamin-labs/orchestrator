@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { Notifier, notifiable, tierFor, batchForBoss } from "../src/mech/notify.ts";
-import { pause, resume, settlePausing, park } from "../src/mech/intercept.ts";
+import { Notifier, notifiable, tierFor, batchForBoss } from "../src/mech/ops/notify.ts";
+import { pause, resume, settlePausing, park } from "../src/mech/flow/intercept.ts";
 import {
   DROP_AFTER_MS,
   GZIP_AFTER_MS,
@@ -12,7 +12,7 @@ import {
   sweepTurnLogs,
   IDLE_TURN_LIMIT,
   SAME_FILE_LIMIT,
-} from "../src/mech/watchdog.ts";
+} from "../src/mech/ops/watchdog.ts";
 import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -366,7 +366,7 @@ test("answering clears the reminder", async () => {
 // ------------------------------------------------------- boss batching backstop
 
 test("several things waiting on the boss become one message", () => {
-  const { batchForBoss } = require("../src/mech/notify.ts");
+  const { batchForBoss } = require("../src/mech/ops/notify.ts");
   const n = batchForBoss([
     { id: 1, severity: "advisory", question: "which library?", group: "auth" },
     { id: 2, severity: "advisory", question: "rename the flag?", group: "ui" },
@@ -378,7 +378,7 @@ test("several things waiting on the boss become one message", () => {
 });
 
 test("one blocker in the set makes the whole batch immediate", () => {
-  const { batchForBoss } = require("../src/mech/notify.ts");
+  const { batchForBoss } = require("../src/mech/ops/notify.ts");
   const n = batchForBoss([
     { id: 1, severity: "advisory", question: "a", group: "x" },
     { id: 2, severity: "blocker", question: "b", group: "y" },
@@ -388,7 +388,7 @@ test("one blocker in the set makes the whole batch immediate", () => {
 });
 
 test("the batch key is the set, so a new arrival is news and a repeat is not", () => {
-  const { batchForBoss } = require("../src/mech/notify.ts");
+  const { batchForBoss } = require("../src/mech/ops/notify.ts");
   const two = batchForBoss([
     { id: 1, severity: "advisory", question: "a", group: null },
     { id: 2, severity: "advisory", question: "b", group: null },
@@ -408,7 +408,7 @@ test("the batch key is the set, so a new arrival is news and a repeat is not", (
 });
 
 test("a single item is not dressed up as a batch, and nothing waiting sends nothing", () => {
-  const { batchForBoss } = require("../src/mech/notify.ts");
+  const { batchForBoss } = require("../src/mech/ops/notify.ts");
   expect(batchForBoss([])).toBeNull();
   const one = batchForBoss([{ id: 7, severity: "blocker", question: "which lib?", group: "auth" }])!;
   expect(one.key).toBe("escalation:7");
