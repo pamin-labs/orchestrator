@@ -1,0 +1,33 @@
+name: Idea
+description: Something the system should do, or should stop doing
+labels: [idea]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What you were trying to do and where it got awkward. Not the solution —
+        this project has a standing habit of deleting proposed features once the
+        problem behind them turns out to be one `if` (`docs/decisions/003`).
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would do about it
+      description: Optional. The problem above is the part that has to be right.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - The roles and how work is split
+        - The panel
+        - The sandbox and credentials
+        - GitHub — branches, PRs, the merge queue
+        - Cost and budgets
+        - Something else
+      default: 5

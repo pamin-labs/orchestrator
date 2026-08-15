@@ -1,0 +1,8 @@
+# Blank issues stay on. A template is a way to make a good report easy, not a
+# form to make a bad one impossible — and the reports worth most here are the
+# ones that do not fit either shape.
+blank_issues_enabled: true
+contact_links:
+  - name: Security
+    url: https://github.com/pamin-labs/orchestrator/security/advisories/new
+    about: A way past the sandbox, the credential vault or the orch interface. Privately, never an issue.

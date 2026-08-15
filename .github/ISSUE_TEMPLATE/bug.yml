@@ -1,0 +1,59 @@
+name: Bug
+description: Something behaves differently than it says it does
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Anything that looks like a way past the sandbox or the credential vault
+        goes to [SECURITY.md](../blob/main/SECURITY.md) instead — privately.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: >
+        What you saw, and what you expected instead. The most useful bug reports
+        here name the state the system *looked* to be in — most of this project's
+        real failures presented as "completely fine".
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to get there
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What the record says
+      description: >
+        The feed line, the escalation, or the turn log under `<dataDir>/turns/`.
+        Paste the shortest part that decides it rather than the whole file.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The panel footer, `package.json`, or the image tag you ran.
+      placeholder: 0.1.0 · ghcr.io/pamin-labs/orch-server:0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how
+    attributes:
+      label: How it is running
+      options:
+        - Docker image
+        - From source (bun)
+      default: 0
+    validations:
+      required: true

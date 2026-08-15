@@ -81,6 +81,14 @@ jobs:
           bad=0
           while read -r sha; do
             author=$(git log -1 --format='%an <%ae>' "$sha")
+            # Bots that belong to this repository are exempt, and this is the
+            # honest way to say it rather than skipping the whole job for them:
+            # a required check that is *skipped* sits pending forever, so every
+            # dependabot pull request would be unmergeable by a rule about
+            # certifying authorship — which is not a thing dependabot can do.
+            case "$author" in
+              *"[bot]@users.noreply.github.com>") continue ;;
+            esac
             # The trailer has to match the author. A sign-off certifying somebody
             # else is the one thing the DCO exists to prevent, so a present-but-
             # wrong line is not better than a missing one.

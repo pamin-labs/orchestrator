@@ -1,0 +1,30 @@
+# Two ecosystems, monthly, grouped.
+#
+# Monthly and grouped on purpose: this repository has one maintainer and every
+# pull request costs two required checks worth of runner minutes, so a daily
+# stream of single-dependency PRs would be the most expensive thing in the repo.
+# What this is actually for is the case that matters — an action or a dependency
+# with a published advisory — and GitHub raises those immediately regardless of
+# this schedule.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      # Radix ships eight packages that move together; one PR per package would
+      # be eight runs of the same suite.
+      radix:
+        patterns: ["@radix-ui/*"]
+      rest:
+        patterns: ["*"]
+        exclude-patterns: ["@radix-ui/*"]
