@@ -3,7 +3,9 @@ import { say } from "../lang.ts";
 import { createCheckout, remoteFor } from "./checkout.ts";
 import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
-import { execLines, WORK } from "./sandbox.ts";
+import { execIn, execLines, WORK } from "./sandbox.ts";
+import { detectGates, detectInstall, detectShared, READS, type Root } from "./detect.ts";
+import { shq } from "./shq.ts";
 import { baseRefFor } from "./checkout.ts";
 import { sandboxLog } from "./sandboxlog.ts";
 
@@ -175,6 +177,109 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
   });
 }
 
+/**
+ * What the repository turns out to be, read once, from the first clone.
+ *
+ * This used to run when the project was registered, against a checkout on the
+ * host. There is no such checkout any more (007 §2) and there never will be
+ * again, so it runs here instead: the first group's container is the first
+ * moment the repository exists anywhere we can read it.
+ *
+ * Once per project, marked by `config.detected` rather than by "are there gates
+ * yet" — a project where detection genuinely finds nothing must not re-run it
+ * for every group forever, and must not grow duplicate resource rows.
+ *
+ * Everything it writes is a guess in a place the boss can correct: the gate
+ * names, the install command and the shared paths land in project config, which
+ * is `detect.ts`'s own stated rule.
+ */
+export async function detectProject(ctx: Ctx, grpId: number, projectId: number): Promise<void> {
+  const row = ctx.db
+    .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
+    .get(projectId);
+  let cfg: Record<string, unknown> = {};
+  try {
+    cfg = JSON.parse(row?.config_json ?? "{}");
+  } catch {}
+  if (cfg.detected) return;
+
+  const ls = await execIn(ctx, { grp: grpId }, `ls -A ${shq(WORK)}`);
+  const names = ls.out.split("\n").map((s) => s.trim()).filter(Boolean);
+  const files: Record<string, string> = {};
+  for (const f of READS) {
+    if (!names.includes(f)) continue;
+    const r = await execIn(ctx, { grp: grpId }, `cat ${shq(`${WORK}/${f}`)}`);
+    if (r.code === 0) files[f] = r.out;
+  }
+  const root: Root = { names, read: (n) => files[n] ?? null };
+  const gates = detectGates(root);
+
+  const insRes = ctx.db.prepare(
+    `INSERT INTO resource (name, template, arg_schema_json, error_regex, concurrency, tags_json)
+     VALUES (?, ?, ?, ?, 1, ?)
+     ON CONFLICT (name) DO UPDATE SET template = excluded.template, error_regex = excluded.error_regex,
+       arg_schema_json = excluded.arg_schema_json, tags_json = excluded.tags_json`,
+  );
+  // `repo`: one gate at a time per repository, whatever the gate is.
+  //
+  // Concurrency is per resource, so build and typecheck ran side by side — and
+  // both shell out to the project's own scripts, which install things. We can fix
+  // our own templates and not the scripts a project ships, so the guarantee has
+  // to be structural: gates of one repo do not overlap. Different repos still run
+  // in parallel — the pool is keyed by project.
+  for (const g of gates) insRes.run(g.name, g.template, "{}", g.errorRegex, JSON.stringify(["repo"]));
+
+  // A project that ships the runner gets the browser resource. Without it every
+  // acceptance line of the form "the menu opens" is unverifiable by anyone in the
+  // fleet — measured, three groups stalled at once and the boss was asked to
+  // click. Tagged `browser` so it draws from its own pool: each lease is a real
+  // Chromium. A nested path, so it is asked for rather than read off the listing.
+  const browse = await execIn(ctx, { grp: grpId }, `test -f ${shq(`${WORK}/scripts/browse.ts`)} && echo yes`);
+  if (browse.out.trim() === "yes") {
+    insRes.run(
+      "browser",
+      "bun run scripts/browse.ts --steps {steps}",
+      // A step file, never a command: the Runner has real permissions, so the only
+      // thing an agent may hand it is data (PLAN.md, hard constraint 2).
+      JSON.stringify({ steps: { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$", maxLength: 200 } }),
+      "FAIL:",
+      JSON.stringify(["browser"]),
+    );
+  }
+
+  const next = {
+    ...cfg,
+    detected: true,
+    gates: (cfg.gates as string[] | undefined)?.length ? cfg.gates : gates.map((g) => g.name),
+    install: detectInstall(root),
+    shared: detectShared(root),
+  };
+  ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(next), projectId]);
+
+  if (!gates.length) {
+    // Said plainly rather than letting the first slice fail with a puzzle. This
+    // is the same warning registration used to give; only the moment moved.
+    ctx.bus.emit({
+      grpId,
+      author: "orchestrator",
+      kind: "escalation",
+      intent: "ask",
+      severity: "advisory",
+      body:
+        `no gates detected in this repository. Every slice will fail review until this project ` +
+        `has at least one: add a resource template and list its name in the project's gates.`,
+    });
+    return;
+  }
+  ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "state_change",
+    body: `闸门看出来了：${gates.map((g) => g.name).join("、")}${next.install ? ` · 装依赖 ${next.install}` : ""}`,
+    meta: { gates: next.gates, detected: gates },
+  });
+}
+
 /** Sandbox, checkout, RUNNING, first slice. Returns an error message, or null. */
 export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null> {
   const grp = ctx.db
@@ -197,6 +302,10 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
           kind: "state_change",
           body: say(ctx.config?.language, "group.worktree", { branch }),
         });
+
+        // The first moment the repository exists anywhere readable. It runs
+        // before the install below because it is what works out the command.
+        await detectProject(ctx, grpId, grp.project_id);
 
         // Dependencies, before the first engineer turn — still a role, not a
         // table of stacks. bun, pnpm, poetry, uv, pdm, mise, a Makefile target:

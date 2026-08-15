@@ -106,7 +106,12 @@ export async function runGates(opts: RunGatesOptions): Promise<GateOutcome> {
       pass: false,
       results,
       feedback:
-        'no gates are configured for this project. Add resource names to project config_json, e.g. {"gates":["test"]}.',
+        // Says which of the two it is. Gates are worked out from the first
+        // group's clone (007 §2), so before that has happened "none configured"
+        // means "not detected yet" and telling the boss to go and write them by
+        // hand is sending them to do the system's job.
+        'no gates are configured for this project. They are detected from the first group\'s clone; ' +
+        'if that has happened and found nothing, add resource names to project config_json, e.g. {"gates":["test"]}.',
     };
   }
 

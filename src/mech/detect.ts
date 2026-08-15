@@ -1,14 +1,31 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-
 /**
- * Work out a project's gates from what is on disk.
+ * Work out a project's gates from what the repository root looks like.
  *
  * A project with no gates fails every slice by design, so leaving this to the
  * boss means the first thing the system does on a new project is refuse to work
  * and look broken. Detection is best-effort and always visible: whatever it
  * guesses is written into project config, where it can be corrected.
+ *
+ * No filesystem in here. The repository this reads is a clone inside a group's
+ * container (007 §2) — there is no host checkout to point at any more — so the
+ * caller gathers a listing and a few files however it can reach them, and this
+ * stays a pure function of that. The fixture tests are the reason: they are the
+ * only thing covering these rules, and they now need neither a temp directory
+ * nor a container.
  */
+
+/** A repository root: what is in it, and the contents of the few files that matter. */
+export interface Root {
+  /** Names directly in the root, `ls -A`. */
+  names: string[];
+  read: (name: string) => string | null;
+}
+
+/**
+ * The only files any rule opens. Everything else is decided by a name existing,
+ * so the caller fetches these and nothing else.
+ */
+export const READS = ["package.json", "Makefile", "makefile", "GNUmakefile"];
 
 export interface DetectedGate {
   name: string;
@@ -18,33 +35,27 @@ export interface DetectedGate {
 }
 
 interface Rule {
-  marker: (repo: string) => boolean;
-  gates: (repo: string) => DetectedGate[];
+  marker: (repo: Root) => boolean;
+  gates: (repo: Root) => DetectedGate[];
   /**
    * How to bring a fresh checkout's dependencies up, or null when the stack needs
    * nothing before its gates run. A default the bootstrap role can skip past — an agent
    * cannot do it, the sandbox denies writes outside its own paths.
    */
-  install?: (repo: string) => string | null;
+  install?: (repo: Root) => string | null;
 }
 
-const readJson = (p: string): any => {
+const readJson = (repo: Root, name: string): any => {
   try {
-    return JSON.parse(readFileSync(p, "utf8"));
+    return JSON.parse(repo.read(name) ?? "");
   } catch {
     return null;
   }
 };
 
-const hasFile = (repo: string, name: string) => existsSync(join(repo, name));
+const hasFile = (repo: Root, name: string) => repo.names.includes(name);
 
-const globExists = (repo: string, re: RegExp) => {
-  try {
-    return readdirSync(repo).some((f) => re.test(f));
-  } catch {
-    return false;
-  }
-};
+const globExists = (repo: Root, re: RegExp) => repo.names.some((f) => re.test(f));
 
 /** Rule order matters: the first marker that matches wins. */
 const RULES: Rule[] = [
@@ -65,7 +76,7 @@ const RULES: Rule[] = [
               ? "yarn install --frozen-lockfile"
               : null,
     gates: (repo) => {
-      const pkg = readJson(join(repo, "package.json")) ?? {};
+      const pkg = readJson(repo, "package.json") ?? {};
       const scripts: Record<string, string> = pkg.scripts ?? {};
       // Prefer bun when the repo already commits a bun lockfile; the runner is
       // whatever the project actually uses, not whatever we like.
@@ -151,29 +162,25 @@ const RULES: Rule[] = [
   },
 ];
 
-function hasMakeTarget(repo: string, target: string): boolean {
+function hasMakeTarget(repo: Root, target: string): boolean {
   for (const f of ["Makefile", "makefile", "GNUmakefile"]) {
-    const p = join(repo, f);
-    if (!existsSync(p)) continue;
-    try {
-      return new RegExp(`^${target}\\s*:`, "m").test(readFileSync(p, "utf8"));
-    } catch {
-      return false;
-    }
+    const body = repo.read(f);
+    if (body === null) continue;
+    return new RegExp(`^${target}\\s*:`, "m").test(body);
   }
   return false;
 }
 
 /** The install command for whichever stack this repo is, or null. */
-export function detectInstall(repoPath: string): string | null {
-  for (const r of RULES) if (r.marker(repoPath)) return r.install?.(repoPath) ?? null;
+export function detectInstall(repo: Root): string | null {
+  for (const r of RULES) if (r.marker(repo)) return r.install?.(repo) ?? null;
   return null;
 }
 
-export function detectGates(repoPath: string): DetectedGate[] {
+export function detectGates(repo: Root): DetectedGate[] {
   for (const rule of RULES) {
-    if (!rule.marker(repoPath)) continue;
-    const gates = rule.gates(repoPath);
+    if (!rule.marker(repo)) continue;
+    const gates = rule.gates(repo);
     if (gates.length) return gates;
   }
   return [];
@@ -185,12 +192,11 @@ export function detectGates(repoPath: string): DetectedGate[] {
  * A monorepo's workspace root is shared even though nothing about its name says
  * so, and letting one group own it would let that group break every other.
  */
-export function detectShared(repoPath: string): string[] {
+export function detectShared(repo: Root): string[] {
   const out: string[] = [];
-  const pkg = readJson(join(repoPath, "package.json"));
-  if (pkg?.workspaces) out.push("packages/*/package.json");
+  if (readJson(repo, "package.json")?.workspaces) out.push("packages/*/package.json");
   for (const f of ["pnpm-workspace.yaml", "Cargo.lock", "go.sum", "poetry.lock", "uv.lock"]) {
-    if (hasFile(repoPath, f)) out.push(f);
+    if (hasFile(repo, f)) out.push(f);
   }
   return out;
 }

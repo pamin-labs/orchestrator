@@ -1,18 +1,18 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { detectGates, detectInstall, detectShared } from "../src/mech/detect.ts";
+import { detectGates, detectInstall, detectShared, type Root } from "../src/mech/detect.ts";
 
-const repo = (files: Record<string, string>) => {
-  const dir = mkdtempSync(join(tmpdir(), "orch-det-"));
-  for (const [name, body] of Object.entries(files)) {
-    const p = join(dir, name);
-    mkdirSync(join(p, ".."), { recursive: true });
-    writeFileSync(p, body);
-  }
-  return dir;
-};
+/**
+ * A repository root, as detection sees one.
+ *
+ * No temp directory any more: the repository these rules read is a clone inside
+ * a container (007 §2), so `detect.ts` takes a listing and a reader rather than
+ * a path — and these tests, which are the only cover these rules have, no longer
+ * need a filesystem to state the same cases.
+ */
+const repo = (files: Record<string, string>): Root => ({
+  names: Object.keys(files),
+  read: (n) => files[n] ?? null,
+});
 
 test("a bun project gets test and typecheck, run with bun", () => {
   const dir = repo({
@@ -79,11 +79,12 @@ test("no detected gate reaches for bunx or npx", () => {
   // one node_modules by symlink: two gates at once raced on it and one came back
   // `Failed to link jiti: EEXIST`. The group read that as its own build being
   // broken and burned five retries on it.
-  const repo = mkdtempSync(join(tmpdir(), "orch-detect-"));
-  writeFileSync(join(repo, "package.json"), JSON.stringify({ scripts: { test: "bun test", "build:web": "x", lint: "x" } }));
-  writeFileSync(join(repo, "bun.lock"), "");
-  writeFileSync(join(repo, "tsconfig.json"), "{}");
-  for (const r of detectGates(repo)) {
+  const tree = repo({
+    "package.json": JSON.stringify({ scripts: { test: "bun test", "build:web": "x", lint: "x" } }),
+    "bun.lock": "",
+    "tsconfig.json": "{}",
+  });
+  for (const r of detectGates(tree)) {
     expect(`${r.name}: ${r.template}`).not.toMatch(/\b(bunx|npx)\b/);
   }
 });
@@ -93,31 +94,17 @@ test("every stack says how to install, or says it needs nothing", () => {
   // denies the writes an install needs, so `bun install` came back `EPERM failed
   // to link` and every gate failed for a reason the group did not cause. One
   // group sat on that blocker for hours.
-  const bun = mkdtempSync(join(tmpdir(), "orch-i-"));
-  writeFileSync(join(bun, "package.json"), "{}");
-  writeFileSync(join(bun, "bun.lock"), "");
-  expect(detectInstall(bun)).toBe("bun install --frozen-lockfile");
-
-  const npm = mkdtempSync(join(tmpdir(), "orch-i-"));
-  writeFileSync(join(npm, "package.json"), "{}");
-  writeFileSync(join(npm, "package-lock.json"), "{}");
-  expect(detectInstall(npm)).toBe("npm ci");
-
-  const go = mkdtempSync(join(tmpdir(), "orch-i-"));
-  writeFileSync(join(go, "go.mod"), "module x\n");
-  expect(detectInstall(go)).toBe("go mod download");
+  expect(detectInstall(repo({ "package.json": "{}", "bun.lock": "" }))).toBe("bun install --frozen-lockfile");
+  expect(detectInstall(repo({ "package.json": "{}", "package-lock.json": "{}" }))).toBe("npm ci");
+  expect(detectInstall(repo({ "go.mod": "module x\n" }))).toBe("go mod download");
 
   // pyproject.toml alone names no manager — poetry, pdm, hatch, rye and a plain
   // venv all use it — so it goes to the bootstrap role rather than to a guess.
-  const py = mkdtempSync(join(tmpdir(), "orch-i-"));
-  writeFileSync(join(py, "pyproject.toml"), "[project]\n");
-  expect(detectInstall(py)).toBeNull();
+  expect(detectInstall(repo({ "pyproject.toml": "[project]\n" }))).toBeNull();
 
   // cargo fetches on build: nothing up front, and that is an answer, not a gap.
-  const rust = mkdtempSync(join(tmpdir(), "orch-i-"));
-  writeFileSync(join(rust, "Cargo.toml"), "[package]\n");
-  expect(detectInstall(rust)).toBeNull();
+  expect(detectInstall(repo({ "Cargo.toml": "[package]\n" }))).toBeNull();
 
   // An unknown stack must not guess.
-  expect(detectInstall(mkdtempSync(join(tmpdir(), "orch-i-")))).toBeNull();
+  expect(detectInstall(repo({ "README.md": "hi" }))).toBeNull();
 });
