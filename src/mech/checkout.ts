@@ -207,7 +207,14 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
   // exception and it is not a quoter: it emits *double* quotes, under which `sh`
   // still expands `$(…)`, backticks and `${…}` — and the remote can come from
   // `postProject`'s request body, not only from `git remote get-url`.
-  const cloneCmd = `git clone --progress ${shq(spec.remote)} ${WORK}`;
+  //
+  // `--filter=blob:none`, and never `--depth=1`. Shallow is faster still and
+  // truncates history — `rebaseOntoBase` and `merge-base --is-ancestor` both
+  // need the real thing, and they are what every slice diff and every rebase go
+  // through. Blobless keeps every commit and fetches file contents on demand:
+  // GitHub measures an ~88.6% average reduction in clone time across
+  // repositories using partial clone.
+  const cloneCmd = `git clone --progress --filter=blob:none ${shq(spec.remote)} ${WORK}`;
   const clone = await streamed(ctx, scope, cloneCmd, { timeoutMs: 600_000, env: { GIT_TERMINAL_PROMPT: "0" } });
   if (clone.code !== 0) throw new Error(`git clone failed: ${clone.out.slice(-400)}`);
 
@@ -305,20 +312,41 @@ export async function publishBranch(
  *
  * `createCheckout` returns early when `.git` is already there, so this is one
  * cheap exec on the ordinary path.
+ *
+ * Every way out of here that is not a clone says so. All four used to `return`
+ * silently, and the group then ran a whole turn against an empty `/work` —
+ * RUNNING, an agent on the roster, nothing anywhere reporting a problem. Same
+ * family as `reconcileOwnership`'s silent skip. They stay early returns rather
+ * than throws: a clone that actually fails is `createCheckout`'s to throw, and
+ * `executor.ts` already turns that into a failed turn.
  */
 export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
+  // `on`, not `grpId`, for exactly one of the four: `event.grp_id` is a foreign
+  // key to `grp`, so an event about a group that is not in the table cannot be
+  // written against it. That one goes out unscoped and names the id in its body.
+  const report = (why: string, on: number | null = grpId): void => {
+    ctx.bus.emit({
+      grpId: on,
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "blocker",
+      body: `${why}，/work 还是空的 —— 这一轮没有代码可跑`,
+    });
+  };
+
   const grp = ctx.db
     .query<{ name: string; project_id: number; branch: string | null }, [number]>(
       "SELECT name, project_id, branch FROM grp WHERE id = ?",
     )
     .get(grpId);
-  if (!grp || !ctx.git) return;
+  if (!grp) return report(`grp 表里找不到组 ${grpId}`, null);
+  if (!ctx.git) return report("宿主的 git 没接上（ctx.git 是空的）");
   const repo = ctx.db
     .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
     .get(grp.project_id);
-  if (!repo) return;
+  if (!repo) return report(`项目不在了（project ${grp.project_id} 查不到）`);
   const remote = await remoteUrl(ctx.git, repo.repo_path);
-  if (!remote) return;
+  if (!remote) return report(`${repo.repo_path} 没有 remote origin，无从 clone`);
   await createCheckout(ctx, { grp: grpId }, {
     remote,
     branch: grp.branch ?? `orch/${grp.name}`,
