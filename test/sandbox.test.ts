@@ -232,6 +232,8 @@ test("a group's container is only ever built from an image we published or you b
   for (const ok of [
     "ghcr.io/pamin-labs/orch-agent:latest",
     "ghcr.io/pamin-labs/orch-agent:0.2.0",
+    // Mixed case on purpose: the org renamed to lowercase and GitHub logins are
+    // case-insensitive, so an image reference written either way is the same one.
     "ghcr.io/Pamin-Labs/orch-agent:1",
     // No registry in front of it: a tag that exists because it was built here,
     // which is what local development and debugging use.

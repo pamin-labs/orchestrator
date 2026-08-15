@@ -736,7 +736,7 @@ README 补一句：桌面通知是 macOS 的，其他平台走 ntfy，而那个 
 
 **598 pass / 4 skip / 0 fail。** 三个 subagent 并行做的，16 个提交。以下只记「读代码看不出来」的部分。
 
-**接 GitHub 是一次登录 + 一次安装，两件事**（`c11f702` `1060b6d`）。设备流，`client_id` 不是机密所以进仓库（`Iv23liUP6a00TszuLZvc`，app 在 Pamin-Labs 名下，slug `orchestrator-connect`，Public）。**授权 ≠ 安装**：GitHub App 的 user token 只够得到 app 装过的仓库，所以「授权了但没装」是一个看起来像成功、实际一个仓库也列不出来的状态，面板单独一态。App 本身可以在设置里换，存 `setting` 表不存 yaml —— yaml 是提交进仓库的，自托管的人改了下次 pull 就丢。
+**接 GitHub 是一次登录 + 一次安装，两件事**（`c11f702` `1060b6d`）。设备流，`client_id` 不是机密所以进仓库（`Iv23liUP6a00TszuLZvc`，app 在 pamin-labs 名下，slug `orchestrator-connect`，Public）。**授权 ≠ 安装**：GitHub App 的 user token 只够得到 app 装过的仓库，所以「授权了但没装」是一个看起来像成功、实际一个仓库也列不出来的状态，面板单独一态。App 本身可以在设置里换，存 `setting` 表不存 yaml —— yaml 是提交进仓库的，自托管的人改了下次 pull 就丢。
 
 **`paths` 是「沙盒不能 push」的全部，而且永远是**（`84bc400`、007 那节）。经典 OAuth 没有只读档，private key 不能 ship，所以没有第二道。已实测：白名单内注入、名单外不注入（**不 fail open**）；重定向两个方向都安全（逐请求按自己的路径判定）；**尾部 `*` 跨 `/`** —— 上游文档给的 `/owner/repo.git*` 会把 `git-receive-pack` 放回来，我们用枚举精确路径。手法是「容器里主动发 decoy」，因为注入是替换已有 header，所以两个方向都能观察到，不靠「header 不存在」推断。
 

@@ -136,7 +136,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
  * language it was written in.
  */
 /** Ours, for the line every pull request carries. */
-const PROJECT_URL = "https://github.com/Pamin-Labs/orchestrator";
+const PROJECT_URL = "https://github.com/pamin-labs/orchestrator";
 
 /**
  * Which version opened it.

@@ -476,6 +476,6 @@ test("every pull request says what opened it", () => {
   // evidence, and DESIGN.md's rule holds here too: say it once.
   const h = harness();
   const body = prBody(h.ctx, 1);
-  expect(body).toContain("https://github.com/Pamin-Labs/orchestrator");
+  expect(body).toContain("https://github.com/pamin-labs/orchestrator");
   expect(body.split("\n").filter((l) => l.includes("orchestrator]("))).toHaveLength(1);
 });
