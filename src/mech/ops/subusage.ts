@@ -2,7 +2,10 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { DB } from "../../db.ts";
 import type { RateLimitInfo } from "../../runtime/claude.ts";
-import { CODEX_HOME, loadAuth, subscriptionAccount } from "../sandbox/auth.ts";
+import type { Ctx } from "../../api.ts";
+import { CODEX_HOME, decoy, loadAuth, subscriptionAccount } from "../sandbox/auth.ts";
+import { execIn, UTIL } from "../sandbox/sandbox.ts";
+import { shq } from "../util/shq.ts";
 
 /**
  * How much of the claude subscription's windows is gone.
@@ -113,16 +116,44 @@ function usageToken(db: DB): string | null {
  */
 export type UsageRead = { rl: RateLimitInfo } | { error: string };
 
-export async function fetchClaudeUsage(token: string): Promise<UsageRead> {
-  const res = await fetch(ENDPOINT, {
-    headers: { Authorization: `Bearer ${token}`, "anthropic-beta": BETA },
-    signal: AbortSignal.timeout(10_000),
-  });
+/**
+ * Asked from the utility container, with a decoy, like everything else.
+ *
+ * This was a host `fetch` carrying the **real** token out of `runtime_auth`, and
+ * it was the last place a real model credential left this machine without going
+ * through the sidecar. The vault's whole premise is that a real value only
+ * appears on the wire when the sidecar substitutes it — so an exception here did
+ * not weaken the rule, it made the rule untrue, and nobody reading the rule
+ * would have found it.
+ *
+ * Injection *replaces* an Authorization header the client already set (005), so
+ * curl has to send something: it sends the same decoy every container holds, and
+ * the sidecar swaps in the real token on the way out. The utility container, not
+ * a group's — this is a subscription-wide reading and nothing an agent asked for.
+ *
+ * `-w` puts the status on its own last line, because curl's body and its exit
+ * code cannot tell 429 from 500 and 429 is the one worth naming.
+ */
+export async function fetchClaudeUsage(ctx: Ctx): Promise<UsageRead> {
+  const auth = `Authorization: Bearer ${decoy("claude", "oauth_token")}`;
+  const r = await execIn(
+    ctx,
+    UTIL,
+    `curl -s -m 10 -w '\n%{http_code}' -H ${shq(auth)} -H ${shq(`anthropic-beta: ${BETA}`)} ${shq(ENDPOINT)}`,
+    { timeoutMs: 30_000 },
+  );
+  if (r.code !== 0) return { error: "unreachable" };
+  const lines = r.out.trimEnd().split("\n");
+  const status = Number(lines.pop());
   // 429 is the one worth naming: it is self-inflicted and it clears by itself, so
   // the header should say "wait" rather than the shrug it says for everything else.
-  if (!res.ok) return { error: res.status === 429 ? "rate_limited" : `http_${res.status}` };
-  const rl = toRateLimit((await res.json()) as UsageResponse);
-  return rl ? { rl } : { error: "no_windows" };
+  if (status !== 200) return { error: status === 429 ? "rate_limited" : `http_${status || "unreachable"}` };
+  try {
+    const rl = toRateLimit(JSON.parse(lines.join("\n")) as UsageResponse);
+    return rl ? { rl } : { error: "no_windows" };
+  } catch {
+    return { error: "no_windows" };
+  }
 }
 
 /**
@@ -131,7 +162,8 @@ export async function fetchClaudeUsage(token: string): Promise<UsageRead> {
  * Called from the watchdog tick, which already runs on a clock nobody has to
  * remember to wind. Returns whether it wrote, for the test.
  */
-export async function pollClaudeUsage(db: DB, now = Date.now()): Promise<boolean> {
+export async function pollClaudeUsage(ctx: Ctx, now = Date.now()): Promise<boolean> {
+  const db = ctx.db;
   // What the fleet spends is the credential on the settings page, not whatever
   // this host is logged into — and this endpoint only reports on the provider's
   // own subscriptions. An API key or a gateway therefore gets no bar, and any row
@@ -161,7 +193,7 @@ export async function pollClaudeUsage(db: DB, now = Date.now()): Promise<boolean
   // would then keep feeding. Observed live while testing.
   stamp(db, now, { error: "unreachable" });
   try {
-    const read = await fetchClaudeUsage(token);
+    const read = await fetchClaudeUsage(ctx);
     stamp(db, now, read);
     return "rl" in read;
   } catch {
@@ -339,12 +371,13 @@ function recentFiles(root: string, limit: number): string[] {
  * poll usage, and the fallback has to be exercised on its own.
  */
 export async function pollUsage(
-  db: DB,
+  ctx: Ctx,
   dataDir: string,
   now = Date.now(),
   fromSandbox?: () => Promise<string | null>,
 ): Promise<void> {
-  await pollClaudeUsage(db, now);
+  const db = ctx.db;
+  await pollClaudeUsage(ctx, now);
   // Same rule as claude, stated rather than inferred: an api_key session's rollout
   // file happens to carry no `rate_limits`, so this used to be right by accident.
   if (!subscriptionAccount(db, "codex")) {

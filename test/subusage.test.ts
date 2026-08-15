@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 
 import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
+import { fakeSandbox } from "./fake-sandbox.ts";
 import { POLL_EVERY_MS, objectsAfter, pollClaudeUsage, pollUsage, toRateLimit } from "../src/mech/ops/subusage.ts";
 import { seedAuth } from "./seed-auth.ts";
 
@@ -13,6 +14,15 @@ const RESPONSE = {
   seven_day_opus: null,
   extra_usage: { is_enabled: true, used_credits: 1514.0 },
 };
+
+/**
+ * The usage read runs in the utility container now, not as a host `fetch` — the
+ * real token stays in `runtime_auth` and the sidecar substitutes it. So the seam
+ * these tests drive is a sandbox command, and `curl`'s answer is a body plus a
+ * status line.
+ */
+const ctx = (db: ReturnType<typeof openMemory>, answer = `${JSON.stringify(RESPONSE)}\n200`) =>
+  ({ db, sandbox: fakeSandbox(() => ({ out: answer })), waiters: new Map(), config: { language: "中文" } }) as any;
 
 test("both windows land in the same shape codex reports", () => {
   const rl = toRateLimit(RESPONSE)!;
@@ -38,7 +48,7 @@ test("a fresh row is left alone until the poll interval is up", async () => {
   db.run("INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', '{}', ?)", [now]);
   // No network call, so this also proves the interval is checked before the fetch:
   // the watchdog ticks every 30s and this endpoint is not ours to hammer.
-  expect(await pollClaudeUsage(db, now + POLL_EVERY_MS - 1)).toBe(false);
+  expect(await pollClaudeUsage(ctx(db), now + POLL_EVERY_MS - 1)).toBe(false);
 });
 
 test("a failed poll still costs the interval, so a bad endpoint is not hammered", async () => {
@@ -48,10 +58,10 @@ test("a failed poll still costs the interval, so a bad endpoint is not hammered"
   // No token, no network, so this fails — and must still record the attempt. The
   // watchdog ticks every 30s, and stamping only on success meant a failing
   // endpoint got retried twice a minute. This one answers failure with 429.
-  await pollClaudeUsage(db, now);
+  await pollClaudeUsage(ctx(db), now);
   const row = db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'").get();
   expect(row?.at).toBe(now);
-  expect(await pollClaudeUsage(db, now + POLL_EVERY_MS - 1)).toBe(false);
+  expect(await pollClaudeUsage(ctx(db), now + POLL_EVERY_MS - 1)).toBe(false);
 });
 
 test("a failed poll keeps the last good reading rather than blanking the header", () => {
@@ -81,7 +91,7 @@ test("only a subscription on the official endpoint gets a usage row", async () =
   // the switch would keep showing a number nobody is spending against.
   stale();
   saveAuth(db, { runtime: "claude", mode: "api_key", secret: "sk-ant-x" });
-  expect(await pollClaudeUsage(db, now)).toBe(false);
+  expect(await pollClaudeUsage(ctx(db), now)).toBe(false);
   expect(row()).toBeNull();
 
   // A subscription behind a gateway: the endpoint this reads is the provider's
@@ -93,12 +103,12 @@ test("only a subscription on the official endpoint gets a usage row", async () =
     secret: "sk-ant-oat01-x",
     baseUrl: "https://gw.internal/v1",
   });
-  expect(await pollClaudeUsage(db, now)).toBe(false);
+  expect(await pollClaudeUsage(ctx(db), now)).toBe(false);
   expect(row()).toBeNull();
 
   // Subscription, official endpoint: it gets as far as stamping the attempt.
   saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: "sk-ant-oat01-x" });
-  await pollClaudeUsage(db, now);
+  await pollClaudeUsage(ctx(db), now);
   expect(row()?.at).toBe(now);
 });
 
@@ -137,9 +147,35 @@ test("codex quota is read from a sandbox first, and the host is only the fallbac
     `{"type":"event_msg","payload":{"type":"token_count","rate_limits":` +
     `{"primary":{"used_percent":42,"window_minutes":300,"resets_at":1786000000},"secondary":null}}}`;
 
-  await pollUsage(db, "/tmp/nonexistent-codex-home", 1_700_000_000_000, async () => rollout);
+  await pollUsage(ctx(db), "/tmp/nonexistent-codex-home", 1_700_000_000_000, async () => rollout);
   const snap = db.query<{ json: string }, []>("SELECT json FROM usage_snapshot WHERE runtime = 'codex'").get()!;
   expect(JSON.parse(snap.json).fiveHourPercent).toBe(42);
+});
+
+test("the usage read carries a decoy, never the stored token", async () => {
+  // This was the last place a real model credential left this machine without
+  // going through the sidecar: a host `fetch` with `Bearer ${runtime_auth}`. The
+  // vault's premise is that a real value only reaches the wire by substitution,
+  // so an exception here did not weaken the rule — it made it untrue.
+  const db = openMemory();
+  saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: `sk-ant-oat01-${"S".repeat(80)}` });
+  const seen: string[] = [];
+  const c = {
+    db,
+    sandbox: fakeSandbox((cmd) => {
+      seen.push(cmd);
+      return { out: `${JSON.stringify(RESPONSE)}\n200` };
+    }),
+    waiters: new Map(),
+    config: { language: "中文" },
+  } as any;
+
+  expect(await pollClaudeUsage(c, Date.now())).toBe(true);
+  const cmd = seen.find((x) => x.includes("curl"))!;
+  expect(cmd).not.toContain("S".repeat(80));
+  expect(cmd).toContain("Authorization: Bearer sk-ant-oat01-");
+  // And it asked from the utility container's shell, not from this process.
+  expect(cmd).toContain("api.anthropic.com/api/oauth/usage");
 });
 
 test("an unreachable sandbox does not lose the reading", async () => {
@@ -152,7 +188,7 @@ test("an unreachable sandbox does not lose the reading", async () => {
     mode: "chatgpt",
     secret: JSON.stringify({ tokens: { refresh_token: "r" } }),
   });
-  await pollUsage(db, "/tmp/nonexistent-codex-home", Date.now(), async () => {
+  await pollUsage(ctx(db), "/tmp/nonexistent-codex-home", Date.now(), async () => {
     throw new Error("no such sandbox");
   });
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM usage_snapshot").get()!.n).toBe(0);

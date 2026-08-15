@@ -559,7 +559,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 10s timeout inside a gate sandbox, the test blew bun's 5s limit, and the
   // slice was rejected for a red test that had nothing to do with its change.
   // Two slices lost to it, on two different requirements.
-  await (deps.pollUsage ?? pollUsage)(ctx.db, cfg.dataDir, now(), async () => {
+  await (deps.pollUsage ?? pollUsage)(ctx, cfg.dataDir, now(), async () => {
     // The fleet's own rollouts live in the sandboxes now; the host copy is only
     // as fresh as the last weekly refresh nudge. Any one live sandbox will do —
     // the quota is the account's, not the container's.
