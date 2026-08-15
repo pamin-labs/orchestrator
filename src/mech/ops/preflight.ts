@@ -276,6 +276,25 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     fix: `uvx opensandbox-server --config ~/.sandbox.toml，监听 ${input.sandbox.server}，[egress] mode 要是 "dns+nft"`,
   });
 
+  // Answering without a key is not a configuration detail: this server creates
+  // containers and runs commands inside them, and those containers hold the
+  // checkout, the mailbox token and the CLI logins. Anything else on this
+  // machine — any process, any page that can reach loopback — can exec into one.
+  //
+  // Only when it is reachable AND we sent no key. A server that refuses us is
+  // already reported above, and one on a Tailscale address with no key is the
+  // same exposure to everyone on that network.
+  if (server.ok && !key) {
+    out.push({
+      name: "沙盒服务器鉴权",
+      ok: false,
+      detail: "服务器没开鉴权，本机任何进程都能进容器",
+      fix:
+        `在服务器的 TOML 里写 [server] api_key = "…"，重启，然后设置 → 沙盒服务器 → 「从服务器读」。` +
+        `容器里有仓库、信箱令牌和 CLI 登录。`,
+    });
+  }
+
   // The version the example config ships (v1.1.4) 403s every scoped package
   // fetch while a credential is bound, and the symptom is "this project cannot
   // install its dependencies" — which nobody traces back to a sidecar version.

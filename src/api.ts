@@ -2165,9 +2165,28 @@ const getAttachment: Handler = async (ctx, _req, params) => {
   const path = join(ctx.config.dataDir ?? "data", "attachments", name);
   if (!name || !existsSync(path)) return text("no such attachment", 404);
   const f = Bun.file(path);
+  // Served same-origin, from the origin that has every API route on it and no
+  // login in front of them. An `.svg` or an `.html` here is a script running as
+  // the panel — the one path around React's escaping, and the uploads are not
+  // all the boss's: `attach/local` is reachable by anything holding an agent
+  // token.
+  //
+  // Three headers, and each one closes a different half of that:
+  //
+  //   inline only for what has to render (images, pdf); everything else
+  //     downloads instead of executing, which is the whole of the `.html` case
+  //   nosniff, or an unknown type is guessed at by the browser and a text/plain
+  //     file full of markup becomes markup again
+  //   a CSP with no `script-src` at all, for the types that do render — an SVG
+  //     is an image and a document, and this is what stops the second half
+  const type = f.type || "application/octet-stream";
+  const renders = /^image\/(png|jpeg|gif|webp|avif)$|^application\/pdf$/.test(type);
   return new Response(f, {
     headers: {
-      "content-type": f.type || "application/octet-stream",
+      "content-type": type,
+      "content-disposition": `${renders ? "inline" : "attachment"}; filename="${name.replace(/["\\]/g, "")}"`,
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
       // Content-addressed by name — every upload carries its own timestamp, so a
       // given URL never changes.
       "cache-control": "public, max-age=31536000, immutable",
@@ -3617,6 +3636,16 @@ const getGithubRepos: Handler = async (ctx, req) => {
  * look like. Merged into `config_json` key by key, so a page that only knows
  * about gates cannot blank the sandbox block on save.
  */
+/**
+ * Everything `config_json` means. Read from it, in this order: `gate.ts`,
+ * `start.ts`, `executor.ts`, `sandbox.ts`, `repomap.ts`.
+ *
+ * A list rather than a shape check — the values are validated where they are
+ * used, and the thing this stops is a key nobody validates because nobody knew
+ * it was there.
+ */
+const CONFIG_KEYS = new Set(["gates", "install", "sandbox", "container", "index"]);
+
 const patchProjectConfig: Handler = async (ctx, req, params) => {
   const id = Number(params.id);
   const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
@@ -3635,6 +3664,18 @@ const patchProjectConfig: Handler = async (ctx, req, params) => {
     current = JSON.parse(row.config_json || "{}");
   } catch {
     current = {};
+  }
+  // The keys this config actually has. It used to merge whatever arrived, and
+  // `config_json` is not inert data: `install` is run as a shell command inside
+  // the sandbox and `gates` decides which resource templates a slice must pass,
+  // so an unknown key is either a typo that silently does nothing or a name some
+  // later version will start honouring — set by whoever could reach this route
+  // before anybody decided what it means.
+  //
+  // A refusal rather than a filter, for the same reason as the image above: a
+  // setting that is quietly dropped is worse than one that is turned away.
+  for (const k of Object.keys(patch)) {
+    if (!CONFIG_KEYS.has(k)) return bad(`项目配置里没有 ${k} 这一项`);
   }
   for (const [k, v] of Object.entries(patch)) {
     if (v === null) delete current[k];
