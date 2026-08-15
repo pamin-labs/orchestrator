@@ -1,126 +1,148 @@
+[English](README.md) · [简体中文](README.zh-CN.md)
+
 # orchestrator
 
-一人公司的 AI 员工调度系统。你丢想法，一组 AI 分工接管拆解 / 架构 / 编码 / 测试 / 审阅 / PR。
-
-**你只做三个动作**：批 DRAFT 卡（20 秒）→ 查收切片 → merge。
+**An AI team for a company of one.** You do three things. Nine roles do the rest,
+each inside its own container.
 
 ```
-你: "greet 加个可选语言参数，zh 返回「你好 X」"
-                    ↓
-  Dispatcher 读代码 + 查黑板 + 问 Architect，交一张 ≤12 行的卡
-                    ↓
-  ┌──────────────────────────────────────┐
-  │ 目标 : ...        验收 : 2-3 条可执行 │  ← 你在这儿花 20 秒
-  │ 不做 : ...        切片 : 1-5 片       │     批准 / 改完批准 / 打回重拆
-  │ 风险 : ...        反对 : Architect 的 │
-  └──────────────────────────────────────┘
-                    ↓ 你批了
-  建 branch + worktree，Engineer 干活
-                    ↓ 每一片
-  self-review → gate（退出码说话）→ QA（独立 session）→ 通知你查收
-                    ↓ 全片查收完
-  reconcile → Auditor（组外，不共享 context）→ PR → 你 merge → 组解散
+●  you say one sentence
+│
+○  it reads the repo, splits the work, drafts a plan
+│
+●  you approve            ← or send it back; it writes another
+│
+○  it opens a group: writes code, self-checks, runs your tests, hands it to QA
+│
+○  an auditor outside the group reads the branch, then opens the PR
+│
+●  you merge
+
+●  you — three things     ○  it — everything else
 ```
 
-中途你随时能插话、打断、回滚。它卡住了会通知你。
+## Why
 
-## 为什么不是「再一个 agent 框架」
+**Getting code out of an AI already works.** What you can't get from one agent is
+a second opinion before you commit to a plan, a reviewer who didn't also write
+the thing, or someone to hold thirty open threads so that one question reaches
+you. That is what this staffs.
 
-因为值钱的部分是那些 `if`，不是编制：
+**And it can't touch your machine.** Every group works in its own container with
+its own clone. If an agent runs `rm -rf`, it happens to a container.
 
-- **拆解质量由一张阻塞你的卡兜住** —— 卡片硬性 ≤12 行，超长 `orch` 拒收。你批的是方向和验收标准，不是实现
-- **一次大查收拆成多次小查收** —— 每片独立可验收，白干的单位是一片而不是整个需求
-- **凡能用 `if` 拦的绝不写进 prompt** —— journal ≤6 行、切分重叠检测、file ownership、claim 对账、看门狗 6 条，全部确定性强制。提示词会在第 20 个 turn 被忘掉
-- **review 两级且互相独立** —— QA 管切片，Auditor 管 PR，各自独立 session。同一个模型审自己的同类就是审批剧场
-- **agent 说的话不算进展** —— 进度显示「过了几道闸」，不显示百分比。LLM 报的百分比是猜的
+## Quickstart
 
-## 起步
+Needs `bun`, Docker, [`uv`](https://docs.astral.sh/uv/), and a Claude and/or
+ChatGPT subscription.
 
 ```bash
 bun install
-bun run src/server.ts        # web 在 http://127.0.0.1:47821
+docker build -f docker/agent.Dockerfile -t orch/agent:1 .
+docker pull opensandbox/egress:v1.1.6      # v1.1.4 breaks scoped npm packages
+uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
+bun run dev                                       # → 127.0.0.1:47821
 ```
 
-然后在设置里连一次 GitHub。两步，面板会带着走：
+Then, once, in the panel:
 
-1. **设置 → 账号 → 连接 GitHub** —— 出一个设备码，去 github.com/login/device 输进去。用的是设备流，所以**没有 client secret**，`client_id` 直接写在 `config/default.yaml` 里，你不需要注册任何东西。
-2. **去装上** —— 授权和安装是**两件事**，只授权的 token 一个仓库也看不见。这一步在 GitHub 自己的页面上选账号/org 和要交出去的仓库。面板在你只做了第一步时会明说，不会显示成已连接。
+1. **Sign in.** Both logins run the official CLI in a container — nothing is
+   installed here. Pasting a token or an API key also works.
+2. **Connect GitHub.** A device code. Note that **authorizing is not
+   installing**: installing is where you pick which repositories it may touch,
+   and until you do the repository list is empty. The panel says so when it
+   spots that.
+3. **Add a project** from the list. Nothing is copied here — a project is a
+   GitHub coordinate. The first group clones it and works out your gates (test,
+   typecheck, lint) by reading the repo; it writes the guess into project config
+   where you can correct it.
 
-想用自己的 App 而不是我们的，把 `github.clientId` / `github.appSlug` 换掉就行 —— 那两个都不是机密。
-
-连上之后加项目就是从仓库列表里挑一个。闸门和安装命令在第一个组克隆完之后自动猜，猜的结果写进项目配置，随时可以改。
-
-```bash
-bun test                     # 326 checks
-```
-
-## 需要什么
+## The team
 
 | | |
 |---|---|
-| `bun` | 唯一运行时，无 build step |
-| `claude` CLI | agent runtime（`codex` 也支持，换 role 配置即可） |
-| `docker` + `opensandbox-server` | 每组一个容器，就是写边界（决策 005）。没有它不会退回宿主模式，会直说 |
-| `git` | 一组一个 branch；checkout 是容器里的 clone |
-| `gh` | 只有开 PR 那步要，登录后需要目标仓库的写权限 |
+| **Chief of Staff** | Works for you, not for a project. Batches every open question into one message. Blockers go straight through. |
+| **Dispatcher** | One sentence in, a plan out. Counts how many separate asks you actually typed, and splits the work into slices you accept one at a time. |
+| **Architect** | Standing, above every group. Assigns each group its own paths so two can't collide, then writes two lines on what's wrong with the plan — which you read before approving. |
+| **PM** | The group's one conversational entrance. You say something, one agent answers. |
+| **Engineer** | The only agent in a group that writes code. Serialised, so write conflicts don't exist. |
+| **QA** | Checks one slice against its acceptance criteria, from the diff and the test output — deliberately not from the whole repo. |
+| **Auditor** | Reviews the finished branch from outside the group, on a different model. Does it deliver what the card promised, did it reinvent something the codebase already has, do its own work notes match the real diff. |
+| **Librarian** | Keeps a project primer and a capped list of lessons learned, so a new agent starts already knowing the project. |
+| **Bootstrap** | Makes a fresh checkout buildable, working the install step out from the lockfile and CI config. |
 
-桌面通知是 macOS 的（`terminal-notifier`，退回 `osascript`）。其他平台设 `ORCH_NTFY_TOPIC` 走 ntfy —— 注意那个 topic 名就是唯一的凭据，别用能猜到的。
+Adding a role is a YAML file, not code.
 
-Claude Max 订阅够用。**不做多账号绕限额** —— 本地单账号 + 并发上限是正当用法。
+## How you know it isn't bluffing
 
-## 长什么样
+Five things everyone who has used a coding agent has hit.
 
-```
- group/auth-refactor        RUNNING    owns: auth/**, mw/**     $1.24 / $5.00
- ┌─ S1 token 校验挪到 middleware  [normal]   ●self ●gate ◐QA  ○待查收
- │     engineer ▸ turn 7  改 auth/mw.ts (+31 -8)   ▐ 正在跑 lease build#12
- ├─ S2 legacy header 兼容        [trivial]  ●self ○gate ─QA  ─待查收
- └─ S3 补 middleware 单测        [normal]   ─ ─ ─ ─         ⏸ 等 S1
- ─────────────────────────────────────────────────────────────
- ❓ engineer: 用哪个校验库？  [blocker · 等你 4m]  [回答] [转 Architect]
-```
+**"Done!" — and it isn't.**
+A slice only counts once your project's own commands pass: test, typecheck,
+lint. Exit codes decide, not the agent's summary. Failures go back to the
+engineer, not to you. And you never get a percentage — the panel shows which
+checks passed, because a number from an LLM is a guess.
 
-一眼三个问题：整个需求走到哪 / 卡在哪道闸 / 谁在等我。
+**It reviewed its own work.**
+Two reviews here, neither by the author. QA sees one slice's diff. The Auditor
+sits outside the group, on a different model, and reads the whole branch.
 
-## 结构
+**It said it changed A; it changed B.**
+At the end of every slice the system compares what it claimed against what git
+actually shows. Mismatches surface there, not while you're reading the PR.
 
-```
-src/
-  server.ts scheduler.ts db.ts api.ts bus.ts
-  prompt/assemble.ts     # 唯一的 prompt 组装入口（cache 约束在这儿）
-  runtime/               # claude / codex 子进程 + 执行器
-  mech/                  # 那些 if：validate lease gate reconcile sandbox auth
-                         # review ownership mergequeue watchdog intercept net …
-  orch/cli.ts            # agent 的唯一出口
-roles/*.yaml             # 8 个角色，加岗零代码
-web/index.html           # 单文件，无框架无 build
-```
+**It knew the rules at turn 1 and forgot them by turn 20.**
+So anything a check can catch is never left to a prompt: which files a group may
+touch, how long a note may be, whether a stuck state has anyone to push it.
+Prompts get forgotten. `if` doesn't.
 
-设计文档是 `PLAN.md`，当前状态和**所有实测踩过的坑**在 `PROGRESS.md`，改代码前先读 `CLAUDE.md`。
+**It wants you to approve a wall of text.**
+The card that blocks you is capped at 12 lines; longer and it's sent back before
+it reaches you. You approve a direction and its acceptance criteria, never an
+implementation.
 
-## 沙盒挡什么，不挡什么
+## What the sandbox stops — and what it doesn't
 
-先把这条说在前面，因为「沙盒」这个词会让人默认得太多。
+**It stops three things.**
 
-**挡住的**：
-- **写边界。** agent 跑在自己组的容器里，碰不到宿主文件系统。宿主只通过 `orch` 暴露有限动作，路由前缀之外一律 403。
-- **凭据。** 真 token 永远不进容器：容器里是格式合法的假值，出站时 egress sidecar 按 host 替换 header。
-- **推送。** 跑 agent 的容器推不动远端：GitHub 凭据在 sidecar 上按**请求路径**限定，只绑 `info/refs` 和 `git-upload-pack`（取），不绑 `git-receive-pack`（推）。推走的是另一个容器 —— 一个不跑 agent、不检出工作区、不执行仓库里任何东西的工具容器（决策 007）。
+- **Touching your computer.** An agent's container holds one clone of one
+  project. Your other projects, your home directory, your working copy — it
+  cannot reach any of them, because they are not in there.
+- **Seeing your real tokens.** The container holds values that are the right
+  shape and don't work. The real token is swapped in outside the container, at
+  the moment the request leaves, so the container never sees it.
+- **Pushing to your repository.** A group's GitHub credential is only good for
+  fetching. Pushing happens in a separate container with no agent in it.
 
-  说清楚这条**不是**什么：一次 push 的 ref 广告阶段和 fetch 只差 query string，而 sidecar 匹配前会把 query 剪掉，所以那一次请求**确实**带着真 token 出去。挡住的是携带 packfile 的那个 POST —— **写永远完不成**，但「token 从不出现在写路径上」并不成立。
+**It does not stop your data leaving.** The network is open by default, because
+agents need to read docs and install packages. So credentials are safe, and
+**your code can still be sent anywhere**. If that matters, fill in
+`sandbox.denyDomains` before your first run.
 
-**不挡的**：
-- **数据出站。** 出站策略是 `defaultAction: allow` 加每项目黑名单（默认空）。agent 可以访问整个互联网 —— 这是刻意的取舍（决策 005：要能查文档、装依赖），代价是**它也可以把仓库内容、journal、DRAFT 卡发到任何地方**。凭据受控，数据不受控。要收紧就配 `sandbox.denyDomains`。
-- **同组内的互相冒充。** 一个组共用一个容器，组内每个角色的 token 都在同一个文件系统里。跨组不行，组内可以。
+**It does not isolate roles inside one group.** A group shares one container.
+The boundary is between groups.
 
-如果你的威胁模型里「代码不能出这台机器」，先改 `denyDomains` 再跑。
+## Status
 
-## 三条硬约束
+Early, and honest about it: **no requirement has been driven end to end yet.**
+Not "not with real accounts" — no complete run of any kind. Every piece is
+measured against the real thing on its own, and every stage is tested against a
+stand-in on its own. Those are two kinds of evidence, and neither is the third.
 
-违反其中任何一条都会得到「功能正常但系统变蠢或变贵」的结果：
+Every bug so far came out of that gap, and all three looked identical:
+**completely fine.** A directory reported that it mounted and was empty. A code
+index rendered perfectly with its contents missing. Multi-line output from a
+container arrived joined into one line, so everything reading it line by line
+found nothing. None was caught by a test. All were found by measuring.
 
-1. **注入的 delta 一律追加到最新一条 user message 末尾**。塞进 system prompt 会击穿 prompt cache，成本翻 3-5 倍而功能完全正常 —— 最隐蔽的故障
-2. **`orch lease` 永不接受自由命令**。以前的理由是「Runner 跑在 host 上有真权限，这是沙盒唯一的缺口」；容器化之后理由反过来了 —— **`orch` 是 agent 唯一的接口**，它的校验就是整条边界
-3. **`if` 和 prompt 说的话必须一致**。prompt 给的许可如果校验器不认，就是在教模型撒谎
+No license file yet.
 
-第四条是「凡能用 `if` 拦的绝不写进 prompt」（见上）。四条各自的实测反例在 `CLAUDE.md` 和 `PROGRESS.md` 里。
+## More
+
+`bun test` runs the checks. Design is in [`PLAN.md`](PLAN.md), everything
+measured the hard way is in [`PROGRESS.md`](PROGRESS.md) and
+[`docs/decisions/`](docs/decisions/), and [`CLAUDE.md`](CLAUDE.md) is required
+reading before changing code.
+
+Built on [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox). The agents
+are the real `claude` and `codex` CLIs, not reimplementations of them.

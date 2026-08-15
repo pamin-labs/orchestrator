@@ -436,3 +436,73 @@ before someone concludes a credential that is not a header cannot be vaulted.
   the codex process that produced them, which lives in a group container
   (`subusage.ts:254` already reads from there). Listed so nobody puts it on the
   migration list.
+
+## Amendment: skills, and the last host login (2026-08-15)
+
+Two things §6 left standing, and one bug found on the way.
+
+**A repository's own skills were listed and never delivered.** The comment
+claiming otherwise had `.codex/skills` down as codex's project path. Counted in
+the binaries in `orch/agent:1`:
+
+```
+claude   .claude/skills 93   .codex/skills 0   .agents/skills 0
+codex    .codex/skills  3    .claude/skills 0  .agents/skills 0
+```
+
+and codex's three occurrences are one sentence — *"I will place it in
+`$CODEX_HOME/skills` (or `~/.codex/skills` when `CODEX_HOME` is unset)"*. **codex
+has no project-local skills directory at all.** So two of the three conventions
+reached neither runtime and the third reached one of two, while the settings page
+listed all three.
+
+The reason the one previous attempt failed is worth keeping: it linked repo
+skills into `$CODEX_HOME/skills`, which was itself the read-only mount, so every
+link was `EROFS` — swallowed by a trailing `; true`, with a test that ran in a
+temp directory where no mount existed. Reported success, delivered nothing.
+
+Fixed by moving the mount off the CLIs' own paths. The staged directory mounts
+read-only at `/opt/orch/skills`; `SKILL_SYNC` builds `/root/.claude/skills` and
+`$CODEX_HOME/skills` as ordinary directories of symlinks into it, then links the
+repository's own on top. It rides on the checkout probe that already ran, so it
+costs no round trip and is current every turn rather than per container.
+
+The same pass prints the repository's skills back out (`ORCHSKILL <rel>
+<base64 head>`), which is what restores the listing the panel and `/name` lost
+when `repo_path` became `owner/name`. The head travels rather than a parsed
+description because a `description: |` block scalar read by `sed` returns `|`.
+
+**`claude setup-token` moved into the utility container.** It is a TUI: run
+without a pty it prints **nothing** and exits 0, which is why this was left on
+the host. Under a pty it prints its URL and waits at `Paste code here`. The
+container gets a pty (`pty.fork` plus an explicit `TIOCSWINSZ` — a default 80
+columns wraps the URL mid-token, and `script` ignores `COLUMNS`) and the pasted
+code arrives on stdin through a file the orchestrator appends to, because the
+sandbox SDK has no stdin channel. The real CLI performs the whole OAuth exchange;
+nothing here builds a URL or calls a token endpoint. `startLogin` and
+`/api/auth/login` are gone with it — no login runs a CLI on this machine.
+
+**Found on the way: the sandbox SDK delivers stdout one line per message with the
+newline removed.** Measured:
+
+```
+printf 'a\nbb\nccc\n'   ->  ["a", "bb", "ccc"]
+printf 'a\nb'           ->  ["a", "b"]              a partial last line is unmarked
+printf 'a\n\n\nb\n'     ->  ["a", "\n", "\n", "b"]  a blank line arrives AS "\n"
+printf '1%\r42%\rdone\n'->  ["1%", "42%", "done"]   CR splits too, and is eaten
+300 KB, no newline      ->  one message             a long line is never split
+```
+
+`join("")` therefore ran every line together: `git status --porcelain`, `ls`, and
+the skills inventory all arrived as a single line, and every caller splitting on
+newlines matched nothing — without throwing. On the streaming path it is worse:
+with no terminator the splitter holds an entire turn's NDJSON and emits it once,
+concatenated. The last row is what makes re-joining with `\n` a fact rather than a
+guess.
+
+**Also found: the repo map has had no symbols since this decision landed.**
+`buildMap` read `join(repo_path, rel)` off this machine, and `repo_path` is an
+`owner/name`. Every read threw, every throw was caught as "a file git knows about
+and the disk does not", and the map rendered paths only while still reporting
+`repo map refreshed`. The symbol source is now a parameter; the watchdog supplies
+it from the project's own container.

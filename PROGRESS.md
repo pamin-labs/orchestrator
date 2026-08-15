@@ -791,3 +791,42 @@ README 补一句：桌面通知是 macOS 的，其他平台走 ntfy，而那个 
 **选仓库那个对话框：两次测量都推翻了显而易见的修法。** 慢**不是**分页也**不是**渲染 —— `api.github.com` 往返 262-630ms，87 个仓库一页装得下，成本是**串行两趟**（要先拿 installations 才知道 id）。改成指明 installation 时并行，面板记住上次选的，第一次之后每次一趟。下拉被挡**不是** portal 问题 —— Radix portal 完全正确，是 `ui/menu.tsx` 的 `z-50` 在 `z-[70]` 的对话框底下。**一个数字。**
 
 **还没做**：项目自带的 `.claude/skills/` 读不到（`repo_path` 已是 `owner/name`，没有那个宿主目录）—— 现在是每项目响一次的跳过，不是静默的。而**这个仓库自己就带 `.claude/skills/git-commit/`**，所以拿 orchestrator 跑 orchestrator 时，agent 拿不到这个仓库想给它们的提交约定。看门狗真正的逐条规则隔离也还欠着。
+
+#### 技能真的送到了，claude 登录进容器，外加两个一直在发生的静默 bug
+
+**617 pass / 6 skip / 0 fail，live 沙盒 6 条全绿。**
+
+**上一条「还没做」的答案是：投递本身从来就没接上，而且比记的更糟。** 先数了镜像里两个二进制自己的字符串：
+
+```
+claude   .claude/skills 93   .codex/skills 0   .agents/skills 0
+codex    .codex/skills  3    .claude/skills 0  .agents/skills 0
+```
+
+codex 那三处是**同一句话** —— `$CODEX_HOME/skills`。**codex 根本没有项目级技能目录。** 所以三个约定里 `.codex/skills` 和 `.agents/skills` 谁都到不了，`.claude/skills` 只到 claude 一半，而设置页把三个都列着。旧注释把 `.codex/skills` 写成「codex 的项目路径」，**一个词，整件事就看起来是通的**。
+
+**上一次尝试为什么失败，值得留着**：它把仓库技能链进 `$CODEX_HOME/skills`，而那个路径**本身就是只读挂载**，每个 `ln` 都是 EROFS —— 被尾巴上的 `; true` 吞掉，配套测试跑在一个根本没有挂载的临时目录里。**报成功，投递零个。**
+
+修法是把挂载从两个 CLI 自己的目录上挪开：暂存目录只读挂到 `/opt/orch/skills`，`SKILL_SYNC` 把两个 CLI 的目录搭成指向它的软链农场，再把仓库自己的链上去。它**并进了本来就要跑的那条 checkout 探测**，所以零额外往返、每轮都是最新的，而不是每容器一次。
+
+同一条 exec 把仓库技能的清单印回来（`ORCHSKILL <rel> <base64 头部>`），这就补上了 `repo_path` 变成 `owner/name` 之后丢掉的那一半：设置页列得出来、输入框 `/名字` 点得着。**头部是原样传回来在这边解的** —— `description: |` 是块标量，shell 里一行 `sed` 解出来是 `|`。
+
+**`claude setup-token` 搬进工具容器了，上一条说的「传输层缺口」是可以补的。** 它没有 pty 时**什么都不打印、退出 0**（上次记的是超时，这次实测是静默成功），最坏的形状。给容器一个 pty（`pty.fork` 加显式 `TIOCSWINSZ` —— 默认 80 列会把 URL 断在 token 中间，而 `script` 不认 `COLUMNS`），粘回来的码经由一个我们 append 的文件进 stdin。**跑的是真 CLI，OAuth 全程由它自己走完。** `startLogin` 和 `/api/auth/login` 跟着删了 —— **宿主上再没有任何一处 spawn 模型 CLI**。
+
+**顺手撞见的第一个：沙盒 SDK 每行一条消息，换行符被吃掉。**
+
+```
+printf 'a\nbb\nccc\n'    ->  ["a","bb","ccc"]
+printf 'a\nb'            ->  ["a","b"]              半行不标记
+printf 'a\n\n\nb\n'      ->  ["a","\n","\n","b"]    空行是 "\n" 本身
+printf '1%\r42%\rdone\n' ->  ["1%","42%","done"]    \r 也切，也被吃
+300KB 无换行             ->  一条                    长行永远不切
+```
+
+`join("")` 把每一行都拼在一起。`git status --porcelain`、`ls`、技能清单**全都是一行**，每个按行解析的调用方都在「什么都没匹配上」—— 不抛、不警告。流式那侧更糟：没有终止符，`lineSplitter` 攒下整个 turn 的 NDJSON，最后吐成一坨不可解析的东西。**最后一行是把「按 `\n` 重接」从猜变成事实的那一行**：服务端只按行边界切，一条消息永远不是半行。
+
+**第二个：仓库地图从 007 落地起就没有符号了。** `buildMap` 读 `join(repo_path, rel)`，而 `repo_path` 是 `owner/name`。每次读都抛，每次抛都被 catch 成「git 认得但磁盘上没有」，地图照常渲染、照常报 `repo map refreshed`。符号来源改成调用方传，看门狗从项目自己的容器读。
+
+**两句指错人的话**：看门狗猜「工具容器起不来，或者这个登录读不到这个仓库」—— 第一个撞上的人两个都不是，而**一条列三个可能原因的建议，是把它本该替你做的活退回给你**；现在 `listTree` 把四种失败分开，直接印 git 自己的话。preflight 教人跑 `claude setup-token` / `codex login` —— 照做只会把**宿主**登录上、什么都不存，而检查继续说「没配」。
+
+**宿主现在剩什么**：服务 HTTP/SSE、持有 sqlite、轮询信箱、管容器运行时（`ps` / `lsof` / docker / 重启 opensandbox-server）、在老板自己机器上弹通知。带真凭据出网的只剩 preflight 的凭据校验一处，理由写在文件里没变 —— **一个需要它所检查之物才能运行的检查不是检查**。
