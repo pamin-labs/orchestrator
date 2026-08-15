@@ -13,15 +13,21 @@ import { cn } from "../lib/utils";
 export function Menu({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <M.Root>
-      <M.Trigger className={cn(buttonStyles({ variant: "default" }), "cursor-pointer")}>
-        {label}
+      {/* `max-w` + truncate: an org name can be far longer than a person's, and a
+          trigger that grows pushes whatever sits beside it off the row. */}
+      <M.Trigger className={cn(buttonStyles({ variant: "default" }), "max-w-[14rem] cursor-pointer")}>
+        <span className="truncate">{label}</span>
         <ChevronDown size={12} strokeWidth={2} />
       </M.Trigger>
       <M.Portal>
         <M.Content
           align="end"
           sideOffset={4}
-          className="fade-in z-50 min-w-[16rem] overflow-hidden rounded-lg border border-rule bg-paper
+          // Above every dialog (`z-[70]`), not below one. A menu opened from
+          // inside a dialog rendered behind it, which reads as a dead control:
+          // the trigger responds and nothing appears. A popover is always above
+          // the surface that opened it.
+          className="fade-in z-[80] min-w-[16rem] overflow-hidden rounded-lg border border-rule bg-paper
                      p-1 shadow-[0_10px_30px_var(--shade)]"
         >
           {children}

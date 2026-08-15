@@ -7,7 +7,7 @@ import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
 import {
-  githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Fetcher,
+  CLIENT_ID, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Fetcher,
 } from "../src/mech/git/ghlogin.ts";
 
 /** A fetcher that answers from a script and records what it was sent. */
@@ -38,11 +38,11 @@ test("the device flow asks for a code, with no secret and no scope", async () =>
   const { fetchFn, sent } = scripted([
     { device_code: "dev-code", user_code: "WDJB-MJHT", verification_uri: "https://github.com/login/device", interval: 5, expires_in: 900 },
   ]);
-  const d = await startDeviceFlow("Iv23li.public", fetchFn);
+  const d = await startDeviceFlow(fetchFn);
   expect(d.userCode).toBe("WDJB-MJHT");
   expect(d.deviceCode).toBe("dev-code");
   expect(sent[0]!.url).toBe("https://github.com/login/device/code");
-  expect(sent[0]!.body).toBe("client_id=Iv23li.public");
+  expect(sent[0]!.body).toBe(`client_id=${CLIENT_ID}`);
   expect(sent[0]!.body).not.toContain("scope");
   expect(sent[0]!.body).not.toContain("secret");
 });
@@ -54,7 +54,7 @@ test("authorization_pending keeps polling, and the exchange carries the device g
     { access_token: "gho_real" },
   ]);
   const waits: number[] = [];
-  const token = await pollForToken("Iv1.public", DEVICE, {
+  const token = await pollForToken(DEVICE, {
     fetchFn,
     sleep: async (ms) => void waits.push(ms),
   });
@@ -77,7 +77,7 @@ test("slow_down widens the interval, which is the whole reason to handle it", as
     { access_token: "gho_real" },
   ]);
   const waits: number[] = [];
-  const token = await pollForToken("Iv1.public", DEVICE, {
+  const token = await pollForToken(DEVICE, {
     fetchFn,
     sleep: async (ms) => void waits.push(ms),
   });
@@ -88,12 +88,12 @@ test("slow_down widens the interval, which is the whole reason to handle it", as
 test("a refused or expired login stops, and says which", async () => {
   const denied = scripted([{ error: "access_denied" }]);
   await expect(
-    pollForToken("Iv1.public", DEVICE, { fetchFn: denied.fetchFn, sleep: async () => {} }),
+    pollForToken(DEVICE, { fetchFn: denied.fetchFn, sleep: async () => {} }),
   ).rejects.toThrow(/拒绝/);
 
   const expired = scripted([{ error: "expired_token" }]);
   await expect(
-    pollForToken("Iv1.public", DEVICE, { fetchFn: expired.fetchFn, sleep: async () => {} }),
+    pollForToken(DEVICE, { fetchFn: expired.fetchFn, sleep: async () => {} }),
   ).rejects.toThrow(/过期/);
 
   // And a code that runs out while nobody is looking is the same message rather
@@ -101,7 +101,7 @@ test("a refused or expired login stops, and says which", async () => {
   const forever = scripted([{ error: "authorization_pending" }]);
   let clock = 0;
   await expect(
-    pollForToken("Iv1.public", DEVICE, {
+    pollForToken(DEVICE, {
       fetchFn: forever.fetchFn,
       sleep: async (ms) => void (clock += ms),
       now: () => clock,
@@ -109,23 +109,13 @@ test("a refused or expired login stops, and says which", async () => {
   ).rejects.toThrow(/过期/);
 });
 
-test("no client id is refused before anything is sent, naming both app switches", async () => {
-  const { fetchFn, sent } = scripted([{}]);
-  await expect(startDeviceFlow("  ", fetchFn)).rejects.toThrow(/clientId/);
-  expect(sent).toHaveLength(0);
-  // Both are invisible from here and both fail later rather than now: without
-  // Device Flow the code request is refused, and with user token expiry left on
-  // the login works today and is dead tomorrow.
-  await expect(startDeviceFlow("", fetchFn)).rejects.toThrow(/Device Flow/);
-  await expect(startDeviceFlow("", fetchFn)).rejects.toThrow(/过期/);
-});
 
 test("the token lands in runtime_auth like every other credential", async () => {
   // Stored, not returned: the panel reads a masked tail, and the value itself
   // only ever leaves this process into the egress sidecar's vault.
   const db = openMemory();
   const { fetchFn } = scripted([{ access_token: "gho_real_token_abc123" }]);
-  const token = await pollForToken("Iv1.public", DEVICE, { fetchFn, sleep: async () => {} });
+  const token = await pollForToken(DEVICE, { fetchFn, sleep: async () => {} });
   saveAuth(db, { runtime: "github", mode: "api_key", secret: token });
 
   expect(loadAuth(db, "github")!.secret).toBe("gho_real_token_abc123");
@@ -247,7 +237,7 @@ function server(answer: (url: string) => unknown) {
       asked.push(url);
       return new Response(JSON.stringify(answer(url)), { status: 200, headers: { "content-type": "application/json" } });
     }),
-    config: { language: "中文", github: { clientId: "Iv23li.x", appSlug: "orch" } },
+    config: { language: "中文" },
   } as unknown as Ctx;
   return { db, ctx, app: makeApp(ctx), asked };
 }
@@ -264,7 +254,7 @@ test("a login with no installations lists nothing and says where to fix it", asy
   expect(b.installations).toEqual([]);
   expect(b.repos).toEqual([]);
   expect(b.selected).toBeNull();
-  expect(b.installUrl).toBe("https://github.com/apps/orch/installations/new");
+  expect(b.installUrl).toBe("https://github.com/apps/orchestrator-connect/installations/new");
 });
 
 test("switching installation changes the list", async () => {
@@ -401,8 +391,7 @@ test("the status carries which accounts it is installed on, and how much each ca
   const b = (await (await get(app, "/api/auth/github")).json()) as any;
   expect(b.accounts).toEqual([{ id: 5, account: "acme", kind: "Organization", repos: 3 }]);
   // The install link comes from the yaml's `appSlug`, which is now its only source.
-  expect(b.installUrl).toBe("https://github.com/apps/orch/installations/new");
-  expect(b.configured).toBe(true);
+  expect(b.installUrl).toBe("https://github.com/apps/orchestrator-connect/installations/new");
   expect(b.app).toBeUndefined();
 
   // And the route that wrote the override is gone with the panel section.
@@ -410,4 +399,40 @@ test("the status carries which accounts it is installed on, and how much each ca
     new Request("http://x/api/auth/github/app", { method: "POST", body: JSON.stringify({ clientId: "x" }) }),
   );
   expect(gone.status).toBe(404);
+});
+
+test("the list comes back most recently pushed first", async () => {
+  // GitHub returns them in its own order — read down the screenshot that
+  // prompted this, 76 months, 51, 4, 61, 72, 71, 14 — and the repository the
+  // boss wants is almost always the one they touched last. Sorted at the source
+  // so the picker and anything else added later get it for free.
+  const { gh } = client(() => ({
+    repositories: [
+      { full_name: "a/old", pushed_at: "2020-01-01T00:00:00Z" },
+      { full_name: "a/new", pushed_at: "2026-08-01T00:00:00Z" },
+      { full_name: "a/mid", pushed_at: "2024-05-01T00:00:00Z" },
+      { full_name: "a/never" },
+    ],
+  }));
+  const r = await listRepos(gh, 1);
+  expect(r.ok && r.data.map((x) => x.fullName)).toEqual(["a/new", "a/mid", "a/old", "a/never"]);
+});
+
+test("naming the installation costs one round trip, not two", async () => {
+  // The route cannot ask for repositories until it knows the id, so a cold open
+  // is two trips in series — 260-630ms each, measured. When the caller names one
+  // (every open after the first, the panel remembers it) both halves go at once.
+  const { app, asked } = server((url) =>
+    url.includes("/user/installations/")
+      ? { repositories: [{ full_name: "acme/site" }] }
+      : { installations: [{ id: 9, account: { login: "acme", type: "Organization" } }] },
+  );
+  const b = (await (await get(app, "/api/github/repos?installation=9")).json()) as any;
+  expect(b.selected).toBe(9);
+  expect(b.repos.map((r: any) => r.fullName)).toEqual(["acme/site"]);
+  // Both were asked for, and neither waited on the other.
+  expect(asked.some((u) => u.includes("/user/installations?"))).toBe(true);
+  expect(asked.some((u) => u.includes("/user/installations/9/repositories"))).toBe(true);
+  // And the repositories were fetched once, not once per guess.
+  expect(asked.filter((u) => u.includes("/repositories")).length).toBe(1);
 });

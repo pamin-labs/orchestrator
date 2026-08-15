@@ -203,6 +203,18 @@ interface RepoList {
   repos: RepoRow[];
 }
 
+/**
+ * The account the boss was last in, so the next open can ask for both halves at
+ * once.
+ *
+ * Measured: a round trip to api.github.com is 260-630ms, and the route cannot
+ * fetch repositories until it knows the installation id — so a cold open is two
+ * trips in series. Naming the id turns that back into one. Module-level rather
+ * than stored: it is a guess that costs nothing when wrong (the server answers
+ * with whatever installation is real) and nothing is worth persisting for it.
+ */
+let lastInstallation: number | null = null;
+
 const days = (t: number) => {
   if (!t) return "";
   const d = Math.round((Date.now() - t) / 86_400_000);
@@ -227,10 +239,13 @@ export function Picker({ open, onOpenChange, onAdded }: {
   const [busy, setBusy] = useState("");
 
   const load = async (installation?: number) => {
-    const r = await fetch(`/api/github/repos${installation ? `?installation=${installation}` : ""}`);
+    const want = installation ?? lastInstallation;
+    const r = await fetch(`/api/github/repos${want ? `?installation=${want}` : ""}`);
     if (!r.ok) return setErr(await r.text());
     setErr("");
-    setD((await r.json()) as RepoList);
+    const next = (await r.json()) as RepoList;
+    lastInstallation = next.selected;
+    setD(next);
   };
   useEffect(() => {
     if (open) {
@@ -256,7 +271,10 @@ export function Picker({ open, onOpenChange, onAdded }: {
     <Shell open={open} onOpenChange={onOpenChange}>
       <div className="flex items-baseline gap-2 border-b border-rule p-3">
         <Dialog.Title className="font-display text-[1.0625rem] font-semibold">选择仓库</Dialog.Title>
-        <span className="text-[0.75rem] text-ink-3">这个 App 装到哪儿，这儿就有哪些</span>
+        {/* The consequence, where the decision is, not in a footer under 87 rows:
+            a list that adds on click without warning is a list people are afraid
+            to scroll. */}
+        <span className="text-[0.75rem] text-ink-3">点一行就添加，不用再确认</span>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-rule-soft px-3 py-2">
@@ -305,30 +323,34 @@ export function Picker({ open, onOpenChange, onAdded }: {
             {d.repos.length ? "没有匹配的" : "这个账号下，App 没被授权看任何仓库"}
           </div>
         )}
+        {/* One line per repository: the name, whether it is private, when it
+            last moved. The `owner/` prefix is on every row of a list that is
+            already one account, and the default branch is a fact nobody chooses
+            on — both were a second line of noise per row. */}
         {shown.map((r) => (
           <button
             key={r.fullName}
             disabled={r.taken || !!busy}
             onClick={() => void add(r.fullName)}
             className={cn(
-              "grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5",
-              "px-3.5 py-2 text-left text-[0.8125rem] transition-colors",
+              "flex w-full items-baseline gap-2 border-t border-rule-soft px-3.5 py-1.5 text-left",
+              "text-[0.8125rem] transition-colors first:border-t-0",
               r.taken ? "text-ink-3" : "cursor-pointer hover:bg-sunk",
             )}
           >
-            <span className="flex min-w-0 items-baseline gap-2">
-              <span className="truncate font-medium">{r.fullName}</span>
-              {r.private && <Badge>私有</Badge>}
+            <span className="truncate font-medium">{r.fullName.split("/")[1] ?? r.fullName}</span>
+            {r.private && <Badge>私有</Badge>}
+            <span className="grow" />
+            <span className="shrink-0 text-[0.75rem] text-ink-3">
+              {r.taken ? "已添加" : busy === r.fullName ? "添加中…" : days(r.pushedAt)}
             </span>
-            <span className="text-[0.75rem] text-ink-3">{r.taken ? "已添加" : days(r.pushedAt)}</span>
-            <span className="col-start-1 font-mono text-[0.6875rem] text-ink-3">{r.defaultBranch}</span>
           </button>
         ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-rule p-3">
         <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">
-          {busy ? `正在添加 ${busy}…` : "点一行就添加"}
+          {d && d.repos.length > 0 && `${shown.length} / ${d.repos.length} 个仓库，最近动过的在前`}
         </span>
         <Button onClick={() => onOpenChange(false)}>取消</Button>
       </div>

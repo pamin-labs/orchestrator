@@ -596,8 +596,6 @@ interface GhStatus {
   /** Authorized, but the app is installed nowhere it could read. `null` = could not tell. */
   installed: boolean | null;
   installUrl: string | null;
-  /** A GitHub App client id is configured at all. */
-  configured: boolean;
   /** Where it is installed, and how many repositories each one can see. */
   accounts: { id: number; account: string; kind: string; repos: number | null }[];
   pending: { userCode: string; verificationUri: string } | null;

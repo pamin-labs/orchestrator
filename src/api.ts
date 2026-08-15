@@ -12,7 +12,7 @@ import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
 import { loginRuntimes, startLogin } from "./mech/sandbox/login.ts";
-import { githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, NO_CLIENT_ID, type Installation } from "./mech/git/ghlogin.ts";
+import { APP_SLUG, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
 import { baseBranch, baseRefFor, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
@@ -99,8 +99,6 @@ export interface Ctx {
     port?: number;
     /** Wall clock for a dependency install. See config.ts for why it is generous. */
     installTimeoutMs?: number;
-    /** The GitHub App the device-flow login runs against. A client id is not a secret. */
-    github?: { clientId: string; appSlug: string };
     /** Where turns run. See mech/sandbox/sandbox.ts and docs/decisions/005. */
     sandbox?: {
       server: string;
@@ -3303,7 +3301,6 @@ let ghFlow: GhFlow | null = null;
 let ghError: string | null = null;
 
 const postGithubLogin: Handler = async (ctx) => {
-  const clientId = ghApp(ctx).clientId;
   // A second click while one code is still good hands back the same code rather
   // than starting a second poll: two loops racing for one login is two ways to
   // store a token and one of them wins silently.
@@ -3312,16 +3309,16 @@ const postGithubLogin: Handler = async (ctx) => {
   }
   let d: Awaited<ReturnType<typeof startDeviceFlow>>;
   try {
-    d = await startDeviceFlow(clientId);
+    d = await startDeviceFlow();
   } catch (e: any) {
-    return bad(e?.message ?? NO_CLIENT_ID);
+    return bad(e?.message ?? "GitHub 没给出登录码");
   }
   ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
   ghError = null;
 
   void (async () => {
     try {
-      const token = await pollForToken(clientId, d);
+      const token = await pollForToken(d);
       saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
       // Every running sandbox holds the old (absent) credential in its sidecar.
       await credentialChanged(ctx, "github");
@@ -3336,22 +3333,6 @@ const postGithubLogin: Handler = async (ctx) => {
 
   return json({ userCode: d.userCode, verificationUri: d.verificationUri, expiresIn: d.expiresIn });
 };
-
-/**
- * Which GitHub App this orchestrator runs against.
- *
- * One reader, one source: the committed yaml. It briefly also read a `setting`
- * row a panel section wrote, on the reasoning that a self-hoster pointing at
- * their own app loses the edit on the next pull — true, and the people it is
- * true for are already editing config files, because they are self-hosting. The
- * panel section served approximately nobody and dropped the stored token when
- * touched, so it went and the override went with it: two sources and no way to
- * tell which wins is worse than one that has to be edited in a file.
- */
-const ghApp = (ctx: Ctx): { clientId: string; appSlug: string } => ({
-  clientId: (ctx.config.github?.clientId ?? "").trim(),
-  appSlug: (ctx.config.github?.appSlug ?? "").trim(),
-});
 
 /**
  * Each installation, with how many repositories it can see.
@@ -3373,11 +3354,8 @@ async function withCounts(ctx: Ctx, list: Installation[]): Promise<Array<Install
   );
 }
 
-/** Where to install the app, when its slug is configured. */
-const installUrl = (ctx: Ctx): string | null => {
-  const slug = ghApp(ctx).appSlug;
-  return slug ? `https://github.com/apps/${slug}/installations/new` : null;
-};
+/** Where the boss installs the app. One app, so one address. */
+const INSTALL_URL = `https://github.com/apps/${APP_SLUG}/installations/new`;
 
 const getGithubLogin: Handler = async (ctx) => {
   const a = loadAuth(ctx.db, "github");
@@ -3399,8 +3377,7 @@ const getGithubLogin: Handler = async (ctx) => {
     /** Authorized, but the app is not installed anywhere it could read. */
     installed: installs?.ok ? installs.data.length > 0 : null,
     /** Where to fix that, when the app's slug is configured. */
-    installUrl: installUrl(ctx),
-    configured: !!ghApp(ctx).clientId,
+    installUrl: INSTALL_URL,
     /** Which accounts it is installed on, and how many repositories each can see. */
     accounts: installs?.ok ? await withCounts(ctx, installs.data) : [],
     pending: ghFlow && ghFlow.expiresAt > Date.now() ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri } : null,
@@ -3419,12 +3396,19 @@ const getGithubLogin: Handler = async (ctx) => {
 const getGithubRepos: Handler = async (ctx, req) => {
   if (!ctx.gh) return bad("this server has no GitHub client");
   if (!loadAuth(ctx.db, "github")) return bad("还没连 GitHub，先去设置里连一下");
-  const inst = await listInstallations(ctx.gh);
+  // Both at once when the caller names an installation, which it does on every
+  // open after the first: measured, a round trip to api.github.com is 260-630ms,
+  // so doing these in series is a second of blank dialog for no reason. The
+  // first open of a session still has to learn the id before it can ask.
+  const asked = Number(new URL(req.url).searchParams.get("installation")) || 0;
+  const [inst, guess] = await Promise.all([
+    listInstallations(ctx.gh),
+    asked ? listRepos(ctx.gh, asked) : Promise.resolve(null),
+  ]);
   if (!inst.ok) return bad(inst.message);
 
-  const asked = Number(new URL(req.url).searchParams.get("installation")) || 0;
   const selected = inst.data.find((i) => i.id === asked)?.id ?? inst.data[0]?.id ?? null;
-  const repos = selected ? await listRepos(ctx.gh, selected) : null;
+  const repos = selected === asked ? guess : selected ? await listRepos(ctx.gh, selected) : null;
   if (repos && !repos.ok) return bad(repos.message);
 
   // Seam (007 step 6): a project's identity is still `repo_path`, which for a
@@ -3433,7 +3417,7 @@ const getGithubRepos: Handler = async (ctx, req) => {
   return json({
     installations: inst.data,
     selected,
-    installUrl: installUrl(ctx),
+    installUrl: INSTALL_URL,
     repos: (repos?.data ?? []).map((r) => ({ ...r, taken: taken.has(r.fullName) })),
   });
 };

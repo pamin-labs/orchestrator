@@ -343,7 +343,6 @@ export function start(overrides: Partial<Config> = {}): Started {
       sandbox: cfg.sandbox,
       installTimeoutMs: cfg.installTimeoutMs,
       ctxBudgetChars: cfg.ctxBudgetChars,
-      github: cfg.github,
       leaseTimeoutMs: cfg.leaseTimeoutMs,
     },
   };

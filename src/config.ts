@@ -165,19 +165,6 @@ export type Config = {
     /** mount path -> host path, shared by every sandbox. Package caches only. */
     cacheDirs: Record<string, string>;
   };
-  /**
-   * The GitHub App the device-flow login runs against.
-   *
-   * A client id is **not** a secret — the device flow has no client secret at
-   * all, which is why it is the flow this repo can ship — so it belongs in the
-   * committed yaml next to everything else, unlike `sandbox.apiKey`. Overridable
-   * so anyone can point at their own app.
-   *
-   * `appSlug` is only for the link that installs it: authorizing a GitHub App
-   * and installing it are different acts, and a token from the first reaches
-   * nothing until the second happens.
-   */
-  github: { clientId: string; appSlug: string };
   dataDir: string;
   /**
    * Where the ticked skills are staged for the sandboxes to mount.
@@ -273,7 +260,6 @@ const DEFAULTS: Config = {
     denyDomains: [],
     cacheDirs: {},
   },
-  github: { clientId: "", appSlug: "" },
   dataDir: "data",
   skillsDir: defaultSkillsDir(),
 };

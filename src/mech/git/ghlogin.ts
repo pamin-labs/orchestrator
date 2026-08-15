@@ -26,16 +26,19 @@ const TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
 /**
- * No client id configured — said the same way wherever it is noticed.
+ * The app every install of this orchestrator connects through.
  *
- * Both app settings are named because both are invisible from here and each
- * fails later rather than now: without Device Flow the code request itself is
- * refused, and with user token expiry left on the login works today and is dead
- * tomorrow — refreshing an expiring user token needs a client secret, which is
- * the one thing this project cannot ship.
+ * Constants, not configuration. A client id is not a secret — the device flow
+ * has none at all, which is the whole reason this design ships in an open
+ * repository — and there is exactly one app: everyone using this connects
+ * through it. A knob that must never be turned is an invitation to turn it, and
+ * the panel section that turned it dropped the stored token when touched.
+ *
+ * Someone running their own fork edits these two lines, which is the same act as
+ * editing the yaml and one fewer place for the two to disagree.
  */
-export const NO_CLIENT_ID =
-  "还没配 GitHub App 的 client_id。去 GitHub → Settings → Developer settings → GitHub Apps 建一个，两个开关必须对：勾上 Enable Device Flow；Optional Features 里的 user token 过期要关掉（开着的话 8 小时就失效，续期得有 client secret，而这个仓库是公开的）。然后把 Client ID 填进 config/default.yaml 的 github.clientId。";
+export const CLIENT_ID = "Iv23liUP6a00TszuLZvc";
+export const APP_SLUG = "orchestrator-connect";
 
 /** Only the shape used here, so a test stub is a function rather than a cast. */
 export type Fetcher = (
@@ -67,9 +70,8 @@ async function form(fetchFn: Fetcher, url: string, params: Record<string, string
 }
 
 /** Ask for a code. Returns as soon as there is something to show. */
-export async function startDeviceFlow(clientId: string, fetchFn: Fetcher = fetch): Promise<DeviceCode> {
-  if (!clientId.trim()) throw new Error(NO_CLIENT_ID);
-  const b = await form(fetchFn, DEVICE_CODE_URL, { client_id: clientId });
+export async function startDeviceFlow(fetchFn: Fetcher = fetch): Promise<DeviceCode> {
+  const b = await form(fetchFn, DEVICE_CODE_URL, { client_id: CLIENT_ID });
   if (b.error || !b.device_code) throw new Error(b.error_description || b.error || "GitHub 没给出登录码");
   return {
     userCode: String(b.user_code),
@@ -89,7 +91,6 @@ export async function startDeviceFlow(clientId: string, fetchFn: Fetcher = fetch
  * does not.
  */
 export async function pollForToken(
-  clientId: string,
   d: DeviceCode,
   opts: { fetchFn?: Fetcher; sleep?: (ms: number) => Promise<unknown>; now?: () => number } = {},
 ): Promise<string> {
@@ -102,7 +103,7 @@ export async function pollForToken(
   while (now() < deadline) {
     await sleep(interval * 1000);
     const b = await form(fetchFn, TOKEN_URL, {
-      client_id: clientId,
+      client_id: CLIENT_ID,
       device_code: d.deviceCode,
       grant_type: GRANT_TYPE,
     });
@@ -204,7 +205,10 @@ export async function listRepos(gh: Github, installationId: number): Promise<GhR
   return {
     ok: true,
     status: r.status,
-    data: r.data.map((x: any) => ({
+    // Most recently pushed first. GitHub returns them in its own order, which
+    // read down the page as 76 months, 51, 4, 61, 72, 71, 14 — and the one the
+    // boss wants is almost always the one they touched last.
+    data: r.data.sort((a: any, b: any) => Date.parse(b.pushed_at ?? 0) - Date.parse(a.pushed_at ?? 0)).map((x: any) => ({
       fullName: String(x.full_name),
       private: !!x.private,
       defaultBranch: String(x.default_branch || "main"),
