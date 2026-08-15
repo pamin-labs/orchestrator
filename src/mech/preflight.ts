@@ -296,6 +296,28 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     });
   }
 
+  // A ChatGPT-account login is the one credential that needs a binary on *this*
+  // machine, permanently.
+  //
+  // It is a pair of tokens codex itself rotates, and the renewal is deliberately
+  // done by running the real `codex` rather than posting the refresh token
+  // ourselves with the CLI's client id (chatgpt.ts says why). So no `codex` on
+  // the host means no renewal — and the failure is silent and delayed: the nudge
+  // throws, `renew` returns null, the stored token is kept, and hours later every
+  // codex turn 401s looking like an expired account. The other three modes need
+  // nothing here: a pasted `sk-ant-oat01-` is good for a year and an API key does
+  // not expire.
+  const codexAuth = loadAuth(input.db, "codex");
+  if (codexAuth?.mode === "chatgpt") {
+    const hasCodex = probe("codex");
+    out.push({
+      name: "codex-refresher",
+      ok: hasCodex,
+      detail: hasCodex ? "在" : "ChatGPT 登录要靠本机的 codex 续期，而这台机器上没有",
+      fix: "装上 codex CLI，或者把 codex 换成 API key —— API key 不需要续期",
+    });
+  }
+
   return out;
 }
 
