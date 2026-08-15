@@ -230,14 +230,48 @@ export const CODEX_HOME = "/root/.codex";
  * invalidate each other.
  */
 export function filesFor(db: DB): Record<string, string> {
+  const files: Record<string, string> = { ...gitFilesFor(db) };
   const a = loadAuth(db, "codex");
-  if (a?.mode !== "chatgpt") return {};
+  if (a?.mode !== "chatgpt") return files;
   const parsed = parseAuth(a.secret);
-  if (!parsed) return {};
+  if (!parsed) return files;
+  files[`${CODEX_HOME}/auth.json`] = decoyAuth(parsed);
+  // Without this codex looks for the login in the OS keychain instead.
+  files[`${CODEX_HOME}/config.toml`] = 'cli_auth_credentials_store = "file"\n';
+  return files;
+}
+
+/** The username half of git's Basic auth. GitHub ignores it; the token is the password. */
+const GIT_USER = "x-access-token";
+
+/**
+ * Give git something to send, so the sidecar has something to replace.
+ *
+ * This is the half that was described and never built. `git clone` over HTTPS
+ * does **not** send `Authorization` up front: it asks anonymously, takes the
+ * 401, and only then looks for a credential helper. With `GIT_TERMINAL_PROMPT=0`
+ * and no helper in the container it stopped at `could not read Username`, and no
+ * token anywhere could have changed that — the vault *replaces* a header the
+ * client already set (005), and git had set none.
+ *
+ * So the container gets a stored credential whose password is a decoy, exactly
+ * like codex's `auth.json`. git reads it, sends `Authorization: Basic
+ * base64(x-access-token:decoy)`, and the sidecar swaps in the real one on the
+ * way out. Nothing real is ever inside.
+ *
+ * Only when a GitHub credential is configured. A public repository clones
+ * anonymously today, and handing git a credential it will fail with would turn
+ * that into a 401 — breaking the case that currently works.
+ */
+function gitFilesFor(db: DB): Record<string, string> {
+  if (!loadAuth(db, "github")) return {};
   return {
-    [`${CODEX_HOME}/auth.json`]: decoyAuth(parsed),
-    // Without this codex looks for the login in the OS keychain instead.
-    [`${CODEX_HOME}/config.toml`]: 'cli_auth_credentials_store = "file"\n',
+    "/root/.git-credentials": BINDINGS.github!.hosts.map((h) => `https://${GIT_USER}:${decoy("github", "api_key")}@${h}\n`).join(""),
+    // `store` is what makes git read the file above without asking anyone.
+    // Written here rather than with `git config --global` because the checkout
+    // sets its identity with a repo-local `git config`, so nothing else owns
+    // this file.
+    "/root/.gitconfig": "[credential]\n\thelper = store\n",
   };
 }
 
@@ -328,15 +362,20 @@ export function vaultFor(db: DB): { credentials: Credential[]; env: Record<strin
     // Handled as a file plus an injected header; see filesFor and vaultBindings.
     if (a.mode === "chatgpt") continue;
     const b = BINDINGS[runtime]!;
+    // git speaks Basic, not Bearer: the whole header value is built here and set
+    // verbatim, because a bearer binding would send a scheme GitHub does not use
+    // for the git endpoints. The token is the password; the username is ignored.
+    const basic = runtime === "github" ? `Basic ${btoa(`${GIT_USER}:${a.secret}`)}` : null;
+    if (basic) maskValue(basic);
     credentials.push({
       name: runtime,
-      value: a.secret,
+      value: basic ?? a.secret,
       hosts: a.baseUrl ? [...b.hosts, new URL(a.baseUrl).hostname] : b.hosts,
-      header: a.mode === "api_key" && runtime === "claude" ? "x-api-key" : b.header,
+      header: basic ? "Authorization" : a.mode === "api_key" && runtime === "claude" ? "x-api-key" : b.header,
     });
     if (runtime === "github") {
-      // git sends `Authorization: Basic`, so the decoy has to be a username the
-      // sidecar can replace rather than an env var the CLI reads.
+      // The decoy git will actually send is a stored credential file, not an env
+      // var — see `gitFilesFor`.
       continue;
     }
     if (runtime === "claude") {
