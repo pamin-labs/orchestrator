@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setIn } from "../src/mech/sandbox/server.ts";
-import { isServerLine, keyInConfig, SANDBOX_API_KEY_HEADER } from "../src/mech/sandbox/sandbox.ts";
+import { isServerLine, keyInConfig, remoteInClear, SANDBOX_API_KEY_HEADER, splitAddr } from "../src/mech/sandbox/sandbox.ts";
 
 /**
  * Starting the container server, and the four ways the first attempt lied.
@@ -138,4 +138,38 @@ test("a process talking about the server is not the server", () => {
   const src = readFileSync("src/mech/sandbox/server.ts", "utf8");
   const down = src.slice(src.indexOf("// Nothing answers."), src.indexOf("export async function ensureServer"));
   expect(down).toContain('kind: "down"');
+});
+
+test("the sandbox server may live on another machine, and says when that is in the clear", () => {
+  // It does not have to be local: a Tailscale peer or a cloud box works, because
+  // the SDK only ever speaks HTTP to it. What changes with distance is whether
+  // the transport protects the api_key.
+  expect(splitAddr("127.0.0.1:8080")).toEqual({ protocol: "http", authority: "127.0.0.1:8080" });
+  expect(splitAddr("https://sb.example.com:8080")).toEqual({
+    protocol: "https",
+    authority: "sb.example.com:8080",
+  });
+  // A trailing slash is what a pasted URL has, and it must not become part of
+  // the authority — `host:8080/` resolves to nothing.
+  expect(splitAddr("http://sb.example.com:8080/").authority).toBe("sb.example.com:8080");
+
+  // Safe: loopback, or a network that encrypts itself. Tailscale hands out
+  // 100.64.0.0/10 and *.ts.net, and that transport is WireGuard — which is the
+  // whole reason plain HTTP to a peer is not a mistake.
+  for (const ok of [
+    "127.0.0.1:8080",
+    "localhost:8080",
+    "100.101.102.103:8080",
+    "box.tail1234.ts.net:8080",
+    "https://sb.example.com:8080",
+  ]) {
+    expect({ addr: ok, inClear: remoteInClear(ok) }).toEqual({ addr: ok, inClear: false });
+  }
+
+  // Not safe, and reported rather than blocked: it may be a private VLAN this
+  // side cannot see, and refusing outright would be deciding something we do not
+  // know. 100.128.x is deliberately outside the CGNAT range Tailscale uses.
+  for (const bad of ["sb.example.com:8080", "http://203.0.113.10:8080", "100.128.0.1:8080"]) {
+    expect({ addr: bad, inClear: remoteInClear(bad) }).toEqual({ addr: bad, inClear: true });
+  }
 });

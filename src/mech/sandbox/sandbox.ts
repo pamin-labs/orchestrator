@@ -306,14 +306,15 @@ function processCwd(pid: string): string | null {
 }
 
 function connection(ctx: Ctx): ConnectionConfig {
-  const [host, port] = serverAddr(ctx).split(":");
+  const { protocol, authority } = splitAddr(serverAddr(ctx));
+  const [host, port] = authority.split(":");
   // Set from the panel first, then the environment, then the yaml. The yaml is
   // committed, so a key that lives there is a key that leaks; the panel writes
   // it to the same store every other credential uses.
   const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || (ctx.config.sandbox ?? DEFAULTS).apiKey;
   return new ConnectionConfig({
     domain: `${host}:${port ?? 8080}`,
-    protocol: "http",
+    protocol,
     apiKey: key || undefined,
     // The SDK default is 30s, which an image pull blows straight through.
     requestTimeoutSeconds: 600,
@@ -841,6 +842,46 @@ export const SANDBOX_API_KEY_HEADER = "OPEN-SANDBOX-API-KEY";
 
 /** Where the panel stores an address that overrides the yaml. */
 export const SANDBOX_ADDR = "sandbox_server_addr";
+
+/**
+ * Split an address into scheme and authority.
+ *
+ * The server does not have to be on this machine. A Tailscale peer or a cloud
+ * box works — the SDK only ever speaks HTTP to it — so the address accepts a
+ * hostname and, now, a scheme.
+ *
+ * `https` matters for exactly one of those two: over Tailscale the transport is
+ * already WireGuard and plain HTTP is fine, but over the open internet the
+ * api_key and every container payload would cross it in the clear. So the scheme
+ * is honoured rather than assumed, and `remoteInClear` below is what says so.
+ */
+export function splitAddr(addr: string): { protocol: "http" | "https"; authority: string } {
+  const m = /^(https?):\/\/(.+)$/i.exec(addr.trim());
+  return m
+    ? { protocol: m[1]!.toLowerCase() as "http" | "https", authority: m[2]!.replace(/\/+$/, "") }
+    : { protocol: "http", authority: addr.trim() };
+}
+
+/**
+ * Reachable only from this machine, or from a network that encrypts itself.
+ *
+ * Loopback is obvious. The Tailscale range (100.64.0.0/10, the CGNAT block it
+ * uses) and `*.ts.net` are treated as safe because that transport is WireGuard —
+ * which is the whole reason plain HTTP to a peer is not a mistake. Everything
+ * else on plain HTTP is a real exposure and is reported, never blocked: it may
+ * be a private VLAN we cannot see from here, and refusing it outright would be
+ * this side deciding something it does not know.
+ */
+export function remoteInClear(addr: string): boolean {
+  const { protocol, authority } = splitAddr(addr);
+  if (protocol === "https") return false;
+  const host = authority.replace(/:\d+$/, "").toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return false;
+  if (/^127\./.test(host) || host === "::1" || host === "[::1]") return false;
+  if (host.endsWith(".ts.net")) return false;
+  const cg = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.exec(host);
+  return !cg;
+}
 
 /**
  * Which server to drive.

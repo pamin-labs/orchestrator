@@ -929,6 +929,8 @@ interface ServerInfo {
   running: boolean;
   /** Which address we drive. Overridable, because the default may be taken. */
   addr: string;
+  /** Plain HTTP to a host that is neither loopback nor an encrypted overlay. */
+  inClear: boolean;
   /**
    * Which of the three cases this is, and it decides which control is offered:
    * a server we did not start is one we may report on and never act on.
@@ -1055,24 +1057,22 @@ function ServerState({ checks, reload = 0 }: { checks: HostCheck[]; reload?: num
       {d?.why && d.why !== st?.zh && (
         <div className="mt-2 rounded-md border border-rule bg-sunk px-3 py-2 text-[0.8125rem] leading-relaxed text-ink-2">
           {d.why}
-          {d.state === "stuck" && (
-            <Meta className="mt-1 block">
-              没自动重启它 —— 分不清它是不是你自己起的。它的配置：{d.config ?? "找不到"}
-            </Meta>
-          )}
         </div>
       )}
 
       {/* The other way out of "that one is not ours", and the reason this is a
           control rather than a yaml key: the fix for a taken port is a different
           port, and an edit-and-restart is not a fix you make while reading this. */}
-      <Field className="mt-2">
+      {/* `border-b-0`: this is the last row in a section that already draws its
+          own closing rule, and two hairlines 12px apart read as a mistake.
+          DESIGN.md — never two frames around one thing. */}
+      <Field className="mt-2 border-b-0">
         <FieldLabel htmlFor="sb-addr">地址</FieldLabel>
         <InputGroup>
           <Input
             id="sb-addr"
             className="min-w-0 flex-1 font-mono"
-            placeholder="127.0.0.1:8080"
+            placeholder="127.0.0.1:8080 或 https://host:port"
             defaultValue={d?.addr ?? ""}
             onKeyDown={async (e) => {
               if (e.key !== "Enter") return;
@@ -1083,6 +1083,15 @@ function ServerState({ checks, reload = 0 }: { checks: HostCheck[]; reload?: num
             }}
           />
         </InputGroup>
+        {/* The server does not have to be on this machine — a Tailscale peer or a
+            cloud box works. Over WireGuard plain HTTP is fine, which is why this
+            warns rather than refuses: on the open internet the api_key and every
+            container payload cross it in the clear. */}
+        {d?.inClear && (
+          <Meta className="mt-1 block text-accent">
+            这个地址不在本机也不在加密内网里，而且走的是明文 http —— 密钥和容器流量都是裸的。用 https，或者走 Tailscale。
+          </Meta>
+        )}
       </Field>
       {d?.config && !d.why && (
         <Meta className="mt-1 block truncate font-mono text-[0.6875rem]">配置：{d.config}</Meta>

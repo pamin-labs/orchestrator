@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { Ctx } from "../../api.ts";
 import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
-import { allowedHostPaths, coveredBy, runningServer, SANDBOX_ADDR, SANDBOX_API_KEY_HEADER, serverAddr, specFor } from "./sandbox.ts";
+import { allowedHostPaths, coveredBy, remoteInClear, runningServer, SANDBOX_ADDR, SANDBOX_API_KEY_HEADER, serverAddr, splitAddr, specFor } from "./sandbox.ts";
 
 /**
  * Starting opensandbox-server, and knowing when not to.
@@ -76,7 +76,8 @@ type Probe =
 
 async function probe(server: string, key: string): Promise<Probe> {
   try {
-    const res = await fetch(`http://${server}/v1/sandboxes?page_size=1`, {
+    const { protocol, authority } = splitAddr(server);
+    const res = await fetch(`${protocol}://${authority}/v1/sandboxes?page_size=1`, {
       // `OPEN-SANDBOX-API-KEY`, not `Authorization: Bearer` — the server reads
       // that one header and nothing else (`middleware/auth.py`). Sending the
       // wrong one is indistinguishable from having the wrong key: 401 either
@@ -95,17 +96,20 @@ async function probe(server: string, key: string): Promise<Probe> {
   }
 }
 
-/** What to tell the boss, and it has to name the thing to do next. */
+/**
+ * What to tell the boss. One line, and it has to name the thing to do next.
+ *
+ * The first version was three sentences of reasoning — where the server came
+ * from, why we did not touch it, both ways out — set as a paragraph above the
+ * two controls that are the ways out. DESIGN.md's rule applies here as much as
+ * anywhere: say it once, and let the control next to it do the explaining.
+ */
 function say(p: Probe, server: string): string {
   switch (p.kind) {
     case "auth":
-      return (
-        `${server} 上已经有一个沙盒服务器，但它用的密钥我们没有 —— 所以它多半是你自己起的。` +
-        `两条路：把它的 api_key 填到下面的「密钥」里（在它的 sandbox.toml 里），` +
-        `或者把上面的地址改成别的端口，我们自己起一个。`
-      );
+      return `${server} 上那个服务器不是我们起的，密钥对不上 —— 填它的 api_key，或者换个地址。`;
     case "http":
-      return `${server} 上有东西在应答，但答的是 HTTP ${p.status} —— 那个端口上多半不是沙盒服务器。换个端口。`;
+      return `${server} 上有东西在应答，但不是沙盒服务器（HTTP ${p.status}）—— 换个地址。`;
     case "none":
       return p.why;
     default:
@@ -346,6 +350,14 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   // failure unreadable.
   if (seen.kind !== "down") return seen;
   if (!Bun.which("uvx")) return seen;
+  // Only ever start one for an address on this machine. Pointed at a Tailscale
+  // peer or a cloud box, "nothing answers" means that host is down — spawning a
+  // local server would bind a port nobody is asking about and report success.
+  const { authority } = splitAddr(server);
+  const host = authority.replace(/:\d+$/, "").toLowerCase();
+  if (!(host === "localhost" || /^127\./.test(host) || host === "::1" || host === "[::1]")) {
+    return { kind: "down", why: `${server} 不应答 —— 那不是本机地址，起不了，得去那台机器上看。` };
+  }
 
   const startKey = ourKey(ctx);
   let config: string;

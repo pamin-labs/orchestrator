@@ -7,7 +7,7 @@ import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
 import { resolveLease, type ResourceDef } from "./mech/sandbox/lease.ts";
 import { sliceDiffBase } from "./mech/git/worktree.ts";
-import { execIn, killSandbox, putFile, relinkSkills, restartServer, runningServer, serverAddr, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
+import { execIn, killSandbox, putFile, relinkSkills, remoteInClear, restartServer, runningServer, serverAddr, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
@@ -3674,6 +3674,8 @@ const getSandboxServer: Handler = async (ctx) => {
   return json({
     running: state.kind !== "down",
     addr: serverAddr(ctx),
+    // Plain HTTP to a host that is neither loopback nor an encrypted overlay.
+    inClear: remoteInClear(serverAddr(ctx)),
     state: state.kind,
     why: "why" in state ? state.why : null,
     pid: "pid" in state ? state.pid : (live?.pid ?? null),
@@ -3720,7 +3722,11 @@ const postSandboxServerAddr: Handler = async (ctx, req) => {
   const addr = (b.addr ?? "").trim();
   // `host:port`, or empty to fall back to the yaml. Checked because a bad value
   // here makes every container call fail somewhere far away from this box.
-  if (addr && !/^[\w.-]+:\d{2,5}$/.test(addr)) return bad("填 host:port，比如 127.0.0.1:8081");
+  // A hostname and an optional scheme, because the server does not have to be on
+  // this machine: a Tailscale peer or a cloud box works the same way.
+  if (addr && !/^(https?:\/\/)?[\w.-]+(:\d{2,5})?$/.test(addr)) {
+    return bad("填 host:port，或者 https://host:port。比如 127.0.0.1:8081、sandbox.tail1234.ts.net:8080");
+  }
   setServerAddr(ctx, addr);
   return json({ ok: true, addr: serverAddr(ctx) });
 };
