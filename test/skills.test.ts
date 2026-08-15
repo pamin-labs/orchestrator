@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathInSandbox, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/util/skills.ts";
+import { LINK_PROJECT_SKILLS, pathInSandbox, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/util/skills.ts";
 import { openMemory, rewriteSkillPaths } from "../src/db.ts";
+import { CODEX_HOME } from "../src/mech/sandbox/auth.ts";
 
 /**
  * The staging directory the sandbox mounts.
@@ -139,4 +140,31 @@ test("old messages stop pointing at a machine the agent cannot see", () => {
     "按 /impeccable 来做，再看 /ponytail",
   );
   expect(db.query<{ body: string }, []>("SELECT body FROM event").get()!.body).toBe("用 /tdd");
+});
+
+test("a repo's own skills reach codex too, not just claude", () => {
+  // claude finds `.claude/skills` because the checkout is its working directory —
+  // this repository relies on that for its own `git-commit`. codex looks only in
+  // `$CODEX_HOME/skills`, so a repo that ships skills reached one CLI and not the
+  // other. One link in the container, same shape as LINK_AGENTS_MD.
+  const repo = mkdtempSync(join(tmpdir(), "orch-pskill-"));
+  const codexSkills = join(repo, "codexhome", "skills");
+  mkdirSync(join(repo, ".claude/skills/git-commit"), { recursive: true });
+  mkdirSync(join(repo, ".agents/skills/other"), { recursive: true });
+  writeFileSync(join(repo, ".claude/skills/git-commit/SKILL.md"), "the convention");
+
+  const run = () =>
+    Bun.spawnSync(["sh", "-c", LINK_PROJECT_SKILLS.replaceAll(`${CODEX_HOME}/skills`, codexSkills)], { cwd: repo });
+  run();
+  run(); // a rebuilt container re-runs it; `-sfn` has to make that a no-op
+
+  expect(readdirSync(codexSkills).sort()).toEqual(["git-commit", "other"]);
+  expect(readFileSync(join(codexSkills, "git-commit", "SKILL.md"), "utf8")).toBe("the convention");
+
+  // A repository with no skills is the common case and must not fail the clone.
+  const bare = mkdtempSync(join(tmpdir(), "orch-pskill-none-"));
+  const bareOut = join(bare, "ch", "skills");
+  const r = Bun.spawnSync(["sh", "-c", LINK_PROJECT_SKILLS.replaceAll(`${CODEX_HOME}/skills`, bareOut)], { cwd: bare });
+  expect(r.exitCode).toBe(0);
+  expect(readdirSync(bareOut)).toEqual([]);
 });

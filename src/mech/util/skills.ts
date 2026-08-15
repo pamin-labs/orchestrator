@@ -1,6 +1,6 @@
 import type { Ctx } from "../../api.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
-import { hostClaudeHome, hostCodexHome } from "../sandbox/auth.ts";
+import { CODEX_HOME, hostClaudeHome, hostCodexHome } from "../sandbox/auth.ts";
 import { dirname, join } from "node:path";
 import type { DB } from "../../db.ts";
 
@@ -281,6 +281,9 @@ export function stageSkills(dir: string, want: SkillRef[]): { dir: string; stage
  * step 6 moves the read into the container, and a standing condition repeated
  * every poll is a feed nobody reads.
  */
+/** codex's own search path inside the container; claude uses the checkout. */
+const CODEX_SKILLS = `${CODEX_HOME}/skills`;
+
 const skillsWarned = new Set<number>();
 export function projectSkillsUnreachable(ctx: Ctx, projectId: number, repoPath?: string | null): void {
   if (!repoPath || repoPath.startsWith("/") || skillsWarned.has(projectId)) return;
@@ -288,6 +291,33 @@ export function projectSkillsUnreachable(ctx: Ctx, projectId: number, repoPath?:
   ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: `${repoPath} 自带的技能（.claude/skills）现在读不到 —— 代码只在容器里。本机的技能不受影响。`,
+    // What is unreachable is the *listing*, not the skills. Said precisely,
+    // because the old wording ("读不到") read as "the agents do not get them" and
+    // sent someone looking for a mechanism that is not needed: a project skill
+    // lives in the checkout the CLI already runs in, which is what `getSkills`
+    // means by "always visible and nothing to tick".
+    body:
+      `${repoPath} 自带的技能（.claude/skills）在设置页里列不出来 —— 代码只在容器里，这台机器上没有那个目录。` +
+      `agent 那边不受影响：技能就在它的工作目录里，CLI 自己会发现；影响的只是你在输入框里 /名字 点名它。`,
   });
 }
+
+/**
+ * Put the project's own skills where codex looks, inside the container.
+ *
+ * claude discovers `.claude/skills` relative to its working directory, and the
+ * agent's working directory *is* the checkout — so a repository that ships
+ * skills already hands them to a claude turn with nothing from us. This
+ * repository relies on exactly that for its own `git-commit`.
+ *
+ * codex does not: its search path is `$CODEX_HOME/skills`, which is why the
+ * boss's ticked skills are mounted at both. So a repo's skills reached claude
+ * agents and not codex ones — the same asymmetry `LINK_AGENTS_MD` exists for,
+ * fixed the same way and for the same reason: one link, in the container, rather
+ * than a mechanism on the host.
+ *
+ * `-sfn` so a rebuilt container and a re-entered group both land the same way.
+ */
+export const LINK_PROJECT_SKILLS =
+  `mkdir -p ${CODEX_SKILLS} && for d in .claude/skills/*/ .agents/skills/*/; do ` +
+  `[ -d "$d" ] && ln -sfn "$PWD/$d" ${CODEX_SKILLS}/"$(basename "$d")"; done; true`;
