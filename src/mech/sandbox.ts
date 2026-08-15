@@ -547,6 +547,16 @@ export interface ExecOpts {
   timeoutMs?: number;
   env?: Record<string, string>;
   signal?: AbortSignal;
+  /**
+   * Stderr, a line at a time, for callers that are watching rather than parsing.
+   *
+   * `execLines` yields stdout only, because the agent adapters parse every
+   * yielded line as NDJSON. But `git clone --progress` and every package manager
+   * print their progress on stderr — so the two commands that take minutes were
+   * the two that said nothing until they finished, which is precisely the case
+   * the log exists for. Opt-in, so the NDJSON readers are untouched.
+   */
+  onStderr?: (line: string) => void;
 }
 
 export interface ExecOutcome {
@@ -588,7 +598,11 @@ export function lineSplitter(): { push: (chunk: string) => string[]; rest: () =>
   return {
     push(chunk) {
       buf += chunk;
-      const parts = buf.split("\n");
+      // `\r` too: git reports clone progress by rewriting one line with carriage
+      // returns, so a two-minute clone is a single unterminated line otherwise.
+      // NDJSON is unaffected — JSON escapes control characters, so a raw `\r`
+      // never appears inside an object.
+      const parts = buf.split(/\r\n|[\r\n]/);
       buf = parts.pop() ?? "";
       return parts.map((p) => p.trim()).filter(Boolean);
     },
@@ -615,6 +629,7 @@ async function* realLines(
   let notify: (() => void) | null = null;
   let done = false;
   const split = lineSplitter();
+  const errSplit = lineSplitter();
   let stderr = "";
   let code = -1;
 
@@ -632,6 +647,9 @@ async function* realLines(
         },
         onStderr: (m) => {
           stderr += m.text;
+          // git writes progress with `\r`, not `\n`, so a clone is one very long
+          // line until it ends. Split on both, or the watcher sees nothing.
+          if (opts.onStderr) for (const l of errSplit.push(m.text)) opts.onStderr(l);
         },
       },
       opts.signal,

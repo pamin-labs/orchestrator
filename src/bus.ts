@@ -39,6 +39,10 @@ export interface LiveFrame {
   role?: string;
   kind: "text" | "thinking" | "tool" | "status";
   body: string;
+  /** When the sender says it happened. Omitted, the client stamps its own clock —
+      which is why a panel holding both a stored tail and the live feed could not
+      tell they were the same line. */
+  at?: number;
 }
 
 export type Frame = ({ type: "event" } & StoredEvent) | LiveFrame;

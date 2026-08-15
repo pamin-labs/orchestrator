@@ -174,12 +174,13 @@ async function streamed(
     return { code: r.code, out: `${r.out}${r.err}` };
   }
   sandboxLog(ctx, grpId, "cmd", cmd);
-  const stream = execLines(ctx, scope, cmd, opts);
+  // Stderr streams here rather than arriving in one block at the end: for
+  // `git clone --progress` that block *was* the whole log.
+  const stream = execLines(ctx, scope, cmd, { ...opts, onStderr: (l) => sandboxLog(ctx, grpId, "out", l) });
   const seen: string[] = [];
   for (;;) {
     const step = await stream.next();
     if (step.done) {
-      if (step.value.err) sandboxLog(ctx, grpId, "out", step.value.err.slice(-400));
       sandboxLog(ctx, grpId, "end", step.value.code === 0 ? "ok" : `exit ${step.value.code}`);
       return { code: step.value.code, out: [...seen, step.value.err].filter(Boolean).join("\n") };
     }

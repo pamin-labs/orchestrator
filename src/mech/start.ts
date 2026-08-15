@@ -87,6 +87,9 @@ export async function runInstall(
   const stream = execLines(ctx, { grp: grpId }, cmd, {
     cwd: WORK,
     timeoutMs: ctx.config.installTimeoutMs ?? 10_800_000,
+    // Package managers print progress on stderr; without this an install is
+    // silent for its whole run and then dumps everything at once.
+    onStderr: (l) => sandboxLog(ctx, grpId, "out", l),
   });
   let end = { code: -1, err: "" };
   for (;;) {

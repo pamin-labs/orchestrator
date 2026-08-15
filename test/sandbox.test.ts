@@ -83,6 +83,20 @@ test("blank lines never reach the parser", () => {
   expect(s.rest()).toBe("");
 });
 
+test("a carriage return ends a line, so a clone is not one line until it finishes", () => {
+  // `git clone --progress` rewrites a single line with `\r`. Splitting on `\n`
+  // alone held all of it in the buffer, so the two longest commands in a group's
+  // life — the clone and the install — printed nothing until they were over,
+  // which is exactly the "is it stuck" the log exists to answer.
+  const s = lineSplitter();
+  expect(s.push("Receiving objects:  1%\rReceiving objects: 42%\r")).toEqual([
+    "Receiving objects:  1%",
+    "Receiving objects: 42%",
+  ]);
+  // A CRLF stream still yields one line per line, not one plus an empty.
+  expect(lineSplitter().push("a\r\nb\r\n")).toEqual(["a", "b"]);
+});
+
 test("an SSH remote is rewritten, because a sandbox has no key and should not", () => {
   // An SSH key cannot be injected by the credential vault — injection works on
   // HTTP headers — so a sandbox given an SSH remote can only fail. Over HTTPS a
