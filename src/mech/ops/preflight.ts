@@ -99,6 +99,20 @@ async function accepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boole
   return out;
 }
 
+/**
+ * These are host `fetch`es carrying the real token, and they stay that way.
+ *
+ * Every other place a real model credential reached the wire moved into the
+ * utility container, where the sidecar substitutes it — the usage poll was the
+ * last one. This is the deliberate exception, and the reason is the shape of the
+ * check rather than the credential: it runs at boot, before any container is
+ * guaranteed to exist, and moving it would make *"can we open a container"* a
+ * prerequisite for reporting that we cannot. **A check that needs the thing it
+ * checks is not a check.**
+ *
+ * So: not an oversight, and not something to tidy up on sight of a host `fetch`
+ * next to a commit that removed exactly that.
+ */
 async function ask(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
   // The refresh token is what matters and it is not ours to test; the access
   // token carries its own expiry, and codex rotates it from the host.
