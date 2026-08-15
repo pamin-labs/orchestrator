@@ -23,14 +23,13 @@ import { Queue } from "./views/queue";
 import { Requirement } from "./views/requirement";
 import { Timeline } from "./views/timeline";
 import { CostView, Desk, Owns } from "./views/tables";
-import { Workspace } from "./views/workspace";
 
 // `req` is a drill-in, not a tab: it only exists with a requirement selected, and
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
 type View =
   | "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes"
-  | "settings" | "config" | "skills" | "work";
+  | "settings" | "config" | "skills";
 
 /**
  * Views that keep something pinned and scroll the rest themselves.
@@ -39,7 +38,7 @@ type View =
  * long list moves past it. Everything else scrolls whole, which is right when the
  * page has no controls of its own to lose.
  */
-const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req", "work"]);
+const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", "req"]);
 
 /**
  * The two hashes that open the settings dialog rather than a view.
@@ -188,7 +187,10 @@ export function App() {
   // 概览 was 待办 plus the same requirement list 需求 shows, so it is gone and its
   // queue sits on top of that list. Links already sent still work: the hash is
   // rewritten rather than 404'd.
-  const asked: View = sel.view === "board" ? "progress" : sel.view;
+  // `work` was a peer view that opened on a list of groups to pick from, which is
+  // the requirement list again — it is a tab on the requirement now. A hash still
+  // pointing at it lands on that list rather than on nothing.
+  const asked: View = sel.view === "board" || (sel.view as string) === "work" ? "progress" : sel.view;
   // The dialog floats over whatever the boss was standing on, so its hash is not a
   // view: the page underneath keeps rendering the last one that was.
   const section = DIALOG[asked];
@@ -220,7 +222,6 @@ export function App() {
   const VIEWS: [View, string][] = [
     ["progress", "需求"],
     ["desk", "工位墙"],
-    ["work", "工作区"],
     ["notes", "记录"],
     ["owns", "所有权"],
     ["cost", "成本"],
@@ -481,8 +482,6 @@ export function App() {
             )
           ) : view === "desk" ? (
             <Desk st={st} frames={frames} projectId={sel.p!} />
-          ) : view === "work" ? (
-            <Workspace st={st} frames={frames} projectId={sel.p!} />
           ) : view === "notes" ? (
             <Notes projectId={sel.p!} tab={sel.t} onTab={(t) => go({ t })} />
           ) : view === "owns" ? (

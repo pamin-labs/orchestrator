@@ -18,6 +18,7 @@ import { WithAttachments } from "../ui/attachments";
 import { useEffect, useRef, useState } from "react";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { Segment, Segments } from "../ui/segment";
+import { Workspace } from "./workspace";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
 import { bootstrapOf } from "../lib/bootstrap";
@@ -121,6 +122,9 @@ export function Requirement({
               {mine.length ? "待你决策" : "问题"}
             </Tab>
             <Tab value="notes" count={notes ?? undefined}>记录</Tab>
+            {/* No count: a container is one or none, and a badge reading 1 next
+                to 工作区 says nothing the tab does not already. */}
+            <Tab value="work">工作区</Tab>
           </TabList>
 
           <TabPanel value="slice" className="flex min-h-0 flex-1 flex-col">
@@ -205,6 +209,13 @@ export function Requirement({
             <Pane>
               <Notes grpId={g.id} compact onCount={setNotes} />
             </Pane>
+          </TabPanel>
+
+          {/* Not in a `Pane`: the log scrolls inside itself and stays pinned to
+              the newest line, and a scroller wrapping a scroller gives two bars
+              and neither of them pinned. */}
+          <TabPanel value="work" className="flex min-h-0 flex-1 flex-col">
+            <Workspace frames={frames} grpId={g.id} />
           </TabPanel>
         </Tabs>
       )}
