@@ -4,7 +4,7 @@ import {
   Box, Check, CircleAlert, GitBranch, KeyRound, ListChecks, MonitorCog, Server, SlidersHorizontal, Sparkles, Trash2, X,
 } from "lucide-react";
 import { H2, Head, Input, Meta, Pane, Textarea } from "../ui/bits";
-import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../ui/field";
 import { Button, LinkButton } from "../ui/button";
 import { toast } from "sonner";
 import { Segment, Segments } from "../ui/segment";
@@ -231,7 +231,12 @@ export function SettingsDialog({
             )}
           </nav>
 
-          <div className="flex min-h-0 flex-col px-6 pt-4 pb-5">
+          {/* The label column is set once, here, rather than per pane. Three panes
+              had picked three widths, so switching between them moved every value
+              sideways — and a width chosen inside a pane is a width the next pane
+              cannot know about. 5rem holds the longest label in the dialog
+              (基线分支, API 密钥). */}
+          <div className="flex min-h-0 flex-col px-6 pt-4 pb-5 [--label:5rem]">
             <Dialog.Title className="sr-only">{title}</Dialog.Title>
             <Dialog.Close
               aria-label="关掉"
@@ -265,15 +270,18 @@ export function SettingsDialog({
               ) : here === "host" ? (
                 <Env checks={checks.filter((c) => !isCredential(c))} />
               ) : here === "server" ? (
-                <SandboxKey current={rows.find((x) => x.runtime === "sandbox")} checks={checks} onSaved={load} />
+                <ServerPane current={rows.find((x) => x.runtime === "sandbox")} checks={checks} onSaved={load} />
               ) : here === "skills" ? (
                 <Skills projectId={projectId} />
               ) : here === "prefs" ? (
                 <>
                   <Head title="偏好" note="只在这台机器上，不跟着项目走" />
                   <FieldGroup>
-                    <Field>
-                      <FieldLabel>主题</FieldLabel>
+                    {/* A toggle group has nothing a `<label>` can point at, so the
+                        row names itself: `Field` is already `role="group"`, and
+                        this is the one attribute that gives that group a name. */}
+                    <Field aria-labelledby="pref-theme">
+                      <FieldTitle id="pref-theme">主题</FieldTitle>
                       <FieldContent>
                         <ThemeChoice />
                       </FieldContent>
@@ -481,9 +489,15 @@ function Credential(props: {
         <span className="font-display text-[0.9375rem] font-semibold">{r.label}</span>
         {cur ? (
           <>
-            <span className="text-[0.75rem] text-ink-2">
-              {r.modes.find((m) => m.mode === cur.mode)?.label ?? cur.mode}
-            </span>
+            {/* Which mode is stored is only worth a word when it is not the one
+                being looked at: the pressed segment on the right already says
+                that, and a label repeating it is the same fact 30rem apart.
+                When they differ it is the whole point of the row. */}
+            {cur.mode !== mode && (
+              <span className="text-[0.75rem] text-ink-2">
+                存的是{r.modes.find((m) => m.mode === cur.mode)?.label ?? cur.mode}
+              </span>
+            )}
             {/* The masked tail is in the box it was pasted into, not here as well. */}
             <Meta>{clock(cur.updatedAt)}</Meta>
           </>
@@ -499,12 +513,18 @@ function Credential(props: {
           ))}
         </Segments>
       </div>
-      <Meta className="mb-1.5 block">
-        {spec.how} · {spec.cost}
-      </Meta>
+      {/* How to get one, and what it costs — instructions for a decision already
+          made. An account that is configured and sitting on its own mode needs
+          none of it, and two accounts each explaining themselves is most of the
+          pane's height spent on the case where there is nothing to do. */}
+      {(!cur || cur.mode !== mode) && (
+        <Meta className="mb-1.5 block">
+          {spec.how} · {spec.cost}
+        </Meta>
+      )}
 
-      <FieldGroup className="[--label:4.5rem]">
-        <Field className="py-1.5" orientation={mode === "chatgpt" ? "vertical" : "horizontal"}>
+      <FieldGroup>
+        <Field orientation={mode === "chatgpt" ? "vertical" : "horizontal"}>
           {/* The label is what this mode calls the thing. It said `token` under an
               API key too, which is two words for one field. */}
           {mode === "chatgpt" ? (
@@ -547,10 +567,13 @@ function Credential(props: {
         </Field>
 
         {device && (
-          <Field className="py-1.5" orientation="vertical">
+          <Field orientation="vertical">
             <DeviceCode code={device.code} url={device.url} go="去 ChatGPT 输入" />
             <div className="mt-1.5 flex items-baseline gap-2">
-              <Meta>登录码 15 分钟内有效，批准完这一行自己会消失</Meta>
+              {/* The real expiry, not a remembered one. `15 分钟` was written into
+                  the copy while `expiresAt` sat two lines up driving the timer
+                  that clears this block. */}
+              <Meta>到 {clock(device.expiresAt)} 前有效</Meta>
               <span className="grow" />
               <Button
                 size="sm"
@@ -568,8 +591,10 @@ function Credential(props: {
 
         {link && (
           <>
-            <Field className="py-1.5">
-              <span className="text-[0.8125rem] text-ink-3">登录页</span>
+            <Field>
+              {/* Not a FieldLabel: there is no control on this row to focus, and a
+                  label pointing at nothing is what a screen reader reads out. */}
+              <FieldTitle className="text-ink-3">登录页</FieldTitle>
               {/* One line: the address is 400 characters of PKCE and nobody reads
                   it. It stays selectable for the case where the browser that opened
                   it is not the one you want to log in with. */}
@@ -589,7 +614,7 @@ function Credential(props: {
                 setup-token` sits at `Paste code here` until something answers,
                 and the only thing that can is the boss — hard constraint 5: the
                 thing to do next is beside the evidence for doing it. */}
-            <Field className="py-1.5" orientation="vertical">
+            <Field orientation="vertical">
               <FieldLabel htmlFor={`${r.key}-code`} className="text-ink-3">
                 页面给的码
               </FieldLabel>
@@ -608,8 +633,9 @@ function Credential(props: {
                   交上去
                 </Button>
               </InputGroup>
+              {/* No validity line here: this flow hands back no expiry, and the
+                  one that was written in said 10 分钟 on nothing. */}
               <div className="mt-1.5 flex items-baseline gap-2">
-                <Meta>10 分钟内有效，存下之后这一行自己会消失</Meta>
                 <span className="grow" />
                 <Button
                   size="sm"
@@ -627,26 +653,28 @@ function Credential(props: {
           </>
         )}
 
-        <Field className="border-b-0 py-1.5">
+        <Field>
           <FieldLabel htmlFor={`${r.key}-url`} className="text-ink-3">
             API 地址
           </FieldLabel>
-          <Input
-            id={`${r.key}-url`}
-            className="min-w-0 flex-1 font-mono"
-            placeholder={`可选，自建网关 → ${r.urlEnv}`}
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-          />
+          <FieldContent className="flex-col items-stretch gap-1">
+            <Input
+              id={`${r.key}-url`}
+              className="font-mono"
+              placeholder={`可选，自建网关 → ${r.urlEnv}`}
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+            />
+            {/* Under the address that causes it, not under the account. Usage is
+                only ever read from the provider's own endpoint, so a gateway
+                account has no window to show and the header would look broken
+                rather than deliberate. */}
+            {mode !== "api_key" && baseUrl.trim() && (
+              <Meta className="block">自建网关，头部不显示额度</Meta>
+            )}
+          </FieldContent>
         </Field>
       </FieldGroup>
-
-      {/* Said here because a rule enforces it elsewhere: usage is only read from
-          the provider's own endpoint, so a gateway account has no window to show
-          and the header would look broken rather than deliberate. */}
-      {mode !== "api_key" && baseUrl.trim() && (
-        <Meta className="mt-1.5 block">自建网关，头部不显示额度</Meta>
-      )}
 
       <div className="mt-2 flex items-center gap-2">
         <span className="grow" />
@@ -776,9 +804,11 @@ function GithubPane() {
   const pending = s?.pending;
   return (
     <>
-      <Head title="GitHub" note="代码从这儿来，真令牌不进沙盒" />
+      {/* 真令牌不进沙盒 is already the note on 模型账号, and a sentence repeated on
+          two panes stops being read on either. */}
+      <Head title="GitHub" note="代码从这儿来" />
 
-      <section className="border-b border-rule pb-3">
+      <section>
         <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           {!s ? (
             <Meta>读取中…</Meta>
@@ -822,19 +852,25 @@ function GithubPane() {
             </Button>
           )}
         </div>
-        <Meta className="block">克隆私有仓库、推分支、开 PR 用的。一个连接管所有项目</Meta>
+        {/* What the pane's own title and note already say — 克隆私有仓库、推分支、
+            开 PR — is cut. What is left is the part that is not obvious. */}
+        <Meta className="block">一个连接管所有项目</Meta>
 
         {pending && <DeviceCode code={pending.userCode} url={pending.verificationUri} go="去 GitHub 输入" />}
 
         {/* Why it did not land, beside the button that tries again. */}
-        {!pending && s?.error && <Meta className="mt-1.5 block text-accent">{s.error}</Meta>}
+        {!pending && s?.error && <p className="mt-1.5 text-[0.75rem] text-accent">{s.error}</p>}
       </section>
 
       {/* Which accounts this login can actually work in, and how much each one
           can see. The boss asked "how do I install to several orgs" because the
-          panel could not show that this is a list at all. */}
+          panel could not show that this is a list at all.
+
+          The rule belongs to this section, not to the one above: owned up there
+          it stayed on screen as a line with nothing under it every time this one
+          did not render. */}
       {s?.connected && !s.stale && (
-        <section className="border-b border-rule py-3">
+        <section className="mt-3 border-t border-rule pt-3">
           <div className="flex items-baseline gap-2">
             <H2>装在哪些账号上</H2>
             <span className="grow" />
@@ -849,9 +885,9 @@ function GithubPane() {
             )}
           </div>
           {!s.accounts.length ? (
-            <Meta className="block text-accent">
-              一个也没有。装上之前这个连接看不见任何仓库 —— 装的时候可以选「所有仓库」或者挑几个。
-            </Meta>
+            <p className="text-[0.75rem] text-accent">
+              一个也没有，这个连接看不见任何仓库。装的时候选所有仓库，或者挑几个。
+            </p>
           ) : (
             /* The list owns its rules, not the section. Every row carried its own
                `border-t` while the closing line was the section's `border-b` — a
@@ -901,26 +937,30 @@ function Env({ checks }: { checks: HostCheck[] }) {
   return (
     <>
       <Head title="环境" note="沙盒要用的" />
-      {!checks.length && <Meta className="block py-2">检查中…</Meta>}
-      {checks.map((c) => (
-        <div key={c.name} className="border-t border-rule-soft py-2 first:border-t-0">
-          <div className="flex items-baseline gap-2">
-            {c.ok ? (
-              <Check size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-ok" />
-            ) : (
-              <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
+      {!checks.length && <Meta className="block py-2">读取中…</Meta>}
+      {/* One idiom for row rules across the dialog: the list draws them, not the
+          rows, so there is no `first:` exception to forget. */}
+      <div className="divide-y divide-rule-soft">
+        {checks.map((c) => (
+          <div key={c.name} className="py-2">
+            <div className="flex items-baseline gap-2">
+              {c.ok ? (
+                <Check size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-ok" />
+              ) : (
+                <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
+              )}
+              <span className={cn("text-[0.8125rem]", !c.ok && "text-accent")}>{c.name}</span>
+              <Meta className="min-w-0 truncate">{c.detail}</Meta>
+            </div>
+            {/* Only the broken one gets the room: the command that fixes it. */}
+            {!c.ok && c.fix && (
+              <span className="mt-1 ml-5 block rounded-md bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
+                {c.fix}
+              </span>
             )}
-            <span className={cn("text-[0.8125rem]", !c.ok && "text-accent")}>{c.name}</span>
-            <Meta className="min-w-0 truncate">{c.detail}</Meta>
           </div>
-          {/* Only the broken one gets the room: the command that fixes it. */}
-          {!c.ok && c.fix && (
-            <span className="mt-1 ml-5 block rounded bg-sunk px-2 py-1 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
-              {c.fix}
-            </span>
-          )}
-        </div>
-      ))}
+        ))}
+      </div>
     </>
   );
 }
@@ -952,40 +992,53 @@ interface ServerInfo {
 const SERVER_STATE: Record<ServerInfo["state"], { zh: string; ok: boolean }> = {
   ours: { zh: "在跑，我们起的", ok: true },
   started: { zh: "刚起好", ok: true },
-  theirs: { zh: "在跑，不是我们起的 —— 直接用，不去动它", ok: true },
+  theirs: { zh: "在跑，不是我们起的，直接用", ok: true },
   stuck: { zh: "在跑，但我们驱动不了", ok: false },
   down: { zh: "没在跑", ok: false },
 };
 
 /**
- * Is the container server up, is its config still right, and one button.
+ * Is the container server up, is its config still right, and how we reach it.
  *
- * Health is preflight's answer, read from preflight — a second source that can
- * disagree about "is it up" is worse than one that is occasionally stale. What
- * this asks the server route for is only what preflight cannot know: whether we
- * ever saw the command line, and therefore whether there is anything to restart
- * with.
+ * One component, because it was two and the seam was visible: a status section
+ * closed with its own rule, the key's field group opened with another one four
+ * pixels below it, and a counter was threaded between them so that changing the
+ * key made the status re-ask instead of going on saying 在跑，直接用 over a key
+ * the server has never heard of. Merged, the re-ask is a function call and the
+ * two settings share one field table.
  *
- * `allowed_host_paths` is the most valuable thing on the page and it is not a
- * control: when the allowlist stops covering the staged skills directory,
- * nothing fails loudly — every container mounts an empty directory instead, and
- * the agents simply do not have the skills the boss ticked. Preflight builds the
+ * The order is what the eye needs in the order it needs it: which of five states
+ * this is and the one button for it, why if why adds anything, then the only
+ * thing on this pane that fails silently, then the two values that are merely
+ * settings. It read as five equal blocks before, and a status line has to win.
+ *
+ * `allowed_host_paths` is the most valuable thing on the pane and it is not a
+ * control: when the allowlist stops covering the staged skills directory nothing
+ * fails loudly — every container mounts an empty directory instead, and the
+ * agents simply do not have the skills the boss ticked. Preflight builds the
  * exact line to paste, so it is rendered selectable rather than described.
+ *
+ * The key is read rather than invented: it is what stands between a local port
+ * and "create a container", and a key made up on this side is one the server has
+ * never heard of — which this panel cannot restart the server to teach it. 从服务器读
+ * takes it out of the server's own config, server-side, so the value never
+ * reaches the browser.
  */
-function ServerState({ checks, reload = 0 }: { checks: HostCheck[]; reload?: number }) {
+function ServerPane(props: { current?: AuthRow; checks: HostCheck[]; onSaved: () => void }) {
   const [d, setD] = useState<ServerInfo | null>(null);
+  const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const load = async () => setD(await pull<ServerInfo>("/api/sandbox-server"));
-  // `reload` and not just `[]`: whether we can drive the server is a function of
-  // the key, so the box below is not an independent panel. Clearing the key and
-  // still reading "在跑，直接用" above it is the shape this project keeps paying
-  // for — a stale answer that looks like a healthy one.
   useEffect(() => {
     void load();
-  }, [reload]);
+  }, []);
 
-  const paths = checks.find((c) => c.name === "allowed_host_paths");
+  const paths = props.checks.find((c) => c.name === "allowed_host_paths");
   const st = d ? SERVER_STATE[d.state] : null;
+  // Two identifiers for one process, on one line. They were a Meta beside the
+  // status and a Meta three rows below it, and neither is a fact you read on the
+  // way to something else.
+  const ident = [d?.pid && d.pid !== "?" ? `pid ${d.pid}` : null, d?.config].filter(Boolean).join(" · ");
 
   const restart = async () => {
     const yes = await ask({
@@ -1014,8 +1067,29 @@ function ServerState({ checks, reload = 0 }: { checks: HostCheck[]; reload?: num
     if (r.ok) toast.success("起来了");
   };
 
+  /**
+   * Adopt, replace or clear, and then ask the server again.
+   *
+   * The re-ask is the point of the merge: whether we can drive the server is a
+   * function of the key, and clearing the key while the line above still reads
+   * 在跑，直接用 is the shape this project keeps paying for — a stale answer that
+   * looks like a healthy one.
+   */
+  const sendKey = async (body: Record<string, unknown>) => {
+    setBusy(true);
+    const res = await post("/api/auth", { runtime: "sandbox", ...body });
+    setBusy(false);
+    // Only on success. A rejected key wiped from the box makes the fix "paste it
+    // again", which is never the fix.
+    if (res.ok) setKey("");
+    void load();
+    props.onSaved();
+  };
+
   return (
-    <section className="mb-1 border-b border-rule pb-3">
+    <>
+      <Head title="沙盒服务器" note="开容器的那个服务" />
+
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         {st ? (
           <>
@@ -1025,10 +1099,9 @@ function ServerState({ checks, reload = 0 }: { checks: HostCheck[]; reload?: num
               <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
             )}
             <span className={cn("text-[0.8125rem]", !st.ok && "text-accent")}>{st.zh}</span>
-            {d!.pid && d!.pid !== "?" && <Meta className="font-mono">pid {d!.pid}</Meta>}
           </>
         ) : (
-          <Meta>检查中…</Meta>
+          <Meta>读取中…</Meta>
         )}
         <span className="grow" />
         {/* One control per state, and the two we must not offer are the point.
@@ -1044,7 +1117,7 @@ function ServerState({ checks, reload = 0 }: { checks: HostCheck[]; reload?: num
             {busy ? "重启中…" : "重启"}
           </Button>
         ) : d ? (
-          <Tip label="这个进程不是我们起的，可能是你自己在用的那个。要重启就自己重启 —— 之后这里会认得它。">
+          <Tip label="这个进程不是我们起的，可能是你自己在用的那个。要重启就自己重启，之后这里会认得它。">
             <Button size="sm" disabled>
               重启
             </Button>
@@ -1052,61 +1125,26 @@ function ServerState({ checks, reload = 0 }: { checks: HostCheck[]; reload?: num
         ) : null}
       </div>
 
-      {/* Only when it adds something. `没在跑` was rendering twice — once as the
-          status and once here — which reads as a stuck panel. */}
+      {/* Under the line it explains, indented past the icon, and only when it
+          adds something — `没在跑` was rendering twice, once as the status and
+          once as its own reason, which reads as a stuck panel. It was a bordered
+          box on `sunk` too: a frame around one sentence, on the surface reserved
+          for what a machine produced. */}
       {d?.why && d.why !== st?.zh && (
-        <div className="mt-2 rounded-md border border-rule bg-sunk px-3 py-2 text-[0.8125rem] leading-relaxed text-ink-2">
-          {d.why}
-        </div>
+        <p className="mt-1 ml-5 text-[0.75rem] leading-relaxed text-ink-2">{d.why}</p>
       )}
-
-      {/* The other way out of "that one is not ours", and the reason this is a
-          control rather than a yaml key: the fix for a taken port is a different
-          port, and an edit-and-restart is not a fix you make while reading this. */}
-      {/* `border-b-0`: this is the last row in a section that already draws its
-          own closing rule, and two hairlines 12px apart read as a mistake.
-          DESIGN.md — never two frames around one thing. */}
-      <Field className="mt-2 border-b-0">
-        <FieldLabel htmlFor="sb-addr">地址</FieldLabel>
-        <InputGroup>
-          <Input
-            id="sb-addr"
-            className="min-w-0 flex-1 font-mono"
-            placeholder="127.0.0.1:8080 或 https://host:port"
-            defaultValue={d?.addr ?? ""}
-            onKeyDown={async (e) => {
-              if (e.key !== "Enter") return;
-              const v = (e.target as HTMLInputElement).value;
-              const r = await post("/api/sandbox-server/addr", { addr: v });
-              void load();
-              if (r.ok) toast.success(v.trim() ? `改成 ${v.trim()} 了` : "改回配置文件里的了");
-            }}
-          />
-        </InputGroup>
-        {/* The server does not have to be on this machine — a Tailscale peer or a
-            cloud box works. Over WireGuard plain HTTP is fine, which is why this
-            warns rather than refuses: on the open internet the api_key and every
-            container payload cross it in the clear. */}
-        {d?.inClear && (
-          <Meta className="mt-1 block text-accent">
-            这个地址不在本机也不在加密内网里，而且走的是明文 http —— 密钥和容器流量都是裸的。用 https，或者走 Tailscale。
-          </Meta>
-        )}
-      </Field>
-      {d?.config && !d.why && (
-        <Meta className="mt-1 block truncate font-mono text-[0.6875rem]">配置：{d.config}</Meta>
-      )}
+      {ident && <Meta className="mt-1 ml-5 block truncate">{ident}</Meta>}
 
       {/* Silent when wrong, so it is loud here: a path missing from the
           allowlist mounts an empty directory rather than failing. */}
       {(d?.drift || (paths && !paths.ok)) && (
-        <div className="mt-2 rounded-md border border-rule bg-sunk px-3 py-2">
+        <div className="mt-2.5 rounded-md bg-sunk px-3 py-2">
           <div className="text-[0.8125rem] text-accent">
             {d?.drift ? "配置里没允许我们要挂的路径" : paths!.detail}
           </div>
-          <Meta className="mt-1 block">
-            容器不会报错，只会挂一个空目录 —— 勾上的技能就这么没了。把这行写进配置，然后重启：
-          </Meta>
+          <p className="mt-1 text-[0.75rem] text-ink-3">
+            容器不报错，只挂个空目录，勾上的技能就这么没了。把这行写进配置，然后重启：
+          </p>
           <pre className="mt-1.5 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-ink-2 select-all">
             {d?.drift
               ? `allowed_host_paths = [${d.drift.want.map((p) => `"${p}"`).join(", ")}]`
@@ -1114,49 +1152,42 @@ function ServerState({ checks, reload = 0 }: { checks: HostCheck[]; reload?: num
           </pre>
         </div>
       )}
-    </section>
-  );
-}
 
-/**
- * The key this orchestrator uses to drive opensandbox-server.
- *
- * Generated rather than typed: a key somebody invents is `orch123`, and this one
- * is what stands between a local port and "create a container". 32 bytes from
- * the platform CSPRNG, base64url so it survives a TOML string.
- */
-function SandboxKey(props: { current?: AuthRow; checks: HostCheck[]; onSaved: () => void }) {
-  const [key, setKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  /** Bumped by every key change, so the status above re-asks rather than lying. */
-  const [changed, setChanged] = useState(0);
-  const saved = () => {
-    setChanged((n) => n + 1);
-    props.onSaved();
-  };
+      <FieldGroup className="mt-3">
+        {/* The other way out of "that one is not ours", and the reason this is a
+            control rather than a yaml key: the fix for a taken port is a
+            different port, and an edit-and-restart is not a fix you make while
+            reading this. */}
+        <Field>
+          <FieldLabel htmlFor="sb-addr">地址</FieldLabel>
+          {/* A column, because the warning under the box is a third child and a
+              two-column grid put it in the label gutter. */}
+          <FieldContent className="flex-col items-stretch gap-1">
+            <Input
+              id="sb-addr"
+              className="font-mono"
+              placeholder="127.0.0.1:8080 或 https://host:port"
+              defaultValue={d?.addr ?? ""}
+              onKeyDown={async (e) => {
+                if (e.key !== "Enter") return;
+                const v = (e.target as HTMLInputElement).value;
+                const r = await post("/api/sandbox-server/addr", { addr: v });
+                void load();
+                if (r.ok) toast.success(v.trim() ? `改成 ${v.trim()} 了` : "改回配置文件里的了");
+              }}
+            />
+            {/* The server does not have to be on this machine — a Tailscale peer
+                or a cloud box works. Over WireGuard plain HTTP is fine, which is
+                why this warns rather than refuses: on the open internet the
+                api_key and every container payload cross it in the clear. */}
+            {d?.inClear && (
+              <span className="text-[0.75rem] text-accent">
+                不在本机，也不在加密内网，走的还是明文 http。密钥和容器流量都是裸的，用 https 或者 Tailscale。
+              </span>
+            )}
+          </FieldContent>
+        </Field>
 
-  /** Read it out of the server's own config, server-side. */
-  const adopt = async () => {
-    setBusy(true);
-    const res = await post("/api/auth", { runtime: "sandbox", mode: "api_key", adopt: true });
-    setBusy(false);
-    if (res.ok) setKey("");
-    saved();
-  };
-
-  const save = async () => {
-    setBusy(true);
-    const res = await post("/api/auth", { runtime: "sandbox", mode: "api_key", secret: key.trim() });
-    setBusy(false);
-    if (res.ok) setKey("");
-    saved();
-  };
-
-  return (
-    <>
-      <Head title="沙盒服务器" note="开容器的那个服务" />
-      <ServerState checks={props.checks} reload={changed} />
-      <FieldGroup>
         <Field>
           <FieldLabel htmlFor="sandbox-key">密钥</FieldLabel>
           <InputGroup>
@@ -1164,19 +1195,13 @@ function SandboxKey(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
               id="sandbox-key"
               className="min-w-0 flex-1 font-mono"
               // What is stored, in the box that stores it — same as the accounts.
-              placeholder={
-                props.current
-                  ? `已存 ${props.current.hint}，粘新的就换掉`
-                  : "留空 = 服务器没开鉴权"
-              }
+              placeholder={props.current ? `已存 ${props.current.hint}，粘新的就换掉` : "留空 = 服务器没开鉴权"}
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
-            {/* The server owns this value, so it is read rather than invented.
-                A key generated here would be one the server has never heard of,
-                and the panel cannot restart the server to teach it. */}
+            {/* The server owns this value, so it is read rather than invented. */}
             <Tip label="从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。">
-              <Button size="sm" disabled={busy} onClick={adopt}>
+              <Button size="sm" disabled={busy} onClick={() => void sendKey({ mode: "api_key", adopt: true })}>
                 从服务器读
               </Button>
             </Tip>
@@ -1184,31 +1209,29 @@ function SandboxKey(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
                 until this button existed there was no way back from the panel
                 that put it there. */}
             {props.current && (
-              <Button
-                size="sm"
-                variant="quiet"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  await post("/api/auth", { runtime: "sandbox", clear: true });
-                  setBusy(false);
-                  setKey("");
-                  saved();
-                }}
-              >
+              <Button size="sm" variant="quiet" disabled={busy} onClick={() => void sendKey({ clear: true })}>
                 清掉
               </Button>
             )}
-            <Button variant="go" size="sm" disabled={busy || !key.trim()} onClick={save}>
-              存下
-            </Button>
+            {/* Only once there is something to save, same as every other field in
+                this dialog. A button that is always there and usually does
+                nothing trains you to ignore it. */}
+            {key.trim() && (
+              <Button
+                variant="go"
+                size="sm"
+                disabled={busy}
+                onClick={() => void sendKey({ mode: "api_key", secret: key.trim() })}
+              >
+                存下
+              </Button>
+            )}
           </InputGroup>
         </Field>
-        {/* No "now put this in the server's config" line any more: that
-            instruction is what got followed halfway, and a key only this side
-            knows locks the fleet out of every container.存下 refuses a key the
-            server rejects. */}
       </FieldGroup>
+      {/* No "now put this in the server's config" line: that instruction is what
+          got followed halfway, and a key only this side knows locks the fleet out
+          of every container. 存下 refuses a key the server rejects. */}
     </>
   );
 }
@@ -1260,7 +1283,10 @@ function Remove({
           running prose across the full panel, and a destructive decision read as
           an essay puts all the weight on the button being red. The confirm still
           says it in sentences — this is the part you scan before clicking. */}
-      <dl className="grid max-w-[34rem] grid-cols-[2.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 pt-1 text-[0.8125rem]">
+      {/* Same left edge as every field row in the dialog: the boss arrives here
+          from a pane of labelled values, and a column that moves between panes
+          is the one thing a fixed grid is for. */}
+      <dl className="grid max-w-[34rem] grid-cols-[var(--label)_minmax(0,1fr)] gap-x-4 gap-y-3 pt-1 text-[0.8125rem]">
         <dt className="font-semibold text-bad">删掉</dt>
         <dd className="min-w-0">
           <span className="font-mono text-[0.75rem]">{repoPath}</span> 的 {groups} 个需求

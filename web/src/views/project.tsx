@@ -168,7 +168,9 @@ export function Sandbox({
   return (
     <>
       <Head title="沙盒" note="灰字是默认值" />
-      <FieldGroup className="[--label:5rem]">
+      {/* The label column is the dialog's, not this pane's: settings.tsx sets it
+          once so a switch between panes does not move every value sideways. */}
+      <FieldGroup>
         {/* Every new group is cut from this branch, every rebase goes onto it, and
             every diff the boss reads is measured against it. Empty means whatever
             the remote's HEAD says, which is re-checked when the remote renames it. */}
