@@ -272,6 +272,13 @@ export function App() {
         initial={section ?? "cred"}
         projectId={sel.p}
         projectName={proj?.name}
+        groupCount={st.groups.filter((g) => g.project_id === sel.p).length}
+        // The project it was showing is gone: go home rather than leave the view
+        // pointed at a row that no longer exists.
+        onRemoved={() => {
+          go({ p: null, g: null, view: "board" });
+          void refresh(null);
+        }}
       />
 
       {/*

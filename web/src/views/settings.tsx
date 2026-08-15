@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useState } from "react";
 import {
-  Box, Check, CircleAlert, KeyRound, ListChecks, MonitorCog, Server, SlidersHorizontal, Sparkles, X,
+  Box, Check, CircleAlert, KeyRound, ListChecks, MonitorCog, Server, SlidersHorizontal, Sparkles, Trash2, X,
 } from "lucide-react";
 import { H2, Head, Input, Meta, Pane, Textarea } from "../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
@@ -9,7 +9,8 @@ import { Button, LinkButton } from "../ui/button";
 import { toast } from "sonner";
 import { Segment, Segments } from "../ui/segment";
 import { Tip } from "../ui/tooltip";
-import { pull, post } from "../lib/api";
+import { ask } from "../ui/confirm";
+import { pull, post, del } from "../lib/api";
 import { clock, cn, repoHref } from "../lib/utils";
 import { ThemeChoice } from "../ui/theme";
 import { Gates, Sandbox, type ProjectConfig } from "./project";
@@ -35,7 +36,7 @@ import { Skills } from "./skills";
  */
 
 type Mode = "oauth_token" | "api_key" | "chatgpt";
-export type Section = "cred" | "host" | "server" | "skills" | "prefs" | "gates" | "sandbox";
+export type Section = "cred" | "host" | "server" | "skills" | "prefs" | "gates" | "sandbox" | "remove";
 
 interface AuthRow {
   runtime: string;
@@ -99,10 +100,13 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
   { key: "gates", zh: "闸门", icon: ListChecks, project: true },
   { key: "sandbox", zh: "沙盒", icon: Box, project: true },
+  // Last, alone, and the only irreversible thing in this dialog. Nowhere near
+  // the switches somebody flips while working.
+  { key: "remove", zh: "移除项目", icon: Trash2, project: true },
 ];
 
 export function SettingsDialog({
-  open, onOpenChange, initial, projectId, projectName,
+  open, onOpenChange, initial, projectId, projectName, groupCount, onRemoved,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -110,6 +114,9 @@ export function SettingsDialog({
   initial: Section;
   projectId: number | null;
   projectName?: string;
+  /** How many requirements go with it. Evidence for the one button that erases. */
+  groupCount?: number;
+  onRemoved?: () => void;
 }) {
   const [section, setSection] = useState<Section>(initial);
   useEffect(() => setSection(initial), [initial]);
@@ -265,6 +272,17 @@ export function SettingsDialog({
               ) : proj ? (
                 here === "gates" ? (
                   <Gates d={proj} patch={patch} />
+                ) : here === "remove" ? (
+                  <Remove
+                    projectId={projectId!}
+                    name={projectName ?? proj.repoPath}
+                    repoPath={proj.repoPath}
+                    groups={groupCount ?? 0}
+                    onRemoved={() => {
+                      onOpenChange(false);
+                      onRemoved?.();
+                    }}
+                  />
                 ) : (
                   <Sandbox d={proj} busy={busy} patch={patch} />
                 )
@@ -829,6 +847,68 @@ function SandboxKey(props: { current?: AuthRow; onSaved: () => void }) {
             instruction is what got followed halfway, and a key only this side
             knows locks the fleet out of every container.存下 refuses a key the
             server rejects. */}
+      </FieldGroup>
+    </>
+  );
+}
+
+/**
+ * The one irreversible thing in this dialog, and the only place in the panel
+ * that deletes rather than archives.
+ *
+ * 不做了 winds a requirement up and keeps every event, because what a group did
+ * is the record. Removing a project is the boss saying they do not want the
+ * record either — a different act, so it lives on its own page, behind its own
+ * confirm, in the danger colour, and never next to a switch somebody flips while
+ * working.
+ *
+ * The confirm carries what it costs (硬约束 5): how many requirements go with
+ * it, and — the one thing a boss would be right to fear — that nothing on GitHub
+ * is touched. The branches and PRs stay exactly where they are.
+ */
+function Remove({
+  projectId, name, repoPath, groups, onRemoved,
+}: {
+  projectId: number;
+  name: string;
+  repoPath: string;
+  groups: number;
+  onRemoved: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    const yes = await ask({
+      title: `移除 ${name}？`,
+      body:
+        `${repoPath} 的 ${groups} 个需求、它们的容器、卡片、记录和附件都会删掉，删了找不回来。\n\n` +
+        `GitHub 上什么都不动：分支还在，PR 还在，代码一行不少。移除的只是这台机器上的这份工作。`,
+      yes: "移除",
+      danger: true,
+    });
+    if (!yes) return;
+    setBusy(true);
+    const r = await del(`/api/projects/${projectId}`);
+    setBusy(false);
+    if (r.ok) onRemoved();
+  };
+
+  return (
+    <>
+      <Head title="移除项目" note="只删这边的，GitHub 不动" />
+      <FieldGroup>
+        <Field className="border-b-0" orientation="vertical">
+          <Meta className="block leading-relaxed">
+            {repoPath} · {groups} 个需求。移除会停掉在跑的 turn、删掉容器，再把这个项目的
+            需求、切片、卡片、提问和附件一起删干净 —— 和「不做了」不一样，那个是封存，这个是删除。
+            <br />
+            GitHub 上的分支、PR、代码都留在原处，一个字节都不碰。
+          </Meta>
+          <div className="mt-3 flex">
+            <Button variant="danger" disabled={busy} onClick={go}>
+              {busy ? "移除中…" : "移除这个项目"}
+            </Button>
+          </div>
+        </Field>
       </FieldGroup>
     </>
   );

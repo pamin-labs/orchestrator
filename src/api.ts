@@ -1,7 +1,7 @@
 import { basename, dirname, join, resolve } from "node:path";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { cp, mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dropSlices, type DB } from "./db.ts";
 import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
@@ -14,7 +14,7 @@ import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/au
 import { loginRuntimes, startLogin } from "./mech/login.ts";
 import { githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, NO_CLIENT_ID } from "./mech/ghlogin.ts";
 import { preflight } from "./mech/preflight.ts";
-import { baseBranch, baseRefFor, sandboxGit } from "./mech/checkout.ts";
+import { baseBranch, baseRefFor, removeMirror, sandboxGit } from "./mech/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/chain.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/ownership.ts";
@@ -24,6 +24,7 @@ import { dropGroup, runInstall, startGroup, sweepApproved } from "./mech/start.t
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
 import { openPr, prBody } from "./mech/prwatch.ts";
+import { forgetHolds } from "./mech/github.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/pageindex.ts";
 import { gatesFor, recordGate } from "./mech/gate.ts";
@@ -2750,6 +2751,142 @@ const postProject: Handler = async (ctx, req) => {
 const SSE_HEARTBEAT_MS = 25_000;
 
 /**
+ * Rows to clear for one project, in an order SQLite will accept.
+ *
+ * Nothing declares `ON DELETE CASCADE` (`PRAGMA foreign_key_list` says NO ACTION
+ * on every one), so the order is the whole correctness of this: children before
+ * parents, and the two that are easy to miss are `escalation` → `note` and
+ * `note` → `task`, which put those three in an order that reads backwards.
+ *
+ * Written as a list rather than one long function because the next table with a
+ * `grp_id` has to appear here, and a list makes that a one-line change with a
+ * visible place to put it.
+ */
+const G = "SELECT id FROM grp WHERE project_id = ?1";
+const A = `SELECT id FROM agent WHERE project_id = ?1 OR grp_id IN (${G})`;
+const C = `SELECT id FROM channel WHERE project_id = ?1 OR grp_id IN (${G})`;
+const S = `SELECT id FROM slice WHERE grp_id IN (${G})`;
+const PROJECT_ROWS: string[] = [
+  `DELETE FROM cursor WHERE channel_id IN (${C}) OR agent_id IN (${A})`,
+  `DELETE FROM member WHERE channel_id IN (${C}) OR agent_id IN (${A})`,
+  `DELETE FROM lease WHERE grp_id IN (${G}) OR agent_id IN (${A})`,
+  `DELETE FROM job WHERE grp_id IN (${G}) OR agent_id IN (${A}) OR slice_id IN (${S})`,
+  `DELETE FROM escalation WHERE grp_id IN (${G}) OR agent_id IN (${A})`,
+  `DELETE FROM event WHERE grp_id IN (${G}) OR channel_id IN (${C})`,
+  `DELETE FROM note WHERE project_id = ?1 OR grp_id IN (${G}) OR slice_id IN (${S})`,
+  `DELETE FROM task WHERE grp_id IN (${G}) OR slice_id IN (${S})`,
+  `DELETE FROM slice WHERE grp_id IN (${G})`,
+  `DELETE FROM channel WHERE id IN (${C})`,
+  `DELETE FROM agent WHERE id IN (${A})`,
+  // `grp.blocked_on` points at another grp. Clearing it first is what lets the
+  // whole set go in one statement.
+  `UPDATE grp SET blocked_on = NULL WHERE blocked_on IN (${G})`,
+  `DELETE FROM grp WHERE project_id = ?1`,
+  `DELETE FROM project WHERE id = ?1`,
+];
+
+/**
+ * Remove a project: everything of ours, nothing of GitHub's.
+ *
+ * **This is the one place in this codebase where deleting is right, and it
+ * contradicts the rule everywhere else.** `dropGroup`'s comment — "archiving
+ * must never mean deleting" — is correct for a group: what a group did is the
+ * record, and a dropped one keeps every event. A project being removed is the
+ * boss saying they do not want the record either. Two different acts, and the
+ * panel must never let one be mistaken for the other: 不做了 archives, this
+ * erases.
+ *
+ * **The remote is never touched.** No branch is deleted, no PR is closed, no
+ * GitHub call that writes anything is made from here — the only GitHub state
+ * this drops is a hold in our own memory. Removing a project removes our copy
+ * of the work; a boss who found their branches gone from GitHub afterwards
+ * would have been robbed by a cleanup button.
+ *
+ * Order matters twice over: containers before rows, because a killed row takes
+ * the sandbox id with it and an unnamed container lives until its TTL; and jobs
+ * before containers, so nothing starts a turn against a project that is going
+ * away.
+ */
+const deleteProject: Handler = async (ctx, _req, params) => {
+  const id = Number(params.id);
+  const p = ctx.db
+    .query<{ name: string; repo_path: string; remote: string | null }, [number]>(
+      "SELECT name, repo_path, remote FROM project WHERE id = ?",
+    )
+    .get(id);
+  if (!p) return text("no such project", 404);
+  const grps = ctx.db.query<{ id: number }, [number]>("SELECT id FROM grp WHERE project_id = ?").all(id);
+
+  // 1. Nothing new starts, and what is running is marked done being run.
+  //
+  // ponytail: a turn already in flight keeps its process until the container
+  // under it dies on the next line. Its own writes then land on rows that are
+  // gone and fail the way any other lost race does. Killing a turn mid-flight
+  // is a scheduler feature nothing else needs yet.
+  ctx.db.run(
+    `UPDATE job SET state = 'cancelled', ended_at = unixepoch() * 1000, error = 'project removed'
+     WHERE state IN ('pending', 'running') AND grp_id IN (SELECT id FROM grp WHERE project_id = ?)`,
+    [id],
+  );
+
+  // 2. Containers, while their ids are still readable.
+  const failed: string[] = [];
+  for (const g of grps) {
+    try {
+      await killSandbox(ctx, { grp: g.id });
+    } catch (e: any) {
+      failed.push(`grp ${g.id}: ${e?.message ?? e}`);
+    }
+    clearSandboxLog(g.id);
+  }
+  try {
+    await killSandbox(ctx, { project: id });
+  } catch (e: any) {
+    failed.push(`project sandbox: ${e?.message ?? e}`);
+  }
+  // The bare mirror in the utility container. Its own file owns the path, so
+  // that convention has one home; failing is disk, not data — everything in it
+  // is on the remote or in a container.
+  if (p.remote && !(await removeMirror(ctx, p.remote))) failed.push("mirror");
+
+  // 3. Files, read out of the bodies that name them before those bodies go.
+  const root = resolve(join(ctx.config.dataDir ?? "data", "attachments"));
+  const said = ctx.db
+    .query<{ body: string }, [number]>(
+      `SELECT body FROM note WHERE project_id = ?1 OR grp_id IN (${G})
+       UNION ALL SELECT body FROM event WHERE grp_id IN (${G})`,
+    )
+    .all(id)
+    .map((r) => r.body)
+    .join("\n");
+  for (const m of said.matchAll(/^- (?:\[[^\]]+\] )?(\S+?)(?: \(image\))?$/gm)) {
+    const path = resolve(m[1]!);
+    // Only inside the attachments directory: these strings come out of prose an
+    // agent wrote, and `rm -rf` on whatever one of them happens to say is not a
+    // cleanup button.
+    if (path.startsWith(`${root}/`)) await rm(path, { recursive: true, force: true }).catch(() => {});
+  }
+
+  // 4. Rows, in one transaction: a half-removed project is worse than either end.
+  ctx.db.transaction(() => {
+    for (const sql of PROJECT_ROWS) ctx.db.run(sql, [id]);
+  })();
+
+  // 5. State that outlives the row. `holds` is keyed by `owner/repo` and would
+  // hold a repository nobody has any more; clearing all of them costs at most
+  // one extra failed turn on another held project, which is what re-arms it.
+  forgetHolds("github");
+
+  ctx.bus.emit({
+    author: "orchestrator",
+    kind: "state_change",
+    body: `移除了项目 ${p.name}（${p.repo_path}）：${grps.length} 个需求、容器和记录都清掉了。GitHub 上什么都没动。`,
+  });
+  ctx.sched.tick();
+  return json({ ok: true, groups: grps.length, failed });
+};
+
+/**
  * This machine's directories, for the **attachment** picker and nothing else.
  *
  * It used to be how a project was added, which is why it reports `.git` on each
@@ -3370,6 +3507,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/skills$/, getSkills],
   ["POST", /^\/api\/skills$/, postSkill],
   ["POST", /^\/api\/projects$/, postProject],
+  ["DELETE", /^\/api\/projects\/(?<id>\d+)$/, deleteProject],
   ["POST", /^\/api\/ideas$/, postIdea],
   ["POST", /^\/api\/attach$/, postAttach],
   ["POST", /^\/api\/attach\/local$/, postAttachLocal],

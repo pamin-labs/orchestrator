@@ -326,6 +326,29 @@ async function ensureMirror(ctx: Ctx, remote: string): Promise<string> {
 }
 
 /**
+ * Throw the project's mirror away, when the boss removes the project.
+ *
+ * Here rather than in the caller, and not by exporting `mirrorPath`: how a mirror
+ * is laid out is this file's to know. A second file deriving the same path is a
+ * second source of truth for it, and the day the convention changes, removal
+ * quietly stops finding anything — leaving exactly the invisible leftover that
+ * removing a project exists to prevent.
+ *
+ * Best-effort by design. The mirror holds no record — every commit in it is on
+ * the remote or in a container — so failing to delete it costs disk and nothing
+ * else, and a removal that refuses to finish because a container is down would
+ * leave the boss with a project they cannot get rid of.
+ */
+export async function removeMirror(ctx: Ctx, remote: string): Promise<boolean> {
+  try {
+    const r = await execIn(ctx, UTIL, `rm -rf ${shq(mirrorPath(remote))}`);
+    return r.code === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * A group's commits, out of its container and into the mirror. No network.
  *
  * Called every turn, and that is deliberate: a sandbox is disposable, and this

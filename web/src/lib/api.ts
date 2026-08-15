@@ -130,6 +130,14 @@ export async function post(path: string, body?: unknown) {
   return { ok: r.ok, text };
 }
 
+/** The one destructive verb. Same error surfacing as `post`. */
+export async function del(path: string) {
+  const r = await fetch(path, { method: "DELETE" });
+  const text = await r.text();
+  if (!r.ok) toast.error(text, { duration: 12_000 });
+  return { ok: r.ok, text };
+}
+
 export interface Frame {
   /** Stable across renders and SSE reconnects, so the timeline can key on it
    *  instead of array position. Persisted events use their bus seq (`e<seq>`);
