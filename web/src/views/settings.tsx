@@ -5,7 +5,8 @@ import {
 } from "lucide-react";
 import { H2, Head, Input, Meta, Pane, Textarea } from "../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
-import { Button } from "../ui/button";
+import { Button, LinkButton } from "../ui/button";
+import { toast } from "sonner";
 import { Segment, Segments } from "../ui/segment";
 import { Tip } from "../ui/tooltip";
 import { pull, post } from "../lib/api";
@@ -241,6 +242,7 @@ export function SettingsDialog({
                       }
                     />
                   ))}
+                  <Github />
                 </>
               ) : here === "host" ? (
                 <Env checks={checks.filter((c) => !isCredential(c))} />
@@ -539,6 +541,153 @@ function Credential(props: {
           </Button>
         )}
       </div>
+    </section>
+  );
+}
+
+interface GhStatus {
+  connected: boolean;
+  account: string | null;
+  /** Stored, and GitHub no longer answers for it. */
+  stale: boolean;
+  /** Authorized, but the app is installed nowhere it could read. `null` = could not tell. */
+  installed: boolean | null;
+  installUrl: string | null;
+  /** A GitHub App client id is configured at all. */
+  configured: boolean;
+  pending: { userCode: string; verificationUri: string } | null;
+  error: string | null;
+}
+
+/**
+ * Connect GitHub the way GitHub Desktop does: a code, a browser tab, nothing pasted.
+ *
+ * The code is the whole interaction, so it is the largest thing on the row and it
+ * is one click away from the clipboard — a login code the boss has to hunt for in
+ * a paragraph is a broken login. The button next to it opens the page it goes in,
+ * because those two facts are useless apart.
+ */
+function Github() {
+  const [s, setS] = useState<GhStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = async () => setS(await pull<GhStatus>("/api/auth/github"));
+  useEffect(() => {
+    void load();
+  }, []);
+
+  /**
+   * The authorisation lands in another window, so nothing here can know when.
+   *
+   * Same shape as the CLI logins above: poll while there is a code outstanding,
+   * stop the moment the token arrives. The server is the one actually polling
+   * GitHub; this only notices.
+   */
+  useEffect(() => {
+    if (!s?.pending) return;
+    const t = setInterval(() => void load(), 3000);
+    return () => clearInterval(t);
+  }, [s?.pending?.userCode]);
+
+  const connect = async () => {
+    setBusy(true);
+    await post("/api/auth/github", {});
+    setBusy(false);
+    void load();
+  };
+
+  const pending = s?.pending;
+  return (
+    <section className="border-t border-rule py-3.5">
+      <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="font-display text-[0.9375rem] font-semibold">GitHub</span>
+        {!s?.connected ? (
+          <span className="text-[0.75rem] font-medium text-accent">没连</span>
+        ) : s.stale ? (
+          <span className="text-[0.75rem] font-medium text-accent">连过，但 GitHub 现在不认这个令牌了</span>
+        ) : s.installed === false ? (
+          // Authorized and installed are different acts, and only the second one
+          // can reach a repository. Saying 已连 here would be a green tick over a
+          // repo list that can never fill.
+          <span className="text-[0.75rem] font-medium text-accent">
+            {s.account ? `@${s.account} 授权了` : "授权了"}，但 App 还没装到任何仓库上
+          </span>
+        ) : (
+          <span className="text-[0.75rem] text-ink-2">{s.account ? `@${s.account}` : "已连"}</span>
+        )}
+        <span className="grow" />
+        {s?.connected && (
+          <Button
+            size="sm"
+            variant="quiet"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await post("/api/auth", { runtime: "github", clear: true });
+              setBusy(false);
+              void load();
+            }}
+          >
+            断开
+          </Button>
+        )}
+        {/* The way out of "authorized but useless", beside the line that says it. */}
+        {s?.installed === false &&
+          (s.installUrl ? (
+            <LinkButton href={s.installUrl} className="px-2 py-0.5 text-[0.75rem]">
+              去装上
+            </LinkButton>
+          ) : (
+            <Tip label="config/default.yaml 里填上 github.appSlug，这里就是个直达链接。">
+              <Meta>去 GitHub → 这个 App → Install App</Meta>
+            </Tip>
+          ))}
+        {/* A dead token is a stuck state, so the way out is on the row that says
+            so — not behind 断开 first. */}
+        {(!s?.connected || s.stale) && (
+          <Button size="sm" disabled={busy || !!pending} onClick={connect}>
+            {pending ? "等你在 GitHub 上批准…" : busy ? "去拿登录码…" : s?.stale ? "重新连接" : "连接 GitHub"}
+          </Button>
+        )}
+      </div>
+      <Meta className="mb-1.5 block">
+        克隆私有仓库、推分支、开 PR 用的。真令牌不进沙盒，出站时才换上
+      </Meta>
+
+      {pending && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-rule bg-sunk px-3 py-2.5">
+          {/* The one thing to read on this screen. Wide tracking because the code
+              is typed into another window character by character. */}
+          <code className="font-mono text-[1.375rem] leading-none font-semibold tracking-[0.3em] select-all">
+            {pending.userCode}
+          </code>
+          <Button
+            size="sm"
+            variant="quiet"
+            onClick={() => {
+              void navigator.clipboard.writeText(pending.userCode);
+              toast.success("登录码复制好了");
+            }}
+          >
+            复制
+          </Button>
+          <span className="grow" />
+          <LinkButton href={pending.verificationUri} className="px-2 py-0.5 text-[0.75rem]">
+            去 GitHub 输入
+          </LinkButton>
+        </div>
+      )}
+
+      {/* Why it did not land, beside the button that tries again. */}
+      {!pending && s?.error && <Meta className="mt-1.5 block text-accent">{s.error}</Meta>}
+      {/* Both switches, because both are invisible from here and both fail later
+          rather than now — the expiry one works today and is dead tomorrow. */}
+      {s && !s.configured && !s.connected && (
+        <Meta className="mt-1.5 block">
+          还没配 GitHub App：Developer settings → GitHub Apps 建一个，勾上 Enable Device Flow，
+          关掉 Optional Features 里的 user token 过期（开着 8 小时就失效，续期要 client secret），
+          Client ID 填进 config/default.yaml 的 github.clientId
+        </Meta>
+      )}
     </section>
   );
 }

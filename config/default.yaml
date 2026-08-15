@@ -115,6 +115,25 @@ sandbox:
   # 例：{ /root/.bun/install/cache: /var/tmp/orch-cache }
   cacheDirs: {}
 
+# 设置页里「连接 GitHub」用的 GitHub App。走 device flow —— 它压根没有 client secret，
+# 这也正是这个仓库能公开发的原因，所以 client_id 不是秘密，就写在这个提交进仓库的文件里
+# （和 sandbox.apiKey 相反）。GitHub App 没有 OAuth scope，能干什么是 App 上声明的权限
+# 加上装的时候选的仓库范围，所以这儿只有一个 id。
+#
+# 换成自己的：GitHub → Settings → Developer settings → GitHub Apps → New。
+# 两个开关必须对，都是从这边看不见、而且是过后才炸的：
+#   1. 勾上 Enable Device Flow。不勾，第一步要登录码就被拒。
+#   2. Optional Features 里的 user token 过期要关掉。开着的话 token 8 小时就死，
+#      续期得有 client secret —— 而这个仓库是公开的，正是不能有 secret 的那个理由。
+#      症状是「今天登进去了，明天全组一起 401」。
+# 然后把 Client ID 填在 clientId。
+#
+# appSlug 是 App 页面地址里的那一段（github.com/apps/<这段>），只用来拼「去装上」的链接：
+# 授权和安装是两回事，只授权不安装的 token 一个仓库也看不见。留空的话面板只能给文字说明。
+github:
+  clientId: ""
+  appSlug: ""
+
 # 勾中的技能复制到这里，每个沙盒只读挂在 /root/.claude/skills 和 $CODEX_HOME/skills，
 # CLI 自己发现自己用（决策 006）。
 #

@@ -10,8 +10,9 @@ import { resolveLease, type ResourceDef } from "./mech/lease.ts";
 import { sliceDiffBase, type GitRunner } from "./mech/worktree.ts";
 import { execIn, killSandbox, putFile, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandboxlog.ts";
-import { listAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
+import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
 import { loginRuntimes, startLogin } from "./mech/login.ts";
+import { githubAccount, githubInstallations, pollForToken, startDeviceFlow, NO_CLIENT_ID } from "./mech/ghlogin.ts";
 import { preflight } from "./mech/preflight.ts";
 import { baseBranch, baseRefFor, sandboxGit } from "./mech/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
@@ -99,6 +100,8 @@ export interface Ctx {
     port?: number;
     /** Wall clock for a dependency install. See config.ts for why it is generous. */
     installTimeoutMs?: number;
+    /** The GitHub App the device-flow login runs against. A client id is not a secret. */
+    github?: { clientId: string; appSlug: string };
     /** Where turns run. See mech/sandbox.ts and docs/decisions/005. */
     sandbox?: {
       server: string;
@@ -3218,6 +3221,90 @@ const postLogin: Handler = async (ctx, req) => {
 };
 
 /**
+ * Connect GitHub, device flow, no token pasted and no `gh` on this machine.
+ *
+ * Two routes for one thing, because the flow has two halves that arrive minutes
+ * apart: the POST returns the code the moment GitHub mints it — that code *is*
+ * the interaction, and a button that waits for the browser has nothing to show —
+ * and the GET is what the panel asks while the boss is off in the other tab.
+ *
+ * The poll runs here rather than in the browser: it holds the device code, which
+ * is the half that trades for a token, and it has to finish even if the settings
+ * dialog is closed halfway through.
+ */
+interface GhFlow {
+  userCode: string;
+  verificationUri: string;
+  expiresAt: number;
+}
+let ghFlow: GhFlow | null = null;
+/** Why the last attempt did not land. Shown next to the button that retries it. */
+let ghError: string | null = null;
+
+const postGithubLogin: Handler = async (ctx) => {
+  const clientId = ctx.config.github?.clientId ?? "";
+  // A second click while one code is still good hands back the same code rather
+  // than starting a second poll: two loops racing for one login is two ways to
+  // store a token and one of them wins silently.
+  if (ghFlow && ghFlow.expiresAt > Date.now()) {
+    return json({ userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri, expiresIn: Math.round((ghFlow.expiresAt - Date.now()) / 1000) });
+  }
+  let d: Awaited<ReturnType<typeof startDeviceFlow>>;
+  try {
+    d = await startDeviceFlow(clientId);
+  } catch (e: any) {
+    return bad(e?.message ?? NO_CLIENT_ID);
+  }
+  ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
+  ghError = null;
+
+  void (async () => {
+    try {
+      const token = await pollForToken(clientId, d);
+      saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
+      // Every running sandbox holds the old (absent) credential in its sidecar.
+      await credentialChanged(ctx, "github");
+      ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "GitHub 连上了" });
+    } catch (e: any) {
+      ghError = e?.message ?? String(e);
+      ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `GitHub 没连上：${ghError}` });
+    } finally {
+      ghFlow = null;
+    }
+  })();
+
+  return json({ userCode: d.userCode, verificationUri: d.verificationUri, expiresIn: d.expiresIn });
+};
+
+const getGithubLogin: Handler = async (ctx) => {
+  const a = loadAuth(ctx.db, "github");
+  // Asked of GitHub rather than read from a stored name: a name in the database
+  // keeps saying "connected" for a token that was revoked last week, and an
+  // expired GitHub token is the failure where every group breaks at once with a
+  // different error each (决策 007 §6). No row, no request.
+  const account = a ? await githubAccount(a.secret) : null;
+  // Authorized is not installed. A GitHub App's user token reaches exactly the
+  // repositories the app is installed on, so zero installations is the state
+  // that looks like success and is not: a green 已连接 over a repo list that
+  // can never fill.
+  const installs = a && account ? await githubInstallations(a.secret) : null;
+  const slug = (ctx.config.github?.appSlug ?? "").trim();
+  return json({
+    connected: !!a,
+    account,
+    /** The token is stored and GitHub no longer answers for it. */
+    stale: !!a && !account,
+    /** Authorized, but the app is not installed anywhere it could read. */
+    installed: installs === null ? null : installs > 0,
+    /** Where to fix that, when the app's slug is configured. */
+    installUrl: slug ? `https://github.com/apps/${slug}/installations/new` : null,
+    configured: !!(ctx.config.github?.clientId ?? "").trim(),
+    pending: ghFlow && ghFlow.expiresAt > Date.now() ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri } : null,
+    error: ghError,
+  });
+};
+
+/**
  * A project's own knobs: what it gates on, how it installs, what its sandboxes
  * look like. Merged into `config_json` key by key, so a page that only knows
  * about gates cannot blank the sandbox block on save.
@@ -3323,6 +3410,8 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/auth$/, getAuth],
   ["POST", /^\/api\/auth$/, postAuth],
   ["POST", /^\/api\/auth\/login$/, postLogin],
+  ["GET", /^\/api\/auth\/github$/, getGithubLogin],
+  ["POST", /^\/api\/auth\/github$/, postGithubLogin],
   ["GET", /^\/api\/preflight$/, getPreflight],
   ["GET", /^\/api\/sandbox$/, getSandbox],
   ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
