@@ -12,7 +12,7 @@ import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "./mech/sandbox/login.ts";
-import { APP_SLUG, forgetIdentity, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
+import { APP_SLUG, BOT, commitIdentity, forgetIdentity, githubAccount, listInstallations, listRepos, pollForToken, setTrailers, startDeviceFlow, trailers, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
 import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "./mech/sandbox/server.ts";
 import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
@@ -3548,7 +3548,20 @@ const getGithubLogin: Handler = async (ctx) => {
     accounts: installs?.ok ? await withCounts(ctx, installs.data) : [],
     pending: ghFlow && ghFlow.expiresAt > Date.now() ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri } : null,
     error: ghError,
+    /** What every commit carries besides its message, and who it is authored as.
+     *  On this route because both answers come from the connection above: the
+     *  author is the login, and the two switches are decisions about the
+     *  repositories it can reach. */
+    trailers: trailers(ctx.db),
+    identity: await commitIdentity(ctx),
+    bot: { ...BOT },
   });
+};
+
+/** The two switches. Both default on; see `TRAILERS_KEY` for why each exists. */
+const postTrailers: Handler = async (ctx, req) => {
+  const b = await body<{ signoff?: boolean; coauthor?: boolean }>(req);
+  return json(setTrailers(ctx.db, b));
 };
 
 /**
@@ -3814,6 +3827,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/auth\/github$/, getGithubLogin],
   ["GET", /^\/api\/github\/repos$/, getGithubRepos],
   ["POST", /^\/api\/auth\/github$/, postGithubLogin],
+  ["POST", /^\/api\/git\/trailers$/, postTrailers],
   ["POST", /^\/api\/auth\/codex\/device$/, postCodexDevice],
   ["POST", /^\/api\/auth\/codex\/device\/cancel$/, postCodexDeviceCancel],
   ["GET", /^\/api\/preflight$/, getPreflight],

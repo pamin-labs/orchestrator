@@ -1,4 +1,5 @@
 import type { Ctx } from "../../api.ts";
+import type { DB } from "../../db.ts";
 /**
  * Connect GitHub once, from the settings page, the way GitHub Desktop does.
  *
@@ -320,8 +321,10 @@ export interface Trailers extends TrailerPrefs {
   bot: { name: string; email: string };
 }
 
-export function trailers(ctx: Ctx): TrailerPrefs {
-  const row = ctx.db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(TRAILERS_KEY)?.v;
+/** Takes the database, not a `Ctx`: the sandbox writes Claude Code's own
+ *  co-author setting from the same row, and it has no `Ctx` to hand. */
+export function trailers(db: DB | undefined): TrailerPrefs {
+  const row = db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(TRAILERS_KEY)?.v;
   try {
     return { signoff: true, coauthor: true, ...(row ? (JSON.parse(row) as Partial<TrailerPrefs>) : {}) };
   } catch {
@@ -329,9 +332,9 @@ export function trailers(ctx: Ctx): TrailerPrefs {
   }
 }
 
-export function setTrailers(ctx: Ctx, next: Partial<TrailerPrefs>): TrailerPrefs {
-  const merged = { ...trailers(ctx), ...next };
-  ctx.db?.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
+export function setTrailers(db: DB, next: Partial<TrailerPrefs>): TrailerPrefs {
+  const merged = { ...trailers(db), ...next };
+  db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
     TRAILERS_KEY,
     JSON.stringify(merged),
   ]);
@@ -341,7 +344,7 @@ export function setTrailers(ctx: Ctx, next: Partial<TrailerPrefs>): TrailerPrefs
 /** The stored settings, in the shape the commit helpers take. One converter, so
  *  the bot identity cannot drift between the fallback author and the trailer. */
 export function gitTrailers(ctx: Ctx): { signoff: boolean; coauthor: boolean; bot: { name: string; email: string } } {
-  return { ...trailers(ctx), bot: { ...BOT } };
+  return { ...trailers(ctx.db), bot: { ...BOT } };
 }
 
 /** Cleared when the GitHub credential changes, or it outlives the account. */

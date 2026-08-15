@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DB } from "../../db.ts";
+import { trailers } from "../git/ghlogin.ts";
 import type { Credential } from "./sandbox.ts";
 import { accessToken, decoyAuth, isStale, parseAuth, renew, seedHome, type CodexHomeIO } from "./chatgpt.ts";
 import { forgetHolds } from "../git/github.ts";
@@ -273,7 +274,7 @@ export const CODEX_HOME = "/root/.codex";
  * invalidate each other.
  */
 export function filesFor(db: DB): Record<string, string> {
-  const files: Record<string, string> = { ...gitFilesFor(db) };
+  const files: Record<string, string> = { ...gitFilesFor(db), ...claudeFilesFor(db) };
   const a = loadAuth(db, "codex");
   if (a?.mode !== "chatgpt") return files;
   const parsed = parseAuth(a.secret);
@@ -282,6 +283,24 @@ export function filesFor(db: DB): Record<string, string> {
   // Without this codex looks for the login in the OS keychain instead.
   files[`${CODEX_HOME}/config.toml`] = 'cli_auth_credentials_store = "file"\n';
   return files;
+}
+
+/**
+ * Claude Code's own commit trailer, decided by the same switch as ours.
+ *
+ * The CLI appends `Co-Authored-By: Claude` and a `Generated with Claude Code`
+ * line to any commit it makes itself, and it has a setting for that. Left alone
+ * it is on, so a repository whose owner turned the co-author trailer off in the
+ * panel still got one — from the other direction, on the commits an agent wrote
+ * by hand rather than the ones this orchestrator squashes.
+ *
+ * `--setting-sources user,project,local` is what makes this file read at all;
+ * `/root/.claude` is the container's HOME, which holds nothing but what we put
+ * in it.
+ */
+function claudeFilesFor(db: DB): Record<string, string> {
+  const { coauthor } = trailers(db);
+  return { "/root/.claude/settings.json": `${JSON.stringify({ includeCoAuthoredBy: coauthor }, null, 2)}\n` };
 }
 
 /** The username half of git's Basic auth. GitHub ignores it; the token is the password. */

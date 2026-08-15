@@ -5,6 +5,7 @@ import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
 import { REFRESH_HOME } from "../src/mech/sandbox/chatgpt.ts";
 import { accessToken, isStale, parseAuth, renew } from "../src/mech/sandbox/chatgpt.ts";
 import { DEVICE_CODE_TTL_MS } from "../src/mech/sandbox/login.ts";
+import { setTrailers } from "../src/mech/git/ghlogin.ts";
 import { readFileSync } from "node:fs";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
@@ -172,7 +173,23 @@ test("an api key for codex goes to the sidecar like everything else", () => {
   const { credentials, env } = vaultFor(db);
   expect(credentials.find((c) => c.name === "codex")!.value).toBe("sk-real");
   expect(env.OPENAI_API_KEY).not.toContain("sk-real");
-  expect(filesFor(db)).toEqual({});
+  // No credential file, which is the point: an API key is bound in the vault and
+  // nothing about it is written into the container. The one file that is always
+  // there is Claude Code's own settings, which carries no secret.
+  expect(Object.keys(filesFor(db))).toEqual(["/root/.claude/settings.json"]);
+});
+
+test("Claude Code's own co-author trailer follows the same switch as ours", () => {
+  // Left alone the CLI appends `Co-Authored-By: Claude` to commits it makes
+  // itself, so a repository whose owner turned the trailer off in the panel got
+  // one anyway — from the other direction, on the commits an agent wrote by hand
+  // rather than the ones this orchestrator squashes.
+  const db = openMemory();
+  const read = () => JSON.parse(filesFor(db)["/root/.claude/settings.json"]!) as { includeCoAuthoredBy: boolean };
+  expect(read().includeCoAuthoredBy).toBe(true);
+
+  setTrailers(db, { coauthor: false });
+  expect(read().includeCoAuthoredBy).toBe(false);
 });
 
 test("the ChatGPT login is renewed here, once, and by codex rather than by us", async () => {

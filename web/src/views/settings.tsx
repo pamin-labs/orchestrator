@@ -8,6 +8,7 @@ import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } f
 import { Button, LinkButton } from "../ui/button";
 import { toast } from "sonner";
 import { Segment, Segments } from "../ui/segment";
+import { Switch } from "../ui/switch";
 import { Badge } from "../ui/badge";
 import { Tip } from "../ui/tooltip";
 import { ask } from "../ui/confirm";
@@ -748,6 +749,11 @@ interface GhStatus {
   accounts: { id: number; account: string; kind: string; repos: number | null }[];
   pending: { userCode: string; verificationUri: string } | null;
   error: string | null;
+  /** What every commit carries besides its message. Both default on. */
+  trailers: { signoff: boolean; coauthor: boolean };
+  /** Who commits are authored as: the connected login, or the bot until there is one. */
+  identity: { name: string; email: string };
+  bot: { name: string; email: string };
 }
 
 /**
@@ -911,7 +917,69 @@ function GithubPane() {
           )}
         </section>
       )}
+
+      {/* Under the connection because both answers come from it: the author is
+          this login, and these are conventions of the repositories it reaches. */}
+      {s && <Commits s={s} onSaved={load} />}
     </>
+  );
+}
+
+/**
+ * What every commit this system writes carries besides its message.
+ *
+ * Here rather than in the yaml: they are decisions about a repository's
+ * conventions, and the person making them is looking at this page. Both default
+ * on — a repository with DCO refuses an unsigned commit at the last step of a
+ * finished branch, and a diff an agent wrote should say so in the record.
+ */
+function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const set = async (next: { signoff?: boolean; coauthor?: boolean }) => {
+    setBusy(true);
+    await post("/api/git/trailers", next);
+    setBusy(false);
+    onSaved();
+  };
+  const bot = s.identity.name === s.bot.name;
+  return (
+    <section className="mt-3 border-t border-rule pt-3">
+      <H2>提交</H2>
+      {/* The author, stated rather than configured. It was a name in a yaml file
+          that routed nowhere, so a `Signed-off-by` carrying it certified nothing
+          and a reviewer clicking it got a 404. */}
+      <Meta className="mt-0.5 block">
+        作者是 <span className="font-mono text-ink-2">{s.identity.name}</span>
+        {bot ? "（还没连 GitHub，先用我们的机器人账号）" : "，取自你连的 GitHub 账号"}
+      </Meta>
+
+      <FieldGroup className="mt-1.5">
+        <Field orientation="horizontal">
+          <FieldLabel htmlFor="t-signoff">Sign-off</FieldLabel>
+          <FieldContent className="flex-row items-center gap-2">
+            <Switch
+              id="t-signoff"
+              checked={s.trailers.signoff}
+              disabled={busy}
+              onCheckedChange={(v) => void set({ signoff: v })}
+            />
+            <Meta>开了 DCO 的仓库不收没有这行的提交</Meta>
+          </FieldContent>
+        </Field>
+        <Field orientation="horizontal">
+          <FieldLabel htmlFor="t-coauthor">Co-author</FieldLabel>
+          <FieldContent className="flex-row items-center gap-2">
+            <Switch
+              id="t-coauthor"
+              checked={s.trailers.coauthor}
+              disabled={busy}
+              onCheckedChange={(v) => void set({ coauthor: v })}
+            />
+            <Meta>把 {s.bot.name} 记成共同作者</Meta>
+          </FieldContent>
+        </Field>
+      </FieldGroup>
+    </section>
   );
 }
 
