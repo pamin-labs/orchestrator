@@ -136,8 +136,28 @@ export const GRP_INVARIANTS = rows<GrpState>(
   {
     state: "PR_OPEN",
     must: "it has a number, a place in the merge queue, and something reading GitHub",
-    driver: "pollPrs — merged winds it up, closed pauses it, reopened puts it back",
+    driver: "the Scribe filing `orch pr` publishes it; then pollPrs — merged winds it up, closed pauses it, reopened puts it back",
     repair: (ctx) => {
+      // Audited, queued, and no PR: the Scribe's turn died, or ended without
+      // filing a message. Its own liveness is the scheduler's — a job that fails
+      // is retried — so this only fires once nothing is left to run for the
+      // group, and then publishes with what the record can say by itself.
+      //
+      // `merge_seq IS NOT NULL` is what makes this safe: a group is PR_OPEN from
+      // the moment the branch gate passes, which is *before* the audit, and the
+      // Auditor's turn is enqueued with a null `grp_id` so it does not show up in
+      // the query below. A place in the merge queue is only handed out by a
+      // passed audit.
+      for (const g of ctx.db
+        .query<{ id: number }, []>(
+          `SELECT id FROM grp g WHERE status = 'PR_OPEN' AND pr_number IS NULL AND merge_seq IS NOT NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM job WHERE grp_id = g.id AND kind = 'agent_turn' AND state IN ('pending', 'running')
+             )`,
+        )
+        .all()) {
+        ctx.publishBranch?.(g.id);
+      }
       // waiting_merge reads merge_seq_at, so a null one is invisible to it: finished
       // work with no place in the order and nothing looking at it.
       for (const g of ctx.db

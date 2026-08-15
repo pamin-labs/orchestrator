@@ -68,7 +68,12 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
 
   // Every turn left a `wip:` commit behind. Squash before publishing, or the PR
   // is a dozen commits all called "wip: engineer turn".
-  const sq = await squashWip(sandbox, WORK, WORK, `${input.title}\n\n${input.body}`, gitTrailers(ctx));
+  //
+  // The commit gets the Scribe's message, not the PR body. They were the same
+  // string, so `git log` in the merged repository carried `## Slices (3, all
+  // accepted)`, a gate table and `Opened by orchestrator` — a description
+  // written for a review page, pasted into the one place that outlives it.
+  const sq = await squashWip(sandbox, WORK, WORK, commitMessage(ctx, grpId, input.title), gitTrailers(ctx));
   ctx.bus.emit({
     grpId,
     author: "orchestrator",
@@ -156,9 +161,72 @@ function version(): string {
   }
 }
 
+/**
+ * The commit convention, as an `if`.
+ *
+ * Every rule here is one the Scribe's prompt states, and the prompt lists these
+ * four refusals by name. That is not decoration: a prompt that permits what the
+ * validator rejects teaches the model to write something that will be thrown
+ * away, and it finds out at the end of the only turn it gets.
+ */
+const TYPES = ["feat", "fix", "docs", "test", "refactor", "perf", "build", "chore"] as const;
+const SUBJECT = new RegExp(`^(${TYPES.join("|")})(\\([a-z0-9._/-]+\\))?: \\S`);
+// CJK, kana and hangul. Not a general "is this English" test — it cannot be one
+// — but it catches the thing that actually happens: the panel's language is
+// Chinese, the journals are Chinese, and the message written next to them comes
+// out Chinese too.
+const NOT_ENGLISH = /[぀-ヿ㐀-鿿가-힯]/;
+
+/** Null when the message may be published, otherwise what to fix. */
+export function checkPrMessage(title: string, body: string): string | null {
+  const t = title.trim();
+  if (!SUBJECT.test(t)) return `title needs a type prefix: ${TYPES.join("|")}, then an optional (scope), then ": "`;
+  if (t.length > 72) return `title is ${t.length} characters and 72 is the cap`;
+  if (t.endsWith(".")) return "title does not end in a full stop";
+  if (NOT_ENGLISH.test(t) || NOT_ENGLISH.test(body)) return "commits and pull requests are English, always";
+  if (body.trim().length < 20) return "the body says what the failure looked like, and one line is not that";
+  return null;
+}
+
+/**
+ * The subject the commit and the pull request share.
+ *
+ * `orch: <group name>` was the title of every pull request this project has ever
+ * opened — a slug the dispatcher invented before any code existed, identical
+ * across four PRs in one release, which is why release notes filed all of them
+ * under "other". It is still the fallback, because a branch that is finished
+ * must be publishable whatever happened to the Scribe's turn, but it is now the
+ * mark of a message nobody wrote rather than the normal case.
+ */
+/**
+ * What the squashed commit says. Subject, blank line, the Scribe's body.
+ *
+ * With no body it stays one line, which is the right shape for a commit nobody
+ * described — better than pasting the pull request's headings into a log.
+ */
+export function commitMessage(ctx: Ctx, grpId: number, title: string): string {
+  const summary = ctx.db
+    .query<{ pr_summary: string | null }, [number]>("SELECT pr_summary FROM grp WHERE id = ?")
+    .get(grpId)?.pr_summary;
+  return summary?.trim() ? `${title}\n\n${summary.trim()}` : title;
+}
+
+export function prTitle(ctx: Ctx, grpId: number): string {
+  const g = ctx.db
+    .query<{ name: string; pr_title: string | null }, [number]>("SELECT name, pr_title FROM grp WHERE id = ?")
+    .get(grpId);
+  return g?.pr_title?.trim() || `orch: ${g?.name ?? "changes"}`;
+}
+
 export function prBody(ctx: Ctx, grpId: number): string {
   const q = <T,>(sql: string, ...p: unknown[]): T[] => (ctx.db.query(sql) as any).all(...p) as T[];
   const out: string[] = [];
+
+  // The Scribe's, and first, because it is the only part written by something
+  // that read the diff. Everything below is the record: true, assembled from the
+  // database, and unable to say what the change actually does.
+  const summary = q<{ pr_summary: string | null }>("SELECT pr_summary FROM grp WHERE id = ?", grpId)[0]?.pr_summary;
+  if (summary?.trim()) out.push(summary.trim());
 
   const idea = q<{ body: string }>(
     "SELECT body FROM event WHERE grp_id = ? AND kind = 'boss_say' ORDER BY seq LIMIT 1",

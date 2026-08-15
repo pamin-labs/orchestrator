@@ -571,6 +571,25 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // stays and one question is raised naming all of them. `repoHref` still refuses
   // anything shaped like a path, so an unconverted row renders as it always did.
   slugRepoPaths,
+
+  // 038 — what this branch is called in a log, written by an agent that read it.
+  //
+  // The pull request title was `orch: <group name>`, a slug the dispatcher made
+  // up before any code existed, and the squashed commit carried the whole PR body
+  // under it — headings, gate tables, `Opened by orchestrator`. A reviewer's log
+  // is the least generous place this project shows up in, and it showed up as
+  // eight rows of the same prefix.
+  //
+  // Two columns rather than one so the commit and the PR can differ where they
+  // should: `pr_title` is the subject both use, `pr_summary` is the body of the
+  // commit and the first section of the PR — the record sections below it are
+  // still built from the database, which knows them better than any agent.
+  `
+  ALTER TABLE grp ADD COLUMN pr_title TEXT;
+  `,
+  `
+  ALTER TABLE grp ADD COLUMN pr_summary TEXT;
+  `,
 ];
 
 export type DB = Database;

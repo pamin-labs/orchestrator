@@ -553,6 +553,29 @@ async function buildDeltaFor(
       `File your verdict with exactly:\n` +
       `  orch audit ${gid} --verdict pass|fail --note "what is missing or inconsistent"`;
   }
+  if (payload.scribe) {
+    const gid = Number(payload.scribe);
+    // The base is named rather than left to the agent to work out: it is
+    // `origin/main` on most repositories and something else on the ones where
+    // guessing it produces a diff of the whole history.
+    const base = ctx.db
+      .query<{ base_branch: string | null }, [number]>(
+        "SELECT p.base_branch FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
+      )
+      .get(gid)?.base_branch;
+    const ref = `origin/${base ?? "main"}`;
+    delta.card =
+      `This branch passed its audit and is about to be published. Write what it says in a log.\n\n` +
+      `Read it first — you are in the group's own checkout:\n` +
+      `  git diff ${ref}...HEAD\n` +
+      `  git log --format='%s' ${ref}..HEAD\n` +
+      `Then \`orch ctx query\` for the card it was meant to deliver.\n\n` +
+      `File it with exactly this, the body on stdin:\n` +
+      `  orch pr ${gid} --title "<type(scope): subject>" -\n\n` +
+      `Nothing is published until that lands, and it is refused with a reason if the ` +
+      `subject has no type prefix, runs past 72 characters, ends in a full stop, or ` +
+      `either half is not English. A refusal is not the end of your turn — fix it and send it again.`;
+  }
   if (payload.digest && typeof payload.digest === "object") {
     const d = payload.digest as { channel_id?: number; from?: number; to?: number };
     const rows = ctx.db
@@ -687,6 +710,7 @@ const PAYLOAD_KEYS = new Set([
   "audit",
   "audit_branch",
   "audit_group",
+  "scribe",
   "review",
   "skills",
   "digest",
@@ -1175,12 +1199,7 @@ async function runWatchdogJob(deps: ExecDeps): Promise<void> {
 /** Called by the server when the Auditor files a PR-level verdict. */
 export function makeAuditVerdict(deps: ExecDeps) {
   return (grpId: number, pass: boolean, note: string): void =>
-    auditVerdict(
-      { ctx: deps.ctx, cfg: deps.cfg, onAuditPass: deps.onAuditPass },
-      grpId,
-      pass,
-      note,
-    );
+    auditVerdict({ ctx: deps.ctx, cfg: deps.cfg }, grpId, pass, note);
 }
 
 /** Called by the server when QA files a verdict. */

@@ -167,6 +167,7 @@ const USAGE = `orch <command>
   task done <id> --already-done "<why>"  # an earlier slice already covered it
   review <slice_id> --verdict pass|fail [--note "…"]     # QA only
   audit <group_id> --verdict pass|fail [--note "…"]      # Auditor only
+  pr <group_id> --title "<type(scope): subject>" -       # Scribe only; body on stdin
   answer <esc_id> --answer "…" [--ref <note_id>] | --abstain [--why "…"]
   triage <group_id> --as patch|respec|reject --note "…"  # CoS only
   draft <group_id>                                       # card on stdin, Dispatcher/PM
@@ -314,6 +315,16 @@ export async function main(argv: string[]): Promise<number> {
       }
       const note = typeof flags.note === "string" ? flags.note : args.slice(2).join(" ");
       r = await call("POST", "/orch/audit", { group_id: sub, verdict: flags.verdict, note });
+      break;
+    }
+    case "pr": {
+      if (!sub) return usageError("pr needs a group id");
+      if (typeof flags.title !== "string" || !flags.title.trim()) {
+        return usageError('pr needs --title "<type(scope): subject>"');
+      }
+      // Body on stdin, like `journal add`: it is paragraphs with blank lines in
+      // them, and an argv the agent has to quote is an argv the agent gets wrong.
+      r = await call("POST", "/orch/pr", { group_id: sub, title: flags.title, body: await stdin() });
       break;
     }
     case "answer": {

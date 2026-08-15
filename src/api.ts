@@ -24,7 +24,7 @@ import { acceptSlice } from "./mech/flow/review.ts";
 import { dropGroup, runInstall, startGroup, sweepApproved } from "./mech/flow/start.ts";
 import { head, joinQueue, landed, position } from "./mech/flow/mergequeue.ts";
 import { costReport } from "./mech/ops/cost.ts";
-import { openPr, prBody, pushBlocked } from "./mech/git/prwatch.ts";
+import { checkPrMessage, openPr, prBody, prTitle, pushBlocked } from "./mech/git/prwatch.ts";
 import { forgetHolds } from "./mech/git/github.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/knowledge/pageindex.ts";
@@ -65,6 +65,14 @@ export interface Ctx {
   reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
   /** Wired by the server: the Auditor's PR-level verdict. */
   auditVerdict?: (grpId: number, pass: boolean, note: string) => void;
+  /**
+   * Wired by the server: squash, push, open the PR.
+   *
+   * Not called by the audit any more. A passed audit means the branch may be
+   * published; the Scribe's message is what it is published *as*, and this runs
+   * when that lands — or when the watchdog stops waiting for one.
+   */
+  publishBranch?: (grpId: number) => void;
   /** Wired by the server: a watchdog finding worth telling the boss about. */
   onFinding?: (rule: string, severity: string, body: string, grpId: number | null) => void;
   /** Wired by the server: a question that reached the top of the answer chain. */
@@ -1289,6 +1297,46 @@ const postOwns: Handler = async (ctx, req) => {
   return check.ok ? text("ok") : bad(check.reason ?? "boundary still overlaps");
 };
 
+/**
+ * The Scribe's message, and the thing that publishes the branch.
+ *
+ * The validator is the convention — the role's prompt states these four
+ * refusals by name, and `checkPrMessage` is what enforces them. A Scribe that
+ * gets it wrong is told which rule and can send it again within the same turn:
+ * nothing is published until one lands, so there is no half state to undo.
+ */
+const postPr: Handler = async (ctx, req) => {
+  const b = await body<{ group_id: number | string; title: string; body?: string }>(req);
+  const a = agentOf(ctx, req);
+  if (!a) return bad("unknown or missing agent token");
+  if (a.role !== "scribe") return bad(`${a.role} does not write pull request messages`);
+  const gid = resolveGroup(ctx, b.group_id);
+  if (!gid) return bad("which group? pass its id or name");
+  if (!mayAct(ctx, a, gid)) return text("not your project", 403);
+
+  const title = (b.title ?? "").trim();
+  const summary = (b.body ?? "").trim();
+  const wrong = checkPrMessage(title, summary);
+  if (wrong) return bad(wrong);
+
+  const g = ctx.db
+    .query<{ status: string; pr_number: number | null }, [number]>("SELECT status, pr_number FROM grp WHERE id = ?")
+    .get(gid);
+  if (!g) return bad("no such group");
+  ctx.db.run("UPDATE grp SET pr_title = ?, pr_summary = ? WHERE id = ?", [title, summary, gid]);
+  ctx.bus.emit({
+    grpId: gid,
+    author: "scribe",
+    kind: "note",
+    intent: "note",
+    body: title,
+  });
+  // Already open: the message is stored and `openPr` PATCHes the existing one
+  // rather than opening a second. Publishing is still the same call either way.
+  ctx.publishBranch?.(gid);
+  return text("ok");
+};
+
 const postAudit: Handler = async (ctx, req) => {
   const b = await body<{ group_id: number | string; verdict: string; note?: string }>(req);
   const a = agentOf(ctx, req);
@@ -2474,7 +2522,7 @@ const postGroupControl: Handler = async (ctx, req, params) => {
         ctx,
         gh: ctx.gh,
                 grpId,
-        title: `orch: ${g.name}`,
+        title: prTitle(ctx, grpId),
         body: prBody(ctx, grpId),
       });
       if ("error" in r) {
@@ -3789,6 +3837,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/orch\/task\/done$/, postTaskDone],
   ["POST", /^\/orch\/review$/, postReview],
   ["POST", /^\/orch\/audit$/, postAudit],
+  ["POST", /^\/orch\/pr$/, postPr],
   ["POST", /^\/orch\/answer$/, postAnswer2],
   ["POST", /^\/orch\/triage$/, postTriage],
   ["POST", /^\/orch\/draft$/, postDraft],

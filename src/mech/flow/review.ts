@@ -21,8 +21,6 @@ import { joinQueue, position } from "./mergequeue.ts";
 export interface ReviewDeps {
   ctx: Ctx;
   cfg: Config;
-  /** Wired by the server: opens the PR once a branch passes its audit. */
-  onAuditPass?: (grpId: number) => void;
 }
 
 export interface SliceRow {
@@ -514,7 +512,16 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
   const { ctx } = deps;
   if (pass) {
     joinQueue(ctx.db, grpId);
-    deps.onAuditPass?.(grpId);
+    // Not published yet: the Scribe writes what it is published *as*, and
+    // `orch pr` is what calls `publishBranch`. One turn, in the group's own
+    // sandbox, where the branch it has to read is checked out.
+    //
+    // Nothing here waits on it. If that turn dies, or ends without filing, the
+    // group sits in PR_OPEN with a queue place and no number — which is the
+    // state PR_OPEN's invariant repair looks for, and it publishes with the
+    // record's own words rather than leaving finished work at the head of a
+    // serial merge queue.
+    ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "scribe", scribe: grpId } });
     const pos = position(ctx.db, grpId);
     ctx.bus.emit({
       grpId,

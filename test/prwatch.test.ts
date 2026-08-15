@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { dispatchFeedback, openPr, pollPrs, prBody, pushBlocked } from "../src/mech/git/prwatch.ts";
+import { checkPrMessage, commitMessage, dispatchFeedback, openPr, pollPrs, prBody, prTitle, pushBlocked } from "../src/mech/git/prwatch.ts";
 import { utilGit } from "../src/mech/git/checkout.ts";
 import type { GhResult, Github } from "../src/mech/git/github.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
@@ -478,4 +478,56 @@ test("every pull request says what opened it", () => {
   const body = prBody(h.ctx, 1);
   expect(body).toContain("https://github.com/pamin-labs/orchestrator");
   expect(body.split("\n").filter((l) => l.includes("orchestrator]("))).toHaveLength(1);
+});
+
+test("the message the Scribe files is the convention, enforced", () => {
+  // Every rule here is one `roles/scribe.yaml` states, and it lists these four
+  // refusals by name. A prompt that permits what the validator rejects teaches
+  // the model to write something that gets thrown away — at the end of the only
+  // turn it gets.
+  const body = "The mount was empty inside the container and nothing said so.";
+  expect(checkPrMessage("fix(sandbox): the skills mount was empty on macOS", body)).toBeNull();
+
+  expect(checkPrMessage("update the mount path", body)).toContain("type prefix");
+  expect(checkPrMessage(`fix(sandbox): ${"x".repeat(70)}`, body)).toContain("72");
+  expect(checkPrMessage("fix(sandbox): the mount was empty.", body)).toContain("full stop");
+  // The panel is Chinese, the journals are Chinese, and this is the one place
+  // where the language has to stop being: it is read in somebody else's repo.
+  expect(checkPrMessage("fix(sandbox): 挂载是空的", body)).toContain("English");
+  expect(checkPrMessage("fix(sandbox): the mount was empty", "挂载是空的，什么都没说")).toContain("English");
+  expect(checkPrMessage("fix(sandbox): the mount was empty", "fixed it")).toContain("one line is not that");
+});
+
+test("the commit gets the Scribe's message and the pull request gets the record", () => {
+  // These were the same string: the squashed commit carried `## Slices (3, all
+  // accepted)`, a gate table and `Opened by orchestrator` into `git log` — a
+  // description written for a review page, pasted into the one place that
+  // outlives it.
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_title = ?, pr_summary = ? WHERE id = 1", [
+    "fix(mailbox): the prefix check and the fetch read different strings",
+    "One `if` guards the sandbox boundary and it compared the raw path.",
+  ]);
+
+  expect(prTitle(h.ctx, 1)).toStartWith("fix(mailbox):");
+  const commit = commitMessage(h.ctx, 1, prTitle(h.ctx, 1));
+  expect(commit).toContain("One `if` guards");
+  expect(commit).not.toContain("Opened by");
+  expect(commit).not.toContain("##");
+
+  // The pull request keeps both, the Scribe's part first: it is the only section
+  // written by something that read the diff.
+  const body = prBody(h.ctx, 1);
+  expect(body).toStartWith("One `if` guards");
+  expect(body).toContain("Opened by");
+});
+
+test("with no Scribe message the branch is still publishable", () => {
+  // The fallback, and the point of it: a finished branch sitting at the head of
+  // a strictly serial merge queue stops every group behind it, so "nobody wrote
+  // a title" may not be a reason to hold it. `orch:` is now the mark of that,
+  // not the normal case it used to be for every PR this project opened.
+  const h = harness();
+  expect(prTitle(h.ctx, 1)).toBe("orch: g1");
+  expect(commitMessage(h.ctx, 1, "orch: g1")).toBe("orch: g1");
 });

@@ -8,6 +8,7 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { gateState } from "../src/mech/flow/gate.ts";
+import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { handToBoss } from "../src/mech/flow/review.ts";
 import { checkpoint } from "../src/mech/git/worktree.ts";
 import { Scheduler } from "../src/scheduler.ts";
@@ -582,3 +583,53 @@ test("a branch the Auditor keeps rejecting stops instead of paying for another r
   // wording is wrong, not the code.
   expect(esc.question).toContain("验收口径");
 }, 30_000);
+
+test("a passed audit hires the Scribe, and nothing is published until it files", async () => {
+  // The audit decides the branch *may* be published. What it is published *as* is
+  // a separate question, and it used to be answered by `orch: ${group name}` —
+  // the dispatcher's slug, identical across every pull request this project
+  // opened, chosen before a line of the code existed.
+  const h = await harness();
+  let published = 0;
+  h.ctx.publishBranch = () => published++;
+
+  h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1"); // set by the branch gate, before the audit
+  h.ctx.auditVerdict!(1, true, "");
+  expect(published).toBe(0);
+
+  const job = h.db
+    .query<{ payload_json: string; grp_id: number | null }, []>(
+      "SELECT payload_json, grp_id FROM job WHERE kind = 'agent_turn' ORDER BY id DESC LIMIT 1",
+    )
+    .get()!;
+  // In the group's own sandbox, unlike the Auditor: the branch it has to read is
+  // checked out there, and summarising a diff is not reviewing one's own work.
+  expect(job.grp_id).toBe(1);
+  expect(JSON.parse(job.payload_json).role).toBe("scribe");
+
+  // A place in the merge queue all the same. The queue is what the boss sees,
+  // and a finished branch that is invisible until an agent writes a sentence is
+  // a worse failure than an ugly title.
+  expect(h.db.query<{ n: number | null }, []>("SELECT merge_seq AS n FROM grp WHERE id = 1").get()!.n).not.toBeNull();
+});
+
+test("a Scribe turn that never files does not strand the branch at the head of the queue", async () => {
+  // The failure this guards is the shape `CLAUDE.md` names: one code path drives
+  // a transition, that path does not run, and the group looks healthy — RUNNING
+  // group, no error, finished work nobody can merge — while every group behind
+  // it in a strictly serial queue waits.
+  const h = await harness();
+  let published = 0;
+  h.ctx.publishBranch = (id: number) => void (published = id);
+
+  h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1"); // set by the branch gate, before the audit
+  h.ctx.auditVerdict!(1, true, "");
+  // Still queued, so the repair leaves it alone: its own liveness is the
+  // scheduler's until there is nothing left to run.
+  runInvariants(h.ctx);
+  expect(published).toBe(0);
+
+  h.db.run("UPDATE job SET state = 'failed' WHERE kind = 'agent_turn'");
+  runInvariants(h.ctx);
+  expect(published).toBe(1);
+});

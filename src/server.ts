@@ -14,7 +14,7 @@ import { preflight, report } from "./mech/ops/preflight.ts";
 import { restageSkills } from "./mech/util/skills.ts";
 import { ensureServer } from "./mech/sandbox/server.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
-import { dispatchFeedback, openPr, pollPrs, prBody } from "./mech/git/prwatch.ts";
+import { dispatchFeedback, openPr, pollPrs, prBody, prTitle } from "./mech/git/prwatch.ts";
 import { makeGithub, repoHeld } from "./mech/git/github.ts";
 import { chargeIndex, HEAD_CHARS, modelAsk, noteLeaves, NOTE_PREFIX, saveTree, skeleton, summarise, loadTree } from "./mech/knowledge/pageindex.ts";
 import { indexable, indexExcludes } from "./mech/knowledge/repomap.ts";
@@ -328,11 +328,14 @@ export function start(overrides: Partial<Config> = {}): Started {
       leaseTimeoutMs: cfg.leaseTimeoutMs,
     },
   };
-  const execDeps = {
-    ctx,
-    cfg,
-    roles,
-    onAuditPass: (grpId: number) => {
+  const execDeps = { ctx, cfg, roles };
+
+  /**
+   * Squash, push, open the PR. Called when the Scribe files the message for a
+   * branch whose audit passed — or by the watchdog when no message ever arrives,
+   * with whatever the record can say by itself.
+   */
+  ctx.publishBranch = (grpId: number) => {
       const grp = db
         .query<{ name: string; repo_path: string }, [number]>(
           "SELECT g.name, p.repo_path FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
@@ -342,7 +345,7 @@ export function start(overrides: Partial<Config> = {}): Started {
         ctx,
         gh,
                 grpId,
-        title: `orch: ${grp?.name ?? "changes"}`,
+        title: prTitle(ctx, grpId),
         body: prBody(ctx, grpId),
       }).then((r) => {
         if ("error" in r) {
@@ -386,7 +389,6 @@ export function start(overrides: Partial<Config> = {}): Started {
         // above is the answer to a *failed* PR; this is the answer to a failure
         // while answering one.
         .catch((e) => consola.warn(`opening the PR for ${grpId} threw: ${e?.message ?? e}`));
-    },
   };
   exec = makeExecutor(execDeps);
   ctx.knownRoles = () => [...roles.keys()];
