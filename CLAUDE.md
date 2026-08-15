@@ -99,9 +99,24 @@ Claude-Session: <session url>
 - **数字胜过形容词**：`179 on the host, 0 in the container` 是提交；「修好了挂载」不是。
 - 提交前 `bunx tsc --noEmit -p .` 和 `bun test` 必须绿。多 agent 同时改树时**按文件名 stage**，`git add -A` 会把别人的半成品扫进来。
 
-## 这个项目用到的 skill
+## 这个项目用到的 skill —— 缺了就装，别手做
 
-`ponytail` / `pua` / `frontend-design` / `mattpocock-skills` 是 plugin（`/plugin` 装）；`shadcn`、`impeccable`、`code-review` 是个人 skill。**没装的不用装齐**：硬约束 4 要的是「先查有没有现成组件」这个动作，不是那个 skill 本身；`/ponytail:ponytail` 的规则也已经写在上面的代码风格里。缺哪个就按它对应的那条规则手做。
+新贡献者 clone 下来什么都没有。**agent 自己检查、自己装**，不要让人肉照着规则模仿 —— 那正是硬约束 3 说的「凡能用 `if` 拦的绝不写进 prompt 求自觉」的同一个道理：一个装好的 skill 是确定性的，一个「记得照 ponytail 的规矩来」不是。
+
+先看有没有：`npx skills list`，或 `/plugin`。缺哪个装哪个：
+
+```bash
+npx skills add DietrichGebert/ponytail      # /ponytail:ponytail、/ponytail:ponytail-review
+npx skills add tanweai/pua                  # /pua 全家（p7 / p9 / p10 / loop / shot）
+npx skills add EveryInc/compound-engineering-plugin   # /code-review
+npx skills add anthropics/skills            # frontend-design、mattpocock-skills 等官方那批
+```
+
+`git-commit` 不用装 —— 它在这个仓库里（`.claude/skills/git-commit/`），clone 就有。
+
+`shadcn` 和 `impeccable` 是个人 skill，来源不在 marketplace 里，用 `npx skills find shadcn` / `npx skills find impeccable` 找。**`shadcn` 尤其别跳过**：硬约束 4 说「有 shadcn 就用 shadcn」，而判断「有没有」要靠它去查注册表。
+
+装完 `npx skills list` 确认。
 
 ## 运行期产物的语言
 
