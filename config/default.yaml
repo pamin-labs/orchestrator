@@ -131,8 +131,8 @@ sandbox:
 # appSlug 是 App 页面地址里的那一段（github.com/apps/<这段>），只用来拼「去装上」的链接：
 # 授权和安装是两回事，只授权不安装的 token 一个仓库也看不见。留空的话面板只能给文字说明。
 github:
-  clientId: ""
-  appSlug: ""
+  clientId: "Iv23liUP6a00TszuLZvc"
+  appSlug: "orchestrator-connect"
 
 # 勾中的技能复制到这里，每个沙盒只读挂在 /root/.claude/skills 和 $CODEX_HOME/skills，
 # CLI 自己发现自己用（决策 006）。
