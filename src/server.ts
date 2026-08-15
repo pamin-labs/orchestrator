@@ -12,6 +12,7 @@ import { startMailbox } from "./mech/sandbox/mailbox.ts";
 import { baseRefFor, createCheckout, treeHeads } from "./mech/git/checkout.ts";
 import { preflight, report } from "./mech/ops/preflight.ts";
 import { restageSkills } from "./mech/util/skills.ts";
+import { ensureServer } from "./mech/sandbox/server.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
 import { dispatchFeedback, openPr, pollPrs, prBody } from "./mech/git/prwatch.ts";
 import { makeGithub, repoHeld } from "./mech/git/github.ts";
@@ -525,6 +526,38 @@ export function start(overrides: Partial<Config> = {}): Started {
   // again, and neither needs a container restarted.
   const skills = restageSkills(db, cfg.skillsDir);
   if (skills.failed.length) consola.warn(`skills skipped (dangling): ${skills.failed.join(", ")}`);
+
+  // A server, if there is not one. Before preflight, so the check reports the
+  // state after we have done what we can rather than the state we walked in on
+  // — otherwise the first boot on a clean machine always prints a failure that
+  // fixed itself two seconds later.
+  //
+  // It never takes over a server it did not start. See `ensureServer`.
+  void ensureServer(ctx)
+    .then((st) => {
+      if (st.kind === "started") {
+        consola.success(`opensandbox-server started (pid ${st.pid}, ${st.config})`);
+        ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `沙盒服务器起好了（我们起的，pid ${st.pid}）` });
+      } else if (st.kind === "theirs") {
+        consola.info(`opensandbox-server already running (pid ${st.pid}) — using it, not touching it`);
+      } else if (st.kind === "stuck") {
+        consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${st.why}`);
+        ctx.bus.emit({
+          author: "orchestrator",
+          kind: "escalation",
+          intent: "inform",
+          severity: "blocker",
+          // Never restarted for them: this process may be someone else's, and
+          // "we cannot drive it" is not evidence that nobody can.
+          body:
+            `沙盒服务器在跑（pid ${st.pid}），但我们驱动不了：${st.why}\n` +
+            `没敢自动重启它 —— 这个进程可能是你自己起的，配的是别的东西。设置 → 沙盒服务器 那里有按钮。`,
+        });
+      } else if (st.kind === "down") {
+        consola.warn(`opensandbox-server: ${st.why}`);
+      }
+    })
+    .catch((e) => consola.error(`ensureServer: ${(e as Error)?.message ?? e}`));
 
   // Say what is missing here, once, rather than letting every group discover it
   // one failed turn at a time. Not fatal: the panel can be opened and the

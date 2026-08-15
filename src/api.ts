@@ -14,6 +14,7 @@ import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sa
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "./mech/sandbox/login.ts";
 import { APP_SLUG, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
+import { driftingPaths, ensureServer, inspectServer, ourArgv } from "./mech/sandbox/server.ts";
 import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/flow/chain.ts";
@@ -3665,21 +3666,41 @@ const getPreflight: Handler = async (ctx) =>
 const getSandboxServer: Handler = async (ctx) => {
   const live = runningServer();
   const count = (sql: string) => ctx.db.query<{ c: number }, []>(sql).get()!.c;
+  // Inspect, never ensure. Which of the cases this is decides which button the
+  // panel may show — and a GET that starts a process is a page that changes the
+  // machine by being looked at.
+  const state = await inspectServer(ctx);
+  const drift = driftingPaths(ctx);
   return json({
-    running: !!live,
-    pid: live?.pid ?? null,
-    config: live?.config ?? null,
+    running: state.kind !== "down",
+    state: state.kind,
+    why: "why" in state ? state.why : null,
+    pid: "pid" in state ? state.pid : (live?.pid ?? null),
+    config: state.kind === "started" ? state.config : (live?.config ?? null),
     argv: live?.argv ?? [],
-    restartable: !!live?.argv.length,
+    // Ours only. Restarting a server we did not start takes down whatever else
+    // on this machine was using it, and nothing here can see what that was.
+    restartable: !!ourArgv(ctx),
+    // The silent one: a mount of a path missing from `allowed_host_paths`
+    // succeeds and delivers an empty directory.
+    drift,
     containers: count("SELECT count(*) AS c FROM grp WHERE sandbox_id IS NOT NULL"),
     runningTurns: count("SELECT count(*) AS c FROM job WHERE state = 'running'"),
   });
 };
 
 const postSandboxServerRestart: Handler = async (ctx) => {
-  const live = runningServer();
-  if (!live?.argv.length) return bad("没见过这个服务器是怎么起来的，restart 无从谈起 —— 手动起一次，之后就有了。");
-  const err = await restartServer(live.argv);
+  // `ourArgv`, not `runningServer().argv`. The panel only offers this when the
+  // server is one we started; this is the same rule enforced where it matters,
+  // because a request can arrive from anywhere and "restart" here means killing
+  // a machine-wide process that may be somebody's own.
+  const argv = ourArgv(ctx);
+  if (!argv) {
+    return bad(
+      "这个沙盒服务器不是我们起的，不会去动它 —— 它可能是你自己起的，配的是别的东西。要重启就自己重启，之后这里会认得它。",
+    );
+  }
+  const err = await restartServer(argv);
   // A deliberate restart clears the automatic counter, or the boss restarts by
   // hand, it does not take, and the watchdog has already spent its three tries
   // on the same problem.
@@ -3687,6 +3708,18 @@ const postSandboxServerRestart: Handler = async (ctx) => {
   if (err) return bad(err);
   ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "沙盒服务器重启了，容器都没了" });
   return json({ ok: true });
+};
+
+/** Start one when there is none. The panel's way out of the `down` state. */
+const postSandboxServerStart: Handler = async (ctx) => {
+  const st = await ensureServer(ctx);
+  if (st.kind === "down") return bad(st.why);
+  ctx.bus.emit({
+    author: "orchestrator",
+    kind: "state_change",
+    body: st.kind === "started" ? `沙盒服务器起好了（pid ${st.pid}）` : "沙盒服务器本来就在跑，直接用了",
+  });
+  return json({ ok: true, state: st.kind });
 };
 
 const ROUTES: Array<[string, RegExp, Handler]> = [
@@ -3703,6 +3736,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/preflight$/, getPreflight],
   ["GET", /^\/api\/sandbox-server$/, getSandboxServer],
   ["POST", /^\/api\/sandbox-server\/restart$/, postSandboxServerRestart],
+  ["POST", /^\/api\/sandbox-server\/start$/, postSandboxServerStart],
   ["GET", /^\/api\/sandbox$/, getSandbox],
   ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
   ["POST", /^\/api\/project\/(?<id>\d+)\/config$/, patchProjectConfig],

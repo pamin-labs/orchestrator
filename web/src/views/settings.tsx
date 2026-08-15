@@ -927,14 +927,31 @@ function Env({ checks }: { checks: HostCheck[] }) {
 
 interface ServerInfo {
   running: boolean;
+  /**
+   * Which of the three cases this is, and it decides which control is offered:
+   * a server we did not start is one we may report on and never act on.
+   */
+  state: "ours" | "theirs" | "stuck" | "started" | "down";
+  why: string | null;
   pid: string | null;
   config: string | null;
-  /** Empty when this orchestrator has never seen the process running. */
   argv: string[];
+  /** True only for a server this orchestrator started. */
   restartable: boolean;
+  /** Host paths our mounts need that the running config will not allow. */
+  drift: { want: string[]; config: string } | null;
   containers: number;
   runningTurns: number;
 }
+
+/** One line each, because the difference between them is what to do next. */
+const SERVER_STATE: Record<ServerInfo["state"], { zh: string; ok: boolean }> = {
+  ours: { zh: "在跑，我们起的", ok: true },
+  started: { zh: "刚起好", ok: true },
+  theirs: { zh: "在跑，不是我们起的 —— 直接用，不去动它", ok: true },
+  stuck: { zh: "在跑，但我们驱动不了", ok: false },
+  down: { zh: "没在跑", ok: false },
+};
 
 /**
  * Is the container server up, is its config still right, and one button.
@@ -959,8 +976,8 @@ function ServerState({ checks }: { checks: HostCheck[] }) {
     void load();
   }, []);
 
-  const up = checks.find((c) => c.name === "opensandbox-server");
   const paths = checks.find((c) => c.name === "allowed_host_paths");
+  const st = d ? SERVER_STATE[d.state] : null;
 
   const restart = async () => {
     const yes = await ask({
@@ -981,50 +998,83 @@ function ServerState({ checks }: { checks: HostCheck[] }) {
     if (r.ok) toast.success("重启了，容器会按需重开");
   };
 
+  const start = async () => {
+    setBusy(true);
+    const r = await post("/api/sandbox-server/start", {});
+    setBusy(false);
+    void load();
+    if (r.ok) toast.success("起来了");
+  };
+
   return (
     <section className="mb-1 border-b border-rule pb-3">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        {up ? (
+        {st ? (
           <>
-            {up.ok ? (
+            {st.ok ? (
               <Check size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-ok" />
             ) : (
               <CircleAlert size={12} strokeWidth={2.5} className="shrink-0 translate-y-0.5 text-accent" />
             )}
-            <span className={cn("text-[0.8125rem]", !up.ok && "text-accent")}>{up.detail}</span>
+            <span className={cn("text-[0.8125rem]", !st.ok && "text-accent")}>{st.zh}</span>
+            {d!.pid && d!.pid !== "?" && <Meta className="font-mono">pid {d!.pid}</Meta>}
           </>
         ) : (
           <Meta>检查中…</Meta>
         )}
         <span className="grow" />
-        {d && !d.restartable ? (
-          // Nothing to restart *with*: the argv is remembered from having seen
-          // the process, and this orchestrator booted after it was already gone.
-          <Tip label="没见过它是怎么起来的（这个面板启动时它就不在了）。手动起一次，之后这个按钮就能用。">
+        {/* One control per state, and the two we must not offer are the point.
+            A server we did not start is not ours to restart: killing it takes
+            down whatever else on this machine was using it, and "we cannot
+            drive it" is not evidence that nobody can. */}
+        {d?.state === "down" ? (
+          <Button size="sm" variant="go" disabled={busy} onClick={start}>
+            {busy ? "起中…" : "起一个"}
+          </Button>
+        ) : d?.restartable ? (
+          <Button size="sm" disabled={busy} onClick={restart}>
+            {busy ? "重启中…" : "重启"}
+          </Button>
+        ) : d ? (
+          <Tip label="这个进程不是我们起的，可能是你自己在用的那个。要重启就自己重启 —— 之后这里会认得它。">
             <Button size="sm" disabled>
               重启
             </Button>
           </Tip>
-        ) : (
-          <Button size="sm" disabled={busy || !d} onClick={restart}>
-            {busy ? "重启中…" : "重启"}
-          </Button>
-        )}
+        ) : null}
       </div>
-      {d?.config && <Meta className="mt-1 block truncate font-mono text-[0.6875rem]">配置：{d.config}</Meta>}
 
-      {/* Silent when wrong, so it is loud here. */}
-      {paths && !paths.ok && (
+      {/* The reason, when there is one, because 驱动不了 alone sends nobody
+          anywhere. Most often: it has an api_key we were never given. */}
+      {d?.why && (
+        <div className="mt-2 rounded-md border border-rule bg-sunk px-3 py-2 text-[0.8125rem] text-ink-2">
+          {d.why}
+          {d.state === "stuck" && (
+            <Meta className="mt-1 block">
+              没自动重启它，因为分不清它是不是你自己起的。它的配置：{d.config ?? "找不到"}
+            </Meta>
+          )}
+        </div>
+      )}
+      {d?.config && !d.why && (
+        <Meta className="mt-1 block truncate font-mono text-[0.6875rem]">配置：{d.config}</Meta>
+      )}
+
+      {/* Silent when wrong, so it is loud here: a path missing from the
+          allowlist mounts an empty directory rather than failing. */}
+      {(d?.drift || (paths && !paths.ok)) && (
         <div className="mt-2 rounded-md border border-rule bg-sunk px-3 py-2">
-          <div className="text-[0.8125rem] text-accent">{paths.detail}</div>
+          <div className="text-[0.8125rem] text-accent">
+            {d?.drift ? "配置里没允许我们要挂的路径" : paths!.detail}
+          </div>
           <Meta className="mt-1 block">
             容器不会报错，只会挂一个空目录 —— 勾上的技能就这么没了。把这行写进配置，然后重启：
           </Meta>
-          {paths.fix && (
-            <pre className="mt-1.5 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-ink-2 select-all">
-              {paths.fix.split("\n").slice(-1)[0]!.trim()}
-            </pre>
-          )}
+          <pre className="mt-1.5 overflow-x-auto font-mono text-[0.6875rem] leading-relaxed text-ink-2 select-all">
+            {d?.drift
+              ? `allowed_host_paths = [${d.drift.want.map((p) => `"${p}"`).join(", ")}]`
+              : paths?.fix?.split("\n").slice(-1)[0]!.trim()}
+          </pre>
         </div>
       )}
     </section>
