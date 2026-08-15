@@ -133,7 +133,7 @@ index rendered perfectly with its contents missing. Multi-line output from a
 container arrived joined into one line, so everything reading it line by line
 found nothing. None was caught by a test. All were found by measuring.
 
-No license file yet.
+MIT licensed.
 
 ## More
 
