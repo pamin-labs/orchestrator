@@ -6,7 +6,7 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { loadConfig } from "../src/config.ts";
-import { createCheckout, httpsRemote, keepBranch, sandboxGit, utilGit } from "../src/mech/git/checkout.ts";
+import { createCheckout, keepBranch, sandboxGit, utilGit } from "../src/mech/git/checkout.ts";
 import { startMailbox } from "../src/mech/sandbox/mailbox.ts";
 import { CODEX_HOME } from "../src/mech/sandbox/auth.ts";
 import { ConnectionConfig, SandboxManager } from "@alibaba-group/opensandbox";
@@ -21,7 +21,7 @@ import {
   putFile,
   REAL,
   SKILL_SYNC,
-  STAGED_SKILLS,
+  
   UTIL,
   WORK,
 } from "../src/mech/sandbox/sandbox.ts";

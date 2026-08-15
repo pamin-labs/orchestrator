@@ -1,15 +1,15 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { Empty, H3, Meta, Pane } from "../ui/bits";
+import { Empty, Meta, Pane } from "../ui/bits";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { Bar, Table, TBody, TD, TH, THead, TR } from "../ui/table";
+import { Bar } from "../ui/table";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
 import { Tip } from "../ui/tooltip";
 import { BurnChart, SplitDonut } from "../ui/chart";
 import type { Agent, AgentCost, Cost, Frame, Slice, State } from "../lib/api";
-import { STATUS_ZH, owns } from "../lib/select";
+import { owns } from "../lib/select";
 import { cn, K } from "../lib/utils";
 import { activityOf } from "../lib/activity";
 

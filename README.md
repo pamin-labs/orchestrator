@@ -40,7 +40,7 @@ Needs [`bun`](https://bun.sh), [Docker](https://docs.docker.com/get-started/get-
 
 ```bash
 bun install
-docker build -f docker/agent.Dockerfile -t orch/agent:1 .
+docker pull ghcr.io/pamin-labs/orch-agent:latest   # or build it: docker build -f docker/agent.Dockerfile -t orch/agent:1 .
 docker pull opensandbox/egress:v1.1.6      # v1.1.4 breaks scoped npm packages
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
 bun start                                         # → 127.0.0.1:47821

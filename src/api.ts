@@ -1,5 +1,5 @@
 import { basename, dirname, join, resolve } from "node:path";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dropSlices, type DB } from "./db.ts";
@@ -7,7 +7,7 @@ import type { Bus } from "./bus.ts";
 import { poolSizes, type Scheduler } from "./scheduler.ts";
 import { resolveLease, type ResourceDef } from "./mech/sandbox/lease.ts";
 import { sliceDiffBase } from "./mech/git/worktree.ts";
-import { execIn, killSandbox, putFile, relinkSkills, remoteInClear, restartServer, runningServer, serverAddr, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
+import { allowedImage, execIn, killSandbox, putFile, relinkSkills, remoteInClear, restartServer, runningServer, serverAddr, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
@@ -3572,6 +3572,17 @@ const patchProjectConfig: Handler = async (ctx, req, params) => {
   for (const [k, v] of Object.entries(patch)) {
     if (v === null) delete current[k];
     else current[k] = v;
+  }
+  // Said here as well as enforced in `specFor`. The enforcement is what makes it
+  // true — this route merges arbitrary keys, and a check only in the panel is a
+  // check a curl walks around — but a config that is silently ignored is worse
+  // than one that is refused, so the door answers.
+  const want = (current as { sandbox?: { image?: string } }).sandbox?.image;
+  if (want && !allowedImage(want)) {
+    return bad(
+      `镜像只能是我们发布的（ghcr.io/pamin-labs/…）或者你本地构建的（比如 orch/agent:1）。` +
+        `agent 在这个镜像里跑，而它面前是你的代码 —— 换成别处的镜像等于把整条边界交出去，而且从面板上看不出来。`,
+    );
   }
   ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(current), id]);
   return json(current);

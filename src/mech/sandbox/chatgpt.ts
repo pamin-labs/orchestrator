@@ -1,5 +1,3 @@
-import { lstatSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
 /**
  * Refreshing a ChatGPT-account login, on the host, once.
  *

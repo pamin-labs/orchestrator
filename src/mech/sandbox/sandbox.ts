@@ -66,6 +66,43 @@ export interface SandboxSpec {
   cacheDirs: Record<string, string>;
 }
 
+/**
+ * Which images a group's container may be made from.
+ *
+ * Two sources, and nothing else:
+ *
+ *   ghcr.io/pamin-labs/…   what this project publishes
+ *   no registry prefix     what you built here, e.g. `orch/agent:1`
+ *
+ * The second is what makes local development and debugging work — a locally
+ * built tag has no registry in front of it and can never have been pulled from
+ * one, so allowing it does not open the door the first rule closes.
+ *
+ * The reason for the rule at all: this image is where an agent runs, and an
+ * agent runs with your code in front of it. Pointing the fleet at somebody
+ * else's image hands over the whole boundary — and it is invisible, because a
+ * container built from a hostile image behaves exactly like one that is not.
+ * Everything else in this file assumes the image is ours; this is the line that
+ * makes the assumption true.
+ *
+ * Refused rather than corrected. A project that names an image we will not run
+ * is a project whose owner meant something, and quietly substituting a different
+ * one is worse than saying no.
+ */
+const PUBLISHED = /^ghcr\.io\/pamin-labs\//i;
+
+export function allowedImage(ref: string): boolean {
+  const image = ref.trim();
+  if (!image) return false;
+  if (PUBLISHED.test(image)) return true;
+  // A registry is a `.` or a `:` in the first path segment, or a literal
+  // `localhost`. Docker's own rule, and the reason `orch/agent:1` is local while
+  // `evil.example.com/orch/agent:1` is not.
+  const head = image.split("/")[0]!;
+  const hasRegistry = image.includes("/") && (head.includes(".") || head.includes(":") || head === "localhost");
+  return !hasRegistry;
+}
+
 /** `1` is the SDK default and makes a typecheck 3.7x slower (005). */
 function defaultCpu(): string {
   return String(Math.max(2, Math.floor(cpus().length / 4)));
@@ -75,7 +112,7 @@ function defaultCpu(): string {
 const DEFAULTS = {
   server: "127.0.0.1:8080",
   apiKey: "",
-  image: "ghcr.io/orch/agent:1",
+  image: "ghcr.io/pamin-labs/orch-agent:latest",
   cpu: "",
   memory: "8Gi",
   ttlSeconds: 86400,
@@ -99,8 +136,14 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
   }
   // `||`, not `??`: an empty string is how the yaml says "you decide", and it is
   // never a usable value for any of these.
+  //
+  // The image is the one key a project may not freely set. `patchProjectConfig`
+  // merges arbitrary keys into `config_json`, so refusing it only in the panel
+  // would be a check a request can walk around; this is where every container is
+  // actually built, which makes it the only place the rule holds.
+  const image = over.image || base.image;
   return {
-    image: over.image || base.image,
+    image: allowedImage(image) ? image : base.image,
     cpu: over.cpu || base.cpu || defaultCpu(),
     memory: over.memory || base.memory,
     ttlSeconds: over.ttlSeconds || base.ttlSeconds,
@@ -877,7 +920,7 @@ export function remoteInClear(addr: string): boolean {
   if (protocol === "https") return false;
   const host = authority.replace(/:\d+$/, "").toLowerCase();
   if (host === "localhost" || host.endsWith(".localhost")) return false;
-  if (/^127\./.test(host) || host === "::1" || host === "[::1]") return false;
+  if (host.startsWith("127.") || host === "::1" || host === "[::1]") return false;
   if (host.endsWith(".ts.net")) return false;
   const cg = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.exec(host);
   return !cg;

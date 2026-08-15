@@ -3,7 +3,7 @@ import type { ResourceExec } from "../src/mech/sandbox/lease.ts";
 
 /** These check ordering and reporting, never a real command. */
 const noExec: ResourceExec = async () => ({ code: 0, out: "" });
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory, type DB } from "../src/db.ts";

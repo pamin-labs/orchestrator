@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
 import { summarise, skeleton } from "../src/mech/knowledge/pageindex.ts";

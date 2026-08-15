@@ -81,6 +81,19 @@ bun test test/xxx.test.ts     # 单个
 - **caveman lite**：注释和文档去冠词去客套。代码、commit message、PR、错误信息**用英文**。
 - 非平凡逻辑留一条 runnable check（`bun test`，不上框架、不写 fixture 地狱）。
 
+## 有现成的就用现成的，别自己造
+
+**先找，再写。** 顺序是：GitHub 官方能力 > 官方 action / CLI > 已装的依赖 > 自己写。这条和「代码风格」那节的 ponytail 梯子是同一条规则，只是它最常在**基础设施**上被违反 —— 那里自己写一份看起来最快。
+
+实测过的两次：
+
+- 发版说明本来写了一个 150 行的脚本去调 `generate-notes` 再重新分组。而 `gh release create --generate-notes` **本来就会**列出合入的 PR 和第一次贡献的人 —— 那就是这个功能本身。脚本删了。
+- lint 一度想配 eslint 全家桶。`bunx oxlint` 一个二进制、零配置，`.oxlintrc.json` 只写了三条真正要改的规则。
+
+判断标准不是「能不能自己写」，而是：**这段代码存在的理由，是不是只有「我没去找」。**
+
+反过来也成立：为了省几行而引一个新依赖同样是错的（梯子第 5 级）。现成的意思是**已经在手上的、或者官方的**，不是「npm 上有」。
+
 ## 提交：用 `/git-commit`
 
 **skill 在仓库里**（`.claude/skills/git-commit/`），clone 就有，不依赖谁的个人安装。它是这一条的完整版；这里只留必须知道的：

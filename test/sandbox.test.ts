@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { open } from "../src/db.ts";
-import { keyInConfig, lineSplitter, skillMounts, SKILL_LINE, SKILL_SYNC, specFor, STAGED_SKILLS } from "../src/mech/sandbox/sandbox.ts";
+import { allowedImage, keyInConfig, lineSplitter, skillMounts, SKILL_LINE, SKILL_SYNC, specFor, STAGED_SKILLS } from "../src/mech/sandbox/sandbox.ts";
 import { CODEX_HOME } from "../src/mech/sandbox/auth.ts";
 import { cacheProjectSkills, projectSkills } from "../src/mech/util/skills.ts";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -221,4 +221,48 @@ test("the inventory survives the trip back out of the container", () => {
   // nameable forever.
   expect(cacheProjectSkills(db, 1, "yes\n")).toEqual([]);
   expect(projectSkills(db, 1)).toEqual([]);
+});
+
+test("a group's container is only ever built from an image we published or you built", () => {
+  // The image is where an agent runs, and an agent runs with your code in front
+  // of it. Pointing the fleet at somebody else's image hands over the whole
+  // boundary — and does it invisibly, because a container from a hostile image
+  // behaves exactly like one that is not. Everything else in sandbox.ts assumes
+  // the image is ours; this is what makes that assumption true.
+  for (const ok of [
+    "ghcr.io/pamin-labs/orch-agent:latest",
+    "ghcr.io/pamin-labs/orch-agent:0.2.0",
+    "ghcr.io/Pamin-Labs/orch-agent:1",
+    // No registry in front of it: a tag that exists because it was built here,
+    // which is what local development and debugging use.
+    "orch/agent:1",
+    "orch-agent",
+  ]) {
+    expect({ image: ok, allowed: allowedImage(ok) }).toEqual({ image: ok, allowed: true });
+  }
+
+  for (const no of [
+    "docker.io/library/ubuntu:24.04",
+    "evil.example.com/orch/agent:1",
+    "localhost:5000/orch/agent:1",
+    // The near-miss that matters: a different GHCR namespace is not ours.
+    "ghcr.io/someone-else/orch-agent:latest",
+    "",
+  ]) {
+    expect({ image: no, allowed: allowedImage(no) }).toEqual({ image: no, allowed: false });
+  }
+});
+
+test("a project that names a disallowed image gets the default, not that image", () => {
+  // Enforced where the container is actually built rather than only at the API.
+  // `patchProjectConfig` merges arbitrary keys into `config_json`, so a check
+  // that lives only in the route is one a request can walk around — and the
+  // failure would be silent, which is the shape this codebase keeps paying for.
+  const c = ctx({ sandbox: { ...BASE, image: "ghcr.io/pamin-labs/orch-agent:latest" } });
+  c.db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"evil.example.com/agent:1"}}' WHERE id = 1`);
+  expect(specFor(c, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:latest");
+
+  // A locally built one is still honoured — that is how this gets debugged.
+  c.db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"orch/agent:1"}}' WHERE id = 1`);
+  expect(specFor(c, 1).image).toBe("orch/agent:1");
 });

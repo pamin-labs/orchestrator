@@ -13,7 +13,7 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
   seedAuth(db);
   const bus = new Bus(db);
   const sched = new Scheduler(db, async () => {});
-  const cfg = loadConfig();
+  const _cfg = loadConfig();
   const notified: number[] = [];
   const ctx: Ctx = {
     db,

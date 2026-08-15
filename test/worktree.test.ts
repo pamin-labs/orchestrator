@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { testGit } from "./git-runner.ts";
-import { mkdtempSync, writeFileSync, existsSync, mkdirSync, lstatSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { baseBranch, LINK_AGENTS_MD } from "../src/mech/git/checkout.ts";

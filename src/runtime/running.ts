@@ -44,6 +44,9 @@ export function abortJob(jobId: number): boolean {
 /** Every turn this process is reading. Shutdown only. */
 export function abortAll(): number {
   let n = 0;
+  // Snapshot on purpose — `abortJob` deletes from the map it is iterating, and
+  // a live iterator over a mutating Map skips entries.
+  // oxlint-disable-next-line no-useless-spread
   for (const id of [...live.keys()]) if (abortJob(id)) n++;
   return n;
 }

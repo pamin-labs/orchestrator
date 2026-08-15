@@ -13,7 +13,7 @@ import { seedAuth } from "./seed-auth.ts";
 function harness(handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}), calls?: string[]) {
   const db = openMemory();
   seedAuth(db);
-  const cfg = loadConfig();
+  const _cfg = loadConfig();
   const sandbox = fakeSandbox((cmd) => {
     calls?.push(cmd);
     return handle(cmd);

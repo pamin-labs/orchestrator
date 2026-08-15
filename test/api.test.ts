@@ -67,7 +67,7 @@ test("an over-long journal is rejected with a reason the agent can act on", asyn
 });
 
 test("journal writes a note and exports journal/retro into the checkout", async () => {
-  const wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const _wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
   const { app, db, ctx } = harness();
 
   const r = await post(
@@ -93,7 +93,7 @@ test("journal writes a note and exports journal/retro into the checkout", async 
 });
 
 test("a fact never gets exported to git — only journal/retro/decision do", async () => {
-  const wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const _wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
   const { app, db } = harness();
   await post(app, "/orch/journal", { kind: "fact", body: "boss prefers iteration" }, "tok-eng");
   const note = db.query<{ export_path: string | null }, []>("SELECT export_path FROM note").get()!;

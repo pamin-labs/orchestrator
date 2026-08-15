@@ -99,7 +99,7 @@ test("effort travels as a config override", () => {
 });
 
 test("token_count is the one place a real quota percentage arrives", async () => {
-  const spawned = Bun.spawn;
+  const _spawned = Bun.spawn;
   // Verbatim from ~/.codex/sessions: 299 minutes is the 5h window, 10079 the week.
   const quota = JSON.stringify({
     type: "token_count",

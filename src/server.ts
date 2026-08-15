@@ -1,5 +1,5 @@
-import { chmodSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { landGroup, makeApp, type Ctx } from "./api.ts";
 import { joinQueue } from "./mech/flow/mergequeue.ts";
 import { Bus } from "./bus.ts";

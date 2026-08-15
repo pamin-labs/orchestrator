@@ -93,7 +93,7 @@ function flatten(d: Dir): number[] {
   return [...[...d.dirs.values()].flatMap(flatten), ...d.files.map((f) => f.i)];
 }
 
-const base = (f: parseDiff.File) => {
+const _base = (f: parseDiff.File) => {
   const n = f.to && f.to !== "/dev/null" ? f.to : (f.from ?? "?");
   return n.slice(n.lastIndexOf("/") + 1);
 };

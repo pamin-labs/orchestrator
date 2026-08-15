@@ -312,7 +312,9 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     name: "agent image",
     ok: built,
     detail: built ? image : `${image} 不在本机`,
-    fix: `docker build -f docker/agent.Dockerfile -t ${image} . —— 这个镜像是本地构建的，没有 registry 可拉。`,
+    fix: image.startsWith("ghcr.io/")
+      ? `docker pull ${image}`
+      : `docker build -f docker/agent.Dockerfile -t ${image} . —— 没有 registry 前缀的镜像只能本地构建。`,
   });
 
   // The skills mount, reported the same way as the sidecar image: the server's

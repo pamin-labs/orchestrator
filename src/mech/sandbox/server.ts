@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { Ctx } from "../../api.ts";
 import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
-import { allowedHostPaths, coveredBy, remoteInClear, runningServer, SANDBOX_ADDR, SANDBOX_API_KEY_HEADER, serverAddr, splitAddr, specFor } from "./sandbox.ts";
+import { allowedHostPaths, coveredBy, runningServer, SANDBOX_ADDR, SANDBOX_API_KEY_HEADER, serverAddr, splitAddr, specFor } from "./sandbox.ts";
 
 /**
  * Starting opensandbox-server, and knowing when not to.
@@ -355,7 +355,7 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   // local server would bind a port nobody is asking about and report success.
   const { authority } = splitAddr(server);
   const host = authority.replace(/:\d+$/, "").toLowerCase();
-  if (!(host === "localhost" || /^127\./.test(host) || host === "::1" || host === "[::1]")) {
+  if (!(host === "localhost" || host.startsWith("127.") || host === "::1" || host === "[::1]")) {
     return { kind: "down", why: `${server} 不应答 —— 那不是本机地址，起不了，得去那台机器上看。` };
   }
 

@@ -39,7 +39,7 @@ agent 真跑了 `rm -rf`，炸的是一个容器。
 
 ```bash
 bun install
-docker build -f docker/agent.Dockerfile -t orch/agent:1 .
+docker pull ghcr.io/pamin-labs/orch-agent:latest   # 或自己构建：docker build -f docker/agent.Dockerfile -t orch/agent:1 .
 docker pull opensandbox/egress:v1.1.6      # v1.1.4 会搞坏 scoped npm 包
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode 要是 "dns+nft"
 bun start                                         # → 127.0.0.1:47821

@@ -10,7 +10,7 @@ import { openMemory } from "../src/db.ts";
 import { gateState } from "../src/mech/flow/gate.ts";
 import { handToBoss } from "../src/mech/flow/review.ts";
 import { checkpoint } from "../src/mech/git/worktree.ts";
-import { Scheduler, type Job } from "../src/scheduler.ts";
+import { Scheduler } from "../src/scheduler.ts";
 import {
   makeAuditVerdict,
   makeExecutor,

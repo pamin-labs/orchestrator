@@ -9,9 +9,6 @@ import { readFileSync } from "node:fs";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 const REAL = `sk-ant-oat01-${"R".repeat(80)}`;
 

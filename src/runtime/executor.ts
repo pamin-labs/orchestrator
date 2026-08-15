@@ -1,5 +1,5 @@
 import { basename, join, resolve } from "node:path";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import type { Ctx } from "../api.ts";
 import { imagePaths, mintToken } from "../api.ts";
@@ -10,15 +10,14 @@ import { assemble, buildStable, needsRotation, type Delta } from "../prompt/asse
 import { say } from "../lang.ts";
 import { listSkills, projectSkills, readSkillIn } from "../mech/util/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
-import { digestOutput, resolveLease, runResource, type ResourceDef } from "../mech/sandbox/lease.ts";
+import { resolveLease, runResource, type ResourceDef } from "../mech/sandbox/lease.ts";
 import { checkpoint, changedSince } from "../mech/git/worktree.ts";
 import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
-import { baseRefFor, ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
+import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { track, untrack } from "./running.ts";
 import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
 import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/ops/watchdog.ts";
 import { runStandup } from "../mech/flow/standup.ts";
-import { route } from "../mech/flow/chain.ts";
 import {
   auditVerdict,
   handToBoss,
@@ -1117,14 +1116,6 @@ function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResul
   }
 }
 
-function safeParse(s: string): unknown {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return {};
-  }
-}
-
 function overTokenBudget(agent: AgentRow, cfg: Config): boolean {
   // Fallback trigger only. The real rotation point is slice completion, which
   // is a clean semantic boundary and makes the handoff cheap.
@@ -1334,14 +1325,6 @@ function noteBody(ctx: Ctx, projectId: number | null, kind: string): string | nu
       )
       .get(projectId, kind)?.body ?? null
   );
-}
-
-function topLevel(dir: string): string[] {
-  try {
-    return readdirSync(dir);
-  } catch {
-    return [];
-  }
 }
 
 function safeJson(s: string): Record<string, unknown> {

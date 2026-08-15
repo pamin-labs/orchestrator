@@ -1,0 +1,58 @@
+# Every check this project has, on every push and every pull request.
+#
+# The repository already enforces a lot in `bun test` — hard constraint 3 says
+# anything an `if` can catch never goes in a prompt, and several of those checks
+# read the source as text (the prompt-cache position, the auth header having one
+# home, config keys reaching Ctx). So CI's job is mostly to run that suite
+# somewhere other than the author's machine, which is the one place it has never
+# run.
+#
+# `test/sandbox-live.test.ts` needs a running opensandbox-server and skips
+# loudly without one. It stays skipped here on purpose: standing up Docker, the
+# sandbox server and the agent image on every push would trade minutes per run
+# for a signal the author already gets locally. The suite says how many skipped.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same PR makes the first run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # `--frozen-lockfile`: a lockfile that does not match package.json is a
+      # difference between what was tested and what will run, and CI is where
+      # that has to fail rather than resolve itself quietly.
+      - run: bun install --frozen-lockfile
+
+      - name: typecheck
+        run: bunx tsc --noEmit -p .
+
+      # oxlint rather than eslint: one binary, no config file, no plugin set to
+      # keep in step. What it catches that `tsc` does not is the class of thing
+      # that typechecks and is still wrong — an unused disable, a promise nobody
+      # awaited, a condition that is always true.
+      - name: lint
+        run: bunx oxlint@latest --deny-warnings src web/src test
+
+      - name: test
+        run: bun test
+
+      # The panel is served from `web/dist`, so a build that fails is a page that
+      # does not exist. It also runs the tailwind pass, which is where an unknown
+      # utility class shows up.
+      - name: build the panel
+        run: bun run build:web

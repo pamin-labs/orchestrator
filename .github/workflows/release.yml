@@ -1,0 +1,113 @@
+# Cut a release, by hand, on purpose.
+#
+# Not on a tag push and not on a merge: a release is the one moment this project
+# says "this is the version to run", and that is a decision rather than a
+# consequence of landing a commit. So it is `workflow_dispatch`, it takes the
+# version from you, and it refuses to overwrite one that already exists.
+#
+# What it does, in order, and it stops at the first failure:
+#
+#   1. runs every check, because a broken release is worse than a late one
+#   2. builds and pushes the agent image to GHCR, tagged with this version
+#   3. tags the commit
+#   4. publishes a release, with the notes GitHub generates itself
+#
+# Step 4 is `--generate-notes`, and that is the whole of it. GitHub already
+# knows which pull requests merged since the previous tag and which of their
+# authors had never merged one before — that is the feature — so neither a
+# third-party action nor a script of ours has any work left to do.
+#
+# Release notes are English. The panel speaks whatever `output.language` says,
+# but a release is read by whoever finds the repository, and the PR titles it is
+# built from are English already (CLAUDE.md: code, commits and PR titles are).
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, without the v (e.g. 0.2.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Build and print the notes, publish nothing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/orch-agent
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The notes are computed from the range since the previous tag, so the
+          # tags have to be here. A shallow clone has none of them.
+          fetch-depth: 0
+
+      - name: reject a version that already exists
+        run: |
+          v="v${{ inputs.version }}"
+          if git rev-parse "$v" >/dev/null 2>&1; then
+            echo "::error::$v already exists. A published version is not re-cut; pick the next one."
+            exit 1
+          fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # The same checks CI runs. Duplicated deliberately: a release must not
+      # depend on someone having looked at a green tick on an earlier commit.
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit -p .
+      - run: bunx oxlint@latest --deny-warnings src web/src test
+      - run: bun test
+      - run: bun run build:web
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # arm64 as well as amd64: the machines this is developed on are Apple
+      # silicon, and an amd64-only image runs there under emulation slowly
+      # enough to look like a hang.
+      - name: build and push the agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/agent.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ !inputs.dry_run }}
+          tags: |
+            ${{ env.IMAGE }}:${{ inputs.version }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: tag and publish
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag "${{ env.VERSION }}"
+          git push origin "${{ env.VERSION }}"
+          # One line above the generated list: how to run this version. That is
+          # the only thing a reader needs that GitHub does not already put there.
+          gh release create "${{ env.VERSION }}" \
+            --title "${{ env.VERSION }}" \
+            --generate-notes \
+            --notes "\`\`\`bash
+          docker pull ${{ env.IMAGE }}:${{ inputs.version }}
+          \`\`\`"

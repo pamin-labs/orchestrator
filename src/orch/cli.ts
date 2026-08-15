@@ -126,7 +126,9 @@ async function call(
     const res = await fetch(`${URL_BASE}${path}`, {
       method,
       headers,
-      body: payload === undefined ? undefined : JSON.stringify(payload),
+      // Only ever set for POST: every GET caller passes no payload, and a body
+      // on a GET is silently dropped by some runtimes and rejected by others.
+      ...(method === "POST" && payload !== undefined ? { body: JSON.stringify(payload) } : {}),
     });
     return { status: res.status, text: await res.text() };
   } catch (e: any) {
@@ -176,7 +178,7 @@ const USAGE = `orch <command>
 `;
 
 export async function main(argv: string[]): Promise<number> {
-  const { flags, args, rest } = parseArgs(argv);
+  const { flags, args } = parseArgs(argv);
   const [cmd, sub] = args;
 
   if (!cmd || flags.help) {

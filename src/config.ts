@@ -253,7 +253,7 @@ const DEFAULTS: Config = {
   sandbox: {
     server: "127.0.0.1:8080",
     apiKey: "",
-    image: "orch/agent:1",
+    image: "ghcr.io/pamin-labs/orch-agent:latest",
     cpu: "",
     memory: "8Gi",
     ttlSeconds: 86400,

@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { DB } from "../../db.ts";
 import type { Ctx } from "../../api.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";

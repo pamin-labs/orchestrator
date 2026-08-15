@@ -95,7 +95,13 @@ sandbox:
                              # 一旦绑了凭据就 403 掉所有 scoped 包，症状是「这个项目装不上依赖」
   apiKey: ""                 # 空 = server 没开鉴权。真要用密钥就走 ORCH_SANDBOX_API_KEY
                              # 环境变量 —— 这个文件是提交进仓库的，密钥写这儿就是泄漏
-  image: orch/agent:1        # docker build -f docker/agent.Dockerfile -t orch/agent:1 .
+  # 发布的镜像。只认两个来源，别的一律拒（allowedImage）：
+  #   ghcr.io/pamin-labs/…   我们发布的
+  #   没有 registry 前缀的    你本地 docker build 出来的，比如 orch/agent:1
+  # 理由：这个镜像里跑的是 agent，而 agent 有你的代码。换一个来路不明的镜像
+  # 就是把整条边界交给别人，而且从面板上看不出任何异常。
+  image: ghcr.io/pamin-labs/orch-agent:latest
+                             # 本地开发：docker build -f docker/agent.Dockerfile -t orch/agent:1 .
                              # bun + node + git + 两个 CLI，1.5GB（官方 code-interpreter 是 7GB）
   # 留空 = 宿主核数的 1/4。SDK 默认是 "1"，这个仓库的 tsc --noEmit 因此 7.6s（6 核 3.2s）。
   cpu: ""

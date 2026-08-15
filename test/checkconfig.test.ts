@@ -17,7 +17,7 @@ test("a partial nested block keeps the rest of its defaults", () => {
   // a container that will not start.
   const cfg = loadConfig(yaml("sandbox:\n  memory: 16Gi\n"));
   expect(cfg.sandbox.memory).toBe("16Gi");
-  expect(cfg.sandbox.image).toBe("orch/agent:1");
+  expect(cfg.sandbox.image).toBe("ghcr.io/pamin-labs/orch-agent:latest");
   expect(cfg.sandbox.ttlSeconds).toBeGreaterThan(0);
 });
 

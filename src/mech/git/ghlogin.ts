@@ -158,7 +158,7 @@ export interface RepoRow {
  * reasoning costs ten requests instead of the hour's whole budget.
  */
 const PER_PAGE = 100;
-async function pages<T>(gh: Github, path: string, pick: (body: any) => any[]): Promise<GhResult<any[]>> {
+async function pages<_T>(gh: Github, path: string, pick: (body: any) => any[]): Promise<GhResult<any[]>> {
   const out: any[] = [];
   for (let page = 1; page <= 10; page++) {
     const r = await gh.request<any>("GET", `${path}?per_page=${PER_PAGE}&page=${page}`);
