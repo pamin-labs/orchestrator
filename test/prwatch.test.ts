@@ -466,3 +466,16 @@ test("a PR that merged after its group was knocked back is still seen", async ()
   const gone = await pollPrs(h.ctx, merged);
   expect(gone).toHaveLength(0);
 });
+
+test("every pull request says what opened it", () => {
+  // A reviewer deciding whether to trust a diff should know what produced it,
+  // and a pull request that hides it is the kind of thing that gets a project
+  // banned from a repository rather than asked about.
+  //
+  // One line, at the bottom, no badge — the body above it is already the
+  // evidence, and DESIGN.md's rule holds here too: say it once.
+  const h = harness();
+  const body = prBody(h.ctx, 1);
+  expect(body).toContain("https://github.com/Pamin-Labs/orchestrator");
+  expect(body.split("\n").filter((l) => l.includes("orchestrator]("))).toHaveLength(1);
+});

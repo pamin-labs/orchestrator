@@ -6,7 +6,7 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
-import {
+import { commitIdentity, forgetIdentity,
   CLIENT_ID, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Fetcher,
 } from "../src/mech/git/ghlogin.ts";
 
@@ -463,4 +463,29 @@ test("naming the installation costs one round trip, not two", async () => {
   expect(asked.some((u) => u.includes("/user/installations/9/repositories"))).toBe(true);
   // And the repositories were fetched once, not once per guess.
   expect(asked.filter((u) => u.includes("/repositories")).length).toBe(1);
+});
+
+test("commits are authored by the connected account, so a DCO sign-off means something", async () => {
+  // The identity used to be a literal, `orch agent <agent@orch.local>`. That is
+  // fine until a repository enforces DCO: the `Signed-off-by` line has to match
+  // the author, and a made-up address is not an identity anyone can be said to
+  // have signed as. The account that authorised this orchestrator is one.
+  const db = openMemory();
+  const ctx = {
+    db,
+    gh: { request: async () => ({ ok: true, data: { login: "octo", id: 583231, name: "The Octocat" } }) },
+  } as unknown as Ctx;
+
+  const who = await commitIdentity(ctx);
+  // GitHub's own noreply form, and the `id+` prefix is required — the bare
+  // `login@users.noreply.github.com` is the legacy one and no longer routes.
+  expect(who).toEqual({ name: "The Octocat", email: "583231+octo@users.noreply.github.com" });
+
+  // Cached, because this runs on every checkout and the answer only changes when
+  // the account does.
+  const dead = { db, gh: { request: async () => ({ ok: false }) } } as unknown as Ctx;
+  expect(await commitIdentity(dead)).toEqual(who);
+  forgetIdentity(dead);
+  // And with nothing connected a checkout still has to work.
+  expect(await commitIdentity(dead)).toEqual({ name: "orch agent", email: "agent@orch.local" });
 });

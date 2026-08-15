@@ -12,7 +12,7 @@ import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sandbox/auth.ts";
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "./mech/sandbox/login.ts";
-import { APP_SLUG, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
+import { APP_SLUG, forgetIdentity, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
 import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "./mech/sandbox/server.ts";
 import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
@@ -3281,6 +3281,9 @@ async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
     [`${runtime} 的凭据%`],
   );
   ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE status = 'PAUSED' AND paused_at IS NOT NULL");
+  // A different account commits under a different name, and a stale one would
+  // sign off as somebody who is no longer connected.
+  if (runtime === "github") forgetIdentity(ctx);
   ctx.sched.tick();
 }
 

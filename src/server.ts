@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { landGroup, makeApp, type Ctx } from "./api.ts";
 import { joinQueue } from "./mech/flow/mergequeue.ts";
@@ -402,7 +402,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   const webDir = join(ROOT, "web");
 
   const server = Bun.serve({
-    hostname: "127.0.0.1",
+    hostname: cfg.host,
     port: cfg.port,
     // See NO_CACHE: /dist/main.js has no hash in its name and Bun sends no
     // validators, so a rebuilt bundle kept being served from the browser's cache.
@@ -423,7 +423,10 @@ export function start(overrides: Partial<Config> = {}): Started {
     },
   });
 
-  const url = `http://127.0.0.1:${server.port}`;
+  // The address to open, not the address it bound to. Bound to 0.0.0.0 in a
+  // container, "http://0.0.0.0:47821" is not a link anybody can click, and it is
+  // the line a first-run user copies out of the log.
+  const url = `http://${cfg.host === "0.0.0.0" || cfg.host === "::" ? "127.0.0.1" : cfg.host}:${server.port}`;
   // Environment handed to every spawned turn: the URL plus the agent's own
   // token. Identity is never a request-body field.
   process.env.ORCH_URL = url;
@@ -616,7 +619,10 @@ if (import.meta.main) {
   // "the fix did not work" — measured, on a button that had already been deleted.
   // Not rebuilt here on purpose: in a worktree `web/dist` is a symlink to the main
   // checkout's build, so building would overwrite somebody else's bundle.
-  {
+  // Skipped where there is no source to compare against — an image ships the
+  // built panel and no `web/src`, and this crashed the container on boot rather
+  // than reporting anything. A check that cannot run is not a failure.
+  if (existsSync(join(ROOT, "web/src"))) {
     const dist = statSync(join(ROOT, "web/dist/main.js"), { throwIfNoEntry: false })?.mtimeMs ?? 0;
     const newest = readdirSync(join(ROOT, "web/src"), { recursive: true, withFileTypes: true })
       .filter((e) => e.isFile())

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ROOT } from "../../config.ts";
 import type { Ctx } from "../../api.ts";
 import { say } from "../../lang.ts";
 import { squashWip } from "./worktree.ts";
@@ -132,6 +135,26 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
  * Labels are English (PR bodies always are); the quoted material stays in the
  * language it was written in.
  */
+/** Ours, for the line every pull request carries. */
+const PROJECT_URL = "https://github.com/Pamin-Labs/orchestrator";
+
+/**
+ * Which version opened it.
+ *
+ * Read from package.json rather than kept as a constant, because a constant is a
+ * second place to remember on release day and the one that gets forgotten. A
+ * reviewer looking at a diff this produced, or at a bug report about one, needs
+ * to know which build it came from — "opened by orchestrator" alone dates
+ * nothing.
+ */
+function version(): string {
+  try {
+    return (JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version?: string }).version ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function prBody(ctx: Ctx, grpId: number): string {
   const q = <T,>(sql: string, ...p: unknown[]): T[] => (ctx.db.query(sql) as any).all(...p) as T[];
   const out: string[] = [];
@@ -192,6 +215,12 @@ export function prBody(ctx: Ctx, grpId: number): string {
         `journals in \`docs/journal/${g.name}/\``,
     );
   }
+  // Said once, at the bottom, because a reviewer deciding whether to trust this
+  // diff should know what produced it — and because a pull request that hides it
+  // is the kind of thing that gets a project banned from a repository rather
+  // than asked about. One line, no badge.
+  const v = version();
+  out.push(`Opened by [orchestrator](${PROJECT_URL})${v ? ` v${v}` : ""}.`);
   return out.join("\n\n");
 }
 

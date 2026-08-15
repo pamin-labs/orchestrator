@@ -1,0 +1,27 @@
+# The build context is uploaded to the daemon before anything runs, so what is
+# excluded here is time on every build as well as bytes in the image.
+#
+# `.git` is the big one and the easy one to forget: it is the whole history, it
+# has no use inside the image, and it lands in the layer that copies the tree.
+.git
+.github
+
+# Reinstalled in the image against the lockfile. Copying the host's tree in also
+# copies whatever platform-specific binaries it holds, which then do not match.
+node_modules
+
+# Rebuilt by `bun run build:web` inside the image; the host's copy would be
+# whatever was last built here.
+web/dist
+
+# The database, the attachments, the gate logs, the staged skills. A deployment
+# mounts a volume at /data — baking one machine's state into the image would ship
+# somebody's credentials and every requirement's history.
+data
+leases
+*.sqlite
+*.sqlite-*
+
+docs
+*.md
+!README.md

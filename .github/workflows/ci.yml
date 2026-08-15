@@ -48,11 +48,12 @@ jobs:
       - name: lint
         run: bunx oxlint@latest --deny-warnings src web/src test
 
-      - name: test
-        run: bun test
-
-      # The panel is served from `web/dist`, so a build that fails is a page that
-      # does not exist. It also runs the tailwind pass, which is where an unknown
-      # utility class shows up.
+      # Before the tests, not after: `test/smoke.test.ts` asserts that the built
+      # bundle is served, so with no `web/dist` it fails with a 404 that reads
+      # like a routing bug. The build is also where the tailwind pass runs, which
+      # is where an unknown utility class shows up.
       - name: build the panel
         run: bun run build:web
+
+      - name: test
+        run: bun test

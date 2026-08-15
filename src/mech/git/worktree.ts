@@ -101,16 +101,28 @@ export async function checkpoint(
   repoPath: string,
   worktree: string,
   label: string,
+  signoff = true,
 ): Promise<string | null> {
   const status = await git(repoPath, ["status", "--porcelain"], worktree);
   if (status.code !== 0) return null;
   if (status.out.trim()) {
     await git(repoPath, ["add", "-A"], worktree);
-    await git(repoPath, ["commit", "-q", "--no-verify", "-m", `wip: ${label}`], worktree);
+    await git(repoPath, ["commit", "-q", "--no-verify", ...signoffArgs(signoff), "-m", `wip: ${label}`], worktree);
   }
   const sha = await git(repoPath, ["rev-parse", "HEAD"], worktree);
   return sha.code === 0 ? sha.out.trim() : null;
 }
+
+/**
+ * `-s` unless a caller says otherwise.
+ *
+ * A repository with DCO enforcement refuses a pull request whose commits carry
+ * no `Signed-off-by`, and it refuses it at the last step of a slice that has
+ * already passed every gate — the most expensive moment to discover a one-flag
+ * problem. The line has to match the author, which `createCheckout` sets from
+ * the same config block.
+ */
+export const signoffArgs = (signoff = true): string[] => (signoff ? ["-s"] : []);
 
 export interface SquashResult {
   /** Commits folded away. 0 means nothing was done, and `reason` says why. */
@@ -135,6 +147,7 @@ export async function squashWip(
   worktree: string,
   message: string,
   baseRef?: string,
+  signoff = true,
 ): Promise<SquashResult> {
   const base = baseRef ?? `origin/${await detectBaseBranch(git, repoPath)}`;
   const mb = await git(repoPath, ["merge-base", base, "HEAD"], worktree);
@@ -153,7 +166,7 @@ export async function squashWip(
   // --soft keeps the tree exactly as it is; only the history collapses.
   const reset = await git(repoPath, ["reset", "--soft", from], worktree);
   if (reset.code !== 0) return { squashed: 0, reason: reset.out.split("\n").slice(-2).join(" ") };
-  const commit = await git(repoPath, ["commit", "-q", "--no-verify", "-m", message], worktree);
+  const commit = await git(repoPath, ["commit", "-q", "--no-verify", ...signoffArgs(signoff), "-m", message], worktree);
   if (commit.code !== 0) return { squashed: 0, reason: commit.out.split("\n").slice(-2).join(" ") };
   return { squashed: subjects.length, reason: `${subjects.length} wip commits -> 1` };
 }

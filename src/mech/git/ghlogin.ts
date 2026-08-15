@@ -1,3 +1,4 @@
+import type { Ctx } from "../../api.ts";
 /**
  * Connect GitHub once, from the settings page, the way GitHub Desktop does.
  *
@@ -231,3 +232,46 @@ export async function githubAccount(gh: Github): Promise<string | null> {
   const r = await gh.request<{ login?: string }>("GET", "/user");
   return r.ok ? (r.data?.login ?? null) : null;
 }
+
+/**
+ * Who a commit should be authored by, from the connected account.
+ *
+ * The identity was a literal — `orch agent <agent@orch.local>` — which is fine
+ * until a repository enforces DCO: the sign-off line has to match the author,
+ * and a made-up address is not an identity anybody can be said to have signed
+ * as. The connected login is one, and it is already here.
+ *
+ * The `noreply` address is GitHub's own form, and the right one to use: it is
+ * what the web UI commits as, it is accepted by DCO checks, and it does not
+ * publish an address the account holder may not want in a commit log. The `id`
+ * prefix is required — `login@users.noreply.github.com` without it is the legacy
+ * form and no longer routes.
+ */
+export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: string }> {
+  const fallback = { name: "orch agent", email: "agent@orch.local" };
+  // Cached: this runs on every checkout, and the answer changes only when the
+  // connected account does. `credentialChanged` clears it.
+  const held = ctx.db
+    ?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?")
+    .get(IDENTITY_KEY)?.v;
+  if (held) {
+    try {
+      return JSON.parse(held) as { name: string; email: string };
+    } catch {}
+  }
+  const r = await ctx.gh?.request<{ login?: string; id?: number; name?: string | null }>("GET", "/user");
+  if (!r?.ok || !r.data?.login || !r.data?.id) return fallback;
+  const who = {
+    name: r.data.name || r.data.login,
+    email: `${r.data.id}+${r.data.login}@users.noreply.github.com`,
+  };
+  ctx.db?.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
+    IDENTITY_KEY,
+    JSON.stringify(who),
+  ]);
+  return who;
+}
+
+/** Cleared when the GitHub credential changes, or it outlives the account. */
+export const IDENTITY_KEY = "git_identity";
+export const forgetIdentity = (ctx: Ctx): void => void ctx.db?.run("DELETE FROM setting WHERE k = ?", [IDENTITY_KEY]);

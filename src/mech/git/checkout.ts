@@ -4,6 +4,7 @@ import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { cacheProjectSkills } from "../util/skills.ts";
 import { shq } from "../util/shq.ts";
 import type { GitRunner } from "./worktree.ts";
+import { commitIdentity } from "./ghlogin.ts";
 
 /**
  * A group's code, inside its sandbox.
@@ -258,10 +259,19 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
   await initSubmodules(ctx, scope);
 
   // An agent commits as itself, not as whoever last configured this machine.
+  // From the connected GitHub account, not from a config key.
+  //
+  // A repository enforcing DCO requires the `Signed-off-by` line to match the
+  // author, and `orch agent <agent@orch.local>` is not an identity anyone can be
+  // said to have signed as. The account that authorised this orchestrator is
+  // one, it is already connected, and asking for it again in a yaml would be a
+  // second place to keep in step. Falls back to the old literal when nothing is
+  // connected yet — a checkout still has to work before GitHub does.
+  const who = await commitIdentity(ctx);
   await execIn(
     ctx,
     scope,
-    `git config user.name "orch agent" && git config user.email "agent@orch.local"`,
+    `git config user.name ${shq(who.name)} && git config user.email ${shq(who.email)}`,
     { cwd: WORK },
   );
 

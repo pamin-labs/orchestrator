@@ -64,13 +64,31 @@ jobs:
         with:
           bun-version: latest
 
+      # `package.json` is where the running orchestrator reads its own version —
+      # it is on the line every pull request carries. Left unbumped, a release
+      # ships an image tagged 0.2.0 whose PRs say 0.1.0, and the mismatch is only
+      # ever noticed by whoever is debugging one of those PRs.
+      #
+      # Written here rather than asked of a human: a release input already says
+      # the version, and two places to keep in step is one place to forget.
+      - name: set the version
+        run: |
+          bun --print '
+            const p = require("./package.json");
+            p.version = "${{ inputs.version }}";
+            require("fs").writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+            "package.json -> " + p.version
+          '
+
       # The same checks CI runs. Duplicated deliberately: a release must not
       # depend on someone having looked at a green tick on an earlier commit.
       - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit -p .
       - run: bunx oxlint@latest --deny-warnings src web/src test
-      - run: bun test
+      # Build before test, for the reason ci.yml states: the smoke test asserts
+      # the built bundle is served, and with no `web/dist` it fails as a 404.
       - run: bun run build:web
+      - run: bun test
 
       - uses: docker/setup-buildx-action@v3
 
@@ -101,6 +119,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The bump is part of the release, so it is on the tagged commit
+          # rather than dangling in a runner's working tree.
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -s -am "chore(release): ${{ inputs.version }}"
+          git push origin HEAD:main
           git tag "${{ env.VERSION }}"
           git push origin "${{ env.VERSION }}"
           # One line above the generated list: how to run this version. That is

@@ -85,6 +85,9 @@ export type Config = {
   maxGroups: number;
   /** One number for the whole Runner pool, or one pool per resource tag. */
   leaseSlots: number | Record<string, number>;
+  /** Which interface to listen on. `127.0.0.1` unless something fronts it. */
+  host: string;
+
   port: number;
   /** provider -> difficulty -> model. One knob per family; adding one is a yaml block. */
   difficultyModel: Record<Runtime, Record<string, string>>;
@@ -194,6 +197,7 @@ const DEFAULTS: Config = {
   language: "中文",
   maxGroups: 10,
   leaseSlots: 2,
+  host: "127.0.0.1",
   port: 47821,
   difficultyModel: {
     claude: {
@@ -270,8 +274,34 @@ const DEFAULTS: Config = {
  * `roles/` and `config/` are part of the installation, not of whatever directory
  * the server happened to be launched from — resolving them against cwd meant a
  * server started elsewhere silently found no roles at all.
+ *
+ * Three shapes this has to answer for, and the third is why it is a function:
+ *
+ *   source        `<root>/src/config.ts`   ->  `..`
+ *   bundled       `<root>/dist/server.js`  ->  `..`
+ *   compiled      `/$bunfs/root/config.ts` ->  nothing. `bun build --compile`
+ *                 puts modules in a read-only virtual filesystem, so `..` is
+ *                 `/$bunfs`, and `config/default.yaml`, `roles/*.yaml`,
+ *                 `web/dist` and the `orch` CLI copied into every sandbox all
+ *                 resolve to paths that do not exist. Measured: the binary
+ *                 starts, warns that the config is missing, and then dies trying
+ *                 to `mkdir` a data directory on a read-only mount.
+ *
+ * For the compiled case the executable's own directory is the real one, which
+ * makes a single-file binary usable as long as its assets sit beside it.
+ * `ORCH_ROOT` overrides all three, for a layout that is none of them.
  */
-export const ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..");
+function resolveRoot(): string {
+  const explicit = process.env.ORCH_ROOT?.trim();
+  if (explicit) return resolve(explicit);
+  const here = dirname(new URL(import.meta.url).pathname);
+  // `/$bunfs` on posix, `B:\~BUN` on Windows — bun's own markers for "this
+  // module came out of the binary, not off the disk".
+  if (here.startsWith("/$bunfs") || /^[A-Z]:\\~BUN/i.test(here)) return dirname(process.execPath);
+  return resolve(here, "..");
+}
+
+export const ROOT = resolveRoot();
 
 /**
  * dataDir is absolute from here on.
@@ -299,6 +329,30 @@ export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: reso
  */
 const SANDBOX_API_KEY_ENV = "ORCH_SANDBOX_API_KEY";
 
+/**
+ * The handful of keys a container deployment has to set without editing a file.
+ *
+ * An explicit table rather than a generic `ORCH_*` -> config mapper: the generic
+ * version reads well and then silently accepts `ORCH_SANDBOX_IMAGE`, which is a
+ * boundary decision `allowedImage` exists to make. These four are the ones an
+ * image cannot know at build time, and nothing else is settable this way.
+ *
+ * The yaml stays the place where a setting is explained; this is the place a
+ * deployment overrides one.
+ */
+function fromEnv(cfg: Config): Config {
+  const out = { ...cfg };
+  const host = process.env.ORCH_HOST?.trim();
+  if (host) out.host = host;
+  const port = Number(process.env.ORCH_PORT);
+  if (Number.isInteger(port) && port > 0 && port < 65_536) out.port = port;
+  const dir = process.env.ORCH_DATA_DIR?.trim();
+  if (dir) out.dataDir = resolve(dir);
+  const server = process.env.ORCH_SANDBOX_SERVER?.trim();
+  if (server) out.sandbox = { ...out.sandbox, server };
+  return out;
+}
+
 /** The defaults, for the checker that reads types and legal keys off them. */
 export const DEFAULTS_FOR_CHECK: Config = DEFAULTS;
 
@@ -312,7 +366,7 @@ export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
   // container that will not start rather than a config error. `defu` is exactly
   // this and nothing else — arrays and scalars replace, plain objects recurse —
   // and JS has no stdlib deep merge worth hand-rolling around.
-  const cfg = withAbsoluteDataDir(defu(parsed, DEFAULTS));
+  const cfg = fromEnv(withAbsoluteDataDir(defu(parsed, DEFAULTS)));
   const key = process.env[SANDBOX_API_KEY_ENV];
   return key ? { ...cfg, sandbox: { ...cfg.sandbox, apiKey: key } } : cfg;
 }

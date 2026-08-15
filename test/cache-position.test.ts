@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { listSkills, readSkill, referencedSkills } from "../src/mech/util/skills.ts";
 import {
   assemble,
@@ -126,7 +129,16 @@ test("the loaded tool set is the whitelist, plus the one tool skills need", () =
 });
 
 test("a skill the boss pointed at lands in the delta, never in the cached prefix", () => {
-  const dir = "/tmp/skilltest";
+  // Built here rather than assumed. This read `/tmp/skilltest`, which existed on
+  // the machine the test was written on and nowhere else — so it passed locally
+  // for as long as nobody ran it anywhere else, and went red the first time CI
+  // existed. A test that depends on the author's disk is a test about the author.
+  const dir = mkdtempSync(join(tmpdir(), "orch-skilltest-"));
+  mkdirSync(join(dir, ".claude/skills/tidy"), { recursive: true });
+  writeFileSync(
+    join(dir, ".claude/skills/tidy/SKILL.md"),
+    "---\nname: tidy\ndescription: keeps it tidy\n---\n\nguard clause first, then the happy path.\n",
+  );
   const all = listSkills(dir);
   const tidy = all.find((s) => s.name === "tidy")!;
   expect(tidy.scope).toBe("project");

@@ -89,7 +89,10 @@ export interface SandboxSpec {
  * is a project whose owner meant something, and quietly substituting a different
  * one is worse than saying no.
  */
-const PUBLISHED = /^ghcr\.io\/pamin-labs\//i;
+/** The one namespace this project publishes to. One home, so the allowlist and
+ *  the panel's version list can never disagree about what "ours" means. */
+export const PUBLISHED_REPO = "pamin-labs/orch-agent";
+const PUBLISHED = new RegExp(`^ghcr\\.io/${PUBLISHED_REPO.split("/")[0]}/`, "i");
 
 export function allowedImage(ref: string): boolean {
   const image = ref.trim();

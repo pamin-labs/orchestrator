@@ -53,9 +53,15 @@ test("the web UI is served and fetches nothing from a remote origin", async () =
 
   // The built bundle has to be there and served, or the page is a blank div and
   // every panel silently shows nothing.
+  //
+  // Named rather than left as a bare 404: this went red the first time CI ran,
+  // because `bun test` came before `bun run build:web` and the failure said only
+  // "expected 200, received 404" — which reads as a routing bug in the server
+  // rather than as an artefact nobody built yet.
   for (const asset of ["/dist/main.js", "/dist/app.css"]) {
     const a = await fetch(`${srv.url}${asset}`);
-    expect(a.status).toBe(200);
+    expect({ asset, status: a.status, hint: a.status === 200 ? "" : "run `bun run build:web` first" })
+      .toEqual({ asset, status: 200, hint: "" });
     // The bundle name carries no hash, so without this the browser keeps serving
     // the previous build: a deleted button survived a rebuild and a restart.
     expect(a.headers.get("cache-control")).toBe("no-cache");
