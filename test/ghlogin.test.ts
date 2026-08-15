@@ -6,7 +6,7 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
-import { commitIdentity, forgetIdentity,
+import { BOT, commitIdentity, forgetIdentity,
   CLIENT_ID, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Fetcher,
 } from "../src/mech/git/ghlogin.ts";
 
@@ -486,6 +486,9 @@ test("commits are authored by the connected account, so a DCO sign-off means som
   const dead = { db, gh: { request: async () => ({ ok: false }) } } as unknown as Ctx;
   expect(await commitIdentity(dead)).toEqual(who);
   forgetIdentity(dead);
-  // And with nothing connected a checkout still has to work.
-  expect(await commitIdentity(dead)).toEqual({ name: "orch agent", email: "agent@orch.local" });
+  // And with nothing connected a checkout still has to work — as the App's own
+  // bot, which is a real account on github.com, not the invented
+  // `orch agent <agent@orch.local>` whose address routed nowhere and whose name
+  // belonged to nobody. A sign-off carrying that certified nothing.
+  expect(await commitIdentity(dead)).toEqual(BOT);
 });

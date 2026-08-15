@@ -247,8 +247,26 @@ export async function githubAccount(gh: Github): Promise<string | null> {
  * prefix is required — `login@users.noreply.github.com` without it is the legacy
  * form and no longer routes.
  */
+/**
+ * Our GitHub App's bot account, which is a real user on github.com.
+ *
+ * `orch agent <agent@orch.local>` was made up: the address routes nowhere and
+ * the name belongs to nobody, so a `Signed-off-by` line carrying it certifies
+ * nothing and a reviewer clicking the author gets a 404. This is the account the
+ * App already commits as — id resolved from `/users/orchestrator-connect[bot]`,
+ * in GitHub's own noreply form, the same shape `claude[bot]` uses.
+ *
+ * It is the fallback and the co-author, never a substitute for a connected
+ * human: a bot signing off on a human's behalf is the one thing DCO exists to
+ * prevent.
+ */
+export const BOT = {
+  name: `${APP_SLUG}[bot]`,
+  email: `317244264+${APP_SLUG}[bot]@users.noreply.github.com`,
+} as const;
+
 export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: string }> {
-  const fallback = { name: "orch agent", email: "agent@orch.local" };
+  const fallback = { ...BOT };
   // Cached: this runs on every checkout, and the answer changes only when the
   // connected account does. `credentialChanged` clears it.
   const held = ctx.db
@@ -270,6 +288,60 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
     JSON.stringify(who),
   ]);
   return who;
+}
+
+/**
+ * The two things a commit carries besides its message, and both default on.
+ *
+ * **signoff** — a repository enforcing DCO refuses a pull request whose commits
+ * lack `Signed-off-by`, and it refuses at the last step of a slice that already
+ * passed every gate. Off only for a repository that would reject the trailer.
+ *
+ * **coauthor** — `Co-Authored-By: orchestrator-connect[bot]`. Not an attribution
+ * flourish: a diff written by an agent should say so in the record, not only in
+ * the pull request body, because the body is where a reader looks once and the
+ * commit is where they look a year later. Off for anyone who would rather their
+ * history not carry it.
+ *
+ * Settings rather than yaml: they are decisions about a repository's
+ * conventions, and the person making them is looking at the settings page.
+ */
+export const TRAILERS_KEY = "git_trailers";
+
+export interface TrailerPrefs {
+  signoff: boolean;
+  coauthor: boolean;
+}
+
+/** What a commit helper takes: the two settings plus who the co-author is. */
+export interface Trailers extends TrailerPrefs {
+  /** Always `BOT`. A field rather than an import inside `withTrailers` so the
+   *  commit helpers stay pure and testable without a database. */
+  bot: { name: string; email: string };
+}
+
+export function trailers(ctx: Ctx): TrailerPrefs {
+  const row = ctx.db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(TRAILERS_KEY)?.v;
+  try {
+    return { signoff: true, coauthor: true, ...(row ? (JSON.parse(row) as Partial<TrailerPrefs>) : {}) };
+  } catch {
+    return { signoff: true, coauthor: true };
+  }
+}
+
+export function setTrailers(ctx: Ctx, next: Partial<TrailerPrefs>): TrailerPrefs {
+  const merged = { ...trailers(ctx), ...next };
+  ctx.db?.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
+    TRAILERS_KEY,
+    JSON.stringify(merged),
+  ]);
+  return merged;
+}
+
+/** The stored settings, in the shape the commit helpers take. One converter, so
+ *  the bot identity cannot drift between the fallback author and the trailer. */
+export function gitTrailers(ctx: Ctx): { signoff: boolean; coauthor: boolean; bot: { name: string; email: string } } {
+  return { ...trailers(ctx), bot: { ...BOT } };
 }
 
 /** Cleared when the GitHub credential changes, or it outlives the account. */

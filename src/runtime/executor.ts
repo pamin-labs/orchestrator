@@ -14,6 +14,7 @@ import { resolveLease, runResource, type ResourceDef } from "../mech/sandbox/lea
 import { checkpoint, changedSince } from "../mech/git/worktree.ts";
 import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
+import { gitTrailers } from "../mech/git/ghlogin.ts";
 import { track, untrack } from "./running.ts";
 import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
 import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/ops/watchdog.ts";
@@ -230,7 +231,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   // one real commit keeps all of them). A checkpoint is still a checkpoint, so
   // it stays marked `wip`, but the rest of the line is the work.
   const before = job.grp_id
-    ? await checkpoint(sandboxGit(ctx, scope), WORK, WORK, checkpointLabel(ctx, agent, job))
+    ? await checkpoint(sandboxGit(ctx, scope), WORK, WORK, checkpointLabel(ctx, agent, job), gitTrailers(ctx))
     : null;
 
   // Reconcile compares against what changed *in this slice*, so the baseline is

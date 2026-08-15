@@ -1,3 +1,6 @@
+import { BOT, type Trailers } from "./ghlogin.ts";
+
+export type { Trailers };
 
 /**
  * git operations on a group's checkout.
@@ -101,28 +104,46 @@ export async function checkpoint(
   repoPath: string,
   worktree: string,
   label: string,
-  signoff = true,
+  trailers: Trailers = DEFAULT_TRAILERS,
 ): Promise<string | null> {
   const status = await git(repoPath, ["status", "--porcelain"], worktree);
   if (status.code !== 0) return null;
   if (status.out.trim()) {
     await git(repoPath, ["add", "-A"], worktree);
-    await git(repoPath, ["commit", "-q", "--no-verify", ...signoffArgs(signoff), "-m", `wip: ${label}`], worktree);
+    await git(repoPath, ["commit", "-q", "--no-verify", ...signoffArgs(trailers), "-m", withTrailers(`wip: ${label}`, trailers)], worktree);
   }
   const sha = await git(repoPath, ["rev-parse", "HEAD"], worktree);
   return sha.code === 0 ? sha.out.trim() : null;
 }
 
 /**
- * `-s` unless a caller says otherwise.
+ * What every commit carries besides its message, when nobody said otherwise.
  *
- * A repository with DCO enforcement refuses a pull request whose commits carry
- * no `Signed-off-by`, and it refuses it at the last step of a slice that has
- * already passed every gate — the most expensive moment to discover a one-flag
- * problem. The line has to match the author, which `createCheckout` sets from
- * the same config block.
+ * `-s` is git's own flag and writes `Signed-off-by` from the configured author,
+ * which is why `createCheckout` sets that author from the connected account —
+ * DCO checks that the two match.
+ *
+ * The co-author trailer is appended to the message instead, because git has no
+ * flag for it: GitHub reads a `Co-Authored-By:` line in the body. It goes last,
+ * after a blank line, which is where every tool that parses trailers looks.
+ *
+ * The bot is `BOT`, not a copy of it: an address written out twice is an address
+ * that can disagree with itself, and the half that is wrong is the half a DCO
+ * check rejects — after every gate has already passed.
  */
-export const signoffArgs = (signoff = true): string[] => (signoff ? ["-s"] : []);
+export const DEFAULT_TRAILERS: Trailers = { signoff: true, coauthor: true, bot: { ...BOT } };
+
+export const signoffArgs = (t: Trailers = DEFAULT_TRAILERS): string[] => (t.signoff ? ["-s"] : []);
+
+export function withTrailers(message: string, t: Trailers = DEFAULT_TRAILERS): string {
+  if (!t.coauthor) return message;
+  const line = `Co-Authored-By: ${t.bot.name} <${t.bot.email}>`;
+  // Already there — a squash rewrites a message that may carry it from the wip
+  // commits it is collapsing, and two identical trailers is a diff nobody wants
+  // to explain.
+  if (message.includes(line)) return message;
+  return `${message.replace(/\s+$/, "")}\n\n${line}\n`;
+}
 
 export interface SquashResult {
   /** Commits folded away. 0 means nothing was done, and `reason` says why. */
@@ -146,10 +167,12 @@ export async function squashWip(
   repoPath: string,
   worktree: string,
   message: string,
-  baseRef?: string,
-  signoff = true,
+  // Both optional and unrelated, so named: positionally, the caller that wants
+  // the second one has to write `undefined` for the first.
+  opts: { baseRef?: string; trailers?: Trailers } = {},
 ): Promise<SquashResult> {
-  const base = baseRef ?? `origin/${await detectBaseBranch(git, repoPath)}`;
+  const trailers = opts.trailers ?? DEFAULT_TRAILERS;
+  const base = opts.baseRef ?? `origin/${await detectBaseBranch(git, repoPath)}`;
   const mb = await git(repoPath, ["merge-base", base, "HEAD"], worktree);
   if (mb.code !== 0 || !mb.out.trim()) return { squashed: 0, reason: `no merge base with ${base}` };
   const from = mb.out.trim();
@@ -166,7 +189,7 @@ export async function squashWip(
   // --soft keeps the tree exactly as it is; only the history collapses.
   const reset = await git(repoPath, ["reset", "--soft", from], worktree);
   if (reset.code !== 0) return { squashed: 0, reason: reset.out.split("\n").slice(-2).join(" ") };
-  const commit = await git(repoPath, ["commit", "-q", "--no-verify", ...signoffArgs(signoff), "-m", message], worktree);
+  const commit = await git(repoPath, ["commit", "-q", "--no-verify", ...signoffArgs(trailers), "-m", withTrailers(message, trailers)], worktree);
   if (commit.code !== 0) return { squashed: 0, reason: commit.out.split("\n").slice(-2).join(" ") };
   return { squashed: subjects.length, reason: `${subjects.length} wip commits -> 1` };
 }

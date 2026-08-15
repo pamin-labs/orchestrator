@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "../../config.ts";
+import { gitTrailers } from "./ghlogin.ts";
 import type { Ctx } from "../../api.ts";
 import { say } from "../../lang.ts";
 import { squashWip } from "./worktree.ts";
@@ -67,7 +68,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
 
   // Every turn left a `wip:` commit behind. Squash before publishing, or the PR
   // is a dozen commits all called "wip: engineer turn".
-  const sq = await squashWip(sandbox, WORK, WORK, `${input.title}\n\n${input.body}`);
+  const sq = await squashWip(sandbox, WORK, WORK, `${input.title}\n\n${input.body}`, { trailers: gitTrailers(ctx) });
   ctx.bus.emit({
     grpId,
     author: "orchestrator",

@@ -146,7 +146,7 @@ test("wip checkpoints are squashed into one commit, and the tree survives", asyn
   }
   expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out.split("\n").length).toBe(3);
 
-  const r = await squashWip(git, dir, wt.worktree, "feat: the whole thing", "main");
+  const r = await squashWip(git, dir, wt.worktree, "feat: the whole thing", { baseRef: "main" });
   expect(r.squashed).toBe(3);
 
   const log = (await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out.trim();
@@ -166,7 +166,7 @@ test("a real commit message is never squashed away", async () => {
   await git(dir, ["add", "-A"], wt.worktree);
   await git(dir, ["commit", "-q", "-m", "fix: the actual bug"], wt.worktree);
 
-  const r = await squashWip(git, dir, wt.worktree, "squashed", "main");
+  const r = await squashWip(git, dir, wt.worktree, "squashed", { baseRef: "main" });
   expect(r.squashed).toBe(0);
   expect(r.reason).toContain("real messages");
   expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out).toContain("fix: the actual bug");
