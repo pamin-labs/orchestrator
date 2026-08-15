@@ -94,6 +94,12 @@ test("checkpoint commits dirty work and returns a sha to come back to", async ()
 
   // What the turn changed, for reconcile and for free narration.
   expect(await changedSince(git, dir, wt.worktree, before!)).toEqual(["b.txt"]);
+
+  // And in the message, because these commits survive into review whenever
+  // `squashWip` declines: a branch of subjects that all say `wip: engineer turn`
+  // gives the boss no way to pick which one to open.
+  const msg = (await git(dir, ["log", "-1", "--format=%B"], wt.worktree)).out;
+  expect(msg).toContain("b.txt");
 });
 
 test("checkpoint on a clean tree does not create an empty commit", async () => {

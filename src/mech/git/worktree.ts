@@ -123,6 +123,27 @@ export async function detectBaseBranch(git: GitRunner, repoPath: string): Promis
 }
 
 /**
+ * What a checkpoint contains, from the `git status` it already ran.
+ *
+ * A checkpoint whose message is only `wip: S2: engineer` says nothing that
+ * `git log --stat` does not — but these commits survive into review whenever
+ * `squashWip` declines, and the boss reading the branch then has a list of
+ * subjects and no idea which one to open. Twelve paths and a count is a page of
+ * the log that answers "where did this touch" without a second command.
+ */
+const CAP = 12;
+function touched(porcelain: string): string {
+  const files = porcelain
+    .split("\n")
+    .map((l) => l.slice(3).trim())
+    // `R  old -> new`: the new name is the one that exists now.
+    .map((p) => p.split(" -> ").pop()!)
+    .filter(Boolean);
+  const head = files.slice(0, CAP).join("\n");
+  return files.length > CAP ? `${head}\n… and ${files.length - CAP} more` : head;
+}
+
+/**
  * A `wip:` checkpoint before every turn.
  *
  * This is what makes intercept L3 ("interrupt and roll back") and "undo a
@@ -140,7 +161,11 @@ export async function checkpoint(
   if (status.code !== 0) return null;
   if (status.out.trim()) {
     await git(repoPath, ["add", "-A"], worktree);
-    await git(repoPath, ["commit", "-q", "--no-verify", ...signoffArgs(trailers), "-m", withTrailers(`wip: ${label}`, trailers)], worktree);
+    await git(
+      repoPath,
+      ["commit", "-q", "--no-verify", ...signoffArgs(trailers), "-m", withTrailers(`wip: ${label}\n\n${touched(status.out)}`, trailers)],
+      worktree,
+    );
   }
   const sha = await git(repoPath, ["rev-parse", "HEAD"], worktree);
   return sha.code === 0 ? sha.out.trim() : null;

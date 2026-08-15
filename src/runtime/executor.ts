@@ -42,8 +42,6 @@ export interface ExecDeps {
   ctx: Ctx;
   cfg: Config;
   roles: Map<string, RoleDef>;
-  /** Wired by the server: opens the PR when a branch passes its audit. */
-  onAuditPass?: (grpId: number) => void;
   /** Injectable for tests; defaults to whichever provider the role names. */
   runTurn?: Provider["run"];
 }
@@ -231,7 +229,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   // one real commit keeps all of them). A checkpoint is still a checkpoint, so
   // it stays marked `wip`, but the rest of the line is the work.
   const before = job.grp_id
-    ? await checkpoint(sandboxGit(ctx, scope), WORK, WORK, checkpointLabel(ctx, agent, job), gitTrailers(ctx))
+    ? await checkpoint(sandboxGit(ctx, scope), WORK, WORK, checkpointLabel(ctx, job), gitTrailers(ctx))
     : null;
 
   // Reconcile compares against what changed *in this slice*, so the baseline is
@@ -408,22 +406,42 @@ export const LOST_SESSION = /no rollout found for thread|No conversation found w
 /**
  * What a turn's checkpoint commit says about itself.
  *
- * `wip(S2): engineer — 闸门放行的卡 enqueue 一个 cos turn`. The slice number is
- * where the reviewer looks first, the role is who did it, and the task title is
- * the only sentence anyone wrote about this particular piece of work.
+ * `S2: engineer — 闸门放行的卡 enqueue 一个 cos turn`. The slice number is where
+ * the reviewer looks first, the role is who did it, and the task title is the
+ * only sentence anyone wrote about this particular piece of work.
+ *
+ * It names the turn that **just ended**, not the one about to start. The
+ * checkpoint runs at the top of a turn and commits whatever is dirty, which is
+ * the previous turn's output — so taking the role from the incoming job filed
+ * the Engineer's diff under `S2: qa`, and the one place a reviewer looks to find
+ * out who wrote a line said the wrong name.
  */
-function checkpointLabel(ctx: Ctx, agent: AgentRow, job: Job): string {
-  const seq = job.slice_id
-    ? ctx.db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(job.slice_id)?.seq
+function checkpointLabel(ctx: Ctx, job: Job): string {
+  const prev = ctx.db
+    .query<{ payload_json: string | null; slice_id: number | null }, [number]>(
+      `SELECT payload_json, slice_id FROM job WHERE grp_id = ? AND kind = 'agent_turn'
+         AND state IN ('done', 'failed', 'cancelled') ORDER BY id DESC LIMIT 1`,
+    )
+    .get(job.grp_id!);
+  let role = "agent";
+  try {
+    role = String(JSON.parse(prev?.payload_json ?? "{}").role ?? role);
+  } catch {}
+  const sliceId = prev?.slice_id ?? null;
+  const seq = sliceId
+    ? ctx.db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(sliceId)?.seq
     : undefined;
-  const task = job.slice_id
+  // The task that turn had claimed. Not "not done": by the time this runs it
+  // usually is done, which is what left every checkpoint labelled with the next
+  // task instead of the one in the commit.
+  const task = sliceId
     ? ctx.db
         .query<{ title: string }, [number]>(
-          "SELECT title FROM task WHERE slice_id = ? AND status != 'done' ORDER BY id LIMIT 1",
+          "SELECT title FROM task WHERE slice_id = ? ORDER BY (status = 'done') DESC, id DESC LIMIT 1",
         )
-        .get(job.slice_id)?.title
+        .get(sliceId)?.title
     : undefined;
-  const head = seq ? `S${seq}: ${agent.role}` : `${agent.role} turn`;
+  const head = seq ? `S${seq}: ${role}` : `${role} turn`;
   return task ? `${head} — ${task.slice(0, 60)}` : head;
 }
 
