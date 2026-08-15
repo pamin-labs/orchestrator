@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { RepoLock } from "./gitlock.ts";
 
 /**
@@ -20,12 +21,34 @@ export type GitRunner = (repo: string, argv: string[], cwd?: string) => Promise<
 export function makeGitRunner(lock: RepoLock): GitRunner {
   return (repo, argv, cwd) =>
     lock.run(repo, argv, async () => {
-      const p = Bun.spawn(["git", ...argv], { cwd: cwd ?? repo, stdout: "pipe", stderr: "pipe" });
-      const [so, se] = await Promise.all([
-        new Response(p.stdout).text(),
-        new Response(p.stderr).text(),
-      ]);
-      return { code: await p.exited, out: (so + se).trimEnd() };
+      try {
+        const p = Bun.spawn(["git", ...argv], { cwd: cwd ?? repo, stdout: "pipe", stderr: "pipe" });
+        const [so, se] = await Promise.all([
+          new Response(p.stdout).text(),
+          new Response(p.stderr).text(),
+        ]);
+        return { code: await p.exited, out: (so + se).trimEnd() };
+      } catch (e: any) {
+        // `Bun.spawn` **throws** when `cwd` does not exist — it does not come
+        // back with a non-zero code. Every caller in this codebase guards on
+        // `code !== 0`, so every one of those guards was dead the moment
+        // `repo_path` became `owner/name` (007 §2): a watchdog tick died at its
+        // first project row and took the twelve rules after it with it; the
+        // index refresher threw into a `void` call and blamed git in the boss's
+        // feed once per tick forever.
+        //
+        // And the message it throws with reads `posix_spawn 'git'`, which says
+        // git is not installed. It is; there is simply nowhere to run it. So the
+        // failure comes back as a code with a sentence that is true.
+        // Both cases are ENOENT and they send the boss to different places, so
+        // the one thing that tells them apart is checked here rather than
+        // guessed from a message: a missing directory is a project whose code
+        // only exists in containers; anything else really is the binary.
+        const where = cwd ?? repo;
+        return existsSync(where)
+          ? { code: 128, out: `git could not run in ${where}: ${e?.message ?? e}` }
+          : { code: 128, out: `git could not run in ${where}: no such directory on this host (${e?.code ?? "spawn failed"})` };
+      }
     });
 }
 

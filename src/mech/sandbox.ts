@@ -558,9 +558,26 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         credentials: credentials.map((c) => ({ name: c.name, source: { type: "inline" as const, value: c.value } })),
         bindings: credentials.map((c) => ({ name: c.name, match: matchFor(c), auth: authFor(c) })),
       })
-      .catch(() => {
-        // Reported by preflight, not swallowed here — but a group that cannot
-        // bind must still be a group, or one bad config wedges the whole fleet.
+      .catch((e: unknown) => {
+        // Said here, because nothing else can say it. This used to claim
+        // preflight would report it: preflight runs at boot, and this is a call
+        // against a container that did not exist then — it never had a chance.
+        //
+        // What follows from a silent miss is deterministic and points at the
+        // wrong person. No bindings means the decoys stay decoys, every model
+        // call 401s, `isAuthFailure` matches, and `handleAuthFailure` pauses the
+        // group telling the boss to re-mint a token — so they replace a
+        // credential that was never the problem and the new one fails the same
+        // way. The group staying alive is right; not naming it is not.
+        ctx.bus?.emit({
+          grpId: "grp" in scope ? scope.grp : null,
+          author: "orchestrator",
+          kind: "state_change",
+          severity: "blocker",
+          body:
+            `这个容器的凭据没绑上，里面的假值会原样发出去 —— 接下来每次模型调用都会 401，` +
+            `而那不是 token 的问题，重新登录也没用。原因：${(e as Error)?.message ?? e}`.slice(0, 400),
+        });
       });
   }
   // A container this fresh has no clone and nothing installed. Imported here
@@ -1047,7 +1064,40 @@ export const REAL: SandboxDriver = {
   renew: realRenew,
 };
 
-export const execIn = (ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts) => driver(ctx).exec(ctx, scope, cmd, opts);
+/**
+ * `sh -c` a command in a container. **This never rejects.**
+ *
+ * Every caller reads `.code` — `sandboxGit`, `resourceExec`, and through the
+ * first, every helper in `worktree.ts`. None of them is in a try/catch, because
+ * a command that fails is a code, and that is the contract this function's shape
+ * promises. Two things underneath it break that promise: `ensureSandbox`
+ * rethrows when no container can be opened, and `commands.run` is a socket.
+ *
+ * The consequence was not a wrong answer, it was a **stopped agent**. A lease
+ * whose exec rejected skipped `finishLease`, which is the only thing that
+ * resolves `ctx.waiters.get('lease:N')` — so the route awaited a promise with no
+ * timeout while the agent's `orch` polled a reply that would never be written.
+ * The guard for exactly this (`126: the gate could not run`) could not fire,
+ * because reaching it required a return. Every way to get there is ordinary: a
+ * TTL reap, Docker restarting, the 60s hold expiring mid-gate.
+ *
+ * So a container that cannot be reached is an exit code with the reason in
+ * `err`, which is what every caller already knows how to handle. The hold is
+ * still set by `ensureSandbox` on its way through, so the fleet still stops
+ * dispatching — this only changes what the call already in flight gets back.
+ *
+ * Here rather than in `realExec`, so the fake driver's failures land the same way.
+ */
+export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): Promise<ExecOutcome> {
+  try {
+    return await driver(ctx).exec(ctx, scope, cmd, opts);
+  } catch (e) {
+    return { code: EXEC_UNAVAILABLE, out: "", err: `container unavailable: ${(e as Error)?.message ?? e}` };
+  }
+}
+
+/** `sh`'s "found it, could not run it". The lease guard already speaks it. */
+export const EXEC_UNAVAILABLE = 126;
 export const execLines = (ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts) => driver(ctx).lines(ctx, scope, cmd, opts);
 export const putFile = (ctx: Ctx, scope: Scope, path: string, data: string) => driver(ctx).put(ctx, scope, path, data);
 export const getFile = (ctx: Ctx, scope: Scope, path: string) => driver(ctx).get(ctx, scope, path);

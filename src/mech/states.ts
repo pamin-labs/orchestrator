@@ -36,6 +36,18 @@ export const SLICE_STATES = [
 
 export const JOB_STATES = ["pending", "running", "done", "failed", "cancelled"] as const;
 
+/**
+ * A gate or a command an agent asked for, and is **blocked on**.
+ *
+ * The only state list here whose resting states have an agent parked on them:
+ * `orch lease` does not return until `finishLease` resolves the waiter, and
+ * neither the route nor the agent's poll loop has a deadline. So a lease that
+ * stops moving is not a slow gate, it is an agent that never takes another turn
+ * — which is why these rows exist and why every path through `runLease` now ends
+ * in `finishLease` whatever happens to it.
+ */
+export const LEASE_STATES = ["queued", "running", "done", "failed", "cancelled"] as const;
+
 /** `pm | architect | cos | boss` are in-flight; the last two are terminal. */
 export const ESCALATION_STATES = ["pm", "architect", "cos", "boss", "answered", "revoked"] as const;
 
@@ -79,4 +91,5 @@ export type ServerState = (typeof SERVER_STATES)[number];
 export type ProjectState = (typeof PROJECT_STATES)[number];
 export type SliceState = (typeof SLICE_STATES)[number];
 export type JobState = (typeof JOB_STATES)[number];
+export type LeaseState = (typeof LEASE_STATES)[number];
 export type EscalationState = (typeof ESCALATION_STATES)[number];

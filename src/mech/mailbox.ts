@@ -1,5 +1,6 @@
+import { consola } from "consola";
 import type { Ctx } from "../api.ts";
-import { FILE_MODE, liveSandboxes, MAILBOX_DIR } from "./sandbox.ts";
+import { FILE_MODE, liveSandboxes, MAILBOX_DIR, writeInto } from "./sandbox.ts";
 
 /**
  * The host end of the agent's only way out.
@@ -103,15 +104,30 @@ export function normalise(base: string, path: unknown): string | null {
   return `${u.origin}${u.pathname}${u.search}`;
 }
 
-/** Every path out of `serve` writes one, or the agent blocks forever. */
+/**
+ * Every path out of `serve` writes one, or the agent blocks forever.
+ *
+ * Which is why the write is retried rather than dropped. It used to end in
+ * `.catch(() => {})` directly under that sentence — the comment was right and
+ * the code disagreed with it, and the disagreement is the whole failure: the
+ * agent's `orch` polls for this file with no deadline, so one reset socket on
+ * the upload is an agent waiting for a turn's worth of clock on a reply that was
+ * thrown away.
+ *
+ * `writeInto` gives it the one retry a local socket is worth. If that fails too
+ * there is nothing left to write the answer with, so it is logged rather than
+ * swallowed — the turn's own clock is what ends it from there.
+ */
 function reply(
   sb: ReturnType<typeof liveSandboxes>[number],
   id: string,
   answer: { status: number; text: string },
 ): Promise<unknown> {
-  return sb.files
-    .writeFiles([{ path: `${MAILBOX_DIR}/res/${id}.json`, data: JSON.stringify(answer), mode: FILE_MODE }])
-    .catch(() => {});
+  return writeInto(sb, [
+    { path: `${MAILBOX_DIR}/res/${id}.json`, data: JSON.stringify(answer), mode: FILE_MODE },
+  ]).catch((e: unknown) => {
+    consola.warn(`mailbox: could not answer ${id}, the agent waits out its turn clock: ${(e as Error)?.message ?? e}`);
+  });
 }
 
 /**

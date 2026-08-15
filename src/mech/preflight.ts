@@ -169,7 +169,8 @@ export interface PreflightInput {
   /** Host paths mounted into every sandbox of a project; same allowlist applies. */
   cacheDirs?: Record<string, string>;
   /** Injected in tests. */
-  probe?: (bin: string) => boolean;
+  /** `argv` defaults to `--version`; the docker check needs `info` (the daemon, not the binary). */
+  probe?: (bin: string, argv?: string[]) => boolean;
   /** Injected in tests: the real one asks the provider whether it still works. */
   verify?: (runtime: string, auth: RuntimeAuth) => Promise<{ ok: boolean; detail: string }>;
 }
@@ -210,20 +211,32 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   const out: Check[] = [];
   const probe =
     input.probe ??
-    ((bin: string) => {
+    ((bin: string, argv: string[] = ["--version"]) => {
       try {
-        return Bun.spawnSync([bin, "--version"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+        return Bun.spawnSync([bin, ...argv], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
       } catch {
         return false;
       }
     });
 
-  const docker = probe("docker");
+  // `docker info`, not `docker --version`. Measured: with the daemon down —
+  // Docker Desktop installed and never launched, the most common first-run state
+  // there is — `docker --version` still exits 0, so this check reported
+  // "running" while every `ensureSandbox` failed. The blocker the boss got said
+  // "多半是 docker 没起，自检那栏会说是哪个", and the self-check then said it was
+  // up: pointed at the right page and told the wrong thing on it.
+  //
+  // Both are asked, because the answers send them to different places: not
+  // installed at all is a download, installed but not started is one click.
+  const docker = probe("docker", ["info"]);
+  const installed = docker || probe("docker");
   out.push({
     name: "docker",
     ok: docker,
-    detail: docker ? "running" : "not reachable",
-    fix: "装 Docker（或 Colima / Podman，任何提供 docker socket 的都行）并启动。",
+    detail: docker ? "running" : installed ? "装了，但没启动（daemon 不理人）" : "not reachable",
+    fix: installed
+      ? "Docker 装了但没跑起来 —— 启动 Docker Desktop（或 colima start），等它变绿再回来。"
+      : "装 Docker（或 Colima / Podman，任何提供 docker socket 的都行）并启动。",
   });
 
   // Only ever consulted when the server is down, but reported always: the fix

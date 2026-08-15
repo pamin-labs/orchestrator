@@ -44,3 +44,29 @@ test("the other credential modes need nothing on this host", async () => {
   });
   expect(checks.find((c) => c.name === "codex-refresher")).toBeUndefined();
 });
+
+test("docker installed but not started is not 'running'", async () => {
+  // Measured: `DOCKER_HOST=unix:///nonexistent.sock docker --version` exits 0.
+  // So the version probe — which is what this check used — reported "running"
+  // for Docker Desktop installed and never launched, the most common first-run
+  // state there is. The boss then got a blocker saying "多半是 docker 没起，
+  // 自检那栏会说是哪个" and a self-check saying it was up.
+  const asked: string[][] = [];
+  const checks = await preflight({
+    db: openMemory(),
+    sandbox: { server: "127.0.0.1:9", apiKey: "", image: "x" },
+    // The daemon is what is asked about, so only `info` decides.
+    probe: (bin, argv = ["--version"]) => {
+      asked.push([bin, ...argv]);
+      return bin === "docker" && argv[0] === "--version";
+    },
+    verify: async () => ({ ok: true, detail: "" }),
+  });
+  const docker = checks.find((c) => c.name === "docker")!;
+  expect(asked).toContainEqual(["docker", "info"]);
+  expect(docker.ok).toBe(false);
+  // And the two failures are told apart, because they send the boss to
+  // different places: a download, or one click.
+  expect(docker.detail).toContain("没启动");
+  expect(docker.fix).toContain("启动");
+});

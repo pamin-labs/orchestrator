@@ -177,6 +177,11 @@ function indexExcludes(db: Ctx["db"], projectId: number): string[] {
   }
 }
 
+/** Projects already told the index cannot be read here. Said once, not per tick. */
+const indexWarned = new Set<number>();
+/** And the same for the model behind it being unreachable. Cleared when it works. */
+const indexModelDown = new Set<number>();
+
 async function refreshIndex(ctx: Ctx): Promise<void> {
   if (!ctx.git || !ctx.askIn) return;
   for (const p of ctx.db
@@ -190,7 +195,25 @@ async function refreshIndex(ctx: Ctx): Promise<void> {
     if (at && indexedAt.get(p.id) === at) continue;
 
     const ls = await ctx.git(p.repo_path, ["ls-files"], p.repo_path);
-    if (ls.code !== 0) continue;
+    // The repository is `owner/name` and lives in containers now, so there is
+    // nothing on this host to index. Once per project: silently doing nothing
+    // leaves `orch ctx query` answering out of an index that stopped growing,
+    // and saying it every tick is a blocker line in the feed every thirty
+    // seconds forever — which is what the unhandled throw here used to do,
+    // blaming git for a file that was never missing. 007 step 6 moves the read
+    // into the project's container.
+    if (ls.code !== 0) {
+      if (!indexWarned.has(p.id)) {
+        indexWarned.add(p.id);
+        ctx.bus.emit({
+          author: "orchestrator",
+          kind: "state_change",
+          body: `索引刷不了：${p.repo_path} 的代码只在容器里，宿主上读不到。等 007 step 6 把这步搬进容器。`,
+        });
+      }
+      continue;
+    }
+    indexWarned.delete(p.id);
     // Read once, not once per file: this is inside a `filter` over every tracked
     // path, and the excludes do not change while it runs.
     const excludes = indexExcludes(ctx.db, p.id);
@@ -223,15 +246,24 @@ async function refreshIndex(ctx: Ctx): Promise<void> {
     // Every call failing means the model is unreachable, not that the repo is
     // boring. Said once per pass rather than swallowed: the old behaviour cached
     // the empty answers and the index stayed empty forever, looking built.
+    // Edge-triggered, like `saidDown` and the mount check: this runs per project
+    // per tick, and `bus.emit` has no dedup — so without the flag a project
+    // whose sandbox will not open puts a blocker in the feed every thirty
+    // seconds forever. `pageindex.ts` swallows an exec failure into `""`, which
+    // `summarise` counts as failed, so it is easy to reach.
     if (failed > 0 && failed === calls) {
-      ctx.bus.emit({
-        author: "librarian",
-        kind: "escalation",
-        intent: "inform",
-        severity: "blocker",
-        body: `PageIndex 建不起来：${failed} 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。`,
-      });
+      if (!indexModelDown.has(p.id)) {
+        indexModelDown.add(p.id);
+        ctx.bus.emit({
+          author: "librarian",
+          kind: "escalation",
+          intent: "inform",
+          severity: "blocker",
+          body: `PageIndex 建不起来：${failed} 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。`,
+        });
+      }
     } else if (calls > 0) {
+      indexModelDown.delete(p.id);
       ctx.bus.emit({
         author: "librarian",
         kind: "state_change",
@@ -494,18 +526,27 @@ export function start(overrides: Partial<Config> = {}): Started {
 
     // Keep the PageIndex tree current. Incremental by file signature, so a quiet
     // repo costs zero model calls; a busy one pays for the files that changed.
-    void refreshIndex(ctx);
+    // `void` with no `.catch` sent every throw to the process backstop, which
+    // emits a blocker — one per tick, forever, and `bus.emit` has no dedup.
+    void refreshIndex(ctx).catch((e) =>
+      ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${e?.message ?? e}` }),
+    );
 
     // Polling is arithmetic, not judgement, so it happens here rather than in an
     // agent. Only a change wakes the PM.
-    void pollPrs(ctx, gh).then((fs) => {
-      for (const f of fs) {
-        if (f.merged) landGroup(ctx, f.grpId, "github");
-        else if (f.closed) prClosed(ctx, f.grpId, f.prNumber, url, notifier);
-        else if (f.reopened) prReopened(ctx, f.grpId, f.prNumber);
-        else dispatchFeedback(ctx, f);
-      }
-    });
+    // The `.then` writes rows, enqueues turns and pushes notifications, so a
+    // group dropped between the poll and the handler lands here as an unhandled
+    // rejection — which is a process-wide blocker for one stale row.
+    void pollPrs(ctx, gh)
+      .then((fs) => {
+        for (const f of fs) {
+          if (f.merged) landGroup(ctx, f.grpId, "github");
+          else if (f.closed) prClosed(ctx, f.grpId, f.prNumber, url, notifier);
+          else if (f.reopened) prReopened(ctx, f.grpId, f.prNumber);
+          else dispatchFeedback(ctx, f);
+        }
+      })
+      .catch((e) => consola.error(`pollPrs: ${(e as Error)?.message ?? e}`));
   }, cfg.watchdogIntervalMs);
 
   // The agents' only way out. Nothing in a sandbox can reach this process
@@ -522,10 +563,12 @@ export function start(overrides: Partial<Config> = {}): Started {
   // Say what is missing here, once, rather than letting every group discover it
   // one failed turn at a time. Not fatal: the panel can be opened and the
   // settings page is where three of these are fixed.
-  void preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir, cacheDirs: cfg.sandbox.cacheDirs }).then((checks) => {
-    const bad = report(checks);
-    if (bad) consola.warn(`preflight:\n${bad}`);
-  });
+  void preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir, cacheDirs: cfg.sandbox.cacheDirs })
+    .then((checks) => {
+      const bad = report(checks);
+      if (bad) consola.warn(`preflight:\n${bad}`);
+    })
+    .catch((e) => consola.error(`preflight: ${(e as Error)?.message ?? e}`));
 
   sched.tick();
   return {
@@ -598,9 +641,16 @@ if (import.meta.main) {
   // that something went wrong, never what should have happened instead.
   //
   // Installed once, here, for the same reason as the signal handlers below.
+  let saidRejection = "";
   process.on("unhandledRejection", (e) => {
     const why = String((e as Error)?.stack ?? (e as Error)?.message ?? e).slice(0, 600);
     consola.error(`unhandled rejection (kept running):\n${why}`);
+    // The console keeps every one; the feed gets each distinct one once. What
+    // this catches is mostly the per-tick chains, so without the check a single
+    // recurring bug is a blocker line every thirty seconds and the feed stops
+    // being readable — which is worse than the bug it is reporting.
+    if (why === saidRejection) return;
+    saidRejection = why;
     try {
       ctx.bus.emit({
         author: "orchestrator",

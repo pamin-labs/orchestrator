@@ -278,25 +278,33 @@ test("the base branch is a bare name, whatever the remote calls it", async () =>
 });
 
 test("a renamed default branch is picked up rather than breaking every clone", async () => {
-  const origin = await repo();
-  const dir = mkdtempSync(join(tmpdir(), "orch-base2-"));
-  const work = join(dir, "work");
-  await git(dir, ["clone", "-q", origin, work]);
-
+  // GitHub is the source, never host git: `repo_path` is `owner/name` and there
+  // is no checkout on this machine to ask. The drift itself still has to be
+  // caught — a default branch renamed on the remote leaves every clone, rebase
+  // and diff resolving against a ref that is not there.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', ?, 0)", [work]);
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'acme/p', 0)");
   const said: string[] = [];
-  const ctx = { db, git, bus: { emit: (e: { body: string }) => said.push(e.body) } } as unknown as Ctx;
+  let branch = "main";
+  const ctx = {
+    db,
+    bus: { emit: (e: { body: string }) => said.push(e.body) },
+    gh: { remaining: () => null, request: async () => ({ ok: true, status: 200, data: { default_branch: branch } }) },
+  } as unknown as Ctx;
 
   // Resolved once, then stored: the diff baseline has to mean the same thing on
   // the day a slice was cut and the day the boss reads it.
   expect(await baseBranch(ctx, 1)).toBe("main");
   expect(db.query<{ b: string | null }, []>("SELECT base_branch AS b FROM project").get()!.b).toBe("main");
+  // Learning it the first time is not a change, so it is not announced.
+  expect(said).toEqual([]);
 
-  // master -> main, the other way round: the stored ref stops existing, and
-  // every clone, rebase and diff would resolve against nothing.
-  await git(origin, ["branch", "-m", "main", "mainline"]);
-  await git(work, ["fetch", "-q", "--prune", "origin"], work);
+  branch = "mainline";
   expect(await baseBranch(ctx, 1)).toBe("mainline");
   expect(said.join(" ")).toContain("mainline");
+
+  // GitHub unreachable keeps what is stored: resetting a project that develops
+  // on `develop` to `main` because the network blinked would repoint every diff.
+  const offline = { ...ctx, gh: { remaining: () => null, request: async () => ({ ok: false, status: 0, bucket: "transient", message: "x" }) } } as unknown as Ctx;
+  expect(await baseBranch(offline, 1)).toBe("mainline");
 });

@@ -694,12 +694,13 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
   h.db.run("UPDATE grp SET status = 'PR_OPEN', sandbox_id = 'sb-1' WHERE id = 1");
   // Its own repo path: the fetch throttle is keyed by repo and lives for the
   // process, so it would otherwise still be holding the previous test's stamp.
-  h.db.run("UPDATE project SET repo_path = '/tmp/p-pr' WHERE id = 1");
+  // The base branch is a column now, written from GitHub's `default_branch` at
+  // registration — never detected with host git, which has no checkout to ask.
+  h.db.run("UPDATE project SET repo_path = '/tmp/p-pr', base_branch = 'master' WHERE id = 1");
   const seen: string[][] = [];
   h.ctx.git = async (_repo, argv) => {
     seen.push(argv);
     if (argv[0] === "remote") return { code: 0, out: "origin" };
-    if (argv[0] === "symbolic-ref") return { code: 0, out: "refs/remotes/origin/master" };
     if (argv[0] === "rev-parse") return { code: 0, out: "abc1234567" };
     return { code: 1, out: "" }; // not an ancestor of the checkout
   };

@@ -29,7 +29,7 @@ import { forgetHolds } from "./mech/github.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/pageindex.ts";
 import { gatesFor, recordGate } from "./mech/gate.ts";
-import { listSkills, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/skills.ts";
+import { listSkills, projectSkillsUnreachable, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/skills.ts";
 import { shq } from "./mech/shq.ts";
 import { sediment } from "./mech/lessons.ts";
 import { say } from "./lang.ts";
@@ -97,6 +97,8 @@ export interface Ctx {
     feedbackSediment?: number;
     /** Chars an `orch ctx query` answer may spend. Was a setting that changed nothing. */
     ctxBudgetChars?: number;
+    /** How long a gate may run. The lease route waits a minute longer than this. */
+    leaseTimeoutMs?: number;
     /** Where the orchestrator listens; the mailbox replays agent calls to it. */
     port?: number;
     /** Wall clock for a dependency install. See config.ts for why it is generous. */
@@ -665,9 +667,30 @@ const postLease: Handler = async (ctx, req) => {
   ctx.sched.enqueue("lease", { grp_id: a.grp_id, agent_id: a.id, payload: { lease_id: row.id } });
   ctx.sched.tick();
 
+  // A deadline, because "the agent waits forever" is the worst state in the
+  // system and `finishLease` is not the only way to reach it. Every path through
+  // `runLease` resolves this now — but a job that is *cancelled* never reaches
+  // `runLease` at all (watchdog rule 9 cancels a dropped group's queue), so the
+  // waiter would still be there with nothing left to answer it. This is the
+  // backstop for the paths nobody has thought of yet, and it is the difference
+  // between one failed gate and an agent that never takes another turn.
+  //
+  // Longer than the lease's own timeout: a gate that is legitimately slow must
+  // finish and answer rather than be cut off by the thing waiting for it.
+  const deadline = (ctx.config?.leaseTimeoutMs ?? 10_800_000) + 60_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const digest = await new Promise<string>((resolve) => {
     ctx.waiters.set(`lease:${row.id}`, resolve);
+    // `unref`, or this three-hour timer is a reason the process cannot exit —
+    // which a test run finds first, and a shutdown finds later.
+    timer = setTimeout(
+      () => resolve(`lease ${row.id} never reported back within ${Math.round(deadline / 1000)}s — treat it as not run`),
+      deadline,
+    );
+    timer.unref?.();
   });
+  clearTimeout(timer);
+  ctx.waiters.delete(`lease:${row.id}`);
   ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ?", [a.id]);
   return text(digest);
 };
@@ -2974,6 +2997,7 @@ const getSkills: Handler = async (ctx, req) => {
   const repo = ctx.db
     .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
     .get(id)?.repo_path;
+  projectSkillsUnreachable(ctx, id, repo);
   const off = new Set(skillsOff(ctx.db));
   return json({
     skills: listSkills(repo).map(({ name, rel, description, scope }) => ({

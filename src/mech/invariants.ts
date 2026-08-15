@@ -7,6 +7,7 @@ import {
   ESCALATION_STATES,
   GRP_STATES,
   JOB_STATES,
+  LEASE_STATES,
   SERVER_STATES,
   SLICE_STATES,
   PROJECT_STATES,
@@ -14,6 +15,7 @@ import {
   type EscalationState,
   type GrpState,
   type JobState,
+  type LeaseState,
   type ProjectState,
   type ServerState,
   type SliceState,
@@ -320,6 +322,29 @@ export const SERVER_INVARIANTS = rows<ServerState>(
   },
 );
 
+export const LEASE_INVARIANTS = rows<LeaseState>(
+  {
+    state: "queued",
+    must: "a lease job is queued for it, and the agent is waiting on the answer",
+    driver: "Scheduler.tick dispatches it; watchdog rule 8 requeues a failed job once",
+  },
+  {
+    state: "running",
+    must: "it reaches done or failed — every path through runLease calls finishLease",
+    driver:
+      "runLease, which wraps its whole body: a throw becomes exit 126 rather than a promise nobody " +
+      "resolves. The route's own deadline is the backstop for the paths that never reach it, such as " +
+      "a job cancelled out from under it",
+  },
+  { state: "done", must: "the waiter is resolved and the agent is idle again", driver: null },
+  { state: "failed", must: "the agent has the exit code and the digest to act on", driver: null },
+  {
+    state: "cancelled",
+    must: "whoever was waiting on it is released rather than left holding the promise",
+    driver: "the route's deadline: cancelling a job never reaches runLease, so nothing else would answer",
+  },
+);
+
 export const ESCALATION_INVARIANTS = rows<EscalationState>(
   {
     state: "pm",
@@ -351,7 +376,7 @@ export function runInvariants(ctx: Ctx): void {
 
 /** States with no row. The test fails on a non-empty result; nothing else calls it. */
 export function uncovered(): {
-  grp: string[]; slice: string[]; job: string[]; escalation: string[]; util: string[]; project: string[]; server: string[];
+  grp: string[]; slice: string[]; job: string[]; escalation: string[]; util: string[]; project: string[]; server: string[]; lease: string[];
 } {
   const has = (rs: { state: string }[], s: string) => rs.some((r) => r.state === s);
   return {
@@ -362,5 +387,6 @@ export function uncovered(): {
     util: UTIL_STATES.filter((s) => !has(UTIL_INVARIANTS, s)),
     project: PROJECT_STATES.filter((s) => !has(PROJECT_INVARIANTS, s)),
     server: SERVER_STATES.filter((s) => !has(SERVER_INVARIANTS, s)),
+    lease: LEASE_STATES.filter((s) => !has(LEASE_INVARIANTS, s)),
   };
 }

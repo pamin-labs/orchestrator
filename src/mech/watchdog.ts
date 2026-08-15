@@ -125,6 +125,9 @@ export const serverBackoffMs = (attempt: number): number => 30_000 * 4 ** (attem
 // for this would be a row nobody ever reads.
 const lastFetch = new Map<string, number>();
 
+/** Projects already told about, so the repo-map failure is said once, not per tick. */
+const mapWarned = new Set<number>();
+
 async function refreshOrigin(deps: WatchdogDeps, repo: string): Promise<void> {
   const at = deps.now?.() ?? Date.now();
   if (at - (lastFetch.get(repo) ?? 0) < FETCH_EVERY_MS) return;
@@ -299,14 +302,62 @@ function liveScopes(ctx: Ctx): Scope[] {
   return out;
 }
 
+/**
+ * The tick, and a promise that it always comes back.
+ *
+ * `runWatchdog` is straight-line async: one `throw` anywhere in it and every rule
+ * after that point is skipped — and `invariants.ts` names the watchdog as the
+ * `driver` for about twelve states, so a throw at rule 7e silently un-drives the
+ * unwedge rule, the sandbox reaper, the TTL renewal, the stale-credential
+ * rebuild, the rebase nudge and every clock the boss is waiting on. That is what
+ * happened: `Bun.spawn` throws when `cwd` does not exist, `repo_path` stopped
+ * being a directory, and the tick died at the first project row.
+ *
+ * The silence was the other half. `Scheduler.settle` writes `state='failed'` on
+ * the job row and emits nothing, and the server enqueues a fresh tick regardless
+ * — so it failed every thirty seconds with nothing anywhere saying so.
+ *
+ * The throw itself is fixed at its source (`makeGitRunner` returns a code now).
+ * This is the guarantee that the next one does not get to be quiet: whatever
+ * escapes comes back as a finding, in the feed, with the findings collected
+ * before it.
+ */
 export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  try {
+    return await rules(deps, findings);
+  } catch (e: any) {
+    // `rules` emits at its end, and we never got there — so this one is emitted
+    // here, or the outage stays exactly as quiet as it was before.
+    const broke: Finding = {
+      rule: "watchdog_broke",
+      grpId: null,
+      severity: "blocker" as const,
+      body:
+        `看门狗这一轮挂了，后面的规则都没跑：${e?.message ?? e}\n` +
+        `每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙盒、` +
+        `基线变了要 rebase、等你决定的计时）都停在原地。`,
+    };
+    deps.ctx.bus.emit({
+      grpId: null,
+      author: "watchdog",
+      kind: "escalation",
+      intent: "ask",
+      severity: "blocker",
+      body: broke.body,
+      meta: { rule: broke.rule },
+    });
+    return [...findings, broke];
+  }
+}
+
+async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]> {
   const { ctx, cfg } = deps;
   // These bodies land in the boss's feed and notifications, so they follow
   // output.language. Feedback aimed at an agent stays English: it lands in a prompt
   // next to code and gate output.
   const t = (k: any, a?: any) => say(ctx.config?.language, k, a);
   const now = deps.now ?? (() => Date.now());
-  const findings: Finding[] = [];
 
   // 19. The machine's own network, before anything that needs it.
   //
@@ -546,7 +597,25 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     .query<{ id: number; repo_path: string }, []>("SELECT id, repo_path FROM project")
     .all()) {
     const ls = await deps.git(p.repo_path, ["ls-files"], p.repo_path);
-    if (ls.code !== 0) continue;
+    // A project is `owner/name` now and its code lives in containers, so there is
+    // nothing on this host to list. Said once per project rather than never
+    // (the map silently stops being refreshed and seven groups go back to
+    // grepping) and rather than every tick (a line every thirty seconds forever
+    // is a feed nobody reads). Moving the read into the project's container is
+    // 007 step 6.
+    if (ls.code !== 0) {
+      if (!mapWarned.has(p.id)) {
+        mapWarned.add(p.id);
+        findings.push({
+          rule: "repo-map",
+          grpId: null,
+          severity: "advisory",
+          body: `仓库地图没法刷新了：${p.repo_path} 的代码只在容器里，宿主上读不到（${ls.out.slice(0, 120)}）。等 007 step 6 把这步搬进容器。`,
+        });
+      }
+      continue;
+    }
+    mapWarned.delete(p.id);
     const files = ls.out.split("\n").map((l) => l.trim()).filter(Boolean);
     if (saveMap(ctx.db, p.id, renderMap(buildMap(p.repo_path, () => files)))) {
       ctx.bus.emit({ author: "librarian", kind: "state_change", body: `repo map refreshed (${files.length} files)` });

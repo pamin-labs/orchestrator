@@ -1190,9 +1190,28 @@ export function makeReviewVerdict(deps: ExecDeps) {
 
 // -------------------------------------------------------------------- leases
 
+/**
+ * A lease always finishes, whatever happens to it.
+ *
+ * `finishLease` is the only thing that resolves `ctx.waiters.get('lease:N')`, and
+ * the route waiting on it has no timeout — so a throw anywhere in here does not
+ * fail a gate, it strands the agent that asked for it, permanently, while its
+ * `orch` polls a reply nobody will write. `execIn` no longer rejects, which was
+ * the way this actually happened; this is the guarantee rather than the fix, so
+ * the next thing that learns to throw cannot buy the same outage.
+ */
 async function runLease(deps: ExecDeps, job: Job): Promise<void> {
-  const { ctx, cfg } = deps;
   const leaseId = Number(safeJson(job.payload_json).lease_id);
+  try {
+    await lease(deps, job, leaseId);
+  } catch (e) {
+    finishLease(deps, leaseId, 126, `the gate could not run: ${(e as Error)?.message ?? e}`, undefined);
+  }
+}
+
+async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void> {
+  const { ctx, cfg } = deps;
+  const leaseId = leaseIdIn;
   const lease = ctx.db
     .query<{ id: number; resource: string; args_json: string; grp_id: number | null }, [number]>(
       "SELECT id, resource, args_json, grp_id FROM lease WHERE id = ?",

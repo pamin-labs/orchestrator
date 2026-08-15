@@ -2,7 +2,7 @@ import type { Ctx } from "../api.ts";
 import { execIn, execLines, getBytes, putBytes, UTIL, WORK, type Scope } from "./sandbox.ts";
 import { sandboxLog } from "./sandboxlog.ts";
 import { shq } from "./shq.ts";
-import { detectBaseBranch, type GitRunner } from "./worktree.ts";
+import type { GitRunner } from "./worktree.ts";
 
 /**
  * A group's code, inside its sandbox.
@@ -39,23 +39,35 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
     )
     .get(projectId);
   if (!row) return "main";
-  const git = ctx.git;
-  if (!git) return row.base_branch ?? "main";
 
-  if (row.base_branch) {
-    const there = await git(row.repo_path, ["rev-parse", "--verify", "--quiet", `origin/${row.base_branch}`]);
-    if (there.code === 0) return row.base_branch;
-  }
-  const found = await detectBaseBranch(git, row.repo_path);
+  // Never host git. `repo_path` is `owner/name` — not a directory — and
+  // `Bun.spawn` throws rather than returning a code when the cwd does not
+  // exist, so the old `rev-parse` here took five callers down with it: the
+  // approval never landed, the DRAFT card was never filed, and the 查收 page
+  // 500'd, each with a message saying git was not installed.
+  //
+  // GitHub is the source now (007 §6). Asked every time rather than only when
+  // the column is empty, because the drift this catches was bought with an
+  // incident — a default branch renamed on the remote leaves every clone,
+  // rebase and diff resolving against a ref that is not there — and the request
+  // is free once cached: the shared client sends `If-None-Match`, and a 304
+  // does not count against the rate limit.
+  const r = await ctx.gh?.request<{ default_branch?: string }>("GET", `/repos/${row.repo_path}`);
+  const found = (r?.ok && r.data?.default_branch) || null;
+  // Nothing to compare against: keep what is stored rather than resetting a
+  // project that develops on `develop` to `main` because the network blinked.
+  if (!found) return row.base_branch ?? "main";
   if (found !== row.base_branch) {
     ctx.db.run("UPDATE project SET base_branch = ? WHERE id = ?", [found, projectId]);
+    // Only when it *changed*, not when it was first learned: it changes what
+    // every later diff means.
     if (row.base_branch) {
       ctx.bus?.emit({
         grpId: null,
         author: "orchestrator",
         kind: "state_change",
         severity: "advisory",
-        body: `基线分支从 ${row.base_branch} 改成 ${found}（远端上找不到 origin/${row.base_branch} 了）。往后的 clone、rebase 和 diff 都对着它。`,
+        body: `基线分支从 ${row.base_branch} 改成 ${found}（远端上的默认分支变了）。往后的 clone、rebase 和 diff 都对着它。`,
       });
     }
   }

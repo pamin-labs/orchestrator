@@ -1,3 +1,4 @@
+import type { Ctx } from "../api.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
 import { hostClaudeHome, hostCodexHome } from "./auth.ts";
 import { dirname, join } from "node:path";
@@ -115,7 +116,14 @@ function scan(
  */
 export function listSkills(repoPath?: string | null): SkillRef[] {
   const out: SkillRef[] = [];
-  if (repoPath) {
+  // A host path, or nothing. `repo_path` is `owner/name` since 007 §2 and the
+  // checkout only exists inside containers, so this scan silently found nothing
+  // and a project that ships its own skills simply stopped having them — the
+  // failure `scan` was already noted for, one level up. Spelled out rather than
+  // left as an accident, and reported by the caller that has a bus
+  // (`projectSkillsUnreachable`). Reading them out of the group's container is
+  // 007 step 6.
+  if (repoPath?.startsWith("/")) {
     scan(repoPath, ".claude/skills", "project", out);
     scan(repoPath, ".agents/skills", "project", out);
   }
@@ -263,4 +271,23 @@ export function stageSkills(dir: string, want: SkillRef[]): { dir: string; stage
     }
   }
   return { dir, staged, failed };
+}
+
+/**
+ * Say once that a project's own skills cannot be reached from here.
+ *
+ * `listSkills` is a pure function with no bus, so the report lives with the
+ * caller that has one. Once per project: this is a standing condition until 007
+ * step 6 moves the read into the container, and a standing condition repeated
+ * every poll is a feed nobody reads.
+ */
+const skillsWarned = new Set<number>();
+export function projectSkillsUnreachable(ctx: Ctx, projectId: number, repoPath?: string | null): void {
+  if (!repoPath || repoPath.startsWith("/") || skillsWarned.has(projectId)) return;
+  skillsWarned.add(projectId);
+  ctx.bus.emit({
+    author: "orchestrator",
+    kind: "state_change",
+    body: `${repoPath} 自带的技能（.claude/skills）现在读不到 —— 代码只在容器里。本机的技能不受影响。`,
+  });
 }
