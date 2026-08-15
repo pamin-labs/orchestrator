@@ -522,7 +522,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   // Say what is missing here, once, rather than letting every group discover it
   // one failed turn at a time. Not fatal: the panel can be opened and the
   // settings page is where three of these are fixed.
-  void preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir }).then((checks) => {
+  void preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir, cacheDirs: cfg.sandbox.cacheDirs }).then((checks) => {
     const bad = report(checks);
     if (bad) consola.warn(`preflight:\n${bad}`);
   });

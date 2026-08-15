@@ -796,6 +796,40 @@ test("a project is a repository, and a path is not one", async () => {
   expect(await r.text()).toContain("owner/name");
 });
 
+test("registering a repo you cannot push to succeeds, and says so at once", async () => {
+  // The whole value of this check is *when* the boss learns. Read access is
+  // enough to clone and work, so registration is not refused — but a group that
+  // does everything and then cannot push is the worst moment to find out, and an
+  // `if` plus an emit is exactly what gets tidied away by someone who does not
+  // know why it is there.
+  const { app, db, ctx } = harness();
+  ctx.gh = {
+    remaining: () => null,
+    request: async <T,>() => ({
+      ok: true as const,
+      status: 200,
+      data: {
+        full_name: "someone/theirs",
+        default_branch: "main",
+        clone_url: "https://github.com/someone/theirs.git",
+        permissions: { pull: true, push: false },
+      } as T,
+    }),
+  };
+
+  const r = await post(app, "/api/projects", { repo: "someone/theirs" });
+  expect(r.status).toBe(200);
+  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM project WHERE repo_path = 'someone/theirs'").get()!.c).toBe(1);
+
+  // Named level, so the boss knows what to ask for rather than that "something"
+  // is wrong.
+  const said = db
+    .query<{ body: string }, []>("SELECT body FROM event WHERE severity = 'blocker' ORDER BY seq DESC LIMIT 1")
+    .get()!.body;
+  expect(said).toContain("READ");
+  expect(said).toContain("someone/theirs");
+});
+
 test("the directory list marks git repos and what is already registered", async () => {
   const { app, db } = harness();
   const root = mkdtempSync(join(tmpdir(), "orch-dirs-"));

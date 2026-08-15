@@ -7,6 +7,7 @@ import {
   ESCALATION_STATES,
   GRP_STATES,
   JOB_STATES,
+  SERVER_STATES,
   SLICE_STATES,
   PROJECT_STATES,
   UTIL_STATES,
@@ -14,6 +15,7 @@ import {
   type GrpState,
   type JobState,
   type ProjectState,
+  type ServerState,
   type SliceState,
   type UtilState,
 } from "./states.ts";
@@ -281,6 +283,43 @@ export const PROJECT_INVARIANTS = rows<ProjectState>(
   },
 );
 
+/**
+ * The sandbox server. One host dependency, three failure states, three answers.
+ *
+ * It earns rows here because the states are indistinguishable from the panel and
+ * the wrong answer to each is worse than doing nothing: restarting a server that
+ * is refusing produces a restart loop, and waiting for a server that is absent
+ * produces a fleet that never moves.
+ */
+export const SERVER_INVARIANTS = rows<ServerState>(
+  {
+    state: "up",
+    must: "every container is opened through it, and its config is the one we mount against",
+    driver: null,
+  },
+  {
+    state: "absent",
+    must: "something restarts it, or the boss is told it will not come back",
+    driver:
+      "watchdog rule 19 restarts it from the argv it was last seen running, backing off 30s/2m/8m, " +
+      "up to SERVER_RESTART_CAP; then it stops and files a blocker, because a fourth try is not evidence",
+  },
+  {
+    state: "refusing",
+    must: "it is NOT restarted, and the reason reaches the boss",
+    driver:
+      "preflight's reachable() names it (bad key, an HTTP status) and the hold in sandbox.ts stops the " +
+      "fleet dispatching. Nothing automatic touches it: a restart here is a restart loop",
+  },
+  {
+    state: "stale_config",
+    must: "the drift is reported with the line that fixes it, because nothing else notices",
+    driver:
+      "preflight's allowed_host_paths check compares the server's own config against what we mount and " +
+      "prints the line to add; checkSkillsMount catches the case that mounts an empty directory anyway",
+  },
+);
+
 export const ESCALATION_INVARIANTS = rows<EscalationState>(
   {
     state: "pm",
@@ -312,7 +351,7 @@ export function runInvariants(ctx: Ctx): void {
 
 /** States with no row. The test fails on a non-empty result; nothing else calls it. */
 export function uncovered(): {
-  grp: string[]; slice: string[]; job: string[]; escalation: string[]; util: string[]; project: string[];
+  grp: string[]; slice: string[]; job: string[]; escalation: string[]; util: string[]; project: string[]; server: string[];
 } {
   const has = (rs: { state: string }[], s: string) => rs.some((r) => r.state === s);
   return {
@@ -322,5 +361,6 @@ export function uncovered(): {
     escalation: ESCALATION_STATES.filter((s) => !has(ESCALATION_INVARIANTS, s)),
     util: UTIL_STATES.filter((s) => !has(UTIL_INVARIANTS, s)),
     project: PROJECT_STATES.filter((s) => !has(PROJECT_INVARIANTS, s)),
+    server: SERVER_STATES.filter((s) => !has(SERVER_INVARIANTS, s)),
   };
 }

@@ -61,8 +61,21 @@ export const UTIL_STATES = ["down", "up"] as const;
  */
 export const PROJECT_STATES = ["reachable", "repo_held"] as const;
 
+/**
+ * The sandbox server, which is the one host dependency that runs containers.
+ *
+ * Three states that look identical from the panel and want three different
+ * answers — which is the whole reason they are written down. `absent` wants a
+ * restart; `refusing` must **not** be restarted, because that is how a crash
+ * loop becomes a restart loop; and `stale_config` is not a restart problem at
+ * all — the process is healthy and the only symptom is an empty directory
+ * inside every container.
+ */
+export const SERVER_STATES = ["up", "absent", "refusing", "stale_config"] as const;
+
 export type GrpState = (typeof GRP_STATES)[number];
 export type UtilState = (typeof UTIL_STATES)[number];
+export type ServerState = (typeof SERVER_STATES)[number];
 export type ProjectState = (typeof PROJECT_STATES)[number];
 export type SliceState = (typeof SLICE_STATES)[number];
 export type JobState = (typeof JOB_STATES)[number];

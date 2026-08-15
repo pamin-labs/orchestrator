@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DB } from "../db.ts";
 import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "./auth.ts";
+import { allowedHostPaths, coveredBy } from "./sandbox.ts";
 import { parseAuth } from "./chatgpt.ts";
 
 /**
@@ -165,6 +166,8 @@ export interface PreflightInput {
   sandbox: { server: string; apiKey: string; image: string };
   /** Where the staged skills live; the server must allow this path. */
   skillsDir?: string;
+  /** Host paths mounted into every sandbox of a project; same allowlist applies. */
+  cacheDirs?: Record<string, string>;
   /** Injected in tests. */
   probe?: (bin: string) => boolean;
   /** Injected in tests: the real one asks the provider whether it still works. */
@@ -297,6 +300,33 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     ok: skills > 0,
     detail: skills ? `${skills} staged at ${staged}` : "没有勾选的技能",
     fix: `沙盒服务器的 allowed_host_paths 要包含 ${staged}，否则每个组开容器都会失败。技能在设置里勾。`,
+  });
+
+  // The line above says which path has to be allowed. This says whether it is.
+  //
+  // The failure it catches has no other symptom: a host path missing from
+  // `allowed_host_paths` either fails creation outright (loud, and the fallback
+  // in `sandbox.ts` says so) or — when the runtime cannot reach the path at all —
+  // mounts an empty directory over it, which nothing notices. Both end with
+  // agents running without the skills the boss ticked.
+  //
+  // The fix is one line in a file we can already find, so this prints that line
+  // rather than describing it.
+  const allowed = allowedHostPaths();
+  const wanted = [staged, ...Object.values(input.cacheDirs ?? {})].map((p) => resolve(p));
+  const missing = allowed ? wanted.filter((p) => !coveredBy(allowed.paths, p)) : [];
+  out.push({
+    name: "allowed_host_paths",
+    ok: !allowed || missing.length === 0,
+    detail: !allowed
+      ? "找不到 opensandbox-server 的配置文件，没法核对"
+      : missing.length
+        ? `${allowed.config} 不含 ${missing.join(", ")}`
+        : `${allowed.config} 覆盖了要挂的 ${wanted.length} 个路径`,
+    fix: missing.length
+      ? `把这一行写进 ${allowed!.config} 的 [sandbox] 段，然后重启 opensandbox-server：\n` +
+        `      allowed_host_paths = [${[...allowed!.paths, ...missing].map((p) => `"${p}"`).join(", ")}]`
+      : undefined,
   });
 
   // Credentials are per runtime and live in the DB, never in an event or a

@@ -124,17 +124,20 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
  * A regex rather than a TOML parser: one key, one line, and a dependency for
  * that is a dependency for that.
  */
-export function serverKeyOnDisk(home = homedir()): { key: string; path: string } | null {
-  const paths = [
+function configPaths(home = homedir()): string[] {
+  return [
     process.env.OPENSANDBOX_CONFIG,
     join(process.cwd(), "sandbox.toml"),
     join(home, ".sandbox.toml"),
     // Last, and the one that actually matters: a server started by hand from
     // wherever, with `--config ./sandbox.toml` relative to a directory nobody
     // will remember. Asking the running process beats asking the boss.
-    runningServerConfig(),
+    runningServer()?.config ?? null,
   ].filter((p): p is string => !!p);
-  for (const path of paths) {
+}
+
+export function serverKeyOnDisk(home = homedir()): { key: string; path: string } | null {
+  for (const path of configPaths(home)) {
     const key = keyInConfig(path);
     if (key) return { key, path };
   }
@@ -158,27 +161,103 @@ export function keyInConfig(path: string): string | null {
 }
 
 /**
- * The config path of the opensandbox-server that is running right now.
+ * The opensandbox-server process that is running right now, if there is one.
  *
- * ponytail: shells out to `ps`, and resolves a relative `--config` against the
- * process's own working directory (`/proc` on Linux, `lsof` on macOS). Both are
- * best-effort and return null when they cannot answer — the caller has three
- * static paths before this one. If it ever needs to be more than this, the
- * server should be publishing its own config path over its API instead.
+ * Three questions have three different answers and only this one separates
+ * them: **absent** (restart it), **present but refusing** (a restart makes a
+ * restart loop), and **present, healthy, and holding stale config** (needs a
+ * restart, and nothing else notices). `preflight`'s `reachable()` answers the
+ * middle one over HTTP; this answers the first.
+ *
+ * ponytail: shells out to `ps`, splits argv on whitespace, and resolves a
+ * relative `--config` against the process's own working directory (`/proc` on
+ * Linux, `lsof` on macOS). A path with a space in it comes back wrong — the fix
+ * is the server publishing its own config path over its API, not a shell parser
+ * here.
  */
-function runningServerConfig(): string | null {
+export function runningServer(): { pid: string; argv: string[]; config: string | null } | null {
   try {
     const ps = Bun.spawnSync(["ps", "-Ao", "pid=,args="], { stdout: "pipe" }).stdout.toString();
-    const line = ps.split("\n").find((l) => l.includes("opensandbox-server") && l.includes("--config"));
+    // Not this process's own `grep`-alike, and not a test harness mentioning it.
+    const line = ps.split("\n").find((l) => /opensandbox-server/.test(l) && !/\bps -Ao\b/.test(l));
     if (!line) return null;
-    const pid = line.trim().split(/\s+/)[0]!;
+    const parts = line.trim().split(/\s+/);
+    const pid = parts[0]!;
     const arg = /--config[= ]+(\S+)/.exec(line)?.[1];
-    if (!arg) return null;
-    if (arg.startsWith("/")) return arg;
-    const cwd = processCwd(pid);
-    return cwd ? join(cwd, arg) : null;
+    const cwd = arg && !arg.startsWith("/") ? processCwd(pid) : null;
+    return {
+      pid,
+      argv: parts.slice(1),
+      config: !arg ? null : arg.startsWith("/") ? arg : cwd ? join(cwd, arg) : null,
+    };
   } catch {
     return null;
+  }
+}
+
+/**
+ * The host paths this server will actually mount, and the file that says so.
+ *
+ * The silent one of the three. A mount of a path missing from this list fails
+ * creation outright, which is loud — but the config being *out of step with
+ * ours* is not: the process is healthy, nothing errors, and the only symptom is
+ * an empty directory inside every container. That is the incident this exists
+ * for, and it is why the answer is not "restart" but "add this line".
+ *
+ * Same regex-not-a-parser trade as `keyInConfig`, and the same `^[ \t]*` for the
+ * same reason: the example config ships the line commented out.
+ */
+export function allowedHostPaths(home = homedir()): { paths: string[]; config: string } | null {
+  for (const path of configPaths(home)) {
+    try {
+      const m = /^[ \t]*allowed_host_paths[ \t]*=[ \t]*\[([^\]]*)\]/m.exec(readFileSync(path, "utf8"));
+      if (m) return { paths: [...m[1]!.matchAll(/"([^"]+)"/g)].map((x) => x[1]!), config: path };
+    } catch {
+      // Not readable, or not there. The next candidate might be.
+    }
+  }
+  return null;
+}
+
+/** Is `want` inside one of them? The server allows a prefix, directory-wise. */
+export const coveredBy = (allowed: string[], want: string): boolean =>
+  allowed.some((a) => want === a.replace(/\/+$/, "") || want.startsWith(a.replace(/\/+$/, "") + "/"));
+
+/**
+ * Restart the server the way it was started.
+ *
+ * Only ever from an argv we have **seen**, never one we composed: how the boss
+ * runs it (`uvx`, a venv, a wrapper, extra flags) is theirs, and inventing a
+ * command line would start a second, differently-configured server beside the
+ * one that is wedged.
+ *
+ * Everything it was running dies with it — every container, and with them every
+ * turn in flight. That is why the deliberate one is a button with hard
+ * constraint 5's evidence beside it, and the automatic one below is narrow.
+ */
+export async function restartServer(argv: string[]): Promise<string | null> {
+  if (!argv.length) return "nothing recorded about how this server was started";
+  const live = runningServer();
+  if (live) {
+    try {
+      process.kill(Number(live.pid), "SIGTERM");
+    } catch (e) {
+      return `could not stop pid ${live.pid}: ${(e as Error)?.message ?? e}`;
+    }
+    // It has containers to let go of. SIGKILL after, or a wedged process never
+    // releases the port and the restart lands on an address already in use.
+    for (let i = 0; i < 50 && runningServer(); i++) await new Promise((r) => setTimeout(r, 100));
+    if (runningServer()) {
+      try {
+        process.kill(Number(live.pid), "SIGKILL");
+      } catch {}
+    }
+  }
+  try {
+    Bun.spawn(argv, { stdio: ["ignore", "ignore", "ignore"] }).unref();
+    return null;
+  } catch (e) {
+    return `could not start ${argv[0]}: ${(e as Error)?.message ?? e}`;
   }
 }
 

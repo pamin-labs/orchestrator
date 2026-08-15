@@ -7,7 +7,7 @@ import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
 import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
 import { CODEX_HOME } from "./auth.ts";
-import { execIn, killSandbox, renewSandbox, UTIL, utilSandbox, WORK, type Scope } from "./sandbox.ts";
+import { execIn, killSandbox, renewSandbox, restartServer, runningServer, UTIL, utilSandbox, WORK, type Scope } from "./sandbox.ts";
 import { baseRefFor, sandboxGit } from "./checkout.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -71,6 +71,55 @@ export const SWEEP_EVERY_MS = 60 * 60 * 1000;
 // ponytail: in-memory, like `lastFetch` above. A restart sweeps once more than it
 // needed to, which is a `find` that finds nothing.
 let lastSweep = 0;
+
+/**
+ * How the sandbox server was last seen running, and how hard we have tried.
+ *
+ * In memory rather than a row, deliberately: the case this serves is "it died
+ * while we were watching", which is exactly the case where we have seen it. An
+ * orchestrator that boots with the server already down has never seen an argv,
+ * says nothing, and leaves it to preflight and the boss's button — which is the
+ * right answer, because a command line we did not observe is a guess.
+ */
+let seenServerArgv: string[] | null = null;
+let serverRestarts = 0;
+let nextServerTry = 0;
+
+/** Three, then it is a person's problem. */
+export const SERVER_RESTART_CAP = 3;
+
+/** Tests, and the boss's button: a deliberate restart clears the automatic count. */
+export function resetServerRestarts(): void {
+  seenServerArgv = null;
+  serverRestarts = 0;
+  nextServerTry = 0;
+}
+
+/**
+ * Whether to restart the sandbox server, as a decision with no side effects.
+ *
+ * Pulled out of the rule so the one guarantee that matters can be checked without
+ * a process to kill: **`present` is never `restart`**. A server that is up and
+ * refusing — a bad key, a crash loop — is the case where restarting produces a
+ * restart loop, and it is indistinguishable from a healthy one at this level, so
+ * the answer at this level is always "not mine".
+ */
+export function serverAction(
+  present: boolean,
+  seenArgv: string[] | null,
+  restarts: number,
+  now: number,
+  nextTry: number,
+): "none" | "restart" | "give_up" {
+  if (present) return "none";
+  // Never seen it up, so we do not know the command. Preflight reports it.
+  if (!seenArgv?.length) return "none";
+  if (now < nextTry) return "none";
+  return restarts >= SERVER_RESTART_CAP ? "give_up" : "restart";
+}
+
+/** 30s, 2min, 8min. A server that needs three tries needs a person. */
+export const serverBackoffMs = (attempt: number): number => 30_000 * 4 ** (attempt - 1);
 
 // ponytail: in-memory, so a restart fetches once more than it needed to. A table
 // for this would be a row nobody ever reads.
@@ -882,6 +931,57 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     UTIL,
   ];
   for (const scope of alive) await renewSandbox(ctx, scope);
+
+  // 19. The sandbox server is gone.
+  //
+  // Narrow on purpose. Three states look identical from the panel and want three
+  // different answers: **absent** (restart it), **present but refusing** — a bad
+  // key, a crash loop — where a restart only makes a restart loop, and **present
+  // and healthy on stale config**, which is not a restart problem at all and is
+  // reported by preflight's `allowed_host_paths` check.
+  //
+  // So this fires on absence and nothing else. Two more guards, because an
+  // automatic action that keeps trying is how a crash loop becomes an outage:
+  //
+  // - only from an argv we have **seen** this process run. How the boss starts it
+  //   (uvx, a venv, a wrapper, extra flags) is theirs, and a composed command
+  //   line would start a second, differently-configured server beside the wedged
+  //   one. Never seen it up means we say nothing — preflight already reports a
+  //   server that is not there, and guessing is worse than reporting.
+  // - a hard cap. On reaching it this stops and escalates, because N failed
+  //   restarts is evidence that restarting is not the answer.
+  const server = runningServer();
+  if (server?.argv.length) {
+    seenServerArgv = server.argv;
+    serverRestarts = 0;
+  }
+  switch (serverAction(!!server, seenServerArgv, serverRestarts, now(), nextServerTry)) {
+    case "give_up":
+      nextServerTry = now() + REEMIT_MS;
+      findings.push({
+        rule: "server_gone",
+        grpId: null,
+        severity: "blocker",
+        body:
+          `opensandbox-server 起不来了，试了 ${SERVER_RESTART_CAP} 次，不再自动重试。` +
+          `手动跑一次看它报什么：${seenServerArgv!.join(" ")}`,
+      });
+      break;
+    case "restart": {
+      serverRestarts++;
+      nextServerTry = now() + serverBackoffMs(serverRestarts);
+      const err = await restartServer(seenServerArgv!);
+      findings.push({
+        rule: "server_restarted",
+        grpId: null,
+        severity: err ? "blocker" : "advisory",
+        body: err
+          ? `opensandbox-server 没了，重启失败（第 ${serverRestarts} 次）：${err}`
+          : `opensandbox-server 没了，重启了（第 ${serverRestarts} 次）。挂起的活会自己继续。`,
+      });
+      break;
+    }
+  }
 
   // 16. A question the work has already gone past.
   //
