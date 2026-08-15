@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serve } from "../src/mech/mailbox.ts";
+import { normalise, serve } from "../src/mech/mailbox.ts";
 
 /**
  * The agent's only way out.
@@ -98,6 +98,37 @@ test("a sandbox cannot reach the boss's routes through the mailbox", async () =>
   expect(answer.status).toBe(403);
   // 502 would mean it tried the fetch and the (unreachable) port refused it.
   expect(answer.text).not.toContain("unreachable");
+});
+
+test("the prefix guard cannot be walked out of with dot segments", async () => {
+  // The guard used to test the raw string and then hand that same raw string to
+  // `fetch`, which parses it as a URL and normalises `..` away. So the check saw
+  // `/orch/../api/auth` and the server saw `/api/auth` — every unauthenticated
+  // boss route, reachable from inside the sandbox. Judged and sent must be the
+  // same string.
+  for (const path of [
+    "/orch/../api/auth",
+    "/orch/%2e%2e/api/dirs",
+    "/orch/./../api/say",
+    "/orch/x/../../api/state",
+    "//evil.example/orch/status",
+    "http://evil.example/orch/status",
+  ]) {
+    const { writes, sb } = fakeFiles({ id: "z", method: "POST", path, token: "tok-1" });
+    await serve(sb, "http://127.0.0.1:1", "/var/orch/req/z.json");
+    expect(writes).toHaveLength(1);
+    const answer = JSON.parse(writes[0]!.data);
+    // 403 rather than 502: a 502 would mean the fetch was attempted.
+    expect({ path, status: answer.status }).toEqual({ path, status: 403 });
+  }
+});
+
+test("a query string survives normalisation", () => {
+  // `orch lease log --grep` is a GET with one, and dropping it would silently
+  // return the whole log instead of the lines asked for.
+  expect(normalise("http://127.0.0.1:1", "/orch/lease/7/log?grep=error")).toBe(
+    "http://127.0.0.1:1/orch/lease/7/log?grep=error",
+  );
 });
 
 test("an /orch route still goes through", async () => {

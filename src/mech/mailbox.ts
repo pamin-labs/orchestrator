@@ -54,14 +54,22 @@ export async function serve(
   // file in `req/` — so without this an agent answers its own DRAFT, accepts its
   // own slices and overwrites the boss's credentials. Hard constraint 3: this is
   // an `if`, not a line in a role prompt.
-  if (!env.path.startsWith("/orch/")) {
+  //
+  // Checked on the *normalised* path, and the same normalised string is what
+  // gets sent. The first version tested `env.path` raw and then handed that raw
+  // string to `fetch`, which parses it as a URL — so `/orch/../api/auth` passed
+  // the prefix test and arrived as `/api/auth`, and every route the guard exists
+  // to hide was reachable from inside the sandbox. `%2e%2e` and `/orch/x/../../`
+  // did the same. Whatever is judged has to be what is sent.
+  const url = normalise(base, env.path);
+  if (!url) {
     await reply(sb, env.id, { status: 403, text: `not reachable from a sandbox: ${env.path}` });
     return;
   }
   try {
     const headers: Record<string, string> = { "x-orch-token": env.token ?? "" };
     if (env.body !== undefined) headers["content-type"] = "application/json";
-    const res = await fetch(`${base}${env.path}`, {
+    const res = await fetch(url, {
       method: env.method,
       headers,
       body: env.body === undefined ? undefined : JSON.stringify(env.body),
@@ -73,6 +81,26 @@ export async function serve(
     answer = { status: 502, text: `orchestrator unreachable: ${e}` };
   }
   await reply(sb, env.id, answer);
+}
+
+/**
+ * The absolute URL to replay, or null when the request is not the sandbox's to make.
+ *
+ * The query string is kept — `orch lease log --grep` is a GET with one — but the
+ * host is not: anything that parses to a different origin, or to a path outside
+ * `/orch/`, is refused rather than repaired.
+ */
+export function normalise(base: string, path: unknown): string | null {
+  if (typeof path !== "string" || !path.startsWith("/")) return null;
+  let u: URL;
+  try {
+    u = new URL(base + path);
+  } catch {
+    return null;
+  }
+  if (u.origin !== new URL(base).origin) return null;
+  if (!u.pathname.startsWith("/orch/")) return null;
+  return `${u.origin}${u.pathname}${u.search}`;
 }
 
 /** Every path out of `serve` writes one, or the agent blocks forever. */
