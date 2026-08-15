@@ -1,12 +1,25 @@
 # 007 GitHub is where a project comes from, and no agent-free container is a sandbox
 
-**Status**: implemented through step 5, and the path scoping it rests on is
-measured against a live server (see below). Steps 6-8 are outstanding: the
-checkout move that empties `missingBinaries()` and deletes `gitlock.ts`,
-`makeGitRunner`, `httpsRemote`, `remoteUrl` and `detectBaseBranch`; the codex
-refresher moving into the utility container; and watchdog rule 15 switching to
-the API baseline. The host is still a git participant for the index and for
-reading a project's remote, which is what step 6 removes.
+**Status**: implemented, except step 7. The path scoping the whole thing rests
+on is measured against a live server (see below), and the host is no longer a
+git participant — `missingBinaries()` is `[]`, `gitlock.ts` and `makeGitRunner`
+are gone, and rule 15 reads the base from the API.
+
+`detectBaseBranch` and `httpsRemote` were **not** deleted despite being on this
+document's own list. Both still have live callers: `detectBaseBranch` is the
+fallback when `rebaseOntoBase` is given no `baseRef`, which is the unpark path,
+running against the group's clone *inside its container* where asking git is
+correct; and `httpsRemote` serves rows migration 037 left holding an SSH remote.
+A deletion list is a plan, not a fact about the code.
+
+**Step 7 is outstanding**: the codex refresher still spawns `codex` on the host
+(`sandbox/chatgpt.ts`). So "no external binary on the host" is true of what is
+*required* — a machine with docker, the image and a pasted key runs — and not of
+the ChatGPT-subscription path, which needs `codex` installed for as long as that
+refresher lives here. Preflight's `codex-refresher` check says so. Moving it
+means a container holding a real refresh token, which is the one credential this
+design has kept on the host deliberately, so it is a decision rather than a
+chore.
 **Date**: 2026-08-15
 **Amends**: 005. That decision said "the container is the boundary". The line is
 one word narrower: **a container that runs an agent is the boundary**. A
