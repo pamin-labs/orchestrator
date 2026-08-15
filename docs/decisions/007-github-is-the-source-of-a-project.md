@@ -137,7 +137,77 @@ every thirty seconds.
 `landGroup`'s serial merge queue stays. That ordering is ours; GitHub does not
 know about it.
 
-### 5. `--filter=blob:none`
+### 5. The branch's home is the remote, not a host checkout
+
+Today `createCheckout` looks for the branch in three places, in order: on the
+host, on the remote, nowhere. The first exists because a group's commits live on
+the host between turns — which is also the entire reason the host holds a
+checkout at all.
+
+Push the branch to `origin` at slice boundaries instead, from the utility
+container. Then a replaced container is `clone` + `git checkout <branch>`, the
+three places become two, and **`seedBranch` and its bundle-in direction are
+deleted**. Bundles remain in one direction only — out of the agent container,
+because it still must not hold a credential that can write to the remote.
+
+Cost, stated: work-in-progress commits become visible on the remote before the
+PR opens. That is how every feature branch works, and it is what makes the
+container genuinely disposable rather than disposable-if-the-host-is-alive.
+
+### 6. When the credentials go stale
+
+An expired GitHub token has exactly the signature this codebase has been burned
+by four times: **every group fails at once, and each one reports a different
+error** — clone failed, push rejected, PR create failed. `handleAuthFailure`
+(`executor.ts:1036`) already does the right thing for model credentials — pause,
+one escalation, point at settings, never retry — because retrying is the one
+thing that cannot help.
+
+GitHub gets the same treatment, per project: a fifth admission gate beside
+`providerHeld`, `credentialMissing`, `online` and `sandboxReady`.
+
+| bucket | examples | who fixes | what happens |
+|---|---|---|---|
+| **boss** | token expired or revoked, org access pulled, repo unreachable, push refused by branch protection | boss | hold that project's turns, **one** escalation with a button, no retries |
+| **agent** | rebase conflict, red checks, review comment, failed submodule init | agent | a turn with the failure in hand — exists today for conflict and rejection |
+| **transient** | network, GitHub 5xx, secondary rate limit | nobody | backoff; after N attempts it becomes the boss's |
+
+Only the middle bucket is implemented today. That is the gap.
+
+**The 404 trap.** GitHub answers **404, not 403**, for a private repo a token
+cannot see — deliberately, so existence does not leak. So "repo deleted", "org
+revoked third-party access", "user removed from the org" and "token lost its
+scope" are *the same response*. Never assert which one it was. The message says
+*this login can no longer reach `owner/repo`* and lists what to check. Saying
+"deleted" when it was an org policy change sends the boss to the wrong page.
+
+**Things that change without failing:**
+
+- default branch renamed — `baseBranch` already detects the drift and emits an
+  event (`checkout.ts:38-61`). Keep it; the source becomes `default_branch`.
+- repo renamed or transferred — the API answers 301 with the new location. Update
+  the stored `owner/repo` and say so once.
+- a GitHub App's repo list shrinks — a repo simply stops appearing in
+  `/installation/repositories`. Boss bucket for any project pointing at it.
+
+**Polling cost.** 5000 requests/hour authenticated. Send `If-None-Match` with a
+stored ETag: a **304 does not count against the primary rate limit**. ETags are
+cached per token, so rotating the login invalidates them — store them beside the
+credential, not beside the project. Read `x-ratelimit-remaining` and hold the same
+way `providerHeld` holds for model quota. Same shape a fourth time.
+
+**Git failures that are not credentials.** `createCheckout` throws and
+`executor.ts:220` turns that into a failed turn, which is right. But
+`ensureCheckout` has **four silent `return`s** before it can ever throw — no
+branch, no `ctx.git`, no project row, no remote. Same family as
+`reconcileOwnership`'s silent skip: the group then runs a whole turn in an empty
+`/work` and nothing says so. Each becomes an event.
+
+Every state above needs its row in `invariants.ts` (hard constraint 7). The held
+one especially: a project held on a dead credential is a project whose groups
+look perfectly healthy and never move.
+
+### 7. `--filter=blob:none`
 
 Blobless, not `--depth=1`. Shallow is faster (4× vs 1.5× on the kernel) and breaks
 `rebase` and `merge-base --is-ancestor`, both of which we use. GitHub measures an
@@ -146,25 +216,42 @@ Independent of everything else here; can land first.
 
 ## What this deletes
 
-- `gitlock.ts` (75 lines + the 24-entry write-subcommand table) — three concurrent
-  writers become one
-- `gh` as a dependency (6 call sites in `prwatch.ts`, plus its `auth status` check)
-- `/api/dirs` and the host directory picker
-- `missingBinaries()` → `[]`. No external binary on the host at all.
+Almost none of it is "replace our code with a library". It is **the host ceasing
+to be a git participant**, and the hand-written surface that existed only to
+coordinate that.
 
-`worktree.ts` stays. Its 260 lines are real git semantics bought the hard way —
-`abortStaleRebase` exists because a turn killed mid-rebase leaves `rebase-merge/`
-and every later rebase refuses forever. No library replaces that.
+| gone | why it existed | what replaces it |
+|---|---|---|
+| `gitlock.ts` — 75 lines + a 24-entry write-subcommand table | three concurrent writers on one host `.git` | one writer |
+| `makeGitRunner` (`worktree.ts:20`) | running host git under that lock | nothing |
+| `httpsRemote` (`checkout.ts:99`) | rewriting `git@github.com:` to https so a sandbox could clone | the API hands back `clone_url`, already https |
+| `remoteUrl` (`checkout.ts:106`) | asking the host checkout for its `origin` | the stored `owner/repo` |
+| `detectBaseBranch` (`worktree.ts:82`) — 30 lines of heuristics | guessing main vs master vs trunk | `default_branch` from `GET /repos/{o}/{r}` |
+| `seedBranch` (`checkout.ts:136`) + the "three places the branch can be" branch in `createCheckout` | the branch lived on the host between turns | it lives on the remote |
+| rule 15's `git fetch` + `merge-base --is-ancestor` per group per tick | reading the baseline out of a container | one conditional API request per project |
+| the `gh` wrapper + 6 call sites (`prwatch.ts`) | shelling out to parse JSON | 8 REST endpoints |
+| `/api/dirs` + the host directory picker | finding a repo on this machine | the repo list |
+| `missingBinaries()` → `[]` | | no external binary on the host at all |
+
+What stays in `worktree.ts` is the part that is our workflow rather than git
+plumbing, and it all runs against the group's own clone: `checkpoint`,
+`squashWip`, `rollbackTo`, `filesAt`, `sliceDiffBase`, `changedSince`,
+`rebaseOntoBase`, `abortStaleRebase`. That last one exists because a turn killed
+mid-rebase leaves `rebase-merge/` and every later rebase refuses forever — no
+library replaces a lesson.
 
 ## Order
 
 1. `--filter=blob:none` (independent)
 2. device flow login + repo list (independent of the utility container)
-3. `gh` → REST (removes one binary on its own)
+3. `gh` → REST, with ETags and the boss/agent/transient split (removes one binary
+   on its own, and is where the failure buckets get built)
 4. `Scope` third case + utility container + TTL invariant
-5. checkout moves in; delete `gitlock.ts`; `missingBinaries()` empties
-6. codex refresher moves in (last — it is a real credential)
-7. rule 15 switches to the API baseline
+5. branch pushes to the remote; `seedBranch` goes
+6. checkout moves in; `gitlock.ts`, `makeGitRunner`, `httpsRemote`, `remoteUrl`,
+   `detectBaseBranch` go; `missingBinaries()` empties
+7. codex refresher moves in (last — it is a real credential)
+8. rule 15 switches to the API baseline
 
 ## Open, needs a probe before it is a design
 
