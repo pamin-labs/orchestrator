@@ -70,7 +70,9 @@
 
 ```sql
 -- 项目与组
-project(id, name, repo_path, remote, config_json)
+project(id, name, repo_path, remote, base_branch, config_json)
+  -- repo_path 正在从「宿主上的绝对路径」变成 `owner/repo`（决策 007）：项目来自
+  --   GitHub 而不是本机目录，宿主不再持有检出，也不再需要装 git
 grp(id, project_id, name, branch, sandbox_id, status, owns_json, budget_tokens, spent_tokens, spent_usd)
   -- status: DRAFT | RUNNING | PAUSING | PAUSED | PARKED | PR_OPEN | DISSOLVED
   -- no channel_id: `channel.grp_id` is the only link, a reverse pointer would be
@@ -330,7 +332,9 @@ deterministic gate（build / test / lint / typecheck / secrets 扫描 / 依赖�
 
 ### merge
 **串行 merge queue（纯代码）**：一个 PR 进 main 且 gate 全绿才放下一个。跨组语义冲突时拉两个 PM 的**代表**进来（file ownership 已经挡掉大部分，这里只剩语义冲突）。
-**repo 级 git 写锁**：锁的不是各组的 checkout —— 那是各自容器里的 clone，没有共享的东西。锁的是**老板自己的仓库**，宿主还在三处并发写它：watchdog 的 `fetch origin`、收组的 bundle、开 PR 时的 push。同一个 `.git`、三个写者，所以排队。只读的 status/diff/log 不加锁。沙盒里的 agent 直接用 `git`，没有 `orch git` 这个动词。
+**repo 级 git 写锁**（`gitlock.ts`）：锁的不是各组的 checkout —— 那是各自容器里的 clone，没有共享的东西。锁的是**老板自己的仓库**，宿主还在三处并发写它：watchdog 的 `fetch origin`、收组的 bundle、开 PR 时的 push。同一个 `.git`、三个写者，所以排队。只读的 status/diff/log 不加锁。沙盒里的 agent 直接用 `git`，没有 `orch git` 这个动词。
+
+> **决策 007 会删掉这一整段。** 宿主不再持有检出，三个写者变成一个（工具容器），锁就没有了要锁的东西。分支的家变成远端而不是宿主 —— 容器丢了就重新 clone，bundle 只剩「出」的方向。`linear history` 由 branch protection 保证，不是靠每 30 秒 rebase 出来的。
 
 ### journal（确定性强制）
 ```markdown

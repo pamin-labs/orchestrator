@@ -691,3 +691,29 @@ README 补一句：桌面通知是 macOS 的，其他平台走 ntfy，而那个 
 文档也改了：preflight **报告**，`sandbox.ts` 的 hold **执行**。
 
 `bun test` 546 pass。
+
+### 决策 007：项目来自 GitHub，宿主不再参与 git
+
+设计定了，还没动代码。全文在 `docs/decisions/007-github-is-the-source-of-a-project.md`，这里只记落地状态。
+
+**它修正了 005 的一句话**：边界不是「容器」，是「**跑 agent 的**容器」。一个没有 agent、不挂仓库、不跑模型的工具容器，是 server 的同级，给它真凭据是选择而不是漏洞。三类进程从此按「里面跑不跑 agent」分，不按「宿主还是容器」分。
+
+**要达到的形状**：设置页点一次连 GitHub（设备流，只要公开的 `client_id`，不要 client secret）→ 切 org、列仓库、选主分支 → 开需求就是开容器 + clone + 装环境 + 干活 → PR → 合了删容器。宿主上**一个外部二进制都不需要**（`missingBinaries()` → `[]`）。
+
+**submodule 的答案是「哪个容器」，不是「支不支持」**：CVE-2024-32002 / CVE-2025-48384 是 clone 带 submodule 的仓库直接 RCE，而 GitHub 自己给的第一条缓解措施就是「在临时的、网络受限的容器里做」。组容器支持（本来就一次性、只有 decoy），工具容器绝不碰（它持有真凭据）。
+
+**删除面**（都不是「拿库换我们的代码」，是宿主不再参与 git 之后那些只为协调宿主而存在的代码没了）：`gitlock.ts` 75 行 + 24 项子命令表、`makeGitRunner`、`httpsRemote`、`remoteUrl`、`detectBaseBranch` 30 行启发式、`seedBranch` 和「分支可能在三个地方」那段、规则 15 每组每 tick 的 `git fetch` + `merge-base`、`gh` 封装 + 6 处调用、`/api/dirs` 和宿主目录选择器。
+
+**留下的**是我们的工作流而不是 git 管道，全部跑在组自己的克隆上：`checkpoint` / `squashWip` / `rollbackTo` / `filesAt` / `sliceDiffBase` / `changedSince` / `rebaseOntoBase` / `abortStaleRebase`。
+
+**凭据过期和 git 失败**：过期的 GitHub token 的信号和这个库被烧过四次的那个一样 —— 所有组同时失败、每个报的错都不一样。所以照抄 `handleAuthFailure` 的做法：挂起、一条升级、指向设置页、绝不重试，成为第五道准入闸。失败分三桶（老板 / agent / 瞬时），**今天只实现了中间那桶**。GitHub 对看不见的私有仓库返回 **404 不是 403**，所以「删了」和「撤权了」是同一个响应，文案不许断言是哪个。
+
+**落地顺序**（1、3 可独立开工）：
+1. `--filter=blob:none`
+2. 设备流登录 + 仓库列表
+3. `gh` → REST（带 ETag 条件请求，304 不计入限额）
+4. `Scope` 第三种 + 工具容器 + TTL invariant
+5. 分支推到远端，`seedBranch` 删掉
+6. 检出搬进工具容器，`gitlock.ts` 等一批删掉，`missingBinaries()` 清空
+7. codex 续期器搬进去（最后，真凭据）
+8. 规则 15 换成 API 基线
