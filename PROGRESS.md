@@ -561,3 +561,117 @@ preflight 那条改准了：本地留着旧 egress 不再误报 —— server �
 **没动、但记在这儿**：信箱没有大小上限也没有超时；`env.id` 不校验就拼进 `/var/orch/res/${id}.json`（容器内路径穿越，agent 本来就有 shell）；token 不和来源沙盒绑定（同组共用一个容器，跨组不行）；`orch mail` 打给一个没雇的角色会雇一个，没有成本上限。都是 DoS / 自伤级别，不是越界。
 
 `bun test` 506 pass（3 条 sandbox-live 没有服务器，跳过）。
+
+## 开源前的边界收尾：一个沙盒逃逸、一个自毁凭据、断网自动挂起
+
+四个问题一起做的一轮：容器化后还有没有冗余安全措施、pageindex 是不是通用的、开源前的漏洞与泄露、断网怎么自动挂起。前两问的答案改变了后两问的形状，所以合成一轮。
+
+**沙盒逃逸，端到端复现过。** `mailbox.ts` 的 `/orch/` 前缀闸是整个沙盒信任边界所依赖的**唯一**一个 `if`（它自己的注释写着 "this is an `if`, not a line in a role prompt"）。它对**原始字符串**做 `startsWith`，然后把同一个原始字符串拼进 `fetch` —— 而 `fetch` 走 WHATWG URL 解析，点段会被归一化：
+
+```
+prefix check passes: true
+server saw: /api/auth
+```
+
+`/orch/../api/auth`、`/orch/%2e%2e/api/dirs`、`/orch/x/../../api/state` 全部通过，而 `/api/*` 一个鉴权都没有。于是容器里的 agent 能读任意宿主文件（`/api/attach/local` 复制进来，`/api/attach/<name>` 取回）、遍历宿主文件系统、清空老板凭据、批准自己的 DRAFT、查收自己的切片。**正是上一轮修的同一个洞，换了个形状回来** —— 上次修的是「哪些路由够得着」，这次是「判的和发的不是同一个字符串」。现在归一化之后再判断，并且把归一化后的 pathname 交给 `fetch`。
+
+**codex 凭据会被自己种的假值覆盖。** `filesFor` 往容器写 `decoyAuth()`，turn 结束后 `executor.ts` 又把 `${CODEX_HOME}/auth.json` 读回来存进 `runtime_auth`，全部校验只有「是 JSON」和「和当前不同」。decoy 和真值不同 → 存下 decoy → **第一个 codex turn 就把真登录换成假的**，之后 sidecar 注的是 `decoy-aaa…`，全舰队 401，表现成「账号过期了」。而 `preflight` 对被覆盖后的假凭据**报绿**：它只解 JWT 的 `exp`，`decoy-aaa…` 不是 JWT，`jwtExpiry` 返回 null 就走 `{ok: true}`。
+
+修法不是加三道校验，是**删掉写回路径**：沙盒里那个 `auth.json` 是我们自己写进去的 decoy，而 `decoyAuth` 特意把 `last_refresh` 盖成当下，目的就是让 codex 别去刷新。设计上「一个登录，一个续期者，在宿主」。所以这条读回路径能读到的永远只有我们种的假值 —— 它不是缺校验，是只有害处。测试断言的是源码里不再有这个调用，因为原来的失败正是两个各自正确的部件（写 decoy / 吸收 rotated）之间没人连起来。
+
+**附件功能自 005 起就是死的。** `withAttachments` 把宿主绝对路径写进消息体，`imagePaths` 挑出来，codex 直接 `-i <宿主路径>` 传给容器里的进程。全仓 grep：**没有任何代码把附件送进沙盒**。claude 那侧更隐蔽 —— agent 被要求 `Read` 一个不存在的路径，工具调用失败，agent 绕过去接着干，turn 报成功。现在 turn 组装时 `putBytes` 进 `/var/orch/attach/`，消息体改写成容器路径；送不进去就发一条事件，不再静默。
+
+**codex-home 一分为二，两个机制都指着没人写的那半。** `CODEX_HOME` 是容器路径，而 `codexUsage` 和 `sweepCodexSessions` 读的都是宿主的 `<dataDir>/codex-home` —— 今天还往那儿写东西的只剩每周一次的续期 nudge。所以头部的 codex 额度条反映的是那一次 `reply with: ok`。现在额度先从活着的沙盒读最近的 rollout（宿主作兜底），清理走沙盒里一条 `find -mtime +7 -delete`。
+
+**所有模型调用统一进沙盒。** `modelAsk`（pageindex 的索引和检索，系统里最频繁的模型调用）原来是宿主裸 `Bun.spawn`，用的是**老板个人的 CLI 登录**，不是设置页存的 `runtime_auth`，也不过金库 —— 自建网关配了 `baseUrl` 它根本不走。而且 `summarise` 先写签名再 `await ask`，`modelAsk` 失败返回 `""`：宿主没登录过 codex 的机器上，每个节点存空摘要 + 匹配的签名，下一 tick 命中缓存，**整棵树永久是空的且看起来是「已建好」**，没有任何探测器会发现。
+
+现在 `modelAsk(ctx, spec, scope)` 走 `execIn` 跑在项目沙盒里，prompt 走文件、每次唯一文件名（`/tmp/orch-prompt.txt` 原来是每沙盒一个固定名，今天撞不上只是因为常驻角色全共用调度槽位 0）；签名只在拿到答案时才写，一整轮全失败就发一条 blocker。加了一条 grep 断言守着：`src/` 里除 `login.ts` / `chatgpt.ts` 外不许再出现 spawn `claude`/`codex`。代价说清楚：`commands.run` 中位数 ~1000ms，检索最多 3 跳，等于给每个 turn 的第一步加约 3 秒 —— 换掉的是那条没有探测器的影子凭据路径。
+
+**索引的花销上账了。** 它不是 turn，`cost.ts` 读的是 turn，所以这笔钱在成本页完全不可见。现在 `modelAsk` 带出 usage（codex 的 `turn.completed` 本来就在输出里被读过去丢掉了；claude 那条加 `--output-format json`），记到一个常驻的 `indexer` agent 行上 —— 一行记录，不是一个角色。不并进 librarian：真 librarian turn 带完整前缀和 session，和一次性索引调用单价差两个量级，混在一起这个数字就没法用。也不做成真角色：`orch ctx query` 在每个 turn 的关键路径上，而调度器一个槽位只跑一个 turn，agent 问一句要等自己占着的槽位。
+
+**pageindex 的语料口径反过来写。** 原来树的过滤器只认 `ts|tsx|js|jsx|md|yaml|yml`，接一个 Go/Python/Rust 项目进来源码整个不可见。而 repomap 那份「更全」的 18 种扩展名列表也是假的 —— 配套的符号正则是纯 JS/TS 语法，对 Go 文件一个符号都提不出来。实测本仓库那个 allowlist 的全部作用是挡掉 8 个文件（207 → 199），其中只有 lockfile 是真该挡的。**allowlist 这个形状本身就是错的**：扩展名猜不完，而二进制和产物的集合跟语言无关、是稳定的。现在两个索引共用一个 `indexable()`：二进制/资源 denylist + 名字 skiplist + 每项目可改的 `config_json.index.exclude`（照抄 `detect.ts` 对闸门定下的规矩：best-effort，写在能改的地方）。
+
+**知识库存哪**：全在 orchestrator 自己的 sqlite，`note` 表 `kind='pageindex'` / `kind='map'`，每个项目恒定两行，目标仓库一个字节都不写。顺带修了一个真 bug：`ctx.ts` 取 note 时不过滤 kind，这两行 `project_id` 非空、`KIND_WEIGHT` 没有条目所以按 ×1.0 参与 BM25、内容一变就重写所以常驻最近窗口 —— 命中一次就把整棵序列化的树塞给 agent，吃光 char 预算。
+
+**断网自动挂起。** 什么都不做的话：CLI 一直退避重试 → 撞 `turnTimeoutMs` → 规则 1 把组 `interrupt` 成 **PAUSED** → 而 PAUSED 是没人会主动推出去的状态，park 计时器把它封存，联网后老板面对一堆要手动重启的组。
+
+所以照抄调度器里已有的两个全局准入闸（`providerHeld` / `credentialMissing`）加第三个：离线时 `agent_turn` 不派发。被闸住的 job 只是没被取走 —— 没有进程、没有重试循环、不花钱。翻转的那一刻掐掉在跑的 turn 并直接重排，**组的状态一个字都不改**：组还是 RUNNING，活儿变回 pending，闸压着，联网后闸一开自己排干。`resumeReclaimed` 里 `orphaned:` 的豁免扩到 `offline:` —— 被网络掐掉的 turn 不该花掉它唯一那次重试。**没有新状态，没有恢复时的簿记。**
+
+探测目标从金库绑定的 host 推出来，零配置，自建网关换了 `baseUrl` 探测目标自动跟着换。判据故意弱：**任何 HTTP 响应都算在线，401/403 也算** —— 凭据被拒不是网络问题，把它当断网会因为一个坏 token 停掉整个舰队（`preflight` 早就是这么划线的）。只有传输层抛错才是离线。离线的 tick 直接返回，底下那些规则全是我们自己记下来的状态的复述，不值得每条一次两秒 DNS 超时。
+
+**顺带扫掉的边界错配**（同一类，共同形状是「错的那侧被一个 `existsSync`/`.catch(() => {})`/`if (code !== 0) return` 兜住，于是错误路径长得和成功一模一样」）：
+- `orch blocked --path` 拿宿主主检出校验 agent 从 `/work` 里报的路径 —— 组自己新建的文件被拒，还说「这个仓库里没有这个文件」。**这条断言原来一直是被 `why.length < 10` 挡下的，存在性检查从来没被测到。**
+- `orch drop --commit` 的 `cat-file` 打宿主检出，祖先判定用宿主 `HEAD` 而不是 `baseRefFor()` —— 结论取决于老板本地切在哪个分支。
+- DRAFT 卡的「未知路径」提示同样读宿主工作树，改成 `ls-tree` 基线。
+- 规则 15 的 rebase 判据：克隆没 fetch 过，`merge-base --is-ancestor` 对「对象不认识」和「你落后了」返回同一个非零码。先 `cat-file -e`，不认识就 fetch，还不认识就不是 rebase 能解决的事。
+- `reconcileOwnership` 沙盒够不着时静默 `return` —— 这是 005 之后**唯一**的文件归属强制手段，`engineer.yaml` 还在对 agent 承诺它。现在发事件。
+- gate / lease 的日志提示把宿主路径印进 agent 上下文，改成只给动词。
+- `orch` 在闸门/lease/install 里没有 `ORCH_MAILBOX`，掉到容器内的 127.0.0.1 上 —— 不给它们 token（那会扩大 token 的可读范围），而是把「连接被拒」换成一句说清楚为什么的话。
+- `ArgSpec.mustExist` 声明了没人查（要查也只能是沙盒里的 `test -e`，不是宿主 `existsSync`），删了；`resource.cwd` 没人写但留着，注释写明它是容器路径 —— `grp.worktree` 就是这么错的。
+
+**其余 P1**：`decoyAuth` 原来把**真 `id_token`**（一个签名 JWT）透传进沙盒，直接违反「真 token 永不进沙盒」（`account_id` 不改 —— 它是标识符不是凭据，改了每个 codex turn 都会挂）；`git clone` 用 `JSON.stringify` 拼命令，双引号下 `sh` 照样展开 `$(...)`，同文件其他七处全用 `shq`；`getGateLog` 拿查询参数 `new RegExp` 在宿主单进程里跑（隔壁 `getLeaseLog` 特意避开了，注释都写了，规则没推广过来）；`/api/*` 全部无鉴权且 `body<T>()` 不校验 content-type，`text/plain` 的 POST 是 simple request 不触发预检 —— 加了 `Sec-Fetch-Site`/`Origin` 的 deny-list 守卫，不动前端；`/orch` 的写路由拿调用方给的 `group_id` 不校验归属，判据按角色作用域（常驻角色判同项目，组内角色判同组）。
+
+**没有一层安全措施是冗余的** —— 容器（写边界）/ 金库（凭据边界）/ `orch` 校验（动作边界）三层互不重叠。扫出来的全是残骸：`workRoot` 死了（唯一消费者是 `refreshIndex(ctx, _workRoot)`，下划线开头就是不用）、role fixture 里的 `clearance`、`gate.ts` 的死导入、`narrate` 的死参数、`config.ts` 里一段过期的理由（结论对、理由错，下一个读它的人会照着错的理由重建错的模型）。`--add-dir` / `allowedTools` 的 hash 项**不动** —— 删一次全舰队 session 轮转一遍，换一个空转 flag，不值。
+
+**README 加了「沙盒挡什么，不挡什么」**：出站是 `defaultAction: allow` 加空黑名单，凭据受控、**数据不受控**。这是 005 的明确取舍，但读者会默认「沙盒」等于「数据不出去」，开源前必须写在看得见的地方。
+
+`bun test` 539 pass（3 条 sandbox-live 无服务器跳过），`bunx tsc --noEmit -p .` 干净，`bun run build:web` 通过。
+
+**没验的**：断网只能手动拔网线验；模型进沙盒要配一个和宿主 CLI 登录不同的凭据跑一次 `orch ctx query`；claude 的 `--output-format json` 输出形状按 stream-json 的 result 事件推的，解析失败会退回纯文本。
+
+### 收尾：把上面那轮自己引入的每-tick 开销掐掉
+
+写完回头算了一遍 30 秒一次的东西，三处是这轮新加的浪费，`maxGroups` 默认 10 的时候尤其明显：
+
+| | 原来 | 现在 |
+|---|---|---|
+| `probe()` 出网 HEAD | 每 tick 2 次 = **5760 次/天** | 在线时 5 分钟一次 = 288 次/天；离线仍每 tick，恢复才够快 |
+| codex session 清理 | 每 tick **串行** 11 次 `execIn` ≈ 11 秒 | 每小时一次，`Promise.allSettled` 并行 |
+| 沙盒里读额度 | 每 tick 1 次 `execIn` | 跟 `POLL_EVERY_MS` 同一个闸，10 分钟一次 |
+
+后两条不只是浪费 —— `commands.run` ~1s，它们是在 agent 自己的容器里跑，抢的是容器被 cap 住的那点 CPU。七天保留期不需要一分钟强制两遍。
+
+**还有一条会直接卡并行的**：`orch ctx query` 原本一律走**项目沙盒**，理由是「答案不该取决于谁问的」。但那条推理是错的 —— 这个 walk 什么文件都不读，菜单是从库里的树摘要拼的，模型只回 id，容器换成哪个都不影响答案。而它是 `assemble.ts` 让每个角色**第一步**就做的事，十个组的第一步全挤进一个容器、一份 CPU 配额。现在跑在**调用方自己的沙盒**里，十个组就是十个容器。索引**构建**仍然是项目级 —— 那是共享产物，只有一份。
+
+顺带：`indexExcludes` 被写在 `.filter()` 里面，等于每个文件查一次库（本仓库 207 次/轮），提到循环外。
+
+`bun test` 540 pass。
+
+### 宿主上不再有第二条凭据路径
+
+顺着「不应该有任何本地宿主机的 claude/codex 会话」扫了一遍，找到三处，全是同一个形状：**写死了那个 CLI 在宿主上的位置，或者干脆去读那个 CLI 自己的登录**。
+
+**1. 用量条读的是老板的个人登录。** `pollClaudeUsage` 先用 `subscriptionAccount(db,'claude')` 把关 —— 那个函数自己的注释写着「a bar sourced from whatever this host happens to be logged into would be about an account the fleet never touches」—— 然后三行之后，`claudeToken()` 读的**正是那个**：macOS keychain 的 `Claude Code-credentials`，退回 `~/.claude/.credentials.json`。**闸门查 A 账号，数字来自 B 账号，标签写的是 A。** 现在用 `runtime_auth` 的 token。顺带这也是全仓唯一一处平台相关的读法（keychain 是 macOS，文件是 Linux，Windows 两个都没有）。
+
+**2. `<dataDir>/codex-home/auth.json` 在真机上是个指向 `~/.codex/auth.json` 的 symlink。** 不是代码建的。但方向反了：这个目录装的是**产物** —— 凭据来自 `runtime_auth`，写出去只是给宿主续期器一个 CODEX_HOME。`Bun.write` 跟 symlink 走，所以每周那次续期会覆盖并重新刷新老板自己的个人登录，正是 codex CI 指南警告的「两个写者一个 token」，从后门进来。`seedHome` 现在先 `lstat`，是链接就删掉再写 —— 删而不是拒，拒的话续期器永远跑不了。
+
+**3. `~/.codex` / `~/.claude` 写死了，不认 CLI 自己认的环境变量。** codex 认 `$CODEX_HOME`，Claude Code 认 `$CLAUDE_CONFIG_DIR`。设了任一个的人会遇到**静默失败**：`codex login` 成功、我们从一个它没写过的目录读、面板说「finished but produced no credential」（读起来像 CLI 挂了）；技能那边是勾了一堆结果暂存零个文件、挂载是空的，因为 `scan` 对不存在的目录直接 return —— 行为正确，答案错误。现在走 `hostCodexHome()` / `hostClaudeHome()`：先看环境变量，再退回惯例路径，`homedir()` 管平台差异。
+
+`scan` 多了个 `relBase` 参数：`base` 是「在 root 底下去哪找」，`rel` 是「写进消息文本、用来匹配老消息的惯例路径」（migration 026）。搬了家的人改的是前者，后者不能跟着变。
+
+**`serverKeyOnDisk` 不用改** —— 它早就做对了：env → cwd → home → 问运行中的进程。
+
+**留在宿主的两条，是设计**：`login.ts`（老板点按钮、浏览器在这台机器上、一次性），`chatgpt.ts` 的续期器（codex CI 指南要的「一个 runner」，而且它刻意用真 `codex exec` 让官方客户端刷自己的 token，不自己 POST refresh token）。
+
+顺带补的脱敏：`bus.emit` 现在连 `meta_json` 一起洗（同一行、同样 append-only，好几个 emitter 往里塞整个 CLI payload，以前只洗 body）；`notify.ts` 打到 ntfy 的那条也洗了 —— 那是唯一一条**离开这台机器**的，而 ntfy topic 是公开无鉴权的。
+
+三条 check 守着：`src/` 里不许再出现 `find-generic-password` / `.credentials.json` / `claudeAiOauth`（只看代码行，注释里的事故记录留着）；`hostCodexHome`/`hostClaudeHome` 认环境变量；`seedHome` 遇到 symlink 不能写穿。
+
+`bun test` 543 pass。
+
+### 宿主上到底还需要装什么
+
+**`missingBinaries()` 没装 `claude` 就拒绝启动**，错误信息写着「Every agent turn would fail with the same error」—— 005 之后这句是假的。turn 跑在容器里，宿主的 `claude` 只剩登录按钮和（codex 的）续期器在用，两个都是可选的。结果是：一台装了 docker、拉了镜像、凭据也贴好了的无头机器起不来，而且理由说错了。现在只要 `git`（宿主真的用它 —— bundle 进出和 push）。
+
+**没有任何东西检查续期器能不能跑。** ChatGPT 账号登录是唯一一个**永久**需要本机有二进制的凭据：它是一对 codex 自己轮转的 token，而续期是**刻意**跑真 `codex` 让官方客户端刷自己的 token，不是我们拿它的 client id 去 POST refresh token（`chatgpt.ts` 写了理由：那是我们的代码把自己伪装成官方客户端，正是订阅条款针对的形状）。所以宿主没 codex = 不会续期，而失败是静默且延迟的：nudge 抛异常 → 被吞 → 保留旧 token → 几小时后全舰队 401，看起来像账号过期。现在 preflight 有 `codex-refresher` 一条，直说这件事和两条出路（装 codex，或改用 API key —— API key 不过期）。
+
+**所以「宿主没登录过」的完整答案**：
+- **claude**：什么都不需要。设置页贴 `sk-ant-oat01-…` 或 API key 就行。`setup-token` 铸的是**另一个**一年期 token，连你现有的会话都不碰。
+- **codex API key**：什么都不需要。
+- **codex ChatGPT 订阅**：本机要有 `codex`，长期要有。这是不伪造的代价，preflight 现在会提前说。
+
+顺带：`data/` 和 sqlite 建出来是 `0755`/`0644`，而 `runtime_auth` 里是明文 token —— 本机任意账号可读。启动时 chmod 成 `0700`/`0600`，尽力而为（Windows 上 chmod 对权限位是 no-op，不作为拒绝启动的理由）。`chmodSync` 本来就 import 在 `server.ts` 里没人用。
+
+README 补一句：桌面通知是 macOS 的，其他平台走 ntfy，而那个 topic 名就是唯一的凭据。
+
+`bun test` 545 pass。

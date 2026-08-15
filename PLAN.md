@@ -21,7 +21,7 @@
 
 **推论**：你不在中途看任何东西，所以中途质量必须由确定性外壳 + QA 兜住。gate / 对账 / 沙盒 / 看门狗 / file ownership 这些 `if` 是这套系统最值钱的部分，比编制重要。
 
-**产出**：`/Users/jason/Documents/GitHub/orchestrator`（当前空目录，非 git repo，需 `git init`）。
+**产出**：这个仓库本身。
 
 ---
 

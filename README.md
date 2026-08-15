@@ -53,8 +53,11 @@ bun test                     # 326 checks
 |---|---|
 | `bun` | 唯一运行时，无 build step |
 | `claude` CLI | agent runtime（`codex` 也支持，换 role 配置即可） |
-| `git` | 一组一个 branch + worktree |
+| `docker` + `opensandbox-server` | 每组一个容器，就是写边界（决策 005）。没有它不会退回宿主模式，会直说 |
+| `git` | 一组一个 branch；checkout 是容器里的 clone |
 | `gh` | 只有开 PR 那步要，登录后需要目标仓库的写权限 |
+
+桌面通知是 macOS 的（`terminal-notifier`，退回 `osascript`）。其他平台设 `ORCH_NTFY_TOPIC` 走 ntfy —— 注意那个 topic 名就是唯一的凭据，别用能猜到的。
 
 Claude Max 订阅够用。**不做多账号绕限额** —— 本地单账号 + 并发上限是正当用法。
 
@@ -79,8 +82,8 @@ src/
   server.ts scheduler.ts db.ts api.ts bus.ts
   prompt/assemble.ts     # 唯一的 prompt 组装入口（cache 约束在这儿）
   runtime/               # claude / codex 子进程 + 执行器
-  mech/                  # 那些 if：validate lease clearance gate reconcile
-                         # review ownership mergequeue watchdog intercept …
+  mech/                  # 那些 if：validate lease gate reconcile sandbox auth
+                         # review ownership mergequeue watchdog intercept net …
   orch/cli.ts            # agent 的唯一出口
 roles/*.yaml             # 8 个角色，加岗零代码
 web/index.html           # 单文件，无框架无 build
@@ -88,12 +91,26 @@ web/index.html           # 单文件，无框架无 build
 
 设计文档是 `PLAN.md`，当前状态和**所有实测踩过的坑**在 `PROGRESS.md`，改代码前先读 `CLAUDE.md`。
 
+## 沙盒挡什么，不挡什么
+
+先把这条说在前面，因为「沙盒」这个词会让人默认得太多。
+
+**挡住的**：
+- **写边界。** agent 跑在自己组的容器里，碰不到宿主文件系统。宿主只通过 `orch` 暴露有限动作，路由前缀之外一律 403。
+- **凭据。** 真 token 永远不进容器：容器里是格式合法的假值，出站时 egress sidecar 按 host 替换 header。GitHub 那份是只读的，分支靠 `git bundle` 出来、宿主推。
+
+**不挡的**：
+- **数据出站。** 出站策略是 `defaultAction: allow` 加每项目黑名单（默认空）。agent 可以访问整个互联网 —— 这是刻意的取舍（决策 005：要能查文档、装依赖），代价是**它也可以把仓库内容、journal、DRAFT 卡发到任何地方**。凭据受控，数据不受控。要收紧就配 `sandbox.denyDomains`。
+- **同组内的互相冒充。** 一个组共用一个容器，组内每个角色的 token 都在同一个文件系统里。跨组不行，组内可以。
+
+如果你的威胁模型里「代码不能出这台机器」，先改 `denyDomains` 再跑。
+
 ## 三条硬约束
 
 违反其中任何一条都会得到「功能正常但系统变蠢或变贵」的结果：
 
 1. **注入的 delta 一律追加到最新一条 user message 末尾**。塞进 system prompt 会击穿 prompt cache，成本翻 3-5 倍而功能完全正常 —— 最隐蔽的故障
-2. **`orch lease` 永不接受自由命令**。Runner 跑在 host 上有真权限，这是沙盒唯一的缺口
+2. **`orch lease` 永不接受自由命令**。以前的理由是「Runner 跑在 host 上有真权限，这是沙盒唯一的缺口」；容器化之后理由反过来了 —— **`orch` 是 agent 唯一的接口**，它的校验就是整条边界
 3. **`if` 和 prompt 说的话必须一致**。prompt 给的许可如果校验器不认，就是在教模型撒谎
 
 第四条是「凡能用 `if` 拦的绝不写进 prompt」（见上）。四条各自的实测反例在 `CLAUDE.md` 和 `PROGRESS.md` 里。

@@ -7,9 +7,11 @@
  * for missing evidence, and the boss was asked to click by hand. Three groups sat
  * on that at once.
  *
- * Run as a lease: on the host, with real permissions, from the group's worktree.
- * Which is exactly why it takes a *step file* and not a script — `orch lease` never
- * accepts a free command (PLAN.md, hard constraint 2). The steps are data:
+ * Run as a lease, inside the group's own sandbox, against the checkout at /work.
+ * It still takes a *step file* rather than a script — `orch lease` never accepts a
+ * free command (PLAN.md, hard constraint 2), and that rule did not soften when the
+ * container became the boundary; `orch` is now the only interface there is. The
+ * steps are data:
  *
  *   [{"api": "/api/ideas", "body": {"project_id": 1, "text": "…"}},
  *    {"goto": "#p=1&v=req&g=1"},

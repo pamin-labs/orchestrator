@@ -82,7 +82,7 @@ function Browse({
       </div>
       <div className="flex flex-wrap items-center gap-1 border-b border-rule-soft px-3 py-2 font-mono text-[0.6875rem]">
         {/* The root button IS the first slash. Printing a separator before every
-            segment as well gave `/ / Users / jason`. */}
+            segment as well gave `/ / Users / me`. */}
         <Button size="sm" variant="quiet" onClick={() => load("/")}>/</Button>
         {parts.map((seg, i) => (
           <span key={i} className="flex items-center">
