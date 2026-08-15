@@ -1314,7 +1314,7 @@ function ServerPane(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
           label="默认镜像"
           value={img}
           busy={busy}
-          placeholder="配置文件里那个"
+          placeholder="新项目默认用它，留空跟配置文件"
           onSave={async (v) => {
             setBusy(true);
             const r = await post("/api/sandbox/images", { image: v });
