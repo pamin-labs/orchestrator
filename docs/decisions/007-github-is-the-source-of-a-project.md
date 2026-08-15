@@ -255,39 +255,83 @@ library replaces a lesson.
 
 ## Path scoping exists, and step 2 depends on it
 
-Probed, from the SDK types rather than a live server —
-`node_modules/@alibaba-group/opensandbox/dist/sandboxes-vaWpTC_c.d.ts:204-225`:
+`CredentialMatch` takes `paths: string[]`, default `["/*"]`
+(`node_modules/@alibaba-group/opensandbox/src/api/egress.ts:518-546`, SDK-facing
+type at `dist/sandboxes-vaWpTC_c.d.ts:222-224`). **We send it nowhere today** —
+`Credential` (`sandbox.ts:534-540`) has no path field and both bind sites build
+`match: { schemes, hosts }` (`sandbox.ts:422`, `:750`), so every credential we
+bind sits at the `/*` default.
 
-```ts
-interface CredentialMatch {
-  schemes?: ("https" | "http")[];
-  hosts: string[];        // required
-  methods?: string[];
-  paths?: string[];       // "Request paths to match."
-}
+The matcher is upstream `components/egress/mitmscripts/system.py`:
+
+```python
+def _path_matches(path, pattern):
+    if pattern.endswith("*"): return path.startswith(pattern[:-1])
+    return path == pattern
+
+def _request_path(flow):
+    return (flow.request.path or "/").split("?", 1)[0] or "/"
 ```
 
-So a binding scopes by host **and** method **and** path. git's smart HTTP keeps
-fetch and push on different paths at the pack phase — `POST /{repo}/git-upload-pack`
-versus `POST /{repo}/git-receive-pack` — so the write is separable from the read.
+**Trailing-`*` prefix, or exact equality. Nothing else** — no `?`, no `**`, no
+leading wildcard, and `*` does not stop at `/`. Query string is cut before
+matching. Evaluation order is scheme → port → method → **path** → host, all
+AND'ed, with path a hard filter ahead of the host check.
 
-Ref discovery is `GET /{repo}/info/refs?service=git-upload-pack|git-receive-pack`:
-**same path, different query**. Whether `paths` matches the query string is not
-answerable from the types — the matching runs server-side in the egress addon —
-so assume it does not. The consequence is acceptable: a push authenticates its ref
-advertisement and then fails on the `POST .../git-receive-pack` that carries the
-objects. The write is blocked where the write happens.
+git's smart HTTP:
 
-**This is not a nicety, it is a prerequisite.** Classic OAuth has no read-only
-scope for private repositories — `repo` is read *and* write. The moment device
-flow lands (step 2), the existing github binding would hand every agent container
-a token that can push to main, and "no direct push to main" would go back to being
-a sentence in a prompt. Hard constraint 3 says otherwise. So step 2 ships with the
-binding scoped to `git-upload-pack` from the start, and the utility container keeps
-the unscoped binding for the one place a push is supposed to come from.
+| op | discovery | transfer |
+|---|---|---|
+| fetch | `GET /{repo}/info/refs?service=git-upload-pack` | `POST /{repo}/git-upload-pack` |
+| push | `GET /{repo}/info/refs?service=git-receive-pack` | `POST /{repo}/git-receive-pack` |
 
-Still to verify against a live server: that `paths` matching is prefix or glob
-rather than exact, since the repo path is a prefix of both endpoints.
+The two discovery requests differ **only in the query**, which is stripped before
+matching — so no `paths` rule separates them, and `methods` cannot either (GET
+then POST for both). The transfer POSTs do differ by path, and those carry the
+packfile. So this is expressible:
+
+```
+paths: ["/owner/repo.git/info/refs", "/owner/repo.git/git-upload-pack"]
+```
+
+**The trap is the shape upstream hands you.** Its credential-vault guide gives one
+git example — `"paths": ["/org/private-repo.git*"]` — and it is wrong for this,
+because prefix matching does not stop at `/` and that pattern re-admits
+`git-receive-pack`. The rule must be an **enumerated exact allow-list generated
+per project**, not a prefix written once.
+
+Which invariant survives, stated precisely:
+
+- **Holds by construction**: no write ever completes. The packfile POST is never
+  credentialed, so GitHub 401s it before any object transfers.
+- **Does not hold**: "the token is never presented on a write path."
+  `GET /info/refs?service=git-receive-pack` gets the real token and no path rule
+  can stop it. The exposure is an authenticated ref advertisement the sandbox can
+  already obtain via upload-pack — small, not zero. The invariant gets reworded,
+  not reaffirmed.
+
+**This is a prerequisite, not a nicety.** Classic OAuth has no read-only scope for
+private repositories — `repo` is read *and* write. The moment device flow lands
+(step 2), the existing github binding would hand every agent container a token
+that can push to main, and "no direct push to main" would go back to being a
+sentence in a prompt. Hard constraint 3 says otherwise. Step 2 ships with the
+binding scoped from the start; the utility container keeps the unscoped one.
+
+Two things that still need a live server, both of which fail badly if assumed:
+
+1. **Does the control plane validate `paths` at all?** The SDK passes strings
+   through unvalidated (`src/adapters/egressAdapter.ts:128-129`), and 005 already
+   recorded docs-versus-runtime disagreement. A silently ignored `paths` **fails
+   open** — a push that works while the design says it cannot.
+2. **Redirects.** GitHub 301s `/owner/repo` → `/owner/repo.git`, and again for a
+   renamed repo. A redirect changes the path, and an exact allow-list drops
+   injection on the redirected request — surfacing as a clone auth failure that
+   mentions nothing about paths.
+
+Provenance: the matcher was read on `main`; we pin `egress:v1.1.6`
+(`preflight.ts:252`). The one point with independent evidence
+(`allow_single_encoded_slash`, dated between v1.1.4 and v1.1.6 in 005) agrees, but
+the tag itself was not read.
 
 Noted while in there: `CredentialSubstitution.in` accepts `"path" | "query" |
 "header" | "body"` — the sidecar can replace a placeholder outside headers.
