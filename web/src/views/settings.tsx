@@ -15,7 +15,7 @@ import { ask } from "../ui/confirm";
 import { pull, post, del } from "../lib/api";
 import { clock, cn, repoHref } from "../lib/utils";
 import { ThemeChoice } from "../ui/theme";
-import { Gates, Sandbox, type ProjectConfig } from "./project";
+import { Gates, ImageRow, Sandbox, type ProjectConfig } from "./project";
 import { Skills } from "./skills";
 
 /**
@@ -1142,7 +1142,11 @@ function ServerPane(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
   const [d, setD] = useState<ServerInfo | null>(null);
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
+  const [img, setImg] = useState("");
   const load = async () => setD(await pull<ServerInfo>("/api/sandbox-server"));
+  useEffect(() => {
+    void pull<{ current: string }>("/api/sandbox/images").then((r) => setImg(r?.current ?? ""));
+  }, []);
   useEffect(() => {
     void load();
   }, []);
@@ -1301,6 +1305,26 @@ function ServerPane(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
             )}
           </FieldContent>
         </Field>
+
+        {/* One default for the machine, so registering a repository needs no
+            answer here at all: a new project sets no image and gets this one,
+            the same way it gets the remote's default branch without being
+            asked. The per-project row overrides it and is usually left alone. */}
+        <ImageRow
+          label="默认镜像"
+          value={img}
+          busy={busy}
+          placeholder="配置文件里那个"
+          onSave={async (v) => {
+            setBusy(true);
+            const r = await post("/api/sandbox/images", { image: v });
+            setBusy(false);
+            if (r.ok) {
+              setImg(v);
+              toast.success(v ? `以后新项目都用 ${v}` : "改回配置文件里的了");
+            }
+          }}
+        />
 
         <Field>
           <FieldLabel htmlFor="sandbox-key">密钥</FieldLabel>

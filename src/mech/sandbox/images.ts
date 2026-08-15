@@ -1,3 +1,4 @@
+import type { DB } from "../../db.ts";
 import { hasRegistry, PUBLISHED_REPO } from "./sandbox.ts";
 
 /**
@@ -94,4 +95,31 @@ export async function imageChoices(): Promise<ImageChoices> {
     local: l.tags,
     note: { ...(p.note ? { published: p.note } : {}), ...(l.note ? { local: l.note } : {}) },
   };
+}
+
+/**
+ * The image every project gets unless it says otherwise.
+ *
+ * In `setting` rather than in the yaml, for the same reason the sandbox key is:
+ * the yaml is committed, so anybody self-hosting loses their edit on the next
+ * pull — and this is a fact about one machine's docker, not about the project.
+ * The yaml value stays as the fallback, which is what a fresh install runs on.
+ *
+ * Refused if the boundary would refuse it. Storing an image no container can be
+ * built from turns one wrong keystroke in the settings dialog into a fleet that
+ * will not start, and the message would be about a container rather than about
+ * this field.
+ */
+export const DEFAULT_IMAGE_KEY = "sandbox_image";
+
+export const defaultImage = (db: DB, fallback: string): string =>
+  db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(DEFAULT_IMAGE_KEY)?.v || fallback;
+
+export function setDefaultImage(db: DB, ref: string): void {
+  const image = ref.trim();
+  if (!image) return void db.run("DELETE FROM setting WHERE k = ?", [DEFAULT_IMAGE_KEY]);
+  db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
+    DEFAULT_IMAGE_KEY,
+    image,
+  ]);
 }

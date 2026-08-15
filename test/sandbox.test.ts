@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { open } from "../src/db.ts";
+import { open, openMemory } from "../src/db.ts";
 import { allowedImage, keyInConfig, lineSplitter, skillMounts, SKILL_LINE, SKILL_SYNC, specFor, STAGED_SKILLS } from "../src/mech/sandbox/sandbox.ts";
 import { CODEX_HOME } from "../src/mech/sandbox/auth.ts";
+import { setDefaultImage } from "../src/mech/sandbox/images.ts";
 import { cacheProjectSkills, projectSkills } from "../src/mech/util/skills.ts";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -267,4 +268,26 @@ test("a project that names a disallowed image gets the default, not that image",
   // A locally built one is still honoured — that is how this gets debugged.
   c.db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"orch/agent:1"}}' WHERE id = 1`);
   expect(specFor(c, 1).image).toBe("orch/agent:1");
+});
+
+test("a machine's default image is what a new project runs on, and it is not the yaml", () => {
+  // Registering a repository sets no image at all — the point of the default is
+  // that nobody is asked. It lived only in `config/default.yaml`, which is
+  // committed, so anybody self-hosting lost their edit on the next pull.
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'me/x', 0)");
+  const ctx = { db, config: { sandbox: { image: "ghcr.io/pamin-labs/orch-agent:latest" } } } as unknown as Ctx;
+
+  expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:latest");
+
+  setDefaultImage(db, "ghcr.io/pamin-labs/orch-agent:0.2.0");
+  expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:0.2.0");
+
+  // The project's own answer still wins, and an image the boundary refuses falls
+  // back to the machine's default rather than to the yaml — otherwise turning a
+  // bad project override away would silently undo the default too.
+  db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"orch/agent:1"}}' WHERE id = 1`);
+  expect(specFor(ctx, 1).image).toBe("orch/agent:1");
+  db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"evil.example.com/x:1"}}' WHERE id = 1`);
+  expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:0.2.0");
 });

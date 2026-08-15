@@ -343,7 +343,17 @@ interface ImageChoices {
  * Empty lists say which kind of empty they are. "Nothing published yet" and
  * "could not reach ghcr.io" send a reader to different places.
  */
-function ImageRow({ value, busy, onSave }: { value: string; busy: boolean; onSave: (v: string) => void }) {
+export function ImageRow({
+  value, busy, onSave, label = "镜像", placeholder,
+}: {
+  value: string;
+  busy: boolean;
+  onSave: (v: string) => void;
+  label?: string;
+  /** What "left empty" means here. The project row inherits; the machine's
+   *  default row falls back to the yaml a fresh install ships with. */
+  placeholder?: string;
+}) {
   const [src, setSrc] = useState<"remote" | "local">(value && !value.startsWith("ghcr.io/") ? "local" : "remote");
   const [c, setC] = useState<ImageChoices | null>(null);
   useEffect(() => {
@@ -354,7 +364,7 @@ function ImageRow({ value, busy, onSave }: { value: string; busy: boolean; onSav
   const note = src === "remote" ? c?.note.published : c?.note.local;
   return (
     <Field aria-labelledby="cfg-image">
-      <FieldTitle id="cfg-image">镜像</FieldTitle>
+      <FieldTitle id="cfg-image">{label}</FieldTitle>
       <FieldContent className="flex-col items-start gap-1.5">
         <div className="flex w-full items-center gap-2">
           <Segments value={src} onValueChange={(v) => setSrc(v as "remote" | "local")}>
@@ -368,7 +378,7 @@ function ImageRow({ value, busy, onSave }: { value: string; busy: boolean; onSav
             // filtered image list telling you there is no matching branch is one
             // word away from reading as a broken page.
             empty="没有匹配的镜像"
-            placeholder={c ? "默认 orch-agent:latest" : "读取中…"}
+            placeholder={c ? (placeholder ?? "跟这台机器的默认") : "读取中…"}
             disabled={busy}
             width="max-w-[22rem]"
             onCommit={onSave}

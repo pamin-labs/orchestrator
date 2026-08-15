@@ -302,28 +302,26 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
   });
 
-  // The image every group's container is made from, and the two cases are not
-  // the same check.
+  // The image every group's container is made from — reported only when it can
+  // fail, which is not the usual case any more.
   //
-  // A published one is pulled by the sandbox server the first time a container
-  // is built, so "not on this machine" is a fact and not a fault — reporting it
-  // red sent people to run a `docker pull` that was about to happen anyway, on
-  // the one pane that is supposed to mean "this machine cannot work".
+  // A published one is pulled by the sandbox server the first time it builds a
+  // container, so there is nothing here for anybody to do and nothing that can
+  // go wrong at this level. A row that is always green is a row nobody reads,
+  // and this pane is the one place where a tick has to mean something.
   //
   // A tag with no registry in front of it has nowhere to be pulled from. That
   // one fails every sandbox with a pull error reading like a network problem,
   // which is why this check exists at all.
   const image = input.sandbox.image;
-  const here = docker ? localImages(image) : false;
-  const pullable = hasRegistry(image);
-  out.push({
-    name: "agent image",
-    ok: here || pullable,
-    detail: here ? image : pullable ? `${image}（本机没有，第一次起沙盒时拉）` : `${image} 不在本机`,
-    fix: pullable
-      ? `docker pull ${image}`
-      : `docker build -f docker/agent.Dockerfile -t ${image} . —— 没有 registry 前缀的镜像只能本地构建。`,
-  });
+  if (!hasRegistry(image) && !(docker && localImages(image))) {
+    out.push({
+      name: "agent image",
+      ok: false,
+      detail: `${image} 不在本机`,
+      fix: `docker build -f docker/agent.Dockerfile -t ${image} . —— 没有 registry 前缀的镜像只能本地构建。`,
+    });
+  }
 
   // The skills mount, reported the same way as the sidecar image: the server's
   // `allowed_host_paths` is in its own TOML, which is not ours to read, so this

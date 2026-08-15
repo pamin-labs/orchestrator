@@ -14,7 +14,7 @@ import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sa
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "./mech/sandbox/login.ts";
 import { APP_SLUG, BOT, commitIdentity, forgetIdentity, githubAccount, listInstallations, listRepos, pollForToken, setTrailers, startDeviceFlow, trailers, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
-import { imageChoices, type ImageChoices } from "./mech/sandbox/images.ts";
+import { defaultImage, imageChoices, setDefaultImage, type ImageChoices } from "./mech/sandbox/images.ts";
 import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "./mech/sandbox/server.ts";
 import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
@@ -3734,11 +3734,23 @@ const getPreflight: Handler = async (ctx) =>
  * local half shells out to docker, and the settings dialog asks on every open.
  */
 let imageCache: { at: number; v: ImageChoices } | null = null;
-const getImages: Handler = async () => {
+const getImages: Handler = async (ctx) => {
   if (!imageCache || Date.now() - imageCache.at > 60_000) {
     imageCache = { at: Date.now(), v: await imageChoices() };
   }
-  return json(imageCache.v);
+  // Which one a project gets when it says nothing. Registering a repository
+  // sets no image at all, so this is what the fleet actually runs on.
+  return json({ ...imageCache.v, current: defaultImage(ctx.db, ctx.config.sandbox?.image ?? "") });
+};
+
+const postImage: Handler = async (ctx, req) => {
+  const b = await body<{ image?: string }>(req);
+  const image = (b.image ?? "").trim();
+  // The same rule the container build applies, applied where the boss can read
+  // it. Without this the refusal arrives as a container that will not create.
+  if (image && !allowedImage(image)) return bad(`${image} 不是我们发布的镜像，也不是本机构建的`);
+  setDefaultImage(ctx.db, image);
+  return text("ok");
 };
 
 /**
@@ -3849,6 +3861,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["POST", /^\/api\/auth\/codex\/device\/cancel$/, postCodexDeviceCancel],
   ["GET", /^\/api\/preflight$/, getPreflight],
   ["GET", /^\/api\/sandbox\/images$/, getImages],
+  ["POST", /^\/api\/sandbox\/images$/, postImage],
   ["GET", /^\/api\/sandbox-server$/, getSandboxServer],
   ["POST", /^\/api\/sandbox-server\/restart$/, postSandboxServerRestart],
   ["POST", /^\/api\/sandbox-server\/start$/, postSandboxServerStart],

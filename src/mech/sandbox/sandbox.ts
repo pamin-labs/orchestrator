@@ -6,6 +6,7 @@ import type { Ctx } from "../../api.ts";
 import { ROOT } from "../../config.ts";
 import type { ResourceExec } from "./lease.ts";
 import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
+import { defaultImage } from "./images.ts";
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../util/shq.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
@@ -156,9 +157,12 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
   // merges arbitrary keys into `config_json`, so refusing it only in the panel
   // would be a check a request can walk around; this is where every container is
   // actually built, which makes it the only place the rule holds.
-  const image = over.image || base.image;
+  // Three layers, narrowest first: this project, this machine's default, the
+  // yaml a fresh install ships with.
+  const fallback = defaultImage(ctx.db, base.image);
+  const image = over.image || fallback;
   return {
-    image: allowedImage(image) ? image : base.image,
+    image: allowedImage(image) ? image : fallback,
     cpu: over.cpu || base.cpu || defaultCpu(),
     memory: over.memory || base.memory,
     ttlSeconds: over.ttlSeconds || base.ttlSeconds,
