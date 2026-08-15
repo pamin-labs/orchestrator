@@ -71,7 +71,7 @@ test("a dropped folder becomes one attachment, and cannot escape its directory",
 
   const app = makeApp({
     db: null as never,
-    config: { dataDir: dir, language: "中文", workRoot: dir },
+    config: { dataDir: dir, language: "中文"},
   } as never);
   const r = await app(new Request("http://x/api/attach", { method: "POST", body: form }));
   const { files } = (await r.json()) as { files: { name: string; path: string; type: string }[] };

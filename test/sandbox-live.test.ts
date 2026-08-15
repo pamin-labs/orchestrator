@@ -81,7 +81,7 @@ function ctx(port = cfg.port): Ctx {
     // An ephemeral port, not the configured one: this test serves the routes
     // itself, and a fixed port collides with a real orchestrator or with the
     // previous run's socket still in TIME_WAIT.
-    config: { language: "中文", workRoot: cfg.workRoot, port, sandbox: cfg.sandbox },
+    config: { language: "中文", port, sandbox: cfg.sandbox },
   } as unknown as Ctx;
 }
 

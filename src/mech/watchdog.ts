@@ -5,14 +5,17 @@ import { interrupt, park, unpark } from "./intercept.ts";
 import { sweepApproved } from "./start.ts";
 import { route } from "./chain.ts";
 import { runInvariants } from "./invariants.ts";
-import { pollUsage } from "./subusage.ts";
-import { killSandbox, renewSandbox, WORK } from "./sandbox.ts";
+import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
+import { CODEX_HOME } from "./auth.ts";
+import { execIn, killSandbox, renewSandbox, WORK, type Scope } from "./sandbox.ts";
 import { baseRefFor, sandboxGit } from "./checkout.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { buildMap, renderMap, saveMap } from "./repomap.ts";
 import { resumeReclaimed, type Job } from "../scheduler.ts";
+import { abortJob } from "../runtime/running.ts";
+import { probe } from "./net.ts";
 import type { GitRunner } from "./worktree.ts";
 
 /**
@@ -31,6 +34,8 @@ export interface WatchdogDeps {
   now?: () => number;
   /** The only network call on the tick. Tests pass a no-op; see the call site. */
   pollUsage?: typeof pollUsage;
+  /** Whether this machine can reach the providers. Injected for the same reason. */
+  probe?: typeof probe;
 }
 
 export interface Finding {
@@ -52,6 +57,20 @@ export const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
 
 /** How often the watchdog asks the remote what main is. Not every 30s tick. */
 export const FETCH_EVERY_MS = 5 * 60 * 1000;
+
+/**
+ * How often the codex rollout sweep reaches into the containers.
+ *
+ * A seven-day retention window enforced hourly, not twice a minute. The tick is
+ * 30s and `commands.run` is ~1s, so per-tick meant ten seconds of every thirty
+ * spent on ten `find`s that delete nothing — and spent inside the containers,
+ * against the CPU the agents are capped at.
+ */
+export const SWEEP_EVERY_MS = 60 * 60 * 1000;
+
+// ponytail: in-memory, like `lastFetch` above. A restart sweeps once more than it
+// needed to, which is a `find` that finds nothing.
+let lastSweep = 0;
 
 // ponytail: in-memory, so a restart fetches once more than it needed to. A table
 // for this would be a row nobody ever reads.
@@ -77,11 +96,16 @@ export const GZIP_AFTER_MS = 60 * 60 * 1000;
 export const DROP_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * codex writes a full transcript per session into the CODEX_HOME we hand it, and
- * that directory is inside `data/`. Nothing ever removed them: 78 rollout files
- * and 110 MB in two days, next to a turn-log directory that has had gzip and a
- * retention window since the beginning. Same window here, no compression —
- * these are read by codex itself on resume, and only while the thread is live.
+ * codex writes a full transcript per session into the CODEX_HOME we hand it.
+ * Nothing ever removed them: 78 rollout files and 110 MB in two days, next to a
+ * turn-log directory that has had gzip and a retention window since the
+ * beginning. Same window here, no compression — these are read by codex itself
+ * on resume, and only while the thread is live.
+ *
+ * Two places now, and this one is the smaller: since 005 `CODEX_HOME` is
+ * `/root/.codex` *inside a container*, so what is left on the host is the weekly
+ * refresh nudge's own rollouts. The 110 MB grows in the sandboxes, and
+ * `sweepSandboxSessions` below is what reaches it.
  */
 export function sweepCodexSessions(home: string, now: number): number {
   const root = join(home, "sessions");
@@ -204,6 +228,28 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
   return out;
 }
 
+/**
+ * Every sandbox there is right now, groups and projects both.
+ *
+ * Used by the two things that have to reach *into* a container rather than
+ * manage it — the codex session sweep and the quota read. Both are best-effort
+ * and neither cares which sandbox answers.
+ */
+function liveScopes(ctx: Ctx): Scope[] {
+  const out: Scope[] = [];
+  for (const g of ctx.db
+    .query<{ id: number }, []>(
+      "SELECT id FROM grp WHERE sandbox_id IS NOT NULL AND status NOT IN ('DISSOLVED','PARKED')",
+    )
+    .all()) {
+    out.push({ grp: g.id });
+  }
+  for (const p of ctx.db.query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL").all()) {
+    out.push({ project: p.id });
+  }
+  return out;
+}
+
 export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   const { ctx, cfg } = deps;
   // These bodies land in the boss's feed and notifications, so they follow
@@ -212,6 +258,35 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   const t = (k: any, a?: any) => say(ctx.config?.language, k, a);
   const now = deps.now ?? (() => Date.now());
   const findings: Finding[] = [];
+
+  // 19. The machine's own network, before anything that needs it.
+  //
+  // A laptop closes, a VPN drops. Without this every turn in flight burns its
+  // wall clock retrying, rule 1 interrupts each group into PAUSED, and PAUSED is
+  // a state nothing leaves on its own — so coming back online means a fleet of
+  // paused groups and a park timer filing them away. The gate in the scheduler
+  // does the holding; this decides when it is on and deals with what was already
+  // running.
+  const net = await (deps.probe ?? probe)(ctx.db, now());
+  if (net.changed) {
+    const held = net.online ? 0 : holdForOffline(ctx, now());
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      body: net.online ? t("net.back") : t("net.lost", { n: held }),
+    });
+    findings.push({
+      rule: net.online ? "network_back" : "network_lost",
+      grpId: null,
+      severity: net.online ? "advisory" : "blocker",
+      body: net.online ? t("net.back") : t("net.lost", { n: held }),
+    });
+    if (net.online) ctx.sched.tick();
+  }
+  // Everything below this line either talks to the network or drives work that
+  // does, so an offline tick stops here. The rules are all restatements of state
+  // we recorded ourselves; none of them is worth a two-second DNS timeout each.
+  if (!net.online) return emit(ctx, findings, now);
 
   // Liveness first: one row per state, each saying who pushes it (invariants.ts).
   // The rules below are the other question — not "is anybody driving this" but
@@ -375,6 +450,22 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   sweepTurnLogs(join(cfg.dataDir, "turns"), now());
   sweepCodexSessions(join(cfg.dataDir, "codex-home"), now());
 
+  // 7d2b. The same sweep, in the containers where the files actually are.
+  //
+  // Hourly, and in parallel. The first version ran one `execIn` per live sandbox
+  // on every 30s tick, serially: `commands.run` is ~1s, so ten groups meant ten
+  // seconds of every thirty spent deleting nothing, competing with the agents for
+  // the CPU their own containers are capped at. It is a seven-day retention
+  // window — it does not need to be enforced twice a minute.
+  if (now() - lastSweep >= SWEEP_EVERY_MS) {
+    lastSweep = now();
+    await Promise.allSettled(
+      liveScopes(ctx).map((s) =>
+        execIn(ctx, s, `find ${CODEX_HOME}/sessions -type f -mtime +7 -delete 2>/dev/null || true`),
+      ),
+    );
+  }
+
   // 7d3. How much of the claude subscription is left.
   //
   // codex reports both its windows in every turn; claude's stream reports none,
@@ -386,7 +477,16 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // 10s timeout inside a gate sandbox, the test blew bun's 5s limit, and the
   // slice was rejected for a red test that had nothing to do with its change.
   // Two slices lost to it, on two different requirements.
-  await (deps.pollUsage ?? pollUsage)(ctx.db, cfg.dataDir, now());
+  await (deps.pollUsage ?? pollUsage)(ctx.db, cfg.dataDir, now(), async () => {
+    // The fleet's own rollouts live in the sandboxes now; the host copy is only
+    // as fresh as the last weekly refresh nudge. Any one live sandbox will do —
+    // the quota is the account's, not the container's.
+    for (const s of liveScopes(ctx)) {
+      const r = await execIn(ctx, s, NEWEST_ROLLOUT).catch(() => null);
+      if (r?.code === 0 && r.out.trim()) return r.out;
+    }
+    return null;
+  });
 
   // 7e. Keep the shared repo map current.
   //
@@ -626,7 +726,22 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     if (head.code !== 0) continue;
     const sha = head.out.trim();
     if (!sha || sha === g.seen) continue;
-    const merged = await sandboxGit(ctx, { grp: g.id })(WORK, ["merge-base", "--is-ancestor", sha, "HEAD"], WORK);
+    // The clone has to know the object before it can be asked about it. It is a
+    // separate `git clone` that never fetched, so `merge-base --is-ancestor`
+    // exited non-zero for "I have never heard of that commit" exactly as it does
+    // for "you are behind it" — the same code, two different facts, and the
+    // rebase nudge could not tell them apart. Fetch first, and then a non-zero
+    // answer means what it says.
+    const gitIn = sandboxGit(ctx, { grp: g.id });
+    const known = await gitIn(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK);
+    if (known.code !== 0) {
+      const fetched = await gitIn(WORK, ["fetch", "--quiet", "origin"], WORK);
+      // Still unknown after a fetch: the clone cannot see this base at all, which
+      // is a checkout problem and not something a rebase turn would fix.
+      if (fetched.code !== 0) continue;
+      if ((await gitIn(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK)).code !== 0) continue;
+    }
+    const merged = await gitIn(WORK, ["merge-base", "--is-ancestor", sha, "HEAD"], WORK);
     if (merged.code === 0) continue; // already on it
 
     ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [sha, now(), g.id]);
@@ -748,6 +863,16 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     .all()) {
     await renewSandbox(ctx, { grp: g.id });
   }
+  // Project sandboxes too. This loop only ever walked `grp`, which was survivable
+  // while the only thing in a project sandbox was a standing role's turn — that
+  // turn recreates it. The index runs there now, on a five-minute clock and with
+  // no turn behind it, so the container it needs would expire underneath it and
+  // every `orch ctx query` would pay a rebuild.
+  for (const p of ctx.db
+    .query<{ id: number }, []>("SELECT id FROM project WHERE sandbox_id IS NOT NULL")
+    .all()) {
+    await renewSandbox(ctx, { project: p.id });
+  }
 
   // 16. A question the work has already gone past.
   //
@@ -791,16 +916,22 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   // nothing, and the requirement is as stopped as if it had crashed.
   for (const w of waitingOnBoss(ctx.db, now())) findings.push(w);
 
-  // A standing condition is re-detected on every tick, and emitting it every time
-  // filled the timeline with the same line dozens of times over — "perf-rewrite is
-  // at 102% of its budget", every few seconds, until the feed was worthless. The
-  // notifier already backs off; the event log needs the same rule. A repeat is a
-  // reminder, not a new problem.
-  //
-  // The returned list is filtered to the same set, not just the emitted events.
-  // It is what the caller pushes to the boss's phone, and leaving it unfiltered
-  // meant the timeline was deduplicated while the notifications were not — one
-  // stalled group produced a push every thirty seconds, all night.
+  return emit(ctx, findings, now);
+}
+
+/**
+ * A standing condition is re-detected on every tick, and emitting it every time
+ * filled the timeline with the same line dozens of times over — "perf-rewrite is
+ * at 102% of its budget", every few seconds, until the feed was worthless. The
+ * notifier already backs off; the event log needs the same rule. A repeat is a
+ * reminder, not a new problem.
+ *
+ * The returned list is filtered to the same set, not just the emitted events.
+ * It is what the caller pushes to the boss's phone, and leaving it unfiltered
+ * meant the timeline was deduplicated while the notifications were not — one
+ * stalled group produced a push every thirty seconds, all night.
+ */
+function emit(ctx: Ctx, findings: Finding[], now: () => number): Finding[] {
   const fresh: Finding[] = [];
   for (const f of findings) {
     const last = ctx.db
@@ -825,6 +956,43 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     });
   }
   return fresh;
+}
+
+/**
+ * Stop every turn that is in flight, and put the work straight back on the queue.
+ *
+ * Doing nothing is the trap: the CLI backs off and retries until `turnTimeoutMs`,
+ * rule 1 interrupts the group into PAUSED, and a PAUSED group is one nothing
+ * resumes — the park timer files it away and the boss finds a fleet to restart by
+ * hand once the connection is back.
+ *
+ * So the job is cancelled and re-queued and **the group's status is not touched**.
+ * It stays RUNNING with pending work, the scheduler's offline gate holds that
+ * work, and when the gate lifts the queue drains on the next tick. That is the
+ * whole of "pause" and "resume": no new state, nothing to remember.
+ */
+export function holdForOffline(ctx: Ctx, now: number): number {
+  const running = ctx.db
+    .query<Job & { started_at: number | null }, []>(
+      `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state
+       FROM job WHERE state = 'running' AND kind = 'agent_turn'`,
+    )
+    .all();
+  if (running.length === 0) return 0;
+
+  for (const j of running) {
+    abortJob(j.id);
+    ctx.db.run("UPDATE job SET state = 'cancelled', ended_at = ?, error = ? WHERE id = ?", [
+      now,
+      "offline: the host lost its network",
+      j.id,
+    ]);
+  }
+  // An agent that believes it is mid-turn is skipped forever by everything else.
+  ctx.db.run("UPDATE agent SET state = 'idle' WHERE state = 'running'");
+  // `resumeReclaimed` exempts an `offline:` error from the one-retry rule for the
+  // same reason it exempts `orphaned:`: the turn did nothing wrong.
+  return resumeReclaimed(ctx.sched, running.map((j) => ({ ...j, state: "cancelled" as const, error: "offline: the host lost its network" })));
 }
 
 /**

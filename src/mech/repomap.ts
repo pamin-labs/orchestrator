@@ -21,8 +21,57 @@ import type { DB } from "../db.ts";
  * question turns out to need "what does this do" rather than "where is this".
  */
 
-const CODE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|swift|rb|c|h|cc|cpp|cs)$/;
 const EXPORTED = /^\s*export\s+(?:default\s+)?(?:async\s+)?(?:function|const|class|type|interface|enum)\s+(\w+)/gm;
+
+/**
+ * What belongs in an index of a repository — by exclusion, not by allow-list.
+ *
+ * Both indexes used to carry their own extension allow-list. This one named
+ * eighteen languages while `EXPORTED` above parses JS/TS syntax only, so a Go
+ * file entered the map and never got a symbol; PageIndex's named seven and, on
+ * this repo, its whole effect was to exclude eight files (a lockfile and seven
+ * things an agent would reasonably ask about). Point either at a Go, Python or
+ * Rust project and the source is simply invisible.
+ *
+ * An allow-list of source extensions cannot be finished — documentation alone is
+ * md, txt, mdx, rmd, rst, adoc — while the set of things that are *not* text a
+ * model can summarise is stable and language-independent. `git ls-files` has
+ * already excluded build output and everything gitignored, so what is left to
+ * remove is binaries, lockfiles and vendored trees.
+ *
+ * Whatever this still gets wrong is correctable per project rather than guessed
+ * at again: `project.config_json.index.exclude`, the same arrangement
+ * `detect.ts` uses for gates.
+ */
+const BINARY =
+  /\.(png|jpe?g|gif|bmp|ico|webp|avif|svgz|tiff?|pdf|zip|gz|tgz|bz2|xz|7z|rar|jar|war|class|so|dylib|dll|exe|bin|o|a|wasm|woff2?|ttf|otf|eot|mp[34]|m4a|wav|ogg|mov|mp4|avi|mkv|db|sqlite3?|pyc|pack|idx)$/i;
+
+const GENERATED = [
+  /(^|\/)vendor\//,
+  /(^|\/)third_party\//,
+  /(^|\/)node_modules\//,
+  /(^|\/)\.min\./,
+  /\.min\.(js|css)$/,
+  /\.map$/,
+  /(^|\/)[^/]*lock(file)?$/i,
+  /(-|\.)lock\.(json|ya?ml|toml)$/i,
+  /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|go\.sum|composer\.lock|Gemfile\.lock)$/,
+];
+
+/** Very small glob: `*` within a segment, `**` across them. Enough for excludes. */
+function globToRe(glob: string): RegExp {
+  const src = glob
+    .split("**")
+    .map((part) => part.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "."))
+    .join(".*");
+  return new RegExp(`^${src}$`);
+}
+
+export function indexable(rel: string, exclude: string[] = []): boolean {
+  if (!rel || BINARY.test(rel)) return false;
+  if (GENERATED.some((re) => re.test(rel))) return false;
+  return !exclude.some((g) => globToRe(g).test(rel));
+}
 
 export interface MapNode {
   dir: string;
@@ -30,10 +79,14 @@ export interface MapNode {
 }
 
 /** Tracked files only: build output and node_modules are noise, and git already knows. */
-export function buildMap(repoPath: string, list: (repo: string) => string[]): MapNode[] {
+export function buildMap(repoPath: string, list: (repo: string) => string[], exclude: string[] = []): MapNode[] {
   const byDir = new Map<string, MapNode>();
   for (const rel of list(repoPath)) {
-    if (!CODE.test(rel)) continue;
+    // Symbols are opportunistic: `EXPORTED` is JS/TS syntax, so a Go file gets a
+    // path and no names. That is still a useful map entry — "where does X live"
+    // is answered by the path — and it is strictly better than the old
+    // allow-list, which claimed thirteen more languages than it could parse.
+    if (!indexable(rel, exclude)) continue;
     const cut = rel.lastIndexOf("/");
     const dir = cut < 0 ? "." : rel.slice(0, cut);
     const name = cut < 0 ? rel : rel.slice(cut + 1);

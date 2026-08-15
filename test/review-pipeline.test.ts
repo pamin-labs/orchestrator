@@ -83,7 +83,7 @@ async function harness(opts: { gates?: string[] } = {}) {
         err: p.stderr.toString(),
       };
     }), waiters: new Map(),
-    config: { language: cfg.language, workRoot: wtDir },
+    config: { language: cfg.language},
   };
   const deps: ExecDeps = {
     ctx,

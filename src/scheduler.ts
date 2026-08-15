@@ -44,6 +44,13 @@ export interface SchedulerOptions {
   leaseSlots?: number | Record<string, number>;
   /** Kinds that are cheap bookkeeping and bypass the group slot pool. */
   now?: () => number;
+  /**
+   * Is the machine able to reach the providers right now?
+   *
+   * Injected, like `pollUsage` on the watchdog, so no unit test needs a network.
+   * Default is "yes": a scheduler nobody told about the network must not stop.
+   */
+  online?: () => boolean;
 }
 
 export const DEFAULT_POOL = "default";
@@ -95,6 +102,7 @@ export class Scheduler {
   private readonly maxGroups: number;
   private readonly pools: Record<string, number>;
   private readonly now: () => number;
+  private readonly online: () => boolean;
   private draining = false;
 
   constructor(
@@ -105,6 +113,7 @@ export class Scheduler {
     this.maxGroups = opts.maxGroups ?? 3;
     this.pools = poolSizes(opts.leaseSlots);
     this.now = opts.now ?? (() => Date.now());
+    this.online = opts.online ?? (() => true);
   }
 
   enqueue(
@@ -219,6 +228,12 @@ export class Scheduler {
       if (busyGroups.size >= this.maxGroups) continue;
       // Only a group-scoped job has a status and a budget to check.
       if (job.grp_id !== null && !this.admits(job)) continue;
+      // Offline is the third gate of the same shape as the two below, and for the
+      // same reason: a turn that cannot possibly work should not be started. It
+      // costs nothing to wait — a held job has no process behind it — and it
+      // lifts by itself when the probe says the network is back, so the boss is
+      // not left with a fleet to restart by hand.
+      if (job.kind === "agent_turn" && !this.online()) continue;
       if (job.kind === "agent_turn" && this.providerHeld(job)) continue;
       if (job.kind === "agent_turn" && this.credentialMissing(job)) continue;
       busyGroups.add(slot);
@@ -461,7 +476,11 @@ export function resumeReclaimed(sched: Scheduler, jobs: Job[]): number {
     // groups sat stopped after a restart with a fix already in main, each holding a
     // turn that was only ever killed by the restart itself, and every one of them
     // needed a human to say "go on then".
-    const orphaned = j.error?.startsWith("orphaned:") ?? false;
+    //
+    // `offline:` is the same argument. The network went away; the turn did
+    // nothing wrong, and spending its one retry on that would leave the group
+    // stopped after the connection came back.
+    const orphaned = /^(orphaned|offline):/.test(j.error ?? "");
     if (payload?.resumed && !orphaned) continue;
     sched.enqueue(j.kind, {
       grp_id: j.grp_id,

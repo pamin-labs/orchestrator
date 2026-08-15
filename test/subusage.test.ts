@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
+
 import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/auth.ts";
-import { POLL_EVERY_MS, objectsAfter, pollClaudeUsage, toRateLimit } from "../src/mech/subusage.ts";
+import { POLL_EVERY_MS, objectsAfter, pollClaudeUsage, pollUsage, toRateLimit } from "../src/mech/subusage.ts";
 import { seedAuth } from "./seed-auth.ts";
 
 // The real response, trimmed to the two windows this reads. Verbatim shape from
@@ -119,4 +120,40 @@ test("codex quota comes from its rollout file, not the stream", () => {
   const rl = JSON.parse(objs[0]!);
   expect(rl.primary.used_percent).toBe(12.5);
   expect(rl.secondary).toBeNull();
+});
+
+test("codex quota is read from a sandbox first, and the host is only the fallback", async () => {
+  // Since 005 `CODEX_HOME` is `/root/.codex` inside a container, so the host's
+  // `<dataDir>/codex-home/sessions` holds nothing but the weekly refresh nudge's
+  // own rollout. The number it reports is the account's and correct — and up to a
+  // week stale, while ten agents spend the same subscription.
+  const db = openMemory();
+  saveAuth(db, {
+    runtime: "codex",
+    mode: "chatgpt",
+    secret: JSON.stringify({ tokens: { refresh_token: "r" } }),
+  });
+  const rollout =
+    `{"type":"event_msg","payload":{"type":"token_count","rate_limits":` +
+    `{"primary":{"used_percent":42,"window_minutes":300,"resets_at":1786000000},"secondary":null}}}`;
+
+  await pollUsage(db, "/tmp/nonexistent-codex-home", 1_700_000_000_000, async () => rollout);
+  const snap = db.query<{ json: string }, []>("SELECT json FROM usage_snapshot WHERE runtime = 'codex'").get()!;
+  expect(JSON.parse(snap.json).fiveHourPercent).toBe(42);
+});
+
+test("an unreachable sandbox does not lose the reading", async () => {
+  // Best-effort, like everything else that reaches into a container from the
+  // watchdog tick: a sandbox that has gone away must not take the quota bar with
+  // it, and must not throw out of the tick either.
+  const db = openMemory();
+  saveAuth(db, {
+    runtime: "codex",
+    mode: "chatgpt",
+    secret: JSON.stringify({ tokens: { refresh_token: "r" } }),
+  });
+  await pollUsage(db, "/tmp/nonexistent-codex-home", Date.now(), async () => {
+    throw new Error("no such sandbox");
+  });
+  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM usage_snapshot").get()!.n).toBe(0);
 });

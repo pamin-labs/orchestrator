@@ -41,7 +41,7 @@ function harness(opts: { install?: string | null; installFails?: boolean } = {})
       argv[0] === "remote"
         ? { code: 0, out: "https://example.com/x.git", err: "" }
         : { code: 1, out: "", err: "no such ref" }) as never,
-    config: { language: "中文", workRoot: "/tmp/orch-test/wt", installTimeoutMs: 1000 },
+    config: { language: "中文", installTimeoutMs: 1000 },
   } as unknown as Ctx;
 
   db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p', '/tmp/p', ?, 0)", [

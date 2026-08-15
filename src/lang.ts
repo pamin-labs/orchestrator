@@ -54,6 +54,8 @@ const ZH: Record<string, string> = {
   "wd.unshipped": "{name} 每一片都查收了但没有 PR，队列也空了 —— 重新走一遍分支复核",
   "rl.waiting": "撞到限额，这个 CLI 上的活全部挂起等额度恢复（约 {at}），到点自动继续 —— 换模型不换池子，等是唯一的选择",
   "rl.resumed": "额度恢复，自动继续",
+  "net.lost": "宿主断网了，{n} 个 turn 挂起等联网 —— 需求还在跑的状态，活儿排着，通了自动接上",
+  "net.back": "网络恢复，挂起的活自动继续",
   "owns.reverted": "{role} 改了本组不拥有的 {n} 个文件（{files}），已回滚 —— 这个 CLI 的沙箱拦不住写入，只能事后对账",
   "unread.digest": "未读 {n} 条，已让 Librarian 压成摘要",
   "sediment": "同一类反馈第 {n} 次了，让 CoS 归纳成项目规约",
@@ -99,6 +101,8 @@ const EN: Record<string, string> = {
   "rl.waiting":
     "rate limited; everything on this CLI holds until the window reopens (~{at}) and resumes itself — the quota belongs to the account, so no model spends less of it",
   "rl.resumed": "quota is back, resuming",
+  "net.lost": "the host lost its network; {n} turn(s) held and re-queued, requirements left running",
+  "net.back": "network is back, held work resumes",
   "owns.reverted":
     "{role} wrote {n} files this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it",
   "unread.digest": "{n} unread — the Librarian is compressing them",

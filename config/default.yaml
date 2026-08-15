@@ -115,18 +115,6 @@ sandbox:
   # 例：{ /root/.bun/install/cache: /var/tmp/orch-cache }
   cacheDirs: {}
 
-# Where group worktrees live. Outside $HOME on purpose: the sandbox is deny-only,
-# so denying $HOME is how writes get confined (docs/decisions/001).
-#
-# /var/tmp, not /tmp. Both are outside $HOME, but macOS empties /tmp at boot and
-# sweeps anything untouched for three days — and a worktree holds work that is
-# committed to a branch nobody has pushed yet. A group that runs overnight, waits
-# on the boss over a weekend, or simply outlives a reboot would come back to a
-# branch with no checkout. /var/tmp is the standard persistent one and survives
-# both. Existing groups keep the path recorded in grp.worktree; this is the
-# default for the next one.
-workRoot: /var/tmp/orch/worktrees
-
 # 勾中的技能复制到这里，每个沙盒只读挂在 /root/.claude/skills 和 $CODEX_HOME/skills，
 # CLI 自己发现自己用（决策 006）。
 #

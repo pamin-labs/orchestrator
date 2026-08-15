@@ -150,7 +150,6 @@ export type Config = {
     /** mount path -> host path, shared by every sandbox. Package caches only. */
     cacheDirs: Record<string, string>;
   };
-  workRoot: string;
   dataDir: string;
   /**
    * Where the ticked skills are staged for the sandboxes to mount.
@@ -232,7 +231,6 @@ const DEFAULTS: Config = {
     denyDomains: [],
     cacheDirs: {},
   },
-  workRoot: "/var/tmp/orch/worktrees",
   dataDir: "data",
   skillsDir: "/var/tmp/orch-cache/skills",
 };
@@ -249,11 +247,17 @@ export const ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..");
 /**
  * dataDir is absolute from here on.
  *
- * Paths under it are handed to subprocesses that do not run where the server
- * does — gate logs, lease logs, attachments, the sqlite file itself. A relative
- * one resolved against whatever cwd the child happened to have, and the failure
- * was a file "not found" that existed. Same lesson as ROOT above, one directory
- * over.
+ * Everything under it is the *host's* — the sqlite file, gate and lease logs,
+ * turn transcripts, attachments, the staged skills directory. A relative path
+ * resolved against whatever cwd the process happened to be started with, and the
+ * failure was a file "not found" that existed. Same lesson as ROOT above.
+ *
+ * The reason used to be stated as "handed to subprocesses that do not run where
+ * the server does". Since 005 no subprocess sees `dataDir` at all — turns run in
+ * containers and reach the host only through the mailbox — so that sentence
+ * would have had the next reader looking for a boundary that is not here. The
+ * conclusion is unchanged; the reason is that this process can be started from
+ * anywhere.
  */
 export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: resolve(ROOT, c.dataDir) });
 

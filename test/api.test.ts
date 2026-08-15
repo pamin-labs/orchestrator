@@ -13,7 +13,7 @@ import { sweepApproved } from "../src/mech/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
-function harness() {
+function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: string; err?: string }) {
   const db: DB = openMemory();
   seedAuth(db);
   const bus = new Bus(db);
@@ -24,8 +24,8 @@ function harness() {
     bus,
     sched,
     gitLock: new RepoLock(),
-    sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: "中文", workRoot: "/tmp/orch-test/wt" },
+    sandbox: fakeSandbox(handle), waiters: new Map(),
+    config: { language: "中文"},
   };
   const app = makeApp(ctx);
 
@@ -680,6 +680,37 @@ test("the Architect re-cutting someone else's boundary starts the approved group
   ).toBe("RUNNING");
 });
 
+test("a token is only good for the scope it was hired into", async () => {
+  // `owns_json` is what `canStart` gates dispatch on, so one call rewriting
+  // another group's boundary is a fleet-wide stall — and the group_id came
+  // straight out of the request body, never compared with the caller's own.
+  // The check cannot be a flat "same group" either: standing roles have no group
+  // and are supposed to reach across their project.
+  const h = harness();
+  await blocked(h);
+  h.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('other', '/tmp/o', 0)");
+  h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (2, 'elsewhere', 'RUNNING', 0)");
+  const outsider = h.db.query<{ id: number }, []>("SELECT id FROM grp WHERE name = 'elsewhere'").get()!.id;
+
+  // Standing: no group, so its reach is its project — and it stops at the edge.
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-standing', 0)",
+  );
+  expect((await post(h.app, "/orch/owns", { group_id: 1, paths: ["src/c/**"] }, "tok-standing")).status).toBe(200);
+  expect((await post(h.app, "/orch/owns", { group_id: outsider, paths: ["**"] }, "tok-standing")).status).toBe(403);
+
+  // Hired into a group: that group and no other, even inside the same project.
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'architect', 'm', 'tok-g1', 0)",
+  );
+  const other = h.db.query<{ id: number }, []>("SELECT id FROM grp WHERE project_id = 1 AND id != 1 LIMIT 1").get()!.id;
+  expect((await post(h.app, "/orch/owns", { group_id: other, paths: ["**"] }, "tok-g1")).status).toBe(403);
+  // Untouched: a refused call must not be a half-applied one.
+  expect(
+    h.db.query<{ owns_json: string }, [number]>("SELECT owns_json FROM grp WHERE id = ?").get(other)!.owns_json,
+  ).not.toContain("**");
+});
+
 test("dropping a requirement frees its paths and starts whoever was waiting", async () => {
   // 退回重拆 was the only way off the approval screen, and it sends the plan back
   // to be written again. A duplicate needs to leave, and the group behind it needs
@@ -1014,13 +1045,26 @@ test("one box holding several unrelated asks becomes several requirements", asyn
   expect(child.body).toContain("记住我");
   expect(child.body).toContain("原始整段见 note #1");
 
-  // After a card is approved there is a branch, and re-cutting is the boss's respec.
-  db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 2");
-  const late = await post(
+  // g1's own dispatcher cannot reach into a child: each child gets its own turn
+  // and its own agent, and a token is only good for the group it was hired into.
+  const notMine = await post(
     app,
     "/orch/split",
     { group_id: 2, requirements: [{ idea: "a" }, { idea: "b" }] },
     "tok-disp",
+  );
+  expect(notMine.status).toBe(403);
+
+  // After a card is approved there is a branch, and re-cutting is the boss's respec.
+  db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 2");
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 2, 'dispatcher', 'opus', 'tok-disp-2', 0)",
+  );
+  const late = await post(
+    app,
+    "/orch/split",
+    { group_id: 2, requirements: [{ idea: "a" }, { idea: "b" }] },
+    "tok-disp-2",
   );
   expect(late.status).toBe(422);
   expect(await late.text()).toContain("respec");
@@ -1031,22 +1075,30 @@ test("a group blocked outside its boundary hands the work on and waits for it", 
   // tsconfig.json, which is not in its owns, so the sandbox refused the write. No
   // verb opened a requirement for it and `orch mail` creates no work, so it rewrote
   // its own code three times, escalated, and stopped.
-  const h = harness();
-  // The path check is against the real repo: an invented path must not be able to
-  // stop a group, so there has to be a repo for it to be absent from.
-  const repo = mkdtempSync(join(tmpdir(), "orch-blocked-"));
-  writeFileSync(join(repo, "package.json"), "{}");
-  mkdirSync(join(repo, "src", "a"), { recursive: true });
-  writeFileSync(join(repo, "src", "a", "x.ts"), "");
-  h.db.run("UPDATE project SET repo_path = ? WHERE id = 1", [repo]);
+  // The existence check runs in the group's own checkout, not the host's: the
+  // caller named this path from inside `/work`, and the host main checkout sits on
+  // whatever branch the boss last had out — so a file the group itself created
+  // came back as "not a file in this repo". The fake stands in for the container.
+  const present = new Set(["package.json", "src/a/x.ts", "tsconfig.json"]);
+  const h = harness((cmd) => {
+    const m = /^test -e '\/work\/(.+)'$/.exec(cmd);
+    return m ? { code: present.has(m[1]!) ? 0 : 1 } : {};
+  });
   h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
   const blocked = (b: unknown, tok = "tok-eng") => post(h.app, "/orch/blocked", b, tok);
 
   expect((await blocked({ group_id: 1, path: "tsconfig.json" })).status).toBe(422);
-  expect((await blocked({ group_id: 1, path: "nope.json", why: "缺一行配置" })).status).toBe(422);
+  // An invented path must not be able to stop a group. The `--why` here is long
+  // enough to get past the length check, or this asserts that instead — which is
+  // what it used to do, so the existence check was never covered at all.
+  const invented = await blocked({ group_id: 1, path: "nope.json", why: "缺一行配置，闸门过不了" });
+  expect(invented.status).toBe(422);
+  expect(await invented.text()).toContain("not a file in your checkout");
   // Inside its own boundary it is expected to fix it — saying otherwise is the
   // cheap way out of difficult work.
-  expect((await blocked({ group_id: 1, path: "src/a/x.ts", why: "缺一行配置" })).status).toBe(422);
+  const mine = await blocked({ group_id: 1, path: "src/a/x.ts", why: "缺一行配置，闸门过不了" });
+  expect(mine.status).toBe(422);
+  expect(await mine.text()).toContain("inside your own boundary");
 
   const r = await blocked({ group_id: 1, path: "package.json", why: "缺 allowImportingTsExtensions，闸门必红" });
   expect(r.status).toBe(200);

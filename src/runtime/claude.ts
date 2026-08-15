@@ -99,8 +99,17 @@ export interface TurnRunner {
   ): AsyncGenerator<string, { code: number; err: string }, void>;
 }
 
-/** Where a turn's prompt lands inside the sandbox. Overwritten every turn. */
-export const PROMPT_PATH = "/tmp/orch-prompt.txt";
+/**
+ * Where a call's prompt lands inside the sandbox — one file per call.
+ *
+ * It used to be a single fixed name, overwritten every turn. That held only
+ * because the scheduler keys every group-less job to slot 0, so exactly one
+ * standing turn runs at a time across the whole fleet and nothing else ever
+ * wrote it. Both halves of that are accidents: a project sandbox is shared by
+ * every standing role, and the index calls run in one too. Two writers, one
+ * path, and the loser reads the other's prompt.
+ */
+export const promptPath = (): string => `/tmp/orch-prompt-${crypto.randomUUID()}.txt`;
 
 export interface TurnSpec {
   stable: StablePrompt;
@@ -215,8 +224,11 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
   // The exec API has no stdin, so the prompt travels as a file. It is the same
   // bytes either way, and the agent can already read everything in its own
   // sandbox.
-  await spec.runner.put(PROMPT_PATH, spec.prompt);
-  const cmd = `claude ${buildArgv(spec).map(shq).join(" ")} < ${PROMPT_PATH}`;
+  const promptFile = promptPath();
+  await spec.runner.put(promptFile, spec.prompt);
+  // Removed by the shell that read it: nothing else knows when this file stops
+  // being needed, and a `/tmp` full of transcripts is the container's problem.
+  const cmd = `claude ${buildArgv(spec).map(shq).join(" ")} < ${promptFile}; rc=$?; rm -f ${promptFile}; exit $rc`;
 
   const ac = new AbortController();
   spec.signal?.addEventListener("abort", () => ac.abort(), { once: true });

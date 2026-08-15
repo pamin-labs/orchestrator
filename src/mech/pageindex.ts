@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DB } from "../db.ts";
+import type { Ctx } from "../api.ts";
+import { execIn, putFile, WORK, type Scope } from "./sandbox.ts";
+import { promptPath } from "../runtime/claude.ts";
+import { shq } from "./shq.ts";
 
 /**
  * PageIndex over this repo: a summary tree, navigated by reasoning.
@@ -87,28 +91,26 @@ export async function summarise(
   read: Read,
   ask: Ask,
   opts: { maxCalls?: number; previous?: Tree } = {},
-): Promise<{ tree: Tree; calls: number }> {
+): Promise<{ tree: Tree; calls: number; failed: number }> {
   const prev = opts.previous ?? {};
   let calls = 0;
+  let failed = 0;
   const budget = opts.maxCalls ?? 40;
 
   const files = Object.values(tree).filter((n) => n.kind === "file");
   for (const n of files) {
     const head = read(n.id)?.slice(0, HEAD_CHARS);
     if (!head) continue;
-    n.sig = sigOf(head);
+    const sig = sigOf(head);
     const old = prev[n.id];
-    if (old && old.sig === n.sig) {
+    if (old && old.sig === sig) {
+      n.sig = sig;
       n.summary = old.summary;
       continue;
     }
     if (calls >= budget) continue; // Next tick takes the rest; a partial tree still works.
     calls++;
-    // Recorded whether or not the summary came back: a node that fails to
-    // summarise must be retried when the file changes, not on every tick forever.
-    // Without this a broken model call is an infinite loop that spends money and
-    // writes a feed line every thirty seconds.
-    n.summary = oneLine(
+    const summary = oneLine(
       await ask(
         (n.id.startsWith(NOTE_PREFIX)
           ? `One line, under 20 words: what does this note establish? Name the decision or fact, not the format.\n\n`
@@ -116,6 +118,21 @@ export async function summarise(
           `----\n${head}\n----`,
       ),
     );
+    // The signature is written only on an answer.
+    //
+    // It used to be stamped before the call and kept whatever came back, `""`
+    // included, so that a broken model would not be retried every thirty seconds
+    // forever. That traded a retry loop for something worse: on a machine where
+    // the ask could not work at all, every node got an empty summary *and* a
+    // signature, the next tick matched it, and the index was permanently empty
+    // while reporting itself built. Cost is bounded by `maxCalls` per tick
+    // already; nothing needs a failure cached as if it were a success.
+    if (!summary) {
+      failed++;
+      continue;
+    }
+    n.sig = sig;
+    n.summary = summary;
   }
 
   // The root is never shown in a menu — search starts from its children — so a
@@ -125,19 +142,26 @@ export async function summarise(
     .sort((a, b) => b.id.split("/").length - a.id.split("/").length);
   for (const d of dirs) {
     const kids = d.children.map((c) => `${c}: ${tree[c]?.summary ?? ""}`).join("\n");
-    d.sig = sigOf(kids);
+    const sig = sigOf(kids);
     const old = prev[d.id];
-    if (old && old.sig === d.sig) {
+    if (old && old.sig === sig) {
+      d.sig = sig;
       d.summary = old.summary;
       continue;
     }
     if (calls >= budget) continue;
     calls++;
-    d.summary = oneLine(
+    const summary = oneLine(
       await ask(`One line, under 20 words: what does ${d.id} hold, as a whole?\n\n${kids.slice(0, 4000)}`),
     );
+    if (!summary) {
+      failed++;
+      continue;
+    }
+    d.sig = sig;
+    d.summary = summary;
   }
-  return { tree, calls };
+  return { tree, calls, failed };
 }
 
 const oneLine = (s: string) => s.trim().split("\n").filter(Boolean).pop()?.slice(0, 160) ?? "";
@@ -214,40 +238,93 @@ export function render(tree: Tree, ids: string[]): string {
  * command, and codex's sandbox governs the commands the model asks for, not
  * codex's own API traffic.
  */
+export interface AskUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreate: number;
+}
+
 export function modelAsk(
+  ctx: Ctx,
   spec: { runtime?: string; model: string },
-  cwd: string,
+  scope: Scope,
   timeoutMs = 60_000,
+  /**
+   * Called once per call with what it cost.
+   *
+   * A callback rather than a change to `Ask`, because `summarise` and `search`
+   * are pure and injectable and six tests depend on that. It is also the whole of
+   * the cost fix: this is the most frequent model call in the system and it
+   * appeared in no report at all, because it is not a turn and `cost.ts` reads
+   * turns.
+   */
+  onUsage?: (u: AskUsage) => void,
 ): Ask {
   const codex = spec.runtime === "codex";
-  // codex takes the prompt on stdin (it announces "Reading prompt from stdin…"),
-  // claude takes it as an argument. No `--max-turns 1` on the claude side:
-  // measured, it makes `claude -p` exit 0 with the body "Error: Reached max turns
-  // (1)", so every summary in the index became that sentence and nothing noticed
-  // because the exit code said fine.
+  // Both take the prompt on stdin, redirected from a file: the exec API has no
+  // stdin, and this is the same route a turn's prompt takes. No `--max-turns 1`
+  // on the claude side: measured, it makes `claude -p` exit 0 with the body
+  // "Error: Reached max turns (1)", so every summary in the index became that
+  // sentence and nothing noticed because the exit code said fine.
+  //
+  // No `--ignore-user-config` needed any more either. It was there because this
+  // ran on the host with the boss's own `~/.claude` and `~/.codex` in scope;
+  // inside the container HOME is `/root` and holds only what we put there.
   const argv = codex
-    ? ["codex", "exec", "--json", "--skip-git-repo-check", "-s", "read-only",
-       "--ignore-user-config", "--ignore-rules", "-m", spec.model]
-    : ["claude", "-p", "--model", spec.model];
+    ? ["codex", "exec", "--json", "--skip-git-repo-check", "-s", "read-only", "-m", spec.model]
+    : // `--output-format json` so the call reports what it spent. Plain text says
+      // nothing, and this was the reason the index was invisible in every cost
+      // total while being the most frequent model call there is.
+      ["claude", "-p", "--output-format", "json", "--model", spec.model];
   return async (prompt) => {
-    const p = Bun.spawn(codex ? argv : [...argv, prompt], {
-      cwd,
-      stdin: codex ? new TextEncoder().encode(prompt) : undefined,
-      stdout: "pipe",
-      stderr: "ignore",
-    });
-    const timer = setTimeout(() => p.kill(), timeoutMs);
-    try {
-      const out = await new Response(p.stdout).text();
-      if ((await p.exited) !== 0) return "";
-      if (codex) return lastAgentMessage(out);
-      // The CLI reports its own failures on stdout with exit 0, so the exit code
-      // is not the check.
-      return /^\s*Error:/.test(out) ? "" : out;
-    } finally {
-      clearTimeout(timer);
-    }
+    const file = promptPath();
+    await putFile(ctx, scope, file, prompt);
+    const cmd = `${argv.map(shq).join(" ")} < ${file}; rc=$?; rm -f ${file}; exit $rc`;
+    const r = await execIn(ctx, scope, cmd, { cwd: WORK, timeoutMs }).catch(() => null);
+    if (!r || r.code !== 0) return "";
+    const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
+    if (usage) onUsage?.(usage);
+    return text;
   };
+}
+
+const usageOf = (u: Record<string, any> | undefined, cacheReadKey: string, cacheCreateKey: string): AskUsage => ({
+  input: Number(u?.input_tokens ?? 0),
+  output: Number(u?.output_tokens ?? 0),
+  cacheRead: Number(u?.[cacheReadKey] ?? 0),
+  cacheCreate: Number(u?.[cacheCreateKey] ?? 0),
+});
+
+/** `claude -p --output-format json`: one object, with the answer and the bill. */
+function readClaude(out: string): { text: string; usage?: AskUsage } {
+  try {
+    const o = JSON.parse(out) as { result?: string; is_error?: boolean; usage?: Record<string, any> };
+    if (o.is_error) return { text: "" };
+    return {
+      text: typeof o.result === "string" ? o.result : "",
+      usage: usageOf(o.usage, "cache_read_input_tokens", "cache_creation_input_tokens"),
+    };
+  } catch {
+    // Not JSON: the CLI reports some of its own failures as plain text on stdout
+    // with exit 0, so the exit code is not the check and neither is the parse.
+    return { text: /^\s*Error:/.test(out) ? "" : out };
+  }
+}
+
+/** `codex exec --json`: a stream, whose `turn.completed` carries the usage. */
+function readCodex(out: string): { text: string; usage?: AskUsage } {
+  let usage: AskUsage | undefined;
+  for (const line of out.split("\n")) {
+    if (!line.startsWith("{")) continue;
+    try {
+      const l = JSON.parse(line) as { type?: string; usage?: Record<string, any> };
+      if (l.type === "turn.completed" && l.usage) {
+        usage = usageOf(l.usage, "cached_input_tokens", "cache_write_input_tokens");
+      }
+    } catch {}
+  }
+  return { text: lastAgentMessage(out), usage };
 }
 
 /** `codex exec --json` prints a banner and a stream; the answer is the last agent_message. */
@@ -263,6 +340,58 @@ function lastAgentMessage(out: string): string {
     } catch {}
   }
   return text;
+}
+
+/**
+ * Charge an index call to the project's `indexer`.
+ *
+ * A row, not a role: `costReport` reads `agent.total_tokens` and the turn events,
+ * so writing both is the whole of making this spend visible — no panel change, no
+ * new table. It is deliberately not folded into the Librarian, whose turns carry
+ * a full cached prefix and a session; putting one-shot calls in the same row
+ * would make "librarian took 4M" a number nobody can act on.
+ *
+ * And it is not made into a real role either. Retrieval is on the critical path
+ * of every agent's turn (`assemble.ts` says ALWAYS FIRST), while the scheduler
+ * runs one in-flight `agent_turn` per slot with every standing agent sharing slot
+ * 0 — so a turn asking a question would wait for a slot it is itself holding.
+ *
+ * Inert by construction: watchdog rule 2 needs `idle_turns >= 3` and rule 3 needs
+ * a `loop_file`, and nothing here writes either; the scheduler only ever looks at
+ * agents a job points to.
+ */
+export function chargeIndex(
+  ctx: Ctx,
+  projectId: number,
+  spec: { runtime?: string; model: string },
+  u: AskUsage,
+): void {
+  const runtime = spec.runtime ?? "claude";
+  const total = u.input + u.output + u.cacheRead + u.cacheCreate;
+  if (total === 0) return;
+  const row = ctx.db
+    .query<{ id: number }, [number, string]>(
+      "SELECT id FROM agent WHERE project_id = ? AND grp_id IS NULL AND role = 'indexer' AND runtime = ?",
+    )
+    .get(projectId, runtime);
+  const id =
+    row?.id ??
+    ctx.db
+      .query<{ id: number }, [number, string, string]>(
+        `INSERT INTO agent (project_id, grp_id, role, model, runtime, state, created_at)
+         VALUES (?, NULL, 'indexer', ?, ?, 'idle', unixepoch() * 1000) RETURNING id`,
+      )
+      .get(projectId, spec.model, runtime)!.id;
+  ctx.db.run("UPDATE agent SET total_tokens = total_tokens + ?, model = ? WHERE id = ?", [total, spec.model, id]);
+  // The same event shape `recordCost` emits, because that is what the hourly
+  // burn chart reads — an event row has no agent to join back to, so the runtime
+  // has to travel in the meta or the split guesses from the model name.
+  ctx.bus.emit({
+    author: "indexer",
+    kind: "tool_summary",
+    body: `index call (${total} tokens)`,
+    meta: { usage: u, model: spec.model, runtime },
+  });
 }
 
 /** The repo half of the corpus. */

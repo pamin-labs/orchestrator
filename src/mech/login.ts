@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Ctx } from "../api.ts";
-import { saveAuth, type AuthMode } from "./auth.ts";
+import { hostCodexHome, saveAuth, type AuthMode } from "./auth.ts";
 
 /**
  * Logging in without leaving the panel.
@@ -46,9 +46,9 @@ const COMMANDS: Record<string, { argv: string[]; mode: AuthMode; capture: (out: 
     mode: "oauth_token",
     capture: (out) => out.match(CLAUDE_TOKEN_RE)?.[0] ?? null,
   },
-  // Writes ~/.codex/auth.json and prints nothing worth keeping, so the
-  // credential is read from where it landed. This does log this machine in,
-  // which is what `codex login` is for.
+  // Writes `$CODEX_HOME/auth.json` (default `~/.codex`) and prints nothing worth
+  // keeping, so the credential is read from where it landed. This does log this
+  // machine in, which is what `codex login` is for.
   codex: {
     argv: ["codex", "login"],
     mode: "chatgpt",
@@ -114,7 +114,10 @@ export function startLogin(ctx: Ctx, runtime: string, home = homedir()): LoginRu
     }
     const secret =
       spec.capture(clean(`${out}\n${err}`)) ??
-      (runtime === "codex" ? await Bun.file(join(home, ".codex/auth.json")).text().catch(() => "") : "");
+      // `$CODEX_HOME` if the boss has one. Hardcoding `~/.codex` meant the login
+      // succeeded, wrote somewhere else, and this read nothing — surfacing as
+      // "finished but produced no credential", which reads like the CLI failed.
+      (runtime === "codex" ? await Bun.file(join(hostCodexHome(home), "auth.json")).text().catch(() => "") : "");
     if (!secret.trim()) {
       return { ok: false, detail: `${spec.argv[0]} finished but produced no credential` };
     }

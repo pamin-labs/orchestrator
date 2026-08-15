@@ -1,5 +1,5 @@
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary } from "./claude.ts";
-import { PROMPT_PATH, summarizeTool } from "./claude.ts";
+import { promptPath, summarizeTool } from "./claude.ts";
 import { shq } from "../mech/shq.ts";
 
 /**
@@ -110,8 +110,10 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
     : `${spec.stable.systemAppend}\n\n---\n\n${spec.prompt}`;
 
   // No stdin on the exec API, so the prompt travels as a file in the sandbox.
-  await spec.runner.put(PROMPT_PATH, input);
-  const cmd = `codex ${buildArgv(spec).map(shq).join(" ")} < ${PROMPT_PATH}`;
+  // One file per call — a project sandbox is shared by every standing role.
+  const promptFile = promptPath();
+  await spec.runner.put(promptFile, input);
+  const cmd = `codex ${buildArgv(spec).map(shq).join(" ")} < ${promptFile}; rc=$?; rm -f ${promptFile}; exit $rc`;
 
   const ac = new AbortController();
   spec.signal?.addEventListener("abort", () => ac.abort(), { once: true });

@@ -15,10 +15,12 @@ import { preflight, report } from "./mech/preflight.ts";
 import { restageSkills } from "./mech/skills.ts";
 import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/notify.ts";
 import { dispatchFeedback, makeGhRunner, openPr, pollPrs, prBody } from "./mech/prwatch.ts";
-import { bothRead, modelAsk, noteLeaves, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
+import { bothRead, chargeIndex, modelAsk, noteLeaves, saveTree, skeleton, summarise, loadTree } from "./mech/pageindex.ts";
+import { indexable } from "./mech/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
 import { abortAll } from "./runtime/running.ts";
+import { isOnline } from "./mech/net.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -44,7 +46,18 @@ export interface Started {
  * `gh` is deliberately not here — PR preflight reports that per project.
  */
 export function missingBinaries(): string[] {
-  return ["git", "claude"].filter((bin) => {
+  // `git` only.
+  //
+  // This used to demand `claude` as well, on the reasoning quoted below: every
+  // turn would fail with the same error. That stopped being true at 005 — turns
+  // run `claude`/`codex` **inside the container**, and the only host uses left are
+  // the login button and the codex refresher, both optional and both reported by
+  // preflight. Requiring it meant a headless box with docker, the image and a
+  // pasted token refused to start, and said something false about why.
+  //
+  // `git` stays: the host really does run it, for the bundle in and out and the
+  // push (`checkout.ts`, `prwatch.ts`).
+  return ["git"].filter((bin) => {
     try {
       Bun.spawnSync([bin, "--version"], { stdout: "ignore", stderr: "ignore" });
       return false;
@@ -142,8 +155,27 @@ function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
  */
 const indexedAt = new Map<number, string>();
 
-async function refreshIndex(ctx: Ctx, _workRoot: string): Promise<void> {
-  if (!ctx.git || !ctx.ask) return;
+/**
+ * Per-project excludes for the index, on top of the built-in ones.
+ *
+ * Whatever `indexable` still gets wrong is the boss's to correct rather than
+ * ours to keep guessing at — the same arrangement `detect.ts` uses for gates:
+ * best-effort detection, written where it can be edited.
+ */
+function indexExcludes(db: Ctx["db"], projectId: number): string[] {
+  const row = db
+    .query<{ config_json: string | null }, [number]>("SELECT config_json FROM project WHERE id = ?")
+    .get(projectId);
+  try {
+    const globs = JSON.parse(row?.config_json ?? "{}")?.index?.exclude;
+    return Array.isArray(globs) ? globs.filter((g: unknown) => typeof g === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+async function refreshIndex(ctx: Ctx): Promise<void> {
+  if (!ctx.git || !ctx.askIn) return;
   for (const p of ctx.db
     .query<{ id: number; repo_path: string }, []>("SELECT id, repo_path FROM project")
     .all()) {
@@ -156,25 +188,51 @@ async function refreshIndex(ctx: Ctx, _workRoot: string): Promise<void> {
 
     const ls = await ctx.git(p.repo_path, ["ls-files"], p.repo_path);
     if (ls.code !== 0) continue;
-    const files = ls.out.split("\n").map((l) => l.trim()).filter((f) => /\.(ts|tsx|js|jsx|md|yaml|yml)$/.test(f));
+    // Read once, not once per file: this is inside a `filter` over every tracked
+    // path, and the excludes do not change while it runs.
+    const excludes = indexExcludes(ctx.db, p.id);
+    const files = ls.out
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((f) => indexable(f, excludes));
     // One tree over both corpora: the repo answers "where is the code" and the
     // blackboard answers "what did we already decide about it", and an agent
     // asking either question should not have to know which one it is asking.
     const notes = noteLeaves(ctx.db, p.id);
-    const { tree, calls } = await summarise(skeleton([...files, ...notes.ids]), bothRead(p.repo_path, notes.read), ctx.ask, {
-      previous: loadTree(ctx.db, p.id) ?? {},
-      maxCalls: 12,
-    });
+    // In the project's own sandbox, on the credential the boss configured —
+    // never the host's CLI login. That was a second credential path nothing
+    // could see, and its failure wrote an empty summary that the signature cache
+    // then made permanent.
+    const ask = ctx.askIn({ project: p.id });
+    const { tree, calls, failed } = await summarise(
+      skeleton([...files, ...notes.ids]),
+      bothRead(p.repo_path, notes.read),
+      ask,
+      { previous: loadTree(ctx.db, p.id) ?? {}, maxCalls: 12 },
+    );
     saveTree(ctx.db, p.id, tree);
     // Only when the budget was not spent: a partial pass has more to do, and
     // marking it done would leave the tail of the repo unsummarised until the next
-    // commit.
-    if (at && calls < 12) indexedAt.set(p.id, at);
-    if (calls > 0) {
+    // commit. A pass that failed is not done either — leaving the sha unrecorded
+    // is what makes the next tick try again instead of declaring an empty tree
+    // finished.
+    if (at && calls < 12 && failed === 0) indexedAt.set(p.id, at);
+    // Every call failing means the model is unreachable, not that the repo is
+    // boring. Said once per pass rather than swallowed: the old behaviour cached
+    // the empty answers and the index stayed empty forever, looking built.
+    if (failed > 0 && failed === calls) {
+      ctx.bus.emit({
+        author: "librarian",
+        kind: "escalation",
+        intent: "inform",
+        severity: "blocker",
+        body: `PageIndex 建不起来：${failed} 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。`,
+      });
+    } else if (calls > 0) {
       ctx.bus.emit({
         author: "librarian",
         kind: "state_change",
-        body: `PageIndex: summarised ${calls} node(s), ${files.length} files indexed`,
+        body: `PageIndex: summarised ${calls - failed} node(s), ${files.length} files indexed`,
       });
     }
   }
@@ -186,13 +244,26 @@ export function start(overrides: Partial<Config> = {}): Started {
   const missing = missingBinaries();
   if (missing.length) {
     throw new Error(
-      `not on PATH: ${missing.join(", ")}. Every agent turn would fail with the same error, ` +
-        `one job at a time. Install them first.`,
+      `not on PATH: ${missing.join(", ")}. The host runs git itself — the branch goes out ` +
+        `as a bundle and the PR is pushed from here — so nothing would work. Install it first.`,
     );
   }
   mkdirSync(cfg.dataDir, { recursive: true });
 
-  const db = open(join(cfg.dataDir, "orchestrator.sqlite"));
+  const dbPath = join(cfg.dataDir, "orchestrator.sqlite");
+  const db = open(dbPath);
+  // The provider tokens are in `runtime_auth`, in plain text, and this file was
+  // created 0644 under a 0755 directory — readable by every account on the
+  // machine. `.gitignore` keeps it out of the repository, which is a different
+  // question from who on this host may read it.
+  //
+  // Best-effort: chmod is a no-op for permission bits on Windows, and a file on a
+  // filesystem that does not carry modes is not a reason to refuse to start.
+  for (const p of [cfg.dataDir, dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+    try {
+      chmodSync(p, p === cfg.dataDir ? 0o700 : 0o600);
+    } catch {}
+  }
   const bus = new Bus(db);
   const gitLock = new RepoLock();
   const roles = loadRoles();
@@ -203,6 +274,9 @@ export function start(overrides: Partial<Config> = {}): Started {
   const sched = new Scheduler(db, (job) => exec!(job), {
     maxGroups: cfg.maxGroups,
     leaseSlots: cfg.leaseSlots,
+    // The watchdog probes; this only reads the answer, so a tick never blocks a
+    // dispatch decision on a DNS timeout.
+    online: isOnline,
   });
 
   const git = makeGitRunner(gitLock);
@@ -217,11 +291,21 @@ export function start(overrides: Partial<Config> = {}): Started {
     sandbox: REAL,
     // Cheapest tier: navigating a tree of one-line summaries is not a reasoning
     // job, and this runs on every `orch ctx query`.
-    ask: modelAsk(cfg.indexModel, ROOT),
+    // Charged to the project's `indexer` row, so the most frequent model call in
+    // the system stops being invisible in every cost total. Group-scoped calls
+    // bill the group's project; a project-scoped one bills itself.
+    askIn: (scope) =>
+      modelAsk(ctx, cfg.indexModel, scope, undefined, (u) => {
+        const projectId =
+          "project" in scope
+            ? scope.project
+            : db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)
+                ?.project_id;
+        if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u);
+      }),
     waiters: new Map(),
     config: {
       language: cfg.language,
-      workRoot: cfg.workRoot,
       sliceBudgetTokens: cfg.sliceBudgetTokens,
       dataDir: cfg.dataDir,
       skillsDir: cfg.skillsDir,
@@ -390,9 +474,15 @@ export function start(overrides: Partial<Config> = {}): Started {
     const batched = batchForBoss(waiting, url);
     if (batched) void notifier.push(batched);
 
+    // Both of these need the network — the index spawns a model, `pollPrs` asks
+    // GitHub — so they sit behind the same gate the scheduler uses. Offline they
+    // would each spend their timeout every thirty seconds and fill the feed with
+    // failures the boss can do nothing about.
+    if (!isOnline()) return;
+
     // Keep the PageIndex tree current. Incremental by file signature, so a quiet
     // repo costs zero model calls; a busy one pays for the files that changed.
-    void refreshIndex(ctx, cfg.workRoot);
+    void refreshIndex(ctx);
 
     // Polling is arithmetic, not judgement, so it happens here rather than in an
     // agent. Only a change wakes the PM.

@@ -1,9 +1,8 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { DB } from "../db.ts";
 import type { RateLimitInfo } from "../runtime/claude.ts";
-import { subscriptionAccount } from "./auth.ts";
+import { CODEX_HOME, loadAuth, subscriptionAccount } from "./auth.ts";
 
 /**
  * How much of the claude subscription's windows is gone.
@@ -15,13 +14,15 @@ import { subscriptionAccount } from "./auth.ts";
  * side needs a poller.
  *
  * The endpoint is the one every community monitor uses and is not documented by
- * Anthropic. Everything here therefore degrades rather than fails: no keychain
- * entry, an expired token, a changed response — the header falls back to the
- * status and reset time the stream does give us. Nothing in the orchestrator may
- * depend on this working.
+ * Anthropic. Everything here therefore degrades rather than fails: no credential,
+ * an expired token, a changed response — the header falls back to the status and
+ * reset time the stream does give us. Nothing in the orchestrator may depend on
+ * this working, and upstream says it barely does: anthropics/claude-code#31637
+ * and #31021 report it 429ing so hard that polling it at any interval is
+ * unusable, for hours at a time.
  *
- * Read-only on the credentials. Claude Code owns that token and refreshes it;
- * writing there from here would fight the process that maintains it.
+ * The credential is the one on the settings page. Nothing here reads a host CLI
+ * session — see `usageToken`.
  */
 
 const ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
@@ -84,29 +85,22 @@ export function toRateLimit(u: UsageResponse): RateLimitInfo | null {
 }
 
 /**
- * The OAuth access token Claude Code is using.
+ * The token the usage call is made with: the one on the settings page.
  *
- * macOS keeps it in the keychain, other platforms in a file. Both are read, in
- * that order, and either missing is a normal state — the boss may be on an API
- * key, or not logged in at all.
+ * This used to read the *host's* own Claude Code login — the macOS keychain
+ * entry, falling back to `~/.claude/.credentials.json` — which contradicted the
+ * check three lines below it. `subscriptionAccount` gates on `runtime_auth`,
+ * whose own comment says a bar sourced from "whatever this host happens to be
+ * logged into" would be about an account the fleet never touches; and then the
+ * number came from exactly that. Two different accounts, one label.
+ *
+ * It was also the last place anything reached into a host CLI session, and the
+ * only platform-specific one in the file — `security` is macOS, the file
+ * fallback is Linux, and Windows had neither.
  */
-export async function claudeToken(home = homedir()): Promise<string | null> {
-  try {
-    const p = Bun.spawn(["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"], {
-      stdout: "pipe",
-      stderr: "ignore",
-    });
-    const out = await new Response(p.stdout).text();
-    if ((await p.exited) === 0 && out.trim()) {
-      const t = JSON.parse(out).claudeAiOauth?.accessToken;
-      if (t) return t as string;
-    }
-  } catch {}
-  try {
-    const f = join(home, ".claude/.credentials.json");
-    if (existsSync(f)) return JSON.parse(readFileSync(f, "utf8")).claudeAiOauth?.accessToken ?? null;
-  } catch {}
-  return null;
+function usageToken(db: DB): string | null {
+  const a = loadAuth(db, "claude");
+  return a?.mode === "oauth_token" ? a.secret : null;
 }
 
 /**
@@ -154,11 +148,11 @@ export async function pollClaudeUsage(db: DB, now = Date.now()): Promise<boolean
     .get()?.json;
   const throttled = !!prev && prev.includes('"error":"rate_limited"');
   if (last && now - last < (throttled ? BACKOFF_MS : POLL_EVERY_MS)) return false;
-  // Read-only, and from this host: Claude Code owns the token and refreshes it.
-  // Missing is a normal state — the boss may not have run the login on this
-  // machine — and it writes nothing rather than an error, because a failure to
-  // read is not news the header can act on.
-  const token = await claudeToken();
+  // The settings-page credential, which is also the one `subscriptionAccount`
+  // just checked. An api_key or a ChatGPT-style login has no OAuth token to ask
+  // with, and that writes nothing rather than an error: a missing gauge is not
+  // news the header can act on.
+  const token = usageToken(db);
   if (!token) return false;
 
   // Stamped before the attempt, not after a success. The watchdog ticks every 30s,
@@ -207,8 +201,14 @@ function json_clear(good: string): string {
  * turn.completed and nothing else — checked against six real turn logs from this
  * repo. `token_count`, which carries `rate_limits`, is a TUI event. But codex
  * writes a rollout file per session under $CODEX_HOME/sessions, and that file has
- * the same `rate_limits` object in it. Since the orchestrator sets CODEX_HOME
- * itself (codexHome()), those files are ours to read.
+ * the same `rate_limits` object in it.
+ *
+ * **Where those files are moved with the turns.** Since 005 a turn runs in a
+ * container and `CODEX_HOME` is `/root/.codex` *inside it*, so the host's
+ * `<dataDir>/codex-home/sessions` holds only the weekly refresh nudge's own
+ * rollout — the quota it reports is the account's, and correct, but as of
+ * whenever the nudge last ran. The fleet's own sessions, the fresh ones, are in
+ * the sandboxes. So the sandbox is asked first and the host is the fallback.
  *
  * The shape is not the one the TUI streams: windows come back as
  * `{used_percent, window_minutes, resets_at}` with `resets_at` absolute, and an
@@ -216,6 +216,18 @@ function json_clear(good: string): string {
  * window and a null secondary. So the window is identified by its length rather
  * than by which slot it arrived in.
  */
+export function rateLimitsIn(text: string, now: number): RateLimitInfo | null {
+  // Last reading in the file wins: it grows as the session runs.
+  for (const raw of objectsAfter(text, '"rate_limits":').reverse()) {
+    try {
+      const rl = JSON.parse(raw) as { primary?: CodexWindow; secondary?: CodexWindow };
+      const out = fromCodex(rl.primary ?? null, rl.secondary ?? null, now);
+      if (out) return out;
+    } catch {}
+  }
+  return null;
+}
+
 export function codexUsage(dataDir: string, now = Date.now()): RateLimitInfo | null {
   // Not just the newest file: a session that ended before its first quota ping has
   // none, and short ones are common. Walk back through the recent ones.
@@ -226,17 +238,21 @@ export function codexUsage(dataDir: string, now = Date.now()): RateLimitInfo | n
     } catch {
       continue;
     }
-    // Last reading in the file wins: it grows as the session runs.
-    for (const raw of objectsAfter(text, '"rate_limits":').reverse()) {
-      try {
-        const rl = JSON.parse(raw) as { primary?: CodexWindow; secondary?: CodexWindow };
-        const out = fromCodex(rl.primary ?? null, rl.secondary ?? null, now);
-        if (out) return out;
-      } catch {}
-    }
+    const out = rateLimitsIn(text, now);
+    if (out) return out;
   }
   return null;
 }
+
+/**
+ * The tail of the newest rollout in a container, for the same parse.
+ *
+ * The tail, because a rollout is a whole transcript and only the last quota ping
+ * in it matters. One `find`, one `tail`, on the watchdog's five-minute clock.
+ */
+export const NEWEST_ROLLOUT =
+  `f=$(find ${CODEX_HOME}/sessions -type f -name '*.jsonl' -printf '%T@ %p\\n' 2>/dev/null | ` +
+  `sort -rn | head -1 | cut -d' ' -f2-); [ -n "$f" ] && tail -c 200000 "$f"`;
 
 /**
  * Every JSON object following `key` in the text, brace-matched.
@@ -315,8 +331,19 @@ function recentFiles(root: string, limit: number): string[] {
   return all.sort((a, b) => b.at - a.at).slice(0, limit).map((f) => f.path);
 }
 
-/** Both providers, on the watchdog's clock. */
-export async function pollUsage(db: DB, dataDir: string, now = Date.now()): Promise<void> {
+/**
+ * Both providers, on the watchdog's clock.
+ *
+ * `fromSandbox` is injected rather than reached for, like every other network or
+ * container call on this tick: a unit test must not need a running sandbox to
+ * poll usage, and the fallback has to be exercised on its own.
+ */
+export async function pollUsage(
+  db: DB,
+  dataDir: string,
+  now = Date.now(),
+  fromSandbox?: () => Promise<string | null>,
+): Promise<void> {
   await pollClaudeUsage(db, now);
   // Same rule as claude, stated rather than inferred: an api_key session's rollout
   // file happens to carry no `rate_limits`, so this used to be right by accident.
@@ -324,7 +351,21 @@ export async function pollUsage(db: DB, dataDir: string, now = Date.now()): Prom
     db.run("DELETE FROM usage_snapshot WHERE runtime = 'codex'");
     return;
   }
-  const rl = codexUsage(dataDir, now);
+  // The sandboxes first: that is where the fleet's own sessions are now, and the
+  // host copy is only ever as fresh as the last weekly refresh nudge.
+  //
+  // On the same clock as the claude poll, and for the same reason one layer over:
+  // reading it is a `commands.run` at ~1s inside a container the agents are
+  // sharing, and the watchdog ticks every 30s. A quota gauge does not need to be
+  // a second of container time twice a minute.
+  let rl: RateLimitInfo | null = null;
+  const last = db
+    .query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'codex'")
+    .get()?.at;
+  if (last && now - last < POLL_EVERY_MS) return;
+  const rollout = await fromSandbox?.().catch(() => null);
+  if (rollout) rl = rateLimitsIn(rollout, now);
+  if (!rl) rl = codexUsage(dataDir, now);
   if (!rl) return;
   db.run(
     `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('codex', ?, ?)

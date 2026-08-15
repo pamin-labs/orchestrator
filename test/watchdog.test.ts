@@ -38,16 +38,25 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     // sandbox. Not an ancestor = the group has not rebased yet, which is the
     // condition every rule below is about.
     sandbox: fakeSandbox((cmd) => (cmd.includes("merge-base") ? { code: 1 } : { code: 0 })), waiters: new Map(),
-    config: { language: cfg.language, workRoot: "/tmp/x" },
+    config: { language: cfg.language},
   };
-  // No network on a watchdog tick in tests: the usage endpoint hung on its 10s
-  // timeout inside a gate sandbox and took the whole suite red with it.
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 't', 0)",
   );
-  const deps = { ctx, cfg, git: ctx.git!, now: () => 1_000_000, pollUsage: async () => {} };
+  // No network on a watchdog tick in tests, and that now covers two calls: the
+  // usage endpoint (which once hung on its 10s timeout inside a gate sandbox and
+  // took the suite red) and the reachability probe. Both are injected for the
+  // same reason — a test that asks the network is a test that fails on a train.
+  const deps = {
+    ctx,
+    cfg,
+    git: ctx.git!,
+    now: () => 1_000_000,
+    pollUsage: async () => {},
+    probe: async () => ({ online: true, changed: false }),
+  };
   return { db, ctx, sched, cfg, deps };
 }
 
@@ -834,4 +843,35 @@ test("a dissolved group's sandbox is killed, so it stops holding two containers"
   const findings = await runWatchdog(h.deps);
   expect(findings.map((x) => x.rule)).toContain("sandbox_swept");
   expect(killed).toEqual(['{"grp":1}']);
+});
+
+test("losing the network holds the fleet without pausing a single requirement", async () => {
+  const h = harness();
+  h.db.run(
+    "INSERT INTO job (kind, grp_id, agent_id, payload_json, state, started_at, enqueued_at) " +
+      "VALUES ('agent_turn', 1, 1, '{\"role\":\"engineer\"}', 'running', 0, 0)",
+  );
+  h.db.run("UPDATE agent SET state = 'running' WHERE id = 1");
+
+  const f = await runWatchdog({ ...h.deps, probe: async () => ({ online: false, changed: true }) });
+  expect(f.map((x) => x.rule)).toContain("network_lost");
+
+  // The work goes back on the queue and the requirement stays RUNNING. Pausing it
+  // is what would need a human afterwards: nothing takes a group out of PAUSED,
+  // and the park timer would file it away while the network was down.
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
+  expect(
+    h.db.query<{ n: number }, []>("SELECT count(*) AS n FROM job WHERE state = 'pending' AND kind = 'agent_turn'")
+      .get()!.n,
+  ).toBe(1);
+  expect(h.db.query<{ state: string }, []>("SELECT state FROM agent WHERE id = 1").get()!.state).toBe("idle");
+});
+
+test("an offline tick does not run the rules that need the network", async () => {
+  // Every rule below the gate is a restatement of state we recorded ourselves, and
+  // none is worth a two-second DNS timeout each. This one would otherwise fire.
+  const h = harness({ turnTimeoutMs: 1000 });
+  h.db.run("INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 0, 0)");
+  const f = await runWatchdog({ ...h.deps, probe: async () => ({ online: false, changed: false }) });
+  expect(f.map((x) => x.rule)).not.toContain("turn_timeout");
 });

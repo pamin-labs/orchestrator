@@ -122,12 +122,28 @@ async function call(
   if (MAILBOX) return viaMailbox(method, path, payload);
   const headers: Record<string, string> = { "x-orch-token": TOKEN };
   if (payload !== undefined) headers["content-type"] = "application/json";
-  const res = await fetch(`${URL_BASE}${path}`, {
-    method,
-    headers,
-    body: payload === undefined ? undefined : JSON.stringify(payload),
-  });
-  return { status: res.status, text: await res.text() };
+  try {
+    const res = await fetch(`${URL_BASE}${path}`, {
+      method,
+      headers,
+      body: payload === undefined ? undefined : JSON.stringify(payload),
+    });
+    return { status: res.status, text: await res.text() };
+  } catch (e: any) {
+    // Reached only with no mailbox in the environment. Inside a container that is
+    // the whole story: 127.0.0.1 is the container, the orchestrator is not there,
+    // and `ORCH_MAILBOX` is set for a turn and for nothing else — so a gate, a
+    // lease or an install script calling `orch` lands here. Bare "connection
+    // refused" reads as "the server is down" rather than "this process was never
+    // given a route".
+    return {
+      status: 502,
+      text:
+        `cannot reach the orchestrator at ${URL_BASE}: ${e?.message ?? e}\n` +
+        `ORCH_MAILBOX is unset, so this is not running inside a turn — a gate, a lease and an ` +
+        `install script have no route to the orchestrator by design.`,
+    };
+  }
 }
 
 async function stdin(): Promise<string> {

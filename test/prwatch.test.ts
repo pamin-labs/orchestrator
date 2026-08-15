@@ -23,7 +23,7 @@ function harness() {
     // the file is a stub and the fetch is `okGit`.
     sandbox: fakeSandbox(() => ({ code: 0, out: "" })),
     waiters: new Map(),
-    config: { language: "中文", workRoot: "/tmp/x" },
+    config: { language: "中文"},
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run(

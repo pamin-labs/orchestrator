@@ -29,7 +29,7 @@ function harness(checkpoint: string) {
     gitLock: new RepoLock(),
     sandbox,
     waiters: new Map(),
-    config: { language: "中文", workRoot: "/tmp/x" },
+    config: { language: "中文"},
   } as unknown as Ctx;
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
@@ -72,7 +72,7 @@ test("a rollback that fails says so instead of reporting a clean tree", async ()
     gitLock: new RepoLock(),
     sandbox,
     waiters: new Map(),
-    config: { language: "中文", workRoot: "/tmp/x" },
+    config: { language: "中文"},
   } as unknown as Ctx;
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");

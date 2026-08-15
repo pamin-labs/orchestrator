@@ -48,7 +48,7 @@ test("adding a role is a file, not a code change", () => {
   const dir = mkdtempSync(join(tmpdir(), "orch-roles-"));
   writeFileSync(
     join(dir, "composer.yaml"),
-    "name: composer\nclearance: L1\ntier: hard\nprompt: |\n  You write music.\n",
+    "name: composer\ntier: hard\nprompt: |\n  You write music.\n",
   );
   const roles = loadRoles(dir);
   expect([...roles.keys()]).toEqual(["composer"]);
@@ -61,22 +61,15 @@ test("adding a role is a file, not a code change", () => {
 test("config falls back to defaults when the file is missing", () => {
   const cfg = loadConfig("config/does-not-exist.yaml");
   expect(cfg.maxGroups).toBe(10);
-  // Outside $HOME, because the sandbox is deny-only — and under /var/tmp rather
-  // than /tmp, which macOS empties at boot and sweeps after three days. A
-  // worktree holds commits on a branch nobody has pushed.
-  expect(cfg.workRoot.startsWith("/var/tmp")).toBe(true);
-  expect(cfg.workRoot.startsWith(process.env.HOME ?? "~")).toBe(false);
-});
-
-test("the shipped config keeps worktrees outside $HOME", () => {
-  const cfg = loadConfig("config/default.yaml");
-  // The sandbox is deny-only, so denying $HOME is how writes get confined.
-  expect(cfg.workRoot).not.toContain(process.env.HOME ?? "/Users");
+  // `workRoot` used to be asserted here: a host directory for the worktrees
+  // groups were checked out into. Since 005 the checkout is a clone inside the
+  // container, nothing read the setting, and `refreshIndex` took it as a
+  // parameter it named `_workRoot` and ignored.
 });
 
 test("difficulty picks the model, and a role may pin one", () => {
   const cfg = loadConfig("config/default.yaml");
-  const eng = { name: "engineer", clearance: "L1" as const, prompt: "x" };
+  const eng = { name: "engineer", prompt: "x" };
   expect(modelFor(cfg, eng, "trivial")).toBe(cfg.difficultyModel.claude!.trivial!);
   expect(modelFor(cfg, eng, "hard")).toBe(cfg.difficultyModel.claude!.hard!);
   // No tag falls back to normal rather than to the most expensive tier.
@@ -88,7 +81,7 @@ test("difficulty picks the model, and a role may pin one", () => {
 
 test("the runtime picks the model table, so codex never gets a claude id", () => {
   const cfg = loadConfig("config/default.yaml");
-  const onCodex = { name: "x", clearance: "L1" as const, prompt: "p", runtime: "codex" as const };
+  const onCodex = { name: "x", prompt: "p", runtime: "codex" as const };
   // `codex exec -m claude-sonnet-5` is rejected outright, which is what a
   // runtime: codex role got before the table was split.
   expect(modelFor(cfg, onCodex, "hard")).toBe(cfg.difficultyModel.codex!.hard!);
@@ -98,7 +91,7 @@ test("the runtime picks the model table, so codex never gets a claude id", () =>
 
 test("a role may name a concrete model id and it is used verbatim", () => {
   const cfg = loadConfig("config/default.yaml");
-  const pinned = { name: "x", clearance: "L1" as const, prompt: "p", model: "claude-haiku-4-5-20251001" };
+  const pinned = { name: "x", prompt: "p", model: "claude-haiku-4-5-20251001" };
   // A pinned id wins over both tier and difficulty — no accidental promotion.
   expect(modelFor(cfg, pinned, "hard")).toBe("claude-haiku-4-5-20251001");
   expect(modelFor(cfg, { ...pinned, tier: "hard" }, "trivial")).toBe("claude-haiku-4-5-20251001");

@@ -202,8 +202,14 @@ export function query(opts: QueryOptions): string {
 
   const docs = opts.db
     .query<Doc, [number | null, number | null]>(
+      // Not the index's own rows. `note` is also where the PageIndex tree and the
+      // repo map are stored, both keyed by project, both rewritten whenever the
+      // repo changes — so they sat at the top of an `ORDER BY at DESC` window,
+      // scored ×1.0 like anything else with no `KIND_WEIGHT` entry, and one hit
+      // handed the agent a whole serialised tree that ate the entire budget.
       `SELECT id, kind, body, export_path AS exportPath, at, slice_id AS sliceId FROM note
-       WHERE grp_id IS ? OR project_id IS ? OR (grp_id IS NULL AND project_id IS NULL)
+       WHERE kind NOT IN ('pageindex', 'map')
+         AND (grp_id IS ? OR project_id IS ? OR (grp_id IS NULL AND project_id IS NULL))
        ORDER BY at DESC LIMIT 400`,
     )
     .all(opts.grpId, opts.projectId);

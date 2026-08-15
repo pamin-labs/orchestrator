@@ -22,7 +22,7 @@ function ctx(config: Partial<NonNullable<Ctx["config"]>> = {}): Ctx {
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   return {
     db,
-    config: { language: "中文", workRoot: "/var/tmp/x", ...config },
+    config: { language: "中文", ...config },
   } as unknown as Ctx;
 }
 

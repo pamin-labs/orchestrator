@@ -52,8 +52,15 @@ export interface Ctx {
   sandbox?: import("./mech/sandbox.ts").SandboxDriver;
   /** Runs `gh`. Absent in unit tests that need no GitHub. */
   gh?: (argv: string[], cwd: string) => Promise<{ code: number; out: string }>;
-  /** One cheap model call, for PageIndex navigation. Absent in unit tests. */
-  ask?: Ask;
+  /**
+   * One cheap model call, for PageIndex navigation. Absent in unit tests.
+   *
+   * A factory, not a closure, because the call runs **in a sandbox** and which
+   * one depends on the project. It used to be a host `Bun.spawn` with the boss's
+   * own CLI login — a second credential path nothing in the settings page could
+   * see, whose failure mode was a permanently empty index that looked built.
+   */
+  askIn?: (scope: import("./mech/sandbox.ts").Scope) => Ask;
   /** Wired by the server: advances the review pipeline on a QA verdict. */
   reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
   /** Wired by the server: the Auditor's PR-level verdict. */
@@ -74,7 +81,6 @@ export interface Ctx {
   knownRoles?: () => string[];
   config: {
     language: string;
-    workRoot: string;
     /** difficulty -> token cap written onto each new slice. */
     sliceBudgetTokens?: Record<string, number>;
     dataDir?: string;
@@ -126,7 +132,28 @@ async function body<T>(req: Request): Promise<T> {
 export interface Caller {
   id: number;
   grp_id: number | null;
+  project_id: number | null;
   role: string;
+}
+
+/**
+ * May this caller act on that group?
+ *
+ * The token says who is calling; several routes then take a `group_id` from the
+ * body and never compared the two. Any Architect could rewrite any group's
+ * `owns_json` — which `canStart` reads to gate dispatch, so one call stalls a
+ * whole fleet — and any Dispatcher could flip another group to DRAFT and cancel
+ * its queued turns.
+ *
+ * Not a flat "same group": standing roles have no group and are *supposed* to
+ * reach across a project. So the scope is whichever the caller has — its group
+ * if it is in one, its project if it is not.
+ */
+export function mayAct(ctx: Ctx, me: Caller, grpId: number): boolean {
+  if (me.grp_id !== null) return me.grp_id === grpId;
+  if (me.project_id === null) return false;
+  const g = ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId);
+  return g?.project_id === me.project_id;
 }
 
 /**
@@ -141,7 +168,7 @@ export function agentOf(ctx: Ctx, req: Request): Caller | null {
   if (!token) return null;
   return (
     ctx.db
-      .query<Caller, [string]>("SELECT id, grp_id, role FROM agent WHERE token = ?")
+      .query<Caller, [string]>("SELECT id, grp_id, project_id, role FROM agent WHERE token = ?")
       .get(token) ?? null
   );
 }
@@ -700,6 +727,7 @@ const postTriage: Handler = async (ctx, req) => {
   if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
+  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
   triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as as Triage, b.note ?? "");
   return text("ok");
 };
@@ -805,6 +833,7 @@ const postDraft: Handler = async (ctx, req) => {
 
   const grpId = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!grpId) return bad("which group? pass its id or name");
+  if (!mayAct(ctx, a, grpId)) return text("not your group", 403);
   const grp = ctx.db
     .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
     .get(grpId);
@@ -818,12 +847,24 @@ const postDraft: Handler = async (ctx, req) => {
   // detectable symptom of the one failure with no deterministic line under it
   // (PLAN.md §13 risk ①): a decomposition pointed the wrong way. The boss gets the
   // list beside the card and decides which it is, in the same 20 seconds.
+  //
+  // Against the base ref rather than what is on disk: the host checkout sits on
+  // whatever branch the boss last had out, so `existsSync` was asking a working
+  // tree nobody planned against, and the answer moved when the boss switched
+  // branches. `ls-tree` of the base is the same thing the group will be cut from.
   const repo = ctx.db
     .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
     .get(grp.project_id)?.repo_path;
-  const unknown = repo
-    ? extractClaimedFiles([b.card]).filter((p) => !existsSync(join(repo, p))).slice(0, 8)
-    : [];
+  const claimed = extractClaimedFiles([b.card]);
+  let unknown: string[] = [];
+  if (repo && ctx.git && claimed.length) {
+    const base = await baseRefFor(ctx, grp.project_id);
+    const ls = await ctx.git(repo, ["ls-tree", "-r", "--name-only", base], repo);
+    if (ls.code === 0) {
+      const inBase = new Set(ls.out.split("\n").map((l) => l.trim()).filter(Boolean));
+      unknown = claimed.filter((p) => !inBase.has(p)).slice(0, 8);
+    }
+  }
 
   ctx.db.run(
     `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
@@ -882,6 +923,7 @@ const postSplit: Handler = async (ctx, req) => {
 
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
+  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
   const grp = ctx.db
     .query<{ project_id: number; name: string; status: string; branch: string | null }, [number]>(
       "SELECT project_id, name, status, branch FROM grp WHERE id = ?",
@@ -997,6 +1039,7 @@ const postDrop: Handler = async (ctx, req) => {
   if (!["dispatcher", "pm", "architect"].includes(a.role)) return bad(`${a.role} does not propose dropping work`);
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
+  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
   const why = (b.why ?? "").trim();
   if (why.length < 10) return bad("--why has to say what already covers it, in a sentence");
 
@@ -1012,23 +1055,24 @@ const postDrop: Handler = async (ctx, req) => {
   } else if (b.commit) {
     const sha = String(b.commit).trim();
     if (!/^[0-9a-f]{7,40}$/i.test(sha)) return bad("--commit takes a sha, 7 to 40 hex characters");
-    const repo = ctx.db
-      .query<{ repo_path: string }, [number]>(
-        "SELECT p.repo_path FROM project p JOIN grp g ON g.project_id = p.id WHERE g.id = ?",
-      )
-      .get(gid);
-    if (!ctx.git || !repo) return bad("cannot verify a commit without a repo");
-    const r = await ctx.git(repo.repo_path, ["cat-file", "-t", sha], repo.repo_path);
+    // Checked where the agent read it: its own clone. Against the host checkout
+    // this asked a repository the caller has never seen — a sha that exists only
+    // on the group's branch is not there at all, and the ancestry test below ran
+    // against the boss's local `HEAD`, so the verdict changed with whatever branch
+    // the boss happened to have checked out.
+    const git = sandboxGit(ctx, { grp: gid });
+    const r = await git(WORK, ["cat-file", "-t", sha], WORK);
     if (r.code !== 0 || r.out.trim() !== "commit") return bad(`${sha} is not a commit in this repo`);
     // And it has to be on the main line. Any real sha passes cat-file, including
     // one on an abandoned branch or on the group's own unmerged work — "it is
     // already done" means done where everyone can see it.
-    const merged = await ctx.git(
-      repo.repo_path,
-      ["merge-base", "--is-ancestor", sha, "HEAD"],
-      repo.repo_path,
-    );
-    if (merged.code !== 0) return bad(`${sha.slice(0, 8)} is a real commit but is not on the main line yet`);
+    const projectId = ctx.db
+      .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
+      .get(gid)?.project_id;
+    if (!projectId) return bad("no such group");
+    const base = await baseRefFor(ctx, projectId);
+    const merged = await git(WORK, ["merge-base", "--is-ancestor", sha, base], WORK);
+    if (merged.code !== 0) return bad(`${sha.slice(0, 8)} is a real commit but is not on ${base} yet`);
     evidence = `already landed in ${sha.slice(0, 8)}`;
   } else {
     return bad("give evidence: --duplicate <group> or --commit <sha>");
@@ -1080,6 +1124,7 @@ const postBlocked: Handler = async (ctx, req) => {
   if (!a) return bad("unknown or missing agent token");
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
+  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
   const path = (b.path ?? "").trim().replace(/^\.\//, "");
   const why = (b.why ?? "").trim();
   if (!path) return bad("--path <file> — which file you cannot change");
@@ -1091,10 +1136,12 @@ const postBlocked: Handler = async (ctx, req) => {
     )
     .get(gid);
   if (!me) return bad("no such group");
-  const repo = ctx.db
-    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-    .get(me.project_id);
-  if (!repo || !existsSync(join(repo.repo_path, path))) return bad(`${path} is not a file in this repo`);
+  // In the group's own checkout, not the host's. The caller named this path from
+  // inside `/work`, and the host main checkout sits on whatever the boss last had
+  // out — so a file the group created, or one that exists only on its branch,
+  // came back as "not a file in this repo", which is both wrong and misleading.
+  const seen = await execIn(ctx, { grp: gid }, `test -e ${shq(`${WORK}/${path}`)}`);
+  if (seen.code !== 0) return bad(`${path} is not a file in your checkout`);
   // The whole justification. Inside its own boundary the group is expected to fix
   // it, and saying otherwise is the cheap way out of difficult work.
   if (parseOwns(me.owns_json).some((o) => overlaps(o, path))) {
@@ -1198,6 +1245,7 @@ const postOwns: Handler = async (ctx, req) => {
   if (!Array.isArray(b.paths) || b.paths.length === 0) return bad("give at least one path glob");
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
+  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
 
   ctx.db.run("UPDATE grp SET owns_json = ? WHERE id = ?", [JSON.stringify(b.paths), gid]);
   const check = canStart(ctx.db, gid);
@@ -1225,8 +1273,11 @@ const postAudit: Handler = async (ctx, req) => {
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
   // The Auditor is deliberately not a member of the group it reviews, so it is
-  // the one role whose group check is inverted.
+  // the one role whose group check is inverted. It is still bounded by its
+  // project — a pass here opens a PR, which is a host `git push`, and that is not
+  // an action to leave addressable by any group id an agent cares to name.
   if (a.grp_id === gid) return bad("an auditor may not audit its own group");
+  if (!mayAct(ctx, a, gid)) return text("not your project", 403);
 
   ctx.bus.emit({
     grpId: gid,
@@ -1254,9 +1305,19 @@ const postCtxQuery: Handler = async (ctx, req) => {
   // that fails, falls through to the lexical map inside ctxQuery.
   let where = "";
   const tree = loadTree(ctx.db, projectId);
-  if (tree && ctx.ask) {
+  if (tree && ctx.askIn && projectId) {
     try {
-      const hits = await search(tree, b.question, ctx.ask);
+      // In the caller's own sandbox, not the project's.
+      //
+      // The walk reads nothing from a checkout: the menu is built from summaries
+      // already in the database and the model answers with ids. So the container
+      // it runs in cannot change the answer — and routing every group's query into
+      // the one project sandbox would put ten agents' first step through a single
+      // container with a single CPU quota, on the step `assemble.ts` tells every
+      // role to take FIRST. The index *build* stays project-scoped; it is shared
+      // work and there is one of it.
+      const scope = a.grp_id ? { grp: a.grp_id } : { project: projectId };
+      const hits = await search(tree, b.question, ctx.askIn(scope));
       if (hits.length) {
         where = render(tree, hits);
         // A note the walk landed on is the answer, not a pointer to it: journals and
@@ -1806,16 +1867,18 @@ const postAnswer: Handler = async (ctx, req, params) => {
  * this returns nothing and the composer is the composer.
  */
 const getAnswerDraft: Handler = async (ctx, _req, params) => {
-  if (!ctx.ask) return json({ text: "" });
+  if (!ctx.askIn) return json({ text: "" });
   const id = Number(params.id);
   const e = ctx.db
-    .query<{ grp_id: number | null; question: string; severity: string; asker: string | null }, [number]>(
-      `SELECT e.grp_id, e.question, e.severity, a.role AS asker
+    .query<{ grp_id: number | null; question: string; severity: string; asker: string | null; project_id: number | null }, [number]>(
+      `SELECT e.grp_id, e.question, e.severity, a.role AS asker,
+              coalesce(g.project_id, a.project_id) AS project_id
        FROM escalation e LEFT JOIN agent a ON a.id = e.agent_id
+       LEFT JOIN grp g ON g.id = e.grp_id
        WHERE e.id = ? AND e.answer IS NULL`,
     )
     .get(id);
-  if (!e) return json({ text: "" });
+  if (!e?.project_id) return json({ text: "" });
 
   const grp = e.grp_id
     ? ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(e.grp_id)
@@ -1858,7 +1921,7 @@ const getAnswerDraft: Handler = async (ctx, _req, params) => {
   ].join("\n");
 
   try {
-    const out = (await ctx.ask(prompt)).trim();
+    const out = (await ctx.askIn({ project: e.project_id })(prompt)).trim();
     return json({ text: out.length > 1200 ? out.slice(0, 1200) : out });
   } catch {
     return json({ text: "" });
@@ -2559,7 +2622,13 @@ const getGateLog: Handler = async (ctx, req, params) => {
   // The panel scrolls this locally, so the tail is about not shipping a 200MB
   // build log, not about what is worth reading. 400 lines was the latter, and it
   // cut a `bun test` run in half.
-  return text(grep ? lines.filter((l) => new RegExp(grep).test(l)).slice(0, 4000).join("\n") : lines.slice(-4000).join("\n"));
+  //
+  // A substring, not a regex — the same rule as `getLeaseLog`, which was fixed
+  // and never generalised. `new RegExp` on a caller-supplied string runs on the
+  // host, in the single process that is also the SSE fan-out, the scheduler, the
+  // mailbox poller and every blocked `orch lease`; one nested quantifier stalls
+  // all of it. This route takes no token either.
+  return text(grep ? lines.filter((l) => l.includes(grep)).slice(0, 4000).join("\n") : lines.slice(-4000).join("\n"));
 };
 
 const postSliceDecision: Handler = async (ctx, req, params) => {
@@ -2829,6 +2898,10 @@ const getNotes: Handler = async (ctx, req) => {
   }
   // The draft card is a note too, and it already has its own screen.
   where.push("coalesce(json_extract(n.frontmatter_json, '$.draft_card'), 0) != 1");
+  // Nor are the index's own rows notes: `pageindex` is a serialised tree and
+  // `map` is a rendered directory listing, both stored here because `note` was
+  // the table that already existed. Neither is anything the boss reads.
+  where.push("n.kind NOT IN ('pageindex', 'map')");
 
   const rows = ctx.db
     .query<unknown, any[]>(
@@ -3303,9 +3376,45 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/attach\/(?<name>[^/]+)$/, getAttachment],
 ];
 
+/**
+ * Is this write coming from somewhere other than the panel?
+ *
+ * `/api/*` takes no token — its caller is a browser on 127.0.0.1 and the port is
+ * the whole authentication story. That stops the network and does not stop a web
+ * page: `body<T>()` never checks `content-type`, so a POST with the default
+ * `text/plain` is a *simple* request, no preflight, delivered. The attacker
+ * cannot read the reply and does not need to — wiping the boss's credentials,
+ * approving a DRAFT and dropping a group are all one-way.
+ *
+ * A deny-list, not an allow-list, because the legitimate non-browser callers —
+ * `curl`, `bun test`, the mailbox replay — send neither header, and refusing
+ * those would be refusing everything except the panel. Every browser that can
+ * mount this attack sends `Sec-Fetch-Site`.
+ */
+export function crossSiteWrite(req: Request, port: number): boolean {
+  if (req.method === "GET" || req.method === "HEAD") return false;
+  const site = req.headers.get("sec-fetch-site");
+  // Present on every modern browser request, and it says `same-origin` however
+  // the boss spelled the host — `localhost` and `127.0.0.1` are the same page to
+  // it and different strings to `Origin`.
+  if (site) return site !== "same-origin" && site !== "none";
+  const origin = req.headers.get("origin");
+  if (!origin) return false;
+  try {
+    const u = new URL(origin);
+    const loopback = u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "[::1]";
+    return !loopback || u.port !== String(port);
+  } catch {
+    return true;
+  }
+}
+
 export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   return async (req) => {
     const path = new URL(req.url).pathname;
+    if (path.startsWith("/api/") && crossSiteWrite(req, ctx.config.port ?? 47821)) {
+      return text("cross-site writes are refused", 403);
+    }
     for (const [method, re, h] of ROUTES) {
       if (req.method !== method) continue;
       const m = re.exec(path);

@@ -1,5 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
-import { homedir } from "node:os";
+import { hostClaudeHome, hostCodexHome } from "./auth.ts";
 import { dirname, join } from "node:path";
 import type { DB } from "../db.ts";
 
@@ -63,7 +63,20 @@ export function frontmatterDescription(text: string): string {
   return out.join(" ").slice(0, 140);
 }
 
-function scan(root: string, base: string, scope: SkillRef["scope"], out: SkillRef[]): void {
+/**
+ * `relBase` is separate from `base` because the two answer different questions:
+ * `base` is where to look under `root`, `relBase` is the conventional path that
+ * goes into `rel` and is matched against older message text (migration 026). A
+ * user who moved `~/.claude` with `$CLAUDE_CONFIG_DIR` changes the first and must
+ * not change the second.
+ */
+function scan(
+  root: string,
+  base: string,
+  scope: SkillRef["scope"],
+  out: SkillRef[],
+  relBase = base,
+): void {
   const dir = join(root, base);
   if (!existsSync(dir)) return;
   let entries: Dirent[];
@@ -90,7 +103,7 @@ function scan(root: string, base: string, scope: SkillRef["scope"], out: SkillRe
       description = frontmatterDescription(readFileSync(file, "utf8").slice(0, 4000));
     } catch {}
     if (out.some((s) => s.name === d.name)) continue; // project wins over user
-    out.push({ name: d.name, file, rel: join(base, d.name, "SKILL.md"), description, scope });
+    out.push({ name: d.name, file, rel: join(relBase, d.name, "SKILL.md"), description, scope });
   }
 }
 
@@ -106,13 +119,16 @@ export function listSkills(repoPath?: string | null): SkillRef[] {
     scan(repoPath, ".claude/skills", "project", out);
     scan(repoPath, ".agents/skills", "project", out);
   }
-  const home = homedir();
-  scan(home, ".claude/skills", "user", out);
+  // Wherever each CLI actually keeps its state: `$CLAUDE_CONFIG_DIR` and
+  // `$CODEX_HOME` both move it, and a boss who set either would have seen every
+  // ticked skill stage zero files with nothing said — `scan` skips a directory
+  // that is not there, which is the right behaviour and the wrong answer.
+  scan(hostClaudeHome(), "skills", "user", out, ".claude/skills");
   // The other CLI keeps its own, and the boss has no reason to care which
   // directory a skill lives in — the text is inlined into the turn either way, so
   // a codex skill works on a claude role and the reverse. Second, so a same-named
   // skill resolves to the .claude one (the dedupe above is first-wins).
-  scan(home, ".codex/skills", "user", out);
+  scan(hostCodexHome(), "skills", "user", out, ".codex/skills");
   return out.sort((a, b) => (a.scope === b.scope ? a.name.localeCompare(b.name) : a.scope === "project" ? -1 : 1));
 }
 

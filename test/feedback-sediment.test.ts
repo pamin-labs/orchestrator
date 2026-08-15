@@ -23,7 +23,7 @@ function harness() {
     sched: new Scheduler(db, async (j) => void ran.push(j)),
     gitLock: new RepoLock(),
     sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: "中文", workRoot: "/tmp/x", feedbackSediment: 3 },
+    config: { language: "中文", feedbackSediment: 3 },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   for (const n of ["g1", "g2", "g3"]) {

@@ -125,3 +125,23 @@ test("an export path is shown so the agent can go read the file itself", () => {
   const out = query({ db, grpId: 1, projectId: 1, question: "返工 验收标准" });
   expect(out).toContain("docs/journal/g1/003-retro.md");
 });
+
+test("the index's own rows are not answers to a question", () => {
+  // `note` is where the PageIndex tree and the repo map live too, both keyed by
+  // project and both rewritten whenever the repo changes — so an `ORDER BY at
+  // DESC` window kept them at the top, `KIND_WEIGHT` had no entry for either so
+  // they scored ×1.0, and one hit handed the agent a whole serialised tree that
+  // ate the entire character budget.
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  const tree = JSON.stringify({ "src/auth.ts": { summary: "auth auth auth token token" } });
+  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (1, 'pageindex', ?, 9)", [tree]);
+  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (1, 'map', 'src/\n  auth.ts — token', 9)");
+  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (1, 'decision', 'token 校验放在中间件', 8)");
+
+  const out = query({ db, grpId: 1, projectId: 1, question: "token", budget: 4000 });
+  expect(out).toContain("token 校验放在中间件");
+  expect(out).not.toContain("pageindex");
+  expect(out).not.toContain("summary");
+});

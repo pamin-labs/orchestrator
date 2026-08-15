@@ -3,7 +3,10 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
-import { fileRead, loadTree, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/pageindex.ts";
+import { chargeIndex, fileRead, loadTree, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/pageindex.ts";
+import { Bus } from "../src/bus.ts";
+import { costReport } from "../src/mech/cost.ts";
+import type { Ctx } from "../src/api.ts";
 
 function repo(): string {
   const d = mkdtempSync(join(tmpdir(), "orch-pi-"));
@@ -105,4 +108,40 @@ test("journals and retros are leaves in the same tree as the code", async () => 
     return lines[0]!.split(" — ")[0]!;
   });
   expect(hits).toEqual(["notes/grp-1/retro/1"]);
+});
+
+test("what the index spends shows up in the cost report", async () => {
+  // The most frequent model call in the system appeared in no report at all: it
+  // is not a turn, and `costReport` reads turns. It is charged to a standing
+  // `indexer` row rather than to the Librarian, whose turns carry a full cached
+  // prefix and a session — mixing the two makes "librarian took 4M" unusable.
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  const ctx = { db, bus: new Bus(db) } as unknown as Ctx;
+  const spec = { runtime: "codex", model: "gpt-5.6-luna" };
+
+  chargeIndex(ctx, 1, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1 });
+  chargeIndex(ctx, 1, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0 });
+
+  const report = costReport(db);
+  expect(report.byRole.find((r) => r.label === "indexer")?.tokens).toBe(138);
+  expect(report.byRuntime.find((r) => r.label === "codex")?.tokens).toBe(138);
+  // One row per project, not one per call.
+  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent WHERE role = 'indexer'").get()!.n).toBe(1);
+  // And the hourly burn chart reads the events, which need the same meta shape a
+  // turn emits or the provider split guesses from the model name.
+  const ev = db
+    .query<{ meta_json: string }, []>("SELECT meta_json FROM event WHERE author = 'indexer' LIMIT 1")
+    .get()!;
+  expect(JSON.parse(ev.meta_json).runtime).toBe("codex");
+});
+
+test("a call that reported no usage is not charged", () => {
+  // Missing numbers must never fail the index, and a zero row would be a lie in
+  // the report rather than an absence.
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  const ctx = { db, bus: new Bus(db) } as unknown as Ctx;
+  chargeIndex(ctx, 1, { runtime: "codex", model: "m" }, { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 });
+  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent").get()!.n).toBe(0);
 });
