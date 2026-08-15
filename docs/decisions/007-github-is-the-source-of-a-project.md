@@ -253,11 +253,49 @@ library replaces a lesson.
 7. codex refresher moves in (last — it is a real credential)
 8. rule 15 switches to the API baseline
 
-## Open, needs a probe before it is a design
+## Path scoping exists, and step 2 depends on it
 
-- Does the egress binding's `paths` field (mentioned in 005) actually scope by
-  request path? If it does, one write token can be bound so `git-receive-pack`
-  never sees it, and the two-container split gets cheaper.
+Probed, from the SDK types rather than a live server —
+`node_modules/@alibaba-group/opensandbox/dist/sandboxes-vaWpTC_c.d.ts:204-225`:
+
+```ts
+interface CredentialMatch {
+  schemes?: ("https" | "http")[];
+  hosts: string[];        // required
+  methods?: string[];
+  paths?: string[];       // "Request paths to match."
+}
+```
+
+So a binding scopes by host **and** method **and** path. git's smart HTTP keeps
+fetch and push on different paths at the pack phase — `POST /{repo}/git-upload-pack`
+versus `POST /{repo}/git-receive-pack` — so the write is separable from the read.
+
+Ref discovery is `GET /{repo}/info/refs?service=git-upload-pack|git-receive-pack`:
+**same path, different query**. Whether `paths` matches the query string is not
+answerable from the types — the matching runs server-side in the egress addon —
+so assume it does not. The consequence is acceptable: a push authenticates its ref
+advertisement and then fails on the `POST .../git-receive-pack` that carries the
+objects. The write is blocked where the write happens.
+
+**This is not a nicety, it is a prerequisite.** Classic OAuth has no read-only
+scope for private repositories — `repo` is read *and* write. The moment device
+flow lands (step 2), the existing github binding would hand every agent container
+a token that can push to main, and "no direct push to main" would go back to being
+a sentence in a prompt. Hard constraint 3 says otherwise. So step 2 ships with the
+binding scoped to `git-upload-pack` from the start, and the utility container keeps
+the unscoped binding for the one place a push is supposed to come from.
+
+Still to verify against a live server: that `paths` matching is prefix or glob
+rather than exact, since the repo path is a prefix of both endpoints.
+
+Noted while in there: `CredentialSubstitution.in` accepts `"path" | "query" |
+"header" | "body"` — the sidecar can replace a placeholder outside headers.
+`vaultFor` only ever builds header bindings today. Not needed yet; worth knowing
+before someone concludes a credential that is not a header cannot be vaulted.
+
+## Open
+
 - Quota does **not** move into the utility container: rollout files are written by
   the codex process that produced them, which lives in a group container
   (`subusage.ts:254` already reads from there). Listed so nobody puts it on the
