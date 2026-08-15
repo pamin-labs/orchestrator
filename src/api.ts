@@ -14,7 +14,7 @@ import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/sa
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "./mech/sandbox/login.ts";
 import { APP_SLUG, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Installation } from "./mech/git/ghlogin.ts";
 import { preflight } from "./mech/ops/preflight.ts";
-import { baseBranch, baseRefFor, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
+import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit, treeFiles } from "./mech/git/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "./mech/flow/chain.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "./mech/flow/ownership.ts";
@@ -3599,6 +3599,8 @@ const getProjectConfig: Handler = async (ctx, _req, params) => {
     baseBranch: row.base_branch,
     // What it resolves to right now, so an empty box is not a mystery.
     baseBranchNow: await baseBranch(ctx, Number(params.id)),
+    // What the remote has, so the box is a choice rather than a memory test.
+    branches: await listBranches(ctx, Number(params.id)),
   });
 };
 

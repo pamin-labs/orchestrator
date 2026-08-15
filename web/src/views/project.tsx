@@ -4,6 +4,7 @@ import { Head, Input, Meta } from "../ui/bits";
 import { Button } from "../ui/button";
 import { Field, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
 import { Toggle, Toggles } from "../ui/segment";
+import { Menu, MenuItem } from "../ui/menu";
 import { cn } from "../lib/utils";
 
 /**
@@ -34,6 +35,8 @@ export interface ProjectConfig {
   baseBranch: string | null;
   /** What that resolves to right now. */
   baseBranchNow: string;
+  /** What the remote has. Empty when GitHub could not be asked — not a failure. */
+  branches?: string[];
 }
 
 /** Handle, order, name, command. Fixed, so the commands line up down the page. */
@@ -176,6 +179,11 @@ export function Sandbox({
           width="max-w-[14rem]"
           busy={busy}
           onSave={(v) => patch({ baseBranch: v || null })}
+          /* GitHub already knows the branch names, so typing one from memory is
+             a test nobody should have to sit. Still a box, not a Select: a
+             branch that does not exist yet is a legitimate answer, and a login
+             that cannot list them must not take the field away. */
+          options={d.branches}
         />
         <Row
           label="装依赖"
@@ -251,6 +259,8 @@ function Row(props: {
   width?: string;
   busy: boolean;
   onSave: (v: string) => void;
+  /** Offered beside the box, never instead of it. */
+  options?: string[];
 }) {
   const [v, setV] = useState(props.value);
   useEffect(() => setV(props.value), [props.value]);
@@ -272,6 +282,17 @@ function Row(props: {
             if (e.key === "Enter" && dirty) props.onSave(v.trim());
           }}
         />
+        {/* Picking writes the box and saves in one go: an extra 存下 after
+            choosing from a list of real values is a confirmation of nothing. */}
+        {!!props.options?.length && (
+          <Menu label="选">
+            {props.options.map((o) => (
+              <MenuItem key={o} onSelect={() => { setV(o); props.onSave(o); }}>
+                  <span className="font-mono">{o}</span>
+                </MenuItem>
+            ))}
+          </Menu>
+        )}
         {/* A button that is always there and usually does nothing trains you to
             ignore it. */}
         {dirty && (

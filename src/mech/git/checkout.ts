@@ -75,6 +75,31 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
   return found;
 }
 
+/**
+ * Every branch on the remote, for the settings page's picker.
+ *
+ * The base branch was a free-text box, which asks the boss to remember and
+ * retype something GitHub already knows — and a typo there is not a typo, it is
+ * every future group cut from a ref that does not exist.
+ *
+ * Best effort by design, and the box stays typeable. A brand-new branch, a login
+ * that cannot list them, GitHub being down — none of those may be a reason the
+ * field stops working, so an empty list means "no suggestions", never "no".
+ *
+ * One page. A repository with more than a hundred branches has more than this
+ * control should render, and the rest stay typeable — the same answer as for a
+ * branch that does not exist yet.
+ */
+export async function listBranches(ctx: Ctx, projectId: number): Promise<string[]> {
+  const repo = ctx.db
+    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
+    .get(projectId)?.repo_path;
+  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return [];
+  const r = await ctx.gh?.request<{ name: string }[]>("GET", `/repos/${repo}/branches?per_page=100`);
+  if (!r?.ok || !Array.isArray(r.data)) return [];
+  return r.data.map((b) => b.name).filter(Boolean);
+}
+
 /** The same thing as a ref to hand git. */
 export const baseRefFor = async (ctx: Ctx, projectId: number): Promise<string> =>
   `origin/${await baseBranch(ctx, projectId)}`;
