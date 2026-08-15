@@ -17,7 +17,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const PORT = 47822;
-const HOME = "https://github.com/JasonXuDeveloper/orchestrator";
+const HOME = "https://github.com/Pamin-Labs/orchestrator";
 
 const argv = process.argv.slice(2);
 const orgAt = argv.indexOf("--org");
