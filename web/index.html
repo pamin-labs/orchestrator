@@ -7,7 +7,14 @@
 <!-- Both built locally into web/dist by `bun run build:web`. Nothing is fetched
      from a remote host: the fonts are already on the machine, and
      test/smoke.test.ts enforces that no external origin appears here. -->
-<link rel="icon" href="data:,">
+<!-- Local, like everything else here: nothing on this page is fetched from a
+     remote host, and test/smoke.test.ts fails if a remote origin appears. Three
+     sizes committed rather than generated at build time — bun has no image
+     resize, `sips` is macOS-only so a build step using it breaks every other
+     contributor, and the whole set is 32KB for a file that changes once a year. -->
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="icon" href="/icon.png" sizes="1024x1024">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/dist/app.css">
 <!-- Resolve the theme before first paint. The whole app is JS, so deriving the
      attribute here and letting CSS carry one dark block beats maintaining the

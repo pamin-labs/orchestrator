@@ -1,3 +1,5 @@
+<img src="web/icon.png" alt="" width="76" height="76">
+
 [English](README.md) · [简体中文](README.zh-CN.md)
 
 # orchestrator
