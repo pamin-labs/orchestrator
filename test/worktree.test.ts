@@ -279,7 +279,10 @@ test("a renamed default branch is picked up rather than breaking every clone", a
   const ctx = {
     db,
     bus: { emit: (e: { body: string }) => said.push(e.body) },
-    gh: { remaining: () => null, request: async () => ({ ok: true, status: 200, data: { default_branch: branch } }) },
+    gh: {
+      remaining: () => null,
+      request: async () => ({ ok: true, status: 200, data: { default_branch: branch, full_name: "acme/p" } }),
+    },
   } as unknown as Ctx;
 
   // Resolved once, then stored: the diff baseline has to mean the same thing on
@@ -297,4 +300,34 @@ test("a renamed default branch is picked up rather than breaking every clone", a
   // on `develop` to `main` because the network blinked would repoint every diff.
   const offline = { ...ctx, gh: { remaining: () => null, request: async () => ({ ok: false, status: 0, bucket: "transient", message: "x" }) } } as unknown as Ctx;
   expect(await baseBranch(offline, 1)).toBe("mainline");
+});
+
+test("a repository renamed or moved to another org is followed, not left pointing at the old name", async () => {
+  // Observed: the org renamed to lowercase and the panel kept showing the old
+  // capitalisation, because nothing ever re-read the name. GitHub redirects
+  // `GET /repos/old/name` — which is why everything kept working and nothing
+  // said anything — but a POST to open a pull request does not survive a
+  // redirect, and the old path only works until somebody claims the freed name.
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', 'Old-Org/p', 'https://github.com/Old-Org/p.git', 0)");
+  const said: string[] = [];
+  const ctx = {
+    db,
+    bus: { emit: (e: { body: string }) => said.push(e.body) },
+    gh: {
+      remaining: () => null,
+      request: async () => ({
+        ok: true,
+        status: 200,
+        data: { default_branch: "main", full_name: "new-org/p", clone_url: "https://github.com/new-org/p.git" },
+      }),
+    },
+  } as unknown as Ctx;
+
+  await baseBranch(ctx, 1);
+  const row = db.query<{ p: string; r: string }, []>("SELECT repo_path AS p, remote AS r FROM project").get()!;
+  expect(row.p).toBe("new-org/p");
+  // The remote too, or the clone still fetches by the old URL.
+  expect(row.r).toBe("https://github.com/new-org/p.git");
+  expect(said.join(" ")).toContain("new-org/p");
 });

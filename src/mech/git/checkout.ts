@@ -54,7 +54,35 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
   // rebase and diff resolving against a ref that is not there — and the request
   // is free once cached: the shared client sends `If-None-Match`, and a 304
   // does not count against the rate limit.
-  const r = await ctx.gh?.request<{ default_branch?: string }>("GET", `/repos/${row.repo_path}`);
+  const r = await ctx.gh?.request<{ default_branch?: string; full_name?: string; clone_url?: string }>(
+    "GET",
+    `/repos/${row.repo_path}`,
+  );
+  // The same answer says what the repository is called, and a rename or a
+  // transfer on github.com is the other thing that goes stale here. This is the
+  // only request that runs on every path — every diff, every group start, every
+  // gate — so it is where the drift is cheapest to notice.
+  //
+  // It has to be written back rather than left to the redirect: GitHub does
+  // redirect `GET /repos/old/name`, which is the only reason this call still
+  // answers at all, but a `POST` to open a pull request does not survive one and
+  // the old URL keeps working only until somebody claims the freed name. Left
+  // alone, the panel shows a name that no longer exists and the failure arrives
+  // at the last step of a finished branch.
+  if (r?.ok && r.data?.full_name && r.data.full_name !== row.repo_path) {
+    ctx.db.run("UPDATE project SET repo_path = ?, remote = coalesce(?, remote) WHERE id = ?", [
+      r.data.full_name,
+      r.data.clone_url ?? null,
+      projectId,
+    ]);
+    ctx.bus?.emit({
+      grpId: null,
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "advisory",
+      body: `仓库在 GitHub 上改名了：${row.repo_path} → ${r.data.full_name}。已经跟着改，克隆和 PR 都指新的。`,
+    });
+  }
   const found = (r?.ok && r.data?.default_branch) || null;
   // Nothing to compare against: keep what is stored rather than resetting a
   // project that develops on `develop` to `main` because the network blinked.
