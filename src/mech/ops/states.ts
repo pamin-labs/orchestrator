@@ -26,7 +26,6 @@ export const GRP_STATES = [
 export const SLICE_STATES = [
   "pending",
   "running",
-  "self_review",
   "gate",
   "qa",
   "awaiting_boss",
@@ -46,7 +45,7 @@ export const JOB_STATES = ["pending", "running", "done", "failed", "cancelled"] 
  * — which is why these rows exist and why every path through `runLease` now ends
  * in `finishLease` whatever happens to it.
  */
-export const LEASE_STATES = ["queued", "running", "done", "failed", "cancelled"] as const;
+export const LEASE_STATES = ["queued", "running", "done", "failed"] as const;
 
 /** `pm | architect | cos | boss` are in-flight; the last two are terminal. */
 export const ESCALATION_STATES = ["pm", "architect", "cos", "boss", "answered", "revoked"] as const;

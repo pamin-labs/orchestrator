@@ -311,29 +311,27 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   try {
     return await rules(deps, findings);
   } catch (e: any) {
-    // `rules` emits at its end, and we never got there — so this one is emitted
-    // here, or the outage stays exactly as quiet as it was before.
-    const broke: Finding = {
+    // Through `emit`, not `bus.emit`. A throw in a straight-line tick recurs
+    // every 30 seconds, so the guard written because the watchdog died silently
+    // would otherwise make it die loudly — 120 blocker lines an hour — which is
+    // the same dedup bug this file fixed in three other places. `emit` keys on
+    // (rule, grpId) for half an hour.
+    //
+    // The findings collected before the throw go with it: `rules` emits at its
+    // end and never got there, so without this they are returned to a caller
+    // and never reach the feed.
+    return emit(deps.ctx, [...findings, {
       rule: "watchdog_broke",
       grpId: null,
-      severity: "blocker" as const,
+      severity: "blocker",
       body:
         `看门狗这一轮挂了，后面的规则都没跑：${e?.message ?? e}\n` +
         `每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙盒、` +
         `基线变了要 rebase、等你决定的计时）都停在原地。`,
-    };
-    deps.ctx.bus.emit({
-      grpId: null,
-      author: "watchdog",
-      kind: "escalation",
-      intent: "ask",
-      severity: "blocker",
-      body: broke.body,
-      meta: { rule: broke.rule },
-    });
-    return [...findings, broke];
+    }], deps.now ?? (() => Date.now()));
   }
 }
+
 
 async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]> {
   const { ctx, cfg } = deps;

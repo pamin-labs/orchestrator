@@ -198,7 +198,6 @@ export const SLICE_INVARIANTS = rows<SliceState>(
       );
     },
   },
-  { state: "self_review", must: "the engineer's own pass is recorded before reconcile", driver: "the same turn" },
   { state: "gate", must: "a gate job is queued or running", driver: "runReview; watchdog rule 8 if the queue empties" },
   { state: "qa", must: "a qa turn is queued or running", driver: "handToQa; watchdog rule 8" },
   {
@@ -326,7 +325,10 @@ export const LEASE_INVARIANTS = rows<LeaseState>(
   {
     state: "queued",
     must: "a lease job is queued for it, and the agent is waiting on the answer",
-    driver: "Scheduler.tick dispatches it; watchdog rule 8 requeues a failed job once",
+    driver:
+      "Scheduler.tick dispatches it. The backstop is the route's own deadline, not watchdog rule 8 — " +
+      "that rule requeues `agent_turn` only, so a lease job cancelled or dropped out from under a " +
+      "waiter never reaches runLease and nothing else would ever answer it",
   },
   {
     state: "running",
@@ -338,11 +340,6 @@ export const LEASE_INVARIANTS = rows<LeaseState>(
   },
   { state: "done", must: "the waiter is resolved and the agent is idle again", driver: null },
   { state: "failed", must: "the agent has the exit code and the digest to act on", driver: null },
-  {
-    state: "cancelled",
-    must: "whoever was waiting on it is released rather than left holding the promise",
-    driver: "the route's deadline: cancelling a job never reaches runLease, so nothing else would answer",
-  },
 );
 
 export const ESCALATION_INVARIANTS = rows<EscalationState>(

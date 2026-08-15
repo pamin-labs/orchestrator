@@ -146,7 +146,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
     UNIQUE (grp_id, seq)
   );
   -- difficulty: trivial | normal | hard  -> picks the model
-  -- status:     pending | running | self_review | gate | qa | awaiting_boss | accepted | rejected
+  -- status:     pending | running | gate | qa | awaiting_boss | accepted | rejected
   -- gates_json: {"self":"pass","gate":"fail","qa":null}
 
   CREATE TABLE task (
