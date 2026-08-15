@@ -323,6 +323,20 @@ that can push to main, and "no direct push to main" would go back to being a
 sentence in a prompt. Hard constraint 3 says otherwise. Step 2 ships with the
 binding scoped from the start; the utility container keeps the unscoped one.
 
+**And it is permanent, not a stepping stone.** There is a stronger form of this —
+a GitHub App can mint an *installation* token with `permissions` narrowed below
+what the app declares, so a group container could hold a token GitHub itself
+refuses to let push. It needs the app's private key to sign a JWT, and that key
+cannot ship: whoever holds it can act as the app on every installation. Since
+this is self-hosted with no service of ours anywhere, the shipped path is a
+user-to-server token from device flow, which has exactly one permission set and
+cannot be narrowed.
+
+So `paths` is the whole of the read/write split for every user, for good. That
+promotes the two unknowns below from "verify eventually" to **release blockers**:
+a `paths` the control plane silently ignores fails *open*, and there is nothing
+behind it.
+
 Two things that still need a live server, both of which fail badly if assumed:
 
 1. **Does the control plane validate `paths` at all?** The SDK passes strings
