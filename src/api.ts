@@ -3225,7 +3225,9 @@ const getStream: Handler = async (ctx, req) => {
  * even the page that sets it reads back a masked tail — enough to tell two
  * tokens apart, which is the only question anyone asks of one they pasted.
  */
-const getAuth: Handler = async (ctx) => json({ runtimes: listAuth(ctx.db) });
+// `trailers` rides along: the Claude block draws one of the three switches, and
+// a second fetch for one boolean is a second thing that can be stale.
+const getAuth: Handler = async (ctx) => json({ runtimes: listAuth(ctx.db), trailers: trailers(ctx.db) });
 
 const postAuth: Handler = async (ctx, req) => {
   const b = await body<{
@@ -3561,7 +3563,7 @@ const getGithubLogin: Handler = async (ctx) => {
 
 /** The two switches. Both default on; see `TRAILERS_KEY` for why each exists. */
 const postTrailers: Handler = async (ctx, req) => {
-  const b = await body<{ signoff?: boolean; coauthor?: boolean }>(req);
+  const b = await body<{ signoff?: boolean; coauthor?: boolean; claudeCoauthor?: boolean }>(req);
   return json(setTrailers(ctx.db, b));
 };
 

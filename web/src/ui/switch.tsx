@@ -28,7 +28,10 @@ export function Switch({ id, checked, onCheckedChange, disabled }: {
       className={cn(
         "relative h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors",
         "bg-rule data-[state=checked]:bg-accent",
-        "outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+        // No focus ring of its own. `outline-none` is a utility and the page's one
+        // ring is in `@layer base`, so a local ring does not sit beside the global
+        // one — it replaces it, and this row alone then says "focused" a different
+        // way than every other control in the dialog. DESIGN.md: one focus ring.
         "disabled:cursor-default disabled:opacity-40",
       )}
     >

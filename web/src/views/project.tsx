@@ -280,14 +280,20 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
         {value.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {value.map((d) => (
-              <span key={d} className="flex items-center gap-1 rounded-sm bg-sunk py-px pr-1 pl-1.5 font-mono text-[0.6875rem] text-ink-2">
+              <span key={d} className="flex items-center gap-1 rounded-sm bg-sunk py-0.5 pr-1 pl-1.5 font-mono text-[0.6875rem] text-ink-2">
                 {d}
                 <button
                   type="button"
                   aria-label={`不再禁止 ${d}`}
                   disabled={busy}
+                  // Same trick as the combobox list: without it the box blurs
+                  // first, `add` commits the half-typed draft against the old
+                  // list, and this click then saves `value` from before that —
+                  // dropping the domain just added. preventDefault on mousedown
+                  // stops the blur; the click still fires.
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => onSave(value.filter((x) => x !== d))}
-                  className="cursor-pointer rounded-sm px-0.5 text-ink-3 hover:text-accent disabled:opacity-40"
+                  className="cursor-pointer rounded-sm px-1 text-ink-3 hover:text-accent disabled:opacity-40"
                 >
                   <X size={10} strokeWidth={2.5} />
                 </button>
@@ -296,7 +302,7 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
           </div>
         )}
         <Input
-          className="min-w-0 max-w-[22rem] flex-1 font-mono"
+          className="min-w-0 max-w-[22rem] font-mono"
           placeholder={value.length ? "再加一个" : "留空 = 出站不拦（README 那节）"}
           value={draft}
           disabled={busy}
@@ -358,6 +364,10 @@ function ImageRow({ value, busy, onSave }: { value: string; busy: boolean; onSav
           <Combobox
             value={value}
             options={options}
+            // The default says 分支: this is the branch picker's control, and a
+            // filtered image list telling you there is no matching branch is one
+            // word away from reading as a broken page.
+            empty="没有匹配的镜像"
             placeholder={c ? "默认 orch-agent:latest" : "读取中…"}
             disabled={busy}
             width="max-w-[22rem]"

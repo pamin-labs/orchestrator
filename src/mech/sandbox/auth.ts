@@ -286,21 +286,25 @@ export function filesFor(db: DB): Record<string, string> {
 }
 
 /**
- * Claude Code's own commit trailer, decided by the same switch as ours.
+ * Claude Code's own commit trailer.
  *
  * The CLI appends `Co-Authored-By: Claude` and a `Generated with Claude Code`
  * line to any commit it makes itself, and it has a setting for that. Left alone
- * it is on, so a repository whose owner turned the co-author trailer off in the
- * panel still got one — from the other direction, on the commits an agent wrote
- * by hand rather than the ones this orchestrator squashes.
+ * it is on, so this was a trailer nothing in the panel could reach — on the
+ * commits an agent wrote by hand rather than the ones this orchestrator
+ * squashes.
+ *
+ * Its own switch, beside the Claude account. It was briefly wired to the git
+ * co-author switch, which is a different question: one is what this project
+ * puts in its history, the other is which tool wrote the diff.
  *
  * `--setting-sources user,project,local` is what makes this file read at all;
  * `/root/.claude` is the container's HOME, which holds nothing but what we put
  * in it.
  */
 function claudeFilesFor(db: DB): Record<string, string> {
-  const { coauthor } = trailers(db);
-  return { "/root/.claude/settings.json": `${JSON.stringify({ includeCoAuthoredBy: coauthor }, null, 2)}\n` };
+  const { claudeCoauthor } = trailers(db);
+  return { "/root/.claude/settings.json": `${JSON.stringify({ includeCoAuthoredBy: claudeCoauthor }, null, 2)}\n` };
 }
 
 /** The username half of git's Basic auth. GitHub ignores it; the token is the password. */

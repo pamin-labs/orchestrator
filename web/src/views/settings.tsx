@@ -139,6 +139,7 @@ export function SettingsDialog({
     onSection?.(k);
   };
   const [rows, setRows] = useState<AuthRow[]>([]);
+  const [prefs, setPrefs] = useState<{ claudeCoauthor?: boolean }>({});
   const [checks, setChecks] = useState<HostCheck[]>([]);
   const [proj, setProj] = useState<ProjectConfig | null>(null);
   const [busy, setBusy] = useState(false);
@@ -155,11 +156,12 @@ export function SettingsDialog({
 
   const load = async () => {
     const [a, p, c] = await Promise.all([
-      pull<{ runtimes: AuthRow[] }>("/api/auth"),
+      pull<{ runtimes: AuthRow[]; trailers: { claudeCoauthor: boolean } }>("/api/auth"),
       pull<{ checks: HostCheck[] }>("/api/preflight"),
       projectId ? pull<ProjectConfig>(`/api/project/${projectId}/config`) : Promise.resolve(null),
     ]);
     setRows(a?.runtimes ?? []);
+    setPrefs(a?.trailers ?? {});
     setChecks(p?.checks ?? []);
     setProj(c);
   };
@@ -266,6 +268,7 @@ export function SettingsDialog({
                       // Only the account being logged into. One flag for both meant
                       // a claude login also froze codex's button for five minutes.
                       waiting={signin?.runtime === r.key}
+                      claudeCoauthor={r.key === "claude" ? (prefs.claudeCoauthor ?? true) : undefined}
                       onSaved={load}
                       onWaitForLogin={(since) =>
                         setSignin({ runtime: r.key, since, until: Date.now() + 300_000 })
@@ -405,6 +408,8 @@ function Credential(props: {
   current?: AuthRow;
   /** A login is in flight; the page is asking every couple of seconds. */
   waiting: boolean;
+  /** Claude Code's own commit trailer. Only this runtime has one. */
+  claudeCoauthor?: boolean;
   onSaved: () => void;
   onWaitForLogin: (since: number) => void;
 }) {
@@ -682,6 +687,33 @@ function Credential(props: {
             )}
           </FieldContent>
         </Field>
+
+        {/* Beside the account, because it is a setting for this CLI rather than
+            for this project's history — the git trailers are in the GitHub pane
+            and they are a different decision. Left alone the CLI adds this to
+            any commit an agent makes by hand, and until now nothing in the panel
+            could reach it. */}
+        {props.claudeCoauthor !== undefined && (
+          <Field className="items-center">
+            <FieldLabel htmlFor="claude-coauthor" className="text-ink-3">
+              记成共同作者
+            </FieldLabel>
+            <FieldContent>
+              <Switch
+                id="claude-coauthor"
+                checked={props.claudeCoauthor}
+                disabled={busy}
+                onCheckedChange={async (v) => {
+                  setBusy(true);
+                  await post("/api/git/trailers", { claudeCoauthor: v });
+                  setBusy(false);
+                  props.onSaved();
+                }}
+              />
+              <Meta>Claude Code 自己提交时带上 Co-Authored-By: Claude</Meta>
+            </FieldContent>
+          </Field>
+        )}
       </FieldGroup>
 
       <div className="mt-2 flex items-center gap-2">
@@ -952,16 +984,23 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
   return (
     <section className="mt-3 border-t border-rule pt-3">
       <H2>提交</H2>
-      {/* The author, stated rather than configured. It was a name in a yaml file
-          that routed nowhere, so a `Signed-off-by` carrying it certified nothing
-          and a reviewer clicking it got a 404. */}
-      <Meta className="mt-0.5 block">
-        作者是 <span className="font-mono text-ink-2">{s.identity.name}</span>
-        {bot ? "（还没连 GitHub，先用我们的机器人账号）" : "，取自你连的 GitHub 账号"}
-      </Meta>
+      <FieldGroup>
+        {/* The author, stated rather than configured. It was a name in a yaml file
+            that routed nowhere, so a `Signed-off-by` carrying it certified nothing
+            and a reviewer clicking it got a 404.
 
-      <FieldGroup className="mt-1.5">
-        <Field orientation="horizontal" className="items-center">
+            A row in the group rather than a sentence above it: it is the third
+            fact about a commit, it shares the label column with the two switches,
+            and the name stops being 11px mono Chinese prose with one word tinted
+            darker. `role="group"` is already on `Field`; this names it. */}
+        <Field aria-labelledby="t-author" className="items-center">
+          <FieldTitle id="t-author">作者</FieldTitle>
+          <FieldContent>
+            <span className="font-mono text-[0.75rem] text-ink-2">{s.identity.name}</span>
+            <Meta>{bot ? "还没连 GitHub，先用我们的机器人账号" : "取自你连的 GitHub 账号"}</Meta>
+          </FieldContent>
+        </Field>
+        <Field className="items-center">
           <FieldLabel htmlFor="t-signoff">Sign-off</FieldLabel>
           <FieldContent>
             <Switch
@@ -973,7 +1012,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
             <Meta>开了 DCO 的仓库不收没有这行的提交</Meta>
           </FieldContent>
         </Field>
-        <Field orientation="horizontal" className="items-center">
+        <Field className="items-center">
           <FieldLabel htmlFor="t-coauthor">Co-author</FieldLabel>
           <FieldContent>
             <Switch
@@ -982,7 +1021,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               disabled={busy}
               onCheckedChange={(v) => void set({ coauthor: v })}
             />
-            <Meta>把 {s.bot.name} 记成共同作者</Meta>
+            <Meta>把 {s.bot.name} 记成共同作者。Claude 自己那行在「模型账号」里</Meta>
           </FieldContent>
         </Field>
       </FieldGroup>

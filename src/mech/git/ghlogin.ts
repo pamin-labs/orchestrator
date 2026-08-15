@@ -309,13 +309,29 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
  */
 export const TRAILERS_KEY = "git_trailers";
 
+/** All three on. A record that credits too much is fixable; one that credits
+ *  nobody is a diff whose author cannot be asked about it a year later. */
+const TRAILER_DEFAULTS: TrailerPrefs = { signoff: true, coauthor: true, claudeCoauthor: true };
+
 export interface TrailerPrefs {
   signoff: boolean;
   coauthor: boolean;
+  /**
+   * Claude Code's own trailer, which is a different decision than ours.
+   *
+   * The CLI appends `Co-Authored-By: Claude` and a `Generated with Claude Code`
+   * line to any commit it makes itself. That is a fact about the tool that wrote
+   * the diff, not about this project's conventions — somebody can want the model
+   * credited and not the orchestrator, or the reverse — so it is its own switch,
+   * and it lives beside the Claude account rather than beside the git ones.
+   */
+  claudeCoauthor: boolean;
 }
 
-/** What a commit helper takes: the two settings plus who the co-author is. */
-export interface Trailers extends TrailerPrefs {
+/** What a commit helper takes: the two settings it acts on, plus who the
+ *  co-author is. Not all of `TrailerPrefs` — `claudeCoauthor` is a setting for
+ *  the CLI inside the sandbox and means nothing to a `git commit` here. */
+export interface Trailers extends Pick<TrailerPrefs, "signoff" | "coauthor"> {
   /** Always `BOT`. A field rather than an import inside `withTrailers` so the
    *  commit helpers stay pure and testable without a database. */
   bot: { name: string; email: string };
@@ -326,9 +342,9 @@ export interface Trailers extends TrailerPrefs {
 export function trailers(db: DB | undefined): TrailerPrefs {
   const row = db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(TRAILERS_KEY)?.v;
   try {
-    return { signoff: true, coauthor: true, ...(row ? (JSON.parse(row) as Partial<TrailerPrefs>) : {}) };
+    return { ...TRAILER_DEFAULTS, ...(row ? (JSON.parse(row) as Partial<TrailerPrefs>) : {}) };
   } catch {
-    return { signoff: true, coauthor: true };
+    return { ...TRAILER_DEFAULTS };
   }
 }
 

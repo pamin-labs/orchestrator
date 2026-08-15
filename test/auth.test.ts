@@ -179,16 +179,20 @@ test("an api key for codex goes to the sidecar like everything else", () => {
   expect(Object.keys(filesFor(db))).toEqual(["/root/.claude/settings.json"]);
 });
 
-test("Claude Code's own co-author trailer follows the same switch as ours", () => {
+test("Claude Code's own co-author trailer is a switch of its own", () => {
   // Left alone the CLI appends `Co-Authored-By: Claude` to commits it makes
-  // itself, so a repository whose owner turned the trailer off in the panel got
-  // one anyway — from the other direction, on the commits an agent wrote by hand
-  // rather than the ones this orchestrator squashes.
+  // itself — on the commits an agent wrote by hand rather than the ones this
+  // orchestrator squashes — and nothing in the panel could reach it.
   const db = openMemory();
   const read = () => JSON.parse(filesFor(db)["/root/.claude/settings.json"]!) as { includeCoAuthoredBy: boolean };
   expect(read().includeCoAuthoredBy).toBe(true);
 
+  // Not the git one: which tool wrote the diff and what this project puts in its
+  // history are different questions, and somebody can want one without the other.
   setTrailers(db, { coauthor: false });
+  expect(read().includeCoAuthoredBy).toBe(true);
+
+  setTrailers(db, { claudeCoauthor: false });
   expect(read().includeCoAuthoredBy).toBe(false);
 });
 
