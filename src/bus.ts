@@ -65,6 +65,13 @@ export class Bus {
    */
   emit(e: EventInput): StoredEvent {
     e = { ...e, body: scrub(e.body ?? "") };
+    // `meta` too, not just the body. It is written to the same append-only row and
+    // read back by the panel and the cost report, and several emitters put whole
+    // CLI payloads in it — a credential landing there was as permanent as one in
+    // the body, and only the body was ever masked. Scrubbed as serialised text
+    // because the masker works on values, and `MASK` carries no quote so the JSON
+    // survives it.
+    const metaJson = scrub(JSON.stringify(e.meta ?? {}));
     const at = Date.now();
     const row = this.db
       .query<
@@ -83,7 +90,7 @@ export class Bus {
         e.severity ?? null,
         e.body ?? "",
         e.target ?? null,
-        JSON.stringify(e.meta ?? {}),
+        metaJson,
         at,
       )!;
     const stored: StoredEvent = { ...e, seq: row.seq, at };

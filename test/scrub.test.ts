@@ -4,10 +4,12 @@ import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/auth.ts";
 import { forgetSecrets, scrub } from "../src/mech/scrub.ts";
 
-// Verbatim shape of what `claude setup-token` prints on the line after "Store
-// this token securely" — the line the login streamed to the panel in full.
-const MINTED =
-  "sk-ant-oat01-REVOKED-AND-PURGED";
+// The *shape* of what `claude setup-token` prints on the line after "Store this
+// token securely" — the line the login streamed to the panel in full. Synthetic:
+// this file used to carry a real minted token, copied here verbatim while
+// diagnosing that very leak, and a repository is the one place a credential must
+// never be. What the test needs is the prefix and the length, not a live secret.
+const MINTED = `sk-ant-oat01-${"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-".repeat(2).slice(0, 95)}`;
 
 test("a token that was printed but not yet stored is still masked", () => {
   forgetSecrets();

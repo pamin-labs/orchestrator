@@ -6,6 +6,8 @@
  * notification is decorative.
  */
 
+import { scrub } from "./scrub.ts";
+
 export type Tier = "immediate" | "batched";
 
 export interface Notification {
@@ -204,7 +206,11 @@ async function macNotify(title: string, body: string, url?: string, ntfyTopic?: 
   if (ntfyTopic) {
     // One HTTP POST, no app, no bot. Off unless a topic is configured.
     try {
-      await fetch(`https://ntfy.sh/${ntfyTopic}`, { method: "POST", body: text.slice(0, 1000) });
+      // Scrubbed, because this one leaves the machine. ntfy.sh topics are public
+      // and unauthenticated — the topic name is the only secret — and what gets
+      // posted here is escalation text and watchdog findings, neither of which
+      // goes through the bus masker on its way in.
+      await fetch(`https://ntfy.sh/${ntfyTopic}`, { method: "POST", body: scrub(text.slice(0, 1000)) });
     } catch {}
   }
 }
