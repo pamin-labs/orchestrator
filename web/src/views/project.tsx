@@ -4,7 +4,7 @@ import { Head, Input, Meta } from "../ui/bits";
 import { Button } from "../ui/button";
 import { Field, FieldGroup, FieldLabel, InputGroup } from "../ui/field";
 import { Toggle, Toggles } from "../ui/segment";
-import { Menu, MenuItem } from "../ui/menu";
+import { Combobox } from "../ui/combobox";
 import { cn } from "../lib/utils";
 
 /**
@@ -183,7 +183,7 @@ export function Sandbox({
              a test nobody should have to sit. Still a box, not a Select: a
              branch that does not exist yet is a legitimate answer, and a login
              that cannot list them must not take the field away. */
-          options={d.branches}
+          options={d.branches ?? []}
         />
         <Row
           label="装依赖"
@@ -259,7 +259,7 @@ function Row(props: {
   width?: string;
   busy: boolean;
   onSave: (v: string) => void;
-  /** Offered beside the box, never instead of it. */
+  /** Known values. Present means one combobox; absent means a plain box. */
   options?: string[];
 }) {
   const [v, setV] = useState(props.value);
@@ -270,37 +270,40 @@ function Row(props: {
   return (
     <Field>
       <FieldLabel htmlFor={id}>{props.label}</FieldLabel>
-      <InputGroup>
-        <Input
-          id={id}
-          className={cn("min-w-0 flex-1 font-mono", props.width)}
+      {/* One control, not two. A box beside a menu splits one value across two
+          widgets: the box cannot say what the valid answers are, and the menu
+          cannot take an answer that is not on it yet. A combobox is both. */}
+      {props.options ? (
+        <Combobox
+          value={props.value}
+          options={props.options}
           placeholder={props.placeholder}
-          value={v}
           disabled={props.busy}
-          onChange={(e) => setV(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && dirty) props.onSave(v.trim());
-          }}
+          width={props.width}
+          onCommit={props.onSave}
         />
-        {/* Picking writes the box and saves in one go: an extra 存下 after
-            choosing from a list of real values is a confirmation of nothing. */}
-        {!!props.options?.length && (
-          <Menu label="选">
-            {props.options.map((o) => (
-              <MenuItem key={o} onSelect={() => { setV(o); props.onSave(o); }}>
-                  <span className="font-mono">{o}</span>
-                </MenuItem>
-            ))}
-          </Menu>
-        )}
-        {/* A button that is always there and usually does nothing trains you to
-            ignore it. */}
-        {dirty && (
-          <Button size="sm" variant="go" disabled={props.busy} onClick={() => props.onSave(v.trim())}>
-            存下
-          </Button>
-        )}
-      </InputGroup>
+      ) : (
+        <InputGroup>
+          <Input
+            id={id}
+            className={cn("min-w-0 flex-1 font-mono", props.width)}
+            placeholder={props.placeholder}
+            value={v}
+            disabled={props.busy}
+            onChange={(e) => setV(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && dirty) props.onSave(v.trim());
+            }}
+          />
+          {/* A button that is always there and usually does nothing trains you to
+              ignore it. */}
+          {dirty && (
+            <Button size="sm" variant="go" disabled={props.busy} onClick={() => props.onSave(v.trim())}>
+              存下
+            </Button>
+          )}
+        </InputGroup>
+      )}
     </Field>
   );
 }
