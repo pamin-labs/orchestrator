@@ -87,17 +87,15 @@ test("a dropped folder becomes one attachment, and cannot escape its directory",
   expect(existsSync(join(dir, "b.txt"))).toBe(false);
 });
 
-test("a project shows where it came from, and the two kinds are told apart by one column", () => {
-  // `repo_path` holds `owner/name` for a project added from GitHub and an
-  // absolute host path for one added the old way (007 step 6 merges them). The
-  // panel has nothing else to go on, and showing a host path for a repository
-  // nobody cloned is the panel talking about a machine the work no longer
-  // happens on.
+test("a project links to its repository, and a leftover path never becomes a link", () => {
+  // `repo_path` is `owner/name` for every project — migration 037 converted the
+  // host paths. The shape is still checked rather than assumed, because that
+  // migration deliberately leaves a row it could not convert holding its old
+  // path, and `https://github.com//Users/…` is worse than plain text.
   expect(repoHref("acme/site")).toBe("https://github.com/acme/site");
   expect(repoHref("Jason-Xu.dev/my_repo-2")).toBe("https://github.com/Jason-Xu.dev/my_repo-2");
 
-  // A host path is never a repo link. `checkRepoPath` refuses anything that does
-  // not start with `/`, so a local project always looks like this.
+  // A leading `/` is what every unconverted row still has.
   expect(repoHref("/Users/jason/Documents/GitHub/orchestrator")).toBeNull();
   expect(repoHref("/tmp/p")).toBeNull();
   expect(repoHref("")).toBeNull();

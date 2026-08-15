@@ -786,33 +786,14 @@ test("the boundary request quotes each group's own requirement", async () => {
   expect(boundary.find((g) => g.id === grp_id)?.idea).toContain("bye");
 });
 
-test("a mistyped repo path is refused at registration, not at the first worktree", async () => {
+test("a project is a repository, and a path is not one", async () => {
   const { app } = harness();
-  // The web form is a typed path (a browser cannot hand over a real one), so a
-  // typo is the expected mistake. Creating the project and failing later leaves
-  // a project that looks registered and breaks the moment a group starts.
-  for (const [path, want] of [
-    ["relative/path", "absolute"],
-    ["/nope/definitely/not/here", "does not exist"],
-    ["/etc/hosts", "not a directory"],
-    ["/tmp", "not a git repo"],
-  ]) {
-    const r = await post(app, "/api/projects", { name: `p-${path}`, repo_path: path });
-    expect(r.status).toBe(422);
-    expect(await r.text()).toContain(want!);
-  }
-});
-
-test("the same repo cannot be registered twice", async () => {
-  const { app } = harness();
-  const dir = mkdtempSync(join(tmpdir(), "orch-dup-"));
-  mkdirSync(join(dir, ".git"), { recursive: true });
-
-  expect((await post(app, "/api/projects", { name: "first", repo_path: dir })).status).toBe(200);
-  // Two projects on one repo would each cut file ownership as if they owned it all.
-  const again = await post(app, "/api/projects", { name: "second", repo_path: dir });
-  expect(again.status).toBe(422);
-  expect(await again.text()).toContain('already registered as "first"');
+  // There is no host-path flow left to mistype into: `repo_path` holds
+  // `owner/name` and the picker only offers repositories the app is installed
+  // on. A body without one is refused rather than half-registered.
+  const r = await post(app, "/api/projects", { name: "p", repo_path: "/Users/me/code/thing" });
+  expect(r.status).toBe(422);
+  expect(await r.text()).toContain("owner/name");
 });
 
 test("the directory list marks git repos and what is already registered", async () => {

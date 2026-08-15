@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, slugRepoPaths, type DB } from "../src/db.ts";
 import { listAuth, loadAuth, saveAuth, vaultFor } from "../src/mech/auth.ts";
 import { makeGithub, type Github } from "../src/mech/github.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
@@ -315,4 +315,74 @@ test("a project added from the list keeps GitHub's default branch, not a guess",
     new Request("http://x/api/projects", { method: "POST", body: JSON.stringify({ repo: "acme/site" }) }),
   );
   expect(again.status).toBe(422);
+});
+
+test("the migration turns a host path into owner/name, and says nothing when there is nothing to do", () => {
+  // No git and no network: the remote was recorded at registration, and that is
+  // all a slug needs. Idempotent, because migrations are replayed against
+  // databases of every age — a value already in its destination shape is left
+  // alone rather than mangled a second time.
+  const db = openMemory();
+  db.run(
+    `INSERT INTO project (name, repo_path, remote, created_at) VALUES
+       ('ssh', '/Users/jason/code/orchestrator', 'git@github.com:JasonXuDeveloper/orchestrator.git', 0),
+       ('https', '/tmp/site', 'https://github.com/acme/site.git', 0),
+       ('already', 'acme/done', 'https://github.com/acme/done.git', 0)`,
+  );
+  slugRepoPaths(db);
+  const paths = db
+    .query<{ name: string; repo_path: string }, []>("SELECT name, repo_path FROM project ORDER BY name")
+    .all();
+  expect(paths).toEqual([
+    { name: "already", repo_path: "acme/done" },
+    { name: "https", repo_path: "acme/site" },
+    { name: "ssh", repo_path: "JasonXuDeveloper/orchestrator" },
+  ]);
+  // Nothing was stuck, so the boss is not asked anything.
+  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM escalation").get()!.c).toBe(0);
+
+  // And running it again changes nothing.
+  slugRepoPaths(db);
+  expect(
+    db.query<{ name: string; repo_path: string }, []>("SELECT name, repo_path FROM project ORDER BY name").all(),
+  ).toEqual(paths);
+});
+
+test("a project that cannot be converted keeps its data and produces exactly one question", () => {
+  // Three ways to be unconvertible, and none of them is guessable: an owner
+  // invented from a directory name would point the fleet at somebody else's
+  // repository, and dropping the row deletes a project the boss chose.
+  const db = openMemory();
+  db.run(
+    `INSERT INTO project (name, repo_path, remote, created_at) VALUES
+       ('none', '/Users/jason/code/a', NULL, 0),
+       ('empty', '/Users/jason/code/b', '', 0),
+       ('gitlab', '/Users/jason/code/c', 'git@gitlab.com:me/c.git', 0),
+       ('fine', '/Users/jason/code/d', 'https://github.com/acme/d.git', 0)`,
+  );
+  slugRepoPaths(db);
+
+  // Converted what converts; left the rest exactly as they were.
+  const by = Object.fromEntries(
+    db.query<{ name: string; repo_path: string }, []>("SELECT name, repo_path FROM project").all()
+      .map((r) => [r.name, r.repo_path]),
+  );
+  expect(by.fine).toBe("acme/d");
+  expect(by.none).toBe("/Users/jason/code/a");
+  expect(by.empty).toBe("/Users/jason/code/b");
+  expect(by.gitlab).toBe("/Users/jason/code/c");
+
+  // One question naming all three, not three questions and not a silent skip.
+  const esc = db
+    .query<{ question: string; brief: string; kind: string; chain_state: string; grp_id: number | null }, []>(
+      "SELECT question, brief, kind, chain_state, grp_id FROM escalation",
+    )
+    .all();
+  expect(esc).toHaveLength(1);
+  expect(esc[0]!.kind).toBe("env");
+  expect(esc[0]!.chain_state).toBe("boss");
+  expect(esc[0]!.grp_id).toBeNull();
+  expect(esc[0]!.brief).toContain("3");
+  for (const name of ["none", "empty", "gitlab"]) expect(esc[0]!.question).toContain(name);
+  expect(esc[0]!.question).not.toContain("fine");
 });

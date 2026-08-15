@@ -51,14 +51,13 @@ export const brief = (s: string, max = 44): string => {
 };
 
 /**
- * Where a project came from, read off the one column that says.
+ * A project's repository, as a link.
  *
- * A project added from GitHub keeps `owner/name` in `repo_path`; one added the
- * old way keeps an absolute host path (007 step 6 moves the second kind to the
- * first). Nothing else distinguishes them, so every place that renders a
- * project's origin asks here rather than guessing — a host path shown for a
- * repository nobody cloned is the panel talking about a machine the work does
- * not happen on any more.
+ * `repo_path` is `owner/name` for every project — migration 037 converted the
+ * absolute host paths that used to live there. The shape is still checked
+ * rather than assumed, because that migration deliberately leaves a row it
+ * cannot convert holding its old path (a project whose remote was missing or
+ * was not GitHub), and `https://github.com//Users/…` is worse than plain text.
  */
 export const repoHref = (repoPath?: string | null): string | null =>
   repoPath && /^[\w.-]+\/[\w.-]+$/.test(repoPath) ? `https://github.com/${repoPath}` : null;

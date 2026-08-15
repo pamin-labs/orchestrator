@@ -3,15 +3,6 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectGates, detectInstall, detectShared } from "../src/mech/detect.ts";
-import { Bus } from "../src/bus.ts";
-import { loadConfig } from "../src/config.ts";
-import { openMemory } from "../src/db.ts";
-import { RepoLock } from "../src/mech/gitlock.ts";
-import { Scheduler } from "../src/scheduler.ts";
-import { makeApp, type Ctx } from "../src/api.ts";
-import { gatesFor } from "../src/mech/gate.ts";
-import { fakeSandbox } from "./fake-sandbox.ts";
-import { seedAuth } from "./seed-auth.ts";
 
 const repo = (files: Record<string, string>) => {
   const dir = mkdtempSync(join(tmpdir(), "orch-det-"));
@@ -20,9 +11,6 @@ const repo = (files: Record<string, string>) => {
     mkdirSync(join(p, ".."), { recursive: true });
     writeFileSync(p, body);
   }
-  // Registration requires a real repo: every group needs a worktree, so a path
-  // without `.git` is refused before the project exists.
-  mkdirSync(join(dir, ".git"), { recursive: true });
   return dir;
 };
 
@@ -81,54 +69,11 @@ test("workspace and lockfiles are detected as shared", () => {
   expect(shared).toContain("packages/*/package.json");
 });
 
-test("registering a project wires its gates and resources with no manual SQL", async () => {
-  const dir = repo({ "Cargo.toml": "[package]" });
-  const db = openMemory();
-  seedAuth(db);
-  const cfg = loadConfig();
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    gitLock: new RepoLock(),
-    sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: "中文"},
-  };
-  const app = makeApp(ctx);
-
-  const r = await app(
-    new Request("http://x/api/projects", {
-      method: "POST",
-      body: JSON.stringify({ name: "rusty", repo_path: dir }),
-    }),
-  );
-  const out = (await r.json()) as { id: number; gates: string[] };
-  expect(out.gates).toEqual(["test", "lint"]);
-  expect(gatesFor(db, out.id)).toEqual(["test", "lint"]);
-  // The resource templates exist too, or the gate names would point at nothing.
-  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM resource").get()!.c).toBe(2);
-});
-
-test("a project with nothing detectable says so instead of failing silently later", async () => {
-  const dir = repo({ "README.md": "hi" });
-  const db = openMemory();
-  const cfg = loadConfig();
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    gitLock: new RepoLock(),
-    sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: "中文"},
-  };
-  const r = await makeApp(ctx)(
-    new Request("http://x/api/projects", { method: "POST", body: JSON.stringify({ name: "plain", repo_path: dir }) }),
-  );
-  expect(((await r.json()) as any).gates).toEqual([]);
-  const esc = db.query<{ body: string }, []>("SELECT body FROM event WHERE kind = 'escalation'").get()!;
-  expect(esc.body).toContain("no gates detected");
-});
-
+/**
+ * Detection no longer runs at registration: a project is a GitHub repository and
+ * there is no checkout to read until a group clones it (007 §2). These functions
+ * are what that later pass calls, so they are tested on fixtures directly.
+ */
 test("no detected gate reaches for bunx or npx", () => {
   // `bunx tsc` re-resolves and installs on every call, and every worktree shares
   // one node_modules by symlink: two gates at once raced on it and one came back

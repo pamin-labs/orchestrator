@@ -288,9 +288,9 @@ function Group({
   hint?: string;
   children: React.ReactNode;
 }) {
-  // A GitHub project's origin is a place you can go, so it is a link rather than
-  // a hover string. A locally-added one keeps its path on the tooltip, which is
-  // still where that project actually is.
+  // A project's origin is a place you can go, so it is a link rather than a
+  // hover string. The tooltip is the fallback for a row migration 037 could not
+  // convert — it still holds a path, and that is still where it points.
   const href = repoHref(hint);
   const line = <Meta className="mb-1.5 block truncate px-2">{note}</Meta>;
   return (

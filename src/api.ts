@@ -23,8 +23,7 @@ import { acceptSlice } from "./mech/review.ts";
 import { dropGroup, runInstall, startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
-import { detectGates, detectInstall, detectShared } from "./mech/detect.ts";
-import { openPr, prBody, preflightPr } from "./mech/prwatch.ts";
+import { openPr, prBody } from "./mech/prwatch.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/pageindex.ts";
 import { gatesFor, recordGate } from "./mech/gate.ts";
@@ -2686,239 +2685,77 @@ const postSliceDecision: Handler = async (ctx, req, params) => {
 };
 
 /**
- * Why a path cannot be a project, in words the boss can act on. Null when fine.
+ * `~` as the person typing it means it.
  *
- * Every group needs a worktree, and `git worktree add` needs a real repo. A
- * relative path is refused rather than resolved: it would resolve against
- * whatever directory the server happens to be running in, which is not what the
- * person typing it means.
+ * Only the two host-browsing paths use this now — the attachment picker and the
+ * directory listing behind it. A project is a repository, not a directory.
  */
 export function expandHome(p: string): string {
-  // Typed by hand, so `~` is what people actually write.
   return p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : p;
 }
 
-export function checkRepoPath(p: string): string | null {
-  if (!p.startsWith("/")) return `${p} must be an absolute path (start with /)`;
-  if (!existsSync(p)) return `${p} does not exist`;
-  if (!statSync(p).isDirectory()) return `${p} is not a directory`;
-  // A worktree has `.git` as a file, not a directory, so check for either.
-  if (!existsSync(join(p, ".git"))) {
-    return `${p} is not a git repo (no .git). Run \`git init\` there first — every group needs a branch.`;
-  }
-  return null;
-}
-
+/**
+ * Register a repository this login can reach. There is no other kind of project.
+ *
+ * A project used to be a directory on this host, and everything that made it one
+ * — `expandHome`, `checkRepoPath`, the `origin` lookup, gate/install detection,
+ * the PR preflight — read a checkout at registration time. None of that can run
+ * before a clone exists, and 007 §2 already decided where it goes instead:
+ * after the first group's clone, writing its guess into project config. What is
+ * left here is what GitHub can answer in one request.
+ */
 const postProject: Handler = async (ctx, req) => {
-  const b = await body<{ name: string; repo_path: string; repo?: string; remote?: string; gates?: string[] }>(req);
+  const b = await body<{ name?: string; repo?: string; gates?: string[] }>(req);
+  const want = (b.repo ?? "").trim();
+  if (!want) return bad("which repository? (owner/name)");
+  if (!ctx.gh) return bad("this server has no GitHub client");
 
-  /**
-   * Added from the repo list, so there is no checkout on this host.
-   *
-   * **Seam, 007 step 6.** `repo_path` is still the project's identity everywhere
-   * (137 references), so a remote project puts `owner/name` in it — the shape
-   * step 6 moves every row to — rather than a path to a directory that does not
-   * exist. Until that step lands, everything here that *reads the disk* is
-   * skipped rather than run against a string that is not a path: gate/install
-   * detection, the `origin` lookup, the PR preflight. 007 §2 says the same
-   * thing about detection — it moves to after the first group's clone, and
-   * adding a project says so instead of silently guessing nothing.
-   */
-  const remoteOnly = !!(b.repo ?? "").trim();
-  let baseBranch: string | null = null;
-  if (remoteOnly) {
-    if (!ctx.gh) return bad("this server has no GitHub client");
-    // The API is asked rather than trusting what the browser posted: the default
-    // branch is written into the row, and a wrong one is a group that branches
-    // off nothing.
-    const r = await ctx.gh.request<{ full_name: string; default_branch: string; clone_url: string }>(
-      "GET",
-      `/repos/${(b.repo ?? "").trim()}`,
-    );
-    if (!r.ok) return bad(r.message);
-    b.repo_path = r.data.full_name;
-    b.remote = r.data.clone_url;
-    baseBranch = r.data.default_branch || null;
-    b.name ||= r.data.full_name.split("/")[1] ?? r.data.full_name;
-  }
-  if (!b.name || !b.repo_path) return bad("name and repo_path required");
-
-  if (!remoteOnly) {
-    // The web form is a typed path — a browser cannot hand over a real filesystem
-    // path — so a typo is the expected mistake, not an exotic one. Checked here
-    // rather than discovered when the first group tries to create a worktree.
-    b.repo_path = expandHome(b.repo_path);
-    const pathProblem = checkRepoPath(b.repo_path);
-    if (pathProblem) return bad(pathProblem);
-  }
-
-  const dup = ctx.db
-    .query<{ name: string }, [string]>("SELECT name FROM project WHERE repo_path = ?")
-    .get(b.repo_path);
-  if (dup) return bad(`${b.repo_path} is already registered as "${dup.name}"`);
-
-  // A GitHub remote is a registration requirement, not a warning.
-  //
-  // It used to register anyway and say "only the PR step is blocked", which is
-  // the whole delivery half of the system: the branch finishes and has nowhere
-  // to go. Everything downstream also assumes GitHub can be asked — "is it
-  // merged" is answered by `gh pr view`, and the alternative was a button that
-  // asked the boss to confirm a merge by hand.
-  let remote = b.remote ?? null;
-  if (ctx.git && !remoteOnly) {
-    const r = await ctx.git(b.repo_path, ["remote", "get-url", "origin"]);
-    const url = r.code === 0 ? (r.out.trim().split("\n")[0] ?? "") : "";
-    if (!url) return bad(`${b.repo_path} has no \`origin\` remote: a PR would have nowhere to go`);
-    if (!/github\.com/i.test(url)) return bad(`origin is ${url}; only GitHub is supported for now`);
-    remote = url;
-  }
-
-  // A project with no gates fails every slice by design, so guessing them here
-  // is the difference between "works out of the box" and "looks broken on day
-  // one". The guess is written into config where it can be corrected.
-  const detected = remoteOnly ? [] : detectGates(b.repo_path);
-  const insRes = ctx.db.prepare(
-    `INSERT INTO resource (name, template, arg_schema_json, error_regex, concurrency, tags_json)
-     VALUES (?, ?, ?, ?, 1, ?)
-     ON CONFLICT (name) DO UPDATE SET template = excluded.template, error_regex = excluded.error_regex,
-       arg_schema_json = excluded.arg_schema_json, tags_json = excluded.tags_json`,
+  // Asked of GitHub rather than trusted from the browser: the default branch is
+  // written into the row, and a wrong one is a group that branches off nothing.
+  const r = await ctx.gh.request<{ full_name: string; default_branch: string; clone_url: string }>(
+    "GET",
+    `/repos/${want}`,
   );
-  // `repo`: one gate at a time per repository, whatever the gate is.
-  //
-  // Concurrency is per resource, so build and typecheck ran side by side — and
-  // both shell out to the project's own scripts, which install things. Every
-  // worktree shares one node_modules by symlink, so two installs at once raced
-  // and one came back `Failed to link jiti: EEXIST`. The group read that as its
-  // own build being broken and burned five retries on it.
-  //
-  // We can fix our own templates (and did), but not the scripts a project ships,
-  // so the guarantee has to be structural: gates of one repo do not overlap.
-  // Different repos still run in parallel — the pool is keyed by project.
-  for (const g of detected) insRes.run(g.name, g.template, "{}", g.errorRegex, JSON.stringify(["repo"]));
+  if (!r.ok) return bad(r.message);
+  const repoPath = r.data.full_name;
+  const remote = r.data.clone_url;
+  const baseBranch = r.data.default_branch || null;
+  const name = (b.name ?? "").trim() || repoPath.split("/")[1] || repoPath;
 
-  // A project that ships the runner gets the browser resource. Without it, every
-  // acceptance line of the form "the menu opens" is unverifiable by anyone in the
-  // fleet — measured, three groups stalled at once and the boss was asked to click.
-  // Tagged `browser` so it draws from its own pool: each lease is a real Chromium.
-  if (!remoteOnly && existsSync(join(b.repo_path, "scripts/browse.ts"))) {
-    insRes.run(
-      "browser",
-      "bun run scripts/browse.ts --steps {steps}",
-      // A step file, never a command: the Runner has real permissions, so the only
-      // thing an agent may hand it is data (PLAN.md, hard constraint 2).
-      JSON.stringify({ steps: { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$", maxLength: 200 } }),
-      "FAIL:",
-      // No `host` tag any more. It used to need one — the old sandbox refused the
-      // loopback a browser driving a local server needs — and it was the last
-      // thing in the fleet still running on the boss's machine. Inside a
-      // container loopback is free. Its other confinement is unchanged: the arg
-      // schema takes a steps file, never a command.
-      JSON.stringify(["browser"]),
-    );
-  }
+  const dup = ctx.db.query<{ name: string }, [string]>("SELECT name FROM project WHERE repo_path = ?").get(repoPath);
+  if (dup) return bad(`${repoPath} is already registered as "${dup.name}"`);
 
-  const gates = b.gates ?? detected.map((g) => g.name);
-  // How a fresh checkout gets its dependencies. Detected and written into config
-  // rather than hardcoded, because it is the one command that differs between
-  // every stack — and it is a default the bootstrap role can skip past, since
-  // only the repo knows which of bun / poetry / uv / mise / make it really is.
-  const config = remoteOnly
-    ? { gates }
-    : { gates, shared: detectShared(b.repo_path), install: detectInstall(b.repo_path) };
-
-  // `base_branch` comes from the API for a remote project, rather than from the
-  // 30 lines of main/master/trunk heuristics a checkout needed. NULL still means
-  // "ask the remote", which is what a locally-added project stays as.
-  const r = ctx.db
-    .query<{ id: number }, [string, string, string | null, string, string | null]>(
+  const gates = b.gates ?? [];
+  const row = ctx.db
+    .query<{ id: number }, [string, string, string, string, string | null]>(
       `INSERT INTO project (name, repo_path, remote, config_json, base_branch, created_at)
        VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
-    .get(b.name, b.repo_path, remote, JSON.stringify(config), baseBranch)!;
+    .get(name, repoPath, remote, JSON.stringify({ gates }), baseBranch)!;
 
-  if (remoteOnly) {
-    // Not "no gates detected" — nothing was looked at. 007 §2: detection moves to
-    // after the first group's clone, and adding a project says so rather than
-    // silently guessing nothing.
-    ctx.bus.emit({
-      author: "orchestrator",
-      kind: "state_change",
-      body:
-        `project ${b.name} (${b.repo_path}, ${baseBranch ?? "default branch"}): 还没有 checkout，` +
-        `闸门和安装命令等第一个组克隆完再猜。现在填也行：设置 → 闸门。`,
-    });
-  } else if (gates.length === 0) {
-    // Say it plainly rather than letting the first slice fail with a puzzle.
-    ctx.bus.emit({
-      author: "orchestrator",
-      kind: "escalation",
-      intent: "ask",
-      severity: "advisory",
-      body:
-        `no gates detected in ${b.repo_path}. Every slice will fail review until this project ` +
-        `has at least one: add a resource template and list its name in the project's gates.`,
-    });
-  } else {
-    ctx.bus.emit({
-      author: "orchestrator",
-      kind: "state_change",
-      body: `project ${b.name}: gates ${gates.join(", ")}`,
-      meta: { gates, detected },
-    });
-  }
-  // The remote is settled above; what is left — `gh` installed, logged in, write
-  // permission — is fixable without re-registering, so it is said, not refused.
-  // Skipped for a remote project: this reads the host checkout, and there is none.
-  if (ctx.git && ctx.gh && !remoteOnly) {
-    const pre = await preflightPr(b.repo_path, (argv, cwd) => ctx.git!(cwd, argv, cwd), ctx.gh);
-    ctx.bus.emit(
-      pre.ok
-        ? { author: "orchestrator", kind: "state_change", body: `PR flow ready (${pre.remote})` }
-        : {
-            author: "orchestrator",
-            kind: "escalation",
-            intent: "ask",
-            severity: "advisory",
-            body: `PR flow will not work for ${b.name} until this is fixed: ${pre.reason}`,
-            meta: { remote: pre.remote },
-          },
-    );
-  }
-
-  // Write the onboarding pack before any group exists, so the first group does
-  // not pay to explore the repo. Cheap role, cheap model, once per project.
-  // A remote project has nothing to read yet — the Librarian would explore a
-  // directory that does not exist — so it waits for the first clone, same as
-  // gate detection above.
-  if (!remoteOnly) {
-    ctx.sched.enqueue("agent_turn", {
-      priority: 4,
-      payload: {
-        role: "librarian",
-        project_id: r.id,
-        onboarding: b.repo_path,
-        idea:
-          `New project registered at ${b.repo_path}. Write its onboarding pack now ` +
-          `(\`orch journal add --kind onboarding\`): how to build, how to test, the conventions ` +
-          `actually in use, the known traps, and a short directory map. Six lines max — every ` +
-          `future agent reads this on its first turn, so it is the highest-leverage six lines ` +
-          `in the project.`,
-      },
-    });
-  }
+  // Said rather than silently guessed at: nothing was looked at, because there is
+  // nothing to look at until a group clones (007 §2).
+  ctx.bus.emit({
+    author: "orchestrator",
+    kind: "state_change",
+    body:
+      `${name}（${repoPath} · ${baseBranch ?? "默认分支"}）加好了。闸门和安装命令等第一个组克隆完再猜，` +
+      `现在填也行：设置 → 闸门。`,
+  });
   ctx.sched.tick();
-  return json({ id: r.id, gates, detected });
+  return json({ id: row.id, gates });
 };
 
 /** Idle SSE connections get dropped by proxies and by browsers' own timeouts. */
 const SSE_HEARTBEAT_MS = 25_000;
 
 /**
- * Directories, so the boss can pick a repo instead of typing a path.
+ * This machine's directories, for the **attachment** picker and nothing else.
  *
- * A browser cannot hand over a real filesystem path, and typing one is both ugly
- * and the most likely place to make a mistake. The server can read the disk, so
- * it lists directories and says which are git repos.
+ * It used to be how a project was added, which is why it reports `.git` on each
+ * entry — a project is a GitHub repository now and comes from the repo list. It
+ * stays because attaching a file or a folder to a message is genuinely about
+ * this machine: a browser cannot hand over a real path.
  *
  * Names only, never contents: this endpoint has no business reading files, and
  * the page it serves only needs to know what to offer.

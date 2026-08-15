@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { rememberSecrets } from "./mech/scrub.ts";
+import { parseRepo } from "./mech/github.ts";
 
 /**
  * Single source of truth for the schema. See PLAN.md §3.
@@ -557,6 +558,19 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // rather than leaving as history: `/name` is what both CLIs resolve, wherever
   // the skill actually sits.
   rewriteSkillPaths,
+
+  // 037 — a project is `owner/name`, not a directory on whoever's laptop.
+  //
+  // Every project now comes from GitHub (007 §2), so `repo_path` holds the slug
+  // and nothing else. The conversion needs neither git nor the network: the
+  // remote was recorded at registration and `parseRepo` reads the slug out of it.
+  //
+  // A row that cannot be converted keeps exactly what it had. Guessing an owner
+  // from a directory name would write a repository that may belong to somebody
+  // else, and dropping the row deletes a project the boss chose — so the data
+  // stays and one question is raised naming all of them. `repoHref` still refuses
+  // anything shaped like a path, so an unconverted row renders as it always did.
+  slugRepoPaths,
 ];
 
 export type DB = Database;
@@ -575,6 +589,44 @@ export function rewriteSkillPaths(db: DB): void {
       if (next !== r.body) set.run(next, r.id);
     }
   }
+}
+
+/**
+ * `repo_path`: absolute host path → `owner/name`.
+ *
+ * Idempotent, because migrations are replayed against databases at every age: a
+ * value that is not an absolute path is already in its destination shape and is
+ * left alone. Exported for the same reason `rewriteSkillPaths` is — a data
+ * migration with a decision in it is worth a test.
+ */
+export function slugRepoPaths(db: DB): void {
+  const rows = db
+    .query<{ id: number; name: string; repo_path: string; remote: string | null }, []>(
+      "SELECT id, name, repo_path, remote FROM project",
+    )
+    .all();
+  const set = db.prepare("UPDATE project SET repo_path = ? WHERE id = ?");
+  const stuck: string[] = [];
+  for (const p of rows) {
+    if (!p.repo_path.startsWith("/")) continue;
+    const slug = p.remote ? parseRepo(p.remote) : null;
+    if (slug) set.run(slug, p.id);
+    else stuck.push(`${p.name}（${p.repo_path}${p.remote ? ` → ${p.remote}` : "，没记下 remote"}）`);
+  }
+  if (!stuck.length) return;
+  // One question, not one per project: they are the same problem said N times,
+  // and a queue of them is N decisions on a page where there is one.
+  db.run(
+    `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
+     VALUES (NULL, 'blocker', ?, ?, 'env', 'boss', unixepoch() * 1000)`,
+    [
+      `这些项目还指着本机的目录，认不出对应的 GitHub 仓库，所以现在开不了组：\n` +
+        stuck.map((s) => `· ${s}`).join("\n") +
+        `\n\n每个都得说清是哪个仓库（owner/name）。最省事的做法：在设置里连好 GitHub 之后，` +
+        `从仓库列表里重新添加一次，再把这条关掉。数据没动过。`,
+      `${stuck.length} 个项目认不出 GitHub 仓库`,
+    ],
+  );
 }
 
 /** Open (or create) the database and bring it up to the latest migration. */

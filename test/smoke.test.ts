@@ -15,11 +15,8 @@ let dataDir: string;
 
 beforeAll(() => {
   dataDir = mkdtempSync(join(tmpdir(), "orch-smoke-"));
-  // The smoke run registers dataDir as a project, and registration wants a repo
-  // with a GitHub `origin` — a PR is where the work ends up, so a project without
-  // one is refused rather than discovered at delivery time.
-  Bun.spawnSync(["git", "init", "-q", "-b", "main", dataDir]);
-  Bun.spawnSync(["git", "-C", dataDir, "remote", "add", "origin", "git@github.com:example/demo.git"]);
+  // No `git init` here any more: a project is a GitHub repository, not a
+  // directory on this machine, so dataDir is only ever the server's own store.
   // maxGroups 0 blocks every group turn, which is how this test exercises the
   // real HTTP server without spawning a single agent or spending a token.
   // Port 0, not a fixed one: several groups run `bun test` in their own worktrees
@@ -67,7 +64,18 @@ test("the web UI is served and fetches nothing from a remote origin", async () =
 });
 
 test("boss path: add project, drop an idea, nothing runs without a slot", async () => {
-  const p = await (await post("/api/projects", { name: "demo", repo_path: dataDir })).json();
+  // Inserted rather than POSTed: registering a project is now one request to
+  // api.github.com for the repository's default branch, and a smoke test that
+  // reaches the network fails on a train. What it stands in for — the repo list
+  // and `POST /api/projects` — is covered against an injected client in
+  // test/ghlogin.test.ts. Everything after this line is still real HTTP.
+  const p = srv.ctx.db
+    .query<{ id: number }, []>(
+      `INSERT INTO project (name, repo_path, remote, config_json, base_branch, created_at)
+       VALUES ('demo', 'example/demo', 'https://github.com/example/demo.git', '{"gates":[]}', 'main', 0)
+       RETURNING id`,
+    )
+    .get()!;
   expect(p.id).toBeGreaterThan(0);
 
   const idea = await (await post("/api/ideas", { project_id: p.id, text: "add rate limiting" })).json();
@@ -82,9 +90,10 @@ test("boss path: add project, drop an idea, nothing runs without a slot", async 
   const jobs = srv.ctx.db
     .query<{ state: string; kind: string }, []>("SELECT state, kind FROM job")
     .all();
-  // Two queued turns: the Librarian's onboarding pass from registration, and the
-  // Dispatcher's planning pass. Both stay pending — no slot, no spend.
-  expect(jobs.length).toBe(2);
+  // One queued turn: the Dispatcher's planning pass. It stays pending — no slot,
+  // no spend. The Librarian's onboarding pass is not here any more: it read the
+  // host checkout, and a project has none until a group clones (007 §2).
+  expect(jobs.length).toBe(1);
   expect(jobs.every((j) => j.kind === "agent_turn" && j.state === "pending")).toBe(true);
   expect(srv.ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM agent").get()!.c).toBe(0);
 
@@ -93,7 +102,7 @@ test("boss path: add project, drop an idea, nothing runs without a slot", async 
   // only the second one matters after a restart.
   const count = (t: string) =>
     srv.ctx.db.query<{ c: number }, []>(`SELECT count(*) AS c FROM ${t}`).get()!.c;
-  expect(count("job")).toBe(2);
+  expect(count("job")).toBe(1);
   // event: the project, the idea, the group's channel opening — the append-only half.
   expect(count("event")).toBeGreaterThanOrEqual(1);
   // note: the idea itself is a fact, plus whatever registration wrote (gates, PR
