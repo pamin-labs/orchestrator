@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DB } from "../../db.ts";
 import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "../sandbox/auth.ts";
-import { allowedHostPaths, coveredBy , SANDBOX_API_KEY_HEADER } from "../sandbox/sandbox.ts";
+import { allowedHostPaths, coveredBy, hasRegistry, SANDBOX_API_KEY_HEADER } from "../sandbox/sandbox.ts";
 import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 
 /**
@@ -302,17 +302,25 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
     fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
   });
 
-  // The image every group's container is made from. It is built here, not
-  // pulled — there is no registry behind `orch/agent:1` — so a machine that has
-  // never built it fails every sandbox with a pull error that reads like a
-  // network problem. Checked by tag rather than by creating a sandbox.
+  // The image every group's container is made from, and the two cases are not
+  // the same check.
+  //
+  // A published one is pulled by the sandbox server the first time a container
+  // is built, so "not on this machine" is a fact and not a fault — reporting it
+  // red sent people to run a `docker pull` that was about to happen anyway, on
+  // the one pane that is supposed to mean "this machine cannot work".
+  //
+  // A tag with no registry in front of it has nowhere to be pulled from. That
+  // one fails every sandbox with a pull error reading like a network problem,
+  // which is why this check exists at all.
   const image = input.sandbox.image;
-  const built = docker ? localImages(image) : false;
+  const here = docker ? localImages(image) : false;
+  const pullable = hasRegistry(image);
   out.push({
     name: "agent image",
-    ok: built,
-    detail: built ? image : `${image} 不在本机`,
-    fix: image.startsWith("ghcr.io/")
+    ok: here || pullable,
+    detail: here ? image : pullable ? `${image}（本机没有，第一次起沙盒时拉）` : `${image} 不在本机`,
+    fix: pullable
       ? `docker pull ${image}`
       : `docker build -f docker/agent.Dockerfile -t ${image} . —— 没有 registry 前缀的镜像只能本地构建。`,
   });

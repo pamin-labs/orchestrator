@@ -94,16 +94,28 @@ export interface SandboxSpec {
 export const PUBLISHED_REPO = "pamin-labs/orch-agent";
 const PUBLISHED = new RegExp(`^ghcr\\.io/${PUBLISHED_REPO.split("/")[0]}/`, "i");
 
+/**
+ * Does this reference name a registry to pull from?
+ *
+ * A registry is a `.` or a `:` in the first path segment, or a literal
+ * `localhost`. Docker's own rule, and the reason `orch/agent:1` is local while
+ * `evil.example.com/orch/agent:1` is not.
+ *
+ * Two callers, one rule: this decides both what may run (below) and whether
+ * preflight is allowed to say "not on this machine" is fine — the sandbox server
+ * pulls what it can pull, and nothing can pull a bare tag.
+ */
+export function hasRegistry(ref: string): boolean {
+  const image = ref.trim();
+  const head = image.split("/")[0]!;
+  return image.includes("/") && (head.includes(".") || head.includes(":") || head === "localhost");
+}
+
 export function allowedImage(ref: string): boolean {
   const image = ref.trim();
   if (!image) return false;
   if (PUBLISHED.test(image)) return true;
-  // A registry is a `.` or a `:` in the first path segment, or a literal
-  // `localhost`. Docker's own rule, and the reason `orch/agent:1` is local while
-  // `evil.example.com/orch/agent:1` is not.
-  const head = image.split("/")[0]!;
-  const hasRegistry = image.includes("/") && (head.includes(".") || head.includes(":") || head === "localhost");
-  return !hasRegistry;
+  return !hasRegistry(image);
 }
 
 /** `1` is the SDK default and makes a typecheck 3.7x slower (005). */
