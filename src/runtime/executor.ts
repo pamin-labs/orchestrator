@@ -1071,7 +1071,7 @@ function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnRes
       job.grp_id,
       agent.id,
       `${runtime} 的凭据不好使了：${r.text.slice(0, 200)}\n` +
-        `去设置页重新配一个（claude 跑 \`claude setup-token\`，一年有效），配完这一组会自己接着走。`,
+        `去设置页 → ${runtime} → 登录，重新配一个。登录是在工具容器里跑官方 CLI 做的，本机不用装。配完这一组会自己接着走。`,
       `${runtime} 凭据过期`,
     ],
   );

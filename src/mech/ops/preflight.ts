@@ -379,12 +379,17 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
       name: `credential:${runtime}`,
       ok: live.ok,
       detail: auth ? `${auth.mode} · ${live.detail}` : live.detail,
+      // Where, not what. This used to say `claude setup-token` and `codex
+      // login` — instructions to run a CLI on this machine, from before both
+      // logins moved into the utility container. Following them logged the
+      // *host* in and stored nothing, and the check kept saying 没配 with no
+      // hint that the thing just done was the wrong thing.
       fix:
         runtime === "claude"
-          ? "claude setup-token，把吐出来的令牌存进设置里的账号。一年有效。"
+          ? "设置页 → Claude → 登录。在工具容器里跑官方的 claude setup-token，本机不用装；页面给的码贴回输入框就存下了。一年有效。"
           : runtime === "github"
             ? "设置页里连一次 GitHub。分支是靠它推上去的 —— 没有它，每个切片都会在最后一步被拒。"
-            : "codex login，或者贴一个 API key。",
+            : "设置页 → codex → 登录，走官方的设备码流程，本机不用装 codex。也可以直接贴一个 API key。",
     });
   }
 
