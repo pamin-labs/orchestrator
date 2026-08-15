@@ -970,13 +970,17 @@ const SERVER_STATE: Record<ServerInfo["state"], { zh: string; ok: boolean }> = {
  * the agents simply do not have the skills the boss ticked. Preflight builds the
  * exact line to paste, so it is rendered selectable rather than described.
  */
-function ServerState({ checks }: { checks: HostCheck[] }) {
+function ServerState({ checks, reload = 0 }: { checks: HostCheck[]; reload?: number }) {
   const [d, setD] = useState<ServerInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const load = async () => setD(await pull<ServerInfo>("/api/sandbox-server"));
+  // `reload` and not just `[]`: whether we can drive the server is a function of
+  // the key, so the box below is not an independent panel. Clearing the key and
+  // still reading "在跑，直接用" above it is the shape this project keeps paying
+  // for — a stale answer that looks like a healthy one.
   useEffect(() => {
     void load();
-  }, []);
+  }, [reload]);
 
   const paths = checks.find((c) => c.name === "allowed_host_paths");
   const st = d ? SERVER_STATE[d.state] : null;
@@ -1115,6 +1119,12 @@ function ServerState({ checks }: { checks: HostCheck[] }) {
 function SandboxKey(props: { current?: AuthRow; checks: HostCheck[]; onSaved: () => void }) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Bumped by every key change, so the status above re-asks rather than lying. */
+  const [changed, setChanged] = useState(0);
+  const saved = () => {
+    setChanged((n) => n + 1);
+    props.onSaved();
+  };
 
   /** Read it out of the server's own config, server-side. */
   const adopt = async () => {
@@ -1122,7 +1132,7 @@ function SandboxKey(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
     const res = await post("/api/auth", { runtime: "sandbox", mode: "api_key", adopt: true });
     setBusy(false);
     if (res.ok) setKey("");
-    props.onSaved();
+    saved();
   };
 
   const save = async () => {
@@ -1130,13 +1140,13 @@ function SandboxKey(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
     const res = await post("/api/auth", { runtime: "sandbox", mode: "api_key", secret: key.trim() });
     setBusy(false);
     if (res.ok) setKey("");
-    props.onSaved();
+    saved();
   };
 
   return (
     <>
       <Head title="沙盒服务器" note="开容器的那个服务" />
-      <ServerState checks={props.checks} />
+      <ServerState checks={props.checks} reload={changed} />
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="sandbox-key">密钥</FieldLabel>
@@ -1174,7 +1184,7 @@ function SandboxKey(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
                   await post("/api/auth", { runtime: "sandbox", clear: true });
                   setBusy(false);
                   setKey("");
-                  props.onSaved();
+                  saved();
                 }}
               >
                 清掉

@@ -310,7 +310,7 @@ bun run src/server.ts                     # 起服务
 
 **provider 是注册表不是 union**（`src/runtime/providers.ts`）：加第三个 CLI = 一个文件 + 一行注册，`Runtime` 是 string，没有 union 要加宽、没有 `if` 要找。每个 provider 声明自己能不能约束写入（`confinesWrites`），这决定 ownership 是前置拦截还是事后对账。
 
-沙箱、ownership 后置对账、`CODEX_HOME` 隔离、AGENTS.md 软链的实测依据全在**决策 004**。真跑了一个 codex turn 用最终这套 argv 去 `curl 127.0.0.1`，拿到 `ORCH-OK` —— 「agent 够不够得着 orchestrator」这个前提是验过的，不是推的。
+沙盒、ownership 后置对账、`CODEX_HOME` 隔离、AGENTS.md 软链的实测依据全在**决策 004**。真跑了一个 codex turn 用最终这套 argv 去 `curl 127.0.0.1`，拿到 `ORCH-OK` —— 「agent 够不够得着 orchestrator」这个前提是验过的，不是推的。
 
 ### 顺手挖出来的一个真 bug：轮换分母写死 200k
 
