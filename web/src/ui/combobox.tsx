@@ -5,29 +5,31 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 
 /**
- * One control for a value that is usually on a list and occasionally is not.
+ * One control for a value that comes from a list.
  *
- * The first attempt at the base-branch field was a text box **and** a 选 button
- * beside it: two controls for one value, where the box could not tell you what
- * the valid answers were and the menu could not accept an answer that was not
- * on it yet. Neither half was wrong; having both was.
+ * Type to filter, click or Enter to commit. The first attempt at the
+ * base-branch field was a text box **and** a menu beside it: two widgets for one
+ * value, where the box could not say what the valid answers were and the menu
+ * could not be typed into. Having both was the bug, not either half.
  *
- * A combobox is the shape that holds both properties at once — type to filter,
- * pick to commit, and whatever you typed is still a legal answer when nothing
- * matches. That last part is why this is not a `Select`: a branch that does not
- * exist yet is a real thing to enter, and so is any value when the list could
- * not be fetched.
+ * **The list is the authority when there is one.** A base branch that does not
+ * exist is not a value, it is a group that fails at clone time four steps later,
+ * so text that matches nothing is refused and the field snaps back. When the
+ * list is *empty* — no GitHub credential, rate limited, the API down — there is
+ * nothing to check against, and refusing everything would mean an unreachable
+ * API silently locks a settings field. Then, and only then, text is taken as
+ * typed.
  *
- * shadcn's own combobox is built on Base UI. This one is Radix Popover plus
- * `cmdk`, which is the same composition one library earlier and the one this
- * codebase already has — a second primitive library for a single control is a
- * dependency that outlives the reason for it.
+ * shadcn's current combobox is Base UI. This is Radix Popover plus the `cmdk`
+ * already here, which is the same composition one library earlier: seven Radix
+ * packages are in this tree, and a second primitive library for one control is a
+ * dependency that outlives its reason.
  */
 export function Combobox({
   value,
   options,
   placeholder,
-  empty = "没有匹配的",
+  empty = "没有匹配的分支",
   disabled,
   width,
   onCommit,
@@ -38,34 +40,38 @@ export function Combobox({
   empty?: string;
   disabled?: boolean;
   width?: string;
-  /** Fired on pick, on Enter, and on leaving with the text changed. */
   onCommit: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
-  const input = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLInputElement>(null);
   useEffect(() => setDraft(value), [value]);
+
+  // Typed text filters; it does not narrow to nothing. Showing the whole list on
+  // focus is the point of opening it — filtering by the value already in the box
+  // would offer exactly the one branch already selected.
+  const q = draft.trim().toLowerCase();
+  const shown = q && q !== value.trim().toLowerCase()
+    ? options.filter((o) => o.toLowerCase().includes(q))
+    : options;
 
   const commit = (v: string) => {
     const next = v.trim();
-    setDraft(next);
     setOpen(false);
+    // Refused rather than saved: see the note above. `options.length` is the
+    // whole condition — an empty list means unverifiable, not invalid.
+    if (options.length && !options.includes(next)) return setDraft(value);
+    setDraft(next);
     if (next !== value.trim()) onCommit(next);
   };
 
   return (
     <P.Root open={open} onOpenChange={setOpen}>
-      <Command
-        // Filtering is ours: cmdk's default hides everything once the text stops
-        // matching, and the whole point here is that a value nobody offered is
-        // still enterable — an empty list must not look like a broken field.
-        shouldFilter={false}
-        className={cn("relative min-w-0 flex-1", width)}
-      >
+      <Command shouldFilter={false} className={cn("relative min-w-0 flex-1", width)}>
         <P.Anchor asChild>
           <div className="relative">
             <Command.Input
-              ref={input}
+              ref={box}
               value={draft}
               disabled={disabled}
               placeholder={placeholder}
@@ -73,7 +79,13 @@ export function Combobox({
                 setDraft(v);
                 if (!open) setOpen(true);
               }}
+              // Not `onBlur`. Radix portals the content and installs focus
+              // guards, so the input blurs for an instant as the popover mounts
+              // — and closing on blur meant the list appeared and vanished by
+              // itself a moment later, which is what this looked like. Dismissal
+              // belongs to the popover, which knows what is inside it.
               onFocus={() => setOpen(true)}
+              onClick={() => setOpen(true)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -83,13 +95,12 @@ export function Combobox({
                   setOpen(false);
                 }
               }}
-              onBlur={() => commit(draft)}
               className="w-full rounded-lg border border-rule bg-paper px-2.5 py-1.5 pr-7 font-mono text-[0.8125rem]
                          text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none
                          disabled:opacity-50"
             />
-            {/* Affordance only. The input owns the interaction, so this must not
-                be a second thing to aim at — it opens what focus already opens. */}
+            {/* Affordance only, and deliberately not a second target: the input
+                owns every way in, so this must not be a place to aim. */}
             <ChevronDown
               size={12}
               strokeWidth={2}
@@ -103,29 +114,42 @@ export function Combobox({
           <P.Content
             align="start"
             sideOffset={4}
-            // Focus stays in the input: this is a filtered list, not a menu, and
-            // moving focus into it would break typing mid-selection.
+            // Focus stays in the box: this is a filtered list, not a menu, and
+            // moving focus into it would stop you typing mid-selection.
             onOpenAutoFocus={(e) => e.preventDefault()}
+            onCloseAutoFocus={(e) => e.preventDefault()}
+            // Clicking away is the one dismissal that also decides the value.
+            onInteractOutside={() => commit(draft)}
             className="z-50 w-[var(--radix-popover-trigger-width)] min-w-[12rem] overflow-hidden rounded-lg
                        border border-rule bg-paper shadow-[0_8px_28px_var(--shade)] fade-in"
           >
             <Command.List className="max-h-[14rem] overflow-y-auto p-1">
-              {!options.length && <div className="px-2 py-2 text-[0.75rem] text-ink-3">{empty}</div>}
-              {options
-                .filter((o) => o.toLowerCase().includes(draft.trim().toLowerCase()))
-                .map((o) => (
-                  <Command.Item
-                    key={o}
-                    value={o}
-                    onSelect={() => commit(o)}
-                    className={cn(
-                      "cursor-pointer rounded-md px-2 py-1.5 font-mono text-[0.75rem] text-ink",
-                      "data-[selected=true]:bg-sunk",
-                    )}
-                  >
-                    {o}
-                  </Command.Item>
-                ))}
+              {!shown.length && (
+                <div className="px-2 py-2 text-[0.75rem] text-ink-3">
+                  {options.length ? empty : "读不到远端分支，这里按你填的存"}
+                </div>
+              )}
+              {shown.map((o) => (
+                <Command.Item
+                  key={o}
+                  value={o}
+                  // `onSelect` fires on Enter too, and Enter is already handled
+                  // on the input — `onMouseDown` keeps the click from blurring
+                  // the box before the value lands.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    commit(o);
+                  }}
+                  onSelect={() => commit(o)}
+                  className={cn(
+                    "cursor-pointer rounded-md px-2 py-1.5 font-mono text-[0.75rem] text-ink",
+                    "data-[selected=true]:bg-sunk",
+                    o === value.trim() && "text-accent",
+                  )}
+                >
+                  {o}
+                </Command.Item>
+              ))}
             </Command.List>
           </P.Content>
         </P.Portal>
