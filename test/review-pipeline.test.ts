@@ -555,6 +555,12 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
   expect(filed.author).toBe("engineer");
 });
 
+// 30s, not bun's 5s default. Measured at 5000.79ms in one full-suite run out of
+// thirteen: this harness's fake sandbox really `Bun.spawnSync`es every command,
+// its setup alone is eight git processes, and under a loaded machine that
+// exceeds the default. It is timing, not a leak — nothing here reads module
+// state, and the three holds that do have resets are cleared before every test
+// by `test/setup.ts`. Do not go hunting for one.
 test("a branch the Auditor keeps rejecting stops instead of paying for another round", async () => {
   // A slice that keeps failing gives up after gateRetries and asks the boss. The
   // branch had no counter at all — the same money spent forever on the same
@@ -578,4 +584,4 @@ test("a branch the Auditor keeps rejecting stops instead of paying for another r
   // The likely cause, said out loud: three rounds usually means the acceptance
   // wording is wrong, not the code.
   expect(esc.question).toContain("验收口径");
-});
+}, 30_000);

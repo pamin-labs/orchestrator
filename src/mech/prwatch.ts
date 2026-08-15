@@ -17,12 +17,6 @@ import { WORK } from "./sandbox.ts";
  * `github.ts` instead of an exit code.
  */
 
-/** Just enough of a git runner's answer for the preflight below. */
-export interface GhRun {
-  code: number;
-  out: string;
-}
-
 /**
  * `owner/repo`, from the remote stored at registration.
  *
@@ -442,59 +436,28 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
   ctx.sched.tick();
 }
 
-export interface Preflight {
-  ok: boolean;
-  remote: string | null;
-  reason?: string;
-}
-
 /**
- * Can this project open a PR at all?
+ * Auth is not permission, and the boss should hear so at registration.
  *
- * Checked at registration rather than discovered when a branch is finished. A
- * group that has done all its work and then has nowhere to put it is the worst
- * moment to find out, and the fix (add a remote, log in) is the boss's to make.
+ * A read-only token, or a repository you can only fork, gets past every check
+ * there is and then fails at `git push` — after a group has done all its work.
+ * That is the worst moment to find out and the fix is the boss's to make, so it
+ * is asked at the one point the repository first becomes known.
+ *
+ * A pure function over `permissions`, not a request of its own: registration has
+ * already fetched `GET /repos/{owner}/{repo}` for the default branch and clone
+ * URL, and that same answer carries this. A second call would ask GitHub a
+ * question it just answered.
+ *
+ * The level is named because that is what makes the message actionable — the old
+ * `gh repo view --json viewerPermission` returned exactly this one word, and REST
+ * returns the booleans it is derived from, so it is derived back. Null means
+ * nothing to say: push access, or a repository that reported no permissions at
+ * all, which is not evidence of anything.
  */
-export async function preflightPr(
-  repoPath: string,
-  run: (argv: string[], cwd: string) => Promise<GhRun>,
-  gh: Github,
-): Promise<Preflight> {
-  const remote = await run(["remote", "get-url", "origin"], repoPath);
-  if (remote.code !== 0 || !remote.out.trim()) {
-    return { ok: false, remote: null, reason: "no `origin` remote: a PR has nowhere to go" };
-  }
-  const url = remote.out.trim().split("\n")[0]!;
-  const slug = parseRepo(url);
-  if (!slug) {
-    return { ok: false, remote: url, reason: `origin is not GitHub (${url}); a PR cannot be opened for it` };
-  }
-  const who = await gh.request<{ login?: string }>("GET", "/user");
-  if (!who.ok) {
-    return { ok: false, remote: url, reason: `GitHub does not accept the stored credential: ${who.message}` };
-  }
-
-  // Auth is not permission. A read-only token, or a repo you can only fork, gets
-  // past `/user` and then fails at `git push` — after a group has done all its
-  // work. This is the last thing checkable without writing anything.
-  //
-  // `gh repo view --json viewerPermission` returned one word; REST returns the
-  // booleans that word is derived from, so it is derived back here — the message
-  // the boss reads is the same either way.
-  const repo = await gh.request<{ permissions?: Record<string, boolean> }>("GET", `/repos/${slug}`);
-  if (repo.ok) {
-    const p = repo.data.permissions ?? {};
-    const level = p.admin ? "ADMIN" : p.maintain ? "MAINTAIN" : p.push ? "WRITE" : p.triage ? "TRIAGE" : p.pull ? "READ" : "";
-    if (level && !["ADMIN", "MAINTAIN", "WRITE"].includes(level)) {
-      return {
-        ok: false,
-        remote: url,
-        reason: `no push access to ${url} (your permission is ${level}); the branch could not be pushed`,
-      };
-    }
-  } else if (repo.bucket === "boss") {
-    // 404 here is the trap: it means unreachable, never "deleted" — see github.ts.
-    return { ok: false, remote: url, reason: repo.message };
-  }
-  return { ok: true, remote: url };
+export function pushBlocked(permissions: Record<string, boolean> | undefined, repo: string): string | null {
+  const p = permissions ?? {};
+  const level = p.admin ? "ADMIN" : p.maintain ? "MAINTAIN" : p.push ? "WRITE" : p.triage ? "TRIAGE" : p.pull ? "READ" : "";
+  if (!level || ["ADMIN", "MAINTAIN", "WRITE"].includes(level)) return null;
+  return `no push access to ${repo} (your permission is ${level}); the branch could not be pushed`;
 }

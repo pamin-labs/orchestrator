@@ -3,7 +3,7 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { RepoLock } from "../src/mech/gitlock.ts";
-import { dispatchFeedback, openPr, pollPrs, prBody, preflightPr } from "../src/mech/prwatch.ts";
+import { dispatchFeedback, openPr, pollPrs, prBody, pushBlocked } from "../src/mech/prwatch.ts";
 import { utilGit } from "../src/mech/checkout.ts";
 import type { GhResult, Github } from "../src/mech/github.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
@@ -403,90 +403,25 @@ test("landing archives the group without deleting its history", () => {
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()!.c).toBeGreaterThan(0);
 });
 
-const origin = (url: string) => async () => ({ code: 0, out: url });
+test("read access is caught at registration, and it names the level", () => {
+  // `viewerPermission: READ` in gh's projection is `permissions: {pull: true}` in
+  // REST's, and the boss reads the same sentence either way. Naming the level is
+  // what makes it actionable — "no push access" alone does not say what to ask
+  // for. Discovering this when a branch is finished is the worst possible moment.
+  const read = pushBlocked({ pull: true, push: false }, "me/x")!;
+  expect(read).toContain("no push access");
+  expect(read).toContain("READ");
+  expect(pushBlocked({ pull: true, triage: true }, "me/x")).toContain("TRIAGE");
 
-test("preflight says up front whether a PR can ever be opened", async () => {
-  const noRemote = await preflightPr("/tmp/x", async () => ({ code: 1, out: "" }), gh({}));
-  // Discovering this when a branch is finished is the worst possible moment.
-  expect(noRemote.ok).toBe(false);
-  expect(noRemote.reason).toContain("nowhere to go");
+  // Anything that can push is silence.
+  expect(pushBlocked({ push: true }, "me/x")).toBeNull();
+  expect(pushBlocked({ admin: true }, "me/x")).toBeNull();
+  expect(pushBlocked({ maintain: true }, "me/x")).toBeNull();
 
-  const notGithub = await preflightPr("/tmp/x", origin("git@gitlab.com:me/x.git"), gh({}));
-  expect(notGithub.ok).toBe(false);
-  expect(notGithub.reason).toContain("not GitHub");
-
-  const notLoggedIn = await preflightPr(
-    "/tmp/x",
-    origin("git@github.com:me/x.git"),
-    gh({ "GET /user": boom(401, "Bad credentials", "boss") }),
-  );
-  expect(notLoggedIn.ok).toBe(false);
-  expect(notLoggedIn.reason).toContain("Bad credentials");
-
-  const ready = await preflightPr(
-    "/tmp/x",
-    origin("git@github.com:me/x.git"),
-    gh({ "GET /user": ok({ login: "me" }), "GET /repos/me/x": ok({ permissions: { push: true } }) }),
-  );
-  expect(ready).toEqual({ ok: true, remote: "git@github.com:me/x.git" });
-});
-
-test("a repo the token cannot reach is a preflight reason that does not guess why", async () => {
-  // GitHub answers 404 for a private repo a token cannot see. It is the boss's
-  // to fix, and naming one of the four possible causes sends them to the wrong
-  // page — so it is reported, and it is reported honestly.
-  const pre = await preflightPr(
-    "/tmp/p",
-    origin("git@github.com:someone/theirs.git"),
-    gh({
-      "GET /user": ok({ login: "me" }),
-      "GET /repos/someone/theirs": {
-        ok: false,
-        status: 404,
-        bucket: "boss",
-        message: "this login can no longer reach /repos/someone/theirs. …",
-      },
-    }),
-  );
-  expect(pre.ok).toBe(false);
-  expect(pre.reason).toContain("can no longer reach");
-  expect(pre.reason?.toLowerCase()).not.toContain("deleted");
-});
-
-test("auth is not push access — read-only permission is caught before any work", async () => {
-  // `viewerPermission: READ` in gh's projection is `permissions: {pull: true}`
-  // in REST's, and the boss reads the same sentence either way.
-  const pre = await preflightPr(
-    "/tmp/p",
-    origin("git@github.com:someone/theirs.git"),
-    gh({
-      "GET /user": ok({ login: "me" }),
-      "GET /repos/someone/theirs": ok({ permissions: { pull: true, push: false } }),
-    }),
-  );
-  expect(pre.ok).toBe(false);
-  expect(pre.reason).toContain("no push access");
-  expect(pre.reason).toContain("READ");
-});
-
-test("write access passes preflight", async () => {
-  const pre = await preflightPr(
-    "/tmp/p",
-    origin("git@github.com:me/mine.git"),
-    gh({ "GET /user": ok({ login: "me" }), "GET /repos/me/mine": ok({ permissions: { push: true } }) }),
-  );
-  expect(pre.ok).toBe(true);
-});
-
-test("a repo read that fails for a reason nobody controls does not block preflight", async () => {
-  // GitHub having a bad minute is not the same as refusing us, and blocking
-  // registration on it would be worse than trying.
-  const pre = await preflightPr(
-    "/tmp/p",
-    origin("git@github.com:me/mine.git"),
-    gh({ "GET /user": ok({ login: "me" }), "GET /repos/me/mine": boom(503, "unavailable", "transient") }),
-  );
-  expect(pre.ok).toBe(true);
+  // No permissions block at all is not evidence of anything, so it says nothing
+  // rather than accusing a repository that answered a different question.
+  expect(pushBlocked(undefined, "me/x")).toBeNull();
+  expect(pushBlocked({}, "me/x")).toBeNull();
 });
 
 test("a branch that stopped merging wakes the Engineer, not the PM", async () => {

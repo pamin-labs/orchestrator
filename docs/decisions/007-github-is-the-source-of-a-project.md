@@ -1,6 +1,12 @@
 # 007 GitHub is where a project comes from, and no agent-free container is a sandbox
 
-**Status**: proposed
+**Status**: implemented through step 5, and the path scoping it rests on is
+measured against a live server (see below). Steps 6-8 are outstanding: the
+checkout move that empties `missingBinaries()` and deletes `gitlock.ts`,
+`makeGitRunner`, `httpsRemote`, `remoteUrl` and `detectBaseBranch`; the codex
+refresher moving into the utility container; and watchdog rule 15 switching to
+the API baseline. The host is still a git participant for the index and for
+reading a project's remote, which is what step 6 removes.
 **Date**: 2026-08-15
 **Amends**: 005. That decision said "the container is the boundary". The line is
 one word narrower: **a container that runs an agent is the boundary**. A

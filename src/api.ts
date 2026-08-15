@@ -12,7 +12,7 @@ import { execIn, killSandbox, putFile, serverKeyOnDisk, skillMounts, specFor, WO
 import { clearSandboxLog, sandboxLines } from "./mech/sandboxlog.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "./mech/auth.ts";
 import { loginRuntimes, startLogin } from "./mech/login.ts";
-import { githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, NO_CLIENT_ID } from "./mech/ghlogin.ts";
+import { githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, NO_CLIENT_ID, type Installation } from "./mech/ghlogin.ts";
 import { preflight } from "./mech/preflight.ts";
 import { baseBranch, baseRefFor, removeMirror, sandboxGit } from "./mech/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/intercept.ts";
@@ -23,7 +23,7 @@ import { acceptSlice } from "./mech/review.ts";
 import { dropGroup, runInstall, startGroup, sweepApproved } from "./mech/start.ts";
 import { head, joinQueue, landed, position } from "./mech/mergequeue.ts";
 import { costReport } from "./mech/cost.ts";
-import { openPr, prBody } from "./mech/prwatch.ts";
+import { openPr, prBody, pushBlocked } from "./mech/prwatch.ts";
 import { forgetHolds } from "./mech/github.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/pageindex.ts";
@@ -2713,10 +2713,12 @@ const postProject: Handler = async (ctx, req) => {
 
   // Asked of GitHub rather than trusted from the browser: the default branch is
   // written into the row, and a wrong one is a group that branches off nothing.
-  const r = await ctx.gh.request<{ full_name: string; default_branch: string; clone_url: string }>(
-    "GET",
-    `/repos/${want}`,
-  );
+  const r = await ctx.gh.request<{
+    full_name: string;
+    default_branch: string;
+    clone_url: string;
+    permissions?: Record<string, boolean>;
+  }>("GET", `/repos/${want}`);
   if (!r.ok) return bad(r.message);
   const repoPath = r.data.full_name;
   const remote = r.data.clone_url;
@@ -2743,6 +2745,20 @@ const postProject: Handler = async (ctx, req) => {
       `${name}（${repoPath} · ${baseBranch ?? "默认分支"}）加好了。闸门和安装命令等第一个组克隆完再猜，` +
       `现在填也行：设置 → 闸门。`,
   });
+  // Registered, and then told the truth about it. Read access is enough to clone
+  // and work, so this does not refuse the repository — it refuses to let the boss
+  // find out at the end, when a group has done everything and the push is the
+  // only step left. No extra request: the answer above carries it.
+  const blocked = pushBlocked(r.data.permissions, repoPath);
+  if (blocked) {
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "blocker",
+      body: `${repoPath} 加好了，但这个登录推不上去：${blocked}。现在处理，别等第一个切片做完。`,
+    });
+  }
+
   ctx.sched.tick();
   return json({ id: row.id, gates });
 };
@@ -3268,7 +3284,7 @@ let ghFlow: GhFlow | null = null;
 let ghError: string | null = null;
 
 const postGithubLogin: Handler = async (ctx) => {
-  const clientId = ctx.config.github?.clientId ?? "";
+  const clientId = ghApp(ctx).clientId;
   // A second click while one code is still good hands back the same code rather
   // than starting a second poll: two loops racing for one login is two ways to
   // store a token and one of them wins silently.
@@ -3302,10 +3318,74 @@ const postGithubLogin: Handler = async (ctx) => {
   return json({ userCode: d.userCode, verificationUri: d.verificationUri, expiresIn: d.expiresIn });
 };
 
+/**
+ * Which GitHub App this orchestrator runs against.
+ *
+ * The yaml is the default and the `setting` table wins, because `config/default.yaml`
+ * is committed: a self-hoster pointing at their own app was editing a tracked file
+ * and losing it on every pull. Same store the skill ticks use — this machine's
+ * choice, not a project's and not the repo's.
+ */
+const GH_CLIENT_ID = "github_client_id";
+const GH_APP_SLUG = "github_app_slug";
+
+function ghApp(ctx: Ctx): { clientId: string; appSlug: string } {
+  const stored = (k: string) => ctx.db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(k)?.v;
+  return {
+    clientId: (stored(GH_CLIENT_ID) ?? ctx.config.github?.clientId ?? "").trim(),
+    appSlug: (stored(GH_APP_SLUG) ?? ctx.config.github?.appSlug ?? "").trim(),
+  };
+}
+
+/**
+ * Each installation, with how many repositories it can see.
+ *
+ * One extra request per account, asking for a single item — only `total_count` is
+ * wanted, and page one of a hundred repositories to count them is the sort of
+ * thing that eats a 5000/hour budget quietly. Repeats come back 304 from the
+ * client's ETag cache, which does not count against the limit at all.
+ */
+async function withCounts(ctx: Ctx, list: Installation[]): Promise<Array<Installation & { repos: number | null }>> {
+  return await Promise.all(
+    list.map(async (i) => {
+      const r = await ctx.gh!.request<{ total_count?: number }>(
+        "GET",
+        `/user/installations/${i.id}/repositories?per_page=1`,
+      );
+      return { ...i, repos: r.ok ? (Number(r.data?.total_count) || 0) : null };
+    }),
+  );
+}
+
 /** Where to install the app, when its slug is configured. */
 const installUrl = (ctx: Ctx): string | null => {
-  const slug = (ctx.config.github?.appSlug ?? "").trim();
+  const slug = ghApp(ctx).appSlug;
   return slug ? `https://github.com/apps/${slug}/installations/new` : null;
+};
+
+/**
+ * Point at a different GitHub App.
+ *
+ * Changing it invalidates the login: a token minted by one app is meaningless to
+ * another, and leaving the old one stored would present as "connected" while
+ * every call 401s. So the credential goes with it, and the boss reconnects.
+ */
+const postGithubApp: Handler = async (ctx, req) => {
+  const b = await body<{ clientId?: string; appSlug?: string }>(req);
+  const clientId = (b.clientId ?? "").trim();
+  // A slug is the last path segment of the app's page, so a pasted URL is the
+  // expected mistake rather than an exotic one.
+  const appSlug = (b.appSlug ?? "").trim().replace(/^https?:\/\/github\.com\/apps\//, "").replace(/\/.*$/, "");
+  const was = ghApp(ctx);
+  for (const [k, v] of [[GH_CLIENT_ID, clientId], [GH_APP_SLUG, appSlug]] as const) {
+    if (v) ctx.db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [k, v]);
+    else ctx.db.run("DELETE FROM setting WHERE k = ?", [k]);
+  }
+  if (clientId !== was.clientId && loadAuth(ctx.db, "github")) {
+    ctx.db.run("DELETE FROM runtime_auth WHERE runtime = 'github'");
+    await credentialChanged(ctx, "github");
+  }
+  return json(ghApp(ctx));
 };
 
 const getGithubLogin: Handler = async (ctx) => {
@@ -3329,7 +3409,10 @@ const getGithubLogin: Handler = async (ctx) => {
     installed: installs?.ok ? installs.data.length > 0 : null,
     /** Where to fix that, when the app's slug is configured. */
     installUrl: installUrl(ctx),
-    configured: !!(ctx.config.github?.clientId ?? "").trim(),
+    configured: !!ghApp(ctx).clientId,
+    app: ghApp(ctx),
+    /** Which accounts it is installed on, and how many repositories each can see. */
+    accounts: installs?.ok ? await withCounts(ctx, installs.data) : [],
     pending: ghFlow && ghFlow.expiresAt > Date.now() ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri } : null,
     error: ghError,
   });
@@ -3474,6 +3557,7 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/auth\/github$/, getGithubLogin],
   ["GET", /^\/api\/github\/repos$/, getGithubRepos],
   ["POST", /^\/api\/auth\/github$/, postGithubLogin],
+  ["POST", /^\/api\/auth\/github\/app$/, postGithubApp],
   ["GET", /^\/api\/preflight$/, getPreflight],
   ["GET", /^\/api\/sandbox$/, getSandbox],
   ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
