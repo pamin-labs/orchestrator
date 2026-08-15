@@ -81,6 +81,28 @@ bun test test/xxx.test.ts     # 单个
 - **caveman lite**：注释和文档去冠词去客套。代码、commit message、PR、错误信息**用英文**。
 - 非平凡逻辑留一条 runnable check（`bun test`，不上框架、不写 fixture 地狱）。
 
+## 提交：用 `/git-commit`
+
+**skill 在仓库里**（`.claude/skills/git-commit/`），clone 就有，不依赖谁的个人安装。它是这一条的完整版；这里只留必须知道的：
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: <session url>
+```
+
+- **标题说的是发现，不是 diff。** 读 log 的人在问「这为什么是这样」，而一个描述改动的标题回答不了任何他看不见的东西。`fix(sandbox): update mount path` 没有信息；`fix(sandbox): the skills mount was empty on macOS, and nothing could say so` 有。
+- **正文说失败长什么样** —— 不是你改了什么（diff 里有），是它的代价、它怎么呈现、以及**为什么修在这一层**。「修在共享函数里而不是每个调用点，所以下个月加的第五个调用者也被覆盖」这句话，是阻止这个修复被撤销的那句话。
+- **数字胜过形容词**：`179 on the host, 0 in the container` 是提交；「修好了挂载」不是。
+- 提交前 `bunx tsc --noEmit -p .` 和 `bun test` 必须绿。多 agent 同时改树时**按文件名 stage**，`git add -A` 会把别人的半成品扫进来。
+
+## 这个项目用到的 skill
+
+`ponytail` / `pua` / `frontend-design` / `mattpocock-skills` 是 plugin（`/plugin` 装）；`shadcn`、`impeccable`、`code-review` 是个人 skill。**没装的不用装齐**：硬约束 4 要的是「先查有没有现成组件」这个动作，不是那个 skill 本身；`/ponytail:ponytail` 的规则也已经写在上面的代码风格里。缺哪个就按它对应的那条规则手做。
+
 ## 运行期产物的语言
 
 `output.language` 配置（默认中文）管 journal / 频道消息 / 问老板的问题 / 状态摘要。
