@@ -33,6 +33,12 @@ export interface SkillRef {
   scope: "project" | "user";
 }
 
+/**
+ * Where a repository can ship its own skills. See `listSkills` for the counts
+ * behind this list and which CLI actually reads each one.
+ */
+export const PROJECT_SKILL_DIRS = [".claude/skills", ".codex/skills", ".agents/skills"] as const;
+
 /** Skill text is instructions, not a library. Past this it is being used wrong. */
 export const SKILL_CAP = 12_000;
 
@@ -116,14 +122,9 @@ function scan(
  */
 export function listSkills(repoPath?: string | null): SkillRef[] {
   const out: SkillRef[] = [];
-  // A host path, or nothing. `repo_path` is `owner/name` since 007 §2 and the
-  // checkout only exists inside containers, so this scan silently found nothing
-  // and a project that ships its own skills simply stopped having them — the
-  // failure `scan` was already noted for, one level up. Spelled out rather than
-  // left as an accident, and reported by the caller that has a bus
-  // (`projectSkillsUnreachable`). Reading them out of the group's container is
-  // 007 step 6.
-  // Removed rather than replaced, and this is the note that says why.
+  // A host path, or nothing: `repo_path` is `owner/name` since 007 §2 and the
+  // checkout only exists inside containers, so this finds nothing today. Left in
+  // place rather than replaced, and this is the note that says why.
   //
   // A project's skills are **already delivered**: the repo is cloned to `/work`,
   // a turn runs with that as its working directory, and claude discovers
@@ -135,16 +136,31 @@ export function listSkills(repoPath?: string | null): SkillRef[] {
   // `/name` cannot resolve one, because the directory is not on this machine.
   // `projectSkillsUnreachable` says so once per project.
   //
-  // Two things measured, so nobody rebuilds either dead end:
-  // - codex does **not** read the checkout. Its native binary knows
-  //   `CODEX_HOME/skills` and `.codex/skills`, and no `.claude/skills` at all —
-  //   so a claude-convention repo's skills reach claude turns and not codex ones.
+  // **Which directories, and why these.** `.claude/skills` is not a universal
+  // convention — it is claude's. Counted as exact strings in each CLI's own
+  // binary (`codex-cli 0.147.0`, `claude 2.1.232`, in `orch/agent:1`):
+  //
+  //   codex   .codex/skills 3    .agents/skills 0    .claude/skills 0
+  //
+  // So the two that matter for our two runtimes are **`.claude/skills`** (claude,
+  // read relative to its working directory, which is why a repo's own skills
+  // already reach a claude turn) and **`.codex/skills`** (codex's project path;
+  // its user-level one is `$CODEX_HOME/skills`).
+  //
+  // `.agents/skills` is scanned because the wider ecosystem uses it — `npx
+  // skills add --agent` targets claude / claude-code / cursor and writes per
+  // agent — but **neither of our CLIs reads it**, so a skill that lives only
+  // there is listed and never discovered. Kept for the listing, not for
+  // delivery, and now said out loud rather than inherited.
+  //
+  // Two dead ends measured, so nobody rebuilds them:
+  // - codex does not read the checkout's `.claude/skills`, so a claude-convention
+  //   repo's skills reach claude turns and not codex ones.
   // - linking them into `$CODEX_HOME/skills` does not fix that: `skillMounts`
   //   mounts that path **read-only**, so the link fails with EROFS whenever the
   //   boss has any skill staged, which is the ordinary case.
   if (repoPath?.startsWith("/")) {
-    scan(repoPath, ".claude/skills", "project", out);
-    scan(repoPath, ".agents/skills", "project", out);
+    for (const dir of PROJECT_SKILL_DIRS) scan(repoPath, dir, "project", out);
   }
   // Wherever each CLI actually keeps its state: `$CLAUDE_CONFIG_DIR` and
   // `$CODEX_HOME` both move it, and a boss who set either would have seen every
@@ -313,8 +329,9 @@ export function projectSkillsUnreachable(ctx: Ctx, projectId: number, repoPath?:
     // lives in the checkout the CLI already runs in, which is what `getSkills`
     // means by "always visible and nothing to tick".
     body:
-      `${repoPath} 自带的技能（.claude/skills）在设置页里列不出来 —— 代码只在容器里，这台机器上没有那个目录。` +
-      `agent 那边不受影响：技能就在它的工作目录里，CLI 自己会发现；影响的只是你在输入框里 /名字 点名它。`,
+      `${repoPath} 自带的技能在设置页里列不出来 —— 代码只在容器里，这台机器上没有那些目录（找的是 ${PROJECT_SKILL_DIRS.join("、")}）。` +
+      `agent 那边不受影响：技能就在它的工作目录里，CLI 自己会发现；影响的只是你在输入框里 /名字 点名它。` +
+      `技能放在这几个目录之外的话，两边都看不到。`,
   });
 }
 
