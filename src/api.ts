@@ -3376,7 +3376,7 @@ const getGithubLogin: Handler = async (ctx) => {
     stale: !!a && !account,
     /** Authorized, but the app is not installed anywhere it could read. */
     installed: installs?.ok ? installs.data.length > 0 : null,
-    /** Where to fix that, when the app's slug is configured. */
+    /** Where to fix that. One app, so one address. */
     installUrl: INSTALL_URL,
     /** Which accounts it is installed on, and how many repositories each can see. */
     accounts: installs?.ok ? await withCounts(ctx, installs.data) : [],
