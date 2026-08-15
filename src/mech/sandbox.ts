@@ -415,6 +415,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   // in there is an agent.
   const skills = isUtil(scope) ? [] : skillMounts(ctx);
   let sb: Sandbox;
+  let skillsMounted = skills.length > 0;
   try {
     sb = await make([...cacheVolumes, ...skills]);
   } catch (e) {
@@ -433,6 +434,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         `技能没挂进沙盒：opensandbox-server 的 allowed_host_paths 不含 ${skills[0]!.host?.path}。` +
         `加上它再重开这个组的容器；在那之前 agent 只能用你在输入框里点名的技能。`,
     });
+    skillsMounted = false;
     sb = await make(cacheVolumes);
   }
   live.set(sb.id, sb);
@@ -441,8 +443,11 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   // agent, so the one interface an agent is allowed would be surface with no
   // user — in the container that holds the real tokens.
   if (!isUtil(scope)) await provision(sb);
-  // Mounted is not the same as readable. Once per host path per process.
-  if (skills.length) {
+  // Mounted is not the same as readable. Once per host path per process, and
+  // only when a mount was actually accepted — the fallback above has already
+  // said its piece, and "mounted but empty" would be a false description of a
+  // container that was built without the mount at all.
+  if (skillsMounted) {
     await checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {});
   }
   // Remembered before this line, so the restore below re-enters here and finds
@@ -556,9 +561,10 @@ async function checkSkillsMount(ctx: Ctx, sb: Sandbox, hostPath: string, at: str
     severity: "blocker",
     body:
       `技能挂进去了但里面是空的：宿主 ${hostPath} 有 ${onHost} 个，容器里 ${at} 有 0 个。\n` +
-      `容器运行时读不到这个路径 —— macOS 上 docker 跑在虚拟机里，/var/tmp 是虚拟机的，不是这台 Mac 的。` +
-      `把 skillsDir 指到一个能共享进去的路径（$HOME 下面的就行），并且让 opensandbox-server 的 ` +
-      `allowed_host_paths 也包含它。在那之前 agent 一个技能都用不上。`,
+      `容器运行时读不到宿主这个路径，绑上去就是个空目录 —— macOS 上 docker 跑在虚拟机里，` +
+      `虚拟机外的路径（/var/tmp 这类）不会被共享进去。把 skillsDir 指到一个能共享的位置` +
+      `（$HOME 下面的就行），让 opensandbox-server 的 allowed_host_paths 也包含它，然后重启它。` +
+      `在那之前 agent 一个技能都用不上。`,
   });
 }
 

@@ -12,6 +12,7 @@ import { startMailbox } from "../src/mech/mailbox.ts";
 import { CODEX_HOME } from "../src/mech/auth.ts";
 import { ConnectionConfig, SandboxManager } from "@alibaba-group/opensandbox";
 import {
+  bindCredentials,
   closeAll,
   execIn,
   getFile,
@@ -171,6 +172,48 @@ live(
     } finally {
       stop();
       server.stop(true);
+      await killSandbox(c, scope).catch(() => {});
+      await closeAll();
+    }
+  },
+  240_000,
+);
+
+live(
+  "a credential bound to one path is not injected on another",
+  async () => {
+    // The whole of "a group container cannot push". Classic OAuth has no
+    // read-only scope for a private repository, so nothing sits behind this: if
+    // the sidecar ignored `paths`, every agent would hold a token that can write
+    // to main and the design would be a sentence in a prompt.
+    //
+    // A decoy for the same header, so both directions are observable. Injection
+    // REPLACES a header the client already set (005), so the real value arriving
+    // means it was injected and the decoy arriving means it was not — no
+    // guessing from an absent header.
+    //
+    // postman-echo rather than GitHub: this needs a host that says what it
+    // received, and no credential of the boss's is involved.
+    const c = ctx();
+    const scope = { grp: 1 } as const;
+    const real = "REAL-INJECTED-BY-SIDECAR";
+    const decoy = "DECOY-NEVER-INJECTED";
+    try {
+      await bindCredentials(c, scope, [
+        { name: "probe", value: real, hosts: ["postman-echo.com"], header: "x-probe", paths: ["/get"] },
+      ]);
+      const ask = async (path: string) =>
+        (await execIn(c, scope, `curl -s -H 'x-probe: ${decoy}' https://postman-echo.com${path}`, {
+          timeoutMs: 60_000,
+        })).out;
+
+      // On the list: the sidecar swaps the decoy for the real value.
+      expect(await ask("/get")).toContain(real);
+      // Off it: the decoy goes out untouched. Same host, same credential.
+      const off = await ask("/headers");
+      expect(off).toContain(decoy);
+      expect(off).not.toContain(real);
+    } finally {
       await killSandbox(c, scope).catch(() => {});
       await closeAll();
     }

@@ -333,20 +333,57 @@ user-to-server token from device flow, which has exactly one permission set and
 cannot be narrowed.
 
 So `paths` is the whole of the read/write split for every user, for good. That
-promotes the two unknowns below from "verify eventually" to **release blockers**:
-a `paths` the control plane silently ignores fails *open*, and there is nothing
-behind it.
+promoted two unknowns from "verify eventually" to **release blockers** — a `paths`
+the control plane silently ignores fails *open*, and there is nothing behind it.
+Both are now measured against a live server; see below.
 
-Two things that still need a live server, both of which fail badly if assumed:
+### Measured against a live server, not assumed
 
-1. **Does the control plane validate `paths` at all?** The SDK passes strings
-   through unvalidated (`src/adapters/egressAdapter.ts:128-129`), and 005 already
-   recorded docs-versus-runtime disagreement. A silently ignored `paths` **fails
-   open** — a push that works while the design says it cannot.
-2. **Redirects.** GitHub 301s `/owner/repo` → `/owner/repo.git`, and again for a
-   renamed repo. A redirect changes the path, and an exact allow-list drops
-   injection on the redirected request — surfacing as a clone auth failure that
-   mentions nothing about paths.
+Both blockers are answered. Technique is 005's: bind a credential to a host that
+echoes what it received, and have the container send a **decoy** value for the
+same header — so injection shows up as the real value replacing the decoy, and
+its absence shows up as the decoy surviving. Both directions are observable, which
+is the point; seeing the allowed path get the credential proves nothing on its own.
+
+One credential, `hosts: ["postman-echo.com"]`, `header: "x-probe"`,
+`paths: ["/get"]`. Verbatim, from inside a group container:
+
+```
+$ curl -s -H 'x-probe: DECOY-NEVER-INJECTED' https://postman-echo.com/get
+{"headers":{...,"x-probe":"REAL-INJECTED-BY-SIDECAR",...}}
+
+$ curl -s -H 'x-probe: DECOY-NEVER-INJECTED' https://postman-echo.com/headers
+{"headers":{...,"x-probe":"DECOY-NEVER-INJECTED",...}}
+```
+
+**1. The control plane honours `paths`.** Same host, same credential, same
+request in every other respect: the listed path is injected, the unlisted one is
+not. It does not fail open.
+
+**2. Injection is evaluated per request, on that request's own path.** With
+`paths: ["/get"]` and a 302 from `/redirect-to?url=…/get`, the *redirected*
+request arrives with `REAL` — the first hop was never on the list and the hop that
+landed on `/get` was. Reversed (`paths: ["/redirect-to"]`, redirecting to `/get`),
+the final request keeps `DECOY`. So GitHub's `/owner/repo` → `/owner/repo.git`
+redirect is safe: what matters is where a request lands, and a credential does not
+ride a redirect into an unlisted path.
+
+**3. The trap is real, and it is the star.** On a host with a nested echo
+(`httpbingo.org/anything/deep/path`):
+
+| binding | request | arrives as |
+|---|---|---|
+| `paths: ["/anything"]` | `/anything/deep/path` | `DECOY` — exact means exact |
+| `paths: ["/anything*"]` | `/anything/deep/path` | `REAL` — **the star crosses `/`** |
+
+Which is upstream's own suggested git shape, measured rather than inferred:
+`/owner/repo.git*` would re-admit `/owner/repo.git/git-receive-pack`.
+`test/util-container.test.ts` asserts no generated path ends in `*`, and
+`test/sandbox-live.test.ts` holds the on-list/off-list pair against a real
+container so a future SDK or server version cannot take it away quietly.
+
+Not measured: the same trials against the `v1.1.6` tag specifically. These ran
+against whatever the running server pulls, which is what the fleet uses.
 
 Provenance: the matcher was read on `main`; we pin `egress:v1.1.6`
 (`preflight.ts:252`). The one point with independent evidence
