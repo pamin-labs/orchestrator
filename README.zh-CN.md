@@ -4,7 +4,7 @@
 
 # orchestrator
 
-**一人公司的那支 AI 团队。** 你只做三件事，剩下九个角色干完，
+**一人公司的那支 AI 团队。** 你只做三件事，剩下十个角色干完，
 每个都关在自己的容器里。
 
 ```
@@ -34,16 +34,34 @@ agent 真跑了 `rm -rf`，炸的是一个容器。
 
 ## 跑起来
 
-需要 [`bun`](https://bun.sh)、[Docker](https://docs.docker.com/get-started/get-docker/)、
+需要 [Docker](https://docs.docker.com/get-started/get-docker/)、
 [`uv`](https://docs.astral.sh/uv/)，以及一个 Claude 和/或 ChatGPT 订阅。
+不需要 `bun`，不需要 `node`，不需要任何工具链 —— orchestrator 本身就是个镜像，
+而 agent 本来就跑在容器里。
+
+```bash
+docker pull opensandbox/egress:v1.1.6             # v1.1.4 会搞坏 scoped npm 包
+uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode 要是 "dns+nft"
+
+docker run -d -p 127.0.0.1:47821:47821 -v orch-data:/data \
+  ghcr.io/pamin-labs/orch-server:latest           # → 127.0.0.1:47821
+```
+
+只绑 loopback 是故意的：面板前面没有登录，能访问到它的人就是你。要放到别处，
+前面加一层带鉴权的反向代理。
+
+agent 镜像由沙盒服务器在第一次建容器时自己拉，不用手动 pull。
+
+<details><summary>或者从源码跑</summary>
 
 ```bash
 bun install
-docker pull ghcr.io/pamin-labs/orch-agent:latest   # 或自己构建：docker build -f docker/agent.Dockerfile -t orch/agent:1 .
-docker pull opensandbox/egress:v1.1.6      # v1.1.4 会搞坏 scoped npm 包
-uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode 要是 "dns+nft"
 bun start                                         # → 127.0.0.1:47821
 ```
+
+需要 [`bun`](https://bun.sh)。上面那两行沙盒服务器照样要。
+
+</details>
 
 然后在面板里做一次：
 
@@ -63,6 +81,7 @@ bun start                                         # → 127.0.0.1:47821
 - **Engineer** — 组里唯一写代码的。被串行化，写冲突不存在。
 - **QA** — 拿 diff 和测试结果，对着验收标准验其中一片，**刻意读不到**整个仓库。
 - **Auditor** — 从组外审完成的分支，换一个模型。卡上承诺的做没做、有没有另起炉灶造一套仓库里已经有的东西、它自己写的工作记录和真实 diff 对不对得上。
+- **Scribe** — 照着做完的 diff 写 commit 和 PR。它读的是真的改了什么，不是当初打算改什么 —— 一年后翻 log 的人要的是这个。
 - **Librarian** — 维护一份项目入门说明和一份有上限的经验清单，新 agent 一上来就懂这个项目。
 - **Bootstrap** — 把干净检出弄到能构建，从 lockfile 和 CI 配置里推出安装步骤。
 

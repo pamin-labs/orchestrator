@@ -4,7 +4,7 @@
 
 # orchestrator
 
-**An AI team for a company of one.** You do three things. Nine roles do the rest,
+**An AI team for a company of one.** You do three things. Ten roles do the rest,
 each inside its own container.
 
 ```
@@ -35,16 +35,36 @@ its own clone. If an agent runs `rm -rf`, it happens to a container.
 
 ## Quickstart
 
-Needs [`bun`](https://bun.sh), [Docker](https://docs.docker.com/get-started/get-docker/),
+Needs [Docker](https://docs.docker.com/get-started/get-docker/),
 [`uv`](https://docs.astral.sh/uv/), and a Claude and/or ChatGPT subscription.
+No `bun`, no `node`, no toolchain — the orchestrator ships as an image, and the
+agents were always going to run in containers.
+
+```bash
+docker pull opensandbox/egress:v1.1.6             # v1.1.4 breaks scoped npm packages
+uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
+
+docker run -d -p 127.0.0.1:47821:47821 -v orch-data:/data \
+  ghcr.io/pamin-labs/orch-server:latest           # → 127.0.0.1:47821
+```
+
+Loopback on purpose: there is no login in front of the panel, so whoever reaches
+it is you. Put a reverse proxy with auth in front before publishing it anywhere
+else.
+
+The agent image is pulled by the sandbox server the first time it builds a
+container — nothing to pull by hand.
+
+<details><summary>From source instead</summary>
 
 ```bash
 bun install
-docker pull ghcr.io/pamin-labs/orch-agent:latest   # or build it: docker build -f docker/agent.Dockerfile -t orch/agent:1 .
-docker pull opensandbox/egress:v1.1.6      # v1.1.4 breaks scoped npm packages
-uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
 bun start                                         # → 127.0.0.1:47821
 ```
+
+Needs [`bun`](https://bun.sh). Same two lines above it for the sandbox server.
+
+</details>
 
 Then, once, in the panel:
 
@@ -68,6 +88,7 @@ Then, once, in the panel:
 - **Engineer** — The only agent in a group that writes code. Serialised, so write conflicts don't exist.
 - **QA** — Checks one slice against its acceptance criteria, from the diff and the test output — deliberately not from the whole repo.
 - **Auditor** — Reviews the finished branch from outside the group, on a different model. Does it deliver what the card promised, did it reinvent something the codebase already has, do its own work notes match the real diff.
+- **Scribe** — Writes the commit and the pull request, from the finished diff. Reads what was built, not what was planned, so the log says something a year later.
 - **Librarian** — Keeps a project primer and a capped list of lessons learned, so a new agent starts already knowing the project.
 - **Bootstrap** — Makes a fresh checkout buildable, working the install step out from the lockfile and CI config.
 

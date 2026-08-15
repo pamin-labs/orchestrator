@@ -40,6 +40,10 @@ permissions:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/orch-agent
+  # The orchestrator itself. Published with the agent image and from the same
+  # commit, because a server and the containers it drives are one version: the
+  # `orch` CLI it copies into every sandbox comes out of its own tree.
+  SERVER_IMAGE: ghcr.io/${{ github.repository_owner }}/orch-server
 
 jobs:
   release:
@@ -114,6 +118,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Same platforms, same reason.
+      - name: build and push the server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/server.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ !inputs.dry_run }}
+          tags: |
+            ${{ env.SERVER_IMAGE }}:${{ inputs.version }}
+            ${{ env.SERVER_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: tag and publish
         if: ${{ !inputs.dry_run }}
         env:
@@ -136,11 +154,24 @@ jobs:
           fi
           git tag "${{ env.VERSION }}"
           git push origin "${{ env.VERSION }}"
-          # One line above the generated list: how to run this version. That is
-          # the only thing a reader needs that GitHub does not already put there.
+          # Written a line at a time rather than as one indented string: this
+          # script is inside a YAML block scalar, so every leading space in a
+          # multi-line argument ends up in the release body — and ten spaces in
+          # front of ```bash is an indented code block, which renders the fence
+          # markers as text.
+          printf '%s\n' \
+            'Run this version:' \
+            '' \
+            '```bash' \
+            'docker run -d -p 127.0.0.1:47821:47821 -v orch-data:/data \' \
+            '  ${{ env.SERVER_IMAGE }}:${{ inputs.version }}' \
+            '```' \
+            '' \
+            'The agent image (`${{ env.IMAGE }}:${{ inputs.version }}`) is pulled by the sandbox server the first time it builds a container. Nothing to pull by hand.' \
+            > /tmp/notes.md
+          # `--generate-notes` writes the merged pull requests and the first-time
+          # contributors itself; this is only the part it cannot know.
           gh release create "${{ env.VERSION }}" \
             --title "${{ env.VERSION }}" \
             --generate-notes \
-            --notes "\`\`\`bash
-          docker pull ${{ env.IMAGE }}:${{ inputs.version }}
-          \`\`\`"
+            --notes-file /tmp/notes.md
