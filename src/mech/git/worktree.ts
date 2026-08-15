@@ -19,14 +19,44 @@ export interface GitRun {
 export type GitRunner = (repo: string, argv: string[], cwd?: string) => Promise<GitRun>;
 
 
+/**
+ * The ref this branch is measured against, verified to exist: `origin/main`,
+ * `origin/develop`, a bare `master` in a clone with no remote — whatever this
+ * repository actually has.
+ *
+ * Null when nothing resolves, and every caller stops on null rather than
+ * carrying on. That is the point of returning it: a guessed `origin/main` does
+ * not fail as *this repository has no base branch*, it fails as `fatal:
+ * ambiguous argument 'origin/main'` in the middle of a rebase, a squash or a
+ * diff — three different messages for one cause, none of which names it.
+ *
+ * Three callers each wrote `origin/${await detectBaseBranch(...)}` and each took
+ * an override argument that no caller outside a test ever passed. So the
+ * hardcoded `origin/` prefix was the only path in production, and it is wrong
+ * for exactly the clone that has no remote — the one where the fallback was
+ * supposed to help.
+ */
+export async function baseRef(git: GitRunner, repoPath: string): Promise<string | null> {
+  const name = await detectBaseBranch(git, repoPath);
+  // `HEAD` is that function's way of saying it found nothing, and it is the one
+  // answer that resolves anyway: `git rebase HEAD` succeeds and does nothing,
+  // `git diff HEAD` is empty. Silent wrong answers, both.
+  if (name === "HEAD") return null;
+  // Remote first: `main` also exists locally on a branch that has not moved, and
+  // rebasing onto the local copy is a no-op that reads as "already up to date".
+  for (const ref of [`origin/${name}`, name]) {
+    const ok = await git(repoPath, ["rev-parse", "--verify", "--quiet", ref]);
+    if (ok.code === 0) return ref;
+  }
+  return null;
+}
+
 /** Rebase the group's branch onto the latest base. Used at start and on unpark. */
-export async function rebaseOntoBase(
-  git: GitRunner,
-  repoPath: string,
-  worktree: string,
-  baseRef?: string,
-): Promise<GitRun> {
-  const base = baseRef ?? `origin/${await detectBaseBranch(git, repoPath)}`;
+export async function rebaseOntoBase(git: GitRunner, repoPath: string, worktree: string): Promise<GitRun> {
+  const base = await baseRef(git, repoPath);
+  // Non-zero, so the caller's existing failure path carries it: unpark escalates
+  // to the boss and leaves the group parked rather than waking it onto nothing.
+  if (!base) return { code: 1, out: "no base branch: nothing named main, master or origin/HEAD resolves here" };
   await abortStaleRebase(git, repoPath, worktree);
   return git(repoPath, ["rebase", base], worktree);
 }
@@ -167,12 +197,10 @@ export async function squashWip(
   repoPath: string,
   worktree: string,
   message: string,
-  // Both optional and unrelated, so named: positionally, the caller that wants
-  // the second one has to write `undefined` for the first.
-  opts: { baseRef?: string; trailers?: Trailers } = {},
+  trailers: Trailers = DEFAULT_TRAILERS,
 ): Promise<SquashResult> {
-  const trailers = opts.trailers ?? DEFAULT_TRAILERS;
-  const base = opts.baseRef ?? `origin/${await detectBaseBranch(git, repoPath)}`;
+  const base = await baseRef(git, repoPath);
+  if (!base) return { squashed: 0, reason: "no base branch to squash against" };
   const mb = await git(repoPath, ["merge-base", base, "HEAD"], worktree);
   if (mb.code !== 0 || !mb.out.trim()) return { squashed: 0, reason: `no merge base with ${base}` };
   const from = mb.out.trim();
@@ -251,9 +279,13 @@ export async function sliceDiffBase(
   repoPath: string,
   worktree: string,
   baseSha: string | null,
-  baseRef?: string,
+  // The one override worth having: the caller with a `Ctx` knows the project's
+  // base branch from GitHub, which survives a rename of the default branch that
+  // a clone's `origin/HEAD` does not. Without one, ask the clone.
+  projectRef?: string,
 ): Promise<{ base: string; scope: "slice" | "branch" } | null> {
-  const ref = baseRef ?? `origin/${await detectBaseBranch(git, repoPath)}`;
+  const ref = projectRef ?? (await baseRef(git, repoPath));
+  if (!ref) return baseSha ? { base: baseSha, scope: "slice" } : null;
   const forkRun = await git(repoPath, ["merge-base", ref, "HEAD"], worktree);
   const fork = forkRun.code === 0 ? forkRun.out.trim() : "";
   if (!baseSha) return fork ? { base: fork, scope: "branch" } : null;

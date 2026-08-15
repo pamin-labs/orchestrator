@@ -7,6 +7,7 @@ import { baseBranch, LINK_AGENTS_MD } from "../src/mech/git/checkout.ts";
 import { openMemory } from "../src/db.ts";
 import type { Ctx } from "../src/api.ts";
 import {
+  baseRef,
   changedSince,
   detectBaseBranch,
   checkpoint,
@@ -146,7 +147,7 @@ test("wip checkpoints are squashed into one commit, and the tree survives", asyn
   }
   expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out.split("\n").length).toBe(3);
 
-  const r = await squashWip(git, dir, wt.worktree, "feat: the whole thing", { baseRef: "main" });
+  const r = await squashWip(git, dir, wt.worktree, "feat: the whole thing");
   expect(r.squashed).toBe(3);
 
   const log = (await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out.trim();
@@ -166,7 +167,7 @@ test("a real commit message is never squashed away", async () => {
   await git(dir, ["add", "-A"], wt.worktree);
   await git(dir, ["commit", "-q", "-m", "fix: the actual bug"], wt.worktree);
 
-  const r = await squashWip(git, dir, wt.worktree, "squashed", { baseRef: "main" });
+  const r = await squashWip(git, dir, wt.worktree, "squashed");
   expect(r.squashed).toBe(0);
   expect(r.reason).toContain("real messages");
   expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out).toContain("fix: the actual bug");
@@ -191,7 +192,7 @@ test("a rebased branch stops reporting other groups' landed work as this slice's
   await git(dir, ["add", "-A"]);
   await git(dir, ["commit", "-q", "-m", "other group"]);
   await git(wt.worktree, ["fetch", "-q", "origin"], wt.worktree);
-  await rebaseOntoBase(git, wt.worktree, wt.worktree, "origin/main");
+  await rebaseOntoBase(git, wt.worktree, wt.worktree);
 
   // The recorded base is now a commit on main, so diffing from it would call
   // `theirs.txt` part of this slice. Fall back to the fork point instead.
@@ -242,6 +243,28 @@ test("the base branch is a bare name, whatever the remote calls it", async () =>
   // Without origin/HEAD it has to ask the remote rather than guess main.
   await git(work, ["update-ref", "-d", "refs/remotes/origin/HEAD"], work);
   expect(await detectBaseBranch(git, work)).toBe("trunk");
+});
+
+test("with no base branch to rebase onto, the caller is told that and not `ambiguous argument`", async () => {
+  // Three helpers used to write `origin/${detectBaseBranch(...)}` and hand git a
+  // ref they had never verified. In a clone with no remote — or one whose remote
+  // has gone — that is `origin/main` against a repository that has no `origin`
+  // at all, so the rebase fails deep inside git with a message about argument
+  // parsing. `unpark` then shows the boss that message.
+  const dir = mkdtempSync(join(tmpdir(), "orch-nobase-"));
+  await git(dir, ["init", "-q", "-b", "solo"]);
+  await git(dir, ["config", "user.email", "t@example.com"]);
+  await git(dir, ["config", "user.name", "test"]);
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  await git(dir, ["add", "-A"]);
+  await git(dir, ["commit", "-q", "-m", "one"]);
+
+  expect(await baseRef(git, dir)).toBeNull();
+  const r = await rebaseOntoBase(git, dir, dir);
+  expect(r.code).not.toBe(0);
+  expect(r.out).toContain("no base branch");
+  // And the squash declines with a reason instead of committing onto nothing.
+  expect((await squashWip(git, dir, dir, "feat: x")).reason).toContain("no base branch");
 });
 
 test("a renamed default branch is picked up rather than breaking every clone", async () => {
