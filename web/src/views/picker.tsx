@@ -1,9 +1,9 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { Command } from "cmdk";
 import { useEffect, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Menu, MenuItem } from "../ui/menu";
-import { Input } from "../ui/bits";
 import { post } from "../lib/api";
 import { cn } from "../lib/utils";
 
@@ -194,7 +194,8 @@ interface RepoRow {
   private: boolean;
   defaultBranch: string;
   pushedAt: number;
-  taken: boolean;
+  /** The project already made from it, so a repeat is a route rather than a wall. */
+  taken: { id: number; name: string } | null;
 }
 interface RepoList {
   installations: { id: number; account: string; kind: string }[];
@@ -204,16 +205,22 @@ interface RepoList {
 }
 
 /**
- * The account the boss was last in, so the next open can ask for both halves at
- * once.
+ * The account the boss was last in, and the last answer itself.
  *
- * Measured: a round trip to api.github.com is 260-630ms, and the route cannot
- * fetch repositories until it knows the installation id — so a cold open is two
- * trips in series. Naming the id turns that back into one. Module-level rather
- * than stored: it is a guess that costs nothing when wrong (the server answers
- * with whatever installation is real) and nothing is worth persisting for it.
+ * Measured against a live server: the route is 1.0-1.3s wall clock, and 0.8-1.0s
+ * of that is fixed — an installation with 4 repositories costs the same as one
+ * with 87, so neither pagination (87 fit in one page) nor rendering was ever the
+ * price. It is one authenticated round trip to api.github.com, and the ETag cache
+ * does not touch it: a 304 saves rate limit, not time.
+ *
+ * Which leaves one lever, and this is it. `Shell` unmounts its children on close,
+ * so without a cache every reopen is another second of empty dialog for a list
+ * that has not changed. Painting the old answer and revalidating behind it costs
+ * two module-level bindings. Not persisted: a wrong guess costs nothing, because
+ * the server answers with whatever installation is actually real.
  */
 let lastInstallation: number | null = null;
+let cached: RepoList | null = null;
 
 const days = (t: number) => {
   if (!t) return "";
@@ -229,14 +236,37 @@ const days = (t: number) => {
  * already sees all of them. A repository the app was never installed on is
  * deliberately absent: it would add cleanly and fail at its first clone with a
  * 404 that cannot say why.
+ *
+ * `cmdk` rather than the hand-rolled filter that was here, and rather than
+ * `ui/switcher.tsx`. The filter is the smaller half: 87 rows of `<button>` are 87
+ * tab stops with no arrow keys, no `aria-selected` and nothing scrolled into
+ * view, and that is behaviour, which 硬约束 4 says we do not invent. Not
+ * `Switcher` itself, because `Command.Dialog`'s whole chrome is one input and
+ * this needs an account control beside it and a footer under it — and because
+ * ⌘K navigates, reversibly, while Enter here writes a row. Same shape, different
+ * promise.
  */
-export function Picker({ open, onOpenChange, onAdded }: {
-  open: boolean; onOpenChange: (v: boolean) => void; onAdded: () => void;
+function Repos({
+  title,
+  onAdded,
+  onOpenProject,
+  onSettings,
+  onCancel,
+}: {
+  /** `Dialog.Title` in the dialog, a plain heading inline. Both need the a11y right. */
+  title: React.ReactNode;
+  onAdded: (projectId: number) => void;
+  onOpenProject: (projectId: number) => void;
+  onSettings: () => void;
+  onCancel?: () => void;
 }) {
-  const [d, setD] = useState<RepoList | null>(null);
+  const [d, setD] = useState<RepoList | null>(cached);
   const [err, setErr] = useState("");
-  const [q, setQ] = useState("");
   const [busy, setBusy] = useState("");
+  // Controlled, and held above cmdk rather than inside it, so a second of network
+  // does not eat what was typed over it. Cleared only when the account changes,
+  // where a filter written for the other account's names is worse than nothing.
+  const [q, setQ] = useState("");
 
   const load = async (installation?: number) => {
     const want = installation ?? lastInstallation;
@@ -245,116 +275,228 @@ export function Picker({ open, onOpenChange, onAdded }: {
     setErr("");
     const next = (await r.json()) as RepoList;
     lastInstallation = next.selected;
+    cached = next;
     setD(next);
   };
   useEffect(() => {
-    if (open) {
-      setQ("");
-      void load();
-    }
-  }, [open]);
+    void load();
+  }, []);
 
+  // The id was thrown away here, which is why adding a project used to land
+  // nowhere: the dialog closed and the boss was left on the same screen to go
+  // find what they had just made. `post` already toasts a failure, so this only
+  // has to carry the success forward.
   const add = async (repo: string) => {
     setBusy(repo);
     const r = await post("/api/projects", { repo });
     setBusy("");
-    if (r.ok) {
-      onOpenChange(false);
-      onAdded();
-    }
+    if (!r.ok) return;
+    const id = Number((JSON.parse(r.text) as { id?: number }).id);
+    if (id) onAdded(id);
   };
 
   const here = d?.installations.find((i) => i.id === d.selected);
-  const shown = (d?.repos ?? []).filter((r) => r.fullName.toLowerCase().includes(q.trim().toLowerCase()));
+  const empty = d && !d.installations.length;
 
   return (
-    <Shell open={open} onOpenChange={onOpenChange}>
+    <Command label="选择仓库" className="flex min-h-0 flex-col">
       <div className="flex items-baseline gap-2 border-b border-rule p-3">
-        <Dialog.Title className="font-display text-[1.0625rem] font-semibold">选择仓库</Dialog.Title>
-        {/* The consequence, where the decision is, not in a footer under 87 rows:
-            a list that adds on click without warning is a list people are afraid
-            to scroll. */}
-        <span className="text-[0.75rem] text-ink-3">点一行就添加，不用再确认</span>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 border-b border-rule-soft px-3 py-2">
+        {title}
+        {/* The rule, stated once and above the fold. Which repository it is about
+            to happen to is the highlighted row's job, below. */}
+        <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">点一行就添加</span>
         {/* The org switcher. Behind one click because it is rare, and because a
             row of accounts would outweigh the list it filters. */}
         {d && d.installations.length > 1 ? (
-          <Menu label={here ? `${here.account}` : "选账号"}>
+          <Menu label={here ? here.account : "选账号"}>
             {d.installations.map((i) => (
               <MenuItem
                 key={i.id}
                 hint={i.kind === "Organization" ? "组织" : "个人账号"}
-                onSelect={() => void load(i.id)}
+                onSelect={() => {
+                  setQ("");
+                  void load(i.id);
+                }}
               >
                 {i.account}
               </MenuItem>
             ))}
           </Menu>
         ) : (
-          here && <span className="text-[0.8125rem] font-medium">{here.account}</span>
+          here && <span className="shrink-0 truncate text-[0.8125rem] font-medium">{here.account}</span>
         )}
-        <Input
-          className="min-w-0 flex-1"
-          placeholder="筛一下"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
       </div>
 
+      {/* Borderless and full width, like the ⌘K palette: a bordered box inside a
+          bordered dialog is two frames around one field. */}
+      {!empty && (
+        <Command.Input
+          value={q}
+          onValueChange={setQ}
+          placeholder="筛一下，或者直接打名字"
+          className="w-full border-b border-rule-soft bg-transparent px-3.5 py-2.5 text-[0.875rem]
+                     text-ink placeholder:text-ink-3 focus:outline-none"
+        />
+      )}
+
       <div className="max-h-[46vh] overflow-y-auto">
-        {err && <div className="p-3.5 text-[0.75rem] text-bad">{err}</div>}
-        {!d && !err && <div className="p-3.5 text-[0.75rem] text-ink-3">读取中…</div>}
+        {/* Every failure this route has is fixed in the same place, and the most
+            likely one on the most likely screen is "GitHub was never connected" —
+            which is the very first thing a new boss sees, as a red sentence with
+            nowhere to go. */}
+        {err && (
+          <div className="space-y-2 border-b border-rule-soft p-3.5">
+            <p className="text-[0.8125rem] text-bad">{err}</p>
+            <Button onClick={onSettings}>去设置看 GitHub</Button>
+          </div>
+        )}
+
+        {/* One second of nothing reads as broken. Rows in the shape of rows say
+            "this is a list, it is coming", and `breathe` is the same opacity
+            animation everything else in flight uses. */}
+        {!d && !err && (
+          <div className="breathe">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div key={i} className="border-t border-rule-soft px-3.5 py-1.5 first:border-t-0">
+                <div className="h-3 rounded-sm bg-sunk" style={{ width: `${58 - i * 7}%` }} />
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Authorized and installed are different things, and this is the second
             one missing. An empty list with no explanation is the failure. */}
-        {d && !d.installations.length && (
+        {empty && (
           <div className="space-y-2 p-3.5 text-[0.8125rem] text-ink-2">
             <p>连上了，但这个 GitHub App 还没装到任何账号上，所以一个仓库也看不见。</p>
             {d.installUrl ? (
-              <LinkButton href={d.installUrl}>去装上</LinkButton>
+              <LinkButton href={d.installUrl}>去 GitHub 装上</LinkButton>
             ) : (
               <p className="text-[0.75rem] text-ink-3">去 GitHub → 这个 App → Install App，选要给它看的仓库。</p>
             )}
           </div>
         )}
-        {d && !!d.installations.length && !shown.length && (
-          <div className="p-3.5 text-[0.75rem] text-ink-3">
-            {d.repos.length ? "没有匹配的" : "这个账号下，App 没被授权看任何仓库"}
+
+        {/* Installed here, and it can see nothing — a different fault from the one
+            above and with the same cure, so it gets the button too rather than a
+            grey sentence and no way forward. */}
+        {d && !!d.installations.length && !d.repos.length && (
+          <div className="space-y-2 p-3.5 text-[0.8125rem] text-ink-2">
+            <p>{here?.account} 下面，这个 App 一个仓库都看不到。装的时候可能只勾了几个。</p>
+            {d.installUrl && <LinkButton href={d.installUrl}>去改它能看哪些</LinkButton>}
           </div>
         )}
-        {/* One line per repository: the name, whether it is private, when it
-            last moved. The `owner/` prefix is on every row of a list that is
-            already one account, and the default branch is a fact nobody chooses
-            on — both were a second line of noise per row. */}
-        {shown.map((r) => (
-          <button
-            key={r.fullName}
-            disabled={r.taken || !!busy}
-            onClick={() => void add(r.fullName)}
-            className={cn(
-              "flex w-full items-baseline gap-2 border-t border-rule-soft px-3.5 py-1.5 text-left",
-              "text-[0.8125rem] transition-colors first:border-t-0",
-              r.taken ? "text-ink-3" : "cursor-pointer hover:bg-sunk",
-            )}
-          >
-            <span className="truncate font-medium">{r.fullName.split("/")[1] ?? r.fullName}</span>
-            {r.private && <Badge>私有</Badge>}
-            <span className="grow" />
-            <span className="shrink-0 text-[0.75rem] text-ink-3">
-              {r.taken ? "已添加" : busy === r.fullName ? "添加中…" : days(r.pushedAt)}
-            </span>
-          </button>
-        ))}
+
+        <Command.List>
+          {/* cmdk renders Empty on any zero count, and a list still loading is
+              also zero — so unguarded it says 没有匹配的 over the skeleton, before
+              a single repository has arrived. */}
+          {!!d?.repos.length && (
+            <Command.Empty className="p-3.5 text-[0.75rem] text-ink-3">没有匹配的</Command.Empty>
+          )}
+          {/* Name, private, last activity. The `owner/` prefix repeats on every row
+              of a list that is already one account, and the default branch is not
+              something you choose between 87 of — it appears on the highlighted
+              row instead, where it is the evidence for what the click is about to
+              decide (硬约束 5). */}
+          {(d?.repos ?? []).map((r) => (
+            <Command.Item
+              key={r.fullName}
+              value={r.fullName}
+              disabled={!!busy}
+              onSelect={() => (r.taken ? onOpenProject(r.taken.id) : void add(r.fullName))}
+              className={cn(
+                "group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2",
+                "border-t border-rule-soft px-3.5 py-1.5 text-[0.8125rem] first:border-t-0",
+                "data-[selected=true]:bg-sunk",
+                r.taken && "text-ink-3",
+              )}
+            >
+              <span className="flex min-w-0 items-baseline gap-2">
+                <span className="truncate font-medium">{r.fullName.split("/")[1] ?? r.fullName}</span>
+                {r.private && <Badge>私有</Badge>}
+              </span>
+              <span
+                className={cn(
+                  "whitespace-nowrap text-[0.75rem] text-ink-3",
+                  busy !== r.fullName && "group-data-[selected=true]:hidden",
+                )}
+              >
+                {busy === r.fullName ? "添加中…" : r.taken ? "已添加" : days(r.pushedAt)}
+              </span>
+              {busy !== r.fullName && (
+                <span className="hidden whitespace-nowrap font-mono text-[0.6875rem] text-accent group-data-[selected=true]:inline">
+                  {r.taken ? `去 ${r.taken.name} →` : `添加 · ${r.defaultBranch}`}
+                </span>
+              )}
+            </Command.Item>
+          ))}
+        </Command.List>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-rule p-3">
-        <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">
-          {d && d.repos.length > 0 && `${shown.length} / ${d.repos.length} 个仓库，最近动过的在前`}
-        </span>
-        <Button onClick={() => onOpenChange(false)}>取消</Button>
-      </div>
+      {/* Inline and with nothing to count, this whole band is a bordered empty
+          strip under the panel. */}
+      {(onCancel || !!d?.repos.length) && (
+        <div className="flex shrink-0 items-center gap-2 border-t border-rule p-3">
+          <span className="min-w-0 grow truncate text-[0.75rem] text-ink-3">
+            {d?.repos.length ? `${d.repos.length} 个仓库，最近动过的在前` : ""}
+          </span>
+          {onCancel && <Button onClick={onCancel}>取消</Button>}
+        </div>
+      )}
+    </Command>
+  );
+}
+
+/** From a project that already exists: you come to add one and go back to the work. */
+export function Picker({ open, onOpenChange, onAdded, onSettings }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onAdded: (projectId: number) => void;
+  onSettings: () => void;
+}) {
+  const leave = (id: number) => {
+    onOpenChange(false);
+    onAdded(id);
+  };
+  return (
+    <Shell open={open} onOpenChange={onOpenChange}>
+      <Repos
+        title={<Dialog.Title className="shrink-0 font-display text-[1.0625rem] font-semibold">选择仓库</Dialog.Title>}
+        onAdded={leave}
+        onOpenProject={leave}
+        onSettings={() => {
+          onOpenChange(false);
+          onSettings();
+        }}
+        onCancel={() => onOpenChange(false)}
+      />
     </Shell>
+  );
+}
+
+/**
+ * The very first screen, with no project at all — and not a dialog.
+ *
+ * It was a card explaining that a button would open a list, over a page with
+ * nothing else on it: two screens to show one list, and the second one paid the
+ * full second of latency after a click rather than during the page load that was
+ * happening anyway. DESIGN.md already says it — with no project at all, the page
+ * is the one panel it needs, not a tutorial.
+ */
+export function FirstProject({ onAdded, onSettings }: {
+  onAdded: (projectId: number) => void;
+  onSettings: () => void;
+}) {
+  return (
+    <div className="max-w-[40rem] overflow-hidden rounded-xl border border-rule bg-paper">
+      <Repos
+        title={<h2 className="shrink-0 font-display text-[1.0625rem] font-semibold">添加第一个项目</h2>}
+        onAdded={onAdded}
+        onOpenProject={onAdded}
+        onSettings={onSettings}
+      />
+    </div>
   );
 }
 

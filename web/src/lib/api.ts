@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-export interface Project { id: number; name: string; repo_path: string; remote: string | null }
+export interface Project {
+  id: number; name: string; repo_path: string; remote: string | null;
+  /** Empty means "ask the remote". Taken from GitHub at add time, correctable in 设置. */
+  base_branch: string | null;
+}
 export interface Group {
   id: number; project_id: number; name: string; branch: string | null;
   status: string; owns_json: string; budget_tokens: number; spent_tokens: number;

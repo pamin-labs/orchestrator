@@ -15,7 +15,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { cn } from "./lib/utils";
 import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
-import { Picker } from "./views/picker";
+import { FirstProject, Picker } from "./views/picker";
 import { Notes } from "./views/notes";
 import { SettingsDialog, type Section } from "./views/settings";
 import { Progress } from "./views/progress";
@@ -228,11 +228,19 @@ export function App() {
   ];
   const openGroup = sel.g ? st.groups.find((g) => g.id === sel.g) : undefined;
 
+  // A project that was just added and then left off screen is a project the boss
+  // has to go and find. Land on it, and let its own empty page say what it now
+  // knows and what it does not.
+  const added = (p: number) => {
+    void refresh();
+    go({ p, view: "progress", g: null, t: null });
+  };
+
   return (
     <TipRoot>
       <Toaster position="bottom-right" theme="system" />
       <AskHost />
-      <Picker open={picking} onOpenChange={setPicking} onAdded={refresh} />
+      <Picker open={picking} onOpenChange={setPicking} onAdded={added} onSettings={() => go({ view: "github" })} />
       <Switcher
         open={pickProject}
         onOpenChange={setPickProject}
@@ -447,25 +455,10 @@ export function App() {
           >
           <Boundary key={`${sel.view}:${sel.p}:${sel.g}`}>
           {!st.projects.length ? (
-            <Card className="max-w-[40rem]">
-              <CardBody>
-                <CardTitle>添加项目</CardTitle>
-                <div className="mb-3 mt-1 text-[0.75rem] text-ink-3">
-                  从 GitHub 挑一个仓库，不用先克隆到本机；闸门和安装命令等第一个组克隆完再猜。
-                  {/* Which accounts it can see is a list the GitHub page now shows,
-                      with a repo count each — better than a sentence describing it. */}
-                  一个也挑不出来的话，去{" "}
-                  <button
-                    className="cursor-pointer underline hover:text-accent"
-                    onClick={() => go({ view: "settings" })}
-                  >
-                    设置 → GitHub
-                  </button>{" "}
-                  看这个 App 装在哪些账号上。
-                </div>
-                <Button variant="go" onClick={() => setPicking(true)}>挑仓库…</Button>
-              </CardBody>
-            </Card>
+            /* The list itself, not a card describing the button that opens it.
+               The one second the repo list costs is spent inside this page load
+               rather than after a click. */
+            <FirstProject onAdded={added} onSettings={() => go({ view: "github" })} />
           ) : home ? (
             <Home st={st} onEnter={(p) => go({ p, view: "progress", g: null })} onOpen={openReq}
                   onAdd={() => setPicking(true)} refresh={refresh} />
@@ -481,13 +474,31 @@ export function App() {
                 queue={<Queue st={st} projectId={sel.p} onOpen={openReq} refresh={refresh} />}
               />
             ) : (
-              <Card>
+              /* Also the screen you land on the moment a project is added, so it
+                 carries what adding decided on your behalf. The branch was taken
+                 from GitHub without asking; unstated, that is a silent default,
+                 and the first sign of a wrong one is a group branching off
+                 nothing. Gates and the install command are genuinely unknown
+                 until a container has the repository in hand (决策 007 §2) —
+                 said as expected rather than left looking missing. */
+              <Card className="max-w-[40rem]">
                 <CardBody>
                   <CardTitle>还没有需求</CardTitle>
                   <div className="mt-1 text-[0.75rem] text-ink-3">
                     写一句话就行。拆成计划卡再回来给你批，20 秒。
                   </div>
-                  <Button variant="go" className="mt-3" onClick={() => setAdding(true)}>＋ 新需求</Button>
+                  <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-[0.75rem]">
+                    <dt className="text-ink-3">仓库</dt>
+                    <dd className="truncate font-mono text-[0.6875rem]">{proj?.repo_path}</dd>
+                    <dt className="text-ink-3">从这个分支开</dt>
+                    <dd className="font-mono text-[0.6875rem]">{proj?.base_branch || "问 GitHub 要"}</dd>
+                    <dt className="text-ink-3">闸门 / 安装命令</dt>
+                    <dd className="text-ink-2">第一个组克隆完才猜得出来，到时候填进设置</dd>
+                  </dl>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button variant="go" onClick={() => setAdding(true)}>＋ 新需求</Button>
+                    <Button variant="quiet" onClick={() => go({ view: "config" })}>改这些</Button>
+                  </div>
                 </CardBody>
               </Card>
             )

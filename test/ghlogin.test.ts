@@ -287,6 +287,10 @@ test("a project added from the list keeps GitHub's default branch, not a guess",
     new Request("http://x/api/projects", { method: "POST", body: JSON.stringify({ repo: "acme/site" }) }),
   );
   expect(r.status).toBe(200);
+  // The id is the whole reason the browser can land on what it just made. It was
+  // being returned and thrown away, so adding a project put the boss back on the
+  // screen they started from with nothing selected.
+  expect((await r.json()).id).toBeGreaterThan(0);
   const row = db
     .query<{ name: string; repo_path: string; remote: string; base_branch: string }, []>(
       "SELECT name, repo_path, remote, base_branch FROM project ORDER BY id DESC LIMIT 1",
@@ -303,6 +307,30 @@ test("a project added from the list keeps GitHub's default branch, not a guess",
     new Request("http://x/api/projects", { method: "POST", body: JSON.stringify({ repo: "acme/site" }) }),
   );
   expect(again.status).toBe(422);
+});
+
+test("a repository already added names its project, so the row is a route and not a wall", async () => {
+  // `taken: true` told the boss the repository they came for is unreachable and
+  // stopped there. Which project it became is the way out, and the row already
+  // has to be rendered either way.
+  const { app, db } = server((url) =>
+    url.includes("/user/installations?")
+      ? { installations: [{ id: 5, account: { login: "acme", type: "Organization" } }] }
+      : {
+          repositories: [
+            { full_name: "acme/site", default_branch: "main" },
+            { full_name: "acme/other", default_branch: "main" },
+          ],
+        },
+  );
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('工地', 'acme/site', 0)");
+
+  const b = (await (await get(app, "/api/github/repos")).json()) as any;
+  const by = Object.fromEntries(b.repos.map((r: any) => [r.fullName, r.taken]));
+  expect(by["acme/site"].name).toBe("工地");
+  expect(by["acme/site"].id).toBeGreaterThan(0);
+  // Null rather than `false`: there is no project to send anyone to.
+  expect(by["acme/other"]).toBeNull();
 });
 
 test("the migration turns a host path into owner/name, and says nothing when there is nothing to do", () => {
