@@ -87,6 +87,7 @@ const DraftSchema = z.object({ text: z.string(), attachments: z.array(DraftAttac
 export type Draft = z.infer<typeof DraftSchema>;
 
 const SavedAttachmentSchema = AttachedSchema.omit({ label: true, url: true });
+type SavedAttachment = z.infer<typeof SavedAttachmentSchema>;
 const AttachmentsSchema: z.ZodType<
   InferResponseType<typeof api.attach.$post, 200> & InferResponseType<typeof api.attach.local.$post, 200>
 > = z.object({ files: z.array(SavedAttachmentSchema) });
@@ -127,12 +128,7 @@ const cachedSkills = (projectId?: number): Skill[] | null => SKILLS.get(String(p
 /** Ticking a skill in settings changes `on` here; the cache would say otherwise. */
 export const forgetSkills = () => SKILLS.clear();
 
-function loadSkills(projectId?: number): Promise<Skill[]> {
-  const key = String(projectId ?? "");
-  const done = SKILLS.get(key);
-  if (done) return Promise.resolve(done);
-  const going = SKILLS_IN_FLIGHT.get(key);
-  if (going) return going;
+function fetchSkills(key: string, projectId?: number): Promise<Skill[]> {
   const p = readApi(api.skills.$get({ query: { project: String(projectId ?? "") } }), SkillsResponseSchema)
     .then((d) => d?.skills ?? [])
     .catch(() => [])
@@ -143,6 +139,13 @@ function loadSkills(projectId?: number): Promise<Skill[]> {
     });
   SKILLS_IN_FLIGHT.set(key, p);
   return p;
+}
+
+function loadSkills(projectId?: number): Promise<Skill[]> {
+  const key = String(projectId ?? "");
+  const done = SKILLS.get(key);
+  if (done) return Promise.resolve(done);
+  return SKILLS_IN_FLIGHT.get(key) ?? fetchSkills(key, projectId);
 }
 
 export function Composer({
@@ -281,6 +284,19 @@ export function Composer({
     return `${kind}${n}`;
   };
 
+  const addFiles = (saved: SavedAttachment[], previews: Array<string | undefined> = []) => {
+    // Label before the state update: the updater has not run when the text
+    // markers are assembled, so doing it there produced `[undefined]`.
+    const taken = files.map((file) => file.label);
+    const marked = saved.map((file, index) => {
+      const next = label(file, taken);
+      taken.push(next);
+      return { ...file, label: next, url: previews[index] };
+    });
+    setFiles((prev) => [...prev, ...marked]);
+    mark(marked.map((file) => `[${file.label}]`).join(""));
+  };
+
   /**
    * Attach what is already on this machine, by path.
    *
@@ -295,17 +311,7 @@ export function Composer({
     if (!r) return void toast.error("加不进来", { duration: 8000 });
     const result = await readJson(r, AttachmentsSchema);
     if (!result.ok) return void toast.error(result.text, { duration: 8000 });
-    const { files: saved } = result.data;
-    // Labelled before the state update, not inside it: the updater had not run
-    // yet when the markers were assembled, so the text got `[undefined]`.
-    const taken = files.map((f) => f.label);
-    const marked = saved.map((s) => {
-      const l = label(s, taken);
-      taken.push(l);
-      return { ...s, label: l };
-    });
-    setFiles((prev) => [...prev, ...marked]);
-    mark(marked.map((m) => `[${m.label}]`).join(""));
+    addFiles(result.data.files);
   };
 
   /** Drop the markers in where the caret was. */
@@ -345,22 +351,11 @@ export function Composer({
     // goes out referencing a path, and the agent is told to Read something missing.
     const result = await readJson(r, AttachmentsSchema);
     if (!result.ok) return void toast.error(result.text, { duration: 8000 });
-    const { files: saved } = result.data;
-    const taken = files.map((f) => f.label);
-    const marked = saved.map((s, i) => {
-      const l = label(s, taken);
-      taken.push(l);
-      return {
-        ...s,
-        label: l,
-        // Preview from the local File, not a server round trip.
-        url: picked[i]?.file.type.startsWith("image/") ? URL.createObjectURL(picked[i]!.file) : undefined,
-      };
-    });
-    setFiles((prev) => [...prev, ...marked]);
-
-    // At the caret, because that is where the boss was pointing when they pasted.
-    mark(marked.map((m) => `[${m.label}]`).join(""));
+    // Preview from the local File, not a server round trip.
+    addFiles(
+      result.data.files,
+      picked.map(({ file }) => (file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined)),
+    );
   };
 
   /**
