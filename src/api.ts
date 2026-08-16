@@ -1,18 +1,19 @@
 import { Hono } from "hono";
+import { check } from "./api/valid.ts";
 import type { Caller, Ctx } from "./ctx.ts";
-import { agentOf, mayAct, mintToken, resolveGroup, text, type AgentHandler, type Handler } from "./api/shared.ts";
+import { agentOf, mayAct, mintToken, resolveGroup, type AgentHandler, type Handler } from "./api/shared.ts";
 import { getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers } from "./api/authflow.ts";
 import { bossFact, expandHome, getAttachment, imagePaths, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/attach.ts";
 import { CTX_BUDGET_CHARS, postCtxQuery } from "./api/ctxquery.ts";
 import { ASK_KINDS, askKind, brief, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage } from "./api/escalation.ts";
-import { landGroup, postDraftDecision, postGroupControl, postIdea } from "./api/group.ts";
+import { GroupAction, landGroup, postDraftDecision, postGroupControl, postIdea } from "./api/group.ts";
 import { getLeaseLog, postLease } from "./api/lease.ts";
 import { postMail, postSay } from "./api/messaging.ts";
 import { getDirs, getNotes, getSkills, postSkill } from "./api/panel.ts";
 import { postBlocked, postDraft, postDrop, postOwns, postSplit } from "./api/planning.ts";
 import { postPr } from "./api/pr.ts";
 import { deleteProject, getProjectConfig, patchProjectConfig, postProject, postSetup } from "./api/project.ts";
-import { evictOldestLessons, LESSON_CAP, postJournal, postStatus } from "./api/report.ts";
+import { evictOldestLessons, JournalBody, LESSON_CAP, postJournal, postStatus, StatusBody } from "./api/report.ts";
 import { getEvidence, getGateLog, postAudit, postReview, postSliceDecision } from "./api/review.ts";
 import { getSettings, postSetting } from "./api/settings.ts";
 import { getImages, getPreflight, getSandbox, getSandboxServer, postImage, postSandboxServerAddr, postSandboxServerRestart, postSandboxServerStart } from "./api/sandbox.ts";
@@ -43,59 +44,101 @@ export { bossFact, expandHome, imagePaths, withAttachments, type Attachment };
 export { ASK_KINDS, askKind, brief };
 export { CTX_BUDGET_CHARS, evictOldestLessons, landGroup, LESSON_CAP, snapshot };
 
-const ROUTES: Array<[string, RegExp, Handler]> = [
-  ["GET", /^\/api\/auth$/, getAuth],
-  ["POST", /^\/api\/auth$/, postAuth],
-  ["POST", /^\/api\/auth\/claude\/login$/, postClaudeLogin],
-  ["POST", /^\/api\/auth\/claude\/login\/code$/, postClaudeCode],
-  ["POST", /^\/api\/auth\/claude\/login\/cancel$/, postClaudeCancel],
-  ["GET", /^\/api\/auth\/github$/, getGithubLogin],
-  ["GET", /^\/api\/github\/repos$/, getGithubRepos],
-  ["POST", /^\/api\/auth\/github$/, postGithubLogin],
-  ["POST", /^\/api\/git\/trailers$/, postTrailers],
-  ["POST", /^\/api\/auth\/codex\/device$/, postCodexDevice],
-  ["POST", /^\/api\/auth\/codex\/device\/cancel$/, postCodexDeviceCancel],
-  ["GET", /^\/api\/preflight$/, getPreflight],
-  ["GET", /^\/api\/sandbox\/images$/, getImages],
-  ["POST", /^\/api\/sandbox\/images$/, postImage],
-  ["GET", /^\/api\/sandbox-server$/, getSandboxServer],
-  ["POST", /^\/api\/sandbox-server\/restart$/, postSandboxServerRestart],
-  ["POST", /^\/api\/sandbox-server\/start$/, postSandboxServerStart],
-  ["POST", /^\/api\/sandbox-server\/addr$/, postSandboxServerAddr],
-  ["GET", /^\/api\/sandbox$/, getSandbox],
-  ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
-  ["POST", /^\/api\/project\/(?<id>\d+)\/config$/, patchProjectConfig],
+/**
+ * The panel's routes.
+ *
+ * The enum-shaped path segments (`approve|reject`, the nine group actions) were
+ * doing double duty in the old regex table: routing *and* input validation. Hono
+ * matches on `:name` alone, so the enum moves into the handler's schema where a
+ * wrong value produces a message instead of a 404 — which is the honest answer
+ * to "reject that decision", and was never what a missing route meant.
+ */
+/**
+ * What a route handler is handed, narrowed to the parts these use.
+ *
+ * Written out rather than imported as Hono's `Context`, because that type is
+ * generic over the app's env and every handler here would have to name the same
+ * type parameters to say nothing.
+ */
+type HonoCtx = {
+  req: { raw: Request; param: () => Record<string, string>; valid: (t: never) => unknown };
+};
 
-  ["GET", /^\/api\/settings$/, getSettings],
-  ["POST", /^\/api\/settings$/, postSetting],
-  ["GET", /^\/api\/state$/, getState],
-  ["GET", /^\/api\/cost$/, getCost],
-  ["GET", /^\/api\/stream$/, getStream],
-  ["GET", /^\/api\/dirs$/, getDirs],
-  ["GET", /^\/api\/notes$/, getNotes],
-  ["GET", /^\/api\/skills$/, getSkills],
-  ["POST", /^\/api\/skills$/, postSkill],
-  ["POST", /^\/api\/projects$/, postProject],
-  ["DELETE", /^\/api\/projects\/(?<id>\d+)$/, deleteProject],
-  ["POST", /^\/api\/ideas$/, postIdea],
-  ["POST", /^\/api\/attach$/, postAttach],
-  ["POST", /^\/api\/attach\/local$/, postAttachLocal],
-  ["POST", /^\/api\/say$/, postSay],
-  ["POST", /^\/api\/draft\/(?<id>\d+)\/(?<decision>approve|reject)$/, postDraftDecision],
+/** The body this route's schema produced, if it declared one. */
+const valid = (c: HonoCtx): unknown => {
+  try {
+    return (c.req.valid as (t: string) => unknown)("json");
+  } catch {
+    return undefined;
+  }
+};
+
+function apiRoutes(ctx: Ctx): Hono {
+  const app = new Hono();
+  // `valid("json")` is whatever the route's schema returned, or `undefined` on a
+  // route that declares none — the handler decides which of the two it is by
+  // taking a `data` parameter or ignoring it.
+  const on = (fn: Handler<any>) => (c: HonoCtx) => fn(ctx, c.req.raw, c.req.param(), valid(c));
+
+  app.get("/auth", on(getAuth));
+  app.post("/auth", on(postAuth));
+  app.post("/auth/claude/login", on(postClaudeLogin));
+  app.post("/auth/claude/login/code", on(postClaudeCode));
+  app.post("/auth/claude/login/cancel", on(postClaudeCancel));
+  app.get("/auth/github", on(getGithubLogin));
+  app.post("/auth/github", on(postGithubLogin));
+  app.get("/github/repos", on(getGithubRepos));
+  app.post("/git/trailers", on(postTrailers));
+  app.post("/auth/codex/device", on(postCodexDevice));
+  app.post("/auth/codex/device/cancel", on(postCodexDeviceCancel));
+
+  app.get("/preflight", on(getPreflight));
+  app.get("/sandbox", on(getSandbox));
+  app.get("/sandbox/images", on(getImages));
+  app.post("/sandbox/images", on(postImage));
+  app.get("/sandbox-server", on(getSandboxServer));
+  app.post("/sandbox-server/restart", on(postSandboxServerRestart));
+  app.post("/sandbox-server/start", on(postSandboxServerStart));
+  app.post("/sandbox-server/addr", on(postSandboxServerAddr));
+
+  app.get("/settings", on(getSettings));
+  app.post("/settings", on(postSetting));
+  app.get("/state", on(getState));
+  app.get("/cost", on(getCost));
+  app.get("/stream", on(getStream));
+  app.get("/dirs", on(getDirs));
+  app.get("/notes", on(getNotes));
+  app.get("/skills", on(getSkills));
+  app.post("/skills", on(postSkill));
+
+  app.post("/projects", on(postProject));
+  app.delete("/projects/:id", on(deleteProject));
+  app.get("/project/:id/config", on(getProjectConfig));
+  app.post("/project/:id/config", on(patchProjectConfig));
+
+  app.post("/ideas", on(postIdea));
+  app.post("/say", on(postSay));
+  app.post("/attach", on(postAttach));
+  app.post("/attach/local", on(postAttachLocal));
+  app.get("/attach/:name", on(getAttachment));
+
+  app.post("/draft/:id/:decision", on(postDraftDecision));
   // No `landed`: whether a PR is merged is GitHub's answer, and `pollPrs` asks it
   // every tick. A button for it was a boss confirming by hand what the server
   // already knew — and one mis-click dissolved a group whose PR was still open.
-  ["POST", /^\/api\/groups\/(?<id>\d+)\/(?<action>pause|resume|park|wake|interrupt|budget|drop|newpr|rebuild)$/, postGroupControl],
-  ["GET", /^\/api\/slices\/(?<id>\d+)\/evidence$/, getEvidence],
-  ["GET", /^\/api\/slices\/(?<id>\d+)\/gate\/(?<name>[\w.-]+)$/, getGateLog],
-  ["POST", /^\/api\/slices\/(?<id>\d+)\/(?<decision>accept|reject)$/, postSliceDecision],
-  ["POST", /^\/api\/escalations\/(?<id>\d+)\/answer$/, postAnswer],
-  ["POST", /^\/api\/escalations\/(?<id>\d+)\/revoke$/, postRevoke],
-  ["POST", /^\/api\/escalations\/(?<id>\d+)\/requirement$/, postEscalationRequirement],
-  ["POST", /^\/api\/escalations\/(?<id>\d+)\/delegate$/, postDelegate],
-  ["GET", /^\/api\/escalations\/(?<id>\d+)\/draft$/, getAnswerDraft],
-  ["GET", /^\/api\/attach\/(?<name>[^/]+)$/, getAttachment],
-];
+  app.post("/groups/:id/:action", check("param", GroupAction), on(postGroupControl));
+
+  app.get("/slices/:id/evidence", on(getEvidence));
+  app.get("/slices/:id/gate/:name", on(getGateLog));
+  app.post("/slices/:id/:decision", on(postSliceDecision));
+
+  app.post("/escalations/:id/answer", on(postAnswer));
+  app.post("/escalations/:id/revoke", on(postRevoke));
+  app.post("/escalations/:id/requirement", on(postEscalationRequirement));
+  app.post("/escalations/:id/delegate", on(postDelegate));
+  app.get("/escalations/:id/draft", on(getAnswerDraft));
+  return app;
+}
 
 /**
  * Is this write coming from somewhere other than the panel?
@@ -131,27 +174,6 @@ export function crossSiteWrite(req: Request, port: number): boolean {
 }
 
 /**
- * The regex table, as a Hono handler.
- *
- * Temporary by design: routes move onto Hono a cluster at a time, and whatever
- * has not moved yet still resolves here. It goes away with the last entry in
- * `ROUTES`. Keeping both alive at once is what makes the move reviewable in
- * pieces instead of as one 3800-line rewrite.
- */
-function legacyRoutes(ctx: Ctx): (req: Request) => Promise<Response> {
-  return async (req) => {
-    const path = new URL(req.url).pathname;
-    for (const [method, re, h] of ROUTES) {
-      if (req.method !== method) continue;
-      const m = re.exec(path);
-      if (!m) continue;
-      return h(ctx, req, (m.groups ?? {}) as Record<string, string>);
-    }
-    return text("not found", 404);
-  };
-}
-
-/**
  * Everything an agent can call, behind one authentication check.
  *
  * `/orch` has no session and no cookie: the only credential is the token minted
@@ -171,11 +193,11 @@ function orchRoutes(ctx: Ctx): Hono<{ Variables: { agent: Caller } }> {
     c.set("agent", a);
     await next();
   });
-  const on = (fn: AgentHandler) => (c: { req: { raw: Request; param: () => Record<string, string> }; get: (k: "agent") => Caller }) =>
-    fn(ctx, c.req.raw, c.get("agent"), c.req.param());
+  const on = (fn: AgentHandler<any>) => (c: HonoCtx & { get: (k: "agent") => Caller }) =>
+    fn(ctx, c.req.raw, c.get("agent"), c.req.param(), valid(c));
 
-  app.post("/status", on(postStatus));
-  app.post("/journal", on(postJournal));
+  app.post("/status", check("json", StatusBody), on(postStatus));
+  app.post("/journal", check("json", JournalBody), on(postJournal));
   app.post("/mail", on(postMail));
   app.post("/ask-boss", on(postAskBoss));
   app.post("/setup", on(postSetup));
@@ -216,8 +238,34 @@ export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   // use to it than an empty 500.
   app.onError((e, c) => c.text(`error: ${(e as Error)?.message ?? e}`, 500));
 
+  /**
+   * A body has to say it is JSON.
+   *
+   * Hono's validator reads the content type and treats anything else as *no
+   * input at all* — so a POST that forgot the header did not fail, it arrived
+   * with every field defaulted and the request the caller actually sent thrown
+   * away. Silent, and the caller sees a plausible answer to a question it did
+   * not ask.
+   *
+   * It also closes the hole `crossSiteWrite` describes one function down. A
+   * cross-site POST cannot set `content-type: application/json` without earning
+   * a preflight, so `text/plain` is the shape that attack has to take — and this
+   * refuses it before there is a handler to fool.
+   *
+   * `multipart/form-data` is exempt: uploads read `req.formData()` themselves.
+   */
+  app.use("*", async (c, next) => {
+    const type = c.req.header("content-type") ?? "";
+    const hasBody = c.req.raw.body !== null;
+    if (hasBody && !/^application\/json\b|^multipart\/form-data\b/.test(type)) {
+      return c.text(`this endpoint takes application/json, not ${type || "an unlabelled body"}`, 415);
+    }
+    await next();
+  });
+
   app.route("/orch", orchRoutes(ctx));
-  app.all("*", (c) => legacyRoutes(ctx)(c.req.raw));
+  app.route("/api", apiRoutes(ctx));
+  app.all("*", (c) => c.text("not found", 404));
   return async (req) => app.fetch(req);
 }
 

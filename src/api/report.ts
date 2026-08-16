@@ -2,7 +2,9 @@ import { dirname, join } from "node:path";
 import { validateJournal } from "../mech/flow/validate.ts";
 import { execIn, putFile, WORK } from "../mech/sandbox/sandbox.ts";
 import { shq } from "../mech/util/shq.ts";
-import { bad, body, text, type AgentHandler } from "./shared.ts";
+import { z } from "zod";
+import { bad, text, type AgentHandler } from "./shared.ts";
+import { Prose } from "./valid.ts";
 import type { Ctx } from "../ctx.ts";
 
 /**
@@ -14,16 +16,32 @@ import type { Ctx } from "../ctx.ts";
  * prefix without pushing the prefix around.
  */
 
-export const postStatus: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ text: string }>(req);
-  ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [b.text ?? "", a.id]);
-  ctx.bus.live({ grpId: a.grp_id, agentId: a.id, role: a.role, kind: "status", body: b.text ?? "" });
+/** One line of what this agent is doing. Empty is allowed: it clears the line. */
+export const StatusBody = z.object({ text: z.string().max(200).default("") });
+
+export const postStatus: AgentHandler<z.infer<typeof StatusBody>> = async (ctx, _req, a, _p, b) => {
+  ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [b.text, a.id]);
+  ctx.bus.live({ grpId: a.grp_id, agentId: a.id, role: a.role, kind: "status", body: b.text });
   return text("ok");
 };
 
-export const postJournal: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ kind: string; body: string; files?: string[]; slice_id?: number }>(req);
+/**
+ * `kind` is not an enum here on purpose.
+ *
+ * `validateJournal` owns the closed set and the line cap, it is the same
+ * function the DRAFT card and the self-review go through, and its refusals are
+ * written to teach an agent what to write instead. Duplicating the list in a
+ * schema would give two answers to "what kinds are there", and the schema's
+ * would be the one nobody updated.
+ */
+export const JournalBody = z.object({
+  kind: z.string().min(1),
+  body: Prose(),
+  files: z.array(z.string()).max(200).optional(),
+  slice_id: z.number().int().positive().optional(),
+});
 
+export const postJournal: AgentHandler<z.infer<typeof JournalBody>> = async (ctx, _req, a, _p, b) => {
   const v = validateJournal({ kind: b.kind, body: b.body, files: b.files });
   if (!v.ok) return bad(v.error);
 

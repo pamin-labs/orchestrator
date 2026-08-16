@@ -7,6 +7,7 @@ import { validateDraftCard } from "../mech/flow/validate.ts";
 import { canStart, parseOwns } from "../mech/flow/ownership.ts";
 import { killSandbox } from "../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../mech/sandbox/sandboxlog.ts";
+import { z } from "zod";
 import { bad, body, firstIdea, json, text, type Handler } from "./shared.ts";
 import { bossFact, withAttachments, type Attachment } from "./attach.ts";
 import { slug } from "./slug.ts";
@@ -239,6 +240,24 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
   ctx.sched.tick();
   return stale;
 }
+
+/**
+ * The nine things the boss's row of buttons can do.
+ *
+ * This list used to live in the route's regular expression, where an unknown
+ * action was a 404 — the path did not exist, so neither did the answer. That was
+ * doing routing and validation with one mechanism, and it made the two failures
+ * indistinguishable: a typo and a removed feature both came back "not found".
+ *
+ * `landed` is the one that matters. It was a button asking the boss to confirm a
+ * merge, and one mis-click archived a group whose PR was still open — GitHub is
+ * the only source for that, and `pollPrs` already asks it. Naming it here means
+ * the refusal can say so.
+ */
+export const GroupAction = z.object({
+  id: z.coerce.number().int().positive(),
+  action: z.enum(["pause", "resume", "park", "wake", "interrupt", "budget", "drop", "newpr", "rebuild"]),
+});
 
 export const postGroupControl: Handler = async (ctx, req, params) => {
   const grpId = Number(params.id);

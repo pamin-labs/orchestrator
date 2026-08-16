@@ -353,7 +353,7 @@ test("the lessons list is capped where it is written", async () => {
     new Request("http://x/orch/journal", {
       method: "POST",
       body: JSON.stringify({ kind: "lesson", body: "the newest lesson" }),
-      headers: { "x-orch-token": "tok-lib" },
+      headers: { "content-type": "application/json", "x-orch-token": "tok-lib" },
     }),
   );
   expect(r.status).toBe(200);

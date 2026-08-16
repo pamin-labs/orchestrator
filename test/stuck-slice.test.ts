@@ -63,7 +63,7 @@ function delivered(db: DB, opts: { owner: "live" | "retired" } = { owner: "live"
 }
 
 const post = (app: (r: Request) => Promise<Response>, path: string, body: unknown, token: string) =>
-  app(new Request(`http://x${path}`, { method: "POST", body: JSON.stringify(body), headers: { "x-orch-token": token } }));
+  app(new Request(`http://x${path}`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", "x-orch-token": token } }));
 
 test("a slice sent back gets its card back", async () => {
   const h = harness();

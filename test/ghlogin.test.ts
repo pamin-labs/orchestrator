@@ -284,7 +284,8 @@ test("switching installation changes the list", async () => {
 test("a project added from the list keeps GitHub's default branch, not a guess", async () => {
   const { app, db } = server(() => ({ full_name: "acme/site", default_branch: "trunk", clone_url: "https://github.com/acme/site.git" }));
   const r = await app(
-    new Request("http://x/api/projects", { method: "POST", body: JSON.stringify({ repo: "acme/site" }) }),
+    new Request("http://x/api/projects", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ repo: "acme/site" }) }),
   );
   expect(r.status).toBe(200);
   // The id is the whole reason the browser can land on what it just made. It was
@@ -304,7 +305,8 @@ test("a project added from the list keeps GitHub's default branch, not a guess",
 
   // Adding it twice is the same project, whichever way it was picked.
   const again = await app(
-    new Request("http://x/api/projects", { method: "POST", body: JSON.stringify({ repo: "acme/site" }) }),
+    new Request("http://x/api/projects", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ repo: "acme/site" }) }),
   );
   expect(again.status).toBe(422);
 });
@@ -424,7 +426,8 @@ test("the status carries which accounts it is installed on, and how much each ca
 
   // And the route that wrote the override is gone with the panel section.
   const gone = await app(
-    new Request("http://x/api/auth/github/app", { method: "POST", body: JSON.stringify({ clientId: "x" }) }),
+    new Request("http://x/api/auth/github/app", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: "x" }) }),
   );
   expect(gone.status).toBe(404);
 });

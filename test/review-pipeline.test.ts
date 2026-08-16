@@ -123,7 +123,7 @@ async function harness(opts: { gates?: string[] } = {}) {
       new Request(`http://x${path}`, {
         method: "POST",
         body: JSON.stringify(body ?? {}),
-        headers: token ? { "x-orch-token": token } : undefined,
+        headers: { "content-type": "application/json", ...(token ? { "x-orch-token": token } : {}) },
       }),
     );
 

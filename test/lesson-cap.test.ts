@@ -34,7 +34,7 @@ const lesson = (app: (r: Request) => Promise<Response>, body: string) =>
     new Request("http://x/orch/journal", {
       method: "POST",
       body: JSON.stringify({ kind: "lesson", body }),
-      headers: { "x-orch-token": "tok-lib" },
+      headers: { "content-type": "application/json", "x-orch-token": "tok-lib" },
     }),
   );
 

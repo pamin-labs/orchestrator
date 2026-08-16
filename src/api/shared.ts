@@ -9,7 +9,13 @@ import type { Caller, Ctx } from "../ctx.ts";
  * that more than one cluster does.
  */
 
-export type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) => Promise<Response>;
+export type Handler<D = unknown> = (
+  ctx: Ctx,
+  req: Request,
+  params: Record<string, string>,
+  /** The request body, already checked against this route's schema. */
+  data: D,
+) => Promise<Response>;
 
 /**
  * A route only an agent may call, with the agent already resolved.
@@ -20,11 +26,13 @@ export type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) =
  * is still the only thing that reads the token; what changed is that a route
  * cannot be registered under `/orch` without going through it.
  */
-export type AgentHandler = (
+export type AgentHandler<D = unknown> = (
   ctx: Ctx,
   req: Request,
   a: Caller,
   params: Record<string, string>,
+  /** The request body, already checked against this route's schema. */
+  data: D,
 ) => Promise<Response>;
 
 export const json = (data: unknown, status = 200) =>
