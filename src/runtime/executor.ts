@@ -466,9 +466,16 @@ function buildStableFor(
     .get(agent.id)?.project_id ?? null;
 
   const onboarding = noteBody(ctx, projectId, "onboarding");
+  // `id DESC` is not decoration. `at` is whole milliseconds and the Librarian
+  // files several lessons in one turn, so ties are reachable — and a tie here
+  // returns the same twenty rows in either order, which changes the bytes of
+  // `systemAppend`, which is `needsRotation`, which is every agent in the fleet
+  // starting a cold session over nothing. The eviction query that decides which
+  // twenty survive (`api.ts`, `evictOldestLessons`) already breaks the tie the
+  // same way; these two have to agree or the survivors and the readers disagree.
   const lessons = ctx.db
     .query<{ body: string }, [number | null]>(
-      "SELECT body FROM note WHERE kind = 'lesson' AND (project_id IS ? OR project_id IS NULL) ORDER BY at DESC LIMIT 20",
+      "SELECT body FROM note WHERE kind = 'lesson' AND (project_id IS ? OR project_id IS NULL) ORDER BY at DESC, id DESC LIMIT 20",
     )
     .all(projectId)
     .map((r) => r.body);
@@ -1355,11 +1362,12 @@ function loadResource(ctx: Ctx, name: string): ResourceDef | null {
   };
 }
 
+/** Newest note of a kind. `id DESC` for the same reason the lessons query has it. */
 function noteBody(ctx: Ctx, projectId: number | null, kind: string): string | null {
   return (
     ctx.db
       .query<{ body: string }, [number | null, string]>(
-        "SELECT body FROM note WHERE (project_id IS ? OR project_id IS NULL) AND kind = ? ORDER BY at DESC LIMIT 1",
+        "SELECT body FROM note WHERE (project_id IS ? OR project_id IS NULL) AND kind = ? ORDER BY at DESC, id DESC LIMIT 1",
       )
       .get(projectId, kind)?.body ?? null
   );
