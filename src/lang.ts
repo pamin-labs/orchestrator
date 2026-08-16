@@ -17,7 +17,12 @@
  */
 type Args = Record<string, string | number>;
 
-const ZH: Record<string, string> = {
+/**
+ * Chinese, where we have it. Partial on purpose: `say` falls back to the English
+ * row, so a key added to EN and not yet translated is a sentence in the other
+ * language rather than a build error.
+ */
+const ZH: Partial<Record<SayKey, string>> = {
   "slice.ready": 'S{seq}「{title}」做完了，等你查收',
   "slice.accepted": "查收 S{seq} {title}{why}",
   "slice.sentback": "S{seq} 被 {from} 打回（第 {n} 次）",
@@ -65,7 +70,17 @@ const ZH: Record<string, string> = {
   "boss.reject_slice": "退回了这一片",
 };
 
-const EN: Record<string, string> = {
+/**
+ * English, and the list of keys that exist.
+ *
+ * Deliberately not annotated `Record<string, string>`. It was, and that made
+ * `keyof typeof EN` mean `string` — so the `key` parameter below checked
+ * nothing, in any caller, ever. `say` answers an unknown key with
+ * `String(key)`, which does not throw and does not log: the literal
+ * `wd.stalledd` goes into the boss's feed where the sentence explaining why a
+ * group stopped was supposed to be.
+ */
+const EN = {
   "slice.ready": 'S{seq} "{title}" is ready for you',
   "slice.accepted": "accepted: S{seq} {title}{why}",
   "slice.sentback": "S{seq} sent back by {from} (attempt {n})",
@@ -121,7 +136,17 @@ const EN: Record<string, string> = {
  * Tolerates an absent language: a unit test builds a Ctx without config, and a
  * missing string is not a reason to throw inside a bus.emit.
  */
-export function say(lang: string | undefined, key: keyof typeof EN, args: Args = {}): string {
+/**
+ * A key this table has. Exported so a caller that wraps `say` can say so too:
+ * `watchdog.ts` wrapped it as `(k: any)` and thereby switched the check off for
+ * its fourteen messages.
+ */
+export type SayKey = keyof typeof EN;
+
+/** Every key, for a check that has to walk them. */
+export const SAY_KEYS = Object.keys(EN) as SayKey[];
+
+export function say(lang: string | undefined, key: SayKey, args: Args = {}): string {
   const l = lang ?? "";
   const table = l.startsWith("中") || l.toLowerCase().startsWith("zh") ? ZH : EN;
   const t = table[key] ?? EN[key] ?? String(key);

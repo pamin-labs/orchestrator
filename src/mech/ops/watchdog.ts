@@ -1,7 +1,7 @@
 import { hours, minutes } from "../util/text.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../config.ts";
-import { say } from "../../lang.ts";
+import { say, type SayKey } from "../../lang.ts";
 import { interrupt, park, unpark } from "../flow/intercept.ts";
 import { sweepApproved } from "../flow/start.ts";
 import { route } from "../flow/chain.ts";
@@ -380,7 +380,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // These bodies land in the boss's feed and notifications, so they follow
   // output.language. Feedback aimed at an agent stays English: it lands in a prompt
   // next to code and gate output.
-  const t = (k: any, a?: any) => say(ctx.config?.language, k, a);
+  // Typed by `say`'s own key, not `any`. `any` here switched off the one check
+  // that matters for fourteen call sites: `say` falls back to `String(key)` for
+  // a key it does not have, so a typo does not throw and does not log — it puts
+  // the literal `wd.stalledd` in the boss's feed, in place of the sentence that
+  // was supposed to explain why a group stopped.
+  const t = (k: SayKey, a?: Parameters<typeof say>[2]) => say(ctx.config?.language, k, a);
   const now = deps.now ?? (() => Date.now());
 
   // 19. The machine's own network, before anything that needs it.
