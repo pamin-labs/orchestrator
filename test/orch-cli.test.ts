@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { kvArgs, parseArgs } from "../src/orch/cli.ts";
+import { Id } from "../src/api/fields.ts";
+import { MailBody } from "../src/api/orch/messaging.ts";
 
 test("flags, positionals and pass-through are kept separate", () => {
   const p = parseArgs(["mail", "qa", "--intent", "request", "please", "verify"]);
@@ -48,4 +50,21 @@ test("--arg k=v pairs parse, and a value containing = survives", () => {
 test("malformed --arg entries are dropped rather than sent as junk", () => {
   expect(kvArgs(parseArgs(["x", "--arg", "novalue"]).flags.arg)).toEqual({});
   expect(kvArgs(undefined)).toEqual({});
+});
+
+test("a numeric flag arrives as a string and the schema takes it", () => {
+  // `orch` hands every flag over as text, so each numeric field had to be
+  // converted somewhere. It was converted at the call site — twice written out,
+  // and once forgotten: `orch mail x --in-reply-to 5` sent the string and came
+  // back "in_reply_to: Invalid input: expected number, received string", which
+  // names no fix an agent could apply. The conversion is in the field now.
+  expect(MailBody.parse({ target: "qa", intent: "ask", body: "?", in_reply_to: "5" }).in_reply_to).toBe(5);
+  expect(MailBody.parse({ target: "qa", intent: "ask", body: "?", in_reply_to: 5 }).in_reply_to).toBe(5);
+
+  // And it stays a boundary. `z.coerce.number()` would have been shorter and
+  // would accept every one of these: a bare `--slice` parses to `true`, which
+  // Number() reads as the entirely plausible id 1.
+  for (const junk of [true, "", " 5 ", "5.5", "abc", 0, -1]) {
+    expect(Id.safeParse(junk).success).toBe(false);
+  }
 });

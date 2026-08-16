@@ -1,6 +1,6 @@
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "../../mech/flow/chain.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Prose } from "../fields.ts";
+import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
@@ -99,11 +99,11 @@ export const postAskBoss: AgentHandler<z.infer<typeof AskBossBody>> = async (ctx
 };
 
 export const AnswerBody = z.object({
-  escalation_id: z.number().int().positive(),
+  escalation_id: Id,
   answer: z.string().max(20_000).optional(),
   abstain: z.boolean().optional(),
   why: z.string().max(4000).optional(),
-  ref: z.number().int().positive().optional(),
+  ref: Id.optional(),
 });
 
 export const postAnswer2: AgentHandler<z.infer<typeof AnswerBody>> = async (ctx, _req, a, _p, b) => {

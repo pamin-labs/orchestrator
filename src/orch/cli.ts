@@ -245,7 +245,7 @@ export async function main(argv: string[]): Promise<number> {
         kind: flags.kind ?? "journal",
         body: await stdin(),
         files: list(flags.file),
-        slice_id: flags.slice ? Number(flags.slice) : undefined,
+        slice_id: flags.slice,
       });
       break;
     }
@@ -347,7 +347,7 @@ export async function main(argv: string[]): Promise<number> {
       r = await call("POST", "/orch/answer", {
         escalation_id: id,
         answer: a,
-        ref: flags.ref ? Number(flags.ref) : undefined,
+        ref: flags.ref,
       });
       break;
     }

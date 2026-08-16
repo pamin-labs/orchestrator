@@ -1,4 +1,5 @@
 import { projectOfAgent } from "../../mech/util/rows.ts";
+import { Id } from "../fields.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "../../mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search } from "../../mech/knowledge/pageindex.ts";
 import { z } from "zod";
@@ -16,7 +17,7 @@ import { text, type AgentHandler } from "../shared.ts";
 /** A question, and how much of an answer it is willing to pay for. */
 export const CtxQueryBody = z.object({
   question: z.string().min(1).max(2000),
-  limit: z.number().int().positive().max(64_000).optional(),
+  limit: Id.pipe(z.number().max(64_000)).optional(),
 });
 
 export const postCtxQuery: AgentHandler<z.infer<typeof CtxQueryBody>> = async (ctx, _req, a, _p, b) => {

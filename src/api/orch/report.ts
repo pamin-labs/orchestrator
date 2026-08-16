@@ -4,7 +4,7 @@ import { execIn, putFile, WORK } from "../../mech/sandbox/sandbox.ts";
 import { shq } from "../../mech/util/shq.ts";
 import { z } from "zod";
 import { bad, text, type AgentHandler } from "../shared.ts";
-import { Prose } from "../fields.ts";
+import { Id, Prose } from "../fields.ts";
 import type { Ctx } from "../../ctx.ts";
 
 /**
@@ -38,7 +38,7 @@ export const JournalBody = z.object({
   kind: z.string().min(1),
   body: Prose(),
   files: z.array(z.string()).max(200).optional(),
-  slice_id: z.number().int().positive().optional(),
+  slice_id: Id.optional(),
 });
 
 export const postJournal: AgentHandler<z.infer<typeof JournalBody>> = async (ctx, _req, a, _p, b) => {

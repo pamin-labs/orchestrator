@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Id } from "../fields.ts";
 import { bad, text, type AgentHandler } from "../shared.ts";
 import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
 import { recordGate } from "../../mech/gate.ts";
@@ -103,7 +104,7 @@ export const getTasks: AgentHandler = async (ctx, req, a) => {
   );
 };
 
-export const TaskRef = z.object({ task_id: z.number().int().positive() });
+export const TaskRef = z.object({ task_id: Id });
 
 export const postTaskClaim: AgentHandler<z.infer<typeof TaskRef>> = async (ctx, _req, a, _p, b) => {
   // A retired owner is not an owner. Ownership is a row id, and a group that
@@ -131,7 +132,7 @@ export const postTaskClaim: AgentHandler<z.infer<typeof TaskRef>> = async (ctx, 
  * change at all", which is what was observed live when every claim arrived `{}`.
  */
 export const TaskDoneBody = z.object({
-  task_id: z.number().int().positive(),
+  task_id: Id,
   claim: z.unknown().optional(),
   already_done: z.string().max(4000).optional(),
   review: z.string().max(8000).optional(),

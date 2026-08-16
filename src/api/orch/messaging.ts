@@ -1,6 +1,6 @@
 import { projectOfAgent } from "../../mech/util/rows.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Prose } from "../fields.ts";
+import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../fields.ts";
 import { bad, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
 import { triage, type Triage } from "../../mech/flow/chain.ts";
@@ -33,7 +33,7 @@ export const MailBody = z.object({
   // there.
   body: z.string().max(8000),
   severity: z.string().max(20).optional(),
-  in_reply_to: z.number().int().positive().optional(),
+  in_reply_to: Id.optional(),
 });
 
 export const postMail: AgentHandler<z.infer<typeof MailBody>> = async (ctx, _req, a, _p, b) => {
@@ -41,16 +41,6 @@ export const postMail: AgentHandler<z.infer<typeof MailBody>> = async (ctx, _req
   // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
   // out with no body — the Architect burned a turn on "收到的 ask 消息内容为空".
   if (!b.body.trim()) {
-    return bad(
-      `mail to "${b.target}" has an empty body. Put the message in quotes as the last ` +
-        `argument: orch mail ${b.target} --intent ${b.intent} "…". There is no --wait flag; ` +
-        `ask blocks on its own.`,
-    );
-  }
-  // An empty message wakes someone with nothing to answer. Measured: the
-  // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
-  // out with no body — the Architect burned a turn on "收到的 ask 消息内容为空".
-  if (!b.body?.trim()) {
     return bad(
       `mail to "${b.target}" has an empty body. Put the message in quotes as the last ` +
         `argument: orch mail ${b.target} --intent ${b.intent} "…". There is no --wait flag; ` +
