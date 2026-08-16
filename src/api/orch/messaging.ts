@@ -1,6 +1,6 @@
 import { projectOfAgent } from "../../mech/util/rows.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Prose } from "../valid.ts";
+import { Attachment as AttachmentSchema, GroupRef, Prose } from "../fields.ts";
 import { bad, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
 import { triage, type Triage } from "../../mech/flow/chain.ts";

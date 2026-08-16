@@ -24,7 +24,26 @@ test("the settable paths are the config's own, and nothing else is", () => {
     expect(refuse(p, 1)).toBeTruthy();
   }
   expect(refuse("nonsense", 1)).toBe("no setting called nonsense");
-  expect(refuse("maxGroups", "ten")).toBe("maxGroups is a number, not a string");
+  expect(refuse("maxGroups", "ten")).toContain("maxGroups");
+
+  // The hole this schema closed. `busyGroups.size >= maxGroups()` is the
+  // scheduler's admission test, so zero means no group turn is ever dispatched
+  // again — and the override is persisted, so a restart does not clear it. The
+  // yaml checker had this bound; the panel, which walked the *type of the
+  // default value*, did not.
+  expect(refuse("maxGroups", 0)).toBeTruthy();
+  expect(refuse("maxGroups", -1)).toBeTruthy();
+  expect(refuse("turnTimeoutMs", 0)).toBeTruthy();
+  expect(refuse("watchdogIntervalMs", 0)).toBeTruthy();
+  expect(refuse("leaseSlots", { browser: 0 })).toBeTruthy();
+  expect(refuse("sessionRotateFraction", 0)).toBeTruthy();
+  expect(refuse("sessionRotateFraction", 1)).toBeTruthy();
+  // And the values that are meant to work still do, including the two forms
+  // `leaseSlots` legitimately takes.
+  expect(refuse("maxGroups", 4)).toBeNull();
+  expect(refuse("leaseSlots", 2)).toBeNull();
+  expect(refuse("leaseSlots", { default: 2, browser: 1 })).toBeNull();
+  expect(refuse("gateRetries", 0)).toBeNull();
 });
 
 test("a setting takes effect on the live config, not only on the next boot", () => {

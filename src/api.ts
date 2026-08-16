@@ -1,8 +1,8 @@
 import { errText } from "./mech/util/text.ts";
 import { Hono } from "hono";
-import { check } from "./api/valid.ts";
+import { agentRoute, labelledBody, route } from "./http/route.ts";
 import type { Caller, Ctx } from "./ctx.ts";
-import { agentOf, mayAct, mintToken, resolveGroup, type AgentHandler, type Handler } from "./api/shared.ts";
+import { agentOf, mayAct, mintToken, resolveGroup } from "./api/shared.ts";
 import { AuthBody, CodeBody, getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers, TrailersBody } from "./api/panel/authflow.ts";
 import { bossFact, expandHome, getAttachment, imagePaths, LocalPathsBody, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/panel/attach.ts";
 import { CTX_BUDGET_CHARS, CtxQueryBody, postCtxQuery } from "./api/orch/ctxquery.ts";
@@ -54,90 +54,66 @@ export { CTX_BUDGET_CHARS, evictOldestLessons, landGroup, LESSON_CAP, snapshot }
  * wrong value produces a message instead of a 404 — which is the honest answer
  * to "reject that decision", and was never what a missing route meant.
  */
-/**
- * What a route handler is handed, narrowed to the parts these use.
- *
- * Written out rather than imported as Hono's `Context`, because that type is
- * generic over the app's env and every handler here would have to name the same
- * type parameters to say nothing.
- */
-type HonoCtx = {
-  req: { raw: Request; param: () => Record<string, string>; valid: (t: never) => unknown };
-};
-
-/** The body this route's schema produced, if it declared one. */
-const valid = (c: HonoCtx): unknown => {
-  try {
-    return (c.req.valid as (t: string) => unknown)("json");
-  } catch {
-    return undefined;
-  }
-};
-
 function apiRoutes(ctx: Ctx): Hono {
   const app = new Hono();
-  // `valid("json")` is whatever the route's schema returned, or `undefined` on a
-  // route that declares none — the handler decides which of the two it is by
-  // taking a `data` parameter or ignoring it.
-  const on = (fn: Handler<any>) => (c: HonoCtx) => fn(ctx, c.req.raw, c.req.param(), valid(c));
 
-  app.get("/auth", on(getAuth));
-  app.post("/auth", check("json", AuthBody), on(postAuth));
-  app.post("/auth/claude/login", on(postClaudeLogin));
-  app.post("/auth/claude/login/code", check("json", CodeBody), on(postClaudeCode));
-  app.post("/auth/claude/login/cancel", on(postClaudeCancel));
-  app.get("/auth/github", on(getGithubLogin));
-  app.post("/auth/github", on(postGithubLogin));
-  app.get("/github/repos", on(getGithubRepos));
-  app.post("/git/trailers", check("json", TrailersBody), on(postTrailers));
-  app.post("/auth/codex/device", on(postCodexDevice));
-  app.post("/auth/codex/device/cancel", on(postCodexDeviceCancel));
+  route(app, ctx, "get", "/auth", { handler: getAuth });
+  route(app, ctx, "post", "/auth", { body: AuthBody, handler: postAuth });
+  route(app, ctx, "post", "/auth/claude/login", { handler: postClaudeLogin });
+  route(app, ctx, "post", "/auth/claude/login/code", { body: CodeBody, handler: postClaudeCode });
+  route(app, ctx, "post", "/auth/claude/login/cancel", { handler: postClaudeCancel });
+  route(app, ctx, "get", "/auth/github", { handler: getGithubLogin });
+  route(app, ctx, "post", "/auth/github", { handler: postGithubLogin });
+  route(app, ctx, "get", "/github/repos", { handler: getGithubRepos });
+  route(app, ctx, "post", "/git/trailers", { body: TrailersBody, handler: postTrailers });
+  route(app, ctx, "post", "/auth/codex/device", { handler: postCodexDevice });
+  route(app, ctx, "post", "/auth/codex/device/cancel", { handler: postCodexDeviceCancel });
 
-  app.get("/preflight", on(getPreflight));
-  app.get("/sandbox", on(getSandbox));
-  app.get("/sandbox/images", on(getImages));
-  app.post("/sandbox/images", check("json", ImageBody), on(postImage));
-  app.get("/sandbox-server", on(getSandboxServer));
-  app.post("/sandbox-server/restart", on(postSandboxServerRestart));
-  app.post("/sandbox-server/start", on(postSandboxServerStart));
-  app.post("/sandbox-server/addr", check("json", AddrBody), on(postSandboxServerAddr));
+  route(app, ctx, "get", "/preflight", { handler: getPreflight });
+  route(app, ctx, "get", "/sandbox", { handler: getSandbox });
+  route(app, ctx, "get", "/sandbox/images", { handler: getImages });
+  route(app, ctx, "post", "/sandbox/images", { body: ImageBody, handler: postImage });
+  route(app, ctx, "get", "/sandbox-server", { handler: getSandboxServer });
+  route(app, ctx, "post", "/sandbox-server/restart", { handler: postSandboxServerRestart });
+  route(app, ctx, "post", "/sandbox-server/start", { handler: postSandboxServerStart });
+  route(app, ctx, "post", "/sandbox-server/addr", { body: AddrBody, handler: postSandboxServerAddr });
 
-  app.get("/settings", on(getSettings));
-  app.post("/settings", check("json", SettingBody), on(postSetting));
-  app.get("/state", on(getState));
-  app.get("/cost", on(getCost));
-  app.get("/stream", on(getStream));
-  app.get("/dirs", on(getDirs));
-  app.get("/notes", on(getNotes));
-  app.get("/skills", on(getSkills));
-  app.post("/skills", check("json", SkillBody), on(postSkill));
+  route(app, ctx, "get", "/settings", { handler: getSettings });
+  route(app, ctx, "post", "/settings", { body: SettingBody, handler: postSetting });
+  route(app, ctx, "get", "/state", { handler: getState });
+  route(app, ctx, "get", "/cost", { handler: getCost });
+  route(app, ctx, "get", "/stream", { handler: getStream });
+  route(app, ctx, "get", "/dirs", { handler: getDirs });
+  route(app, ctx, "get", "/notes", { handler: getNotes });
+  route(app, ctx, "get", "/skills", { handler: getSkills });
+  route(app, ctx, "post", "/skills", { body: SkillBody, handler: postSkill });
 
-  app.post("/projects", check("json", ProjectBody), on(postProject));
-  app.delete("/projects/:id", on(deleteProject));
-  app.get("/project/:id/config", on(getProjectConfig));
-  app.post("/project/:id/config", check("json", ProjectConfigBody), on(patchProjectConfig));
+  route(app, ctx, "post", "/projects", { body: ProjectBody, handler: postProject });
+  route(app, ctx, "delete", "/projects/:id", { handler: deleteProject });
+  route(app, ctx, "get", "/project/:id/config", { handler: getProjectConfig });
+  route(app, ctx, "post", "/project/:id/config", { body: ProjectConfigBody, handler: patchProjectConfig });
 
-  app.post("/ideas", check("json", IdeaBody), on(postIdea));
-  app.post("/say", check("json", SayBody), on(postSay));
-  app.post("/attach", on(postAttach));
-  app.post("/attach/local", check("json", LocalPathsBody), on(postAttachLocal));
-  app.get("/attach/:name", on(getAttachment));
+  route(app, ctx, "post", "/ideas", { body: IdeaBody, handler: postIdea });
+  route(app, ctx, "post", "/say", { body: SayBody, handler: postSay });
+  route(app, ctx, "post", "/attach", { handler: postAttach });
+  route(app, ctx, "post", "/attach/local", { body: LocalPathsBody, handler: postAttachLocal });
+  route(app, ctx, "get", "/attach/:name", { handler: getAttachment });
 
-  app.post("/draft/:id/:decision", check("param", DraftDecision), check("json", DraftDecisionBody), on(postDraftDecision));
+  route(app, ctx, "post", "/draft/:id/:decision", { params: DraftDecision, body: DraftDecisionBody, handler: postDraftDecision });
   // No `landed`: whether a PR is merged is GitHub's answer, and `pollPrs` asks it
   // every tick. A button for it was a boss confirming by hand what the server
   // already knew — and one mis-click dissolved a group whose PR was still open.
-  app.post("/groups/:id/:action", check("param", GroupAction), check("json", GroupControlBody), on(postGroupControl));
+  route(app, ctx, "post", "/groups/:id/:action", { params: GroupAction, body: GroupControlBody, handler: postGroupControl });
 
-  app.get("/slices/:id/evidence", on(getEvidence));
-  app.get("/slices/:id/gate/:name", on(getGateLog));
-  app.post("/slices/:id/:decision", check("param", SliceDecision), check("json", SliceDecisionBody), on(postSliceDecision));
+  route(app, ctx, "get", "/slices/:id/evidence", { handler: getEvidence });
+  route(app, ctx, "get", "/slices/:id/gate/:name", { handler: getGateLog });
+  route(app, ctx, "post", "/slices/:id/:decision", { params: SliceDecision, body: SliceDecisionBody, handler: postSliceDecision });
 
-  app.post("/escalations/:id/answer", check("json", BossAnswerBody), on(postAnswer));
-  app.post("/escalations/:id/revoke", on(postRevoke));
-  app.post("/escalations/:id/requirement", check("json", RequirementBody), on(postEscalationRequirement));
-  app.post("/escalations/:id/delegate", check("json", DelegateBody), on(postDelegate));
-  app.get("/escalations/:id/draft", on(getAnswerDraft));
+  route(app, ctx, "post", "/escalations/:id/answer", { body: BossAnswerBody, handler: postAnswer });
+  route(app, ctx, "post", "/escalations/:id/revoke", { handler: postRevoke });
+  route(app, ctx, "post", "/escalations/:id/requirement", { body: RequirementBody, handler: postEscalationRequirement });
+  route(app, ctx, "post", "/escalations/:id/delegate", { body: DelegateBody, handler: postDelegate });
+  route(app, ctx, "get", "/escalations/:id/draft", { handler: getAnswerDraft });
   return app;
 }
 
@@ -198,30 +174,27 @@ function orchRoutes(ctx: Ctx): Hono<{ Variables: { agent: Caller } }> {
     c.set("agent", a);
     await next();
   });
-  const on = (fn: AgentHandler<any>) => (c: HonoCtx & { get: (k: "agent") => Caller }) =>
-    fn(ctx, c.req.raw, c.get("agent"), c.req.param(), valid(c));
-
-  app.post("/status", check("json", StatusBody), on(postStatus));
-  app.post("/journal", check("json", JournalBody), on(postJournal));
-  app.post("/mail", check("json", MailBody), on(postMail));
-  app.post("/ask-boss", check("json", AskBossBody), on(postAskBoss));
-  app.post("/setup", check("json", SetupBody), on(postSetup));
-  app.post("/lease", check("json", LeaseBody), on(postLease));
-  app.get("/lease/:id/log", on(getLeaseLog));
-  app.post("/ctx/query", check("json", CtxQueryBody), on(postCtxQuery));
-  app.get("/task", on(getTasks));
-  app.post("/task/claim", check("json", TaskRef), on(postTaskClaim));
-  app.post("/task/done", check("json", TaskDoneBody), on(postTaskDone));
-  app.post("/review", check("json", ReviewBody), on(postReview));
-  app.post("/audit", check("json", AuditBody), on(postAudit));
-  app.post("/pr", check("json", PrBody), on(postPr));
-  app.post("/answer", check("json", AnswerBody), on(postAnswer2));
-  app.post("/triage", check("json", TriageBody), on(postTriage));
-  app.post("/draft", check("json", DraftBody), on(postDraft));
-  app.post("/owns", check("json", OwnsBody), on(postOwns));
-  app.post("/drop", check("json", DropBody), on(postDrop));
-  app.post("/blocked", check("json", BlockedBody), on(postBlocked));
-  app.post("/split", check("json", SplitBody), on(postSplit));
+  agentRoute(app, ctx, "post", "/status", { body: StatusBody, handler: postStatus });
+  agentRoute(app, ctx, "post", "/journal", { body: JournalBody, handler: postJournal });
+  agentRoute(app, ctx, "post", "/mail", { body: MailBody, handler: postMail });
+  agentRoute(app, ctx, "post", "/ask-boss", { body: AskBossBody, handler: postAskBoss });
+  agentRoute(app, ctx, "post", "/setup", { body: SetupBody, handler: postSetup });
+  agentRoute(app, ctx, "post", "/lease", { body: LeaseBody, handler: postLease });
+  agentRoute(app, ctx, "get", "/lease/:id/log", { handler: getLeaseLog });
+  agentRoute(app, ctx, "post", "/ctx/query", { body: CtxQueryBody, handler: postCtxQuery });
+  agentRoute(app, ctx, "get", "/task", { handler: getTasks });
+  agentRoute(app, ctx, "post", "/task/claim", { body: TaskRef, handler: postTaskClaim });
+  agentRoute(app, ctx, "post", "/task/done", { body: TaskDoneBody, handler: postTaskDone });
+  agentRoute(app, ctx, "post", "/review", { body: ReviewBody, handler: postReview });
+  agentRoute(app, ctx, "post", "/audit", { body: AuditBody, handler: postAudit });
+  agentRoute(app, ctx, "post", "/pr", { body: PrBody, handler: postPr });
+  agentRoute(app, ctx, "post", "/answer", { body: AnswerBody, handler: postAnswer2 });
+  agentRoute(app, ctx, "post", "/triage", { body: TriageBody, handler: postTriage });
+  agentRoute(app, ctx, "post", "/draft", { body: DraftBody, handler: postDraft });
+  agentRoute(app, ctx, "post", "/owns", { body: OwnsBody, handler: postOwns });
+  agentRoute(app, ctx, "post", "/drop", { body: DropBody, handler: postDrop });
+  agentRoute(app, ctx, "post", "/blocked", { body: BlockedBody, handler: postBlocked });
+  agentRoute(app, ctx, "post", "/split", { body: SplitBody, handler: postSplit });
   return app;
 }
 
@@ -243,30 +216,7 @@ export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   // use to it than an empty 500.
   app.onError((e, c) => c.text(`error: ${errText(e)}`, 500));
 
-  /**
-   * A body has to say it is JSON.
-   *
-   * Hono's validator reads the content type and treats anything else as *no
-   * input at all* — so a POST that forgot the header did not fail, it arrived
-   * with every field defaulted and the request the caller actually sent thrown
-   * away. Silent, and the caller sees a plausible answer to a question it did
-   * not ask.
-   *
-   * It also closes the hole `crossSiteWrite` describes one function down. A
-   * cross-site POST cannot set `content-type: application/json` without earning
-   * a preflight, so `text/plain` is the shape that attack has to take — and this
-   * refuses it before there is a handler to fool.
-   *
-   * `multipart/form-data` is exempt: uploads read `req.formData()` themselves.
-   */
-  app.use("*", async (c, next) => {
-    const type = c.req.header("content-type") ?? "";
-    const hasBody = c.req.raw.body !== null;
-    if (hasBody && !/^application\/json\b|^multipart\/form-data\b/.test(type)) {
-      return c.text(`this endpoint takes application/json, not ${type || "an unlabelled body"}`, 415);
-    }
-    await next();
-  });
+  app.use("*", labelledBody);
 
   app.route("/orch", orchRoutes(ctx));
   app.route("/api", apiRoutes(ctx));

@@ -1385,8 +1385,10 @@ test("every route that takes a body declares its shape", () => {
   // object whose every field was undefined and each handler re-derived what it
   // needed with its own `?? ""` and `String(...)`.
   const src = readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8");
-  const undeclared = [...src.matchAll(/app\.(post|put|patch)\("([^"]+)"(.*)$/gm)]
-    .filter((m) => !m[3]!.includes("check("))
+  // Registration is `route(app, ctx, "post", path, {body, handler})`, so a POST
+  // with no `body:` is a POST that declared no shape.
+  const undeclared = [...src.matchAll(/^\s*(?:agent)?[Rr]oute\(app, ctx, "(post|put|patch)", "([^"]+)", (.*)$/gm)]
+    .filter((m) => !m[3]!.includes("body:"))
     .map((m) => m[2]!);
   // The exceptions, named rather than tolerated: multipart upload reads
   // `req.formData()` itself, and the rest take no body at all.

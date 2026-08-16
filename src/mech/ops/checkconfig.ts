@@ -1,3 +1,4 @@
+import { keysUnder, schemaAt } from "../../config-schema.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { DEFAULTS_FOR_CHECK, type Config } from "../../config.ts";
 import type { RoleDef } from "../../config.ts";
@@ -25,31 +26,6 @@ export interface Finding {
   says: string;
 }
 
-/** Numbers that cannot be zero or negative without breaking something at boot. */
-const POSITIVE = new Set([
-  "port",
-  "maxGroups",
-  "turnTimeoutMs",
-  "maxTurnsPerJob",
-  "watchdogIntervalMs",
-  "leaseTimeoutMs",
-  "installTimeoutMs",
-  "ctxBudgetChars",
-]);
-
-/**
- * Keys whose type is a union, which a default value cannot express.
- *
- * One of them, and the checker found it by calling this repo's own config
- * fatal: `leaseSlots` is one number for the whole pool or one per resource tag,
- * and the committed yaml uses the second form.
- */
-const UNIONS: Record<string, string[]> = { leaseSlots: ["number", "object"] };
-
-const kind = (v: unknown): string =>
-  Array.isArray(v) ? "array" : v === null ? "null" : typeof v;
-
-/** Plain object, as opposed to an array or a null. */
 const isMap = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -59,32 +35,42 @@ const nearest = (key: string, legal: string[]): string | null => {
   return legal.find((c) => c.toLowerCase().includes(k) || k.includes(c.toLowerCase())) ?? null;
 };
 
-function walk(parsed: Record<string, unknown>, base: Record<string, unknown>, at: string, out: Finding[]): void {
-  const legal = Object.keys(base);
+/**
+ * Check the yaml against `ConfigSchema`, key by key.
+ *
+ * Key by key rather than one `ConfigSchema.parse(parsed)`, and for two reasons a
+ * whole-document parse cannot give: the yaml is a *partial* override, so absent
+ * keys are correct and `.parse` would demand them; and an unknown key deserves
+ * the "did you mean" that made this checker worth having — zod can say a key is
+ * unrecognised but not which real key it looks like.
+ *
+ * What is no longer here is the type table. `kind()`, `POSITIVE` and `UNIONS`
+ * were a second opinion about what a legal config is, and the panel had a third
+ * — which is how `maxGroups: 0` came to be refused in the file and accepted over
+ * HTTP.
+ */
+function walk(parsed: Record<string, unknown>, at: string, out: Finding[]): void {
+  const siblings = keysUnder(at);
   for (const [k, v] of Object.entries(parsed)) {
     const key = at ? `${at}.${k}` : k;
-    if (!(k in base)) {
-      const near = nearest(k, legal);
+    const schema = schemaAt(key);
+    if (!schema) {
+      const near = nearest(k, siblings);
       out.push({ level: "warn", key, says: near ? `没这个键，是不是 ${at ? `${at}.` : ""}${near}` : "没这个键，被忽略了" });
       continue;
     }
-    const want = base[k];
     if (v === null || v === undefined) {
       out.push({ level: "warn", key, says: "空的，用默认值" });
       continue;
     }
-    const allowed = UNIONS[key] ?? [kind(want)];
-    if (!allowed.includes(kind(v))) {
-      out.push({ level: "fatal", key, says: `要 ${allowed.join(" 或 ")}，写的是 ${kind(v)}` });
+    // A block the schema enumerates is walked so its own keys get the same
+    // treatment. A record is a leaf: its keys are model ids and mount points.
+    if (isMap(v) && keysUnder(key).length) {
+      walk(v, key, out);
       continue;
     }
-    if (typeof v === "number" && POSITIVE.has(key) && v <= 0) {
-      out.push({ level: "fatal", key, says: `要大于 0，写的是 ${v}` });
-      continue;
-    }
-    // A map of models or windows is open-ended — its keys are model ids, not
-    // config keys — so only blocks the defaults actually enumerate are walked.
-    if (isMap(v) && isMap(want) && Object.keys(want).length) walk(v, want, key, out);
+    const r = schema.safeParse(v);
+    if (!r.success) out.push({ level: "fatal", key, says: r.error.issues.map((i) => i.message).join("；") });
   }
 }
 
@@ -100,7 +86,7 @@ export function checkConfig(path: string): { findings: Finding[]; overridden: nu
   }
   if (!isMap(parsed)) return { findings: [], overridden: 0 };
   const findings: Finding[] = [];
-  walk(parsed, DEFAULTS_FOR_CHECK, "", findings);
+  walk(parsed, "", findings);
   return { findings, overridden: Object.keys(parsed).length };
 }
 

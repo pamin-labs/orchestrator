@@ -7,7 +7,7 @@ import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
 import { shq } from "../../mech/util/shq.ts";
 import { say } from "../../lang.ts";
 import { z } from "zod";
-import { GroupRef } from "../valid.ts";
+import { GroupRef } from "../fields.ts";
 import { bad, json, mayAct, resolveGroup, text, type AgentHandler } from "../shared.ts";
 import { slug } from "../slug.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";

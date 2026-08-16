@@ -4,7 +4,7 @@ import { execIn, putFile, WORK } from "../../mech/sandbox/sandbox.ts";
 import { shq } from "../../mech/util/shq.ts";
 import { z } from "zod";
 import { bad, text, type AgentHandler } from "../shared.ts";
-import { Prose } from "../valid.ts";
+import { Prose } from "../fields.ts";
 import type { Ctx } from "../../ctx.ts";
 
 /**

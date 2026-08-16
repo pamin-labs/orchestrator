@@ -1,5 +1,7 @@
 import type { DB } from "./db.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "./config.ts";
+import { paths, renderType } from "./config-schema.ts";
+import type { z } from "zod";
 
 /**
  * Settings the boss changes in the panel, layered over the file.
@@ -27,39 +29,40 @@ const NOT_SETTABLE: Record<string, string> = {
   "sandbox.apiKey": "a secret; it goes in runtime_auth or ORCH_SANDBOX_API_KEY, never in a settings row",
 };
 
-/** Every dotted path in `DEFAULTS`, with the type its default has. */
-function paths(node: unknown, prefix = ""): Map<string, string> {
+/**
+ * Which paths the panel may set, and what each one has to be.
+ *
+ * From `ConfigSchema`, not from a walk over `DEFAULTS`. The walk is what this
+ * replaces: it read the *type of the default value*, so `maxGroups` was "a
+ * number" and `0` passed — and the scheduler's admission test is
+ * `busyGroups.size >= maxGroups()`, so zero stops every group turn for good,
+ * persisted, across restarts. The yaml checker had the bound; this door did not,
+ * and there was nothing making the two agree.
+ */
+export function settablePaths(): Map<string, string> {
   const out = new Map<string, string>();
-  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-    const path = prefix ? `${prefix}.${k}` : k;
-    // A plain object is a branch *only* if the default enumerates its keys.
-    // `contextWindow` and `cacheDirs` are open maps: their keys are model ids and
-    // mount points, so the whole map is the value.
-    const branch = v !== null && typeof v === "object" && !Array.isArray(v) && OPEN_MAPS.has(path) === false;
-    if (branch) for (const [p, t] of paths(v, path)) out.set(p, t);
-    else out.set(path, Array.isArray(v) ? "array" : v === null ? "null" : typeof v);
-  }
+  for (const [path, schema] of settableSchemas()) out.set(path, renderType(schema));
   return out;
 }
 
-/** Config values that are maps the boss fills in, not shapes with fixed keys. */
-const OPEN_MAPS = new Set(["contextWindow", "sliceBudgetTokens", "leaseSlots", "sandbox.cacheDirs", "difficultyModel"]);
-
-export function settablePaths(): Map<string, string> {
-  const all = paths(DEFAULTS);
+/** The same paths, with the schema that judges a write rather than a render hint. */
+export function settableSchemas(): Map<string, z.ZodType> {
+  const all = paths();
   for (const k of Object.keys(NOT_SETTABLE)) all.delete(k);
   return all;
 }
 
-/** Why this path may not be set, or null if it may. */
+/** Why this path may not be set to this value, or null if it may. */
 export function refuse(path: string, value: unknown): string | null {
   if (NOT_SETTABLE[path]) return NOT_SETTABLE[path]!;
-  const want = settablePaths().get(path);
-  if (!want) return `no setting called ${path}`;
+  const schema = settableSchemas().get(path);
+  if (!schema) return `no setting called ${path}`;
   if (value === null) return null; // clearing an override is always allowed
-  const got = Array.isArray(value) ? "array" : typeof value;
-  if (want !== got) return `${path} is a ${want}, not a ${got}`;
-  return null;
+  const r = schema.safeParse(value);
+  // Prefixed with the path, because this reaches the boss as a toast with no
+  // other context — "expected number, received string" beside eight other rows
+  // does not say which row.
+  return r.success ? null : `${path}: ${r.error.issues.map((i) => i.message).join("; ")}`;
 }
 
 function read(db: DB): Map<string, unknown> {

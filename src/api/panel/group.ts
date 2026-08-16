@@ -8,7 +8,7 @@ import { canStart, parseOwns } from "../../mech/flow/ownership.ts";
 import { killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema } from "../valid.ts";
+import { Attachment as AttachmentSchema } from "../fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { bad, firstIdea, json, text, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "./attach.ts";
