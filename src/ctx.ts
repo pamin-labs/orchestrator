@@ -19,7 +19,7 @@ export interface Ctx {
   db: DB;
   bus: Bus;
   sched: Scheduler;
-  /** Resolves a blocking `ask-boss` / `lease` call. Keyed by "kind:id". */
+  /** Resolves a blocking `ask-boss` call. */
   waiters: Map<string, (value: string) => void>;
   /** Where turns, gates and leases run. Absent in unit tests that need no container. */
   sandbox?: import("./mech/sandbox/sandbox.ts").SandboxDriver;

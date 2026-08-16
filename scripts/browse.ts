@@ -13,7 +13,7 @@
  * container became the boundary; `orch` is now the only interface there is. The
  * steps are data:
  *
- *   [{"api": "/api/ideas", "body": {"project_id": 1, "text": "…"}},
+ *   [{"api": "/api/v1/ideas", "body": {"project_id": 1, "text": "…"}},
  *    {"goto": "#p=1&v=req&g=1"},
  *    {"click": "text=更多"},
  *    {"expect": "不做了"},

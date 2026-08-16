@@ -265,7 +265,7 @@ const SANDBOX_API_KEY_ALT = "ORCH_SANDBOX_KEY";
 function fromEnv(cfg: Config): Config {
   const out = { ...cfg };
   const host = process.env.ORCH_HOST?.trim();
-  if (host) out.host = host;
+  if (host) out.host = ConfigSchema.shape.host.parse(host);
   const port = Number(process.env.ORCH_PORT);
   if (Number.isInteger(port) && port > 0 && port < 65_536) out.port = port;
   const dir = process.env.ORCH_DATA_DIR?.trim();

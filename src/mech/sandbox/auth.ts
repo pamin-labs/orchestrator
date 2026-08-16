@@ -273,7 +273,7 @@ export function listAuth(
           // which identifies nothing — for that one the account it logged in as is
           // the only thing worth showing.
           hint: auth.mode === "chatgpt" ? chatgptHint(auth.secret) : `…${auth.secret.slice(-6)}`,
-          baseUrl: auth.baseUrl,
+          ...(auth.baseUrl ? { baseUrl: auth.baseUrl } : {}),
           updatedAt: r.updated_at,
         },
       ];
@@ -494,12 +494,14 @@ export function vaultFor(db: DB, opts: VaultOpts = {}): { credentials: Credentia
     // for the git endpoints. The token is the password; the username is ignored.
     const basic = runtime === "github" ? `Basic ${btoa(`${GIT_USER}:${a.secret}`)}` : null;
     if (basic) maskValue(basic);
+    const paths = runtime === "github" && opts.repo ? readOnlyGitPaths(opts.repo) : null;
+    const header = basic ? "Authorization" : a.mode === "api_key" && runtime === "claude" ? "x-api-key" : b.header;
     credentials.push({
       name: runtime,
       value: basic ?? a.secret,
       hosts: a.baseUrl ? [...b.hosts, new URL(a.baseUrl).hostname] : b.hosts,
-      header: basic ? "Authorization" : a.mode === "api_key" && runtime === "claude" ? "x-api-key" : b.header,
-      ...(runtime === "github" && opts.repo ? { paths: readOnlyGitPaths(opts.repo) ?? undefined } : {}),
+      ...(header ? { header } : {}),
+      ...(paths ? { paths } : {}),
     });
     if (runtime === "github") {
       // The decoy git will actually send is a stored credential file, not an env

@@ -9,7 +9,7 @@ import { loadConfig } from "../src/config.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { testContext } from "./test-context.ts";
 import { z } from "zod";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 import {
   BOT,
   commitIdentity,
@@ -311,7 +311,7 @@ test("a login with no installations lists nothing and says where to fix it", asy
   // The empty box is the failure: authorized, green, and no repository will ever
   // appear. The answer carries the install link instead.
   const { app } = server(() => ({ total_count: 0, installations: [] }));
-  const r = await get(app, "/api/github/repos");
+  const r = await get(app, "/api/v1/github/repos");
   expect(r.status).toBe(200);
   const b = GithubReposResponse.parse(await r.json());
   expect(b.installations).toEqual([]);
@@ -339,12 +339,12 @@ test("switching installation changes the list", async () => {
   );
 
   // No installation asked for: the first one, so the page has something to show.
-  const first = GithubReposResponse.parse(await (await get(app, "/api/github/repos")).json());
+  const first = GithubReposResponse.parse(await (await get(app, "/api/v1/github/repos")).json());
   expect(first.selected).toBe(5);
   expect(first.repos.map((repo) => repo.fullName)).toEqual(["octocat/dotfiles"]);
 
   // Picking the org is not a second login — same token, another installation.
-  const org = GithubReposResponse.parse(await (await get(app, "/api/github/repos?installation=9")).json());
+  const org = GithubReposResponse.parse(await (await get(app, "/api/v1/github/repos?installation=9")).json());
   expect(org.selected).toBe(9);
   expect(org.repos.map((repo) => repo.fullName)).toEqual(["acme/site"]);
   expect(asked.some((u) => u.includes("/user/installations/9/repositories"))).toBe(true);
@@ -357,9 +357,9 @@ test("a project added from the list keeps GitHub's default branch, not a guess",
     clone_url: "https://github.com/acme/site.git",
   }));
   const r = await app(
-    new Request("http://x/api/projects", {
+    new Request("http://x/api/v1/projects", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ repo: "acme/site" }),
     }),
   );
@@ -381,9 +381,9 @@ test("a project added from the list keeps GitHub's default branch, not a guess",
 
   // Adding it twice is the same project, whichever way it was picked.
   const again = await app(
-    new Request("http://x/api/projects", {
+    new Request("http://x/api/v1/projects", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ repo: "acme/site" }),
     }),
   );
@@ -393,9 +393,9 @@ test("a project added from the list keeps GitHub's default branch, not a guess",
 test("a shape-invalid repository reply is a 422, never a route 500", async () => {
   const { app, db } = server(() => ({ full_name: "acme/site", default_branch: "main" }));
   const r = await app(
-    new Request("http://x/api/projects", {
+    new Request("http://x/api/v1/projects", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ repo: "acme/site" }),
     }),
   );
@@ -423,7 +423,7 @@ test("a repository already added names its project, so the row is a route and no
   );
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('工地', 'acme/site', 0)");
 
-  const b = GithubReposResponse.parse(await (await get(app, "/api/github/repos")).json());
+  const b = GithubReposResponse.parse(await (await get(app, "/api/v1/github/repos")).json());
   const by = Object.fromEntries(b.repos.map((repo) => [repo.fullName, repo.taken]));
   const site = by["acme/site"];
   if (!site) throw new Error("registered repository was not marked as taken");
@@ -520,7 +520,7 @@ test("the status carries which accounts it is installed on, and how much each ca
     ),
   );
 
-  const b = GithubAuthResponse.parse(await (await get(app, "/api/auth/github")).json());
+  const b = GithubAuthResponse.parse(await (await get(app, "/api/v1/auth/github")).json());
   expect(b.accounts).toEqual([{ id: 5, account: "acme", kind: "Organization", repos: 3 }]);
   // The install link comes from the yaml's `appSlug`, which is now its only source.
   expect(b.installUrl).toBe("https://github.com/apps/orchestrator-agentic-app/installations/new");
@@ -528,9 +528,9 @@ test("the status carries which accounts it is installed on, and how much each ca
 
   // And the route that wrote the override is gone with the panel section.
   const gone = await app(
-    new Request("http://x/api/auth/github/app", {
+    new Request("http://x/api/v1/auth/github/app", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ clientId: "x" }),
     }),
   );
@@ -567,7 +567,7 @@ test("naming the installation costs one round trip, not two", async () => {
         : { installations: [{ id: 9, account: { login: "acme", type: "Organization" } }] },
     ),
   );
-  const b = GithubReposResponse.parse(await (await get(app, "/api/github/repos?installation=9")).json());
+  const b = GithubReposResponse.parse(await (await get(app, "/api/v1/github/repos?installation=9")).json());
   expect(b.selected).toBe(9);
   expect(b.repos.map((repo) => repo.fullName)).toEqual(["acme/site"]);
   // Both were asked for, and neither waited on the other.

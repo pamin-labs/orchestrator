@@ -3,9 +3,9 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start, type Started } from "../src/server.ts";
-import { SnapshotSchema } from "../src/api/panel/shapes.ts";
+import { SnapshotSchema } from "../src/contracts/panel.ts";
 import { z } from "zod";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 
 const PackageJson = z.object({ scripts: z.record(z.string(), z.string()) });
 
@@ -45,15 +45,19 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     srv = start({ dataDir, port: 0, maxGroups: 0 });
   });
 
-  afterAll(() => {
-    srv.stop();
+  afterAll(async () => {
+    expect(await srv.shutdown(5_000)).toBe(0);
     rmSync(dataDir, { recursive: true, force: true });
   });
 
   const post = (path: string, body?: Json, token?: string) =>
     fetch(`${srv.url}${path}`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...(token ? { "x-orch-token": token } : {}) },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        ...(token ? { "x-orch-token": token } : {}),
+      },
       body: JSON.stringify(body ?? {}),
     });
 
@@ -94,7 +98,7 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     // Inserted rather than POSTed: registering a project is now one request to
     // api.github.com for the repository's default branch, and a smoke test that
     // reaches the network fails on a train. What it stands in for — the repo list
-    // and `POST /api/projects` — is covered against an injected client in
+    // and `POST /api/v1/projects` — is covered against an injected client in
     // test/ghlogin.test.ts. Everything after this line is still real HTTP.
     const p = srv.ctx.db
       .query<{ id: number }, []>(
@@ -107,10 +111,10 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
 
     const idea = z
       .object({ grp_id: z.number() })
-      .parse(await (await post("/api/ideas", { project_id: p.id, text: "add rate limiting" })).json());
+      .parse(await (await post("/api/v1/ideas", { project_id: p.id, text: "add rate limiting" })).json());
     expect(idea.grp_id).toBeGreaterThan(0);
 
-    const state = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/state`)).json());
+    const state = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/v1/state`)).json());
     const grp = state.groups.find((group) => group.id === idea.grp_id);
     if (!grp) throw new Error(`group ${idea.grp_id} missing from snapshot`);
     expect(grp.status).toBe("PLANNING");
@@ -146,25 +150,25 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
   });
 
   test("a malformed DRAFT card is refused over the wire, status unchanged", async () => {
-    const state = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/state`)).json());
+    const state = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/v1/state`)).json());
     const grp = state.groups.find((group) => group.status === "PLANNING");
     if (!grp) throw new Error("planning group missing from snapshot");
-    const r = await post(`/api/draft/${grp.id}/approve`, { card: "目标 : 只有这一行" });
+    const r = await post(`/api/v1/draft/${grp.id}/approve`, { card: "目标 : 只有这一行" });
     expect(r.status).toBe(422);
     expect(await r.text()).toContain("missing sections");
 
-    const after = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/state`)).json());
+    const after = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/v1/state`)).json());
     expect(after.groups.find((group) => group.id === grp.id)?.status).toBe("PLANNING");
   });
 
   test("orch verbs reject a request with no token", async () => {
-    const r = await post("/orch/status", { text: "hello" });
+    const r = await post("/orch/v1/status", { text: "hello" });
     expect(r.status).toBe(401);
   });
 
   test("the SSE stream opens and replays the log from a cursor", async () => {
     const ac = new AbortController();
-    const r = await fetch(`${srv.url}/api/stream?since=0`, { signal: ac.signal });
+    const r = await fetch(`${srv.url}/api/v1/stream?since=0`, { signal: ac.signal });
     expect(r.headers.get("content-type")).toContain("text/event-stream");
 
     const reader = r.body!.getReader();
@@ -177,7 +181,7 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
   });
 
   test("state stays queryable after a reconnect", async () => {
-    const s = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/state`)).json());
+    const s = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/v1/state`)).json());
     expect(s.lastSeq).toBeGreaterThan(0);
     expect(Array.isArray(s.channels)).toBe(true);
   });

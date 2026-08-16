@@ -1,5 +1,5 @@
-import { clip, jsonOr } from "../mech/util/text.ts";
-import { JsonObject, JsonValue } from "../http/respond.ts";
+import { clip } from "../mech/util/text.ts";
+import { JsonObject, JsonValue, jsonOr } from "../contracts/json.ts";
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary, Usage } from "./claude.ts";
 import { promptPath, summarizeTool } from "./claude.ts";
 import { runLineStream } from "./line-stream.ts";
@@ -183,7 +183,7 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
     numTurns: 0,
     toolSummaries: [],
     filesTouched: [],
-    logPath: spec.logPath,
+    ...(spec.logPath === undefined ? {} : { logPath: spec.logPath }),
   };
   const files = new Set<string>();
 
@@ -288,13 +288,16 @@ function consumeRateLimit(limits: Line["rate_limits"], result: TurnResult): void
   const { primary, secondary } = limits;
   if (!primary && !secondary) return;
   const now = Math.floor(Date.now() / 1000);
+  const fiveHourPercent = windowPercent(primary);
+  const weeklyPercent = windowPercent(secondary);
+  const weeklyResetsAt = weeklyResetAt(secondary, now);
   result.rateLimit = {
     status: "allowed",
     rateLimitType: "five_hour",
     resetsAt: resetAt(primary, now),
-    fiveHourPercent: windowPercent(primary),
-    weeklyPercent: windowPercent(secondary),
-    weeklyResetsAt: weeklyResetAt(secondary, now),
+    ...(fiveHourPercent === undefined ? {} : { fiveHourPercent }),
+    ...(weeklyPercent === undefined ? {} : { weeklyPercent }),
+    ...(weeklyResetsAt === undefined ? {} : { weeklyResetsAt }),
   };
 }
 

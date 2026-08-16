@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
@@ -20,7 +21,7 @@ import { Scheduler } from "../src/scheduler.ts";
 import type { Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 
 /** A GitHub client that answers from a function and records the paths asked. */
 const gh = (answer: (path: string) => Json) =>
@@ -29,9 +30,27 @@ const gh = (answer: (path: string) => Json) =>
     request: async (_method, path, schema) => ({ ok: true as const, status: 200, data: schema.parse(answer(path)) }),
   }) satisfies NonNullable<Ctx["gh"]>;
 
-function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
-  const db: DB = openMemory();
+const watchdogDbImage = (() => {
+  const db = openMemory();
   seedAuth(db);
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 't', 0)",
+  );
+  const image = db.serialize();
+  db.close();
+  return image;
+})();
+
+function watchdogDb(): DB {
+  const db = Database.deserialize(watchdogDbImage, { strict: true });
+  db.exec("PRAGMA foreign_keys = ON");
+  return db;
+}
+
+function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
+  const db = watchdogDb();
   const bus = new Bus(db);
   const sched = new Scheduler(db, async () => {});
   const cfg = { ...loadConfig(), ...over };
@@ -46,11 +65,6 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     waiters: new Map(),
     config: cfg,
   };
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 't', 0)",
-  );
   // No network on a watchdog tick in tests, and that now covers two calls: the
   // usage endpoint (which once hung on its 10s timeout inside a gate sandbox and
   // took the suite red) and the reachability probe. Both are injected for the

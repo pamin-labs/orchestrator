@@ -13,7 +13,7 @@ import { open } from "./db.ts";
 import { REAL, sandboxHeld } from "./mech/sandbox/sandbox.ts";
 import { startMailbox } from "./mech/sandbox/mailbox.ts";
 import { baseRefFor, createCheckout, treeHeads } from "./mech/git/checkout.ts";
-import { preflight, report } from "./mech/ops/preflight.ts";
+import { preflight, report, type Check } from "./mech/ops/preflight.ts";
 import { restageSkills } from "./mech/skills.ts";
 import { ensureServer } from "./mech/sandbox/server.ts";
 import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
@@ -39,6 +39,7 @@ import { isOnline } from "./mech/sandbox/net.ts";
 import { hold } from "./mech/flow/intercept.ts";
 import { raise } from "./mech/flow/escalate.ts";
 import { restoreWorkspace } from "./mech/flow/start.ts";
+import { closeTelemetry, configureStructuredLogging, runtimeStatus, type RuntimeStatus } from "./observability.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -55,6 +56,52 @@ export interface Started {
   url: string;
   notifier: Notifier;
   stop: () => void;
+  shutdown: (deadlineMs?: number) => Promise<number>;
+  runtime: RuntimeStatus;
+}
+
+/** Refresh the cached readiness snapshot without coupling tests to a real server. */
+export async function refreshRuntimeReadiness(
+  runtime: RuntimeStatus,
+  load: () => Promise<ReadonlyArray<Check>>,
+): Promise<void> {
+  try {
+    const checks = await load();
+    runtime.checks = checks;
+    runtime.ready = checks.every((check) => check.ok);
+  } catch (error) {
+    runtime.ready = false;
+    runtime.checks = [{ name: "preflight", ok: false, detail: errText(error) }];
+  }
+}
+
+/** Runs the two-phase process shutdown in an order tests can prove. */
+export async function shutdownRuntime(
+  ops: {
+    stopIntake: () => boolean;
+    drain: () => Promise<void>;
+    gracefulStop: () => Promise<void>;
+    reclaim: () => void;
+    abort: () => void;
+    forceStop: () => Promise<void>;
+    close: () => void;
+    sleep: (ms: number) => Promise<unknown>;
+  },
+  deadlineMs = 10_000,
+): Promise<0 | 1> {
+  if (!ops.stopIntake()) return 0;
+  const graceful = await Promise.race([
+    Promise.all([ops.drain(), ops.gracefulStop()]).then(() => true),
+    ops.sleep(deadlineMs).then(() => false),
+  ]);
+  if (!graceful) {
+    ops.reclaim();
+    ops.abort();
+    await ops.forceStop();
+    await Promise.race([ops.drain(), ops.sleep(1_000)]);
+  }
+  ops.close();
+  return graceful ? 0 : 1;
 }
 
 /**
@@ -400,7 +447,7 @@ export function start(overrides: Partial<Config> = {}): Started {
       // rather than against the PR that caused it. The careful PAUSED path
       // above is the answer to a *failed* PR; this is the answer to a failure
       // while answering one.
-      .catch((e) => consola.warn(`opening the PR for ${grpId} threw: ${e?.message ?? e}`));
+      .catch((error) => consola.warn(`opening the PR for ${grpId} threw: ${errText(error)}`));
   };
   exec = makeExecutor(execDeps);
   ctx.knownRoles = () => [...roles.keys()];
@@ -411,8 +458,18 @@ export function start(overrides: Partial<Config> = {}): Started {
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
   ctx.auditVerdict = makeAuditVerdict(execDeps);
 
-  const app = makeApp(ctx);
+  const runtime = runtimeStatus(false);
+  const app = makeApp(ctx, runtime);
   const webDir = join(ROOT, "web");
+  const background = new Set<Promise<unknown>>();
+  const track = <T>(work: Promise<T>): Promise<T> => {
+    background.add(work);
+    void work.finally(() => background.delete(work)).catch(() => {});
+    return work;
+  };
+  const drainBackground = async (): Promise<void> => {
+    while (background.size > 0) await Promise.allSettled([...background]);
+  };
 
   const server = Bun.serve({
     hostname: cfg.host,
@@ -421,14 +478,23 @@ export function start(overrides: Partial<Config> = {}): Started {
     // validators, so a rebuilt bundle kept being served from the browser's cache.
 
     idleTimeout: 0, // `ask-boss` holds a request open until the boss answers
-    async fetch(req) {
+    async fetch(req, bunServer) {
       const path = new URL(req.url).pathname;
       if (path === "/" || path === "/index.html") {
         return new Response(Bun.file(join(webDir, "index.html")), {
           headers: { "content-type": "text/html; charset=utf-8", "cache-control": NO_CACHE },
         });
       }
-      if (path.startsWith("/api/") || path.startsWith("/orch/")) return app(req);
+      if (path === "/metrics") {
+        const ip = bunServer.requestIP(req)?.address;
+        if (ip && !["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(ip)) {
+          return new Response("not found", { status: 404 });
+        }
+        return app(req);
+      }
+      if (path === "/healthz" || path === "/readyz" || path.startsWith("/api/v1/") || path.startsWith("/orch/v1/")) {
+        return app(req);
+      }
 
       const file = Bun.file(join(webDir, path.replace(/^\/+/, "")));
       if (await file.exists()) return new Response(file, { headers: { "cache-control": NO_CACHE } });
@@ -436,10 +502,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     },
   });
 
-  // The address to open, not the address it bound to. Bound to 0.0.0.0 in a
-  // container, "http://0.0.0.0:47821" is not a link anybody can click, and it is
-  // the line a first-run user copies out of the log.
-  const url = `http://${cfg.host === "0.0.0.0" || cfg.host === "::" ? "127.0.0.1" : cfg.host}:${server.port}`;
+  const url = `http://${cfg.host === "::1" ? "[::1]" : cfg.host}:${server.port}`;
   // Environment handed to every spawned turn: the URL plus the agent's own
   // token. Identity is never a request-body field.
   process.env.ORCH_URL = url;
@@ -485,6 +548,8 @@ export function start(overrides: Partial<Config> = {}): Started {
   // timer handle from the settings route, the callback notices its own period
   // changed and re-arms — one place, and it cannot be forgotten by a new writer.
   let armed = cfg.watchdogIntervalMs;
+  let indexWork: Promise<void> | null = null;
+  let pollWork: Promise<void> | null = null;
   let tick = setInterval(function beat() {
     if (cfg.watchdogIntervalMs !== armed) {
       clearInterval(tick);
@@ -520,25 +585,37 @@ export function start(overrides: Partial<Config> = {}): Started {
     // repo costs zero model calls; a busy one pays for the files that changed.
     // `void` with no `.catch` sent every throw to the process backstop, which
     // emits a blocker — one per tick, forever, and `bus.emit` has no dedup.
-    void refreshIndex(ctx).catch((e) =>
-      ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${e?.message ?? e}` }),
-    );
+    if (!indexWork) {
+      indexWork = track(
+        refreshIndex(ctx).catch((error) => {
+          ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${errText(error)}` });
+        }),
+      ).finally(() => {
+        indexWork = null;
+      });
+    }
 
     // Polling is arithmetic, not judgement, so it happens here rather than in an
     // agent. Only a change wakes the PM.
     // The `.then` writes rows, enqueues turns and pushes notifications, so a
     // group dropped between the poll and the handler lands here as an unhandled
     // rejection — which is a process-wide blocker for one stale row.
-    void pollPrs(ctx, gh)
-      .then((fs) => {
-        for (const f of fs) {
-          if (f.merged) landGroup(ctx, f.grpId, "github");
-          else if (f.closed) prClosed(ctx, f.grpId, f.prNumber, url, notifier);
-          else if (f.reopened) prReopened(ctx, f.grpId, f.prNumber);
-          else dispatchFeedback(ctx, f);
-        }
-      })
-      .catch((e) => consola.error(`pollPrs: ${errText(e)}`));
+    if (!pollWork) {
+      pollWork = track(
+        pollPrs(ctx, gh)
+          .then((fs) => {
+            for (const f of fs) {
+              if (f.merged) landGroup(ctx, f.grpId, "github");
+              else if (f.closed) prClosed(ctx, f.grpId, f.prNumber, url, notifier);
+              else if (f.reopened) prReopened(ctx, f.grpId, f.prNumber);
+              else dispatchFeedback(ctx, f);
+            }
+          })
+          .catch((e) => consola.error(`pollPrs: ${errText(e)}`)),
+      ).finally(() => {
+        pollWork = null;
+      });
+    }
   }, armed);
 
   // The agents' only way out. Nothing in a sandbox can reach this process
@@ -558,57 +635,111 @@ export function start(overrides: Partial<Config> = {}): Started {
   // fixed itself two seconds later.
   //
   // It never takes over a server it did not start. See `ensureServer`.
-  void ensureServer(ctx)
-    .then((st) => {
-      if (st.kind === "started") {
-        consola.success(`opensandbox-server started (pid ${st.pid}, ${st.config})`);
-        ctx.bus.emit({
-          author: "orchestrator",
-          kind: "state_change",
-          body: `沙盒服务器起好了（我们起的，pid ${st.pid}）`,
-        });
-      } else if (st.kind === "theirs") {
-        consola.info(`opensandbox-server already running (pid ${st.pid}) — using it, not touching it`);
-      } else if (st.kind === "stuck") {
-        consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${st.why}`);
-        ctx.bus.emit({
-          author: "orchestrator",
-          kind: "escalation",
-          intent: "inform",
-          severity: "blocker",
-          // Never restarted for them: this process may be someone else's, and
-          // "we cannot drive it" is not evidence that nobody can.
-          body:
-            `沙盒服务器在跑（pid ${st.pid}），但我们驱动不了：${st.why}\n` +
-            `没敢自动重启它 —— 这个进程可能是你自己起的，配的是别的东西。设置 → 沙盒服务器 那里有按钮。`,
-        });
-      } else if (st.kind === "down") {
-        consola.warn(`opensandbox-server: ${st.why}`);
-      }
-    })
-    .catch((e) => consola.error(`ensureServer: ${errText(e)}`));
+  const sandboxServer = track(
+    ensureServer(ctx)
+      .then((st) => {
+        if (st.kind === "started") {
+          consola.success(`opensandbox-server started (pid ${st.pid}, ${st.config})`);
+          ctx.bus.emit({
+            author: "orchestrator",
+            kind: "state_change",
+            body: `沙盒服务器起好了（我们起的，pid ${st.pid}）`,
+          });
+        } else if (st.kind === "theirs") {
+          consola.info(`opensandbox-server already running (pid ${st.pid}) — using it, not touching it`);
+        } else if (st.kind === "stuck") {
+          consola.warn(`opensandbox-server running (pid ${st.pid}) but not drivable: ${st.why}`);
+          ctx.bus.emit({
+            author: "orchestrator",
+            kind: "escalation",
+            intent: "inform",
+            severity: "blocker",
+            // Never restarted for them: this process may be someone else's, and
+            // "we cannot drive it" is not evidence that nobody can.
+            body:
+              `沙盒服务器在跑（pid ${st.pid}），但我们驱动不了：${st.why}\n` +
+              `没敢自动重启它 —— 这个进程可能是你自己起的，配的是别的东西。设置 → 沙盒服务器 那里有按钮。`,
+          });
+        } else if (st.kind === "down") {
+          consola.warn(`opensandbox-server: ${st.why}`);
+        }
+      })
+      .catch((e) => consola.error(`ensureServer: ${errText(e)}`)),
+  );
 
   // Say what is missing here, once, rather than letting every group discover it
   // one failed turn at a time. Not fatal: the panel can be opened and the
   // settings page is where three of these are fixed.
-  void preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir, cacheDirs: cfg.sandbox.cacheDirs })
-    .then((checks) => {
-      const bad = report(checks);
-      if (bad) consola.warn(`preflight:\n${bad}`);
-    })
-    .catch((e) => consola.error(`preflight: ${errText(e)}`));
+  let readinessWork: Promise<void> | null = null;
+  const refreshReadiness = () => {
+    if (readinessWork) return;
+    readinessWork = track(
+      refreshRuntimeReadiness(runtime, () =>
+        sandboxServer.then(() =>
+          preflight({ db, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir, cacheDirs: cfg.sandbox.cacheDirs }).then(
+            (checks) => {
+              db.query<{ ok: number }, []>("SELECT 1 AS ok").get();
+              return [{ name: "database", ok: true, detail: "migrated and queryable" }, ...checks];
+            },
+          ),
+        ),
+      ).then(() => {
+        const bad = report([...runtime.checks]);
+        if (bad) consola.warn(`preflight:\n${bad}`);
+      }),
+    ).finally(() => {
+      readinessWork = null;
+    });
+  };
+  refreshReadiness();
+  const readinessTick = setInterval(refreshReadiness, Math.min(Math.max(cfg.watchdogIntervalMs, 5_000), 30_000));
 
   sched.tick();
+  let stopped = false;
+  const stopIntake = () => {
+    if (stopped) return false;
+    stopped = true;
+    runtime.accepting = false;
+    runtime.ready = false;
+    sched.quiesce();
+    clearInterval(tick);
+    clearInterval(readinessTick);
+    stopMailbox();
+    return true;
+  };
   return {
     ctx,
     cfg,
     url,
     notifier,
+    runtime,
     stop: () => {
-      clearInterval(tick);
-      stopMailbox();
-      server.stop(true);
+      if (!stopIntake()) return;
+      void server.stop(true);
     },
+    shutdown: (deadlineMs) =>
+      shutdownRuntime(
+        {
+          stopIntake,
+          drain: async () => {
+            await Promise.all([sched.drain(), drainBackground()]);
+          },
+          gracefulStop: async () => {
+            await server.stop(false);
+          },
+          reclaim: () => resumeReclaimed(sched, reclaimOrphans(db, { maxAgeMs: 0 })),
+          abort: abortAll,
+          forceStop: async () => {
+            await server.stop(true);
+          },
+          close: () => {
+            closeTelemetry();
+            db.close();
+          },
+          sleep: Bun.sleep,
+        },
+        deadlineMs,
+      ),
   };
 }
 
@@ -637,8 +768,9 @@ function reportConfig(cfg: Config): void {
 }
 
 if (import.meta.main) {
+  configureStructuredLogging();
   reportConfig(loadConfig());
-  const { ctx, url, stop } = start();
+  const { ctx, url, shutdown } = start();
   consola.info(`orchestrator on ${url}`);
   // The panel is served from `web/dist`, and nothing rebuilds it. A UI change that
   // is committed, tested and typechecked still shows the old page, which reads as
@@ -698,11 +830,12 @@ if (import.meta.main) {
   // them as orphans and requeues instead of leaving the group wedged behind a
   // job that nothing will ever finish. Only installed here: `start()` is called
   // many times per test run, and each would add a listener.
+  let shuttingDown = false;
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
     process.on(sig, () => {
-      abortAll();
-      stop();
-      process.exit(0);
+      if (shuttingDown) return;
+      shuttingDown = true;
+      void shutdown().then((code) => process.exit(code));
     });
   }
 }

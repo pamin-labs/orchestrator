@@ -35,41 +35,43 @@ export interface NewGroup {
 }
 
 export function newGroup(ctx: Ctx, g: NewGroup): { id: number; channelId: number } {
-  const grp = ctx.db
-    .query<{ id: number }, [number, string, string | null, string | null]>(
-      `INSERT INTO grp (project_id, name, status, shared_grant, owns_json, created_at)
-       VALUES (?, ?, 'PLANNING', ?, coalesce(?, '[]'), unixepoch() * 1000) RETURNING id`,
-    )
-    .get(
-      g.projectId,
-      g.name,
-      g.sharedGrant?.length ? JSON.stringify(g.sharedGrant) : null,
-      g.owns?.length ? JSON.stringify(g.owns) : null,
-    )!;
+  return ctx.db.transaction(() => {
+    const grp = ctx.db
+      .query<{ id: number }, [number, string, string | null, string | null]>(
+        `INSERT INTO grp (project_id, name, status, shared_grant, owns_json, created_at)
+         VALUES (?, ?, 'PLANNING', ?, coalesce(?, '[]'), unixepoch() * 1000) RETURNING id`,
+      )
+      .get(
+        g.projectId,
+        g.name,
+        g.sharedGrant?.length ? JSON.stringify(g.sharedGrant) : null,
+        g.owns?.length ? JSON.stringify(g.owns) : null,
+      )!;
 
-  // `channel.grp_id` is the only link between the two; a reverse pointer on grp
-  // would be a second source of truth for the same edge.
-  const ch = ctx.db
-    .query<{ id: number }, [number, number]>(
-      "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000) RETURNING id",
-    )
-    .get(g.projectId, grp.id)!;
+    // `channel.grp_id` is the only link between the two; a reverse pointer on grp
+    // would be a second source of truth for the same edge.
+    const ch = ctx.db
+      .query<{ id: number }, [number, number]>(
+        "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000) RETURNING id",
+      )
+      .get(g.projectId, grp.id)!;
 
-  // Two bodies, not one. The blackboard note carries what a planner needs to
-  // read alongside the ask — attachment paths, which group this was split out of
-  // — and the timeline carries the ask itself. Collapsing them puts file paths
-  // and provenance into the line the boss reads back as "what I asked for".
-  ctx.db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-    [g.projectId, grp.id, ctx.config.language, g.note ?? g.idea],
-  );
-  ctx.bus.emit({
-    grpId: grp.id,
-    channelId: ch.id,
-    author: g.author ?? "boss",
-    kind: "boss_say",
-    intent: "request",
-    body: g.idea,
-  });
-  return { id: grp.id, channelId: ch.id };
+    // Two bodies, not one. The blackboard note carries what a planner needs to
+    // read alongside the ask — attachment paths, which group this was split out of
+    // — and the timeline carries the ask itself. Collapsing them puts file paths
+    // and provenance into the line the boss reads back as "what I asked for".
+    ctx.db.run(
+      "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
+      [g.projectId, grp.id, ctx.config.language, g.note ?? g.idea],
+    );
+    ctx.bus.emit({
+      grpId: grp.id,
+      channelId: ch.id,
+      author: g.author ?? "boss",
+      kind: "boss_say",
+      intent: "request",
+      body: g.idea,
+    });
+    return { id: grp.id, channelId: ch.id };
+  })();
 }

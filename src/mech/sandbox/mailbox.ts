@@ -1,8 +1,10 @@
-import { errText, jsonOr } from "../util/text.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { errText } from "../util/text.ts";
 import { consola } from "consola";
 import { z } from "zod";
 import type { Ctx } from "../../ctx.ts";
-import { JsonValue, ProtocolResponse, readJsonResponse } from "../../http/respond.ts";
+import { JsonValue } from "../../contracts/json.ts";
+import { ProtocolResponse, readJsonResponse } from "../../contracts/protocol.ts";
 import { FILE_MODE, liveSandboxes, MAILBOX_DIR, writeInto } from "./sandbox.ts";
 
 export type MailboxSandbox = {
@@ -36,6 +38,8 @@ const Envelope = z.object({
   path: z.string(),
   token: z.string(),
   body: JsonValue.optional(),
+  request_id: SafeId,
+  idempotency_key: SafeId.optional(),
 });
 
 type Envelope = z.infer<typeof Envelope>;
@@ -49,7 +53,7 @@ const POLL_MS = 150;
  * request file is deleted first, which is what keeps a slow call from being
  * dispatched twice on the next tick.
  */
-export async function serve(sb: MailboxSandbox, base: string, path: string): Promise<void> {
+export async function serve(sb: MailboxSandbox, base: string, path: string, signal?: AbortSignal): Promise<void> {
   const raw = await sb.files.readFile(path).catch(() => null);
   const value = jsonOr(raw, JsonValue, null);
   const id = ReplyId.safeParse(value).data?.id;
@@ -61,7 +65,7 @@ export async function serve(sb: MailboxSandbox, base: string, path: string): Pro
   }
 
   let answer: ProtocolResponse;
-  // `/orch/*` checks a token on every route; `/api/*` checks nothing, because
+  // `/orch/v1/*` checks a token on every route; `/api/v1/*` checks nothing, because
   // its only caller was a browser on 127.0.0.1. The mailbox made the sandbox a
   // caller on 127.0.0.1 too, and `orch` is not the only thing that can drop a
   // file in `req/` — so without this an agent answers its own DRAFT, accepts its
@@ -70,9 +74,9 @@ export async function serve(sb: MailboxSandbox, base: string, path: string): Pro
   //
   // Checked on the *normalised* path, and the same normalised string is what
   // gets sent. The first version tested `env.path` raw and then handed that raw
-  // string to `fetch`, which parses it as a URL — so `/orch/../api/auth` passed
-  // the prefix test and arrived as `/api/auth`, and every route the guard exists
-  // to hide was reachable from inside the sandbox. `%2e%2e` and `/orch/x/../../`
+  // string to `fetch`, which parses it as a URL — so `/orch/v1/../api/auth` passed
+  // the prefix test and arrived as `/api/v1/auth`, and every route the guard exists
+  // to hide was reachable from inside the sandbox. `%2e%2e` and `/orch/v1/x/../../`
   // did the same. Whatever is judged has to be what is sent.
   const url = normalise(base, env.path);
   if (!url) {
@@ -80,12 +84,17 @@ export async function serve(sb: MailboxSandbox, base: string, path: string): Pro
     return;
   }
   try {
-    const headers: Record<string, string> = { "x-orch-token": env.token ?? "" };
+    const headers: Record<string, string> = {
+      "x-orch-token": env.token ?? "",
+      "x-request-id": env.request_id,
+      ...(env.idempotency_key ? { "idempotency-key": env.idempotency_key } : {}),
+    };
     if (env.body !== undefined) headers["content-type"] = "application/json";
     const res = await fetch(url, {
       method: env.method,
       headers,
-      body: env.body === undefined ? undefined : JSON.stringify(env.body),
+      ...(env.body === undefined ? {} : { body: JSON.stringify(env.body) }),
+      ...(signal ? { signal } : {}),
     });
     const body = await readJsonResponse(res);
     answer = body.ok
@@ -104,7 +113,7 @@ export async function serve(sb: MailboxSandbox, base: string, path: string): Pro
  *
  * The query string is kept — `orch lease log --grep` is a GET with one — but the
  * host is not: anything that parses to a different origin, or to a path outside
- * `/orch/`, is refused rather than repaired.
+ * `/orch/v1/`, is refused rather than repaired.
  */
 export function normalise(base: string, path: string): string | null {
   if (!path.startsWith("/")) return null;
@@ -115,7 +124,7 @@ export function normalise(base: string, path: string): string | null {
     return null;
   }
   if (u.origin !== new URL(base).origin) return null;
-  if (!u.pathname.startsWith("/orch/")) return null;
+  if (!u.pathname.startsWith("/orch/v1/")) return null;
   return `${u.origin}${u.pathname}${u.search}`;
 }
 
@@ -150,6 +159,7 @@ function reply(sb: MailboxSandbox, id: string, answer: ProtocolResponse): Promis
  */
 export function startMailbox(ctx: Ctx): () => void {
   const base = `http://127.0.0.1:${ctx.config.port}`;
+  const lifecycle = new AbortController();
 
   let stopped = false;
 
@@ -157,7 +167,7 @@ export function startMailbox(ctx: Ctx): () => void {
     for (const sb of liveSandboxes()) {
       try {
         for (const f of await sb.files.search({ path: `${MAILBOX_DIR}/req`, pattern: "*.json" })) {
-          if (f.path) void serve(sb, base, f.path);
+          if (f.path) void serve(sb, base, f.path, lifecycle.signal);
         }
       } catch {
         // A sandbox that has gone away answers nothing; the watchdog owns that.
@@ -172,5 +182,6 @@ export function startMailbox(ctx: Ctx): () => void {
   return () => {
     stopped = true;
     clearInterval(timer);
+    lifecycle.abort(new Error("mailbox stopped"));
   };
 }

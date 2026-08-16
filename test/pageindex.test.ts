@@ -201,7 +201,7 @@ test("Codex output keeps the last valid message and usage in one noisy stream", 
 });
 
 test("Codex output tolerates absent valid records", () => {
-  expect(readCodex("banner\n{bad json\n")).toEqual({ text: "", usage: undefined });
+  expect(readCodex("banner\n{bad json\n")).toEqual({ text: "" });
   expect(
     readCodex(
       [

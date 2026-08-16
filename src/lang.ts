@@ -15,8 +15,6 @@
  * ponytail: a flat table and a formatter. No i18n library for one language pair and
  * two dozen strings; the day a third language appears, this is still the shape.
  */
-type Args = Record<string, string | number>;
-
 /**
  * Chinese, where we have it. Partial on purpose: `say` falls back to the English
  * row, so a key added to EN and not yet translated is a sentence in the other
@@ -149,9 +147,9 @@ export type SayKey = keyof typeof EN;
 /** Every key, for a check that has to walk them. */
 export const SAY_KEYS = Object.keys(EN) as SayKey[];
 
-export function say(lang: string | undefined, key: SayKey, args: Args = {}): string {
+export function say(lang: string | undefined, key: SayKey, args: Record<string, string | number> = {}): string {
   const l = lang ?? "";
   const table = l.startsWith("中") || l.toLowerCase().startsWith("zh") ? ZH : EN;
   const t = table[key] ?? EN[key] ?? String(key);
-  return t.replace(/\{(\w+)\}/g, (_m, k) => String(args[k] ?? ""));
+  return t.replace(/\{(\w+)\}/g, (_m: string, k: string) => String(args[k] ?? ""));
 }

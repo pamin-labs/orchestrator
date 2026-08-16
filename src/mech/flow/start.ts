@@ -46,23 +46,25 @@ function installFor(ctx: Ctx, projectId: number): string | null {
  * this group was allowed to touch from the record.
  */
 export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
-  ctx.sched.cancelPending(grpId, "dropped");
-  ctx.db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
-  ctx.db.run("UPDATE agent SET state = 'retired', session_id = NULL, token = NULL WHERE grp_id = ?", [grpId]);
-  ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [grpId]);
-  // Anything it had asked the boss dies with it, or the question outlives the
-  // requirement and sits in 待办 forever.
-  ctx.db.run(
-    `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
-     WHERE grp_id = ? AND answer IS NULL`,
-    [grpId],
-  );
-  ctx.bus.emit({
-    grpId,
-    author: "boss",
-    kind: "state_change",
-    body: say(ctx.config.language, "group.dropped", { why: why ? `：${why}` : "" }),
-  });
+  ctx.db.transaction(() => {
+    ctx.sched.cancelPending(grpId, "dropped");
+    ctx.db.run("UPDATE grp SET status = 'DISSOLVED', merge_seq = NULL WHERE id = ?", [grpId]);
+    ctx.db.run("UPDATE agent SET state = 'retired', session_id = NULL, token = NULL WHERE grp_id = ?", [grpId]);
+    ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [grpId]);
+    // Anything it had asked the boss dies with it, or the question outlives the
+    // requirement and sits in 待办 forever.
+    ctx.db.run(
+      `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
+       WHERE grp_id = ? AND answer IS NULL`,
+      [grpId],
+    );
+    ctx.bus.emit({
+      grpId,
+      author: "boss",
+      kind: "state_change",
+      body: say(ctx.config.language, "group.dropped", { why: why ? `：${why}` : "" }),
+    });
+  })();
 }
 
 /**

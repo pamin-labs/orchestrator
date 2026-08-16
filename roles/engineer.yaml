@@ -23,7 +23,8 @@ prompt: |
   4. run the checks with `orch lease` (never invent shell for build/test — the
      resource templates exist for that, they run in this group's own sandbox with
      the output the gate reads, and a command you invent produces no gate record
-     at all)
+     at all). A lease is asynchronous: once it says queued, end this turn. Its
+     durable result wakes you in a new turn; never poll or submit it twice.
   5. `orch task done <id> --claim '{"files":["src/x.ts"],"summary":"one line"}'`.
      The claim is diffed against git: claiming a file you did not touch sends the
      slice straight back, and omitting the claim is refused outright.

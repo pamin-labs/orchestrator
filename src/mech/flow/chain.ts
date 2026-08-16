@@ -24,7 +24,6 @@ import {
  */
 
 export const CHAIN = ESCALATION_OPEN_STATES;
-export type ChainState = EscalationState;
 
 /**
  * Topics that never route through the chain, however clear the precedent.
@@ -294,17 +293,20 @@ export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBa
     body:
       `revoked ${esc.answered_by ?? "the"} answer` +
       (rolledBackTo ? ` and rolled back to ${rolledBackTo.slice(0, 8)}` : ""),
-    meta: { escalation_id: escId, rolledBackTo },
+    meta: { escalation_id: escId, ...(rolledBackTo ? { rolledBackTo } : {}) },
   });
-  return { rolledBackTo, answeredBy: esc.answered_by ?? undefined };
+  return {
+    ...(rolledBackTo ? { rolledBackTo } : {}),
+    ...(esc.answered_by ? { answeredBy: esc.answered_by } : {}),
+  };
 }
 
 /**
  * A value, like `CHAIN` above, so the two doors can spell it from here.
  *
  * It was a bare union type, so neither route that takes it could reach it: the
- * boss's `/api/say` restated the three words as an array literal plus an
- * unchecked `as Triage`, and `/orch/triage` restated them again as a `z.enum`.
+ * boss's `/api/v1/say` restated the three words as an array literal plus an
+ * unchecked `as Triage`, and `/orch/v1/triage` restated them again as a `z.enum`.
  * A fourth verb added here would have compiled everywhere and been refused by
  * one of the two doors at runtime.
  */

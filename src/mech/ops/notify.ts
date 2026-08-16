@@ -200,6 +200,7 @@ export function busDeliver(bus: Bus, webhook?: string) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ title, message: scrub(body.slice(0, 1000)), url }),
+        signal: AbortSignal.timeout(5_000),
       });
     } catch {
       // A failed notification must never take down the run that produced it.
@@ -233,7 +234,7 @@ export function batchForBoss(items: PendingItem[], url?: string): Notification |
       tier: i.severity === "blocker" ? "immediate" : "batched",
       body: `${i.group ?? "someone"}: ${i.question.slice(0, 200)}`,
       // Straight to the requirement that is asking, not the front page.
-      url: url && i.grpId ? `${url}/#g=${i.grpId}&v=progress` : url,
+      ...(url ? { url: i.grpId ? `${url}/#g=${i.grpId}&v=progress` : url } : {}),
     };
   }
 
@@ -247,7 +248,7 @@ export function batchForBoss(items: PendingItem[], url?: string): Notification |
   return {
     key,
     tier: blockers.length > 0 ? "immediate" : "batched",
-    url,
+    ...(url ? { url } : {}),
     body:
       `${items.length} waiting on you` +
       (blockers.length ? ` (${blockers.length} blocking)` : "") +

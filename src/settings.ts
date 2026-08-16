@@ -11,7 +11,7 @@ import {
   type SettingValue,
   type SettingWrite,
 } from "./config-schema.ts";
-import { JsonObject, JsonValue, type Json } from "./http/respond.ts";
+import { JsonObject, JsonValue, type Json } from "./contracts/json.ts";
 
 /**
  * Settings the boss changes in the panel, layered over the file.
@@ -60,7 +60,8 @@ function read(db: DB): SettingWrite[] {
   for (const r of db.query<{ k: string; v: string }, []>("SELECT k, v FROM setting").all()) {
     if (!r.k.startsWith(PREFIX)) continue;
     try {
-      const write = SettingWriteSchema.safeParse({ path: r.k.slice(PREFIX.length), value: JSON.parse(r.v) });
+      const value: unknown = JSON.parse(r.v);
+      const write = SettingWriteSchema.safeParse({ path: r.k.slice(PREFIX.length), value });
       if (write.success && write.data.value !== null) out.push(write.data);
     } catch {}
   }

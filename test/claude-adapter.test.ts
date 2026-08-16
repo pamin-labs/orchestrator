@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 import { buildStable } from "../src/prompt/assemble.ts";
 import { buildArgv, runTurn, summarizeTool, trimForLog, type TurnRunner } from "../src/runtime/claude.ts";
 

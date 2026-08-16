@@ -19,8 +19,8 @@
  * token, costs a few hundred tokens, and is needed roughly once a week.
  */
 
-import { jsonOr } from "../util/text.ts";
-import { JsonValue, type Json } from "../../http/respond.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { JsonValue, type Json } from "../../contracts/json.ts";
 import { z } from "zod";
 
 /** Enough to make codex talk to the API, and nothing anyone has to read. */

@@ -217,7 +217,7 @@ async function streamed(
 ): Promise<{ code: number; out: string }> {
   const grpId = "grp" in scope ? scope.grp : null;
   if (grpId == null) {
-    const r = await execIn(ctx, scope, cmd, { ...opts, cwd: undefined });
+    const r = await execIn(ctx, scope, cmd, opts);
     return { code: r.code, out: `${r.out}${r.err}` };
   }
   sandboxLog(ctx, grpId, "cmd", cmd);
@@ -402,7 +402,7 @@ export async function utilGit(ctx: Ctx, argv: string[], cwd?: string): Promise<{
   // after it is a branch name, a path or a URL and is quoted like everywhere else.
   const cmd = `git -c core.hooksPath=/dev/null ${verb} ${argv.slice(1).map(shq).join(" ")}`;
   const r = await execIn(ctx, UTIL, cmd, {
-    cwd,
+    ...(cwd ? { cwd } : {}),
     timeoutMs: 600_000,
     env: { GIT_TERMINAL_PROMPT: "0" },
   });

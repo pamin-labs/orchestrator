@@ -90,7 +90,7 @@ function local(): { tags: string[]; note?: string } {
       .map((l) => l.trim())
       .filter((l) => l && !l.includes("<none>"));
     const mine = all.filter((r) => !hasRegistry(r));
-    return { tags: mine, note: mine.length ? undefined : "本机没有可用的镜像 —— docker build 一个再回来" };
+    return { tags: mine, ...(mine.length ? {} : { note: "本机没有可用的镜像 —— docker build 一个再回来" }) };
   } catch {
     return { tags: [], note: "这台机器上没有 docker" };
   }

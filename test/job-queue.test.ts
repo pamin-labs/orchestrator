@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
+import { requestContext } from "../src/http/request-context.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { z } from "zod";
@@ -19,6 +21,12 @@ function seed(db: DB, groups: number, status = "RUNNING"): number[] {
     ids.push(r.id);
   }
   return ids;
+}
+
+function idAt(ids: readonly number[], index: number): number {
+  const id = ids[index];
+  if (id === undefined) throw new Error(`fixture did not create group ${index + 1}`);
+  return id;
 }
 
 /** Executor that blocks until released, so we can inspect mid-flight state. */
@@ -52,6 +60,44 @@ test("per-group concurrency is 1 — the group's single writer", async () => {
   expect(started.length).toBe(2);
 });
 
+test("HTTP correlation survives the durable queue and becomes the event's parent trace", async () => {
+  const db = openMemory();
+  try {
+    const group = seed(db, 1)[0]!;
+    const bus = new Bus(db);
+    const scheduler = new Scheduler(db, async () => {
+      bus.emit({ grpId: group, author: "worker", kind: "state_change", body: "done" });
+    });
+    const jobId = requestContext.run(
+      {
+        requestId: "request-correlation",
+        traceId: "a".repeat(32),
+        spanId: "b".repeat(16),
+        method: "POST",
+        path: "/api/v1/ideas",
+      },
+      () => scheduler.enqueue("agent_turn", { grp_id: group }),
+    );
+
+    expect(
+      db
+        .query<{ correlation_id: string; trace_id: string; parent_span_id: string }, [number]>(
+          "SELECT correlation_id, trace_id, parent_span_id FROM job WHERE id = ?",
+        )
+        .get(jobId),
+    ).toEqual({ correlation_id: "request-correlation", trace_id: "a".repeat(32), parent_span_id: "b".repeat(16) });
+
+    await scheduler.drain();
+    const event = bus.latest(1)[0]!;
+    expect(event.correlationId).toBe("request-correlation");
+    expect(event.traceId).toBe("a".repeat(32));
+    expect(event.spanId).toMatch(/^[0-9a-f]{16}$/);
+    expect(event.spanId).not.toBe("b".repeat(16));
+  } finally {
+    db.close();
+  }
+});
+
 test("maxGroups caps how many groups run at once", async () => {
   const db = openMemory();
   const ids = seed(db, 5);
@@ -73,8 +119,8 @@ test("leases use their own pool and do not consume group slots", async () => {
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 3, leaseSlots: 1 });
   for (const id of ids) s.enqueue("agent_turn", { grp_id: id });
-  s.enqueue("lease", { grp_id: ids[0] });
-  s.enqueue("lease", { grp_id: ids[1] });
+  s.enqueue("lease", { grp_id: idAt(ids, 0) });
+  s.enqueue("lease", { grp_id: idAt(ids, 1) });
   s.tick();
 
   // 3 turns + 1 lease; the second lease waits on the Runner pool, not on groups.
@@ -114,13 +160,13 @@ test("a tagged resource draws from its own pool, so one browser cannot stall eve
 
 test("legacy resource tags with the wrong JSON shape fall back to the default pool", async () => {
   const db = openMemory();
-  const [grp] = seed(db, 1);
+  const grp = idAt(seed(db, 1), 0);
   db.run(`INSERT INTO resource (name, template, tags_json) VALUES ('build', 'echo build', '"repo"')`);
   const lease = db
     .query<{ id: number }, [number]>(
       "INSERT INTO lease (resource, grp_id, enqueued_at) VALUES ('build', ?, 0) RETURNING id",
     )
-    .get(grp!)!;
+    .get(grp)!;
   const ran: Job[] = [];
   const scheduler = new Scheduler(db, async (job) => void ran.push(job));
 
@@ -253,10 +299,10 @@ test("higher priority dispatches first", async () => {
   const ids = seed(db, 2);
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 1 });
-  s.enqueue("agent_turn", { grp_id: ids[0], priority: 0 });
-  s.enqueue("agent_turn", { grp_id: ids[1], priority: 10 });
+  s.enqueue("agent_turn", { grp_id: idAt(ids, 0), priority: 0 });
+  s.enqueue("agent_turn", { grp_id: idAt(ids, 1), priority: 10 });
   s.tick();
-  expect(started[0]!.grp_id).toBe(ids[1]!);
+  expect(started[0]!.grp_id).toBe(idAt(ids, 1));
   release();
   await s.drain();
 });
@@ -293,7 +339,9 @@ function standing(db: DB, ...roles: string[]): number[] {
 test("two standing agents run at once — they share nothing", async () => {
   const db = openMemory();
   seed(db, 1);
-  const [lib, arch] = standing(db, "librarian", "architect");
+  const standingIds = standing(db, "librarian", "architect");
+  const lib = idAt(standingIds, 0);
+  const arch = idAt(standingIds, 1);
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 3 });
   s.enqueue("agent_turn", { grp_id: null, agent_id: lib, payload: { role: "librarian" } });
@@ -312,7 +360,7 @@ test("two standing agents run at once — they share nothing", async () => {
 test("one standing agent still writes one transcript at a time", async () => {
   const db = openMemory();
   seed(db, 1);
-  const [lib] = standing(db, "librarian");
+  const lib = idAt(standing(db, "librarian"), 0);
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 3 });
   s.enqueue("agent_turn", { grp_id: null, agent_id: lib });
@@ -327,7 +375,9 @@ test("one standing agent still writes one transcript at a time", async () => {
 test("standing turns still count against maxGroups", async () => {
   const db = openMemory();
   seed(db, 1);
-  const [lib, arch] = standing(db, "librarian", "architect");
+  const standingIds = standing(db, "librarian", "architect");
+  const lib = idAt(standingIds, 0);
+  const arch = idAt(standingIds, 1);
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 1 });
   s.enqueue("agent_turn", { grp_id: null, agent_id: lib });
@@ -521,8 +571,8 @@ test("staging a batch still dispatches it in priority order", () => {
   const ids = seed(db, 2);
   const order: (number | null)[] = [];
   const s = new Scheduler(db, async (j) => void order.push(j.grp_id));
-  s.enqueue("agent_turn", { grp_id: ids[0], priority: 0 });
-  s.enqueue("agent_turn", { grp_id: ids[1], priority: 10 });
+  s.enqueue("agent_turn", { grp_id: idAt(ids, 0), priority: 0 });
+  s.enqueue("agent_turn", { grp_id: idAt(ids, 1), priority: 10 });
   s.tick();
-  expect(order[0]).toBe(ids[1]!);
+  expect(order[0]).toBe(idAt(ids, 1));
 });

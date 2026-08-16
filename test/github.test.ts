@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
+import type { Json } from "../src/contracts/json.ts";
 import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { classify, makeGithub, type Fetcher } from "../src/mech/git/github.ts";
-import { parseRepo } from "../src/mech/git/repository.ts";
-import type { Json } from "../src/http/respond.ts";
+import { parseRepo } from "../src/contracts/repository.ts";
 
 /**
  * The REST client, without the network.
@@ -128,7 +128,9 @@ test("the three buckets are the three different answers", () => {
 });
 
 test("a network throw is transient, not a bad credential", async () => {
+  let attempts = 0;
   const fetchFn: Fetcher = async () => {
+    attempts += 1;
     throw new TypeError("fetch failed");
   };
   const r = await makeGithub(db(), fetchFn).request("GET", "/user", z.json());
@@ -136,6 +138,72 @@ test("a network throw is transient, not a bad credential", async () => {
   if (!r.ok) {
     expect(r.bucket).toBe("transient");
     expect(r.status).toBe(0);
+  }
+  expect(attempts).toBe(3);
+});
+
+test("transient retries are bounded and only used for idempotent reads", async () => {
+  let gets = 0;
+  const get = await makeGithub(db(), async () => {
+    gets += 1;
+    return gets < 3 ? json(502, { message: "bad gateway" }) : json(200, { ok: true });
+  }).request("GET", "/user", z.object({ ok: z.boolean() }));
+  expect(get.ok).toBe(true);
+  expect(gets).toBe(3);
+
+  let posts = 0;
+  const post = await makeGithub(db(), async () => {
+    posts += 1;
+    return json(502, { message: "bad gateway" });
+  }).request("POST", "/repos/me/x/pulls", z.json(), { title: "x" });
+  expect(post).toMatchObject({ ok: false, status: 502, bucket: "transient" });
+  expect(posts).toBe(1);
+});
+
+test("every GitHub request carries a deadline signal", async () => {
+  const d = db();
+  try {
+    let deadline: AbortSignal | undefined;
+    const result = await makeGithub(d, async (_url, init) => {
+      deadline = init.signal;
+      return json(200, { login: "octocat" });
+    }).request("GET", "/user", z.object({ login: z.string() }));
+
+    expect(result.ok).toBe(true);
+    expect(deadline).toBeInstanceOf(AbortSignal);
+    expect(deadline!.aborted).toBe(false);
+  } finally {
+    d.close();
+  }
+});
+
+test("caller cancellation aborts an active GitHub request without retrying", async () => {
+  const d = db();
+  try {
+    const controller = new AbortController();
+    let attempts = 0;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const result = makeGithub(d, async (_url, init) => {
+      attempts += 1;
+      const signal = init.signal;
+      if (!signal) throw new Error("missing deadline signal");
+      entered();
+      return await new Promise<Response>((_resolve, reject) => {
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    }).request("GET", "/user", z.json(), undefined, controller.signal);
+
+    await started;
+    const reason = new Error("caller stopped");
+    controller.abort(reason);
+    expect(await result.catch((error: unknown) => error)).toBe(reason);
+    expect(attempts).toBe(1);
+  } finally {
+    d.close();
   }
 });
 

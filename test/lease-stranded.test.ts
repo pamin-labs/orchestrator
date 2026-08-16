@@ -13,8 +13,8 @@ import type { Ctx } from "../src/api.ts";
 /**
  * A gate whose container cannot be opened must fail, not disappear.
  *
- * `finishLease` is the only thing that resolves `ctx.waiters.get('lease:N')`, and
- * `orch lease` does not return until it does. So when `execIn` rejected —
+ * A terminal lease durably queues a result turn for its waiting agent. So when
+ * `execIn` rejected —
  * `ensureSandbox` rethrows, `commands.run` is a socket — `runLease` unwound
  * before finishing, and the agent that asked for the gate waited forever while
  * its `orch` polled a reply nobody would write. The group reads RUNNING the
@@ -67,19 +67,20 @@ test("a container that cannot be opened is an exit code, not a rejection", async
 
 test("a lease whose container is gone finishes as failed and releases the agent", async () => {
   // The terminal state this exists to prevent: the lease row stuck at `running`
-  // forever with an agent parked on the waiter.
-  const { db, ctx, sched } = stranded();
-  const lease = db
+  // forever with an agent that never receives a durable follow-up.
+  const { db, sched } = stranded();
+  const agent = db
     .query<{ id: number }, []>(
-      `INSERT INTO lease (resource, grp_id, args_json, state, enqueued_at)
-       VALUES ('test', 1, '{}', 'queued', 0) RETURNING id`,
+      `INSERT INTO agent (project_id, grp_id, role, model, state, created_at)
+       VALUES (1, 1, 'engineer', 'm', 'waiting_lease', 0) RETURNING id`,
     )
     .get()!;
-
-  let released: string | null = null;
-  ctx.waiters.set(`lease:${lease.id}`, (v) => {
-    released = v;
-  });
+  const lease = db
+    .query<{ id: number }, []>(
+      `INSERT INTO lease (resource, grp_id, agent_id, args_json, state, enqueued_at)
+       VALUES ('test', 1, ${agent.id}, '{}', 'queued', 0) RETURNING id`,
+    )
+    .get()!;
 
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   await sched.drain();
@@ -91,6 +92,21 @@ test("a lease whose container is gone finishes as failed and releases the agent"
   // 126 is "found it, could not run it" — the guard that was written for exactly
   // this and could never fire, because reaching it required a return.
   expect(row.exit_code).toBe(126);
-  // And the agent is let go, which is the half that was actually costing turns.
-  expect(released).not.toBeNull();
+  expect(db.query<{ state: string }, [number]>("SELECT state FROM agent WHERE id = ?").get(agent.id)!.state).toBe(
+    "idle",
+  );
+  const wake = db
+    .query<{ state: string; payload_json: string }, [number]>(
+      "SELECT state, payload_json FROM job WHERE kind = 'agent_turn' AND agent_id = ? ORDER BY id DESC LIMIT 1",
+    )
+    .get(agent.id)!;
+  expect(wake.state).toBe("pending");
+  expect(JSON.parse(wake.payload_json)).toMatchObject({
+    mail: {
+      from: "runner",
+      from_group: 1,
+      intent: "inform",
+      body: expect.stringContaining("container unavailable"),
+    },
+  });
 }, 30_000);

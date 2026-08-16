@@ -8,7 +8,7 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 
 /**
  * The deadlock that stopped eight groups at once, from both ends.
@@ -69,7 +69,11 @@ const post = (app: (r: Request) => Promise<Response>, path: string, body: Json, 
     new Request(`http://x${path}`, {
       method: "POST",
       body: JSON.stringify(body),
-      headers: { "content-type": "application/json", "x-orch-token": token },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        "x-orch-token": token,
+      },
     }),
   );
 
@@ -104,10 +108,10 @@ test("the writer can claim and close the card it was handed back", async () => {
      VALUES (1, 1, 'engineer', 'm', 'tok-new', 0)`,
   );
 
-  expect(await (await post(h.app, "/orch/task/claim", { task_id: 1 }, "tok-new")).json()).toEqual({ message: "ok" });
+  expect(await (await post(h.app, "/orch/v1/task/claim", { task_id: 1 }, "tok-new")).json()).toEqual({ message: "ok" });
   const done = await post(
     h.app,
-    "/orch/task/done",
+    "/orch/v1/task/done",
     {
       task_id: 1,
       claim: { files: ["src/one.ts"], summary: "src/one.ts returns the fixed value" },
@@ -132,7 +136,7 @@ test("a card whose owner retired is not locked away from the group", async () =>
 
   const done = await post(
     h.app,
-    "/orch/task/done",
+    "/orch/v1/task/done",
     {
       task_id: 1,
       already_done: "already on the branch from the previous session",
@@ -171,7 +175,7 @@ test("a reopened card says what it already delivered, and how to close it", asyn
   sendBack(h.deps, 1, "gate said no", "gate");
 
   const list = await (
-    await h.app(new Request("http://x/orch/task", { headers: { "x-orch-token": "tok-old" } }))
+    await h.app(new Request("http://x/orch/v1/task", { headers: { "x-orch-token": "tok-old" } }))
   ).text();
   expect(list).toContain("src/one.ts");
   expect(list).toContain("--already-done");

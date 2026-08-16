@@ -1,4 +1,4 @@
-import { jsonOr } from "../util/text.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../db.ts";
 import type { Ctx } from "../../ctx.ts";
@@ -343,7 +343,7 @@ export function readCodex(out: string): { text: string; usage?: AskUsage } {
       }
     } catch {}
   }
-  return { text, usage };
+  return { text, ...(usage ? { usage } : {}) };
 }
 
 const ClaudeReply = z

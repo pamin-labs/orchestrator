@@ -56,7 +56,7 @@ async function serverUp(): Promise<boolean> {
       connectionConfig: new ConnectionConfig({
         domain: cfg.sandbox.server,
         protocol: "http",
-        apiKey: cfg.sandbox.apiKey || undefined,
+        ...(cfg.sandbox.apiKey ? { apiKey: cfg.sandbox.apiKey } : {}),
         requestTimeoutSeconds: 5,
       }),
     });
@@ -155,7 +155,7 @@ live(
       const direct = await execIn(
         c,
         scope,
-        `curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:${port}/api/state`,
+        `curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:${port}/api/v1/state`,
       );
       expect(direct.out.trim()).not.toBe("200");
 

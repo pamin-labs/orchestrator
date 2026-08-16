@@ -14,14 +14,22 @@
  * `ponytail: an exec id in the job row would let a restart re-attach instead;
  * worth it only if restarts mid-turn stop being rare.`
  */
-const live = new Map<number, () => void>();
+const live = new Map<number, Set<() => void>>();
 
 export function track(jobId: number, abort: () => void): void {
-  live.set(jobId, abort);
+  const cancellers = live.get(jobId) ?? new Set();
+  cancellers.add(abort);
+  live.set(jobId, cancellers);
 }
 
-export function untrack(jobId: number): void {
-  live.delete(jobId);
+export function untrack(jobId: number, abort?: () => void): void {
+  if (!abort) {
+    live.delete(jobId);
+    return;
+  }
+  const cancellers = live.get(jobId);
+  cancellers?.delete(abort);
+  if (cancellers?.size === 0) live.delete(jobId);
 }
 
 export function isRunning(jobId: number): boolean {
@@ -30,14 +38,16 @@ export function isRunning(jobId: number): boolean {
 
 /** Stop a turn. Returns false when this process was not the one running it. */
 export function abortJob(jobId: number): boolean {
-  const stop = live.get(jobId);
-  if (!stop) return false;
-  try {
-    stop();
-  } catch {
-    // Already finished between the lookup and the call.
-  }
+  const stops = live.get(jobId);
+  if (!stops) return false;
   live.delete(jobId);
+  for (const stop of stops) {
+    try {
+      stop();
+    } catch {
+      // Already finished between the lookup and the call.
+    }
+  }
   return true;
 }
 

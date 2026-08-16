@@ -1,11 +1,9 @@
 import { z } from "zod";
+import { ChangedFilesClaimSchema } from "../../contracts/orch.ts";
 
 /** Claim versus diff. */
 
-export const ChangedFilesClaimSchema = z.object({
-  files: z.array(z.string().trim().min(1)).min(1),
-  summary: z.string().trim().min(1).max(4000),
-});
+export { ChangedFilesClaimSchema } from "../../contracts/orch.ts";
 
 export const AlreadyDoneClaimSchema = z.object({
   already_done: z.string().trim().min(1).max(4000),

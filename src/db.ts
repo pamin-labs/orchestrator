@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { maskValue } from "./mech/util/scrub.ts";
-import { parseRepo } from "./mech/git/repository.ts";
+import { parseRepo } from "./contracts/repository.ts";
 
 /**
  * Single source of truth for the schema. See docs/project/plan.md §3.
@@ -625,6 +625,36 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `
   ALTER TABLE grp ADD COLUMN pause_reason TEXT;
   UPDATE grp SET pause_reason = 'unknown' WHERE status IN ('PAUSED', 'PAUSING', 'PARKED');
+  `,
+
+  // 041 — durable HTTP idempotency for every mutating protocol route.
+  `
+  CREATE TABLE idempotency_request (
+    caller       TEXT NOT NULL,
+    route        TEXT NOT NULL,
+    key          TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    state        TEXT NOT NULL,
+    status       INTEGER,
+    body         TEXT,
+    content_type TEXT,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    PRIMARY KEY (caller, route, key)
+  );
+  CREATE INDEX idempotency_request_age ON idempotency_request (updated_at);
+  `,
+
+  // 042 — durable request/trace correlation across queued work and events.
+  `
+  ALTER TABLE job ADD COLUMN correlation_id TEXT;
+  ALTER TABLE job ADD COLUMN trace_id TEXT;
+  ALTER TABLE job ADD COLUMN parent_span_id TEXT;
+  ALTER TABLE event ADD COLUMN correlation_id TEXT;
+  ALTER TABLE event ADD COLUMN trace_id TEXT;
+  ALTER TABLE event ADD COLUMN span_id TEXT;
+  CREATE INDEX job_correlation ON job (correlation_id);
+  CREATE INDEX event_correlation ON event (correlation_id, seq);
   `,
 ];
 

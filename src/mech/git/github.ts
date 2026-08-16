@@ -3,9 +3,11 @@ import { z } from "zod";
 import { say } from "../../lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";
 import { raise } from "../flow/escalate.ts";
-import { jsonOr } from "../util/text.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { clearRepositoryHold, holdRepository } from "./repository.ts";
-import type { Json } from "../../http/respond.ts";
+import type { Json } from "../../contracts/json.ts";
+import { recordCache, recordRetry } from "../../observability.ts";
+import { currentRequestId, requestContext } from "../../http/request-context.ts";
 
 /**
  * GitHub, as eight endpoints of ordinary JSON.
@@ -30,6 +32,24 @@ const ErrorBody = z.object({
   errors: z.array(z.object({ message: z.string().optional() })).optional(),
 });
 
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return Bun.sleep(ms);
+  if (signal.aborted) return Promise.reject(signal.reason);
+  const activeSignal = signal;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(done, ms);
+    function done(): void {
+      activeSignal.removeEventListener("abort", abort);
+      resolve();
+    }
+    function abort(): void {
+      clearTimeout(timer);
+      reject(activeSignal.reason);
+    }
+    activeSignal.addEventListener("abort", abort, { once: true });
+  });
+}
+
 /**
  * Who can do something about it. Three buckets because they need three
  * different answers (007 §6): the boss fixes a credential, an agent fixes a
@@ -43,6 +63,10 @@ export interface GhFail {
   /** 0 for a transport-level throw, which has no status. */
   status: number;
   message: string;
+  operation?: string;
+  target?: string;
+  retryable?: boolean;
+  correlationId?: string;
 }
 export interface GhOk<T> {
   ok: true;
@@ -58,7 +82,13 @@ export type Fetcher = (
 ) => Promise<Response>;
 
 export interface Github {
-  request<T>(method: string, path: string, schema: z.ZodType<T>, body?: Json): Promise<GhResult<T>>;
+  request<T>(
+    method: string,
+    path: string,
+    schema: z.ZodType<T>,
+    body?: Json,
+    signal?: AbortSignal,
+  ): Promise<GhResult<T>>;
   /** `x-ratelimit-remaining` from the last answer; null before the first one. */
   remaining(): number | null;
 }
@@ -172,14 +202,39 @@ export function makeGithub(
   return {
     remaining: () => remaining,
 
-    async request<T>(method: string, path: string, schema: z.ZodType<T>, body?: Json): Promise<GhResult<T>> {
+    async request<T>(
+      method: string,
+      path: string,
+      schema: z.ZodType<T>,
+      body?: Json,
+      signal?: AbortSignal,
+    ): Promise<GhResult<T>> {
+      const callerSignal = signal ?? requestContext.getStore()?.signal;
+      const activeSignal = callerSignal
+        ? AbortSignal.any([callerSignal, AbortSignal.timeout(TIMEOUT_MS)])
+        : AbortSignal.timeout(TIMEOUT_MS);
+      // Cancellation is control flow owned by the caller, not a transient
+      // GitHub failure. Keep the original reason object so HTTP disconnects and
+      // scheduler job cancellation remain distinguishable at their boundary.
+      if (callerSignal?.aborted) throw callerSignal.reason;
+      const fail = (bucket: Bucket, status: number, message: string): GhFail => ({
+        ok: false,
+        bucket,
+        status,
+        message,
+        operation: `${method} GitHub API`,
+        target: path,
+        retryable: bucket === "transient",
+        correlationId: currentRequestId(),
+      });
       const token = loadAuth(db, "github")?.secret;
       if (!token) {
-        return { ok: false, bucket: "boss", status: 0, message: "no GitHub credential: connect GitHub in settings" };
+        return fail("boss", 0, "no GitHub credential: connect GitHub in settings");
       }
       const url = path.startsWith("http") ? path : API + path;
       const key = `${token}\0${url}`;
       const hit = method === "GET" ? cache.get(key) : undefined;
+      if (method === "GET") recordCache("github-etag", !!hit, cache.size);
 
       const headers: Record<string, string> = {
         accept: "application/vnd.github+json",
@@ -190,16 +245,36 @@ export function makeGithub(
       if (hit) headers["if-none-match"] = hit.etag;
       if (body !== undefined) headers["content-type"] = "application/json";
 
-      let res: Response;
-      try {
-        res = await fetchFn(url, {
-          method,
-          headers,
-          body: body === undefined ? undefined : JSON.stringify(body),
-          signal: AbortSignal.timeout(TIMEOUT_MS),
-        });
-      } catch (e) {
-        return { ok: false, bucket: "transient", status: 0, message: String(e).slice(0, 200) };
+      let res: Response | undefined;
+      let thrown: unknown;
+      const attempts = method === "GET" ? 3 : 1;
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+          res = await fetchFn(url, {
+            method,
+            headers,
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+            signal: activeSignal,
+          });
+          if (![429, 500, 502, 503, 504].includes(res.status) || attempt === attempts - 1) break;
+        } catch (error) {
+          thrown = error;
+          if (callerSignal?.aborted) throw callerSignal.reason;
+          if (activeSignal.aborted || attempt === attempts - 1) break;
+        }
+        recordRetry("github");
+        const jitter = Math.floor(Math.random() * 25);
+        try {
+          await sleep(50 * 2 ** attempt + jitter, activeSignal);
+        } catch (error) {
+          if (callerSignal?.aborted) throw callerSignal.reason;
+          thrown = error;
+          break;
+        }
+      }
+      if (callerSignal?.aborted) throw callerSignal.reason;
+      if (!res) {
+        return fail("transient", 0, String(thrown).slice(0, 200));
       }
 
       const left = res.headers.get("x-ratelimit-remaining");
@@ -213,10 +288,16 @@ export function makeGithub(
       if (res.status === 304 && hit) {
         const cached = schema.safeParse(hit.data);
         if (cached.success) return { ok: true, status: 304, data: cached.data };
-        return { ok: false, status: 304, bucket: "transient", message: `GitHub cached invalid JSON for ${path}` };
+        return fail("transient", 304, `GitHub cached invalid JSON for ${path}`);
       }
 
-      const text = await res.text().catch(() => "");
+      let text: string;
+      try {
+        text = await res.text();
+      } catch {
+        if (callerSignal?.aborted) throw callerSignal.reason;
+        text = "";
+      }
       if (!res.ok) {
         const bucket = classify(res.status, text);
         const why = res.status === 404 ? unreachable(path) : `GitHub ${res.status} on ${path}: ${message(text)}`;
@@ -224,24 +305,19 @@ export function makeGithub(
         // backoff is what it is for — holding a project for a blip would stop a
         // fleet over something that fixes itself in seconds.
         if (bucket === "boss" && slug) holdRepo(db, lang, slug, why, Date.now());
-        return { ok: false, status: res.status, bucket, message: why };
+        return fail(bucket, res.status, why);
       }
 
       let data: Json;
       try {
         data = JsonValue.parse(text ? JSON.parse(text) : null);
       } catch {
-        return {
-          ok: false,
-          status: res.status,
-          bucket: "transient",
-          message: `GitHub sent ${path} as something that is not JSON`,
-        };
+        return fail("transient", res.status, `GitHub sent ${path} as something that is not JSON`);
       }
 
       const parsed = schema.safeParse(data);
       if (!parsed.success) {
-        return { ok: false, status: res.status, bucket: "transient", message: `GitHub sent invalid JSON for ${path}` };
+        return fail("transient", res.status, `GitHub sent invalid JSON for ${path}`);
       }
 
       const etag = res.headers.get("etag");

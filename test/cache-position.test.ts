@@ -69,7 +69,7 @@ test("delta sections are ordered with the newest information last", () => {
 });
 
 test("empty delta parts are omitted, not rendered as blank headings", () => {
-  const body = buildDelta({ card: "only this", unread: "", handoff: undefined });
+  const body = buildDelta({ card: "only this", unread: "" });
   expect(body).toBe("## Your current work\n\nonly this");
 });
 

@@ -15,7 +15,7 @@
  */
 
 /** A repository root: what is in it, and the contents of the few files that matter. */
-import { jsonOr } from "./text.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
 
 export interface Root {

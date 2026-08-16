@@ -1,7 +1,7 @@
 import type { DB } from "../../db.ts";
 import { projectConfig } from "../util/rows.ts";
 import { GRP_STATES } from "../../states.ts";
-import { jsonOr } from "../util/text.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
 
 /**

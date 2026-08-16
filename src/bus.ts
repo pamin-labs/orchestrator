@@ -1,7 +1,8 @@
 import type { DB } from "./db.ts";
+import { EventInputSchema, type EventInput, type Frame, type LiveFrame, type StoredEvent } from "./contracts/events.ts";
+import { jsonOr, JsonValue } from "./contracts/json.ts";
 import { scrub } from "./mech/util/scrub.ts";
-import { jsonOr } from "./mech/util/text.ts";
-import { z } from "zod";
+import { requestContext } from "./http/request-context.ts";
 
 /**
  * Append-only event log plus fan-out.
@@ -11,61 +12,22 @@ import { z } from "zod";
  * one home and the UI never needs its own state.
  */
 
-const EventInputSchema = z.object({
-  channelId: z.number().nullable().optional(),
-  grpId: z.number().nullable().optional(),
-  author: z.string(),
-  kind: z.string(),
-  intent: z.string().nullable().optional(),
-  severity: z.string().nullable().optional(),
-  body: z.string().optional(),
-  target: z.string().nullable().optional(),
-  meta: z.json().optional(),
-});
-
-const StoredEventSchema = EventInputSchema.extend({ seq: z.number(), at: z.number() });
-
-/** Live-only frames (partial text, tool starts). Not persisted: they are noise
- *  in an audit log but essential for the "management feel" of watching a turn. */
-const LiveFrameSchema = z.object({
-  type: z.literal("live"),
-  grpId: z.number().nullable(),
-  /** A standing agent has no group, so this is the only thing that scopes its
-      output to a project rather than to every project's feed. */
-  projectId: z.number().nullable().optional(),
-  agentId: z.number().nullable(),
-  /** Who is talking. Without it the desk wall and the timeline say "agent". */
-  role: z.string().optional(),
-  kind: z.enum(["text", "thinking", "tool", "status"]),
-  body: z.string(),
-  /** When the sender says it happened. Omitted, the client stamps its own clock —
-      which is why a panel holding both a stored tail and the live feed could not
-      tell they were the same line. */
-  at: z.number().optional(),
-});
-
-export const FrameSchema = z.discriminatedUnion("type", [
-  StoredEventSchema.extend({ type: z.literal("event") }),
-  LiveFrameSchema,
-]);
-
-export type EventInput = Omit<z.infer<typeof EventInputSchema>, "meta"> & {
-  /** Producers use typed objects; persistence normalises them through JSON. */
-  meta?: object | string | number | boolean | null;
-};
-export type StoredEvent = z.infer<typeof StoredEventSchema>;
-export type LiveFrame = z.infer<typeof LiveFrameSchema>;
-export type Frame = z.infer<typeof FrameSchema>;
-
-type Sink = (f: Frame) => void;
 type EventRow = Omit<StoredEvent, "meta"> & { meta_json: string };
 
 export class Bus {
-  private sinks = new Set<Sink>();
+  private sinks = new Set<(frame: Frame) => void>();
+  /**
+   * Events inserted by a synchronous SQLite transaction cannot be fanned until
+   * its outermost transaction commits. The seq is AUTOINCREMENT but a rolled
+   * back value may be reused, so the value is also an identity guard: a later
+   * event that reuses the seq replaces this pending entry and is the only one
+   * allowed to fan.
+   */
+  private pending = new Map<number, StoredEvent>();
 
   constructor(private db: DB) {}
 
-  subscribe(sink: Sink): () => void {
+  subscribe(sink: (frame: Frame) => void): () => void {
     this.sinks.add(sink);
     return () => this.sinks.delete(sink);
   }
@@ -87,7 +49,13 @@ export class Bus {
     // because the masker works on values, and `MASK` carries no quote so the JSON
     // survives it.
     const metaJson = scrub(JSON.stringify(e.meta ?? {}));
-    const event = EventInputSchema.parse({ ...e, body, meta: jsonOr(metaJson, z.json(), {}) });
+    const context = requestContext.getStore();
+    const event = EventInputSchema.parse({
+      ...e,
+      body,
+      meta: jsonOr(metaJson, JsonValue, {}),
+      ...(context ? { correlationId: context.requestId, traceId: context.traceId, spanId: context.spanId } : {}),
+    });
     const at = Date.now();
     const row = this.db
       .query<
@@ -103,10 +71,15 @@ export class Bus {
           string | null,
           string,
           number,
+          string | null,
+          string | null,
+          string | null,
         ]
       >(
-        `INSERT INTO event (channel_id, grp_id, author, kind, intent, severity, body, target, meta_json, at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING seq`,
+        `INSERT INTO event
+           (channel_id, grp_id, author, kind, intent, severity, body, target, meta_json, at,
+            correlation_id, trace_id, span_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING seq`,
       )
       .get(
         event.channelId ?? null,
@@ -119,9 +92,12 @@ export class Bus {
         event.target ?? null,
         metaJson,
         at,
+        event.correlationId ?? null,
+        event.traceId ?? null,
+        event.spanId ?? null,
       )!;
     const stored: StoredEvent = { ...event, seq: row.seq, at };
-    this.fan({ type: "event", ...stored });
+    this.publish(stored);
     return stored;
   }
 
@@ -139,23 +115,25 @@ export class Bus {
     return this.db
       .query<EventRow, [number, number]>(
         `SELECT seq, channel_id AS channelId, grp_id AS grpId, author, kind, intent, severity,
-                body, target, meta_json, at
+                body, target, meta_json, at, correlation_id AS correlationId,
+                trace_id AS traceId, span_id AS spanId
          FROM event WHERE seq > ? ORDER BY seq LIMIT ?`,
       )
       .all(seq, limit)
-      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, z.json(), {}) }));
+      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, JsonValue, {}) }));
   }
 
   latest(limit = 500): StoredEvent[] {
     return this.db
       .query<EventRow, [number]>(
         `SELECT seq, channel_id AS channelId, grp_id AS grpId, author, kind, intent, severity,
-                body, target, meta_json, at
+                body, target, meta_json, at, correlation_id AS correlationId,
+                trace_id AS traceId, span_id AS spanId
          FROM event ORDER BY seq DESC LIMIT ?`,
       )
       .all(limit)
       .reverse()
-      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, z.json(), {}) }));
+      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, JsonValue, {}) }));
   }
 
   private fan(f: Frame): void {
@@ -166,5 +144,30 @@ export class Bus {
         // A dead SSE connection must never break the emitter.
       }
     }
+  }
+
+  private publish(event: StoredEvent): void {
+    if (!this.db.inTransaction) {
+      // A rolled-back transaction may have reserved this AUTOINCREMENT value.
+      // The committed event owns it now; invalidate the stale microtask.
+      this.pending.delete(event.seq);
+      this.fan({ type: "event", ...event });
+      return;
+    }
+
+    this.pending.set(event.seq, event);
+    queueMicrotask(() => {
+      if (this.pending.get(event.seq) !== event) return;
+      this.pending.delete(event.seq);
+      try {
+        const committed = this.db
+          .query<{ seq: number }, [number]>("SELECT seq FROM event WHERE seq = ?")
+          .get(event.seq);
+        if (committed) this.fan({ type: "event", ...event });
+      } catch {
+        // Shutdown may close the handle after the commit but before this
+        // microtask. The row is durable and reconnecting readers will tail it.
+      }
+    });
   }
 }

@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { type Ctx, makeApp } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
-import { openMemory } from "../src/db.ts";
+import { openMemory, type DB } from "../src/db.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../src/runtime/executor.ts";
 import { Scheduler, type Executor } from "../src/scheduler.ts";
+import { abortJob } from "../src/runtime/running.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
@@ -57,6 +58,21 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   return { db, ctx, sched, deps, specs, sandbox, app: makeApp(ctx) };
+}
+
+function expectDurableLeaseWake(db: DB, agentId: number, body: string): void {
+  expect(db.query<{ state: string }, [number]>("SELECT state FROM agent WHERE id = ?").get(agentId)!.state).toBe(
+    "idle",
+  );
+  const wake = db
+    .query<{ agent_id: number | null; payload_json: string }, [number]>(
+      "SELECT agent_id, payload_json FROM job WHERE kind = 'agent_turn' AND agent_id = ? ORDER BY id DESC LIMIT 1",
+    )
+    .get(agentId)!;
+  expect(wake.agent_id).toBe(agentId);
+  expect(JSON.parse(wake.payload_json)).toMatchObject({
+    mail: { from: "runner", from_group: 1, intent: "inform", body: expect.stringContaining(body) },
+  });
 }
 
 test("a turn hires the role's agent on first use, with a token", async () => {
@@ -236,9 +252,10 @@ test("unread channel messages are injected once, then the cursor advances", asyn
   expect(specs[1]!.prompt).not.toContain("prefer iteration");
 });
 
-test("a lease runs its template and unblocks the waiting agent", async () => {
+test("a lease runs its template and durably wakes the waiting agent", async () => {
   const { db, ctx, sched, sandbox } = harness(async () => ok());
   const agent = hire(harnessDeps(ctx), 1, "engineer");
+  db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [agent.id]);
   db.run(
     `INSERT INTO resource (name, template, arg_schema_json, error_regex)
      VALUES ('echo', 'echo hello-lease', '{}', '^error')`,
@@ -250,23 +267,54 @@ test("a lease runs its template and unblocks the waiting agent", async () => {
     )
     .get()!;
 
-  let digest = "";
-  ctx.waiters.set(`lease:${lease.id}`, (v) => (digest = v));
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   await sched.drain();
 
-  expect(digest).toContain("exit 0");
   // The template reached the sandbox as argv, quoted, with nothing shell-parsed
   // on the way — that is the whole of hard constraint 2 now that `orch` is the
   // only interface an agent has.
-  expect(sandbox.commands.at(-1)).toBe("'echo' 'hello-lease'");
+  expect(sandbox.commands).toContain("'echo' 'hello-lease'");
   const row = db.query<{ state: string; exit_code: number }, []>("SELECT state, exit_code FROM lease").get()!;
   expect(row.state).toBe("done");
   expect(row.exit_code).toBe(0);
+  expectDurableLeaseWake(db, agent.id, "exit 0");
+});
+
+test("finishLease rollback never fans a result whose wake job was not committed", async () => {
+  const { db, ctx, sched } = harness(async () => ok());
+  const agent = hire(harnessDeps(ctx), 1, "engineer");
+  db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [agent.id]);
+  db.run("INSERT INTO resource (name, template, arg_schema_json) VALUES ('echo', 'echo ok', '{}')");
+  const lease = db
+    .query<{ id: number }, []>(
+      `INSERT INTO lease (resource, grp_id, agent_id, args_json, enqueued_at)
+       VALUES ('echo', 1, ${agent.id}, '{}', 0) RETURNING id`,
+    )
+    .get()!;
+  sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
+  db.run(
+    `CREATE TRIGGER fail_lease_wake BEFORE INSERT ON job WHEN NEW.kind = 'agent_turn'
+     BEGIN SELECT RAISE(ABORT, 'wake failure'); END`,
+  );
+  const results: string[] = [];
+  ctx.bus.subscribe((frame) => {
+    if (frame.type === "event" && frame.kind === "lease_result") results.push(frame.body ?? "");
+  });
+
+  await sched.drain();
+  await Promise.resolve();
+
+  expect(results).toEqual([]);
+  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM event WHERE kind = 'lease_result'").get()!.n).toBe(0);
+  expect(db.query<{ state: string }, [number]>("SELECT state FROM agent WHERE id = ?").get(agent.id)!.state).toBe(
+    "waiting_lease",
+  );
 });
 
 test("a lease whose args stopped validating fails instead of running", async () => {
   const { db, ctx, sched } = harness(async () => ok());
+  const agent = hire(harnessDeps(ctx), 1, "engineer");
+  db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [agent.id]);
   db.run(
     `INSERT INTO resource (name, template, arg_schema_json)
      VALUES ('build', 'make {target}', '{"target":{"type":"enum","values":["debug"]}}')`,
@@ -274,40 +322,70 @@ test("a lease whose args stopped validating fails instead of running", async () 
   // Queued when the enum still allowed it; the template changed underneath.
   const lease = db
     .query<{ id: number }, []>(
-      `INSERT INTO lease (resource, grp_id, args_json, enqueued_at)
-       VALUES ('build', 1, '{"target":"release"}', 0) RETURNING id`,
+      `INSERT INTO lease (resource, grp_id, agent_id, args_json, enqueued_at)
+       VALUES ('build', 1, ${agent.id}, '{"target":"release"}', 0) RETURNING id`,
     )
     .get()!;
-  let digest = "";
-  ctx.waiters.set(`lease:${lease.id}`, (v) => (digest = v));
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   await sched.drain();
 
-  expect(digest).toContain("one of");
   expect(db.query<{ state: string }, []>("SELECT state FROM lease").get()!.state).toBe("failed");
+  expectDurableLeaseWake(db, agent.id, "one of");
 });
 
 test("persisted lease arguments must be a flat object of supported scalars", async () => {
   const { db, ctx, sched } = harness(async () => ok());
+  const agent = hire(harnessDeps(ctx), 1, "engineer");
+  db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [agent.id]);
   db.run(
     `INSERT INTO resource (name, template, arg_schema_json)
      VALUES ('build', 'make {target}', '{"target":{"type":"enum","values":["release"]}}')`,
   );
   const lease = db
     .query<{ id: number }, []>(
-      `INSERT INTO lease (resource, grp_id, args_json, enqueued_at)
-       VALUES ('build', 1, '{"target":{"nested":"release"}}', 0) RETURNING id`,
+      `INSERT INTO lease (resource, grp_id, agent_id, args_json, enqueued_at)
+       VALUES ('build', 1, ${agent.id}, '{"target":{"nested":"release"}}', 0) RETURNING id`,
     )
     .get()!;
-  let digest = "";
-  ctx.waiters.set(`lease:${lease.id}`, (v) => (digest = v));
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   await sched.drain();
 
-  expect(digest).toContain("flat JSON object of string, number, or boolean values");
   expect(db.query<{ state: string }, [number]>("SELECT state FROM lease WHERE id = ?").get(lease.id)!.state).toBe(
     "failed",
   );
+  expectDurableLeaseWake(db, agent.id, "flat JSON object of string, number, or boolean values");
+});
+
+test("cancelling a running lease aborts its sandbox command", async () => {
+  const { db, ctx, sched, sandbox } = harness(async () => ok());
+  db.run("INSERT INTO resource (name, template, arg_schema_json) VALUES ('slow', 'sleep 30', '{}')");
+  const lease = db
+    .query<{ id: number }, []>(
+      "INSERT INTO lease (resource, grp_id, args_json, enqueued_at) VALUES ('slow', 1, '{}', 0) RETURNING id",
+    )
+    .get()!;
+  const started = Promise.withResolvers<void>();
+  let resourceSignal: AbortSignal | undefined;
+  ctx.sandbox = {
+    ...sandbox,
+    exec: async (_ctx, _scope, command, options) => {
+      if (command.includes("rev-parse")) return { code: 0, out: "abc123\n", err: "" };
+      resourceSignal = options?.signal;
+      started.resolve();
+      return await new Promise((resolve, reject) => {
+        resourceSignal?.addEventListener("abort", () => reject(resourceSignal?.reason), { once: true });
+      });
+    },
+  };
+
+  const jobId = sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
+  sched.tick();
+  await started.promise;
+  expect(abortJob(jobId)).toBe(true);
+  await sched.drain();
+
+  expect(resourceSignal?.aborted).toBe(true);
+  expect(db.query<{ state: string }, [number]>("SELECT state FROM job WHERE id = ?").get(jobId)!.state).toBe("failed");
 });
 
 test("a lease job without an integer id fails instead of disappearing", async () => {

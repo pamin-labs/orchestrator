@@ -2,7 +2,7 @@ import { resolve as resolvePath, relative, isAbsolute } from "node:path";
 import { z } from "zod";
 import type { Invalid, Result } from "./util/validate.ts";
 import type { DB } from "../db.ts";
-import { jsonOr } from "./util/text.ts";
+import { jsonOr } from "../contracts/json.ts";
 
 /**
  * A lease runs in the group's own sandbox, so this is no longer the host's only
@@ -68,7 +68,7 @@ export interface ResolvedCommand {
  * There were three of these — `gate.ts`, `api/orch/lease.ts`, `executor.ts` —
  * and they did not agree on what a broken column means. `arg_schema_json` was
  * defaulted to `{}` in two and parsed unguarded in the third, which is the one
- * reached by `POST /orch/lease`: a malformed row there threw out of the handler
+ * reached by `POST /orch/v1/lease`: a malformed row there threw out of the handler
  * and reached the agent as a 500 with a JSON syntax error in it, where the other
  * two would have refused the call politely. `tags_json` was read by exactly one
  * of the three, and nothing read the result.
@@ -98,8 +98,8 @@ export function loadResource(db: DB, name: string): ResourceDef | null {
     template: r.template,
     concurrency: r.concurrency,
     argSchema: jsonOr(r.arg_schema_json, ResourceArgsSchema, {}),
-    errorRegex: r.error_regex ?? undefined,
-    cwd: r.cwd ?? undefined,
+    ...(r.error_regex === null ? {} : { errorRegex: r.error_regex }),
+    ...(r.cwd === null ? {} : { cwd: r.cwd }),
     tags: jsonOr(r.tags_json, z.array(z.string()), []),
   };
 }
@@ -186,7 +186,7 @@ export function resolveLease(def: ResourceDef, args: LeaseArgs): Result<Resolved
     // sneak something past. Either way it is a hard error, not a warning.
     return { ok: false, error: `unused args: ${extra.join(", ")}` };
   }
-  return { ok: true, argv, cwd: def.cwd };
+  return { ok: true, argv, ...(def.cwd === undefined ? {} : { cwd: def.cwd }) };
 }
 
 /**
@@ -363,7 +363,7 @@ export async function runResource(
 
   const cwd = opts.cwd ?? resolved.cwd ?? WORK_DEFAULT;
   const limit = opts.timeoutMs ?? 0;
-  const { code, out: output } = await opts.exec(resolved.argv, { cwd, timeoutMs: limit || undefined });
+  const { code, out: output } = await opts.exec(resolved.argv, { cwd, ...(limit ? { timeoutMs: limit } : {}) });
   if (opts.logPath) await Bun.write(opts.logPath, output);
 
   // 124 is what the exec API's own timeout reports, and what `timeout(1)` has
@@ -380,8 +380,12 @@ export async function runResource(
           `exit ${LEASE_TIMEOUT_CODE}: killed after ${mins} min (lease timeout). It either ` +
           `hangs, or needs a leaseTimeoutMs above ${mins} min.\n${base.text}`,
       },
-      logPath: opts.logPath,
+      ...(opts.logPath === undefined ? {} : { logPath: opts.logPath }),
     };
   }
-  return { exitCode: code, digest: digestOutput(code, output, def.errorRegex, opts.logPath), logPath: opts.logPath };
+  return {
+    exitCode: code,
+    digest: digestOutput(code, output, def.errorRegex, opts.logPath),
+    ...(opts.logPath === undefined ? {} : { logPath: opts.logPath }),
+  };
 }

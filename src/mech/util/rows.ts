@@ -1,6 +1,6 @@
 import type { DB } from "../../db.ts";
 import { StoredProjectConfigSchema, type StoredProjectConfig } from "../../config-schema.ts";
-import { jsonOr } from "./text.ts";
+import { jsonOr } from "../../contracts/json.ts";
 
 /**
  * The three row questions this codebase asks over and over.

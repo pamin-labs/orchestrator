@@ -2,16 +2,8 @@ import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ESCALATION_STATES, GRP_STATES, JOB_STATES, LEASE_STATES, SLICE_STATES, TASK_STATES } from "../src/states.ts";
-import {
-  ESCALATION_INVARIANTS,
-  UTIL_INVARIANTS,
-  PROJECT_INVARIANTS,
-  GRP_INVARIANTS,
-  JOB_INVARIANTS,
-  SLICE_INVARIANTS,
-  TASK_INVARIANTS,
-  uncovered,
-} from "../src/mech/ops/invariants.ts";
+import { INVARIANT_TABLES, runInvariants, uncovered } from "../src/mech/ops/invariants.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * The one check this table exists for.
@@ -34,20 +26,48 @@ test("every state says who pushes it out", () => {
     lease: [],
   });
 
-  for (const i of [
-    ...GRP_INVARIANTS,
-    ...SLICE_INVARIANTS,
-    ...TASK_INVARIANTS,
-    ...JOB_INVARIANTS,
-    ...ESCALATION_INVARIANTS,
-    ...UTIL_INVARIANTS,
-    ...PROJECT_INVARIANTS,
-  ]) {
+  expect(Object.keys(INVARIANT_TABLES)).toEqual([
+    "grp",
+    "slice",
+    "task",
+    "job",
+    "escalation",
+    "util",
+    "project",
+    "server",
+    "lease",
+  ]);
+
+  for (const i of Object.values(INVARIANT_TABLES).flat()) {
     // `driver: null` is a real answer — terminal, or a human is deliberately being
     // waited on. An empty string is the unanswered question.
     expect(i.driver === null || i.driver.length > 10).toBe(true);
     expect(i.must.length).toBeGreaterThan(10);
   }
+});
+
+test("every repair-bearing table is in the production runner", () => {
+  expect(
+    Object.entries(INVARIANT_TABLES)
+      .filter(([, rows]) => rows.some((row) => row.repair))
+      .map(([name]) => name),
+  ).toEqual(["grp", "slice", "project"]);
+});
+
+test("the project repair executes through the production registry", () => {
+  const ctx = testContext();
+  ctx.db.run(
+    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'git@github.com:me/x.git', 0)",
+  );
+  ctx.db.run(
+    "INSERT INTO escalation (severity, question, chain_state, created_at) VALUES ('blocker', 'GitHub me/x: unavailable', 'boss', 0)",
+  );
+
+  runInvariants(ctx);
+
+  expect(ctx.db.query<{ state: string }, []>("SELECT chain_state AS state FROM escalation").get()!.state).toBe(
+    "revoked",
+  );
 });
 
 test("a state in the table is a state something actually writes", () => {

@@ -1,8 +1,11 @@
 import { z } from "zod";
 import type { DB } from "./db.ts";
-import { jsonOr } from "./mech/util/text.ts";
-import { isRunning } from "./runtime/running.ts";
+import { jsonOr } from "./contracts/json.ts";
+import { isRunning, track, untrack } from "./runtime/running.ts";
 import { type GrpState, isDispatchableGrpState, type JobState } from "./states.ts";
+import { requestContext } from "./http/request-context.ts";
+import { observeJob, startChildTrace } from "./observability.ts";
+import { errText } from "./mech/util/text.ts";
 
 export type { JobState } from "./states.ts";
 
@@ -64,6 +67,9 @@ export interface StoredJob {
   priority: number;
   state: JobState;
   error?: string | null;
+  correlation_id?: string | null;
+  trace_id?: string | null;
+  parent_span_id?: string | null;
 }
 
 type RunningJob = StoredJob & { started_at: number | null };
@@ -81,11 +87,14 @@ export type EnqueueFields<K extends JobKind> = {
   slice_id?: number | null;
   payload?: JobPayload<K>;
   priority?: number;
+  correlationId?: string | null;
+  traceId?: string | null;
+  parentSpanId?: string | null;
 };
 
 function decodeJob(row: StoredJob): Job {
   const kind = JobKindSchema.parse(row.kind);
-  const raw = JSON.parse(row.payload_json);
+  const raw: unknown = JSON.parse(row.payload_json);
   switch (kind) {
     case "agent_turn":
       return { ...row, kind, payload: JobPayloadSchemas.agent_turn.parse(raw) };
@@ -225,6 +234,7 @@ export class Scheduler {
   private readonly sandboxReady: () => boolean;
   private readonly repoHeld: (projectId: number) => boolean;
   private draining = false;
+  private accepting = true;
 
   constructor(
     private db: DB,
@@ -243,10 +253,18 @@ export class Scheduler {
 
   enqueue<K extends JobKind>(kind: K, fields: EnqueueFields<K> = {}): number {
     const payload = JobPayloadSchemas[kind].parse(fields.payload ?? {});
+    const context = requestContext.getStore();
+    const correlationId = fields.correlationId ?? context?.requestId ?? crypto.randomUUID();
+    const traceId = fields.traceId ?? context?.traceId ?? crypto.randomUUID().replaceAll("-", "");
     const row = this.db
-      .query<{ id: number }, [string, number | null, number | null, number | null, string, number, number]>(
-        `INSERT INTO job (kind, grp_id, agent_id, slice_id, payload_json, priority, enqueued_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      .query<
+        { id: number },
+        [string, number | null, number | null, number | null, string, number, number, string, string, string | null]
+      >(
+        `INSERT INTO job
+           (kind, grp_id, agent_id, slice_id, payload_json, priority, enqueued_at,
+            correlation_id, trace_id, parent_span_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       )
       .get(
         kind,
@@ -256,19 +274,27 @@ export class Scheduler {
         JSON.stringify(payload),
         fields.priority ?? 0,
         this.now(),
+        correlationId,
+        traceId,
+        fields.parentSpanId ?? context?.spanId ?? null,
       )!;
     return row.id;
   }
 
   /** Dispatch everything currently eligible. Safe to call often; never reentrant. */
   tick(): void {
-    if (this.draining) return;
+    if (!this.accepting || this.draining) return;
     this.draining = true;
     try {
       for (const job of this.eligible()) this.start(job);
     } finally {
       this.draining = false;
     }
+  }
+
+  /** Stop admitting queued work while allowing in-flight jobs to settle. */
+  quiesce(): void {
+    this.accepting = false;
   }
 
   /** Resolve once every in-flight job has settled and nothing new is eligible. */
@@ -290,10 +316,6 @@ export class Scheduler {
     return r.changes;
   }
 
-  runningCount(): number {
-    return this.inflight.size;
-  }
-
   /**
    * Jobs that may start right now, in dispatch order.
    *
@@ -308,7 +330,8 @@ export class Scheduler {
   private eligible(): Job[] {
     const rows = this.db
       .query<StoredJob, []>(
-        `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state
+        `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state,
+                correlation_id, trace_id, parent_span_id
          FROM job WHERE state = 'pending' ORDER BY priority DESC, id`,
       )
       .all();
@@ -392,7 +415,8 @@ export class Scheduler {
     return this.decode(
       this.db
         .query<StoredJob, []>(
-          `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state
+          `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state,
+                  correlation_id, trace_id, parent_span_id
            FROM job WHERE state = 'running'`,
         )
         .all(),
@@ -406,11 +430,12 @@ export class Scheduler {
       try {
         jobs.push(decodeJob(row));
       } catch (error) {
-        this.settle(
-          row.id,
-          "failed",
+        this.db.run("UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = ?", [
+          this.now(),
           `invalid ${row.kind} payload: ${error instanceof Error ? error.message : String(error)}`,
-        );
+          row.id,
+          row.state,
+        ]);
       }
     }
     return jobs;
@@ -515,9 +540,31 @@ export class Scheduler {
     ]);
     if (claimed.changes === 0) return; // someone else took it
 
-    const p = this.exec({ ...job, state: "running" })
-      .then(() => this.settle(job.id, "done"))
-      .catch((e) => this.settle(job.id, "failed", String(e?.message ?? e)))
+    const trace = startChildTrace(job.trace_id, job.parent_span_id);
+    const lifecycle = new AbortController();
+    const cancel = () => lifecycle.abort(new Error(`job ${job.id} cancelled`));
+    track(job.id, cancel);
+    const context = {
+      requestId: job.correlation_id ?? crypto.randomUUID(),
+      traceId: trace.traceId,
+      spanId: trace.spanId,
+      method: "JOB",
+      path: `job:${job.kind}`,
+      jobId: job.id,
+      grpId: job.grp_id,
+      agentId: job.agent_id,
+      signal: lifecycle.signal,
+    };
+    const p = requestContext
+      .run(context, () => this.exec({ ...job, state: "running" }))
+      .then(() => {
+        observeJob(job.kind, true, trace);
+        this.settle(job.id, "done");
+      })
+      .catch((error: unknown) => {
+        observeJob(job.kind, false, trace);
+        this.settle(job.id, "failed", errText(error));
+      })
       // `settle` writes to the database, so the handler above can throw as well —
       // a handle closed during shutdown, a job row that is no longer there. This
       // chain is detached, so an escape from it is an unhandled rejection that
@@ -526,6 +573,7 @@ export class Scheduler {
       // by then: the row this wanted to write to is the thing that is gone.
       .catch(() => {})
       .finally(() => {
+        untrack(job.id, cancel);
         this.inflight.delete(job.id);
         // A finished job frees its slot and usually queues what comes next, and
         // nothing dispatched either. Sixteen `enqueue` sites had no `tick()`
@@ -551,7 +599,7 @@ export class Scheduler {
 
   /** A job never stays in `running`: it always lands in a terminal state. */
   private settle(id: number, state: JobState, error?: string): void {
-    this.db.run("UPDATE job SET state = ?, ended_at = ?, error = ? WHERE id = ?", [
+    this.db.run("UPDATE job SET state = ?, ended_at = ?, error = ? WHERE id = ? AND state = 'running'", [
       state,
       this.now(),
       error ?? null,
@@ -609,7 +657,8 @@ export function reclaimOrphans(
 
   const running = db
     .query<RunningJob, []>(
-      `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state, started_at
+      `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state, started_at,
+              correlation_id, trace_id, parent_span_id
        FROM job WHERE state = 'running'`,
     )
     .all();
@@ -675,6 +724,9 @@ export function resumeReclaimed(sched: Scheduler, jobs: readonly (Job | StoredJo
       agent_id: j.agent_id,
       slice_id: j.slice_id,
       priority: j.priority,
+      ...(j.correlation_id === undefined ? {} : { correlationId: j.correlation_id }),
+      ...(j.trace_id === undefined ? {} : { traceId: j.trace_id }),
+      ...(j.parent_span_id === undefined ? {} : { parentSpanId: j.parent_span_id }),
     };
     switch (j.kind) {
       case "agent_turn":
@@ -689,7 +741,9 @@ export function resumeReclaimed(sched: Scheduler, jobs: readonly (Job | StoredJo
       case "reconcile":
         sched.enqueue(j.kind, { ...fields, payload: { resumed: true } });
         break;
-      default:
+      case "digest":
+      case "notify":
+      case "watchdog":
         continue;
     }
     requeued++;

@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { DB } from "../db.ts";
 import { projectConfig } from "./util/rows.ts";
 import { loadResource, type ResourceExec, runResource } from "./lease.ts";
-import { jsonOr } from "./util/text.ts";
+import { jsonOr } from "../contracts/json.ts";
 
 /**
  * The deterministic gate: build, test, lint, typecheck, secret scan.
@@ -98,7 +98,16 @@ export async function runGates(opts: RunGatesOptions): Promise<GateOutcome> {
       break;
     }
     const logPath = join(logDir, `${opts.sliceId}-${name}.log`);
-    const out = await run(def, {}, { exec: opts.exec, cwd: opts.cwd, logPath, timeoutMs: opts.timeoutMs });
+    const out = await run(
+      def,
+      {},
+      {
+        exec: opts.exec,
+        cwd: opts.cwd,
+        logPath,
+        ...(opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
+      },
+    );
     if (!("digest" in out)) {
       results.push({ name, pass: false, exitCode: 126, errorLines: [out.error] });
       break;

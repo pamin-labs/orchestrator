@@ -1,4 +1,5 @@
-import { errText, hours, jsonOr, minutes } from "../util/text.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { errText, hours, minutes } from "../util/text.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../config.ts";
 import { say, type SayKey } from "../../lang.ts";
@@ -814,7 +815,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
            AND g.status NOT IN (SELECT value FROM json_each(?))`,
       )
       .all(stateParam(ESCALATION_TERMINAL_STATES), stateParam(DISPATCHABLE_GRP_STATES));
-    for (const e of stranded) route({ ctx, notifyBoss: ctx.notifyBoss }, e.id);
+    for (const e of stranded) route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, e.id);
   });
 
   // 10. The group it was waiting on has landed.
@@ -1170,6 +1171,8 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         });
         break;
       }
+      default:
+        break;
     }
   });
 

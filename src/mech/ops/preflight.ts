@@ -443,10 +443,13 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
       : missing.length
         ? `${allowed.config} 不含 ${missing.join(", ")}`
         : `${allowed.config} 覆盖了要挂的 ${wanted.length} 个路径`,
-    fix: missing.length
-      ? `把这一行写进 ${allowed!.config} 的 [sandbox] 段，然后重启 opensandbox-server：\n` +
-        `      allowed_host_paths = [${[...allowed!.paths, ...missing].map((p) => `"${p}"`).join(", ")}]`
-      : undefined,
+    ...(missing.length
+      ? {
+          fix:
+            `把这一行写进 ${allowed!.config} 的 [sandbox] 段，然后重启 opensandbox-server：\n` +
+            `      allowed_host_paths = [${[...allowed!.paths, ...missing].map((p) => `"${p}"`).join(", ")}]`,
+        }
+      : {}),
   });
 
   // Credentials are per runtime and live in the DB, never in an event or a

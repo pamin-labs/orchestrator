@@ -8,9 +8,9 @@ import { say } from "../../lang.ts";
 import { squashWip } from "./worktree.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
 import type { Github } from "./github.ts";
-import { parseRepo } from "./repository.ts";
+import { parseRepo } from "../../contracts/repository.ts";
 import { WORK } from "../sandbox/sandbox.ts";
-import { jsonOr } from "../util/text.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
 import type { GrpState } from "../../states.ts";
 

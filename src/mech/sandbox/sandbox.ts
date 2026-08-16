@@ -7,6 +7,7 @@ import type { Ctx } from "../../ctx.ts";
 import { ROOT } from "../../config.ts";
 import type { SandboxSpec } from "../../config-schema.ts";
 import type { ResourceExec } from "../lease.ts";
+import { requestContext } from "../../http/request-context.ts";
 import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../util/shq.ts";
@@ -382,7 +383,7 @@ function connection(ctx: Ctx): ConnectionConfig {
   return new ConnectionConfig({
     domain: `${host}:${port ?? 8080}`,
     protocol,
-    apiKey: key || undefined,
+    ...(key ? { apiKey: key } : {}),
     // The SDK default is 30s, which an image pull blows straight through.
     requestTimeoutSeconds: 600,
   });
@@ -1127,9 +1128,9 @@ export interface ExecOutcome {
 
 function runOpts(o: ExecOpts) {
   return {
-    workingDirectory: o.cwd,
-    timeoutSeconds: o.timeoutMs ? Math.ceil(o.timeoutMs / 1000) : undefined,
-    envs: o.env,
+    ...(o.cwd === undefined ? {} : { workingDirectory: o.cwd }),
+    ...(o.timeoutMs ? { timeoutSeconds: Math.ceil(o.timeoutMs / 1000) } : {}),
+    ...(o.env ? { envs: o.env } : {}),
   };
 }
 
@@ -1285,7 +1286,13 @@ async function* realLines(
  */
 export function resourceExec(ctx: Ctx, scope: Scope): ResourceExec {
   return async (argv, o) => {
-    const r = await execIn(ctx, scope, argv.map(shq).join(" "), { cwd: o.cwd, timeoutMs: o.timeoutMs });
+    const signal = requestContext.getStore()?.signal;
+    const r = await execIn(ctx, scope, argv.map(shq).join(" "), {
+      cwd: o.cwd,
+      ...(o.timeoutMs === undefined ? {} : { timeoutMs: o.timeoutMs }),
+      ...(signal ? { signal } : {}),
+    });
+    if (signal?.aborted) throw signal.reason;
     return { code: r.code, out: r.out + r.err };
   };
 }

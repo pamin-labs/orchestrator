@@ -251,9 +251,9 @@ export async function interrupt(
     author: "boss",
     kind: "state_change",
     body: `interrupted (${mode}), killed ${killed}${rolledBackTo ? `, rolled back to ${rolledBackTo.slice(0, 8)}` : ""}`,
-    meta: { mode, killed, rolledBackTo },
+    meta: { mode, killed, ...(rolledBackTo ? { rolledBackTo } : {}) },
   });
-  return { killed, rolledBackTo };
+  return { killed, ...(rolledBackTo ? { rolledBackTo } : {}) };
 }
 
 interface RunningJob {

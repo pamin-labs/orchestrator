@@ -14,7 +14,7 @@ import {
   splitAddr,
   specFor,
 } from "./sandbox.ts";
-import { jsonOr } from "../util/text.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
 
 /**

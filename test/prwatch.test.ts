@@ -18,7 +18,7 @@ import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 
 function harness(
   handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}),
@@ -412,10 +412,14 @@ test("the lessons list is capped where it is written", async () => {
   for (let i = 0; i < LESSON_CAP; i++) ins.run(`lesson ${i}`, i);
 
   const r = await app(
-    new Request("http://x/orch/journal", {
+    new Request("http://x/orch/v1/journal", {
       method: "POST",
       body: JSON.stringify({ kind: "lesson", body: "the newest lesson" }),
-      headers: { "content-type": "application/json", "x-orch-token": "tok-lib" },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        "x-orch-token": "tok-lib",
+      },
     }),
   );
   expect(r.status).toBe(200);

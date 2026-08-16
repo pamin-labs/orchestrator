@@ -1,6 +1,6 @@
 import type { Ctx } from "../../ctx.ts";
 import type { DB } from "../../db.ts";
-import type { Json } from "../../http/respond.ts";
+import type { Json } from "../../contracts/json.ts";
 import { z } from "zod";
 /**
  * Connect GitHub once, from the settings page, the way GitHub Desktop does.
@@ -24,7 +24,7 @@ import { z } from "zod";
  */
 
 import type { GhResult, Github } from "./github.ts";
-import { jsonOr } from "../util/text.ts";
+import { jsonOr } from "../../contracts/json.ts";
 
 const DEVICE_CODE_URL = "https://github.com/login/device/code";
 const TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -222,11 +222,12 @@ async function pages<T>(
   gh: Github,
   path: string,
   key: ListKey,
-  schema: z.ZodType<Partial<Record<ListKey, T[]>>>,
+  schema: z.ZodType<Partial<Record<ListKey, T[] | undefined>>>,
+  signal?: AbortSignal,
 ): Promise<GhResult<T[]>> {
   const out: T[] = [];
   for (let page = 1; page <= 10; page++) {
-    const r = await gh.request("GET", `${path}?per_page=${PER_PAGE}&page=${page}`, schema);
+    const r = await gh.request("GET", `${path}?per_page=${PER_PAGE}&page=${page}`, schema, undefined, signal);
     if (!r.ok) return r;
     const items = r.data?.[key] ?? [];
     out.push(...items);
@@ -241,8 +242,8 @@ async function pages<T>(
  * Switching org is picking one of these, not logging in again: one user token
  * already sees every installation the user can reach.
  */
-export async function listInstallations(gh: Github): Promise<GhResult<Installation[]>> {
-  const r = await pages(gh, "/user/installations", "installations", InstallationsPage);
+export async function listInstallations(gh: Github, signal?: AbortSignal): Promise<GhResult<Installation[]>> {
+  const r = await pages(gh, "/user/installations", "installations", InstallationsPage, signal);
   if (!r.ok) return r;
   return {
     ok: true,
@@ -264,8 +265,18 @@ export async function listInstallations(gh: Github): Promise<GhResult<Installati
  * those fails at its first clone with a 404 that cannot say why, because GitHub
  * answers 404 rather than 403 for what a token cannot see.
  */
-export async function listRepos(gh: Github, installationId: number): Promise<GhResult<RepoRow[]>> {
-  const r = await pages(gh, `/user/installations/${installationId}/repositories`, "repositories", RepositoriesPage);
+export async function listRepos(
+  gh: Github,
+  installationId: number,
+  signal?: AbortSignal,
+): Promise<GhResult<RepoRow[]>> {
+  const r = await pages(
+    gh,
+    `/user/installations/${installationId}/repositories`,
+    "repositories",
+    RepositoriesPage,
+    signal,
+  );
   if (!r.ok) return r;
   return {
     ok: true,
@@ -294,8 +305,8 @@ export async function listRepos(gh: Github, installationId: number): Promise<GhR
  * the token no longer answers — deliberately not split into why, because
  * GitHub answers 404 for "cannot see it" as well as "gone".
  */
-export async function githubAccount(gh: Github): Promise<string | null> {
-  const r = await gh.request("GET", "/user", User);
+export async function githubAccount(gh: Github, signal?: AbortSignal): Promise<string | null> {
+  const r = await gh.request("GET", "/user", User, undefined, signal);
   return r.ok ? (r.data?.login ?? null) : null;
 }
 
@@ -404,7 +415,12 @@ export interface Trailers extends Pick<TrailerPrefs, "signoff" | "coauthor"> {
  *  co-author setting from the same row, and it has no `Ctx` to hand. */
 export function trailers(db: DB | undefined): TrailerPrefs {
   const row = db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(TRAILERS_KEY)?.v;
-  return { ...TRAILER_DEFAULTS, ...jsonOr(row, TrailerPrefsPatch, {}) };
+  const saved = jsonOr(row, TrailerPrefsPatch, {});
+  return {
+    signoff: saved.signoff ?? TRAILER_DEFAULTS.signoff,
+    coauthor: saved.coauthor ?? TRAILER_DEFAULTS.coauthor,
+    claudeCoauthor: saved.claudeCoauthor ?? TRAILER_DEFAULTS.claudeCoauthor,
+  };
 }
 
 export function setTrailers(db: DB, next: Partial<TrailerPrefs>): TrailerPrefs {

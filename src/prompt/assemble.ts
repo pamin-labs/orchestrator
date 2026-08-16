@@ -179,7 +179,7 @@ export function buildStable(parts: StableParts): StablePrompt {
   const stable: Omit<StablePrompt, "hash"> = {
     systemAppend,
     model: parts.model,
-    effort: parts.effort,
+    ...(parts.effort ? { effort: parts.effort } : {}),
     tools: [...(parts.tools ?? toolsFromAllowed(parts.allowedTools))],
     allowedTools: [...parts.allowedTools],
     addDirs: [...parts.addDirs],

@@ -3,7 +3,8 @@ import { settlePausing } from "../flow/intercept.ts";
 import { joinQueue } from "../flow/mergequeue.ts";
 import { reopenTasks, startNextSlice } from "../flow/review.ts";
 import { clearEscalation } from "../git/github.ts";
-import { parseRepo, repoHeld } from "../git/repository.ts";
+import { parseRepo } from "../../contracts/repository.ts";
+import { repoHeld } from "../git/repository.ts";
 import {
   ESCALATION_STATES,
   GRP_STATES,
@@ -49,7 +50,7 @@ import {
  * what stops this table from becoming a second dumping ground.
  */
 
-export interface Invariant<S extends string> {
+interface Invariant<S extends string> {
   state: S;
   /** What has to be true, in one line, for a reader deciding whether it still holds. */
   must: string;
@@ -66,7 +67,7 @@ export interface Invariant<S extends string> {
 
 const rows = <S extends string>(...r: Invariant<S>[]) => r;
 
-export const GRP_INVARIANTS = rows<GrpState>(
+const GRP_INVARIANTS = rows<GrpState>(
   {
     state: "PLANNING",
     must: "a dispatcher turn is queued or running until a DRAFT card exists",
@@ -195,7 +196,7 @@ export const GRP_INVARIANTS = rows<GrpState>(
   },
 );
 
-export const SLICE_INVARIANTS = rows<SliceState>(
+const SLICE_INVARIANTS = rows<SliceState>(
   {
     state: "pending",
     must: "it starts once the slice before it is accepted",
@@ -248,7 +249,7 @@ export const SLICE_INVARIANTS = rows<SliceState>(
   },
 );
 
-export const TASK_INVARIANTS = rows<TaskState>(
+const TASK_INVARIANTS = rows<TaskState>(
   {
     state: "pending",
     must: "the active writer can claim or complete it while its slice is running",
@@ -262,7 +263,7 @@ export const TASK_INVARIANTS = rows<TaskState>(
   { state: "done", must: "it stays closed until a rejected slice explicitly reopens its tasks", driver: null },
 );
 
-export const JOB_INVARIANTS = rows<JobState>(
+const JOB_INVARIANTS = rows<JobState>(
   { state: "pending", must: "it is dispatched once its group and pool have room", driver: "Scheduler.tick" },
   {
     state: "running",
@@ -291,7 +292,7 @@ export const JOB_INVARIANTS = rows<JobState>(
  * already reported: the sandbox hold when no container can be opened at all, and
  * `credential:github` in preflight when there is nothing to bind.
  */
-export const UTIL_INVARIANTS = rows<UtilState>(
+const UTIL_INVARIANTS = rows<UtilState>(
   {
     state: "down",
     must: "the next push builds one, and if it cannot, something says why",
@@ -319,7 +320,7 @@ export const UTIL_INVARIANTS = rows<UtilState>(
  * in memory and the question is in the database, so a restart leaves a 待办 item
  * behind nothing, which the boss cannot clear by fixing anything.
  */
-export const PROJECT_INVARIANTS = rows<ProjectState>(
+const PROJECT_INVARIANTS = rows<ProjectState>(
   { state: "reachable", must: "GitHub answers for this project's owner/repo", driver: null },
   {
     state: "repo_held",
@@ -396,7 +397,7 @@ const LEASE_INVARIANTS = rows<LeaseState>(
   { state: "failed", must: "the agent has the exit code and the digest to act on", driver: null },
 );
 
-export const ESCALATION_INVARIANTS = rows<EscalationState>(
+const ESCALATION_INVARIANTS = rows<EscalationState>(
   {
     state: "pm",
     must: "the role it is with has a turn queued to answer it",
@@ -434,20 +435,20 @@ export const ESCALATION_INVARIANTS = rows<EscalationState>(
  * row runs, which is why `test/invariants.test.ts` now asserts this list against
  * the tables the module exports.
  */
-const ALL_INVARIANTS = [
-  GRP_INVARIANTS,
-  SLICE_INVARIANTS,
-  TASK_INVARIANTS,
-  JOB_INVARIANTS,
-  UTIL_INVARIANTS,
-  PROJECT_INVARIANTS,
-  SERVER_INVARIANTS,
-  LEASE_INVARIANTS,
-  ESCALATION_INVARIANTS,
-];
+export const INVARIANT_TABLES = {
+  grp: GRP_INVARIANTS,
+  slice: SLICE_INVARIANTS,
+  task: TASK_INVARIANTS,
+  job: JOB_INVARIANTS,
+  escalation: ESCALATION_INVARIANTS,
+  util: UTIL_INVARIANTS,
+  project: PROJECT_INVARIANTS,
+  server: SERVER_INVARIANTS,
+  lease: LEASE_INVARIANTS,
+} satisfies Record<string, readonly Invariant<string>[]>;
 
 export function runInvariants(ctx: Ctx): void {
-  for (const table of ALL_INVARIANTS) for (const i of table) i.repair?.(ctx);
+  for (const table of Object.values(INVARIANT_TABLES)) for (const invariant of table) invariant.repair?.(ctx);
 }
 
 /** States with no row. The test fails on a non-empty result; nothing else calls it. */
@@ -464,14 +465,14 @@ export function uncovered(): {
 } {
   const has = (rs: { state: string }[], s: string) => rs.some((r) => r.state === s);
   return {
-    grp: GRP_STATES.filter((s) => !has(GRP_INVARIANTS, s)),
-    slice: SLICE_STATES.filter((s) => !has(SLICE_INVARIANTS, s)),
-    task: TASK_STATES.filter((s) => !has(TASK_INVARIANTS, s)),
-    job: JOB_STATES.filter((s) => !has(JOB_INVARIANTS, s)),
-    escalation: ESCALATION_STATES.filter((s) => !has(ESCALATION_INVARIANTS, s)),
-    util: UTIL_STATES.filter((s) => !has(UTIL_INVARIANTS, s)),
-    project: PROJECT_STATES.filter((s) => !has(PROJECT_INVARIANTS, s)),
-    server: SERVER_STATES.filter((s) => !has(SERVER_INVARIANTS, s)),
-    lease: LEASE_STATES.filter((s) => !has(LEASE_INVARIANTS, s)),
+    grp: GRP_STATES.filter((s) => !has(INVARIANT_TABLES.grp, s)),
+    slice: SLICE_STATES.filter((s) => !has(INVARIANT_TABLES.slice, s)),
+    task: TASK_STATES.filter((s) => !has(INVARIANT_TABLES.task, s)),
+    job: JOB_STATES.filter((s) => !has(INVARIANT_TABLES.job, s)),
+    escalation: ESCALATION_STATES.filter((s) => !has(INVARIANT_TABLES.escalation, s)),
+    util: UTIL_STATES.filter((s) => !has(INVARIANT_TABLES.util, s)),
+    project: PROJECT_STATES.filter((s) => !has(INVARIANT_TABLES.project, s)),
+    server: SERVER_STATES.filter((s) => !has(INVARIANT_TABLES.server, s)),
+    lease: LEASE_STATES.filter((s) => !has(INVARIANT_TABLES.lease, s)),
   };
 }

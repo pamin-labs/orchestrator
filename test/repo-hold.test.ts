@@ -5,7 +5,7 @@ import { Scheduler, type Job } from "../src/scheduler.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { makeGithub, type Fetcher } from "../src/mech/git/github.ts";
 import { repoHeld, resetRepoHolds, REPO_HOLD_MS } from "../src/mech/git/repository.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 
 /**
  * The fifth admission gate: GitHub stopped accepting us.

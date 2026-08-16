@@ -1,4 +1,4 @@
-import type { Json } from "../http/respond.ts";
+import type { Json } from "../contracts/json.ts";
 import type { TurnHandlers, TurnSpec } from "./claude.ts";
 
 export async function runLineStream(
@@ -13,8 +13,8 @@ export async function runLineStream(
   const log = spec.logPath ? Bun.file(spec.logPath).writer() : undefined;
   const stream = spec.runner.lines(cmd, {
     cwd: spec.cwd,
-    timeoutMs: spec.timeoutMs,
-    env: spec.env,
+    ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
+    ...(spec.env ? { env: spec.env } : {}),
     signal,
   });
 
@@ -23,7 +23,7 @@ export async function runLineStream(
       const step = await stream.next();
       if (step.done) return step.value;
       const record = onLine(step.value);
-      if (record !== undefined) log?.write(`${JSON.stringify(record)}\n`);
+      if (record !== undefined) await log?.write(`${JSON.stringify(record)}\n`);
     }
   } finally {
     await log?.end();

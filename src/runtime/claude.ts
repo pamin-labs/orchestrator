@@ -1,8 +1,8 @@
 import type { StablePrompt } from "../prompt/assemble.ts";
 import { z } from "zod";
-import { JsonObject, JsonValue, type Json } from "../http/respond.ts";
+import { JsonObject, JsonValue, jsonOr, type Json } from "../contracts/json.ts";
 import { shq } from "../mech/util/shq.ts";
-import { clip, jsonOr } from "../mech/util/text.ts";
+import { clip } from "../mech/util/text.ts";
 import { runLineStream } from "./line-stream.ts";
 
 /**
@@ -348,7 +348,7 @@ function newAccumulator(spec: TurnSpec): Acc {
       numTurns: 0,
       toolSummaries: [],
       filesTouched: [],
-      logPath: spec.logPath,
+      ...(spec.logPath === undefined ? {} : { logPath: spec.logPath }),
     },
   };
 }
@@ -362,7 +362,19 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
       return;
 
     case "rate_limit_event":
-      if (l.rate_limit_info) r.rateLimit = l.rate_limit_info;
+      if (l.rate_limit_info) {
+        const info = l.rate_limit_info;
+        r.rateLimit = {
+          status: info.status,
+          rateLimitType: info.rateLimitType,
+          resetsAt: info.resetsAt,
+          ...(info.overageStatus === undefined ? {} : { overageStatus: info.overageStatus }),
+          ...(info.isUsingOverage === undefined ? {} : { isUsingOverage: info.isUsingOverage }),
+          ...(info.fiveHourPercent === undefined ? {} : { fiveHourPercent: info.fiveHourPercent }),
+          ...(info.weeklyPercent === undefined ? {} : { weeklyPercent: info.weeklyPercent }),
+          ...(info.weeklyResetsAt === undefined ? {} : { weeklyResetsAt: info.weeklyResetsAt }),
+        };
+      }
       return;
 
     case "stream_event": {
@@ -467,7 +479,9 @@ export function trimForLog(line: Line): Json {
   let out: JsonMap = line;
   if (line.tool_use_result && typeof line.tool_use_result === "object") {
     const r: JsonMap = Object.fromEntries(
-      Object.entries(line.tool_use_result).map(([key, value]) => [key, clipForLog(value)]),
+      Object.entries(line.tool_use_result).flatMap(([key, value]) =>
+        value === undefined ? [] : [[key, clipForLog(value)]],
+      ),
     );
     out = { ...out, tool_use_result: r };
   }
@@ -479,7 +493,7 @@ export function trimForLog(line: Line): Json {
     if (text.length <= LOG_RESULT_CHARS) return c;
     return { ...c, content: `${text.slice(0, LOG_RESULT_CHARS)}… [${text.length} chars omitted]` };
   });
-  return { ...out, message: { ...line.message, content: trimmed } };
+  return JsonValue.parse({ ...out, message: { ...line.message, content: trimmed } });
 }
 
 export function summarizeTool(name: string, input: ToolInput): ToolSummary {

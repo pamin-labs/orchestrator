@@ -1,10 +1,13 @@
 import { mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { imagePaths } from "../api/panel/attach.ts";
-import { mintToken } from "../api/shared.ts";
+import { imagePaths } from "../mech/util/attachment-text.ts";
 import type { Config, RoleDef } from "../config.ts";
 import { contextWindowFor, DEFAULT_PROVIDER, modelFor } from "../config.ts";
 import type { Ctx } from "../ctx.ts";
+
+function mintToken(): string {
+  return crypto.randomUUID().replaceAll("-", "");
+}
 import { say } from "../lang.ts";
 import { raise } from "../mech/flow/escalate.ts";
 import { hold } from "../mech/flow/intercept.ts";
@@ -28,13 +31,15 @@ import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
 import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
 import { listSkills, projectSkills, readSkillIn } from "../mech/skills.ts";
 import { projectOfAgent } from "../mech/util/rows.ts";
-import { clip, errText, jsonOr } from "../mech/util/text.ts";
+import { jsonOr } from "../contracts/json.ts";
+import { clip, errText } from "../mech/util/text.ts";
 import { assemble, buildStable, type Delta, needsRotation } from "../prompt/assemble.ts";
 import { AgentTurnPayloadSchema, type Executor, type Job } from "../scheduler.ts";
 import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../states.ts";
 import { type TurnResult } from "./claude.ts";
 import { clampEffort, type Provider, providerFor } from "./providers.ts";
 import { track, untrack } from "./running.ts";
+import { requestContext } from "../http/request-context.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -61,7 +66,7 @@ export interface ExecDeps {
   runTurn?: Provider["run"];
 }
 
-interface AgentRow {
+export interface AgentRow {
   id: number;
   grp_id: number | null;
   project_id: number | null;
@@ -93,8 +98,9 @@ export function makeExecutor(deps: ExecDeps): Executor {
         // PR level: every slice accepted, so reconcile and gate the whole branch
         // before the Auditor is asked for an opinion.
         return job.grp_id ? runPrReview({ ctx: deps.ctx, cfg: deps.cfg }, job.grp_id) : undefined;
-      default:
-        // watchdog / notify / digest land in M3. Doing nothing is correct for
+      case "digest":
+      case "notify":
+        // notify / digest land in M3. Doing nothing is correct for
         // now; failing would poison the queue.
         return;
     }
@@ -291,14 +297,14 @@ async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<voi
   const run: Provider["run"] = deps.runTurn ?? provider.run;
   const logPath = join(logDir, `${job.id}.jsonl`);
   let result: TurnResult;
+  let stopTurn: (() => void) | undefined;
   try {
     result = await run(
       {
         stable,
         prompt,
         cwd,
-        resumeSessionId: rotate || !agent.session_id ? undefined : sessionId,
-        newSessionId: rotate || !agent.session_id ? sessionId : undefined,
+        ...(rotate || !agent.session_id ? { newSessionId: sessionId } : { resumeSessionId: sessionId }),
         maxTurns: role.maxTurns ?? cfg.maxTurnsPerJob,
         timeoutMs: cfg.turnTimeoutMs,
         images: imagePaths(prompt),
@@ -310,6 +316,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<voi
           // The mailbox, not a URL: the sandbox has no route to this machine on
           // any platform we can rely on, and the files API has one everywhere.
           ORCH_MAILBOX: MAILBOX_DIR,
+          ORCH_MAILBOX_TIMEOUT_MS: String(cfg.turnTimeoutMs),
           ORCH_TOKEN: agent.token ?? "",
           ORCH_GRP_ID: String(job.grp_id ?? ""),
           // Format-plausible fakes. The real values are in the egress sidecar
@@ -361,11 +368,14 @@ async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<voi
             kind: "status",
             body: s,
           }),
-        onAbort: (stop) => track(job.id, stop),
+        onAbort: (stop) => {
+          stopTurn = stop;
+          track(job.id, stop);
+        },
       },
     );
   } finally {
-    untrack(job.id);
+    if (stopTurn) untrack(job.id, stopTurn);
     ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ? AND state = 'running'", [agent.id]);
     // Compress now rather than a day later. Nothing reads these while they are
     // warm — every consumer is a human debugging afterwards — and 24h of raw
@@ -512,16 +522,17 @@ function buildStableFor(
   // survive. The comment that used to be here said those two queries have to
   // agree, and then wrote out its own predicate and its own literal 20.
   const lessons = lessonsFor(ctx.db, projectId);
+  const effort = clampEffort(agent.runtime ?? role.runtime, role.effort);
 
   return buildStable({
     rolePrompt: role.prompt,
-    onboarding: onboarding ?? undefined,
+    ...(onboarding ? { onboarding } : {}),
     lessons,
     language: cfg.language,
     model: agent.model,
     // Clamped to what this role's provider accepts before it is hashed, so the
     // prefix hash describes the turn that was actually sent.
-    effort: clampEffort(agent.runtime ?? role.runtime, role.effort),
+    ...(effort ? { effort } : {}),
     // A role's own list, always. There is no clearance table behind it any more:
     // the sandbox is the boundary, so this only decides which tool definitions
     // are loaded into the prefix and which roles may search the web.
@@ -1216,14 +1227,9 @@ export function makeReviewVerdict(deps: ExecDeps) {
 // -------------------------------------------------------------------- leases
 
 /**
- * A lease always finishes, whatever happens to it.
- *
- * `finishLease` is the only thing that resolves `ctx.waiters.get('lease:N')`, and
- * the route waiting on it has no timeout — so a throw anywhere in here does not
- * fail a gate, it strands the agent that asked for it, permanently, while its
- * `orch` polls a reply nobody will write. `execIn` no longer rejects, which was
- * the way this actually happened; this is the guarantee rather than the fix, so
- * the next thing that learns to throw cannot buy the same outage.
+ * Lease completion is durable: `finishLease` records the terminal result and
+ * queues the requesting agent's follow-up turn. Cancellation stays retryable by
+ * leaving the lease non-terminal while the scheduler reclaims its job.
  */
 async function runLease(deps: ExecDeps, job: Job<"lease">): Promise<void> {
   const leaseId = job.payload.lease_id;
@@ -1231,6 +1237,7 @@ async function runLease(deps: ExecDeps, job: Job<"lease">): Promise<void> {
   try {
     await lease(deps, job, leaseId);
   } catch (e) {
+    if (requestContext.getStore()?.signal?.aborted) throw e;
     finishLease(deps, leaseId, 126, `the gate could not run: ${errText(e)}`, undefined);
   }
 }
@@ -1300,26 +1307,44 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
 
 function finishLease(deps: ExecDeps, leaseId: number, code: number, digest: string, logPath: string | undefined): void {
   const { ctx } = deps;
-  ctx.db.run(
-    `UPDATE lease SET state = ?, exit_code = ?, result_digest = ?, log_path = ?,
-     ended_at = unixepoch() * 1000 WHERE id = ?`,
-    [code === 0 ? "done" : "failed", code, digest, logPath ?? null, leaseId],
-  );
-  const grpId =
-    ctx.db.query<{ grp_id: number | null }, [number]>("SELECT grp_id FROM lease WHERE id = ?").get(leaseId)?.grp_id ??
-    null;
-  ctx.bus.emit({
-    grpId,
-    author: "runner",
-    kind: "lease_result",
-    body: `lease #${leaseId} exit ${code}`,
-    meta: { lease_id: leaseId, exit_code: code },
-  });
-
-  // Unblock the agent that is sitting in a blocking `orch lease` call.
-  const w = ctx.waiters.get(`lease:${leaseId}`);
-  ctx.waiters.delete(`lease:${leaseId}`);
-  w?.(digest);
+  ctx.db.transaction(() => {
+    const lease = ctx.db
+      .query<{ grp_id: number | null; agent_id: number | null }, [number]>(
+        "SELECT grp_id, agent_id FROM lease WHERE id = ?",
+      )
+      .get(leaseId);
+    if (!lease) return;
+    const finished = ctx.db.run(
+      `UPDATE lease SET state = ?, exit_code = ?, result_digest = ?, log_path = ?,
+       ended_at = unixepoch() * 1000 WHERE id = ? AND state IN ('queued', 'running')`,
+      [code === 0 ? "done" : "failed", code, digest, logPath ?? null, leaseId],
+    );
+    if (finished.changes === 0) return;
+    ctx.bus.emit({
+      grpId: lease.grp_id,
+      author: "runner",
+      kind: "lease_result",
+      body: `lease #${leaseId} exit ${code}`,
+      meta: { lease_id: leaseId, exit_code: code },
+    });
+    if (lease.agent_id) {
+      ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ? AND state = 'waiting_lease'", [lease.agent_id]);
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: lease.grp_id,
+        agent_id: lease.agent_id,
+        priority: 5,
+        payload: {
+          mail: {
+            from: "runner",
+            from_group: lease.grp_id,
+            intent: "inform",
+            body: `lease #${leaseId} finished:\n${digest}`,
+          },
+        },
+      });
+    }
+  })();
+  ctx.sched.tick();
 }
 
 function leaseCwd(def: ResourceDef): string {

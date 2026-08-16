@@ -1,5 +1,6 @@
 import type { DB } from "../../db.ts";
-import { jsonOr } from "../util/text.ts";
+import { type CostReport } from "../../contracts/cost.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
 
 /**
@@ -45,39 +46,6 @@ const AgentCostSchema = CostRowSchema.extend({
   runtime: z.string(),
 });
 type AgentCost = z.infer<typeof AgentCostSchema>;
-
-export const CostReportSchema = z.object({
-  /** Requirements that finished, for a per-requirement average worth quoting. */
-  delivered: z.object({ count: z.number(), tokens: z.number() }),
-  byGroup: z.array(CostRowSchema.extend({ grpId: z.number() })),
-  /**
-   * Every agent's spend with its group, so the panel can nest what is nested:
-   * project, then requirement, then the people in it. An agent is either standing
-   * (`grp_id` NULL, paid for across the project) or hired into one group. Four flat
-   * tables said all of that was the same shape, which is a lie about the data
-   * model.
-   */
-  agents: z.array(AgentCostSchema),
-  byRole: z.array(CostRowSchema),
-  byDifficulty: z.array(CostRowSchema),
-  /** Which subscription paid. The axis that appeared the day roles split across two. */
-  byRuntime: z.array(CostRowSchema),
-  /**
-   * The last 24 hours, per hour, split by provider.
-   *
-   * The only question on this page that a number cannot answer: how fast is it
-   * burning right now, and which of the two accounts is carrying it. Hourly
-   * because that is the resolution the work has — 300 to 700 turns an hour on a
-   * busy night. 48 hours was two screens of chart to answer a question about now.
-   */
-  byHour: z.array(HourRowSchema),
-  total: CostRowSchema,
-  /** Cache hit ratio across recorded turns; the only visible sign caching works. */
-  cacheRatio: z.number().nullable(),
-  /** Of those same turns, how many opened a cold session, and what triggered it. */
-  rotations: z.object({ turns: z.number(), byReason: z.record(z.string(), z.number()) }),
-});
-export type CostReport = z.infer<typeof CostReportSchema>;
 
 /** The four counters a turn reports, summed. Written once; the CASE needs it twice. */
 /**

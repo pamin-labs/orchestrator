@@ -10,7 +10,7 @@ import { openMemory, type DB } from "../src/db.ts";
 import { gateState, gatesFor, recordGate, runGates, type RunGatesOptions } from "../src/mech/gate.ts";
 import { projectConfig } from "../src/mech/util/rows.ts";
 import { digestOutput } from "../src/mech/lease.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 
 function seed(gates: Json | undefined): DB {
   const db = openMemory();
@@ -36,7 +36,7 @@ const fakeRun = (script: Record<string, { code: number; out: string }>) =>
     return {
       exitCode: r.code,
       digest: digestOutput(r.code, r.out, def.errorRegex, opts?.logPath),
-      logPath: opts?.logPath,
+      ...(opts?.logPath ? { logPath: opts.logPath } : {}),
     };
   }) satisfies NonNullable<RunGatesOptions["run"]>;
 

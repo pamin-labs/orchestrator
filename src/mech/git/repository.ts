@@ -1,10 +1,5 @@
 import type { DB } from "../../db.ts";
-
-/** `owner/repo` out of any remote URL git will accept. */
-export function parseRepo(remote: string): string | null {
-  const m = /github\.com[:/]+([^/]+)\/(.+?)(?:\.git)?\/?$/i.exec(remote.trim());
-  return m ? `${m[1]}/${m[2]}` : null;
-}
+import { parseRepo } from "../../contracts/repository.ts";
 
 const holds = new Map<string, number>();
 export const REPO_HOLD_MS = 10 * 60_000;

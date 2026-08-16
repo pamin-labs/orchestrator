@@ -1,31 +1,4 @@
 /**
- * Four things this codebase wrote out repeatedly, and the one decision each of
- * them was hiding.
- */
-
-/**
- * Parse, or fall back to something the caller names.
- *
- * There were five `safeJson`/`safeParse` in this tree and they had **four
- * different fallbacks**: `{}`, `{}` typed as a record, the input string itself,
- * `null`, and a synthetic "noise" line. Same name, five meanings — so the
- * question a reader has at a call site ("what happens when this is not JSON?")
- * was answered somewhere else, differently each time.
- *
- * The fallback is the argument. Nothing is deduplicated that was not actually
- * the same, and the answer is where the question is.
- */
-export function jsonOr<T>(s: string | null | undefined, schema: z.ZodType<T>, fallback: T): T {
-  if (s === null || s === undefined) return fallback;
-  try {
-    const parsed = schema.safeParse(JSON.parse(s));
-    return parsed.success ? parsed.data : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-/**
  * Shorten for a human, keeping the front.
  *
  * `collapse` is the difference between the two versions this replaces: one
@@ -72,4 +45,3 @@ export function tail(s: string, n = 300): string {
  */
 export const minutes = (ms: number): number => Math.round(ms / 60_000);
 export const hours = (ms: number): number => Math.round(ms / 3_600_000);
-import type { z } from "zod";

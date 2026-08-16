@@ -3,11 +3,11 @@ import { join } from "node:path";
 import type { DB } from "../../db.ts";
 import type { RateLimitInfo } from "../../runtime/claude.ts";
 import type { Ctx } from "../../ctx.ts";
-import type { Json } from "../../http/respond.ts";
+import type { Json } from "../../contracts/json.ts";
 import { CODEX_HOME, decoy, loadAuth, subscriptionAccount } from "../sandbox/auth.ts";
 import { execIn, UTIL } from "../sandbox/sandbox.ts";
 import { shq } from "../util/shq.ts";
-import { jsonOr } from "../util/text.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
 
 /**
@@ -104,9 +104,9 @@ export function toRateLimit(value: Json): RateLimitInfo | null {
     status: "allowed",
     rateLimitType: "five_hour",
     resetsAt: secs(five?.resets_at),
-    fiveHourPercent: five?.utilization,
-    weeklyPercent: week?.utilization,
-    weeklyResetsAt: week?.resets_at ? secs(week.resets_at) : undefined,
+    ...(five?.utilization === undefined ? {} : { fiveHourPercent: five.utilization }),
+    ...(week?.utilization === undefined ? {} : { weeklyPercent: week.utilization }),
+    ...(week?.resets_at ? { weeklyResetsAt: secs(week.resets_at) } : {}),
   };
 }
 
@@ -322,9 +322,9 @@ function fromCodex(...args: [CodexWindow, CodexWindow, number]): RateLimitInfo |
     status: "allowed",
     rateLimitType: "five_hour",
     resetsAt: five ? at(five) : 0,
-    fiveHourPercent: five?.used_percent,
-    weeklyPercent: week?.used_percent,
-    weeklyResetsAt: week ? at(week) : undefined,
+    ...(five?.used_percent === undefined ? {} : { fiveHourPercent: five.used_percent }),
+    ...(week?.used_percent === undefined ? {} : { weeklyPercent: week.used_percent }),
+    ...(week ? { weeklyResetsAt: at(week) } : {}),
   };
 }
 

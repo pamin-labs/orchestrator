@@ -34,10 +34,14 @@ function harness() {
 
 const lesson = (app: (r: Request) => Promise<Response>, body: string) =>
   app(
-    new Request("http://x/orch/journal", {
+    new Request("http://x/orch/v1/journal", {
       method: "POST",
       body: JSON.stringify({ kind: "lesson", body }),
-      headers: { "content-type": "application/json", "x-orch-token": "tok-lib" },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        "x-orch-token": "tok-lib",
+      },
     }),
   );
 
