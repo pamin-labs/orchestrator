@@ -593,15 +593,25 @@ export async function keepBranch(ctx: Ctx, grpId: number): Promise<{ ok: boolean
   }
 }
 
-async function keep(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
+function branchRemote(
+  ctx: Ctx,
+  grpId: number,
+): { ok: true; branch: string; projectId: number; remote: string } | { ok: false; reason: string } {
   const grp = ctx.db
     .query<{ branch: string | null; project_id: number }, [number]>("SELECT branch, project_id FROM grp WHERE id = ?")
     .get(grpId);
   if (!grp?.branch) return { ok: false, reason: "group has no branch" };
   const remote = remoteFor(ctx, grp.project_id);
-  if (!remote) return { ok: false, reason: "project has no remote" };
-  const branch = grp.branch;
-  const base = await baseRefFor(ctx, grp.project_id);
+  return remote
+    ? { ok: true, branch: grp.branch, projectId: grp.project_id, remote }
+    : { ok: false, reason: "project has no remote" };
+}
+
+async function keep(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
+  const found = branchRemote(ctx, grpId);
+  if (!found.ok) return found;
+  const { branch, remote, projectId } = found;
+  const base = await baseRefFor(ctx, projectId);
 
   const scope = { grp: grpId } as const;
   const name = `${branch.replaceAll("/", "-")}.bundle`;
@@ -663,18 +673,14 @@ async function push(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: st
   // may still be unpushed from an earlier turn, so this carries on.
   if (!kept.ok && !/empty bundle/i.test(kept.reason ?? "")) return kept;
 
-  const grp = ctx.db
-    .query<{ branch: string | null; project_id: number }, [number]>("SELECT branch, project_id FROM grp WHERE id = ?")
-    .get(grpId);
-  if (!grp?.branch) return { ok: false, reason: "group has no branch" };
-  const remote = remoteFor(ctx, grp.project_id);
-  if (!remote) return { ok: false, reason: "project has no remote" };
-  const mirror = await ensureMirror(ctx, remote);
+  const found = branchRemote(ctx, grpId);
+  if (!found.ok) return found;
+  const mirror = await ensureMirror(ctx, found.remote);
 
   // Not checked: the branch may not be on the remote at all yet, which is the
   // ordinary first push and not a failure.
-  await utilGit(ctx, ["fetch", "origin", grp.branch], mirror);
-  const pushed = await utilGit(ctx, ["push", "--force-with-lease", "origin", `refs/heads/${grp.branch}`], mirror);
+  await utilGit(ctx, ["fetch", "origin", found.branch], mirror);
+  const pushed = await utilGit(ctx, ["push", "--force-with-lease", "origin", `refs/heads/${found.branch}`], mirror);
   return pushed.code === 0 ? { ok: true } : { ok: false, reason: pushed.out.slice(-300) };
 }
 
