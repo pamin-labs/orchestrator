@@ -6,6 +6,7 @@ import { z } from "zod";
 import { errText } from "../../mech/util/text.ts";
 import { bad, json, text, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
+import { release } from "../../mech/flow/intercept.ts";
 
 /**
  * Signing in: to the two model accounts, to GitHub, and to the sandbox server.
@@ -149,9 +150,7 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
   // about its budget, and a rate-limited one came back carrying `rl_resets_at` —
   // which watchdog rule 6 only clears for rows it still finds PAUSED, so nothing
   // cleared it afterwards either.
-  ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL WHERE pause_reason = ?", [
-    `auth:${runtime}`,
-  ]);
+  release(ctx, null, { only: `auth:${runtime}` });
   // A different account commits under a different name, and a stale one would
   // sign off as somebody who is no longer connected.
   if (runtime === "github") forgetIdentity(ctx);

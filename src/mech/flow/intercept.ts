@@ -41,12 +41,98 @@ export type PauseReason =
   | "unknown"
   | `auth:${string}`;
 
+/**
+ * Why a group stopped, and the columns that reason owns.
+ *
+ * Thirteen sites wrote this UPDATE by hand and each had to remember three
+ * separate things: the status, the timestamp every watchdog timer keys on, and
+ * now the reason every scoped resume keys on. 硬约束 7 is here because of the
+ * first one — three callers wrote PAUSING with no `paused_at` and their groups
+ * became invisible to the park timer, the nudge and the unpark at once, while
+ * looking perfectly healthy. A field you have to remember is a field somebody
+ * will not.
+ *
+ * No bus emit: every caller says its own sentence, in its own words, and a
+ * generic "paused" underneath each of them would be the same event twice.
+ */
+export interface Hold {
+  reason: PauseReason;
+  /** PAUSED straight away rather than PAUSING while an in-flight turn lands. */
+  settled?: boolean;
+  /** Only move a group currently in this state. Omitted, move it from any. */
+  from?: "RUNNING" | "PR_OPEN";
+  /** `ratelimit`: unix ms the quota window reopens. */
+  until?: number;
+  /** `blocked`: the group this one is waiting on. */
+  on?: number;
+  /** `merge`: it is also leaving the merge queue. */
+  leaveQueue?: boolean;
+}
+
+export function hold(ctx: Ctx, grpId: number, h: Hold): void {
+  const sets = [
+    `status = '${h.settled ? "PAUSED" : "PAUSING"}'`,
+    "paused_at = unixepoch() * 1000",
+    "pause_reason = ?",
+  ];
+  const args: (string | number)[] = [h.reason];
+  if (h.until !== undefined) {
+    sets.push("rl_resets_at = ?");
+    args.push(h.until);
+  }
+  if (h.on !== undefined) {
+    sets.push("blocked_on = ?");
+    args.push(h.on);
+  }
+  if (h.leaveQueue) sets.push("merge_seq = NULL, merge_seq_at = NULL");
+  args.push(grpId);
+  ctx.db.run(
+    `UPDATE grp SET ${sets.join(", ")} WHERE id = ?${h.from ? ` AND status = '${h.from}'` : ""}`,
+    args,
+  );
+}
+
+/**
+ * Start it again, and clear everything the stop was about.
+ *
+ * `rl_resets_at` and `blocked_on` are always cleared, not sometimes: two of the
+ * four resume sites cleared one of them and two cleared neither, and a RUNNING
+ * group carrying a reset time or a `blocked_on` is a row that says two things at
+ * once. Nothing wants to resume and keep them — the group is either waiting or
+ * it is not.
+ *
+ * `only` scopes it to one cause. Without that the one bulk resume in the tree
+ * matched every PAUSED row there was, so signing into GitHub restarted a group
+ * the boss had paused by hand.
+ *
+ * `from` defaults to the two paused states, and PARKED is deliberately not among
+ * them: a parked group has had its session dropped and its base may have moved
+ * under it, so it comes back through `unpark`, which rebases first. Answering
+ * its question must not skip that.
+ */
+const STOPPED = ["PAUSED", "PAUSING"] as const;
+
+export function release(
+  ctx: Ctx,
+  grpId: number | null,
+  opts: { only?: PauseReason; from?: readonly string[] } = {},
+): void {
+  const states = (opts.from ?? STOPPED).map((x) => `'${x}'`).join(", ");
+  const where =
+    grpId === null
+      ? "pause_reason = ?"
+      : `id = ? AND status IN (${states})${opts.only ? " AND pause_reason = ?" : ""}`;
+  ctx.db.run(
+    `UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL,
+       rl_resets_at = NULL, blocked_on = NULL
+     WHERE ${where}`,
+    grpId === null ? [opts.only!] : opts.only ? [grpId, opts.only] : [grpId],
+  );
+}
+
 /** L2. Returns the number of turns still in flight that we are waiting on. */
 export function pause(ctx: Ctx, grpId: number, reason: PauseReason = "boss"): number {
-  ctx.db.run(
-    "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000, pause_reason = ? WHERE id = ? AND status = 'RUNNING'",
-    [reason, grpId],
-  );
+  hold(ctx, grpId, { reason, from: "RUNNING" });
   const inFlight = runningJobs(ctx, grpId).length;
   ctx.bus.emit({
     grpId,
@@ -94,10 +180,7 @@ function settle(ctx: Ctx, grpId: number): void {
 }
 
 export function resume(ctx: Ctx, grpId: number): void {
-  ctx.db.run(
-    "UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL WHERE id = ? AND status IN ('PAUSED', 'PAUSING')",
-    [grpId],
-  );
+  release(ctx, grpId);
   ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config?.language, "group.resumed") });
   ctx.sched.tick();
 }
@@ -127,6 +210,9 @@ export async function interrupt(
     ]);
   }
   ctx.db.run("UPDATE agent SET state = 'idle' WHERE grp_id = ? AND state = 'running'", [grpId]);
+  // Not `hold`: an interrupt keeps whatever cause already stopped it — the boss
+  // interrupting a group that was already waiting on an answer is still waiting
+  // on that answer.
   ctx.db.run(
     "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = coalesce(pause_reason, 'boss') WHERE id = ? AND status IN ('RUNNING','PAUSING')",
     [grpId],
@@ -227,7 +313,10 @@ export async function unpark(ctx: Ctx, grpId: number): Promise<void> {
     });
     return;
   }
-  ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL WHERE id = ?", [grpId]);
+  // From PARKED, the one state `release` will not leave on its own — the rebase
+  // above is the reason. Anything that wakes a parked group without it starts a
+  // turn on a base that moved while the group was asleep.
+  release(ctx, grpId, { from: ["PARKED"] });
   ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "woken up" });
   ctx.sched.tick();
 }

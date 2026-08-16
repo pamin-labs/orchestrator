@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
 import { credentialChanged } from "../src/api/panel/authflow.ts";
+import { release } from "../src/mech/flow/intercept.ts";
 import type { Ctx } from "../src/ctx.ts";
 
 /** Every `.ts` under `src/`. */
@@ -80,4 +81,55 @@ test("signing in restarts what the credential stopped, and nothing else", async 
   expect(running).toEqual(["github-token"]);
   // And the reason is cleared with the pause, or the next sign-in resumes it twice.
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM grp WHERE status = 'RUNNING' AND pause_reason IS NOT NULL").get()!.n).toBe(0);
+});
+
+test("nothing stops or starts a group without going through hold/release", () => {
+  // 硬约束 7 is here because three callers wrote PAUSING and forgot `paused_at`,
+  // and every watchdog timer keys on it — the group went invisible to the park
+  // timer, the nudge and the unpark at once while looking perfectly healthy.
+  // `pause_reason` added a second field with the same property. Thirteen call
+  // sites had to remember both; now none of them writes the statement at all.
+  const offenders: string[] = [];
+  for (const file of sources()) {
+    if (file.endsWith("/flow/intercept.ts")) continue;
+    for (const m of readFileSync(file, "utf8").matchAll(/UPDATE grp SET[^"`']*/g)) {
+      // Stopping a group, or starting one that was stopped. Entering RUNNING
+      // from PR_OPEN or from an approved DRAFT is a different transition and
+      // touches none of these columns, so it is not this rule's business.
+      const stops = /status = '(PAUSED|PAUSING)'/.test(m[0]);
+      const starts = /status = 'RUNNING'/.test(m[0]) && /paused_at|pause_reason/.test(m[0]);
+      if (stops || starts) offenders.push(`${file.split("/src/")[1]}: ${m[0].slice(0, 70)}`);
+    }
+  }
+  expect(offenders).toEqual([]);
+});
+
+test("a resume clears what the stop was about, and leaves PARKED alone", () => {
+  // Two of the four resume sites cleared `rl_resets_at`, one cleared `blocked_on`,
+  // two cleared neither — so a group could come back RUNNING still carrying the
+  // reason it stopped, and watchdog rule 6 only scans rows it still finds PAUSED.
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p','/tmp/p',0)");
+  db.run(
+    `INSERT INTO grp (project_id, name, status, paused_at, pause_reason, rl_resets_at, blocked_on, created_at)
+     VALUES (1, 'g', 'PAUSED', 1, 'ratelimit', 999, NULL, 0)`,
+  );
+  // `blocked_on` is a foreign key, so the group it waits on has to exist.
+  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'other', 'RUNNING', 0)");
+  db.run("UPDATE grp SET blocked_on = 2 WHERE id = 1");
+  const ctx = { db, bus: { emit: () => {} }, sched: { tick: () => {} }, config: {} } as unknown as Ctx;
+
+  release(ctx, 1);
+  const g = db.query<{ status: string; rl: number | null; waits: number | null; why: string | null }, []>(
+    "SELECT status, rl_resets_at AS rl, blocked_on AS waits, pause_reason AS why FROM grp WHERE id = 1",
+  ).get()!;
+  expect(g).toEqual({ status: "RUNNING", rl: null, waits: null, why: null });
+
+  // PARKED is not a state `release` leaves: a parked group's base may have moved,
+  // so it comes back through `unpark`, which rebases first.
+  db.run("UPDATE grp SET status = 'PARKED', pause_reason = 'escalation' WHERE id = 1");
+  release(ctx, 1);
+  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PARKED");
+  release(ctx, 1, { from: ["PARKED"] });
+  expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
 });

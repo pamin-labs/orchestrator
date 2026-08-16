@@ -11,6 +11,7 @@ import { GroupRef } from "../fields.ts";
 import { bad, json, mayAct, resolveGroup, text, type AgentHandler } from "../shared.ts";
 import { slug } from "../slug.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
+import { hold } from "../../mech/flow/intercept.ts";
 
 /**
  * What a group does with its own plan: file the DRAFT card, fan out into
@@ -417,10 +418,7 @@ export const postBlocked: AgentHandler<z.infer<typeof BlockedBody>> = async (ctx
 
   // Stop, and say what it is waiting for. PAUSED rather than a spin: a group with
   // nothing it can legally do should not hold a concurrency slot.
-  ctx.db.run(
-    "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'blocked', blocked_on = ? WHERE id = ?",
-    [target, gid],
-  );
+  hold(ctx, gid, { reason: "blocked", settled: true, on: target });
   ctx.sched.cancelPending(gid, `blocked on ${path}`);
   ctx.bus.emit({
     grpId: gid,

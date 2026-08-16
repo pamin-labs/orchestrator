@@ -3,6 +3,7 @@ import { rollbackTo } from "../git/worktree.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { dropGroup } from "./start.ts";
+import { release } from "./intercept.ts";
 
 /**
  * The answer chain: PM -> Architect -> CoS -> the boss.
@@ -198,10 +199,7 @@ export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok
     meta: { in_reply_to_escalation: input.escId, answered_by: input.by, ref: input.refNoteId ?? null },
   });
   if (esc.severity === "blocker" && esc.grp_id) {
-    ctx.db.run(
-      "UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL WHERE id = ? AND status IN ('PAUSED','PAUSING')",
-      [esc.grp_id],
-    );
+    release(ctx, esc.grp_id);
   }
 
   const w = ctx.waiters.get(`escalation:${input.escId}`);

@@ -25,6 +25,7 @@ import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runti
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
 import { abortAll } from "./runtime/running.ts";
 import { isOnline } from "./mech/sandbox/net.ts";
+import { hold } from "./mech/flow/intercept.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -84,11 +85,7 @@ const NO_CACHE = "no-cache";
  */
 function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): void {
   const g = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grpId);
-  ctx.db.run(
-    `UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'merge', merge_seq = NULL, merge_seq_at = NULL
-     WHERE id = ? AND status = 'PR_OPEN'`,
-    [grpId],
-  );
+  hold(ctx, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
   ctx.db.run(
     `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
      VALUES (?, 'blocker', ?, 'PR 被关掉了，要不要重开', 'boss', unixepoch() * 1000)`,
@@ -356,7 +353,7 @@ export function start(overrides: Partial<Config> = {}): Started {
           // finds a live group with an empty queue and re-queues its last turn —
           // the Auditor's — which passes again and retries the PR. No new
           // mechanism, and no button that only exists for this.
-          db.run("UPDATE grp SET merge_seq = NULL, merge_seq_at = NULL, status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'merge' WHERE id = ?", [grpId]);
+          hold({ db } as Ctx, grpId, { reason: "merge", settled: true, leaveQueue: true });
           db.run(
             `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
              VALUES (?, 'blocker', ?, 'PR 开不出来', 'boss', unixepoch() * 1000)`,

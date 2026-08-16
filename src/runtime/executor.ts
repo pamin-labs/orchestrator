@@ -31,6 +31,7 @@ import {
 import { type TurnResult } from "./claude.ts";
 import { clampEffort, providerFor, type Provider } from "./providers.ts";
 import { clip, errText, jsonOr } from "../mech/util/text.ts";
+import { hold } from "../mech/flow/intercept.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -1122,10 +1123,7 @@ function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnRes
   const { ctx } = deps;
   const runtime = agent.runtime ?? DEFAULT_PROVIDER;
   if (job.grp_id) {
-    ctx.db.run(
-      "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = ? WHERE id = ? AND status = 'RUNNING'",
-      [`auth:${runtime}`, job.grp_id],
-    );
+    hold(ctx, job.grp_id, { reason: `auth:${runtime}`, settled: true, from: "RUNNING" });
   }
   const open = ctx.db
     .query<{ id: number }, [string]>(
@@ -1179,10 +1177,7 @@ function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResul
     meta: rl,
   });
   if (job.grp_id) {
-    ctx.db.run(
-      "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'ratelimit', rl_resets_at = ? WHERE id = ?",
-      [resetsMs, job.grp_id],
-    );
+    hold(ctx, job.grp_id, { reason: "ratelimit", settled: true, until: resetsMs });
   }
 }
 

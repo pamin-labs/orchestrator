@@ -2,7 +2,7 @@ import { errText, hours, jsonOr, minutes } from "../util/text.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../config.ts";
 import { say, type SayKey } from "../../lang.ts";
-import { interrupt, park, unpark } from "../flow/intercept.ts";
+import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
 import { sweepApproved } from "../flow/start.ts";
 import { route } from "../flow/chain.ts";
 import { runInvariants } from "./invariants.ts";
@@ -527,10 +527,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           severity: "blocker",
           body: t("wd.budget_exhausted", { name: g.name, tokens: g.spent_tokens }),
         });
-        ctx.db.run(
-          "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'budget' WHERE id = ?",
-          [g.id],
-        );
+        hold(ctx, g.id, { reason: "budget", settled: true });
         // A notification says it stopped; it does not put a decision in front of
         // anyone. Without a row in the queue the group sat suspended, 继续 did
         // nothing the scheduler would honour, and the only visible state was a
@@ -572,10 +569,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       )
       .all(now());
     for (const g of throttled) {
-      ctx.db.run(
-        "UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL, rl_resets_at = NULL WHERE id = ?",
-        [g.id],
-      );
+      release(ctx, g.id);
       ctx.bus.emit({
         grpId: g.id,
         author: "orchestrator",
@@ -815,10 +809,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       )
       .all();
     for (const g of waiting) {
-      ctx.db.run(
-        "UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL, blocked_on = NULL WHERE id = ?",
-        [g.id],
-      );
+      release(ctx, g.id);
       ctx.bus.emit({
         grpId: g.id,
         author: "orchestrator",

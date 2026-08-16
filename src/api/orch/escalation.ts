@@ -7,6 +7,7 @@ import { bossFact, withAttachments } from "../panel/attach.ts";
 import { slug } from "../slug.ts";
 import { sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
+import { hold } from "../../mech/flow/intercept.ts";
 
 /**
  * A question that an agent could not answer for itself, and everything that
@@ -74,10 +75,7 @@ export const postAskBoss: AgentHandler<z.infer<typeof AskBossBody>> = async (ctx
   // A blocker is the one intent that stops the whole group: the answer changes
   // the premise everyone else is reasoning from.
   if (severity === "blocker" && a.grp_id) {
-    ctx.db.run(
-      "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000, pause_reason = 'escalation' WHERE id = ? AND status = 'RUNNING'",
-      [a.grp_id],
-    );
+    hold(ctx, a.grp_id, { reason: "escalation", from: "RUNNING" });
   }
   ctx.bus.emit({
     grpId: a.grp_id,

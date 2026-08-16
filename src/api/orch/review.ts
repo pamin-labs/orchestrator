@@ -10,6 +10,7 @@ import { Attachment as AttachmentSchema, GroupRef, Id } from "../fields.ts";
 import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
 import { gatesFor } from "../../mech/gate.ts";
+import { hold } from "../../mech/flow/intercept.ts";
 
 /**
  * The verdicts, and the evidence the boss reads before adding one.
@@ -256,10 +257,7 @@ export const postSliceDecision: Handler<z.infer<typeof SliceDecisionBody>> = asy
       )
       .get(sl.grp_id, id)!.c;
     if (ctx.config.autoAdvance && ahead > 0) {
-      ctx.db.run(
-      "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000, pause_reason = 'escalation' WHERE id = ? AND status = 'RUNNING'",
-      [sl.grp_id],
-      );
+      hold(ctx, sl.grp_id, { reason: "escalation", from: "RUNNING" });
       ctx.bus.emit({
         grpId: sl.grp_id,
         author: "orchestrator",

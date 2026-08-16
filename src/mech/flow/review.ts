@@ -8,6 +8,7 @@ import { changedSince, filesAt } from "../git/worktree.ts";
 import { resourceExec, WORK } from "../sandbox/sandbox.ts";
 import { pushBranch, sandboxGit } from "../git/checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
+import { hold } from "./intercept.ts";
 
 /**
  * Slice-level review, in the one order that makes sense.
@@ -199,10 +200,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
       ],
     );
     ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [sliceId]);
-    ctx.db.run(
-      "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000, pause_reason = 'escalation' WHERE id = ? AND status = 'RUNNING'",
-      [slice.grp_id],
-    );
+    hold(ctx, slice.grp_id, { reason: "escalation", from: "RUNNING" });
     ctx.bus.emit({
       grpId: slice.grp_id,
       author: "orchestrator",
@@ -560,10 +558,7 @@ function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string
   ctx.db.run("UPDATE grp SET pr_retries = ? WHERE id = ?", [n, grpId]);
   if (n <= cfg.gateRetries) return false;
 
-  ctx.db.run(
-    "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'escalation' WHERE id = ?",
-    [grpId],
-  );
+  hold(ctx, grpId, { reason: "escalation", settled: true });
   ctx.db.run(
     `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
      VALUES (?, 'blocker', ?, ?, 'spec', 'boss', unixepoch() * 1000)`,
