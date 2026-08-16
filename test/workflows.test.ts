@@ -4,6 +4,7 @@ import { z } from "zod";
 const Scalar = z.union([z.string(), z.number(), z.boolean()]);
 const Step = z.object({
   name: z.string().optional(),
+  if: z.string().optional(),
   uses: z.string().optional(),
   run: z.string().optional(),
   with: z.record(z.string(), Scalar).optional(),
@@ -19,6 +20,14 @@ const Workflow = z.object({
   permissions: z.record(z.string(), z.string()),
   jobs: z.record(z.string(), Job),
 });
+const FallowConfig = z
+  .object({
+    $schema: z.literal("./node_modules/fallow/schema.json"),
+    entry: z.tuple([z.literal("scripts/*.ts")]),
+    ignoreUnresolvedImports: z.tuple([z.literal("/dist/app.css"), z.literal("/dist/main.js")]),
+    typeAware: z.object({ enabled: z.literal(true) }),
+  })
+  .strict();
 
 const load = async (name: string) =>
   Workflow.parse(Bun.YAML.parse(await Bun.file(`.github/workflows/${name}.yml`).text()));
@@ -30,6 +39,11 @@ const named = (job: z.infer<typeof Job>, name: string) => {
 };
 
 describe("quality workflows", () => {
+  test("Fallow uses its defaults without accepting a baseline", async () => {
+    FallowConfig.parse(await Bun.file(".fallowrc.json").json());
+    expect(await Bun.file(".gitignore").text()).toMatch(/^\.fallow\/$/m);
+  });
+
   test.each([
     ["ci", "check"],
     ["release", "checks"],
@@ -46,7 +60,8 @@ describe("quality workflows", () => {
     const push = job.steps[commit]!.run!;
 
     expect(cleanup).toContain("bun run audit:fix");
-    expect(cleanup).toContain("git restore --source=HEAD -- .fallowrc.json .fallow/.gitignore");
+    expect(cleanup).toContain("git restore --source=HEAD -- .fallowrc.json");
+    expect(cleanup).not.toContain(".fallow/.gitignore");
     expect(cleanup).toContain("bun run format");
     const fixCommand = cleanup.indexOf("bun run audit:fix");
     const restorePolicy = cleanup.indexOf("git restore --source=HEAD");
@@ -109,6 +124,10 @@ describe("quality workflows", () => {
     );
     expect(named(jobs.checks!, "select the source commit").run).toContain("git rev-parse HEAD");
     expect(jobs.checks!.outputs?.["source-sha"]).toBe("${{ steps.source.outputs.sha }}");
+
+    const token = jobs.checks!.steps.find((step) => step.uses === "actions/create-github-app-token@v3")!;
+    expect(token.if).toContain("!inputs.dry_run");
+    expect(named(jobs.checks!, "commit release changes").if).toContain("cleanup-token.outcome == 'success'");
   });
 
   test("release artifacts use the bot commit and fan out in parallel", async () => {

@@ -10,7 +10,7 @@
 
 **D4-3 已验证：** escalation 的 INSERT、默认值和开放问题判定收进 `mech/flow/escalate.ts`；去重范围不再从插入行的 `grp_id` 猜，凭据/GitHub 是全局 subject，预算是 group subject；前缀按绑定字面量比较，且去重检查与 INSERT 是一条原子语句。所有动态 subject 的反向清理使用同一字面前缀语义：合法仓库或开放 provider 名 `a_b` 不会再借 SQLite `LIKE` 的 `_` 通配误撤销/回答 `axb` 的待办，源码闸禁止 `question|brief|kind LIKE ?` 再进入。全部运行期调用方都走 `raise()`，`db.ts` 打开数据库时的数据修复是唯一有标记的直写例外；`test/escalate.test.ts` 的源码守卫会在下一处直写落下时直接报错。ask-boss 的 checkpoint/chain、slice/branch review 的 brief/kind、PR 失败和各调用方事件仍由原路径持有。动态清理回归 74 绿，`bunx tsc --noEmit -p .` 绿。
 
-**Settings pane 拆分已验证：** 账号、GitHub、host/server 与项目设置分别只有 `settings/{credentials,github,environment,project}.tsx` 一份实现；不可逆的项目移除证据、确认和按钮仍在同一个 pane。409 行 dialog shell 持有全部 query、project scope、条件挂载、2/3 秒轮询、5 分钟截止与 cache invalidation；pane 只启动动作并请求刷新。`test/settings-boundary.test.ts` 守住 endpoint、DOM ID 和协调边界。TypeScript、oxlint、web build、90 个定向 checks 及完整测试全绿。
+**Settings pane 拆分已验证：** 账号、GitHub、host/server 与项目设置分别只有 `settings/{credentials,github,environment,project}.tsx` 一份实现；不可逆的项目移除证据、确认和按钮仍在同一个 pane。dialog shell 持有 query、project scope、条件挂载、轮询截止与 cache invalidation；pane 只持有自己的表单和动作。`test/settings-boundary.test.ts` 守住 endpoint、DOM ID 和协调边界；Fallow 对这些文件没有 introduced complexity 或 duplicate finding。TypeScript、oxlint、web build 及完整测试全绿。
 
 **PageIndex Codex 输出只解析一遍：** `readCodex()` 一次 NDJSON 遍历同时保留最后一条非空 agent message 和最后一条合法 usage；banner、坏 JSON、无关 item、乱序、空消息都不破坏已有结果，cached input 仍只计一次。`test/pageindex.test.ts` 11 checks 绿。
 
@@ -18,7 +18,7 @@
 
 **HTTP JSON 边界已封：** 只有真正没有 body 的请求才以 `{}` 进入 schema；非空但无法解析的 JSON 直接 400，不再被吞成空对象后执行全可选控制动作。端到端回归证明 body 只有 `{` 的 pause 请求保持组为 RUNNING；API/smoke 定向 70 绿，TypeScript 绿。
 
-**HTTP schema 输出真正进入 handler：** `route()` / `agentRoute()` 现在把 body 与 params schema 的输出类型和值一同交给 handler，Hono 动态注册使用官方 `app.on()`，不再靠 `Hono<any>`、双重断言或把已验证参数丢回原始字符串。所有动态 path 都必须声明 params schema；动态 row id 共用严格十进制 `Id`，`0x10` 不再被当成记录 16；合法 `z.string()` 输出也不再与错误 sentinel 混淆。gate 名称同一规则同时约束配置、旧 JSON reader 和日志路由，`lint@ci` 不会再写出一个读不回来的日志。通用 route 与 API 回归连同完整 `bun test` 726 绿，TypeScript、oxlint、web build 绿。
+**HTTP schema 输出真正进入 handler：** `src/http/routes/{panel,orch}.ts` 用 Hono 链式路由和官方 `zValidator` 把 body、params、query 的 Zod 输出直接交给 handler；导出的 `ApiType` / `OrchType` 驱动两端 `hc<...>`，不再靠 `Hono<any>`、双重断言或第二份路径表。所有动态 path 都声明 params schema；动态 row id 共用严格十进制 `Id`，`0x10` 不再被当成记录 16。gate 名称同一规则同时约束配置、旧 JSON reader 和日志路由，`lint@ci` 不会写出一个读不回来的日志。
 
 **外部 JSON 都先过边界：** Claude/Codex 流、PageIndex 结果和 GitHub device-flow 都用 Zod 解析后才读字段；JSON 合法但为 `null`、内容数组里是 `null` 或 usage token 是字符串时不再异常解引用、伪造用量或伪造成功。事件重放不再将 sqlite row 取成 `any`，项目配置在已有 row 上仍复用统一的 JSON object 窄化；专门回归与完整 suite 绿。
 
@@ -26,17 +26,17 @@
 
 **网络协议已统一为 Hono RPC：** panel 与 `orch` 路由按 Hono 官方链式形状注册，body / params / query 统一由 `@hono/zod-validator` 验证；web 与 CLI 都用 `hc<...>`，普通请求不再维护 method/path/body 的第二份表。数据型响应 schema 绑定 `InferResponseType` 后再做运行时 Zod 解析，gate 日志的 `{message}` / `{text}` 漂移和 sandbox 日志被 schema 静默剥掉都会在 TypeScript 闸门报错。普通协议只发 JSON；SSE、附件下载和 multipart 上传保留为媒体传输。
 
-**不安全顶层类型已封：** `src`、`web/src`、`test` 中显式 `any`、`unknown`、`z.unknown()` 以及 `as never` 清零；Oxlint 将 `any` / `unknown` 设为 error，`test/type-hygiene.test.ts` 同时扫描 Zod escape hatch。JWT 用 Hono JWT decoder 后过 Zod，旧 resource tags、auth 文件、CLI 流与持久化 payload 都在读取边界按具体 schema 验证；合法 JSON 但形状错误的 tags 会回落默认池而不是在调度时崩溃。runtime/mode 是一张 Zod 判别联合，非法组合在 HTTP 和旧数据库两侧都进不来；项目配置 patch 验证整份合并结果，不会替坏的已知字段盖章。TypeScript、Oxlint、Biome、web build 绿；完整 suite 764 pass / 6 个真沙盒 skip。
+**不安全顶层类型已封：** `src`、`web/src`、`test` 中显式 `any`、`unknown`、`z.unknown()` 以及 `as never` 清零；Oxlint 将 `any` / `unknown` 设为 error，`test/type-hygiene.test.ts` 同时扫描 Zod escape hatch。JWT 用 Hono JWT decoder 后过 Zod，旧 resource tags、auth 文件、CLI 流与持久化 payload 都在读取边界按具体 schema 验证；合法 JSON 但形状错误的 tags 会回落默认池而不是在调度时崩溃。runtime/mode 是一张 Zod 判别联合，非法组合在 HTTP 和旧数据库两侧都进不来；项目配置 patch 验证整份合并结果，不会替坏的已知字段盖章。TypeScript、Oxlint、Biome、web build 绿。
 
 **响应与实时流不再吞边界错误：** web、CLI、mailbox 共用 `readJsonResponse()`，非 JSON 字节不会再借合法的 `null` 穿过 schema；普通响应仍全部是 JSON。SSE 改用 Hono `streamSSE` / `writeSSE`，初次连接回放最新 500 条，每个持久事件写 `id`，重连按 `Last-Event-ID` 分页追齐；订阅先于回放并按 seq 去重，不留竞态窗口。1101 条事件回归证明初次只拿尾部 500、断线 601 条仍全部追齐、显式 cursor 也生效。
 
-**质量工具进入可复现链路：** Biome 是唯一 formatter，Fallow 3.16.0 固定为项目依赖；Tailwind v4 继续由官方 `@tailwindcss/cli` 构建，package script 直接调用本地 `tailwindcss` bin，Fallow 能从 manifest script 正确认出这份 dev dependency，不留 ignore。CI/release 都实际跑 `fallow fix --yes` 后再交给 Biome；策略文件不接受自动 suppression，业务 diff 通过闸门后由 `orchestrator-agentic-app[bot]` 用 `chore` 提交并 bypass 推回触发分支。固定版本的官方 Action 继续做 changed-code audit，PR 写 sticky comment 和 check。release 把二进制与双架构镜像并行构建，后续 job 都 checkout bot 提交的新 SHA。存量 findings 用提交进仓库的三份 baseline 隔离，新引入项仍阻断。
+**质量工具进入可复现链路：** Biome 是唯一 formatter，Fallow 3.16.0 固定为项目依赖；Tailwind v4 由官方 `@tailwindcss/cli` 构建，package script 直接调用本地 `tailwindcss` bin。Fallow 按官方无 baseline 配置运行：仅补 `scripts/*.ts` 入口、构建产物 URL 和 type-aware；`.fallow/` 是本地产物并由根 `.gitignore` 忽略。`fallow fix --dry-run` 只建议 broad `ignoreExports`，因此不接收；`bun run audit` 的 introduced dead code、complexity、duplication 均为 0，clone group 总数为 0。CI/release 先尝试 fix，再恢复策略、Biome format、audit、validate；通过后由 `orchestrator-agentic-app[bot]` 提交并 bypass 推回触发分支。官方 Action v3 跟随 package 的 scanner pin，PR 写 sticky comment 和 check。release dry run 不取 App token、不提交也不推送；正式 release 将 cleanup 与版本号放在同一个 bot commit，再并行构建二进制和双架构镜像。
 
 **项目沙盒 override 不再靠类型断言：** `sandbox.image: 7` 原来在 PATCH 的 `.trim()` 当场 500，`denyDomains: "x"` 则 200 持久化后以 `string[]` 身份进入 OpenSandbox 网络层。现在机器配置、项目 PATCH 与容器读取共用一个 Zod `SandboxSpecSchema`：入口拒绝坏内层类型且不改数据库，读边界对旧库/旁路坏值完整回退，拒绝镜像时 `base_branch` 也不会先被部分写入，局部 patch 不再静默覆盖损坏的整份 JSON。config/sandbox 定向 31 绿、完整 API 66 绿，TypeScript 与 oxlint 绿。
 
-**旧报告逐项按当前分支复核，不重复实现：** pause/resume 统一入口定向 7 绿（`88aa1e7`）；job 结束立即补位定向 25 绿（`6445c48`）；bare mirror heads/refspec 定向 3 绿（`0706062`）。D2 点名的三个 handler 已分别位于 `api/orch/tasks.ts`、`api/panel/group.ts`、`api/orch/planning.ts`，当前没有第二调用方或重复政策证明需要再包一层 flow；`api.ts` 仍负责路由、中间件和 app 组装，并非纯 route table。Claude/Codex/GitHub 登录和 sandbox server start/restart 的 timeout/error 都会取消、返回失败或升级终止，专项 28 绿；SIGKILL 后再确认退出若有复现证据应另立问题。`db.ts` 运行期依赖 `scrub.ts`，反向只有 `import type`，编译后无循环。no-op 项不制造空提交。
+**旧报告逐项按当前分支复核，不重复实现：** pause/resume 统一入口定向 7 绿（`88aa1e7`）；job 结束立即补位定向 25 绿（`6445c48`）；bare mirror heads/refspec 定向 3 绿（`0706062`）。D2 点名的三个 handler 已分别位于 `api/orch/tasks.ts`、`api/panel/group.ts`、`api/orch/planning.ts`，没有第二调用方或重复政策证明需要再包一层 flow；`api.ts` 只组装 middleware 与两棵 Hono route。Claude/Codex/GitHub 登录和 sandbox server start/restart 的 timeout/error 都会取消、返回失败或升级终止；SIGKILL 抛错或强杀后仍存活都会返回失败且不会启动第二个 server，三条专项回归覆盖失败、仍存活和成功替换。`db.ts` 运行期依赖 `scrub.ts`，反向只有 `import type`，编译后无循环。no-op 项不制造空提交。
 
-**完整 suite 764 checks 绿（6 skip 是要可控的真沙盒服务器与密钥）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
+**单命令质量链已完整验证：** `bun run validate` 在可绑定 localhost 的环境依次通过 Biome、TypeScript、Oxlint、web build 和测试，HTTP smoke 7/7 实际执行；总计 772 pass / 6 skip / 0 fail。6 个 skip 只是真 OpenSandbox server/credential 集成。受限执行器不能 `Bun.serve({ port: 0 })` 时，smoke suite 用 Bun 官方 `describe.skipIf` 按能力跳过，业务断言没有放宽。`bun run test` 限并发为 4，避免完整 suite 的资源竞争把单测误判为 30 秒超时。
 
 **你只需要三个动作**：丢想法 → 批 DRAFT 卡 → 查收切片。gate 探测、入职包、推送权限预检都在注册项目时自动完成。
 

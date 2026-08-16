@@ -63,7 +63,7 @@ jobs:
         id: cleanup
         run: |
           bun run audit:fix
-          git restore --source=HEAD -- .fallowrc.json .fallow/.gitignore
+          git restore --source=HEAD -- .fallowrc.json
           bun run format
           git diff --check
           if git diff --quiet; then
@@ -87,9 +87,6 @@ jobs:
         with:
           command: audit
           changed-since: ${{ github.event.pull_request.base.sha || github.event.before }}
-          dead-code-baseline: .fallow/dead-code.json
-          health-baseline: .fallow/health.json
-          dupes-baseline: .fallow/dupes.json
           comment: ${{ github.event_name == 'pull_request' }}
           comment-layout: compact
 
