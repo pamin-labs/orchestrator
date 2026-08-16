@@ -161,6 +161,43 @@ test("a call that reported no usage is not charged", () => {
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent").get()!.n).toBe(0);
 });
 
+test("Codex output keeps the last valid message and usage in one noisy stream", () => {
+  const got = readCodex(
+    [
+      "Reading prompt from stdin…",
+      "{not json",
+      JSON.stringify({ type: "item.completed", item: { type: "command_execution", text: "ignore me" } }),
+      JSON.stringify({
+        type: "turn.completed",
+        usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 5 },
+      }),
+      JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "first answer" } }),
+      JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "" } }),
+      JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "final answer" } }),
+      JSON.stringify({
+        type: "turn.completed",
+        usage: { input_tokens: 10_000, cached_input_tokens: 8_000, output_tokens: 50 },
+      }),
+      "",
+    ].join("\n"),
+  );
+
+  expect(got.text).toBe("final answer");
+  expect(got.usage).toEqual({ input: 2_000, output: 50, cacheRead: 8_000, cacheCreate: 0, thinking: 0 });
+});
+
+test("Codex output tolerates absent valid records", () => {
+  expect(readCodex("banner\n{bad json\n")).toEqual({ text: "", usage: undefined });
+  expect(
+    readCodex(
+      [
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "kept" } }),
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "   " } }),
+      ].join("\n"),
+    ).text,
+  ).toBe("kept");
+});
+
 test("an index call is billed for its cached tokens once, not twice", () => {
   // The indexer is the most frequent model call in the system and it defaults to
   // codex, whose `input_tokens` already contains the cached part — the opposite

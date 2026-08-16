@@ -302,34 +302,38 @@ export function readClaude(out: string): { text: string; usage?: AskUsage } {
   }
 }
 
-/** `codex exec --json`: a stream, whose `turn.completed` carries the usage. */
+/**
+ * `codex exec --json`: one noisy stream, reduced once.
+ *
+ * Message and usage can arrive in either order. Keep the last valid record of
+ * each independently; an empty final message must not erase an answer already
+ * seen, and a banner or malformed line must not take retrieval down.
+ */
 export function readCodex(out: string): { text: string; usage?: AskUsage } {
+  let text = "";
   let usage: AskUsage | undefined;
   for (const line of out.split("\n")) {
     if (!line.startsWith("{")) continue;
     try {
-      const l = JSON.parse(line) as { type?: string; usage?: Record<string, any> };
-      if (l.type === "turn.completed" && l.usage) {
+      const l = JSON.parse(line) as {
+        type?: string;
+        item?: { type?: string; text?: string };
+        usage?: Record<string, number>;
+      };
+      if (
+        l.type === "item.completed" &&
+        l.item?.type === "agent_message" &&
+        typeof l.item.text === "string" &&
+        l.item.text.trim()
+      ) {
+        text = l.item.text;
+      }
+      if (l.type === "turn.completed" && l.usage && typeof l.usage === "object" && !Array.isArray(l.usage)) {
         usage = codexUsage(l.usage);
       }
     } catch {}
   }
-  return { text: lastAgentMessage(out), usage };
-}
-
-/** `codex exec --json` prints a banner and a stream; the answer is the last agent_message. */
-function lastAgentMessage(out: string): string {
-  let text = "";
-  for (const line of out.split("\n")) {
-    if (!line.startsWith("{")) continue;
-    try {
-      const l = JSON.parse(line) as { type?: string; item?: { type?: string; text?: string } };
-      if (l.type === "item.completed" && l.item?.type === "agent_message" && l.item.text) {
-        text = l.item.text;
-      }
-    } catch {}
-  }
-  return text;
+  return { text, usage };
 }
 
 /**

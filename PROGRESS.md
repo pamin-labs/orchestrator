@@ -12,7 +12,9 @@
 
 **Settings pane 拆分已验证：** 账号、GitHub、host/server 与项目设置分别只有 `settings/{credentials,github,environment,project}.tsx` 一份实现；不可逆的项目移除证据、确认和按钮仍在同一个 pane。409 行 dialog shell 持有全部 query、project scope、条件挂载、2/3 秒轮询、5 分钟截止与 cache invalidation；pane 只启动动作并请求刷新。`test/settings-boundary.test.ts` 守住 endpoint、DOM ID 和协调边界。TypeScript、oxlint、web build、90 个定向 checks 及完整测试全绿。
 
-**`bun test` 707 checks 绿（6 skip 是要真沙盒服务器的）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
+**PageIndex Codex 输出只解析一遍：** `readCodex()` 一次 NDJSON 遍历同时保留最后一条非空 agent message 和最后一条合法 usage；banner、坏 JSON、无关 item、乱序、空消息都不破坏已有结果，cached input 仍只计一次。`test/pageindex.test.ts` 11 checks 绿。
+
+**`bun test` 709 checks 绿（6 skip 是要真沙盒服务器的）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
 
 **你只需要三个动作**：丢想法 → 批 DRAFT 卡 → 查收切片。gate 探测、入职包、推送权限预检都在注册项目时自动完成。
 
