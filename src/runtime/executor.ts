@@ -12,6 +12,7 @@ import { listSkills, projectSkills, readSkillIn } from "../mech/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
 import { resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, porcelainPaths, STATUS_Z } from "../mech/git/worktree.ts";
+import { lessonsFor } from "../api/orch/report.ts";
 import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { gitTrailers } from "../mech/git/ghlogin.ts";
@@ -485,19 +486,10 @@ function buildStableFor(
   const projectId = projectOfAgent(ctx.db, agent.id);
 
   const onboarding = noteBody(ctx, projectId, "onboarding");
-  // `id DESC` is not decoration. `at` is whole milliseconds and the Librarian
-  // files several lessons in one turn, so ties are reachable — and a tie here
-  // returns the same twenty rows in either order, which changes the bytes of
-  // `systemAppend`, which is `needsRotation`, which is every agent in the fleet
-  // starting a cold session over nothing. The eviction query that decides which
-  // twenty survive (`api.ts`, `evictOldestLessons`) already breaks the tie the
-  // same way; these two have to agree or the survivors and the readers disagree.
-  const lessons = ctx.db
-    .query<{ body: string }, [number | null]>(
-      "SELECT body FROM note WHERE kind = 'lesson' AND (project_id IS ? OR project_id IS NULL) ORDER BY at DESC, id DESC LIMIT 20",
-    )
-    .all(projectId)
-    .map((r) => r.body);
+  // Owned by `report.ts`, next to the eviction that decides which of them
+  // survive. The comment that used to be here said those two queries have to
+  // agree, and then wrote out its own predicate and its own literal 20.
+  const lessons = lessonsFor(ctx.db, projectId);
 
   return buildStable({
     rolePrompt: role.prompt,
