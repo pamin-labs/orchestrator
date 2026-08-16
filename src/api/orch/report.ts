@@ -1,11 +1,13 @@
 import { dirname, join } from "node:path";
-import { validateJournal } from "../../mech/util/validate.ts";
+import { z } from "zod";
+import type { Caller, Ctx } from "../../ctx.ts";
+import { evictOldestLessons } from "../../mech/knowledge/lessons.ts";
 import { execIn, putFile, WORK } from "../../mech/sandbox/sandbox.ts";
 import { shq } from "../../mech/util/shq.ts";
-import { z } from "zod";
-import { bad, message, type AgentHandler } from "../shared.ts";
+import type { JournalKind } from "../../mech/util/validate.ts";
+import { validateJournal } from "../../mech/util/validate.ts";
 import { Id, Prose } from "../fields.ts";
-import { evictOldestLessons } from "../../mech/knowledge/lessons.ts";
+import { type AgentHandler, bad, message } from "../shared.ts";
 
 /**
  * What an agent says about itself: the one-line status, and the journal.
@@ -41,6 +43,47 @@ export const JournalBody = z.object({
   slice_id: Id.optional(),
 });
 
+type JournalGroup = { name: string; project_id: number };
+type Frontmatter = {
+  group: string | null;
+  role: string;
+  slice: number | null;
+  kind: JournalKind;
+  files: string[];
+};
+
+async function exportJournal(
+  ctx: Ctx,
+  caller: Caller,
+  group: JournalGroup | null,
+  kind: JournalKind,
+  body: string,
+  frontmatter: Frontmatter,
+): Promise<string | null> {
+  if (!caller.grp_id || !group || !["journal", "retro", "decision"].includes(kind)) return null;
+
+  const count = ctx.db
+    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ?")
+    .get(caller.grp_id)!.c;
+  const path = join("docs", "journal", group.name, `${String(count + 1).padStart(3, "0")}-${kind}.md`);
+  const yaml = Object.entries(frontmatter)
+    .map(([key, value]) => `${key}: ${Array.isArray(value) ? `[${value.join(", ")}]` : value}`)
+    .join("\n");
+  await execIn(ctx, { grp: caller.grp_id }, `mkdir -p ${shq(`${WORK}/${dirname(path)}`)}`);
+  await putFile(ctx, { grp: caller.grp_id }, `${WORK}/${path}`, `---\n${yaml}\n---\n${body}\n`);
+  return path;
+}
+
+function queueCompletedRetro(ctx: Ctx, groupId: number | null, kind: JournalKind): void {
+  if (kind !== "retro" || !groupId) return;
+  const open = ctx.db
+    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'")
+    .get(groupId)!.c;
+  if (open !== 0) return;
+  ctx.sched.enqueue("reconcile", { grp_id: groupId, priority: 5 });
+  ctx.sched.tick();
+}
+
 export const postJournal = (async (ctx, _req, a, _p, b) => {
   const v = validateJournal({ kind: b.kind, body: b.body, files: b.files });
   if (!v.ok) return bad(v.error);
@@ -61,21 +104,7 @@ export const postJournal = (async (ctx, _req, a, _p, b) => {
 
   // journal/retro live in the repo so they merge with the PR and the next group
   // can grep them; the rest stay on the blackboard only.
-  let exportPath: string | null = null;
-  if ((v.kind === "journal" || v.kind === "retro" || v.kind === "decision") && a.grp_id) {
-    const seq = ctx.db
-      .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ?")
-      .get(a.grp_id!)!.c;
-    exportPath = join("docs", "journal", grp!.name, `${String(seq + 1).padStart(3, "0")}-${v.kind}.md`);
-    const fm = Object.entries(frontmatter)
-      .map(([k, val]) => `${k}: ${Array.isArray(val) ? `[${val.join(", ")}]` : val}`)
-      .join("\n");
-    // Into the sandbox's checkout, so it merges with the PR like any other file.
-    // Quoted: the path carries `grp.name`, and a group can name its own children
-    // (`orch split`). Unquoted this was one `;` away from being a command.
-    await execIn(ctx, { grp: a.grp_id }, `mkdir -p ${shq(`${WORK}/${dirname(exportPath)}`)}`);
-    await putFile(ctx, { grp: a.grp_id }, `${WORK}/${exportPath}`, `---\n${fm}\n---\n${v.body}\n`);
-  }
+  const exportPath = await exportJournal(ctx, a, grp, v.kind, v.body, frontmatter);
 
   ctx.db.run(
     `INSERT INTO note (project_id, grp_id, slice_id, kind, lang, body, frontmatter_json, export_path, at)
@@ -99,15 +128,7 @@ export const postJournal = (async (ctx, _req, a, _p, b) => {
   // A retro is what PR-level review was waiting for. Without this the flow
   // dead-ends: the PM writes the retro nobody asked for again, and the branch sits
   // finished and unreviewed until someone nudges it by hand.
-  if (v.kind === "retro" && a.grp_id) {
-    const open = ctx.db
-      .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'")
-      .get(a.grp_id)!.c;
-    if (open === 0) {
-      ctx.sched.enqueue("reconcile", { grp_id: a.grp_id, priority: 5 });
-      ctx.sched.tick();
-    }
-  }
+  queueCompletedRetro(ctx, a.grp_id, v.kind);
 
   ctx.bus.emit({
     grpId: a.grp_id,

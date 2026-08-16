@@ -1,24 +1,25 @@
+import { z } from "zod";
+import type { Ctx } from "../../ctx.ts";
 import {
   abstain,
-  answer as chainAnswer,
   CHAIN,
+  answer as chainAnswer,
   entryPoint,
   revoke,
   route,
-  triage,
   TRIAGE,
+  triage,
 } from "../../mech/flow/chain.ts";
-import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from "../fields.ts";
+import { raise } from "../../mech/flow/escalate.ts";
+import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
-import { bad, json, mayAct, resolveGroup, message, type AgentHandler, type Handler } from "../shared.ts";
-import { bossFact, withAttachments } from "../panel/attach.ts";
-import { slug } from "../slug.ts";
 import { sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
-import { hold } from "../../mech/flow/intercept.ts";
-import { raise } from "../../mech/flow/escalate.ts";
 import type { SliceState } from "../../states.ts";
+import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from "../fields.ts";
+import { bossFact, withAttachments } from "../panel/attach.ts";
+import { type AgentHandler, bad, type Handler, json, mayAct, message, resolveGroup } from "../shared.ts";
+import { slug } from "../slug.ts";
 
 /**
  * A question that an agent could not answer for itself, and everything that
@@ -269,65 +270,93 @@ export const postAnswer = (async (ctx, _req, params, b) => {
  * No draft is a fine outcome. If the model is unreachable or says nothing useful
  * this returns nothing and the composer is the composer.
  */
+type AnswerDraftRow = {
+  grp_id: number | null;
+  question: string;
+  severity: string;
+  asker: string | null;
+  project_id: number | null;
+};
+
+function answerDraftContext(
+  ctx: Ctx,
+  groupId: number | null,
+): { requirement: string; notes: string[]; slices: string[] } {
+  if (!groupId) return { requirement: ctx.config.language === "en" ? "standing" : "常驻岗", notes: [], slices: [] };
+  const requirement =
+    ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(groupId)?.name ?? "?";
+  const notes = ctx.db
+    .query<{ kind: string; body: string }, [number]>(
+      `SELECT kind, body FROM note
+       WHERE (grp_id = ? OR (grp_id IS NULL AND kind IN ('decision','lesson','fact')))
+       ORDER BY at DESC LIMIT 12`,
+    )
+    .all(groupId)
+    .map((note) => `[${note.kind}] ${note.body.slice(0, 400)}`);
+  const slices = ctx.db
+    .query<{ seq: number; title: string; status: SliceState }, [number]>(
+      "SELECT seq, title, status FROM slice WHERE grp_id = ? ORDER BY seq",
+    )
+    .all(groupId)
+    .map((slice) => `S${slice.seq} ${slice.status} ${slice.title}`);
+  return { requirement, notes, slices };
+}
+
+function answerDraftPrompt(
+  language: string,
+  escalation: AnswerDraftRow,
+  context: ReturnType<typeof answerDraftContext>,
+): string {
+  const [intro, rules, requirement, asker, question, slices, notes] =
+    language === "en"
+      ? [
+          "You draft answers for the boss. Below is a question an agent escalated, plus this requirement's blackboard. Write the reply the boss could send as-is.",
+          "Rules: conclusion and evidence, no preamble, no restating the question, at most 4 lines. Answer from the blackboard when it is there; when it is not, say what is missing and give the most likely decision.",
+          "requirement",
+          "asker",
+          "question",
+          "slices",
+          "blackboard",
+        ]
+      : [
+          "你是老板的助手。下面是一个 agent 提给老板的问题，以及这个需求的黑板内容。写出老板可以直接发出去的答复。",
+          "要求：直接给结论和依据，不要开场白，不要复述问题，不超过 4 行。黑板里答得出来就直接答；答不出来就说清楚缺什么、并给出你认为最可能的决定。",
+          "需求",
+          "提问的人",
+          "问题",
+          "切片",
+          "黑板",
+        ];
+  return [
+    intro,
+    rules,
+    "",
+    `${requirement}: ${context.requirement}`,
+    `${asker}: ${escalation.asker ?? "?"} (${escalation.severity})`,
+    `${question}: ${escalation.question.slice(0, 2000)}`,
+    context.slices.length ? `\n${slices}:\n${context.slices.join("\n")}` : "",
+    context.notes.length ? `\n${notes}:\n${context.notes.join("\n")}` : "",
+  ].join("\n");
+}
+
 export const getAnswerDraft = (async (ctx, _req, params) => {
   if (!ctx.askIn) return json({ text: "" });
-  const id = params.id;
-  const e = ctx.db
-    .query<
-      { grp_id: number | null; question: string; severity: string; asker: string | null; project_id: number | null },
-      [number]
-    >(
+  const escalation = ctx.db
+    .query<AnswerDraftRow, [number]>(
       `SELECT e.grp_id, e.question, e.severity, a.role AS asker,
               coalesce(g.project_id, a.project_id) AS project_id
-       FROM escalation e LEFT JOIN agent a ON a.id = e.agent_id
+      FROM escalation e LEFT JOIN agent a ON a.id = e.agent_id
        LEFT JOIN grp g ON g.id = e.grp_id
        WHERE e.id = ? AND e.answer IS NULL`,
     )
-    .get(id);
-  if (!e?.project_id) return json({ text: "" });
-
-  const grp = e.grp_id
-    ? ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(e.grp_id)
-    : null;
-  // The blackboard, newest first and capped: this is the cheapest model in the
-  // system and a 40k-character prompt would cost more than the answer is worth.
-  const notes = e.grp_id
-    ? ctx.db
-        .query<{ kind: string; body: string }, [number]>(
-          `SELECT kind, body FROM note
-           WHERE (grp_id = ? OR (grp_id IS NULL AND kind IN ('decision','lesson','fact')))
-           ORDER BY at DESC LIMIT 12`,
-        )
-        .all(e.grp_id)
-        .map((n) => `[${n.kind}] ${n.body.slice(0, 400)}`)
-    : [];
-  const slices = e.grp_id
-    ? ctx.db
-        .query<{ seq: number; title: string; status: SliceState }, [number]>(
-          "SELECT seq, title, status FROM slice WHERE grp_id = ? ORDER BY seq",
-        )
-        .all(e.grp_id)
-        .map((s) => `S${s.seq} ${s.status} ${s.title}`)
-    : [];
-
-  const zh = ctx.config.language !== "en";
-  const prompt = [
-    zh
-      ? "你是老板的助手。下面是一个 agent 提给老板的问题，以及这个需求的黑板内容。写出老板可以直接发出去的答复。"
-      : "You draft answers for the boss. Below is a question an agent escalated, plus this requirement's blackboard. Write the reply the boss could send as-is.",
-    zh
-      ? "要求：直接给结论和依据，不要开场白，不要复述问题，不超过 4 行。黑板里答得出来就直接答；答不出来就说清楚缺什么、并给出你认为最可能的决定。"
-      : "Rules: conclusion and evidence, no preamble, no restating the question, at most 4 lines. Answer from the blackboard when it is there; when it is not, say what is missing and give the most likely decision.",
-    ``,
-    `${zh ? "需求" : "requirement"}: ${grp?.name ?? (zh ? "常驻岗" : "standing")}`,
-    `${zh ? "提问的人" : "asker"}: ${e.asker ?? "?"} (${e.severity})`,
-    `${zh ? "问题" : "question"}: ${e.question.slice(0, 2000)}`,
-    slices.length ? `\n${zh ? "切片" : "slices"}:\n${slices.join("\n")}` : "",
-    notes.length ? `\n${zh ? "黑板" : "blackboard"}:\n${notes.join("\n")}` : "",
-  ].join("\n");
+    .get(params.id);
+  if (!escalation?.project_id) return json({ text: "" });
+  // The blackboard is newest-first and capped: this is the cheapest model in
+  // the system and a 40k-character prompt costs more than the answer is worth.
+  const prompt = answerDraftPrompt(ctx.config.language, escalation, answerDraftContext(ctx, escalation.grp_id));
 
   try {
-    const out = (await ctx.askIn({ project: e.project_id })(prompt)).trim();
+    const out = (await ctx.askIn({ project: escalation.project_id })(prompt)).trim();
     return json({ text: out.length > 1200 ? out.slice(0, 1200) : out });
   } catch {
     return json({ text: "" });

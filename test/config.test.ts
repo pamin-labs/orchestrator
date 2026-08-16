@@ -1,20 +1,20 @@
 import { expect, test } from "bun:test";
-import { routeSource } from "./route-source.ts";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { z } from "zod";
 import {
-  DEFAULTS_FOR_CHECK,
-  MAX_CONTEXT,
-  MIN_CONTEXT,
   contextWindowFor,
+  DEFAULTS_FOR_CHECK,
   loadConfig,
   loadRoles,
+  MAX_CONTEXT,
+  MIN_CONTEXT,
   modelFor,
   withAbsoluteDataDir,
 } from "../src/config.ts";
 import { ConfigSchema } from "../src/config-schema.ts";
-import { z } from "zod";
+import { routeSource } from "./route-source.ts";
 
 test("the shipped roles all parse and declare what the runtime needs", () => {
   const roles = loadRoles("roles");
@@ -191,25 +191,11 @@ test("the shipped yaml never disagrees with the code default", () => {
   const JsonObject = z.record(z.string(), z.json());
   const yaml = JsonObject.parse(Bun.YAML.parse(readFileSync("config/default.yaml", "utf8")));
   const defaults = JsonObject.parse(DEFAULTS_FOR_CHECK);
-  const differ: string[] = [];
-  const walk = (a: z.infer<typeof JsonObject>, b: z.infer<typeof JsonObject>, path = "") => {
-    for (const k of Object.keys(a)) {
-      const p = path ? `${path}.${k}` : k;
-      const [av, bv] = [a[k], b[k]];
-      const branch =
-        av !== null &&
-        bv !== null &&
-        typeof av === "object" &&
-        typeof bv === "object" &&
-        !Array.isArray(av) &&
-        !Array.isArray(bv);
-      if (branch) walk(av, bv, p);
-      else if (JSON.stringify(av) !== JSON.stringify(bv))
-        differ.push(`${p}: yaml=${JSON.stringify(av)} default=${JSON.stringify(bv)}`);
-    }
-  };
-  walk(yaml, defaults);
-  expect(differ).toEqual([]);
+  for (const [key, value] of Object.entries(yaml)) {
+    const codeDefault = defaults[key];
+    if (codeDefault === undefined) throw new Error(`yaml has no code default for ${key}`);
+    expect(value, key).toEqual(codeDefault);
+  }
 });
 
 test("the config type and the config schema are one declaration", () => {

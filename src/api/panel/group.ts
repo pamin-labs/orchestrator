@@ -8,7 +8,7 @@ import { canStart, CLAIMING_SQL, parseOwns } from "../../mech/flow/ownership.ts"
 import { killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, Id } from "../fields.ts";
+import { Attachment as AttachmentSchema, IdParams } from "../fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { bad, firstIdea, json, message, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "./attach.ts";
@@ -77,8 +77,7 @@ export const postIdea = (async (ctx, _req, _p, b) => {
   return json({ grp_id: grp.id, channel_id: grp.channelId, boundaryNeeded: others.length > 0 });
 }) satisfies Handler<z.infer<typeof IdeaBody>>;
 
-export const DraftDecision = z.object({
-  id: Id,
+export const DraftDecision = IdParams.extend({
   decision: z.enum(["approve", "reject"]),
 });
 
@@ -254,8 +253,7 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
  * the only source for that, and `pollPrs` already asks it. Naming it here means
  * the refusal can say so.
  */
-export const GroupAction = z.object({
-  id: Id,
+export const GroupAction = IdParams.extend({
   action: z.enum(["pause", "resume", "park", "wake", "interrupt", "budget", "drop", "newpr", "rebuild"]),
 });
 
@@ -274,148 +272,176 @@ export const GroupControlBody = z.object({
   mode: z.enum(["keep", "rollback"]).optional(),
 });
 
+function changeBudget(ctx: Ctx, grpId: number, tokens: number | null | undefined): Response {
+  // Budget exhaustion suspends the group, and until this existed there was no
+  // route out of it: 继续 un-paused a group the scheduler refused to admit,
+  // so the next tick suspended it again. A limit needs a way to be raised.
+  const t = normalizeBudget(tokens);
+  const spent = ctx.db
+    .query<{ spent_tokens: number; status: GrpState }, [number]>("SELECT spent_tokens, status FROM grp WHERE id = ?")
+    .get(grpId);
+  if (!spent) return message("no such group", 404);
+  const error = budgetError(t, spent.spent_tokens);
+  if (error) return error;
+  recordBudget(ctx, grpId, t);
+  if (spent.status === "PAUSED") resume(ctx, grpId);
+  ctx.sched.tick();
+  return json({ budget: t });
+}
+
+function normalizeBudget(tokens: number | null | undefined): number | null {
+  if (tokens == null) return null;
+  return Math.round(tokens);
+}
+
+function budgetError(tokens: number | null, spent: number): Response | null {
+  if (tokens === null) return null;
+  if (!(tokens > 0)) return bad("tokens must be a positive number, or null to lift the cap");
+  if (tokens <= spent) return bad(`already spent ${spent} tokens — a cap at ${tokens} would stop it again immediately`);
+  return null;
+}
+
+function recordBudget(ctx: Ctx, grpId: number, tokens: number | null): void {
+  const description = tokens === null ? "budget cap lifted" : `budget raised to ${tokens} tokens`;
+  ctx.db.run("UPDATE grp SET budget_tokens = ? WHERE id = ?", [tokens, grpId]);
+  ctx.bus.emit({
+    grpId,
+    author: "boss",
+    kind: "state_change",
+    body: description,
+  });
+  // Raising the cap is the answer to the question the watchdog asked, so it
+  // also closes it: a stale "out of budget" row in 等你 is worse than none.
+  ctx.db.run(
+    `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = ?, answered_at = unixepoch() * 1000
+     WHERE grp_id = ? AND chain_state = 'boss' AND answer IS NULL AND question LIKE 'budget:%'`,
+    [tokens === null ? "cap lifted" : `raised to ${tokens}`, grpId],
+  );
+}
+
+function resumeGroup(ctx: Ctx, grpId: number): Response {
+  // Un-pausing an over-budget group is a no-op the boss cannot see: the
+  // scheduler refuses to admit it, so it sits in RUNNING doing nothing.
+  const g = ctx.db
+    .query<{ budget_tokens: number | null; spent_tokens: number }, [number]>(
+      "SELECT budget_tokens, spent_tokens FROM grp WHERE id = ?",
+    )
+    .get(grpId);
+  if (g?.budget_tokens != null && g.spent_tokens >= g.budget_tokens) {
+    return bad(
+      `out of budget (${g.spent_tokens}/${g.budget_tokens} tokens). Raise the cap first, ` +
+        `or it stops again on the next tick.`,
+    );
+  }
+  resume(ctx, grpId);
+  return message("ok");
+}
+
+async function replacePr(ctx: Ctx, grpId: number): Promise<Response> {
+  // A closed PR normally comes back by being reopened on GitHub, and the
+  // watchdog picks that up. But a PR cannot be reopened once its branch has
+  // been force-pushed or deleted, and sometimes the boss simply wants a clean
+  // one — without this the group is stuck holding a pr_number that openPr
+  // treats as "already done", so it could never get another.
+  const g = ctx.db
+    .query<{ name: string; repo: string; pr_number: number | null }, [number]>(
+      "SELECT g.name, p.repo_path AS repo, g.pr_number FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
+    )
+    .get(grpId);
+  if (!g) return message("no such group", 404);
+  if (!ctx.gh) return bad("no GitHub client on this server");
+  ctx.db.run("UPDATE grp SET pr_number = NULL WHERE id = ?", [grpId]);
+  const r = await openPr({
+    ctx,
+    gh: ctx.gh,
+    grpId,
+    title: prTitle(ctx, grpId),
+    body: prBody(ctx, grpId),
+  });
+  if ("error" in r) {
+    // Put the old number back: a group with no PR and no way to open one is
+    // worse off than one whose PR is closed.
+    ctx.db.run("UPDATE grp SET pr_number = ? WHERE id = ?", [g.pr_number, grpId]);
+    return bad(r.error);
+  }
+  ctx.db.run("UPDATE grp SET status = 'PR_OPEN', paused_at = NULL, pause_reason = NULL WHERE id = ?", [grpId]);
+  joinQueue(ctx.db, grpId);
+  ctx.db.run(
+    `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = ?
+     WHERE grp_id = ? AND answer IS NULL AND question LIKE 'PR #%被关掉了%'`,
+    [`opened #${r.number} instead`, grpId],
+  );
+  ctx.bus.emit({
+    grpId,
+    author: "boss",
+    kind: "state_change",
+    body: `opened PR #${r.number} to replace the closed one`,
+    meta: { pr: r.number },
+  });
+  return json({ number: r.number });
+}
+
+async function dropRequirement(ctx: Ctx, grpId: number, why: string | undefined): Promise<Response> {
+  // 不做了. A requirement that turned out to be a duplicate, or that someone
+  // else already fixed, had no way off the board: 退回重拆 sends it back to the
+  // Dispatcher, which writes another card for work nobody wants. The paths it
+  // held stayed held, so a group waiting on them waited forever.
+  const g = ctx.db
+    .query<{ status: GrpState; name: string }, [number]>("SELECT status, name FROM grp WHERE id = ?")
+    .get(grpId);
+  if (!g) return message("no such group", 404);
+  if (g.status === "DISSOLVED") return message("ok");
+  dropGroup(ctx, grpId, why ?? "");
+  // Its paths are free the moment it leaves ACTIVE, so anything the boss
+  // already approved behind it can start now.
+  return json({ started: await sweepApproved(ctx) });
+}
+
+async function rebuildSandbox(ctx: Ctx, grpId: number): Promise<Response> {
+  // Throw the container away; the next turn builds a fresh one and
+  // `restoreWorkspace` puts the checkout and the dependencies back (the branch
+  // itself lives in the boss's repo, so nothing on it is at risk). The way out
+  // of a container that is wedged, is missing a mount the boss has just
+  // allowed, or is holding a credential that has since been replaced.
+  await killSandbox(ctx, { grp: grpId });
+  // The old lines described a container that no longer exists.
+  clearSandboxLog(grpId);
+  ctx.bus.emit({
+    grpId,
+    author: "boss",
+    kind: "state_change",
+    body: say(ctx.config.language, "sandbox.rebuild"),
+  });
+  ctx.sched.tick();
+  return message("ok");
+}
+
 export const postGroupControl = (async (ctx, req, params, b) => {
   const grpId = params.id;
   const action = params.action;
   switch (action) {
-    case "budget": {
-      // Budget exhaustion suspends the group, and until this existed there was no
-      // route out of it: 继续 un-paused a group the scheduler refused to admit,
-      // so the next tick suspended it again. A limit needs a way to be raised.
-      const t = b.tokens == null ? null : Math.round(b.tokens);
-      if (t !== null && !(t > 0)) return bad("tokens must be a positive number, or null to lift the cap");
-      const spent = ctx.db
-        .query<{ spent_tokens: number; status: GrpState }, [number]>(
-          "SELECT spent_tokens, status FROM grp WHERE id = ?",
-        )
-        .get(grpId);
-      if (!spent) return message("no such group", 404);
-      if (t !== null && t <= spent.spent_tokens) {
-        return bad(`already spent ${spent.spent_tokens} tokens — a cap at ${t} would stop it again immediately`);
-      }
-      ctx.db.run("UPDATE grp SET budget_tokens = ? WHERE id = ?", [t, grpId]);
-      ctx.bus.emit({
-        grpId,
-        author: "boss",
-        kind: "state_change",
-        body: t === null ? "budget cap lifted" : `budget raised to ${t} tokens`,
-      });
-      // Raising the cap is the answer to the question the watchdog asked, so it
-      // also closes it: a stale "out of budget" row in 等你 is worse than none.
-      ctx.db.run(
-        `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = ?, answered_at = unixepoch() * 1000
-         WHERE grp_id = ? AND chain_state = 'boss' AND answer IS NULL AND question LIKE 'budget:%'`,
-        [t === null ? "cap lifted" : `raised to ${t}`, grpId],
-      );
-      if (spent.status === "PAUSED") resume(ctx, grpId);
-      ctx.sched.tick();
-      return json({ budget: t });
-    }
+    case "budget":
+      return changeBudget(ctx, grpId, b.tokens);
     case "pause": {
       // Reports how many turns it is waiting on: PAUSING is honest, PAUSED
       // would not be while something is still in flight.
       const waiting = pause(ctx, grpId);
       return json({ status: waiting ? "PAUSING" : "PAUSED", waiting });
     }
-    case "resume": {
-      // Un-pausing an over-budget group is a no-op the boss cannot see: the
-      // scheduler refuses to admit it, so it sits in RUNNING doing nothing.
-      const g = ctx.db
-        .query<{ budget_tokens: number | null; spent_tokens: number }, [number]>(
-          "SELECT budget_tokens, spent_tokens FROM grp WHERE id = ?",
-        )
-        .get(grpId);
-      if (g?.budget_tokens != null && g.spent_tokens >= g.budget_tokens) {
-        return bad(
-          `out of budget (${g.spent_tokens}/${g.budget_tokens} tokens). Raise the cap first, ` +
-            `or it stops again on the next tick.`,
-        );
-      }
-      resume(ctx, grpId);
-      return message("ok");
-    }
+    case "resume":
+      return resumeGroup(ctx, grpId);
     case "park":
       park(ctx, grpId, "you parked it");
       return message("ok");
-    case "newpr": {
-      // A closed PR normally comes back by being reopened on GitHub, and the
-      // watchdog picks that up. But a PR cannot be reopened once its branch has
-      // been force-pushed or deleted, and sometimes the boss simply wants a clean
-      // one — without this the group is stuck holding a pr_number that openPr
-      // treats as "already done", so it could never get another.
-      const g = ctx.db
-        .query<{ name: string; repo: string; pr_number: number | null }, [number]>(
-          "SELECT g.name, p.repo_path AS repo, g.pr_number FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
-        )
-        .get(grpId);
-      if (!g) return message("no such group", 404);
-      if (!ctx.gh) return bad("no GitHub client on this server");
-      ctx.db.run("UPDATE grp SET pr_number = NULL WHERE id = ?", [grpId]);
-      const r = await openPr({
-        ctx,
-        gh: ctx.gh,
-        grpId,
-        title: prTitle(ctx, grpId),
-        body: prBody(ctx, grpId),
-      });
-      if ("error" in r) {
-        // Put the old number back: a group with no PR and no way to open one is
-        // worse off than one whose PR is closed.
-        ctx.db.run("UPDATE grp SET pr_number = ? WHERE id = ?", [g.pr_number, grpId]);
-        return bad(r.error);
-      }
-      ctx.db.run("UPDATE grp SET status = 'PR_OPEN', paused_at = NULL, pause_reason = NULL WHERE id = ?", [grpId]);
-      joinQueue(ctx.db, grpId);
-      ctx.db.run(
-        `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = ?
-         WHERE grp_id = ? AND answer IS NULL AND question LIKE 'PR #%被关掉了%'`,
-        [`opened #${r.number} instead`, grpId],
-      );
-      ctx.bus.emit({
-        grpId,
-        author: "boss",
-        kind: "state_change",
-        body: `opened PR #${r.number} to replace the closed one`,
-        meta: { pr: r.number },
-      });
-      return json({ number: r.number });
-    }
-    case "drop": {
-      // 不做了. A requirement that turned out to be a duplicate, or that someone
-      // else already fixed, had no way off the board: 退回重拆 sends it back to the
-      // Dispatcher, which writes another card for work nobody wants. The paths it
-      // held stayed held, so a group waiting on them waited forever.
-      const g = ctx.db
-        .query<{ status: GrpState; name: string }, [number]>("SELECT status, name FROM grp WHERE id = ?")
-        .get(grpId);
-      if (!g) return message("no such group", 404);
-      if (g.status === "DISSOLVED") return message("ok");
-      dropGroup(ctx, grpId, b.why ?? "");
-      // Its paths are free the moment it leaves ACTIVE, so anything the boss
-      // already approved behind it can start now.
-      return json({ started: await sweepApproved(ctx) });
-    }
+    case "newpr":
+      return replacePr(ctx, grpId);
+    case "drop":
+      return dropRequirement(ctx, grpId, b.why);
     case "wake":
       await unpark(ctx, grpId);
       return message("ok");
-    // Throw the container away; the next turn builds a fresh one and
-    // `restoreWorkspace` puts the checkout and the dependencies back (the branch
-    // itself lives in the boss's repo, so nothing on it is at risk). The way out
-    // of a container that is wedged, is missing a mount the boss has just
-    // allowed, or is holding a credential that has since been replaced.
-    case "rebuild": {
-      await killSandbox(ctx, { grp: grpId });
-      // The old lines described a container that no longer exists.
-      clearSandboxLog(grpId);
-      ctx.bus.emit({
-        grpId,
-        author: "boss",
-        kind: "state_change",
-        body: say(ctx.config.language, "sandbox.rebuild"),
-      });
-      ctx.sched.tick();
-      return message("ok");
-    }
+    case "rebuild":
+      return rebuildSandbox(ctx, grpId);
     case "interrupt": {
       const mode = b.mode ?? "keep";
       const out = await interrupt(ctx, grpId, mode);

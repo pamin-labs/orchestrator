@@ -1,9 +1,33 @@
-import { projectOfAgent } from "../../mech/util/rows.ts";
-import { Id } from "../fields.ts";
+import { z } from "zod";
+import type { Caller, Ctx } from "../../ctx.ts";
 import { query as ctxQuery } from "../../mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search } from "../../mech/knowledge/pageindex.ts";
-import { z } from "zod";
-import { message, type AgentHandler } from "../shared.ts";
+import { projectOfAgent } from "../../mech/util/rows.ts";
+import { Id } from "../fields.ts";
+import { type AgentHandler, message } from "../shared.ts";
+
+async function pageIndexContext(ctx: Ctx, caller: Caller, projectId: number | null, question: string): Promise<string> {
+  const tree = loadTree(ctx.db, projectId);
+  if (!tree || !ctx.askIn || !projectId) return "";
+
+  try {
+    const scope = caller.grp_id ? { grp: caller.grp_id } : { project: projectId };
+    const hits = await search(tree, question, ctx.askIn(scope));
+    if (hits.length === 0) return "";
+
+    let answer = render(tree, hits);
+    const noteIds = hits.filter((hit) => hit.startsWith(NOTE_PREFIX)).map((hit) => Number(hit.split("/").pop()));
+    for (const id of noteIds) {
+      const note = ctx.db
+        .query<{ kind: string; body: string }, [number]>("SELECT kind, body FROM note WHERE id = ?")
+        .get(id);
+      if (note) answer += `\n\n### ${note.kind} #${id}\n${note.body.slice(0, 1200)}`;
+    }
+    return answer;
+  } catch {
+    return "";
+  }
+}
 
 /**
  * The first thing every role is told to run, so its cost is everyone's cost.
@@ -26,36 +50,9 @@ export const postCtxQuery = (async (ctx, _req, a, _p, b) => {
   // shares no word with the question. It costs one cheap call, against grep rounds
   // that each re-read the agent's whole transcript. No tree yet, or a navigator
   // that fails, falls through to the lexical map inside ctxQuery.
-  let where = "";
-  const tree = loadTree(ctx.db, projectId);
-  if (tree && ctx.askIn && projectId) {
-    try {
-      // In the caller's own sandbox, not the project's.
-      //
-      // The walk reads nothing from a checkout: the menu is built from summaries
-      // already in the database and the model answers with ids. So the container
-      // it runs in cannot change the answer — and routing every group's query into
-      // the one project sandbox would put ten agents' first step through a single
-      // container with a single CPU quota, on the step `assemble.ts` tells every
-      // role to take FIRST. The index *build* stays project-scoped; it is shared
-      // work and there is one of it.
-      const scope = a.grp_id ? { grp: a.grp_id } : { project: projectId };
-      const hits = await search(tree, b.question, ctx.askIn(scope));
-      if (hits.length) {
-        where = render(tree, hits);
-        // A note the walk landed on is the answer, not a pointer to it: journals and
-        // retros are already short, and making the agent go and fetch one costs
-        // another round, which is the thing this whole path exists to avoid.
-        const noteIds = hits.filter((h) => h.startsWith(NOTE_PREFIX)).map((h) => Number(h.split("/").pop()));
-        for (const id of noteIds) {
-          const n = ctx.db
-            .query<{ kind: string; body: string }, [number]>("SELECT kind, body FROM note WHERE id = ?")
-            .get(id);
-          if (n) where += `\n\n### ${n.kind} #${id}\n${n.body.slice(0, 1200)}`;
-        }
-      }
-    } catch {}
-  }
+  // In the caller's own sandbox, not the project's. The walk reads summaries
+  // already in the database; the shared index build remains project-scoped.
+  const where = await pageIndexContext(ctx, a, projectId, b.question);
   return message(
     ctxQuery({
       db: ctx.db,

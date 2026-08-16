@@ -1,18 +1,25 @@
-import { validateDraftCard } from "../../mech/util/validate.ts";
-import { canStart, claimsShared, CLAIMING_SQL, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
+import { z } from "zod";
+import type { Caller, Ctx } from "../../ctx.ts";
+import { say } from "../../lang.ts";
+import { hold } from "../../mech/flow/intercept.ts";
+import { newGroup } from "../../mech/flow/newgroup.ts";
+import { CLAIMING_SQL, canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
+import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
 import { sweepApproved } from "../../mech/flow/start.ts";
 import { baseBranch, baseRefFor, sandboxGit, treeFiles } from "../../mech/git/checkout.ts";
 import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
-import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
 import { shq } from "../../mech/util/shq.ts";
-import { say } from "../../lang.ts";
-import { z } from "zod";
-import { GroupRef } from "../fields.ts";
-import { bad, json, mayAct, resolveGroup, message, type AgentHandler } from "../shared.ts";
-import { slug } from "../slug.ts";
-import { newGroup } from "../../mech/flow/newgroup.ts";
-import { hold } from "../../mech/flow/intercept.ts";
+import { validateDraftCard } from "../../mech/util/validate.ts";
 import type { GrpState } from "../../states.ts";
+import { GroupRef } from "../fields.ts";
+import { type AgentHandler, bad, json, mayAct, message, resolveGroup } from "../shared.ts";
+import { slug } from "../slug.ts";
+
+function actingGroup(ctx: Ctx, caller: Caller, ref: z.infer<typeof GroupRef> | null | undefined): number | Response {
+  const groupId = resolveGroup(ctx, ref, caller.grp_id);
+  if (!groupId) return bad("which group? pass its id or name");
+  return mayAct(ctx, caller, groupId) ? groupId : message("not your group", 403);
+}
 
 /**
  * What a group does with its own plan: file the DRAFT card, fan out into
@@ -45,9 +52,8 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
   const v = validateDraftCard(b.card);
   if (!v.ok) return bad(v.error);
 
-  const grpId = resolveGroup(ctx, b.group_id, a.grp_id);
-  if (!grpId) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, grpId)) return message("not your group", 403);
+  const grpId = actingGroup(ctx, a, b.group_id);
+  if (grpId instanceof Response) return grpId;
   const grp = ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId);
   if (!grp) return bad(`no group ${grpId}`);
 
@@ -138,9 +144,8 @@ export const SplitBody = z.object({
 export const postSplit = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not split requirements`);
 
-  const gid = resolveGroup(ctx, b.group_id, a.grp_id);
-  if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
+  const gid = actingGroup(ctx, a, b.group_id);
+  if (gid instanceof Response) return gid;
   const grp = ctx.db
     .query<{ project_id: number; name: string; status: GrpState; branch: string | null }, [number]>(
       "SELECT project_id, name, status, branch FROM grp WHERE id = ?",
@@ -238,9 +243,8 @@ export const DropBody = z.object({
 
 export const postDrop = (async (ctx, _req, a, _p, b) => {
   if (!["dispatcher", "pm", "architect"].includes(a.role)) return bad(`${a.role} does not propose dropping work`);
-  const gid = resolveGroup(ctx, b.group_id, a.grp_id);
-  if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
+  const gid = actingGroup(ctx, a, b.group_id);
+  if (gid instanceof Response) return gid;
   const why = b.why.trim();
   if (why.length < 10) return bad("--why has to say what already covers it, in a sentence");
 
@@ -325,10 +329,81 @@ export const BlockedBody = z.object({
   why: z.string().max(4000).default(""),
 });
 
+type BlockedGroup = { project_id: number; name: string; owns_json: string };
+type PathOwner = { id: number; name: string; owns_json: string };
+
+function pathOwner(ctx: Ctx, projectId: number, blockedGroupId: number, path: string): PathOwner | null {
+  return (
+    ctx.db
+      .query<PathOwner, [number, number]>(
+        `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
+         AND status IN ${CLAIMING_SQL}`,
+      )
+      .all(projectId, blockedGroupId)
+      .find((group) => parseOwns(group.owns_json).some((glob) => overlaps(glob, path))) ?? null
+  );
+}
+
+function waitsOn(ctx: Ctx, start: number, target: number): boolean {
+  let group: number | null = start;
+  for (let hops = 0; group && hops < 32; hops++) {
+    if (group === target) return true;
+    group =
+      ctx.db.query<{ blocked_on: number | null }, [number]>("SELECT blocked_on FROM grp WHERE id = ?").get(group)
+        ?.blocked_on ?? null;
+  }
+  return false;
+}
+
+function routeBlockedPath(
+  ctx: Ctx,
+  caller: Caller,
+  group: BlockedGroup,
+  groupId: number,
+  path: string,
+  why: string,
+  owner: PathOwner | null,
+): { target: number; handedTo: string } {
+  if (owner) {
+    ctx.bus.emit({
+      grpId: owner.id,
+      author: caller.role,
+      kind: "say",
+      intent: "request",
+      body: `${group.name} 被 ${path} 挡住了，那是你们的路径：${why}`,
+      meta: { from_group: groupId, path },
+    });
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: owner.id,
+      priority: 6,
+      payload: {
+        role: "pm",
+        rejection: `Another group is blocked on ${path}, which is inside your boundary: ${why}\n\nAdd it to this group's work.`,
+      },
+    });
+    return { target: owner.id, handedTo: owner.name };
+  }
+
+  // A shared file belongs to no group on purpose. The grant names this one path
+  // for this one group, so every other group remains outside the boundary.
+  const name = slug(`${path} ${why}`).slice(0, 40) || `fix-${groupId}`;
+  const grant = claimsShared([path], sharedFor(ctx.db, group.project_id));
+  const idea = `${why}\n\n（${group.name} 报的：${path} 不在它的边界内，它改不了）`;
+  const created = newGroup(ctx, {
+    projectId: group.project_id,
+    name,
+    idea,
+    author: caller.role,
+    owns: [path],
+    sharedGrant: grant,
+  });
+  ctx.sched.enqueue("agent_turn", { grp_id: created.id, priority: 6, payload: { role: "dispatcher", idea } });
+  return { target: created.id, handedTo: "a new requirement" };
+}
+
 export const postBlocked = (async (ctx, _req, a, _p, b) => {
-  const gid = resolveGroup(ctx, b.group_id, a.grp_id);
-  if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
+  const gid = actingGroup(ctx, a, b.group_id);
+  if (gid instanceof Response) return gid;
   const path = b.path.trim().replace(/^\.\//, "");
   const why = b.why.trim();
   if (!path) return bad("--path <file> — which file you cannot change");
@@ -352,82 +427,29 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
     return bad(`${path} is inside your own boundary — fix it`);
   }
 
-  const owner = ctx.db
-    .query<{ id: number; name: string; owns_json: string }, [number, number]>(
-      `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
-         AND status IN ${CLAIMING_SQL}`,
-    )
-    .all(me.project_id, gid)
-    .find((o) => parseOwns(o.owns_json).some((glob) => overlaps(glob, path)));
+  const owner = pathOwner(ctx, me.project_id, gid, path);
 
   // Two groups each waiting on the other is two groups that never move again, and
   // nothing downstream would notice: both are PAUSED for a stated reason, and the
   // reason is each other.
-  if (owner) {
-    for (let at: number | null = owner.id, hops = 0; at && hops < 32; hops++) {
-      if (at === gid) return bad(`${owner.name} is already waiting on you — one of you has to go first`);
-      at =
-        ctx.db.query<{ blocked_on: number | null }, [number]>("SELECT blocked_on FROM grp WHERE id = ?").get(at)
-          ?.blocked_on ?? null;
-    }
+  if (owner && waitsOn(ctx, owner.id, gid)) {
+    return bad(`${owner.name} is already waiting on you — one of you has to go first`);
   }
-
-  let target: number;
-  if (owner) {
-    // Somebody live already owns it. A second group for the same file would be
-    // refused by canStart anyway, so this is an addition to their work.
-    target = owner.id;
-    ctx.bus.emit({
-      grpId: owner.id,
-      author: a.role,
-      kind: "say",
-      intent: "request",
-      body: `${me.name} 被 ${path} 挡住了，那是你们的路径：${why}`,
-      meta: { from_group: gid, path },
-    });
-    ctx.sched.enqueue("agent_turn", {
-      grp_id: owner.id,
-      priority: 6,
-      payload: {
-        role: "pm",
-        rejection: `Another group is blocked on ${path}, which is inside your boundary: ${why}\n\nAdd it to this group's work.`,
-      },
-    });
-  } else {
-    const name = slug(`${path} ${why}`).slice(0, 40) || `fix-${gid}`;
-    // A shared file — package.json, tsconfig.json, the migrations array — belongs
-    // to no group on purpose, and a requirement opened for one could never start:
-    // the boundary can only be the file itself, and canStart refuses exactly that.
-    // The grant names this one path for this one group, so everybody else is still
-    // refused, and the boundary is settled here rather than costing an Architect
-    // turn to discover there is only one answer.
-    const grant = claimsShared([path], sharedFor(ctx.db, me.project_id));
-    const idea = `${why}\n\n（${me.name} 报的：${path} 不在它的边界内，它改不了）`;
-    const grp = newGroup(ctx, {
-      projectId: me.project_id,
-      name,
-      idea,
-      author: a.role,
-      owns: [path],
-      sharedGrant: grant,
-    });
-    ctx.sched.enqueue("agent_turn", { grp_id: grp.id, priority: 6, payload: { role: "dispatcher", idea } });
-    target = grp.id;
-  }
+  const routed = routeBlockedPath(ctx, a, me, gid, path, why, owner);
 
   // Stop, and say what it is waiting for. PAUSED rather than a spin: a group with
   // nothing it can legally do should not hold a concurrency slot.
-  hold(ctx, gid, { reason: "blocked", settled: true, on: target });
+  hold(ctx, gid, { reason: "blocked", settled: true, on: routed.target });
   ctx.sched.cancelPending(gid, `blocked on ${path}`);
   ctx.bus.emit({
     grpId: gid,
     author: a.role,
     kind: "state_change",
-    body: say(ctx.config.language, "group.blocked", { path, target: String(target) }),
-    meta: { blocked_on: target, path },
+    body: say(ctx.config.language, "group.blocked", { path, target: String(routed.target) }),
+    meta: { blocked_on: routed.target, path },
   });
   ctx.sched.tick();
-  return json({ blocked_on: target, handedTo: owner ? owner.name : "a new requirement" });
+  return json({ blocked_on: routed.target, handedTo: routed.handedTo });
 }) satisfies AgentHandler<z.infer<typeof BlockedBody>>;
 
 export const OwnsBody = z.object({
@@ -437,9 +459,8 @@ export const OwnsBody = z.object({
 
 export const postOwns = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "architect") return bad(`${a.role} does not cut boundaries`);
-  const gid = resolveGroup(ctx, b.group_id, a.grp_id);
-  if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
+  const gid = actingGroup(ctx, a, b.group_id);
+  if (gid instanceof Response) return gid;
 
   ctx.db.run("UPDATE grp SET owns_json = ? WHERE id = ?", [JSON.stringify(b.paths), gid]);
   const check = canStart(ctx.db, gid);

@@ -1,17 +1,18 @@
 import { z } from "zod";
-import { Id } from "../fields.ts";
-import { bad, message, type AgentHandler } from "../shared.ts";
+import type { Caller, Ctx } from "../../ctx.ts";
 import {
   AlreadyDoneClaimSchema,
   ChangedFilesClaimSchema,
   extractClaimedFiles,
-  TaskClaimSchema,
   type TaskClaim,
+  TaskClaimSchema,
 } from "../../mech/flow/reconcile.ts";
 import { recordGate } from "../../mech/gate.ts";
+import { jsonOr } from "../../mech/util/text.ts";
 import { validateSelfReview } from "../../mech/util/validate.ts";
 import type { SliceState, TaskState } from "../../states.ts";
-import { jsonOr } from "../../mech/util/text.ts";
+import { Id } from "../fields.ts";
+import { type AgentHandler, bad, message } from "../shared.ts";
 
 /**
  * The task card and the two verbs that move it.
@@ -145,18 +146,67 @@ export const TaskDoneBody = z.xor([
   z.strictObject({ ...TaskDoneBase, already_done: AlreadyDoneClaimSchema.shape.already_done }),
 ]);
 
+type TaskCompletion = {
+  slice_id: number | null;
+  slice_status: SliceState | null;
+  open: number;
+  accept_spec: string | null;
+  seq: number | null;
+};
+
+function taskCompletion(ctx: Ctx, taskId: number): TaskCompletion | null {
+  return (
+    ctx.db
+      .query<TaskCompletion, [number]>(
+        `SELECT t.slice_id, s.status AS slice_status, s.accept_spec, s.seq,
+                (SELECT count(*) FROM task o
+                 WHERE o.slice_id = t.slice_id AND o.status != 'done' AND o.id != t.id) AS open
+         FROM task t LEFT JOIN slice s ON s.id = t.slice_id WHERE t.id = ?`,
+      )
+      .get(taskId) ?? null
+  );
+}
+
+function reviewError(taskId: number, completion: TaskCompletion | null, review: string | undefined): string | null {
+  if (completion?.slice_id == null || completion.open !== 0) return null;
+  const checked = validateSelfReview(review ?? "", 1);
+  if (checked.ok) return null;
+  return (
+    `${checked.error}\n\nThis task closes S${completion.seq ?? "?"}, so it needs a self-review:\n` +
+    `  orch task done ${taskId} --claim '{…}' --review "pass: <criterion> — <the diff line that satisfies it>"\n` +
+    `Acceptance criterion: ${completion.accept_spec ?? "(none recorded)"}`
+  );
+}
+
+function advanceCompletedSlice(ctx: Ctx, caller: Caller, completion: TaskCompletion | null, review?: string): void {
+  if (completion?.slice_id == null || completion.open !== 0) return;
+  const sliceId = completion.slice_id;
+  const note = review?.trim();
+  if (note) {
+    recordGate(ctx.db, sliceId, "self", "pass");
+    ctx.bus.emit({
+      grpId: caller.grp_id,
+      author: caller.role,
+      kind: "gate_result",
+      intent: "decision",
+      body: note.slice(0, 1200),
+      meta: { slice_id: sliceId, layer: "self" },
+    });
+  }
+  ctx.db.run("UPDATE slice SET status = 'gate' WHERE id = ?", [sliceId]);
+  // Deterministic gate work should not wait behind model turns.
+  ctx.sched.enqueue("gate", { grp_id: caller.grp_id, slice_id: sliceId, priority: 5 });
+  ctx.sched.tick();
+}
+
 export const postTaskDone = (async (ctx, _req, a, _p, b) => {
   // A task belonging to a slice that has not started cannot be completed: the
   // writer works one slice at a time, and letting it close future tasks pushed
   // unstarted slices into review.
-  const owning = ctx.db
-    .query<{ status: SliceState | null }, [number]>(
-      "SELECT (SELECT status FROM slice WHERE id = t.slice_id) AS status FROM task t WHERE t.id = ?",
-    )
-    .get(b.task_id);
-  if (owning?.status && ["pending", "accepted"].includes(owning.status)) {
+  const completion = taskCompletion(ctx, b.task_id);
+  if (completion?.slice_status && ["pending", "accepted"].includes(completion.slice_status)) {
     return bad(
-      `task ${b.task_id} belongs to a slice that is not being worked (${owning.status}). ` +
+      `task ${b.task_id} belongs to a slice that is not being worked (${completion.slice_status}). ` +
         `Finish the slice you are on; the next one starts when the boss accepts this one.`,
     );
   }
@@ -175,27 +225,8 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
    * Demanded only on the task that closes the slice: that is where the work is
    * finished, and asking per task would make it a formality four times over.
    */
-  const closing = ctx.db
-    .query<{ slice_id: number | null; open: number }, [number]>(
-      `SELECT t.slice_id AS slice_id,
-              (SELECT count(*) FROM task o WHERE o.slice_id = t.slice_id AND o.status != 'done' AND o.id != t.id) AS open
-       FROM task t WHERE t.id = ?`,
-    )
-    .get(b.task_id);
-  const lastOfSlice = closing?.slice_id != null && closing.open === 0;
-  if (lastOfSlice) {
-    const spec = ctx.db
-      .query<{ accept_spec: string; seq: number }, [number]>("SELECT accept_spec, seq FROM slice WHERE id = ?")
-      .get(closing!.slice_id!);
-    const v = validateSelfReview(b.review ?? "", 1);
-    if (!v.ok) {
-      return bad(
-        `${v.error}\n\nThis task closes S${spec?.seq ?? "?"}, so it needs a self-review:\n` +
-          `  orch task done ${b.task_id} --claim '{…}' --review "pass: <criterion> — <the diff line that satisfies it>"\n` +
-          `Acceptance criterion: ${spec?.accept_spec ?? "(none recorded)"}`,
-      );
-    }
-  }
+  const invalidReview = reviewError(b.task_id, completion, b.review);
+  if (invalidReview) return bad(invalidReview);
 
   // Unowned is fine: a group has one writer, so requiring an explicit claim only
   // adds a step that gets forgotten. Someone else's task is not — unless that
@@ -219,35 +250,6 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
 
   // A slice enters review only when nothing is left open in it. Reviewing a
   // half-finished slice burns the reviewer on work that is about to change.
-  const slice = ctx.db
-    .query<{ slice_id: number | null }, [number]>("SELECT slice_id FROM task WHERE id = ?")
-    .get(b.task_id);
-  if (lastOfSlice && b.review?.trim()) {
-    recordGate(ctx.db, closing!.slice_id!, "self", "pass");
-    ctx.bus.emit({
-      grpId: a.grp_id,
-      author: a.role,
-      kind: "gate_result",
-      intent: "decision",
-      body: b.review.trim().slice(0, 1200),
-      meta: { slice_id: closing!.slice_id, layer: "self" },
-    });
-  }
-
-  if (slice?.slice_id) {
-    const open = ctx.db
-      .query<{ c: number }, [number]>("SELECT count(*) AS c FROM task WHERE slice_id = ? AND status != 'done'")
-      .get(slice.slice_id)!.c;
-    if (open === 0) {
-      ctx.db.run("UPDATE slice SET status = 'gate' WHERE id = ?", [slice.slice_id]);
-      // Same priority as reconcile, and for the same reason: this job consults no
-      // model, runs in 16 seconds, and the whole slice → QA → boss chain is stuck
-      // behind it. At the default 0 it queued behind every priority-4 and -6 turn
-      // in the fleet — measured 3235s of waiting for 16s of work, which is most of
-      // why QA turns averaged an hour and 54 minutes before they started.
-      ctx.sched.enqueue("gate", { grp_id: a.grp_id, slice_id: slice.slice_id, priority: 5 });
-      ctx.sched.tick();
-    }
-  }
+  advanceCompletedSlice(ctx, a, completion, b.review);
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof TaskDoneBody>>;

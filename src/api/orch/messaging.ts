@@ -1,11 +1,11 @@
-import { projectOfAgent } from "../../mech/util/rows.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../fields.ts";
-import { bad, resolveGroup, message, type AgentHandler, type Handler } from "../shared.ts";
-import { bossFact, withAttachments } from "../panel/attach.ts";
-import { triage, TRIAGE } from "../../mech/flow/chain.ts";
-import { projectSkills, skillNames } from "../../mech/skills.ts";
 import type { Ctx } from "../../ctx.ts";
+import { TRIAGE, triage } from "../../mech/flow/chain.ts";
+import { projectSkills, skillNames } from "../../mech/skills.ts";
+import { projectOfAgent } from "../../mech/util/rows.ts";
+import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../fields.ts";
+import { bossFact, withAttachments } from "../panel/attach.ts";
+import { type AgentHandler, bad, type Handler, message, resolveGroup } from "../shared.ts";
 
 /**
  * Agent to agent, and boss to anyone.
@@ -194,26 +194,16 @@ function resolveTarget(
   role: string,
   senderProject: number | null,
 ): { agentId: number; grpId: number | null } | null {
-  if (senderGrp) {
-    const inGroup = ctx.db
-      .query<{ id: number }, [number, string]>(
-        "SELECT id FROM agent WHERE grp_id = ? AND role = ? AND state != 'retired'",
-      )
-      .get(senderGrp, role);
-    if (inGroup) return { agentId: inGroup.id, grpId: senderGrp };
-  }
-  // Anyone in this project with that role, group or not. A standing Architect
-  // replying to `orch mail dispatcher` must reach the group's Dispatcher rather
-  // than cause a second one to be hired — which is how one project ended up
-  // paying for two opus Dispatchers.
-  const inProject = ctx.db
-    .query<{ id: number; grp_id: number | null }, [string, number | null, number | null]>(
+  // Same-group wins, then any live holder of the role in this project. A standing
+  // Architect replying to a Dispatcher must not hire a second Dispatcher.
+  const existing = ctx.db
+    .query<{ id: number; grp_id: number | null }, [string, number | null, number | null, number | null, number | null]>(
       `SELECT id, grp_id FROM agent
        WHERE role = ? AND state != 'retired' AND (project_id IS ? OR ? IS NULL)
-       ORDER BY (grp_id IS NOT NULL) DESC, id DESC LIMIT 1`,
+       ORDER BY (? IS NOT NULL AND grp_id IS ?) DESC, (grp_id IS NOT NULL) DESC, id DESC LIMIT 1`,
     )
-    .get(role, senderProject, senderProject);
-  if (inProject) return { agentId: inProject.id, grpId: inProject.grp_id };
+    .get(role, senderProject, senderProject, senderGrp, senderGrp);
+  if (existing) return { agentId: existing.id, grpId: existing.grp_id };
 
   if (!(ctx.knownRoles?.() ?? []).includes(role)) return null;
   const hired = ctx.hire?.(null, role, senderProject) ?? null;

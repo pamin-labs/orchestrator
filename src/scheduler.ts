@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { DB } from "./db.ts";
+import { jsonOr } from "./mech/util/text.ts";
 import { isRunning } from "./runtime/running.ts";
 import { type GrpState, isDispatchableGrpState, type JobState } from "./states.ts";
-import { jsonOr } from "./mech/util/text.ts";
 
 export type { JobState } from "./states.ts";
 
@@ -66,6 +66,8 @@ export interface StoredJob {
   error?: string | null;
 }
 
+type RunningJob = StoredJob & { started_at: number | null };
+
 export type Job<K extends JobKind = JobKind> = {
   [P in K]: Omit<StoredJob, "kind"> & { kind: P; payload: JobPayload<P> };
 }[K];
@@ -73,7 +75,7 @@ export type Job<K extends JobKind = JobKind> = {
 /** Runs a job to completion. Throwing marks the job failed. */
 export type Executor = (job: Job) => Promise<void>;
 
-type EnqueueFields<K extends JobKind> = {
+export type EnqueueFields<K extends JobKind> = {
   grp_id?: number | null;
   agent_id?: number | null;
   slice_id?: number | null;
@@ -580,6 +582,23 @@ export class Scheduler {
  * `running`, so `startNextSlice` counted the group busy and never queued anything
  * again. Same silence, one layer down.
  */
+function failOrphan(db: DB, row: RunningJob, endedAt: number, reason: string): Job | null {
+  db.run(`UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = 'running'`, [
+    endedAt,
+    reason,
+    row.id,
+  ]);
+  try {
+    return { ...decodeJob(row), state: "failed", error: reason };
+  } catch (error) {
+    db.run("UPDATE job SET error = ? WHERE id = ?", [
+      `invalid ${row.kind} payload: ${error instanceof Error ? error.message : String(error)}`,
+      row.id,
+    ]);
+    return null;
+  }
+}
+
 export function reclaimOrphans(
   db: DB,
   opts: { maxAgeMs?: number; alive?: (jobId: number) => boolean; now?: () => number } = {},
@@ -589,7 +608,7 @@ export function reclaimOrphans(
   const alive = opts.alive ?? isRunning;
 
   const running = db
-    .query<StoredJob & { started_at: number | null }, []>(
+    .query<RunningJob, []>(
       `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state, started_at
        FROM job WHERE state = 'running'`,
     )
@@ -605,21 +624,10 @@ export function reclaimOrphans(
     const why = tooOld
       ? `orphaned: still running after ${Math.round(maxAge / 60000)} min`
       : "orphaned: nothing is reading this turn any more";
-    db.run(`UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = 'running'`, [
-      now(),
-      why,
-      j.id,
-    ]);
-    try {
-      // The reason travels with the row: resumeReclaimed reads it to tell a turn that
-      // died of its own doing from one the server took down on its way out.
-      reclaimed.push({ ...decodeJob(j), state: "failed", error: why });
-    } catch (error) {
-      db.run("UPDATE job SET error = ? WHERE id = ?", [
-        `invalid ${j.kind} payload: ${error instanceof Error ? error.message : String(error)}`,
-        j.id,
-      ]);
-    }
+    // The reason travels with the row: resumeReclaimed distinguishes a turn
+    // that died by itself from one the server abandoned on shutdown.
+    const job = failOrphan(db, j, now(), why);
+    if (job) reclaimed.push(job);
   }
 
   // Agents believe they are mid-turn too, and a blocked agent is skipped forever.
