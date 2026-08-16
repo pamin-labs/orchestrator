@@ -1,5 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bell, Box, Check, CircleAlert, Coins, Gauge, GitBranch, KeyRound, ListChecks, MonitorCog, Server,
   SlidersHorizontal, Sparkles, Timer, Trash2, X,
@@ -155,10 +156,6 @@ export function SettingsDialog({
     setSection(k);
     onSection?.(k);
   };
-  const [rows, setRows] = useState<AuthRow[]>([]);
-  const [prefs, setPrefs] = useState<{ claudeCoauthor?: boolean }>({});
-  const [checks, setChecks] = useState<HostCheck[]>([]);
-  const [proj, setProj] = useState<ProjectConfig | null>(null);
   const [busy, setBusy] = useState(false);
   /**
    * The login in flight: which account, what its row said before it started, and
@@ -171,50 +168,77 @@ export function SettingsDialog({
    */
   const [signin, setSignin] = useState<{ runtime: string; since: number; until: number } | null>(null);
 
-  const load = async () => {
-    const [a, p, c] = await Promise.all([
-      pull<{ runtimes: AuthRow[]; trailers: { claudeCoauthor: boolean } }>("/api/auth"),
-      pull<{ checks: HostCheck[] }>("/api/preflight"),
-      projectId ? pull<ProjectConfig>(`/api/project/${projectId}/config`) : Promise.resolve(null),
-    ]);
-    setRows(a?.runtimes ?? []);
-    setPrefs(a?.trailers ?? {});
-    setChecks(p?.checks ?? []);
-    setProj(c);
-  };
-  useEffect(() => {
-    if (open) void load();
-  }, [open, projectId]);
+  const queries = useQueryClient();
+  // A credential landing changes more than the row it landed on: 主机 goes green
+  // and the header's readiness with it. Invalidating the lot rather than listing
+  // them is safe here — this fires when a human clicks 保存, not on a timer.
+  const load = () => void queries.invalidateQueries();
 
   /**
-   * A login lands in another window, so nothing here can know when.
+   * Three reads, three keys, and the project is *in* one of them.
    *
-   * The CLI stores the credential itself the moment it exits; the only missing
-   * piece is the panel noticing. Two seconds is well inside the time it takes to
-   * click through an OAuth screen, and the window closes on its own — a poll
-   * that runs forever is a poll somebody has to remember to stop.
+   * This was one `load()` closing over `projectId`, fired from an effect on
+   * `[open, projectId]` with nothing to say which call a reply belonged to. Two
+   * quick project switches and the slower reply won: this dialog rendered one
+   * project's 闸门 and another's base branch, with no error anywhere. `lib/api.ts`
+   * had already been bitten by exactly this and grown a `lastProject` ref to
+   * remember the scope by hand. A key does not have to remember — a reply for
+   * project 3 cannot be written into project 7's entry, so the bug has no shape.
+   *
+   * `refetchInterval` on the credential read is the login poll. A CLI login lands
+   * in another window and stores the credential the moment it exits; the only
+   * missing piece is the panel noticing, and two seconds is well inside the time
+   * it takes to click through an OAuth screen.
    */
-  useEffect(() => {
-    if (!signin) return;
-    const t = setInterval(() => {
-      if (Date.now() > signin.until) setSignin(null);
-      else void load();
-    }, 2000);
-    return () => clearInterval(t);
-  }, [signin]);
+  const auth = useQuery({
+    queryKey: ["auth"],
+    queryFn: () => pull<{ runtimes: AuthRow[]; trailers: { claudeCoauthor: boolean } }>("/api/auth"),
+    enabled: open,
+    refetchInterval: signin ? 2000 : false,
+  });
+  const preflight = useQuery({
+    queryKey: ["preflight"],
+    queryFn: () => pull<{ checks: HostCheck[] }>("/api/preflight"),
+    enabled: open,
+  });
+  const project = useQuery({
+    queryKey: ["project", projectId, "config"],
+    queryFn: () => pull<ProjectConfig>(`/api/project/${projectId}/config`),
+    enabled: open && projectId !== null,
+  });
+  const rows = auth.data?.runtimes ?? [];
+  const prefs = auth.data?.trailers;
+  const checks = preflight.data?.checks ?? [];
+  const proj = projectId === null ? null : (project.data ?? null);
 
   /** It landed. Stop asking, and give the button back. */
   useEffect(() => {
     if (!signin) return;
     const row = rows.find((r) => r.runtime === signin.runtime);
     if (row && row.updatedAt > signin.since) setSignin(null);
-  }, [rows, signin]);
+    // `auth.data`, not `rows`: TanStack hands back the same object while the
+    // answer is unchanged, and `rows` is a fresh array on every render.
+  }, [auth.data, signin]);
+
+  /**
+   * It did not land, and the window is long gone.
+   *
+   * On its own clock rather than folded into the check above, because that one
+   * only runs when the answer *changes* — and a login that never completes is
+   * precisely the case where the answer never changes. The button would have
+   * stayed "等你在浏览器里批准…" for the rest of the session.
+   */
+  useEffect(() => {
+    if (!signin) return;
+    const t = setTimeout(() => setSignin(null), Math.max(0, signin.until - Date.now()));
+    return () => clearTimeout(t);
+  }, [signin]);
 
   const patch = async (body: Record<string, unknown>) => {
     setBusy(true);
     await post(`/api/project/${projectId}/config`, body);
     setBusy(false);
-    void load();
+    void queries.invalidateQueries({ queryKey: ["project", projectId] });
   };
 
   const items = NAV.filter((n) => !n.project || projectId);
@@ -285,7 +309,7 @@ export function SettingsDialog({
                       // Only the account being logged into. One flag for both meant
                       // a claude login also froze codex's button for five minutes.
                       waiting={signin?.runtime === r.key}
-                      claudeCoauthor={r.key === "claude" ? (prefs.claudeCoauthor ?? true) : undefined}
+                      claudeCoauthor={r.key === "claude" ? (prefs?.claudeCoauthor ?? true) : undefined}
                       onSaved={load}
                       onWaitForLogin={(since) =>
                         setSignin({ runtime: r.key, since, until: Date.now() + 300_000 })
@@ -824,40 +848,30 @@ interface GhStatus {
  * because those two facts are useless apart.
  */
 function GithubPane() {
-  const [s, setS] = useState<GhStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const load = async () => setS(await pull<GhStatus>("/api/auth/github"));
+  const queries = useQueryClient();
 
   /**
-   * Look again when the boss comes back.
+   * Two ways this answer goes stale, and neither of them happens on this page.
    *
    * Installing the app happens on github.com, in another window, and the panel
    * had fetched once — so it went on saying "not installed anywhere" over a
    * backend that already knew better. Focus is the event that means "they are
-   * back"; a timer is either slower than the person staring at the screen or
-   * spends the hour's request budget on nothing.
-   */
-  useEffect(() => {
-    const back = () => void load();
-    window.addEventListener("focus", back);
-    return () => window.removeEventListener("focus", back);
-  }, []);
-  useEffect(() => {
-    void load();
-  }, []);
-
-  /**
-   * The authorisation lands in another window, so nothing here can know when.
+   * back", and `refetchOnWindowFocus` is on by default, so the listener this
+   * used to register is not code anybody here has to own.
    *
-   * Same shape as the CLI logins above: poll while there is a code outstanding,
-   * stop the moment the token arrives. The server is the one actually polling
-   * GitHub; this only notices.
+   * The device-code flow is the other one: poll while a code is outstanding,
+   * stop the moment the token arrives. `false` is how `refetchInterval` says
+   * stop, and `s?.pending` going null is the same condition the `clearInterval`
+   * used to be spelled with.
    */
-  useEffect(() => {
-    if (!s?.pending) return;
-    const t = setInterval(() => void load(), 3000);
-    return () => clearInterval(t);
-  }, [s?.pending?.userCode]);
+  const gh = useQuery({
+    queryKey: ["gh"],
+    queryFn: () => pull<GhStatus>("/api/auth/github"),
+    refetchInterval: (q) => (q.state.data?.pending ? 3000 : false),
+  });
+  const s = gh.data ?? null;
+  const load = () => void queries.invalidateQueries({ queryKey: ["gh"] });
 
   const connect = async () => {
     setBusy(true);
@@ -1156,17 +1170,14 @@ const SERVER_STATE: Record<ServerInfo["state"], { zh: string; ok: boolean }> = {
  * reaches the browser.
  */
 function ServerPane(props: { current?: AuthRow; checks: HostCheck[]; onSaved: () => void }) {
-  const [d, setD] = useState<ServerInfo | null>(null);
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
-  const [img, setImg] = useState("");
-  const load = async () => setD(await pull<ServerInfo>("/api/sandbox-server"));
-  useEffect(() => {
-    void pull<{ current: string }>("/api/sandbox/images").then((r) => setImg(r?.current ?? ""));
-  }, []);
-  useEffect(() => {
-    void load();
-  }, []);
+  const queries = useQueryClient();
+  const server = useQuery({ queryKey: ["sandbox-server"], queryFn: () => pull<ServerInfo>("/api/sandbox-server") });
+  const image = useQuery({ queryKey: ["sandbox-images"], queryFn: () => pull<{ current: string }>("/api/sandbox/images") });
+  const d = server.data ?? null;
+  const img = image.data?.current ?? "";
+  const load = () => void queries.invalidateQueries({ queryKey: ["sandbox-server"] });
 
   const paths = props.checks.find((c) => c.name === "allowed_host_paths");
   const st = d ? SERVER_STATE[d.state] : null;
@@ -1339,7 +1350,10 @@ function ServerPane(props: { current?: AuthRow; checks: HostCheck[]; onSaved: ()
             const r = await post("/api/sandbox/images", { image: v });
             setBusy(false);
             if (r.ok) {
-              setImg(v);
+              // Re-read rather than assume: what the row shows is the server's
+              // answer, and a write that was accepted is not a write that stored
+              // this exact string.
+              void queries.invalidateQueries({ queryKey: ["sandbox-images"] });
               toast.success(v ? `以后新项目都用 ${v}` : "改回配置文件里的了");
             }
           }}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 /**
@@ -61,15 +62,21 @@ export async function pull<T>(path: string): Promise<T | null> {
   return (await r.json()) as T;
 }
 
-/** Validators reply with the reason, so the reason is what gets shown. */
-export async function post(path: string, body?: unknown) {
+/**
+ * Validators reply with the reason, so the reason is what gets shown.
+ *
+ * `quiet` is for the callers that put the reason on the field it belongs to —
+ * the settings rows do, and a toast on top of an already-marked row is the same
+ * refusal said twice, in the corner, where it outlives the fix.
+ */
+export async function post(path: string, body?: unknown, quiet = false) {
   const r = await fetch(path, {
     method: "POST",
     headers: body ? { "content-type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await r.text();
-  if (!r.ok) toast.error(text, { duration: 12_000 });
+  if (!r.ok && !quiet) toast.error(text, { duration: 12_000 });
   return { ok: r.ok, text };
 }
 
@@ -189,81 +196,93 @@ function raise(f: { body: string; at?: number; meta?: { url?: string; title?: st
   };
 }
 
+const get = <T,>(path: string) => fetch(path).then((r) => r.json() as Promise<T>);
+
+/**
+ * The prefix the stream is allowed to invalidate.
+ *
+ * A bare `invalidateQueries()` reaches every query in the page, and the settings
+ * dialog's `preflight` is one of them — that read shells out to check the host.
+ * Ten `state_change` frames with the dialog open would run the host checks ten
+ * times to answer a question nothing asked. The stream knows about these two.
+ */
+const ORCH = ["orch"];
+
+/**
+ * The two reads the whole panel is built on, plus the stream that invalidates them.
+ *
+ * The project scope used to be a ref. Every SSE event called `refresh()` with no
+ * argument, which swapped 成本 from this project to every project the moment
+ * anything happened — while the page still said 这个项目累计 — so a `lastProject`
+ * ref was added to remember it. It is a query key now: the scope is *in* the
+ * identity of the cached answer, so there is no version of this where a reply
+ * for one project can land under another's heading.
+ *
+ * The heartbeat and the `visibilitychange` listener are gone the same way.
+ * `refetchInterval` already pauses when the tab is hidden and `refetchOnWindowFocus`
+ * re-reads on the way back — which is exactly what the hand-written pair did, and
+ * was the reason it existed: subscription usage moves on the watchdog's clock and
+ * writes no bus frame, so on a quiet system the header showed a reading from
+ * however long ago the last unrelated event happened to be.
+ */
 export function useOrch() {
-  const [state, setState] = useState<State>(EMPTY);
-  const [cost, setCost] = useState<Cost | null>(null);
+  const queries = useQueryClient();
+  const [project, setProject] = useState<number | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [live, setLive] = useState<"connecting" | "live" | "retry">("connecting");
   const started = useRef(false);
   const liveSeq = useRef(0);
-  // The last project asked for, so a refresh that does not name one does not
-  // silently widen the scope. Every SSE event called refresh() with no argument,
-  // which swapped 成本 from this project to every project the moment anything
-  // happened — and the page still said 这个项目累计.
-  const lastProject = useRef<number | null>(null);
 
-  const refresh = async (projectId?: number | null) => {
-    if (projectId !== undefined) lastProject.current = projectId;
-    const p = projectId ?? lastProject.current;
-    const [s, c] = await Promise.all([
-      fetch("/api/state"),
-      // The nav says 成本 is this project's, so ask for this project's.
-      fetch(p ? `/api/cost?project=${p}` : "/api/cost"),
-    ]);
-    setState((await s.json()) as State);
-    setCost((await c.json()) as Cost);
-  };
+  const state = useQuery({
+    queryKey: ORCH.concat("state"),
+    queryFn: () => get<State>("/api/state"),
+    initialData: EMPTY,
+    refetchInterval: 60_000,
+  });
+  const cost = useQuery({
+    // The nav says 成本 is this project's, so ask for this project's.
+    queryKey: ORCH.concat("cost", String(project)),
+    queryFn: () => get<Cost>(project ? `/api/cost?project=${project}` : "/api/cost"),
+    refetchInterval: 60_000,
+  });
 
   /**
    * Re-read state and cost, at most once every 250ms.
    *
-   * Ten groups moving at once is ten `state_change` frames inside a second, and
-   * every one of them used to call `refresh()` — twenty requests to answer a
-   * question that has one answer. Trailing rather than leading: the last frame
-   * of a burst is the one whose state we want to end up showing.
+   * The debounce stays even with a cache in front: TanStack collapses two
+   * *in-flight* requests for one key, and this is the other case — ten groups
+   * moving at once is ten `state_change` frames inside a second, each one
+   * arriving after the last request already came back. Trailing rather than
+   * leading: the last frame of a burst is the one whose state we want to show.
    */
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nudge = () => {
     if (pending.current) return;
     pending.current = setTimeout(() => {
       pending.current = null;
-      void refresh();
+      void queries.invalidateQueries({ queryKey: ORCH });
     }, 250);
   };
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    void refresh().then(() => {
-      // Replay a short tail so the timeline has content on load: exactly lastSeq
-      // would be correct and useless, sitting empty until something moved.
-      const es = new EventSource("/api/stream?since=0");
-      es.onopen = () => setLive("live");
-      es.onerror = () => setLive("retry");
-      es.onmessage = (m) => {
-        const f = JSON.parse(m.data);
-        if (f.kind === "notify") return void raise(f);
-        setFrames((prev) => appendFrame(prev, f, liveSeq));
-        if (["state_change", "escalation", "note"].includes(f.kind)) nudge();
-      };
-    });
-  }, []);
-
-  // A slow heartbeat, because some of the state has no event behind it.
-  // Subscription usage is refreshed on the watchdog's clock and writes no bus
-  // frame, so on a quiet system the header kept showing a reading — or a failure —
-  // from however long ago the last unrelated event happened to be. Only while the
-  // tab is visible: a backgrounded panel refreshing all night is traffic nobody
-  // asked for, and it is re-fetched on the way back anyway.
-  useEffect(() => {
-    const tick = () => document.visibilityState === "visible" && void refresh();
-    const id = setInterval(tick, 60_000);
-    document.addEventListener("visibilitychange", tick);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", tick);
+    // Replay a short tail so the timeline has content on load: exactly lastSeq
+    // would be correct and useless, sitting empty until something moved.
+    const es = new EventSource("/api/stream?since=0");
+    es.onopen = () => setLive("live");
+    es.onerror = () => setLive("retry");
+    es.onmessage = (m) => {
+      const f = JSON.parse(m.data);
+      if (f.kind === "notify") return void raise(f);
+      setFrames((prev) => appendFrame(prev, f, liveSeq));
+      if (["state_change", "escalation", "note"].includes(f.kind)) nudge();
     };
   }, []);
 
-  return { state, cost, frames, live, refresh };
+  const refresh = (projectId?: number | null) => {
+    if (projectId !== undefined) setProject(projectId);
+    void queries.invalidateQueries({ queryKey: ORCH });
+  };
+  return { state: state.data, cost: cost.data ?? null, frames, live, refresh };
 }
