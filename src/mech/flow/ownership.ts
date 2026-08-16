@@ -1,6 +1,7 @@
 import type { DB } from "../../db.ts";
 import { projectConfig } from "../util/rows.ts";
 import { GRP_STATES } from "../../states.ts";
+import { jsonOr } from "../util/text.ts";
 
 /**
  * Which paths a group owns, decided before it starts.
@@ -32,13 +33,8 @@ export const DEFAULT_SHARED = [
 ];
 
 export function parseOwns(json: string | null): string[] {
-  if (!json) return [];
-  try {
-    const v = JSON.parse(json);
-    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
+  const v = jsonOr<unknown>(json, null);
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 }
 
 export function sharedFor(db: DB, projectId: number): string[] {

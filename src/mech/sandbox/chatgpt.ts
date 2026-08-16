@@ -19,6 +19,8 @@
  * token, costs a few hundred tokens, and is needed roughly once a week.
  */
 
+import { jsonOr } from "../util/text.ts";
+
 /** Enough to make codex talk to the API, and nothing anyone has to read. */
 const NUDGE = ["exec", "--skip-git-repo-check", "-c", 'web_search="disabled"', "reply with: ok"];
 
@@ -31,12 +33,8 @@ export interface CodexAuth {
 }
 
 export function parseAuth(json: string): CodexAuth | null {
-  try {
-    const a = JSON.parse(json) as CodexAuth;
-    return a && typeof a === "object" ? a : null;
-  } catch {
-    return null;
-  }
+  const a = jsonOr<CodexAuth | null>(json, null);
+  return a && typeof a === "object" ? a : null;
 }
 
 export const accessToken = (a: CodexAuth): string | null => a.tokens?.access_token ?? null;

@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import type { DB } from "../db.ts";
 import { projectConfig } from "./util/rows.ts";
 import { loadResource, type ResourceExec, runResource } from "./lease.ts";
+import { jsonOr } from "./util/text.ts";
 
 /**
  * The deterministic gate: build, test, lint, typecheck, secret scan.
@@ -132,10 +133,7 @@ export function recordGate(db: DB, sliceId: number, layer: string, verdict: "pas
   const row = db
     .query<{ gates_json: string }, [number]>("SELECT gates_json FROM slice WHERE id = ?")
     .get(sliceId);
-  let gates: Record<string, string> = {};
-  try {
-    gates = JSON.parse(row?.gates_json ?? "{}");
-  } catch {}
+  const gates = jsonOr<Record<string, string>>(row?.gates_json, {});
   gates[layer] = verdict;
   db.run("UPDATE slice SET gates_json = ? WHERE id = ?", [JSON.stringify(gates), sliceId]);
 }
@@ -144,9 +142,5 @@ export function gateState(db: DB, sliceId: number): Record<string, string> {
   const row = db
     .query<{ gates_json: string }, [number]>("SELECT gates_json FROM slice WHERE id = ?")
     .get(sliceId);
-  try {
-    return JSON.parse(row?.gates_json ?? "{}");
-  } catch {
-    return {};
-  }
+  return jsonOr<Record<string, string>>(row?.gates_json, {});
 }

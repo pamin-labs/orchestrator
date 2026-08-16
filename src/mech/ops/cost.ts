@@ -1,4 +1,5 @@
 import type { DB } from "../../db.ts";
+import { jsonOr } from "../util/text.ts";
 
 /**
  * Where the tokens went.
@@ -95,21 +96,21 @@ export function costReport(db: DB, projectId?: number): CostReport {
   const args = projectId ? [projectId] : [];
 
   const byGroup = db
-    .query<CostRow & { grpId: number }, any[]>(
+    .query<CostRow & { grpId: number }, number[]>(
       `SELECT id AS grpId, name AS label, spent_tokens AS tokens FROM grp
        ${where} ORDER BY spent_tokens DESC LIMIT 50`,
     )
     .all(...args);
 
   const agents = db
-    .query<AgentCost, any[]>(
+    .query<AgentCost, number[]>(
       `SELECT id, grp_id AS grpId, role, role AS label, model, runtime, total_tokens AS tokens
        FROM agent ${where} ORDER BY tokens DESC`,
     )
     .all(...args);
 
   const byRole = db
-    .query<CostRow, any[]>(
+    .query<CostRow, number[]>(
       `SELECT role AS label, sum(total_tokens) AS tokens FROM agent
        ${where} GROUP BY role ORDER BY tokens DESC`,
     )
@@ -119,7 +120,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
   // project's difficulty mix — and the difficulty tag is the cost knob the whole
   // panel exists to inform.
   const byDifficulty = db
-    .query<CostRow, any[]>(
+    .query<CostRow, number[]>(
       `SELECT s.difficulty AS label, sum(s.spent_tokens) AS tokens
        FROM slice s JOIN grp g ON g.id = s.grp_id
        ${projectId ? "WHERE g.project_id = ?" : ""}
@@ -128,7 +129,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
     .all(...args);
 
   const byRuntime = db
-    .query<CostRow, any[]>(
+    .query<CostRow, number[]>(
       `SELECT runtime AS label, sum(total_tokens) AS tokens FROM agent
        ${where} GROUP BY runtime ORDER BY tokens DESC`,
     )
@@ -138,7 +139,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
   // turn with the usage and the model, and the model prefix is what says which
   // account paid — the event row has no agent to join back to.
   const byHour = db
-    .query<HourRow, any[]>(
+    .query<HourRow, number[]>(
       `SELECT strftime('%m-%d %H', at / 1000, 'unixepoch', 'localtime') AS hour,
               coalesce(sum(CASE WHEN ${RUNTIME} = 'codex' THEN 0 ELSE ${TOK} END), 0) AS claude,
               coalesce(sum(CASE WHEN ${RUNTIME} = 'codex' THEN ${TOK} ELSE 0 END), 0) AS codex
@@ -150,7 +151,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
     .all();
 
   const total = db
-    .query<CostRow, any[]>(
+    .query<CostRow, number[]>(
       `SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens FROM grp ${where}`,
     )
     .get(...args)!;
@@ -158,7 +159,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
   // What a finished requirement costs is the number to compare against doing it by
   // hand — PLAN.md §13 risk ② turns on exactly this ratio.
   const delivered = db
-    .query<{ count: number; tokens: number }, any[]>(
+    .query<{ count: number; tokens: number }, number[]>(
       `SELECT count(*) AS count, coalesce(sum(spent_tokens), 0) AS tokens FROM grp
        WHERE status = 'DISSOLVED' ${projectId ? "AND project_id = ?" : ""}`,
     )
@@ -192,10 +193,8 @@ export function recentCacheRatio(db: DB, limit = 50): number | null {
     .all(limit);
   const vals: number[] = [];
   for (const r of rows) {
-    try {
-      const v = JSON.parse(r.meta_json)?.cacheRatio;
-      if (typeof v === "number") vals.push(v);
-    } catch {}
+    const v = jsonOr<{ cacheRatio?: unknown }>(r.meta_json, {}).cacheRatio;
+    if (typeof v === "number") vals.push(v);
   }
   if (vals.length === 0) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;

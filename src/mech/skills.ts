@@ -4,6 +4,7 @@ import { hostClaudeHome, hostCodexHome } from "./sandbox/auth.ts";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { DB } from "../db.ts";
+import { jsonOr } from "./util/text.ts";
 
 /**
  * Skills reach an agent two ways, and both are needed.
@@ -269,11 +270,7 @@ const PROJECT_KEY = (id: number) => `skills.project.${id}`;
 export function projectSkills(db: DB, projectId: number | null | undefined): SkillRef[] {
   if (!projectId) return [];
   const row = db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(PROJECT_KEY(projectId));
-  try {
-    return (JSON.parse(row?.v ?? "[]") as SkillRef[]).filter((s) => s && s.name && s.rel);
-  } catch {
-    return [];
-  }
+  return jsonOr<SkillRef[]>(row?.v, []).filter((s) => s && s.name && s.rel);
 }
 
 /**
@@ -328,11 +325,7 @@ const OFF_KEY = "skills.off";
  */
 export function skillsOff(db: DB): string[] {
   const row = db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(OFF_KEY);
-  try {
-    return JSON.parse(row?.v ?? "[]") as string[];
-  } catch {
-    return [];
-  }
+  return jsonOr<string[]>(row?.v, []);
 }
 
 export function setSkillOff(db: DB, name: string, off: boolean): string[] {

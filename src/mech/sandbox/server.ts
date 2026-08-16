@@ -7,6 +7,7 @@ import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
 import { putSetting } from "../../settings.ts";
 import type { Config } from "../../config.ts";
 import { allowedHostPaths, coveredBy, runningServer, SANDBOX_API_KEY_HEADER, serverAddr, splitAddr, specFor } from "./sandbox.ts";
+import { jsonOr } from "../util/text.ts";
 
 /**
  * Starting opensandbox-server, and knowing when not to.
@@ -404,12 +405,8 @@ export function setServerAddr(ctx: Ctx, addr: string): string | null {
 export function ourArgv(ctx: Ctx): string[] | null {
   const live = runningServer();
   if (!live || get(ctx, PID_KEY) !== live.pid) return null;
-  try {
-    const argv = JSON.parse(get(ctx, ARGV_KEY) ?? "[]");
-    return Array.isArray(argv) && argv.length ? argv : live.argv;
-  } catch {
-    return live.argv;
-  }
+  const argv = jsonOr<unknown>(get(ctx, ARGV_KEY), null);
+  return Array.isArray(argv) && argv.length ? (argv as string[]) : live.argv;
 }
 
 /**

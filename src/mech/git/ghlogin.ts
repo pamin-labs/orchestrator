@@ -22,6 +22,7 @@ import type { DB } from "../../db.ts";
  */
 
 import type { GhResult, Github } from "./github.ts";
+import { jsonOr } from "../util/text.ts";
 
 const DEVICE_CODE_URL = "https://github.com/login/device/code";
 const TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -59,7 +60,25 @@ export interface DeviceCode {
   expiresIn: number;
 }
 
-async function form(fetchFn: Fetcher, url: string, params: Record<string, string>): Promise<any> {
+/**
+ * The device-flow fields anything below reads.
+ *
+ * Every one is `String()`d or `Number()`d at its use already — this only stops
+ * the return being `any`, which let `b.<anything>` compile at four call sites
+ * that are reading a form-encoded reply from another host.
+ */
+interface DeviceFlowBody {
+  error?: string;
+  error_description?: string;
+  device_code?: string;
+  user_code?: string;
+  verification_uri?: string;
+  interval?: string | number;
+  expires_in?: string | number;
+  access_token?: string;
+}
+
+async function form(fetchFn: Fetcher, url: string, params: Record<string, string>): Promise<DeviceFlowBody> {
   const r = await fetchFn(url, {
     method: "POST",
     // Without this GitHub answers url-encoded and every field reads as undefined.
@@ -160,12 +179,37 @@ export interface RepoRow {
  * reasoning costs ten requests instead of the hour's whole budget.
  */
 const PER_PAGE = 100;
-async function pages<_T>(gh: Github, path: string, pick: (body: any) => any[]): Promise<GhResult<any[]>> {
-  const out: any[] = [];
+
+/**
+ * What GitHub actually sends back, in the fields read below.
+ *
+ * Both of these used to arrive as `any` and be mapped by `(i: any)`, so the
+ * shape lived only in the property names — `pushed_at` was compared with
+ * `Date.parse(b.pushed_at ?? 0)`, which is `Date.parse` handed a number, and
+ * nothing could say so.
+ */
+interface GhInstallation {
+  id: number;
+  account?: { login?: string; type?: string };
+}
+
+interface GhRepo {
+  full_name: string;
+  private?: boolean;
+  default_branch?: string;
+  pushed_at?: string;
+  clone_url?: string;
+}
+
+/** The key the list arrives under. It was a `pick` callback for two constants. */
+type ListKey = "installations" | "repositories";
+
+async function pages<T>(gh: Github, path: string, key: ListKey): Promise<GhResult<T[]>> {
+  const out: T[] = [];
   for (let page = 1; page <= 10; page++) {
-    const r = await gh.request<any>("GET", `${path}?per_page=${PER_PAGE}&page=${page}`);
+    const r = await gh.request<Partial<Record<ListKey, T[]>>>("GET", `${path}?per_page=${PER_PAGE}&page=${page}`);
     if (!r.ok) return r;
-    const items = pick(r.data) ?? [];
+    const items = r.data?.[key] ?? [];
     out.push(...items);
     if (items.length < PER_PAGE) break;
   }
@@ -179,12 +223,12 @@ async function pages<_T>(gh: Github, path: string, pick: (body: any) => any[]): 
  * already sees every installation the user can reach.
  */
 export async function listInstallations(gh: Github): Promise<GhResult<Installation[]>> {
-  const r = await pages(gh, "/user/installations", (b) => b?.installations);
+  const r = await pages<GhInstallation>(gh, "/user/installations", "installations");
   if (!r.ok) return r;
   return {
     ok: true,
     status: r.status,
-    data: r.data.map((i: any) => ({
+    data: r.data.map((i) => ({
       id: Number(i.id),
       account: String(i.account?.login ?? "?"),
       kind: String(i.account?.type ?? "User"),
@@ -202,7 +246,7 @@ export async function listInstallations(gh: Github): Promise<GhResult<Installati
  * answers 404 rather than 403 for what a token cannot see.
  */
 export async function listRepos(gh: Github, installationId: number): Promise<GhResult<RepoRow[]>> {
-  const r = await pages(gh, `/user/installations/${installationId}/repositories`, (b) => b?.repositories);
+  const r = await pages<GhRepo>(gh, `/user/installations/${installationId}/repositories`, "repositories");
   if (!r.ok) return r;
   return {
     ok: true,
@@ -210,7 +254,7 @@ export async function listRepos(gh: Github, installationId: number): Promise<GhR
     // Most recently pushed first. GitHub returns them in its own order, which
     // read down the page as 76 months, 51, 4, 61, 72, 71, 14 — and the one the
     // boss wants is almost always the one they touched last.
-    data: r.data.sort((a: any, b: any) => Date.parse(b.pushed_at ?? 0) - Date.parse(a.pushed_at ?? 0)).map((x: any) => ({
+    data: r.data.sort((a, b) => Date.parse(b.pushed_at ?? "") - Date.parse(a.pushed_at ?? "")).map((x) => ({
       fullName: String(x.full_name),
       private: !!x.private,
       defaultBranch: String(x.default_branch || "main"),
@@ -273,11 +317,8 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
   const held = ctx.db
     ?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?")
     .get(IDENTITY_KEY)?.v;
-  if (held) {
-    try {
-      return JSON.parse(held) as { name: string; email: string };
-    } catch {}
-  }
+  const cached = jsonOr<{ name: string; email: string } | null>(held, null);
+  if (cached) return cached;
   const r = await ctx.gh?.request<{ login?: string; id?: number; name?: string | null }>("GET", "/user");
   if (!r?.ok || !r.data?.login || !r.data?.id) return fallback;
   const who = {
@@ -341,11 +382,7 @@ export interface Trailers extends Pick<TrailerPrefs, "signoff" | "coauthor"> {
  *  co-author setting from the same row, and it has no `Ctx` to hand. */
 export function trailers(db: DB | undefined): TrailerPrefs {
   const row = db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(TRAILERS_KEY)?.v;
-  try {
-    return { ...TRAILER_DEFAULTS, ...(row ? (JSON.parse(row) as Partial<TrailerPrefs>) : {}) };
-  } catch {
-    return { ...TRAILER_DEFAULTS };
-  }
+  return { ...TRAILER_DEFAULTS, ...jsonOr<Partial<TrailerPrefs>>(row, {}) };
 }
 
 export function setTrailers(db: DB, next: Partial<TrailerPrefs>): TrailerPrefs {
