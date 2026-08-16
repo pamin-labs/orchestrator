@@ -1,4 +1,6 @@
 import { defu } from "defu";
+import type { z } from "zod";
+import { ConfigSchema } from "./config-schema.ts";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -85,127 +87,21 @@ export function defaultSkillsDir(): string {
   return "/var/tmp/orch-cache/skills";
 }
 
-export type Config = {
-  language: string;
-  maxGroups: number;
-  /** One number for the whole Runner pool, or one pool per resource tag. */
-  leaseSlots: number | Record<string, number>;
-  /** Which interface to listen on. `127.0.0.1` unless something fronts it. */
-  host: string;
-
-  port: number;
-  /** provider -> difficulty -> model. One knob per family; adding one is a yaml block. */
-  difficultyModel: Record<Runtime, Record<string, string>>;
-  turnTimeoutMs: number;
-  maxTurnsPerJob: number;
-  sessionRotateFraction: number;
-  /** Unread events past this get compressed by the Librarian instead of dribbling. */
-  unreadDigestThreshold: number;
-  /** The same complaint this many times becomes a project rule. */
-  feedbackSedimentThreshold: number;
-  ctxBudgetChars: number;
-  /**
-   * Forward every notification to a URL, as JSON. Empty means nobody but the panel.
-   *
-   * One field rather than an integration per service. Whatever is on the other
-   * end — ntfy, Bark, a group bot, something written this afternoon — takes a
-   * POST, and building a menu of five would be five things to keep working for a
-   * feature whose default is off.
-   */
-  notifyWebhook: string;
-  parkAfterPausedMs: number;
-  watchdogIntervalMs: number;
-  gateRetries: number;
-  /** Wall clock for one leased command. A big compile is hours, not minutes. */
-  leaseTimeoutMs: number;
-  /**
-   * Wall clock for installing a project's dependencies.
-   *
-   * The same class of thing as a lease, so the same order of magnitude. It was
-   * 15 minutes, which is fine for this repo and wrong for the projects that
-   * need the headroom: a monorepo's pnpm install, pip building numpy from
-   * source, dotnet restore on a large solution. Too short fails as "this
-   * project is broken" rather than as "that took longer than allowed", and the
-   * group is blocked either way — so the default is generous and the install is
-   * streamed, which is what makes a long one watchable instead of silent.
-   */
-  installTimeoutMs: number;
-  /** Start the next slice when QA passes, without waiting for the boss to accept. */
-  autoAdvance: boolean;
-  /** Difficulty tags accepted automatically once all three gates pass. */
-  autoAcceptTiers: string[];
-  /**
-   * Token cap written onto every new slice. difficulty -> cap.
-   *
-   * Until this existed `budget_tokens` was never INSERTed, so it was NULL on every
-   * row and the two admission checks in scheduler.ts had never stopped anything.
-   * It matters more now: QA moved to a CLI with no tool whitelist, and a budget is
-   * the deterministic replacement for the whitelist that used to bound its reading.
-   */
-  sliceBudgetTokens: Record<string, number>;
-  /**
-   * Who answers `orch ctx query` and writes the index summaries.
-   *
-   * The most frequent model call in the system and pure summarisation — no
-   * decision, no tools, no blackboard — so it is the first thing that should come
-   * off the expensive subscription.
-   */
-  indexModel: { runtime: Runtime; model: string };
-  /**
-   * model -> context window, and a `default` for anything unlisted.
-   *
-   * The rotation ceiling was the literal 200_000 for every model, which is only
-   * true of the cheapest one. Read off real turn logs: haiku-4-5 reports 200k,
-   * sonnet-5 and opus-5 report 1M, and codex's token_count reports 272k for the
-   * gpt-5.6 family. So the strong models were rotating at 120k of a 1M window —
-   * five times too early, and a rotation throws the cached prefix away.
-   *
-   * Both CLIs report their real window during a turn, and that value wins over
-   * this table; this is what the first turn of a session has to go on.
-   */
-  contextWindow: Record<string, number>;
-  /**
-   * One sandbox per group — the write boundary (docs/decisions/005).
-   *
-   * `cpu` empty means a quarter of the host's cores; the SDK's own default of
-   * "1" made this repo's typecheck 3.7x slower than the host. Per-project
-   * overrides live in `project.config_json.sandbox`.
-   */
-  sandbox: {
-    server: string;
-    apiKey: string;
-    image: string;
-    cpu: string;
-    memory: string;
-    ttlSeconds: number;
-    denyDomains: string[];
-    /** mount path -> host path, shared by every sandbox. Package caches only. */
-    cacheDirs: Record<string, string>;
-  };
-  dataDir: string;
-  /**
-   * Where the ticked skills are staged for the sandboxes to mount.
-   *
-   * Not under `dataDir`: the sandbox server only mounts host paths on its own
-   * `allowed_host_paths` allowlist, and a repo checkout is never on it. Its
-   * default list is `/var/tmp/orch-cache`, which is where this pointed.
-   *
-   * **Under `$HOME` on macOS, and that is not cosmetic.** Docker there runs in a
-   * VM, and `/var/tmp` inside the VM is the VM's own — so binding it *succeeds*
-   * and hands the container an empty directory. Measured: 179 skills on the host,
-   * `ls` inside the container returns 0, and the mount reports
-   * `lowerdir=/`. Every agent on this machine had been running with no skills at
-   * all since 006, and nothing could say so — `skillMounts` returned two correct
-   * mounts, creation succeeded, and preflight counted the files on the host,
-   * which is the one place they certainly are.
-   *
-   * Changing it means the sandbox server's `allowed_host_paths` has to name the
-   * new path too. That failure is loud (creation is refused and the message names
-   * the path), which is the whole reason this is worth moving: a path the runtime
-   * cannot reach fails silently, a path the server has not allowed does not.
-   */
-  skillsDir: string;
-};
+/**
+ * What a legal config is, as one declaration.
+ *
+ * This used to be a hand-written `type Config = { ... }` of twenty-six fields
+ * beside a `ConfigSchema` of the same twenty-six, kept in step by whoever
+ * remembered. Nothing checked that they agreed, and the panel and the yaml
+ * checker both run off the schema — so a field added to the type and not the
+ * schema is a setting the panel cannot show and the boot check will not police,
+ * while the compiler says everything is fine.
+ *
+ * `z.infer` makes the schema the only declaration. The field comments moved
+ * there with it: they are the expensive part, every number is a measurement
+ * somebody paid for, and they are still what an editor shows on hover.
+ */
+export type Config = z.infer<typeof ConfigSchema>;
 
 const DEFAULTS: Config = {
   language: "中文",

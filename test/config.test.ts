@@ -13,6 +13,7 @@ import {
   modelFor,
   withAbsoluteDataDir,
 } from "../src/config.ts";
+import { ConfigSchema } from "../src/config-schema.ts";
 
 test("the shipped roles all parse and declare what the runtime needs", () => {
   const roles = loadRoles("roles");
@@ -202,4 +203,24 @@ test("the shipped yaml never disagrees with the code default", () => {
   };
   walk(yaml, DEFAULTS_FOR_CHECK);
   expect(differ).toEqual([]);
+});
+
+test("the config type and the config schema are one declaration", () => {
+  // They were two: a hand-written `type Config = {...}` of twenty-six fields
+  // beside a `ConfigSchema` of the same twenty-six, kept in step by whoever
+  // remembered. Nothing checked they agreed, and the two doors that matter — the
+  // settings panel and the boot check — both read the schema, so a field added
+  // to the type alone is a setting the panel cannot show and checkconfig will
+  // not police, with the compiler saying everything is fine.
+  //
+  // `Config` is `z.infer<typeof ConfigSchema>` now, so this can only assert the
+  // half a type cannot: that the shipped defaults are a legal config, and that
+  // every key in one is a key in the other.
+  const parsed = ConfigSchema.safeParse(DEFAULTS_FOR_CHECK);
+  expect(parsed.success ? [] : parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([]);
+  expect(Object.keys(ConfigSchema.shape).sort()).toEqual(Object.keys(DEFAULTS_FOR_CHECK).sort());
+
+  // And the file on disk, which is the thing that actually boots.
+  const live = ConfigSchema.safeParse(loadConfig());
+  expect(live.success ? [] : live.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([]);
 });
