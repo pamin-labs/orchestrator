@@ -13,6 +13,8 @@
 ## 技术栈
 
 - **bun + TypeScript**，单进程：HTTP + SSE + `bun:sqlite` + 子进程管理
+- **HTTP = hono，校验 = zod**（经 `@hono/standard-validator`）。协议层在 `src/http/`（响应构造、handler 形状、校验适配、content-type 闸），业务在 `src/api/`：`orch/` 是 agent 调的，`panel/` 是浏览器调的。**handler 不认识框架** —— 签名是 `(ctx, req, params, data)`，测试里四个参数直接调，不用起服务器；`route()` 是唯一知道 hono 存在的地方，同时把 schema 和 handler 接给 TS，改了 schema 忘了 handler 直接编译不过
+- **面板的类型从服务端推出来**，不手写：`type State = ReturnType<typeof snapshot>`，行的形状是 `src/api/panel/shapes.ts` 里的 zod。`import type` 构建时擦除，不会把服务端代码打进浏览器包
 - **web = React + Tailwind v4 + shadcn/ui**（Radix 行为层），`bun run build:web` 出 `web/dist`。视觉语言是自己的（见 `DESIGN.md`），shadcn 只负责行为：焦点陷阱、Esc、aria、菜单、toast。手写过一遍，不值得
 - **页面仍然不 fetch 任何外部资源** —— 字体用本机已有的，脚本样式只从 `web/dist` 出，`test/smoke.test.ts` 守着
 - agent runtime = **CLI 子进程**（`claude -p` / `codex exec`），不用 Agent SDK
@@ -48,11 +50,22 @@ bun test test/xxx.test.ts     # 单个
 4. **组件行为不许自己造，有 shadcn 就用 shadcn。** 优先级：shadcn 组件 > 自己造 > 裸 HTML 标签。dialog / menu / toast / 命令面板 / accordion / button / input 一律走 shadcn（Radix + cmdk + sonner）。手写过一遍 confirm、toast、下拉，结果是没有焦点陷阱、Esc 不响应、aria 全缺 —— 视觉语言是我们的（`DESIGN.md`），行为不是我们该发明的。加组件先看 shadcn 有没有。
 5. **要老板做的决定必须把证据摆在按钮旁边。** 查收给 diff + QA 判词 + 闸门日志；不可逆动作（确认已合入）先让服务端向 GitHub 核对；被卡住的状态（预算烧穿、退回的 DRAFT、代答）必须有出路按钮。只给标题就让人批 = 橡皮图章，前面三道闸白跑。
 6. **`if` 和 prompt 说的话必须一致，不一致时模型听 `if`。** 改校验器时同步改对应的 role prompt，反过来也一样。实测：dispatcher prompt 写着「真的不可分就交一片，凑三片更糟」，而校验器拒收 1-2 片 —— 模型只能凑，还把凑出来的切片当风险写在自己卡上。**prompt 给的许可如果校验器不认，就是在教模型撒谎。**
-7. **每个状态都必须有人推。** 加状态 = 在 `src/mech/ops/invariants.ts` 加一行：什么必须成立 / 谁推它出去（`driver`）/ 需要的话一个幂等 repair。`src/mech/ops/states.ts` 是唯一的状态清单，`test/invariants.test.ts` 断言两者对齐 —— 加了状态不填表，`bun test` 直接红。
+7. **每个状态都必须有人推。** 加状态 = 在 `src/mech/ops/invariants.ts` 加一行：什么必须成立 / 谁推它出去（`driver`）/ 需要的话一个幂等 repair。`src/states.ts` 是唯一的状态清单，`test/invariants.test.ts` 断言两者对齐 —— 加了状态不填表，`bun test` 直接红。
 
    为什么：**每一条 watchdog 规则都是一次事故换来的，而它们形状完全一样** —— 某个转移只有一条代码路径会触发，那条路径没跑，状态就永久停住，而且**看起来是健康的**（组 RUNNING、有 agent、哪儿都没报错）。实测过的：六个组卡在过期基线上；六个组卡在一个 `--settings` 路径 bug 上；一个组每片都查收了却没人把分支交出去；一个 PAUSED 却没有 `paused_at` 的组对所有定时器隐形。表把「又发现一个」变成「表里有个空格」。
 
    **表里只放活性（liveness）：谁推。** 健康检查（turn 超时、原地打转、预算、env_suspect）留在 `watchdog.ts` —— 那是「它还好吗」，不是「有没有人在推它」。两者混在一起，任何一边都会变成垃圾堆。
+
+8. **解决过的问题不要再解决一遍。** 路由、校验、glob、YAML、MIME、日期 —— 这些都有成熟答案，我们该花时间的是这个项目的逻辑和这个页面的设计。**不要怕加依赖**，怕的是手写一份将来没人维护的半成品。硬约束 4 是这一条在组件上的特例。
+
+   **理由不是「代码更短」，是「手写的那份是错的」** —— 实测三条，每一条都是这么发现的：
+   - 手写的 glob 让 `src/a/**/*.ts` 覆盖 `src/a/b.js`，而它的下游是 turn 结束后回滚越界文件。判错 = 越界文件不回滚，而组全程看起来健康。换 `Bun.Glob`。
+   - lease 的 int 校验是 `Number(raw)`，于是 `true`→1、`""`→0、`" 3 "`→3 —— 一个复选框和一个空字段都变成了命令行上「有人选的」数字。而这是沙盒边界（硬约束 2）。换 zod 显式 union。
+   - 手写的 frontmatter 解析器把 `>-` 按 `|` 折叠，还会命中正文里的 `description:`。`Bun.YAML.parse` 三个文件之外就在用。
+
+   **但也不是有库就用。** 同一轮里查过之后明确不换的：`node:util` 的 `parseArgs` 要每个子命令声明选项，配置比它替掉的 50 行还多；`shell-quote` 会把 `>` `&&` 解析成操作符对象，而 lease 模板**根本不过 shell**，那是多出来的语义、方向反了；`z.coerce.boolean()` 把非空字符串一律当 true，`"false"` 会变成 `true` —— **用库不等于用它最顺手的那个导出**，尤其在边界上。
+
+   判据一句话：**这个手写版有没有一种情况是错的？** 有 → 换。只是长 → 先问它有没有一个库给不了的性质（一句写给 agent 看的错误信息、一次保留注释的往返、一条安全边界）；没有才换。
 
 ## 开工前挂档（按任务难度）
 

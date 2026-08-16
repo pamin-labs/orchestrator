@@ -71,11 +71,15 @@ even though the panel's own text is Chinese.
   probably two.
 - Non-trivial logic leaves one runnable check behind — `bun test`, no framework,
   no fixture hierarchy.
-- New state? `src/mech/ops/states.ts` and `src/mech/ops/invariants.ts` have to
+- New state? `src/states.ts` and `src/mech/ops/invariants.ts` have to
   agree, and `test/invariants.test.ts` fails until they do. That is deliberate:
   a state nobody drives is how a group ends up looking healthy and going nowhere.
 - Adding a UI component? Check shadcn/Radix first (硬约束 4). Hand-rolled
   dialogs and menus are how you end up with no focus trap and no Escape key.
+- Writing a parser, a matcher, a validator? Check what the platform and the
+  installed dependencies already do (硬约束 8). Adding a dependency is fine;
+  hand-rolling one is how this repo ended up with a glob that let stray files
+  through and an integer check that accepted `true` as 1.
 
 ## Reporting something
 
