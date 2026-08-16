@@ -1,5 +1,8 @@
 import { errText } from "./mech/util/text.ts";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { csrf } from "hono/csrf";
+import { HTTPException } from "hono/http-exception";
 import { agentRoute, labelledBody, route } from "./http/route.ts";
 import type { Caller, Ctx } from "./ctx.ts";
 import { agentOf, mayAct, mintToken, resolveGroup } from "./api/shared.ts";
@@ -127,28 +130,83 @@ function apiRoutes(ctx: Ctx): Hono {
  * does not need to: wiping the boss's credentials, approving a DRAFT and
  * dropping a group are all one-way.
  *
- * Two things stop it now. This, and the content-type gate in `makeApp` — a body
- * that does not say `application/json` is refused before a route sees it, and
- * saying it is what earns the preflight this was written to survive.
+ * Hono's `csrf()` is that rule, scoped tighter than the eighteen lines it
+ * replaced. It fires only on the content types a cross-site form or a `no-cors`
+ * fetch can actually produce — `x-www-form-urlencoded`, `multipart/form-data`,
+ * `text/plain`, and a *missing* header, which it reads as `text/plain`. An
+ * `application/json` POST is not one of them and does not need to be: it cannot
+ * leave a page without a preflight, and this server answers no preflight.
  *
- * A deny-list, not an allow-list, because the legitimate non-browser callers —
- * `curl`, `bun test`, the mailbox replay — send neither header, and refusing
- * those would be refusing everything except the panel. Every browser that can
- * mount this attack sends `Sec-Fetch-Site`.
+ * It also compares `Origin` against `new URL(c.req.url).origin` — the host this
+ * request actually arrived on. The version here compared against `config.port`,
+ * a number from a file that the request itself is better evidence for;
+ * `server.ts` already prefers `server.port` over `cfg.port` when it prints the
+ * address, for the same reason.
+ *
+ * `none` is allowed alongside Hono's default `same-origin`: that is the address
+ * bar and a redirect, which have no initiator that could be another site.
  */
-export function crossSiteWrite(req: Request, port: number): boolean {
-  if (req.method === "GET" || req.method === "HEAD") return false;
-  const site = req.headers.get("sec-fetch-site");
-  // Present on every modern browser request, and it says `same-origin` however
-  // the boss spelled the host — `localhost` and `127.0.0.1` are the same page to
-  // it and different strings to `Origin`.
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+
+/**
+ * Loopback is loopback, whichever way the boss spelled it.
+ *
+ * `csrf()` compares `Origin` to `new URL(c.req.url).origin` as a string, so a
+ * panel opened at `http://localhost:47821` is a different origin from the
+ * `127.0.0.1:47821` the request arrives on and its uploads are refused. The
+ * browser calls them the same page; only the string disagrees. Port still has to
+ * match — another server on this machine is another origin.
+ */
+const sameOriginWrite = csrf({
+  secFetchSite: ["same-origin", "none"],
+  origin: (origin, c) => {
+    try {
+      const u = new URL(origin);
+      return LOOPBACK.has(u.hostname) && u.port === new URL(c.req.url).port;
+    } catch {
+      return false;
+    }
+  },
+});
+
+/**
+ * How much one upload may be, in total.
+ *
+ * `postAttach` refuses a file over 25MB — and refuses it *after* `req.formData()`
+ * has parsed the entire multipart body into memory, in the one process that also
+ * runs every turn. Dropping a folder is a single gesture that sends forty files,
+ * so the per-file number never bounded the request. This does, and `content-length`
+ * answers it without reading a byte, which is the shape every browser upload has.
+ */
+export const UPLOAD_LIMIT = 256 * 1024 * 1024;
+
+/**
+ * Does this write say, in its own headers, that another page started it?
+ *
+ * The half of the old check `csrf()` does not cover. `csrf()` fires only on the
+ * content types a cross-site request can produce without a preflight, so a
+ * cross-site POST labelled `application/json` went through to the schema —
+ * measured, 422 rather than 403, for both a `Sec-Fetch-Site: cross-site` and an
+ * `Origin: https://evil.example`. The argument for allowing those is sound (JSON
+ * is not a safelisted content type; the preflight it needs is one this server
+ * never answers) and it is an argument about how somebody else's browser
+ * behaves, when the header that settles it is in the request.
+ *
+ * A deny-list still: `curl`, `bun test` and the mailbox replay send neither
+ * header, and refusing those would refuse everything that is not the panel.
+ *
+ * `Sec-Fetch-Site` first because it is the one that survives the boss typing
+ * `localhost` where the server says `127.0.0.1` — the browser calls both
+ * same-origin, `Origin` calls them different strings. So the `Origin` fallback
+ * compares loopback-to-loopback and only insists on the port.
+ */
+export function elsewhere(site: string | undefined, origin: string | undefined, url: string): boolean {
   if (site) return site !== "same-origin" && site !== "none";
-  const origin = req.headers.get("origin");
   if (!origin) return false;
   try {
     const u = new URL(origin);
     const loopback = u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "[::1]";
-    return !loopback || u.port !== String(port);
+    return !loopback || u.port !== new URL(url).port;
   } catch {
     return true;
   }
@@ -204,17 +262,46 @@ export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   // One place, ahead of everything. It used to be an `if` at the top of the
   // dispatch loop, which is the same thing until someone adds a second dispatch
   // path — and a CSRF check that one route can be written around is not a check.
+  //
+  // The one thing Hono is not asked to decide: `csrf()` refuses a request that
+  // carries neither header, and every legitimate non-browser caller — `curl`,
+  // `bun test`, the mailbox replay — carries neither. A browser able to mount
+  // this attack always sends at least one, so "both absent" is not a browser and
+  // is the only case waved through by hand.
+  //
+  // And one thing it is not asked to decide either way. `csrf()` fires only on
+  // the content types a cross-site request can produce without a preflight, so a
+  // cross-site POST that says `application/json` goes through to the schema —
+  // measured, 422 not 403. The reasoning for that is sound (JSON is not a
+  // safelisted content type, the preflight it needs is one this server never
+  // answers) but it is reasoning about someone else's browser, and the header
+  // saying so is right there. A browser is the only thing that sets
+  // `Sec-Fetch-Site`, it cannot be set from script, and no legitimate caller of
+  // this surface sets it to anything but `same-origin` or `none`.
   app.use("/api/*", async (c, next) => {
-    if (crossSiteWrite(c.req.raw, ctx.config.port ?? 47821)) {
+    const site = c.req.header("sec-fetch-site");
+    const origin = c.req.header("origin");
+    if (c.req.method !== "GET" && c.req.method !== "HEAD" && elsewhere(site, origin, c.req.url)) {
       return c.text("cross-site writes are refused", 403);
     }
+    if (site || origin) return sameOriginWrite(c, next);
     await next();
   });
+
+  // The only route that takes an unbounded body. See `UPLOAD_LIMIT`.
+  app.use(
+    "/api/attach",
+    bodyLimit({ maxSize: UPLOAD_LIMIT, onError: (c) => c.text(`一次最多传 ${UPLOAD_LIMIT >> 20}MB`, 413) }),
+  );
 
   // An uncaught handler error was a 500 with the message in the body, and stays
   // one: `orch` prints this text straight at an agent, and "error: ..." is more
   // use to it than an empty 500.
-  app.onError((e, c) => c.text(`error: ${errText(e)}`, 500));
+  //
+  // Middleware that already picked a status says so by throwing `HTTPException`,
+  // and setting `onError` replaces Hono's default handler outright — without
+  // this branch `csrf()`'s 403 would arrive as a 500 saying "error: Forbidden".
+  app.onError((e, c) => (e instanceof HTTPException ? e.getResponse() : c.text(`error: ${errText(e)}`, 500)));
 
   app.use("*", labelledBody);
 

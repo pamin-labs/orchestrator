@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { activityOf } from "../web/src/lib/activity.ts";
 import { splitAttachments } from "../web/src/lib/attach.ts";
 import { repoHref } from "../web/src/lib/utils.ts";
-import { imagePaths, makeApp, withAttachments } from "../src/api.ts";
+import { imagePaths, makeApp, UPLOAD_LIMIT, withAttachments } from "../src/api.ts";
 
 const of = (activity: string) => activityOf({ activity } as never);
 
@@ -54,6 +54,21 @@ test("labelled image paths still reach codex as -i flags", () => {
   ]);
   expect(prompt).toContain("- [图1] /data/a.png (image)");
   expect(imagePaths(prompt)).toEqual(["/data/a.png"]);
+});
+
+test("an upload too big to hold is refused before it is held", async () => {
+  // `postAttach`'s 25MB check runs after `req.formData()` has already parsed the
+  // whole body into memory, so it never bounded the request — and a dropped
+  // folder is one gesture that sends forty files. `content-length` is what every
+  // browser upload carries, so this is decided without reading a byte.
+  const app = makeApp({ db: null as never, config: {} } as never);
+  const r = await app(new Request("http://x/api/attach", {
+    method: "POST",
+    body: "x",
+    headers: { "content-type": "multipart/form-data; boundary=b", "content-length": String(UPLOAD_LIMIT + 1) },
+  }));
+  expect(r.status).toBe(413);
+  expect(await r.text()).toContain("MB");
 });
 
 test("a dropped folder becomes one attachment, and cannot escape its directory", async () => {

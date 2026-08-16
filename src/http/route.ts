@@ -117,11 +117,14 @@ export function agentRoute<B = undefined>(
  *
  * Hono's own validator read the content type and treated anything else as *no
  * input at all* — a POST that forgot the header arrived with every field
- * defaulted and the real body discarded. That is gone with the validator, but
- * the rule stays, because it is also what closes the hole `crossSiteWrite`
- * describes: a cross-site POST cannot set `application/json` without earning a
- * preflight, so `text/plain` is the shape that attack has to take, and this
- * refuses it before there is a handler to fool.
+ * defaulted and the real body discarded. That is gone with the validator, and so
+ * is the CSRF half of the reason: `csrf()` in `api.ts` refuses the cross-site
+ * `text/plain` shape itself now, on the mount that has no token.
+ *
+ * What is left is a message. Without it a mislabelled body reaches the schema
+ * and comes back as a list of missing fields — and `orch` prints that list at an
+ * agent, which then adds the fields it is already sending. Naming the header is
+ * the difference between a correction the agent can make and one it cannot.
  *
  * `multipart/form-data` is exempt — uploads read `req.formData()` themselves.
  */
