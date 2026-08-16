@@ -140,6 +140,19 @@ test("a project that recovers and breaks again can warn a second time", async ()
   expect(repoHeld(h.db, 1)).toBe(true);
 });
 
+test("recovery clears only the literal repository prefix", async () => {
+  const h = seed();
+  const bad = makeGithub(h.db, answer(401, { message: "Bad credentials" }));
+  await bad.request("GET", "/repos/me/a_b/pulls/7");
+  await bad.request("GET", "/repos/me/axb/pulls/7");
+  expect(openEscalations(h.db)).toHaveLength(2);
+
+  await makeGithub(h.db, answer(200, { number: 7 })).request("GET", "/repos/me/a_b/pulls/7");
+  expect(openEscalations(h.db).map((row) => row.question)).toEqual([
+    expect.stringContaining("GitHub me/axb:"),
+  ]);
+});
+
 test("the escalation reaches the boss without waiting for an agent to pass it up", async () => {
   // No agent can answer "the login stopped working", and this one belongs to a
   // project rather than a group — so there is no PM to route it through.

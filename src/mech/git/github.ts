@@ -207,10 +207,12 @@ function holdRepo(db: DB, lang: string | undefined, slug: string, why: string, n
  * it, and `dropGroup` already uses `revoked` for a question the world made moot.
  */
 export function clearEscalation(db: DB, slug: string): void {
+  const prefix = `GitHub ${slug}:`;
   db.run(
     `UPDATE escalation SET chain_state = 'revoked', answered_at = unixepoch() * 1000
-     WHERE answer IS NULL AND chain_state != 'revoked' AND question LIKE ?`,
-    [`GitHub ${slug}:%`],
+     WHERE answer IS NULL AND chain_state != 'revoked'
+       AND substr(question, 1, length(?)) = ?`,
+    [prefix, prefix],
   );
 }
 
