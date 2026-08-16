@@ -7,7 +7,7 @@ import type { InferResponseType } from "hono/client";
 export const ModeSchema = z.enum(["oauth_token", "api_key", "chatgpt"]);
 export type Mode = z.infer<typeof ModeSchema>;
 
-type AuthResponse = InferResponseType<typeof api.auth.$get, 200>;
+export type AuthResponse = InferResponseType<typeof api.auth.$get, 200>;
 export const AuthRowSchema: z.ZodType<AuthResponse["runtimes"][number]> = z.object({
   runtime: z.string(),
   mode: ModeSchema,
@@ -17,7 +17,7 @@ export const AuthRowSchema: z.ZodType<AuthResponse["runtimes"][number]> = z.obje
 });
 export type AuthRow = z.infer<typeof AuthRowSchema>;
 
-type PreflightResponse = InferResponseType<typeof api.preflight.$get, 200>;
+export type PreflightResponse = InferResponseType<typeof api.preflight.$get, 200>;
 export const HostCheckSchema: z.ZodType<PreflightResponse["checks"][number]> = z.object({
   name: z.string(),
   ok: z.boolean(),

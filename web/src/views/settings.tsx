@@ -30,7 +30,7 @@ import { CredPane, RUNTIMES } from "./settings/credentials";
 import { EnvPane, ServerInfoSchema, ServerPane } from "./settings/environment";
 import { GithubPane, GhStatusSchema } from "./settings/github";
 import { ProjectPane, type ProjectSection } from "./settings/project";
-import { AuthRowSchema, HostCheckSchema, type HostCheck } from "./settings/shared";
+import { AuthRowSchema, HostCheckSchema, type AuthRow, type HostCheck } from "./settings/shared";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 
@@ -41,6 +41,9 @@ const AuthResponseSchema: z.ZodType<InferResponseType<typeof api.auth.$get, 200>
 const PreflightResponseSchema: z.ZodType<InferResponseType<typeof api.preflight.$get, 200>> = z.object({
   checks: z.array(HostCheckSchema),
 });
+type Signin = { runtime: string; since: number; until: number };
+const EMPTY_AUTH = { runtimes: [] as AuthRow[], trailers: undefined };
+const EMPTY_PREFLIGHT = { checks: [] as HostCheck[] };
 
 /**
  * Everything that is configured rather than worked on, in one dialog.
@@ -120,15 +123,17 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   { key: "remove", zh: "移除项目", icon: Trash2, project: true },
 ];
 
+const PROJECT_SECTIONS = new Set<Section>(["gates", "sandbox", "remove"]);
+
 export function SettingsDialog({
   open,
   onOpenChange,
   initial,
-  onSection,
+  onSection = () => {},
   projectId,
   projectName,
   groupCount,
-  onRemoved,
+  onRemoved = () => {},
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -147,8 +152,64 @@ export function SettingsDialog({
   useEffect(() => setSection(initial), [initial]);
   const pick = (k: Section) => {
     setSection(k);
-    onSection?.(k);
+    onSection(k);
   };
+  const here = projectId === null && PROJECT_SECTIONS.has(section) ? "cred" : section;
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-[var(--scrim)]" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed left-1/2 top-1/2 z-50 grid h-[min(36rem,84vh)] w-[min(58rem,94vw)]
+                     -translate-x-1/2 -translate-y-1/2 grid-cols-[13rem_minmax(0,1fr)] overflow-hidden
+                     rounded-xl border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in
+                     max-[44rem]:grid-cols-1 max-[44rem]:grid-rows-[auto_minmax(0,1fr)]"
+        >
+          <Dialog.Title className="sr-only">{NAV.find((n) => n.key === here)!.zh}</Dialog.Title>
+          <Dialog.Close
+            aria-label="关掉"
+            className="absolute top-3 right-3 grid size-6.5 cursor-pointer place-items-center rounded-md
+                       text-ink-3 transition-colors hover:bg-sunk hover:text-ink"
+          >
+            <X size={14} strokeWidth={1.75} />
+          </Dialog.Close>
+          <SettingsContent
+            open={open}
+            section={here}
+            onSection={pick}
+            projectId={projectId}
+            projectName={projectName}
+            groupCount={groupCount ?? 0}
+            onOpenChange={onOpenChange}
+            onRemoved={onRemoved}
+          />
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function SettingsContent({
+  open,
+  section,
+  onSection,
+  projectId,
+  projectName,
+  groupCount,
+  onOpenChange,
+  onRemoved,
+}: {
+  open: boolean;
+  section: Section;
+  onSection: (section: Section) => void;
+  projectId: number | null;
+  projectName?: string;
+  groupCount: number;
+  onOpenChange: (open: boolean) => void;
+  onRemoved: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   /**
    * The login in flight: which account, what its row said before it started, and
@@ -159,7 +220,7 @@ export function SettingsDialog({
    * before, so the credential arrived, the row updated, and both buttons stayed
    * "等你在浏览器里批准…" for the rest of the five minutes.
    */
-  const [signin, setSignin] = useState<{ runtime: string; since: number; until: number } | null>(null);
+  const [signin, setSignin] = useState<Signin | null>(null);
 
   const queries = useQueryClient();
   // A credential landing changes more than the row it landed on: 主机 goes green
@@ -183,50 +244,24 @@ export function SettingsDialog({
    * missing piece is the panel noticing, and two seconds is well inside the time
    * it takes to click through an OAuth screen.
    */
-  const auth = useQuery({
+  const { data: authData = EMPTY_AUTH } = useQuery({
     queryKey: ["auth"],
-    queryFn: () => readApi(api.auth.$get(), AuthResponseSchema),
+    queryFn: async () => (await readApi(api.auth.$get(), AuthResponseSchema)) ?? EMPTY_AUTH,
     enabled: open,
     refetchInterval: signin ? 2000 : false,
   });
-  const preflight = useQuery({
+  const { data: preflightData = EMPTY_PREFLIGHT } = useQuery({
     queryKey: ["preflight"],
-    queryFn: () => readApi(api.preflight.$get(), PreflightResponseSchema),
+    queryFn: async () => (await readApi(api.preflight.$get(), PreflightResponseSchema)) ?? EMPTY_PREFLIGHT,
     enabled: open,
   });
-  const project = useQuery({
+  const { data: proj = null } = useQuery({
     queryKey: ["project", projectId, "config"],
     queryFn: () => readApi(api.project[":id"].config.$get({ param: { id: String(projectId) } }), ProjectConfigSchema),
     enabled: open && projectId !== null,
   });
-  /**
-   * GitHub changes in another window too: device authorization while a code is
-   * pending, and App installation when focus returns. Keep that coordination in
-   * the dialog shell; the pane only owns the controls that start those actions.
-   */
-  const gh = useQuery({
-    queryKey: ["gh"],
-    queryFn: () => readApi(api.auth.github.$get(), GhStatusSchema),
-    enabled: open && section === "github",
-    refetchInterval: (q) => (q.state.data?.pending ? 3000 : false),
-  });
-  const refreshGh = () => void queries.invalidateQueries({ queryKey: ["gh"] });
-  const sandboxServer = useQuery({
-    queryKey: ["sandbox-server"],
-    queryFn: () => readApi(api["sandbox-server"].$get(), ServerInfoSchema),
-    enabled: open && section === "server",
-  });
-  const sandboxImages = useQuery({
-    queryKey: ["sandbox-images"],
-    queryFn: () => readApi(api.sandbox.images.$get(), ImageChoicesSchema),
-    enabled: open && section === "server",
-  });
-  const refreshServer = () => void queries.invalidateQueries({ queryKey: ["sandbox-server"] });
-  const refreshImages = () => void queries.invalidateQueries({ queryKey: ["sandbox-images"] });
-  const rows = auth.data?.runtimes ?? [];
-  const prefs = auth.data?.trailers;
-  const checks = preflight.data?.checks ?? [];
-  const proj = projectId === null ? null : (project.data ?? null);
+  const { runtimes: rows, trailers: prefs } = authData;
+  const { checks } = preflightData;
 
   /** It landed. Stop asking, and give the button back. */
   useEffect(() => {
@@ -235,7 +270,7 @@ export function SettingsDialog({
     if (row && row.updatedAt > signin.since) setSignin(null);
     // `auth.data`, not `rows`: TanStack hands back the same object while the
     // answer is unchanged, and `rows` is a fresh array on every render.
-  }, [auth.data, signin]);
+  }, [authData, signin]);
 
   /**
    * It did not land, and the window is long gone.
@@ -258,136 +293,258 @@ export function SettingsDialog({
     void queries.invalidateQueries({ queryKey: ["project", projectId] });
   };
 
-  const items = NAV.filter((n) => !n.project || projectId);
-  const here = items.some((n) => n.key === section) ? section : "cred";
+  const items = NAV.filter((n) => !n.project || projectId !== null);
+
+  const projectPane = (projectSection: ProjectSection) =>
+    proj ? (
+      <ProjectPane
+        section={projectSection}
+        data={proj}
+        busy={busy}
+        projectId={projectId!}
+        projectName={projectName}
+        groupCount={groupCount}
+        patch={patch}
+        onRemoved={() => {
+          onOpenChange(false);
+          onRemoved();
+        }}
+      />
+    ) : (
+      <Meta className="block py-2">读取中…</Meta>
+    );
+
+  const panes: Record<Section, React.ReactNode> = {
+    cred: (
+      <CredPane
+        rows={rows}
+        prefs={prefs}
+        waiting={signin?.runtime}
+        onSaved={load}
+        onWaitForLogin={(runtime, since) => setSignin({ runtime, since, until: Date.now() + 300_000 })}
+      />
+    ),
+    github: <GithubSettings open={open} section={section} />,
+    host: <EnvPane checks={checks.filter((c) => !isCredential(c))} />,
+    server: <SandboxServerSettings open={open} section={section} rows={rows} checks={checks} onSaved={load} />,
+    skills: <Skills projectId={projectId} />,
+    sched: <Knobs section="sched" />,
+    models: <Knobs section="models" />,
+    turn: <Knobs section="turn" />,
+    boxdefaults: <Knobs section="boxdefaults" />,
+    notify: <Knobs section="notify" />,
+    prefs: <Preferences />,
+    gates: projectPane("gates"),
+    sandbox: projectPane("sandbox"),
+    remove: projectPane("remove"),
+  };
+
+  return (
+    <>
+      {/* The scope is the grouping, not a sentence on each page explaining
+          which of the two it is. */}
+      <SettingsNavigation
+        items={items}
+        section={section}
+        rows={rows}
+        checks={checks}
+        projectId={projectId}
+        projectName={projectName}
+        project={proj}
+        onSection={onSection}
+      />
+
+      {/* The label column is set once, here, rather than per pane. Three panes
+          had picked three widths, so switching between them moved every value
+          sideways — and a width chosen inside a pane is a width the next pane
+          cannot know about. 5rem holds the longest label in the dialog
+          (基线分支, API 密钥). */}
+      <div className="flex min-h-0 flex-col px-6 pt-4 pb-5 [--label:5rem]">
+        <Pane>{panes[section]}</Pane>
+      </div>
+    </>
+  );
+}
+
+/**
+ * GitHub changes in another window too: device authorization while a code is
+ * pending, and App installation when focus returns. Keep that coordination in
+ * the dialog shell; the pane only owns the controls that start those actions.
+ */
+function GithubSettings({ open, section }: { open: boolean; section: Section }) {
+  const queries = useQueryClient();
+  const { data: status = null } = useQuery({
+    queryKey: ["gh"],
+    queryFn: () => readApi(api.auth.github.$get(), GhStatusSchema),
+    enabled: open && section === "github",
+    refetchInterval: (q) => (q.state.data?.pending ? 3000 : false),
+  });
+  const refresh = () => void queries.invalidateQueries({ queryKey: ["gh"] });
+  return <GithubPane status={status} onRefresh={refresh} />;
+}
+
+function SandboxServerSettings({
+  open,
+  section,
+  rows,
+  checks,
+  onSaved,
+}: {
+  open: boolean;
+  section: Section;
+  rows: AuthRow[];
+  checks: HostCheck[];
+  onSaved: () => void;
+}) {
+  const queries = useQueryClient();
+  const enabled = open && section === "server";
+  const { data: server = null } = useQuery({
+    queryKey: ["sandbox-server"],
+    queryFn: () => readApi(api["sandbox-server"].$get(), ServerInfoSchema),
+    enabled: open && section === "server",
+  });
+  const { data: images } = useQuery({
+    queryKey: ["sandbox-images"],
+    queryFn: () => readApi(api.sandbox.images.$get(), ImageChoicesSchema),
+    enabled,
+  });
+  const refreshServer = () => void queries.invalidateQueries({ queryKey: ["sandbox-server"] });
+  const refreshImages = () => void queries.invalidateQueries({ queryKey: ["sandbox-images"] });
+
+  return (
+    <ServerPane
+      current={rows.find((row) => row.runtime === "sandbox")}
+      checks={checks}
+      server={server}
+      image={images ? images.current : ""}
+      onRefreshServer={refreshServer}
+      onRefreshImages={refreshImages}
+      onSaved={onSaved}
+    />
+  );
+}
+
+function Preferences() {
+  return (
+    <>
+      <Head title="偏好" note="只在这台机器上，不跟着项目走" />
+      <FieldGroup>
+        {/* A toggle group has nothing a `<label>` can point at, so the
+            row names itself: `Field` is already `role="group"`, and
+            this is the one attribute that gives that group a name. */}
+        <Field aria-labelledby="pref-theme">
+          <FieldTitle id="pref-theme">主题</FieldTitle>
+          <FieldContent>
+            <ThemeChoice />
+          </FieldContent>
+        </Field>
+      </FieldGroup>
+    </>
+  );
+}
+
+function needsCredentials(rows: AuthRow[]) {
+  return RUNTIMES.some((runtime) => !rows.some((row) => row.runtime === runtime.key));
+}
+
+function needsHostAttention(checks: HostCheck[]) {
+  return checks.some((check) => !isCredential(check) && !check.ok);
+}
+
+function needsGates(project: z.infer<typeof ProjectConfigSchema> | null) {
+  if (!project) return false;
+  return !(project.config.gates ?? []).length;
+}
+
+function SettingsNavigation({
+  items,
+  section,
+  rows,
+  checks,
+  projectId,
+  projectName,
+  project,
+  onSection,
+}: {
+  items: typeof NAV;
+  section: Section;
+  rows: AuthRow[];
+  checks: HostCheck[];
+  projectId: number | null;
+  projectName?: string;
+  project: z.infer<typeof ProjectConfigSchema> | null;
+  onSection: (section: Section) => void;
+}) {
   // What is waiting on the boss, on the item that holds it. Same dot as the one on
   // the gear in the header, which is where they saw it before they clicked.
   const nags: Partial<Record<Section, boolean>> = {
-    cred: RUNTIMES.some((r) => !rows.some((x) => x.runtime === r.key)),
-    host: checks.some((c) => !isCredential(c) && !c.ok),
-    gates: !!proj && !(proj.config.gates ?? []).length,
+    cred: needsCredentials(rows),
+    host: needsHostAttention(checks),
+    gates: needsGates(project),
   };
-  const title = items.find((n) => n.key === here)?.zh ?? "设置";
-  const projectSection: ProjectSection | null =
-    here === "gates" || here === "sandbox" || here === "remove" ? here : null;
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-[var(--scrim)]" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed left-1/2 top-1/2 z-50 grid h-[min(36rem,84vh)] w-[min(58rem,94vw)]
-                     -translate-x-1/2 -translate-y-1/2 grid-cols-[13rem_minmax(0,1fr)] overflow-hidden
-                     rounded-xl border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in
-                     max-[44rem]:grid-cols-1 max-[44rem]:grid-rows-[auto_minmax(0,1fr)]"
-        >
-          {/* The scope is the grouping, not a sentence on each page explaining
-              which of the two it is. */}
-          <nav className="flex min-h-0 flex-col gap-4 overflow-y-auto border-r border-rule bg-rail px-2.5 py-4">
-            <Group label="服务器" note="所有项目共用">
-              {items
-                .filter((n) => !n.project)
-                .map((n) => (
-                  <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => pick(n.key)} />
-                ))}
-            </Group>
-            {projectId && (
-              // Same shape as 服务器 above it: the group names the scope, the small
-              // line says which one, and the path is a hover away.
-              <Group label="项目" note={projectName} hint={proj?.repoPath}>
-                {items
-                  .filter((n) => n.project)
-                  .map((n) => (
-                    <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => pick(n.key)} />
-                  ))}
-              </Group>
-            )}
-          </nav>
+    <nav className="flex min-h-0 flex-col gap-4 overflow-y-auto border-r border-rule bg-rail px-2.5 py-4">
+      <SettingsGroup
+        items={items}
+        project={false}
+        label="服务器"
+        note="所有项目共用"
+        section={section}
+        nags={nags}
+        onSection={onSection}
+      />
+      {projectId !== null && (
+        // Same shape as 服务器 above it: the group names the scope, the small
+        // line says which one, and the path is a hover away.
+        <SettingsGroup
+          items={items}
+          project
+          label="项目"
+          note={projectName}
+          hint={project?.repoPath}
+          section={section}
+          nags={nags}
+          onSection={onSection}
+        />
+      )}
+    </nav>
+  );
+}
 
-          {/* The label column is set once, here, rather than per pane. Three panes
-              had picked three widths, so switching between them moved every value
-              sideways — and a width chosen inside a pane is a width the next pane
-              cannot know about. 5rem holds the longest label in the dialog
-              (基线分支, API 密钥). */}
-          <div className="flex min-h-0 flex-col px-6 pt-4 pb-5 [--label:5rem]">
-            <Dialog.Title className="sr-only">{title}</Dialog.Title>
-            <Dialog.Close
-              aria-label="关掉"
-              className="absolute top-3 right-3 grid size-6.5 cursor-pointer place-items-center rounded-md
-                         text-ink-3 transition-colors hover:bg-sunk hover:text-ink"
-            >
-              <X size={14} strokeWidth={1.75} />
-            </Dialog.Close>
-
-            <Pane>
-              {here === "cred" ? (
-                <CredPane
-                  rows={rows}
-                  prefs={prefs}
-                  waiting={signin?.runtime}
-                  onSaved={load}
-                  onWaitForLogin={(runtime, since) => setSignin({ runtime, since, until: Date.now() + 300_000 })}
-                />
-              ) : here === "github" ? (
-                <GithubPane status={gh.data ?? null} onRefresh={refreshGh} />
-              ) : here === "host" ? (
-                <EnvPane checks={checks.filter((c) => !isCredential(c))} />
-              ) : here === "server" ? (
-                <ServerPane
-                  current={rows.find((x) => x.runtime === "sandbox")}
-                  checks={checks}
-                  server={sandboxServer.data ?? null}
-                  image={sandboxImages.data?.current ?? ""}
-                  onRefreshServer={refreshServer}
-                  onRefreshImages={refreshImages}
-                  onSaved={load}
-                />
-              ) : here === "skills" ? (
-                <Skills projectId={projectId} />
-              ) : here === "sched" ||
-                here === "models" ||
-                here === "turn" ||
-                here === "boxdefaults" ||
-                here === "notify" ? (
-                <Knobs section={here} />
-              ) : here === "prefs" ? (
-                <>
-                  <Head title="偏好" note="只在这台机器上，不跟着项目走" />
-                  <FieldGroup>
-                    {/* A toggle group has nothing a `<label>` can point at, so the
-                        row names itself: `Field` is already `role="group"`, and
-                        this is the one attribute that gives that group a name. */}
-                    <Field aria-labelledby="pref-theme">
-                      <FieldTitle id="pref-theme">主题</FieldTitle>
-                      <FieldContent>
-                        <ThemeChoice />
-                      </FieldContent>
-                    </Field>
-                  </FieldGroup>
-                </>
-              ) : proj && projectSection ? (
-                <ProjectPane
-                  section={projectSection}
-                  data={proj}
-                  busy={busy}
-                  projectId={projectId!}
-                  projectName={projectName}
-                  groupCount={groupCount ?? 0}
-                  patch={patch}
-                  onRemoved={() => {
-                    onOpenChange(false);
-                    onRemoved?.();
-                  }}
-                />
-              ) : (
-                <Meta className="block py-2">读取中…</Meta>
-              )}
-            </Pane>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+function SettingsGroup({
+  items,
+  project,
+  label,
+  note,
+  hint,
+  section,
+  nags,
+  onSection,
+}: {
+  items: typeof NAV;
+  project: boolean;
+  label: string;
+  note?: string;
+  hint?: string;
+  section: Section;
+  nags: Partial<Record<Section, boolean>>;
+  onSection: (section: Section) => void;
+}) {
+  return (
+    <Group label={label} note={note} hint={hint}>
+      {items
+        .filter((item) => Boolean(item.project) === project)
+        .map((item) => (
+          <Item
+            key={item.key}
+            n={item}
+            on={section === item.key}
+            nag={!!nags[item.key]}
+            go={() => onSection(item.key)}
+          />
+        ))}
+    </Group>
   );
 }
 

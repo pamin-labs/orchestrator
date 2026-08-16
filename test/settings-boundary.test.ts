@@ -20,12 +20,9 @@ test("credential UI owns the login flows while the settings shell owns polling",
   // endpoints and field IDs move with the account UI that owns their controls.
   expect(shell).not.toContain("function Credential(");
   expect(shell).not.toContain("id={`${r.key}-secret`}");
-  for (const contract of [
-    "id={`${r.key}-secret`}",
-    "id={`${r.key}-url`}",
-    "api.auth.claude.login.code.$post",
-    "api.auth.codex.device.cancel.$post",
-  ]) {
+  expect(pane).toMatch(/id=\{`\$\{[^}]+\.key\}-secret`\}/);
+  expect(pane).toMatch(/id=\{`\$\{[^}]+\.key\}-url`\}/);
+  for (const contract of ["api.auth.claude.login.code.$post", "api.auth.codex.device.cancel.$post"]) {
     expect(pane).toContain(contract);
   }
 });

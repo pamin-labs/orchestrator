@@ -21,7 +21,7 @@ const CodexLoginSchema: z.ZodType<InferResponseType<typeof api.auth.codex.device
   expiresAt: z.number(),
 });
 
-interface Runtime {
+export interface Runtime {
   key: "claude" | "codex";
   label: string;
   /** The mode this machine can obtain by running the CLI itself. */
@@ -97,7 +97,7 @@ export function CredPane({
  * disabling it unless a token was typed meant a gateway address could not be
  * changed on its own.
  */
-function Credential(props: {
+interface CredentialProps {
   runtime: Runtime;
   current?: AuthRow;
   /** A login is in flight; the page is asking every couple of seconds. */
@@ -106,332 +106,106 @@ function Credential(props: {
   claudeCoauthor?: boolean;
   onSaved: () => void;
   onWaitForLogin: (since: number) => void;
-}) {
-  const r = props.runtime;
-  const cur = props.current;
-  const [mode, setMode] = useState<Mode>(cur?.mode ?? r.modes[0]!.mode);
-  const [secret, setSecret] = useState("");
-  const [baseUrl, setBaseUrl] = useState(cur?.baseUrl ?? "");
-  const [busy, setBusy] = useState(false);
-  const [link, setLink] = useState<string | null>(null);
-  /** codex's device login: a code, a link, and when it stops being either. */
-  const [device, setDevice] = useState<{ code: string; url: string; expiresAt: number } | null>(null);
-  /** claude's: the code goes the other way, from that page back to the CLI. */
-  const [paste, setPaste] = useState("");
-  const spec = r.modes.find((m) => m.mode === mode) ?? r.modes[0]!;
-  const dirty = !!secret.trim() || baseUrl.trim() !== (cur?.baseUrl ?? "");
+}
+
+interface CredentialForm {
+  mode: Mode;
+  secret: string;
+  baseUrl: string;
+  busy: boolean;
+}
+
+interface LoginFlow {
+  link: string | null;
+  device: { code: string; url: string; expiresAt: number } | null;
+  paste: string;
+}
+
+type Change<T> = (patch: Partial<T>) => void;
+
+function credentialJson(runtime: Runtime, mode: Mode, values: { secret: string; baseUrl?: string }) {
+  if (runtime.key === "claude") {
+    if (mode === "chatgpt") throw new Error("ChatGPT login belongs to codex");
+    return { runtime: runtime.key, mode, ...values };
+  }
+  if (mode === "oauth_token") throw new Error("Claude OAuth token belongs to claude");
+  return { runtime: runtime.key, mode, ...values };
+}
+
+function useCredential(props: CredentialProps) {
+  const savedBaseUrl = props.current?.baseUrl ?? "";
+  const [form, setForm] = useState<CredentialForm>(() => {
+    return {
+      mode: props.current ? props.current.mode : props.runtime.modes[0]!.mode,
+      secret: "",
+      baseUrl: savedBaseUrl,
+      busy: false,
+    };
+  });
+  const [login, setLogin] = useState<LoginFlow>({ link: null, device: null, paste: "" });
+  const updatedAt = props.current ? props.current.updatedAt : 0;
+  const changeForm: Change<CredentialForm> = (patch) => setForm((current) => ({ ...current, ...patch }));
+  const changeLogin: Change<LoginFlow> = (patch) => setLogin((current) => ({ ...current, ...patch }));
+
   // The OAuth address is worth showing until the credential it fetches arrives,
   // and not one render longer.
   useEffect(() => {
-    setLink(null);
-    setDevice(null);
-  }, [cur?.updatedAt]);
+    changeLogin({ link: null, device: null });
+  }, [updatedAt]);
   // Stop showing a code that has stopped working. An expired code that still
   // looks live is the same failure as a panel saying the app is not installed
   // after it has been.
   useEffect(() => {
-    if (!device) return;
-    const t = setTimeout(() => setDevice(null), Math.max(0, device.expiresAt - Date.now()));
+    if (!login.device) return;
+    const t = setTimeout(() => changeLogin({ device: null }), Math.max(0, login.device.expiresAt - Date.now()));
     return () => clearTimeout(t);
-  }, [device?.expiresAt]);
-  /**
-   * What is stored, in the box that stores it.
-   *
-   * The secret itself never comes back from the server, so the box is empty after
-   * a login and read as "nothing was saved". The masked tail is what the boss has
-   * to tell two tokens apart, and it belongs where the value would be — the same
-   * mode's row is the only place it is now said.
-   */
-  const held = cur?.mode === mode ? `已存 ${cur.hint}，粘新的就换掉` : null;
+  }, [login.device]);
 
+  return { props, form, login, changeForm, changeLogin, savedBaseUrl, updatedAt };
+}
+
+type CredentialState = ReturnType<typeof useCredential>;
+
+function Credential(props: CredentialProps) {
+  const state = useCredential(props);
+  const { form, savedBaseUrl, changeForm } = state;
+  const dirty = !!form.secret.trim() || form.baseUrl.trim() !== savedBaseUrl;
   const save = async () => {
-    const common = { secret: secret.trim(), ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}) };
-    let res;
-    if (r.key === "claude") {
-      if (mode === "chatgpt") throw new Error("ChatGPT login belongs to codex");
-      setBusy(true);
-      res = await mutate(api.auth.$post({ json: { runtime: r.key, mode, ...common } }));
-    } else {
-      if (mode === "oauth_token") throw new Error("Claude OAuth token belongs to claude");
-      setBusy(true);
-      res = await mutate(api.auth.$post({ json: { runtime: r.key, mode, ...common } }));
-    }
-    setBusy(false);
+    const url = form.baseUrl.trim();
+    const json = credentialJson(props.runtime, form.mode, {
+      secret: form.secret.trim(),
+      ...(url ? { baseUrl: url } : {}),
+    });
+    changeForm({ busy: true });
+    const res = await mutate(api.auth.$post({ json }));
+    changeForm({ busy: false });
     // Only on success. A rejected token used to be wiped from the box while a
     // toast explained why it was rejected, so the fix was to paste it again.
-    if (res.ok) setSecret("");
+    if (res.ok) changeForm({ secret: "" });
     props.onSaved();
   };
-
-  /**
-   * Sign in, whichever way this runtime does it.
-   *
-   * Both run the official CLI in the utility container — nothing is installed on
-   * this machine and nothing forges an OAuth exchange. They differ in what the
-   * boss does with the page: codex prints a code to type there, claude prints a
-   * code to bring back, so claude gets the input below.
-   */
-  const sendCode = async () => {
-    const code = paste.trim();
-    if (!code) return;
-    setBusy(true);
-    const res = await mutate(api.auth.claude.login.code.$post({ json: { code } }));
-    setBusy(false);
-    if (res.ok) setPaste("");
-  };
-
-  const signIn = async () => {
-    setBusy(true);
-    if (r.key === "codex") {
-      const res = await mutate(api.auth.codex.device.$post(), false, CodexLoginSchema);
-      setBusy(false);
-      if (!res.ok) return;
-      setDevice(res.data);
-    } else {
-      const res = await mutate(api.auth.claude.login.$post(), false, ClaudeLoginSchema);
-      setBusy(false);
-      if (!res.ok) return;
-      // Not opened from here. The CLI opens the browser itself, so doing it too
-      // gives the boss two tabs of the same OAuth flow — and finishing the wrong
-      // one leaves the other waiting forever.
-      setLink(res.data.url);
-    }
-    props.onWaitForLogin(cur?.updatedAt ?? 0);
-  };
-
   return (
     <section className="mt-6 first:mt-0">
-      <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="font-display text-[0.9375rem] font-semibold">{r.label}</span>
-        {cur ? (
-          <>
-            {/* Which mode is stored is only worth a word when it is not the one
-                being looked at: the pressed segment on the right already says
-                that, and a label repeating it is the same fact 30rem apart.
-                When they differ it is the whole point of the row. */}
-            {cur.mode !== mode && (
-              <span className="text-[0.75rem] text-ink-2">
-                存的是{r.modes.find((m) => m.mode === cur.mode)?.label ?? cur.mode}
-              </span>
-            )}
-            {/* The masked tail is in the box it was pasted into, not here as well. */}
-            <Meta>{clock(cur.updatedAt)}</Meta>
-          </>
-        ) : (
-          <span className="text-[0.75rem] font-medium text-accent">没配</span>
-        )}
-        <span className="grow" />
-        <Segments
-          value={mode}
-          onValueChange={(value) => {
-            const parsed = ModeSchema.safeParse(value);
-            if (parsed.success) setMode(parsed.data);
-          }}
-        >
-          {r.modes.map((m) => (
-            <Segment key={m.mode} value={m.mode}>
-              {m.label}
-            </Segment>
-          ))}
-        </Segments>
-      </div>
-      {/* How to get one, and what it costs — instructions for a decision already
-          made. An account that is configured and sitting on its own mode needs
-          none of it, and two accounts each explaining themselves is most of the
-          pane's height spent on the case where there is nothing to do. */}
-      {(!cur || cur.mode !== mode) && (
-        <Meta className="mb-1.5 block">
-          {spec.how} · {spec.cost}
-        </Meta>
-      )}
+      <CredentialHeader state={state} />
+      <CredentialIntro state={state} />
 
       {/* The gap the group's own top rule used to stand in for. */}
       <FieldGroup className="mt-1.5">
-        <Field orientation={mode === "chatgpt" ? "vertical" : "horizontal"}>
-          {/* The label is what this mode calls the thing. It said `token` under an
-              API key too, which is two words for one field. */}
-          {mode === "chatgpt" ? (
-            <span className="flex items-center gap-2">
-              <FieldLabel htmlFor={`${r.key}-secret`} className="text-ink-3">
-                auth.json
-              </FieldLabel>
-              <span className="grow" />
-              {/* Beside the label, because the box below is a block and the button
-                  is the other way to fill it. */}
-              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={signIn} />}
-            </span>
-          ) : (
-            <FieldLabel htmlFor={`${r.key}-secret`} className="text-ink-3">
-              {mode === "api_key" ? "API 密钥" : "令牌"}
-            </FieldLabel>
-          )}
-          {mode === "chatgpt" ? (
-            <Textarea
-              id={`${r.key}-secret`}
-              className="min-h-16"
-              placeholder={held ?? "~/.codex/auth.json 的完整内容"}
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-            />
-          ) : (
-            <InputGroup>
-              <Input
-                id={`${r.key}-secret`}
-                type="password"
-                className="min-w-0 flex-1 font-mono"
-                placeholder={held ?? "粘贴进来，存下之后看不到"}
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-              />
-              {/* The alternative to pasting, next to the box it replaces. */}
-              {r.login === mode && <Login busy={busy} waiting={props.waiting} onClick={signIn} />}
-            </InputGroup>
-          )}
-        </Field>
-
-        {device && (
-          <Field orientation="vertical">
-            <DeviceCode code={device.code} url={device.url} go="去 ChatGPT 输入" />
-            <div className="mt-1.5 flex items-baseline gap-2">
-              {/* The real expiry, not a remembered one. `15 分钟` was written into
-                  the copy while `expiresAt` sat two lines up driving the timer
-                  that clears this block. */}
-              <Meta>到 {clock(device.expiresAt)} 前有效</Meta>
-              <span className="grow" />
-              <Button
-                size="sm"
-                variant="quiet"
-                onClick={async () => {
-                  await mutate(api.auth.codex.device.cancel.$post());
-                  setDevice(null);
-                }}
-              >
-                取消
-              </Button>
-            </div>
-          </Field>
-        )}
-
-        {link && (
-          <>
-            <Field>
-              {/* Not a FieldLabel: there is no control on this row to focus, and a
-                  label pointing at nothing is what a screen reader reads out. */}
-              <FieldTitle className="text-ink-3">登录页</FieldTitle>
-              {/* One line: the address is 400 characters of PKCE and nobody reads
-                  it. It stays selectable for the case where the browser that opened
-                  it is not the one you want to log in with. */}
-              <span className="flex min-w-0 items-baseline gap-2">
-                <a href={link} target="_blank" rel="noopener" className="shrink-0 text-[0.75rem] text-accent underline">
-                  打开登录页
-                </a>
-                <Meta className="min-w-0 truncate">{link}</Meta>
-              </span>
-            </Field>
-            {/* The half that has no equivalent in the codex flow. `claude
-                setup-token` sits at `Paste code here` until something answers,
-                and the only thing that can is the boss — hard constraint 5: the
-                thing to do next is beside the evidence for doing it. */}
-            <Field orientation="vertical">
-              <FieldLabel htmlFor={`${r.key}-code`} className="text-ink-3">
-                页面给的码
-              </FieldLabel>
-              <InputGroup>
-                <Input
-                  id={`${r.key}-code`}
-                  className="min-w-0 flex-1 font-mono"
-                  placeholder="批准完那一页会给一串码，贴这儿"
-                  value={paste}
-                  onChange={(e) => setPaste(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void sendCode();
-                  }}
-                />
-                <Button size="sm" disabled={busy || !paste.trim()} onClick={() => void sendCode()}>
-                  交上去
-                </Button>
-              </InputGroup>
-              {/* No validity line here: this flow hands back no expiry, and the
-                  one that was written in said 10 分钟 on nothing. */}
-              <div className="mt-1.5 flex items-baseline gap-2">
-                <span className="grow" />
-                <Button
-                  size="sm"
-                  variant="quiet"
-                  onClick={async () => {
-                    await mutate(api.auth.claude.login.cancel.$post());
-                    setLink(null);
-                    setPaste("");
-                  }}
-                >
-                  取消
-                </Button>
-              </div>
-            </Field>
-          </>
-        )}
-
-        <Field>
-          <FieldLabel htmlFor={`${r.key}-url`} className="text-ink-3">
-            API 地址
-          </FieldLabel>
-          <FieldContent className="flex-col items-stretch gap-1">
-            <Input
-              id={`${r.key}-url`}
-              className="font-mono"
-              placeholder={`可选，自建网关 → ${r.urlEnv}`}
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-            />
-            {/* Under the address that causes it, not under the account. Usage is
-                only ever read from the provider's own endpoint, so a gateway
-                account has no window to show and the header would look broken
-                rather than deliberate. */}
-            {mode !== "api_key" && baseUrl.trim() && <Meta className="block">自建网关，头部不显示额度</Meta>}
-          </FieldContent>
-        </Field>
-
-        {/* Beside the account, because it is a setting for this CLI rather than
-            for this project's history — the git trailers are in the GitHub pane
-            and they are a different decision. Left alone the CLI adds this to
-            any commit an agent makes by hand, and until now nothing in the panel
-            could reach it. */}
-        {props.claudeCoauthor !== undefined && (
-          <Field className="items-center">
-            <FieldLabel htmlFor="claude-coauthor" className="text-ink-3">
-              Co-author
-            </FieldLabel>
-            <FieldContent>
-              <Switch
-                id="claude-coauthor"
-                checked={props.claudeCoauthor}
-                disabled={busy}
-                onCheckedChange={async (v) => {
-                  setBusy(true);
-                  await mutate(api.git.trailers.$post({ json: { claudeCoauthor: v } }));
-                  setBusy(false);
-                  props.onSaved();
-                }}
-              />
-              <Meta>Claude Code 自己提交时写进 Co-Authored-By</Meta>
-            </FieldContent>
-          </Field>
-        )}
+        <SecretField state={state} />
+        <LoginProgress state={state} />
+        <CredentialSettings state={state} />
       </FieldGroup>
-
       <div className="mt-2 flex items-center gap-2">
         <span className="grow" />
-        {cur && (
+        {props.current && (
           <Button
             size="sm"
             variant="quiet"
-            disabled={busy}
+            disabled={form.busy}
             onClick={async () => {
-              setBusy(true);
-              await mutate(api.auth.$post({ json: { runtime: r.key, clear: true } }));
-              setBusy(false);
-              setSecret("");
-              setBaseUrl("");
+              changeForm({ busy: true });
+              await mutate(api.auth.$post({ json: { runtime: props.runtime.key, clear: true } }));
+              changeForm({ busy: false, secret: "", baseUrl: "" });
               props.onSaved();
             }}
           >
@@ -440,12 +214,311 @@ function Credential(props: {
         )}
         {/* Only once there is something to save, same as every other field here. */}
         {dirty && (
-          <Button variant="go" size="sm" disabled={busy} onClick={save}>
+          <Button variant="go" size="sm" disabled={form.busy} onClick={() => void save()}>
             存下
           </Button>
         )}
       </div>
     </section>
+  );
+}
+
+function CredentialIntro({ state }: { state: CredentialState }) {
+  const { props, form } = state;
+  const spec = props.runtime.modes.find((candidate) => candidate.mode === form.mode) ?? props.runtime.modes[0]!;
+  // How to get one, and what it costs — instructions for a decision already
+  // made. A configured account sitting on its own mode needs none of it.
+  if (props.current && props.current.mode === form.mode) return null;
+  return (
+    <Meta className="mb-1.5 block">
+      {spec.how} · {spec.cost}
+    </Meta>
+  );
+}
+
+function CredentialHeader({ state }: { state: CredentialState }) {
+  const { props, form, changeForm } = state;
+  return (
+    <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <span className="font-display text-[0.9375rem] font-semibold">{props.runtime.label}</span>
+      <CredentialStatus state={state} />
+      <span className="grow" />
+      <Segments
+        value={form.mode}
+        onValueChange={(value) => {
+          const parsed = ModeSchema.safeParse(value);
+          if (parsed.success) changeForm({ mode: parsed.data });
+        }}
+      >
+        {props.runtime.modes.map((m) => (
+          <Segment key={m.mode} value={m.mode}>
+            {m.label}
+          </Segment>
+        ))}
+      </Segments>
+    </div>
+  );
+}
+
+function CredentialStatus({ state }: { state: CredentialState }) {
+  const { props, form } = state;
+  if (!props.current) return <span className="text-[0.75rem] font-medium text-accent">没配</span>;
+  const labels = Object.fromEntries(props.runtime.modes.map((mode) => [mode.mode, mode.label]));
+  return (
+    <>
+      {/* Which mode is stored is only worth a word when it is not the one
+          being looked at: the pressed segment on the right already says
+          that, and a label repeating it is the same fact 30rem apart.
+          When they differ it is the whole point of the row. */}
+      {props.current.mode !== form.mode && (
+        <span className="text-[0.75rem] text-ink-2">存的是{labels[props.current.mode] ?? props.current.mode}</span>
+      )}
+      {/* The masked tail is in the box it was pasted into, not here as well. */}
+      <Meta>{clock(props.current.updatedAt)}</Meta>
+    </>
+  );
+}
+
+function secretPlaceholder(props: CredentialProps, form: CredentialForm, fallback: string) {
+  if (!props.current || props.current.mode !== form.mode) return fallback;
+  return `已存 ${props.current.hint}，粘新的就换掉`;
+}
+
+const SECRET_LABEL = { oauth_token: "令牌", api_key: "API 密钥" } as const;
+
+function SecretField({ state }: { state: CredentialState }) {
+  const { props, form, changeForm, changeLogin, updatedAt } = state;
+  /**
+   * Sign in, whichever way this runtime does it.
+   *
+   * Both run the official CLI in the utility container — nothing is installed on
+   * this machine and nothing forges an OAuth exchange. They differ in what the
+   * boss does with the page: codex prints a code to type there, claude prints a
+   * code to bring back, so claude gets the input below.
+   */
+  const signIn = async () => {
+    changeForm({ busy: true });
+    if (props.runtime.key === "codex") {
+      const res = await mutate(api.auth.codex.device.$post(), false, CodexLoginSchema);
+      changeForm({ busy: false });
+      if (!res.ok) return;
+      changeLogin({ device: res.data });
+    } else {
+      const res = await mutate(api.auth.claude.login.$post(), false, ClaudeLoginSchema);
+      changeForm({ busy: false });
+      if (!res.ok) return;
+      // Not opened from here. The CLI opens the browser itself, so doing it too
+      // gives the boss two tabs of the same OAuth flow — and finishing the wrong
+      // one leaves the other waiting forever.
+      changeLogin({ link: res.data.url });
+    }
+    props.onWaitForLogin(updatedAt);
+  };
+
+  const mode = form.mode;
+  if (mode === "chatgpt") {
+    return <ChatgptSecretField state={state} signIn={signIn} />;
+  }
+  const login = props.runtime.login === mode && <Login busy={form.busy} waiting={props.waiting} onClick={signIn} />;
+  return (
+    <Field orientation="horizontal">
+      {/* The label is what this mode calls the thing. It said `token` under an
+          API key too, which is two words for one field. */}
+      <FieldLabel htmlFor={`${props.runtime.key}-secret`} className="text-ink-3">
+        {SECRET_LABEL[mode]}
+      </FieldLabel>
+      <InputGroup>
+        <Input
+          id={`${props.runtime.key}-secret`}
+          type="password"
+          className="min-w-0 flex-1 font-mono"
+          placeholder={secretPlaceholder(props, form, "粘贴进来，存下之后看不到")}
+          value={form.secret}
+          onChange={(e) => changeForm({ secret: e.target.value })}
+        />
+        {/* The alternative to pasting, next to the box it replaces. */}
+        {login}
+      </InputGroup>
+    </Field>
+  );
+}
+
+function ChatgptSecretField({ state, signIn }: { state: CredentialState; signIn: () => void }) {
+  const { props, form, changeForm } = state;
+  return (
+    <Field orientation="vertical">
+      <span className="flex items-center gap-2">
+        <FieldLabel htmlFor={`${props.runtime.key}-secret`} className="text-ink-3">
+          auth.json
+        </FieldLabel>
+        <span className="grow" />
+        {/* Beside the label, because the box below is a block and the button
+            is the other way to fill it. */}
+        {props.runtime.login === "chatgpt" && <Login busy={form.busy} waiting={props.waiting} onClick={signIn} />}
+      </span>
+      <Textarea
+        id={`${props.runtime.key}-secret`}
+        className="min-h-16"
+        placeholder={secretPlaceholder(props, form, "~/.codex/auth.json 的完整内容")}
+        value={form.secret}
+        onChange={(e) => changeForm({ secret: e.target.value })}
+      />
+    </Field>
+  );
+}
+
+function LoginProgress({ state }: { state: CredentialState }) {
+  const { form, login, changeForm, changeLogin } = state;
+  const sendCode = async () => {
+    const code = login.paste.trim();
+    if (!code) return;
+    changeForm({ busy: true });
+    const res = await mutate(api.auth.claude.login.code.$post({ json: { code } }));
+    changeForm({ busy: false });
+    if (res.ok) changeLogin({ paste: "" });
+  };
+  return (
+    <>
+      {login.device && (
+        <Field orientation="vertical">
+          <DeviceCode code={login.device.code} url={login.device.url} go="去 ChatGPT 输入" />
+          <div className="mt-1.5 flex items-baseline gap-2">
+            {/* The real expiry, not a remembered one. `15 分钟` was written into
+                the copy while `expiresAt` sat two lines up driving the timer
+                that clears this block. */}
+            <Meta>到 {clock(login.device.expiresAt)} 前有效</Meta>
+            <span className="grow" />
+            <Button
+              size="sm"
+              variant="quiet"
+              onClick={async () => {
+                await mutate(api.auth.codex.device.cancel.$post());
+                changeLogin({ device: null });
+              }}
+            >
+              取消
+            </Button>
+          </div>
+        </Field>
+      )}
+
+      {login.link && (
+        <>
+          <Field>
+            {/* Not a FieldLabel: there is no control on this row to focus, and a
+                label pointing at nothing is what a screen reader reads out. */}
+            <FieldTitle className="text-ink-3">登录页</FieldTitle>
+            {/* One line: the address is 400 characters of PKCE and nobody reads
+                it. It stays selectable for the case where the browser that opened
+                it is not the one you want to log in with. */}
+            <span className="flex min-w-0 items-baseline gap-2">
+              <a
+                href={login.link}
+                target="_blank"
+                rel="noopener"
+                className="shrink-0 text-[0.75rem] text-accent underline"
+              >
+                打开登录页
+              </a>
+              <Meta className="min-w-0 truncate">{login.link}</Meta>
+            </span>
+          </Field>
+          {/* The half that has no equivalent in the codex flow. `claude
+              setup-token` sits at `Paste code here` until something answers,
+              and the only thing that can is the boss — hard constraint 5: the
+              thing to do next is beside the evidence for doing it. */}
+          <Field orientation="vertical">
+            <FieldLabel htmlFor="claude-code" className="text-ink-3">
+              页面给的码
+            </FieldLabel>
+            <InputGroup>
+              <Input
+                id="claude-code"
+                className="min-w-0 flex-1 font-mono"
+                placeholder="批准完那一页会给一串码，贴这儿"
+                value={login.paste}
+                onChange={(e) => changeLogin({ paste: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void sendCode();
+                }}
+              />
+              <Button size="sm" disabled={form.busy || !login.paste.trim()} onClick={() => void sendCode()}>
+                交上去
+              </Button>
+            </InputGroup>
+            {/* No validity line here: this flow hands back no expiry, and the
+                one that was written in said 10 分钟 on nothing. */}
+            <div className="mt-1.5 flex items-baseline gap-2">
+              <span className="grow" />
+              <Button
+                size="sm"
+                variant="quiet"
+                onClick={async () => {
+                  await mutate(api.auth.claude.login.cancel.$post());
+                  changeLogin({ link: null, paste: "" });
+                }}
+              >
+                取消
+              </Button>
+            </div>
+          </Field>
+        </>
+      )}
+    </>
+  );
+}
+
+function CredentialSettings({ state }: { state: CredentialState }) {
+  const { props, form, changeForm } = state;
+  return (
+    <>
+      <Field>
+        <FieldLabel htmlFor={`${props.runtime.key}-url`} className="text-ink-3">
+          API 地址
+        </FieldLabel>
+        <FieldContent className="flex-col items-stretch gap-1">
+          <Input
+            id={`${props.runtime.key}-url`}
+            className="font-mono"
+            placeholder={`可选，自建网关 → ${props.runtime.urlEnv}`}
+            value={form.baseUrl}
+            onChange={(e) => changeForm({ baseUrl: e.target.value })}
+          />
+          {/* Under the address that causes it, not under the account. Usage is
+              only ever read from the provider's own endpoint, so a gateway
+              account has no window to show and the header would look broken
+              rather than deliberate. */}
+          {form.mode !== "api_key" && form.baseUrl.trim() && <Meta className="block">自建网关，头部不显示额度</Meta>}
+        </FieldContent>
+      </Field>
+
+      {/* Beside the account, because it is a setting for this CLI rather than
+          for this project's history — the git trailers are in the GitHub pane
+          and they are a different decision. Left alone the CLI adds this to
+          any commit an agent makes by hand, and until now nothing in the panel
+          could reach it. */}
+      {props.claudeCoauthor !== undefined && (
+        <Field className="items-center">
+          <FieldLabel htmlFor="claude-coauthor" className="text-ink-3">
+            Co-author
+          </FieldLabel>
+          <FieldContent>
+            <Switch
+              id="claude-coauthor"
+              checked={props.claudeCoauthor}
+              disabled={form.busy}
+              onCheckedChange={async (value) => {
+                changeForm({ busy: true });
+                await mutate(api.git.trailers.$post({ json: { claudeCoauthor: value } }));
+                changeForm({ busy: false });
+                props.onSaved();
+              }}
+            />
+            <Meta>Claude Code 自己提交时写进 Co-Authored-By</Meta>
+          </FieldContent>
+        </Field>
+      )}
+    </>
   );
 }
 

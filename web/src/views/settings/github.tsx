@@ -37,6 +37,21 @@ export type GhStatus = z.infer<typeof GhStatusSchema>;
  * because those two facts are useless apart.
  */
 export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; onRefresh: () => void }) {
+  return (
+    <>
+      {/* 真令牌不进沙盒 is already the note on 模型账号, and a sentence repeated on
+          two panes stops being read on either. */}
+      <Head title="GitHub" note="代码从这儿来" />
+      <Connection status={s} onRefresh={onRefresh} />
+      <Installations status={s} />
+      {/* Under the connection because both answers come from it: the author is
+          this login, and these are conventions of the repositories it reaches. */}
+      <CommitSettings status={s} onSaved={onRefresh} />
+    </>
+  );
+}
+
+function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh: () => void }) {
   const [busy, setBusy] = useState(false);
 
   const connect = async () => {
@@ -46,117 +61,192 @@ export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; 
     onRefresh();
   };
 
-  const pending = s?.pending;
+  const disconnect = async () => {
+    setBusy(true);
+    await mutate(api.auth.$post({ json: { runtime: "github", clear: true } }));
+    setBusy(false);
+    onRefresh();
+  };
+
   return (
-    <>
-      {/* 真令牌不进沙盒 is already the note on 模型账号, and a sentence repeated on
-          two panes stops being read on either. */}
-      <Head title="GitHub" note="代码从这儿来" />
-
-      <section>
-        <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          {!s ? (
-            <Meta>读取中…</Meta>
-          ) : !s.connected ? (
-            <span className="text-[0.8125rem] font-medium text-accent">没连</span>
-          ) : s.stale ? (
-            <span className="text-[0.8125rem] font-medium text-accent">连过，但 GitHub 现在不认这个令牌了</span>
-          ) : s.installed === false ? (
-            // Authorized and installed are different acts, and only the second one
-            // can reach a repository. Saying 已连 here would be a green tick over a
-            // repo list that can never fill.
-            <span className="text-[0.8125rem] font-medium text-accent">
-              {s.account ? `@${s.account} 授权了` : "授权了"}，但 App 还没装到任何账号上
-            </span>
-          ) : (
-            <span className="text-[0.8125rem]">{s.account ? `@${s.account}` : "已连"}</span>
-          )}
-          <span className="grow" />
-          {s?.connected && (
-            <Button
-              size="sm"
-              variant="quiet"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                await mutate(api.auth.$post({ json: { runtime: "github", clear: true } }));
-                setBusy(false);
-                onRefresh();
-              }}
-            >
-              断开
-            </Button>
-          )}
-          {/* A dead token is a stuck state, so the way out is on the row that says
-              so — not behind 断开 first. */}
-          {s && (!s.connected || s.stale) && (
-            <Button size="sm" disabled={busy || !!pending} onClick={connect}>
-              {pending ? "等你在 GitHub 上批准…" : busy ? "去拿登录码…" : s.stale ? "重新连接" : "连接 GitHub"}
-            </Button>
-          )}
-        </div>
-        {/* What the pane's own title and note already say — 克隆私有仓库、推分支、
-            开 PR — is cut. What is left is the part that is not obvious. */}
-        <Meta className="block">一个连接管所有项目</Meta>
-
-        {pending && <DeviceCode code={pending.userCode} url={pending.verificationUri} go="去 GitHub 输入" />}
-
-        {/* Why it did not land, beside the button that tries again. */}
-        {!pending && s?.error && <p className="mt-1.5 text-[0.75rem] text-accent">{s.error}</p>}
-      </section>
-
-      {/* Which accounts this login can actually work in, and how much each one
-          can see. The boss asked "how do I install to several orgs" because the
-          panel could not show that this is a list at all.
-
-          No rule above it: the heading and the gap are the boundary. A rule here
-          was the same token as the one inside the list below, so the section and
-          its rows were drawn with the same mark. */}
-      {s?.connected && !s.stale && (
-        <section className="mt-6">
-          <div className="flex items-baseline gap-2">
-            <H2>装在哪些账号上</H2>
-            <span className="grow" />
-            {s.installUrl ? (
-              <LinkButton href={s.installUrl} className="px-2 py-0.5 text-[0.75rem]">
-                装到别的账号
-              </LinkButton>
-            ) : (
-              <Tip label="config/default.yaml 里填上 github.appSlug，这里就是个直达链接。">
-                <Meta>去 GitHub → 这个 App → Install App</Meta>
-              </Tip>
-            )}
-          </div>
-          {!s.accounts.length ? (
-            <p className="text-[0.75rem] text-accent">
-              一个也没有，这个连接看不见任何仓库。装的时候选所有仓库，或者挑几个。
-            </p>
-          ) : (
-            /* Between the rows only. The enclosing pair made this the one list in
-               the dialog wearing a frame, which is the mark a section boundary is
-               supposed to be. */
-            <div className="divide-y divide-rule-soft">
-              {s.accounts.map((a) => (
-                <div key={a.id} className="flex items-baseline gap-2 py-1.5">
-                  <span className="text-[0.8125rem]">{a.account}</span>
-                  <Badge>{a.kind === "Organization" ? "组织" : "个人"}</Badge>
-                  <span className="grow" />
-                  {/* Tabular figures: `86` and `5` share a right edge either way,
-                      but proportional digits make the two counts look like two
-                      different scales. */}
-                  <Meta className="tabular-nums">{a.repos === null ? "数不出来" : `${a.repos} 个仓库`}</Meta>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Under the connection because both answers come from it: the author is
-          this login, and these are conventions of the repositories it reaches. */}
-      {s && <Commits s={s} onSaved={onRefresh} />}
-    </>
+    <section>
+      <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <ConnectionStatus status={status} />
+        <span className="grow" />
+        <DisconnectButton status={status} busy={busy} onDisconnect={disconnect} />
+        <ConnectButton status={status} busy={busy} onConnect={connect} />
+      </div>
+      {/* What the pane's own title and note already say — 克隆私有仓库、推分支、
+          开 PR — is cut. What is left is the part that is not obvious. */}
+      <Meta className="block">一个连接管所有项目</Meta>
+      <DeviceAuthorization status={status} />
+      <ConnectionError status={status} />
+    </section>
   );
+}
+
+function ConnectionStatus({ status }: { status: GhStatus | null }) {
+  if (!status) return <Meta>读取中…</Meta>;
+  if (!status.connected) return <span className="text-[0.8125rem] font-medium text-accent">没连</span>;
+  return <ConnectedStatus status={status} />;
+}
+
+function ConnectedStatus({ status }: { status: GhStatus }) {
+  if (status.stale) {
+    return <span className="text-[0.8125rem] font-medium text-accent">连过，但 GitHub 现在不认这个令牌了</span>;
+  }
+  if (status.installed === false) {
+    // Authorized and installed are different acts, and only the second one
+    // can reach a repository. Saying 已连 here would be a green tick over a
+    // repo list that can never fill.
+    return (
+      <span className="text-[0.8125rem] font-medium text-accent">
+        {accountLabel(status.account, "授权了")}，但 App 还没装到任何账号上
+      </span>
+    );
+  }
+  return <span className="text-[0.8125rem]">{accountLabel(status.account, "已连")}</span>;
+}
+
+function accountLabel(account: string | null, fallback: string) {
+  return account ? `@${account}` : fallback;
+}
+
+function DisconnectButton({
+  status,
+  busy,
+  onDisconnect,
+}: {
+  status: GhStatus | null;
+  busy: boolean;
+  onDisconnect: () => void;
+}) {
+  if (!status?.connected) return null;
+  return (
+    <Button size="sm" variant="quiet" disabled={busy} onClick={onDisconnect}>
+      断开
+    </Button>
+  );
+}
+
+function connectLabel(status: GhStatus, busy: boolean) {
+  if (status.pending) return "等你在 GitHub 上批准…";
+  if (busy) return "去拿登录码…";
+  return status.stale ? "重新连接" : "连接 GitHub";
+}
+
+function canConnect(status: GhStatus) {
+  return !status.connected || status.stale;
+}
+
+function connectDisabled(status: GhStatus, busy: boolean) {
+  return busy || status.pending !== null;
+}
+
+function ConnectButton({ status, busy, onConnect }: { status: GhStatus | null; busy: boolean; onConnect: () => void }) {
+  if (!status) return null;
+  if (!canConnect(status)) return null;
+  // A dead token is a stuck state, so the way out is on the row that says so —
+  // not behind 断开 first.
+  return (
+    <Button size="sm" disabled={connectDisabled(status, busy)} onClick={onConnect}>
+      {connectLabel(status, busy)}
+    </Button>
+  );
+}
+
+function DeviceAuthorization({ status }: { status: GhStatus | null }) {
+  if (!status) return null;
+  if (!status.pending) return null;
+  return <DeviceCode code={status.pending.userCode} url={status.pending.verificationUri} go="去 GitHub 输入" />;
+}
+
+function ConnectionError({ status }: { status: GhStatus | null }) {
+  if (!status) return null;
+  if (status.pending) return null;
+  // Why it did not land, beside the button that tries again.
+  if (!status.error) return null;
+  return <p className="mt-1.5 text-[0.75rem] text-accent">{status.error}</p>;
+}
+
+function Installations({ status }: { status: GhStatus | null }) {
+  if (!status) return null;
+  if (!status.connected || status.stale) return null;
+  return <InstallationSection status={status} />;
+}
+
+function InstallationSection({ status }: { status: GhStatus }) {
+  return (
+    // Which accounts this login can actually work in, and how much each one
+    // can see. The boss asked "how do I install to several orgs" because the
+    // panel could not show that this is a list at all.
+    //
+    // No rule above it: the heading and the gap are the boundary. A rule here
+    // was the same token as the one inside the list below, so the section and
+    // its rows were drawn with the same mark.
+    <section className="mt-6">
+      <div className="flex items-baseline gap-2">
+        <H2>装在哪些账号上</H2>
+        <span className="grow" />
+        <InstallLink url={status.installUrl} />
+      </div>
+      <AccountList accounts={status.accounts} />
+    </section>
+  );
+}
+
+function InstallLink({ url }: { url: string }) {
+  if (url) {
+    return (
+      <LinkButton href={url} className="px-2 py-0.5 text-[0.75rem]">
+        装到别的账号
+      </LinkButton>
+    );
+  }
+  return (
+    <Tip label="config/default.yaml 里填上 github.appSlug，这里就是个直达链接。">
+      <Meta>去 GitHub → 这个 App → Install App</Meta>
+    </Tip>
+  );
+}
+
+type Installation = GhStatus["accounts"][number];
+
+function AccountList({ accounts }: { accounts: Installation[] }) {
+  if (!accounts.length) {
+    return (
+      <p className="text-[0.75rem] text-accent">一个也没有，这个连接看不见任何仓库。装的时候选所有仓库，或者挑几个。</p>
+    );
+  }
+  return (
+    // Between the rows only. The enclosing pair made this the one list in the
+    // dialog wearing a frame, which is the mark a section boundary is supposed
+    // to be.
+    <div className="divide-y divide-rule-soft">
+      {accounts.map((account) => (
+        <AccountRow key={account.id} account={account} />
+      ))}
+    </div>
+  );
+}
+
+function AccountRow({ account }: { account: Installation }) {
+  return (
+    <div className="flex items-baseline gap-2 py-1.5">
+      <span className="text-[0.8125rem]">{account.account}</span>
+      <Badge>{account.kind === "Organization" ? "组织" : "个人"}</Badge>
+      <span className="grow" />
+      {/* Tabular figures: `86` and `5` share a right edge either way,
+          but proportional digits make the two counts look like two
+          different scales. */}
+      <Meta className="tabular-nums">{account.repos === null ? "数不出来" : `${account.repos} 个仓库`}</Meta>
+    </div>
+  );
+}
+
+function CommitSettings({ status, onSaved }: { status: GhStatus | null; onSaved: () => void }) {
+  if (!status) return null;
+  return <Commits s={status} onSaved={onSaved} />;
 }
 
 /**
