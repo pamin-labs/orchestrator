@@ -1,5 +1,6 @@
-import { errText } from "../util/text.ts";
+import { errText, jsonOr } from "../util/text.ts";
 import { consola } from "consola";
+import { z } from "zod";
 import type { Ctx } from "../../ctx.ts";
 import { FILE_MODE, liveSandboxes, MAILBOX_DIR, writeInto } from "./sandbox.ts";
 
@@ -18,13 +19,21 @@ import { FILE_MODE, liveSandboxes, MAILBOX_DIR, writeInto } from "./sandbox.ts";
  */
 
 /** Enough to make a request; anything else is the orchestrator's business. */
-interface Envelope {
-  id: string;
-  method: string;
-  path: string;
-  token: string;
-  body?: unknown;
-}
+const SafeId = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]+$/)
+  .max(128);
+const ReplyId = z.object({ id: SafeId }).passthrough();
+const Envelope = z.object({
+  // This becomes part of the response filename, so accept only one safe path segment.
+  id: SafeId,
+  method: z.enum(["GET", "POST"]),
+  path: z.string(),
+  token: z.string(),
+  body: z.unknown().optional(),
+});
+
+type Envelope = z.infer<typeof Envelope>;
 
 const POLL_MS = 150;
 
@@ -35,19 +44,16 @@ const POLL_MS = 150;
  * request file is deleted first, which is what keeps a slow call from being
  * dispatched twice on the next tick.
  */
-export async function serve(
-  sb: ReturnType<typeof liveSandboxes>[number],
-  base: string,
-  path: string,
-): Promise<void> {
-  let env: Envelope;
-  try {
-    env = JSON.parse(await sb.files.readFile(path)) as Envelope;
-  } catch {
-    await sb.files.deleteFiles([path]).catch(() => {});
+export async function serve(sb: ReturnType<typeof liveSandboxes>[number], base: string, path: string): Promise<void> {
+  const raw = await sb.files.readFile(path).catch(() => null);
+  const value = jsonOr(raw, z.unknown(), null);
+  const id = ReplyId.safeParse(value).data?.id;
+  const env = Envelope.safeParse(value).data;
+  await sb.files.deleteFiles([path]).catch(() => {});
+  if (!env) {
+    if (id) await reply(sb, id, { status: 400, text: "invalid mailbox request" });
     return;
   }
-  await sb.files.deleteFiles([path]).catch(() => {});
 
   let answer: { status: number; text: string };
   // `/orch/*` checks a token on every route; `/api/*` checks nothing, because

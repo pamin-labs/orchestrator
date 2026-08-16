@@ -46,9 +46,7 @@ export interface Usage {
  * missed, so nothing is subtracted here — see `codexUsage`, whose whole reason
  * to exist is that codex means the other thing by the same field name.
  */
-export function claudeUsage(
-  raw: unknown = {},
-): Usage {
+export function claudeUsage(raw: unknown = {}): Usage {
   const parsed = UsageSchema.safeParse(raw);
   const u = parsed.success ? parsed.data : {};
   return {
@@ -244,7 +242,9 @@ const LineSchema = z
     session_id: z.string().optional(),
     status: z.string().optional(),
     message: z.object({ content: z.array(Input).optional() }).optional(),
-    tool_use_result: z.object({ stdout: z.string().optional(), stderr: z.string().optional(), interrupted: z.boolean().optional() }).optional(),
+    tool_use_result: z
+      .object({ stdout: z.string().optional(), stderr: z.string().optional(), interrupted: z.boolean().optional() })
+      .optional(),
     event: z
       .object({
         type: z.string(),
@@ -504,6 +504,5 @@ function unwrapShell(cmd: string): string {
 
 /** The CLI prints the occasional non-JSON line (login prompts, warnings). */
 const safeParse = (line: string): Line => {
-  const parsed = LineSchema.safeParse(jsonOr<unknown>(line, null));
-  return parsed.success ? parsed.data : { type: "system", subtype: "noise", status: line };
+  return jsonOr(line, LineSchema, { type: "system", subtype: "noise", status: line });
 };

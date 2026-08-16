@@ -28,6 +28,7 @@ import { jsonOr } from "../util/text.ts";
 const DEVICE_CODE_URL = "https://github.com/login/device/code";
 const TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
+const Identity = z.object({ name: z.string(), email: z.string() });
 
 /**
  * The app every install of this orchestrator connects through.
@@ -193,26 +194,38 @@ const PER_PAGE = 100;
  * `Date.parse(b.pushed_at ?? 0)`, which is `Date.parse` handed a number, and
  * nothing could say so.
  */
-interface GhInstallation {
-  id: number;
-  account?: { login?: string; type?: string };
-}
+const GhInstallation = z.object({
+  id: z.number().int().positive(),
+  account: z.object({ login: z.string().optional(), type: z.string().optional() }).nullable().optional(),
+});
 
-interface GhRepo {
-  full_name: string;
-  private?: boolean;
-  default_branch?: string;
-  pushed_at?: string;
-  clone_url?: string;
-}
+const GhRepo = z.object({
+  full_name: z.string(),
+  private: z.boolean().optional(),
+  default_branch: z.string().optional(),
+  pushed_at: z.string().nullable().optional(),
+  clone_url: z.string().optional(),
+});
+const InstallationsPage = z.object({ installations: z.array(GhInstallation).optional() });
+const RepositoriesPage = z.object({ repositories: z.array(GhRepo).optional() });
+const User = z.object({
+  login: z.string().optional(),
+  id: z.number().int().positive().optional(),
+  name: z.string().nullable().optional(),
+});
 
 /** The key the list arrives under. It was a `pick` callback for two constants. */
 type ListKey = "installations" | "repositories";
 
-async function pages<T>(gh: Github, path: string, key: ListKey): Promise<GhResult<T[]>> {
+async function pages<T>(
+  gh: Github,
+  path: string,
+  key: ListKey,
+  schema: z.ZodType<Partial<Record<ListKey, T[]>>>,
+): Promise<GhResult<T[]>> {
   const out: T[] = [];
   for (let page = 1; page <= 10; page++) {
-    const r = await gh.request<Partial<Record<ListKey, T[]>>>("GET", `${path}?per_page=${PER_PAGE}&page=${page}`);
+    const r = await gh.request("GET", `${path}?per_page=${PER_PAGE}&page=${page}`, schema);
     if (!r.ok) return r;
     const items = r.data?.[key] ?? [];
     out.push(...items);
@@ -228,15 +241,15 @@ async function pages<T>(gh: Github, path: string, key: ListKey): Promise<GhResul
  * already sees every installation the user can reach.
  */
 export async function listInstallations(gh: Github): Promise<GhResult<Installation[]>> {
-  const r = await pages<GhInstallation>(gh, "/user/installations", "installations");
+  const r = await pages(gh, "/user/installations", "installations", InstallationsPage);
   if (!r.ok) return r;
   return {
     ok: true,
     status: r.status,
     data: r.data.map((i) => ({
-      id: Number(i.id),
-      account: String(i.account?.login ?? "?"),
-      kind: String(i.account?.type ?? "User"),
+      id: i.id,
+      account: i.account?.login ?? "?",
+      kind: i.account?.type ?? "User",
     })),
   };
 }
@@ -251,7 +264,7 @@ export async function listInstallations(gh: Github): Promise<GhResult<Installati
  * answers 404 rather than 403 for what a token cannot see.
  */
 export async function listRepos(gh: Github, installationId: number): Promise<GhResult<RepoRow[]>> {
-  const r = await pages<GhRepo>(gh, `/user/installations/${installationId}/repositories`, "repositories");
+  const r = await pages(gh, `/user/installations/${installationId}/repositories`, "repositories", RepositoriesPage);
   if (!r.ok) return r;
   return {
     ok: true,
@@ -259,13 +272,15 @@ export async function listRepos(gh: Github, installationId: number): Promise<GhR
     // Most recently pushed first. GitHub returns them in its own order, which
     // read down the page as 76 months, 51, 4, 61, 72, 71, 14 — and the one the
     // boss wants is almost always the one they touched last.
-    data: r.data.sort((a, b) => Date.parse(b.pushed_at ?? "") - Date.parse(a.pushed_at ?? "")).map((x) => ({
-      fullName: String(x.full_name),
-      private: !!x.private,
-      defaultBranch: String(x.default_branch || "main"),
-      pushedAt: x.pushed_at ? Date.parse(x.pushed_at) || 0 : 0,
-      cloneUrl: String(x.clone_url ?? `https://github.com/${x.full_name}.git`),
-    })),
+    data: r.data
+      .sort((a, b) => Date.parse(b.pushed_at ?? "") - Date.parse(a.pushed_at ?? ""))
+      .map((x) => ({
+        fullName: x.full_name,
+        private: x.private ?? false,
+        defaultBranch: x.default_branch || "main",
+        pushedAt: x.pushed_at ? Date.parse(x.pushed_at) || 0 : 0,
+        cloneUrl: x.clone_url ?? `https://github.com/${x.full_name}.git`,
+      })),
   };
 }
 
@@ -279,7 +294,7 @@ export async function listRepos(gh: Github, installationId: number): Promise<GhR
  * GitHub answers 404 for "cannot see it" as well as "gone".
  */
 export async function githubAccount(gh: Github): Promise<string | null> {
-  const r = await gh.request<{ login?: string }>("GET", "/user");
+  const r = await gh.request("GET", "/user", User);
   return r.ok ? (r.data?.login ?? null) : null;
 }
 
@@ -319,12 +334,10 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
   const fallback = { ...BOT };
   // Cached: this runs on every checkout, and the answer changes only when the
   // connected account does. `credentialChanged` clears it.
-  const held = ctx.db
-    ?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?")
-    .get(IDENTITY_KEY)?.v;
-  const cached = jsonOr<{ name: string; email: string } | null>(held, null);
+  const held = ctx.db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(IDENTITY_KEY)?.v;
+  const cached = jsonOr(held, Identity.nullable(), null);
   if (cached) return cached;
-  const r = await ctx.gh?.request<{ login?: string; id?: number; name?: string | null }>("GET", "/user");
+  const r = await ctx.gh?.request("GET", "/user", User);
   if (!r?.ok || !r.data?.login || !r.data?.id) return fallback;
   const who = {
     name: r.data.name || r.data.login,
@@ -358,6 +371,9 @@ export const TRAILERS_KEY = "git_trailers";
 /** All three on. A record that credits too much is fixable; one that credits
  *  nobody is a diff whose author cannot be asked about it a year later. */
 const TRAILER_DEFAULTS: TrailerPrefs = { signoff: true, coauthor: true, claudeCoauthor: true };
+const TrailerPrefsPatch = z
+  .object({ signoff: z.boolean(), coauthor: z.boolean(), claudeCoauthor: z.boolean() })
+  .partial();
 
 export interface TrailerPrefs {
   signoff: boolean;
@@ -387,7 +403,7 @@ export interface Trailers extends Pick<TrailerPrefs, "signoff" | "coauthor"> {
  *  co-author setting from the same row, and it has no `Ctx` to hand. */
 export function trailers(db: DB | undefined): TrailerPrefs {
   const row = db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(TRAILERS_KEY)?.v;
-  return { ...TRAILER_DEFAULTS, ...jsonOr<Partial<TrailerPrefs>>(row, {}) };
+  return { ...TRAILER_DEFAULTS, ...jsonOr(row, TrailerPrefsPatch, {}) };
 }
 
 export function setTrailers(db: DB, next: Partial<TrailerPrefs>): TrailerPrefs {

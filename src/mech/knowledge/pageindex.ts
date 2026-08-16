@@ -41,6 +41,15 @@ export interface Node {
 
 export type Tree = Record<string, Node>;
 
+const NodeSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["dir", "file"]),
+  summary: z.string(),
+  sig: z.string(),
+  children: z.array(z.string()),
+});
+const TreeSchema = z.record(z.string(), NodeSchema);
+
 /** One prompt in, one text out. Injected so tests never spawn a model. */
 export type Ask = (prompt: string) => Promise<string>;
 
@@ -366,12 +375,7 @@ const CodexReply = z
  * a `loop_file`, and nothing here writes either; the scheduler only ever looks at
  * agents a job points to.
  */
-export function chargeIndex(
-  ctx: Ctx,
-  projectId: number,
-  spec: { runtime?: string; model: string },
-  u: AskUsage,
-): void {
+export function chargeIndex(ctx: Ctx, projectId: number, spec: { runtime?: string; model: string }, u: AskUsage): void {
   const runtime = spec.runtime ?? "claude";
   const total = u.input + u.output + u.cacheRead + u.cacheCreate;
   if (total === 0) return;
@@ -435,5 +439,5 @@ export function saveTree(db: DB, projectId: number, tree: Tree): void {
 }
 
 export function loadTree(db: DB, projectId: number | null): Tree | null {
-  return jsonOr<Tree | null>(singletonNote(db, projectId, "pageindex"), null);
+  return jsonOr(singletonNote(db, projectId, "pageindex"), TreeSchema.nullable(), null);
 }

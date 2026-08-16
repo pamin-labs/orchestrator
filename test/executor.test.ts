@@ -39,8 +39,9 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     db,
     bus,
     sched,
-    sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: cfg.language},
+    sandbox: fakeSandbox(),
+    waiters: new Map(),
+    config: { language: cfg.language },
   };
   const deps: ExecDeps = {
     ctx,
@@ -85,7 +86,9 @@ test("the slice's difficulty picks the model — the boss's cost knob", async ()
   const table = cfg.difficultyModel[eng.runtime ?? "claude"]!;
   expect(specs[0]!.stable.model).toBe(table.trivial!);
 
-  db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at) VALUES (1, 2, 'S2', 'x', 'hard', 0)");
+  db.run(
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at) VALUES (1, 2, 'S2', 'x', 'hard', 0)",
+  );
   db.run("DELETE FROM agent");
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 2, payload: { role: "engineer" } });
   await sched.drain();
@@ -214,7 +217,14 @@ test("a failed turn is recorded as failed, not silently swallowed", async () => 
 test("unread channel messages are injected once, then the cursor advances", async () => {
   const { db, ctx, sched, specs } = harness(async () => ok());
   db.run("INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (1, 1, 'group', 0)");
-  ctx.bus.emit({ channelId: 1, grpId: 1, author: "boss", kind: "boss_say", intent: "request", body: "prefer iteration" });
+  ctx.bus.emit({
+    channelId: 1,
+    grpId: 1,
+    author: "boss",
+    kind: "boss_say",
+    intent: "request",
+    body: "prefer iteration",
+  });
 
   sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
@@ -277,6 +287,37 @@ test("a lease whose args stopped validating fails instead of running", async () 
   expect(db.query<{ state: string }, []>("SELECT state FROM lease").get()!.state).toBe("failed");
 });
 
+test("a persisted lease argument root must be an object", async () => {
+  const { db, ctx, sched } = harness(async () => ok());
+  db.run("INSERT INTO resource (name, template, arg_schema_json) VALUES ('build', 'true', '{}')");
+  const lease = db
+    .query<{ id: number }, []>(
+      `INSERT INTO lease (resource, grp_id, args_json, enqueued_at)
+       VALUES ('build', 1, 'null', 0) RETURNING id`,
+    )
+    .get()!;
+  let digest = "";
+  ctx.waiters.set(`lease:${lease.id}`, (v) => (digest = v));
+  sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
+  await sched.drain();
+
+  expect(digest).toContain("arguments must be a JSON object");
+  expect(db.query<{ state: string }, [number]>("SELECT state FROM lease WHERE id = ?").get(lease.id)!.state).toBe(
+    "failed",
+  );
+});
+
+test("a lease job without an integer id fails instead of disappearing", async () => {
+  const { db, sched } = harness(async () => ok());
+  const job = sched.enqueue("lease", { grp_id: 1, payload: { lease_id: "1" } });
+  await sched.drain();
+  const row = db
+    .query<{ state: string; error: string | null }, [number]>("SELECT state, error FROM job WHERE id = ?")
+    .get(job)!;
+  expect(row.state).toBe("failed");
+  expect(row.error).toContain("positive integer lease_id");
+});
+
 test("cacheRatio reports the only visible signal that caching still works", () => {
   expect(cacheRatio(ok())).toBeCloseTo(5000 / 5110, 3);
   expect(cacheRatio(ok({ usage: { input: 100, output: 5, cacheRead: 0, cacheCreate: 0, thinking: 0 } }))).toBe(0);
@@ -303,6 +344,25 @@ test("a turn records whether it opened a cold session, and what caused it", asyn
   // cache ratio alone cannot tell "the prefix moved" from "a send-back asked for
   // a clean head", and those have opposite fixes.
   expect(reasons()).toEqual(["new", null, "explicit"]);
+});
+
+test("malformed persisted payload fields cannot crash a turn or force rotation", async () => {
+  const { db, sched, specs } = harness(async () => ok());
+  const first = sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  db.run("UPDATE job SET payload_json = 'null' WHERE id = ?", [first]);
+  await sched.drain();
+  expect(specs).toHaveLength(1);
+  expect(db.query<{ role: string }, []>("SELECT role FROM agent").get()!.role).toBe("engineer");
+
+  const second = sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  db.run("UPDATE job SET payload_json = ? WHERE id = ?", [
+    JSON.stringify({ role: "engineer", rotate: "false", boundary: [null], mail: { from: 1 } }),
+    second,
+  ]);
+  await sched.drain();
+  expect(specs).toHaveLength(2);
+  expect(specs[1]!.resumeSessionId).toBe("s1");
+  expect(db.query<{ state: string }, [number]>("SELECT state FROM job WHERE id = ?").get(second)!.state).toBe("done");
 });
 
 /** Minimal deps for calling `hire` directly. */
@@ -360,13 +420,32 @@ test("a payload key nothing renders is reported instead of silently ignored", as
   sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer", cutBoundary: 7 } });
   await sched.drain();
 
-  const warn = db
-    .query<{ body: string }, []>("SELECT body FROM event WHERE body LIKE '%nothing renders%'")
-    .get();
+  const warn = db.query<{ body: string }, []>("SELECT body FROM event WHERE body LIKE '%nothing renders%'").get();
   // This happened twice for real — a mailed message and a boundary request — and
   // both times the agent was woken with no instruction, improvised something
   // plausible, and did not do the job.
   expect(warn?.body).toContain("cutBoundary");
+});
+
+test("recognized payload keys with invalid values are reported instead of silently dropped", async () => {
+  const { db, sched } = harness(async () => ok());
+  sched.enqueue("agent_turn", {
+    grp_id: 1,
+    payload: {
+      role: "engineer",
+      idea: 1,
+      mail: { from: 1 },
+      boundary: [null],
+      digest: { channel_id: "1" },
+      skills: [null],
+    },
+  });
+  await sched.drain();
+
+  const body = db.query<{ body: string }, []>("SELECT body FROM event WHERE body LIKE '%nothing renders%'").get()!.body;
+  for (const key of ["idea", "mail", "boundary", "digest", "skills"]) {
+    expect(body).toContain(`${key} (invalid)`);
+  }
 });
 
 test("the keys that are rendered do not trigger the warning", async () => {
@@ -412,7 +491,9 @@ test("a session whose transcript is gone is not resumed forever", () => {
   // `thread/resume: no rollout found for thread id 02627e60-…` and looked
   // healthy the whole time — an agent on the roster, no error anywhere except
   // inside a rejection body nobody parses.
-  expect(LOST_SESSION.test("Error: thread/resume: thread/resume failed: no rollout found for thread id 02627e60")).toBe(true);
+  expect(LOST_SESSION.test("Error: thread/resume: thread/resume failed: no rollout found for thread id 02627e60")).toBe(
+    true,
+  );
   expect(LOST_SESSION.test("No conversation found with session ID: abc")).toBe(true);
   // Not every failure is this one: clearing a live session costs an uncached
   // prefix, so the match has to be the actual message.

@@ -2,7 +2,16 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { checkPrMessage, commitMessage, dispatchFeedback, openPr, pollPrs, prBody, prTitle, pushBlocked } from "../src/mech/git/prwatch.ts";
+import {
+  checkPrMessage,
+  commitMessage,
+  dispatchFeedback,
+  openPr,
+  pollPrs,
+  prBody,
+  prTitle,
+  pushBlocked,
+} from "../src/mech/git/prwatch.ts";
 import { utilGit } from "../src/mech/git/checkout.ts";
 import type { GhResult, Github } from "../src/mech/git/github.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
@@ -10,7 +19,10 @@ import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
-function harness(handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}), calls?: string[]) {
+function harness(
+  handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}),
+  calls?: string[],
+) {
   const db = openMemory();
   seedAuth(db);
   const _cfg = loadConfig();
@@ -27,7 +39,7 @@ function harness(handle: (cmd: string) => { code?: number; out?: string; err?: s
     // so both are this one fake.
     sandbox,
     waiters: new Map(),
-    config: { language: "中文"},
+    config: { language: "中文" },
   };
   // The remote is what `owner/repo` is derived from, and since 007 step 5 it is
   // also what the clone and the push use — one answer, not two columns that can
@@ -35,13 +47,11 @@ function harness(handle: (cmd: string) => { code?: number; out?: string; err?: s
   db.run(
     "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'git@github.com:me/x.git', 0)",
   );
-  db.run(
-    "INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'PR_OPEN', 'orch/g1', 0)",
-  );
+  db.run("INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'PR_OPEN', 'orch/g1', 0)");
   return { db, ctx, sandbox };
 }
 
-const ok = <T,>(data: T): GhResult<T> => ({ ok: true, status: 200, data });
+const ok = <T>(data: T): GhResult<T> => ({ ok: true, status: 200, data });
 const boom = (status: number, message: string, bucket: "boss" | "agent" | "transient" = "agent"): GhResult<never> => ({
   ok: false,
   status,
@@ -54,16 +64,25 @@ const boom = (status: number, message: string, bucket: "boss" | "agent" | "trans
  * dropped. Anything not in the table answers empty rather than undefined, which
  * is what a PR with no comments and no checks actually looks like.
  */
-const gh = (script: Record<string, GhResult<any>>, calls: string[] = []): Github => ({
+const gh = (script: Record<string, GhResult<unknown>>, calls: string[] = []): Github => ({
   remaining: () => 4999,
-  async request(method: string, path: string) {
+  async request(method, path, schema) {
     const key = `${method} ${path.split("?")[0]}`;
     calls.push(key);
-    if (script[key]) return script[key]!;
-    if (key.endsWith("/comments") || key.endsWith("/reviews")) return ok([]);
-    if (key.endsWith("/check-runs")) return ok({ check_runs: [] });
-    if (key.endsWith("/status")) return ok({ statuses: [] });
-    return ok(null);
+    const answer =
+      script[key] ??
+      (key.endsWith("/comments") || key.endsWith("/reviews")
+        ? ok([])
+        : key.endsWith("/check-runs")
+          ? ok({ check_runs: [] })
+          : key.endsWith("/status")
+            ? ok({ statuses: [] })
+            : ok(null));
+    if (!answer.ok) return answer;
+    const parsed = schema.safeParse(answer.data);
+    return parsed.success
+      ? { ...answer, data: parsed.data }
+      : { ok: false, status: answer.status, bucket: "transient", message: "invalid fixture" };
   },
 });
 
@@ -94,12 +113,16 @@ test("opening a PR records its number once", async () => {
 
 test("the PR body is built from the record, not from a sentence", () => {
   const h = harness();
-  h.db.run("INSERT INTO event (grp_id, author, kind, body, at, seq) VALUES (1, 'boss', 'boss_say', 'the timeline flickers', 0, 1)");
+  h.db.run(
+    "INSERT INTO event (grp_id, author, kind, body, at, seq) VALUES (1, 'boss', 'boss_say', 'the timeline flickers', 0, 1)",
+  );
   h.db.run(
     `INSERT INTO slice (grp_id, seq, title, accept_spec, gates_json, status, created_at)
      VALUES (1, 1, 'stable keys', 'no row remounts', '{"self":"pass","gate":"pass","qa":"fail"}', 'accepted', 0)`,
   );
-  h.db.run("INSERT INTO note (grp_id, kind, body, export_path, at) VALUES (1, 'decision', 'key was at+index', 'docs/journal/g1/003.md', 0)");
+  h.db.run(
+    "INSERT INTO note (grp_id, kind, body, export_path, at) VALUES (1, 'decision', 'key was at+index', 'docs/journal/g1/003.md', 0)",
+  );
   h.db.run("INSERT INTO note (grp_id, kind, body, at) VALUES (1, 'retro', 'memo alone was not enough', 0)");
 
   const body = prBody(h.ctx, 1);
@@ -210,7 +233,13 @@ test("the utility container never checks anything out, and never runs a hook", a
   // CVE-2025-48384 are what a checkout here would be worth.
   const calls: string[] = [];
   const h = harness(() => ({}), calls);
-  await openPr({ ctx: h.ctx, gh: gh({ "POST /repos/me/x/pulls": ok({ number: 9 }) }), grpId: 1, title: "t", body: "b" });
+  await openPr({
+    ctx: h.ctx,
+    gh: gh({ "POST /repos/me/x/pulls": ok({ number: 9 }) }),
+    grpId: 1,
+    title: "t",
+    body: "b",
+  });
 
   const util = calls.filter((c) => c.includes("core.hooksPath=/dev/null"));
   expect(util.length).toBeGreaterThan(0);
@@ -271,6 +300,25 @@ test("only new comments and failing checks come back", async () => {
     }),
   );
   expect(third[0]!.failingChecks.sort()).toEqual(["ci", "lint"]);
+});
+
+test("feedback from a deleted GitHub user is still delivered", async () => {
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 7, pr_seen_at = 1000 WHERE id = 1");
+  const fs = await pollPrs(
+    h.ctx,
+    gh({
+      "GET /repos/me/x/pulls/7": pr(),
+      "GET /repos/me/x/issues/7/comments": ok([
+        { user: null, body: "still valid feedback", created_at: new Date(2000).toISOString() },
+      ]),
+      "GET /repos/me/x/pulls/7/reviews": ok([
+        { user: null, body: "review survives deletion", submitted_at: new Date(3000).toISOString() },
+      ]),
+    }),
+  );
+
+  expect(fs[0]!.comments.map((c) => c.body)).toEqual(["still valid feedback", "review survives deletion"]);
 });
 
 test("a checks request that fails is not a PR that went green", async () => {
@@ -358,9 +406,7 @@ test("the lessons list is capped where it is written", async () => {
   );
   expect(r.status).toBe(200);
 
-  const rows = h.db
-    .query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'lesson' ORDER BY at DESC")
-    .all();
+  const rows = h.db.query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'lesson' ORDER BY at DESC").all();
   // A list that keeps growing becomes the very context cost it exists to prevent.
   expect(rows.length).toBe(LESSON_CAP);
   expect(rows[0]!.body).toBe("the newest lesson");
@@ -388,9 +434,11 @@ test("landing archives the group without deleting its history", () => {
   const { landed } = require("../src/mech/flow/mergequeue.ts");
   landed(h.db, 1);
 
-  const a = h.db.query<{ state: string; session_id: string | null; token: string | null }, []>(
-    "SELECT state, session_id, token FROM agent",
-  ).get()!;
+  const a = h.db
+    .query<{ state: string; session_id: string | null; token: string | null }, []>(
+      "SELECT state, session_id, token FROM agent",
+    )
+    .get()!;
   expect(a.state).toBe("retired");
   expect(a.session_id).toBeNull();
   // The token is revoked with the group, so a stale process cannot act as it.

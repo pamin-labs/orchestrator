@@ -1,5 +1,6 @@
 import type { DB } from "../../db.ts";
 import { jsonOr } from "../util/text.ts";
+import { z } from "zod";
 
 /**
  * Where the tokens went.
@@ -151,9 +152,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
     .all();
 
   const total = db
-    .query<CostRow, number[]>(
-      `SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens FROM grp ${where}`,
-    )
+    .query<CostRow, number[]>(`SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens FROM grp ${where}`)
     .get(...args)!;
 
   // What a finished requirement costs is the number to compare against doing it by
@@ -193,8 +192,8 @@ export function recentCacheRatio(db: DB, limit = 50): number | null {
     .all(limit);
   const vals: number[] = [];
   for (const r of rows) {
-    const v = jsonOr<{ cacheRatio?: unknown }>(r.meta_json, {}).cacheRatio;
-    if (typeof v === "number") vals.push(v);
+    const v = jsonOr(r.meta_json, z.object({ cacheRatio: z.number().optional() }), {}).cacheRatio;
+    if (v !== undefined) vals.push(v);
   }
   if (vals.length === 0) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;

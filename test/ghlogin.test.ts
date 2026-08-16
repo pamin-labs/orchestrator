@@ -6,8 +6,17 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
-import { BOT, commitIdentity, forgetIdentity,
-  CLIENT_ID, githubAccount, listInstallations, listRepos, pollForToken, startDeviceFlow, type Fetcher,
+import {
+  BOT,
+  commitIdentity,
+  forgetIdentity,
+  CLIENT_ID,
+  githubAccount,
+  listInstallations,
+  listRepos,
+  pollForToken,
+  startDeviceFlow,
+  type Fetcher,
 } from "../src/mech/git/ghlogin.ts";
 
 /** A fetcher that answers from a script and records what it was sent. */
@@ -37,7 +46,13 @@ test("the device flow asks for a code, with no secret and no scope", async () =>
   // App has none — what the token may do is declared on the app and chosen when
   // it is installed.
   const { fetchFn, sent } = scripted([
-    { device_code: "dev-code", user_code: "WDJB-MJHT", verification_uri: "https://github.com/login/device", interval: 5, expires_in: 900 },
+    {
+      device_code: "dev-code",
+      user_code: "WDJB-MJHT",
+      verification_uri: "https://github.com/login/device",
+      interval: 5,
+      expires_in: 900,
+    },
   ]);
   const d = await startDeviceFlow(fetchFn);
   expect(d.userCode).toBe("WDJB-MJHT");
@@ -92,14 +107,10 @@ test("slow_down widens the interval, which is the whole reason to handle it", as
 
 test("a refused or expired login stops, and says which", async () => {
   const denied = scripted([{ error: "access_denied" }]);
-  await expect(
-    pollForToken(DEVICE, { fetchFn: denied.fetchFn, sleep: async () => {} }),
-  ).rejects.toThrow(/拒绝/);
+  await expect(pollForToken(DEVICE, { fetchFn: denied.fetchFn, sleep: async () => {} })).rejects.toThrow(/拒绝/);
 
   const expired = scripted([{ error: "expired_token" }]);
-  await expect(
-    pollForToken(DEVICE, { fetchFn: expired.fetchFn, sleep: async () => {} }),
-  ).rejects.toThrow(/过期/);
+  await expect(pollForToken(DEVICE, { fetchFn: expired.fetchFn, sleep: async () => {} })).rejects.toThrow(/过期/);
 
   // And a code that runs out while nobody is looking is the same message rather
   // than a poll that never returns.
@@ -113,7 +124,6 @@ test("a refused or expired login stops, and says which", async () => {
     }),
   ).rejects.toThrow(/过期/);
 });
-
 
 test("the token lands in runtime_auth like every other credential", async () => {
   // Stored, not returned: the panel reads a masked tail, and the value itself
@@ -178,6 +188,19 @@ test("repositories come from the installation, never /user/repos", async () => {
   expect(asked.join(" ")).not.toContain("/user/repos");
 });
 
+test("GitHub's legal nulls do not discard an installation or an empty repository", async () => {
+  const { gh } = client((url) =>
+    url.includes("/repositories")
+      ? { repositories: [{ ...repo(1), pushed_at: null }] }
+      : { installations: [{ id: 5, account: null }] },
+  );
+
+  const installs = await listInstallations(gh);
+  expect(installs.ok && installs.data).toEqual([{ id: 5, account: "?", kind: "User" }]);
+  const repos = await listRepos(gh, 5);
+  expect(repos.ok && repos.data[0]?.pushedAt).toBe(0);
+});
+
 test("a boss in several orgs gets past page one", async () => {
   // Both endpoints paginate at 100. Stopping at the first page is the bug that
   // looks like "that repo is not on GitHub".
@@ -222,9 +245,13 @@ test("the account is asked of GitHub, and a dead token reads as no account", asy
   const db = openMemory();
   saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
   expect(await githubAccount(makeGithub(db, async () => new Response("{}", { status: 404 })))).toBeNull();
-  expect(await githubAccount(makeGithub(db, async () => {
-    throw new Error("offline");
-  }))).toBeNull();
+  expect(
+    await githubAccount(
+      makeGithub(db, async () => {
+        throw new Error("offline");
+      }),
+    ),
+  ).toBeNull();
 });
 
 /** Enough Ctx for the two routes, with GitHub answered from a table. */
@@ -236,11 +263,16 @@ function server(answer: (url: string) => unknown) {
   const sched = new Scheduler(db, async () => {});
   const asked: string[] = [];
   const ctx = {
-    db, bus, sched,
+    db,
+    bus,
+    sched,
     waiters: new Map(),
     gh: makeGithub(db, async (url) => {
       asked.push(url);
-      return new Response(JSON.stringify(answer(url)), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify(answer(url)), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     }),
     config: { language: "中文" },
   } as unknown as Ctx;
@@ -271,7 +303,9 @@ test("switching installation changes the list", async () => {
             { id: 9, account: { login: "acme", type: "Organization" } },
           ],
         }
-      : { repositories: [{ full_name: url.includes("/9/") ? "acme/site" : "octocat/dotfiles", default_branch: "main" }] },
+      : {
+          repositories: [{ full_name: url.includes("/9/") ? "acme/site" : "octocat/dotfiles", default_branch: "main" }],
+        },
   );
 
   // No installation asked for: the first one, so the page has something to show.
@@ -287,10 +321,17 @@ test("switching installation changes the list", async () => {
 });
 
 test("a project added from the list keeps GitHub's default branch, not a guess", async () => {
-  const { app, db } = server(() => ({ full_name: "acme/site", default_branch: "trunk", clone_url: "https://github.com/acme/site.git" }));
+  const { app, db } = server(() => ({
+    full_name: "acme/site",
+    default_branch: "trunk",
+    clone_url: "https://github.com/acme/site.git",
+  }));
   const r = await app(
-    new Request("http://x/api/projects", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ repo: "acme/site" }) }),
+    new Request("http://x/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ repo: "acme/site" }),
+    }),
   );
   expect(r.status).toBe(200);
   // The id is the whole reason the browser can land on what it just made. It was
@@ -310,10 +351,28 @@ test("a project added from the list keeps GitHub's default branch, not a guess",
 
   // Adding it twice is the same project, whichever way it was picked.
   const again = await app(
-    new Request("http://x/api/projects", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ repo: "acme/site" }) }),
+    new Request("http://x/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ repo: "acme/site" }),
+    }),
   );
   expect(again.status).toBe(422);
+});
+
+test("a shape-invalid repository reply is a 422, never a route 500", async () => {
+  const { app, db } = server(() => ({ full_name: "acme/site", default_branch: "main" }));
+  const r = await app(
+    new Request("http://x/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ repo: "acme/site" }),
+    }),
+  );
+
+  expect(r.status).toBe(422);
+  expect(await r.text()).toContain("GitHub sent invalid JSON");
+  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM project").get()!.n).toBe(0);
 });
 
 test("a repository already added names its project, so the row is a route and not a wall", async () => {
@@ -387,7 +446,9 @@ test("a project that cannot be converted keeps its data and produces exactly one
 
   // Converted what converts; left the rest exactly as they were.
   const by = Object.fromEntries(
-    db.query<{ name: string; repo_path: string }, []>("SELECT name, repo_path FROM project").all()
+    db
+      .query<{ name: string; repo_path: string }, []>("SELECT name, repo_path FROM project")
+      .all()
       .map((r) => [r.name, r.repo_path]),
   );
   expect(by.fine).toBe("acme/d");
@@ -431,8 +492,11 @@ test("the status carries which accounts it is installed on, and how much each ca
 
   // And the route that wrote the override is gone with the panel section.
   const gone = await app(
-    new Request("http://x/api/auth/github/app", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clientId: "x" }) }),
+    new Request("http://x/api/auth/github/app", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ clientId: "x" }),
+    }),
   );
   expect(gone.status).toBe(404);
 });

@@ -38,7 +38,9 @@ test("a response without the windows produces nothing rather than zeroes", () =>
   // The endpoint is undocumented. A shape change must read as "no data", not as
   // "0% used", which would be a green header on a spent account.
   expect(toRateLimit({})).toBeNull();
-  expect(toRateLimit({ seven_day_opus: null } as never)).toBeNull();
+  expect(toRateLimit({ seven_day_opus: null })).toBeNull();
+  expect(toRateLimit({ five_hour: { utilization: "3" } })).toBeNull();
+  expect(toRateLimit({ seven_day: { utilization: -1 } })).toBeNull();
 });
 
 test("a fresh row is left alone until the poll interval is up", async () => {
@@ -82,10 +84,8 @@ test("a failed poll keeps the last good reading rather than blanking the header"
 test("only a subscription on the official endpoint gets a usage row", async () => {
   const db = openMemory();
   const now = 3_000_000_000;
-  const row = () =>
-    db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'").get();
-  const stale = () =>
-    db.run("INSERT OR REPLACE INTO usage_snapshot (runtime, json, at) VALUES ('claude', '{}', 1)");
+  const row = () => db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'").get();
+  const stale = () => db.run("INSERT OR REPLACE INTO usage_snapshot (runtime, json, at) VALUES ('claude', '{}', 1)");
 
   // Billed per token: no window to run out of, and the row left over from before
   // the switch would keep showing a number nobody is spending against.
@@ -135,7 +135,7 @@ test("codex quota comes from its rollout file, not the stream", () => {
 
   // The file grows as the session runs, so the last reading wins — and the
   // first line of a `tail -c` is a fragment that must not stop the walk.
-  const tailed = ["_limits\":{\"primary\":{\"used_percent\":99,", ping(12.5, 1), ping(40, 2)].join("\n");
+  const tailed = ['_limits":{"primary":{"used_percent":99,', ping(12.5, 1), ping(40, 2)].join("\n");
   expect(rateLimitsIn(tailed, 0)!.weeklyPercent).toBe(40);
 
   // Nothing to find is null, not a zeroed reading that would read as "plenty left".

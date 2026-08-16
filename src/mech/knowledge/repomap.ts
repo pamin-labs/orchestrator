@@ -77,8 +77,7 @@ export function indexable(rel: string, exclude: string[] = []): boolean {
  * best-effort detection, written where it can be edited.
  */
 export function indexExcludes(db: DB, projectId: number): string[] {
-  const globs = (projectConfig(db, projectId).index as { exclude?: unknown } | undefined)?.exclude;
-  return Array.isArray(globs) ? globs.filter((g: unknown) => typeof g === "string") : [];
+  return projectConfig(db, projectId).index?.exclude ?? [];
 }
 
 export interface MapNode {
@@ -127,9 +126,7 @@ export function renderMap(nodes: MapNode[]): string {
     .map(
       (n) =>
         `${n.dir}/\n` +
-        n.files
-          .map((f) => `  ${f.name}${f.symbols.length ? ` — ${f.symbols.join(", ")}` : ""}`)
-          .join("\n"),
+        n.files.map((f) => `  ${f.name}${f.symbols.length ? ` — ${f.symbols.join(", ")}` : ""}`).join("\n"),
     )
     .join("\n");
 }

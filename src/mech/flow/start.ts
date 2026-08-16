@@ -15,7 +15,7 @@ import { raise } from "./escalate.ts";
 /** `project.config_json.install`, or null. */
 function installFor(ctx: Ctx, projectId: number): string | null {
   const v = projectConfig(ctx.db, projectId).install;
-  return typeof v === "string" && v.trim() ? v : null;
+  return v?.trim() ? v : null;
 }
 
 /**
@@ -75,11 +75,7 @@ export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
  * timeline already knows how to render it — and only the tail is kept durably,
  * because an install log is worth watching and not worth storing.
  */
-export async function runInstall(
-  ctx: Ctx,
-  grpId: number,
-  cmd: string,
-): Promise<{ ok: boolean; tail: string }> {
+export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<{ ok: boolean; tail: string }> {
   const seen: string[] = [];
   sandboxLog(ctx, grpId, "cmd", cmd);
   const stream = execLines(ctx, { grp: grpId }, cmd, {
@@ -131,9 +127,7 @@ export async function runInstall(
  */
 export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
   const grp = ctx.db
-    .query<{ project_id: number; branch: string | null }, [number]>(
-      "SELECT project_id, branch FROM grp WHERE id = ?",
-    )
+    .query<{ project_id: number; branch: string | null }, [number]>("SELECT project_id, branch FROM grp WHERE id = ?")
     .get(grpId);
   // No branch means the group has not started; `startGroup` owns that path and
   // is in the middle of it.
@@ -150,12 +144,16 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
   // The branch comes back off the remote, not out of a bundle the host kept:
   // `pushBranch` put it there at the last slice boundary, and `createCheckout`
   // checks it out when `ls-remote` finds it.
-  await createCheckout(ctx, { grp: grpId }, {
-    remote,
-    branch: grp.branch,
-    base: await baseRefFor(ctx, grp.project_id),
-    projectId: grp.project_id,
-  });
+  await createCheckout(
+    ctx,
+    { grp: grpId },
+    {
+      remote,
+      branch: grp.branch,
+      base: await baseRefFor(ctx, grp.project_id),
+      projectId: grp.project_id,
+    },
+  );
 
   const known = installFor(ctx, grp.project_id);
   if (known) {
@@ -192,10 +190,15 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
  */
 export async function detectProject(ctx: Ctx, grpId: number, projectId: number): Promise<void> {
   const cfg = projectConfig(ctx.db, projectId);
-  if (cfg.detected) return;
+  // Detection always writes both fields. A hand-edited/legacy `detected: true`
+  // cannot suppress it when its companion gate list did not pass the boundary.
+  if (cfg.detected === true && cfg.gates !== undefined) return;
 
   const ls = await execIn(ctx, { grp: grpId }, `ls -A ${shq(WORK)}`);
-  const names = ls.out.split("\n").map((s) => s.trim()).filter(Boolean);
+  const names = ls.out
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const files: Record<string, string> = {};
   for (const f of READS) {
     if (!names.includes(f)) continue;
@@ -241,7 +244,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
   const next = {
     ...cfg,
     detected: true,
-    gates: (cfg.gates as string[] | undefined)?.length ? cfg.gates : gates.map((g) => g.name),
+    gates: cfg.gates?.length ? cfg.gates : gates.map((g) => g.name),
     install: detectInstall(root),
     shared: detectShared(root),
   };
@@ -286,7 +289,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         const branch = `orch/${grp.name}`;
         const base = await baseRefFor(ctx, grp.project_id);
         await createCheckout(ctx, { grp: grpId }, { remote, branch, base, projectId: grp.project_id });
-              ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
+        ctx.db.run("UPDATE grp SET branch = ? WHERE id = ?", [branch, grpId]);
         ctx.bus.emit({
           grpId,
           author: "orchestrator",

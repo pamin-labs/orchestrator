@@ -2,6 +2,7 @@ import type { DB } from "../../db.ts";
 import { projectConfig } from "../util/rows.ts";
 import { GRP_STATES } from "../../states.ts";
 import { jsonOr } from "../util/text.ts";
+import { z } from "zod";
 
 /**
  * Which paths a group owns, decided before it starts.
@@ -33,13 +34,12 @@ export const DEFAULT_SHARED = [
 ];
 
 export function parseOwns(json: string | null): string[] {
-  const v = jsonOr<unknown>(json, null);
-  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  return jsonOr(json, z.array(z.string()), []);
 }
 
 export function sharedFor(db: DB, projectId: number): string[] {
   const shared = projectConfig(db, projectId).shared;
-  return Array.isArray(shared) ? [...DEFAULT_SHARED, ...shared] : DEFAULT_SHARED;
+  return shared ? [...DEFAULT_SHARED, ...shared] : DEFAULT_SHARED;
 }
 
 /** The fixed part of a glob, up to the first wildcard. */

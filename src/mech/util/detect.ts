@@ -16,6 +16,7 @@
 
 /** A repository root: what is in it, and the contents of the few files that matter. */
 import { jsonOr } from "./text.ts";
+import { z } from "zod";
 
 export interface Root {
   /** Names directly in the root, `ls -A`. */
@@ -53,8 +54,13 @@ interface PackageJson {
   workspaces?: unknown;
 }
 
+const PackageJsonSchema = z.object({
+  scripts: z.record(z.string(), z.string()).optional(),
+  workspaces: z.unknown().optional(),
+});
+
 const readJson = (repo: Root, name: string): PackageJson | null =>
-  jsonOr<PackageJson | null>(repo.read(name), null);
+  jsonOr(repo.read(name), PackageJsonSchema.nullable(), null);
 
 const hasFile = (repo: Root, name: string) => repo.names.includes(name);
 
@@ -151,9 +157,7 @@ const RULES: Rule[] = [
   {
     marker: (repo) => globExists(repo, /\.(sln|csproj)$/),
     install: () => "dotnet restore",
-    gates: () => [
-      { name: "test", template: "dotnet test --nologo", errorRegex: "(error|Failed!|\\s+Failed )" },
-    ],
+    gates: () => [{ name: "test", template: "dotnet test --nologo", errorRegex: "(error|Failed!|\\s+Failed )" }],
   },
   {
     marker: (repo) => hasFile(repo, "justfile") || hasFile(repo, "Justfile"),

@@ -32,7 +32,11 @@ function resource(db: DB, name: string, errorRegex = "^(error|FAIL)") {
 const fakeRun = (script: Record<string, { code: number; out: string }>) =>
   (async (def: ResourceDef, _args: any, opts: any) => {
     const r = script[def.name] ?? { code: 0, out: "" };
-    return { exitCode: r.code, digest: digestOutput(r.code, r.out, def.errorRegex, opts?.logPath), logPath: opts?.logPath };
+    return {
+      exitCode: r.code,
+      digest: digestOutput(r.code, r.out, def.errorRegex, opts?.logPath),
+      logPath: opts?.logPath,
+    };
   }) as any;
 
 const dataDir = () => mkdtempSync(join(tmpdir(), "orch-gate-"));
@@ -62,7 +66,8 @@ test("all gates passing is a pass", async () => {
     projectId: 1,
     cwd: "/tmp",
     dataDir: dataDir(),
-    sliceId: 1, exec: noExec,
+    sliceId: 1,
+    exec: noExec,
     run: fakeRun({ test: { code: 0, out: "2 pass" }, lint: { code: 0, out: "" } }),
   });
   expect(out.pass).toBe(true);
@@ -77,7 +82,8 @@ test("the first failure stops the run — later output would be noise", async ()
     projectId: 1,
     cwd: "/tmp",
     dataDir: dataDir(),
-    sliceId: 1, exec: noExec,
+    sliceId: 1,
+    exec: noExec,
     run: fakeRun({
       typecheck: { code: 2, out: "error TS2345: wrong type\nsomething else" },
       test: { code: 0, out: "would be misleading" },
@@ -97,7 +103,8 @@ test("feedback carries the failing lines, never the whole log", async () => {
     projectId: 1,
     cwd: "/tmp",
     dataDir: dataDir(),
-    sliceId: 1, exec: noExec,
+    sliceId: 1,
+    exec: noExec,
     run: fakeRun({ test: { code: 1, out: `${noise}\nFAIL test/mw.test.ts` } }),
   });
   expect(out.pass).toBe(false);
@@ -127,14 +134,15 @@ test("gate verdicts merge into gates_json without clobbering other layers", () =
   expect(gateState(db, 1)).toEqual({ self: "pass", gate: "pass" });
 });
 
-
 test("a project whose config lost a brace runs on defaults, not on nothing", () => {
   // Six readers each wrote out their own SELECT, `?? "{}"`, try and catch — and
   // the catch is the load-bearing part: config_json is edited by the panel and by
   // agents, so a broken value must cost this project its overrides and not its
   // gates, its excludes, its shared paths and its sandbox all at once.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p','/tmp/p',?,0)", ['{"gates":["test"'],);
+  db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p','/tmp/p',?,0)", [
+    '{"gates":["test"',
+  ]);
   expect(projectConfig(db, 1)).toEqual({});
   expect(gatesFor(db, 1)).toEqual([]);
 
@@ -145,7 +153,8 @@ test("a project whose config lost a brace runs on defaults, not on nothing", () 
   expect(projectConfig(db, 1)).toEqual({});
 
   db.run(`UPDATE project SET config_json = '{"gates":["test","lint",7]}' WHERE id = 1`);
-  expect(gatesFor(db, 1)).toEqual(["test", "lint"]);
+  expect(projectConfig(db, 1).gates).toBeUndefined();
+  expect(gatesFor(db, 1)).toEqual([]);
 
   // No project, no row, no config — never a throw, because every one of the six
   // is called from a path that has only a nullable project id.

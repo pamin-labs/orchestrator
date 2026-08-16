@@ -32,6 +32,15 @@ export type ArgSpec =
   | { type: "int"; min?: number; max?: number }
   | { type: "bool" };
 
+const ArgSpecSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("enum"), values: z.array(z.string()) }),
+  z.object({ type: z.literal("path"), root: z.string() }),
+  z.object({ type: z.literal("string"), pattern: z.string(), maxLength: z.number().int().positive().optional() }),
+  z.object({ type: z.literal("int"), min: z.number().optional(), max: z.number().optional() }),
+  z.object({ type: z.literal("bool") }),
+]);
+const ResourceArgs = z.record(z.string(), ArgSpecSchema);
+
 export interface ResourceDef {
   name: string;
   /** e.g. `bun test {file}` — tokenised, never handed to a shell. */
@@ -77,8 +86,13 @@ export function loadResource(db: DB, name: string): ResourceDef | null {
   const r = db
     .query<
       {
-        name: string; template: string; concurrency: number; arg_schema_json: string;
-        error_regex: string | null; cwd: string | null; tags_json: string | null;
+        name: string;
+        template: string;
+        concurrency: number;
+        arg_schema_json: string;
+        error_regex: string | null;
+        cwd: string | null;
+        tags_json: string | null;
       },
       [string]
     >("SELECT * FROM resource WHERE name = ?")
@@ -88,10 +102,10 @@ export function loadResource(db: DB, name: string): ResourceDef | null {
     name: r.name,
     template: r.template,
     concurrency: r.concurrency,
-    argSchema: jsonOr<ResourceDef["argSchema"]>(r.arg_schema_json, {}),
+    argSchema: jsonOr(r.arg_schema_json, ResourceArgs, {}),
     errorRegex: r.error_regex ?? undefined,
     cwd: r.cwd ?? undefined,
-    tags: jsonOr<string[]>(r.tags_json, []),
+    tags: jsonOr(r.tags_json, z.array(z.string()), []),
   };
 }
 
@@ -133,10 +147,7 @@ const PLACEHOLDER = /\{(\w+)\}/g;
  * must appear in the template. Both directions are checked so a typo cannot
  * silently drop or smuggle an argument.
  */
-export function resolveLease(
-  def: ResourceDef,
-  args: Record<string, unknown>,
-): Result<ResolvedCommand> {
+export function resolveLease(def: ResourceDef, args: Record<string, unknown>): Result<ResolvedCommand> {
   const tokens = tokenize(def.template);
   if (tokens.length === 0) return { ok: false, error: `resource ${def.name} has an empty template` };
 
@@ -209,9 +220,18 @@ function argSchema(name: string, spec: ArgSpec): z.ZodType<string> {
       if (spec.min !== undefined) bounded = bounded.min(spec.min, `${name} must be >= ${spec.min}`);
       if (spec.max !== undefined) bounded = bounded.max(spec.max, `${name} must be <= ${spec.max}`);
       return z
-        .union([z.number(), z.string().regex(/^-?\d+$/, `${name} must be an integer`).transform(Number)], {
-          error: `${name} must be an integer`,
-        })
+        .union(
+          [
+            z.number(),
+            z
+              .string()
+              .regex(/^-?\d+$/, `${name} must be an integer`)
+              .transform(Number),
+          ],
+          {
+            error: `${name} must be an integer`,
+          },
+        )
         .pipe(bounded)
         .transform(String);
     }
@@ -249,7 +269,9 @@ function argSchema(name: string, spec: ArgSpec): z.ZodType<string> {
 
 function validateArg(name: string, spec: ArgSpec, raw: unknown): { ok: true; value: string } | Invalid {
   const r = argSchema(name, spec).safeParse(raw);
-  return r.success ? { ok: true, value: r.data } : { ok: false, error: r.error.issues[0]?.message ?? `${name} is invalid` };
+  return r.success
+    ? { ok: true, value: r.data }
+    : { ok: false, error: r.error.issues[0]?.message ?? `${name} is invalid` };
 }
 
 export interface LeaseDigest {
@@ -269,12 +291,7 @@ const MAX_ERROR_LINES = 40;
  * A build log is megabytes; pasting it back would burn half a context window.
  * The agent gets three things and can fetch the rest with `orch lease log`.
  */
-export function digestOutput(
-  exitCode: number,
-  output: string,
-  errorRegex?: string,
-  logPath?: string,
-): LeaseDigest {
+export function digestOutput(exitCode: number, output: string, errorRegex?: string, logPath?: string): LeaseDigest {
   const lines = output.split("\n").map((l) => l.trimEnd());
   while (lines.length && lines.at(-1) === "") lines.pop();
 
@@ -298,9 +315,7 @@ export function digestOutput(
 
   const parts = [`exit ${exitCode}`];
   if (errorLines.length) parts.push(`\n## errors (${errorLines.length})\n${errorLines.join("\n")}`);
-  parts.push(
-    `\n## tail (${tail.length}${truncated ? ` of ${lines.length}` : ""} lines)\n${tail.join("\n")}`,
-  );
+  parts.push(`\n## tail (${tail.length}${truncated ? ` of ${lines.length}` : ""} lines)\n${tail.join("\n")}`);
   // The verb, not the path: `logPath` is on the orchestrator's disk and this text
   // is read inside a container, where that path does not exist. It was printed
   // next to the verb "for reference" and reads as something to open.

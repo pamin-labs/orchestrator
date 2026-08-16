@@ -122,7 +122,10 @@ test("token_count is the one place a real quota percentage arrives", async () =>
 
 test("the log keeps the shape of a turn without its command output", () => {
   const long = "x".repeat(5000);
-  const line = { type: "item.completed", item: { type: "command_execution", command: "bun test", aggregated_output: long } };
+  const line = {
+    type: "item.completed",
+    item: { type: "command_execution", command: "bun test", aggregated_output: long },
+  };
   const out = trimItem(line as Record<string, unknown>) as typeof line;
   expect(out.item.command).toBe("bun test");
   expect(out.item.aggregated_output.length).toBeLessThan(500);
@@ -137,6 +140,18 @@ test("the non-JSON banner does not derail the parse", async () => {
     expect(r.sessionId).toBe("019ff72d-e984-7053");
     expect(r.text).toBe("moved the check");
   }
+});
+
+test("JSON-shaped events with invalid fields are ignored instead of corrupting a turn", async () => {
+  const runner = fakeRunner([
+    JSON.stringify({ type: "thread.started", thread_id: "t" }),
+    JSON.stringify({ type: "turn.completed", usage: null }),
+    JSON.stringify({ type: "turn.completed", usage: { input_tokens: "12" } }),
+  ]);
+  const r = await runTurn({ stable, prompt: "x", cwd: "/tmp", runner });
+  expect(r.ok).toBe(false);
+  expect(r.terminalReason).toBe("no_result");
+  expect(r.usage).toEqual({ input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 });
 });
 
 test("usage maps onto the same shape the claude adapter produces", async () => {
@@ -189,8 +204,7 @@ test("an error item is a notice on the timeline, not a failed turn", async () =>
       type: "item.completed",
       item: {
         type: "error",
-        message:
-          "Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill.",
+        message: "Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill.",
       },
     }),
     JSON.stringify({

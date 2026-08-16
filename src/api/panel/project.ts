@@ -9,7 +9,8 @@ import { runInstall } from "../../mech/flow/start.ts";
 import { forgetProjectSkills } from "../../mech/skills.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { z } from "zod";
-import { errText, jsonOr } from "../../mech/util/text.ts";
+import { errText } from "../../mech/util/text.ts";
+import { projectConfig } from "../../mech/util/rows.ts";
 import { IdParams } from "../fields.ts";
 import { bad, json, text, type AgentHandler, type Handler } from "../shared.ts";
 import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
@@ -38,6 +39,12 @@ import { GateName } from "../../mech/gate.ts";
  */
 const InstallCommand = z.string().max(2000);
 const GateNames = z.array(GateName).max(40);
+const GithubRepo = z.object({
+  full_name: z.string(),
+  default_branch: z.string(),
+  clone_url: z.string(),
+  permissions: z.record(z.string(), z.boolean()).optional(),
+});
 
 /** The install command this project needs, or `none` for "it needs nothing". */
 export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.boolean().optional() });
@@ -45,16 +52,13 @@ export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.bool
 export const postSetup: AgentHandler<z.infer<typeof SetupBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "bootstrap") return bad(`${a.role} does not set this project up`);
   if (!a.grp_id) return bad("this agent has no group");
-  const grp = ctx.db
-    .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-    .get(a.grp_id);
+  const grp = ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(a.grp_id);
   if (!grp) return bad("this agent has no group");
 
   if (b.none) {
-    ctx.db.run(
-      "UPDATE project SET config_json = json_set(config_json, '$.install', json('null')) WHERE id = ?",
-      [grp.project_id],
-    );
+    ctx.db.run("UPDATE project SET config_json = json_set(config_json, '$.install', json('null')) WHERE id = ?", [
+      grp.project_id,
+    ]);
     ctx.bus.emit({ grpId: a.grp_id, author: a.role, kind: "state_change", body: "这个仓库不需要装什么" });
     return text("ok");
   }
@@ -98,12 +102,7 @@ export const postProject: Handler<z.infer<typeof ProjectBody>> = async (ctx, _re
 
   // Asked of GitHub rather than trusted from the browser: the default branch is
   // written into the row, and a wrong one is a group that branches off nothing.
-  const r = await ctx.gh.request<{
-    full_name: string;
-    default_branch: string;
-    clone_url: string;
-    permissions?: Record<string, boolean>;
-  }>("GET", `/repos/${want}`);
+  const r = await ctx.gh.request("GET", `/repos/${want}`, GithubRepo);
   if (!r.ok) return bad(r.message);
   const repoPath = r.data.full_name;
   const remote = r.data.clone_url;
@@ -338,10 +337,12 @@ export const ProjectConfigBody = z
   })
   .strict();
 
-export const patchProjectConfig: Handler<
-  z.infer<typeof ProjectConfigBody>,
-  z.infer<typeof IdParams>
-> = async (ctx, _req, params, data) => {
+export const patchProjectConfig: Handler<z.infer<typeof ProjectConfigBody>, z.infer<typeof IdParams>> = async (
+  ctx,
+  _req,
+  params,
+  data,
+) => {
   const id = params.id;
   const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
   if (!row) return text("no such project", 404);
@@ -359,9 +360,8 @@ export const patchProjectConfig: Handler<
   if ((!parsed || typeof parsed !== "object" || Array.isArray(parsed)) && changesConfig) {
     return bad("项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置");
   }
-  const current = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : {};
+  const current =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   if (changesConfig) {
     for (const [k, v] of Object.entries(patch)) {
       if (v === null) delete current[k];
@@ -398,13 +398,12 @@ export const patchProjectConfig: Handler<
 
 export const getProjectConfig: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
   const row = ctx.db
-    .query<{ config_json: string; repo_path: string; base_branch: string | null }, [number]>(
-      "SELECT config_json, repo_path, base_branch FROM project WHERE id = ?",
+    .query<{ repo_path: string; base_branch: string | null }, [number]>(
+      "SELECT repo_path, base_branch FROM project WHERE id = ?",
     )
     .get(params.id);
   if (!row) return text("no such project", 404);
-  const parsed = jsonOr<unknown>(row.config_json, null);
-  const config = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  const config = projectConfig(ctx.db, params.id);
   const resources = ctx.db
     .query<{ name: string; template: string }, []>("SELECT name, template FROM resource ORDER BY name")
     .all();

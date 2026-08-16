@@ -9,7 +9,17 @@ import { route } from "../flow/chain.ts";
 import { runInvariants } from "./invariants.ts";
 import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
 import { CODEX_HOME } from "../sandbox/auth.ts";
-import { execIn, killSandbox, renewSandbox, restartServer, runningServer, UTIL, utilSandbox, WORK, type Scope } from "../sandbox/sandbox.ts";
+import {
+  execIn,
+  killSandbox,
+  renewSandbox,
+  restartServer,
+  runningServer,
+  UTIL,
+  utilSandbox,
+  WORK,
+  type Scope,
+} from "../sandbox/sandbox.ts";
 import { baseBranch, baseRefFor, listTree, sandboxGit, treeHeads } from "../git/checkout.ts";
 import { serverLogPath } from "../sandbox/server.ts";
 import { join } from "node:path";
@@ -20,12 +30,8 @@ import { HEAD_CHARS } from "../knowledge/pageindex.ts";
 import { resumeReclaimed, type Job } from "../../scheduler.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { probe } from "../sandbox/net.ts";
-import {
-  ACTIVE_JOB_STATES,
-  DISPATCHABLE_GRP_STATES,
-  ESCALATION_TERMINAL_STATES,
-  stateParam,
-} from "../../states.ts";
+import { z } from "zod";
+import { ACTIVE_JOB_STATES, DISPATCHABLE_GRP_STATES, ESCALATION_TERMINAL_STATES, stateParam } from "../../states.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.
@@ -128,7 +134,6 @@ export const serverBackoffMs = (attempt: number): number => 30_000 * 4 ** (attem
 
 /** Projects already told about, so the repo-map failure is said once, not per tick. */
 const mapWarned = new Set<number>();
-
 
 /**
  * Backstop, and a shorter shelf life.
@@ -280,8 +285,7 @@ function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
       grpId: q.id,
       severity: q.behind > 0 ? "blocker" : "advisory",
       body:
-        `${q.name} 的 PR 排在队首 ${hours(now - q.at)} 小时了` +
-        (q.behind > 0 ? `，后面还堵着 ${q.behind} 个` : ""),
+        `${q.name} 的 PR 排在队首 ${hours(now - q.at)} 小时了` + (q.behind > 0 ? `，后面还堵着 ${q.behind} 个` : ""),
     });
   }
   return out;
@@ -343,18 +347,24 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
     // The findings collected before the throw go with it: `rules` emits at its
     // end and never got there, so without this they are returned to a caller
     // and never reach the feed.
-    return emit(deps.ctx, [...findings, {
-      rule: "watchdog_broke",
-      grpId: null,
-      severity: "blocker",
-      body:
-        `看门狗这一轮挂了，后面的规则都没跑：${errText(e)}\n` +
-        `每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙盒、` +
-        `基线变了要 rebase、等你决定的计时）都停在原地。`,
-    }], deps.now ?? (() => Date.now()));
+    return emit(
+      deps.ctx,
+      [
+        ...findings,
+        {
+          rule: "watchdog_broke",
+          grpId: null,
+          severity: "blocker",
+          body:
+            `看门狗这一轮挂了，后面的规则都没跑：${errText(e)}\n` +
+            `每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙盒、` +
+            `基线变了要 rebase、等你决定的计时）都停在原地。`,
+        },
+      ],
+      deps.now ?? (() => Date.now()),
+    );
   }
 }
-
 
 /**
  * One rule, isolated.
@@ -642,9 +652,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // the thing seven groups were each rediscovering by grep.
   await step("7e", findings, async () => {
     for (const p of ctx.db
-      .query<{ id: number; repo_path: string; remote: string | null }, []>(
-        "SELECT id, repo_path, remote FROM project",
-      )
+      .query<{ id: number; repo_path: string; remote: string | null }, []>("SELECT id, repo_path, remote FROM project")
       .all()) {
       const { files, why } = p.remote
         ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
@@ -682,7 +690,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       // rediscovering by grep. It is no longer a *silent* answer: the count is
       // in the line below.
       const heads = await treeHeads(ctx, { project: p.id }, HEAD_CHARS).catch(() => new Map<string, string>());
-      const named = buildMap(p.repo_path, () => files, indexExcludes(ctx.db, p.id), (rel) => heads.get(rel));
+      const named = buildMap(
+        p.repo_path,
+        () => files,
+        indexExcludes(ctx.db, p.id),
+        (rel) => heads.get(rel),
+      );
       if (saveMap(ctx.db, p.id, renderMap(named))) {
         ctx.bus.emit({
           author: "librarian",
@@ -726,8 +739,8 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       // "The Engineer could not rebase this branch onto main" eight times, all eight
       // false, and its Architect burned a turn refuting each one. A turn that ended
       // `done` is a stall — that is the branch below, and it was always the right one.
-      const payload = jsonOr<Record<string, unknown>>(j.payload_json, {});
-      if (payload.conflict && j.state === "failed") {
+      const payload = jsonOr(j.payload_json, z.object({ conflict: z.boolean().optional() }).passthrough(), {});
+      if (payload.conflict === true && j.state === "failed") {
         ctx.sched.enqueue("agent_turn", {
           grp_id: j.grp_id,
           priority: 6,
@@ -820,7 +833,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       });
       // Rule 8 above requeues a live group with an empty queue, so the turn itself
       // comes from there — this only has to make the group live again.
-      findings.push({ rule: "unblocked", grpId: g.id, severity: "advisory", body: t("group.unblocked", { target: String(g.blocked_on) }) });
+      findings.push({
+        rule: "unblocked",
+        grpId: g.id,
+        severity: "advisory",
+        body: t("group.unblocked", { target: String(g.blocked_on) }),
+      });
     }
   });
 
@@ -923,9 +941,10 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       // which is the case a local `rev-parse` could never see.
       const baseRef = await baseRefFor(ctx, g.project_id);
       const branch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : baseRef;
-      const head = await ctx.gh?.request<{ commit?: { sha?: string } }>(
+      const head = await ctx.gh?.request(
         "GET",
         `/repos/${g.repo}/branches/${branch}`,
+        z.object({ commit: z.object({ sha: z.string().optional() }).optional() }),
       );
       const sha = head?.ok ? (head.data?.commit?.sha ?? "") : "";
       if (!sha || sha === g.seen) continue;
@@ -1271,7 +1290,10 @@ export function holdForOffline(ctx: Ctx, now: number): number {
   ctx.db.run("UPDATE agent SET state = 'idle' WHERE state = 'running'");
   // `resumeReclaimed` exempts an `offline:` error from the one-retry rule for the
   // same reason it exempts `orphaned:`: the turn did nothing wrong.
-  return resumeReclaimed(ctx.sched, running.map((j) => ({ ...j, state: "cancelled" as const, error: "offline: the host lost its network" })));
+  return resumeReclaimed(
+    ctx.sched,
+    running.map((j) => ({ ...j, state: "cancelled" as const, error: "offline: the host lost its network" })),
+  );
 }
 
 /**

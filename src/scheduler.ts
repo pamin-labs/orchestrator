@@ -4,14 +4,7 @@ import { isDispatchableGrpState, type GrpState, type JobState } from "./states.t
 
 export type { JobState } from "./states.ts";
 
-export type JobKind =
-  | "agent_turn"
-  | "lease"
-  | "watchdog"
-  | "digest"
-  | "notify"
-  | "gate"
-  | "reconcile";
+export type JobKind = "agent_turn" | "lease" | "watchdog" | "digest" | "notify" | "gate" | "reconcile";
 
 export interface Job {
   id: number;
@@ -373,9 +366,8 @@ export class Scheduler {
    */
   private credentialMissing(job: Job): boolean {
     const runtime = job.agent_id
-      ? (this.db
-          .query<{ runtime: string }, [number]>("SELECT runtime FROM agent WHERE id = ?")
-          .get(job.agent_id)?.runtime ?? null)
+      ? (this.db.query<{ runtime: string }, [number]>("SELECT runtime FROM agent WHERE id = ?").get(job.agent_id)
+          ?.runtime ?? null)
       : null;
     const n = runtime
       ? this.db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM runtime_auth WHERE runtime = ?").get(runtime)
@@ -435,10 +427,10 @@ export class Scheduler {
   }
 
   private start(job: Job): void {
-    const claimed = this.db.run(
-      "UPDATE job SET state = 'running', started_at = ? WHERE id = ? AND state = 'pending'",
-      [this.now(), job.id],
-    );
+    const claimed = this.db.run("UPDATE job SET state = 'running', started_at = ? WHERE id = ? AND state = 'pending'", [
+      this.now(),
+      job.id,
+    ]);
     if (claimed.changes === 0) return; // someone else took it
 
     const p = this.exec({ ...job, state: "running" })
@@ -531,10 +523,11 @@ export function reclaimOrphans(
     const why = tooOld
       ? `orphaned: still running after ${Math.round(maxAge / 60000)} min`
       : "orphaned: nothing is reading this turn any more";
-    db.run(
-      `UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = 'running'`,
-      [now(), why, j.id],
-    );
+    db.run(`UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = 'running'`, [
+      now(),
+      why,
+      j.id,
+    ]);
     // The reason travels with the row: resumeReclaimed reads it to tell a turn that
     // died of its own doing from one the server took down on its way out.
     reclaimed.push({ ...j, state: "failed", error: why });

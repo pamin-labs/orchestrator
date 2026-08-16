@@ -11,6 +11,7 @@ import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
 import { raise } from "./escalate.ts";
 import type { SliceState } from "../../states.ts";
+import { z } from "zod";
 
 /**
  * Slice-level review, in the one order that makes sense.
@@ -72,7 +73,7 @@ export async function runDeterministicReview(
       "SELECT claim_json FROM task WHERE slice_id = ? AND status = 'done'",
     )
     .all(sliceId)
-    .map((r) => jsonOr(r.claim_json, r.claim_json ?? null));
+    .map((r) => jsonOr(r.claim_json, z.unknown(), r.claim_json ?? null));
 
   let changed: string[] = [];
   let absent: string[] = [];
@@ -162,10 +163,9 @@ export async function runDeterministicReview(
  * before rewriting.
  */
 export function reopenTasks(ctx: Ctx, sliceId: number): void {
-  ctx.db.run(
-    "UPDATE task SET status = 'pending', owner_agent_id = NULL WHERE slice_id = ? AND status = 'done'",
-    [sliceId],
-  );
+  ctx.db.run("UPDATE task SET status = 'pending', owner_agent_id = NULL WHERE slice_id = ? AND status = 'done'", [
+    sliceId,
+  ]);
 }
 
 /**
@@ -277,7 +277,12 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
   // layer, not the first three. It is announced, never silent: an acceptance
   // nobody can see is indistinguishable from one that did not happen.
   if ((ctx.config?.autoAcceptTiers ?? []).includes(slice.difficulty)) {
-    acceptSlice(ctx, sliceId, "orchestrator", say(ctx.config?.language, "slice.autoaccept", { tier: slice.difficulty }));
+    acceptSlice(
+      ctx,
+      sliceId,
+      "orchestrator",
+      say(ctx.config?.language, "slice.autoaccept", { tier: slice.difficulty }),
+    );
     return;
   }
 
@@ -416,13 +421,12 @@ export function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
     `Gates: ${sl.gates_json}\n` +
     (decisions.length ? `What it settled:\n${decisions.map((d) => `- ${d}`).join("\n")}` : "");
 
-  ctx.db.run(
-    "INSERT INTO note (grp_id, slice_id, kind, body, at) VALUES (?, ?, 'handoff', ?, unixepoch() * 1000)",
-    [grpId, sliceId, body],
-  );
+  ctx.db.run("INSERT INTO note (grp_id, slice_id, kind, body, at) VALUES (?, ?, 'handoff', ?, unixepoch() * 1000)", [
+    grpId,
+    sliceId,
+    body,
+  ]);
 }
-
-
 
 /**
  * PR-level review, run once every slice has been accepted by the boss.
@@ -553,8 +557,8 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
 function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string): boolean {
   const { ctx, cfg } = deps;
   const n =
-    (ctx.db.query<{ pr_retries: number }, [number]>("SELECT pr_retries FROM grp WHERE id = ?").get(grpId)
-      ?.pr_retries ?? 0) + 1;
+    (ctx.db.query<{ pr_retries: number }, [number]>("SELECT pr_retries FROM grp WHERE id = ?").get(grpId)?.pr_retries ??
+      0) + 1;
   ctx.db.run("UPDATE grp SET pr_retries = ? WHERE id = ?", [n, grpId]);
   if (n <= cfg.gateRetries) return false;
 

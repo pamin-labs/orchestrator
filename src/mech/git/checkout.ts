@@ -1,4 +1,5 @@
 import { errText, tail } from "../util/text.ts";
+import { z } from "zod";
 import type { Ctx } from "../../ctx.ts";
 import { execIn, execLines, getBytes, putBytes, SKILL_SYNC, UTIL, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
@@ -6,6 +7,13 @@ import { cacheProjectSkills } from "../skills.ts";
 import { shq } from "../util/shq.ts";
 import type { GitRunner } from "./worktree.ts";
 import { commitIdentity } from "./ghlogin.ts";
+
+const Repo = z.object({
+  default_branch: z.string().optional(),
+  full_name: z.string().optional(),
+  clone_url: z.string().optional(),
+});
+const Branches = z.array(z.object({ name: z.string() }));
 
 /**
  * A group's code, inside its sandbox.
@@ -55,10 +63,7 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
   // rebase and diff resolving against a ref that is not there — and the request
   // is free once cached: the shared client sends `If-None-Match`, and a 304
   // does not count against the rate limit.
-  const r = await ctx.gh?.request<{ default_branch?: string; full_name?: string; clone_url?: string }>(
-    "GET",
-    `/repos/${row.repo_path}`,
-  );
+  const r = await ctx.gh?.request("GET", `/repos/${row.repo_path}`, Repo);
   // The same answer says what the repository is called, and a rename or a
   // transfer on github.com is the other thing that goes stale here. This is the
   // only request that runs on every path — every diff, every group start, every
@@ -125,8 +130,8 @@ export async function listBranches(ctx: Ctx, projectId: number): Promise<string[
     .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
     .get(projectId)?.repo_path;
   if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return [];
-  const r = await ctx.gh?.request<{ name: string }[]>("GET", `/repos/${repo}/branches?per_page=100`);
-  if (!r?.ok || !Array.isArray(r.data)) return [];
+  const r = await ctx.gh?.request("GET", `/repos/${repo}/branches?per_page=100`, Branches);
+  if (!r?.ok) return [];
   return r.data.map((b) => b.name).filter(Boolean);
 }
 
@@ -297,12 +302,9 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
   // second place to keep in step. Falls back to the old literal when nothing is
   // connected yet — a checkout still has to work before GitHub does.
   const who = await commitIdentity(ctx);
-  await execIn(
-    ctx,
-    scope,
-    `git config user.name ${shq(who.name)} && git config user.email ${shq(who.email)}`,
-    { cwd: WORK },
-  );
+  await execIn(ctx, scope, `git config user.name ${shq(who.name)} && git config user.email ${shq(who.email)}`, {
+    cwd: WORK,
+  });
 
   // codex reads AGENTS.md where claude reads CLAUDE.md: same instructions, two
   // names. Linked rather than copied so editing one cannot leave a stale twin,
@@ -526,7 +528,10 @@ export async function listTree(
   if (r.code !== 0) {
     return { files: [], why: `git ls-tree ${ref} exited ${r.code}: ${(r.out || "no output").trim().slice(-300)}` };
   }
-  const files = r.out.split("\n").map((l) => l.trim()).filter(Boolean);
+  const files = r.out
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   return { files, why: files.length ? null : `${ref} lists no files — an empty repository, or the wrong ref` };
 }
 
@@ -723,10 +728,14 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
   if (!project) return report(`项目不在了（project ${grp.project_id} 查不到）`);
   const remote = remoteFor(ctx, grp.project_id);
   if (!remote) return report(`project ${grp.project_id} 没记下 remote，无从 clone`);
-  await createCheckout(ctx, { grp: grpId }, {
-    remote,
-    branch: grp.branch ?? `orch/${grp.name}`,
-    base: await baseRefFor(ctx, grp.project_id),
-    projectId: grp.project_id,
-  });
+  await createCheckout(
+    ctx,
+    { grp: grpId },
+    {
+      remote,
+      branch: grp.branch ?? `orch/${grp.name}`,
+      base: await baseRefFor(ctx, grp.project_id),
+      projectId: grp.project_id,
+    },
+  );
 }

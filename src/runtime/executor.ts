@@ -12,7 +12,7 @@ import { listSkills, projectSkills, readSkillIn } from "../mech/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
 import { loadResource, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, porcelainPaths, STATUS_Z } from "../mech/git/worktree.ts";
-import { lessonsFor } from "../api/orch/report.ts";
+import { lessonsFor } from "../mech/knowledge/lessons.ts";
 import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { gitTrailers } from "../mech/git/ghlogin.ts";
@@ -34,6 +34,7 @@ import { clip, errText, jsonOr } from "../mech/util/text.ts";
 import { hold } from "../mech/flow/intercept.ts";
 import { raise } from "../mech/flow/escalate.ts";
 import { ACTIVE_JOB_STATES, stateParam, type SliceState } from "../states.ts";
+import { z } from "zod";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -58,6 +59,23 @@ export interface ExecDeps {
   roles: Map<string, RoleDef>;
   /** Injectable for tests; defaults to whichever provider the role names. */
   runTurn?: Provider["run"];
+}
+
+const JsonRecord = z.record(z.string(), z.unknown());
+const Id = z.number().int().positive();
+const Sequence = z.number().int().nonnegative();
+const Mail = z.object({
+  from: z.string(),
+  from_group: Id.nullable().optional(),
+  intent: z.string(),
+  body: z.string(),
+});
+const Boundary = z.union([Id, z.array(z.object({ id: Id, name: z.string(), idea: z.string().optional() }))]);
+const Digest = z.object({ channel_id: Id, from: Sequence, to: Sequence });
+
+/** Persisted JSON is untrusted: malformed job rows must not become control data. */
+function jsonRecord(s: string | null | undefined): Record<string, unknown> {
+  return jsonOr(s, JsonRecord, {});
 }
 
 interface AgentRow {
@@ -107,20 +125,22 @@ export function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
     const a = ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(job.agent_id);
     if (a) return a;
   }
-  const payload = jsonOr<Record<string, unknown>>(job.payload_json, {});
-  const roleName = String(payload.role ?? "engineer");
+  const payload = jsonRecord(job.payload_json);
+  const role = z.string().safeParse(payload.role);
+  const roleName = role.success ? role.data : "engineer";
   const existing = ctx.db
     .query<AgentRow, [number | null, string]>(
       `${SELECT_AGENT_BASE} WHERE grp_id IS ? AND role = ? AND state != 'retired'`,
     )
     .get(job.grp_id, roleName);
   if (existing) return existing;
-  let payloadProject = payload.project_id ? Number(payload.project_id) : null;
-  if (!payloadProject && payload.audit) {
+  const project = Id.safeParse(payload.project_id);
+  let payloadProject = project.success ? project.data : null;
+  const audit = Id.safeParse(payload.audit);
+  if (!payloadProject && audit.success) {
     payloadProject =
-      ctx.db
-        .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-        .get(Number(payload.audit))?.project_id ?? null;
+      ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(audit.data)
+        ?.project_id ?? null;
   }
   return hire(deps, job.grp_id, roleName, job.slice_id, payloadProject);
 }
@@ -184,27 +204,20 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
 
   const grp = job.grp_id
     ? ctx.db
-        .query<
-          { id: number; name: string; project_id: number; branch: string | null; owns_json: string },
-          [number]
-        >("SELECT id, name, project_id, branch, owns_json FROM grp WHERE id = ?")
+        .query<{ id: number; name: string; project_id: number; branch: string | null; owns_json: string }, [number]>(
+          "SELECT id, name, project_id, branch, owns_json FROM grp WHERE id = ?",
+        )
         .get(job.grp_id)
     : null;
   const project = grp
-    ? ctx.db
-        .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-        .get(grp.project_id)
+    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(grp.project_id)
     : null;
 
   const standingRepo = agent.grp_id
     ? null
     : (ctx.db
-        .query<{ repo_path: string }, [number | null]>(
-          "SELECT repo_path FROM project WHERE id = ?",
-        )
-        .get(
-          projectOfAgent(ctx.db, agent.id),
-        )?.repo_path ?? null);
+        .query<{ repo_path: string }, [number | null]>("SELECT repo_path FROM project WHERE id = ?")
+        .get(projectOfAgent(ctx.db, agent.id))?.repo_path ?? null);
   // Always the sandbox's own checkout. There is no host path a turn can run in
   // any more, which is the point: nothing an agent does touches this machine.
   const cwd = WORK;
@@ -224,7 +237,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     ? "hash"
     : overTokenBudget(agent, cfg)
       ? "budget"
-      : jsonOr<Record<string, unknown>>(job.payload_json, {}).rotate
+      : jsonRecord(job.payload_json).rotate === true
         ? "explicit"
         : !agent.session_id
           ? "new"
@@ -328,17 +341,47 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
         },
       },
       {
-        onText: (t) => ctx.bus.live({ grpId: job.grp_id, projectId: agent.project_id ?? null, agentId: agent.id, role: agent.role, kind: "text", body: t }),
+        onText: (t) =>
+          ctx.bus.live({
+            grpId: job.grp_id,
+            projectId: agent.project_id ?? null,
+            agentId: agent.id,
+            role: agent.role,
+            kind: "text",
+            body: t,
+          }),
         onThinking: (t) =>
-          ctx.bus.live({ grpId: job.grp_id, projectId: agent.project_id ?? null, agentId: agent.id, role: agent.role, kind: "thinking", body: t }),
+          ctx.bus.live({
+            grpId: job.grp_id,
+            projectId: agent.project_id ?? null,
+            agentId: agent.id,
+            role: agent.role,
+            kind: "thinking",
+            body: t,
+          }),
         onTool: (t) => {
           // A name with no detail is the streaming placeholder; overwriting a good
           // line with "Bash" makes the desk wall less informative, not more.
           if (t.detail === t.name) return;
           ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [t.detail, agent.id]);
-          ctx.bus.live({ grpId: job.grp_id, projectId: agent.project_id ?? null, agentId: agent.id, role: agent.role, kind: "tool", body: t.detail });
+          ctx.bus.live({
+            grpId: job.grp_id,
+            projectId: agent.project_id ?? null,
+            agentId: agent.id,
+            role: agent.role,
+            kind: "tool",
+            body: t.detail,
+          });
         },
-        onStatus: (s) => ctx.bus.live({ grpId: job.grp_id, projectId: agent.project_id ?? null, agentId: agent.id, role: agent.role, kind: "status", body: s }),
+        onStatus: (s) =>
+          ctx.bus.live({
+            grpId: job.grp_id,
+            projectId: agent.project_id ?? null,
+            agentId: agent.id,
+            role: agent.role,
+            kind: "status",
+            body: s,
+          }),
         onAbort: (stop) => track(job.id, stop),
       },
     );
@@ -448,10 +491,8 @@ function checkpointLabel(ctx: Ctx, job: Job): string {
          AND state IN ('done', 'failed', 'cancelled') ORDER BY id DESC LIMIT 1`,
     )
     .get(job.grp_id!);
-  let role = "agent";
-  try {
-    role = String(JSON.parse(prev?.payload_json ?? "{}").role ?? role);
-  } catch {}
+  const parsedRole = z.string().safeParse(jsonRecord(prev?.payload_json).role);
+  const role = parsedRole.success ? parsedRole.data : "agent";
   const sliceId = prev?.slice_id ?? null;
   const seq = sliceId
     ? ctx.db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(sliceId)?.seq
@@ -525,20 +566,27 @@ async function buildDeltaFor(
   scope: Scope,
 ): Promise<Delta> {
   const { ctx } = deps;
-  const payload = jsonOr<Record<string, unknown>>(job.payload_json, {});
+  const payload = jsonRecord(job.payload_json);
   const delta: Delta = {};
+  const invalid: string[] = [];
+  const field = <T>(key: string, schema: z.ZodType<T>) => {
+    const parsed = schema.safeParse(payload[key]);
+    if (payload[key] !== undefined && !parsed.success) invalid.push(key);
+    return parsed;
+  };
 
-  if (payload.escalation) {
+  const escalation = field("escalation", Id);
+  if (escalation.success) {
     const esc = ctx.db
       .query<{ id: number; question: string; severity: string; agent_id: number | null }, [number]>(
         "SELECT id, question, severity, agent_id FROM escalation WHERE id = ?",
       )
-      .get(Number(payload.escalation));
+      .get(escalation.data);
     if (esc) {
       const asker =
         esc.agent_id !== null
-          ? (ctx.db.query<{ role: string }, [number]>("SELECT role FROM agent WHERE id = ?").get(esc.agent_id)
-              ?.role ?? "someone")
+          ? (ctx.db.query<{ role: string }, [number]>("SELECT role FROM agent WHERE id = ?").get(esc.agent_id)?.role ??
+            "someone")
           : "someone";
       delta.card =
         `${asker} is blocked and asked (severity ${esc.severity}):\n${esc.question}\n\n` +
@@ -547,8 +595,9 @@ async function buildDeltaFor(
         `not sure — a guess becomes a premise the whole group then reasons from.`;
     }
   }
-  if (payload.mail) {
-    const m = payload.mail as Record<string, unknown>;
+  const mail = field("mail", Mail);
+  if (mail.success) {
+    const m = mail.data;
     const grpNote = m.from_group ? ` (group ${m.from_group})` : "";
     delta.card =
       `${m.from}${grpNote} sent you a "${m.intent}":\n${m.body}\n\n` +
@@ -558,10 +607,11 @@ async function buildDeltaFor(
           ' --intent inform "…"`. If it needs a decision above your level, pass it up.'
         : "");
   }
-  if (payload.boundary) {
-    const groups = Array.isArray(payload.boundary)
-      ? (payload.boundary as Array<{ id: number; name: string; idea?: string }>)
-      : [{ id: Number(payload.boundary), name: String(payload.boundary), idea: undefined }];
+  const boundary = field("boundary", Boundary);
+  if (boundary.success) {
+    const groups = Array.isArray(boundary.data)
+      ? boundary.data
+      : [{ id: boundary.data, name: String(boundary.data), idea: undefined }];
     delta.card =
       `This project now has more than one live group, so every one of them needs a path ` +
       `boundary before work is planned inside it. Cut all of them now — each group's own ` +
@@ -578,22 +628,25 @@ async function buildDeltaFor(
       `groups cannot run in parallel, so make them disjoint. Shared files (manifests, ` +
       `lockfiles, schemas, CI config) belong to no group — leave them out.`;
   }
-  if (payload.audit) {
-    const gid = Number(payload.audit);
-    const branch = payload.audit_branch ? String(payload.audit_branch) : null;
+  const audit = field("audit", Id);
+  if (audit.success) {
+    const gid = audit.data;
+    const branch = field("audit_branch", z.string());
+    const auditGroup = field("audit_group", z.string());
     delta.card =
-      `Audit group ${payload.audit_group ?? gid} (group_id ${gid}) before the boss merges it.\n` +
-      (branch
-        ? `Its branch is ${branch}; you are in the main checkout, so read it with ` +
-          `\`git diff main...${branch}\` and \`git log main..${branch}\`.\n`
+      `Audit group ${auditGroup.success ? auditGroup.data : gid} (group_id ${gid}) before the boss merges it.\n` +
+      (branch.success
+        ? `Its branch is ${branch.data}; you are in the main checkout, so read it with ` +
+          `\`git diff main...${branch.data}\` and \`git log main..${branch.data}\`.\n`
         : "") +
       `Coverage against the DRAFT card, architectural consistency, and whether the journals ` +
       `describe what the diff does. Do NOT re-check what the gate covered.\n\n` +
       `File your verdict with exactly:\n` +
       `  orch audit ${gid} --verdict pass|fail --note "what is missing or inconsistent"`;
   }
-  if (payload.scribe) {
-    const gid = Number(payload.scribe);
+  const scribe = field("scribe", Id);
+  if (scribe.success) {
+    const gid = scribe.data;
     // The base is named rather than left to the agent to work out: it is
     // `origin/main` on most repositories and something else on the ones where
     // guessing it produces a diff of the whole history.
@@ -615,35 +668,43 @@ async function buildDeltaFor(
       `subject has no type prefix, runs past 72 characters, ends in a full stop, or ` +
       `either half is not English. A refusal is not the end of your turn — fix it and send it again.`;
   }
-  if (payload.digest && typeof payload.digest === "object") {
-    const d = payload.digest as { channel_id?: number; from?: number; to?: number };
+  const digest = field("digest", Digest);
+  if (digest.success) {
+    const d = digest.data;
     const rows = ctx.db
       .query<{ seq: number; author: string; body: string }, [number, number, number]>(
         `SELECT seq, author, body FROM event
          WHERE channel_id = ? AND seq > ? AND seq <= ? AND kind IN ('say','boss_say','note','escalation')
          ORDER BY seq LIMIT 400`,
       )
-      .all(d.channel_id ?? 0, d.from ?? 0, d.to ?? 0);
+      .all(d.channel_id, d.from, d.to);
     delta.card =
       `Compress this channel backlog so nobody has to read it again. ${rows.length} events, ` +
       `seq ${d.from}..${d.to}.\n\n` +
       `File ONE note: \`orch journal add --kind journal -\`, at most 6 lines, covering what was ` +
       `decided, what is still open, and anything a later turn must not re-litigate. Names and ` +
       `file paths verbatim; drop the pleasantries.\n\n` +
-      rows.map((r) => `[${r.seq}] ${r.author}: ${r.body}`).join("\n").slice(0, 20_000);
+      rows
+        .map((r) => `[${r.seq}] ${r.author}: ${r.body}`)
+        .join("\n")
+        .slice(0, 20_000);
   }
-  if (Array.isArray(payload.sediment)) {
+  const sediment = field("sediment", z.array(z.string()));
+  if (sediment.success) {
     delta.card =
-      `The boss has said the same thing ${payload.sediment.length} times now, to different groups. ` +
+      `The boss has said the same thing ${sediment.data.length} times now, to different groups. ` +
       `A fact attached to one group is invisible to the next, so this has to become a project rule.\n\n` +
-      payload.sediment.map((t: unknown, i: number) => `${i + 1}. ${String(t)}`).join("\n") +
+      sediment.data.map((t, i) => `${i + 1}. ${t}`).join("\n") +
       `\n\nWrite ONE rule with \`orch journal add --kind lesson -\` — at most 6 lines, phrased as an ` +
       `instruction a later group can follow without knowing this history ("QA 必须…", not "老板不满意…"). ` +
       `If these are not actually the same complaint, say so with \`orch mail cos --intent note\` and write nothing.`;
   }
-  if (payload.idea) delta.card = `The boss wants: ${payload.idea}`;
-  if (payload.respec) delta.rejection = `The boss sent the DRAFT back: ${payload.respec}`;
-  if (payload.rejection) delta.rejection = String(payload.rejection);
+  const idea = field("idea", z.string());
+  const respec = field("respec", z.string());
+  const rejection = field("rejection", z.string());
+  if (idea.success) delta.card = `The boss wants: ${idea.data}`;
+  if (respec.success) delta.rejection = `The boss sent the DRAFT back: ${respec.data}`;
+  if (rejection.success) delta.rejection = rejection.data;
 
   if (job.slice_id) {
     const s = ctx.db
@@ -663,16 +724,14 @@ async function buildDeltaFor(
           `  orch review ${job.slice_id} --verdict pass|fail --note "one line per criterion"`;
       }
     }
-  } else if (job.grp_id && !payload.idea) {
+  } else if (job.grp_id && !idea.success) {
     const slices = ctx.db
       .query<{ seq: number; title: string; status: SliceState; difficulty: string }, [number]>(
         "SELECT seq, title, status, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
       )
       .all(job.grp_id);
     if (slices.length) {
-      delta.card = slices
-        .map((s) => `S${s.seq} [${s.difficulty}] ${s.title} — ${s.status}`)
-        .join("\n");
+      delta.card = slices.map((s) => `S${s.seq} [${s.difficulty}] ${s.title} — ${s.status}`).join("\n");
     }
   }
 
@@ -692,7 +751,8 @@ async function buildDeltaFor(
   // Skill text, read off the host for this turn only. The names travelled on the
   // payload; the bodies are not stored anywhere, so editing a SKILL.md takes effect
   // on the next turn that asks for it.
-  const wanted = Array.isArray(payload.skills) ? payload.skills.map(String) : [];
+  const skills = field("skills", z.array(z.string()));
+  const wanted = skills.success ? skills.data : [];
   if (wanted.length) {
     const row = ctx.db
       .query<{ repo_path: string; project_id: number }, [number | null]>(
@@ -705,9 +765,9 @@ async function buildDeltaFor(
     // A project skill's file exists only in this scope's container, so the read
     // goes back through the files API rather than at this machine's filesystem.
     if (found.length) {
-      delta.skills = (
-        await Promise.all(found.map((s) => readSkillIn((path) => getFile(ctx, scope, path), s)))
-      ).join("\n\n");
+      delta.skills = (await Promise.all(found.map((s) => readSkillIn((path) => getFile(ctx, scope, path), s)))).join(
+        "\n\n",
+      );
     }
   }
 
@@ -717,13 +777,14 @@ async function buildDeltaFor(
   // it happened twice (a mailed message, then a boundary request) and both times
   // the agent improvised something reasonable-looking and did not do the job.
   const unhandled = Object.keys(payload).filter((k) => !PAYLOAD_KEYS.has(k));
-  if (unhandled.length) {
+  const missing = [...unhandled, ...invalid.map((k) => `${k} (invalid)`)];
+  if (missing.length) {
     ctx.bus.emit({
       grpId: job.grp_id,
       author: "orchestrator",
       kind: "state_change",
-      body: `job ${job.id} carried payload keys nothing renders: ${unhandled.join(", ")}`,
-      meta: { unhandled, job: job.id },
+      body: `job ${job.id} carried payload keys nothing renders: ${missing.join(", ")}`,
+      meta: { unhandled, invalid, job: job.id },
     });
   }
 
@@ -771,9 +832,7 @@ const PAYLOAD_KEYS = new Set([
  */
 function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null, cfg?: Config): string | null {
   if (!grpId) return null;
-  const ch = ctx.db
-    .query<{ id: number }, [number]>("SELECT id FROM channel WHERE grp_id = ? LIMIT 1")
-    .get(grpId);
+  const ch = ctx.db.query<{ id: number }, [number]>("SELECT id FROM channel WHERE grp_id = ? LIMIT 1").get(grpId);
   if (!ch) return null;
 
   const cur =
@@ -1054,15 +1113,11 @@ function recordProgress(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult
   const since = Date.now() - 5 * 60_000;
   const wroteNote =
     ctx.db
-      .query<{ c: number }, [number | null, number]>(
-        "SELECT count(*) AS c FROM note WHERE grp_id IS ? AND at > ?",
-      )
+      .query<{ c: number }, [number | null, number]>("SELECT count(*) AS c FROM note WHERE grp_id IS ? AND at > ?")
       .get(job.grp_id, since)!.c > 0;
   const movedTask =
     ctx.db
-      .query<{ c: number }, [number]>(
-        "SELECT count(*) AS c FROM task WHERE owner_agent_id = ? AND status = 'done'",
-      )
+      .query<{ c: number }, [number]>("SELECT count(*) AS c FROM task WHERE owner_agent_id = ? AND status = 'done'")
       .get(agent.id)!.c > 0;
   recordTurnOutcome(ctx, agent.id, r.filesTouched, wroteNote, movedTask);
 }
@@ -1077,13 +1132,7 @@ export function cacheRatio(r: TurnResult): number {
  * changed, commands run, state moved. Agents are not asked to narrate for the
  * boss's benefit; that would be tokens spent on prose.
  */
-async function narrate(
-  deps: ExecDeps,
-  agent: AgentRow,
-  job: Job,
-  before: string | null,
-  r: TurnResult,
-): Promise<void> {
+async function narrate(deps: ExecDeps, agent: AgentRow, job: Job, before: string | null, r: TurnResult): Promise<void> {
   // No `repoPath` and no `git`: both were left over from when this read the host
   // checkout, and the diff has come out of `sandboxGit(WORK)` since 005. A
   // parameter nobody reads is the next reader's wrong mental model.
@@ -1220,9 +1269,7 @@ async function runWatchdogJob(deps: ExecDeps): Promise<void> {
     // filtered against the event log before they are emitted and the standup's
     // never were, so the feed filled with three lines repeating.
     const seen = deps.ctx.db
-      .query<{ at: number }, [string]>(
-        `SELECT max(at) AS at FROM event WHERE author = 'standup' AND body = ?`,
-      )
+      .query<{ at: number }, [string]>(`SELECT max(at) AS at FROM event WHERE author = 'standup' AND body = ?`)
       .get(item.body);
     if (seen?.at && Date.now() - seen.at < REEMIT_MS) continue;
     deps.ctx.bus.emit({
@@ -1264,11 +1311,12 @@ export function makeReviewVerdict(deps: ExecDeps) {
  * the next thing that learns to throw cannot buy the same outage.
  */
 async function runLease(deps: ExecDeps, job: Job): Promise<void> {
-  const leaseId = Number(jsonOr<Record<string, unknown>>(job.payload_json, {}).lease_id);
+  const leaseId = Id.safeParse(jsonRecord(job.payload_json).lease_id);
+  if (!leaseId.success) throw new Error("lease job requires a positive integer lease_id");
   try {
-    await lease(deps, job, leaseId);
+    await lease(deps, job, leaseId.data);
   } catch (e) {
-    finishLease(deps, leaseId, 126, `the gate could not run: ${errText(e)}`, undefined);
+    finishLease(deps, leaseId.data, 126, `the gate could not run: ${errText(e)}`, undefined);
   }
 }
 
@@ -1287,7 +1335,9 @@ async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void>
 
   // Re-validate at execution time. The queued args were checked on the way in,
   // but the resource template may have changed since.
-  const resolved = resolveLease(def, jsonOr<Record<string, unknown>>(lease.args_json, {}));
+  const args = jsonOr(lease.args_json, JsonRecord.nullable(), null);
+  if (!args) return finishLease(deps, leaseId, 126, "lease arguments must be a JSON object", undefined);
+  const resolved = resolveLease(def, args);
   if (!resolved.ok) return finishLease(deps, leaseId, 126, resolved.error, undefined);
 
   const cwd = leaseCwd(def);
@@ -1299,10 +1349,10 @@ async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void>
   // environment is the variable, not the code.
   const scope: Scope = lease.grp_id ? { grp: lease.grp_id } : { project: 0 };
   const head = await sandboxGit(ctx, scope)(cwd, ["rev-parse", "HEAD"], cwd);
-  ctx.db.run(
-    "UPDATE lease SET state = 'running', head_sha = ?, started_at = unixepoch() * 1000 WHERE id = ?",
-    [head.code === 0 ? head.out.trim() : null, leaseId],
-  );
+  ctx.db.run("UPDATE lease SET state = 'running', head_sha = ?, started_at = unixepoch() * 1000 WHERE id = ?", [
+    head.code === 0 ? head.out.trim() : null,
+    leaseId,
+  ]);
   ctx.bus.emit({
     grpId: lease.grp_id,
     author: "runner",
@@ -1312,7 +1362,7 @@ async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void>
 
   // Same runner as the gates use. This used to spawn its own process, which meant
   // two implementations of "run a resource" and a timeout on only one of them.
-  const out = await runResource(def, jsonOr<Record<string, unknown>>(lease.args_json, {}), {
+  const out = await runResource(def, args, {
     cwd,
     logPath,
     timeoutMs: cfg.leaseTimeoutMs,
@@ -1325,13 +1375,7 @@ async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void>
   finishLease(deps, leaseId, out.exitCode, out.digest.text, logPath);
 }
 
-function finishLease(
-  deps: ExecDeps,
-  leaseId: number,
-  code: number,
-  digest: string,
-  logPath: string | undefined,
-): void {
+function finishLease(deps: ExecDeps, leaseId: number, code: number, digest: string, logPath: string | undefined): void {
   const { ctx } = deps;
   ctx.db.run(
     `UPDATE lease SET state = ?, exit_code = ?, result_digest = ?, log_path = ?,
@@ -1339,8 +1383,8 @@ function finishLease(
     [code === 0 ? "done" : "failed", code, digest, logPath ?? null, leaseId],
   );
   const grpId =
-    ctx.db.query<{ grp_id: number | null }, [number]>("SELECT grp_id FROM lease WHERE id = ?").get(leaseId)
-      ?.grp_id ?? null;
+    ctx.db.query<{ grp_id: number | null }, [number]>("SELECT grp_id FROM lease WHERE id = ?").get(leaseId)?.grp_id ??
+    null;
   ctx.bus.emit({
     grpId,
     author: "runner",
@@ -1369,4 +1413,3 @@ function noteBody(ctx: Ctx, projectId: number | null, kind: string): string | nu
       .get(projectId, kind)?.body ?? null
   );
 }
-

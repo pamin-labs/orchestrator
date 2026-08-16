@@ -10,6 +10,9 @@ import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
 import { parseRepo, type Github } from "./github.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { jsonOr } from "../util/text.ts";
+import { z } from "zod";
+
+const GateResults = z.record(z.string(), z.string());
 
 /**
  * The PR as a feedback channel.
@@ -32,9 +35,7 @@ import { jsonOr } from "../util/text.ts";
  * thing that changes — everything below already speaks `owner/repo`.
  */
 function repoSlug(ctx: Ctx, projectId: number): string | null {
-  const p = ctx.db
-    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
-    .get(projectId);
+  const p = ctx.db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId);
   return p?.remote ? parseRepo(p.remote) : null;
 }
 
@@ -61,7 +62,10 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   if (grp.pr_number) {
     // Already open, so this is a retry after rework: refresh what the PR says
     // rather than leaving a description written before the last three slices.
-    await gh.request("PATCH", `/repos/${slug}/pulls/${grp.pr_number}`, { title: input.title, body: input.body });
+    await gh.request("PATCH", `/repos/${slug}/pulls/${grp.pr_number}`, z.unknown(), {
+      title: input.title,
+      body: input.body,
+    });
     return { number: grp.pr_number };
   }
 
@@ -95,12 +99,17 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   const pushed = await pushBranch(ctx, grpId);
   if (!pushed.ok) return { error: `could not push ${grp.branch}: ${pushed.reason}` };
 
-  const created = await gh.request<{ number?: number }>("POST", `/repos/${slug}/pulls`, {
-    title: input.title,
-    body: input.body,
-    head: grp.branch,
-    base: await baseBranch(ctx, grp.project_id),
-  });
+  const created = await gh.request(
+    "POST",
+    `/repos/${slug}/pulls`,
+    z.object({ number: z.number().int().positive().optional() }),
+    {
+      title: input.title,
+      body: input.body,
+      head: grp.branch,
+      base: await baseBranch(ctx, grp.project_id),
+    },
+  );
   // The create answer carries the number, so the second call `gh` needed is gone.
   // It comes back for one case: a 422 saying a PR for this head already exists,
   // which is what a retry after a half-finished attempt looks like.
@@ -111,9 +120,10 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   let number = created.ok ? (created.data?.number ?? 0) : 0;
   if (!created.ok) {
     const owner = slug.split("/")[0]!;
-    const found = await gh.request<Array<{ number: number }>>(
+    const found = await gh.request(
       "GET",
       `/repos/${slug}/pulls?state=open&head=${owner}:${encodeURIComponent(grp.branch)}`,
+      z.array(z.object({ number: z.number().int().positive() })),
     );
     if (found.ok) number = found.data[0]?.number ?? 0;
     if (!number) return { error: created.message };
@@ -224,7 +234,7 @@ export function prBody(ctx: Ctx, grpId: number): string {
   // One row shape per call and always the same bindings, so only the first type
   // argument is worth writing. It used to take `unknown[]` and cast twice to get
   // there, which threw away what `db.query` already declares.
-  const q = <T,>(sql: string, ...p: SQLQueryBindings[]): T[] => ctx.db.query<T, SQLQueryBindings[]>(sql).all(...p);
+  const q = <T>(sql: string, ...p: SQLQueryBindings[]): T[] => ctx.db.query<T, SQLQueryBindings[]>(sql).all(...p);
   const out: string[] = [];
 
   // The Scribe's, and first, because it is the only part written by something
@@ -245,7 +255,7 @@ export function prBody(ctx: Ctx, grpId: number): string {
   );
   if (slices.length) {
     const lines = slices.map((s) => {
-      const passed = Object.entries(jsonOr<Record<string, string>>(s.gates_json, {}))
+      const passed = Object.entries(jsonOr(s.gates_json, GateResults, {}))
         .filter(([, v]) => v === "pass")
         .map(([k]) => k);
       return (
@@ -323,32 +333,26 @@ export interface Feedback {
  * an endpoint. REST returns the underlying records, and the mapping between them
  * is where the bugs would be, so the shapes are written down.
  */
-interface PullRest {
-  state?: string;
-  merged?: boolean;
+const PullRest = z.object({
+  state: z.string().optional(),
+  merged: z.boolean().optional(),
   /** true / false / **null while GitHub is still computing it**. */
-  mergeable?: boolean | null;
-  mergeable_state?: string;
-  head: { sha: string };
-}
-interface IssueCommentRest {
-  user?: { login?: string };
-  body?: string;
-  created_at?: string;
-}
-interface ReviewRest {
-  user?: { login?: string };
-  body?: string;
-  submitted_at?: string;
-}
-interface CheckRest {
-  name?: string;
-  conclusion?: string | null;
-}
-interface StatusRest {
-  context?: string;
-  state?: string;
-}
+  mergeable: z.boolean().nullable().optional(),
+  mergeable_state: z.string().optional(),
+  head: z.object({ sha: z.string() }),
+});
+const IssueCommentRest = z.object({
+  user: z.object({ login: z.string().optional() }).nullable().optional(),
+  body: z.string().optional(),
+  created_at: z.string().optional(),
+});
+const ReviewRest = z.object({
+  user: z.object({ login: z.string().optional() }).nullable().optional(),
+  body: z.string().optional(),
+  submitted_at: z.string().optional(),
+});
+const CheckRest = z.object({ name: z.string().optional(), conclusion: z.string().nullable().optional() });
+const StatusRest = z.object({ context: z.string().optional(), state: z.string().optional() });
 
 /**
  * Poll every open PR for things said or broken since we last looked.
@@ -391,7 +395,7 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   for (const g of groups) {
     const repo = g.remote ? parseRepo(g.remote) : null;
     if (!repo) continue;
-    const r = await gh.request<PullRest>("GET", `/repos/${repo}/pulls/${g.pr_number}`);
+    const r = await gh.request("GET", `/repos/${repo}/pulls/${g.pr_number}`, PullRest);
     // Same as the old non-zero exit: whatever went wrong, nothing is known about
     // this PR right now, and the next tick asks again.
     if (!r.ok) continue;
@@ -432,13 +436,22 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
     // `since` does the "newer than we have seen" filtering server-side.
     const since = new Date(Math.max(0, g.pr_seen_at)).toISOString();
     const [issue, reviews, runs, statuses] = await Promise.all([
-      gh.request<IssueCommentRest[]>(
+      gh.request(
         "GET",
         `/repos/${repo}/issues/${g.pr_number}/comments?per_page=100&since=${since}`,
+        z.array(IssueCommentRest),
       ),
-      gh.request<ReviewRest[]>("GET", `/repos/${repo}/pulls/${g.pr_number}/reviews?per_page=100`),
-      gh.request<{ check_runs?: CheckRest[] }>("GET", `/repos/${repo}/commits/${parsed.head.sha}/check-runs?per_page=100`),
-      gh.request<{ statuses?: StatusRest[] }>("GET", `/repos/${repo}/commits/${parsed.head.sha}/status?per_page=100`),
+      gh.request("GET", `/repos/${repo}/pulls/${g.pr_number}/reviews?per_page=100`, z.array(ReviewRest)),
+      gh.request(
+        "GET",
+        `/repos/${repo}/commits/${parsed.head.sha}/check-runs?per_page=100`,
+        z.object({ check_runs: z.array(CheckRest).optional() }),
+      ),
+      gh.request(
+        "GET",
+        `/repos/${repo}/commits/${parsed.head.sha}/status?per_page=100`,
+        z.object({ statuses: z.array(StatusRest).optional() }),
+      ),
     ]);
     // All or nothing, the way one `gh` call was: a failed checks request would
     // otherwise read as "the checks went green", which is news, and would wake the
@@ -556,7 +569,17 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
  */
 export function pushBlocked(permissions: Record<string, boolean> | undefined, repo: string): string | null {
   const p = permissions ?? {};
-  const level = p.admin ? "ADMIN" : p.maintain ? "MAINTAIN" : p.push ? "WRITE" : p.triage ? "TRIAGE" : p.pull ? "READ" : "";
+  const level = p.admin
+    ? "ADMIN"
+    : p.maintain
+      ? "MAINTAIN"
+      : p.push
+        ? "WRITE"
+        : p.triage
+          ? "TRIAGE"
+          : p.pull
+            ? "READ"
+            : "";
   if (!level || ["ADMIN", "MAINTAIN", "WRITE"].includes(level)) return null;
   return `no push access to ${repo} (your permission is ${level}); the branch could not be pushed`;
 }

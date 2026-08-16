@@ -11,7 +11,6 @@ import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../util/shq.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
 import { projectConfig } from "../util/rows.ts";
-import { SandboxOverrideSchema } from "../../config-schema.ts";
 
 export type SandboxSpec = import("../../config-schema.ts").SandboxSpec;
 
@@ -130,8 +129,7 @@ const DEFAULTS = {
 /** Config, then the project's override. Adding a knob is a yaml key. */
 export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
   const base = ctx.config.sandbox ?? DEFAULTS;
-  const parsed = SandboxOverrideSchema.safeParse(projectConfig(ctx.db, projectId).sandbox ?? {});
-  const over = parsed.success ? parsed.data : {};
+  const over = projectConfig(ctx.db, projectId).sandbox ?? {};
   // `||`, not `??`: an empty string is how the yaml says "you decide", and it is
   // never a usable value for any of these.
   //
@@ -346,7 +344,12 @@ function processCwd(pid: string): string | null {
   }
   try {
     const out = Bun.spawnSync(["lsof", "-a", "-d", "cwd", "-p", pid, "-Fn"], { stdout: "pipe" }).stdout.toString();
-    return out.split("\n").find((l) => l.startsWith("n"))?.slice(1) ?? null;
+    return (
+      out
+        .split("\n")
+        .find((l) => l.startsWith("n"))
+        ?.slice(1) ?? null
+    );
   } catch {
     return null;
   }
@@ -400,7 +403,11 @@ export function utilSandbox(db: Ctx["db"]): { id: string | null; at: number } {
 }
 
 const holder = (s: Scope) =>
-  isUtil(s) ? { table: "setting", id: 0 } : "grp" in s ? { table: "grp", id: s.grp } : { table: "project", id: s.project };
+  isUtil(s)
+    ? { table: "setting", id: 0 }
+    : "grp" in s
+      ? { table: "grp", id: s.grp }
+      : { table: "project", id: s.project };
 
 function owner(ctx: Ctx, scope: Scope): { sandboxId: string | null; projectId: number | null } {
   if (isUtil(scope)) return { sandboxId: utilSandbox(ctx.db).id, projectId: null };
@@ -758,7 +765,12 @@ async function checkSkillsMount(ctx: Ctx, sb: Sandbox, hostPath: string, at: str
   }
   if (!onHost) return;
   const e = await sb.commands.run(`ls ${shq(at)} | wc -l`).catch(() => null);
-  const inside = Number((e?.logs?.stdout ?? []).map((m) => m.text).join("").trim());
+  const inside = Number(
+    (e?.logs?.stdout ?? [])
+      .map((m) => m.text)
+      .join("")
+      .trim(),
+  );
   if (!Number.isFinite(inside) || inside > 0) return;
   ctx.bus?.emit({
     author: "orchestrator",
@@ -1000,10 +1012,7 @@ export async function relinkSkills(): Promise<void> {
  * Every caller that writes into a container goes through here. Fixing it at the
  * four call sites instead would leave the fifth one somebody adds next month.
  */
-export async function writeInto(
-  sb: Sandbox,
-  files: Parameters<Sandbox["files"]["writeFiles"]>[0],
-): Promise<void> {
+export async function writeInto(sb: Sandbox, files: Parameters<Sandbox["files"]["writeFiles"]>[0]): Promise<void> {
   try {
     await sb.files.writeFiles(files);
   } catch {
@@ -1026,7 +1035,12 @@ export async function writeInto(
  */
 export interface SandboxDriver {
   exec(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): Promise<ExecOutcome>;
-  lines(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): AsyncGenerator<string, { code: number; err: string }, void>;
+  lines(
+    ctx: Ctx,
+    scope: Scope,
+    cmd: string,
+    opts?: ExecOpts,
+  ): AsyncGenerator<string, { code: number; err: string }, void>;
   put(ctx: Ctx, scope: Scope, path: string, data: string): Promise<void>;
   get(ctx: Ctx, scope: Scope, path: string): Promise<string | null>;
   getBytes(ctx: Ctx, scope: Scope, path: string): Promise<Uint8Array | null>;
@@ -1065,8 +1079,8 @@ const matchFor = (c: Credential) => ({
 
 const authFor = (c: Credential) =>
   c.header
-    ? ({ type: "apiKey" as const, name: c.header, credential: c.name })
-    : ({ type: "bearer" as const, credential: c.name });
+    ? { type: "apiKey" as const, name: c.header, credential: c.name }
+    : { type: "bearer" as const, credential: c.name };
 
 const driver = (ctx: Ctx): SandboxDriver => ctx.sandbox ?? REAL;
 
@@ -1403,11 +1417,13 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
 
 /** `sh`'s "found it, could not run it". The lease guard already speaks it. */
 export const EXEC_UNAVAILABLE = 126;
-export const execLines = (ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts) => driver(ctx).lines(ctx, scope, cmd, opts);
+export const execLines = (ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts) =>
+  driver(ctx).lines(ctx, scope, cmd, opts);
 export const putFile = (ctx: Ctx, scope: Scope, path: string, data: string) => driver(ctx).put(ctx, scope, path, data);
 export const getFile = (ctx: Ctx, scope: Scope, path: string) => driver(ctx).get(ctx, scope, path);
 export const getBytes = (ctx: Ctx, scope: Scope, path: string) => driver(ctx).getBytes(ctx, scope, path);
-export const putBytes = (ctx: Ctx, scope: Scope, path: string, data: Uint8Array) => driver(ctx).putBytes(ctx, scope, path, data);
+export const putBytes = (ctx: Ctx, scope: Scope, path: string, data: Uint8Array) =>
+  driver(ctx).putBytes(ctx, scope, path, data);
 export const bindCredentials = (ctx: Ctx, scope: Scope, creds: Credential[]) => driver(ctx).bind(ctx, scope, creds);
 export const killSandbox = (ctx: Ctx, scope: Scope) => driver(ctx).kill(ctx, scope);
 export const renewSandbox = (ctx: Ctx, scope: Scope) => driver(ctx).renew(ctx, scope);

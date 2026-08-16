@@ -1,7 +1,9 @@
 import type { DB } from "../../db.ts";
+import { z } from "zod";
 import { say } from "../../lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";
 import { raise } from "../flow/escalate.ts";
+import { jsonOr } from "../util/text.ts";
 
 /**
  * GitHub, as eight endpoints of ordinary JSON.
@@ -20,6 +22,10 @@ import { raise } from "../flow/escalate.ts";
 
 const API = "https://api.github.com";
 const TIMEOUT_MS = 15_000;
+const ErrorBody = z.object({
+  message: z.string().optional(),
+  errors: z.array(z.object({ message: z.string().optional() })).optional(),
+});
 
 /**
  * Who can do something about it. Three buckets because they need three
@@ -49,7 +55,7 @@ export type Fetcher = (
 ) => Promise<Response>;
 
 export interface Github {
-  request<T>(method: string, path: string, body?: unknown): Promise<GhResult<T>>;
+  request<T>(method: string, path: string, schema: z.ZodType<T>, body?: unknown): Promise<GhResult<T>>;
   /** `x-ratelimit-remaining` from the last answer; null before the first one. */
   remaining(): number | null;
 }
@@ -162,9 +168,7 @@ export function forgetHolds(runtime: string): void {
 }
 
 function slugOf(db: DB, projectId: number): string | null {
-  const p = db
-    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
-    .get(projectId);
+  const p = db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId);
   return p?.remote ? parseRepo(p.remote) : null;
 }
 
@@ -239,7 +243,7 @@ export function makeGithub(
   return {
     remaining: () => remaining,
 
-    async request<T>(method: string, path: string, body?: unknown): Promise<GhResult<T>> {
+    async request<T>(method: string, path: string, schema: z.ZodType<T>, body?: unknown): Promise<GhResult<T>> {
       const token = loadAuth(db, "github")?.secret;
       if (!token) {
         return { ok: false, bucket: "boss", status: 0, message: "no GitHub credential: connect GitHub in settings" };
@@ -277,7 +281,11 @@ export function makeGithub(
       // counts: GitHub answered it, which is the whole question.
       if (slug && (res.ok || res.status === 304) && holds.delete(slug)) clearEscalation(db, slug);
 
-      if (res.status === 304 && hit) return { ok: true, status: 304, data: hit.data as T };
+      if (res.status === 304 && hit) {
+        const cached = schema.safeParse(hit.data);
+        if (cached.success) return { ok: true, status: 304, data: cached.data };
+        return { ok: false, status: 304, bucket: "transient", message: `GitHub cached invalid JSON for ${path}` };
+      }
 
       const text = await res.text().catch(() => "");
       if (!res.ok) {
@@ -294,7 +302,17 @@ export function makeGithub(
       try {
         data = text ? JSON.parse(text) : null;
       } catch {
-        return { ok: false, status: res.status, bucket: "transient", message: `GitHub sent ${path} as something that is not JSON` };
+        return {
+          ok: false,
+          status: res.status,
+          bucket: "transient",
+          message: `GitHub sent ${path} as something that is not JSON`,
+        };
+      }
+
+      const parsed = schema.safeParse(data);
+      if (!parsed.success) {
+        return { ok: false, status: res.status, bucket: "transient", message: `GitHub sent invalid JSON for ${path}` };
       }
 
       const etag = res.headers.get("etag");
@@ -304,18 +322,15 @@ export function makeGithub(
         if (cache.size > 500) cache.clear();
         cache.set(key, { etag, data });
       }
-      return { ok: true, status: res.status, data: data as T };
+      return { ok: true, status: res.status, data: parsed.data };
     },
   };
 }
 
 /** GitHub's own words, when it left any. */
 function message(text: string): string {
-  try {
-    const j = JSON.parse(text) as { message?: string; errors?: Array<{ message?: string }> };
-    const extra = (j.errors ?? []).map((e) => e.message).filter(Boolean).join("; ");
-    return [j.message, extra].filter(Boolean).join(" — ").slice(0, 300) || text.slice(0, 300);
-  } catch {
-    return text.slice(0, 300);
-  }
+  const parsed = jsonOr(text, ErrorBody.nullable(), null);
+  if (!parsed) return text.slice(0, 300);
+  const extra = (parsed.errors ?? []).flatMap((e) => (e.message ? [e.message] : [])).join("; ");
+  return [parsed.message, extra].filter(Boolean).join(" — ").slice(0, 300) || text.slice(0, 300);
 }

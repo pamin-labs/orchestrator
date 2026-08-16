@@ -1,4 +1,6 @@
 import type { DB } from "../../db.ts";
+import { SandboxOverrideSchema } from "../../config-schema.ts";
+import { z } from "zod";
 import { jsonOr } from "./text.ts";
 
 /**
@@ -32,13 +34,31 @@ export const projectOfGrp = (db: DB, grpId: number | null | undefined): number |
  * it. `patchProjectConfig` is the one caller that must not silently discard a
  * bad value, and it is the one that does not come through here.
  */
-export function projectConfig(db: DB, projectId: number | null | undefined): Record<string, unknown> {
+const ProjectConfigSchema = z
+  .object({
+    detected: z.boolean().optional().catch(undefined),
+    gates: z.array(z.string()).optional().catch(undefined),
+    install: z.string().nullable().optional().catch(undefined),
+    shared: z.array(z.string()).optional().catch(undefined),
+    sandbox: SandboxOverrideSchema.optional().catch(undefined),
+    index: z
+      .object({ exclude: z.array(z.string()).optional() })
+      .strict()
+      .optional()
+      .catch(undefined),
+  })
+  // Old and future releases may own keys this process does not know yet. They
+  // stay inert and survive a detection write; known keys never bypass schemas.
+  .passthrough();
+
+export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
+
+export function projectConfig(db: DB, projectId: number | null | undefined): ProjectConfig {
   if (projectId == null) return {};
   const row = db
     .query<{ config_json: string | null }, [number]>("SELECT config_json FROM project WHERE id = ?")
     .get(projectId);
-  const cfg = jsonOr<unknown>(row?.config_json, null);
-  return cfg && typeof cfg === "object" && !Array.isArray(cfg) ? (cfg as Record<string, unknown>) : {};
+  return jsonOr(row?.config_json, ProjectConfigSchema, {});
 }
 
 /** Which project an agent belongs to. A standing agent has one and no group. */
@@ -68,11 +88,7 @@ export function saveSingletonNote(db: DB, projectId: number, kind: string, body:
     .get(projectId, kind);
   if (prev?.body === body) return false;
   if (prev) db.run("DELETE FROM note WHERE id = ?", [prev.id]);
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, ?, ?, unixepoch() * 1000)", [
-    projectId,
-    kind,
-    body,
-  ]);
+  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, ?, ?, unixepoch() * 1000)", [projectId, kind, body]);
   return true;
 }
 

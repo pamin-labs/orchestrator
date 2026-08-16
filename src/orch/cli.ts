@@ -16,6 +16,7 @@
  */
 
 import { errText, jsonOr } from "../mech/util/text.ts";
+import { z } from "zod";
 const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
 const TOKEN = process.env.ORCH_TOKEN ?? "";
 
@@ -94,17 +95,10 @@ export function kvArgs(v: string | string[] | true | undefined): Record<string, 
  */
 const MAILBOX = process.env.ORCH_MAILBOX ?? "";
 
-async function viaMailbox(
-  method: string,
-  path: string,
-  payload?: unknown,
-): Promise<{ status: number; text: string }> {
+async function viaMailbox(method: string, path: string, payload?: unknown): Promise<{ status: number; text: string }> {
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const res = `${MAILBOX}/res/${id}.json`;
-  await Bun.write(
-    `${MAILBOX}/req/${id}.json`,
-    JSON.stringify({ id, method, path, token: TOKEN, body: payload }),
-  );
+  await Bun.write(`${MAILBOX}/req/${id}.json`, JSON.stringify({ id, method, path, token: TOKEN, body: payload }));
   // Poll the local filesystem, which costs nothing — the host is the one doing
   // real work between these checks.
   for (;;) {
@@ -271,7 +265,7 @@ export async function main(argv: string[]): Promise<number> {
           );
         }
         const raw = (await stdin()).trim();
-        const parsed = raw ? jsonOr(raw, raw) : null;
+        const parsed = raw ? jsonOr(raw, z.unknown(), raw) : null;
         if (!Array.isArray(parsed)) {
           return usageError('split needs a JSON array on stdin: [{"name":"…","idea":"…"}, …]');
         }
@@ -293,7 +287,7 @@ export async function main(argv: string[]): Promise<number> {
         const raw = inline || piped;
         r = await call("POST", "/orch/task/done", {
           task_id: id,
-          claim: raw.trim() ? jsonOr(raw.trim(), raw.trim()) : undefined,
+          claim: raw.trim() ? jsonOr(raw.trim(), z.unknown(), raw.trim()) : undefined,
           already_done: alreadyDone || undefined,
           review: typeof flags.review === "string" ? flags.review : undefined,
         });
@@ -343,7 +337,7 @@ export async function main(argv: string[]): Promise<number> {
         break;
       }
       const a = typeof flags.answer === "string" ? flags.answer : args.slice(2).join(" ");
-      if (!a) return usageError("answer needs --answer \"…\" or --abstain");
+      if (!a) return usageError('answer needs --answer "…" or --abstain');
       r = await call("POST", "/orch/answer", {
         escalation_id: id,
         answer: a,

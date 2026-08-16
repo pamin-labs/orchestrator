@@ -20,6 +20,7 @@
  */
 
 import { jsonOr } from "../util/text.ts";
+import { z } from "zod";
 
 /** Enough to make codex talk to the API, and nothing anyone has to read. */
 const NUDGE = ["exec", "--skip-git-repo-check", "-c", 'web_search="disabled"', "reply with: ok"];
@@ -32,9 +33,22 @@ export interface CodexAuth {
   last_refresh?: string;
 }
 
+const CodexAuthSchema = z.object({
+  auth_mode: z.string().optional(),
+  OPENAI_API_KEY: z.string().nullable().optional(),
+  tokens: z
+    .object({
+      access_token: z.string().optional(),
+      id_token: z.string().optional(),
+      refresh_token: z.string().optional(),
+      account_id: z.string().optional(),
+    })
+    .optional(),
+  last_refresh: z.string().optional(),
+});
+
 export function parseAuth(json: string): CodexAuth | null {
-  const a = jsonOr<CodexAuth | null>(json, null);
-  return a && typeof a === "object" ? a : null;
+  return jsonOr(json, CodexAuthSchema.nullable(), null);
 }
 
 export const accessToken = (a: CodexAuth): string | null => a.tokens?.access_token ?? null;

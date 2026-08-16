@@ -1,6 +1,7 @@
 import type { DB } from "./db.ts";
 import { scrub } from "./mech/util/scrub.ts";
 import { jsonOr } from "./mech/util/text.ts";
+import { z } from "zod";
 
 /**
  * Append-only event log plus fan-out.
@@ -82,7 +83,18 @@ export class Bus {
     const row = this.db
       .query<
         { seq: number },
-        [number | null, number | null, string, string, string | null, string | null, string, string | null, string, number]
+        [
+          number | null,
+          number | null,
+          string,
+          string,
+          string | null,
+          string | null,
+          string,
+          string | null,
+          string,
+          number,
+        ]
       >(
         `INSERT INTO event (channel_id, grp_id, author, kind, intent, severity, body, target, meta_json, at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING seq`,
@@ -122,7 +134,7 @@ export class Bus {
          FROM event WHERE seq > ? ORDER BY seq LIMIT ?`,
       )
       .all(seq, limit)
-      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr<unknown>(meta_json, {}) }));
+      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, z.unknown(), {}) }));
   }
 
   private fan(f: Frame): void {

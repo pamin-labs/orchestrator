@@ -15,7 +15,10 @@ const stable = buildStable({
  * The seam the adapter actually has now: it hands a command to a runner rather
  * than spawning, so the fake is a runner and not a fake `Bun.spawn`.
  */
-function fakeRunner(lines: unknown[], opts: { err?: string; code?: number } = {}): TurnRunner & { cmd: string; wrote: string } {
+function fakeRunner(
+  lines: unknown[],
+  opts: { err?: string; code?: number } = {},
+): TurnRunner & { cmd: string; wrote: string } {
   const r: any = { cmd: "", wrote: "" };
   r.put = async (_p: string, data: string) => {
     r.wrote = data;
@@ -63,7 +66,10 @@ test("runTurn extracts usage, cost, rate limit and touched files", async () => {
     },
     {
       type: "stream_event",
-      event: { type: "content_block_start", content_block: { type: "tool_use", name: "Edit", input: { file_path: "auth/mw.ts" } } },
+      event: {
+        type: "content_block_start",
+        content_block: { type: "tool_use", name: "Edit", input: { file_path: "auth/mw.ts" } },
+      },
     },
     {
       type: "assistant",
@@ -151,7 +157,10 @@ test("the desk wall never shows a bare tool name", async () => {
   // would replace a useful line with just "Bash".
   const lines = [
     { type: "system", subtype: "init", session_id: "s" },
-    { type: "stream_event", event: { type: "content_block_start", content_block: { type: "tool_use", name: "Bash", input: {} } } },
+    {
+      type: "stream_event",
+      event: { type: "content_block_start", content_block: { type: "tool_use", name: "Bash", input: {} } },
+    },
     {
       type: "assistant",
       message: { content: [{ type: "tool_use", name: "Bash", input: { command: "orch task list" } }] },
@@ -201,5 +210,8 @@ test("a turn log keeps the shape and drops the payload", () => {
   // A short result is untouched: truncating it would only add noise.
   // `type` is on every line of the real stream; the fixture omitted it while the
   // parameter was `any`.
-  expect((trimForLog({ type: "user", message: { content: [{ type: "tool_result", content: "ok" }] } }) as any).message.content[0].content).toBe("ok");
+  expect(
+    (trimForLog({ type: "user", message: { content: [{ type: "tool_result", content: "ok" }] } }) as any).message
+      .content[0].content,
+  ).toBe("ok");
 });

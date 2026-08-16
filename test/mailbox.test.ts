@@ -69,17 +69,48 @@ test("a call becomes a request file and blocks until an answer appears", async (
  */
 function fakeFiles(req: Record<string, unknown>) {
   const writes: Array<{ path: string; data: string }> = [];
+  const deletes: string[][] = [];
   return {
     writes,
+    deletes,
     sb: {
       files: {
         readFile: async () => JSON.stringify(req),
-        deleteFiles: async () => {},
+        deleteFiles: async (paths: string[]) => deletes.push(paths),
         writeFiles: async (fs: Array<{ path: string; data: string }>) => writes.push(...fs),
       },
     } as any,
   };
 }
+
+test("a malformed envelope cannot select the response path or make a request", async () => {
+  const { writes, deletes, sb } = fakeFiles({
+    id: "../../boss",
+    method: "DELETE",
+    path: "/orch/status",
+    token: "tok-1",
+  });
+
+  await serve(sb, "http://127.0.0.1:1", "/var/orch/req/invalid.json");
+
+  expect(writes).toEqual([]);
+  expect(deletes).toEqual([["/var/orch/req/invalid.json"]]);
+});
+
+test("an invalid envelope with a safe id receives a bounded failure", async () => {
+  const { writes, sb } = fakeFiles({
+    id: "safe-id",
+    method: "DELETE",
+    path: "/orch/status",
+    token: "tok-1",
+  });
+
+  await serve(sb, "http://127.0.0.1:1", "/var/orch/req/invalid.json");
+
+  expect(writes).toHaveLength(1);
+  expect(writes[0]!.path).toContain("/res/safe-id.json");
+  expect(JSON.parse(writes[0]!.data)).toEqual({ status: 400, text: "invalid mailbox request" });
+});
 
 test("a sandbox cannot reach the boss's routes through the mailbox", async () => {
   // `/api/*` takes no token — its only caller was a browser on 127.0.0.1. Without

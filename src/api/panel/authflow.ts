@@ -1,4 +1,17 @@
-import { APP_SLUG, BOT, commitIdentity, forgetIdentity, githubAccount, listInstallations, listRepos, pollForToken, setTrailers, startDeviceFlow, trailers, type Installation } from "../../mech/git/ghlogin.ts";
+import {
+  APP_SLUG,
+  BOT,
+  commitIdentity,
+  forgetIdentity,
+  githubAccount,
+  listInstallations,
+  listRepos,
+  pollForToken,
+  setTrailers,
+  startDeviceFlow,
+  trailers,
+  type Installation,
+} from "../../mech/git/ghlogin.ts";
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "../../mech/sandbox/auth.ts";
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "../../mech/sandbox/login.ts";
 import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
@@ -133,9 +146,7 @@ async function sandboxKeyWorks(server: string, key: string): Promise<"ok" | "inv
  * and every turn came back `Authentication credentials are invalid`.
  */
 export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
-  for (const g of ctx.db
-    .query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL")
-    .all()) {
+  for (const g of ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL").all()) {
     await killSandbox(ctx, { grp: g.id });
   }
   const prefix = `${runtime} 的凭据`;
@@ -248,7 +259,11 @@ export const postGithubLogin: Handler = async (ctx) => {
   // than starting a second poll: two loops racing for one login is two ways to
   // store a token and one of them wins silently.
   if (ghFlow && ghFlow.expiresAt > Date.now()) {
-    return json({ userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri, expiresIn: Math.round((ghFlow.expiresAt - Date.now()) / 1000) });
+    return json({
+      userCode: ghFlow.userCode,
+      verificationUri: ghFlow.verificationUri,
+      expiresIn: Math.round((ghFlow.expiresAt - Date.now()) / 1000),
+    });
   }
   let d: Awaited<ReturnType<typeof startDeviceFlow>>;
   try {
@@ -338,11 +353,12 @@ export const postCodexDeviceCancel: Handler = async (ctx) => {
 async function withCounts(ctx: Ctx, list: Installation[]): Promise<Array<Installation & { repos: number | null }>> {
   return await Promise.all(
     list.map(async (i) => {
-      const r = await ctx.gh!.request<{ total_count?: number }>(
+      const r = await ctx.gh!.request(
         "GET",
         `/user/installations/${i.id}/repositories?per_page=1`,
+        z.object({ total_count: z.number().int().nonnegative().optional() }),
       );
-      return { ...i, repos: r.ok ? (Number(r.data?.total_count) || 0) : null };
+      return { ...i, repos: r.ok ? (r.data.total_count ?? 0) : null };
     }),
   );
 }
@@ -373,7 +389,10 @@ export const getGithubLogin: Handler = async (ctx) => {
     installUrl: INSTALL_URL,
     /** Which accounts it is installed on, and how many repositories each can see. */
     accounts: installs?.ok ? await withCounts(ctx, installs.data) : [],
-    pending: ghFlow && ghFlow.expiresAt > Date.now() ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri } : null,
+    pending:
+      ghFlow && ghFlow.expiresAt > Date.now()
+        ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri }
+        : null,
     error: ghError,
     /** What every commit carries besides its message, and who it is authored as.
      *  On this route because both answers come from the connection above: the

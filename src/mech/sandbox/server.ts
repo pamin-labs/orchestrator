@@ -6,8 +6,17 @@ import type { Ctx } from "../../ctx.ts";
 import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
 import { putSetting } from "../../settings.ts";
 import type { Config } from "../../config.ts";
-import { allowedHostPaths, coveredBy, runningServer, SANDBOX_API_KEY_HEADER, serverAddr, splitAddr, specFor } from "./sandbox.ts";
+import {
+  allowedHostPaths,
+  coveredBy,
+  runningServer,
+  SANDBOX_API_KEY_HEADER,
+  serverAddr,
+  splitAddr,
+  specFor,
+} from "./sandbox.ts";
 import { jsonOr } from "../util/text.ts";
+import { z } from "zod";
 
 /**
  * Starting opensandbox-server, and knowing when not to.
@@ -123,7 +132,6 @@ function say(p: Probe, server: string): string {
 
 /** Where our own config lives when we are the one starting the server. */
 export const ourConfigPath = (home = homedir()): string => join(home, ".orch-cache", "sandbox.toml");
-
 
 /**
  * Set one key inside one TOML section.
@@ -405,8 +413,8 @@ export function setServerAddr(ctx: Ctx, addr: string): string | null {
 export function ourArgv(ctx: Ctx): string[] | null {
   const live = runningServer();
   if (!live || get(ctx, PID_KEY) !== live.pid) return null;
-  const argv = jsonOr<unknown>(get(ctx, ARGV_KEY), null);
-  return Array.isArray(argv) && argv.length ? (argv as string[]) : live.argv;
+  const argv = jsonOr(get(ctx, ARGV_KEY), z.array(z.string()), []);
+  return argv.length ? argv : live.argv;
 }
 
 /**

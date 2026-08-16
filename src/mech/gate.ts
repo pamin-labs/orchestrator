@@ -32,7 +32,12 @@ export interface GateOutcome {
 }
 
 /** A resource name that can also safely name its on-disk gate log. */
-export const GateName = z.string().min(1).max(80).regex(/^[\w.-]+$/, "must use letters, digits, _, . or -");
+export const GateName = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/^[\w.-]+$/, "must use letters, digits, _, . or -");
+const GateState = z.record(z.string(), z.string());
 
 /**
  * Which gates a project runs. Declared in `project.config_json` as
@@ -40,8 +45,7 @@ export const GateName = z.string().min(1).max(80).regex(/^[\w.-]+$/, "must use l
  * validated templates as everything else and an agent still cannot invent one.
  */
 export function gatesFor(db: DB, projectId: number): string[] {
-  const gates = projectConfig(db, projectId).gates;
-  return Array.isArray(gates) ? gates.flatMap((g) => GateName.safeParse(g).data ?? []) : [];
+  return (projectConfig(db, projectId).gates ?? []).flatMap((g) => GateName.safeParse(g).data ?? []);
 }
 
 export interface RunGatesOptions {
@@ -79,7 +83,7 @@ export async function runGates(opts: RunGatesOptions): Promise<GateOutcome> {
         // group's clone (007 §2), so before that has happened "none configured"
         // means "not detected yet" and telling the boss to go and write them by
         // hand is sending them to do the system's job.
-        'no gates are configured for this project. They are detected from the first group\'s clone; ' +
+        "no gates are configured for this project. They are detected from the first group's clone; " +
         'if that has happened and found nothing, add resource names to project config_json, e.g. {"gates":["test"]}.',
     };
   }
@@ -134,17 +138,13 @@ function formatFeedback(results: GateResult[]): string {
 
 /** Merge a gate verdict into `slice.gates_json` without losing the other layers. */
 export function recordGate(db: DB, sliceId: number, layer: string, verdict: "pass" | "fail"): void {
-  const row = db
-    .query<{ gates_json: string }, [number]>("SELECT gates_json FROM slice WHERE id = ?")
-    .get(sliceId);
-  const gates = jsonOr<Record<string, string>>(row?.gates_json, {});
+  const row = db.query<{ gates_json: string }, [number]>("SELECT gates_json FROM slice WHERE id = ?").get(sliceId);
+  const gates = jsonOr(row?.gates_json, GateState, {});
   gates[layer] = verdict;
   db.run("UPDATE slice SET gates_json = ? WHERE id = ?", [JSON.stringify(gates), sliceId]);
 }
 
 export function gateState(db: DB, sliceId: number): Record<string, string> {
-  const row = db
-    .query<{ gates_json: string }, [number]>("SELECT gates_json FROM slice WHERE id = ?")
-    .get(sliceId);
-  return jsonOr<Record<string, string>>(row?.gates_json, {});
+  const row = db.query<{ gates_json: string }, [number]>("SELECT gates_json FROM slice WHERE id = ?").get(sliceId);
+  return jsonOr(row?.gates_json, GateState, {});
 }

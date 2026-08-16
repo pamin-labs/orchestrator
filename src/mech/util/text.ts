@@ -15,10 +15,11 @@
  * The fallback is the argument. Nothing is deduplicated that was not actually
  * the same, and the answer is where the question is.
  */
-export function jsonOr<T>(s: string | null | undefined, fallback: T): T {
+export function jsonOr<T>(s: string | null | undefined, schema: z.ZodType<T>, fallback: T): T {
   if (s === null || s === undefined) return fallback;
   try {
-    return JSON.parse(s) as T;
+    const parsed = schema.safeParse(JSON.parse(s) as unknown);
+    return parsed.success ? parsed.data : fallback;
   } catch {
     return fallback;
   }
@@ -71,3 +72,4 @@ export function tail(s: string, n = 300): string {
  */
 export const minutes = (ms: number): number => Math.round(ms / 60_000);
 export const hours = (ms: number): number => Math.round(ms / 3_600_000);
+import type { z } from "zod";

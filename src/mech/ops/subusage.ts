@@ -7,6 +7,7 @@ import { CODEX_HOME, decoy, loadAuth, subscriptionAccount } from "../sandbox/aut
 import { execIn, UTIL } from "../sandbox/sandbox.ts";
 import { shq } from "../util/shq.ts";
 import { jsonOr } from "../util/text.ts";
+import { z } from "zod";
 
 /**
  * How much of the claude subscription's windows is gone.
@@ -61,18 +62,38 @@ export const POLL_EVERY_MS = 10 * 60_000;
  */
 export const BACKOFF_MS = 45 * 60_000;
 
-type Window = { utilization?: number; resets_at?: string | null };
-
 /** Only the two windows are consumed; the response has a dozen more fields. */
-export interface UsageResponse {
-  five_hour?: Window;
-  seven_day?: Window;
-}
+const SubscriptionWindow = z.object({
+  utilization: z.number().finite().nonnegative().optional(),
+  resets_at: z.string().nullable().optional(),
+});
+const UsageResponse = z.object({
+  five_hour: SubscriptionWindow.optional(),
+  seven_day: SubscriptionWindow.optional(),
+});
 
-const secs = (iso?: string | null): number =>
-  iso ? Math.floor(new Date(iso).getTime() / 1000) : 0;
+const CodexWindowSchema = z.object({
+  used_percent: z.number().finite().nonnegative().max(100).optional(),
+  window_minutes: z.number().finite().positive().optional(),
+  resets_at: z.number().finite().nonnegative().optional(),
+  resets_in_seconds: z.number().finite().nonnegative().optional(),
+});
+const CodexWindowsSchema = z.object({
+  primary: CodexWindowSchema.nullable().optional(),
+  secondary: CodexWindowSchema.nullable().optional(),
+});
+const CodexRolloutLine = z.object({ payload: z.object({ rate_limits: CodexWindowsSchema }).optional() });
+type CodexWindow = z.infer<typeof CodexWindowSchema> | null;
 
-export function toRateLimit(u: UsageResponse): RateLimitInfo | null {
+const secs = (iso?: string | null): number => {
+  const ms = iso ? Date.parse(iso) : NaN;
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
+};
+
+export function toRateLimit(value: unknown): RateLimitInfo | null {
+  const parsed = UsageResponse.safeParse(value);
+  if (!parsed.success) return null;
+  const u = parsed.data;
   const five = u.five_hour;
   const week = u.seven_day;
   if (five?.utilization === undefined && week?.utilization === undefined) return null;
@@ -150,7 +171,7 @@ export async function fetchClaudeUsage(ctx: Ctx): Promise<UsageRead> {
   // the header should say "wait" rather than the shrug it says for everything else.
   if (status !== 200) return { error: status === 429 ? "rate_limited" : `http_${status || "unreachable"}` };
   try {
-    const rl = toRateLimit(JSON.parse(lines.join("\n")) as UsageResponse);
+    const rl = toRateLimit(JSON.parse(lines.join("\n")));
     return rl ? { rl } : { error: "no_windows" };
   } catch {
     return { error: "no_windows" };
@@ -173,12 +194,8 @@ export async function pollClaudeUsage(ctx: Ctx, now = Date.now()): Promise<boole
     db.run("DELETE FROM usage_snapshot WHERE runtime = 'claude'");
     return false;
   }
-  const last = db
-    .query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'")
-    .get()?.at;
-  const prev = db
-    .query<{ json: string }, []>("SELECT json FROM usage_snapshot WHERE runtime = 'claude'")
-    .get()?.json;
+  const last = db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'claude'").get()?.at;
+  const prev = db.query<{ json: string }, []>("SELECT json FROM usage_snapshot WHERE runtime = 'claude'").get()?.json;
   const throttled = !!prev && prev.includes('"error":"rate_limited"');
   if (last && now - last < (throttled ? BACKOFF_MS : POLL_EVERY_MS)) return false;
   // The settings-page credential, which is also the one `subscriptionAccount`
@@ -261,16 +278,11 @@ export function rateLimitsIn(text: string, now: number): RateLimitInfo | null {
   const lines = text.split("\n").filter((l) => l.includes('"rate_limits"'));
   // Last reading in the file wins: it grows as the session runs.
   for (let i = lines.length - 1; i >= 0; i--) {
-    const rl = jsonOr<{ payload?: { rate_limits?: Windows } } | null>(lines[i]!, null)?.payload?.rate_limits;
+    const rl = jsonOr(lines[i]!, CodexRolloutLine.nullable(), null)?.payload?.rate_limits;
     const out = rl && fromCodex(rl.primary ?? null, rl.secondary ?? null, now);
     if (out) return out;
   }
   return null;
-}
-
-interface Windows {
-  primary?: CodexWindow;
-  secondary?: CodexWindow;
 }
 
 export function codexUsage(dataDir: string, now = Date.now()): RateLimitInfo | null {
@@ -298,8 +310,6 @@ export function codexUsage(dataDir: string, now = Date.now()): RateLimitInfo | n
 export const NEWEST_ROLLOUT =
   `f=$(find ${CODEX_HOME}/sessions -type f -name '*.jsonl' -printf '%T@ %p\\n' 2>/dev/null | ` +
   `sort -rn | head -1 | cut -d' ' -f2-); [ -n "$f" ] && tail -c 200000 "$f"`;
-
-type CodexWindow = { used_percent?: number; window_minutes?: number; resets_at?: number; resets_in_seconds?: number } | null;
 
 /** 299 minutes is the five-hour window, 10079/10080 the week. Anything else is ignored. */
 function fromCodex(...args: [CodexWindow, CodexWindow, number]): RateLimitInfo | null {
@@ -341,7 +351,10 @@ function recentFiles(root: string, limit: number): string[] {
     }
   };
   walk(root);
-  return all.sort((a, b) => b.at - a.at).slice(0, limit).map((f) => f.path);
+  return all
+    .sort((a, b) => b.at - a.at)
+    .slice(0, limit)
+    .map((f) => f.path);
 }
 
 /**
@@ -373,9 +386,7 @@ export async function pollUsage(
   // sharing, and the watchdog ticks every 30s. A quota gauge does not need to be
   // a second of container time twice a minute.
   let rl: RateLimitInfo | null = null;
-  const last = db
-    .query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'codex'")
-    .get()?.at;
+  const last = db.query<{ at: number }, []>("SELECT at FROM usage_snapshot WHERE runtime = 'codex'").get()?.at;
   if (last && now - last < POLL_EVERY_MS) return;
   const rollout = await fromSandbox?.().catch(() => null);
   if (rollout) rl = rateLimitsIn(rollout, now);

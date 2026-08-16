@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { classify, makeGithub, parseRepo, type Fetcher } from "../src/mech/git/github.ts";
@@ -25,7 +26,7 @@ test("a 404 says the login cannot reach it, and never that the repo was deleted"
   // "deleted", "org revoked access", "removed from the org" and "lost its scope"
   // are the same response. Naming one of them sends the boss to the wrong page.
   const fetchFn: Fetcher = async () => json(404, { message: "Not Found" });
-  const r = await makeGithub(db(), fetchFn).request("GET", "/repos/me/gone");
+  const r = await makeGithub(db(), fetchFn).request("GET", "/repos/me/gone", z.unknown());
   expect(r.ok).toBe(false);
   if (r.ok) throw new Error("unreachable");
   expect(r.bucket).toBe("boss");
@@ -52,8 +53,9 @@ test("a 304 costs nothing and hands back the body we already had", async () => {
       : json(304, null, { etag: 'W/"abc"', "x-ratelimit-remaining": "4999" });
   };
   const gh = makeGithub(db(), fetchFn);
-  const first = await gh.request<{ number: number }>("GET", "/repos/me/x/pulls/7");
-  const second = await gh.request<{ number: number }>("GET", "/repos/me/x/pulls/7");
+  const Pull = z.object({ number: z.number() });
+  const first = await gh.request("GET", "/repos/me/x/pulls/7", Pull);
+  const second = await gh.request("GET", "/repos/me/x/pulls/7", Pull);
 
   expect(first.ok && first.data.number).toBe(7);
   expect(second.ok && second.status).toBe(304);
@@ -61,6 +63,27 @@ test("a 304 costs nothing and hands back the body we already had", async () => {
   expect(second.ok && second.data.number).toBe(7);
   expect(sent).toEqual([undefined, 'W/"abc"']);
   expect(gh.remaining()).toBe(4999);
+});
+
+test("an ETag caches raw JSON so each caller can apply its own schema", async () => {
+  let hits = 0;
+  const gh = makeGithub(db(), async () =>
+    ++hits === 1 ? json(200, { a: 1, b: 2 }, { etag: 'W/"shape"' }) : json(304, null, { etag: 'W/"shape"' }),
+  );
+
+  expect((await gh.request("GET", "/repos/me/x", z.object({ a: z.number() }))).ok).toBe(true);
+  const second = await gh.request("GET", "/repos/me/x", z.object({ b: z.number() }));
+  expect(second.ok && second.data.b).toBe(2);
+});
+
+test("JSON that misses the endpoint schema is a handled transient failure", async () => {
+  const r = await makeGithub(db(), async () => json(200, null)).request(
+    "GET",
+    "/repos/me/x",
+    z.object({ full_name: z.string(), default_branch: z.string(), clone_url: z.string() }),
+  );
+
+  expect(r).toMatchObject({ ok: false, status: 200, bucket: "transient" });
 });
 
 test("rotating the login invalidates the ETags rather than reusing them", async () => {
@@ -73,12 +96,12 @@ test("rotating the login invalidates the ETags rather than reusing them", async 
     return json(200, { login: init.headers.authorization }, { etag: 'W/"abc"' });
   };
   const gh = makeGithub(d, fetchFn);
-  await gh.request("GET", "/user");
-  await gh.request("GET", "/user");
+  await gh.request("GET", "/user", z.unknown());
+  await gh.request("GET", "/user", z.unknown());
   expect(sent).toEqual([undefined, 'W/"abc"']);
 
   saveAuth(d, { runtime: "github", mode: "api_key", secret: "ghp_two" });
-  const after = await gh.request<{ login: string }>("GET", "/user");
+  const after = await gh.request("GET", "/user", z.object({ login: z.string() }));
   expect(sent[2]).toBeUndefined();
   expect(after.ok && after.data.login).toContain("ghp_two");
 });
@@ -104,7 +127,7 @@ test("a network throw is transient, not a bad credential", async () => {
   const fetchFn: Fetcher = async () => {
     throw new TypeError("fetch failed");
   };
-  const r = await makeGithub(db(), fetchFn).request("GET", "/user");
+  const r = await makeGithub(db(), fetchFn).request("GET", "/user", z.unknown());
   expect(r.ok).toBe(false);
   if (!r.ok) {
     expect(r.bucket).toBe("transient");
@@ -118,7 +141,7 @@ test("no credential is the boss's, and nothing is sent", async () => {
     called = true;
     return json(200, {});
   };
-  const r = await makeGithub(openMemory(), fetchFn).request("GET", "/user");
+  const r = await makeGithub(openMemory(), fetchFn).request("GET", "/user", z.unknown());
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.bucket).toBe("boss");
   expect(called).toBe(false);

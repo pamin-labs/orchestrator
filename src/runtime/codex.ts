@@ -1,7 +1,8 @@
-import { clip } from "../mech/util/text.ts";
+import { clip, jsonOr } from "../mech/util/text.ts";
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary, Usage } from "./claude.ts";
 import { promptPath, summarizeTool } from "./claude.ts";
 import { shq } from "../mech/util/shq.ts";
+import { z } from "zod";
 
 /**
  * `codex exec --json` behind the same interface as the claude adapter.
@@ -21,9 +22,7 @@ import { shq } from "../mech/util/shq.ts";
  */
 
 export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
-  const argv = spec.resumeSessionId
-    ? ["exec", "resume", spec.resumeSessionId, "--json"]
-    : ["exec", "--json"];
+  const argv = spec.resumeSessionId ? ["exec", "resume", spec.resumeSessionId, "--json"] : ["exec", "--json"];
   argv.push("--skip-git-repo-check");
   // An empty model means "whatever the account allows": naming one is rejected
   // outright on a ChatGPT-account login, and that is not a reason to fail a turn.
@@ -70,7 +69,7 @@ export function trimItem(l: Record<string, unknown>): Record<string, unknown> {
   const item = l.item;
   if (!item || typeof item !== "object") return l;
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(item as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(item)) {
     out[k] =
       typeof v === "string" && v.length > LOG_ITEM_CHARS
         ? `${v.slice(0, LOG_ITEM_CHARS)}… [${v.length} chars omitted]`
@@ -79,19 +78,50 @@ export function trimItem(l: Record<string, unknown>): Record<string, unknown> {
   return { ...l, item: out };
 }
 
-type Window = { used_percent?: number; window_minutes?: number; resets_in_seconds?: number };
+const Counter = z.number().finite().nonnegative();
+const UsageSchema = z
+  .object({
+    input_tokens: Counter.optional(),
+    cached_input_tokens: Counter.optional(),
+    cache_write_input_tokens: Counter.optional(),
+    output_tokens: Counter.optional(),
+    reasoning_output_tokens: Counter.optional(),
+  })
+  .passthrough();
+const WindowSchema = z
+  .object({
+    used_percent: Counter.max(100).optional(),
+    window_minutes: Counter.optional(),
+    resets_in_seconds: Counter.optional(),
+  })
+  .passthrough();
 
-type Line = {
-  type?: string;
-  thread_id?: string;
-  item?: { type?: string; text?: string; message?: string; command?: string; path?: string };
-  usage?: Record<string, number>;
-  error?: { message?: string };
-  message?: string;
-  /** token_count carries the account's own quota state, both windows, as percentages. */
-  rate_limits?: { primary?: Window; secondary?: Window };
-  info?: { model_context_window?: number } | null;
-};
+/** One valid Codex NDJSON event. Unknown fields remain available to the log. */
+const LineSchema = z
+  .object({
+    type: z.string(),
+    thread_id: z.string().optional(),
+    item: z
+      .object({
+        type: z.string().optional(),
+        text: z.string().optional(),
+        message: z.string().optional(),
+        command: z.string().optional(),
+        path: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+    usage: UsageSchema.optional(),
+    error: z.object({ message: z.string().optional() }).passthrough().optional(),
+    message: z.string().optional(),
+    /** token_count carries the account's own quota state, both windows, as percentages. */
+    rate_limits: z
+      .object({ primary: WindowSchema.optional(), secondary: WindowSchema.optional() })
+      .passthrough()
+      .optional(),
+    info: z.object({ model_context_window: Counter.optional() }).passthrough().nullable().optional(),
+  })
+  .passthrough();
 
 /**
  * What one codex turn cost, in the shape the rest of the system bills in.
@@ -113,7 +143,7 @@ type Line = {
  * shared — and so billed the indexer, the most frequent model call in the
  * system, for its cached tokens twice.
  */
-export function codexUsage(u: Record<string, number> | undefined = {}): Usage {
+export function codexUsage(u: z.infer<typeof UsageSchema> = {}): Usage {
   return {
     input: Math.max(0, (u.input_tokens ?? 0) - (u.cached_input_tokens ?? 0)),
     output: u.output_tokens ?? 0,
@@ -131,9 +161,7 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
   // the boundary of what the provider can match as an unchanged prefix — the
   // opposite of what resuming is for. A changed stable half rotates the session
   // (needsRotation compares the hash), which is where the new one gets sent.
-  const input = spec.resumeSessionId
-    ? spec.prompt
-    : `${spec.stable.systemAppend}\n\n---\n\n${spec.prompt}`;
+  const input = spec.resumeSessionId ? spec.prompt : `${spec.stable.systemAppend}\n\n---\n\n${spec.prompt}`;
 
   // No stdin on the exec API, so the prompt travels as a file in the sandbox.
   // One file per call — a project sandbox is shared by every standing role.
@@ -176,12 +204,8 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
       }
       const raw = step.value;
       if (!raw.startsWith("{")) continue; // banners and friends
-      let l: Line;
-      try {
-        l = JSON.parse(raw) as Line;
-      } catch {
-        continue;
-      }
+      const l = jsonOr(raw, LineSchema.nullable(), null);
+      if (!l) continue;
       log?.write(JSON.stringify(trimItem(l)) + "\n");
 
       switch (l.type) {

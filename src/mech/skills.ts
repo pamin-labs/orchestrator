@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { DB } from "../db.ts";
 import { jsonOr } from "./util/text.ts";
+import { z } from "zod";
 
 /**
  * Skills reach an agent two ways, and both are needed.
@@ -41,6 +42,14 @@ export interface SkillRef {
   description: string;
   scope: "project" | "user";
 }
+
+const SkillRefSchema = z.object({
+  name: z.string(),
+  file: z.string(),
+  rel: z.string(),
+  description: z.string(),
+  scope: z.enum(["project", "user"]),
+});
 
 /**
  * Where a repository can ship its own skills. See `listSkills` for the counts
@@ -83,13 +92,7 @@ export function frontmatterDescription(text: string): string {
  * user who moved `~/.claude` with `$CLAUDE_CONFIG_DIR` changes the first and must
  * not change the second.
  */
-function scan(
-  root: string,
-  base: string,
-  scope: SkillRef["scope"],
-  out: SkillRef[],
-  relBase = base,
-): void {
+function scan(root: string, base: string, scope: SkillRef["scope"], out: SkillRef[], relBase = base): void {
   const dir = join(root, base);
   if (!existsSync(dir)) return;
   let entries: Dirent[];
@@ -236,10 +239,7 @@ export function readSkill(ref: SkillRef): string {
  * ~1s an exec costs). Naming one in a requirement has to work for both, or the
  * repository's own skills are listed in the panel and inert when pointed at.
  */
-export async function readSkillIn(
-  get: (path: string) => Promise<string | null>,
-  ref: SkillRef,
-): Promise<string> {
+export async function readSkillIn(get: (path: string) => Promise<string | null>, ref: SkillRef): Promise<string> {
   if (ref.scope !== "project") return readSkill(ref);
   const where = pathInSandbox(ref);
   const body = await get(where).catch(() => null);
@@ -270,7 +270,7 @@ const PROJECT_KEY = (id: number) => `skills.project.${id}`;
 export function projectSkills(db: DB, projectId: number | null | undefined): SkillRef[] {
   if (!projectId) return [];
   const row = db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(PROJECT_KEY(projectId));
-  return jsonOr<SkillRef[]>(row?.v, []).filter((s) => s && s.name && s.rel);
+  return jsonOr(row?.v, z.array(SkillRefSchema), []);
 }
 
 /**
@@ -325,7 +325,7 @@ const OFF_KEY = "skills.off";
  */
 export function skillsOff(db: DB): string[] {
   const row = db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(OFF_KEY);
-  return jsonOr<string[]>(row?.v, []);
+  return jsonOr(row?.v, z.array(z.string()), []);
 }
 
 export function setSkillOff(db: DB, name: string, off: boolean): string[] {
@@ -341,7 +341,10 @@ export function setSkillOff(db: DB, name: string, off: boolean): string[] {
 /** Stage what is ticked. Called at boot and after every tick. */
 export function restageSkills(db: DB, dir: string): ReturnType<typeof stageSkills> {
   const off = new Set(skillsOff(db));
-  return stageSkills(dir, listSkills().filter((s) => !off.has(s.name)));
+  return stageSkills(
+    dir,
+    listSkills().filter((s) => !off.has(s.name)),
+  );
 }
 
 /**
@@ -422,4 +425,3 @@ export function projectSkillsPending(ctx: Ctx, projectId: number, repoPath?: str
       `那之后它们会自动出现在这里，也能在输入框里 /名字 点名。技能放在这几个目录之外的话，两边都看不到。`,
   });
 }
-

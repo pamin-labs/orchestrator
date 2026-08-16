@@ -1,5 +1,16 @@
 import type {
-  Agent, Answered, Archived, Channel, DraftCard, Escalation, Group, GroupNote, GroupSaid, Project, Slice, Task,
+  Agent,
+  Answered,
+  Archived,
+  Channel,
+  DraftCard,
+  Escalation,
+  Group,
+  GroupNote,
+  GroupSaid,
+  Project,
+  Slice,
+  Task,
 } from "./shapes.ts";
 import { UsageWindow } from "./shapes.ts";
 import { jsonOr } from "../../mech/util/text.ts";
@@ -10,6 +21,7 @@ import { head, position } from "../../mech/flow/mergequeue.ts";
 import { json, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
 import { ESCALATION_TERMINAL_STATES, stateParam } from "../../states.ts";
+import { z } from "zod";
 
 /**
  * Everything the panel draws, in one payload.
@@ -179,19 +191,20 @@ export function snapshot(ctx: Ctx) {
     // belongs in 成本. This answers "can this still run tonight", which is the one
     // usage question that changes what the boss does next.
     usage: db
-      .query<{ runtime: string; json: string; at: number }, []>(
-        "SELECT runtime, json, at FROM usage_snapshot",
-      )
+      .query<{ runtime: string; json: string; at: number }, []>("SELECT runtime, json, at FROM usage_snapshot")
       .all()
       // Parsed, not spread. The blob was written by an earlier version of this
       // process, so a field it does not have is a field this one must not claim:
       // spreading a `JSON.parse` told TypeScript the result was `{runtime, at}`
       // while the panel read six more properties off it.
       .map((r): UsageWindow => {
-        const parsed = UsageWindow.safeParse({ ...jsonOr<object>(r.json, {}), runtime: r.runtime, at: r.at });
+        const parsed = UsageWindow.safeParse({
+          ...jsonOr(r.json, z.record(z.string(), z.unknown()), {}),
+          runtime: r.runtime,
+          at: r.at,
+        });
         return parsed.success ? parsed.data : { runtime: r.runtime, at: r.at };
       }),
-    lastSeq:
-      ctx.db.query<{ s: number | null }, []>("SELECT max(seq) AS s FROM event").get()?.s ?? 0,
+    lastSeq: ctx.db.query<{ s: number | null }, []>("SELECT max(seq) AS s FROM event").get()?.s ?? 0,
   };
 }

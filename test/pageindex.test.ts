@@ -4,7 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { openMemory } from "../src/db.ts";
-import { chargeIndex, loadTree, readClaude, readCodex, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/knowledge/pageindex.ts";
+import {
+  chargeIndex,
+  loadTree,
+  readClaude,
+  readCodex,
+  noteLeaves,
+  render,
+  saveTree,
+  search,
+  skeleton,
+  summarise,
+  type Ask,
+} from "../src/mech/knowledge/pageindex.ts";
 import { Bus } from "../src/bus.ts";
 import { costReport } from "../src/mech/ops/cost.ts";
 import type { Ctx } from "../src/api.ts";
@@ -145,9 +157,7 @@ test("what the index spends shows up in the cost report", async () => {
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent WHERE role = 'indexer'").get()!.n).toBe(1);
   // And the hourly burn chart reads the events, which need the same meta shape a
   // turn emits or the provider split guesses from the model name.
-  const ev = db
-    .query<{ meta_json: string }, []>("SELECT meta_json FROM event WHERE author = 'indexer' LIMIT 1")
-    .get()!;
+  const ev = db.query<{ meta_json: string }, []>("SELECT meta_json FROM event WHERE author = 'indexer' LIMIT 1").get()!;
   expect(JSON.parse(ev.meta_json).runtime).toBe("codex");
 });
 
@@ -157,7 +167,12 @@ test("a call that reported no usage is not charged", () => {
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   const ctx = { db, bus: new Bus(db) } as unknown as Ctx;
-  chargeIndex(ctx, 1, { runtime: "codex", model: "m" }, { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 });
+  chargeIndex(
+    ctx,
+    1,
+    { runtime: "codex", model: "m" },
+    { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 },
+  );
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent").get()!.n).toBe(0);
 });
 

@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import type { Ctx } from "../src/api.ts";
 import { detectProject } from "../src/mech/flow/start.ts";
 import { gatesFor } from "../src/mech/gate.ts";
+import { projectConfig } from "../src/mech/util/rows.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
@@ -47,9 +49,18 @@ function harness(files: Record<string, string>) {
   return { db, ctx, asked };
 }
 
-const config = (db: DB): any => JSON.parse(db.query<{ config_json: string }, []>("SELECT config_json FROM project").get()!.config_json);
+const config = (db: DB) => projectConfig(db, 1);
+const storedDetection = (db: DB) =>
+  z
+    .object({ detected: z.boolean(), gates: z.array(z.string()) })
+    .passthrough()
+    .parse(JSON.parse(db.query<{ config_json: string }, []>("SELECT config_json FROM project").get()!.config_json));
 const resources = (db: DB) =>
-  db.query<{ name: string; template: string; tags_json: string }, []>("SELECT name, template, tags_json FROM resource ORDER BY name").all();
+  db
+    .query<{ name: string; template: string; tags_json: string }, []>(
+      "SELECT name, template, tags_json FROM resource ORDER BY name",
+    )
+    .all();
 
 test("the first clone is what works out the gates, the install command and the shared paths", async () => {
   const h = harness({
@@ -73,7 +84,7 @@ test("the first clone is what works out the gates, the install command and the s
 
   // And the project config, where the boss can correct any of it.
   const cfg = config(h.db);
-  expect(cfg.gates.sort()).toEqual(["lint", "test", "typecheck"]);
+  expect(cfg.gates?.sort()).toEqual(["lint", "test", "typecheck"]);
   expect(gatesFor(h.db, 1).sort()).toEqual(["lint", "test", "typecheck"]);
   expect(cfg.install).toBe("bun install --frozen-lockfile");
   expect(cfg.shared).toContain("packages/*/package.json");
@@ -103,6 +114,21 @@ test("the second group does not detect again, and does not duplicate a resource 
   await detectProject(h.ctx, 2, 1);
   expect(config(h.db).gates).toEqual(["mine"]);
 });
+
+for (const [name, stored, gates] of [
+  ["detected", { detected: "true", gates: ["mine"] }, ["mine"]],
+  ["gates", { detected: true, gates: "test" }, ["test", "lint"]],
+] as const) {
+  test(`malformed ${name} is repaired without dropping unknown config`, async () => {
+    const h = harness({ "Cargo.toml": "[package]" });
+    h.db.run("UPDATE project SET config_json = ?", [JSON.stringify({ ...stored, migration: { version: 7 } })]);
+
+    await detectProject(h.ctx, 1, 1);
+
+    expect(h.asked.length).toBeGreaterThan(0);
+    expect(storedDetection(h.db)).toMatchObject({ detected: true, gates, migration: { version: 7 } });
+  });
+}
 
 test("a repository with nothing detectable says so instead of failing silently later", async () => {
   // The warning registration used to give. Without it the first slice fails at a
