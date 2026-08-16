@@ -184,6 +184,15 @@ export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
     // rather than the ~180 on the boss's machine that measured ~46k tokens.
     "--tools",
     s.tools.join(","),
+    // Moves cwd, env info, memory paths and `git status` out of the default
+    // system prompt and into the first user message.
+    //
+    // That block sits ahead of `--append-system-prompt`, and one of its lines is
+    // the working tree — which this executor changes before every single turn by
+    // committing a checkpoint. A prefix whose first hundred tokens differ every
+    // time is a prefix that is never reused, and nothing about that is visible:
+    // the turn works, the cache ratio just quietly reports the loss.
+    "--exclude-dynamic-system-prompt-sections",
   ];
   // Already clamped to what this provider accepts (providers.ts), because effort
   // is part of the hashed prefix and the hash has to describe what was sent.
