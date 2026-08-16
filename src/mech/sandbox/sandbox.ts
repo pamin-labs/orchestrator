@@ -279,7 +279,7 @@ export function allowedHostPaths(home = homedir()): { paths: string[]; config: s
 export const coveredBy = (allowed: string[], want: string): boolean =>
   allowed.some((a) => want === a.replace(/\/+$/, "") || want.startsWith(a.replace(/\/+$/, "") + "/"));
 
-type RestartOps = {
+export type RestartOps = {
   running: typeof runningServer;
   kill: (pid: number, signal: "SIGTERM" | "SIGKILL") => void;
   sleep: (ms: number) => Promise<void>;
