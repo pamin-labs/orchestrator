@@ -38,6 +38,15 @@ import { clampEffort, providerFor, type Provider } from "./providers.ts";
  * what happens when the CLI reports a permission denial or a rate limit.
  */
 
+/**
+ * Why a turn did not resume the session it had.
+ *
+ * `hash` the cached prefix changed under it, `budget` the context ceiling,
+ * `explicit` a send-back that asked for a clean head, `new` there was no session
+ * to resume. Recorded on the turn event; the first three cost a cached prefix.
+ */
+export type RotateReason = "hash" | "budget" | "explicit" | "new";
+
 export interface ExecDeps {
   ctx: Ctx;
   cfg: Config;
@@ -201,10 +210,23 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
 
   // A changed stable half means the cached prefix is dead. Rotating is cheaper
   // than paying full price for every remaining turn of this session.
-  const rotate =
-    needsRotation(agent.stable_hash ?? null, stable) ||
-    overTokenBudget(agent, cfg) ||
-    Boolean(safeJson(job.payload_json).rotate);
+  //
+  // Which of the four fired is recorded rather than collapsed into a boolean.
+  // Sampling this repo's own turn logs, 10 of 13 claude jobs opened on a cold
+  // prefix — a new session, ~17k of cache creation before the first token — and
+  // nothing in the database could say which trigger did it. A cost panel that
+  // shows the rate without the reason can only prompt a guess, and the fix for
+  // each of the four is different.
+  const why: RotateReason | null = needsRotation(agent.stable_hash ?? null, stable)
+    ? "hash"
+    : overTokenBudget(agent, cfg)
+      ? "budget"
+      : safeJson(job.payload_json).rotate
+        ? "explicit"
+        : !agent.session_id
+          ? "new"
+          : null;
+  const rotate = why !== null && why !== "new";
 
   const sessionId = rotate || !agent.session_id ? crypto.randomUUID() : agent.session_id;
   const delta = await buildDeltaFor(deps, agent, job, rotate, scope);
@@ -362,7 +384,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     }
   }
 
-  recordCost(deps, agent, job, result, stable.hash);
+  recordCost(deps, agent, job, result, stable.hash, why);
   recordProgress(deps, agent, job, result);
   await narrate(deps, agent, job, before, result);
   handleRateLimit(deps, agent, job, result);
@@ -982,7 +1004,14 @@ export async function reconcileOwnership(
   });
 }
 
-function recordCost(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult, stableHash: string): void {
+function recordCost(
+  deps: ExecDeps,
+  agent: AgentRow,
+  job: Job,
+  r: TurnResult,
+  stableHash: string,
+  rotate: RotateReason | null,
+): void {
   const { ctx } = deps;
   const total = r.usage.input + r.usage.output + r.usage.cacheRead + r.usage.cacheCreate;
   // session_tokens tracks context occupancy, not billing: output and cacheRead
@@ -1016,6 +1045,10 @@ function recordCost(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResult, st
       cacheRatio: cacheRatio(r),
       model: agent.model,
       runtime: agent.runtime ?? DEFAULT_PROVIDER,
+      // Null when this turn resumed. Otherwise which of the four started a new
+      // session — the number the cache ratio cannot give you, because a low ratio
+      // and a high rotation rate are the same picture with different fixes.
+      rotate,
     },
   });
 }

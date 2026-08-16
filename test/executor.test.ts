@@ -282,6 +282,29 @@ test("cacheRatio reports the only visible signal that caching still works", () =
   expect(cacheRatio(ok({ usage: { input: 100, output: 5, cacheRead: 0, cacheCreate: 0, thinking: 0 } }))).toBe(0);
 });
 
+test("a turn records whether it opened a cold session, and what caused it", async () => {
+  const { db, sched } = harness(async () => ok());
+  const reasons = () =>
+    db
+      .query<{ why: string | null }, []>(
+        "SELECT json_extract(meta_json, '$.rotate') AS why FROM event WHERE kind = 'tool_summary' ORDER BY seq",
+      )
+      .all()
+      .map((r) => r.why);
+
+  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer", rotate: true } });
+  await sched.drain();
+
+  // Null is the healthy case and has to stay distinguishable from the others: a
+  // cache ratio alone cannot tell "the prefix moved" from "a send-back asked for
+  // a clean head", and those have opposite fixes.
+  expect(reasons()).toEqual(["new", null, "explicit"]);
+});
+
 /** Minimal deps for calling `hire` directly. */
 function harnessDeps(ctx: Ctx, sched: Scheduler) {
   return {

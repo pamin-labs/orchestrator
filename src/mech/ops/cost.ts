@@ -72,6 +72,8 @@ export interface CostReport {
   total: CostRow;
   /** Cache hit ratio across recorded turns; the only visible sign caching works. */
   cacheRatio: number | null;
+  /** Of those same turns, how many opened a cold session, and what triggered it. */
+  rotations: { turns: number; byReason: Record<string, number> };
 }
 
 /** The four counters a turn reports, summed. Written once; the CASE needs it twice. */
@@ -162,7 +164,18 @@ export function costReport(db: DB, projectId?: number): CostReport {
     )
     .get(...args)!;
 
-  return { delivered, byGroup, agents, byRole, byDifficulty, byRuntime, byHour, total, cacheRatio: recentCacheRatio(db) };
+  return {
+    delivered,
+    byGroup,
+    agents,
+    byRole,
+    byDifficulty,
+    byRuntime,
+    byHour,
+    total,
+    cacheRatio: recentCacheRatio(db),
+    rotations: recentRotations(db),
+  };
 }
 
 /**
@@ -186,4 +199,28 @@ export function recentCacheRatio(db: DB, limit = 50): number | null {
   }
   if (vals.length === 0) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+/**
+ * How many of the recent turns started a session instead of resuming one, and
+ * which trigger did it.
+ *
+ * The companion to the ratio above, and the reason it is a separate number: a
+ * low cache ratio can mean the prompt assembly broke or it can mean nobody is
+ * resuming anything, and those have different fixes. Measured on this repo's own
+ * logs before it existed, 10 of 13 claude jobs opened cold — roughly 17k tokens
+ * of prefix rebuilt each time — and there was no way to tell whether the cause
+ * was a moving prefix, the rotation ceiling, or send-backs asking for it.
+ */
+export function recentRotations(db: DB, limit = 50): { turns: number; byReason: Record<string, number> } {
+  const rows = db
+    .query<{ why: string | null }, [number]>(
+      `SELECT json_extract(meta_json, '$.rotate') AS why FROM event
+       WHERE kind = 'tool_summary' AND meta_json LIKE '%cacheRatio%'
+       ORDER BY seq DESC LIMIT ?`,
+    )
+    .all(limit);
+  const byReason: Record<string, number> = {};
+  for (const r of rows) if (r.why) byReason[r.why] = (byReason[r.why] ?? 0) + 1;
+  return { turns: rows.length, byReason };
 }

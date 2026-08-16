@@ -359,6 +359,18 @@ export function CostView({ cost }: { cost: Cost | null }) {
     );
   }
   const per = cost.delivered?.count ? cost.delivered.tokens / cost.delivered.count : null;
+  // Plain words, not the field names: "前缀变了" is a thing the boss can act on,
+  // `hash` is a thing they would need the source to read.
+  const REASON: Record<string, string> = {
+    hash: "前缀变了",
+    budget: "上下文满了",
+    explicit: "打回重做",
+    new: "新雇的",
+  };
+  const turns = cost.rotations?.turns ?? 0;
+  const byReason = Object.entries(cost.rotations?.byReason ?? {}).sort((a, b) => b[1] - a[1]);
+  const cold = byReason.reduce((n, [, c]) => n + c, 0);
+  const why = byReason.map(([k, c]) => `${REASON[k] ?? k} ${c}`).join(" · ");
   const agents = cost.agents ?? [];
   const standing = agents.filter((a) => a.grpId == null && a.tokens);
   const standingTotal = standing.reduce((n, a) => n + a.tokens, 0);
@@ -457,6 +469,21 @@ export function CostView({ cost }: { cost: Cost | null }) {
               </b>
             </div>
           </Tip>
+          {/* The second half of the same question. A low hit rate can mean the
+              prompt assembly broke or it can mean nobody is resuming anything,
+              and only this line separates them. One line of text, no card: it is
+              a footnote to the number above it, not a metric of its own. */}
+          {cold > 0 && (
+            <Tip label="重开一次会话，缓存前缀要从头建一遍">
+              <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
+                重开会话{" "}
+                <b className={cn("font-mono font-semibold", cold * 2 > turns ? "text-warn" : "text-ink")}>
+                  {cold}/{turns}
+                </b>
+                <span className="text-ink-3"> · {why}</span>
+              </div>
+            </Tip>
+          )}
         </div>
           <Rail title="烧得多快" note="近 24 小时，按小时">
             <BurnChart data={cost.byHour ?? []} />

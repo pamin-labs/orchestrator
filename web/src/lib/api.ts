@@ -99,6 +99,8 @@ export interface Cost {
   /** Last 48h of burn, per hour, split by which subscription paid. */
   byHour: { hour: string; claude: number; codex: number }[];
   cacheRatio: number | null;
+  /** Of the same recent turns, how many opened a cold session and why. */
+  rotations?: { turns: number; byReason: Record<string, number> };
   delivered: { count: number; tokens: number };
 }
 
