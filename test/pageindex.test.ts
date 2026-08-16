@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { openMemory } from "../src/db.ts";
-import { chargeIndex, loadTree, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/knowledge/pageindex.ts";
+import { chargeIndex, loadTree, readClaude, readCodex, noteLeaves, render, saveTree, search, skeleton, summarise, type Ask } from "../src/mech/knowledge/pageindex.ts";
 import { Bus } from "../src/bus.ts";
 import { costReport } from "../src/mech/ops/cost.ts";
 import type { Ctx } from "../src/api.ts";
@@ -135,8 +135,8 @@ test("what the index spends shows up in the cost report", async () => {
   const ctx = { db, bus: new Bus(db) } as unknown as Ctx;
   const spec = { runtime: "codex", model: "gpt-5.6-luna" };
 
-  chargeIndex(ctx, 1, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1 });
-  chargeIndex(ctx, 1, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0 });
+  chargeIndex(ctx, 1, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 });
+  chargeIndex(ctx, 1, spec, { input: 10, output: 2, cacheRead: 0, cacheCreate: 0, thinking: 0 });
 
   const report = costReport(db);
   expect(report.byRole.find((r) => r.label === "indexer")?.tokens).toBe(138);
@@ -157,6 +157,35 @@ test("a call that reported no usage is not charged", () => {
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   const ctx = { db, bus: new Bus(db) } as unknown as Ctx;
-  chargeIndex(ctx, 1, { runtime: "codex", model: "m" }, { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 });
+  chargeIndex(ctx, 1, { runtime: "codex", model: "m" }, { input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 });
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM agent").get()!.n).toBe(0);
+});
+
+test("an index call is billed for its cached tokens once, not twice", () => {
+  // The indexer is the most frequent model call in the system and it defaults to
+  // codex, whose `input_tokens` already contains the cached part — the opposite
+  // of claude. Reading both with one key-name-parameterised helper kept the pair
+  // of key names, which is the part that differs, and dropped the subtraction,
+  // which is the part that matters. A real 10k call with 8k cached was billed
+  // 18050 instead of 10050, and that number reaches the boss's burn chart.
+  const codex = readCodex(
+    [
+      JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "auth middleware" } }),
+      JSON.stringify({
+        type: "turn.completed",
+        usage: { input_tokens: 10_000, cached_input_tokens: 8_000, output_tokens: 50 },
+      }),
+    ].join("\n"),
+  );
+  expect(codex.text).toBe("auth middleware");
+  expect(codex.usage).toEqual({ input: 2_000, output: 50, cacheRead: 8_000, cacheCreate: 0, thinking: 0 });
+
+  // claude's own input_tokens excludes the cache, so nothing comes off there.
+  const claude = readClaude(
+    JSON.stringify({
+      result: "auth middleware",
+      usage: { input_tokens: 2_000, cache_read_input_tokens: 8_000, output_tokens: 50 },
+    }),
+  );
+  expect(claude.usage).toEqual({ input: 2_000, output: 50, cacheRead: 8_000, cacheCreate: 0, thinking: 0 });
 });

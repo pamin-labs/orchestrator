@@ -40,6 +40,23 @@ export interface Usage {
   thinking: number;
 }
 
+/**
+ * What one claude turn cost. Its `input_tokens` counts only what the cache
+ * missed, so nothing is subtracted here — see `codexUsage`, whose whole reason
+ * to exist is that codex means the other thing by the same field name.
+ */
+export function claudeUsage(
+  u: { output_tokens_details?: { thinking_tokens?: number } } & Record<string, number | undefined> = {},
+): Usage {
+  return {
+    input: u.input_tokens ?? 0,
+    output: u.output_tokens ?? 0,
+    cacheRead: u.cache_read_input_tokens ?? 0,
+    cacheCreate: u.cache_creation_input_tokens ?? 0,
+    thinking: u.output_tokens_details?.thinking_tokens ?? 0,
+  };
+}
+
 export interface ToolSummary {
   name: string;
   /** One-line rendering of the call, for the timeline. Never the full input. */
@@ -367,14 +384,7 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
       r.terminalReason = l.terminal_reason ?? (r.ok ? "completed" : "error");
       if (typeof l.result === "string" && l.result) r.text = l.result;
       r.numTurns = l.num_turns ?? 0;
-      const u = l.usage ?? {};
-      r.usage = {
-        input: u.input_tokens ?? 0,
-        output: u.output_tokens ?? 0,
-        cacheRead: u.cache_read_input_tokens ?? 0,
-        cacheCreate: u.cache_creation_input_tokens ?? 0,
-        thinking: u.output_tokens_details?.thinking_tokens ?? 0,
-      };
+      r.usage = claudeUsage(l.usage);
       for (const m of Object.values(l.modelUsage ?? {})) {
         if (m.contextWindow) r.contextWindow = m.contextWindow;
       }

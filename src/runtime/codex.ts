@@ -1,5 +1,5 @@
 import { clip } from "../mech/util/text.ts";
-import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary } from "./claude.ts";
+import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary, Usage } from "./claude.ts";
 import { promptPath, summarizeTool } from "./claude.ts";
 import { shq } from "../mech/util/shq.ts";
 
@@ -93,6 +93,36 @@ type Line = {
   info?: { model_context_window?: number } | null;
 };
 
+/**
+ * What one codex turn cost, in the shape the rest of the system bills in.
+ *
+ * `input_tokens` here is the whole prompt, cached part included — the opposite
+ * of claude, whose `input_tokens` counts only what the cache missed. Reporting
+ * codex's total under the same name made one number wrong in three places:
+ * `cacheRatio` read 0.39 where the real hit rate was 0.92, `total`
+ * double-counted every cached token so a codex slice hit its budget at half its
+ * real spend, and the rotation ceiling (`input + cacheCreate` against 0.6 of a
+ * 272k window) was cleared by a single 438k turn — so every codex agent started
+ * a new session every turn and re-read the repo to find out where it was.
+ * Measured: 438k input vs 402k cacheRead per job, 15 of 18 live codex agents
+ * sitting above the ceiling.
+ *
+ * Exported because that subtraction is the difference between the two runtimes
+ * and it was written down once. `pageindex.ts` had a second copy that took the
+ * two shapes as a pair of key names — which is exactly the part that is *not*
+ * shared — and so billed the indexer, the most frequent model call in the
+ * system, for its cached tokens twice.
+ */
+export function codexUsage(u: Record<string, number> | undefined = {}): Usage {
+  return {
+    input: Math.max(0, (u.input_tokens ?? 0) - (u.cached_input_tokens ?? 0)),
+    output: u.output_tokens ?? 0,
+    cacheRead: u.cached_input_tokens ?? 0,
+    cacheCreate: u.cache_write_input_tokens ?? 0,
+    thinking: u.reasoning_output_tokens ?? 0,
+  };
+}
+
 export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult> {
   // codex has no --append-system-prompt, so the stable half leads the first
   // message of a thread. It must NOT lead the rest: `codex exec resume` replays
@@ -180,25 +210,7 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
           break;
         }
         case "turn.completed": {
-          const u = l.usage ?? {};
-          result.usage = {
-            // `input_tokens` here is the whole prompt, cached part included —
-            // the opposite of claude, whose `input_tokens` counts only what the
-            // cache missed. Reporting codex's total under the same name made one
-            // number wrong in three places: `cacheRatio` read 0.39 where the real
-            // hit rate was 0.92, `total` double-counted every cached token so a
-            // codex slice hit its budget at half its real spend, and the rotation
-            // ceiling (`input + cacheCreate` against 0.6 of a 272k window) was
-            // cleared by a single 438k turn — so every codex agent started a new
-            // session every turn and re-read the repo to find out where it was.
-            // Measured: 438k input vs 402k cacheRead per job, 15 of 18 live codex
-            // agents sitting above the ceiling.
-            input: Math.max(0, (u.input_tokens ?? 0) - (u.cached_input_tokens ?? 0)),
-            output: u.output_tokens ?? 0,
-            cacheRead: u.cached_input_tokens ?? 0,
-            cacheCreate: u.cache_write_input_tokens ?? 0,
-            thinking: u.reasoning_output_tokens ?? 0,
-          };
+          result.usage = codexUsage(l.usage);
           result.ok = true;
           result.terminalReason = "completed";
           break;

@@ -3,7 +3,8 @@ import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../db.ts";
 import type { Ctx } from "../../ctx.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
-import { promptPath } from "../../runtime/claude.ts";
+import { claudeUsage, promptPath, type Usage } from "../../runtime/claude.ts";
+import { codexUsage } from "../../runtime/codex.ts";
 import { shq } from "../util/shq.ts";
 
 /**
@@ -239,12 +240,7 @@ export function render(tree: Tree, ids: string[]): string {
  * command, and codex's sandbox governs the commands the model asks for, not
  * codex's own API traffic.
  */
-export interface AskUsage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheCreate: number;
-}
+export type AskUsage = Usage;
 
 export function modelAsk(
   ctx: Ctx,
@@ -290,21 +286,14 @@ export function modelAsk(
   };
 }
 
-const usageOf = (u: Record<string, any> | undefined, cacheReadKey: string, cacheCreateKey: string): AskUsage => ({
-  input: Number(u?.input_tokens ?? 0),
-  output: Number(u?.output_tokens ?? 0),
-  cacheRead: Number(u?.[cacheReadKey] ?? 0),
-  cacheCreate: Number(u?.[cacheCreateKey] ?? 0),
-});
-
 /** `claude -p --output-format json`: one object, with the answer and the bill. */
-function readClaude(out: string): { text: string; usage?: AskUsage } {
+export function readClaude(out: string): { text: string; usage?: AskUsage } {
   try {
     const o = JSON.parse(out) as { result?: string; is_error?: boolean; usage?: Record<string, any> };
     if (o.is_error) return { text: "" };
     return {
       text: typeof o.result === "string" ? o.result : "",
-      usage: usageOf(o.usage, "cache_read_input_tokens", "cache_creation_input_tokens"),
+      usage: claudeUsage(o.usage),
     };
   } catch {
     // Not JSON: the CLI reports some of its own failures as plain text on stdout
@@ -314,14 +303,14 @@ function readClaude(out: string): { text: string; usage?: AskUsage } {
 }
 
 /** `codex exec --json`: a stream, whose `turn.completed` carries the usage. */
-function readCodex(out: string): { text: string; usage?: AskUsage } {
+export function readCodex(out: string): { text: string; usage?: AskUsage } {
   let usage: AskUsage | undefined;
   for (const line of out.split("\n")) {
     if (!line.startsWith("{")) continue;
     try {
       const l = JSON.parse(line) as { type?: string; usage?: Record<string, any> };
       if (l.type === "turn.completed" && l.usage) {
-        usage = usageOf(l.usage, "cached_input_tokens", "cache_write_input_tokens");
+        usage = codexUsage(l.usage);
       }
     } catch {}
   }
