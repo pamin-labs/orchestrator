@@ -39,19 +39,53 @@ agent 真跑了 `rm -rf`，炸的是一个容器。
 不需要 `bun`，不需要 `node`，不需要任何工具链 —— orchestrator 就是一个编译好的
 二进制。Docker 是**沙盒**要的，它本来就是干这个的。
 
+**1. 沙盒服务器**，在有 Docker 的那台机器上跑一次：
+
 ```bash
 docker pull opensandbox/egress:v1.1.6             # v1.1.4 会搞坏 scoped npm 包
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode 要是 "dns+nft"
-
-curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
-cd orch-server-* && ./orch-server                 # → 127.0.0.1:47821
 ```
 
-| | |
-|---|---|
-| Linux | `orch-server-linux-x64.tar.gz` · `orch-server-linux-arm64.tar.gz` |
-| macOS | `orch-server-darwin-arm64.tar.gz` · `orch-server-darwin-x64.tar.gz` —— 没签名，先跑一次 `xattr -dr com.apple.quarantine orch-server-*` |
-| Windows | `orch-server-windows-x64.zip` —— 沙盒服务器本身要跑在 WSL 里，而且 `ORCH_SKILLS_DIR` 要是挂载两侧都认的同一个路径 |
+**2. orchestrator 本体。** 一个压缩包，不需要任何工具链。
+
+<details open><summary><b>Linux</b> —— x64 · arm64</summary>
+
+```bash
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
+cd orch-server-*-linux-x64
+./orch-server                                     # → 127.0.0.1:47821
+```
+</details>
+
+<details><summary><b>macOS</b> —— Apple 芯片 · Intel</summary>
+
+```bash
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-darwin-arm64.tar.gz | tar xz
+cd orch-server-*-darwin-arm64
+xattr -dr com.apple.quarantine .                  # 没签名，不去掉 Gatekeeper 不让跑
+./orch-server                                     # → 127.0.0.1:47821
+```
+
+Intel 的 Mac 用 `orch-server-darwin-x64.tar.gz`。
+</details>
+
+<details><summary><b>Windows</b> —— 老实说建议走 WSL</summary>
+
+Docker Desktop 的容器跑在 WSL 里，而沙盒服务器必须待在那个 daemon 所在的地方。
+**两个都放进 WSL**，挂载两侧的路径就自然是同一个意思 —— 这正是 Windows 上唯一
+会静默出错的地方。进了 WSL 之后照上面 Linux 那段做。
+
+要把面板进程放在 Windows 本体上，也有原生版：
+
+```powershell
+irm https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-windows-x64.zip -OutFile orch.zip
+Expand-Archive orch.zip -DestinationPath .
+cd orch-server-*-windows-x64
+# 技能目录要是 WSL 那侧的 daemon 挂得到的路径，盘符不是 —— 见 ORCH_SKILLS_DIR
+# 和 allowed_host_paths。
+.\orch-server.exe                                 # → 127.0.0.1:47821
+```
+</details>
 
 只绑 loopback 是故意的：面板前面没有登录，能访问到它的人就是你。要放到别处，
 前面加一层带鉴权的反向代理。

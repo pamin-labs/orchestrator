@@ -40,19 +40,54 @@ Needs [Docker](https://docs.docker.com/get-started/get-docker/),
 No `bun`, no `node`, no toolchain — the orchestrator is one compiled binary, and
 Docker is required for the *sandboxes*, which is what it was always for.
 
+**1. The sandbox server**, once, on the machine with Docker:
+
 ```bash
 docker pull opensandbox/egress:v1.1.6             # v1.1.4 breaks scoped npm packages
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
-
-curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
-cd orch-server-* && ./orch-server                 # → 127.0.0.1:47821
 ```
 
-| | |
-|---|---|
-| Linux | `orch-server-linux-x64.tar.gz` · `orch-server-linux-arm64.tar.gz` |
-| macOS | `orch-server-darwin-arm64.tar.gz` · `orch-server-darwin-x64.tar.gz` — unsigned, so `xattr -dr com.apple.quarantine orch-server-*` once |
-| Windows | `orch-server-windows-x64.zip` — the sandbox server itself has to run under WSL, and `ORCH_SKILLS_DIR` has to name a path both sides of the mount agree on |
+**2. The orchestrator.** One archive, no toolchain.
+
+<details open><summary><b>Linux</b> — x64 · arm64</summary>
+
+```bash
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
+cd orch-server-*-linux-x64
+./orch-server                                     # → 127.0.0.1:47821
+```
+</details>
+
+<details><summary><b>macOS</b> — Apple silicon · Intel</summary>
+
+```bash
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-darwin-arm64.tar.gz | tar xz
+cd orch-server-*-darwin-arm64
+xattr -dr com.apple.quarantine .                  # unsigned; Gatekeeper otherwise refuses
+./orch-server                                     # → 127.0.0.1:47821
+```
+
+Intel Macs: `orch-server-darwin-x64.tar.gz`.
+</details>
+
+<details><summary><b>Windows</b> — and the honest advice is to use WSL</summary>
+
+Docker Desktop runs its containers in WSL, and the sandbox server has to be
+where that daemon is. Run **both** there and every path means the same thing on
+both sides of a mount — which is the one thing on Windows that silently does not
+work otherwise. Inside WSL, follow the Linux block above.
+
+There is a native build for putting the panel process on Windows itself:
+
+```powershell
+irm https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-windows-x64.zip -OutFile orch.zip
+Expand-Archive orch.zip -DestinationPath .
+cd orch-server-*-windows-x64
+# The staging directory has to be one the WSL-side daemon can mount, and a
+# drive letter is not — see ORCH_SKILLS_DIR and allowed_host_paths.
+.\orch-server.exe                                 # → 127.0.0.1:47821
+```
+</details>
 
 Loopback on purpose: there is no login in front of the panel, so whoever reaches
 it is you. Put a reverse proxy with auth in front before publishing it anywhere

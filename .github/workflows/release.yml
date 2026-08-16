@@ -346,17 +346,37 @@ jobs:
           # multi-line argument ends up in the release body — and ten spaces in
           # front of ```bash is an indented code block, which renders the fence
           # markers as text.
+          base="https://github.com/${{ github.repository }}/releases/latest/download"
           printf '%s\n' \
-            'Run this version:' \
+            '### Linux' \
             '' \
             '```bash' \
-            "curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz" \
-            'cd orch-server-* && ./orch-server' \
+            "curl -fsSL $base/orch-server-linux-x64.tar.gz | tar xz   # or -arm64" \
+            'cd orch-server-*-linux-x64 && ./orch-server' \
             '```' \
             '' \
-            'Also `linux-arm64`, `darwin-x64`, `darwin-arm64` and `windows-x64` (zip). No toolchain needed — Docker is, for the sandboxes.' \
+            '### macOS' \
             '' \
-            'On macOS the binary is unsigned: `xattr -dr com.apple.quarantine orch-server-*`. On Windows the sandbox server itself has to run under WSL, and the skills directory has to be a path both sides of the mount agree on (`ORCH_SKILLS_DIR`).' \
+            '```bash' \
+            "curl -fsSL $base/orch-server-darwin-arm64.tar.gz | tar xz   # or -x64" \
+            'cd orch-server-*-darwin-arm64' \
+            'xattr -dr com.apple.quarantine .   # unsigned; Gatekeeper otherwise refuses' \
+            './orch-server' \
+            '```' \
+            '' \
+            '### Windows' \
+            '' \
+            'Docker Desktop runs its containers in WSL and the sandbox server has to be where that daemon is — run both there and use the Linux archive. The native build is for putting the panel process on Windows itself, and then `ORCH_SKILLS_DIR` has to name a path the WSL-side daemon can mount:' \
+            '' \
+            '```powershell' \
+            "irm $base/orch-server-windows-x64.zip -OutFile orch.zip" \
+            'Expand-Archive orch.zip -DestinationPath .' \
+            'cd orch-server-*-windows-x64 && .\orch-server.exe' \
+            '```' \
+            '' \
+            '---' \
+            '' \
+            'The panel is on `127.0.0.1:47821`. Docker is needed for the sandboxes, nothing else is.' \
             '' \
             "The agent image (\`${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}\`) is pulled by the sandbox server the first time it builds a container. Nothing to pull by hand." \
             > /tmp/notes.md
