@@ -6,10 +6,10 @@ import { sliceDiffBase } from "../../mech/git/worktree.ts";
 import { baseRefFor, sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Id } from "../fields.ts";
+import { Attachment as AttachmentSchema, GroupRef, Id, IdParams } from "../fields.ts";
 import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
-import { gatesFor } from "../../mech/gate.ts";
+import { GateName, gatesFor } from "../../mech/gate.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 
 /**
@@ -122,8 +122,8 @@ const DIFF_CAP = 400_000;
  * approved on the DRAFT card. Nothing new to judge means the button is a rubber
  * stamp, which makes the three gates in front of it decorative.
  */
-export const getEvidence: Handler = async (ctx, _req, params) => {
-  const id = Number(params.id);
+export const getEvidence: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
+  const id = params.id;
   const sl = ctx.db
     .query<
       { grp_id: number; seq: number; title: string; accept_spec: string; base_sha: string | null; retries: number },
@@ -194,9 +194,10 @@ export const getEvidence: Handler = async (ctx, _req, params) => {
 };
 
 /** Tail of one gate's log, on demand: it is only opened when a verdict is doubted. */
-export const getGateLog: Handler = async (ctx, req, params) => {
-  const name = (params.name ?? "").replace(/[^\w.-]/g, "");
-  const path = join(ctx.config.dataDir ?? "data", "gates", `${Number(params.id)}-${name}.log`);
+export const GateLogParams = IdParams.extend({ name: GateName });
+
+export const getGateLog: Handler<undefined, z.infer<typeof GateLogParams>> = async (ctx, req, params) => {
+  const path = join(ctx.config.dataDir ?? "data", "gates", `${params.id}-${params.name}.log`);
   if (!existsSync(path)) return text("no log", 404);
   const raw = await Bun.file(path).text();
   const grep = new URL(req.url).searchParams.get("grep");
@@ -214,7 +215,7 @@ export const getGateLog: Handler = async (ctx, req, params) => {
 };
 
 export const SliceDecision = z.object({
-  id: z.coerce.number().int().positive(),
+  id: Id,
   decision: z.enum(["accept", "reject"]),
 });
 
@@ -223,9 +224,12 @@ export const SliceDecisionBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postSliceDecision: Handler<z.infer<typeof SliceDecisionBody>> = async (ctx, _req, params, raw) => {
+export const postSliceDecision: Handler<
+  z.infer<typeof SliceDecisionBody>,
+  z.infer<typeof SliceDecision>
+> = async (ctx, _req, params, raw) => {
   const b = { feedback: raw.feedback ? withAttachments(raw.feedback, raw.attachments) : raw.feedback };
-  const id = Number(params.id);
+  const id = params.id;
   const accept = params.decision === "accept";
   const sl = ctx.db
     .query<{ grp_id: number; seq: number; title: string }, [number]>(

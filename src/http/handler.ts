@@ -11,10 +11,10 @@ import type { Caller, Ctx } from "../ctx.ts";
  * `route()` is what connects this shape to Hono, and it is the only place that
  * knows Hono exists.
  */
-export type Handler<D = undefined> = (
+export type Handler<D = undefined, P = Record<string, string>> = (
   ctx: Ctx,
   req: Request,
-  params: Record<string, string>,
+  params: P,
   data: D,
 ) => Promise<Response>;
 
@@ -25,10 +25,10 @@ export type Handler<D = undefined> = (
  * with the same two lines — and a trust boundary retyped 21 times is a trust
  * boundary with 21 chances to be left out.
  */
-export type AgentHandler<D = undefined> = (
+export type AgentHandler<D = undefined, P = Record<string, string>> = (
   ctx: Ctx,
   req: Request,
   a: Caller,
-  params: Record<string, string>,
+  params: P,
   data: D,
 ) => Promise<Response>;

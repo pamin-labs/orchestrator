@@ -1,5 +1,6 @@
 import { loadResource, resolveLease } from "../../mech/lease.ts";
 import { z } from "zod";
+import { IdParams } from "../fields.ts";
 import { bad, text, type AgentHandler } from "../shared.ts";
 
 /**
@@ -70,7 +71,7 @@ export const postLease: AgentHandler<z.infer<typeof LeaseBody>> = async (ctx, _r
   return text(digest);
 };
 
-export const getLeaseLog: AgentHandler = async (ctx, req, a, params) => {
+export const getLeaseLog: AgentHandler<undefined, z.infer<typeof IdParams>> = async (ctx, req, a, params) => {
   // Whose lease this is. Unchecked, any sandbox could read any group's build log
   // by counting up from 1 — the `/orch/` prefix gate on the mailbox is about
   // which routes are reachable, not about who is reaching them.
@@ -78,7 +79,7 @@ export const getLeaseLog: AgentHandler = async (ctx, req, a, params) => {
     .query<{ log_path: string | null; grp_id: number | null }, [number]>(
       "SELECT log_path, grp_id FROM lease WHERE id = ?",
     )
-    .get(Number(params.id));
+    .get(params.id);
   if (!row?.log_path) return text("no log", 404);
   if (row.grp_id !== a.grp_id) return text("not this group's lease", 403);
   const raw = await Bun.file(row.log_path).text();

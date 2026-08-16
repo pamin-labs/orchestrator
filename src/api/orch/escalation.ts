@@ -1,6 +1,6 @@
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, TRIAGE } from "../../mech/flow/chain.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../fields.ts";
+import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from "../fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
@@ -159,8 +159,11 @@ export const RequirementBody = z.object({
   name: z.string().max(80).optional(),
 });
 
-export const postEscalationRequirement: Handler<z.infer<typeof RequirementBody>> = async (ctx, _req, params, b) => {
-  const id = Number(params.id);
+export const postEscalationRequirement: Handler<
+  z.infer<typeof RequirementBody>,
+  z.infer<typeof IdParams>
+> = async (ctx, _req, params, b) => {
+  const id = params.id;
   const esc = ctx.db
     .query<{ grp_id: number | null; question: string; answer: string | null }, [number]>(
       "SELECT grp_id, question, answer FROM escalation WHERE id = ?",
@@ -211,8 +214,8 @@ export const postEscalationRequirement: Handler<z.infer<typeof RequirementBody>>
   return json({ grp_id: grp.id, name });
 };
 
-export const postRevoke: Handler = async (ctx, _req, params) => {
-  const out = await revoke({ ctx }, Number(params.id));
+export const postRevoke: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
+  const out = await revoke({ ctx }, params.id);
   return json(out);
 };
 
@@ -222,8 +225,13 @@ export const BossAnswerBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postAnswer: Handler<z.infer<typeof BossAnswerBody>> = async (ctx, _req, params, b) => {
-  const id = Number(params.id);
+export const postAnswer: Handler<z.infer<typeof BossAnswerBody>, z.infer<typeof IdParams>> = async (
+  ctx,
+  _req,
+  params,
+  b,
+) => {
+  const id = params.id;
   const esc = ctx.db
     .query<{ grp_id: number | null; severity: string }, [number]>(
       "SELECT grp_id, severity FROM escalation WHERE id = ?",
@@ -258,9 +266,9 @@ export const postAnswer: Handler<z.infer<typeof BossAnswerBody>> = async (ctx, _
  * No draft is a fine outcome. If the model is unreachable or says nothing useful
  * this returns nothing and the composer is the composer.
  */
-export const getAnswerDraft: Handler = async (ctx, _req, params) => {
+export const getAnswerDraft: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
   if (!ctx.askIn) return json({ text: "" });
-  const id = Number(params.id);
+  const id = params.id;
   const e = ctx.db
     .query<{ grp_id: number | null; question: string; severity: string; asker: string | null; project_id: number | null }, [number]>(
       `SELECT e.grp_id, e.question, e.severity, a.role AS asker,
@@ -334,12 +342,17 @@ export const getAnswerDraft: Handler = async (ctx, _req, params) => {
  */
 export const DelegateBody = z.object({ to: z.string().max(40).optional() });
 
-export const postDelegate: Handler<z.infer<typeof DelegateBody>> = async (ctx, _req, params, b) => {
+export const postDelegate: Handler<z.infer<typeof DelegateBody>, z.infer<typeof IdParams>> = async (
+  ctx,
+  _req,
+  params,
+  b,
+) => {
   const to = b.to ?? "architect";
   if (!CHAIN.includes(to as never) || to === "boss") {
     return bad(`to must be one of: ${CHAIN.filter((c) => c !== "boss").join(", ")}`);
   }
-  const id = Number(params.id);
+  const id = params.id;
   const esc = ctx.db
     .query<{ grp_id: number | null; question: string }, [number]>(
       "SELECT grp_id, question FROM escalation WHERE id = ?",

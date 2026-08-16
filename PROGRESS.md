@@ -18,6 +18,10 @@
 
 **HTTP JSON 边界已封：** 只有真正没有 body 的请求才以 `{}` 进入 schema；非空但无法解析的 JSON 直接 400，不再被吞成空对象后执行全可选控制动作。端到端回归证明 body 只有 `{` 的 pause 请求保持组为 RUNNING；API/smoke 定向 70 绿，TypeScript 绿。
 
+**HTTP schema 输出真正进入 handler：** `route()` / `agentRoute()` 现在把 body 与 params schema 的输出类型和值一同交给 handler，Hono 动态注册使用官方 `app.on()`，不再靠 `Hono<any>`、双重断言或把已验证参数丢回原始字符串。所有动态 path 都必须声明 params schema；动态 row id 共用严格十进制 `Id`，`0x10` 不再被当成记录 16；合法 `z.string()` 输出也不再与错误 sentinel 混淆。gate 名称同一规则同时约束配置、旧 JSON reader 和日志路由，`lint@ci` 不会再写出一个读不回来的日志。通用 route 与 API 回归连同完整 `bun test` 726 绿，TypeScript、oxlint、web build 绿。
+
+**外部 JSON 都先过边界：** Claude/Codex 流、PageIndex 结果和 GitHub device-flow 都用 Zod 解析后才读字段；JSON 合法但为 `null`、内容数组里是 `null` 或 usage token 是字符串时不再异常解引用、伪造用量或伪造成功。事件重放不再将 sqlite row 取成 `any`，项目配置在已有 row 上仍复用统一的 JSON object 窄化；专门回归与完整 suite 绿。
+
 **项目沙盒 override 不再靠类型断言：** `sandbox.image: 7` 原来在 PATCH 的 `.trim()` 当场 500，`denyDomains: "x"` 则 200 持久化后以 `string[]` 身份进入 OpenSandbox 网络层。现在机器配置、项目 PATCH 与容器读取共用一个 Zod `SandboxSpecSchema`：入口拒绝坏内层类型且不改数据库，读边界对旧库/旁路坏值完整回退，拒绝镜像时 `base_branch` 也不会先被部分写入，局部 patch 不再静默覆盖损坏的整份 JSON。config/sandbox 定向 31 绿、完整 API 66 绿，TypeScript 与 oxlint 绿。
 
 **旧报告逐项按当前分支复核，不重复实现：** pause/resume 统一入口定向 7 绿（`88aa1e7`）；job 结束立即补位定向 25 绿（`6445c48`）；bare mirror heads/refspec 定向 3 绿（`0706062`）。D2 点名的三个 handler 已分别位于 `api/orch/tasks.ts`、`api/panel/group.ts`、`api/orch/planning.ts`，当前没有第二调用方或重复政策证明需要再包一层 flow；`api.ts` 仍负责路由、中间件和 app 组装，并非纯 route table。Claude/Codex/GitHub 登录和 sandbox server start/restart 的 timeout/error 都会取消、返回失败或升级终止，专项 28 绿；SIGKILL 后再确认退出若有复现证据应另立问题。`db.ts` 运行期依赖 `scrub.ts`，反向只有 `import type`，编译后无循环。no-op 项不制造空提交。

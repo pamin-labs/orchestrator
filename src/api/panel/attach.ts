@@ -8,6 +8,8 @@ import { bad, json, text, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 
+export const AttachmentNameParams = z.object({ name: z.string().min(1) });
+
 /**
  * The same four fields `fields.ts` already validates at the door.
  *
@@ -156,8 +158,8 @@ export const postAttachLocal: Handler<z.infer<typeof LocalPathsBody>> = async (c
  * only the last segment means a path that arrives with `..` in it resolves to a
  * file that does not exist rather than to one outside the directory.
  */
-export const getAttachment: Handler = async (ctx, _req, params) => {
-  const name = basename(params.name ?? "");
+export const getAttachment: Handler<undefined, z.infer<typeof AttachmentNameParams>> = async (ctx, _req, params) => {
+  const name = basename(params.name);
   const path = join(ctx.config.dataDir ?? "data", "attachments", name);
   if (!name || !existsSync(path)) return text("no such attachment", 404);
   const f = Bun.file(path);

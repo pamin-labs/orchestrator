@@ -35,6 +35,9 @@ export const Id = z
   .union([z.number(), z.string().regex(/^\d+$/, "must be a whole number").transform(Number)])
   .pipe(z.number().int().positive());
 
+/** One decimal row id from a dynamic route segment. */
+export const IdParams = z.object({ id: Id });
+
 /**
  * A file the boss attached, as the composer records it.
  *

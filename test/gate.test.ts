@@ -40,6 +40,7 @@ const dataDir = () => mkdtempSync(join(tmpdir(), "orch-gate-"));
 test("gates come from project config, not from anything an agent can set", () => {
   expect(gatesFor(seed(["test", "lint"]), 1)).toEqual(["test", "lint"]);
   expect(gatesFor(seed("test"), 1)).toEqual([]);
+  expect(gatesFor(seed(["lint@ci"]), 1)).toEqual([]);
   expect(gatesFor(seed(undefined), 1)).toEqual([]);
 });
 

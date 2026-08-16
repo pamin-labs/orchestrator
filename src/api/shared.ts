@@ -2,6 +2,8 @@ import type { z } from "zod";
 import type { GroupRef } from "./fields.ts";
 import type { Caller, Ctx } from "../ctx.ts";
 
+export type { AgentHandler, Handler } from "../http/handler.ts";
+
 /**
  * What every route module needs and nothing a route module owns.
  *
@@ -10,32 +12,6 @@ import type { Caller, Ctx } from "../ctx.ts";
  * two handler shapes, the three response constructors, and the four lookups
  * that more than one cluster does.
  */
-
-export type Handler<D = unknown> = (
-  ctx: Ctx,
-  req: Request,
-  params: Record<string, string>,
-  /** The request body, already checked against this route's schema. */
-  data: D,
-) => Promise<Response>;
-
-/**
- * A route only an agent may call, with the agent already resolved.
- *
- * The caller arrives as an argument because the alternative was 21 handlers each
- * opening with the same two lines, and a trust boundary that is retyped 21 times
- * is a trust boundary with 21 chances to be left out. `agentOf` still exists and
- * is still the only thing that reads the token; what changed is that a route
- * cannot be registered under `/orch` without going through it.
- */
-export type AgentHandler<D = unknown> = (
-  ctx: Ctx,
-  req: Request,
-  a: Caller,
-  params: Record<string, string>,
-  /** The request body, already checked against this route's schema. */
-  data: D,
-) => Promise<Response>;
 
 export const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });

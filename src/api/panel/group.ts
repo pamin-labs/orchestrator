@@ -8,7 +8,7 @@ import { canStart, CLAIMING_SQL, parseOwns } from "../../mech/flow/ownership.ts"
 import { killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema } from "../fields.ts";
+import { Attachment as AttachmentSchema, Id } from "../fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { bad, firstIdea, json, text, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "./attach.ts";
@@ -77,7 +77,7 @@ export const postIdea: Handler<z.infer<typeof IdeaBody>> = async (ctx, _req, _p,
 };
 
 export const DraftDecision = z.object({
-  id: z.coerce.number().int().positive(),
+  id: Id,
   decision: z.enum(["approve", "reject"]),
 });
 
@@ -88,8 +88,11 @@ export const DraftDecisionBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>> = async (ctx, _req, params, b) => {
-  const grpId = Number(params.id);
+export const postDraftDecision: Handler<
+  z.infer<typeof DraftDecisionBody>,
+  z.infer<typeof DraftDecision>
+> = async (ctx, _req, params, b) => {
+  const grpId = params.id;
   const approve = params.decision === "approve";
 
   if (!approve) {
@@ -257,7 +260,7 @@ export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
  * the refusal can say so.
  */
 export const GroupAction = z.object({
-  id: z.coerce.number().int().positive(),
+  id: Id,
   action: z.enum(["pause", "resume", "park", "wake", "interrupt", "budget", "drop", "newpr", "rebuild"]),
 });
 
@@ -276,8 +279,11 @@ export const GroupControlBody = z.object({
   mode: z.enum(["keep", "rollback"]).optional(),
 });
 
-export const postGroupControl: Handler<z.infer<typeof GroupControlBody>> = async (ctx, req, params, b) => {
-  const grpId = Number(params.id);
+export const postGroupControl: Handler<
+  z.infer<typeof GroupControlBody>,
+  z.infer<typeof GroupAction>
+> = async (ctx, req, params, b) => {
+  const grpId = params.id;
   const action = params.action;
   switch (action) {
     case "budget": {

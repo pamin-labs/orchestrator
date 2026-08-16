@@ -7,8 +7,9 @@ import { agentRoute, route } from "./http/route.ts";
 import type { Caller, Ctx } from "./ctx.ts";
 import { agentOf, mayAct, mintToken, resolveGroup } from "./api/shared.ts";
 import { AuthBody, CodeBody, getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers, TrailersBody } from "./api/panel/authflow.ts";
-import { bossFact, expandHome, getAttachment, imagePaths, LocalPathsBody, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/panel/attach.ts";
+import { AttachmentNameParams, bossFact, expandHome, getAttachment, imagePaths, LocalPathsBody, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/panel/attach.ts";
 import { CTX_BUDGET_CHARS, CtxQueryBody, postCtxQuery } from "./api/orch/ctxquery.ts";
+import { IdParams } from "./api/fields.ts";
 import { AnswerBody, ASK_KINDS, AskBossBody, askKind, BossAnswerBody, brief, DelegateBody, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage, RequirementBody, TriageBody } from "./api/orch/escalation.ts";
 import { DraftDecision, DraftDecisionBody, GroupAction, GroupControlBody, IdeaBody, landGroup, postDraftDecision, postGroupControl, postIdea } from "./api/panel/group.ts";
 import { getLeaseLog, LeaseBody, postLease } from "./api/orch/lease.ts";
@@ -18,7 +19,7 @@ import { BlockedBody, DraftBody, DropBody, OwnsBody, postBlocked, postDraft, pos
 import { postPr, PrBody } from "./api/orch/pr.ts";
 import { deleteProject, getProjectConfig, patchProjectConfig, postProject, postSetup, ProjectBody, ProjectConfigBody, SetupBody } from "./api/panel/project.ts";
 import { evictOldestLessons, JournalBody, LESSON_CAP, postJournal, postStatus, StatusBody } from "./api/orch/report.ts";
-import { AuditBody, getEvidence, getGateLog, postAudit, postReview, postSliceDecision, ReviewBody, SliceDecision, SliceDecisionBody } from "./api/orch/review.ts";
+import { AuditBody, GateLogParams, getEvidence, getGateLog, postAudit, postReview, postSliceDecision, ReviewBody, SliceDecision, SliceDecisionBody } from "./api/orch/review.ts";
 import { getSettings, postSetting, SettingBody } from "./api/panel/settings.ts";
 import { AddrBody, getImages, getPreflight, getSandbox, getSandboxServer, ImageBody, postImage, postSandboxServerAddr, postSandboxServerRestart, postSandboxServerStart } from "./api/panel/sandbox.ts";
 import { getCost, getState, snapshot } from "./api/panel/snapshot.ts";
@@ -92,15 +93,15 @@ function apiRoutes(ctx: Ctx): Hono {
   route(app, ctx, "post", "/skills", { body: SkillBody, handler: postSkill });
 
   route(app, ctx, "post", "/projects", { body: ProjectBody, handler: postProject });
-  route(app, ctx, "delete", "/projects/:id", { handler: deleteProject });
-  route(app, ctx, "get", "/project/:id/config", { handler: getProjectConfig });
-  route(app, ctx, "post", "/project/:id/config", { body: ProjectConfigBody, handler: patchProjectConfig });
+  route(app, ctx, "delete", "/projects/:id", { params: IdParams, handler: deleteProject });
+  route(app, ctx, "get", "/project/:id/config", { params: IdParams, handler: getProjectConfig });
+  route(app, ctx, "post", "/project/:id/config", { params: IdParams, body: ProjectConfigBody, handler: patchProjectConfig });
 
   route(app, ctx, "post", "/ideas", { body: IdeaBody, handler: postIdea });
   route(app, ctx, "post", "/say", { body: SayBody, handler: postSay });
   route(app, ctx, "post", "/attach", { handler: postAttach });
   route(app, ctx, "post", "/attach/local", { body: LocalPathsBody, handler: postAttachLocal });
-  route(app, ctx, "get", "/attach/:name", { handler: getAttachment });
+  route(app, ctx, "get", "/attach/:name", { params: AttachmentNameParams, handler: getAttachment });
 
   route(app, ctx, "post", "/draft/:id/:decision", { params: DraftDecision, body: DraftDecisionBody, handler: postDraftDecision });
   // No `landed`: whether a PR is merged is GitHub's answer, and `pollPrs` asks it
@@ -108,15 +109,15 @@ function apiRoutes(ctx: Ctx): Hono {
   // already knew — and one mis-click dissolved a group whose PR was still open.
   route(app, ctx, "post", "/groups/:id/:action", { params: GroupAction, body: GroupControlBody, handler: postGroupControl });
 
-  route(app, ctx, "get", "/slices/:id/evidence", { handler: getEvidence });
-  route(app, ctx, "get", "/slices/:id/gate/:name", { handler: getGateLog });
+  route(app, ctx, "get", "/slices/:id/evidence", { params: IdParams, handler: getEvidence });
+  route(app, ctx, "get", "/slices/:id/gate/:name", { params: GateLogParams, handler: getGateLog });
   route(app, ctx, "post", "/slices/:id/:decision", { params: SliceDecision, body: SliceDecisionBody, handler: postSliceDecision });
 
-  route(app, ctx, "post", "/escalations/:id/answer", { body: BossAnswerBody, handler: postAnswer });
-  route(app, ctx, "post", "/escalations/:id/revoke", { handler: postRevoke });
-  route(app, ctx, "post", "/escalations/:id/requirement", { body: RequirementBody, handler: postEscalationRequirement });
-  route(app, ctx, "post", "/escalations/:id/delegate", { body: DelegateBody, handler: postDelegate });
-  route(app, ctx, "get", "/escalations/:id/draft", { handler: getAnswerDraft });
+  route(app, ctx, "post", "/escalations/:id/answer", { params: IdParams, body: BossAnswerBody, handler: postAnswer });
+  route(app, ctx, "post", "/escalations/:id/revoke", { params: IdParams, handler: postRevoke });
+  route(app, ctx, "post", "/escalations/:id/requirement", { params: IdParams, body: RequirementBody, handler: postEscalationRequirement });
+  route(app, ctx, "post", "/escalations/:id/delegate", { params: IdParams, body: DelegateBody, handler: postDelegate });
+  route(app, ctx, "get", "/escalations/:id/draft", { params: IdParams, handler: getAnswerDraft });
   return app;
 }
 
@@ -238,7 +239,7 @@ function orchRoutes(ctx: Ctx): Hono<{ Variables: { agent: Caller } }> {
   agentRoute(app, ctx, "post", "/ask-boss", { body: AskBossBody, handler: postAskBoss });
   agentRoute(app, ctx, "post", "/setup", { body: SetupBody, handler: postSetup });
   agentRoute(app, ctx, "post", "/lease", { body: LeaseBody, handler: postLease });
-  agentRoute(app, ctx, "get", "/lease/:id/log", { handler: getLeaseLog });
+  agentRoute(app, ctx, "get", "/lease/:id/log", { params: IdParams, handler: getLeaseLog });
   agentRoute(app, ctx, "post", "/ctx/query", { body: CtxQueryBody, handler: postCtxQuery });
   agentRoute(app, ctx, "get", "/task", { handler: getTasks });
   agentRoute(app, ctx, "post", "/task/claim", { body: TaskRef, handler: postTaskClaim });
@@ -308,4 +309,3 @@ export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   app.all("*", (c) => c.text("not found", 404));
   return async (req) => app.fetch(req);
 }
-

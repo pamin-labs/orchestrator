@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
+import { z } from "zod";
 import type { DB } from "../db.ts";
 import { projectConfig } from "./util/rows.ts";
 import { loadResource, type ResourceExec, runResource } from "./lease.ts";
@@ -30,6 +31,9 @@ export interface GateOutcome {
   feedback: string;
 }
 
+/** A resource name that can also safely name its on-disk gate log. */
+export const GateName = z.string().min(1).max(80).regex(/^[\w.-]+$/, "must use letters, digits, _, . or -");
+
 /**
  * Which gates a project runs. Declared in `project.config_json` as
  * `{"gates": ["test", "lint"]}` — resource names, so gates go through the same
@@ -37,7 +41,7 @@ export interface GateOutcome {
  */
 export function gatesFor(db: DB, projectId: number): string[] {
   const gates = projectConfig(db, projectId).gates;
-  return Array.isArray(gates) ? gates.filter((g: unknown) => typeof g === "string") : [];
+  return Array.isArray(gates) ? gates.flatMap((g) => GateName.safeParse(g).data ?? []) : [];
 }
 
 export interface RunGatesOptions {
