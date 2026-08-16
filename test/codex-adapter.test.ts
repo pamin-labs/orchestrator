@@ -143,7 +143,14 @@ test("usage maps onto the same shape the claude adapter produces", async () => {
   const runner = fakeRunner(LINES);
   {
     const r = await runTurn({ stable, prompt: "x", cwd: "/tmp", runner });
-    expect(r.usage).toEqual({ input: 27330, output: 5, cacheRead: 6912, cacheCreate: 0, thinking: 2 });
+    // `input` means "what the cache missed" on both adapters. codex reports the
+    // whole prompt in `input_tokens` with the cached part inside it, so the
+    // cached tokens come off. Passing 27330 straight through counted 6912 tokens
+    // twice and the three consumers of this shape all read it as context the
+    // agent had just paid for: the cache ratio, the slice budget, and the
+    // session rotation ceiling.
+    expect(r.usage).toEqual({ input: 27330 - 6912, output: 5, cacheRead: 6912, cacheCreate: 0, thinking: 2 });
+    expect(r.usage.input + r.usage.cacheRead).toBe(27330);
     // codex reports tokens but not money; inventing a number here would be worse
     // than attributing cost from tokens upstream.
     expect(r.filesTouched).toEqual(["auth/mw.ts"]);
