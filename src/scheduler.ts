@@ -454,6 +454,24 @@ export class Scheduler {
       .catch(() => {})
       .finally(() => {
         this.inflight.delete(job.id);
+        // A finished job frees its slot and usually queues what comes next, and
+        // nothing dispatched either. Sixteen `enqueue` sites had no `tick()`
+        // after them and the omission looked exactly like the deliberate ones —
+        // both waited for the watchdog timer, up to `watchdogIntervalMs`, on
+        // work whose whole point was that something noticed it was stuck. The
+        // watchdog is itself a job, so its own sweep queued into that wait too.
+        //
+        // Here rather than inside `enqueue`: staging a batch and dispatching it
+        // in priority order is a real property, and an enqueue that dispatched
+        // on the spot would send the first job before the second one exists.
+        //
+        // Guarded for the same reason the `catch` above it is: this chain is
+        // detached, so it can land after the database is closed on shutdown, and
+        // an escape from here surfaces against whatever happens to be running
+        // with no relationship to the job that caused it.
+        try {
+          this.tick();
+        } catch {}
       });
     this.inflight.set(job.id, p);
   }

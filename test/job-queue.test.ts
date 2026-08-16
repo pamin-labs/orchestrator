@@ -469,3 +469,41 @@ test("two gates of one repo do not run at once, but two repos still do", async (
   expect(inflight).toContain(3);
   release();
 });
+
+test("a finished job dispatches what it queued, without anyone remembering to", () => {
+  // Sixteen `enqueue` sites had no `tick()` after them, and the omission looked
+  // exactly like the deliberate ones — both waited for the watchdog timer, up to
+  // watchdogIntervalMs, on work whose whole point was that something noticed it
+  // was stuck. The watchdog is itself a job, so its own sweep queued into that
+  // wait too.
+  const db = openMemory();
+  seed(db, 1);
+  const started: number[] = [];
+  const s = new Scheduler(db, async (j) => {
+    started.push(j.id);
+    // What a turn does at its end and then does not dispatch.
+    if (started.length === 1) s.enqueue("reconcile", { grp_id: 1 });
+  });
+  s.enqueue("agent_turn", { grp_id: 1 });
+  s.tick();
+
+  // The follow-up ran without a second tick from anywhere.
+  return Bun.sleep(0).then(() => {
+    expect(started.length).toBe(2);
+    expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'pending'").get()!.c).toBe(0);
+  });
+});
+
+test("staging a batch still dispatches it in priority order", () => {
+  // Why the tick is on completion and not inside `enqueue`: an enqueue that
+  // dispatched on the spot would send the first job before the second exists,
+  // and priority across a batch is what the sweep and startGroup rely on.
+  const db = openMemory();
+  const ids = seed(db, 2);
+  const order: (number | null)[] = [];
+  const s = new Scheduler(db, async (j) => void order.push(j.grp_id));
+  s.enqueue("agent_turn", { grp_id: ids[0], priority: 0 });
+  s.enqueue("agent_turn", { grp_id: ids[1], priority: 10 });
+  s.tick();
+  expect(order[0]).toBe(ids[1]!);
+});

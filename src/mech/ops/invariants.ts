@@ -393,8 +393,26 @@ export const ESCALATION_INVARIANTS = rows<EscalationState>(
  * rows that are wrong and a write that makes them right, so running them twice is
  * the same as running them once.
  */
+/**
+ * Every table, not two of them.
+ *
+ * This ran GRP and SLICE and skipped the other six, so `PROJECT.repo_held`'s
+ * repair — written, reviewed, tested by `uncovered()` for existing — had never
+ * executed once. That is the failure this whole file is against, arrived at from
+ * the other side: not a state with nobody driving it, but a driver nobody calls,
+ * and both look exactly like a healthy system.
+ *
+ * `uncovered()` checks that every state has a row. Nothing checked that every
+ * row runs, which is why `test/invariants.test.ts` now asserts this list against
+ * the tables the module exports.
+ */
+export const ALL_INVARIANTS = [
+  GRP_INVARIANTS, SLICE_INVARIANTS, JOB_INVARIANTS, UTIL_INVARIANTS,
+  PROJECT_INVARIANTS, SERVER_INVARIANTS, LEASE_INVARIANTS, ESCALATION_INVARIANTS,
+];
+
 export function runInvariants(ctx: Ctx): void {
-  for (const i of [...GRP_INVARIANTS, ...SLICE_INVARIANTS]) i.repair?.(ctx);
+  for (const table of ALL_INVARIANTS) for (const i of table) i.repair?.(ctx);
 }
 
 /** States with no row. The test fails on a non-empty result; nothing else calls it. */
