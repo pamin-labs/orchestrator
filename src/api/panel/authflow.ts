@@ -3,6 +3,7 @@ import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "../../mec
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "../../mech/sandbox/login.ts";
 import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { z } from "zod";
+import { errText } from "../../mech/util/text.ts";
 import { bad, json, text, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
 
@@ -252,8 +253,11 @@ export const postGithubLogin: Handler = async (ctx) => {
   let d: Awaited<ReturnType<typeof startDeviceFlow>>;
   try {
     d = await startDeviceFlow();
-  } catch (e: any) {
-    return bad(e?.message ?? "GitHub 没给出登录码");
+  } catch (e) {
+    // `errText`, not `e?.message`: a thrown non-Error has no `message`, and
+    // under `e: any` the fallback `??` handed `bad()` the object itself — a 422
+    // whose body reads "[object Object]".
+    return bad(errText(e) || "GitHub 没给出登录码");
   }
   ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
   ghError = null;
@@ -265,8 +269,8 @@ export const postGithubLogin: Handler = async (ctx) => {
       // Every running sandbox holds the old (absent) credential in its sidecar.
       await credentialChanged(ctx, "github");
       ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "GitHub 连上了" });
-    } catch (e: any) {
-      ghError = e?.message ?? String(e);
+    } catch (e) {
+      ghError = errText(e);
       ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `GitHub 没连上：${ghError}` });
     } finally {
       ghFlow = null;

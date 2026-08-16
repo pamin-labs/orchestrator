@@ -188,5 +188,7 @@ test("a turn log keeps the shape and drops the payload", () => {
   expect(big.tool_use_result.interrupted).toBe(false);
 
   // A short result is untouched: truncating it would only add noise.
-  expect((trimForLog({ message: { content: [{ type: "tool_result", content: "ok" }] } }) as any).message.content[0].content).toBe("ok");
+  // `type` is on every line of the real stream; the fixture omitted it while the
+  // parameter was `any`.
+  expect((trimForLog({ type: "user", message: { content: [{ type: "tool_result", content: "ok" }] } }) as any).message.content[0].content).toBe("ok");
 });

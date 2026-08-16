@@ -1,4 +1,4 @@
-import { hours, minutes } from "../util/text.ts";
+import { errText, hours, jsonOr, minutes } from "../util/text.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../config.ts";
 import { say, type SayKey } from "../../lang.ts";
@@ -326,7 +326,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
   const findings: Finding[] = [];
   try {
     return await rules(deps, findings);
-  } catch (e: any) {
+  } catch (e) {
     // Through `emit`, not `bus.emit`. A throw in a straight-line tick recurs
     // every 30 seconds, so the guard written because the watchdog died silently
     // would otherwise make it die loudly — 120 blocker lines an hour — which is
@@ -341,7 +341,7 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
       grpId: null,
       severity: "blocker",
       body:
-        `看门狗这一轮挂了，后面的规则都没跑：${e?.message ?? e}\n` +
+        `看门狗这一轮挂了，后面的规则都没跑：${errText(e)}\n` +
         `每 30 秒都会再试一次，但在修好之前，靠它推的那些状态（卡住的组、过期的沙盒、` +
         `基线变了要 rebase、等你决定的计时）都停在原地。`,
     }], deps.now ?? (() => Date.now()));
@@ -365,12 +365,12 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
 async function step(rule: string, findings: Finding[], run: () => Promise<void>): Promise<void> {
   try {
     await run();
-  } catch (e: any) {
+  } catch (e) {
     findings.push({
       rule: `rule_broke:${rule}`,
       grpId: null,
       severity: "blocker",
-      body: `看门狗第 ${rule} 条挂了，这一轮其余的照跑：${e?.message ?? e}`,
+      body: `看门狗第 ${rule} 条挂了，这一轮其余的照跑：${errText(e)}`,
     });
   }
 }
@@ -731,9 +731,8 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       // "The Engineer could not rebase this branch onto main" eight times, all eight
       // false, and its Architect burned a turn refuting each one. A turn that ended
       // `done` is a stall — that is the branch below, and it was always the right one.
-      let payload: any = {};
-      try { payload = JSON.parse(j.payload_json); } catch {}
-      if (payload?.conflict && j.state === "failed") {
+      const payload = jsonOr<Record<string, unknown>>(j.payload_json, {});
+      if (payload.conflict && j.state === "failed") {
         ctx.sched.enqueue("agent_turn", {
           grp_id: j.grp_id,
           priority: 6,
@@ -754,7 +753,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "stalled",
         grpId: j.grp_id,
         severity: "blocker",
-        body: t("wd.stalled", { why: (j as any).error ?? "" }),
+        body: t("wd.stalled", { why: j.error ?? "" }),
       });
     }
     // No tick here: the server ticks on the same timer that enqueued this watchdog,

@@ -415,25 +415,35 @@ const clipForLog = (v: unknown): unknown => {
   return `${v.slice(0, LOG_RESULT_CHARS)}… [${v.length} chars omitted]`;
 };
 
-export function trimForLog(line: any): any {
+/**
+ * `Line` in, a log record out — not `any` in, `any` out.
+ *
+ * Its one caller has already parsed the stream into a `Line`, so the parameter
+ * was declaring that this accepts a string or a number too. The return stays
+ * open because it deliberately is not a `Line` any more: the clipped fields
+ * carry a `… [N chars omitted]` marker and a real turn's line has a dozen keys
+ * beyond the ones worth declaring. `JSON.stringify` is the only consumer.
+ */
+export function trimForLog(line: Line): unknown {
   // `tool_use_result` is where the payload actually is: measured on a real turn,
   // 90.2% of the file, against 0% for the `tool_result` block inside `content`.
   // Trimming only the latter cut 17%, which is how a fix that looks right and is
   // aimed at the wrong field reads in a size chart.
-  if (line?.tool_use_result && typeof line.tool_use_result === "object") {
-    const r: any = { ...line.tool_use_result };
+  let out: Record<string, unknown> = line;
+  if (line.tool_use_result && typeof line.tool_use_result === "object") {
+    const r: Record<string, unknown> = { ...line.tool_use_result };
     for (const k of Object.keys(r)) r[k] = clipForLog(r[k]);
-    line = { ...line, tool_use_result: r };
+    out = { ...out, tool_use_result: r };
   }
-  const content = line?.message?.content;
-  if (!Array.isArray(content)) return line;
-  const trimmed = content.map((c: any) => {
+  const content = line.message?.content;
+  if (!Array.isArray(content)) return out;
+  const trimmed = content.map((c) => {
     if (c?.type !== "tool_result") return c;
     const text = typeof c.content === "string" ? c.content : JSON.stringify(c.content ?? "");
     if (text.length <= LOG_RESULT_CHARS) return c;
     return { ...c, content: `${text.slice(0, LOG_RESULT_CHARS)}… [${text.length} chars omitted]` };
   });
-  return { ...line, message: { ...line.message, content: trimmed } };
+  return { ...out, message: { ...line.message, content: trimmed } };
 }
 
 export function summarizeTool(name: string, input: Record<string, any>): ToolSummary {

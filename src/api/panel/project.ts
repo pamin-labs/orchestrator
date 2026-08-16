@@ -9,6 +9,7 @@ import { runInstall } from "../../mech/flow/start.ts";
 import { forgetProjectSkills } from "../../mech/skills.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { z } from "zod";
+import { errText } from "../../mech/util/text.ts";
 import { bad, json, text, type AgentHandler, type Handler } from "../shared.ts";
 
 /**
@@ -253,15 +254,15 @@ export const deleteProject: Handler = async (ctx, _req, params) => {
   for (const g of grps) {
     try {
       await killSandbox(ctx, { grp: g.id });
-    } catch (e: any) {
-      failed.push(`grp ${g.id}: ${e?.message ?? e}`);
+    } catch (e) {
+      failed.push(`grp ${g.id}: ${errText(e)}`);
     }
     clearSandboxLog(g.id);
   }
   try {
     await killSandbox(ctx, { project: id });
-  } catch (e: any) {
-    failed.push(`project sandbox: ${e?.message ?? e}`);
+  } catch (e) {
+    failed.push(`project sandbox: ${errText(e)}`);
   }
   // The bare mirror in the utility container. Its own file owns the path, so
   // that convention has one home; failing is disk, not data — everything in it

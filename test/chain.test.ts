@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { abstain, answer, entryPoint, isReserved, revoke, route, triage } from "../src/mech/flow/chain.ts";
+import { abstain, answer, entryPoint, isReserved, revoke, route, triage, TRIAGE } from "../src/mech/flow/chain.ts";
+import { SayBody } from "../src/api/orch/messaging.ts";
+import { TriageBody } from "../src/api/orch/escalation.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
@@ -252,6 +254,21 @@ test("triage records the boss's words verbatim on the blackboard, once", () => {
   const notes = h.db.query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'fact'").all();
   expect(notes).toHaveLength(1);
   expect(notes[0]!.body).toContain("错误提示太含糊");
+});
+
+test("both triage doors spell the verbs from TRIAGE, not each from its own copy", () => {
+  // They did not. `/api/say` declared `as: z.string().max(40)` and re-listed the
+  // three words inside the handler behind an unchecked `as Triage`, while
+  // `/orch/triage` had its own `z.enum`. A fourth verb added to `Triage` would
+  // have compiled against both and been refused at runtime by one of them, and
+  // the schema was meanwhile telling every caller it took any 40-character
+  // string. This fails if one door is updated and the other is not.
+  for (const as of TRIAGE) {
+    expect(SayBody.safeParse({ body: "x", as }).success).toBe(true);
+    expect(TriageBody.safeParse({ group_id: 1, as }).success).toBe(true);
+  }
+  expect(SayBody.safeParse({ body: "x", as: "delete" }).success).toBe(false);
+  expect(TriageBody.safeParse({ group_id: 1, as: "delete" }).success).toBe(false);
 });
 
 test("only the CoS triages, and only reviewers answer their own level", async () => {

@@ -3,17 +3,19 @@ import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cp, mkdir, writeFile } from "node:fs/promises";
 import { z } from "zod";
+import { Attachment as AttachmentSchema } from "../fields.ts";
 import { bad, json, text, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 
-export interface Attachment {
-  name: string;
-  path: string;
-  type: string;
-  /** 图1 / 附件2 — the marker the boss's own text refers to. */
-  label?: string;
-}
+/**
+ * The same four fields `fields.ts` already validates at the door.
+ *
+ * This was a hand-written interface beside the zod schema every route runs, so
+ * "what is an attachment" had two answers and only one of them was checked. A
+ * field added to the schema would not have reached `withAttachments`.
+ */
+export type Attachment = z.infer<typeof AttachmentSchema>;
 
 /**
  * Words plus the files that came with them.

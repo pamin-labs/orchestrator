@@ -166,7 +166,7 @@ async function refreshIndex(ctx: Ctx): Promise<void> {
     try {
       await createCheckout(ctx, scope, { remote: p.remote, branch: base.replace(/^origin\//, ""), base, projectId: p.id });
       heads = await treeHeads(ctx, scope, HEAD_CHARS);
-    } catch (e: any) {
+    } catch (e) {
       // Once per project: silently indexing nothing leaves `orch ctx query`
       // answering out of a tree that stopped growing, and saying it every tick
       // is a line in the feed every thirty seconds forever.
@@ -175,7 +175,7 @@ async function refreshIndex(ctx: Ctx): Promise<void> {
         ctx.bus.emit({
           author: "orchestrator",
           kind: "state_change",
-          body: `索引刷不了：这个项目的容器起不来（${e?.message ?? e}）。`,
+          body: `索引刷不了：这个项目的容器起不来（${errText(e)}）。`,
         });
       }
       continue;

@@ -544,7 +544,8 @@ export function resumeReclaimed(sched: Scheduler, jobs: Job[]): number {
   for (const j of jobs) {
     // Housekeeping kinds are re-enqueued by the server's own timer.
     if (FREE_KINDS.has(j.kind)) continue;
-    let payload: any = {};
+    // Not `jsonOr(…, {})`: the fallback here is `continue`, not an empty object.
+    let payload: Record<string, unknown> | null;
     try {
       payload = JSON.parse(j.payload_json);
     } catch {

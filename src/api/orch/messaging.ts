@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../fields.ts";
 import { bad, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
-import { triage, type Triage } from "../../mech/flow/chain.ts";
+import { triage, TRIAGE } from "../../mech/flow/chain.ts";
 import { projectSkills, skillNames } from "../../mech/skills.ts";
 import type { Ctx } from "../../ctx.ts";
 
@@ -116,7 +116,11 @@ export const SayBody = z.object({
   group_id: GroupRef.optional(),
   target: z.string().max(80).optional(),
   body: Prose(20_000),
-  as: z.string().max(40).optional(),
+  // From `TRIAGE`, not a fourth spelling of it. This was `z.string().max(40)`
+  // with the three words re-listed in the handler and an unchecked `as Triage`
+  // after them, so the schema said the field took any short string and the
+  // refusal for the ones it does not take lived a hundred lines away.
+  as: z.enum(TRIAGE).optional(),
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
@@ -141,16 +145,9 @@ export const postSay: Handler<z.infer<typeof SayBody>> = async (ctx, _req, _p, b
   const skills = skillNames(said, repo, projectSkills(ctx.db, project));
 
   if (b.as) {
-    if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
     if (!grpId) return bad("triage needs a requirement");
     ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
-    triage(
-      { ctx, bossFact: (g, body) => bossFact(ctx, g, body) },
-      grpId,
-      b.as as Triage,
-      said,
-      skills,
-    );
+    triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, grpId, b.as, said, skills);
     ctx.sched.tick();
     return text("ok");
   }

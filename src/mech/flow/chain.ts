@@ -281,7 +281,17 @@ export async function revoke(
   return { rolledBackTo, answeredBy: esc.answered_by ?? undefined };
 }
 
-export type Triage = "patch" | "respec" | "reject";
+/**
+ * A value, like `CHAIN` above, so the two doors can spell it from here.
+ *
+ * It was a bare union type, so neither route that takes it could reach it: the
+ * boss's `/api/say` restated the three words as an array literal plus an
+ * unchecked `as Triage`, and `/orch/triage` restated them again as a `z.enum`.
+ * A fourth verb added here would have compiled everywhere and been refused by
+ * one of the two doors at runtime.
+ */
+export const TRIAGE = ["patch", "respec", "reject"] as const;
+export type Triage = (typeof TRIAGE)[number];
 
 /**
  * What the boss's complaint means for the work.

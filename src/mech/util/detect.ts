@@ -15,6 +15,8 @@
  */
 
 /** A repository root: what is in it, and the contents of the few files that matter. */
+import { jsonOr } from "./text.ts";
+
 export interface Root {
   /** Names directly in the root, `ls -A`. */
   names: string[];
@@ -45,13 +47,14 @@ interface Rule {
   install?: (repo: Root) => string | null;
 }
 
-const readJson = (repo: Root, name: string): any => {
-  try {
-    return JSON.parse(repo.read(name) ?? "");
-  } catch {
-    return null;
-  }
-};
+/** The two fields any rule below reads. `package.json` is the only caller. */
+interface PackageJson {
+  scripts?: Record<string, string>;
+  workspaces?: unknown;
+}
+
+const readJson = (repo: Root, name: string): PackageJson | null =>
+  jsonOr<PackageJson | null>(repo.read(name), null);
 
 const hasFile = (repo: Root, name: string) => repo.names.includes(name);
 

@@ -489,8 +489,8 @@ export async function listTree(
   let mirror: string;
   try {
     mirror = await ensureMirror(ctx, remote);
-  } catch (e: any) {
-    return { files: [], why: String(e?.message ?? e).slice(0, 300) };
+  } catch (e) {
+    return { files: [], why: errText(e) };
   }
   const r = await utilGit(ctx, ["ls-tree", "-r", "--name-only", ref], mirror);
   if (r.code !== 0) {

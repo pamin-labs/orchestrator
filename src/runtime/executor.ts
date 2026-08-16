@@ -237,8 +237,8 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
   if (job.grp_id) {
     try {
       await ensureCheckout(ctx, job.grp_id);
-    } catch (e: any) {
-      throw new Error(`could not prepare the group's checkout: ${e?.message ?? e}`);
+    } catch (e) {
+      throw new Error(`could not prepare the group's checkout: ${errText(e)}`);
     }
   }
 
@@ -870,7 +870,7 @@ export async function stageAttachments(
     const inside = `${ATTACH_DIR}/${basename(host)}`;
     try {
       await putBytes(deps.ctx, scope, inside, new Uint8Array(await Bun.file(host).arrayBuffer()));
-    } catch (e: any) {
+    } catch (e) {
       // Said out loud rather than left as a path that goes nowhere: an attachment
       // the agent cannot open is exactly the failure this function exists for.
       deps.ctx.bus.emit({
@@ -878,7 +878,7 @@ export async function stageAttachments(
         author: "orchestrator",
         kind: "state_change",
         severity: "blocker",
-        body: `could not put ${basename(host)} into the sandbox: ${e?.message ?? e}`,
+        body: `could not put ${basename(host)} into the sandbox: ${errText(e)}`,
       });
       continue;
     }
@@ -1317,7 +1317,7 @@ async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void>
 
   // Same runner as the gates use. This used to spawn its own process, which meant
   // two implementations of "run a resource" and a timeout on only one of them.
-  const out = await runResource(def, jsonOr<Record<string, unknown>>(lease.args_json, {}) as Record<string, unknown>, {
+  const out = await runResource(def, jsonOr<Record<string, unknown>>(lease.args_json, {}), {
     cwd,
     logPath,
     timeoutMs: cfg.leaseTimeoutMs,

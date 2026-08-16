@@ -137,15 +137,16 @@ export function rowsOf(chunk: parseDiff.Chunk): Row[] {
     // " No newline at end of file" as if it were source. No prefixed diff line
     // can begin with a backslash, so this is the marker and nothing else.
     if (c.content.startsWith("\\ ")) continue;
-    if (c.type === "del") dels.push({ n: (c as any).ln, text: c.content.slice(1) });
-    else if (c.type === "add") adds.push({ n: (c as any).ln, text: c.content.slice(1) });
+    // `Change` is a discriminated union on `type`, so each branch already knows
+    // its own line numbers — `del`/`add` carry `ln`, `normal` carries `ln1`/`ln2`
+    // and no `ln` at all. The casts were reading fields the narrow hands over.
+    if (c.type === "del") dels.push({ n: c.ln, text: c.content.slice(1) });
+    else if (c.type === "add") adds.push({ n: c.ln, text: c.content.slice(1) });
     else {
       flush();
-      const ln1 = (c as any).ln1 ?? (c as any).ln;
-      const ln2 = (c as any).ln2 ?? (c as any).ln;
       out.push({
-        left: { n: ln1, text: c.content.slice(1) },
-        right: { n: ln2, text: c.content.slice(1) },
+        left: { n: c.ln1, text: c.content.slice(1) },
+        right: { n: c.ln2, text: c.content.slice(1) },
       });
     }
   }
@@ -160,7 +161,7 @@ function marks(a: string, b: string, side: "left" | "right") {
   return parts
     .filter((p) => (want === "removed" ? !p.added : !p.removed))
     .map((p, i) => (
-      <span key={i} className={cn((p as any)[want] && (side === "left" ? "bg-bad-mark" : "bg-ok-mark"))}>
+      <span key={i} className={cn(p[want] && (side === "left" ? "bg-bad-mark" : "bg-ok-mark"))}>
         {p.value}
       </span>
     ));

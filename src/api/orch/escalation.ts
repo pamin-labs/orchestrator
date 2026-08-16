@@ -1,4 +1,4 @@
-import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "../../mech/flow/chain.ts";
+import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, TRIAGE } from "../../mech/flow/chain.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
@@ -127,7 +127,7 @@ export const postAnswer2: AgentHandler<z.infer<typeof AnswerBody>> = async (ctx,
 
 export const TriageBody = z.object({
   group_id: GroupRef,
-  as: z.enum(["patch", "respec", "reject"]),
+  as: z.enum(TRIAGE),
   note: z.string().max(8000).optional(),
 });
 
@@ -136,7 +136,7 @@ export const postTriage: AgentHandler<z.infer<typeof TriageBody>> = async (ctx, 
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
   if (!mayAct(ctx, a, gid)) return text("not your group", 403);
-  triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as as Triage, b.note ?? "");
+  triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as, b.note ?? "");
   return text("ok");
 };
 

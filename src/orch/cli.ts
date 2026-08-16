@@ -15,7 +15,7 @@
  * agent.
  */
 
-import { jsonOr } from "../mech/util/text.ts";
+import { errText, jsonOr } from "../mech/util/text.ts";
 const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
 const TOKEN = process.env.ORCH_TOKEN ?? "";
 
@@ -135,7 +135,7 @@ async function call(
       ...(method === "POST" && payload !== undefined ? { body: JSON.stringify(payload) } : {}),
     });
     return { status: res.status, text: await res.text() };
-  } catch (e: any) {
+  } catch (e) {
     // Reached only with no mailbox in the environment. Inside a container that is
     // the whole story: 127.0.0.1 is the container, the orchestrator is not there,
     // and `ORCH_MAILBOX` is set for a turn and for nothing else — so a gate, a
@@ -145,7 +145,7 @@ async function call(
     return {
       status: 502,
       text:
-        `cannot reach the orchestrator at ${URL_BASE}: ${e?.message ?? e}\n` +
+        `cannot reach the orchestrator at ${URL_BASE}: ${errText(e)}\n` +
         `ORCH_MAILBOX is unset, so this is not running inside a turn — a gate, a lease and an ` +
         `install script have no route to the orchestrator by design.`,
     };

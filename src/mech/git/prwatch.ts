@@ -1,3 +1,4 @@
+import type { SQLQueryBindings } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "../../config.ts";
@@ -8,6 +9,7 @@ import { squashWip } from "./worktree.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
 import { parseRepo, type Github } from "./github.ts";
 import { WORK } from "../sandbox/sandbox.ts";
+import { jsonOr } from "../util/text.ts";
 
 /**
  * The PR as a feedback channel.
@@ -219,7 +221,10 @@ export function prTitle(ctx: Ctx, grpId: number): string {
 }
 
 export function prBody(ctx: Ctx, grpId: number): string {
-  const q = <T,>(sql: string, ...p: unknown[]): T[] => (ctx.db.query(sql) as any).all(...p) as T[];
+  // One row shape per call and always the same bindings, so only the first type
+  // argument is worth writing. It used to take `unknown[]` and cast twice to get
+  // there, which threw away what `db.query` already declares.
+  const q = <T,>(sql: string, ...p: SQLQueryBindings[]): T[] => ctx.db.query<T, SQLQueryBindings[]>(sql).all(...p);
   const out: string[] = [];
 
   // The Scribe's, and first, because it is the only part written by something
@@ -240,11 +245,7 @@ export function prBody(ctx: Ctx, grpId: number): string {
   );
   if (slices.length) {
     const lines = slices.map((s) => {
-      let gates: Record<string, string> = {};
-      try {
-        gates = JSON.parse(s.gates_json);
-      } catch {}
-      const passed = Object.entries(gates)
+      const passed = Object.entries(jsonOr<Record<string, string>>(s.gates_json, {}))
         .filter(([, v]) => v === "pass")
         .map(([k]) => k);
       return (
