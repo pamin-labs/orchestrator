@@ -53,3 +53,27 @@ test("GitHub controls own their flow while the settings shell owns polling", () 
     expect(pane).toContain(contract);
   }
 });
+
+test("environment controls own actions while the settings shell owns server queries", () => {
+  const shell = read("../web/src/views/settings.tsx");
+  const pane = read("../web/src/views/settings/environment.tsx");
+
+  for (const key of ["sandbox-server", "sandbox-images"]) {
+    expect(shell).toContain(`queryKey: ["${key}"]`);
+    expect(pane).not.toContain(`queryKey: ["${key}"]`);
+  }
+  expect(shell).toContain('enabled: open && section === "server"');
+  expect(shell).toContain("<EnvPane");
+  expect(shell).toContain("<ServerPane");
+  expect(pane).not.toContain("useQuery");
+
+  expect(shell).not.toContain("function ServerPane(");
+  for (const contract of [
+    '"/api/sandbox-server/restart"',
+    '"/api/sandbox-server/start"',
+    '"/api/sandbox-server/addr"',
+    'id="sandbox-key"',
+  ]) {
+    expect(pane).toContain(contract);
+  }
+});
