@@ -201,7 +201,11 @@ export type Config = {
 const DEFAULTS: Config = {
   language: "中文",
   maxGroups: 10,
-  leaseSlots: 2,
+  // `{default: 2, browser: 1}`, not a flat 2: each browser lease is a real
+  // Chromium, and one global number could only ever be the browser's, which
+  // starves the typechecks. This was the shipped yaml's value while the code
+  // default said 2 — the file is what has been running, so it wins.
+  leaseSlots: { default: 2, browser: 1 },
   host: "127.0.0.1",
   port: 47821,
   difficultyModel: {
@@ -219,7 +223,9 @@ const DEFAULTS: Config = {
       hard: "gpt-5.6-sol",
     },
   },
-  turnTimeoutMs: 600_000,
+  // 20 minutes. The code default said 10 while the shipped yaml said 20, so
+  // every install has been running 20 and nothing has been running 10.
+  turnTimeoutMs: 1_200_000,
   maxTurnsPerJob: 45,
   sessionRotateFraction: 0.6,
   unreadDigestThreshold: 30,
@@ -239,10 +245,15 @@ const DEFAULTS: Config = {
   // built on top of it. Rejecting one then pauses the whole group and says so
   // (postSliceDecision), rather than quietly fixing the foundation under finished work.
   autoAdvance: true,
-  // trivial only. Three gates still run on it — self-review, the deterministic gate,
-  // an independent QA — so this skips the fourth layer, the boss's look, on the tier
-  // where that look is worth least. normal and hard still wait for you.
-  autoAcceptTiers: ["trivial"],
+  // trivial and normal. Four gates still run on both — self-review, reconcile,
+  // the deterministic gate, an independent QA — so this skips the fifth layer,
+  // the boss's own look. hard still waits for you.
+  //
+  // The code default said `["trivial"]` and the shipped yaml said
+  // `["trivial", "normal"]`, with a comment under each explaining why its own
+  // answer was the careful one. The yaml is the one that has been running, and
+  // two files arguing in comments is worse than either answer.
+  autoAcceptTiers: ["trivial", "normal"],
   // Measured over the 16 slices in this checkout that spent anything: trivial
   // averaged 4.0M with one 12.0M runaway, normal averaged 7.3M with a 16.1M tail,
   // the single hard slice took 4.0M. So these are set above the worst slice that

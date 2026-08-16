@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import {
+  DEFAULTS_FOR_CHECK,
   MAX_CONTEXT,
   MIN_CONTEXT,
   contextWindowFor,
@@ -113,11 +114,15 @@ test("unattended is the default: approved buys a night of work", () => {
   // which defeats the reason the system exists. The slice still waits to be accepted;
   // only the next one stops waiting.
   expect(cfg.autoAdvance).toBe(true);
-  // trivial only. Self-review, reconcile, the gate and an independent QA all still run
-  // on it — this skips the fifth layer, the boss's own look, on the tier where that
-  // look is worth least.
-  expect(cfg.autoAcceptTiers).toEqual(["trivial"]);
-  expect(cfg.autoAcceptTiers).not.toContain("normal");
+  // trivial and normal. Self-review, reconcile, the gate and an independent QA all
+  // still run on both — this skips the fifth layer, the boss's own look.
+  //
+  // This assertion used to say trivial only, and it was reading the code default
+  // while every install read the shipped yaml, which said trivial and normal. Two
+  // files disagreeing in comments about which one was the careful answer, and a
+  // test pinning the one nobody ran. The yaml won because it is what has been
+  // running; hard is the line that matters and it still waits.
+  expect(cfg.autoAcceptTiers).toEqual(["trivial", "normal"]);
   expect(cfg.autoAcceptTiers).not.toContain("hard");
 });
 
@@ -171,4 +176,30 @@ test("the rotation denominator is the model's own window, clamped", () => {
   expect(contextWindowFor(cfg, "claude-opus-5", 0)).toBe(1_000_000);
   expect(contextWindowFor(cfg, "x", 5)).toBe(MIN_CONTEXT);
   expect(contextWindowFor(cfg, "x", 99_000_000)).toBe(MAX_CONTEXT);
+});
+
+test("the shipped yaml never disagrees with the code default", () => {
+  // They drifted three ways at once: `turnTimeoutMs` 10 minutes against 20,
+  // `leaseSlots` one pool of 2 against a browser pool of 1, and
+  // `autoAcceptTiers` trivial against trivial-and-normal — each with a comment
+  // under it explaining why its own answer was the careful one. Nothing could
+  // see it, because the file simply wins and the default is only read when a key
+  // is absent.
+  //
+  // Now that the operating knobs live in the settings table, the yaml keeps only
+  // what a startup needs. Anything still in it must say what the code says, or
+  // it is a second answer nobody knows about.
+  const yaml = Bun.YAML.parse(readFileSync("config/default.yaml", "utf8")) as Record<string, unknown>;
+  const differ: string[] = [];
+  const walk = (a: any, b: any, path = "") => {
+    for (const k of Object.keys(a ?? {})) {
+      const p = path ? `${path}.${k}` : k;
+      const [av, bv] = [a[k], b?.[k]];
+      const branch = av && bv && typeof av === "object" && typeof bv === "object" && !Array.isArray(av);
+      if (branch) walk(av, bv, p);
+      else if (JSON.stringify(av) !== JSON.stringify(bv)) differ.push(`${p}: yaml=${JSON.stringify(av)} default=${JSON.stringify(bv)}`);
+    }
+  };
+  walk(yaml, DEFAULTS_FOR_CHECK);
+  expect(differ).toEqual([]);
 });

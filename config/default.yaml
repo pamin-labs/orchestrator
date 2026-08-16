@@ -1,156 +1,39 @@
-# Defaults. See PLAN.md §11.
-language: 中文            # human-facing text; code/commits/PRs stay English
-# 10 requirements may run at once. The ceiling that bites first is not this number:
-# it is file ownership (two groups may not own overlapping paths, so a project with
-# few separable modules will not reach 10 no matter what this says) and the account's
-# own rate limit. Raise it and watch 成本 → cache 命中: many concurrent turns on one
-# subscription is where throttling shows up first.
-maxGroups: 10
-# Runner pools, one per resource tag. `default` covers every resource with no tag.
-# A plain number here still works and means "one pool that size".
+# What a startup needs, and nothing else.
 #
-# Deliberately not 10. A lease is a real build or test on the host, and ten of those
-# at once thrash the machine and make every one of them slower — and a wedged lease
-# holds its slot for leaseTimeoutMs. Raise only after measuring.
+# Everything that used to be here — how many groups run at once, which model each
+# difficulty gets, how long a turn may take, the whole sandbox block — is in the
+# panel now, under 设置. Two reasons it moved, and the second is the one that
+# settled it:
 #
-# browser: 1 because each browser lease is a real Chromium. This is exactly why the
-# pool is split: one global number would have to be the browser's, and every gate in
-# the fleet would queue behind one screenshot.
-leaseSlots:
-  default: 2
-  browser: 1
+#   1. Those are decisions made while watching the thing run, and a restart to
+#      change a concurrency limit costs more than the change.
+#   2. This file ships *inside* the release. `orch-server` is one compiled binary
+#      per platform and `ROOT` is the directory it was unpacked into, so editing
+#      this to raise a budget means editing the download. The same release added
+#      ORCH_SKILLS_DIR rather than a yaml key for exactly that reason.
+#
+# What is left is the three things that have to be known before there is a
+# database to read settings out of. Each also takes an environment variable,
+# which is what a container deployment sets:
+#
+#   ORCH_HOST   ORCH_PORT   ORCH_DATA_DIR
+#
+# Two more exist and are deliberately not keys here: ORCH_SANDBOX_API_KEY (a
+# secret, and this file is committed) and ORCH_SKILLS_DIR (a property of where
+# this installation was unpacked).
+#
+# Anything you do add here still works — it is the default under whatever the
+# panel has set — but `test/config.test.ts` will fail if it disagrees with
+# `src/config.ts`, because two files quietly answering the same question
+# differently is what this file was doing before.
+
 # 面板和 agent 信箱监听在哪。默认只听本机 —— 这个服务没有登录，
 # 谁连得上谁就是老板，所以绑 0.0.0.0 等于把它交给同网段的所有人。
 # 装在容器里必须改成 0.0.0.0（否则映射出去的端口连不上），
 # 那时候请确保它前面有别的东西挡着：反向代理 + 鉴权，或者只在 Tailscale 里可达。
 host: 127.0.0.1
-port: 47821              # localhost TCP; agents get ORCH_URL + ORCH_TOKEN
-                         # host / port / dataDir / sandbox.server 也能用环境变量盖：
-                         # ORCH_HOST、ORCH_PORT、ORCH_DATA_DIR、ORCH_SANDBOX_SERVER
-                         # （容器部署要的就是这四个，别的一律只认这个文件）
+port: 47821
 
-
-# runtime -> difficulty -> model. The Dispatcher tags each slice; this is the cost knob.
-# 每个 role 用哪个 CLI 写在 roles/*.yaml 的 runtime，这里只管「那个 CLI 上，这个难度用哪个模型」。
-difficultyModel:
-  claude:
-    trivial: claude-haiku-4-5-20251001
-    normal: claude-sonnet-5
-    hard: claude-opus-5
-  codex:
-    trivial: gpt-5.6-luna
-    normal: gpt-5.6-terra
-    hard: gpt-5.6-sol
-
-# 每个新切片的 token 上限。在此之前 budget_tokens 从来没被 INSERT 过，恒 NULL，
-# scheduler 里那两道熔断一次都没拦过东西。数字取自本仓库 16 个真实切片：
-# trivial 均值 4.0M（有一个 12.0M 跑飞的），normal 均值 7.3M 尾部 16.1M，hard 4.0M。
-# 卡在「跑完的最坏一片」之上、「跑飞那一片」之下。
-sliceBudgetTokens:
-  trivial: 8000000
-  normal: 20000000
-  hard: 30000000
-
-# 谁来答 `orch ctx query` 并写索引摘要。全系统调用最频繁的一个模型调用，纯摘要、
-# 不做决策、不用工具、不碰黑板 —— 第一个该从贵的订阅上挪走的就是它。
-indexModel:
-  runtime: codex
-  model: gpt-5.6-luna
-
-# 每个模型的上下文窗口。轮换 session 的分母 —— 之前是写死的 200000，而那只对最便宜那个成立：
-# 真实 turn 日志里 haiku-4-5 报 200k，sonnet-5 和 opus-5 报 1M，codex 的 token_count 里
-# gpt-5.6 报 272k。也就是强模型一直在 1M 窗口的 12% 处轮换，每轮换一次就扔掉一次缓存前缀。
-# 两个 CLI 在 turn 里都会报真实值，那个值优先；这张表管的是一个 session 的第一个 turn。
-contextWindow:
-  default: 200000
-  claude-haiku-4-5-20251001: 200000
-  claude-sonnet-5: 1000000
-  claude-opus-5: 1000000
-  gpt-5.6-sol: 272000
-  gpt-5.6-terra: 272000
-  gpt-5.6-luna: 272000
-
-# 20 min. Measured on a toy fixture repo the longest single turn was 8.2 min, so
-# 10 min left under 2x headroom before the watchdog killed productive work.
-turnTimeoutMs: 1200000
-# 45. Measured over 259 real turns: median 36 rounds, p90 93, max 144 — and the
-# 23% of turns above 60 rounds ate 59% of the entire cache-read bill, because every
-# round re-reads the whole transcript. 36 is the work; the tail is an agent that
-# has lost the plot and is grepping. Cutting the tail leaves the median alone.
-maxTurnsPerJob: 45
-sessionRotateFraction: 0.6  # fallback; the real trigger is slice completion
-ctxBudgetChars: 16000     # ~4k tokens
-parkAfterPausedMs: 7200000
-watchdogIntervalMs: 30000   # how often the deterministic rules run
-gateRetries: 2
-
-# 3h for one leased command. A big project's compile is hours; without a limit at
-# all a hung build holds the lease slot forever, and lease slots are global and
-# few, so one wedged command stops every group from gating again.
-leaseTimeoutMs: 10800000
-
-# 装依赖的墙钟。和 lease 同一个量级，因为是同一类东西 —— 真的在编译。
-# 原来是 15 分钟，对这个仓库够，对需要余量的项目不够：monorepo 的 pnpm install、
-# 从源码编 numpy 的 pip install、大 solution 的 dotnet restore。
-# 卡太紧的失败长得像「这个项目坏了」，不像「超时了」，而组两种情况下都卡住。
-# 所以默认给足，并且装的过程是流式的 —— 那才是让「装很久」可看而不是可疑的东西。
-installTimeoutMs: 10800000
-
-# 每个组一个沙盒。agent 碰不到宿主机，宿主机只通过 orch 暴露有限动作。
-# 实测在 docs/decisions/005，几条和 OpenSandbox 官方文档相反的结论也在那儿。
-sandbox:
-  server: 127.0.0.1:8080     # opensandbox-server，必须 dns+nft 模式，否则凭据注入静默失效
-                             # egress sidecar 必须 >= v1.1.6：v1.1.4（官方示例配置钉的那个）
-                             # 一旦绑了凭据就 403 掉所有 scoped 包，症状是「这个项目装不上依赖」
-  apiKey: ""                 # 空 = server 没开鉴权。真要用密钥就走 ORCH_SANDBOX_API_KEY
-                             # 环境变量 —— 这个文件是提交进仓库的，密钥写这儿就是泄漏
-  # 发布的镜像。只认两个来源，别的一律拒（allowedImage）：
-  #   ghcr.io/pamin-labs/…   我们发布的
-  #   没有 registry 前缀的    你本地 docker build 出来的，比如 orch/agent:1
-  # 理由：这个镜像里跑的是 agent，而 agent 有你的代码。换一个来路不明的镜像
-  # 就是把整条边界交给别人，而且从面板上看不出任何异常。
-  image: ghcr.io/pamin-labs/orch-agent:latest
-                             # 本地开发：docker build -f docker/agent.Dockerfile -t orch/agent:1 .
-                             # bun + node + git + 两个 CLI，1.5GB（官方 code-interpreter 是 7GB）
-  # 留空 = 宿主核数的 1/4。SDK 默认是 "1"，这个仓库的 tsc --noEmit 因此 7.6s（6 核 3.2s）。
-  cpu: ""
-  memory: 8Gi
-  # 沙盒活多久。turn 开始时续期，所以这是「没人管了多久回收」，不是任务上限。
-  ttlSeconds: 86400
-  # 黑名单，不是白名单 —— 白名单才是穷举不完的那个（每个 registry、每个文档站）。
-  # 凭据安全不靠它：真 token 在 sidecar 里，沙盒里是假值。
-  denyDomains: []
-  # 所有沙盒共享的宿主目录，「容器里的挂载点: 宿主路径」。只放包管理器缓存。
-  # 实测这个仓库第二个组的 bun install：不共享 2.9s，共享 1.2s —— 这里小是因为仓库小，
-  # 到 monorepo 上就是分钟级的差别。
-  # 默认关，理由是这个仓库最惨的那次事故：所有 worktree 通过软链共用一份 node_modules，
-  # 两个闸门同时装，组把 `Failed to link jiti: EEXIST` 当成自己的 build 坏了。
-  # 包缓存不是那个东西（bun/npm 的缓存是内容寻址、为并发设计的），但形状够像，
-  # 所以要项目主动开。另外 opensandbox-server 的 allowed_host_paths 也得列上这个路径。
-  # 例：{ /root/.bun/install/cache: /var/tmp/orch-cache }
-  cacheDirs: {}
-
-# 勾中的技能复制到这里，每个沙盒只读挂在 /root/.claude/skills 和 $CODEX_HOME/skills，
-# CLI 自己发现自己用（决策 006）。
-#
-# 不放在 dataDir 底下：opensandbox-server 只挂它自己 allowed_host_paths 里的宿主路径，
-# 而仓库 checkout 永远不在那个名单上。它的默认名单就是 /var/tmp/orch-cache，所以默认指这儿。
-# 换路径的话，服务端的 allowed_host_paths 要跟着改 —— 不然开容器直接失败，
-# 面板会明说是哪条路径没放行，同时先不挂技能把组开起来。
-# 不写就按平台挑：Linux 用 /var/tmp/orch-cache/skills（opensandbox-server 默认允许的路径），
-# macOS 用 ~/.orch-cache/skills —— 那里的 docker 跑在虚拟机里，/var/tmp 是虚拟机自己的，
-# 绑上去会「成功」并给容器一个空目录（实测：宿主 179 个，容器里 0 个）。
-# 改这里就要同步改沙盒服务端的 allowed_host_paths，否则开容器直接失败 —— 而那是响的失败，
-# 比一个静默的空目录好得多。
-# skillsDir: /var/tmp/orch-cache/skills
-
-# 批准之后就别叫我：查收不再挡住下一片开工。默认开 —— 「批了」就该买到一夜的活，
-# 关掉的话一个组做完一片就停到早上，等于放弃了这套系统存在的理由。
-# 代价说清楚：某一片方向错了，后面几片是在它基础上做的。你退回那一片时全组会停下并说明，
-# 而不是悄悄在已完成的工作底下改地基。
-autoAdvance: true
-
-# 四道闸（自评 / 对账 / 跑测试 / QA）全过之后自动查收的难度档。
-# 默认只有 trivial：前四层照跑，省掉的是第五层「你亲自看一眼」，而 trivial 正是那一眼
-# 最不值钱的档。normal / hard 仍然等你。
-autoAcceptTiers: ["trivial", "normal"]
+# 数据库、turn 日志、闸门日志、附件都在这儿。相对路径会被解析成绝对路径 ——
+# 读它的那些东西跑在别的地方，相对路径解析出来的结果没有两次是一样的。
+dataDir: data
