@@ -102,7 +102,7 @@ jobs:
       # bun's global download cache, not `node_modules`: what an install spends
       # is the network, and this is keyed by the lockfile so a release that
       # changed no dependency restores exactly what the last one downloaded.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -305,7 +305,7 @@ jobs:
       # So the tag and the bump are pushed as the App, which the ruleset lets
       # through. v0.1.1 is what this is for: tagged, published, and `main` left
       # saying 0.1.0 because the push was refused after everything else worked.
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@v3
         id: app
         with:
           app-id: ${{ vars.ORCH_APP_ID }}

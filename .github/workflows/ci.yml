@@ -36,7 +36,7 @@ jobs:
       # bun's global download cache, not `node_modules`: the install itself is
       # fast, and what it spends is the network. Keyed by the lockfile, so a run
       # that changes no dependency restores exactly what the last one downloaded.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
