@@ -25,7 +25,7 @@ import {
   UTIL,
   WORK,
 } from "../src/mech/sandbox/sandbox.ts";
-import { cacheProjectSkills } from "../src/mech/util/skills.ts";
+import { cacheProjectSkills } from "../src/mech/skills.ts";
 
 /**
  * The whole boundary, against a real container.

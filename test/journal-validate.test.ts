@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { validateJournal, validateSelfReview } from "../src/mech/flow/validate.ts";
+import { validateJournal, validateSelfReview } from "../src/mech/util/validate.ts";
 
 const six = "a\nb\nc\nd\ne\nf";
 

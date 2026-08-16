@@ -1,5 +1,5 @@
 import { dirname, join } from "node:path";
-import { validateJournal } from "../mech/flow/validate.ts";
+import { validateJournal } from "../mech/util/validate.ts";
 import { execIn, putFile, WORK } from "../mech/sandbox/sandbox.ts";
 import { shq } from "../mech/util/shq.ts";
 import { z } from "zod";

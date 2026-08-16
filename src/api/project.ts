@@ -6,7 +6,7 @@ import { baseBranch, listBranches, removeMirror } from "../mech/git/checkout.ts"
 import { forgetHolds } from "../mech/git/github.ts";
 import { pushBlocked } from "../mech/git/prwatch.ts";
 import { runInstall } from "../mech/flow/start.ts";
-import { forgetProjectSkills } from "../mech/util/skills.ts";
+import { forgetProjectSkills } from "../mech/skills.ts";
 import { abortJob } from "../runtime/running.ts";
 import { z } from "zod";
 import { bad, json, text, type AgentHandler, type Handler } from "./shared.ts";

@@ -4,7 +4,7 @@ import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import type { Ctx } from "../src/api.ts";
 import { detectProject } from "../src/mech/flow/start.ts";
-import { gatesFor } from "../src/mech/flow/gate.ts";
+import { gatesFor } from "../src/mech/gate.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 

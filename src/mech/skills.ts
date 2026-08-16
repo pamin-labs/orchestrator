@@ -1,9 +1,9 @@
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../ctx.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
-import { hostClaudeHome, hostCodexHome } from "../sandbox/auth.ts";
+import { hostClaudeHome, hostCodexHome } from "./sandbox/auth.ts";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { DB } from "../../db.ts";
+import type { DB } from "../db.ts";
 
 /**
  * Skills reach an agent two ways, and both are needed.

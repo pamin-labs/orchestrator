@@ -7,7 +7,7 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { gateState } from "../src/mech/flow/gate.ts";
+import { gateState } from "../src/mech/gate.ts";
 import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { handToBoss } from "../src/mech/flow/review.ts";
 import { checkpoint } from "../src/mech/git/worktree.ts";

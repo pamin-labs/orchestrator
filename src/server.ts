@@ -14,7 +14,7 @@ import { REAL, sandboxHeld } from "./mech/sandbox/sandbox.ts";
 import { startMailbox } from "./mech/sandbox/mailbox.ts";
 import { baseRefFor, createCheckout, treeHeads } from "./mech/git/checkout.ts";
 import { preflight, report } from "./mech/ops/preflight.ts";
-import { restageSkills } from "./mech/util/skills.ts";
+import { restageSkills } from "./mech/skills.ts";
 import { ensureServer } from "./mech/sandbox/server.ts";
 import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
 import { dispatchFeedback, openPr, pollPrs, prBody, prTitle } from "./mech/git/prwatch.ts";

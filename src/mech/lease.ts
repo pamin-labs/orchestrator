@@ -1,6 +1,6 @@
 import { resolve as resolvePath, relative, isAbsolute } from "node:path";
 import { z } from "zod";
-import type { Invalid, Result } from "../flow/validate.ts";
+import type { Invalid, Result } from "./util/validate.ts";
 
 /**
  * A lease runs in the group's own sandbox, so this is no longer the host's only

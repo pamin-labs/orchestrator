@@ -3,7 +3,7 @@ import { interrupt, park, pause, resume, unpark } from "../mech/flow/intercept.t
 import { dropGroup, startGroup, sweepApproved } from "../mech/flow/start.ts";
 import { openPr, prBody, prTitle } from "../mech/git/prwatch.ts";
 import { joinQueue, landed } from "../mech/flow/mergequeue.ts";
-import { validateDraftCard } from "../mech/flow/validate.ts";
+import { validateDraftCard } from "../mech/util/validate.ts";
 import { canStart, parseOwns } from "../mech/flow/ownership.ts";
 import { killSandbox } from "../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../mech/sandbox/sandboxlog.ts";

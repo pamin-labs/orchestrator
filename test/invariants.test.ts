@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ESCALATION_STATES, GRP_STATES, JOB_STATES, LEASE_STATES, SLICE_STATES } from "../src/mech/ops/states.ts";
+import { ESCALATION_STATES, GRP_STATES, JOB_STATES, LEASE_STATES, SLICE_STATES } from "../src/states.ts";
 import {
   ESCALATION_INVARIANTS,
   UTIL_INVARIANTS,

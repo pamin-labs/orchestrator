@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listSkills, readSkill, referencedSkills } from "../src/mech/util/skills.ts";
+import { listSkills, readSkill, referencedSkills } from "../src/mech/skills.ts";
 import {
   assemble,
   buildDelta,

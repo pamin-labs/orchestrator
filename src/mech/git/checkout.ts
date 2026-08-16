@@ -2,7 +2,7 @@ import { errText, tail } from "../util/text.ts";
 import type { Ctx } from "../../ctx.ts";
 import { execIn, execLines, getBytes, putBytes, SKILL_SYNC, UTIL, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
-import { cacheProjectSkills } from "../util/skills.ts";
+import { cacheProjectSkills } from "../skills.ts";
 import { shq } from "../util/shq.ts";
 import type { GitRunner } from "./worktree.ts";
 import { commitIdentity } from "./ghlogin.ts";

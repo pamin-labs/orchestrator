@@ -1,4 +1,4 @@
-import { validateDraftCard } from "../mech/flow/validate.ts";
+import { validateDraftCard } from "../mech/util/validate.ts";
 import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../mech/flow/ownership.ts";
 import { sweepApproved } from "../mech/flow/start.ts";
 import { baseRefFor, sandboxGit, treeFiles } from "../mech/git/checkout.ts";

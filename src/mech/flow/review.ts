@@ -2,7 +2,7 @@ import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../config.ts";
 import { say } from "../../lang.ts";
 import { jsonOr } from "../util/text.ts";
-import { runGates, recordGate, gateState } from "./gate.ts";
+import { runGates, recordGate, gateState } from "../gate.ts";
 import { extractClaimedFiles, reconcile } from "./reconcile.ts";
 import { changedSince, filesAt } from "../git/worktree.ts";
 import { resourceExec, WORK } from "../sandbox/sandbox.ts";

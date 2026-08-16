@@ -3,7 +3,7 @@ import { open, openMemory } from "../src/db.ts";
 import { allowedImage, hostPathForDaemon, keyInConfig, lineSplitter, skillMounts, SKILL_LINE, SKILL_SYNC, specFor, STAGED_SKILLS } from "../src/mech/sandbox/sandbox.ts";
 import { CODEX_HOME } from "../src/mech/sandbox/auth.ts";
 import { setDefaultImage } from "../src/mech/sandbox/images.ts";
-import { cacheProjectSkills, projectSkills } from "../src/mech/util/skills.ts";
+import { cacheProjectSkills, projectSkills } from "../src/mech/skills.ts";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";

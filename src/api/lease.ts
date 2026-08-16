@@ -1,4 +1,4 @@
-import { resolveLease, type ResourceDef } from "../mech/sandbox/lease.ts";
+import { resolveLease, type ResourceDef } from "../mech/lease.ts";
 import { z } from "zod";
 import { bad, text, type AgentHandler } from "./shared.ts";
 import type { Ctx } from "../ctx.ts";

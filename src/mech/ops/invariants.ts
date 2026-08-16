@@ -20,7 +20,7 @@ import {
   type ServerState,
   type SliceState,
   type UtilState,
-} from "./states.ts";
+} from "../../states.ts";
 
 /**
  * One row per state, and the row has to say who pushes it.

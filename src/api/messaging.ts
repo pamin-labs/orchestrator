@@ -4,7 +4,7 @@ import { Attachment as AttachmentSchema, GroupRef, Prose } from "./valid.ts";
 import { bad, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
 import { bossFact, withAttachments } from "./attach.ts";
 import { triage, type Triage } from "../mech/flow/chain.ts";
-import { projectSkills, skillNames } from "../mech/util/skills.ts";
+import { projectSkills, skillNames } from "../mech/skills.ts";
 import type { Ctx } from "../ctx.ts";
 
 /**

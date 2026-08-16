@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
-import type { DB } from "../../db.ts";
-import { type ResourceExec, runResource, type ResourceDef } from "../sandbox/lease.ts";
+import type { DB } from "../db.ts";
+import { type ResourceExec, runResource, type ResourceDef } from "./lease.ts";
 
 /**
  * The deterministic gate: build, test, lint, typecheck, secret scan.

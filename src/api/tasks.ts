@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { bad, text, type AgentHandler } from "./shared.ts";
 import { extractClaimedFiles } from "../mech/flow/reconcile.ts";
-import { recordGate } from "../mech/flow/gate.ts";
-import { validateSelfReview } from "../mech/flow/validate.ts";
+import { recordGate } from "../mech/gate.ts";
+import { validateSelfReview } from "../mech/util/validate.ts";
 
 /**
  * The task card and the two verbs that move it.

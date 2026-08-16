@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { ResourceExec } from "../src/mech/sandbox/lease.ts";
+import type { ResourceExec } from "../src/mech/lease.ts";
 
 /** These check ordering and reporting, never a real command. */
 const noExec: ResourceExec = async () => ({ code: 0, out: "" });
@@ -7,8 +7,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory, type DB } from "../src/db.ts";
-import { gateState, gatesFor, recordGate, runGates } from "../src/mech/flow/gate.ts";
-import { digestOutput, type ResourceDef } from "../src/mech/sandbox/lease.ts";
+import { gateState, gatesFor, recordGate, runGates } from "../src/mech/gate.ts";
+import { digestOutput, type ResourceDef } from "../src/mech/lease.ts";
 
 function seed(gates: unknown): DB {
   const db = openMemory();
