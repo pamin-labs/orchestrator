@@ -34,6 +34,7 @@ import { shq } from "./mech/util/shq.ts";
 import { abortJob } from "./runtime/running.ts";
 import { sediment } from "./mech/knowledge/lessons.ts";
 import { say } from "./lang.ts";
+import { Hono } from "hono";
 import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/flow/validate.ts";
 import type { Caller, Ctx } from "./ctx.ts";
 
@@ -3916,24 +3917,47 @@ export function crossSiteWrite(req: Request, port: number): boolean {
   }
 }
 
-export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
+/**
+ * The regex table, as a Hono handler.
+ *
+ * Temporary by design: routes move onto Hono a cluster at a time, and whatever
+ * has not moved yet still resolves here. It goes away with the last entry in
+ * `ROUTES`. Keeping both alive at once is what makes the move reviewable in
+ * pieces instead of as one 3800-line rewrite.
+ */
+function legacyRoutes(ctx: Ctx): (req: Request) => Promise<Response> {
   return async (req) => {
     const path = new URL(req.url).pathname;
-    if (path.startsWith("/api/") && crossSiteWrite(req, ctx.config.port ?? 47821)) {
-      return text("cross-site writes are refused", 403);
-    }
     for (const [method, re, h] of ROUTES) {
       if (req.method !== method) continue;
       const m = re.exec(path);
       if (!m) continue;
-      try {
-        return await h(ctx, req, (m.groups ?? {}) as Record<string, string>);
-      } catch (e: any) {
-        return text(`error: ${e?.message ?? e}`, 500);
-      }
+      return h(ctx, req, (m.groups ?? {}) as Record<string, string>);
     }
     return text("not found", 404);
   };
+}
+
+export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
+  const app = new Hono();
+
+  // One place, ahead of everything. It used to be an `if` at the top of the
+  // dispatch loop, which is the same thing until someone adds a second dispatch
+  // path — and a CSRF check that one route can be written around is not a check.
+  app.use("/api/*", async (c, next) => {
+    if (crossSiteWrite(c.req.raw, ctx.config.port ?? 47821)) {
+      return c.text("cross-site writes are refused", 403);
+    }
+    await next();
+  });
+
+  // An uncaught handler error was a 500 with the message in the body, and stays
+  // one: `orch` prints this text straight at an agent, and "error: ..." is more
+  // use to it than an empty 500.
+  app.onError((e, c) => c.text(`error: ${(e as Error)?.message ?? e}`, 500));
+
+  app.all("*", (c) => legacyRoutes(ctx)(c.req.raw));
+  return async (req) => app.fetch(req);
 }
 
 /**

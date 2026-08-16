@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@alibaba-group/opensandbox": "^0.1.11",
+    "@hono/standard-validator": "^0.4.0",
     "@radix-ui/react-accordion": "^1.2.20",
     "@radix-ui/react-collapsible": "^1.1.20",
     "@radix-ui/react-dialog": "^1.1.23",
@@ -41,11 +42,13 @@
     "consola": "^3.4.2",
     "defu": "^6.1.7",
     "diff": "^9.0.0",
+    "hono": "^4.13.2",
     "lucide-react": "^1.31.0",
     "parse-diff": "^0.12.0",
     "react-resizable-panels": "^4.12.2",
     "recharts": "^3.10.1",
     "sonner": "^2.0.8",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.4.3"
   }
 }
