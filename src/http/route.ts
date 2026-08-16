@@ -71,9 +71,13 @@ async function parse<T>(schema: Schema<T>, value: unknown): Promise<T | string> 
  * which is where it belongs: that check is about who sent the request, not about
  * what it said it was.
  */
-const body = async (req: Request): Promise<unknown> => {
-  if (req.body === null) return {};
-  return req.json().catch(() => ({}));
+const body = async (req: Request): Promise<{ ok: true; value: unknown } | { ok: false }> => {
+  if (req.body === null) return { ok: true, value: {} };
+  try {
+    return { ok: true, value: await req.json() };
+  } catch {
+    return { ok: false };
+  }
 };
 
 type C = { req: { raw: Request; param: () => Record<string, string> }; get: (k: "agent") => Caller };
@@ -90,7 +94,9 @@ async function checked<B, P>(c: C, o: Opts<B, P>): Promise<{ data: B } | Respons
     if (typeof p === "string") return text(p, 422);
   }
   if (!o.body) return { data: undefined as B };
-  const b = await parse(o.body, await body(c.req.raw));
+  const raw = await body(c.req.raw);
+  if (!raw.ok) return text("invalid JSON", 400);
+  const b = await parse(o.body, raw.value);
   return typeof b === "string" ? text(b, 422) : { data: b };
 }
 

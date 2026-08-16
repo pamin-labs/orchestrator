@@ -1420,11 +1420,25 @@ test("project config takes the keys it has, and says so about the rest", async (
   expect(await bad.text()).toContain("hooks");
 });
 
+test("malformed JSON cannot become an empty control request", async () => {
+  const h = harness();
+  const r = await h.app(
+    new Request("http://x/api/groups/1/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    }),
+  );
+
+  expect(r.status).toBe(400);
+  expect(await r.text()).toContain("invalid JSON");
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
+});
+
 test("every route that takes a body declares its shape", () => {
-  // The check that keeps the next route honest. `body<T>()` is gone — it parsed
-  // JSON and swallowed a failure into `{}`, so a malformed request arrived as an
-  // object whose every field was undefined and each handler re-derived what it
-  // needed with its own `?? ""` and `String(...)`.
+  // The check that keeps the next route honest. The shared parser owns both JSON
+  // syntax and the declared schema, so handlers cannot silently re-derive either
+  // through their own `?? ""` and `String(...)` fallbacks.
   const src = readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8");
   // Registration is `route(app, ctx, "post", path, {body, handler})`, so a POST
   // with no `body:` is a POST that declared no shape.
