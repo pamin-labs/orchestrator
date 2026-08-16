@@ -98,7 +98,7 @@ const _base = (f: parseDiff.File) => {
   return n.slice(n.lastIndexOf("/") + 1);
 };
 
-type Row = {
+export type Row = {
   left?: { n: number; text: string; changed?: boolean };
   right?: { n: number; text: string; changed?: boolean };
   /** Hunk boundary, rendered as a rule rather than a `@@` line. */
