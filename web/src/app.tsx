@@ -214,6 +214,13 @@ export function App() {
   // Scoped to where the boss is standing: inside a project it is that project's
   // queue, on Home it is everything.
   const waiting = countWaiting(st, home ? null : sel.p);
+  // The tab title carries the count, because it is the one signal that needs no
+  // permission and survives the tab being in the background — which is where
+  // this page spends most of its life. Same number and same word as the header
+  // badge: 待办 appears once, or it stops being trusted.
+  useEffect(() => {
+    document.title = waiting > 0 ? `(${waiting}) orchestrator` : "orchestrator";
+  }, [waiting]);
   // Home spans projects, so a timeline there would be cross-project noise while
   // the boss is deciding. It only appears inside a project.
   const showSide = side && !home && st.projects.length > 0;

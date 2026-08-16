@@ -7,6 +7,7 @@
  */
 
 import { scrub } from "../util/scrub.ts";
+import type { Bus } from "../../bus.ts";
 
 export type Tier = "immediate" | "batched";
 
@@ -68,9 +69,8 @@ export interface NotifierOptions {
   batchSize?: number;
   /** …or when the oldest has waited this long. */
   batchMs?: number;
-  /** Delivery. Injected in tests; defaults to macOS notification + optional ntfy. */
+  /** Delivery. Injected everywhere: the server passes `busDeliver`, tests pass a spy. */
   deliver?: (title: string, body: string, url?: string) => void | Promise<void>;
-  ntfyTopic?: string;
   now?: () => number;
 }
 
@@ -92,7 +92,10 @@ export class Notifier {
     this.batchSize = opts.batchSize ?? 5;
     this.batchMs = opts.batchMs ?? 30 * 60_000;
     this.now = opts.now ?? (() => Date.now());
-    this.deliver = opts.deliver ?? ((t, b, u) => macNotify(t, b, u, opts.ntfyTopic));
+    // No default. There is exactly one delivery path and the server owns it, so
+    // a Notifier built without one is a test, and a test that forgot its spy
+    // should fail rather than quietly notify nobody.
+    this.deliver = opts.deliver ?? (() => {});
   }
 
   /** Returns true when this actually reached the boss. */
@@ -163,56 +166,45 @@ export class Notifier {
 }
 
 /**
- * Clicking a notification should open the page it is about.
+ * Delivery: the page tells you, and optionally a webhook.
  *
- * `osascript display notification` cannot carry a click action at all: the
- * notification belongs to whatever app ran the script, so clicking it opens
- * Script Editor. Measured, that looked like the tool pointing the boss at a
- * local folder. `terminal-notifier -open <url>` does the right thing, so use it
- * when it is installed and fall back to osascript with the URL in the text.
+ * This used to be `terminal-notifier` when it was installed and `osascript`
+ * otherwise. Both are macOS-only, and windows-x64 is a shipped target — so the
+ * one path that was supposed to reach the boss did not exist on a platform we
+ * publish. It was also ugly, which is the reason it was raised.
+ *
+ * The panel is already open on the machine the server runs on; that is the whole
+ * deployment. So the server pushes a frame and the page raises a real system
+ * notification through the browser: no dependency, no install, and the same code
+ * on all five targets. The page does not have to be in front — a background tab
+ * keeps its EventSource and raises the notification anyway, which is the case
+ * `terminal-notifier` was actually covering. A browser that is *closed* misses
+ * it, and the replay from a cursor puts the queue back on screen when it opens.
+ *
+ * Web Push would cover the closed browser too. It is not here on purpose: a
+ * service worker, VAPID keys, a subscription table and a round trip through
+ * FCM, so that a phone can buzz about a fleet running on a machine at home.
  */
-let clickable: boolean | null = null;
-function hasTerminalNotifier(): boolean {
-  if (clickable === null) {
+export function busDeliver(bus: Bus, webhook?: string) {
+  return async (title: string, body: string, url?: string): Promise<void> => {
+    // A frame of its own rather than an ordinary event: the page raises a system
+    // notification for these and nothing else, and "everything the boss might
+    // want" is what turns a notification into noise.
+    bus.emit({ author: "orchestrator", kind: "notify", body, meta: { url, title } });
+    if (!webhook) return;
     try {
-      clickable = Bun.spawnSync(["terminal-notifier", "-help"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+      // Scrubbed, because this is the one thing here that leaves the machine.
+      // Escalation text and watchdog findings do not pass the bus masker on the
+      // way in, and a webhook URL is somebody else's server.
+      await fetch(webhook, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title, message: scrub(body.slice(0, 1000)), url }),
+      });
     } catch {
-      clickable = false;
+      // A failed notification must never take down the run that produced it.
     }
-  }
-  return clickable;
-}
-
-async function macNotify(title: string, body: string, url?: string, ntfyTopic?: string): Promise<void> {
-  const text = url ? `${body}\n${url}` : body;
-  try {
-    if (url && hasTerminalNotifier()) {
-      Bun.spawn([
-        "terminal-notifier",
-        "-title", title,
-        "-message", body.slice(0, 400),
-        "-open", url,
-      ]);
-    } else {
-      Bun.spawn([
-        "osascript",
-        "-e",
-        `display notification ${JSON.stringify(text.slice(0, 400))} with title ${JSON.stringify(title)}`,
-      ]);
-    }
-  } catch {
-    // A missing notification must never take down the run that produced it.
-  }
-  if (ntfyTopic) {
-    // One HTTP POST, no app, no bot. Off unless a topic is configured.
-    try {
-      // Scrubbed, because this one leaves the machine. ntfy.sh topics are public
-      // and unauthenticated — the topic name is the only secret — and what gets
-      // posted here is escalation text and watchdog findings, neither of which
-      // goes through the bus masker on its way in.
-      await fetch(`https://ntfy.sh/${ntfyTopic}`, { method: "POST", body: scrub(text.slice(0, 1000)) });
-    } catch {}
-  }
+  };
 }
 
 /**

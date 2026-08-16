@@ -15,7 +15,7 @@ import { baseRefFor, createCheckout, treeHeads } from "./mech/git/checkout.ts";
 import { preflight, report } from "./mech/ops/preflight.ts";
 import { restageSkills } from "./mech/util/skills.ts";
 import { ensureServer } from "./mech/sandbox/server.ts";
-import { batchForBoss, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
+import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
 import { dispatchFeedback, openPr, pollPrs, prBody, prTitle } from "./mech/git/prwatch.ts";
 import { makeGithub, repoHeld } from "./mech/git/github.ts";
 import { chargeIndex, HEAD_CHARS, modelAsk, noteLeaves, NOTE_PREFIX, saveTree, skeleton, summarise, loadTree } from "./mech/knowledge/pageindex.ts";
@@ -427,7 +427,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   // token. Identity is never a request-body field.
   process.env.ORCH_URL = url;
 
-  const notifier = new Notifier({ ntfyTopic: process.env.ORCH_NTFY_TOPIC });
+  const notifier = new Notifier({ deliver: busDeliver(bus, cfg.notifyWebhook) });
   ctx.onFinding = (rule, severity, body, grpId) => {
     // The finding is already an event in the timeline. A notification on top of it
     // is a claim that the boss has to act, and most rules are the system reporting

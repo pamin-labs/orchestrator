@@ -218,6 +218,40 @@ export function groupedRows(shown: Frame[]): { f: Frame; showHeader: boolean; sh
   });
 }
 
+/**
+ * A `notify` frame, as a real system notification.
+ *
+ * The server decides *what* is worth interrupting for — rules, tiers, dedupe and
+ * a backoff, all in `notify.ts` — and this is only the last step. Which is why
+ * it raises nothing on any other frame: "everything the boss might want to know"
+ * is how a notification becomes noise, and the rules upstream exist precisely to
+ * avoid that.
+ *
+ * Replayed frames are skipped by age. The stream replays from a cursor so a
+ * reconnecting page can rebuild its timeline, and without this every reconnect
+ * would re-announce the last day of alerts.
+ */
+function raise(f: { body: string; at?: number; meta?: { url?: string; title?: string } }) {
+  const fresh = !f.at || Date.now() - f.at < 60_000;
+  if (!fresh) return;
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+    // No permission is not an error: the tab title still carries the count, and
+    // a toast says it while the page is being looked at.
+    toast(f.body);
+    return;
+  }
+  const n = new Notification(f.meta?.title || "orchestrator", { body: f.body, tag: f.body.slice(0, 40) });
+  n.onclick = () => {
+    window.focus();
+    // The deep link is a hash on this same page, so assigning it navigates
+    // without a reload — the panel the boss is being called back to is already
+    // running, with its stream open.
+    const url = f.meta?.url;
+    if (url) location.hash = url.slice(url.indexOf("#") + 1);
+    n.close();
+  };
+}
+
 export function useOrch() {
   const [state, setState] = useState<State>(EMPTY);
   const [cost, setCost] = useState<Cost | null>(null);
@@ -271,6 +305,7 @@ export function useOrch() {
       es.onerror = () => setLive("retry");
       es.onmessage = (m) => {
         const f = JSON.parse(m.data);
+        if (f.kind === "notify") return void raise(f);
         setFrames((prev) => appendFrame(prev, f, liveSeq));
         if (["state_change", "escalation", "note"].includes(f.kind)) nudge();
       };

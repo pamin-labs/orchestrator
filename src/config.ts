@@ -104,6 +104,15 @@ export type Config = {
   /** The same complaint this many times becomes a project rule. */
   feedbackSedimentThreshold: number;
   ctxBudgetChars: number;
+  /**
+   * Forward every notification to a URL, as JSON. Empty means nobody but the panel.
+   *
+   * One field rather than an integration per service. Whatever is on the other
+   * end — ntfy, Bark, a group bot, something written this afternoon — takes a
+   * POST, and building a menu of five would be five things to keep working for a
+   * feature whose default is off.
+   */
+  notifyWebhook: string;
   parkAfterPausedMs: number;
   watchdogIntervalMs: number;
   gateRetries: number;
@@ -231,6 +240,7 @@ const DEFAULTS: Config = {
   unreadDigestThreshold: 30,
   feedbackSedimentThreshold: 3,
   ctxBudgetChars: 16_000,
+  notifyWebhook: "",
   parkAfterPausedMs: 7_200_000,
   watchdogIntervalMs: 30_000,
   gateRetries: 2,

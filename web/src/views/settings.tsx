@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useState } from "react";
 import {
-  Box, Check, CircleAlert, Coins, Gauge, GitBranch, KeyRound, ListChecks, MonitorCog, Server,
+  Bell, Box, Check, CircleAlert, Coins, Gauge, GitBranch, KeyRound, ListChecks, MonitorCog, Server,
   SlidersHorizontal, Sparkles, Timer, Trash2, X,
 } from "lucide-react";
 import { H2, Head, Input, Meta, Pane, Textarea } from "../ui/bits";
@@ -42,7 +42,7 @@ import { Skills } from "./skills";
 type Mode = "oauth_token" | "api_key" | "chatgpt";
 export type Section =
   | "cred" | "github" | "host" | "server" | "skills"
-  | "sched" | "models" | "turn" | "boxdefaults"
+  | "sched" | "models" | "turn" | "boxdefaults" | "notify"
   | "prefs" | "gates" | "sandbox" | "remove";
 
 interface AuthRow {
@@ -124,6 +124,7 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   // the process, this is what it is told to build. A project's own 沙盒 pane
   // overrides these; nothing overrides them for a project that says nothing.
   { key: "boxdefaults", zh: "沙盒默认值", icon: Box },
+  { key: "notify", zh: "通知", icon: Bell },
   { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
   { key: "gates", zh: "闸门", icon: ListChecks, project: true },
   { key: "sandbox", zh: "沙盒", icon: Box, project: true },
@@ -300,7 +301,7 @@ export function SettingsDialog({
                 <ServerPane current={rows.find((x) => x.runtime === "sandbox")} checks={checks} onSaved={load} />
               ) : here === "skills" ? (
                 <Skills projectId={projectId} />
-              ) : here === "sched" || here === "models" || here === "turn" || here === "boxdefaults" ? (
+              ) : here === "sched" || here === "models" || here === "turn" || here === "boxdefaults" || here === "notify" ? (
                 <Knobs section={here} />
               ) : here === "prefs" ? (
                 <>

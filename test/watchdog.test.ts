@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { Notifier, notifiable, tierFor, batchForBoss } from "../src/mech/ops/notify.ts";
+import { busDeliver, Notifier, notifiable, tierFor, batchForBoss } from "../src/mech/ops/notify.ts";
 import { pause, resume, settlePausing, park } from "../src/mech/flow/intercept.ts";
 import {
   DROP_AFTER_MS,
@@ -897,4 +897,51 @@ test("one rule throwing costs that rule, not the twenty-four after it", async ()
   const second = await runWatchdog(deps);
   expect(second.map((x) => x.rule)).toContain("stalled");
   expect(second.map((x) => x.rule)).not.toContain("rule_broke:7d3");
+});
+
+test("delivery is a bus frame the page can raise, plus an optional webhook", async () => {
+  const db = openMemory();
+  const bus = new Bus(db);
+  const posted: Array<{ url: string; body: string }> = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (u: any, init: any) => {
+    posted.push({ url: String(u), body: String(init?.body ?? "") });
+    return new Response("ok");
+  }) as typeof fetch;
+  try {
+    const n = new Notifier({ deliver: busDeliver(bus, "https://example.invalid/hook") });
+    await n.push({ key: "escalation:1", tier: "immediate", body: "谁来定一下基线分支", url: "http://127.0.0.1:47821/#g=3&v=progress" });
+
+    // One frame, its own kind. The page raises a system notification for this and
+    // for nothing else — "everything the boss might want" is what turns a
+    // notification into noise, and the rules upstream exist to avoid exactly that.
+    const [f] = db.query<{ kind: string; body: string; meta_json: string }, []>(
+      "SELECT kind, body, meta_json FROM event WHERE kind = 'notify'",
+    ).all();
+    expect(f?.body).toBe("谁来定一下基线分支");
+    expect(JSON.parse(f!.meta_json).url).toContain("#g=3");
+
+    expect(posted).toHaveLength(1);
+    expect(JSON.parse(posted[0]!.body)).toMatchObject({ message: "谁来定一下基线分支" });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("a webhook that is down does not take the run with it", async () => {
+  const db = openMemory();
+  const bus = new Bus(db);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new Error("ECONNREFUSED");
+  }) as unknown as typeof fetch;
+  try {
+    const n = new Notifier({ deliver: busDeliver(bus, "https://example.invalid/hook") });
+    // The frame is written before the POST is attempted, so the panel is told
+    // even when the thing on the other end is not there.
+    expect(await n.push({ key: "k", tier: "immediate", body: "x" })).toBe(true);
+    expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE kind = 'notify'").get()!.c).toBe(1);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

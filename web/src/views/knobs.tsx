@@ -28,7 +28,7 @@ interface Knob {
   overridden: boolean;
 }
 
-export type KnobSection = "sched" | "models" | "turn" | "boxdefaults";
+export type KnobSection = "sched" | "models" | "turn" | "boxdefaults" | "notify";
 
 /** Which rows a section shows, in the order they are shown. */
 const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] }> = {
@@ -50,6 +50,11 @@ const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] 
       "unreadDigestThreshold", "feedbackSedimentThreshold", "gateRetries",
       "leaseTimeoutMs", "installTimeoutMs", "skillsDir",
     ],
+  },
+  notify: {
+    zh: "通知",
+    note: "有事叫你的方式",
+    paths: ["notifyWebhook"],
   },
   boxdefaults: {
     zh: "沙盒默认值",
@@ -156,6 +161,10 @@ const COPY: Record<string, { zh: string; why?: string }> = {
     zh: "共享缓存目录",
     why: "所有沙盒共享的宿主目录，「容器里的挂载点: 宿主路径」。只放包管理器缓存。实测这个仓库第二个组的 bun install：不共享 2.9 秒，共享 1.2 秒——小是因为仓库小，到 monorepo 上是分钟级差别。默认关，因为这个仓库最惨的一次事故就是所有 worktree 共用一份 node_modules，两个闸门同时装，组把 EEXIST 当成自己的 build 坏了。另外沙盒服务端的 allowed_host_paths 也得列上这个路径。",
   },
+  notifyWebhook: {
+    zh: "转发到 webhook",
+    why: "留空就只有这个页面会叫你。填了的话每条通知会 POST 一份 JSON（title / message / url）过去——ntfy、Bark、群机器人、你今天下午写的东西，都行。出站前会过一遍脱敏，因为这是唯一一个把内容送出这台机器的通道。",
+  },
   skillsDir: {
     zh: "技能暂存目录",
     why: "勾中的技能复制到这里，每个沙盒只读挂上去。改这里要同步改沙盒服务端的 allowed_host_paths，否则开容器直接失败——而那是响的失败，比一个静默的空目录好得多。",
@@ -175,7 +184,9 @@ export function Knobs({ section }: { section: KnobSection }) {
   }, []);
 
   const write = async (path: string, value: unknown) => {
-    const ok = await post("/api/settings", { path, value });
+    // Destructured: `post` returns `{ok, text}`, so `if (!ok)` on the object
+    // itself is always false and a refused write would still have said 已保存.
+    const { ok } = await post("/api/settings", { path, value });
     if (!ok) return;
     setSaved(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
     await load();
@@ -196,6 +207,7 @@ export function Knobs({ section }: { section: KnobSection }) {
             it loses focus, and this says the write landed. */}
         {saved && <Meta>已保存 {saved}</Meta>}
       </div>
+      {section === "notify" && <Permission />}
       {knobs === null ? (
         <Meta className="block py-2">读取中…</Meta>
       ) : (
@@ -283,5 +295,41 @@ function Value({ id, knob, onWrite }: { id: string; knob: Knob; onWrite: (p: str
         }
       }}
     />
+  );
+}
+
+/**
+ * The browser's own permission, asked for where the boss can see why.
+ *
+ * Deliberately a button rather than a prompt on load: a page that asks for
+ * notifications before it has said anything worth being notified about is the
+ * page everyone clicks 拒绝 on, and that decision is sticky.
+ */
+function Permission() {
+  const supported = typeof Notification !== "undefined";
+  const [state, setState] = useState(supported ? Notification.permission : "denied");
+  return (
+    <FieldGroup className="mt-2">
+      <Field aria-labelledby="notify-perm">
+        <FieldTitle id="notify-perm">桌面通知</FieldTitle>
+        <FieldContent className="flex flex-row items-center gap-2">
+          {!supported ? (
+            <Meta>这个浏览器不支持</Meta>
+          ) : state === "granted" ? (
+            <Meta>已开。面板在后台也会弹，浏览器整个关掉才收不到——那时重新打开会补上。</Meta>
+          ) : state === "denied" ? (
+            <Meta>被浏览器拒了。要开的话在地址栏左边的站点设置里改，然后刷新。</Meta>
+          ) : (
+            <button
+              type="button"
+              className="rounded-sm border border-rule px-2 py-0.5 text-[0.75rem] hover:bg-rail"
+              onClick={() => void Notification.requestPermission().then(setState)}
+            >
+              允许通知
+            </button>
+          )}
+        </FieldContent>
+      </Field>
+    </FieldGroup>
   );
 }
