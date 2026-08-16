@@ -137,7 +137,7 @@ test("a malformed DRAFT card is refused over the wire, status unchanged", async 
 
 test("orch verbs reject a request with no token", async () => {
   const r = await post("/orch/status", { text: "hello" });
-  expect(r.status).toBe(422);
+  expect(r.status).toBe(401);
 });
 
 test("the SSE stream opens and replays the log from a cursor", async () => {

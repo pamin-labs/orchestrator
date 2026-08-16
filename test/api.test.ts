@@ -363,14 +363,38 @@ test("state snapshot carries everything the three views need", async () => {
 
 test("a missing or bogus token is refused everywhere", async () => {
   const { app } = harness();
-  const paths = ["/orch/status", "/orch/journal", "/orch/mail", "/orch/ask-boss", "/orch/lease"];
+  // Every verb, not a sample of five. The check lives on the mount now, so this
+  // is what says a new route cannot be added under `/orch` without it.
+  const paths = [
+    "/orch/status",
+    "/orch/journal",
+    "/orch/mail",
+    "/orch/ask-boss",
+    "/orch/setup",
+    "/orch/lease",
+    "/orch/ctx/query",
+    "/orch/task/claim",
+    "/orch/task/done",
+    "/orch/review",
+    "/orch/audit",
+    "/orch/pr",
+    "/orch/answer",
+    "/orch/triage",
+    "/orch/draft",
+    "/orch/owns",
+    "/orch/drop",
+    "/orch/blocked",
+    "/orch/split",
+  ];
   for (const p of paths) {
     const payload = { kind: "journal", body: "x", intent: "note", target: "qa" };
-    // No token at all.
-    expect((await post(app, p, payload)).status).toBe(422);
+    // No token at all. 401, not the 422 these used to answer: the check moved
+    // off the top of each handler and onto the `/orch` mount, and a single
+    // gate may as well use the status code that means what happened.
+    expect((await post(app, p, payload)).status).toBe(401);
     // A token that belongs to nobody. An agent cannot promote itself by
     // sending someone else's id, because the id is never in the body.
-    expect((await post(app, p, payload, "not-a-real-token")).status).toBe(422);
+    expect((await post(app, p, payload, "not-a-real-token")).status).toBe(401);
   }
 });
 

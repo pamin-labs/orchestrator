@@ -50,6 +50,22 @@ export type { Caller, Ctx };
 
 type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) => Promise<Response>;
 
+/**
+ * A route only an agent may call, with the agent already resolved.
+ *
+ * The caller arrives as an argument because the alternative was 21 handlers each
+ * opening with the same two lines, and a trust boundary that is retyped 21 times
+ * is a trust boundary with 21 chances to be left out. `agentOf` still exists and
+ * is still the only thing that reads the token; what changed is that a route
+ * cannot be registered under `/orch` without going through it.
+ */
+type AgentHandler = (
+  ctx: Ctx,
+  req: Request,
+  a: Caller,
+  params: Record<string, string>,
+) => Promise<Response>;
+
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 const text = (s: string, status = 200) =>
@@ -142,19 +158,15 @@ export function resolveGroup(ctx: Ctx, ref: unknown, fallbackGrp?: number | null
 
 // ---------------------------------------------------------------- agent verbs
 
-const postStatus: Handler = async (ctx, req) => {
+const postStatus: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ text: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [b.text ?? "", a.id]);
   ctx.bus.live({ grpId: a.grp_id, agentId: a.id, role: a.role, kind: "status", body: b.text ?? "" });
   return text("ok");
 };
 
-const postJournal: Handler = async (ctx, req) => {
+const postJournal: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ kind: string; body: string; files?: string[]; slice_id?: number }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
 
   const v = validateJournal({ kind: b.kind, body: b.body, files: b.files });
   if (!v.ok) return bad(v.error);
@@ -255,7 +267,7 @@ export function evictOldestLessons(ctx: Ctx, projectId: number | null): number {
 
 const WAKING = new Set(["ask", "request", "inform"]);
 
-const postMail: Handler = async (ctx, req) => {
+const postMail: AgentHandler = async (ctx, req, a) => {
   const b = await body<{
     target: string;
     intent: string;
@@ -263,8 +275,6 @@ const postMail: Handler = async (ctx, req) => {
     severity?: string;
     in_reply_to?: number;
   }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (!["ask", "request", "inform", "note", "decision"].includes(b.intent)) {
     return bad("intent must be one of: ask, request, inform, note, decision");
   }
@@ -477,10 +487,8 @@ export function brief(given: string | undefined, question: string): string {
   return raw.length > 40 ? `${raw.slice(0, 39)}…` : raw;
 }
 
-const postAskBoss: Handler = async (ctx, req) => {
+const postAskBoss: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ severity?: string; question: string; brief?: string; kind?: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   const severity = b.severity === "blocker" ? "blocker" : "advisory";
 
   const row = ctx.db
@@ -534,10 +542,8 @@ const postAskBoss: Handler = async (ctx, req) => {
  * mattering. What is worth keeping is the answer, so the next group does not pay
  * to read the same repo again.
  */
-const postSetup: Handler = async (ctx, req) => {
+const postSetup: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ cmd?: string; none?: boolean }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (a.role !== "bootstrap") return bad(`${a.role} does not set this project up`);
   if (!a.grp_id) return bad("this agent has no group");
   const grp = ctx.db
@@ -570,10 +576,8 @@ const postSetup: Handler = async (ctx, req) => {
   return r.ok ? text("ok") : bad(`install failed:\n${r.tail}`);
 };
 
-const postLease: Handler = async (ctx, req) => {
+const postLease: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ resource: string; args?: Record<string, unknown> }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
 
   const def = loadResource(ctx, b.resource);
   if (!def) return bad(`unknown resource ${b.resource}. Ask the boss to add a template.`);
@@ -620,19 +624,17 @@ const postLease: Handler = async (ctx, req) => {
   return text(digest);
 };
 
-const getLeaseLog: Handler = async (ctx, req, params) => {
+const getLeaseLog: AgentHandler = async (ctx, req, a, params) => {
   // Whose lease this is. Unchecked, any sandbox could read any group's build log
   // by counting up from 1 — the `/orch/` prefix gate on the mailbox is about
   // which routes are reachable, not about who is reaching them.
-  const me = agentOf(ctx, req);
-  if (!me) return text("no agent", 401);
   const row = ctx.db
     .query<{ log_path: string | null; grp_id: number | null }, [number]>(
       "SELECT log_path, grp_id FROM lease WHERE id = ?",
     )
     .get(Number(params.id));
   if (!row?.log_path) return text("no log", 404);
-  if (row.grp_id !== me.grp_id) return text("not this group's lease", 403);
+  if (row.grp_id !== a.grp_id) return text("not this group's lease", 403);
   const raw = await Bun.file(row.log_path).text();
   // A substring, not a regex. `new RegExp` on an agent-supplied string runs on the
   // host, in the single process everything else is waiting on, and one nested
@@ -649,10 +651,8 @@ const getLeaseLog: Handler = async (ctx, req, params) => {
   );
 };
 
-const postAnswer2: Handler = async (ctx, req) => {
+const postAnswer2: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ escalation_id: number; answer?: string; abstain?: boolean; why?: string; ref?: number }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   const deps = { ctx, notifyBoss: ctx.notifyBoss };
 
   if (b.abstain) {
@@ -671,10 +671,8 @@ const postAnswer2: Handler = async (ctx, req) => {
   return r.ok ? text("ok") : bad(r.error);
 };
 
-const postTriage: Handler = async (ctx, req) => {
+const postTriage: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ group_id: number | string; as: string; note?: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (a.role !== "cos") return bad(`${a.role} does not triage the boss's feedback`);
   if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
   const gid = resolveGroup(ctx, b.group_id);
@@ -774,10 +772,8 @@ const postRevoke: Handler = async (ctx, _req, params) => {
  * Validated here rather than trusted, and the group only becomes DRAFT once a
  * card exists — the boss should never be asked to approve nothing.
  */
-const postDraft: Handler = async (ctx, req) => {
+const postDraft: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ group_id: number | string; card: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not file DRAFT cards`);
 
   const v = validateDraftCard(b.card ?? "");
@@ -867,10 +863,8 @@ const postDraft: Handler = async (ctx, req) => {
  */
 const MAX_SPLIT = 6;
 
-const postSplit: Handler = async (ctx, req) => {
+const postSplit: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ group_id: number | string; requirements?: { name?: string; idea: string }[]; why?: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not split requirements`);
 
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
@@ -984,10 +978,8 @@ const postSplit: Handler = async (ctx, req) => {
  * the server checks itself — a commit that is really in the repo, or a group that
  * really exists — and the boss presses the button.
  */
-const postDrop: Handler = async (ctx, req) => {
+const postDrop: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ group_id?: number | string; why?: string; commit?: string; duplicate?: number | string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (!["dispatcher", "pm", "architect"].includes(a.role)) return bad(`${a.role} does not propose dropping work`);
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
@@ -1070,10 +1062,8 @@ const postDrop: Handler = async (ctx, req) => {
  * approves like any other. Either way the caller records what it is waiting on and
  * stops, and the watchdog starts it again when that lands.
  */
-const postBlocked: Handler = async (ctx, req) => {
+const postBlocked: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ group_id?: number | string; path?: string; why?: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
   if (!mayAct(ctx, a, gid)) return text("not your group", 403);
@@ -1189,10 +1179,8 @@ const postBlocked: Handler = async (ctx, req) => {
   return json({ blocked_on: target, handedTo: owner ? owner.name : "a new requirement" });
 };
 
-const postOwns: Handler = async (ctx, req) => {
+const postOwns: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ group_id: number | string; paths: string[] }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (a.role !== "architect") return bad(`${a.role} does not cut boundaries`);
   if (!Array.isArray(b.paths) || b.paths.length === 0) return bad("give at least one path glob");
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
@@ -1224,10 +1212,8 @@ const postOwns: Handler = async (ctx, req) => {
  * gets it wrong is told which rule and can send it again within the same turn:
  * nothing is published until one lands, so there is no half state to undo.
  */
-const postPr: Handler = async (ctx, req) => {
+const postPr: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ group_id: number | string; title: string; body?: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (a.role !== "scribe") return bad(`${a.role} does not write pull request messages`);
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
@@ -1256,10 +1242,8 @@ const postPr: Handler = async (ctx, req) => {
   return text("ok");
 };
 
-const postAudit: Handler = async (ctx, req) => {
+const postAudit: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ group_id: number | string; verdict: string; note?: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (a.role !== "auditor") return bad(`${a.role} does not file audit verdicts`);
   if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
   const gid = resolveGroup(ctx, b.group_id);
@@ -1283,10 +1267,8 @@ const postAudit: Handler = async (ctx, req) => {
   return text("ok");
 };
 
-const postCtxQuery: Handler = async (ctx, req) => {
+const postCtxQuery: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ question: string; limit?: number }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   const projectId =
     ctx.db
       .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
@@ -1341,14 +1323,13 @@ const postCtxQuery: Handler = async (ctx, req) => {
 
 export const CTX_BUDGET_CHARS = DEFAULT_BUDGET;
 
-const getTasks: Handler = async (ctx, req) => {
+const getTasks: AgentHandler = async (ctx, req, a) => {
   // The caller's own group, not the one it asked for. Every other `/orch` route
   // checks the token; these two never did, and the `/orch/` prefix gate on the
   // mailbox made them look as if they had — so any sandbox could enumerate any
   // group's cards by putting a number in a query string.
-  const me = agentOf(ctx, req);
-  if (!me?.grp_id) return text("no agent", 401);
-  const grp = me.grp_id;
+  if (!a.grp_id) return text("this route is for a group's agent", 401);
+  const grp = a.grp_id;
   // Only the slice being worked, plus anything not tied to a slice. Showing the
   // whole plan's tasks let the writer mark future slices done, which pushed
   // slices that had never started into review.
@@ -1433,10 +1414,8 @@ const getTasks: Handler = async (ctx, req) => {
   );
 };
 
-const postTaskClaim: Handler = async (ctx, req) => {
+const postTaskClaim: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ task_id: number }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   // A retired owner is not an owner. Ownership is a row id, and a group that
   // rehires its writer — a rotation, a restart, anything that ends one agent row
   // and starts another — leaves its own cards locked to a session that no longer
@@ -1453,10 +1432,8 @@ const postTaskClaim: Handler = async (ctx, req) => {
   return r.changes ? text("ok") : bad("already claimed, or its slice is not being worked yet");
 };
 
-const postTaskDone: Handler = async (ctx, req) => {
+const postTaskDone: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ task_id: number; claim?: unknown; already_done?: string; review?: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
 
   // An empty claim makes reconcile vacuous: "claimed vs actual" degenerates into
   // "did anything change at all". Observed live — every claim arrived as {}.
@@ -1585,10 +1562,8 @@ const postTaskDone: Handler = async (ctx, req) => {
  * "fail" as a "pass", which is the one error this whole pipeline exists to
  * prevent. So the verdict is an explicit verb.
  */
-const postReview: Handler = async (ctx, req) => {
+const postReview: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ slice_id: number; verdict: string; note?: string }>(req);
-  const a = agentOf(ctx, req);
-  if (!a) return bad("unknown or missing agent token");
   if (a.role !== "qa" && a.role !== "auditor") return bad(`${a.role} does not file review verdicts`);
   if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
 
@@ -3833,27 +3808,6 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/sandbox$/, getSandbox],
   ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
   ["POST", /^\/api\/project\/(?<id>\d+)\/config$/, patchProjectConfig],
-  ["POST", /^\/orch\/status$/, postStatus],
-  ["POST", /^\/orch\/journal$/, postJournal],
-  ["POST", /^\/orch\/mail$/, postMail],
-  ["POST", /^\/orch\/ask-boss$/, postAskBoss],
-  ["POST", /^\/orch\/setup$/, postSetup],
-  ["POST", /^\/orch\/lease$/, postLease],
-  ["GET", /^\/orch\/lease\/(?<id>\d+)\/log$/, getLeaseLog],
-  ["POST", /^\/orch\/ctx\/query$/, postCtxQuery],
-  ["GET", /^\/orch\/task$/, getTasks],
-  ["POST", /^\/orch\/task\/claim$/, postTaskClaim],
-  ["POST", /^\/orch\/task\/done$/, postTaskDone],
-  ["POST", /^\/orch\/review$/, postReview],
-  ["POST", /^\/orch\/audit$/, postAudit],
-  ["POST", /^\/orch\/pr$/, postPr],
-  ["POST", /^\/orch\/answer$/, postAnswer2],
-  ["POST", /^\/orch\/triage$/, postTriage],
-  ["POST", /^\/orch\/draft$/, postDraft],
-  ["POST", /^\/orch\/owns$/, postOwns],
-  ["POST", /^\/orch\/drop$/, postDrop],
-  ["POST", /^\/orch\/blocked$/, postBlocked],
-  ["POST", /^\/orch\/split$/, postSplit],
 
   ["GET", /^\/api\/state$/, getState],
   ["GET", /^\/api\/cost$/, getCost],
@@ -3938,6 +3892,53 @@ function legacyRoutes(ctx: Ctx): (req: Request) => Promise<Response> {
   };
 }
 
+/**
+ * Everything an agent can call, behind one authentication check.
+ *
+ * `/orch` has no session and no cookie: the only credential is the token minted
+ * when the agent was hired, and the mailbox is what carries it out of the
+ * sandbox. The prefix gate on the mailbox decides which routes are *reachable*,
+ * never who is reaching them — so this middleware is the whole check, and it is
+ * one place rather than the first two lines of every handler.
+ */
+function orchRoutes(ctx: Ctx): Hono<{ Variables: { agent: Caller } }> {
+  const app = new Hono<{ Variables: { agent: Caller } }>();
+  app.use("*", async (c, next) => {
+    const a = agentOf(ctx, c.req.raw);
+    // 401, where 19 of these used to say 422 and two said 401. Nothing branches
+    // on the difference — `orch` prints the body for anything past 400 — and
+    // "you are not who you say you are" has a status code.
+    if (!a) return c.text("unknown or missing agent token", 401);
+    c.set("agent", a);
+    await next();
+  });
+  const on = (fn: AgentHandler) => (c: { req: { raw: Request; param: () => Record<string, string> }; get: (k: "agent") => Caller }) =>
+    fn(ctx, c.req.raw, c.get("agent"), c.req.param());
+
+  app.post("/status", on(postStatus));
+  app.post("/journal", on(postJournal));
+  app.post("/mail", on(postMail));
+  app.post("/ask-boss", on(postAskBoss));
+  app.post("/setup", on(postSetup));
+  app.post("/lease", on(postLease));
+  app.get("/lease/:id/log", on(getLeaseLog));
+  app.post("/ctx/query", on(postCtxQuery));
+  app.get("/task", on(getTasks));
+  app.post("/task/claim", on(postTaskClaim));
+  app.post("/task/done", on(postTaskDone));
+  app.post("/review", on(postReview));
+  app.post("/audit", on(postAudit));
+  app.post("/pr", on(postPr));
+  app.post("/answer", on(postAnswer2));
+  app.post("/triage", on(postTriage));
+  app.post("/draft", on(postDraft));
+  app.post("/owns", on(postOwns));
+  app.post("/drop", on(postDrop));
+  app.post("/blocked", on(postBlocked));
+  app.post("/split", on(postSplit));
+  return app;
+}
+
 export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   const app = new Hono();
 
@@ -3956,6 +3957,7 @@ export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   // use to it than an empty 500.
   app.onError((e, c) => c.text(`error: ${(e as Error)?.message ?? e}`, 500));
 
+  app.route("/orch", orchRoutes(ctx));
   app.all("*", (c) => legacyRoutes(ctx)(c.req.raw));
   return async (req) => app.fetch(req);
 }
