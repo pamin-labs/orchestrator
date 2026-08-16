@@ -55,6 +55,24 @@ export type SandboxSpec = z.infer<typeof SandboxSpecSchema>;
 /** A project's per-sandbox differences, never the server credential. */
 export const SandboxOverrideSchema = SandboxSpecSchema.partial().strict();
 
+/** Project-local config persisted in `project.config_json`. */
+export const StoredProjectConfigSchema = z
+  .object({
+    detected: z.boolean().optional(),
+    gates: z.array(z.string()).optional(),
+    install: z.string().nullable().optional(),
+    shared: z.array(z.string()).optional(),
+    sandbox: SandboxOverrideSchema.optional(),
+    index: z
+      .object({ exclude: z.array(z.string()).optional() })
+      .strict()
+      .optional(),
+  })
+  // Preserve keys owned by newer releases while validating every known key.
+  .catchall(z.json());
+
+export type StoredProjectConfig = z.infer<typeof StoredProjectConfigSchema>;
+
 export const ConfigSchema = z.object({
   language: z.string().min(1),
   maxGroups: count,
@@ -172,14 +190,14 @@ export const ConfigSchema = z.object({
   skillsDir: z.string().min(1),
 });
 
-type DottedSchemaPath<S extends z.ZodType> =
+export type DottedSchemaPath<S extends z.ZodType> =
   S extends z.ZodObject<infer Shape>
     ? {
         [K in keyof Shape & string]: Shape[K] extends z.ZodObject ? `${K}.${DottedSchemaPath<Shape[K]>}` : K;
       }[keyof Shape & string]
     : never;
 
-type SchemaAtPath<S extends z.ZodType, P extends string> =
+export type SchemaAtPath<S extends z.ZodType, P extends string> =
   S extends z.ZodObject<infer Shape>
     ? P extends `${infer Head}.${infer Tail}`
       ? Head extends keyof Shape

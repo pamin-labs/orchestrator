@@ -13,8 +13,6 @@ type SettingRowFor<P extends SettingPath> = {
   overridden: boolean;
 };
 
-export type SettingRow = { [P in SettingPath]: SettingRowFor<P> }[SettingPath];
-
 /**
  * The settings the boss changes while the fleet is running.
  *

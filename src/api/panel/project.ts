@@ -1,22 +1,23 @@
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { z } from "zod";
+import { SandboxOverrideSchema, StoredProjectConfigSchema } from "../../config-schema.ts";
+import { JsonObject } from "../../http/respond.ts";
+import { runInstall } from "../../mech/flow/start.ts";
+import { GateName } from "../../mech/gate.ts";
+import { baseBranch, listBranches, removeMirror } from "../../mech/git/checkout.ts";
+import { pushBlocked } from "../../mech/git/prwatch.ts";
+import { forgetHolds } from "../../mech/git/repository.ts";
 import { allowedImage, killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
-import { baseBranch, listBranches, removeMirror } from "../../mech/git/checkout.ts";
-import { forgetHolds } from "../../mech/git/repository.ts";
-import { pushBlocked } from "../../mech/git/prwatch.ts";
-import { runInstall } from "../../mech/flow/start.ts";
 import { forgetProjectSkills } from "../../mech/skills.ts";
-import { abortJob } from "../../runtime/running.ts";
-import { z } from "zod";
-import { JsonObject } from "../../http/respond.ts";
+import { projectConfig } from "../../mech/util/rows.ts";
 import { errText, jsonOr } from "../../mech/util/text.ts";
-import { projectConfig, ProjectConfigSchema } from "../../mech/util/rows.ts";
-import { IdParams } from "../fields.ts";
-import { bad, json, message, type AgentHandler, type Handler } from "../shared.ts";
+import type { Result } from "../../mech/util/validate.ts";
+import { abortJob } from "../../runtime/running.ts";
 import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
-import { SandboxOverrideSchema } from "../../config-schema.ts";
-import { GateName } from "../../mech/gate.ts";
+import { IdParams } from "../fields.ts";
+import { type AgentHandler, bad, type Handler, json, message } from "../shared.ts";
 
 /**
  * A repository this fleet works on: added, configured, and removed.
@@ -338,6 +339,31 @@ export const ProjectConfigBody = z
   })
   .strict();
 
+type StoredConfigPatch = Omit<z.infer<typeof ProjectConfigBody>, "baseBranch">;
+type StoredProjectConfig = z.infer<typeof StoredProjectConfigSchema>;
+
+function mergeProjectConfig(raw: string, patch: StoredConfigPatch): Result<{ config: StoredProjectConfig }> {
+  const current = jsonOr(raw, JsonObject.nullable(), null);
+  if (!current) return { ok: false, error: "项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置" };
+
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) delete current[key];
+    else current[key] = value;
+  }
+  const checked = StoredProjectConfigSchema.safeParse(current);
+  if (!checked.success) return { ok: false, error: z.prettifyError(checked.error) };
+  const image = checked.data.sandbox?.image;
+  if (image && !allowedImage(image)) {
+    return {
+      ok: false,
+      error:
+        `镜像只能是我们发布的（ghcr.io/pamin-labs/…）或者你本地构建的（比如 orch/agent:1）。` +
+        `agent 在这个镜像里跑，而它面前是你的代码 —— 换成别处的镜像等于把整条边界交出去，而且从面板上看不出来。`,
+    };
+  }
+  return { ok: true, config: checked.data };
+}
+
 export const patchProjectConfig = (async (ctx, _req, params, data) => {
   const id = params.id;
   const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
@@ -347,31 +373,14 @@ export const patchProjectConfig = (async (ctx, _req, params, data) => {
   // rebase and diff. Empty means "ask the remote".
   const changesConfig = Object.keys(patch).length > 0;
   const parsed = jsonOr(row.config_json, JsonObject.nullable(), null);
-  if (!parsed && changesConfig) {
-    return bad("项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置");
-  }
-  const current = parsed ?? {};
-  let validated: z.infer<typeof ProjectConfigSchema> | null = null;
+  let config: StoredProjectConfig = parsed ?? {};
   if (changesConfig) {
-    for (const [k, v] of Object.entries(patch)) {
-      if (v === null) delete current[k];
-      else current[k] = v;
-    }
-
-    // The row can predate this route or come from detection. Validate the whole
-    // merged config so an unrelated patch cannot bless a malformed known field.
-    const checked = ProjectConfigSchema.safeParse(current);
-    if (!checked.success) return bad(z.prettifyError(checked.error));
-    validated = checked.data;
-    const want = validated.sandbox?.image;
-    if (want && !allowedImage(want)) {
-      return bad(
-        `镜像只能是我们发布的（ghcr.io/pamin-labs/…）或者你本地构建的（比如 orch/agent:1）。` +
-          `agent 在这个镜像里跑，而它面前是你的代码 —— 换成别处的镜像等于把整条边界交出去，而且从面板上看不出来。`,
-      );
-    }
+    // Validate the whole merge so an unrelated patch cannot bless a malformed
+    // field written by an older binary or a database-side repair.
+    const merged = mergeProjectConfig(row.config_json, patch);
+    if (!merged.ok) return bad(merged.error);
+    config = merged.config;
   }
-  const config = validated ?? current;
 
   // Validate first, then write both homes as one act. A rejected image used to
   // return 422 after `base_branch` had already changed.

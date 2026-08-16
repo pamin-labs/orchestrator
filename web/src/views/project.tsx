@@ -9,7 +9,7 @@ import { cn } from "../lib/utils";
 import { api, readApi } from "../lib/api";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
-import { SandboxOverrideSchema } from "../../../src/config-schema.ts";
+import { StoredProjectConfigSchema } from "../../../src/config-schema.ts";
 
 const projectConfigPost = api.project[":id"].config.$post;
 export type ProjectPatch = NonNullable<Parameters<typeof projectConfigPost>[0]>["json"];
@@ -23,19 +23,8 @@ type SandboxPatch = NonNullable<ProjectPatch["sandbox"]>;
  * — a dot that only appears once you have looked is a dot that does nothing.
  */
 
-type ProjectConfigResponse = InferResponseType<(typeof api.project)[":id"]["config"]["$get"], 200>;
-const ConfigSchema: z.ZodType<ProjectConfigResponse["config"]> = z
-  .object({
-    detected: z.boolean().optional(),
-    gates: z.array(z.string()).optional(),
-    install: z.string().nullable().optional(),
-    shared: z.array(z.string()).optional(),
-    sandbox: SandboxOverrideSchema.optional(),
-    index: z.object({ exclude: z.array(z.string()).optional() }).optional(),
-  })
-  .catchall(z.json());
-export type Config = z.infer<typeof ConfigSchema>;
-
+export type ProjectConfigResponse = InferResponseType<(typeof api.project)[":id"]["config"]["$get"], 200>;
+const ConfigSchema: z.ZodType<ProjectConfigResponse["config"]> = StoredProjectConfigSchema;
 export const ProjectConfigSchema: z.ZodType<ProjectConfigResponse> = z.object({
   repoPath: z.string(),
   config: ConfigSchema,

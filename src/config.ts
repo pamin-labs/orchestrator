@@ -24,13 +24,6 @@ import { dirname, join, resolve } from "node:path";
  */
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
-/**
- * A key into the provider registry (src/runtime/providers.ts), not a closed set.
- * Deliberately a string: adding a provider must not mean widening a union that
- * half the codebase switches on.
- */
-export type Runtime = string;
-
 /** Which provider a role gets when its yaml does not say. */
 export const DEFAULT_PROVIDER = "claude";
 

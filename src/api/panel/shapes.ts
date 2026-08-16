@@ -211,6 +211,4 @@ export type DraftCard = z.infer<typeof DraftCard>;
 export type Answered = z.infer<typeof Answered>;
 export type GroupNote = z.infer<typeof GroupNote>;
 export type GroupSaid = z.infer<typeof GroupSaid>;
-export type Blocked = z.infer<typeof Blocked>;
-export type QueueEntry = z.infer<typeof QueueEntry>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;
