@@ -1,4 +1,5 @@
 import { useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Tip } from "./tooltip";
 import { splitAttachments, type Attached } from "../lib/attach";
@@ -74,30 +75,40 @@ export function Attachments({ files }: { files: Attached[] }) {
           ))}
         </div>
       )}
-      {/* Not a dialog component: there is nothing to focus-trap and no decision to
-          make, it is an image at its own size with a way out. Esc and the backdrop
-          both close it. */}
-      {full && (
-        <div
-          role="presentation"
-          onClick={() => setFull(null)}
-          onKeyDown={(e) => e.key === "Escape" && setFull(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-8 backdrop-blur-[2px]"
-        >
-          <img
-            src={full.url}
-            alt={full.name}
-            className="max-h-full max-w-full rounded-md object-contain shadow-[0_20px_60px_var(--shade)]"
-          />
-          <button
-            aria-label="关掉"
+      {/* This used to argue it was not a dialog — "nothing to focus-trap and no
+          decision to make" — and claimed Esc closed it. Esc did nothing: the
+          handler sat on a `role="presentation"` div with no `tabIndex`, and focus
+          stayed on the thumbnail button, which is this overlay's *sibling*, so
+          the event never reached it. The way out was the mouse, on a page whose
+          own composer is driven from the keyboard. 硬约束 4: Radix owns Esc, the
+          focus trap, the return of focus to the thumbnail, and the scroll lock. */}
+      <Dialog.Root open={!!full} onOpenChange={(o) => !o && setFull(null)}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/70 backdrop-blur-[2px]" />
+          <Dialog.Content
             onClick={() => setFull(null)}
-            className="absolute right-4 top-4 grid size-8 cursor-pointer place-items-center rounded-md bg-paper/90 text-ink hover:bg-paper"
+            className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center p-8 focus:outline-none"
           >
-            <X size={16} strokeWidth={2} />
-          </button>
-        </div>
-      )}
+            {/* The file's own name is the title. It is the only thing here a
+                screen reader could announce, and hiding it visually keeps the
+                image at its own size, which is the whole point of the view. */}
+            <Dialog.Title className="sr-only">{full?.name}</Dialog.Title>
+            {full && (
+              <img
+                src={full.url}
+                alt={full.name}
+                className="max-h-full max-w-full rounded-md object-contain shadow-[0_20px_60px_var(--shade)]"
+              />
+            )}
+            <Dialog.Close
+              aria-label="关掉"
+              className="absolute right-4 top-4 grid size-8 cursor-pointer place-items-center rounded-md bg-paper/90 text-ink hover:bg-paper"
+            >
+              <X size={16} strokeWidth={2} />
+            </Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </>
   );
 }
