@@ -55,8 +55,19 @@ export type KnobSection = "sched" | "models" | "turn" | "boxdefaults" | "notify"
 /** The three difficulty labels the dispatcher hands out. Three knobs are keyed by them. */
 const TIERS = ["trivial", "normal", "hard"] as const;
 
-/** One track per tier, shared by the two blocks keyed by them so they line up. */
-const TIER_GRID = "grid w-full grid-cols-[3.25rem_repeat(3,minmax(0,1fr))]";
+/**
+ * Three tracks, one per tier.
+ *
+ * 难度 → 模型 needs a fourth on the left for its runtime names; 每片 token 上限
+ * does not, and used to carry an empty one anyway so the two blocks' columns
+ * would agree. That bought the wrong alignment: the eye runs down the *page*,
+ * where every other row's control starts at the same x, and one row starting
+ * 3.25rem further in reads as broken long before anyone compares it to the block
+ * above it. The two blocks still read as the same three things because both are
+ * labelled trivial / normal / hard.
+ */
+const TIERS_ONLY = "grid w-full grid-cols-3";
+const TIER_GRID = `${TIERS_ONLY} grid-cols-[3.25rem_repeat(3,minmax(0,1fr))]`;
 
 /** Which rows a section shows, in the order they are shown. */
 const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] }> = {
@@ -986,21 +997,13 @@ function Windows({
   );
 }
 
-/**
- * The three tiers, as three token caps.
- *
- * Same grid as 难度 → 模型 above it, empty first column and all: they are keyed
- * by the same three words, and two three-column blocks whose columns do not line
- * up is the one thing that makes them unreadable as the same three things.
- */
+/** The three tiers, as three token caps. */
 function Caps({ caps, onWrite }: { caps: Record<string, number>; onWrite: (v: unknown) => void }) {
   return (
-    <div className={cn(TIER_GRID, "items-center gap-x-2 gap-y-1")}>
-      <span />
+    <div className={cn(TIERS_ONLY, "items-center gap-x-2 gap-y-1")}>
       {TIERS.map((t) => (
         <Meta key={t}>{t}</Meta>
       ))}
-      <span />
       {TIERS.map((t) => (
         <CountAmount key={t} value={Number(caps[t] ?? 0)} label={t} onWrite={(n) => onWrite({ ...caps, [t]: n })} />
       ))}
