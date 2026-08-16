@@ -200,7 +200,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
     );
     ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [sliceId]);
     ctx.db.run(
-      "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000 WHERE id = ? AND status = 'RUNNING'",
+      "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000, pause_reason = 'escalation' WHERE id = ? AND status = 'RUNNING'",
       [slice.grp_id],
     );
     ctx.bus.emit({
@@ -560,7 +560,10 @@ function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string
   ctx.db.run("UPDATE grp SET pr_retries = ? WHERE id = ?", [n, grpId]);
   if (n <= cfg.gateRetries) return false;
 
-  ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
+  ctx.db.run(
+    "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'escalation' WHERE id = ?",
+    [grpId],
+  );
   ctx.db.run(
     `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
      VALUES (?, 'blocker', ?, ?, 'spec', 'boss', unixepoch() * 1000)`,

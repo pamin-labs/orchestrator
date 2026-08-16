@@ -130,7 +130,7 @@ async function sandboxKeyWorks(server: string, key: string): Promise<"ok" | "inv
  * so every running group kept a sidecar bound to the credential that was missing
  * and every turn came back `Authentication credentials are invalid`.
  */
-async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
+export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
   for (const g of ctx.db
     .query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL")
     .all()) {
@@ -142,7 +142,15 @@ async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
      WHERE answer IS NULL AND question LIKE ?`,
     [`${runtime} 的凭据%`],
   );
-  ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE status = 'PAUSED' AND paused_at IS NOT NULL");
+  // Only the groups this credential stopped. Unscoped, this matched every PAUSED
+  // row there was: a group the boss paused by hand restarted itself the moment
+  // anyone signed into GitHub, a budget-burnt group resumed with nothing changed
+  // about its budget, and a rate-limited one came back carrying `rl_resets_at` —
+  // which watchdog rule 6 only clears for rows it still finds PAUSED, so nothing
+  // cleared it afterwards either.
+  ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL WHERE pause_reason = ?", [
+    `auth:${runtime}`,
+  ]);
   // A different account commits under a different name, and a stale one would
   // sign off as somebody who is no longer connected.
   if (runtime === "github") forgetIdentity(ctx);

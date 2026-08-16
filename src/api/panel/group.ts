@@ -364,7 +364,7 @@ export const postGroupControl: Handler<z.infer<typeof GroupControlBody>> = async
         ctx.db.run("UPDATE grp SET pr_number = ? WHERE id = ?", [g.pr_number, grpId]);
         return bad(r.error);
       }
-      ctx.db.run("UPDATE grp SET status = 'PR_OPEN', paused_at = NULL WHERE id = ?", [grpId]);
+      ctx.db.run("UPDATE grp SET status = 'PR_OPEN', paused_at = NULL, pause_reason = NULL WHERE id = ?", [grpId]);
       joinQueue(ctx.db, grpId);
       ctx.db.run(
         `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = ?

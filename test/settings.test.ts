@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { migrate, openMemory } from "../src/db.ts";
+import { migrate, migrationMentioning, openMemory } from "../src/db.ts";
 import { loadConfig } from "../src/config.ts";
 import { applyOverrides, defaultFor, overrides, putSetting, refuse, settablePaths } from "../src/settings.ts";
 import { Bus } from "../src/bus.ts";
@@ -139,8 +139,11 @@ test("the two settings that predate the settings table land on it", () => {
   // `openMemory` has already run every migration, so rewind the stamp for this
   // one and let the runner do it again — the point is what the SQL does to rows
   // that are already there, which a fresh database can never show.
-  const n = db.query<{ n: number }, []>("SELECT max(n) AS n FROM migration").get()!.n;
-  db.run("DELETE FROM migration WHERE n = ?", [n]);
+  //
+  // Found by content. `max(n)` said "this one" and meant "the newest one", so
+  // this test quietly retargeted itself at every migration that came after and
+  // then failed on that migration's ALTER TABLE.
+  db.run("DELETE FROM migration WHERE n = ?", [migrationMentioning("sandbox_server_addr")]);
   migrate(db);
 
   // One home per value. Two is a precedence order that lives only in code, and

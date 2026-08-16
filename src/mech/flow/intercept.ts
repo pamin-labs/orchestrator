@@ -18,11 +18,34 @@ import { say } from "../../lang.ts";
 
 export type InterruptMode = "keep" | "rollback";
 
+/**
+ * Why a group stopped, so that starting it again can be about that reason.
+ *
+ * `paused_at` recorded when and never why, and eight sites wrote it for eight
+ * causes. The bulk resume in `credentialChanged` therefore matched every PAUSED
+ * row in the database: a boss who paused a group by hand and then signed into
+ * GitHub watched it start again, and rate-limited groups came back with
+ * `rl_resets_at` still set — which watchdog rule 6 only clears for rows it finds
+ * still PAUSED, so nothing ever cleared it.
+ *
+ * `auth` carries its runtime (`auth:claude`), because a claude token going bad
+ * is not a reason to restart a group that stopped on codex.
+ */
+export type PauseReason =
+  | "boss"
+  | "budget"
+  | "blocked"
+  | "ratelimit"
+  | "escalation"
+  | "merge"
+  | "unknown"
+  | `auth:${string}`;
+
 /** L2. Returns the number of turns still in flight that we are waiting on. */
-export function pause(ctx: Ctx, grpId: number): number {
+export function pause(ctx: Ctx, grpId: number, reason: PauseReason = "boss"): number {
   ctx.db.run(
-    "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000 WHERE id = ? AND status = 'RUNNING'",
-    [grpId],
+    "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000, pause_reason = ? WHERE id = ? AND status = 'RUNNING'",
+    [reason, grpId],
   );
   const inFlight = runningJobs(ctx, grpId).length;
   ctx.bus.emit({
@@ -58,9 +81,13 @@ export function settlePausing(ctx: Ctx): number {
 function settle(ctx: Ctx, grpId: number): void {
   // Stamp here, not at every caller: three of them write PAUSING without a
   // timestamp, and every watchdog timer keys off `paused_at` — a group that
-  // arrives here with NULL is never parked, never nudged, never unparked.
+  // arrives here with NULL is never parked, never nudged, never unparked. Same
+  // argument for the reason: a PAUSED row with no reason is one no resume can
+  // ever be about, so it gets the only honest value there is.
   ctx.db.run(
-    "UPDATE grp SET status = 'PAUSED', paused_at = coalesce(paused_at, unixepoch() * 1000) WHERE id = ? AND status = 'PAUSING'",
+    `UPDATE grp SET status = 'PAUSED', paused_at = coalesce(paused_at, unixepoch() * 1000),
+       pause_reason = coalesce(pause_reason, 'unknown')
+     WHERE id = ? AND status = 'PAUSING'`,
     [grpId],
   );
   ctx.bus.emit({ grpId, author: "orchestrator", kind: "state_change", body: say(ctx.config?.language, "group.paused") });
@@ -68,7 +95,7 @@ function settle(ctx: Ctx, grpId: number): void {
 
 export function resume(ctx: Ctx, grpId: number): void {
   ctx.db.run(
-    "UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE id = ? AND status IN ('PAUSED', 'PAUSING')",
+    "UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL WHERE id = ? AND status IN ('PAUSED', 'PAUSING')",
     [grpId],
   );
   ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config?.language, "group.resumed") });
@@ -101,7 +128,7 @@ export async function interrupt(
   }
   ctx.db.run("UPDATE agent SET state = 'idle' WHERE grp_id = ? AND state = 'running'", [grpId]);
   ctx.db.run(
-    "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ? AND status IN ('RUNNING','PAUSING')",
+    "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = coalesce(pause_reason, 'boss') WHERE id = ? AND status IN ('RUNNING','PAUSING')",
     [grpId],
   );
 
@@ -200,7 +227,7 @@ export async function unpark(ctx: Ctx, grpId: number): Promise<void> {
     });
     return;
   }
-  ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE id = ?", [grpId]);
+  ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL WHERE id = ?", [grpId]);
   ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: "woken up" });
   ctx.sched.tick();
 }

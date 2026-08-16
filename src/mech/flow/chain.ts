@@ -199,7 +199,7 @@ export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok
   });
   if (esc.severity === "blocker" && esc.grp_id) {
     ctx.db.run(
-      "UPDATE grp SET status = 'RUNNING', paused_at = NULL WHERE id = ? AND status IN ('PAUSED','PAUSING')",
+      "UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL WHERE id = ? AND status IN ('PAUSED','PAUSING')",
       [esc.grp_id],
     );
   }

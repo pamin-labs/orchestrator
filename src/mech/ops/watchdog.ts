@@ -135,6 +135,26 @@ export const GZIP_AFTER_MS = 60 * 60 * 1000;
 export const DROP_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
+ * Compress one turn log and drop the raw file. Reports whether it did.
+ *
+ * The executor had its own copy of these three lines. Two copies, and the sweep
+ * below is the *backstop* for the executor's — they have to agree on the name
+ * the compressed file gets, or the backstop compresses an already-compressed log
+ * and `DROP_AFTER_MS` never sees the result.
+ */
+export function gzipTurnLog(path: string): boolean {
+  try {
+    if (!existsSync(path)) return false;
+    writeFileSync(`${path}.gz`, gzipSync(readFileSync(path)));
+    rmSync(path, { force: true });
+    return true;
+  } catch {
+    // A log that will not compress is not worth failing a turn, or a tick, over.
+    return false;
+  }
+}
+
+/**
  * codex writes a full transcript per session into the CODEX_HOME we hand it.
  * Nothing ever removed them: 78 rollout files and 110 MB in two days, next to a
  * turn-log directory that has had gzip and a retention window since the
@@ -189,13 +209,7 @@ export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropp
       continue;
     }
     if (!f.endsWith(".jsonl") || age < GZIP_AFTER_MS) continue;
-    try {
-      writeFileSync(`${path}.gz`, gzipSync(readFileSync(path)));
-      rmSync(path, { force: true });
-      zipped++;
-    } catch {
-      // A log that will not compress is not worth failing a watchdog tick over.
-    }
+    if (gzipTurnLog(path)) zipped++;
   }
   return { zipped, dropped };
 }
@@ -508,7 +522,10 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
           severity: "blocker",
           body: t("wd.budget_exhausted", { name: g.name, tokens: g.spent_tokens }),
         });
-        ctx.db.run("UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [g.id]);
+        ctx.db.run(
+          "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'budget' WHERE id = ?",
+          [g.id],
+        );
         // A notification says it stopped; it does not put a decision in front of
         // anyone. Without a row in the queue the group sat suspended, 继续 did
         // nothing the scheduler would honour, and the only visible state was a
@@ -550,7 +567,10 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       )
       .all(now());
     for (const g of throttled) {
-      ctx.db.run("UPDATE grp SET status = 'RUNNING', paused_at = NULL, rl_resets_at = NULL WHERE id = ?", [g.id]);
+      ctx.db.run(
+        "UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL, rl_resets_at = NULL WHERE id = ?",
+        [g.id],
+      );
       ctx.bus.emit({
         grpId: g.id,
         author: "orchestrator",
@@ -792,7 +812,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       .all();
     for (const g of waiting) {
       ctx.db.run(
-        "UPDATE grp SET status = 'RUNNING', paused_at = NULL, blocked_on = NULL WHERE id = ?",
+        "UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL, blocked_on = NULL WHERE id = ?",
         [g.id],
       );
       ctx.bus.emit({

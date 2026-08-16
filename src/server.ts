@@ -85,7 +85,7 @@ const NO_CACHE = "no-cache";
 function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): void {
   const g = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grpId);
   ctx.db.run(
-    `UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, merge_seq = NULL, merge_seq_at = NULL
+    `UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'merge', merge_seq = NULL, merge_seq_at = NULL
      WHERE id = ? AND status = 'PR_OPEN'`,
     [grpId],
   );
@@ -118,7 +118,7 @@ function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifi
 /** Reopened on GitHub: back into the queue, and the question that asked is answered. */
 function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
   ctx.db.run(
-    "UPDATE grp SET status = 'PR_OPEN', paused_at = NULL WHERE id = ? AND status = 'PAUSED'",
+    "UPDATE grp SET status = 'PR_OPEN', paused_at = NULL, pause_reason = NULL WHERE id = ? AND status = 'PAUSED'",
     [grpId],
   );
   ctx.db.run(
@@ -356,7 +356,7 @@ export function start(overrides: Partial<Config> = {}): Started {
           // finds a live group with an empty queue and re-queues its last turn —
           // the Auditor's — which passes again and retries the PR. No new
           // mechanism, and no button that only exists for this.
-          db.run("UPDATE grp SET merge_seq = NULL, merge_seq_at = NULL, status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
+          db.run("UPDATE grp SET merge_seq = NULL, merge_seq_at = NULL, status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'merge' WHERE id = ?", [grpId]);
           db.run(
             `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
              VALUES (?, 'blocker', ?, 'PR 开不出来', 'boss', unixepoch() * 1000)`,

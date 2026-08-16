@@ -75,7 +75,7 @@ export const postAskBoss: AgentHandler<z.infer<typeof AskBossBody>> = async (ctx
   // the premise everyone else is reasoning from.
   if (severity === "blocker" && a.grp_id) {
     ctx.db.run(
-      "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000 WHERE id = ? AND status = 'RUNNING'",
+      "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000, pause_reason = 'escalation' WHERE id = ? AND status = 'RUNNING'",
       [a.grp_id],
     );
   }

@@ -120,12 +120,18 @@ export const GRP_INVARIANTS = rows<GrpState>(
   },
   {
     state: "PAUSED",
-    must: "paused_at is set, or every timer keyed on it is blind to this group",
+    must: "paused_at and pause_reason are set, or no timer and no resume is about this group",
     driver: "the boss answering, resume, or the park timer",
     repair: (ctx) => {
       // Three callers write PAUSING without a timestamp; settle() stamps it now,
-      // but a row that predates that fix would stay invisible forever.
-      ctx.db.run("UPDATE grp SET paused_at = unixepoch() * 1000 WHERE status = 'PAUSED' AND paused_at IS NULL");
+      // but a row that predates that fix would stay invisible forever. A missing
+      // reason is the same failure one door over: `credentialChanged` resumes by
+      // reason, so a row without one is a row nothing will ever start again.
+      ctx.db.run(
+        `UPDATE grp SET paused_at = coalesce(paused_at, unixepoch() * 1000),
+           pause_reason = coalesce(pause_reason, 'unknown')
+         WHERE status = 'PAUSED' AND (paused_at IS NULL OR pause_reason IS NULL)`,
+      );
     },
   },
   {

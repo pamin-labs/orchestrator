@@ -1131,8 +1131,8 @@ function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnRes
   const runtime = agent.runtime ?? DEFAULT_PROVIDER;
   if (job.grp_id) {
     ctx.db.run(
-      "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000 WHERE id = ? AND status = 'RUNNING'",
-      [job.grp_id],
+      "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = ? WHERE id = ? AND status = 'RUNNING'",
+      [`auth:${runtime}`, job.grp_id],
     );
   }
   const open = ctx.db
@@ -1188,7 +1188,7 @@ function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResul
   });
   if (job.grp_id) {
     ctx.db.run(
-      "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, rl_resets_at = ? WHERE id = ?",
+      "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'ratelimit', rl_resets_at = ? WHERE id = ?",
       [resetsMs, job.grp_id],
     );
   }

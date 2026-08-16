@@ -418,7 +418,7 @@ export const postBlocked: AgentHandler<z.infer<typeof BlockedBody>> = async (ctx
   // Stop, and say what it is waiting for. PAUSED rather than a spin: a group with
   // nothing it can legally do should not hold a concurrency slot.
   ctx.db.run(
-    "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, blocked_on = ? WHERE id = ?",
+    "UPDATE grp SET status = 'PAUSED', paused_at = unixepoch() * 1000, pause_reason = 'blocked', blocked_on = ? WHERE id = ?",
     [target, gid],
   );
   ctx.sched.cancelPending(gid, `blocked on ${path}`);

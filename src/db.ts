@@ -609,6 +609,23 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
     SELECT 'cfg.sandbox.server', json_quote(v) FROM setting WHERE k = 'sandbox_server_addr';
   DELETE FROM setting WHERE k IN ('sandbox_image', 'sandbox_server_addr');
   `,
+
+  // 040 — why a group is paused, so that resuming can be about that reason.
+  //
+  // `paused_at` said when, never why, and eight places wrote it for eight
+  // different causes. So the one bulk resume in the tree — `credentialChanged`,
+  // after the boss signs in — matched every PAUSED row there was: groups stopped
+  // for burning their budget, groups blocked on another group, groups the boss
+  // paused by hand. Signing into GitHub restarted work the boss had deliberately
+  // stopped, and the rate-limited ones came back with `rl_resets_at` still set,
+  // which watchdog rule 6 only ever clears for rows it finds still PAUSED.
+  //
+  // Backfilled as 'unknown' rather than guessed: an existing PAUSED row is one
+  // whose cause was never recorded, and a wrong reason resumes the wrong group.
+  `
+  ALTER TABLE grp ADD COLUMN pause_reason TEXT;
+  UPDATE grp SET pause_reason = 'unknown' WHERE status IN ('PAUSED', 'PAUSING', 'PARKED');
+  `,
 ];
 
 export type DB = Database;
@@ -678,6 +695,21 @@ export function open(path = "data/orchestrator.sqlite"): DB {
   // database comes through this function.
   rememberSecrets(db);
   return db;
+}
+
+/**
+ * Which migration this SQL belongs to, 1-based, for a test that wants to replay
+ * one against rows a fresh database cannot have.
+ *
+ * By content, not by position: `test/settings.test.ts` used to rewind
+ * `max(n)` and call it "this one", which meant it silently retargeted itself at
+ * whatever migration was added next — and then failed on that migration's own
+ * `ALTER TABLE`, naming a column the test has never heard of.
+ */
+export function migrationMentioning(needle: string): number {
+  const i = MIGRATIONS.findIndex((m) => typeof m === "string" && m.includes(needle));
+  if (i < 0) throw new Error(`no migration mentions ${needle}`);
+  return i + 1;
 }
 
 /** Apply any migrations the database has not seen yet. Idempotent. */
