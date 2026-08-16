@@ -105,16 +105,24 @@ export function outsideOwns(changed: string[], owns: string[]): string[] {
   return changed.filter((p) => !allowed.some((glob) => covers(glob, p)));
 }
 
-/** Does this glob cover this concrete path? `src/a/**`, `src/*`, `src/a/b.ts`. */
+/**
+ * Does this glob cover this concrete path? `src/a/**`, `src/*`, `src/a/b.ts`.
+ *
+ * `Bun.Glob` rather than a hand-written matcher, because the hand-written one
+ * was wrong in the direction that hurts. It only understood a trailing `/*` and
+ * treated everything else as a prefix, so `src/a/**\/*.ts` covered `src/a/b.js`
+ * and `src/*.ts` covered `src/deep/nested/x.ts` — and this function's answer is
+ * what decides whether a file another group owns gets rolled back after a turn.
+ * Saying yes too easily means the stray write stays.
+ *
+ * One rule is ours and stays: a wildcard-free entry is a directory claim.
+ * Agents declare `owns: ["src/mech"]` and mean everything under it, where a
+ * glob library means that one path.
+ */
 function covers(glob: string, path: string): boolean {
   if (glob === path) return true;
-  const prefix = staticPrefix(glob);
-  // No wildcard: a plain directory entry covers everything under it.
-  if (prefix === glob) return path.startsWith(glob.endsWith("/") ? glob : `${glob}/`);
-  if (!path.startsWith(prefix)) return false;
-  // `src/*` is one segment, `src/**` is any depth. Everything else is a prefix.
-  if (glob.endsWith("/*")) return !path.slice(prefix.length).includes("/");
-  return true;
+  if (!/[*?[]/.test(glob)) return path.startsWith(glob.endsWith("/") ? glob : `${glob}/`);
+  return new Bun.Glob(glob).match(path);
 }
 
 export interface StartCheck {

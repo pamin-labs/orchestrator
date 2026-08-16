@@ -218,6 +218,19 @@ test("after-the-fact ownership catches a write outside the boundary", () => {
   expect(outsideOwns(["src/a/b.ts"], ["src/*"])).toEqual(["src/a/b.ts"]);
   expect(outsideOwns(["src/a/b.ts"], ["src/**"])).toEqual([]);
 
+  // The two the hand-written matcher got wrong, both in the direction that lets
+  // a stray write stand: it ignored the extension after a `**` and treated any
+  // `*` as unbounded depth. A file this rule fails to name is a file that is
+  // never rolled back, and nothing anywhere else notices.
+  expect(outsideOwns(["src/a/b.js"], ["src/a/**/*.ts"])).toEqual(["src/a/b.js"]);
+  expect(outsideOwns(["src/a/b.ts"], ["src/a/**/*.ts"])).toEqual([]);
+  expect(outsideOwns(["src/deep/nested/x.ts"], ["src/*.ts"])).toEqual(["src/deep/nested/x.ts"]);
+
+  // And the one rule that is ours rather than the glob library's: a
+  // wildcard-free entry is a directory claim. Agents write `owns: ["src/mech"]`
+  // and mean everything under it.
+  expect(outsideOwns(["src/mech/flow/gate.ts"], ["src/mech"])).toEqual([]);
+
   // A group that declared no boundary is not policed here: nothing to police it
   // against, and reverting everything it wrote is worse than reverting nothing.
   expect(outsideOwns(changed, [])).toEqual([]);
