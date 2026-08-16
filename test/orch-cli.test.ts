@@ -30,7 +30,13 @@ test("valueless flags become true", () => {
 
 test("repeated flags accumulate instead of overwriting", () => {
   const p = parseArgs(["journal", "add", "--file", "a.ts", "--file", "b.ts"]);
-  expect(p.flags.file).toBe("a.ts\nb.ts");
+  expect(p.flags.file).toEqual(["a.ts", "b.ts"]);
+
+  // An array, not a newline-joined string. Joining made "two values" and "one
+  // value with a newline in it" the same thing on the way back out, and the
+  // second is one line away: `orch pr --body "$(cat msg.txt)"`.
+  const body = parseArgs(["pr", "--body", "first line\nsecond line"]);
+  expect(body.flags.body).toBe("first line\nsecond line");
 });
 
 test("--arg k=v pairs parse, and a value containing = survives", () => {

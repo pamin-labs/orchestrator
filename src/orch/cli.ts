@@ -19,14 +19,14 @@ const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
 const TOKEN = process.env.ORCH_TOKEN ?? "";
 
 interface Parsed {
-  flags: Record<string, string | true>;
+  flags: Record<string, string | string[] | true>;
   args: string[];
   /** Everything after a bare `--`, passed through untouched. */
   rest: string[];
 }
 
 export function parseArgs(argv: string[]): Parsed {
-  const flags: Record<string, string | true> = {};
+  const flags: Record<string, string | string[] | true> = {};
   const args: string[] = [];
   const rest: string[] = [];
   let afterDashDash = false;
@@ -51,9 +51,12 @@ export function parseArgs(argv: string[]): Parsed {
       const next = argv[i + 1];
       if (next === undefined || next.startsWith("--")) flags[key] = true;
       else {
-        // Repeated flags accumulate as a newline-joined value (--file a --file b).
+        // Repeated flags accumulate (--file a --file b) as an array, not as a
+        // newline-joined string. Joining meant a single value that legitimately
+        // contained a newline came back out as two — reachable with one line,
+        // `orch pr --body "$(cat msg.txt)"`, and silent when it happened.
         const prev = flags[key];
-        flags[key] = typeof prev === "string" ? `${prev}\n${next}` : next;
+        flags[key] = prev === undefined || prev === true ? next : [...(Array.isArray(prev) ? prev : [prev]), next];
         i++;
       }
       continue;
@@ -63,11 +66,11 @@ export function parseArgs(argv: string[]): Parsed {
   return { flags, args, rest };
 }
 
-const list = (v: string | true | undefined): string[] =>
-  typeof v === "string" ? v.split("\n").filter(Boolean) : [];
+const list = (v: string | string[] | true | undefined): string[] =>
+  Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
 
 /** `--arg k=v --arg j=w` -> `{k: "v", j: "w"}` */
-export function kvArgs(v: string | true | undefined): Record<string, string> {
+export function kvArgs(v: string | string[] | true | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   for (const pair of list(v)) {
     const eq = pair.indexOf("=");
