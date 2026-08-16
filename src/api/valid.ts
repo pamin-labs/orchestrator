@@ -48,12 +48,19 @@ export const check = <T extends StandardSchemaV1>(target: "json" | "param" | "qu
  */
 export const GroupRef = z.union([z.number().int().positive(), z.string().min(1)]);
 
-/** A file the boss attached, as the composer records it. */
+/**
+ * A file the boss attached, as the composer records it.
+ *
+ * `name` and `type` are required because `withAttachments` prints the first and
+ * `imagePaths` reads the second to decide what has to leave as an `-i` flag —
+ * an attachment missing either is one that renders as `undefined` in a prompt.
+ */
 export const Attachment = z.object({
-  path: z.string().min(1),
-  label: z.string().optional(),
-  type: z.string().optional(),
-  size: z.number().optional(),
+  name: z.string().min(1).max(300),
+  path: z.string().min(1).max(4000),
+  type: z.string().max(120),
+  /** 图1 / 附件2 — the marker the boss's own text refers to. */
+  label: z.string().max(40).optional(),
 });
 
 /**

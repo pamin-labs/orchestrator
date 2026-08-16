@@ -5,6 +5,8 @@ import { criteriaIn, validateSelfReview } from "../mech/flow/validate.ts";
 import { sliceDiffBase } from "../mech/git/worktree.ts";
 import { baseRefFor, sandboxGit } from "../mech/git/checkout.ts";
 import { WORK } from "../mech/sandbox/sandbox.ts";
+import { z } from "zod";
+import { GroupRef } from "./valid.ts";
 import { bad, body, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
 import { bossFact, withAttachments, type Attachment } from "./attach.ts";
 import { gatesFor } from "../mech/flow/gate.ts";
@@ -18,10 +20,19 @@ import { gatesFor } from "../mech/flow/gate.ts";
  * a rubber stamp, and the three gates in front of it were run for nothing.
  */
 
-export const postAudit: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id: number | string; verdict: string; note?: string }>(req);
+/**
+ * An explicit verb, never a boolean.
+ *
+ * A model writing `{"pass": false}` and a model writing `{"pass": "false"}` are
+ * one keystroke apart and the second is truthy — a "fail" delivered as a "pass",
+ * which is the one error this whole pipeline exists to prevent.
+ */
+const Verdict = z.enum(["pass", "fail"]);
+
+export const AuditBody = z.object({ group_id: GroupRef, verdict: Verdict, note: z.string().max(8000).optional() });
+
+export const postAudit: AgentHandler<z.infer<typeof AuditBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "auditor") return bad(`${a.role} does not file audit verdicts`);
-  if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
   // The Auditor is deliberately not a member of the group it reviews, so it is
@@ -50,10 +61,14 @@ export const postAudit: AgentHandler = async (ctx, req, a) => {
  * "fail" as a "pass", which is the one error this whole pipeline exists to
  * prevent. So the verdict is an explicit verb.
  */
-export const postReview: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ slice_id: number; verdict: string; note?: string }>(req);
+export const ReviewBody = z.object({
+  slice_id: z.number().int().positive(),
+  verdict: Verdict,
+  note: z.string().max(8000).optional(),
+});
+
+export const postReview: AgentHandler<z.infer<typeof ReviewBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "qa" && a.role !== "auditor") return bad(`${a.role} does not file review verdicts`);
-  if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
 
   const slice = ctx.db
     .query<{ id: number; grp_id: number; seq: number; accept_spec: string }, [number]>(

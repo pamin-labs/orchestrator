@@ -6,7 +6,9 @@ import { execIn, WORK } from "../mech/sandbox/sandbox.ts";
 import { extractClaimedFiles } from "../mech/flow/reconcile.ts";
 import { shq } from "../mech/util/shq.ts";
 import { say } from "../lang.ts";
-import { bad, body, json, mayAct, resolveGroup, text, type AgentHandler } from "./shared.ts";
+import { z } from "zod";
+import { GroupRef } from "./valid.ts";
+import { bad, json, mayAct, resolveGroup, text, type AgentHandler } from "./shared.ts";
 import { slug } from "./slug.ts";
 
 /**
@@ -25,11 +27,19 @@ import { slug } from "./slug.ts";
  * Validated here rather than trusted, and the group only becomes DRAFT once a
  * card exists — the boss should never be asked to approve nothing.
  */
-export const postDraft: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id: number | string; card: string }>(req);
+/**
+ * The card, unparsed.
+ *
+ * `validateDraftCard` owns its shape — the sections, the 12-line cap, the
+ * slice-count rule — and its refusals are written to teach a dispatcher what to
+ * write next. A second opinion here could only be a weaker one.
+ */
+export const DraftBody = z.object({ group_id: GroupRef, card: z.string().min(1).max(20_000) });
+
+export const postDraft: AgentHandler<z.infer<typeof DraftBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not file DRAFT cards`);
 
-  const v = validateDraftCard(b.card ?? "");
+  const v = validateDraftCard(b.card);
   if (!v.ok) return bad(v.error);
 
   const grpId = resolveGroup(ctx, b.group_id, a.grp_id);
@@ -115,8 +125,13 @@ export const postDraft: AgentHandler = async (ctx, req, a) => {
  */
 const MAX_SPLIT = 6;
 
-export const postSplit: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id: number | string; requirements?: { name?: string; idea: string }[]; why?: string }>(req);
+export const SplitBody = z.object({
+  group_id: GroupRef,
+  requirements: z.array(z.object({ name: z.string().max(80).optional(), idea: z.string().min(1).max(8000) })).optional(),
+  why: z.string().max(4000).optional(),
+});
+
+export const postSplit: AgentHandler<z.infer<typeof SplitBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not split requirements`);
 
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
@@ -230,13 +245,20 @@ export const postSplit: AgentHandler = async (ctx, req, a) => {
  * the server checks itself — a commit that is really in the repo, or a group that
  * really exists — and the boss presses the button.
  */
-export const postDrop: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id?: number | string; why?: string; commit?: string; duplicate?: number | string }>(req);
+export const DropBody = z.object({
+  group_id: GroupRef.optional(),
+  // Checked for length below, with the message that says what it has to contain.
+  why: z.string().max(4000).default(""),
+  commit: z.string().max(200).optional(),
+  duplicate: GroupRef.optional(),
+});
+
+export const postDrop: AgentHandler<z.infer<typeof DropBody>> = async (ctx, _req, a, _p, b) => {
   if (!["dispatcher", "pm", "architect"].includes(a.role)) return bad(`${a.role} does not propose dropping work`);
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
   if (!mayAct(ctx, a, gid)) return text("not your group", 403);
-  const why = (b.why ?? "").trim();
+  const why = b.why.trim();
   if (why.length < 10) return bad("--why has to say what already covers it, in a sentence");
 
   // Evidence the server can check. A sentence alone is a model's opinion of its
@@ -314,13 +336,18 @@ export const postDrop: AgentHandler = async (ctx, req, a) => {
  * approves like any other. Either way the caller records what it is waiting on and
  * stops, and the watchdog starts it again when that lands.
  */
-export const postBlocked: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id?: number | string; path?: string; why?: string }>(req);
+export const BlockedBody = z.object({
+  group_id: GroupRef.optional(),
+  path: z.string().max(400).default(""),
+  why: z.string().max(4000).default(""),
+});
+
+export const postBlocked: AgentHandler<z.infer<typeof BlockedBody>> = async (ctx, _req, a, _p, b) => {
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
   if (!mayAct(ctx, a, gid)) return text("not your group", 403);
-  const path = (b.path ?? "").trim().replace(/^\.\//, "");
-  const why = (b.why ?? "").trim();
+  const path = b.path.trim().replace(/^\.\//, "");
+  const why = b.why.trim();
   if (!path) return bad("--path <file> — which file you cannot change");
   if (why.length < 10) return bad("--why has to say what is wrong with it, in a sentence");
 
@@ -431,10 +458,13 @@ export const postBlocked: AgentHandler = async (ctx, req, a) => {
   return json({ blocked_on: target, handedTo: owner ? owner.name : "a new requirement" });
 };
 
-export const postOwns: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id: number | string; paths: string[] }>(req);
+export const OwnsBody = z.object({
+  group_id: GroupRef,
+  paths: z.array(z.string().min(1).max(400)).min(1, "give at least one path glob").max(200),
+});
+
+export const postOwns: AgentHandler<z.infer<typeof OwnsBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "architect") return bad(`${a.role} does not cut boundaries`);
-  if (!Array.isArray(b.paths) || b.paths.length === 0) return bad("give at least one path glob");
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
   if (!mayAct(ctx, a, gid)) return text("not your group", 403);

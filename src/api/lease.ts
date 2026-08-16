@@ -1,5 +1,6 @@
 import { resolveLease, type ResourceDef } from "../mech/sandbox/lease.ts";
-import { bad, body, text, type AgentHandler } from "./shared.ts";
+import { z } from "zod";
+import { bad, text, type AgentHandler } from "./shared.ts";
 import type { Ctx } from "../ctx.ts";
 
 /**
@@ -11,13 +12,24 @@ import type { Ctx } from "../ctx.ts";
  * has, so what it refuses is what cannot happen.
  */
 
-export const postLease: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ resource: string; args?: Record<string, unknown> }>(req);
+/**
+ * A resource name and its arguments. Never a command.
+ *
+ * `args` stays `unknown` per key on purpose: what each one has to be is the
+ * resource's own `argSchema`, which the boss wrote in the `resource` table, and
+ * `resolveLease` is what enforces it. A shape here could only say "some object",
+ * and saying it twice is how the two answers drift.
+ */
+export const LeaseBody = z.object({
+  resource: z.string().min(1).max(64),
+  args: z.record(z.string(), z.unknown()).default({}),
+});
 
+export const postLease: AgentHandler<z.infer<typeof LeaseBody>> = async (ctx, _req, a, _p, b) => {
   const def = loadResource(ctx, b.resource);
   if (!def) return bad(`unknown resource ${b.resource}. Ask the boss to add a template.`);
 
-  const r = resolveLease(def, b.args ?? {});
+  const r = resolveLease(def, b.args);
   if (!r.ok) return bad(r.error);
 
   const row = ctx.db
@@ -25,7 +37,7 @@ export const postLease: AgentHandler = async (ctx, req, a) => {
       `INSERT INTO lease (resource, grp_id, agent_id, args_json, resolved_cmd, enqueued_at)
        VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     )
-    .get(b.resource, a.grp_id, a.id, JSON.stringify(b.args ?? {}), r.argv.join(" "))!;
+    .get(b.resource, a.grp_id, a.id, JSON.stringify(b.args), r.argv.join(" "))!;
 
   ctx.db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [a.id]);
   ctx.sched.enqueue("lease", { grp_id: a.grp_id, agent_id: a.id, payload: { lease_id: row.id } });

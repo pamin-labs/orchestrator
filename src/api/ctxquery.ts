@@ -1,6 +1,7 @@
 import { query as ctxQuery, DEFAULT_BUDGET } from "../mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search } from "../mech/knowledge/pageindex.ts";
-import { body, text, type AgentHandler } from "./shared.ts";
+import { z } from "zod";
+import { text, type AgentHandler } from "./shared.ts";
 
 /**
  * The first thing every role is told to run, so its cost is everyone's cost.
@@ -11,8 +12,13 @@ import { body, text, type AgentHandler } from "./shared.ts";
  * long after the question was answered.
  */
 
-export const postCtxQuery: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ question: string; limit?: number }>(req);
+/** A question, and how much of an answer it is willing to pay for. */
+export const CtxQueryBody = z.object({
+  question: z.string().min(1).max(2000),
+  limit: z.number().int().positive().max(64_000).optional(),
+});
+
+export const postCtxQuery: AgentHandler<z.infer<typeof CtxQueryBody>> = async (ctx, _req, a, _p, b) => {
   const projectId =
     ctx.db
       .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")

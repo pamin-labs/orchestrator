@@ -1,5 +1,7 @@
-import { bad, body, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
-import { bossFact, withAttachments, type Attachment } from "./attach.ts";
+import { z } from "zod";
+import { Attachment as AttachmentSchema, GroupRef, Prose } from "./valid.ts";
+import { bad, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
+import { bossFact, withAttachments } from "./attach.ts";
 import { triage, type Triage } from "../mech/flow/chain.ts";
 import { projectSkills, skillNames } from "../mech/util/skills.ts";
 import type { Ctx } from "../ctx.ts";
@@ -16,16 +18,33 @@ import type { Ctx } from "../ctx.ts";
 
 const WAKING = new Set(["ask", "request", "inform"]);
 
-export const postMail: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{
-    target: string;
-    intent: string;
-    body: string;
-    severity?: string;
-    in_reply_to?: number;
-  }>(req);
-  if (!["ask", "request", "inform", "note", "decision"].includes(b.intent)) {
-    return bad("intent must be one of: ask, request, inform, note, decision");
+export const MailBody = z.object({
+  target: z.string().min(1).max(80),
+  // A closed set, and the reason it is closed: `ask` and `request` wake the
+  // recipient, the other three do not. A free-text intent would be a wake-up
+  // decided by spelling.
+  intent: z.enum(["ask", "request", "inform", "note", "decision"], {
+    error: "intent must be one of: ask, request, inform, note, decision",
+  }),
+  // Deliberately allows the empty string. The refusal for it is below, in the
+  // handler, because the message worth sending names the caller's own `target`
+  // and `intent` — and a schema cannot see a sibling field. Shape here, advice
+  // there.
+  body: z.string().max(8000),
+  severity: z.string().max(20).optional(),
+  in_reply_to: z.number().int().positive().optional(),
+});
+
+export const postMail: AgentHandler<z.infer<typeof MailBody>> = async (ctx, _req, a, _p, b) => {
+  // An empty message wakes someone with nothing to answer. Measured: the
+  // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
+  // out with no body — the Architect burned a turn on "收到的 ask 消息内容为空".
+  if (!b.body.trim()) {
+    return bad(
+      `mail to "${b.target}" has an empty body. Put the message in quotes as the last ` +
+        `argument: orch mail ${b.target} --intent ${b.intent} "…". There is no --wait flag; ` +
+        `ask blocks on its own.`,
+    );
   }
   // An empty message wakes someone with nothing to answer. Measured: the
   // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
@@ -104,11 +123,15 @@ export const postMail: AgentHandler = async (ctx, req, a) => {
  * that call; the boss saying it directly is the same call, made by the one person
  * whose opinion it is.
  */
-export const postSay: Handler = async (ctx, req) => {
-  const b = await body<{
-    group_id?: number | string; target?: string; body: string; as?: string; attachments?: Attachment[];
-  }>(req);
-  if (!b.body?.trim()) return bad("nothing to send");
+export const SayBody = z.object({
+  group_id: GroupRef.optional(),
+  target: z.string().max(80).optional(),
+  body: Prose(20_000),
+  as: z.string().max(40).optional(),
+  attachments: z.array(AttachmentSchema).max(20).optional(),
+});
+
+export const postSay: Handler<z.infer<typeof SayBody>> = async (ctx, _req, _p, b) => {
   // A screenshot is as useful when saying "这里不对" as when filing the idea.
   const said = withAttachments(b.body.trim(), b.attachments);
   const grpId = b.group_id == null ? null : resolveGroup(ctx, b.group_id);

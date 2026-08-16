@@ -1,4 +1,6 @@
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "../mech/flow/chain.ts";
+import { z } from "zod";
+import { GroupRef, Prose } from "./valid.ts";
 import { bad, body, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
 import { bossFact, withAttachments, type Attachment } from "./attach.ts";
 import { slug } from "./slug.ts";
@@ -33,8 +35,22 @@ export function brief(given: string | undefined, question: string): string {
   return raw.length > 40 ? `${raw.slice(0, 39)}…` : raw;
 }
 
-export const postAskBoss: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ severity?: string; question: string; brief?: string; kind?: string }>(req);
+/**
+ * `kind` and `severity` fall back rather than refuse.
+ *
+ * Same rule the brief follows: a question that cannot be filed is an agent stuck
+ * on a taxonomy, and the fallbacks are right often enough. `askKind` maps
+ * anything unfamiliar to `other`; anything that is not the word "blocker" is
+ * advisory, because promoting a question to a blocker on a typo stops a group.
+ */
+export const AskBossBody = z.object({
+  question: Prose(),
+  severity: z.string().max(20).optional(),
+  brief: z.string().max(200).optional(),
+  kind: z.string().max(40).optional(),
+});
+
+export const postAskBoss: AgentHandler<z.infer<typeof AskBossBody>> = async (ctx, _req, a, _p, b) => {
   const severity = b.severity === "blocker" ? "blocker" : "advisory";
 
   const row = ctx.db
@@ -81,8 +97,15 @@ export const postAskBoss: AgentHandler = async (ctx, req, a) => {
   return text(answer);
 };
 
-export const postAnswer2: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ escalation_id: number; answer?: string; abstain?: boolean; why?: string; ref?: number }>(req);
+export const AnswerBody = z.object({
+  escalation_id: z.number().int().positive(),
+  answer: z.string().max(20_000).optional(),
+  abstain: z.boolean().optional(),
+  why: z.string().max(4000).optional(),
+  ref: z.number().int().positive().optional(),
+});
+
+export const postAnswer2: AgentHandler<z.infer<typeof AnswerBody>> = async (ctx, _req, a, _p, b) => {
   const deps = { ctx, notifyBoss: ctx.notifyBoss };
 
   if (b.abstain) {
@@ -101,10 +124,14 @@ export const postAnswer2: AgentHandler = async (ctx, req, a) => {
   return r.ok ? text("ok") : bad(r.error);
 };
 
-export const postTriage: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id: number | string; as: string; note?: string }>(req);
+export const TriageBody = z.object({
+  group_id: GroupRef,
+  as: z.enum(["patch", "respec", "reject"]),
+  note: z.string().max(8000).optional(),
+});
+
+export const postTriage: AgentHandler<z.infer<typeof TriageBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "cos") return bad(`${a.role} does not triage the boss's feedback`);
-  if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
   if (!mayAct(ctx, a, gid)) return text("not your group", 403);

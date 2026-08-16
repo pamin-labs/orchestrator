@@ -1,5 +1,7 @@
 import { checkPrMessage } from "../mech/git/prwatch.ts";
-import { bad, body, mayAct, resolveGroup, text, type AgentHandler } from "./shared.ts";
+import { z } from "zod";
+import { GroupRef } from "./valid.ts";
+import { bad, mayAct, resolveGroup, text, type AgentHandler } from "./shared.ts";
 
 /**
  * The Scribe's PR message: title and body, checked before anything is pushed.
@@ -17,15 +19,27 @@ import { bad, body, mayAct, resolveGroup, text, type AgentHandler } from "./shar
  * gets it wrong is told which rule and can send it again within the same turn:
  * nothing is published until one lands, so there is no half state to undo.
  */
-export const postPr: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id: number | string; title: string; body?: string }>(req);
+/**
+ * The subject and body a reviewer will read on GitHub.
+ *
+ * `checkPrMessage` still has the last word — it knows the conventional prefixes
+ * and the shapes this project refuses — so this only says the two fields are
+ * strings of a sane size.
+ */
+export const PrBody = z.object({
+  group_id: GroupRef,
+  title: z.string().min(1).max(200),
+  body: z.string().max(20_000).default(""),
+});
+
+export const postPr: AgentHandler<z.infer<typeof PrBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "scribe") return bad(`${a.role} does not write pull request messages`);
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
   if (!mayAct(ctx, a, gid)) return text("not your project", 403);
 
-  const title = (b.title ?? "").trim();
-  const summary = (b.body ?? "").trim();
+  const title = b.title.trim();
+  const summary = b.body.trim();
   const wrong = checkPrMessage(title, summary);
   if (wrong) return bad(wrong);
 

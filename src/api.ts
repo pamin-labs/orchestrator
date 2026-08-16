@@ -4,22 +4,22 @@ import type { Caller, Ctx } from "./ctx.ts";
 import { agentOf, mayAct, mintToken, resolveGroup, type AgentHandler, type Handler } from "./api/shared.ts";
 import { getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers } from "./api/authflow.ts";
 import { bossFact, expandHome, getAttachment, imagePaths, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/attach.ts";
-import { CTX_BUDGET_CHARS, postCtxQuery } from "./api/ctxquery.ts";
-import { ASK_KINDS, askKind, brief, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage } from "./api/escalation.ts";
+import { CTX_BUDGET_CHARS, CtxQueryBody, postCtxQuery } from "./api/ctxquery.ts";
+import { AnswerBody, ASK_KINDS, AskBossBody, askKind, brief, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage, TriageBody } from "./api/escalation.ts";
 import { GroupAction, landGroup, postDraftDecision, postGroupControl, postIdea } from "./api/group.ts";
-import { getLeaseLog, postLease } from "./api/lease.ts";
-import { postMail, postSay } from "./api/messaging.ts";
+import { getLeaseLog, LeaseBody, postLease } from "./api/lease.ts";
+import { MailBody, postMail, postSay, SayBody } from "./api/messaging.ts";
 import { getDirs, getNotes, getSkills, postSkill } from "./api/panel.ts";
-import { postBlocked, postDraft, postDrop, postOwns, postSplit } from "./api/planning.ts";
-import { postPr } from "./api/pr.ts";
+import { BlockedBody, DraftBody, DropBody, OwnsBody, postBlocked, postDraft, postDrop, postOwns, postSplit, SplitBody } from "./api/planning.ts";
+import { postPr, PrBody } from "./api/pr.ts";
 import { deleteProject, getProjectConfig, patchProjectConfig, postProject, postSetup } from "./api/project.ts";
 import { evictOldestLessons, JournalBody, LESSON_CAP, postJournal, postStatus, StatusBody } from "./api/report.ts";
-import { getEvidence, getGateLog, postAudit, postReview, postSliceDecision } from "./api/review.ts";
+import { AuditBody, getEvidence, getGateLog, postAudit, postReview, postSliceDecision, ReviewBody } from "./api/review.ts";
 import { getSettings, postSetting } from "./api/settings.ts";
 import { getImages, getPreflight, getSandbox, getSandboxServer, postImage, postSandboxServerAddr, postSandboxServerRestart, postSandboxServerStart } from "./api/sandbox.ts";
 import { getCost, getState, snapshot } from "./api/snapshot.ts";
 import { getStream } from "./api/stream.ts";
-import { getTasks, postTaskClaim, postTaskDone } from "./api/tasks.ts";
+import { getTasks, postTaskClaim, postTaskDone, TaskDoneBody, TaskRef } from "./api/tasks.ts";
 
 /**
  * One API, two clients: the web UI (the boss's main surface) and `orch` (what
@@ -117,7 +117,7 @@ function apiRoutes(ctx: Ctx): Hono {
   app.post("/project/:id/config", on(patchProjectConfig));
 
   app.post("/ideas", on(postIdea));
-  app.post("/say", on(postSay));
+  app.post("/say", check("json", SayBody), on(postSay));
   app.post("/attach", on(postAttach));
   app.post("/attach/local", on(postAttachLocal));
   app.get("/attach/:name", on(getAttachment));
@@ -198,25 +198,25 @@ function orchRoutes(ctx: Ctx): Hono<{ Variables: { agent: Caller } }> {
 
   app.post("/status", check("json", StatusBody), on(postStatus));
   app.post("/journal", check("json", JournalBody), on(postJournal));
-  app.post("/mail", on(postMail));
-  app.post("/ask-boss", on(postAskBoss));
+  app.post("/mail", check("json", MailBody), on(postMail));
+  app.post("/ask-boss", check("json", AskBossBody), on(postAskBoss));
   app.post("/setup", on(postSetup));
-  app.post("/lease", on(postLease));
+  app.post("/lease", check("json", LeaseBody), on(postLease));
   app.get("/lease/:id/log", on(getLeaseLog));
-  app.post("/ctx/query", on(postCtxQuery));
+  app.post("/ctx/query", check("json", CtxQueryBody), on(postCtxQuery));
   app.get("/task", on(getTasks));
-  app.post("/task/claim", on(postTaskClaim));
-  app.post("/task/done", on(postTaskDone));
-  app.post("/review", on(postReview));
-  app.post("/audit", on(postAudit));
-  app.post("/pr", on(postPr));
-  app.post("/answer", on(postAnswer2));
-  app.post("/triage", on(postTriage));
-  app.post("/draft", on(postDraft));
-  app.post("/owns", on(postOwns));
-  app.post("/drop", on(postDrop));
-  app.post("/blocked", on(postBlocked));
-  app.post("/split", on(postSplit));
+  app.post("/task/claim", check("json", TaskRef), on(postTaskClaim));
+  app.post("/task/done", check("json", TaskDoneBody), on(postTaskDone));
+  app.post("/review", check("json", ReviewBody), on(postReview));
+  app.post("/audit", check("json", AuditBody), on(postAudit));
+  app.post("/pr", check("json", PrBody), on(postPr));
+  app.post("/answer", check("json", AnswerBody), on(postAnswer2));
+  app.post("/triage", check("json", TriageBody), on(postTriage));
+  app.post("/draft", check("json", DraftBody), on(postDraft));
+  app.post("/owns", check("json", OwnsBody), on(postOwns));
+  app.post("/drop", check("json", DropBody), on(postDrop));
+  app.post("/blocked", check("json", BlockedBody), on(postBlocked));
+  app.post("/split", check("json", SplitBody), on(postSplit));
   return app;
 }
 

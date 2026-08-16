@@ -1,4 +1,5 @@
-import { bad, body, text, type AgentHandler } from "./shared.ts";
+import { z } from "zod";
+import { bad, text, type AgentHandler } from "./shared.ts";
 import { extractClaimedFiles } from "../mech/flow/reconcile.ts";
 import { recordGate } from "../mech/flow/gate.ts";
 import { validateSelfReview } from "../mech/flow/validate.ts";
@@ -102,8 +103,9 @@ export const getTasks: AgentHandler = async (ctx, req, a) => {
   );
 };
 
-export const postTaskClaim: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ task_id: number }>(req);
+export const TaskRef = z.object({ task_id: z.number().int().positive() });
+
+export const postTaskClaim: AgentHandler<z.infer<typeof TaskRef>> = async (ctx, _req, a, _p, b) => {
   // A retired owner is not an owner. Ownership is a row id, and a group that
   // rehires its writer — a rotation, a restart, anything that ends one agent row
   // and starts another — leaves its own cards locked to a session that no longer
@@ -120,8 +122,22 @@ export const postTaskClaim: AgentHandler = async (ctx, req, a) => {
   return r.changes ? text("ok") : bad("already claimed, or its slice is not being worked yet");
 };
 
-export const postTaskDone: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ task_id: number; claim?: unknown; already_done?: string; review?: string }>(req);
+/**
+ * `claim` stays `unknown`.
+ *
+ * What it has to contain is checked below against what git says changed, which
+ * is a stronger question than any shape: an empty object passes a schema and
+ * makes reconcile vacuous — "claimed vs actual" degenerates into "did anything
+ * change at all", which is what was observed live when every claim arrived `{}`.
+ */
+export const TaskDoneBody = z.object({
+  task_id: z.number().int().positive(),
+  claim: z.unknown().optional(),
+  already_done: z.string().max(4000).optional(),
+  review: z.string().max(8000).optional(),
+});
+
+export const postTaskDone: AgentHandler<z.infer<typeof TaskDoneBody>> = async (ctx, _req, a, _p, b) => {
 
   // An empty claim makes reconcile vacuous: "claimed vs actual" degenerates into
   // "did anything change at all". Observed live — every claim arrived as {}.
