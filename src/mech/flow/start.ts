@@ -8,18 +8,12 @@ import { detectGates, detectInstall, detectShared, READS, type Root } from "../u
 import { shq } from "../util/shq.ts";
 import { baseRefFor } from "../git/checkout.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
+import { projectConfig } from "../util/rows.ts";
 
-/** `project.config_json.install`, or null. Same reader shape as `gatesFor`. */
+/** `project.config_json.install`, or null. */
 function installFor(ctx: Ctx, projectId: number): string | null {
-  const row = ctx.db
-    .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  try {
-    const v = JSON.parse(row?.config_json ?? "{}").install;
-    return typeof v === "string" && v.trim() ? v : null;
-  } catch {
-    return null;
-  }
+  const v = projectConfig(ctx.db, projectId).install;
+  return typeof v === "string" && v.trim() ? v : null;
 }
 
 /**
@@ -195,13 +189,7 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
  * is `detect.ts`'s own stated rule.
  */
 export async function detectProject(ctx: Ctx, grpId: number, projectId: number): Promise<void> {
-  const row = ctx.db
-    .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  let cfg: Record<string, unknown> = {};
-  try {
-    cfg = JSON.parse(row?.config_json ?? "{}");
-  } catch {}
+  const cfg = projectConfig(ctx.db, projectId);
   if (cfg.detected) return;
 
   const ls = await execIn(ctx, { grp: grpId }, `ls -A ${shq(WORK)}`);

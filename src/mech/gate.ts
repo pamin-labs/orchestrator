@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import type { DB } from "../db.ts";
+import { projectConfig } from "./util/rows.ts";
 import { type ResourceExec, runResource, type ResourceDef } from "./lease.ts";
 
 /**
@@ -34,16 +35,8 @@ export interface GateOutcome {
  * validated templates as everything else and an agent still cannot invent one.
  */
 export function gatesFor(db: DB, projectId: number): string[] {
-  const row = db
-    .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  try {
-    const cfg = JSON.parse(row?.config_json ?? "{}");
-    const gates = cfg.gates;
-    return Array.isArray(gates) ? gates.filter((g: unknown) => typeof g === "string") : [];
-  } catch {
-    return [];
-  }
+  const gates = projectConfig(db, projectId).gates;
+  return Array.isArray(gates) ? gates.filter((g: unknown) => typeof g === "string") : [];
 }
 
 export function loadResource(db: DB, name: string): ResourceDef | null {

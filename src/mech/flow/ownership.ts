@@ -1,4 +1,5 @@
 import type { DB } from "../../db.ts";
+import { projectConfig } from "../util/rows.ts";
 import { GRP_STATES } from "../../states.ts";
 
 /**
@@ -41,15 +42,8 @@ export function parseOwns(json: string | null): string[] {
 }
 
 export function sharedFor(db: DB, projectId: number): string[] {
-  const row = db
-    .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  try {
-    const cfg = JSON.parse(row?.config_json ?? "{}");
-    return Array.isArray(cfg.shared) ? [...DEFAULT_SHARED, ...cfg.shared] : DEFAULT_SHARED;
-  } catch {
-    return DEFAULT_SHARED;
-  }
+  const shared = projectConfig(db, projectId).shared;
+  return Array.isArray(shared) ? [...DEFAULT_SHARED, ...shared] : DEFAULT_SHARED;
 }
 
 /** The fixed part of a glob, up to the first wildcard. */

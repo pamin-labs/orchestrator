@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory, type DB } from "../src/db.ts";
 import { gateState, gatesFor, recordGate, runGates } from "../src/mech/gate.ts";
+import { projectConfig } from "../src/mech/util/rows.ts";
 import { digestOutput, type ResourceDef } from "../src/mech/lease.ts";
 
 function seed(gates: unknown): DB {
@@ -125,3 +126,28 @@ test("gate verdicts merge into gates_json without clobbering other layers", () =
   expect(gateState(db, 1)).toEqual({ self: "pass", gate: "pass" });
 });
 
+
+test("a project whose config lost a brace runs on defaults, not on nothing", () => {
+  // Six readers each wrote out their own SELECT, `?? "{}"`, try and catch — and
+  // the catch is the load-bearing part: config_json is edited by the panel and by
+  // agents, so a broken value must cost this project its overrides and not its
+  // gates, its excludes, its shared paths and its sandbox all at once.
+  const db = openMemory();
+  db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p','/tmp/p',?,0)", ['{"gates":["test"'],);
+  expect(projectConfig(db, 1)).toEqual({});
+  expect(gatesFor(db, 1)).toEqual([]);
+
+  // A JSON value that is not an object is the same answer: `[1,2]` has no keys
+  // to read and `.gates` on it would be undefined either way, but a caller that
+  // spreads the result must not get an array.
+  db.run("UPDATE project SET config_json = '[1,2]' WHERE id = 1");
+  expect(projectConfig(db, 1)).toEqual({});
+
+  db.run(`UPDATE project SET config_json = '{"gates":["test","lint",7]}' WHERE id = 1`);
+  expect(gatesFor(db, 1)).toEqual(["test", "lint"]);
+
+  // No project, no row, no config — never a throw, because every one of the six
+  // is called from a path that has only a nullable project id.
+  expect(projectConfig(db, null)).toEqual({});
+  expect(projectConfig(db, 999)).toEqual({});
+});

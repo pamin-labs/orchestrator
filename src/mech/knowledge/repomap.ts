@@ -1,4 +1,4 @@
-import { saveSingletonNote, singletonNote } from "../util/rows.ts";
+import { projectConfig, saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../db.ts";
 
 /**
@@ -77,15 +77,8 @@ export function indexable(rel: string, exclude: string[] = []): boolean {
  * best-effort detection, written where it can be edited.
  */
 export function indexExcludes(db: DB, projectId: number): string[] {
-  const row = db
-    .query<{ config_json: string | null }, [number]>("SELECT config_json FROM project WHERE id = ?")
-    .get(projectId);
-  try {
-    const globs = JSON.parse(row?.config_json ?? "{}")?.index?.exclude;
-    return Array.isArray(globs) ? globs.filter((g: unknown) => typeof g === "string") : [];
-  } catch {
-    return [];
-  }
+  const globs = (projectConfig(db, projectId).index as { exclude?: unknown } | undefined)?.exclude;
+  return Array.isArray(globs) ? globs.filter((g: unknown) => typeof g === "string") : [];
 }
 
 export interface MapNode {

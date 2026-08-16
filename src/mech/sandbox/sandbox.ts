@@ -10,6 +10,7 @@ import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./au
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../util/shq.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
+import { projectConfig } from "../util/rows.ts";
 
 /**
  * One sandbox per group. The boundary.
@@ -163,17 +164,7 @@ const DEFAULTS = {
 /** Config, then the project's override. Adding a knob is a yaml key. */
 export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
   const base = ctx.config.sandbox ?? DEFAULTS;
-  let over: Partial<SandboxSpec> = {};
-  if (projectId) {
-    const row = ctx.db
-      .query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?")
-      .get(projectId);
-    try {
-      over = JSON.parse(row?.config_json ?? "{}").sandbox ?? {};
-    } catch {
-      over = {};
-    }
-  }
+  const over = (projectConfig(ctx.db, projectId).sandbox ?? {}) as Partial<SandboxSpec>;
   // `||`, not `??`: an empty string is how the yaml says "you decide", and it is
   // never a usable value for any of these.
   //

@@ -1,4 +1,5 @@
 import type { DB } from "../../db.ts";
+import { jsonOr } from "./text.ts";
 
 /**
  * The three row questions this codebase asks over and over.
@@ -16,6 +17,29 @@ export const projectOfGrp = (db: DB, grpId: number | null | undefined): number |
     ? null
     : (db.query<{ project_id: number | null }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
         ?.project_id ?? null);
+
+/**
+ * A project's `config_json`, parsed, `{}` when there is none or it is broken.
+ *
+ * Six functions asked this and each wrote out the same four things: the SELECT,
+ * the `?? "{}"`, the try, and the catch returning its own empty. One of them
+ * said so — `installFor`'s docstring read "Same reader shape as `gatesFor`" —
+ * which is the note you leave when copying is the only option on offer.
+ *
+ * Broken JSON is `{}` on purpose and always was: this column is edited by the
+ * panel and by agents, and a project whose config lost a brace should run with
+ * defaults rather than take its gates, its excludes and its sandbox down with
+ * it. `patchProjectConfig` is the one caller that must not silently discard a
+ * bad value, and it is the one that does not come through here.
+ */
+export function projectConfig(db: DB, projectId: number | null | undefined): Record<string, unknown> {
+  if (projectId == null) return {};
+  const row = db
+    .query<{ config_json: string | null }, [number]>("SELECT config_json FROM project WHERE id = ?")
+    .get(projectId);
+  const cfg = jsonOr<unknown>(row?.config_json, null);
+  return cfg && typeof cfg === "object" && !Array.isArray(cfg) ? (cfg as Record<string, unknown>) : {};
+}
 
 /** Which project an agent belongs to. A standing agent has one and no group. */
 export const projectOfAgent = (db: DB, agentId: number | null | undefined): number | null =>
