@@ -57,19 +57,16 @@ const GENERATED = [
   /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|go\.sum|composer\.lock|Gemfile\.lock)$/,
 ];
 
-/** Very small glob: `*` within a segment, `**` across them. Enough for excludes. */
-function globToRe(glob: string): RegExp {
-  const src = glob
-    .split("**")
-    .map((part) => part.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "."))
-    .join(".*");
-  return new RegExp(`^${src}$`);
-}
-
 export function indexable(rel: string, exclude: string[] = []): boolean {
   if (!rel || BINARY.test(rel)) return false;
   if (GENERATED.some((re) => re.test(rel))) return false;
-  return !exclude.some((g) => globToRe(g).test(rel));
+  // `Bun.Glob`, for the reason ownership.ts already gives: the hand-written
+  // glob-to-regex this replaces compiled `**` to `.*` between two literal
+  // slashes, so `**/*.ts` needed a directory to exist and did not match `a.ts`,
+  // and `docs/**/*.md` skipped every file directly in `docs/`. Both are the
+  // shape a boss writes, and both failed open — the file the exclude named got
+  // indexed anyway, and nothing said so.
+  return !exclude.some((g) => new Bun.Glob(g).match(rel));
 }
 
 /**
@@ -184,7 +181,7 @@ export function loadMap(db: DB, projectId: number | null): MapNode[] {
     if (line.endsWith("/")) nodes.push({ dir: line.slice(0, -1), files: [] });
     else if (nodes.length) {
       const [name, syms] = line.trim().split(" — ");
-      nodes[nodes.length - 1]!.files.push({ name: name!, symbols: syms ? syms.split(", ") : [] });
+      nodes.at(-1)!.files.push({ name: name!, symbols: syms ? syms.split(", ") : [] });
     }
   }
   return nodes;

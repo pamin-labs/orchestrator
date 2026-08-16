@@ -49,6 +49,16 @@ test("a project can correct what detection got wrong", () => {
   expect(indexable("docs/a.md", ["docs/legacy/**"])).toBe(true);
   expect(indexable("gen/schema.ts", ["gen/*.ts"])).toBe(false);
   expect(indexable("gen/deep/schema.ts", ["gen/*.ts"])).toBe(true);
+
+  // The correction failed open, and silently. The hand-written glob compiled
+  // `**` to `.*` between the two literal slashes around it, so `**/` demanded a
+  // directory: the exclude matched `src/gen/a.ts` and let `a.ts` and
+  // `docs/a.md` — the files the boss was pointing at — straight into the index,
+  // while the config still read as if they were out.
+  expect(indexable("a.ts", ["**/*.ts"])).toBe(false);
+  expect(indexable("docs/a.md", ["docs/**/*.md"])).toBe(false);
+  expect(indexable("docs/x/a.md", ["docs/**/*.md"])).toBe(false);
+  expect(indexable("docs/a.txt", ["docs/**/*.md"])).toBe(true);
 });
 
 test("the map's symbols come from a reader the caller supplies, not from this machine", () => {
