@@ -112,7 +112,12 @@ function populate(db: DB, projectId: number, tag: string): number {
 }
 
 const del = (app: (r: Request) => Promise<Response>, path: string) =>
-  app(new Request(`http://x${path}`, { method: "DELETE" }));
+  app(
+    new Request(`http://x${path}`, {
+      method: "DELETE",
+      headers: { "idempotency-key": crypto.randomUUID() },
+    }),
+  );
 
 const count = (db: DB, table: string, where: string, arg: number) =>
   db.query<{ c: number }, [number]>(`SELECT count(*) AS c FROM ${table} WHERE ${where}`).get(arg)!.c;
@@ -122,7 +127,7 @@ test("a removed project takes its groups, slices and events with it — and leav
   const doomed = populate(h.db, 1, "doomed");
   const keeper = populate(h.db, 2, "keeper");
 
-  const r = await del(h.app, "/api/projects/1");
+  const r = await del(h.app, "/api/v1/projects/1");
   expect(r.status).toBe(200);
 
   // Every table that hangs off a project or a group. Nothing declares ON DELETE
@@ -152,7 +157,7 @@ test("a removed project takes its groups, slices and events with it — and leav
   expect(count(h.db, "event", "grp_id = ?", keeper)).toBe(1);
 
   // Removing something that is already gone is a 404, not a second removal.
-  expect((await del(h.app, "/api/projects/1")).status).toBe(404);
+  expect((await del(h.app, "/api/v1/projects/1")).status).toBe(404);
 });
 
 test("containers are killed before the rows that name them", async () => {
@@ -163,7 +168,7 @@ test("containers are killed before the rows that name them", async () => {
   populate(h.db, 1, "doomed");
   populate(h.db, 1, "second");
 
-  await del(h.app, "/api/projects/1");
+  await del(h.app, "/api/v1/projects/1");
 
   const grps = h.killed.filter((s): s is { grp: number } => "grp" in s).map((s) => s.grp);
   expect(grps).toHaveLength(2);
@@ -184,7 +189,7 @@ test("nothing in the removal path writes to GitHub", async () => {
   populate(h.db, 1, "doomed");
   h.db.run("UPDATE grp SET branch = 'orch/x', pr_number = 7 WHERE project_id = 1");
 
-  await del(h.app, "/api/projects/1");
+  await del(h.app, "/api/v1/projects/1");
   expect(h.asked).toEqual([]);
 });
 
@@ -203,7 +208,7 @@ test("attachments of the removed project go, and files it never named stay", asy
     `看这个\n\n附件（路径如下）：\n- [图1] ${mine} (image)\n- ${outside}`,
   ]);
 
-  await del(h.app, "/api/projects/1");
+  await del(h.app, "/api/v1/projects/1");
 
   expect(existsSync(mine)).toBe(false);
   expect(existsSync(other)).toBe(true);
@@ -230,7 +235,7 @@ test("the restart button gets the two numbers it has to show, and never a guess"
       restartable: z.boolean(),
       state: z.enum(["ours", "theirs", "stuck", "started", "down"]),
     })
-    .parse(await (await h.app(new Request("http://x/api/sandbox-server"))).json());
+    .parse(await (await h.app(new Request("http://x/api/v1/sandbox-server"))).json());
   expect(b.containers).toBe(1);
   expect(b.runningTurns).toBe(2);
   // `restartable` used to mean "we have seen this process's argv". Seeing a

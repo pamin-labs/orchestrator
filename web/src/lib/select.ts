@@ -1,6 +1,6 @@
 import type { Escalation, Group, Slice, State } from "./api";
 import { z } from "zod";
-import { jsonOr } from "../../../src/mech/util/text.ts";
+import { jsonOr } from "../../../src/contracts/json.ts";
 
 const OwnsSchema = z.array(z.string());
 const GatesSchema = z.record(z.string(), z.string());

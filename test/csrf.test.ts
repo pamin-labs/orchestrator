@@ -4,7 +4,7 @@ import { makeApp } from "../src/api.ts";
 import { testContext } from "./test-context.ts";
 
 /**
- * `/api/*` is the boss's own surface and it takes no token: the caller is a
+ * `/api/v1/*` is the boss's own surface and it takes no token: the caller is a
  * browser on 127.0.0.1 and the port was the whole story. It stops the network and
  * not a web page — a POST with the default `text/plain` is a simple request, no
  * preflight, delivered. The reply is unreadable to the attacker and every side
@@ -18,7 +18,7 @@ import { testContext } from "./test-context.ts";
 const app = makeApp(testContext());
 const ErrorResponse = z.object({ error: z.string() });
 const write = (headers: Record<string, string>, method = "POST") =>
-  app(new Request("http://127.0.0.1:47821/api/auth", { method, headers }));
+  app(new Request("http://127.0.0.1:47821/api/v1/auth", { method, headers }));
 
 test("a page on another origin cannot write", async () => {
   expect((await write({ "sec-fetch-site": "cross-site" })).status).toBe(403);
@@ -94,9 +94,9 @@ test("JSON routes require the JSON content type", async () => {
   // declared as JSON; panel, CLI, and mailbox callers all send this header.
   const send = (headers: Record<string, string>) =>
     app(
-      new Request("http://127.0.0.1:47821/api/settings", {
+      new Request("http://127.0.0.1:47821/api/v1/settings", {
         method: "POST",
-        headers: { "sec-fetch-site": "same-origin", ...headers },
+        headers: { "sec-fetch-site": "same-origin", "idempotency-key": crypto.randomUUID(), ...headers },
         body: JSON.stringify({ path: "maxGroups", value: 3 }),
       }),
     );

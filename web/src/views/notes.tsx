@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Meta, Pane } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Tip } from "../ui/tooltip";
@@ -9,7 +9,7 @@ import { usePaged } from "../lib/page";
 import { clock, cn } from "../lib/utils";
 import { WithAttachments } from "../ui/attachments";
 import { z } from "zod";
-import { jsonOr } from "../../../src/mech/util/text.ts";
+import { jsonOr } from "../../../src/contracts/json.ts";
 import type { InferResponseType } from "hono/client";
 
 /**
@@ -35,7 +35,7 @@ const NoteSchema = z.object({
   frontmatter: z.string().nullable(),
   group: z.string().nullable(),
 });
-export type Note = z.infer<typeof NoteSchema>;
+type Note = z.infer<typeof NoteSchema>;
 const NotesResponseSchema: z.ZodType<InferResponseType<typeof api.notes.$get, 200>> = z.object({
   notes: z.array(NoteSchema),
 });
@@ -98,17 +98,20 @@ export function Notes({
   onCount?: (n: number) => void;
 }) {
   const [notes, setNotes] = useState<Note[] | null>(null);
-  const scope = grpId ? `group=${grpId}` : projectId ? `project=${projectId}` : "";
+  const onCountRef = useRef(onCount);
+
+  useEffect(() => {
+    onCountRef.current = onCount;
+  }, [onCount]);
 
   useEffect(() => {
     setNotes(null);
     const query = grpId ? { group: String(grpId) } : projectId ? { project: String(projectId) } : {};
     void readApi(api.notes.$get({ query }), NotesResponseSchema).then((r) => {
       setNotes(r?.notes ?? []);
-      onCount?.(r?.notes?.length ?? 0);
+      onCountRef.current?.(r?.notes?.length ?? 0);
     });
-    // `onCount` is a fresh closure every render and this must not refetch on it.
-  }, [scope]);
+  }, [grpId, projectId]);
 
   if (!notes) return <Meta>读记录…</Meta>;
   if (!notes.length) {
@@ -125,7 +128,11 @@ export function Notes({
 
   const present = KINDS.filter(([k]) => notes.some((n) => n.kind === k));
   return (
-    <Tabs value={tab ?? present[0]?.[0] ?? "journal"} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
+    <Tabs
+      value={tab ?? present[0]?.[0] ?? "journal"}
+      {...(onTab ? { onValueChange: onTab } : {})}
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <TabList>
         {present.map(([k, zh]) => (
           <Tab key={k} value={k} count={notes.filter((n) => n.kind === k).length}>
@@ -152,7 +159,7 @@ function List({ notes, size, showKind }: { notes: Note[]; size: number; showKind
   return (
     <>
       {page.map((n) => (
-        <Row key={n.id} n={n} showKind={showKind} />
+        <Row key={n.id} n={n} {...(showKind !== undefined ? { showKind } : {})} />
       ))}
       {rest > 0 && (
         <Button variant="quiet" size="sm" className="mt-2" onClick={more}>

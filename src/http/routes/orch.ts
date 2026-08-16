@@ -3,7 +3,8 @@ import type { ApplyGlobalResponse } from "hono/client";
 import type { Caller, Ctx } from "../../ctx.ts";
 import { agentOf } from "../../api/shared.ts";
 import { CtxQueryBody, postCtxQuery } from "../../api/orch/ctxquery.ts";
-import { IdParams } from "../../api/fields.ts";
+import { IdParams } from "../../contracts/fields.ts";
+import { OwnIdempotencyStatusQuery } from "../../contracts/idempotency.ts";
 import {
   AnswerBody,
   AskBossBody,
@@ -32,19 +33,26 @@ import { AuditBody, postAudit, postReview, ReviewBody } from "../../api/orch/rev
 import { postSetup, SetupBody } from "../../api/panel/project.ts";
 import { getTasks, postTaskClaim, postTaskDone, TaskDoneBody, TaskRef } from "../../api/orch/tasks.ts";
 import { jsonBody, pathParams, queryParams } from "../validate.ts";
-import type { ErrorResponses } from "../respond.ts";
+import { failure, type ErrorResponses } from "../respond.ts";
+import { bodyLimit } from "hono/body-limit";
+import { idempotency, idempotencyCaller, idempotencyStatus, JSON_BODY_LIMIT } from "../idempotency.ts";
 
 /** Explicit authenticated agent routes keep auth and validation ahead of every handler. */
 export function orchRoutes(ctx: Ctx) {
   const app = new Hono<{ Variables: { agent: Caller } }>();
   app.use("*", async (c, next) => {
     const agent = agentOf(ctx, c.req.raw);
-    if (!agent) return c.json({ error: "unknown or missing agent token" }, 401);
+    if (!agent) return failure("unknown or missing agent token", 401);
     c.set("agent", agent);
-    await next();
+    return next();
   });
+  app.use("*", bodyLimit({ maxSize: JSON_BODY_LIMIT, onError: () => failure("request body is too large", 413) }));
+  app.use("*", idempotency(ctx.db));
 
   return app
+    .get("/idempotency/status", queryParams(OwnIdempotencyStatusQuery), (c) =>
+      idempotencyStatus(ctx.db, { caller: idempotencyCaller(c.req.raw), ...c.req.valid("query") }),
+    )
     .post("/status", ...jsonBody(StatusBody), (c) =>
       postStatus(ctx, c.req.raw, c.get("agent"), c.req.param(), c.req.valid("json")),
     )
@@ -106,4 +114,7 @@ export function orchRoutes(ctx: Ctx) {
     );
 }
 
-export type OrchType = ApplyGlobalResponse<ReturnType<typeof orchRoutes>, ErrorResponses<400 | 401 | 415 | 500>>;
+export type OrchType = ApplyGlobalResponse<
+  ReturnType<typeof orchRoutes>,
+  ErrorResponses<400 | 401 | 404 | 409 | 413 | 415 | 500 | 503>
+>;

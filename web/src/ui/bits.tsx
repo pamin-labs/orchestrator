@@ -108,7 +108,7 @@ export function Clamp({ lines = 2, children }: { lines?: number; children: React
   useEffect(() => {
     const el = box.current;
     if (el && !open) setOver(el.scrollHeight > el.clientHeight + 2);
-  });
+  }, [children, lines, open]);
   return (
     <>
       <div

@@ -92,7 +92,12 @@ export function Progress({
       <Tabs value={tab ?? fallback} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
         <TabList>
           {BUCKETS.map((b) => (
-            <Tab key={b.key} value={b.key} count={b.mine ? todo : of(b).length} mine={b.mine}>
+            <Tab
+              key={b.key}
+              value={b.key}
+              count={b.mine ? todo : of(b).length}
+              {...(b.mine !== undefined ? { mine: b.mine } : {})}
+            >
               {b.zh}
             </Tab>
           ))}

@@ -354,7 +354,13 @@ function ServerFields(props: ServerPaneProps) {
         placeholder="新项目默认用它，留空跟配置文件"
         onSave={saveImage}
       />
-      <KeyRow current={props.current} value={key} busy={busy} onChange={setKey} onSend={sendKey} />
+      <KeyRow
+        {...(props.current ? { current: props.current } : {})}
+        value={key}
+        busy={busy}
+        onChange={setKey}
+        onSend={sendKey}
+      />
       {/* No "now put this in the server's config" line: that instruction is what
           got followed halfway, and a key only this side knows locks the fleet out
           of every container. 存下 refuses a key the server rejects. */}
@@ -439,7 +445,7 @@ function KeyRow({
             从服务器读
           </Button>
         </Tip>
-        <ClearKeyButton current={current} busy={busy} onSend={onSend} />
+        <ClearKeyButton {...(current ? { current } : {})} busy={busy} onSend={onSend} />
         <SaveKeyButton value={value} busy={busy} onSend={onSend} />
       </InputGroup>
     </Field>

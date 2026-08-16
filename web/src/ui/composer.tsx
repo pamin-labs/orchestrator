@@ -20,7 +20,7 @@ const AttachedSchema = z.object({
   url: z.string().optional(),
   label: z.string(),
 });
-export type Attached = z.infer<typeof AttachedSchema>;
+type Attached = z.infer<typeof AttachedSchema>;
 /** A file and where it sat inside whatever was dropped. */
 interface Picked {
   file: File;
@@ -441,7 +441,7 @@ export function Composer({
         onKeyDown={(e) => {
           if (slash && (e.key === "Escape" || e.key === "Tab")) {
             e.preventDefault();
-            if (e.key === "Tab" && matches[0]) insertSkill(matches[0]);
+            if (e.key === "Tab" && matches[0]) void insertSkill(matches[0]);
             else setSlash(null);
             return;
           }
@@ -597,9 +597,9 @@ export function ComposerDialog({
             <div className="p-3.5">
               <Composer
                 autoFocus
-                projectId={projectId}
+                {...(projectId !== undefined ? { projectId } : {})}
                 rows={rows}
-                placeholder={placeholder}
+                {...(placeholder !== undefined ? { placeholder } : {})}
                 submit={submit}
                 onSubmit={async (d) => {
                   const ok = await onSubmit(d);

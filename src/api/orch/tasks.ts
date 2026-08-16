@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { Id } from "../../contracts/fields.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import type { Caller, Ctx } from "../../ctx.ts";
 import {
   AlreadyDoneClaimSchema,
@@ -8,10 +10,8 @@ import {
   TaskClaimSchema,
 } from "../../mech/flow/reconcile.ts";
 import { recordGate } from "../../mech/gate.ts";
-import { jsonOr } from "../../mech/util/text.ts";
 import { validateSelfReview } from "../../mech/util/validate.ts";
 import type { SliceState, TaskState } from "../../states.ts";
-import { Id } from "../fields.ts";
 import { type AgentHandler, bad, message } from "../shared.ts";
 
 /**
@@ -23,8 +23,8 @@ import { type AgentHandler, bad, message } from "../shared.ts";
  */
 
 export const getTasks = (async (ctx, req, a) => {
-  // The caller's own group, not the one it asked for. Every other `/orch` route
-  // checks the token; these two never did, and the `/orch/` prefix gate on the
+  // The caller's own group, not the one it asked for. Every other `/orch/v1` route
+  // checks the token; these two never did, and the `/orch/v1/` prefix gate on the
   // mailbox made them look as if they had — so any sandbox could enumerate any
   // group's cards by putting a number in a query string.
   if (!a.grp_id) return message("this route is for a group's agent", 401);
@@ -120,6 +120,7 @@ export const getTasks = (async (ctx, req, a) => {
 export const TaskRef = z.object({ task_id: Id });
 
 export const postTaskClaim = (async (ctx, _req, a, _p, b) => {
+  if (!a.grp_id) return message("this route is for a group's agent", 401);
   // A retired owner is not an owner. Ownership is a row id, and a group that
   // rehires its writer — a rotation, a restart, anything that ends one agent row
   // and starts another — leaves its own cards locked to a session that no longer
@@ -127,11 +128,11 @@ export const postTaskClaim = (async (ctx, _req, a, _p, b) => {
   // work it is not allowed to touch.
   const r = ctx.db.run(
     `UPDATE task SET owner_agent_id = ?, status = 'in_progress'
-     WHERE id = ? AND (owner_agent_id IS NULL
+     WHERE id = ? AND grp_id = ? AND (owner_agent_id IS NULL
                        OR owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired'))
        AND (slice_id IS NULL
             OR slice_id IN (SELECT id FROM slice WHERE id = task.slice_id AND status NOT IN ('pending','accepted')))`,
-    [a.id, b.task_id],
+    [a.id, b.task_id, a.grp_id],
   );
   return r.changes ? message("ok") : bad("already claimed, or its slice is not being worked yet");
 }) satisfies AgentHandler<z.infer<typeof TaskRef>>;
@@ -154,16 +155,16 @@ type TaskCompletion = {
   seq: number | null;
 };
 
-function taskCompletion(ctx: Ctx, taskId: number): TaskCompletion | null {
+function taskCompletion(ctx: Ctx, taskId: number, grpId: number): TaskCompletion | null {
   return (
     ctx.db
-      .query<TaskCompletion, [number]>(
+      .query<TaskCompletion, [number, number]>(
         `SELECT t.slice_id, s.status AS slice_status, s.accept_spec, s.seq,
                 (SELECT count(*) FROM task o
                  WHERE o.slice_id = t.slice_id AND o.status != 'done' AND o.id != t.id) AS open
-         FROM task t LEFT JOIN slice s ON s.id = t.slice_id WHERE t.id = ?`,
+         FROM task t LEFT JOIN slice s ON s.id = t.slice_id WHERE t.id = ? AND t.grp_id = ?`,
       )
-      .get(taskId) ?? null
+      .get(taskId, grpId) ?? null
   );
 }
 
@@ -178,12 +179,15 @@ function reviewError(taskId: number, completion: TaskCompletion | null, review: 
   );
 }
 
-function advanceCompletedSlice(ctx: Ctx, caller: Caller, completion: TaskCompletion | null, review?: string): void {
-  if (completion?.slice_id == null || completion.open !== 0) return;
+function advanceCompletedSlice(ctx: Ctx, caller: Caller, completion: TaskCompletion | null, review?: string): boolean {
+  if (completion?.slice_id == null || completion.open !== 0) return false;
   const sliceId = completion.slice_id;
   const note = review?.trim();
+  if (note) recordGate(ctx.db, sliceId, "self", "pass");
+  ctx.db.run("UPDATE slice SET status = 'gate' WHERE id = ?", [sliceId]);
+  // Deterministic gate work should not wait behind model turns.
+  ctx.sched.enqueue("gate", { grp_id: caller.grp_id, slice_id: sliceId, priority: 5 });
   if (note) {
-    recordGate(ctx.db, sliceId, "self", "pass");
     ctx.bus.emit({
       grpId: caller.grp_id,
       author: caller.role,
@@ -193,17 +197,15 @@ function advanceCompletedSlice(ctx: Ctx, caller: Caller, completion: TaskComplet
       meta: { slice_id: sliceId, layer: "self" },
     });
   }
-  ctx.db.run("UPDATE slice SET status = 'gate' WHERE id = ?", [sliceId]);
-  // Deterministic gate work should not wait behind model turns.
-  ctx.sched.enqueue("gate", { grp_id: caller.grp_id, slice_id: sliceId, priority: 5 });
-  ctx.sched.tick();
+  return true;
 }
 
 export const postTaskDone = (async (ctx, _req, a, _p, b) => {
+  if (!a.grp_id) return message("this route is for a group's agent", 401);
   // A task belonging to a slice that has not started cannot be completed: the
   // writer works one slice at a time, and letting it close future tasks pushed
   // unstarted slices into review.
-  const completion = taskCompletion(ctx, b.task_id);
+  const completion = taskCompletion(ctx, b.task_id, a.grp_id);
   if (completion?.slice_status && ["pending", "accepted"].includes(completion.slice_status)) {
     return bad(
       `task ${b.task_id} belongs to a slice that is not being worked (${completion.slice_status}). ` +
@@ -233,23 +235,27 @@ export const postTaskDone = (async (ctx, _req, a, _p, b) => {
   // someone else is retired, in which case the card outlived its claimant and the
   // group's current writer is the only one who can finish it. Same reason as claim.
   const claim: TaskClaim = "already_done" in b ? { already_done: b.already_done } : b.claim;
-  const done = ctx.db.run(
-    `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
-     WHERE id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?
-                       OR owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired'))`,
-    [JSON.stringify(claim), a.id, b.task_id, a.id],
-  );
-  if (done.changes === 0) return bad(`task ${b.task_id} is not yours, or does not exist`);
-  ctx.bus.emit({
-    grpId: a.grp_id,
-    author: a.role,
-    kind: "state_change",
-    body: `task ${b.task_id} done`,
-    meta: { task_id: b.task_id, claim },
-  });
-
-  // A slice enters review only when nothing is left open in it. Reviewing a
-  // half-finished slice burns the reviewer on work that is about to change.
-  advanceCompletedSlice(ctx, a, completion, b.review);
+  const advanced = ctx.db.transaction(() => {
+    const done = ctx.db.run(
+      `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
+       WHERE id = ? AND grp_id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?
+                         OR owner_agent_id IN (SELECT id FROM agent WHERE state = 'retired'))`,
+      [JSON.stringify(claim), a.id, b.task_id, a.grp_id, a.id],
+    );
+    if (done.changes === 0) return null;
+    // A slice enters review only when nothing is left open in it. Reviewing a
+    // half-finished slice burns the reviewer on work that is about to change.
+    const shouldTick = advanceCompletedSlice(ctx, a, completion, b.review);
+    ctx.bus.emit({
+      grpId: a.grp_id,
+      author: a.role,
+      kind: "state_change",
+      body: `task ${b.task_id} done`,
+      meta: { task_id: b.task_id, claim },
+    });
+    return shouldTick;
+  })();
+  if (advanced === null) return bad(`task ${b.task_id} is not yours, or does not exist`);
+  if (advanced) ctx.sched.tick();
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof TaskDoneBody>>;

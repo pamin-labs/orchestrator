@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SplitRequirements } from "../../contracts/orch.ts";
 import type { Caller, Ctx } from "../../ctx.ts";
 import { say } from "../../lang.ts";
 import { hold } from "../../mech/flow/intercept.ts";
@@ -11,7 +12,7 @@ import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
 import { shq } from "../../mech/util/shq.ts";
 import { validateDraftCard } from "../../mech/util/validate.ts";
 import type { GrpState } from "../../states.ts";
-import { GroupRef } from "../fields.ts";
+import { GroupRef } from "../../contracts/fields.ts";
 import { type AgentHandler, bad, json, mayAct, message, resolveGroup } from "../shared.ts";
 import { slug } from "../slug.ts";
 
@@ -84,29 +85,31 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
     if (inBase.size) missingPaths = claimed.filter((p) => !inBase.has(p)).slice(0, 8);
   }
 
-  ctx.db.run(
-    `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
-     VALUES (?, ?, 'fact', ?, ?, ?, unixepoch() * 1000)`,
-    [
-      grp.project_id,
+  ctx.db.transaction(() => {
+    ctx.db.run(
+      `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
+       VALUES (?, ?, 'fact', ?, ?, ?, unixepoch() * 1000)`,
+      [
+        grp.project_id,
+        grpId,
+        ctx.config.language,
+        b.card,
+        JSON.stringify({ draft_card: true, ...(missingPaths.length ? { unknownPaths: missingPaths } : {}) }),
+      ],
+    );
+    ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grpId]);
+    // Planning is over, so anything still queued for this group is moot — and DRAFT
+    // is not dispatchable, so it would otherwise sit pending forever and then fire
+    // after approval against a plan it never saw.
+    const dropped = ctx.sched.cancelPending(grpId, "planning finished");
+    ctx.bus.emit({
       grpId,
-      ctx.config.language,
-      b.card,
-      JSON.stringify({ draft_card: true, ...(missingPaths.length ? { unknownPaths: missingPaths } : {}) }),
-    ],
-  );
-  ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grpId]);
-  // Planning is over, so anything still queued for this group is moot — and DRAFT
-  // is not dispatchable, so it would otherwise sit pending forever and then fire
-  // after approval against a plan it never saw.
-  const dropped = ctx.sched.cancelPending(grpId, "planning finished");
-  ctx.bus.emit({
-    grpId,
-    author: a.role,
-    kind: "state_change",
-    body: `DRAFT card filed: ${v.goal}${dropped ? ` (${dropped} planning turn(s) dropped)` : ""}`,
-    meta: { slices: v.slices.length, objection: v.objection },
-  });
+      author: a.role,
+      kind: "state_change",
+      body: `DRAFT card filed: ${v.goal}${dropped ? ` (${dropped} planning turn(s) dropped)` : ""}`,
+      meta: { slices: v.slices.length, objection: v.objection },
+    });
+  })();
   ctx.notifyBoss?.(0, `DRAFT ready: ${v.goal}`, "advisory");
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof DraftBody>>;
@@ -132,9 +135,6 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
  */
 const MAX_SPLIT = 6;
 
-export const SplitRequirements = z.array(
-  z.object({ name: z.string().max(80).optional(), idea: z.string().min(1).max(8000) }),
-);
 export const SplitBody = z.object({
   group_id: GroupRef,
   requirements: SplitRequirements.optional(),
@@ -180,39 +180,42 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
     )
     .get(gid);
 
-  const made: { id: number; name: string }[] = [];
-  for (const item of items) {
-    // Slugged even when the agent supplied it. A group name becomes a branch
-    // (`orch/<name>`), a path under docs/journal and an argument to host git —
-    // "whatever 40 characters an agent felt like" is not a shape any of those want.
-    const name = slug(item.name?.trim() || item.idea);
-    const child = newGroup(ctx, {
-      projectId: grp.project_id,
-      name,
-      idea: item.idea.trim(),
-      note: `${item.idea.trim()}\n\n（从「${grp.name}」拆出来的一条${original ? `，原始整段见 note #${original.id}` : ""}）`,
-    });
-    ctx.sched.enqueue("agent_turn", {
-      grp_id: child.id,
-      priority: 5,
-      payload: { role: "dispatcher", idea: item.idea.trim() },
-    });
-    made.push({ id: child.id, name });
-  }
+  const made = ctx.db.transaction(() => {
+    const created: { id: number; name: string }[] = [];
+    for (const item of items) {
+      // Slugged even when the agent supplied it. A group name becomes a branch
+      // (`orch/<name>`), a path under docs/journal and an argument to host git —
+      // "whatever 40 characters an agent felt like" is not a shape any of those want.
+      const name = slug(item.name?.trim() || item.idea);
+      const child = newGroup(ctx, {
+        projectId: grp.project_id,
+        name,
+        idea: item.idea.trim(),
+        note: `${item.idea.trim()}\n\n（从「${grp.name}」拆出来的一条${original ? `，原始整段见 note #${original.id}` : ""}）`,
+      });
+      ctx.sched.enqueue("agent_turn", {
+        grp_id: child.id,
+        priority: 5,
+        payload: { role: "dispatcher", idea: item.idea.trim() },
+      });
+      created.push({ id: child.id, name });
+    }
 
-  // The container is done: its pending turns would re-plan work that has moved. No
-  // retro — it never did any work, and demanding one for a bookkeeping group would
-  // teach the agents that retros are paperwork.
-  ctx.sched.cancelPending(gid, "split into separate requirements");
-  ctx.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = ?", [gid]);
-  ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [gid]);
-  ctx.bus.emit({
-    grpId: gid,
-    author: a.role,
-    kind: "state_change",
-    body: `拆成 ${made.length} 个独立需求：${made.map((m) => m.name).join("、")}${b.why ? ` —— ${b.why}` : ""}`,
-    meta: { split: made.map((m) => m.id) },
-  });
+    // The container is done: its pending turns would re-plan work that has moved. No
+    // retro — it never did any work, and demanding one for a bookkeeping group would
+    // teach the agents that retros are paperwork.
+    ctx.sched.cancelPending(gid, "split into separate requirements");
+    ctx.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = ?", [gid]);
+    ctx.db.run("UPDATE channel SET status = 'archived' WHERE grp_id = ?", [gid]);
+    ctx.bus.emit({
+      grpId: gid,
+      author: a.role,
+      kind: "state_change",
+      body: `拆成 ${created.length} 个独立需求：${created.map((m) => m.name).join("、")}${b.why ? ` —— ${b.why}` : ""}`,
+      meta: { split: created.map((m) => m.id) },
+    });
+    return created;
+  })();
   ctx.sched.tick();
   return json({ requirements: made });
 }) satisfies AgentHandler<z.infer<typeof SplitBody>>;
@@ -283,22 +286,24 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
     return bad("give evidence: --duplicate <group> or --commit <sha>");
   }
 
-  ctx.db.run(
-    `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
-     VALUES ((SELECT project_id FROM grp WHERE id = ?), ?, 'decision', ?, ?, ?, unixepoch() * 1000)`,
-    [gid, gid, ctx.config.language, `${why}\n\n证据：${evidence}`, JSON.stringify({ drop_proposal: 1 })],
-  );
-  // DRAFT, so the group stops being dispatchable and the boss is asked. Left in
-  // PLANNING the Dispatcher would be woken again and re-propose the same thing.
-  ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ? AND status = 'PLANNING'", [gid]);
-  ctx.bus.emit({
-    grpId: gid,
-    author: a.role,
-    kind: "decision",
-    intent: "decision",
-    body: `建议作废：${why}（${evidence}）`,
-    meta: { drop_proposal: true, evidence },
-  });
+  ctx.db.transaction(() => {
+    ctx.db.run(
+      `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
+       VALUES ((SELECT project_id FROM grp WHERE id = ?), ?, 'decision', ?, ?, ?, unixepoch() * 1000)`,
+      [gid, gid, ctx.config.language, `${why}\n\n证据：${evidence}`, JSON.stringify({ drop_proposal: 1 })],
+    );
+    // DRAFT, so the group stops being dispatchable and the boss is asked. Left in
+    // PLANNING the Dispatcher would be woken again and re-propose the same thing.
+    ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ? AND status = 'PLANNING'", [gid]);
+    ctx.bus.emit({
+      grpId: gid,
+      author: a.role,
+      kind: "decision",
+      intent: "decision",
+      body: `建议作废：${why}（${evidence}）`,
+      meta: { drop_proposal: true, evidence },
+    });
+  })();
   return message("ok");
 }) satisfies AgentHandler<z.infer<typeof DropBody>>;
 
@@ -435,19 +440,22 @@ export const postBlocked = (async (ctx, _req, a, _p, b) => {
   if (owner && waitsOn(ctx, owner.id, gid)) {
     return bad(`${owner.name} is already waiting on you — one of you has to go first`);
   }
-  const routed = routeBlockedPath(ctx, a, me, gid, path, why, owner);
+  const routed = ctx.db.transaction(() => {
+    const destination = routeBlockedPath(ctx, a, me, gid, path, why, owner);
 
-  // Stop, and say what it is waiting for. PAUSED rather than a spin: a group with
-  // nothing it can legally do should not hold a concurrency slot.
-  hold(ctx, gid, { reason: "blocked", settled: true, on: routed.target });
-  ctx.sched.cancelPending(gid, `blocked on ${path}`);
-  ctx.bus.emit({
-    grpId: gid,
-    author: a.role,
-    kind: "state_change",
-    body: say(ctx.config.language, "group.blocked", { path, target: String(routed.target) }),
-    meta: { blocked_on: routed.target, path },
-  });
+    // Stop, and say what it is waiting for. PAUSED rather than a spin: a group with
+    // nothing it can legally do should not hold a concurrency slot.
+    hold(ctx, gid, { reason: "blocked", settled: true, on: destination.target });
+    ctx.sched.cancelPending(gid, `blocked on ${path}`);
+    ctx.bus.emit({
+      grpId: gid,
+      author: a.role,
+      kind: "state_change",
+      body: say(ctx.config.language, "group.blocked", { path, target: String(destination.target) }),
+      meta: { blocked_on: destination.target, path },
+    });
+    return destination;
+  })();
   ctx.sched.tick();
   return json({ blocked_on: routed.target, handedTo: routed.handedTo });
 }) satisfies AgentHandler<z.infer<typeof BlockedBody>>;
@@ -462,16 +470,19 @@ export const postOwns = (async (ctx, _req, a, _p, b) => {
   const gid = actingGroup(ctx, a, b.group_id);
   if (gid instanceof Response) return gid;
 
-  ctx.db.run("UPDATE grp SET owns_json = ? WHERE id = ?", [JSON.stringify(b.paths), gid]);
-  const check = canStart(ctx.db, gid);
-  ctx.bus.emit({
-    grpId: gid,
-    author: "architect",
-    kind: "decision",
-    intent: "decision",
-    body: `owns ${b.paths.join(", ")}${check.ok ? "" : ` — still blocked: ${check.reason}`}`,
-    meta: { paths: b.paths, ok: check.ok },
-  });
+  const check = ctx.db.transaction(() => {
+    ctx.db.run("UPDATE grp SET owns_json = ? WHERE id = ?", [JSON.stringify(b.paths), gid]);
+    const result = canStart(ctx.db, gid);
+    ctx.bus.emit({
+      grpId: gid,
+      author: "architect",
+      kind: "decision",
+      intent: "decision",
+      body: `owns ${b.paths.join(", ")}${result.ok ? "" : ` — still blocked: ${result.reason}`}`,
+      meta: { paths: b.paths, ok: result.ok },
+    });
+    return result;
+  })();
   // A re-cut can free a group other than the one it touched, so the whole project
   // is swept. Without this the boss's approval sat waiting on a boundary that had
   // already been drawn.

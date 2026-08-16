@@ -3,10 +3,10 @@ import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cp, mkdir, writeFile } from "node:fs/promises";
 import { z } from "zod";
-import { Attachment as AttachmentSchema } from "../fields.ts";
 import { bad, json, message, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
+export { imagePaths, withAttachments, type Attachment } from "../../mech/util/attachment-text.ts";
 
 export const AttachmentNameParams = z.object({ name: z.string().min(1) });
 
@@ -17,8 +17,6 @@ export const AttachmentNameParams = z.object({ name: z.string().min(1) });
  * "what is an attachment" had two answers and only one of them was checked. A
  * field added to the schema would not have reached `withAttachments`.
  */
-export type Attachment = z.infer<typeof AttachmentSchema>;
-
 /**
  * Words plus the files that came with them.
  *
@@ -32,8 +30,6 @@ export type Attachment = z.infer<typeof AttachmentSchema>;
  * back as `-i` flags (imagePaths below). The wording no longer names a tool —
  * `Read` exists on one of the two CLIs.
  */
-const IMAGE_TAG = " (image)";
-
 /**
  * `~` as the person typing it means it.
  *
@@ -218,25 +214,4 @@ export function bossFact(ctx: Ctx, grpId: number | null, body: string): void {
     [projectId, grpId, ctx.config.language, body],
   );
   sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
-}
-
-export function withAttachments(text: string, attachments?: Attachment[]): string {
-  const files = (attachments ?? []).filter((f) => f?.path);
-  if (!files.length) return text;
-  // The label goes on the path, because the words above it use the same marker.
-  // Without it, "按 [图2] 改" is a reference into a list of three bare paths.
-  return (
-    `${text}\n\n附件（路径如下）：\n` +
-    files
-      .map((f) => `- ${f.label ? `[${f.label}] ` : ""}${f.path}${f.type?.startsWith("image/") ? IMAGE_TAG : ""}`)
-      .join("\n")
-  );
-}
-
-/** The image attachments in an assembled prompt, for CLIs that need them as flags. */
-export function imagePaths(prompt: string): string[] {
-  // The escape used to list the metacharacters IMAGE_TAG happens to contain, so
-  // it was correct only for the tag's current spelling.
-  const re = new RegExp(`^- (?:\\[[^\\]]+\\] )?(\\S+)${RegExp.escape(IMAGE_TAG)}$`, "gm");
-  return [...prompt.matchAll(re)].map((m) => m[1]!);
 }

@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalise, serve } from "../src/mech/sandbox/mailbox.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 
 /**
  * The agent's only way out.
@@ -24,9 +24,9 @@ function mailbox(): string {
 }
 
 /** Run the CLI the way a sandbox does: mailbox in the environment, no network. */
-function runCli(mb: string, argv: string[]) {
+function runCli(mb: string, argv: string[], env: Record<string, string> = {}) {
   return Bun.spawn(["bun", "run", "src/orch/cli.ts", ...argv], {
-    env: { ...process.env, ORCH_MAILBOX: mb, ORCH_TOKEN: "tok-1", ORCH_URL: "http://127.0.0.1:1" },
+    env: { ...process.env, ORCH_MAILBOX: mb, ORCH_TOKEN: "tok-1", ORCH_URL: "http://127.0.0.1:1", ...env },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -45,7 +45,9 @@ test("a call becomes a request file and blocks until an answer appears", async (
   expect(req).toMatch(/\.json$/);
   const env = JSON.parse(await Bun.file(join(mb, "req", req)).text());
   expect(env.method).toBe("POST");
-  expect(env.path).toBe("/orch/status");
+  expect(env.path).toBe("/orch/v1/status");
+  expect(env.request_id).toMatch(/^[0-9a-f-]{36}$/);
+  expect(env.idempotency_key).toMatch(/^[0-9a-f-]{36}$/);
   // The token travels in the envelope, because a mailbox has no headers. It is
   // still the identity: anything else able to write here could claim to be any
   // agent, which is why the mailbox lives inside one group's sandbox.
@@ -68,12 +70,12 @@ test("a call becomes a request file and blocks until an answer appears", async (
  * A sandbox is a `files` API and nothing else, as far as `serve` is concerned.
  * `writes` is the assertion: the answer the agent would read back.
  */
-function fakeFiles(req: Json) {
+function fakeFiles(req: Record<string, Json>) {
   const writes: Array<{ path: string; data: string }> = [];
   const deletes: string[][] = [];
   const sb = {
     files: {
-      readFile: async () => JSON.stringify(req),
+      readFile: async () => JSON.stringify({ request_id: "request-test", ...req }),
       deleteFiles: async (paths: string[]) => {
         deletes.push(paths);
       },
@@ -93,7 +95,7 @@ test("a malformed envelope cannot select the response path or make a request", a
   const { writes, deletes, sb } = fakeFiles({
     id: "../../boss",
     method: "DELETE",
-    path: "/orch/status",
+    path: "/orch/v1/status",
     token: "tok-1",
   });
 
@@ -107,7 +109,7 @@ test("an invalid envelope with a safe id receives a bounded failure", async () =
   const { writes, sb } = fakeFiles({
     id: "safe-id",
     method: "DELETE",
-    path: "/orch/status",
+    path: "/orch/v1/status",
     token: "tok-1",
   });
 
@@ -119,12 +121,12 @@ test("an invalid envelope with a safe id receives a bounded failure", async () =
 });
 
 test("a sandbox cannot reach the boss's routes through the mailbox", async () => {
-  // `/api/*` takes no token — its only caller was a browser on 127.0.0.1. Without
+  // `/api/v1/*` takes no token — its only caller was a browser on 127.0.0.1. Without
   // the guard this replays, and the agent approves its own DRAFT.
   const { writes, sb } = fakeFiles({
     id: "x",
     method: "POST",
-    path: "/api/draft/1/approve",
+    path: "/api/v1/draft/1/approve",
     token: "tok-1",
   });
   await serve(sb, "http://127.0.0.1:1", "/var/orch/req/x.json");
@@ -140,16 +142,16 @@ test("a sandbox cannot reach the boss's routes through the mailbox", async () =>
 test("the prefix guard cannot be walked out of with dot segments", async () => {
   // The guard used to test the raw string and then hand that same raw string to
   // `fetch`, which parses it as a URL and normalises `..` away. So the check saw
-  // `/orch/../api/auth` and the server saw `/api/auth` — every unauthenticated
+  // `/orch/v1/../api/auth` and the server saw `/api/v1/auth` — every unauthenticated
   // boss route, reachable from inside the sandbox. Judged and sent must be the
   // same string.
   for (const path of [
-    "/orch/../api/auth",
-    "/orch/%2e%2e/api/dirs",
-    "/orch/./../api/say",
-    "/orch/x/../../api/state",
+    "/orch/v1/../api/auth",
+    "/orch/v1/%2e%2e/api/dirs",
+    "/orch/v1/./../api/say",
+    "/orch/v1/x/../../api/state",
     "//evil.example/orch/status",
-    "http://evil.example/orch/status",
+    "http://evil.example/orch/v1/status",
   ]) {
     const { writes, sb } = fakeFiles({ id: "z", method: "POST", path, token: "tok-1" });
     await serve(sb, "http://127.0.0.1:1", "/var/orch/req/z.json");
@@ -163,13 +165,14 @@ test("the prefix guard cannot be walked out of with dot segments", async () => {
 test("a query string survives normalisation", () => {
   // `orch lease log --grep` is a GET with one, and dropping it would silently
   // return the whole log instead of the lines asked for.
-  expect(normalise("http://127.0.0.1:1", "/orch/lease/7/log?grep=error")).toBe(
-    "http://127.0.0.1:1/orch/lease/7/log?grep=error",
+  expect(normalise("http://127.0.0.1:1", "/orch/v1/lease/7/log?grep=error")).toBe(
+    "http://127.0.0.1:1/orch/v1/lease/7/log?grep=error",
   );
+  expect(normalise("http://127.0.0.1:1", "/orch/status")).toBeNull();
 });
 
 test("an /orch route still goes through", async () => {
-  const { writes, sb } = fakeFiles({ id: "y", method: "POST", path: "/orch/status", token: "tok-1" });
+  const { writes, sb } = fakeFiles({ id: "y", method: "POST", path: "/orch/v1/status", token: "tok-1" });
   await serve(sb, "http://127.0.0.1:1", "/var/orch/req/y.json");
   // Nothing is listening on port 1, so reaching the fetch at all is the assertion.
   expect(JSON.parse(writes[0]!.data).status).toBe(502);
@@ -186,4 +189,14 @@ test("a non-200 answer is passed through as a failure, not swallowed", async () 
   const { id } = JSON.parse(await Bun.file(join(mb, "req", req)).text());
   await Bun.write(join(mb, "res", `${id}.json`), JSON.stringify({ status: 422, body: { error: "no such group" } }));
   expect(await proc.exited).not.toBe(0);
+});
+
+test("an unanswered CLI request times out and removes both mailbox files", async () => {
+  const mb = mailbox();
+  const proc = runCli(mb, ["status", "no answer"], { ORCH_MAILBOX_TIMEOUT_MS: "10" });
+
+  expect(await proc.exited).not.toBe(0);
+  expect(await new Response(proc.stderr).text()).toContain("timed out after 10ms");
+  expect(readdirSync(join(mb, "req"))).toEqual([]);
+  expect(readdirSync(join(mb, "res"))).toEqual([]);
 });

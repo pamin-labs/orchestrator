@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { Agent } from "../src/api/panel/shapes.ts";
+import { Agent } from "../src/contracts/panel.ts";
 import { imagePaths, makeApp, UPLOAD_LIMIT, withAttachments } from "../src/api.ts";
 import { activityOf } from "../web/src/lib/activity.ts";
 import { splitAttachments } from "../web/src/lib/attach.ts";
@@ -54,7 +54,7 @@ test("a message hands its attachments back as things the panel can open", () => 
   expect(text).toBe("按 [图1] 改");
   expect(files.map((f) => f.image)).toEqual([true, false]);
   expect(files.map((f) => f.label)).toEqual(["图1", "附件2"]);
-  expect(files[0]!.url).toBe("/api/attach/1755-0-Screenshot.png");
+  expect(files[0]!.url).toBe("/api/v1/attach/1755-0-Screenshot.png");
 });
 
 test("a message that merely mentions attachments keeps its own body", () => {
@@ -81,10 +81,14 @@ test("an upload too big to hold is refused before it is held", async () => {
   // browser upload carries, so this is decided without reading a byte.
   const app = makeApp(testContext());
   const r = await app(
-    new Request("http://x/api/attach", {
+    new Request("http://x/api/v1/attach", {
       method: "POST",
       body: "x",
-      headers: { "content-type": "multipart/form-data; boundary=b", "content-length": String(UPLOAD_LIMIT + 1) },
+      headers: {
+        "content-type": "multipart/form-data; boundary=b",
+        "content-length": String(UPLOAD_LIMIT + 1),
+        "idempotency-key": crypto.randomUUID(),
+      },
     }),
   );
   expect(r.status).toBe(413);
@@ -108,7 +112,13 @@ test("a dropped folder becomes one attachment, and cannot escape its directory",
   const ctx = testContext();
   ctx.config.dataDir = dir;
   const app = makeApp(ctx);
-  const r = await app(new Request("http://x/api/attach", { method: "POST", body: form }));
+  const r = await app(
+    new Request("http://x/api/v1/attach", {
+      method: "POST",
+      headers: { "idempotency-key": crypto.randomUUID() },
+      body: form,
+    }),
+  );
   const { files } = AttachResponse.parse(await r.json());
 
   // The folder is one entry, the loose image is another. Forty files inside a

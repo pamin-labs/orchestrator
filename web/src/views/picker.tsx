@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Menu, MenuItem } from "../ui/menu";
@@ -44,7 +44,6 @@ function Browse({
   /** Files are listed at all, and rows are picked rather than opened. */
   files,
   pick,
-  onOpenChange,
   footer,
   onRow,
   chosen,
@@ -54,7 +53,6 @@ function Browse({
   files?: boolean;
   /** A row selects instead of navigating; the arrow navigates. */
   pick?: boolean;
-  onOpenChange: (v: boolean) => void;
   /** Rendered at the bottom, with the directory currently being listed. */
   footer: (here: Dirs | null) => React.ReactNode;
   /** What a row does. Return false to navigate into it instead. */
@@ -64,20 +62,23 @@ function Browse({
   const [d, setD] = useState<Dirs | null>(null);
   const [err, setErr] = useState("");
 
-  const load = async (path?: string | null) => {
-    const result = await readJson(
-      await api.dirs.$get({
-        query: { ...(files ? { files: "1" } : {}), ...(path ? { path } : {}) },
-      }),
-      DirsSchema,
-    );
-    if (!result.ok) return setErr(result.text);
-    setErr("");
-    setD(result.data);
-  };
+  const load = useCallback(
+    async (path?: string | null) => {
+      const result = await readJson(
+        await api.dirs.$get({
+          query: { ...(files ? { files: "1" } : {}), ...(path ? { path } : {}) },
+        }),
+        DirsSchema,
+      );
+      if (!result.ok) return setErr(result.text);
+      setErr("");
+      setD(result.data);
+    },
+    [files],
+  );
   useEffect(() => {
     void load(null);
-  }, []);
+  }, [load]);
 
   const parts = (d?.path ?? "").split("/").filter(Boolean);
   const rows: [Entry, boolean][] = [
@@ -557,7 +558,6 @@ export function FilePicker({
         hint="文件和目录都行，点名字进目录"
         files
         pick
-        onOpenChange={onOpenChange}
         chosen={(p) => sel.includes(p)}
         // Toggling, not opening: a folder you can attach is a folder you cannot
         // also enter by clicking, so entering is the ▸ on the left and picking is

@@ -11,13 +11,13 @@ import { Card, CardBody, CardTitle } from "./card";
  * "I broke" is worse than one that is wrong out loud.
  */
 export class Boundary extends Component<{ children: ReactNode }, { err: Error | null }> {
-  state: { err: Error | null } = { err: null };
+  override state: { err: Error | null } = { err: null };
 
   static getDerivedStateFromError(err: Error) {
     return { err };
   }
 
-  render() {
+  override render() {
     const { err } = this.state;
     if (!err) return this.props.children;
     return (

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ESCALATION_STATES, GRP_STATES, SLICE_STATES, TASK_STATES } from "../../states.ts";
+import { ESCALATION_STATES, GRP_STATES, SLICE_STATES, TASK_STATES } from "../states.ts";
 
 /**
  * What the panel is sent, declared once.

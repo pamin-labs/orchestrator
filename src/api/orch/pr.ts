@@ -1,6 +1,6 @@
 import { checkPrMessage } from "../../mech/git/prwatch.ts";
 import { z } from "zod";
-import { GroupRef } from "../fields.ts";
+import { GroupRef } from "../../contracts/fields.ts";
 import { bad, mayAct, resolveGroup, message, type AgentHandler } from "../shared.ts";
 import type { GrpState } from "../../states.ts";
 

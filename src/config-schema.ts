@@ -7,7 +7,7 @@ import { z } from "zod";
  * walked `DEFAULTS` at boot with its own `kind()` plus a `POSITIVE` set and a
  * `UNIONS` table; `settings.ts` walked the same defaults for the panel and
  * checked `typeof` only. The panel was the weaker one, and the gap was not
- * cosmetic: `POST /api/settings {path: "maxGroups", value: 0}` was accepted, and
+ * cosmetic: `POST /api/v1/settings {path: "maxGroups", value: 0}` was accepted, and
  * the scheduler's admission test is `busyGroups.size >= maxGroups()` — so zero
  * means no group turn is ever dispatched again. Silently, and the override is
  * persisted, so a restart does not clear it.
@@ -78,8 +78,8 @@ export const ConfigSchema = z.object({
   maxGroups: count,
   /** One number for the whole Runner pool, or one pool per resource tag. */
   leaseSlots: LeaseSlots,
-  /** Which interface to listen on. `127.0.0.1` unless something fronts it. */
-  host: z.string().min(1),
+  /** Boss routes have no remote auth. The process may only listen on loopback. */
+  host: z.enum(["127.0.0.1", "localhost", "::1"]),
   port: z.number().int().min(1).max(65535),
   /** provider -> difficulty -> model. One knob per family; adding one is a yaml block. */
   difficultyModel: z.record(z.string(), z.record(z.string(), z.string())),
@@ -238,7 +238,7 @@ export function schemaAt(path: string): z.ZodType | null {
   let node: z.ZodType = ConfigSchema;
   for (const key of path.split(".")) {
     if (!(node instanceof z.ZodObject)) return null;
-    const next: z.ZodType | undefined = node.shape[key];
+    const next = (node.shape as Record<string, z.ZodType>)[key];
     if (!next) return null;
     node = next;
   }

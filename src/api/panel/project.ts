@@ -2,7 +2,7 @@ import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { SandboxOverrideSchema, StoredProjectConfigSchema } from "../../config-schema.ts";
-import { JsonObject } from "../../http/respond.ts";
+import { JsonObject, JsonValue, jsonOr } from "../../contracts/json.ts";
 import { runInstall } from "../../mech/flow/start.ts";
 import { GateName } from "../../mech/gate.ts";
 import { baseBranch, listBranches, removeMirror } from "../../mech/git/checkout.ts";
@@ -12,11 +12,11 @@ import { allowedImage, killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { forgetProjectSkills } from "../../mech/skills.ts";
 import { projectConfig } from "../../mech/util/rows.ts";
-import { errText, jsonOr } from "../../mech/util/text.ts";
+import { errText } from "../../mech/util/text.ts";
 import type { Result } from "../../mech/util/validate.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
-import { IdParams } from "../fields.ts";
+import { IdParams } from "../../contracts/fields.ts";
 import { type AgentHandler, bad, type Handler, json, message } from "../shared.ts";
 
 /**
@@ -97,14 +97,14 @@ export const ProjectBody = z.object({
   gates: GateNames.optional(),
 });
 
-export const postProject = (async (ctx, _req, _p, b) => {
+export const postProject = (async (ctx, req, _p, b) => {
   const want = b.repo.trim();
   if (!want) return bad("which repository? (owner/name)");
   if (!ctx.gh) return bad("this server has no GitHub client");
 
   // Asked of GitHub rather than trusted from the browser: the default branch is
   // written into the row, and a wrong one is a group that branches off nothing.
-  const r = await ctx.gh.request("GET", `/repos/${want}`, GithubRepo);
+  const r = await ctx.gh.request("GET", `/repos/${want}`, GithubRepo, undefined, req.signal);
   if (!r.ok) return bad(r.message);
   const repoPath = r.data.full_name;
   const remote = r.data.clone_url;
@@ -347,8 +347,9 @@ function mergeProjectConfig(raw: string, patch: StoredConfigPatch): Result<{ con
   if (!current) return { ok: false, error: "项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置" };
 
   for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
     if (value === null) delete current[key];
-    else current[key] = value;
+    else current[key] = JsonValue.parse(value);
   }
   const checked = StoredProjectConfigSchema.safeParse(current);
   if (!checked.success) return { ok: false, error: z.prettifyError(checked.error) };

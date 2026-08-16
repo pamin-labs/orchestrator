@@ -34,21 +34,21 @@ async function replay(path: string, headers: HeadersInit, finalSeq: number): Pro
 const ids = (body: string) => [...body.matchAll(/^id: (\d+)$/gm)].map((match) => Number(match[1]));
 
 test("an initial stream replays the latest 500 events", async () => {
-  const seen = ids(await replay("/api/stream?since=0", {}, LAST_SEQ));
+  const seen = ids(await replay("/api/v1/stream?since=0", {}, LAST_SEQ));
   expect(seen).toHaveLength(500);
   expect(seen[0]).toBe(602);
   expect(seen.at(-1)).toBe(LAST_SEQ);
 });
 
 test("Last-Event-ID catches up a gap larger than one replay page", async () => {
-  const seen = ids(await replay("/api/stream?since=0", { "Last-Event-ID": "500" }, LAST_SEQ));
+  const seen = ids(await replay("/api/v1/stream?since=0", { "Last-Event-ID": "500" }, LAST_SEQ));
   expect(seen).toHaveLength(601);
   expect(seen[0]).toBe(501);
   expect(seen.at(-1)).toBe(LAST_SEQ);
 });
 
 test("the explicit query cursor is honored", async () => {
-  const seen = ids(await replay("/api/stream?since=1000", {}, LAST_SEQ));
+  const seen = ids(await replay("/api/v1/stream?since=1000", {}, LAST_SEQ));
   expect(seen).toHaveLength(101);
   expect(seen[0]).toBe(1_001);
   expect(seen.at(-1)).toBe(LAST_SEQ);

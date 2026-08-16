@@ -70,19 +70,22 @@ export function CredPane({
   return (
     <>
       <Head title="模型账号" note="真令牌不进沙盒" />
-      {RUNTIMES.map((r) => (
-        <Credential
-          key={r.key}
-          runtime={r}
-          current={rows.find((x) => x.runtime === r.key)}
-          // Only the account being logged into. One flag for both meant
-          // a claude login also froze codex's button for five minutes.
-          waiting={waiting === r.key}
-          claudeCoauthor={r.key === "claude" ? (prefs?.claudeCoauthor ?? true) : undefined}
-          onSaved={onSaved}
-          onWaitForLogin={(since) => onWaitForLogin(r.key, since)}
-        />
-      ))}
+      {RUNTIMES.map((r) => {
+        const current = rows.find((x) => x.runtime === r.key);
+        return (
+          <Credential
+            key={r.key}
+            runtime={r}
+            {...(current ? { current } : {})}
+            // Only the account being logged into. One flag for both meant
+            // a claude login also froze codex's button for five minutes.
+            waiting={waiting === r.key}
+            {...(r.key === "claude" ? { claudeCoauthor: prefs?.claudeCoauthor ?? true } : {})}
+            onSaved={onSaved}
+            onWaitForLogin={(since) => onWaitForLogin(r.key, since)}
+          />
+        );
+      })}
     </>
   );
 }

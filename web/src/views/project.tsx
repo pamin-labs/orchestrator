@@ -325,13 +325,23 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
   );
 }
 
-export const ImageChoicesSchema: z.ZodType<InferResponseType<typeof api.sandbox.images.$get, 200>> = z.object({
-  published: z.array(z.string()),
-  local: z.array(z.string()),
-  note: z.object({ published: z.string().optional(), local: z.string().optional() }),
-  current: z.string(),
-});
-type ImageChoices = z.infer<typeof ImageChoicesSchema>;
+type ImageChoices = InferResponseType<typeof api.sandbox.images.$get, 200>;
+export const ImageChoicesSchema = z
+  .object({
+    published: z.array(z.string()),
+    local: z.array(z.string()),
+    note: z.object({ published: z.string().optional(), local: z.string().optional() }),
+    current: z.string(),
+  })
+  .transform(
+    ({ note, ...choices }): ImageChoices => ({
+      ...choices,
+      note: {
+        ...(note.published !== undefined ? { published: note.published } : {}),
+        ...(note.local !== undefined ? { local: note.local } : {}),
+      },
+    }),
+  );
 
 /**
  * Which image a group's container is made from — picked, never typed.
@@ -428,7 +438,7 @@ function Row(props: {
           options={props.options}
           placeholder={props.placeholder}
           disabled={props.busy}
-          width={props.width}
+          {...(props.width !== undefined ? { width: props.width } : {})}
           onCommit={props.onSave}
         />
       ) : (

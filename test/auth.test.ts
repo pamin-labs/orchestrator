@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { makeApp } from "../src/api.ts";
 import { openMemory } from "../src/db.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 import { setTrailers } from "../src/mech/git/ghlogin.ts";
 import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
 import {
@@ -46,7 +46,7 @@ test("the real value never leaves the process except into the vault", () => {
   expect(env.CLAUDE_CODE_OAUTH_TOKEN!.startsWith("sk-ant-oat01-")).toBe(true);
 
   // And what the sidecar gets, bound to the one host it is for.
-  expect(credentials).toEqual([{ name: "claude", value: REAL, hosts: ["api.anthropic.com"], header: undefined }]);
+  expect(credentials).toEqual([{ name: "claude", value: REAL, hosts: ["api.anthropic.com"] }]);
 });
 
 test("an api key goes in the header the API wants, and can name its own endpoint", () => {
@@ -342,9 +342,9 @@ test("runtime and mode are one contract at the route and database boundaries", a
   ]) {
     expect(RuntimeAuthSchema.safeParse(body).success).toBe(false);
     const response = await app(
-      new Request("http://x/api/auth", {
+      new Request("http://x/api/v1/auth", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
         body: JSON.stringify(body),
       }),
     );
@@ -353,18 +353,18 @@ test("runtime and mode are one contract at the route and database boundaries", a
   expect(db.query<{ n: number }, []>("SELECT count(*) n FROM runtime_auth").get()!.n).toBe(0);
 
   const valid = await app(
-    new Request("http://x/api/auth", {
+    new Request("http://x/api/v1/auth", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ runtime: "codex", mode: "api_key", secret: "sk-valid" }),
     }),
   );
   expect(valid.status).toBe(200);
   expect(loadAuth(db, "codex")?.mode).toBe("api_key");
   const cleared = await app(
-    new Request("http://x/api/auth", {
+    new Request("http://x/api/v1/auth", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ runtime: "codex", clear: true }),
     }),
   );
@@ -414,7 +414,12 @@ test("the codex device login shows a code with its link, and stores what the con
   const ctx = testContext({ db, sandbox });
   const app = makeApp(ctx);
 
-  const r = await app(new Request("http://x/api/auth/codex/device", { method: "POST" }));
+  const r = await app(
+    new Request("http://x/api/v1/auth/codex/device", {
+      method: "POST",
+      headers: { "idempotency-key": crypto.randomUUID() },
+    }),
+  );
   expect(r.status).toBe(200);
   const b = DeviceLoginResponse.parse(await r.json());
   expect(b.code).toBe("T5M2-76TFM");
@@ -434,7 +439,12 @@ test("the codex device login shows a code with its link, and stores what the con
 
   // Single-flight: a second click hands back the same pair rather than printing
   // a second code, which would invalidate the first.
-  const again = await app(new Request("http://x/api/auth/codex/device", { method: "POST" }));
+  const again = await app(
+    new Request("http://x/api/v1/auth/codex/device", {
+      method: "POST",
+      headers: { "idempotency-key": crypto.randomUUID() },
+    }),
+  );
   expect(z.object({ code: z.string() }).parse(await again.json()).code).toBe("T5M2-76TFM");
 });
 

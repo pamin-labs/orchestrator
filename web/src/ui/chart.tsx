@@ -122,7 +122,7 @@ export function SplitDonut({ rows }: { rows: { label: string; tokens: number }[]
               isAnimationActive={false}
             >
               {list.map((r, i) => (
-                <Cell key={r.label} fill={RAMP[i % RAMP.length]} />
+                <Cell key={r.label} {...(RAMP[i % RAMP.length] ? { fill: RAMP[i % RAMP.length] } : {})} />
               ))}
             </Pie>
             <Tooltip

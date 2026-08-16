@@ -23,7 +23,7 @@ import { Segment, Segments, Toggles } from "../ui/segment";
 import { Switch } from "../ui/switch";
 import { Help, Tip } from "../ui/tooltip";
 import { z } from "zod";
-import type { Json } from "../../../src/http/respond";
+import type { Json } from "../../../src/contracts/json";
 import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../src/config-schema";
 import type { InferResponseType } from "hono/client";
 
@@ -325,12 +325,16 @@ export function Knobs({ section }: { section: KnobSection }) {
   // 模型与预算 read three different paths, and a section that shows one of them
   // still needs the other two to know what to offer.
   const at = (path: string) => (knobs ?? []).find((k) => k.path === path)?.value;
+  const indexRuntime = ConfigSchema.shape.indexModel.shape.runtime.optional().parse(at("indexModel.runtime"));
+  const indexModel = ConfigSchema.shape.indexModel.shape.model.optional().parse(at("indexModel.model"));
+  const difficultyModel = ConfigSchema.shape.difficultyModel.optional().parse(at("difficultyModel"));
+  const contextWindow = ConfigSchema.shape.contextWindow.optional().parse(at("contextWindow"));
   const src: ModelSources = {
-    difficultyModel: ConfigSchema.shape.difficultyModel.optional().parse(at("difficultyModel")),
-    contextWindow: ConfigSchema.shape.contextWindow.optional().parse(at("contextWindow")),
+    ...(difficultyModel !== undefined ? { difficultyModel } : {}),
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
     indexModel: {
-      runtime: ConfigSchema.shape.indexModel.shape.runtime.optional().parse(at("indexModel.runtime")),
-      model: ConfigSchema.shape.indexModel.shape.model.optional().parse(at("indexModel.model")),
+      ...(indexRuntime !== undefined ? { runtime: indexRuntime } : {}),
+      ...(indexModel !== undefined ? { model: indexModel } : {}),
     },
   };
   const rows = (knobs ?? []).filter((k) => spec.paths.includes(k.path));
@@ -357,9 +361,10 @@ export function Knobs({ section }: { section: KnobSection }) {
         // meet, which reads as a list that lost a row.
         <FieldGroup>
           {section === "notify" && <Permission />}
-          {rows.map((k) => (
-            <Row key={k.path} knob={k} mate={knobs.find((x) => x.path === PAIRED[k.path])} src={src} onWrite={write} />
-          ))}
+          {rows.map((k) => {
+            const mate = knobs.find((x) => x.path === PAIRED[k.path]);
+            return <Row key={k.path} knob={k} {...(mate ? { mate } : {})} src={src} onWrite={write} />;
+          })}
         </FieldGroup>
       )}
     </div>
@@ -426,11 +431,11 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate?: Knob; src: Model
     <Value
       id={id}
       knob={knob}
-      mate={mate}
+      {...(mate ? { mate } : {})}
       src={src}
-      bad={bad?.at}
+      {...(bad ? { bad: bad.at } : {})}
       onWrite={write}
-      onWriteMate={mate ? (v) => void put(mate, v) : undefined}
+      {...(mate ? { onWriteMate: (v: Json) => void put(mate, v) } : {})}
       onRefuse={refuse}
       onClear={clear}
     />
@@ -511,7 +516,7 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
           map={rec(knob.value)}
           kind="int"
           keyPh="闸门名"
-          bad={bad}
+          {...(bad !== undefined ? { bad } : {})}
           onWrite={onWrite}
           onRefuse={onRefuse}
           onClear={onClear}
@@ -523,14 +528,20 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
           map={rec(knob.value)}
           kind="text"
           keyPh={ph ?? "挂载点"}
-          bad={bad}
+          {...(bad !== undefined ? { bad } : {})}
           onWrite={onWrite}
           onRefuse={onRefuse}
           onClear={onClear}
         />
       );
     case "sandbox.denyDomains":
-      return <Lines list={ConfigSchema.shape.sandbox.shape.denyDomains.parse(knob.value)} ph={ph} onWrite={onWrite} />;
+      return (
+        <Lines
+          list={ConfigSchema.shape.sandbox.shape.denyDomains.parse(knob.value)}
+          {...(ph !== undefined ? { ph } : {})}
+          onWrite={onWrite}
+        />
+      );
     default:
       return null;
   }
@@ -830,7 +841,7 @@ function CountAmount({
       unit={unit}
       units={COUNT_UNITS}
       label={label}
-      invalid={invalid}
+      {...(invalid !== undefined ? { invalid } : {})}
       onCommit={(next, u) => onWrite(countOf(next, u))}
     />
   );
@@ -857,7 +868,7 @@ function ModelPick({
   return (
     <Combobox
       free
-      disabled={disabled}
+      {...(disabled !== undefined ? { disabled } : {})}
       value={value}
       options={options}
       placeholder="模型 id"
@@ -1121,9 +1132,9 @@ function Windows({
           <CountAmount value={Number(v)} label={k} onWrite={(n) => onWrite({ ...map, [k]: n })} />
           <RemoveRow
             name={k}
-            onRemove={
-              k === DEFAULT_KEY ? undefined : () => onWrite(Object.fromEntries(entries.filter(([ek]) => ek !== k)))
-            }
+            {...(k !== DEFAULT_KEY
+              ? { onRemove: () => onWrite(Object.fromEntries(entries.filter(([ek]) => ek !== k))) }
+              : {})}
           />
         </div>
       ))}

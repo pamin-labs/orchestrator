@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { kvArgs, parseArgs } from "../src/orch/cli.ts";
-import { Id } from "../src/api/fields.ts";
+import { Id } from "../src/contracts/fields.ts";
 import { MailBody } from "../src/api/orch/messaging.ts";
 
 test("flags, positionals and pass-through are kept separate", () => {

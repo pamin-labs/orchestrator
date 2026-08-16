@@ -35,7 +35,7 @@ export function splitAttachments(body: string): { text: string; files: Attached[
       label: m[1] ?? "",
       name: path.split("/").pop() ?? path,
       path,
-      url: `/api/attach/${encodeURIComponent(path.split("/").pop() ?? "")}`,
+      url: `/api/v1/attach/${encodeURIComponent(path.split("/").pop() ?? "")}`,
       image: !!m[3],
     });
   }

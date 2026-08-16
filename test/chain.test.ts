@@ -9,7 +9,7 @@ import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 
 function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: boolean } = {}) {
   const db: DB = openMemory();
@@ -62,11 +62,16 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
       new Request(`http://x${path}`, {
         method: "POST",
         body: JSON.stringify(body ?? {}),
-        headers: { "content-type": "application/json", ...(token ? { "x-orch-token": token } : {}) },
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": crypto.randomUUID(),
+          ...(token ? { "x-orch-token": token } : {}),
+        },
       }),
     );
 
-  return { db, ctx, sched, ask, notified, post, deps: { ctx, notifyBoss: ctx.notifyBoss } };
+  const deps = { ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) };
+  return { db, ctx, sched, ask, notified, post, deps };
 }
 
 const jobsFor = (db: DB) =>
@@ -275,9 +280,9 @@ test("triage records the boss's words verbatim on the blackboard, once", () => {
 });
 
 test("both triage doors spell the verbs from TRIAGE, not each from its own copy", () => {
-  // They did not. `/api/say` declared `as: z.string().max(40)` and re-listed the
+  // They did not. `/api/v1/say` declared `as: z.string().max(40)` and re-listed the
   // three words inside the handler behind an unchecked `as Triage`, while
-  // `/orch/triage` had its own `z.enum`. A fourth verb added to `Triage` would
+  // `/orch/v1/triage` had its own `z.enum`. A fourth verb added to `Triage` would
   // have compiled against both and been refused at runtime by one of them, and
   // the schema was meanwhile telling every caller it took any 40-character
   // string. This fails if one door is updated and the other is not.
@@ -291,23 +296,23 @@ test("both triage doors spell the verbs from TRIAGE, not each from its own copy"
 
 test("only the CoS triages, and only reviewers answer their own level", async () => {
   const h = harness({ withCos: true });
-  expect((await h.post("/orch/triage", { group_id: 1, as: "patch", note: "x" }, "tok-eng")).status).toBe(422);
-  expect((await h.post("/orch/triage", { group_id: 1, as: "nonsense", note: "x" }, "tok-cos")).status).toBe(400);
-  expect((await h.post("/orch/triage", { group_id: 1, as: "patch", note: "x" }, "tok-cos")).status).toBe(200);
+  expect((await h.post("/orch/v1/triage", { group_id: 1, as: "patch", note: "x" }, "tok-eng")).status).toBe(422);
+  expect((await h.post("/orch/v1/triage", { group_id: 1, as: "nonsense", note: "x" }, "tok-cos")).status).toBe(400);
+  expect((await h.post("/orch/v1/triage", { group_id: 1, as: "patch", note: "x" }, "tok-cos")).status).toBe(200);
 });
 
 test("an answer-chain token cannot answer another level or group's question", async () => {
   const h = harness({ withArchitect: true });
   const id = h.ask("where should the seam go?");
 
-  expect((await h.post("/orch/answer", { escalation_id: id, answer: "guess" }, "tok-eng")).status).toBe(422);
-  expect((await h.post("/orch/answer", { escalation_id: id, answer: "skip" }, "tok-arch")).status).toBe(422);
+  expect((await h.post("/orch/v1/answer", { escalation_id: id, answer: "guess" }, "tok-eng")).status).toBe(422);
+  expect((await h.post("/orch/v1/answer", { escalation_id: id, answer: "skip" }, "tok-arch")).status).toBe(422);
 
   h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g2', 'RUNNING', 0)");
   h.db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 2, 'pm', 'm', 'tok-pm-2', 0)",
   );
-  expect((await h.post("/orch/answer", { escalation_id: id, abstain: true }, "tok-pm-2")).status).toBe(422);
+  expect((await h.post("/orch/v1/answer", { escalation_id: id, abstain: true }, "tok-pm-2")).status).toBe(422);
   expect(
     h.db.query<{ chain_state: string }, [number]>("SELECT chain_state FROM escalation WHERE id = ?").get(id)!
       .chain_state,
@@ -320,7 +325,7 @@ test("the agent-side answer verb routes through the same chain the boss uses", a
   let got = "";
   h.ctx.waiters.set(`escalation:${id}`, (v) => (got = v));
 
-  const r = await h.post("/orch/answer", { escalation_id: id, answer: "at the middleware boundary" }, "tok-pm");
+  const r = await h.post("/orch/v1/answer", { escalation_id: id, answer: "at the middleware boundary" }, "tok-pm");
   expect(r.status).toBe(200);
   expect(got).toBe("at the middleware boundary");
 });
@@ -328,7 +333,7 @@ test("the agent-side answer verb routes through the same chain the boss uses", a
 test("abstaining over the wire passes the question up", async () => {
   const h = harness({ withArchitect: true });
   const id = h.ask("where should the seam go?");
-  await h.post("/orch/answer", { escalation_id: id, abstain: true, why: "design call" }, "tok-pm");
+  await h.post("/orch/v1/answer", { escalation_id: id, abstain: true, why: "design call" }, "tok-pm");
   expect(
     h.db.query<{ chain_state: string }, [number]>("SELECT chain_state FROM escalation WHERE id = ?").get(id)!
       .chain_state,
@@ -349,7 +354,7 @@ test("mailing a role that has no agent yet hires one instead of doing nothing", 
   };
 
   const r = await h.post(
-    "/orch/mail",
+    "/orch/v1/mail",
     { target: "architect", intent: "ask", body: "objection to this split?" },
     "tok-eng",
   );
@@ -363,7 +368,7 @@ test("mailing a role that has no agent yet hires one instead of doing nothing", 
 test("mailing a role that does not exist says so, and lists what does", async () => {
   const h = harness();
   h.ctx.knownRoles = () => ["pm", "architect"];
-  const r = await h.post("/orch/mail", { target: "wizard", intent: "ask", body: "hi" }, "tok-eng");
+  const r = await h.post("/orch/v1/mail", { target: "wizard", intent: "ask", body: "hi" }, "tok-eng");
   expect(r.status).toBe(422);
   const text = await r.text();
   expect(text).toContain("no such recipient");
@@ -401,7 +406,7 @@ test("a reply reaches the existing holder of a role instead of hiring a second o
 
   // The Architect has no group, so a role lookup scoped to its own group would
   // find nothing and hire — which is how one project paid for two opus Dispatchers.
-  const r = await h.post("/orch/mail", { target: "dispatcher", intent: "inform", body: "objection: …" }, "tok-arch");
+  const r = await h.post("/orch/v1/mail", { target: "dispatcher", intent: "inform", body: "objection: …" }, "tok-arch");
   expect(r.status).toBe(200);
   expect(hires).toBe(0);
   const woken = h.db.query<{ agent_id: number }, []>("SELECT agent_id FROM job WHERE kind = 'agent_turn'").get()!;
@@ -421,7 +426,7 @@ test("a standing agent's mail is filed under the recipient's group, not nowhere"
   );
 
   await h.post(
-    "/orch/mail",
+    "/orch/v1/mail",
     { target: "dispatcher", intent: "inform", body: "反对：locale 推断与验收冲突" },
     "tok-arch",
   );
@@ -445,7 +450,7 @@ test("an empty mail body is refused instead of waking someone with nothing to re
   );
   // What a real run produced: the Dispatcher invented `--wait`, the parser took
   // it as a flag, and the mail went out with no message at all.
-  const r = await h.post("/orch/mail", { target: "architect", intent: "ask", body: "" }, "tok-e");
+  const r = await h.post("/orch/v1/mail", { target: "architect", intent: "ask", body: "" }, "tok-e");
   expect(r.status).toBe(422);
   const said = await r.text();
   expect(said).toContain("empty body");
@@ -460,7 +465,7 @@ test("the boss can hand a question to the Architect instead of answering it", as
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
   );
   const id = h.ask("用哪个校验库？");
-  const r = await h.post(`/api/escalations/${id}/delegate`, { to: "architect" });
+  const r = await h.post(`/api/v1/escalations/${id}/delegate`, { to: "architect" });
   expect(r.status).toBe(200);
   expect(await r.json()).toEqual({ message: "architect" });
   // The Architect is actually woken, not just recorded as the new owner.
@@ -475,7 +480,7 @@ test("the boss can hand a question to the Architect instead of answering it", as
 test("delegating to the boss is refused — that is where it already is", async () => {
   const h = harness();
   const id = h.ask("x");
-  const r = await h.post(`/api/escalations/${id}/delegate`, { to: "boss" });
+  const r = await h.post(`/api/v1/escalations/${id}/delegate`, { to: "boss" });
   expect(r.status).toBe(400);
 });
 

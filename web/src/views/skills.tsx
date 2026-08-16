@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Head, Input, Meta } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -30,16 +30,16 @@ export function Skills({ projectId }: { projectId: number | null }) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const d = await readApi(
       api.skills.$get({ query: { project: String(projectId ?? "") } }),
       z.object({ skills: z.array(SkillSchema) }),
     );
     setRows(d?.skills ?? []);
-  };
+  }, [projectId]);
   useEffect(() => {
     void load();
-  }, [projectId]);
+  }, [load]);
 
   // Two different things, counted separately. `restageSkills` builds the mount from
   // user-scope skills only, so a project skill was inflating a fraction that claims

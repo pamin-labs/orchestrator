@@ -4,7 +4,7 @@ import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { snapshot } from "../src/api/panel/snapshot.ts";
-import * as S from "../src/api/panel/shapes.ts";
+import * as S from "../src/contracts/panel.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { loadConfig } from "../src/config.ts";

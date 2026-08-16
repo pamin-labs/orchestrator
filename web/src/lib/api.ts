@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
-import type { Json } from "../../../src/http/respond.ts";
+import type { Json } from "../../../src/contracts/json.ts";
 import { hc, type InferResponseType } from "hono/client";
-import type { ApiType } from "../../../src/api.ts";
-import { displayJson, readJsonResponse, TextResponseSchema } from "../../../src/http/respond.ts";
+import type { ApiType } from "../../../src/http/routes/panel.ts";
+import { displayJson, readJsonResponse, TextResponseSchema } from "../../../src/contracts/protocol.ts";
 
 /**
  * The payload types, from the server that produces them.
@@ -20,7 +20,7 @@ import { displayJson, readJsonResponse, TextResponseSchema } from "../../../src/
  * responses at runtime: a compile-time contract cannot validate bytes returned
  * by an older or broken server.
  */
-import { CostReportSchema, type CostReport } from "../../../src/mech/ops/cost.ts";
+import { CostReportSchema, type CostReport } from "../../../src/contracts/cost.ts";
 import {
   SnapshotSchema,
   type Agent,
@@ -29,8 +29,8 @@ import {
   type Group,
   type Slice,
   type Snapshot,
-} from "../../../src/api/panel/shapes.ts";
-import { FrameSchema } from "../../../src/bus.ts";
+} from "../../../src/contracts/panel.ts";
+import { FrameSchema } from "../../../src/contracts/events.ts";
 
 export type { Agent, Archived, Escalation, Group, Slice };
 export type State = Snapshot;
@@ -39,7 +39,20 @@ export type Cost = CostReport;
 export type AgentCost = CostReport["agents"][number];
 
 /** What was actually built, for the one decision that cannot be taken back. */
-export const api = hc<ApiType>("/api");
+const browserFetch: typeof fetch = Object.assign(
+  (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
+    const method = input instanceof Request ? input.method : (init?.method ?? "GET");
+    headers.set("X-Request-ID", crypto.randomUUID());
+    if (!["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) {
+      headers.set("Idempotency-Key", crypto.randomUUID());
+    }
+    return fetch(input, { ...init, headers });
+  },
+  { preconnect: fetch.preconnect },
+);
+
+export const api = hc<ApiType>("/api/v1", { fetch: browserFetch });
 
 export const EvidenceSchema: z.ZodType<InferResponseType<(typeof api.slices)[":id"]["evidence"]["$get"], 200>> =
   z.object({
@@ -234,8 +247,8 @@ function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[]
       projectId: f.projectId ?? null,
       at,
       author: f.author,
-      target: f.target,
-      intent: f.intent,
+      ...(f.target !== undefined ? { target: f.target } : {}),
+      ...(f.intent !== undefined ? { intent: f.intent } : {}),
       // Stored event bodies are optional; timeline text is not. Keep a broken
       // producer visible as a blank row instead of weakening PanelFrame's type.
       text: f.body ?? "",
@@ -368,20 +381,20 @@ export function useOrch() {
    * leading: the last frame of a burst is the one whose state we want to show.
    */
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const nudge = () => {
+  const nudge = useCallback(() => {
     if (pending.current) return;
     pending.current = setTimeout(() => {
       pending.current = null;
       void queries.invalidateQueries({ queryKey: ORCH });
     }, 250);
-  };
+  }, [queries]);
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
     // Replay a short tail so the timeline has content on load: exactly lastSeq
     // would be correct and useless, sitting empty until something moved.
-    const es = new EventSource("/api/stream?since=0");
+    const es = new EventSource("/api/v1/stream?since=0");
     es.onopen = () => setLive("live");
     es.onerror = () => setLive("retry");
     es.onmessage = (m) => {
@@ -394,16 +407,30 @@ export function useOrch() {
       if (!f.success) return;
       if (f.data.kind === "notify") {
         const meta = NotificationMetaSchema.safeParse(f.data.meta);
-        return void raise({ body: f.data.body ?? "", at: f.data.at, meta: meta.success ? meta.data : undefined });
+        return void raise({
+          body: f.data.body ?? "",
+          at: f.data.at,
+          ...(meta.success
+            ? {
+                meta: {
+                  ...(meta.data.url !== undefined ? { url: meta.data.url } : {}),
+                  ...(meta.data.title !== undefined ? { title: meta.data.title } : {}),
+                },
+              }
+            : {}),
+        });
       }
       setFrames((prev) => appendFrame(prev, f.data, liveSeq));
       if (["state_change", "escalation", "note"].includes(f.data.kind)) nudge();
     };
-  }, []);
+  }, [nudge]);
 
-  const refresh = (projectId?: number | null) => {
-    if (projectId !== undefined) setProject(projectId);
-    void queries.invalidateQueries({ queryKey: ORCH });
-  };
+  const refresh = useCallback(
+    (projectId?: number | null) => {
+      if (projectId !== undefined) setProject(projectId);
+      void queries.invalidateQueries({ queryKey: ORCH });
+    },
+    [queries],
+  );
   return { state: state.data, cost: cost.data ?? null, frames, live, refresh };
 }

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { bad, json, message, type Handler } from "../shared.ts";
 import { ConfigSchema, SettingWriteSchema, type SettingPath, type SettingValue } from "../../config-schema.ts";
 import type { Config } from "../../config.ts";
-import type { Json } from "../../http/respond.ts";
+import type { Json } from "../../contracts/json.ts";
 
 type SettingRowFor<P extends SettingPath> = {
   path: P;

@@ -13,9 +13,9 @@ import { fakeSandbox } from "./fake-sandbox.ts";
 import { routeCalls } from "./route-source.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { loadConfig } from "../src/config.ts";
-import { SnapshotSchema } from "../src/api/panel/shapes.ts";
+import { SnapshotSchema } from "../src/contracts/panel.ts";
 import { z } from "zod";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 import type { Github } from "../src/mech/git/github.ts";
 
 const BoundaryPayload = z.object({ boundary: z.array(z.object({ id: z.number() })) });
@@ -75,12 +75,16 @@ const post = (app: (r: Request) => Promise<Response>, path: string, body?: Json,
       // Both real callers set it — `orch` at cli.ts and the mailbox replay — and
       // the server now refuses an unlabelled body outright rather than silently
       // treating it as no body at all.
-      headers: { "content-type": "application/json", ...(token ? { "x-orch-token": token } : {}) },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        ...(token ? { "x-orch-token": token } : {}),
+      },
     }),
   );
 const get = (app: (r: Request) => Promise<Response>, path: string) => app(new Request(`http://x${path}`));
 const state = async (app: (r: Request) => Promise<Response>) =>
-  SnapshotSchema.parse(await (await get(app, "/api/state")).json());
+  SnapshotSchema.parse(await (await get(app, "/api/v1/state")).json());
 const withToken = (app: (r: Request) => Promise<Response>, path: string, token: string) =>
   app(new Request(`http://x${path}`, { headers: { "x-orch-token": token } }));
 const githubAnswer = (data: Json): Github => ({
@@ -88,9 +92,39 @@ const githubAnswer = (data: Json): Github => ({
   request: async (_method, _path, schema) => ({ ok: true, status: 200, data: schema.parse(data) }),
 });
 
+test("the versioned protocol has no legacy route aliases", async () => {
+  const { app } = harness();
+  expect((await get(app, "/api/v1/state")).status).toBe(200);
+  expect((await get(app, "/api/state")).status).toBe(404);
+  expect((await post(app, "/orch/status", { text: "legacy" }, "tok-eng")).status).toBe(404);
+});
+
+test("mutating routes replay one result and reject key reuse with another payload", async () => {
+  const { app, db } = harness();
+  const send = (text: string) =>
+    app(
+      new Request("http://x/api/v1/ideas", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idea-once" },
+        body: JSON.stringify({ project_id: 1, text }),
+      }),
+    );
+
+  const first = await send("add one durable feature");
+  const firstBody = await first.json();
+  const replay = await send("add one durable feature");
+  expect(await replay.json()).toEqual(firstBody);
+  expect(replay.headers.get("idempotency-replayed")).toBe("true");
+  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM grp").get()!.n).toBe(2);
+
+  const conflict = await send("a different feature");
+  expect(conflict.status).toBe(409);
+  expect(await conflict.json()).toMatchObject({ code: "idempotency_conflict" });
+});
+
 test("an over-long journal is rejected with a reason the agent can act on", async () => {
   const { app } = harness();
-  const r = await post(app, "/orch/journal", { kind: "journal", body: "a\nb\nc\nd\ne\nf\ng" }, "tok-eng");
+  const r = await post(app, "/orch/v1/journal", { kind: "journal", body: "a\nb\nc\nd\ne\nf\ng" }, "tok-eng");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("max 6");
 });
@@ -101,7 +135,7 @@ test("journal writes a note and exports journal/retro into the checkout", async 
 
   const r = await post(
     app,
-    "/orch/journal",
+    "/orch/v1/journal",
     { kind: "journal", body: "Moved token check into middleware.", files: ["auth/mw.ts"] },
     "tok-eng",
   );
@@ -124,25 +158,25 @@ test("journal writes a note and exports journal/retro into the checkout", async 
 test("a fact never gets exported to git — only journal/retro/decision do", async () => {
   const _wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
   const { app, db } = harness();
-  await post(app, "/orch/journal", { kind: "fact", body: "boss prefers iteration" }, "tok-eng");
+  await post(app, "/orch/v1/journal", { kind: "fact", body: "boss prefers iteration" }, "tok-eng");
   const note = db.query<{ export_path: string | null }, []>("SELECT export_path FROM note").get()!;
   expect(note.export_path).toBeNull();
 });
 
 test("mail rejects intents outside the five", async () => {
   const { app } = harness();
-  const r = await post(app, "/orch/mail", { target: "qa", intent: "handoff", body: "x" }, "tok-eng");
+  const r = await post(app, "/orch/v1/mail", { target: "qa", intent: "handoff", body: "x" }, "tok-eng");
   expect(r.status).toBe(400);
   expect(await r.text()).toContain("ask, request, inform, note, decision");
 });
 
 test("a waking intent enqueues a turn for the named target; note does not", async () => {
   const { app, db } = harness();
-  await post(app, "/orch/mail", { target: "qa", intent: "request", body: "please verify" }, "tok-eng");
+  await post(app, "/orch/v1/mail", { target: "qa", intent: "request", body: "please verify" }, "tok-eng");
   let jobs = db.query<{ agent_id: number }, []>("SELECT agent_id FROM job WHERE kind = 'agent_turn'").all();
   expect(jobs.map((j) => j.agent_id)).toEqual([2]);
 
-  await post(app, "/orch/mail", { target: "qa", intent: "note", body: "fyi" }, "tok-eng");
+  await post(app, "/orch/v1/mail", { target: "qa", intent: "note", body: "fyi" }, "tok-eng");
   jobs = db.query<{ agent_id: number }, []>("SELECT agent_id FROM job WHERE kind = 'agent_turn'").all();
   expect(jobs.length).toBe(1);
 });
@@ -151,7 +185,7 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
   const { app, db, ctx } = harness((_cmd) => ({ code: 0, out: "deadbeef\n" }));
   const pending = post(
     app,
-    "/orch/ask-boss",
+    "/orch/v1/ask-boss",
     {
       severity: "blocker",
       question: "which validation library?",
@@ -195,7 +229,7 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
     checkpoint_sha: "deadbeef",
   });
 
-  const ans = await post(app, "/api/escalations/1/answer", { answer: "use zod" });
+  const ans = await post(app, "/api/v1/escalations/1/answer", { answer: "use zod" });
   expect(ans.status).toBe(200);
 
   const r = await pending;
@@ -206,7 +240,7 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
 
 test("reserved ask-boss questions start at the boss after filing", async () => {
   const { app, db } = harness();
-  const pending = post(app, "/orch/ask-boss", { question: "what is the API token?" }, "tok-eng");
+  const pending = post(app, "/orch/v1/ask-boss", { question: "what is the API token?" }, "tok-eng");
   await Bun.sleep(5);
 
   const row = db
@@ -216,13 +250,13 @@ test("reserved ask-boss questions start at the boss after filing", async () => {
   // skip every stand-in. Both policies used to be a second UPDATE after the INSERT.
   expect(row).toEqual({ severity: "advisory", chain_state: "boss" });
 
-  await post(app, "/api/escalations/1/answer", { answer: "do not disclose it" });
+  await post(app, "/api/v1/escalations/1/answer", { answer: "do not disclose it" });
   expect(await (await pending).json()).toEqual({ message: "do not disclose it" });
 });
 
 test("an unknown lease resource says how to get one added", async () => {
   const { app } = harness();
-  const r = await post(app, "/orch/lease", { resource: "unity", args: {} }, "tok-eng");
+  const r = await post(app, "/orch/v1/lease", { resource: "unity", args: {} }, "tok-eng");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("Ask the boss");
 });
@@ -233,14 +267,14 @@ test("a lease with bad args never reaches the queue", async () => {
     `INSERT INTO resource (name, template, arg_schema_json) VALUES
      ('build', 'make {target}', '{"target":{"type":"enum","values":["debug","release"]}}')`,
   );
-  const r = await post(app, "/orch/lease", { resource: "build", args: { target: "prod; rm -rf ~" } }, "tok-eng");
+  const r = await post(app, "/orch/v1/lease", { resource: "build", args: { target: "prod; rm -rf ~" } }, "tok-eng");
   expect(r.status).toBe(422);
   expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM lease").get()!.c).toBe(0);
 });
 
 test("dropping an idea creates a PLANNING group, a channel, and a dispatcher turn", async () => {
   const { app, db } = harness();
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "add rate limiting to the API" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "add rate limiting to the API" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
 
   // PLANNING, not DRAFT: the Dispatcher has to run before there is anything to
@@ -269,7 +303,7 @@ test("dropping an idea creates a PLANNING group, a channel, and a dispatcher tur
 test("the only group in a project skips the boundary step", async () => {
   const { app, db } = harness();
   db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "idea" });
   const { grp_id, boundaryNeeded } = IdeaResponse.parse(await r.json());
   expect(boundaryNeeded).toBe(false);
   const roles = db
@@ -281,7 +315,7 @@ test("the only group in a project skips the boundary step", async () => {
 
 test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approval", async () => {
   const { app, db, sched, ran } = harness();
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   await sched.drain();
   // Both planning turns DO run: without them the boss has nothing to approve.
@@ -302,7 +336,7 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
     [grp_id],
   );
-  const filed = await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
+  const filed = await post(app, "/orch/v1/draft", { group_id: grp_id, card }, "tok-disp");
   expect(filed.status).toBe(200);
   expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe(
     "DRAFT",
@@ -315,7 +349,7 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
   // Sampled before the call: tick() invokes the executor synchronously, so the
   // turn is already counted by the time the response comes back.
   const planningTurns = ran.length;
-  const ok = await post(app, `/api/draft/${grp_id}/approve`);
+  const ok = await post(app, `/api/v1/draft/${grp_id}/approve`);
   expect(ok.status).toBe(200);
   expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe(
     "RUNNING",
@@ -342,7 +376,7 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
 
 test("a malformed card is refused both when filed and when approved", async () => {
   const { app, db } = harness();
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
@@ -350,22 +384,22 @@ test("a malformed card is refused both when filed and when approved", async () =
   );
 
   // Validated where it is filed, so the boss is never shown a broken card.
-  const filed = await post(app, "/orch/draft", { group_id: grp_id, card: "目标 : only this" }, "tok-disp");
+  const filed = await post(app, "/orch/v1/draft", { group_id: grp_id, card: "目标 : only this" }, "tok-disp");
   expect(filed.status).toBe(422);
   expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe(
     "PLANNING",
   );
 
   // …and again on the edit-then-approve path.
-  const approved = await post(app, `/api/draft/${grp_id}/approve`, { card: "目标 : still broken" });
+  const approved = await post(app, `/api/v1/draft/${grp_id}/approve`, { card: "目标 : still broken" });
   expect(approved.status).toBe(422);
 });
 
 test("sending a DRAFT back records the reason and re-runs the dispatcher", async () => {
   const { app, db } = harness();
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
-  await post(app, `/api/draft/${grp_id}/reject`, { reason: "wrong layer" });
+  await post(app, `/api/v1/draft/${grp_id}/reject`, { reason: "wrong layer" });
 
   const notes = db.query<{ body: string }, [number]>("SELECT body FROM note WHERE grp_id = ? ORDER BY id").all(grp_id);
   expect(notes.at(-1)!.body).toContain("wrong layer");
@@ -378,7 +412,7 @@ test("sending a DRAFT back records the reason and re-runs the dispatcher", async
 test("pause is PAUSING only while something is in flight, PAUSED once idle", async () => {
   const { app, db } = harness();
   db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('agent_turn', 1, 'running', 0)");
-  const r = await (await post(app, "/api/groups/1/pause")).json();
+  const r = await (await post(app, "/api/v1/groups/1/pause")).json();
   // An in-flight turn cannot be steered, so claiming PAUSED would be a lie —
   // and the reply says how many turns it is waiting on.
   expect(r).toEqual({ status: "PAUSING", waiting: 1 });
@@ -386,7 +420,7 @@ test("pause is PAUSING only while something is in flight, PAUSED once idle", asy
 
   db.run("UPDATE job SET state = 'done'");
   db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 1");
-  const idle = await (await post(app, "/api/groups/1/pause")).json();
+  const idle = await (await post(app, "/api/v1/groups/1/pause")).json();
   expect(idle).toEqual({ status: "PAUSED", waiting: 0 });
 });
 
@@ -394,7 +428,7 @@ test("park cancels queued work and leaves the worktree alone", async () => {
   const { app, db, sched } = harness();
   sched.enqueue("agent_turn", { grp_id: 1 });
   sched.enqueue("agent_turn", { grp_id: 1 });
-  await post(app, "/api/groups/1/park");
+  await post(app, "/api/v1/groups/1/park");
   const states = db
     .query<{ state: string }, []>("SELECT state FROM job")
     .all()
@@ -406,7 +440,7 @@ test("park cancels queued work and leaves the worktree alone", async () => {
 test("rejecting a slice records the feedback as a fact and re-runs the group", async () => {
   const { app, db } = harness();
   db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 1, 'S1', 'tests', 0)");
-  await post(app, "/api/slices/1/reject", { feedback: "tests are too shallow" });
+  await post(app, "/api/v1/slices/1/reject", { feedback: "tests are too shallow" });
 
   expect(db.query<{ status: string }, []>("SELECT status FROM slice WHERE id = 1").get()!.status).toBe("rejected");
   expect(db.query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'fact'").get()!.body).toContain(
@@ -420,7 +454,7 @@ test("ctx query is capped so it never costs more than the file it replaces", asy
   const ins = db.prepare("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'fact', 'zh', ?, 0)");
   for (let i = 0; i < 200; i++) ins.run(`middleware note ${i} ` + "x".repeat(400));
 
-  const r = await post(app, "/orch/ctx/query", { question: "middleware token check" }, "tok-eng");
+  const r = await post(app, "/orch/v1/ctx/query", { question: "middleware token check" }, "tok-eng");
   const { message: out } = MessageResponse.parse(await r.json());
   expect(out.length).toBeLessThanOrEqual(16_000);
   expect(out).toContain("middleware");
@@ -431,7 +465,7 @@ test("ctx query with no hits tells the agent what to do instead of returning jun
   // No slices either, or the group's acceptance criteria would legitimately come
   // back as the frame for any question.
   db.run("DELETE FROM slice");
-  const r = await post(app, "/orch/ctx/query", { question: "quantum tunnelling" }, "tok-eng");
+  const r = await post(app, "/orch/v1/ctx/query", { question: "quantum tunnelling" }, "tok-eng");
   const out = await r.text();
   expect(out).toContain("nothing on the blackboard matches");
   expect(out).toContain("orch mail pm");
@@ -449,32 +483,32 @@ test("state snapshot carries everything the three views need", async () => {
 test("a missing or bogus token is refused everywhere", async () => {
   const { app } = harness();
   // Every verb, not a sample of five. The check lives on the mount now, so this
-  // is what says a new route cannot be added under `/orch` without it.
+  // is what says a new route cannot be added under `/orch/v1` without it.
   const paths = [
-    "/orch/status",
-    "/orch/journal",
-    "/orch/mail",
-    "/orch/ask-boss",
-    "/orch/setup",
-    "/orch/lease",
-    "/orch/ctx/query",
-    "/orch/task/claim",
-    "/orch/task/done",
-    "/orch/review",
-    "/orch/audit",
-    "/orch/pr",
-    "/orch/answer",
-    "/orch/triage",
-    "/orch/draft",
-    "/orch/owns",
-    "/orch/drop",
-    "/orch/blocked",
-    "/orch/split",
+    "/orch/v1/status",
+    "/orch/v1/journal",
+    "/orch/v1/mail",
+    "/orch/v1/ask-boss",
+    "/orch/v1/setup",
+    "/orch/v1/lease",
+    "/orch/v1/ctx/query",
+    "/orch/v1/task/claim",
+    "/orch/v1/task/done",
+    "/orch/v1/review",
+    "/orch/v1/audit",
+    "/orch/v1/pr",
+    "/orch/v1/answer",
+    "/orch/v1/triage",
+    "/orch/v1/draft",
+    "/orch/v1/owns",
+    "/orch/v1/drop",
+    "/orch/v1/blocked",
+    "/orch/v1/split",
   ];
   for (const p of paths) {
     const payload = { kind: "journal", body: "x", intent: "note", target: "qa" };
     // No token at all. 401, not the 422 these used to answer: the check moved
-    // off the top of each handler and onto the `/orch` mount, and a single
+    // off the top of each handler and onto the `/orch/v1` mount, and a single
     // gate may as well use the status code that means what happened.
     expect((await post(app, p, payload)).status).toBe(401);
     // A token that belongs to nobody. An agent cannot promote itself by
@@ -485,7 +519,7 @@ test("a missing or bogus token is refused everywhere", async () => {
 
 test("the token decides which agent acted, not anything in the body", async () => {
   const { app, db } = harness();
-  await post(app, "/orch/status", { text: "verifying S1" }, "tok-qa");
+  await post(app, "/orch/v1/status", { text: "verifying S1" }, "tok-qa");
   const rows = db
     .query<{ role: string; activity: string | null }, []>("SELECT role, activity FROM agent ORDER BY id")
     .all();
@@ -495,7 +529,7 @@ test("the token decides which agent acted, not anything in the body", async () =
 
 test("filing the card drops the group's other queued planning turns", async () => {
   const { app, db, sched } = harness();
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
@@ -513,7 +547,7 @@ test("filing the card drops the group's other queued planning turns", async () =
 风险 : none
 反对 : 无
 名字 : draft-cancels-queue`;
-  await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
+  await post(app, "/orch/v1/draft", { group_id: grp_id, card }, "tok-disp");
 
   // DRAFT is not dispatchable, so a leftover planning turn would sit pending
   // forever and then fire after approval against a plan it never saw.
@@ -525,7 +559,7 @@ test("filing the card drops the group's other queued planning turns", async () =
 
 test("a group name is short and branch-shaped, whatever the idea looked like", async () => {
   const { app, db } = harness();
-  await post(app, "/api/ideas", {
+  await post(app, "/api/v1/ideas", {
     project_id: 1,
     text: "greet 现在只支持英文，加一个可选的语言参数，中文时返回「你好 X」",
   });
@@ -538,7 +572,7 @@ test("a group name is short and branch-shaped, whatever the idea looked like", a
 
 test("a group can be named instead of numbered, everywhere it is referenced", async () => {
   const { app, db } = harness();
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "greet lang parameter" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "greet lang parameter" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   const name = db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grp_id)!.name;
   db.run(
@@ -558,7 +592,7 @@ test("a group can be named instead of numbered, everywhere it is referenced", as
 名字 : group-by-name`;
   // An agent reaches for the name it can see — one was observed running
   // `orch draft greet -` — and refusing that teaches it nothing.
-  const filed = await post(app, "/orch/draft", { group_id: name, card }, "tok-disp");
+  const filed = await post(app, "/orch/v1/draft", { group_id: name, card }, "tok-disp");
   expect(filed.status).toBe(200);
   expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe(
     "DRAFT",
@@ -567,7 +601,7 @@ test("a group can be named instead of numbered, everywhere it is referenced", as
 
 test("the state snapshot carries the filed card so the boss can see what they approve", async () => {
   const { app, db } = harness();
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "greet lang" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "greet lang" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
@@ -583,7 +617,7 @@ test("the state snapshot carries the filed card so the boss can see what they ap
 风险 : 无
 反对 : 无
 名字 : state-carries-card`;
-  await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
+  await post(app, "/orch/v1/draft", { group_id: grp_id, card }, "tok-disp");
 
   const s = await state(app);
   const filed = s.draftCards.find((card) => card.grpId === grp_id);
@@ -598,7 +632,12 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
   );
-  await post(app, "/orch/mail", { target: "dispatcher", intent: "inform", body: "反对：第三片与验收冲突" }, "tok-arch");
+  await post(
+    app,
+    "/orch/v1/mail",
+    { target: "dispatcher", intent: "inform", body: "反对：第三片与验收冲突" },
+    "tok-arch",
+  );
   const s2 = await state(app);
   const late = s2.lateObjections.find((objection) => objection.grpId === grp_id);
   expect(late?.body).toContain("与验收冲突");
@@ -608,7 +647,7 @@ test("the state snapshot carries the filed card so the boss can see what they ap
 test("a second group triggers boundaries for every undeclared group, not just the new one", async () => {
   const { app, db } = harness();
   // The pre-existing group has no owns: it was the only group when it started.
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "second idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
 
   const boundary = db
@@ -625,7 +664,7 @@ test("a second group triggers boundaries for every undeclared group, not just th
 test("a group that already declared its paths is not asked again", async () => {
   const { app, db } = harness();
   db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/auth/**"])]);
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "second idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   const boundary = db
     .query<{ payload_json: string }, [number]>(
@@ -638,7 +677,7 @@ test("a group that already declared its paths is not asked again", async () => {
 test("the snapshot carries the boss's original words alongside the card", async () => {
   const { app, db } = harness();
   const idea = "greet 现在只支持英文，加一个可选的语言参数";
-  const r = await post(app, "/api/ideas", { project_id: 1, text: idea });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: idea });
   const { grp_id } = GroupIdResponse.parse(await r.json());
 
   const s = await state(app);
@@ -658,7 +697,7 @@ test("the snapshot carries the boss's original words alongside the card", async 
 test("an approval a boundary blocks is recorded, not thrown away", async () => {
   const { app, db } = harness();
   db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/**"])]);
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "second idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-d', 0)",
@@ -677,7 +716,7 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
     [grp_id, card + "\n风险 : 无\n反对 : 无\n名字 : boundary-block-approval", JSON.stringify({ draft_card: true })],
   );
 
-  const held = await post(app, `/api/draft/${grp_id}/approve`);
+  const held = await post(app, `/api/v1/draft/${grp_id}/approve`);
   // 200: the boss did decide. A 422 shows a red error and asks for the same click
   // again — and the click it asked for used to be a 500 (see the next test).
   expect(held.status).toBe(200);
@@ -701,7 +740,7 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
 async function blocked(h: ReturnType<typeof harness>) {
   const { app, db } = h;
   db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "second idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run("UPDATE grp SET status = 'DRAFT', owns_json = ? WHERE id = ?", [JSON.stringify(["src/a/mw.ts"]), grp_id]);
   db.run(
@@ -721,7 +760,7 @@ async function blocked(h: ReturnType<typeof harness>) {
       JSON.stringify({ draft_card: true }),
     ],
   );
-  expect((await post(app, `/api/draft/${grp_id}/approve`)).status).toBe(200);
+  expect((await post(app, `/api/v1/draft/${grp_id}/approve`)).status).toBe(200);
   return grp_id;
 }
 
@@ -732,7 +771,7 @@ test("approving a held group twice does not blow up", async () => {
   // this, which is why "有的需求无法批准开工" had no way out at all.
   const h = harness();
   const grpId = await blocked(h);
-  expect((await post(h.app, `/api/draft/${grpId}/approve`)).status).toBe(200);
+  expect((await post(h.app, `/api/v1/draft/${grpId}/approve`)).status).toBe(200);
   expect(h.db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ?").get(grpId)!.c).toBe(3);
 });
 
@@ -767,7 +806,7 @@ test("the Architect re-cutting someone else's boundary starts the approved group
   );
   // The re-cut moves group 1 off the contested path. Nothing touches group 2 —
   // sweeping only the group `owns` names would leave it waiting.
-  await post(h.app, "/orch/owns", { group_id: 1, paths: ["src/c/**"] }, "tok-a");
+  await post(h.app, "/orch/v1/owns", { group_id: 1, paths: ["src/c/**"] }, "tok-a");
   expect(h.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)!.status).toBe(
     "RUNNING",
   );
@@ -791,15 +830,15 @@ test("a token is only good for the scope it was hired into", async () => {
   h.db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-standing', 0)",
   );
-  expect((await post(h.app, "/orch/owns", { group_id: 1, paths: ["src/c/**"] }, "tok-standing")).status).toBe(200);
-  expect((await post(h.app, "/orch/owns", { group_id: outsider, paths: ["**"] }, "tok-standing")).status).toBe(403);
+  expect((await post(h.app, "/orch/v1/owns", { group_id: 1, paths: ["src/c/**"] }, "tok-standing")).status).toBe(200);
+  expect((await post(h.app, "/orch/v1/owns", { group_id: outsider, paths: ["**"] }, "tok-standing")).status).toBe(403);
 
   // Hired into a group: that group and no other, even inside the same project.
   h.db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'architect', 'm', 'tok-g1', 0)",
   );
   const other = h.db.query<{ id: number }, []>("SELECT id FROM grp WHERE project_id = 1 AND id != 1 LIMIT 1").get()!.id;
-  expect((await post(h.app, "/orch/owns", { group_id: other, paths: ["**"] }, "tok-g1")).status).toBe(403);
+  expect((await post(h.app, "/orch/v1/owns", { group_id: other, paths: ["**"] }, "tok-g1")).status).toBe(403);
   // Untouched: a refused call must not be a half-applied one.
   expect(
     h.db.query<{ owns_json: string }, [number]>("SELECT owns_json FROM grp WHERE id = ?").get(other)!.owns_json,
@@ -818,7 +857,7 @@ test("dropping a requirement frees its paths and starts whoever was waiting", as
      VALUES (1, 'blocker', 'still needed?', 'boss', 0)`,
   );
 
-  const r = await post(h.app, "/api/groups/1/drop", { why: "grp2 covers it" });
+  const r = await post(h.app, "/api/v1/groups/1/drop", { why: "grp2 covers it" });
   expect(r.status).toBe(200);
   expect(StartedResponse.parse(await r.json())).toEqual({ started: [grpId] });
 
@@ -842,7 +881,7 @@ test("a planner may propose dropping already-covered work, but only with evidenc
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-d', 0)",
   );
   h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'other', 'RUNNING', 0)");
-  const drop = (b: Json, tok = "tok-d") => post(h.app, "/orch/drop", b, tok);
+  const drop = (b: Json, tok = "tok-d") => post(h.app, "/orch/v1/drop", b, tok);
 
   expect((await drop({ group_id: 1, why: "已经做完了" })).status).toBe(422);
   expect((await drop({ group_id: 1, why: "短", duplicate: 2 })).status).toBe(422);
@@ -865,7 +904,7 @@ test("the boundary request quotes each group's own requirement", async () => {
   // The pre-existing group's idea has to be recoverable, or the Architect cannot
   // tell the groups apart — observed live, it gave one group the other's files.
   db.run("INSERT INTO event (grp_id, author, kind, body, at) VALUES (1, 'boss', 'boss_say', 'greet 加中文支持', 1)");
-  const r = await post(app, "/api/ideas", { project_id: 1, text: "farewell: bye(name) 返回 goodbye X" });
+  const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "farewell: bye(name) 返回 goodbye X" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
 
   const job = db
@@ -883,7 +922,7 @@ test("a project is a repository, and a path is not one", async () => {
   // There is no host-path flow left to mistype into: `repo_path` holds
   // `owner/name` and the picker only offers repositories the app is installed
   // on. A body without one is refused rather than half-registered.
-  const r = await post(app, "/api/projects", { name: "p", repo_path: "/Users/me/code/thing" });
+  const r = await post(app, "/api/v1/projects", { name: "p", repo_path: "/Users/me/code/thing" });
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("owner/name");
 });
@@ -902,7 +941,7 @@ test("registering a repo you cannot push to succeeds, and says so at once", asyn
     permissions: { pull: true, push: false },
   });
 
-  const r = await post(app, "/api/projects", { repo: "someone/theirs" });
+  const r = await post(app, "/api/v1/projects", { repo: "someone/theirs" });
   expect(r.status).toBe(200);
   expect(
     db.query<{ c: number }, []>("SELECT count(*) AS c FROM project WHERE repo_path = 'someone/theirs'").get()!.c,
@@ -926,7 +965,7 @@ test("the directory list marks git repos and what is already registered", async 
   mkdirSync(join(root, ".hidden"));
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('t', ?, 0)", [join(root, "c-taken")]);
 
-  const r = await get(app, `/api/dirs?path=${encodeURIComponent(root)}`);
+  const r = await get(app, `/api/v1/dirs?path=${encodeURIComponent(root)}`);
   expect(r.status).toBe(200);
   const out = DirsResponse.parse(await r.json());
   // Repos first: the boss is looking for one, so burying them under plain folders
@@ -942,7 +981,7 @@ test("the directory list marks git repos and what is already registered", async 
 
 test("an unreadable path is an error with the reason, not an empty list", async () => {
   const { app } = harness();
-  const r = await get(app, "/api/dirs?path=/definitely/not/here");
+  const r = await get(app, "/api/v1/dirs?path=/definitely/not/here");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("no such file");
 });
@@ -953,7 +992,7 @@ test("a closed PR whose branch cannot be reopened can still get a new one", asyn
   db.run("UPDATE project SET remote = 'git@github.com:me/x.git' WHERE id = 1");
   ctx.gh = githubAnswer({ number: 9 });
 
-  const r = await post(app, "/api/groups/1/newpr");
+  const r = await post(app, "/api/v1/groups/1/newpr");
   expect(r.status).toBe(200);
   expect(PullRequestResponse.parse(await r.json()).number).toBe(9);
   const g = db
@@ -981,7 +1020,7 @@ test("a failed second PR leaves the old number in place rather than none at all"
   // nothing to do with the push — the test passes and asserts nothing.
   ctx.gh = githubAnswer({ number: 9 });
 
-  expect((await post(app, "/api/groups/1/newpr")).status).toBe(422);
+  expect((await post(app, "/api/v1/groups/1/newpr")).status).toBe(422);
   expect(db.query<{ pr_number: number }, []>("SELECT pr_number FROM grp WHERE id = 1").get()!.pr_number).toBe(7);
 });
 
@@ -995,8 +1034,8 @@ test("nobody confirms a merge by hand: GitHub is the only source, and it winds t
   // 422 with the action named, where this used to be a 404. The list of actions
   // was in the route's regular expression and is a zod enum now, so "no such
   // action" is an answer rather than a missing page — which is the honest reply,
-  // since `/api/groups/1/…` is very much a route that exists.
-  const no = await post(app, "/api/groups/1/landed");
+  // since `/api/v1/groups/1/…` is very much a route that exists.
+  const no = await post(app, "/api/v1/groups/1/landed");
   expect(no.status).toBe(400);
   expect(await no.text()).toContain("action");
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PR_OPEN");
@@ -1016,14 +1055,14 @@ test("raising a budget resumes the group and closes the question that asked", as
   );
 
   // 继续 alone is a lie: the scheduler will not admit an over-budget group.
-  const resumed = await post(app, "/api/groups/1/resume");
+  const resumed = await post(app, "/api/v1/groups/1/resume");
   expect(resumed.status).toBe(422);
   expect(await resumed.text()).toContain("120/100");
 
   // A cap below what is already spent would stop it again on the next tick.
-  expect((await post(app, "/api/groups/1/budget", { tokens: 110 })).status).toBe(422);
+  expect((await post(app, "/api/v1/groups/1/budget", { tokens: 110 })).status).toBe(422);
 
-  expect((await post(app, "/api/groups/1/budget", { tokens: 300 })).status).toBe(200);
+  expect((await post(app, "/api/v1/groups/1/budget", { tokens: 300 })).status).toBe(200);
   const g = db
     .query<{ status: string; budget_tokens: number }, []>("SELECT status, budget_tokens FROM grp WHERE id = 1")
     .get()!;
@@ -1039,9 +1078,9 @@ test("a sent-back DRAFT stops being approvable", async () => {
     `INSERT INTO note (grp_id, kind, lang, body, frontmatter_json, at)
      VALUES (1, 'decision', '中文', 'old card', '{"draft_card":1}', 1)`,
   );
-  expect((await get(app, "/api/state")).status).toBe(200);
+  expect((await get(app, "/api/v1/state")).status).toBe(200);
 
-  await post(app, "/api/draft/1/reject", { reason: "切得太粗" });
+  await post(app, "/api/v1/draft/1/reject", { reason: "切得太粗" });
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
   // The rejected card is no longer offered as a decision.
   const snap = await state(app);
@@ -1053,16 +1092,16 @@ test("the boss can talk to the team, and triage decides what the words mean", as
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'pm', 'sonnet', 'tok-pm', 0)",
   );
-  expect((await post(app, "/api/say", { group_id: 1, body: "" })).status).toBe(400);
+  expect((await post(app, "/api/v1/say", { group_id: 1, body: "" })).status).toBe(400);
 
-  expect((await post(app, "/api/say", { group_id: 1, body: "测试写得太浅" })).status).toBe(200);
+  expect((await post(app, "/api/v1/say", { group_id: 1, body: "测试写得太浅" })).status).toBe(200);
   const woken = ran.filter((j) => j.kind === "agent_turn");
   expect(woken.length).toBe(1);
   expect(JSON.parse(woken[0]!.payload_json).mail.from).toBe("boss");
 
   // respec is the one that matters: without it dissatisfaction only ever reads as
   // "change one line" and a wrong decomposition is never corrected.
-  expect((await post(app, "/api/say", { group_id: 1, as: "respec", body: "方向错了" })).status).toBe(200);
+  expect((await post(app, "/api/v1/say", { group_id: 1, as: "respec", body: "方向错了" })).status).toBe(200);
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
 });
 
@@ -1081,16 +1120,16 @@ test("the blackboard is readable: notes by project, by group, and by kind", asyn
      VALUES (1, 1, 'decision', '中文', 'card', '{"draft_card":1}', 30)`,
   );
 
-  const all = NotesResponse.parse(await (await get(app, "/api/notes?project=1")).json());
+  const all = NotesResponse.parse(await (await get(app, "/api/v1/notes?project=1")).json());
   expect(all.notes.map((note) => note.kind)).toEqual(["lesson", "journal"]);
   // A project-level lesson has no group, and that is exactly where it matters.
   expect(all.notes.find((note) => note.kind === "lesson")?.grpId).toBe(null);
   expect(all.notes.find((note) => note.kind === "journal")?.group).toBe("g1");
 
-  const one = NotesResponse.parse(await (await get(app, "/api/notes?group=1")).json());
+  const one = NotesResponse.parse(await (await get(app, "/api/v1/notes?group=1")).json());
   expect(one.notes.map((note) => note.kind)).toEqual(["journal"]);
 
-  const kind = NotesResponse.parse(await (await get(app, "/api/notes?project=1&kind=lesson")).json());
+  const kind = NotesResponse.parse(await (await get(app, "/api/v1/notes?project=1&kind=lesson")).json());
   expect(kind.notes.length).toBe(1);
 });
 
@@ -1126,13 +1165,13 @@ test("one box holding several unrelated asks becomes several requirements", asyn
   );
 
   // A split of one is not a split.
-  const one = await post(app, "/orch/split", { group_id: 1, requirements: [{ idea: "只有一件事" }] }, "tok-disp");
+  const one = await post(app, "/orch/v1/split", { group_id: 1, requirements: [{ idea: "只有一件事" }] }, "tok-disp");
   expect(one.status).toBe(422);
   expect(await one.text()).toContain("at least 2");
 
   const r = await post(
     app,
-    "/orch/split",
+    "/orch/v1/split",
     {
       group_id: 1,
       requirements: [
@@ -1166,7 +1205,7 @@ test("one box holding several unrelated asks becomes several requirements", asyn
   // and its own agent, and a token is only good for the group it was hired into.
   const notMine = await post(
     app,
-    "/orch/split",
+    "/orch/v1/split",
     { group_id: 2, requirements: [{ idea: "a" }, { idea: "b" }] },
     "tok-disp",
   );
@@ -1179,7 +1218,7 @@ test("one box holding several unrelated asks becomes several requirements", asyn
   );
   const late = await post(
     app,
-    "/orch/split",
+    "/orch/v1/split",
     { group_id: 2, requirements: [{ idea: "a" }, { idea: "b" }] },
     "tok-disp-2",
   );
@@ -1202,7 +1241,7 @@ test("a group blocked outside its boundary hands the work on and waits for it", 
     return m ? { code: present.has(m[1]!) ? 0 : 1 } : {};
   });
   h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
-  const blocked = (b: Json, tok = "tok-eng") => post(h.app, "/orch/blocked", b, tok);
+  const blocked = (b: Json, tok = "tok-eng") => post(h.app, "/orch/v1/blocked", b, tok);
 
   expect((await blocked({ group_id: 1, path: "tsconfig.json" })).status).toBe(422);
   // An invented path must not be able to stop a group. The `--why` here is long
@@ -1245,7 +1284,7 @@ test("a live group that owns the path gets it as an addition, not a rival group"
   ]);
   const r = await post(
     h.app,
-    "/orch/blocked",
+    "/orch/v1/blocked",
     { group_id: 1, path: "package.json", why: "缺一行配置，闸门必红" },
     "tok-eng",
   );
@@ -1271,7 +1310,7 @@ test("a question no answer can resolve becomes a requirement, and the group wait
      VALUES (1, 'blocker', 'S1 连续 3 次没过闸门，根因是 tsconfig.json 少一行', 'boss', 0)`,
   );
 
-  const r = await post(h.app, "/api/escalations/1/requirement", { text: "加 allowImportingTsExtensions" });
+  const r = await post(h.app, "/api/v1/escalations/1/requirement", { text: "加 allowImportingTsExtensions" });
   expect(r.status).toBe(200);
   const { grp_id } = GroupIdResponse.parse(await r.json());
 
@@ -1304,7 +1343,7 @@ test("two groups cannot end up waiting on each other", async () => {
   );
   const r = await post(
     h.app,
-    "/orch/blocked",
+    "/orch/v1/blocked",
     { group_id: 1, path: "shared.ts", why: "缺一行配置，闸门必红" },
     "tok-eng",
   );
@@ -1355,7 +1394,7 @@ test("what a question is about comes from a closed set", () => {
 });
 
 test("reads are scoped by the token too, not only writes", async () => {
-  // `/orch/task` and the lease log never called agentOf. The mailbox's `/orch/`
+  // `/orch/v1/task` and the lease log never called agentOf. The mailbox's `/orch/v1/`
   // prefix gate says which routes a sandbox can reach; it says nothing about who
   // is reaching them, so any group could read any other group's cards and build
   // logs by putting a number in the URL.
@@ -1370,13 +1409,13 @@ test("reads are scoped by the token too, not only writes", async () => {
     "INSERT INTO lease (resource, grp_id, state, log_path, enqueued_at) VALUES ('browser', 1, 'done', '/tmp/nope.log', 0)",
   );
 
-  expect((await get(app, "/orch/task")).status).toBe(401);
-  expect(await (await withToken(app, "/orch/task", "tok-eng")).text()).toContain("g1 only");
+  expect((await get(app, "/orch/v1/task")).status).toBe(401);
+  expect(await (await withToken(app, "/orch/v1/task", "tok-eng")).text()).toContain("g1 only");
   // The other group's engineer gets its own (empty) list, not this one's.
-  expect(await (await withToken(app, "/orch/task", "tok-other")).text()).not.toContain("g1 only");
+  expect(await (await withToken(app, "/orch/v1/task", "tok-other")).text()).not.toContain("g1 only");
 
-  expect((await get(app, "/orch/lease/1/log")).status).toBe(401);
-  expect((await withToken(app, "/orch/lease/1/log", "tok-other")).status).toBe(403);
+  expect((await get(app, "/orch/v1/lease/1/log")).status).toBe(401);
+  expect((await withToken(app, "/orch/v1/lease/1/log", "tok-other")).status).toBe(403);
 });
 
 test("a group name an agent chose is still branch-shaped", async () => {
@@ -1390,7 +1429,7 @@ test("a group name an agent chose is still branch-shaped", async () => {
   );
   const r = await post(
     app,
-    "/orch/split",
+    "/orch/v1/split",
     {
       group_id: 1,
       requirements: [
@@ -1421,7 +1460,7 @@ test("an attachment cannot run as the panel", async () => {
   writeFileSync(join(dir, "x.svg"), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
   writeFileSync(join(dir, "y.png"), "not really a png");
 
-  const svg = await h.app(new Request("http://x/api/attach/x.svg"));
+  const svg = await h.app(new Request("http://x/api/v1/attach/x.svg"));
   expect(svg.headers.get("content-disposition")).toStartWith("attachment");
   expect(svg.headers.get("x-content-type-options")).toBe("nosniff");
   // For the types that do render inline, the CSP is what stops the second half.
@@ -1429,7 +1468,7 @@ test("an attachment cannot run as the panel", async () => {
 
   // An image still has to show up in the panel, or the feature is off rather
   // than safe.
-  const png = await h.app(new Request("http://x/api/attach/y.png"));
+  const png = await h.app(new Request("http://x/api/v1/attach/y.png"));
   expect(png.headers.get("content-disposition")).toStartWith("inline");
 });
 
@@ -1441,9 +1480,9 @@ test("project config validates the values that runtime consumers receive", async
   const h = harness();
   const patch = (b: Json) =>
     h.app(
-      new Request("http://x/api/project/1/config", {
+      new Request("http://x/api/v1/project/1/config", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
         body: JSON.stringify(b),
       }),
     );
@@ -1469,9 +1508,9 @@ test("a rejected project config patch changes neither of its storage homes", asy
   const h = harness();
   h.db.run("UPDATE project SET base_branch = 'main' WHERE id = 1");
   const r = await h.app(
-    new Request("http://x/api/project/1/config", {
+    new Request("http://x/api/v1/project/1/config", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({
         baseBranch: "next",
         sandbox: { image: "evil.example.com/agent:1" },
@@ -1489,9 +1528,9 @@ test("a partial patch cannot silently replace malformed stored project config", 
   const h = harness();
   h.db.run("UPDATE project SET config_json = 'not json' WHERE id = 1");
   const r = await h.app(
-    new Request("http://x/api/project/1/config", {
+    new Request("http://x/api/v1/project/1/config", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ install: "bun install" }),
     }),
   );
@@ -1505,9 +1544,9 @@ test("a partial patch cannot silently replace malformed stored project config", 
 test("malformed JSON cannot become an empty control request", async () => {
   const h = harness();
   const r = await h.app(
-    new Request("http://x/api/groups/1/pause", {
+    new Request("http://x/api/v1/groups/1/pause", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: "{",
     }),
   );
@@ -1523,12 +1562,17 @@ test("path ids are decimal records, not JavaScript number expressions", async ()
     "INSERT INTO project (id, name, repo_path, remote, created_at) VALUES (16, 'sixteen', '/tmp/16', 'https://github.com/o/16.git', 0)",
   );
 
-  const bad = await h.app(new Request("http://x/api/projects/0x10", { method: "DELETE" }));
+  const bad = await h.app(
+    new Request("http://x/api/v1/projects/0x10", {
+      method: "DELETE",
+      headers: { "idempotency-key": crypto.randomUUID() },
+    }),
+  );
   expect(bad.status).toBe(400);
-  expect(await bad.json()).toEqual({ error: expect.stringContaining("id") });
+  expect(await bad.json()).toMatchObject({ error: expect.stringContaining("id"), code: "validation_failed" });
   expect(h.db.query<{ name: string }, []>("SELECT name FROM project WHERE id = 16").get()?.name).toBe("sixteen");
 
-  const action = await post(h.app, "/api/groups/0x1/pause");
+  const action = await post(h.app, "/api/v1/groups/0x1/pause");
   expect(action.status).toBe(400);
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
 });

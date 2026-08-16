@@ -33,7 +33,7 @@ import { errText } from "../../mech/util/text.ts";
  * the panel at all. Agents could `orch ctx query` it; the boss could not read it.
  */
 /** Exactly the columns the SELECT below names. `unknown` said nothing at all. */
-interface NoteRow {
+export interface NoteRow {
   id: number;
   grpId: number | null;
   kind: string;

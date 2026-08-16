@@ -179,7 +179,7 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
  * No completion route: `run.done` writes `runtime_auth` itself, so the
  * credential row the panel already polls **is** the confirmation.
  */
-interface ClaudeFlow {
+export interface ClaudeFlow {
   url: string;
   expiresAt: number;
 }
@@ -301,7 +301,7 @@ export const postGithubLogin = (async (ctx) => {
  * credential row the panel already polls **is** the confirmation, and the
  * progress lines are already on the live feed.
  */
-interface CodexFlow {
+export interface CodexFlow {
   code: string;
   url: string;
   expiresAt: number;
@@ -345,13 +345,19 @@ export const postCodexDeviceCancel = (async (ctx) => {
  * thing that eats a 5000/hour budget quietly. Repeats come back 304 from the
  * client's ETag cache, which does not count against the limit at all.
  */
-async function withCounts(ctx: Ctx, list: Installation[]): Promise<Array<Installation & { repos: number | null }>> {
+async function withCounts(
+  ctx: Ctx,
+  list: Installation[],
+  signal?: AbortSignal,
+): Promise<Array<Installation & { repos: number | null }>> {
   return await Promise.all(
     list.map(async (i) => {
       const r = await ctx.gh!.request(
         "GET",
         `/user/installations/${i.id}/repositories?per_page=1`,
         z.object({ total_count: z.number().int().nonnegative().optional() }),
+        undefined,
+        signal,
       );
       return { ...i, repos: r.ok ? (r.data.total_count ?? 0) : null };
     }),
@@ -361,18 +367,18 @@ async function withCounts(ctx: Ctx, list: Installation[]): Promise<Array<Install
 /** Where the boss installs the app. One app, so one address. */
 const INSTALL_URL = `https://github.com/apps/${APP_SLUG}/installations/new`;
 
-export const getGithubLogin = (async (ctx) => {
+export const getGithubLogin = (async (ctx, req) => {
   const a = loadAuth(ctx.db, "github");
   // Asked of GitHub rather than read from a stored name: a name in the database
   // keeps saying "connected" for a token that was revoked last week, and an
   // expired GitHub token is the failure where every group breaks at once with a
   // different error each (决策 007 §6). No row, no request.
-  const account = a && ctx.gh ? await githubAccount(ctx.gh) : null;
+  const account = a && ctx.gh ? await githubAccount(ctx.gh, req.signal) : null;
   // Authorized is not installed. A GitHub App's user token reaches exactly the
   // repositories the app is installed on, so zero installations is the state
   // that looks like success and is not: a green 已连接 over a repo list that
   // can never fill.
-  const installs = a && account && ctx.gh ? await listInstallations(ctx.gh) : null;
+  const installs = a && account && ctx.gh ? await listInstallations(ctx.gh, req.signal) : null;
   return json({
     connected: !!a,
     account,
@@ -383,7 +389,7 @@ export const getGithubLogin = (async (ctx) => {
     /** Where to fix that. One app, so one address. */
     installUrl: INSTALL_URL,
     /** Which accounts it is installed on, and how many repositories each can see. */
-    accounts: installs?.ok ? await withCounts(ctx, installs.data) : [],
+    accounts: installs?.ok ? await withCounts(ctx, installs.data, req.signal) : [],
     pending:
       ghFlow && ghFlow.expiresAt > Date.now()
         ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri }
@@ -407,7 +413,7 @@ export const TrailersBody = z.object({
 });
 
 export const postTrailers = (async (ctx, _req, _p, b) => {
-  return json(setTrailers(ctx.db, b));
+  return json(setTrailers(ctx.db, Object.fromEntries(Object.entries(b).filter((entry) => entry[1] !== undefined))));
 }) satisfies Handler<z.infer<typeof TrailersBody>>;
 
 /**
@@ -420,7 +426,7 @@ export const postTrailers = (async (ctx, _req, _p, b) => {
  */
 export const GithubReposQuery = z.object({ installation: z.coerce.number().int().positive().optional() });
 
-export const getGithubRepos = (async (ctx, _req, _params, { installation: asked = 0 }) => {
+export const getGithubRepos = (async (ctx, req, _params, { installation: asked = 0 }) => {
   if (!ctx.gh) return bad("this server has no GitHub client");
   if (!loadAuth(ctx.db, "github")) return bad("还没连 GitHub，先去设置里连一下");
   // Both at once when the caller names an installation, which it does on every
@@ -428,13 +434,13 @@ export const getGithubRepos = (async (ctx, _req, _params, { installation: asked 
   // so doing these in series is a second of blank dialog for no reason. The
   // first open of a session still has to learn the id before it can ask.
   const [inst, guess] = await Promise.all([
-    listInstallations(ctx.gh),
-    asked ? listRepos(ctx.gh, asked) : Promise.resolve(null),
+    listInstallations(ctx.gh, req.signal),
+    asked ? listRepos(ctx.gh, asked, req.signal) : Promise.resolve(null),
   ]);
   if (!inst.ok) return bad(inst.message);
 
   const selected = inst.data.find((i) => i.id === asked)?.id ?? inst.data[0]?.id ?? null;
-  const repos = selected === asked ? guess : selected ? await listRepos(ctx.gh, selected) : null;
+  const repos = selected === asked ? guess : selected ? await listRepos(ctx.gh, selected, req.signal) : null;
   if (repos && !repos.ok) return bad(repos.message);
 
   // Seam (007 step 6): a project's identity is still `repo_path`, which for a

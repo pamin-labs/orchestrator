@@ -11,9 +11,9 @@ import type {
   Project,
   Slice,
   Task,
-} from "./shapes.ts";
-import { UsageWindow, type Snapshot } from "./shapes.ts";
-import { jsonOr } from "../../mech/util/text.ts";
+} from "../../contracts/panel.ts";
+import { UsageWindow, type Snapshot } from "../../contracts/panel.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { costReport } from "../../mech/ops/cost.ts";
 import { canStart } from "../../mech/flow/ownership.ts";
 import { poolSizes } from "../../scheduler.ts";

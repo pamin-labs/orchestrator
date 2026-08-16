@@ -8,14 +8,15 @@ import { canStart, CLAIMING_SQL, parseOwns } from "../../mech/flow/ownership.ts"
 import { killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, IdParams } from "../fields.ts";
+import { Attachment as AttachmentSchema, IdParams } from "../../contracts/fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { bad, firstIdea, json, message, type Handler } from "../shared.ts";
-import { bossFact, withAttachments } from "./attach.ts";
+import { withAttachments } from "./attach.ts";
 import { slug } from "../slug.ts";
 import { say } from "../../lang.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { GrpState } from "../../states.ts";
+import { sediment } from "../../mech/knowledge/lessons.ts";
 
 /**
  * A requirement, from the sentence the boss typed to the branch coming back.
@@ -93,7 +94,10 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   const approve = params.decision === "approve";
 
   if (!approve) {
-    bossFact(ctx, grpId, withAttachments(`boss sent the DRAFT back: ${b.reason ?? ""}`, b.attachments));
+    const fact = withAttachments(`boss sent the DRAFT back: ${b.reason ?? ""}`, b.attachments);
+    const projectId =
+      ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
+        ?.project_id ?? null;
     // Back to PLANNING, which is what the group actually is now. Left in DRAFT it
     // still counted as a decision waiting on the boss, still showed the rejected
     // card, and 批准开工 still worked on it — one stray click approves the very
@@ -102,10 +106,17 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
     // Clearing approved_at as well: sending a plan back withdraws the approval, or
     // the next card to reach DRAFT would start itself on the strength of a yes the
     // boss said to a plan that no longer exists.
-    ctx.db.run("UPDATE grp SET status = 'PLANNING', approved_at = NULL WHERE id = ? AND status = 'DRAFT'", [grpId]);
     const why = withAttachments(b.reason ?? "respec", b.attachments);
-    ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
-    ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: why } });
+    ctx.db.transaction(() => {
+      ctx.db.run(
+        "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
+        [projectId, grpId, ctx.config.language, fact],
+      );
+      ctx.db.run("UPDATE grp SET status = 'PLANNING', approved_at = NULL WHERE id = ? AND status = 'DRAFT'", [grpId]);
+      ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
+      ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: why } });
+    })();
+    sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
     ctx.sched.tick();
     return message("sent back");
   }

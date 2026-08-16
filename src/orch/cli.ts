@@ -15,17 +15,15 @@
  * agent.
  */
 
-import { errText, jsonOr } from "../mech/util/text.ts";
-import { displayJson, JsonValue, ProtocolResponse, readJsonResponse, type Json } from "../http/respond.ts";
-import { ChangedFilesClaimSchema } from "../mech/flow/reconcile.ts";
-import { SplitRequirements } from "../api/orch/planning.ts";
-import { MailIntent } from "../api/orch/messaging.ts";
+import { JsonValue, jsonOr, type Json } from "../contracts/json.ts";
+import { ChangedFilesClaimSchema, MailIntent, SplitRequirements } from "../contracts/orch.ts";
+import { displayJson, ProtocolResponse, readJsonResponse } from "../contracts/protocol.ts";
 import type { OrchType } from "../http/routes/orch.ts";
 import { hc } from "hono/client";
 const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
 const TOKEN = process.env.ORCH_TOKEN ?? "";
 
-interface Parsed {
+export interface Parsed {
   flags: Record<string, string | string[] | true>;
   args: string[];
   /** Everything after a bare `--`, passed through untouched. */
@@ -100,14 +98,36 @@ export function kvArgs(v: string | string[] | true | undefined): Record<string, 
  * blocks here exactly as it did over HTTP.
  */
 const MAILBOX = process.env.ORCH_MAILBOX ?? "";
+const configuredMailboxTimeout = Number(process.env.ORCH_MAILBOX_TIMEOUT_MS ?? 1_200_000);
+const MAILBOX_TIMEOUT_MS =
+  Number.isFinite(configuredMailboxTimeout) && configuredMailboxTimeout > 0 ? configuredMailboxTimeout : 1_200_000;
 
-async function viaMailbox(method: string, path: string, payload?: Json): Promise<ProtocolResponse> {
-  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+async function viaMailbox(
+  method: string,
+  path: string,
+  payload: Json | undefined,
+  requestId: string,
+  idempotencyKey?: string,
+): Promise<ProtocolResponse> {
+  const id = crypto.randomUUID();
+  const req = `${MAILBOX}/req/${id}.json`;
   const res = `${MAILBOX}/res/${id}.json`;
-  await Bun.write(`${MAILBOX}/req/${id}.json`, JSON.stringify({ id, method, path, token: TOKEN, body: payload }));
+  await Bun.write(
+    req,
+    JSON.stringify({
+      id,
+      method,
+      path,
+      token: TOKEN,
+      body: payload,
+      request_id: requestId,
+      idempotency_key: idempotencyKey,
+    }),
+  );
   // Poll the local filesystem, which costs nothing — the host is the one doing
   // real work between these checks.
-  for (;;) {
+  const expires = Date.now() + MAILBOX_TIMEOUT_MS;
+  while (Date.now() < expires) {
     const f = Bun.file(res);
     if (await f.exists()) {
       const answer = jsonOr(await f.text(), ProtocolResponse, {
@@ -119,21 +139,34 @@ async function viaMailbox(method: string, path: string, payload?: Json): Promise
     }
     await Bun.sleep(120);
   }
+  await Bun.file(req)
+    .delete()
+    .catch(() => {});
+  await Bun.file(res)
+    .delete()
+    .catch(() => {});
+  return { status: 504, body: { error: `mailbox request timed out after ${MAILBOX_TIMEOUT_MS}ms` } };
 }
 
 const transport = Object.assign(
   async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-    if (!MAILBOX) return fetch(input, init);
+    const method = input instanceof Request ? input.method : (init?.method ?? "GET");
+    const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
+    const requestId = crypto.randomUUID();
+    const idempotencyKey = ["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase()) ? undefined : crypto.randomUUID();
+    headers.set("X-Request-ID", requestId);
+    if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
+    if (!MAILBOX) return fetch(input, { ...init, headers });
     const url = new URL(input instanceof Request ? input.url : input.toString());
     const raw = typeof init?.body === "string" ? init.body : undefined;
     const payload = raw ? JsonValue.parse(JSON.parse(raw)) : undefined;
-    const answer = await viaMailbox(init?.method ?? "GET", `${url.pathname}${url.search}`, payload);
+    const answer = await viaMailbox(method, `${url.pathname}${url.search}`, payload, requestId, idempotencyKey);
     return Response.json(answer.body, { status: answer.status });
   },
   { preconnect: fetch.preconnect },
 );
 
-const orch = hc<OrchType>(`${URL_BASE}/orch`, {
+const orch = hc<OrchType>(`${URL_BASE}/orch/v1`, {
   fetch: transport,
   headers: { "x-orch-token": TOKEN },
 });
@@ -153,7 +186,7 @@ async function send(request: Promise<Response>): Promise<ProtocolResponse> {
       status: 502,
       body: {
         error:
-          `cannot reach the orchestrator at ${URL_BASE}: ${errText(error)}\n` +
+          `cannot reach the orchestrator at ${URL_BASE}: ${error instanceof Error ? error.message : String(error)}\n` +
           "ORCH_MAILBOX is unset, so this process has no sandbox transport.",
       },
     };

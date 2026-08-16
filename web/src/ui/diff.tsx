@@ -119,8 +119,8 @@ export function rowsOf(chunk: parseDiff.Chunk): Row[] {
       const l = dels[i];
       const r = adds[i];
       out.push({
-        left: l && { ...l, changed: paired },
-        right: r && { ...r, changed: paired },
+        ...(l ? { left: { ...l, changed: paired } } : {}),
+        ...(r ? { right: { ...r, changed: paired } } : {}),
       });
     }
     dels = [];
@@ -265,14 +265,25 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
                         </tr>
                       ) : (
                         <tr key={i}>
-                          <Gutter n={r.left?.n} tone={r.left && (!r.right || r.left.changed) ? "bad" : undefined} />
-                          <Side cell={r.left} other={r.right} side="left" />
                           <Gutter
-                            n={r.right?.n}
-                            tone={r.right && (!r.left || r.right.changed) ? "ok" : undefined}
+                            {...(r.left ? { n: r.left.n } : {})}
+                            {...(r.left && (!r.right || r.left.changed) ? { tone: "bad" satisfies "bad" } : {})}
+                          />
+                          <Side
+                            {...(r.left ? { cell: r.left } : {})}
+                            {...(r.right ? { other: r.right } : {})}
+                            side="left"
+                          />
+                          <Gutter
+                            {...(r.right ? { n: r.right.n } : {})}
+                            {...(r.right && (!r.left || r.right.changed) ? { tone: "ok" satisfies "ok" } : {})}
                             split
                           />
-                          <Side cell={r.right} other={r.left} side="right" />
+                          <Side
+                            {...(r.right ? { cell: r.right } : {})}
+                            {...(r.left ? { other: r.left } : {})}
+                            side="right"
+                          />
                         </tr>
                       ),
                     )}

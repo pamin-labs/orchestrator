@@ -6,7 +6,7 @@ import { execIn, putFile, WORK } from "../../mech/sandbox/sandbox.ts";
 import { shq } from "../../mech/util/shq.ts";
 import type { JournalKind } from "../../mech/util/validate.ts";
 import { validateJournal } from "../../mech/util/validate.ts";
-import { Id, Prose } from "../fields.ts";
+import { Id, Prose } from "../../contracts/fields.ts";
 import { type AgentHandler, bad, message } from "../shared.ts";
 
 /**
@@ -85,7 +85,7 @@ function queueCompletedRetro(ctx: Ctx, groupId: number | null, kind: JournalKind
 }
 
 export const postJournal = (async (ctx, _req, a, _p, b) => {
-  const v = validateJournal({ kind: b.kind, body: b.body, files: b.files });
+  const v = validateJournal({ kind: b.kind, body: b.body, ...(b.files ? { files: b.files } : {}) });
   if (!v.ok) return bad(v.error);
 
   const grp = a.grp_id

@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import type { ApplyGlobalResponse } from "hono/client";
 import { streamSSE } from "hono/streaming";
 import type { Ctx } from "../../ctx.ts";
-import { IdParams } from "../../api/fields.ts";
+import { IdParams } from "../../contracts/fields.ts";
+import { IdempotencyRecoveryBody, IdempotencyStatusQuery } from "../../contracts/idempotency.ts";
 import {
   AuthBody,
   CodeBody,
@@ -94,10 +95,17 @@ import { CostQuery, getCost, getState } from "../../api/panel/snapshot.ts";
 import { getStream, StreamQuery } from "../../api/panel/stream.ts";
 import { formBody, jsonBody, pathParams, queryParams } from "../validate.ts";
 import type { ErrorResponses } from "../respond.ts";
+import { operatorIdempotencyStatus, recoverIdempotency } from "../idempotency.ts";
 
 /** Explicit panel routes keep Hono's request and response types visible to RPC. */
 export function panelRoutes(ctx: Ctx) {
   return new Hono()
+    .get("/idempotency/status", queryParams(IdempotencyStatusQuery), (c) =>
+      operatorIdempotencyStatus(ctx.db, c.req.valid("query")),
+    )
+    .post("/idempotency/recover", ...jsonBody(IdempotencyRecoveryBody), (c) =>
+      recoverIdempotency(ctx.db, c.req.valid("json")),
+    )
     .get("/auth", () => getAuth(ctx))
     .post("/auth", ...jsonBody(AuthBody), (c) => postAuth(ctx, c.req.raw, c.req.param(), c.req.valid("json")))
     .post("/auth/claude/login", () => postClaudeLogin(ctx))
@@ -105,7 +113,7 @@ export function panelRoutes(ctx: Ctx) {
       postClaudeCode(ctx, c.req.raw, c.req.param(), c.req.valid("json")),
     )
     .post("/auth/claude/login/cancel", () => postClaudeCancel(ctx))
-    .get("/auth/github", () => getGithubLogin(ctx))
+    .get("/auth/github", (c) => getGithubLogin(ctx, c.req.raw))
     .post("/auth/github", () => postGithubLogin(ctx))
     .get("/github/repos", queryParams(GithubReposQuery), (c) =>
       getGithubRepos(ctx, c.req.raw, c.req.param(), c.req.valid("query")),
@@ -177,4 +185,7 @@ export function panelRoutes(ctx: Ctx) {
     .get("/escalations/:id/draft", pathParams(IdParams), (c) => getAnswerDraft(ctx, c.req.raw, c.req.valid("param")));
 }
 
-export type ApiType = ApplyGlobalResponse<ReturnType<typeof panelRoutes>, ErrorResponses<400 | 403 | 413 | 415 | 500>>;
+export type ApiType = ApplyGlobalResponse<
+  ReturnType<typeof panelRoutes>,
+  ErrorResponses<400 | 403 | 404 | 409 | 413 | 415 | 500 | 503>
+>;

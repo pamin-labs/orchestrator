@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { GroupRef } from "./fields.ts";
+import type { GroupRef } from "../contracts/fields.ts";
 import type { Caller, Ctx } from "../ctx.ts";
 
 export type { AgentHandler, Handler } from "../http/handler.ts";
@@ -58,11 +58,6 @@ export function firstIdea(ctx: Ctx, grpId: number): string {
       )
       .get(grpId)?.body ?? ""
   );
-}
-
-/** A fresh token for a newly hired agent. */
-export function mintToken(): string {
-  return crypto.randomUUID().replaceAll("-", "");
 }
 
 /**

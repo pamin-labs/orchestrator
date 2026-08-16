@@ -6,7 +6,7 @@ import { sliceDiffBase } from "../../mech/git/worktree.ts";
 import { baseRefFor, sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Id, IdParams } from "../fields.ts";
+import { Attachment as AttachmentSchema, GroupRef, Id, IdParams } from "../../contracts/fields.ts";
 import { bad, json, mayAct, resolveGroup, message, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
 import { GateName, gatesFor } from "../../mech/gate.ts";

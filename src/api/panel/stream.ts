@@ -1,5 +1,5 @@
 import type { Ctx } from "../../ctx.ts";
-import type { Frame, StoredEvent } from "../../bus.ts";
+import type { Frame, StoredEvent } from "../../contracts/events.ts";
 import type { SSEStreamingApi } from "hono/streaming";
 import { z } from "zod";
 
@@ -49,7 +49,7 @@ function frameSender(ctx: Ctx, stream: SSEStreamingApi): (frame: Frame) => Promi
         ...frame,
         projectId: (frame.type === "live" ? frame.projectId : null) ?? projectOf(frame.grpId),
       }),
-      id: frame.type === "event" ? String(frame.seq) : undefined,
+      ...(frame.type === "event" ? { id: String(frame.seq) } : {}),
     });
 }
 

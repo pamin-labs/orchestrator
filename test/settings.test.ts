@@ -5,7 +5,7 @@ import { applyOverrides, defaultFor, overrides, putSetting, refuse, settablePath
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 import { z } from "zod";
 
 const SettingsResponse = z.object({
@@ -111,14 +111,14 @@ test("the panel reads every knob and writes one at a time", async () => {
   const app = makeApp(ctx);
 
   const read = async () => {
-    const r = await app(new Request("http://x/api/settings"));
+    const r = await app(new Request("http://x/api/v1/settings"));
     return SettingsResponse.parse(await r.json());
   };
   const write = (body: Json) =>
     app(
-      new Request("http://x/api/settings", {
+      new Request("http://x/api/v1/settings", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
         body: JSON.stringify(body),
       }),
     );

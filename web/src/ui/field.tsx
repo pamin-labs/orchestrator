@@ -64,9 +64,10 @@ export function Field({
   );
 }
 
-export function FieldLabel({ className, ...rest }: React.ComponentProps<"label">) {
+export function FieldLabel({ className, htmlFor, ...rest }: React.ComponentProps<"label"> & { htmlFor: string }) {
   return (
     <label
+      htmlFor={htmlFor}
       data-slot="field-label"
       className={cn("flex items-baseline gap-2 text-[0.8125rem] text-ink", className)}
       {...rest}

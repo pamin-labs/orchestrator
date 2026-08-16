@@ -63,8 +63,22 @@ export function UsageBar({ usage }: { usage: Usage[] }) {
       {rows.map((u) => (
         <Fragment key={u.runtime}>
           <span className="truncate text-right text-ink-3">{u.runtime}</span>
-          <Ring label="5h" v={u.fiveHourPercent} at={u.resetsAt} read={u.at} stale={staleMark(u)} why={u.error} />
-          <Ring label="周" v={u.weeklyPercent} at={u.weeklyResetsAt} read={u.at} stale={staleMark(u)} why={u.error} />
+          <Ring
+            label="5h"
+            {...(u.fiveHourPercent !== undefined ? { v: u.fiveHourPercent } : {})}
+            {...(u.resetsAt !== undefined ? { at: u.resetsAt } : {})}
+            read={u.at}
+            stale={staleMark(u)}
+            {...(u.error !== undefined ? { why: u.error } : {})}
+          />
+          <Ring
+            label="周"
+            {...(u.weeklyPercent !== undefined ? { v: u.weeklyPercent } : {})}
+            {...(u.weeklyResetsAt !== undefined ? { at: u.weeklyResetsAt } : {})}
+            read={u.at}
+            stale={staleMark(u)}
+            {...(u.error !== undefined ? { why: u.error } : {})}
+          />
         </Fragment>
       ))}
     </span>

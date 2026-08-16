@@ -3,15 +3,40 @@ import { Hono } from "hono";
 import { hc, type InferResponseType } from "hono/client";
 import { z } from "zod";
 import type { ApiType } from "../src/api.ts";
+import type { IdempotencyRecordStatus, IdempotencyUnresolvedList } from "../src/contracts/idempotency.ts";
+import type { Json } from "../src/contracts/json.ts";
+import type { ErrorResponse } from "../src/contracts/protocol.ts";
+import type { OrchType } from "../src/http/routes/orch.ts";
 import { jsonBody, pathParams } from "../src/http/validate.ts";
 import { routeSource } from "./route-source.ts";
 
-const panel = hc<ApiType>("http://localhost/api");
+const panel = hc<ApiType>("http://localhost/api/v1");
+const orch = hc<OrchType>("http://localhost/orch/v1");
 type StateResponse = InferResponseType<typeof panel.state.$get, 200>;
 const rpcResponseIsTyped: StateResponse extends { ready: boolean; lastSeq: number } ? true : never = true;
 
+type Exact<Actual, Expected> = [Actual] extends [Expected] ? ([Expected] extends [Actual] ? true : false) : false;
+type PanelStatusResponse = InferResponseType<typeof panel.idempotency.status.$get, 200>;
+type PanelRecoveryResponse = InferResponseType<typeof panel.idempotency.recover.$post, 200>;
+type OrchStatusResponse = InferResponseType<typeof orch.idempotency.status.$get, 200>;
+type OrchConflict = InferResponseType<typeof orch.status.$post, 409>;
+type OrchPayloadTooLarge = InferResponseType<typeof orch.status.$post, 413>;
+type OrchUnavailable = InferResponseType<typeof orch.status.$post, 503>;
+type PanelUnavailable = InferResponseType<typeof panel.auth.$post, 503>;
+
+const idempotencyRpcIsTyped: [
+  Exact<PanelStatusResponse, IdempotencyRecordStatus | IdempotencyUnresolvedList>,
+  Exact<PanelRecoveryResponse, Json>,
+  Exact<OrchStatusResponse, IdempotencyRecordStatus>,
+  Exact<OrchConflict, ErrorResponse>,
+  Exact<OrchPayloadTooLarge, ErrorResponse>,
+  Exact<OrchUnavailable, ErrorResponse>,
+  Exact<PanelUnavailable, ErrorResponse>,
+] = [true, true, true, true, true, true, true];
+
 test("RPC retains handler response types", () => {
   expect(rpcResponseIsTyped).toBe(true);
+  expect(idempotencyRpcIsTyped).toEqual([true, true, true, true, true, true, true]);
 });
 
 test("business handler checks preserve their concrete RPC responses", () => {
@@ -46,7 +71,11 @@ test("schema failures are JSON bad requests", async () => {
 
   expect(response.status).toBe(400);
   expect(response.headers.get("content-type")).toContain("application/json");
-  expect(await response.json()).toEqual({ error: expect.stringContaining("Too small") });
+  expect(await response.json()).toMatchObject({
+    error: expect.stringContaining("Too small"),
+    code: "validation_failed",
+    request_id: expect.any(String),
+  });
 });
 
 test("non-JSON bodies never reach an all-optional JSON schema", async () => {
@@ -60,11 +89,15 @@ test("non-JSON bodies never reach an all-optional JSON schema", async () => {
   for (const contentType of [undefined, "text/plain"]) {
     const response = await app.request("/value", {
       method: "POST",
-      headers: contentType ? { "content-type": contentType } : undefined,
+      ...(contentType ? { headers: { "content-type": contentType } } : {}),
       body: JSON.stringify({ tokens: 7 }),
     });
     expect(response.status).toBe(415);
-    expect(await response.json()).toEqual({ error: "Content-Type must be application/json" });
+    expect(await response.json()).toMatchObject({
+      error: "Content-Type must be application/json",
+      code: "unsupported_media_type",
+      request_id: expect.any(String),
+    });
   }
   expect(calls).toBe(0);
 });

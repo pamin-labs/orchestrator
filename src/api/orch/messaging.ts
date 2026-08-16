@@ -3,7 +3,8 @@ import type { Ctx } from "../../ctx.ts";
 import { TRIAGE, triage } from "../../mech/flow/chain.ts";
 import { projectSkills, skillNames } from "../../mech/skills.ts";
 import { projectOfAgent } from "../../mech/util/rows.ts";
-import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../fields.ts";
+import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../../contracts/fields.ts";
+import { MailIntent } from "../../contracts/orch.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
 import { type AgentHandler, bad, type Handler, message, resolveGroup } from "../shared.ts";
 
@@ -18,10 +19,6 @@ import { type AgentHandler, bad, type Handler, message, resolveGroup } from "../
  */
 
 const WAKING = new Set(["ask", "request", "inform"]);
-
-export const MailIntent = z.enum(["ask", "request", "inform", "note", "decision"], {
-  error: "intent must be one of: ask, request, inform, note, decision",
-});
 
 export const MailBody = z.object({
   target: z.string().min(1).max(80),

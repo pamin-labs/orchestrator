@@ -16,7 +16,7 @@ import { newGroup } from "../../mech/flow/newgroup.ts";
 import { sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
 import type { SliceState } from "../../states.ts";
-import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from "../fields.ts";
+import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from "../../contracts/fields.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
 import { type AgentHandler, bad, type Handler, json, mayAct, message, resolveGroup } from "../shared.ts";
 import { slug } from "../slug.ts";
@@ -100,7 +100,7 @@ export const postAskBoss = (async (ctx, _req, a, _p, b) => {
     meta: { escalation_id: id },
   });
 
-  route({ ctx, notifyBoss: ctx.notifyBoss }, id);
+  route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, id);
 
   const answer = await new Promise<string>((resolve) => {
     ctx.waiters.set(`escalation:${id}`, resolve);
@@ -118,7 +118,7 @@ export const AnswerBody = z.object({
 });
 
 export const postAnswer2 = (async (ctx, _req, a, _p, b) => {
-  const deps = { ctx, notifyBoss: ctx.notifyBoss };
+  const deps = { ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) };
   const level = z.enum(CHAIN).safeParse(a.role);
   if (!level.success) return bad(`${a.role} is not an answer-chain level`);
 
@@ -134,7 +134,7 @@ export const postAnswer2 = (async (ctx, _req, a, _p, b) => {
     by: level.data,
     answer: b.answer,
     actorGrpId: a.grp_id,
-    refNoteId: b.ref,
+    ...(b.ref === undefined ? {} : { refNoteId: b.ref }),
   });
   return r.ok ? message("ok") : bad(r.error);
 }) satisfies AgentHandler<z.infer<typeof AnswerBody>>;
@@ -196,30 +196,33 @@ export const postEscalationRequirement = (async (ctx, _req, params, b) => {
 
   const idea = [b.text?.trim(), esc.question].filter(Boolean).join("\n\n");
   const name = (b.name ?? slug(idea)).slice(0, 40) || `esc-${id}`;
-  const grp = newGroup(ctx, { projectId, name, idea });
-  ctx.sched.enqueue("agent_turn", { grp_id: grp.id, priority: 6, payload: { role: "dispatcher", idea } });
+  const grp = ctx.db.transaction(() => {
+    const created = newGroup(ctx, { projectId, name, idea });
+    ctx.sched.enqueue("agent_turn", { grp_id: created.id, priority: 6, payload: { role: "dispatcher", idea } });
 
-  ctx.db.run(
-    `UPDATE escalation SET answer = ?, answered_by = 'boss', chain_state = 'answered',
-     answered_at = unixepoch() * 1000 WHERE id = ?`,
-    [`开成需求 ${name}（grp ${grp.id}）`, id],
-  );
-  // A blocker on a group that has already stopped is what `blocked_on` is for: the
-  // group comes back by itself when the new requirement lands, so this does not
-  // become a second thing for the boss to remember.
-  if (esc.grp_id) {
-    ctx.db.run(`UPDATE grp SET blocked_on = ? WHERE id = ? AND status IN ('PAUSED','PAUSING') AND blocked_on IS NULL`, [
-      grp.id,
-      esc.grp_id,
-    ]);
-    ctx.bus.emit({
-      grpId: esc.grp_id,
-      author: "boss",
-      kind: "state_change",
-      body: `这个问题开成了需求 ${name}（grp ${grp.id}）`,
-      meta: { requirement: grp.id, escalation_id: id },
-    });
-  }
+    ctx.db.run(
+      `UPDATE escalation SET answer = ?, answered_by = 'boss', chain_state = 'answered',
+       answered_at = unixepoch() * 1000 WHERE id = ?`,
+      [`开成需求 ${name}（grp ${created.id}）`, id],
+    );
+    // A blocker on a group that has already stopped is what `blocked_on` is for: the
+    // group comes back by itself when the new requirement lands, so this does not
+    // become a second thing for the boss to remember.
+    if (esc.grp_id) {
+      ctx.db.run(
+        `UPDATE grp SET blocked_on = ? WHERE id = ? AND status IN ('PAUSED','PAUSING') AND blocked_on IS NULL`,
+        [created.id, esc.grp_id],
+      );
+      ctx.bus.emit({
+        grpId: esc.grp_id,
+        author: "boss",
+        kind: "state_change",
+        body: `这个问题开成了需求 ${name}（grp ${created.id}）`,
+        meta: { requirement: created.id, escalation_id: id },
+      });
+    }
+    return created;
+  })();
   const w = ctx.waiters.get(`escalation:${id}`);
   ctx.waiters.delete(`escalation:${id}`);
   w?.(`the boss turned this into requirement ${name} (grp ${grp.id}); stop and wait for it`);
@@ -398,6 +401,6 @@ export const postDelegate = (async (ctx, _req, params, b) => {
   });
   // route() skips a level with nobody in it, so this cannot strand the question:
   // worst case it comes straight back.
-  const landed = route({ ctx, notifyBoss: ctx.notifyBoss }, id);
+  const landed = route({ ctx, ...(ctx.notifyBoss ? { notifyBoss: ctx.notifyBoss } : {}) }, id);
   return message(landed);
 }) satisfies Handler<z.infer<typeof DelegateBody>, z.infer<typeof IdParams>>;

@@ -180,7 +180,7 @@ export function SettingsDialog({
             section={here}
             onSection={pick}
             projectId={projectId}
-            projectName={projectName}
+            {...(projectName !== undefined ? { projectName } : {})}
             groupCount={groupCount ?? 0}
             onOpenChange={onOpenChange}
             onRemoved={onRemoved}
@@ -266,7 +266,7 @@ function SettingsContent({
   /** It landed. Stop asking, and give the button back. */
   useEffect(() => {
     if (!signin) return;
-    const row = rows.find((r) => r.runtime === signin.runtime);
+    const row = authData.runtimes.find((r) => r.runtime === signin.runtime);
     if (row && row.updatedAt > signin.since) setSignin(null);
     // `auth.data`, not `rows`: TanStack hands back the same object while the
     // answer is unchanged, and `rows` is a fresh array on every render.
@@ -296,13 +296,13 @@ function SettingsContent({
   const items = NAV.filter((n) => !n.project || projectId !== null);
 
   const projectPane = (projectSection: ProjectSection) =>
-    proj ? (
+    proj && projectId !== null ? (
       <ProjectPane
         section={projectSection}
         data={proj}
         busy={busy}
-        projectId={projectId!}
-        projectName={projectName}
+        projectId={projectId}
+        {...(projectName !== undefined ? { projectName } : {})}
         groupCount={groupCount}
         patch={patch}
         onRemoved={() => {
@@ -318,8 +318,8 @@ function SettingsContent({
     cred: (
       <CredPane
         rows={rows}
-        prefs={prefs}
-        waiting={signin?.runtime}
+        {...(prefs !== undefined ? { prefs } : {})}
+        {...(signin ? { waiting: signin.runtime } : {})}
         onSaved={load}
         onWaitForLogin={(runtime, since) => setSignin({ runtime, since, until: Date.now() + 300_000 })}
       />
@@ -349,7 +349,7 @@ function SettingsContent({
         rows={rows}
         checks={checks}
         projectId={projectId}
-        projectName={projectName}
+        {...(projectName !== undefined ? { projectName } : {})}
         project={proj}
         onSection={onSection}
       />
@@ -410,10 +410,11 @@ function SandboxServerSettings({
   });
   const refreshServer = () => void queries.invalidateQueries({ queryKey: ["sandbox-server"] });
   const refreshImages = () => void queries.invalidateQueries({ queryKey: ["sandbox-images"] });
+  const current = rows.find((row) => row.runtime === "sandbox");
 
   return (
     <ServerPane
-      current={rows.find((row) => row.runtime === "sandbox")}
+      {...(current ? { current } : {})}
       checks={checks}
       server={server}
       image={images ? images.current : ""}
@@ -501,8 +502,8 @@ function SettingsNavigation({
           items={items}
           project
           label="项目"
-          note={projectName}
-          hint={project?.repoPath}
+          {...(projectName !== undefined ? { note: projectName } : {})}
+          {...(project ? { hint: project.repoPath } : {})}
           section={section}
           nags={nags}
           onSection={onSection}
@@ -532,7 +533,7 @@ function SettingsGroup({
   onSection: (section: Section) => void;
 }) {
   return (
-    <Group label={label} note={note} hint={hint}>
+    <Group label={label} {...(note !== undefined ? { note } : {})} {...(hint !== undefined ? { hint } : {})}>
       {items
         .filter((item) => Boolean(item.project) === project)
         .map((item) => (

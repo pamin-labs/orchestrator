@@ -175,7 +175,7 @@ export function App() {
   // takes the id; nothing was passing it.
   useEffect(() => {
     if (sel.p) void refresh(sel.p);
-  }, [sel.p]);
+  }, [refresh, sel.p]);
   // ⌘K switches whatever the boss is standing in. Inside a requirement that is
   // the requirement — offering the project list there means the shortcut does the
   // wrong thing at exactly the depth it is most useful.
@@ -306,9 +306,9 @@ export function App() {
           return {
             id: p.id,
             name: same ? p.repo_path : p.name,
-            meta: same ? undefined : p.repo_path,
+            ...(!same ? { meta: p.repo_path } : {}),
             rtlMeta: true,
-            badge: countWaiting(st, p.id) > 0 ? `${countWaiting(st, p.id)} 件待办` : undefined,
+            ...(countWaiting(st, p.id) > 0 ? { badge: `${countWaiting(st, p.id)} 件待办` } : {}),
           };
         })}
         onPick={(id) => go({ p: id, g: null, view: "board" })}
@@ -335,7 +335,7 @@ export function App() {
         initial={sel.s ?? section ?? "cred"}
         onSection={(k) => go({ s: k })}
         projectId={sel.p}
-        projectName={proj?.name}
+        {...(proj ? { projectName: proj.name } : {})}
         groupCount={st.groups.filter((g) => g.project_id === sel.p).length}
         // The project it was showing is gone: go home rather than leave the view
         // pointed at a row that no longer exists.

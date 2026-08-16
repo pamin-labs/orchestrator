@@ -34,7 +34,7 @@ import { Workspace } from "./workspace";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
 import { bootstrapOf } from "../lib/bootstrap";
-import { jsonOr } from "../../../src/mech/util/text.ts";
+import { jsonOr } from "../../../src/contracts/json.ts";
 import { z } from "zod";
 
 /** One requirement in full: slices, their tasks, who is on it, and what it asks. */
@@ -124,7 +124,7 @@ export function Requirement({
     // push the whole page into a horizontal scroll; every column is min-w-0 and
     // the text breaks now.
     <section className="flex min-h-0 flex-1 flex-col">
-      <Header st={st} g={g} refresh={refresh} slices={slices} />
+      <Header st={st} g={g} refresh={refresh} />
       <Bootstrap frames={frames} grpId={g.id} />
       {broke && <BudgetWall g={g} refresh={refresh} />}
 
@@ -133,7 +133,7 @@ export function Requirement({
           <Draft st={st} g={g} refresh={refresh} />
         </Pane>
       ) : (
-        <Tabs value={active} onValueChange={onTab} className="mt-3 flex min-h-0 flex-1 flex-col">
+        <Tabs value={active} {...(onTab ? { onValueChange: onTab } : {})} className="mt-3 flex min-h-0 flex-1 flex-col">
           <TabList>
             <Tab value="slice" count={slices.length}>
               切片
@@ -144,7 +144,7 @@ export function Requirement({
             <Tab value="ask" count={asks.length} mine={mine.length > 0}>
               {mine.length ? "待你决策" : "问题"}
             </Tab>
-            <Tab value="notes" count={notes ?? undefined}>
+            <Tab value="notes" {...(notes !== null ? { count: notes } : {})}>
               记录
             </Tab>
             {/* No count: a container is one or none, and a badge reading 1 next
@@ -174,7 +174,7 @@ export function Requirement({
                     <AccordionItem key={s.id} value={String(s.id)}>
                       <SliceRow st={st} g={g} s={s} selected={s.id === shown?.id} />
                       <AccordionBody>
-                        <SliceDetail st={st} g={g} s={s} refresh={refresh} />
+                        <SliceDetail st={st} s={s} refresh={refresh} />
                       </AccordionBody>
                     </AccordionItem>
                   ))}
@@ -360,7 +360,7 @@ function Step({ label, state }: { label: string; state: "wait" | "run" | "ok" | 
   );
 }
 
-function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () => void; slices: Slice[] }) {
+function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }) {
   const inQueue = st.mergeQueue.some((m) => m.grpId === g.id);
   const url = prUrl(st, g);
   const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
@@ -566,7 +566,7 @@ function Ticks({ s, gs }: { s: Slice; gs: Record<string, string> }) {
 }
 
 /** The selected slice, in full: what it promised, what it did, and the two buttons. */
-function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; refresh: () => void }) {
+function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => void }) {
   const tasks = st.tasks.filter((t) => t.slice_id === s.id);
   const waiting = s.status === "awaiting_boss";
   // A header saying `S2 <title> 验收：<spec>` sat here, directly under the lane row
@@ -880,7 +880,7 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
       <H2 className="mt-6">跟这个组说话</H2>
       <Composer
         rows={2}
-        projectId={projectId}
+        {...(projectId !== undefined ? { projectId } : {})}
         placeholder="下一个 turn 开头就会读到。截图直接粘，/ 插技能路径。⌘Enter 发给 PM"
         submit="发给 PM"
         onSubmit={(d) => send(d)}

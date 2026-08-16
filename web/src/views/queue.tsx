@@ -39,7 +39,7 @@ interface Item {
   points: number;
   reasons: Reason[];
   flag?: string;
-  actions: React.ReactNode;
+  actions: React.ReactElement | null;
   /** An open question, answerable without leaving the list. */
   escId?: number;
   /** Told, not asked: 知道了 is the only move. */
@@ -90,7 +90,7 @@ export function Queue({
         card ? REASONS.waited(now - card.at) : null,
         spend(g.id) > 0 && REASONS.sunk(spend(g.id)),
       ]),
-      flag: st.lateObjections.some((o) => o.grpId === g.id) ? "有反对意见" : undefined,
+      ...(st.lateObjections.some((o) => o.grpId === g.id) ? { flag: "有反对意见" } : {}),
       // No button: the row is the way in. See `Cluster`.
       actions: null,
     });
@@ -164,7 +164,7 @@ export function Queue({
         halted(e.grp_id) && REASONS.halted(),
         REASONS.waited(now - e.created_at),
       ]),
-      flag: e.severity === "blocker" ? "全组已暂停" : undefined,
+      ...(e.severity === "blocker" ? { flag: "全组已暂停" } : {}),
       escId: e.id,
       // A standing agent that files a non-blocker is telling you something, not
       // asking: nothing is hanging on the reply and there is no requirement to
@@ -273,9 +273,21 @@ function Cluster({
   // boss decides here is which requirement to open, and six answers it.
   const folded = fold(c.items);
   const shown = folded.slice(0, 6);
+  const fromAction = (target: EventTarget | null) =>
+    target instanceof Element && target.closest("[data-queue-action]") !== null;
   return (
     <div
-      onClick={() => !standing && onOpen(c.grpId)}
+      role="button"
+      aria-disabled={standing}
+      tabIndex={standing ? -1 : 0}
+      onClick={(e) => {
+        if (!standing && !fromAction(e.target)) onOpen(c.grpId);
+      }}
+      onKeyDown={(e) => {
+        if (standing || e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        onOpen(c.grpId);
+      }}
       className={cn(
         "grid grid-cols-[14rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2",
         "border-t border-rule-soft px-2 py-2.5 transition-colors first:border-t-0",
@@ -306,7 +318,7 @@ function Cluster({
         )}
       </div>
 
-      <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 whitespace-nowrap">
+      <span data-queue-action className="flex items-center gap-2 whitespace-nowrap">
         {c.items.find((i) => i.actions)?.actions}
         <Meta>{g?.branch ?? ""}</Meta>
       </span>
@@ -361,8 +373,8 @@ function Ticket({ item, n, refresh, standing }: { item: Item; n: number; refresh
         {/* A standing agent has no requirement to open, so its reply box is the
             only way to clear it and it stays on the card. */}
         {standing && item.escId != null && (
-          <span onClick={(e) => e.stopPropagation()} className="mt-1 block">
-            <Reply escId={item.escId} fyi={item.fyi} refresh={refresh} />
+          <span data-queue-action className="mt-1 block">
+            <Reply escId={item.escId} {...(item.fyi !== undefined ? { fyi: item.fyi } : {})} refresh={refresh} />
           </span>
         )}
       </span>
