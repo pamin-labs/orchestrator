@@ -162,3 +162,48 @@ test("a command that finishes in time is untouched by the timeout", async () => 
   });
   expect("digest" in out && out.exitCode).toBe(0);
 });
+
+test("coercion and refusal are one decision, which they were not", () => {
+  // The hand-written `int` case ran `Number(raw)` and asked whether the result
+  // was an integer. `Number(" 3 ")` is 3, `Number("")` is 0 and `Number(true)`
+  // is 1 — so a blank field and a checkbox both arrived on a command line as
+  // numbers somebody chose. zod's `coerce.number().int()` refuses all three.
+  const def = {
+    name: "build",
+    template: "make -j{jobs}",
+    concurrency: 1,
+    argSchema: { jobs: { type: "int" as const, min: 1, max: 64 } },
+  };
+  expect(resolveLease(def, { jobs: 4 })).toMatchObject({ ok: true, argv: ["make", "-j4"] });
+  expect(resolveLease(def, { jobs: "4" })).toMatchObject({ ok: true, argv: ["make", "-j4"] });
+  for (const bad of [true, "", " ", "4x", null, 4.5, 0, 65]) {
+    expect(resolveLease(def, { jobs: bad })).toMatchObject({ ok: false });
+  }
+
+  // Same shape on `bool`. `z.coerce.boolean()` would take "false" and "no" as
+  // true, which is why this is a union of the two words rather than a coercion.
+  const flag = {
+    name: "t",
+    template: "run --clean={clean}",
+    concurrency: 1,
+    argSchema: { clean: { type: "bool" as const } },
+  };
+  expect(resolveLease(flag, { clean: false })).toMatchObject({ ok: true, argv: ["run", "--clean=false"] });
+  expect(resolveLease(flag, { clean: "false" })).toMatchObject({ ok: true, argv: ["run", "--clean=false"] });
+  expect(resolveLease(flag, { clean: "no" })).toMatchObject({ ok: false });
+  expect(resolveLease(flag, { clean: 1 })).toMatchObject({ ok: false });
+});
+
+test("the refusal still says what to write instead", () => {
+  // An agent reads this and has to correct itself from it. "Invalid option" does
+  // not do that, so every message survived the move onto zod verbatim.
+  const def = {
+    name: "t",
+    template: "run {mode}",
+    concurrency: 1,
+    argSchema: { mode: { type: "enum" as const, values: ["fast", "full"] } },
+  };
+  const r = resolveLease(def, { mode: "quick" });
+  expect(r.ok).toBe(false);
+  expect((r as { error: string }).error).toBe("mode must be one of: fast, full");
+});

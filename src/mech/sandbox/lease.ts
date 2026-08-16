@@ -1,4 +1,5 @@
 import { resolve as resolvePath, relative, isAbsolute } from "node:path";
+import { z } from "zod";
 import type { Invalid, Result } from "../flow/validate.ts";
 
 /**
@@ -142,59 +143,74 @@ export function resolveLease(
   return { ok: true, argv, cwd: def.cwd };
 }
 
-function validateArg(
-  name: string,
-  spec: ArgSpec,
-  raw: unknown,
-): { ok: true; value: string } | Invalid {
+/**
+ * One argument, as a zod schema built from the resource's own spec.
+ *
+ * The spec is data — the boss writes it into the `resource` table — so the
+ * schema is built per call rather than declared. What that buys over the hand
+ * written checks it replaces is not brevity, it is that coercion and refusal are
+ * one decision: `int` used to accept anything `Number()` liked, so `"3 "`, `""`
+ * and `true` all became integers on the way to a command line.
+ *
+ * The messages are kept verbatim. An agent reads them and has to correct itself
+ * from them, so "must be one of: a, b" beats zod's "Invalid option".
+ */
+function argSchema(name: string, spec: ArgSpec): z.ZodType<string> {
   switch (spec.type) {
-    case "enum": {
-      const s = String(raw);
-      if (!spec.values.includes(s)) {
-        return { ok: false, error: `${name} must be one of: ${spec.values.join(", ")}` };
-      }
-      return { ok: true, value: s };
-    }
+    case "enum":
+      return z
+        .enum(spec.values as [string, ...string[]], { error: `${name} must be one of: ${spec.values.join(", ")}` })
+        .transform(String);
     case "int": {
-      const n = Number(raw);
-      if (!Number.isInteger(n)) return { ok: false, error: `${name} must be an integer` };
-      if (spec.min !== undefined && n < spec.min) {
-        return { ok: false, error: `${name} must be >= ${spec.min}` };
-      }
-      if (spec.max !== undefined && n > spec.max) {
-        return { ok: false, error: `${name} must be <= ${spec.max}` };
-      }
-      return { ok: true, value: String(n) };
+      // Not `z.coerce.number()`: that is `Number()`, which says `true` is 1,
+      // `""` is 0 and `null` is 0. A checkbox and a blank field would both reach
+      // a command line as a number somebody chose. A number, or a string that is
+      // entirely a number — nothing else.
+      let bounded = z.number().int(`${name} must be an integer`);
+      if (spec.min !== undefined) bounded = bounded.min(spec.min, `${name} must be >= ${spec.min}`);
+      if (spec.max !== undefined) bounded = bounded.max(spec.max, `${name} must be <= ${spec.max}`);
+      return z
+        .union([z.number(), z.string().regex(/^-?\d+$/, `${name} must be an integer`).transform(Number)], {
+          error: `${name} must be an integer`,
+        })
+        .pipe(bounded)
+        .transform(String);
     }
-    case "bool": {
-      if (raw === true || raw === "true") return { ok: true, value: "true" };
-      if (raw === false || raw === "false") return { ok: true, value: "false" };
-      return { ok: false, error: `${name} must be true or false` };
-    }
+    case "bool":
+      // Not `z.coerce.boolean()`: that treats every non-empty string as true, so
+      // "false" and "no" would both arrive as `true` on a command line. The two
+      // words and the two booleans, and nothing else.
+      return z
+        .union([z.boolean(), z.literal("true"), z.literal("false")], { error: `${name} must be true or false` })
+        .transform((v) => String(v));
     case "string": {
-      const s = String(raw);
-      if (spec.maxLength && s.length > spec.maxLength) {
-        return { ok: false, error: `${name} is longer than ${spec.maxLength}` };
-      }
-      if (!new RegExp(spec.pattern).test(s)) {
-        return { ok: false, error: `${name} does not match ${spec.pattern}` };
-      }
-      return { ok: true, value: s };
+      let t = z.string({ error: `${name} must be a string` });
+      if (spec.maxLength) t = t.max(spec.maxLength, `${name} is longer than ${spec.maxLength}`);
+      return t.regex(new RegExp(spec.pattern), `${name} does not match ${spec.pattern}`);
     }
-    case "path": {
-      const s = String(raw);
-      if (s.includes("\0")) return { ok: false, error: `${name} contains a null byte` };
-      const root = resolvePath(spec.root);
-      const abs = isAbsolute(s) ? resolvePath(s) : resolvePath(root, s);
-      const rel = relative(root, abs);
-      // Escaping the root is the whole risk here: `../../etc/passwd`, an
-      // absolute path, or a symlink-shaped `..` chain.
-      if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
-        return { ok: false, error: `${name} must stay inside ${spec.root}` };
-      }
-      return { ok: true, value: abs };
-    }
+    case "path":
+      // The one case no schema library covers, and the one that matters most:
+      // whether a path stays inside a root is a question about two paths, and the
+      // answer is `relative()`. Escaping is the whole risk — `../../etc/passwd`,
+      // an absolute path, a `..` chain shaped like a symlink.
+      return z
+        .string({ error: `${name} must be a path` })
+        .refine((v) => !v.includes("\0"), `${name} contains a null byte`)
+        .transform((v) => {
+          const root = resolvePath(spec.root);
+          return { root, abs: isAbsolute(v) ? resolvePath(v) : resolvePath(root, v) };
+        })
+        .refine(({ root, abs }) => {
+          const rel = relative(root, abs);
+          return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+        }, `${name} must stay inside ${spec.root}`)
+        .transform(({ abs }) => abs);
   }
+}
+
+function validateArg(name: string, spec: ArgSpec, raw: unknown): { ok: true; value: string } | Invalid {
+  const r = argSchema(name, spec).safeParse(raw);
+  return r.success ? { ok: true, value: r.data } : { ok: false, error: r.error.issues[0]?.message ?? `${name} is invalid` };
 }
 
 export interface LeaseDigest {
