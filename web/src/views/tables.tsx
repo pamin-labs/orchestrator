@@ -8,7 +8,7 @@ import { Bar } from "../ui/table";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
 import { Tip } from "../ui/tooltip";
 import { BurnChart, SplitDonut } from "../ui/chart";
-import type { Agent, AgentCost, Cost, Frame, Slice, State } from "../lib/api";
+import type { Agent, AgentCost, Cost, PanelFrame, Slice, State } from "../lib/api";
 import { owns } from "../lib/select";
 import { cn, K } from "../lib/utils";
 import { activityOf } from "../lib/activity";
@@ -21,7 +21,7 @@ import { activityOf } from "../lib/activity";
  * shape of a loop. Both come free: the count is a query, the line is the SSE
  * stream the page is already holding, so nothing here costs an agent a token.
  */
-export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; projectId: number }) {
+export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[]; projectId: number }) {
   const ids = new Set(st.groups.filter((g) => g.project_id === projectId).map((g) => g.id));
   const rows = st.agents.filter((a) => !a.grp_id || ids.has(a.grp_id));
   const [idle, setIdle] = useState(false);

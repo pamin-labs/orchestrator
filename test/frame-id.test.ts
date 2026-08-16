@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { appendFrame, type Frame } from "../web/src/lib/api.ts";
+import { appendFrame, type PanelFrame } from "../web/src/lib/api.ts";
 
 /**
  * The flicker's root cause was index keys: a new frame prepended in the
@@ -10,7 +10,7 @@ import { appendFrame, type Frame } from "../web/src/lib/api.ts";
 
 test("appending a new event frame does not change ids already assigned", () => {
   const live = { current: 0 };
-  let frames: Frame[] = [];
+  let frames: PanelFrame[] = [];
   frames = appendFrame(frames, { type: "event", seq: 1, kind: "say", author: "boss", body: "hi", at: 1 }, live);
   frames = appendFrame(frames, { type: "event", seq: 2, kind: "say", author: "cos", body: "ack", at: 2 }, live);
   const idsBefore = frames.map((f) => f.id);
@@ -23,7 +23,7 @@ test("appending a new event frame does not change ids already assigned", () => {
 
 test("a reconnect replay (same seq) is deduped, not appended as a second row", () => {
   const live = { current: 0 };
-  let frames: Frame[] = [];
+  let frames: PanelFrame[] = [];
   frames = appendFrame(frames, { type: "event", seq: 5, kind: "say", author: "boss", body: "hi", at: 1 }, live);
   const before = frames[0]!.id;
 
@@ -36,7 +36,7 @@ test("a reconnect replay (same seq) is deduped, not appended as a second row", (
 
 test("a streaming partial frame merges into the last live entry, keeping its id", () => {
   const live = { current: 0 };
-  let frames: Frame[] = [];
+  let frames: PanelFrame[] = [];
   frames = appendFrame(frames, { type: "live", agentId: 9, kind: "text", body: "hel", grpId: 1 }, live);
   const id = frames[0]!.id;
   expect(frames[0]!.cls).toBe("partial");
@@ -49,7 +49,7 @@ test("a streaming partial frame merges into the last live entry, keeping its id"
 
 test("a full-history reconnect replay never leaves the frame array with duplicate ids", () => {
   const live = { current: 0 };
-  let frames: Frame[] = [];
+  let frames: PanelFrame[] = [];
   for (let seq = 1; seq <= 3; seq++) {
     frames = appendFrame(frames, { type: "event", seq, kind: "say", author: "boss", body: `m${seq}`, at: seq }, live);
   }
@@ -64,7 +64,7 @@ test("a full-history reconnect replay never leaves the frame array with duplicat
 
 test("live and persisted ids live in separate domains and never collide", () => {
   const live = { current: 0 };
-  let frames: Frame[] = [];
+  let frames: PanelFrame[] = [];
   frames = appendFrame(frames, { type: "live", agentId: 1, kind: "tool", body: "grep", grpId: 1 }, live);
   frames = appendFrame(frames, { type: "event", seq: 1, kind: "say", author: "boss", body: "hi", at: 1 }, live);
   const ids = frames.map((f) => f.id);

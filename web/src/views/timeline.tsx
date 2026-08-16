@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { groupedRows, type Frame, type State } from "../lib/api";
+import { groupedRows, type PanelFrame, type State } from "../lib/api";
 import { cn, clock } from "../lib/utils";
 
 /** One event row. Memoized so a new frame arriving only mounts its own row —
@@ -12,7 +12,7 @@ const TimelineRow = memo(function TimelineRow({
   showHeader,
   showDivider,
 }: {
-  f: Frame;
+  f: PanelFrame;
   showHeader: boolean;
   showDivider: boolean;
 }) {
@@ -65,7 +65,7 @@ export function Timeline({
   projectId,
 }: {
   st: State;
-  frames: Frame[];
+  frames: PanelFrame[];
   grpId: number | null;
   projectId: number | null;
 }) {

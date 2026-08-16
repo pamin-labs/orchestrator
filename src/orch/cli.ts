@@ -16,7 +16,7 @@
  */
 
 import { errText, jsonOr } from "../mech/util/text.ts";
-import { JsonValue, ProtocolResponse, readJsonResponse, type Json } from "../http/respond.ts";
+import { displayJson, JsonValue, ProtocolResponse, readJsonResponse, type Json } from "../http/respond.ts";
 import { ChangedFilesClaimSchema } from "../mech/flow/reconcile.ts";
 import { SplitRequirements } from "../api/orch/planning.ts";
 import { MailIntent } from "../api/orch/messaging.ts";
@@ -128,10 +128,7 @@ const transport = Object.assign(
     const raw = typeof init?.body === "string" ? init.body : undefined;
     const payload = raw ? JsonValue.parse(JSON.parse(raw)) : undefined;
     const answer = await viaMailbox(init?.method ?? "GET", `${url.pathname}${url.search}`, payload);
-    return new Response(JSON.stringify(answer.body), {
-      status: answer.status,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
+    return Response.json(answer.body, { status: answer.status });
   },
   { preconnect: fetch.preconnect },
 );
@@ -437,19 +434,11 @@ export async function main(argv: string[]): Promise<number> {
   // Non-2xx goes to stderr with a non-zero exit so the agent sees a real
   // failure instead of mistaking a rejection message for a result.
   if (r.status >= 400) {
-    console.error(display(r.body));
+    console.error(displayJson(r.body, 2));
     return 1;
   }
-  console.log(display(r.body));
+  console.log(displayJson(r.body, 2));
   return 0;
-}
-
-function display(body: Json): string {
-  if (body && !Array.isArray(body) && typeof body === "object") {
-    if (typeof body.error === "string") return body.error;
-    if (typeof body.message === "string") return body.message;
-  }
-  return JSON.stringify(body, null, 2);
 }
 
 function usageError(msg: string): number {

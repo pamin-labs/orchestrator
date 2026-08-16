@@ -18,7 +18,7 @@ import {
   readApi,
   sliceDecision,
   type Escalation,
-  type Frame,
+  type PanelFrame,
   type Group,
   type Slice,
   type State,
@@ -64,7 +64,7 @@ export function Requirement({
 }: {
   st: State;
   g: Group;
-  frames: Frame[];
+  frames: PanelFrame[];
   refresh: () => void;
   open: boolean;
   /** From the hash: leaving the drill-in and coming back kept unmounting this. */
@@ -273,7 +273,7 @@ export function Requirement({
  * Live frames only, so it is gone on reload and the outcome line in the record
  * is what remains. Nothing here is stored twice.
  */
-function Bootstrap({ frames, grpId }: { frames: Frame[]; grpId: number }) {
+function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
   const box = useRef<HTMLDivElement>(null);
   /** Stay pinned to the newest line only while the reader is already there. */
   const pinned = useRef(true);

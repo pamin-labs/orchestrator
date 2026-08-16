@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { readJsonResponse } from "../src/http/respond.ts";
+import { displayJson, readJsonResponse } from "../src/http/respond.ts";
 import { readJson } from "../web/src/lib/api.ts";
 
 test("malformed response bytes cannot become valid JSON null", async () => {
@@ -14,4 +14,10 @@ test("malformed response bytes cannot become valid JSON null", async () => {
 
 test("a real JSON null remains distinguishable from malformed bytes", async () => {
   expect(await readJsonResponse(new Response("null"))).toEqual({ ok: true, data: null });
+});
+
+test("protocol messages render consistently in every client", () => {
+  expect(displayJson({ error: "no" })).toBe("no");
+  expect(displayJson({ message: "done" })).toBe("done");
+  expect(displayJson({ value: 1 })).toBe('{"value":1}');
 });

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { bootstrapOf } from "../web/src/lib/bootstrap.ts";
-import type { Frame } from "../web/src/lib/api.ts";
+import type { PanelFrame } from "../web/src/lib/api.ts";
 
 /**
  * The pane that watches a sandbox being rebuilt. What can be wrong here is the
@@ -9,7 +9,7 @@ import type { Frame } from "../web/src/lib/api.ts";
  * has to stay on the page rather than vanish with the pane.
  */
 let seq = 0;
-const f = (o: Partial<Frame> & { text: string; cls: Frame["cls"] }): Frame => ({
+const f = (o: Partial<PanelFrame> & { text: string; cls: PanelFrame["cls"] }): PanelFrame => ({
   id: `f${++seq}`,
   grpId: 1,
   projectId: 1,

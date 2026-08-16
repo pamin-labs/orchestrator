@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Json } from "../../../src/http/respond.ts";
 import { hc, type InferResponseType } from "hono/client";
 import type { ApiType } from "../../../src/api.ts";
-import { readJsonResponse, TextResponseSchema } from "../../../src/http/respond.ts";
+import { displayJson, readJsonResponse, TextResponseSchema } from "../../../src/http/respond.ts";
 
 /**
  * The payload types, from the server that produces them.
@@ -20,31 +20,23 @@ import { readJsonResponse, TextResponseSchema } from "../../../src/http/respond.
  * responses at runtime: a compile-time contract cannot validate bytes returned
  * by an older or broken server.
  */
-import {
-  CostReportSchema,
-  type AgentCost as ServerAgentCost,
-  type CostReport,
-  type CostRow as ServerCostRow,
-} from "../../../src/mech/ops/cost.ts";
+import { CostReportSchema, type CostReport } from "../../../src/mech/ops/cost.ts";
 import {
   SnapshotSchema,
   type Agent,
   type Archived,
   type Escalation,
   type Group,
-  type Project,
   type Slice,
   type Snapshot,
-  type Task,
 } from "../../../src/api/panel/shapes.ts";
 import { FrameSchema } from "../../../src/bus.ts";
 
-export type { Agent, Archived, Escalation, Group, Project, Slice, Task };
+export type { Agent, Archived, Escalation, Group, Slice };
 export type State = Snapshot;
 export type Usage = State["usage"][number];
 export type Cost = CostReport;
-export type CostRow = ServerCostRow;
-export type AgentCost = ServerAgentCost;
+export type AgentCost = CostReport["agents"][number];
 
 /** What was actually built, for the one decision that cannot be taken back. */
 export const api = hc<ApiType>("/api");
@@ -101,25 +93,17 @@ export async function readApi<S extends z.ZodType>(request: Promise<Response>, s
   return result.data;
 }
 
-const display = (body: Json): string => {
-  if (body && !Array.isArray(body) && typeof body === "object") {
-    if (typeof body.error === "string") return body.error;
-    if (typeof body.message === "string") return body.message;
-  }
-  return JSON.stringify(body);
-};
-
 export type ApiResult<T> = { ok: true; data: T; text: string } | { ok: false; data: null; text: string };
 
 export async function readJson<S extends z.ZodType>(r: Response, schema: S): Promise<ApiResult<z.output<S>>> {
   const body = await readJsonResponse(r);
   if (!body.ok) return { ok: false, data: null, text: "Server returned a non-JSON response" };
-  if (!r.ok) return { ok: false, data: null, text: display(body.data) };
+  if (!r.ok) return { ok: false, data: null, text: displayJson(body.data) };
   const parsed = schema.safeParse(body.data);
   if (!parsed.success) {
     return { ok: false, data: null, text: `Server returned invalid JSON: ${z.prettifyError(parsed.error)}` };
   }
-  return { ok: true, data: parsed.data, text: display(body.data) };
+  return { ok: true, data: parsed.data, text: displayJson(body.data) };
 }
 
 const JsonBody = z.record(z.string(), z.json());
@@ -150,14 +134,14 @@ export async function mutate(request: Promise<Response>, quiet = false, schema: 
   return result;
 }
 
-type GroupActionRequest = NonNullable<Parameters<(typeof api.groups)[":id"][":action"]["$post"]>[0]>;
+export type GroupActionRequest = NonNullable<Parameters<(typeof api.groups)[":id"][":action"]["$post"]>[0]>;
 export const groupAction = (
   id: number,
   action: GroupActionRequest["param"]["action"],
   json: GroupActionRequest["json"] = {},
 ) => mutate(api.groups[":id"][":action"].$post({ param: { id: String(id), action }, json }));
 
-type SliceDecisionRequest = NonNullable<Parameters<(typeof api.slices)[":id"][":decision"]["$post"]>[0]>;
+export type SliceDecisionRequest = NonNullable<Parameters<(typeof api.slices)[":id"][":decision"]["$post"]>[0]>;
 export const sliceDecision = (
   id: number,
   decision: SliceDecisionRequest["param"]["decision"],
@@ -180,7 +164,7 @@ const WireSchema = FrameSchema.and(z.object({ projectId: z.number().nullable().o
 const NotificationMetaSchema = z.object({ url: z.string().optional(), title: z.string().optional() });
 export type Wire = z.infer<typeof WireSchema>;
 
-export interface Frame {
+export interface PanelFrame {
   /** Stable across renders and SSE reconnects, so the timeline can key on it
    *  instead of array position. Persisted events use their bus seq (`e<seq>`);
    *  live-only frames use a client-side counter (`l<n>`) — separate domains so
@@ -199,7 +183,7 @@ export interface Frame {
   agentId?: number | null;
 }
 
-const KIND: Record<string, Frame["cls"]> = {
+const KIND: Record<string, PanelFrame["cls"]> = {
   say: "say",
   boss_say: "say",
   note: "say",
@@ -211,35 +195,32 @@ const KIND: Record<string, Frame["cls"]> = {
   digest: "tool",
 };
 
-/** Appends one raw SSE payload to the frame buffer, assigning it a stable id.
- *  A partial frame that continues the last live entry (same agent, still
- *  streaming) reuses that entry's id and mutates it in place — otherwise the
- *  row being streamed into would remount on every token. `liveSeq` is an
- *  external counter so it survives across calls without living in React state. */
-export function appendFrame(prev: Frame[], f: Wire, liveSeq: { current: number }): Frame[] {
-  const at = f.at ?? Date.now();
-  const next = prev.slice(-600);
-  if (f.type === "live") {
-    const cls = f.kind === "text" || f.kind === "thinking" ? "partial" : "tool";
-    const last = next[next.length - 1];
-    if (cls === "partial" && last?.cls === "partial" && last.agentId === f.agentId) {
-      next[next.length - 1] = { ...last, text: (last.text + f.body).slice(-300) };
-      return next;
-    }
-    return [
-      ...next,
-      {
-        id: `l${++liveSeq.current}`,
-        cls,
-        grpId: f.grpId ?? null,
-        projectId: f.projectId ?? null,
-        at,
-        author: f.role ?? "agent",
-        text: f.body,
-        agentId: f.agentId,
-      },
-    ];
+type LiveWire = Extract<Wire, { type: "live" }>;
+type EventWire = Extract<Wire, { type: "event" }>;
+
+function appendLive(next: PanelFrame[], f: LiveWire, liveSeq: { current: number }, at: number): PanelFrame[] {
+  const cls = f.kind === "text" || f.kind === "thinking" ? "partial" : "tool";
+  const last = next[next.length - 1];
+  if (cls === "partial" && last?.cls === "partial" && last.agentId === f.agentId) {
+    next[next.length - 1] = { ...last, text: (last.text + f.body).slice(-300) };
+    return next;
   }
+  return [
+    ...next,
+    {
+      id: `l${++liveSeq.current}`,
+      cls,
+      grpId: f.grpId,
+      projectId: f.projectId ?? null,
+      at,
+      author: f.role ?? "agent",
+      text: f.body,
+      agentId: f.agentId,
+    },
+  ];
+}
+
+function appendEvent(next: PanelFrame[], f: EventWire, at: number): PanelFrame[] {
   // A reconnect can overlap a frame already delivered live. The persisted seq
   // is stable, so the overlap is dropped instead of duplicating a React key.
   const id = `e${f.seq}`;
@@ -252,16 +233,25 @@ export function appendFrame(prev: Frame[], f: Wire, liveSeq: { current: number }
       grpId: f.grpId ?? null,
       projectId: f.projectId ?? null,
       at,
-      // `?? ""`, because the server's `body` is optional and this row's `text` is
-      // not. Nothing emits without one today — 110 call sites, all carry it — but
-      // `any` on this parameter is what kept that from being checked, and the
-      // failure it hides is a row in the boss's timeline that renders blank.
       author: f.author,
       target: f.target,
       intent: f.intent,
+      // Stored event bodies are optional; timeline text is not. Keep a broken
+      // producer visible as a blank row instead of weakening PanelFrame's type.
       text: f.body ?? "",
     },
   ];
+}
+
+/** Appends one raw SSE payload to the frame buffer, assigning it a stable id.
+ *  A partial frame that continues the last live entry (same agent, still
+ *  streaming) reuses that entry's id and mutates it in place — otherwise the
+ *  row being streamed into would remount on every token. `liveSeq` is an
+ *  external counter so it survives across calls without living in React state. */
+export function appendFrame(prev: PanelFrame[], f: Wire, liveSeq: { current: number }): PanelFrame[] {
+  const at = f.at ?? Date.now();
+  const next = prev.slice(-600);
+  return f.type === "live" ? appendLive(next, f, liveSeq, at) : appendEvent(next, f, at);
 }
 
 /** Derives each row's render props from a newest-first frame list. Pulled out
@@ -272,7 +262,7 @@ export function appendFrame(prev: Frame[], f: Wire, liveSeq: { current: number }
  *  positional check would make the old top row's props change every time a
  *  new frame arrives, even when its own grouping never changed. The row that
  *  ends up first in the DOM has its divider suppressed by CSS instead. */
-export function groupedRows(shown: Frame[]): { f: Frame; showHeader: boolean; showDivider: boolean }[] {
+export function groupedRows(shown: PanelFrame[]): { f: PanelFrame; showHeader: boolean; showDivider: boolean }[] {
   return shown.map((f, i) => {
     const prev = shown[i - 1];
     const same = Boolean(prev) && prev!.author === f.author && prev!.at - f.at < 60_000;
@@ -350,7 +340,7 @@ const ORCH = ["orch"];
 export function useOrch() {
   const queries = useQueryClient();
   const [project, setProject] = useState<number | null>(null);
-  const [frames, setFrames] = useState<Frame[]>([]);
+  const [frames, setFrames] = useState<PanelFrame[]>([]);
   const [live, setLive] = useState<"connecting" | "live" | "retry">("connecting");
   const started = useRef(false);
   const liveSeq = useRef(0);

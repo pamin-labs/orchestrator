@@ -1,4 +1,4 @@
-import type { Frame } from "./api";
+import type { PanelFrame } from "./api";
 
 /**
  * What a sandbox rebuild looks like from the frame buffer.
@@ -20,7 +20,7 @@ export interface Bootstrap {
   /** The install command, once the clone has returned and it has started. */
   cmd: string | null;
   /** Output of this run, oldest first. */
-  lines: Frame[];
+  lines: PanelFrame[];
   /** When the run started, for the clock. */
   since: number;
   /** When it ended, or null while it is going. */
@@ -30,7 +30,7 @@ export interface Bootstrap {
 const STARTED = "沙盒是新的";
 const ENDED = /^装好了|^装失败了/;
 
-export function bootstrapOf(frames: Frame[], grpId: number): Bootstrap {
+export function bootstrapOf(frames: PanelFrame[], grpId: number): Bootstrap {
   const mine = frames.filter((f) => f.grpId === grpId && f.author === "orchestrator");
   // One run, not every run in this session: a second rebuild starts its own, and
   // concatenating them made the header quote the previous run's command.

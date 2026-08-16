@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Empty, Meta } from "../ui/bits";
 import { Button } from "../ui/button";
 import { ask } from "../ui/confirm";
-import { api, groupAction, readApi, type Frame } from "../lib/api";
+import { api, groupAction, readApi, type PanelFrame } from "../lib/api";
 import { clock, cn } from "../lib/utils";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
@@ -46,10 +46,10 @@ const SandboxInfoSchema: z.ZodType<InferResponseType<typeof api.sandbox.$get, 20
 type SandboxInfo = z.infer<typeof SandboxInfoSchema>;
 
 /** A live frame from this group's container, rather than from an agent in it. */
-const fromSandbox = (f: Frame, grpId: number): boolean =>
+const fromSandbox = (f: PanelFrame, grpId: number): boolean =>
   f.grpId === grpId && f.agentId == null && (f.cls === "tool" || f.cls === "state") && f.author === "orchestrator";
 
-export function Workspace({ frames, grpId }: { frames: Frame[]; grpId: number }) {
+export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
   const [info, setInfo] = useState<SandboxInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const load = async (id: number) =>

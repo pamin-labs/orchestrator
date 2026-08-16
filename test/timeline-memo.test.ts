@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { appendFrame, groupedRows, type Frame } from "../web/src/lib/api.ts";
+import { appendFrame, groupedRows, type PanelFrame } from "../web/src/lib/api.ts";
 
 /**
  * S1 fixed the key (stable id, no more remount). This locks down the layer
@@ -11,7 +11,7 @@ import { appendFrame, groupedRows, type Frame } from "../web/src/lib/api.ts";
 
 test("appending a new persisted frame does not change props of unrelated rows", () => {
   const live = { current: 0 };
-  let frames: Frame[] = [];
+  let frames: PanelFrame[] = [];
   frames = appendFrame(frames, { type: "event", seq: 1, kind: "say", author: "boss", body: "hi", at: 1 }, live);
   frames = appendFrame(frames, { type: "event", seq: 2, kind: "note", author: "cos", body: "ack", at: 70_000 }, live);
   const before = groupedRows([...frames].reverse());
@@ -19,7 +19,7 @@ test("appending a new persisted frame does not change props of unrelated rows", 
   frames = appendFrame(frames, { type: "event", seq: 3, kind: "say", author: "boss", body: "more", at: 140_000 }, live);
   const after = groupedRows([...frames].reverse());
 
-  // The two pre-existing rows must be untouched: same Frame object, same booleans.
+  // The two pre-existing rows must be untouched: same PanelFrame object, same booleans.
   const beforeById = new Map(before.map((r) => [r.f.id, r]));
   for (const row of after) {
     if (row.f.id === "e3") continue;
@@ -32,7 +32,7 @@ test("appending a new persisted frame does not change props of unrelated rows", 
 
 test("a streaming partial frame only changes the row being streamed into", () => {
   const live = { current: 0 };
-  let frames: Frame[] = [];
+  let frames: PanelFrame[] = [];
   frames = appendFrame(frames, { type: "event", seq: 1, kind: "say", author: "boss", body: "hi", at: 1 }, live);
   frames = appendFrame(frames, { type: "live", agentId: 9, kind: "text", body: "hel", grpId: 1, at: 2 }, live);
   const before = groupedRows([...frames].reverse());
@@ -43,7 +43,7 @@ test("a streaming partial frame only changes the row being streamed into", () =>
   const staticRowAfter = after.find((r) => r.f.id === "e1")!;
   const streamedRow = after.find((r) => r.f.cls === "partial")!;
 
-  // The row that never changed keeps the exact same Frame reference (memo bails).
+  // The row that never changed keeps the exact same PanelFrame reference (memo bails).
   expect(staticRowAfter.f).toBe(staticRow.f);
   // The streaming row is a new object (it must re-render), same id though (no remount).
   expect(streamedRow.f.text).toBe("hello");
