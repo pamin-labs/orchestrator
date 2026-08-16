@@ -2,6 +2,7 @@ import { clip, jsonOr } from "../mech/util/text.ts";
 import { JsonObject, JsonValue } from "../http/respond.ts";
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary, Usage } from "./claude.ts";
 import { promptPath, summarizeTool } from "./claude.ts";
+import { runLineStream } from "./line-stream.ts";
 import { shq } from "../mech/util/shq.ts";
 import { z } from "zod";
 
@@ -65,7 +66,7 @@ export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
  * codex emits. Everything long lands under `item`, so that is what gets clipped.
  */
 const LOG_ITEM_CHARS = 400;
-type JsonMap = z.infer<typeof JsonObject>;
+export type JsonMap = z.infer<typeof JsonObject>;
 
 export function trimItem(l: JsonMap): JsonMap {
   const item = JsonObject.safeParse(l.item);
@@ -97,6 +98,7 @@ const WindowSchema = z
     resets_in_seconds: Counter.optional(),
   })
   .catchall(JsonValue);
+type Window = z.infer<typeof WindowSchema>;
 
 /** One valid Codex NDJSON event. Unknown fields remain available to the log. */
 const LineSchema = z
@@ -124,6 +126,7 @@ const LineSchema = z
     info: z.object({ model_context_window: Counter.optional() }).catchall(JsonValue).nullable().optional(),
   })
   .catchall(JsonValue);
+type Line = z.infer<typeof LineSchema>;
 
 /**
  * What one codex turn cost, in the shape the rest of the system bills in.
@@ -171,12 +174,6 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
   await spec.runner.put(promptFile, input);
   const cmd = `codex ${buildArgv(spec).map(shq).join(" ")} < ${promptFile}; rc=$?; rm -f ${promptFile}; exit $rc`;
 
-  const ac = new AbortController();
-  spec.signal?.addEventListener("abort", () => ac.abort(), { once: true });
-  h.onAbort?.(() => ac.abort());
-
-  const log = spec.logPath ? Bun.file(spec.logPath).writer() : undefined;
-
   const result: TurnResult = {
     sessionId: spec.resumeSessionId ?? "",
     ok: false,
@@ -190,88 +187,13 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
   };
   const files = new Set<string>();
 
-  const stream = spec.runner.lines(cmd, {
-    cwd: spec.cwd,
-    timeoutMs: spec.timeoutMs,
-    env: spec.env,
-    signal: ac.signal,
+  const tail = await runLineStream(spec, cmd, h.onAbort, (raw) => {
+    if (!raw.startsWith("{")) return undefined; // banners and friends
+    const l = jsonOr(raw, LineSchema.nullable(), null);
+    if (!l) return undefined;
+    consume(l, result, files, h);
+    return trimItem(l);
   });
-  let tail = { code: -1, err: "" };
-  try {
-    while (true) {
-      const step = await stream.next();
-      if (step.done) {
-        tail = step.value;
-        break;
-      }
-      const raw = step.value;
-      if (!raw.startsWith("{")) continue; // banners and friends
-      const l = jsonOr(raw, LineSchema.nullable(), null);
-      if (!l) continue;
-      log?.write(JSON.stringify(trimItem(l)) + "\n");
-
-      switch (l.type) {
-        case "thread.started":
-          if (l.thread_id) result.sessionId = l.thread_id;
-          break;
-        case "turn.started":
-          result.numTurns++;
-          break;
-        case "item.completed": {
-          const it = l.item ?? {};
-          if (it.type === "agent_message" && it.text) {
-            result.text = it.text;
-            h.onText?.(it.text);
-          } else if (it.type === "error") {
-            result.toolSummaries.push({ name: "notice", detail: clip(it.message ?? "", 120, true) });
-          } else if (it.type) {
-            const t: ToolSummary = summarizeTool(it.type, {
-              ...(it.command ? { command: it.command } : {}),
-              ...(it.path ? { file_path: it.path } : {}),
-            });
-            result.toolSummaries.push(t);
-            h.onTool?.(t);
-            if (it.path) files.add(it.path);
-          }
-          break;
-        }
-        case "turn.completed": {
-          result.usage = codexUsage(l.usage);
-          result.ok = true;
-          result.terminalReason = "completed";
-          break;
-        }
-        case "token_count": {
-          // The only place either CLI hands over a real quota percentage. primary
-          // is the 5-hour window (299 minutes), secondary the weekly one (10079).
-          // The same event carries the model's real context window, which is the
-          // denominator session rotation needs — 272000 for the gpt-5.6 family.
-          if (l.info?.model_context_window) result.contextWindow = l.info.model_context_window;
-          const { primary, secondary } = l.rate_limits ?? {};
-          if (primary || secondary) {
-            const now = Math.floor(Date.now() / 1000);
-            result.rateLimit = {
-              status: "allowed",
-              rateLimitType: "five_hour",
-              resetsAt: now + (primary?.resets_in_seconds ?? 0),
-              fiveHourPercent: primary?.used_percent,
-              weeklyPercent: secondary?.used_percent,
-              weeklyResetsAt: secondary ? now + (secondary.resets_in_seconds ?? 0) : undefined,
-            };
-          }
-          break;
-        }
-        case "turn.failed":
-        case "error":
-          result.ok = false;
-          result.terminalReason = "error";
-          result.text = l.error?.message ?? l.message ?? result.text;
-          break;
-      }
-    }
-  } finally {
-    await log?.end();
-  }
 
   result.filesTouched = [...files];
   if (!result.terminalReason) {
@@ -279,4 +201,112 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
     result.text ||= tail.err.trim().split("\n").slice(-5).join("\n");
   }
   return result;
+}
+
+function consume(l: Line, result: TurnResult, files: Set<string>, h: TurnHandlers): void {
+  if (l.type === "item.completed") {
+    consumeItem(l.item ?? {}, result, files, h);
+  } else if (l.type === "token_count") {
+    consumeTokenCount(l, result);
+  } else {
+    consumeTurn(l, result);
+  }
+}
+
+function consumeTurn(l: Line, result: TurnResult): void {
+  if (l.type === "thread.started") {
+    if (l.thread_id) result.sessionId = l.thread_id;
+  } else if (l.type === "turn.started") {
+    result.numTurns++;
+  } else {
+    consumeTurnResult(l, result);
+  }
+}
+
+function consumeTurnResult(l: Line, result: TurnResult): void {
+  if (l.type === "turn.completed") {
+    result.usage = codexUsage(l.usage);
+    result.ok = true;
+    result.terminalReason = "completed";
+    return;
+  }
+  if (l.type !== "turn.failed" && l.type !== "error") return;
+  result.ok = false;
+  result.terminalReason = "error";
+  result.text = failureText(l, result.text);
+}
+
+function failureText(l: Line, fallback: string): string {
+  return l.error?.message ?? l.message ?? fallback;
+}
+
+function consumeItem(it: NonNullable<Line["item"]>, result: TurnResult, files: Set<string>, h: TurnHandlers): void {
+  if (it.type === "agent_message" && it.text) {
+    consumeAgentMessage(it.text, result, h);
+  } else if (it.type === "error") {
+    consumeNotice(it.message, result);
+  } else {
+    consumeTool(it, result, files, h);
+  }
+}
+
+function consumeAgentMessage(text: string, result: TurnResult, h: TurnHandlers): void {
+  result.text = text;
+  h.onText?.(text);
+}
+
+function consumeNotice(message: string | undefined, result: TurnResult): void {
+  result.toolSummaries.push({ name: "notice", detail: clip(message ?? "", 120, true) });
+}
+
+function consumeTool(it: NonNullable<Line["item"]>, result: TurnResult, files: Set<string>, h: TurnHandlers): void {
+  if (!it.type) return;
+  const t: ToolSummary = summarizeTool(it.type, toolDetails(it));
+  result.toolSummaries.push(t);
+  h.onTool?.(t);
+  if (it.path) files.add(it.path);
+}
+
+function toolDetails(it: NonNullable<Line["item"]>) {
+  return {
+    ...(it.command ? { command: it.command } : {}),
+    ...(it.path ? { file_path: it.path } : {}),
+  };
+}
+
+function consumeTokenCount(l: Line, result: TurnResult): void {
+  // The only place either CLI hands over a real quota percentage. primary
+  // is the 5-hour window (299 minutes), secondary the weekly one (10079).
+  // The same event carries the model's real context window, which is the
+  // denominator session rotation needs — 272000 for the gpt-5.6 family.
+  if (l.info?.model_context_window) result.contextWindow = l.info.model_context_window;
+  consumeRateLimit(l.rate_limits, result);
+}
+
+function consumeRateLimit(limits: Line["rate_limits"], result: TurnResult): void {
+  if (!limits) return;
+  const { primary, secondary } = limits;
+  if (!primary && !secondary) return;
+  const now = Math.floor(Date.now() / 1000);
+  result.rateLimit = {
+    status: "allowed",
+    rateLimitType: "five_hour",
+    resetsAt: resetAt(primary, now),
+    fiveHourPercent: windowPercent(primary),
+    weeklyPercent: windowPercent(secondary),
+    weeklyResetsAt: weeklyResetAt(secondary, now),
+  };
+}
+
+function resetAt(window: Window | undefined, now: number): number {
+  return now + (window?.resets_in_seconds ?? 0);
+}
+
+function windowPercent(window: Window | undefined): number | undefined {
+  return window?.used_percent;
+}
+
+function weeklyResetAt(window: Window | undefined, now: number): number | undefined {
+  if (!window) return undefined;
+  return now + (window.resets_in_seconds ?? 0);
 }

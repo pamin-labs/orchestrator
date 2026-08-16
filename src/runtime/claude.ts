@@ -3,6 +3,7 @@ import { z } from "zod";
 import { JsonObject, JsonValue, type Json } from "../http/respond.ts";
 import { shq } from "../mech/util/shq.ts";
 import { clip, jsonOr } from "../mech/util/text.ts";
+import { runLineStream } from "./line-stream.ts";
 
 /**
  * `claude -p` as one subprocess per turn.
@@ -232,7 +233,7 @@ const Input = z
     prompt: z.string().optional(),
   })
   .catchall(JsonValue);
-type ToolInput = z.infer<typeof Input>;
+export type ToolInput = z.infer<typeof Input>;
 type JsonMap = z.infer<typeof JsonObject>;
 const MessageBlock = z
   .object({
@@ -299,7 +300,7 @@ const LineSchema = z
   })
   .catchall(JsonValue);
 
-type Line = z.infer<typeof LineSchema>;
+export type Line = z.infer<typeof LineSchema>;
 
 const WRITE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 
@@ -313,34 +314,12 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
   // being needed, and a `/tmp` full of transcripts is the container's problem.
   const cmd = `claude ${buildArgv(spec).map(shq).join(" ")} < ${promptFile}; rc=$?; rm -f ${promptFile}; exit $rc`;
 
-  const ac = new AbortController();
-  spec.signal?.addEventListener("abort", () => ac.abort(), { once: true });
-  h.onAbort?.(() => ac.abort());
-
-  const log = spec.logPath ? Bun.file(spec.logPath).writer() : undefined;
   const acc = newAccumulator(spec);
-
-  const stream = spec.runner.lines(cmd, {
-    cwd: spec.cwd,
-    timeoutMs: spec.timeoutMs,
-    env: spec.env,
-    signal: ac.signal,
+  const tail = await runLineStream(spec, cmd, h.onAbort, (raw) => {
+    const line = safeParse(raw);
+    consume(line, acc, h);
+    return trimForLog(line);
   });
-  let tail = { code: -1, err: "" };
-  try {
-    while (true) {
-      const step = await stream.next();
-      if (step.done) {
-        tail = step.value;
-        break;
-      }
-      const line = safeParse(step.value);
-      log?.write(JSON.stringify(trimForLog(line)) + "\n");
-      consume(line, acc, h);
-    }
-  } finally {
-    await log?.end();
-  }
 
   if (!acc.sawResult) {
     acc.result.ok = false;
