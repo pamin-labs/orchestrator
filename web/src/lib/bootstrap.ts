@@ -34,10 +34,10 @@ export function bootstrapOf(frames: Frame[], grpId: number): Bootstrap {
   const mine = frames.filter((f) => f.grpId === grpId && f.author === "orchestrator");
   // One run, not every run in this session: a second rebuild starts its own, and
   // concatenating them made the header quote the previous run's command.
-  const began = mine.filter((f) => f.cls === "state" && f.text.startsWith(STARTED)).pop();
+  const began = mine.findLast((f) => f.cls === "state" && f.text.startsWith(STARTED));
   const since = began?.at ?? 0;
   const lines = mine.filter((f) => f.cls === "tool" && f.agentId == null && f.at >= since);
-  const done = mine.filter((f) => f.cls === "state" && f.at >= since && ENDED.test(f.text)).pop();
+  const done = mine.findLast((f) => f.cls === "state" && f.at >= since && ENDED.test(f.text));
   const cmd = lines.find((f) => f.text.startsWith("$ "))?.text.slice(2) ?? null;
   return {
     running: (!!began || !!lines.length) && !done,

@@ -71,7 +71,7 @@ export function Requirement({
   // and excluding them left the page blank under a green row — the diff you just
   // approved is the thing you go back to look at. Nothing worked on at all:
   // everything stays shut rather than opening something with nothing under it.
-  const worked = [...slices].reverse().find(
+  const worked = slices.findLast(
     (s) => s.status !== "pending" && (s.status !== "running" || Object.keys(gates(s)).length > 0),
   );
   // `null` = nobody has clicked, take the default. `"none"` = the boss shut the
