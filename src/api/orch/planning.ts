@@ -8,10 +8,11 @@ import { shq } from "../../mech/util/shq.ts";
 import { say } from "../../lang.ts";
 import { z } from "zod";
 import { GroupRef } from "../fields.ts";
-import { bad, json, mayAct, resolveGroup, text, type AgentHandler } from "../shared.ts";
+import { bad, json, mayAct, resolveGroup, message, type AgentHandler } from "../shared.ts";
 import { slug } from "../slug.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { hold } from "../../mech/flow/intercept.ts";
+import type { GrpState } from "../../states.ts";
 
 /**
  * What a group does with its own plan: file the DRAFT card, fan out into
@@ -36,9 +37,9 @@ import { hold } from "../../mech/flow/intercept.ts";
  * slice-count rule — and its refusals are written to teach a dispatcher what to
  * write next. A second opinion here could only be a weaker one.
  */
-export const DraftBody = z.object({ group_id: GroupRef, card: z.string().min(1).max(20_000) });
+export const DraftBody = z.object({ group_id: GroupRef.optional(), card: z.string().min(1).max(20_000) });
 
-export const postDraft: AgentHandler<z.infer<typeof DraftBody>> = async (ctx, _req, a, _p, b) => {
+export const postDraft = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not file DRAFT cards`);
 
   const v = validateDraftCard(b.card);
@@ -46,7 +47,7 @@ export const postDraft: AgentHandler<z.infer<typeof DraftBody>> = async (ctx, _r
 
   const grpId = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!grpId) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, grpId)) return text("not your group", 403);
+  if (!mayAct(ctx, a, grpId)) return message("not your group", 403);
   const grp = ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId);
   if (!grp) return bad(`no group ${grpId}`);
 
@@ -67,14 +68,14 @@ export const postDraft: AgentHandler<z.infer<typeof DraftBody>> = async (ctx, _r
     .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
     .get(grp.project_id)?.remote;
   const claimed = extractClaimedFiles([b.card]);
-  let unknown: string[] = [];
+  let missingPaths: string[] = [];
   if (remote && claimed.length) {
     // Out of the utility container's mirror, not a checkout on this host: there
     // is none since step 6, and asking one that was not there threw rather than
     // returning a code — which is how this handler used to 500 with the DRAFT
     // card unfiled and nothing saying so.
     const inBase = new Set(await treeFiles(ctx, remote, await baseBranch(ctx, grp.project_id)));
-    if (inBase.size) unknown = claimed.filter((p) => !inBase.has(p)).slice(0, 8);
+    if (inBase.size) missingPaths = claimed.filter((p) => !inBase.has(p)).slice(0, 8);
   }
 
   ctx.db.run(
@@ -85,7 +86,7 @@ export const postDraft: AgentHandler<z.infer<typeof DraftBody>> = async (ctx, _r
       grpId,
       ctx.config.language,
       b.card,
-      JSON.stringify({ draft_card: true, ...(unknown.length ? { unknownPaths: unknown } : {}) }),
+      JSON.stringify({ draft_card: true, ...(missingPaths.length ? { unknownPaths: missingPaths } : {}) }),
     ],
   );
   ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grpId]);
@@ -101,8 +102,8 @@ export const postDraft: AgentHandler<z.infer<typeof DraftBody>> = async (ctx, _r
     meta: { slices: v.slices.length, objection: v.objection },
   });
   ctx.notifyBoss?.(0, `DRAFT ready: ${v.goal}`, "advisory");
-  return text("ok");
-};
+  return message("ok");
+}) satisfies AgentHandler<z.infer<typeof DraftBody>>;
 
 /**
  * One idea, several requirements.
@@ -125,26 +126,27 @@ export const postDraft: AgentHandler<z.infer<typeof DraftBody>> = async (ctx, _r
  */
 const MAX_SPLIT = 6;
 
+export const SplitRequirements = z.array(
+  z.object({ name: z.string().max(80).optional(), idea: z.string().min(1).max(8000) }),
+);
 export const SplitBody = z.object({
   group_id: GroupRef,
-  requirements: z
-    .array(z.object({ name: z.string().max(80).optional(), idea: z.string().min(1).max(8000) }))
-    .optional(),
+  requirements: SplitRequirements.optional(),
   why: z.string().max(4000).optional(),
 });
 
-export const postSplit: AgentHandler<z.infer<typeof SplitBody>> = async (ctx, _req, a, _p, b) => {
+export const postSplit = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "dispatcher" && a.role !== "pm") return bad(`${a.role} does not split requirements`);
 
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
+  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
   const grp = ctx.db
-    .query<{ project_id: number; name: string; status: string; branch: string | null }, [number]>(
+    .query<{ project_id: number; name: string; status: GrpState; branch: string | null }, [number]>(
       "SELECT project_id, name, status, branch FROM grp WHERE id = ?",
     )
     .get(gid);
-  if (!grp) return text("no such group", 404);
+  if (!grp) return message("no such group", 404);
   if (grp.status !== "PLANNING") {
     return bad(
       `${grp.name} is ${grp.status}, not PLANNING. A split only makes sense before a card is approved; ` +
@@ -208,7 +210,7 @@ export const postSplit: AgentHandler<z.infer<typeof SplitBody>> = async (ctx, _r
   });
   ctx.sched.tick();
   return json({ requirements: made });
-};
+}) satisfies AgentHandler<z.infer<typeof SplitBody>>;
 
 /**
  * "This is already done." The one thing a planner could not say.
@@ -234,11 +236,11 @@ export const DropBody = z.object({
   duplicate: GroupRef.optional(),
 });
 
-export const postDrop: AgentHandler<z.infer<typeof DropBody>> = async (ctx, _req, a, _p, b) => {
+export const postDrop = (async (ctx, _req, a, _p, b) => {
   if (!["dispatcher", "pm", "architect"].includes(a.role)) return bad(`${a.role} does not propose dropping work`);
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
+  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
   const why = b.why.trim();
   if (why.length < 10) return bad("--why has to say what already covers it, in a sentence");
 
@@ -293,8 +295,8 @@ export const postDrop: AgentHandler<z.infer<typeof DropBody>> = async (ctx, _req
     body: `建议作废：${why}（${evidence}）`,
     meta: { drop_proposal: true, evidence },
   });
-  return text("ok");
-};
+  return message("ok");
+}) satisfies AgentHandler<z.infer<typeof DropBody>>;
 
 /**
  * "I am blocked by something I am not allowed to touch."
@@ -323,10 +325,10 @@ export const BlockedBody = z.object({
   why: z.string().max(4000).default(""),
 });
 
-export const postBlocked: AgentHandler<z.infer<typeof BlockedBody>> = async (ctx, _req, a, _p, b) => {
+export const postBlocked = (async (ctx, _req, a, _p, b) => {
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
+  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
   const path = b.path.trim().replace(/^\.\//, "");
   const why = b.why.trim();
   if (!path) return bad("--path <file> — which file you cannot change");
@@ -421,23 +423,23 @@ export const postBlocked: AgentHandler<z.infer<typeof BlockedBody>> = async (ctx
     grpId: gid,
     author: a.role,
     kind: "state_change",
-    body: say(ctx.config?.language, "group.blocked", { path, target: String(target) }),
+    body: say(ctx.config.language, "group.blocked", { path, target: String(target) }),
     meta: { blocked_on: target, path },
   });
   ctx.sched.tick();
   return json({ blocked_on: target, handedTo: owner ? owner.name : "a new requirement" });
-};
+}) satisfies AgentHandler<z.infer<typeof BlockedBody>>;
 
 export const OwnsBody = z.object({
-  group_id: GroupRef,
+  group_id: GroupRef.optional(),
   paths: z.array(z.string().min(1).max(400)).min(1, "give at least one path glob").max(200),
 });
 
-export const postOwns: AgentHandler<z.infer<typeof OwnsBody>> = async (ctx, _req, a, _p, b) => {
+export const postOwns = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "architect") return bad(`${a.role} does not cut boundaries`);
   const gid = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
+  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
 
   ctx.db.run("UPDATE grp SET owns_json = ? WHERE id = ?", [JSON.stringify(b.paths), gid]);
   const check = canStart(ctx.db, gid);
@@ -453,5 +455,5 @@ export const postOwns: AgentHandler<z.infer<typeof OwnsBody>> = async (ctx, _req
   // is swept. Without this the boss's approval sat waiting on a boundary that had
   // already been drawn.
   await sweepApproved(ctx);
-  return check.ok ? text("ok") : bad(check.reason ?? "boundary still overlaps");
-};
+  return check.ok ? message("ok") : bad(check.reason ?? "boundary still overlaps");
+}) satisfies AgentHandler<z.infer<typeof OwnsBody>>;

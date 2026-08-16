@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { z } from "zod";
+import type { Json } from "../../../src/http/respond.ts";
+import { hc, type InferResponseType } from "hono/client";
+import type { ApiType } from "../../../src/api.ts";
+import { readJsonResponse, TextResponseSchema } from "../../../src/http/respond.ts";
 
 /**
  * The payload types, from the server that produces them.
@@ -11,40 +16,55 @@ import { toast } from "sonner";
  * would keep claiming a field was a `string` after a migration renamed the
  * column out from under it.
  *
- * `import type` is erased at build time, so nothing server-side reaches the
- * bundle: `test/smoke.test.ts` and the bundle's own contents are the check on
- * that. Hono's RPC (`hc<typeof app>`) is the fuller version of this idea and is
- * not used here on purpose — it needs handlers to be Hono-native and return
- * `c.json()`, and these return a bare `Response` so that every one of them can
- * be called from a test with four ordinary arguments and no server.
+ * Hono RPC supplies route, param, query and request-body types. Zod still parses
+ * responses at runtime: a compile-time contract cannot validate bytes returned
+ * by an older or broken server.
  */
-import type { snapshot } from "../../../src/api/panel/snapshot.ts";
-import type { Frame as ServerFrame } from "../../../src/bus.ts";
-import type { CostReport, CostRow as ServerCostRow, AgentCost as ServerAgentCost } from "../../../src/mech/ops/cost.ts";
-import type { Agent, Archived, Escalation, Group, Project, Slice, Task } from "../../../src/api/panel/shapes.ts";
+import {
+  CostReportSchema,
+  type AgentCost as ServerAgentCost,
+  type CostReport,
+  type CostRow as ServerCostRow,
+} from "../../../src/mech/ops/cost.ts";
+import {
+  SnapshotSchema,
+  type Agent,
+  type Archived,
+  type Escalation,
+  type Group,
+  type Project,
+  type Slice,
+  type Snapshot,
+  type Task,
+} from "../../../src/api/panel/shapes.ts";
+import { FrameSchema } from "../../../src/bus.ts";
 
 export type { Agent, Archived, Escalation, Group, Project, Slice, Task };
-export type State = ReturnType<typeof snapshot>;
+export type State = Snapshot;
 export type Usage = State["usage"][number];
 export type Cost = CostReport;
 export type CostRow = ServerCostRow;
 export type AgentCost = ServerAgentCost;
 
 /** What was actually built, for the one decision that cannot be taken back. */
-export interface Evidence {
-  seq: number;
-  title: string;
-  accept_spec: string;
-  retries: number;
-  stat: string;
-  diff: string;
-  truncated: boolean;
-  /** `slice` = since this slice started. `branch` = the whole branch against
-      origin/main, which is what a rebase leaves recoverable. */
-  scope: "slice" | "branch";
-  verdicts: { author: string; body: string; at: number }[];
-  gates: { name: string; path: string; size: number }[];
-}
+export const api = hc<ApiType>("/api");
+
+export const EvidenceSchema: z.ZodType<InferResponseType<(typeof api.slices)[":id"]["evidence"]["$get"], 200>> =
+  z.object({
+    grp_id: z.number(),
+    seq: z.number(),
+    title: z.string(),
+    accept_spec: z.string(),
+    base_sha: z.string().nullable(),
+    retries: z.number(),
+    stat: z.string(),
+    diff: z.string(),
+    truncated: z.boolean(),
+    scope: z.enum(["slice", "branch"]),
+    verdicts: z.array(z.object({ author: z.string(), body: z.string(), at: z.number() })),
+    gates: z.array(z.object({ name: z.string(), path: z.string(), size: z.number() })),
+  });
+export type Evidence = z.infer<typeof EvidenceSchema>;
 
 const EMPTY: State = {
   // Assume wired until told otherwise: a mark on the header before the first
@@ -71,14 +91,44 @@ const EMPTY: State = {
 };
 
 /** GET that surfaces its own failure. Used for the on-demand panels (evidence, logs). */
-export async function pull<T>(path: string): Promise<T | null> {
-  const r = await fetch(path);
-  if (!r.ok) {
-    toast.error(await r.text(), { duration: 8000 });
+export async function readApi<S extends z.ZodType>(request: Promise<Response>, schema: S): Promise<z.output<S> | null> {
+  const r = await request;
+  const result = await readJson(r, schema);
+  if (!result.ok) {
+    toast.error(result.text, { duration: 8000 });
     return null;
   }
-  return (await r.json()) as T;
+  return result.data;
 }
+
+const display = (body: Json): string => {
+  if (body && !Array.isArray(body) && typeof body === "object") {
+    if (typeof body.error === "string") return body.error;
+    if (typeof body.message === "string") return body.message;
+  }
+  return JSON.stringify(body);
+};
+
+export type ApiResult<T> = { ok: true; data: T; text: string } | { ok: false; data: null; text: string };
+
+export async function readJson<S extends z.ZodType>(r: Response, schema: S): Promise<ApiResult<z.output<S>>> {
+  const body = await readJsonResponse(r);
+  if (!body.ok) return { ok: false, data: null, text: "Server returned a non-JSON response" };
+  if (!r.ok) return { ok: false, data: null, text: display(body.data) };
+  const parsed = schema.safeParse(body.data);
+  if (!parsed.success) {
+    return { ok: false, data: null, text: `Server returned invalid JSON: ${z.prettifyError(parsed.error)}` };
+  }
+  return { ok: true, data: parsed.data, text: display(body.data) };
+}
+
+const JsonBody = z.record(z.string(), z.json());
+
+export const GateLogResponseSchema: z.ZodType<
+  InferResponseType<(typeof api.slices)[":id"]["gate"][":name"]["$get"], 200>
+> = TextResponseSchema;
+export const AnswerDraftSchema: z.ZodType<InferResponseType<(typeof api.escalations)[":id"]["draft"]["$get"], 200>> =
+  TextResponseSchema;
 
 /**
  * Validators reply with the reason, so the reason is what gets shown.
@@ -87,24 +137,32 @@ export async function pull<T>(path: string): Promise<T | null> {
  * the settings rows do, and a toast on top of an already-marked row is the same
  * refusal said twice, in the corner, where it outlives the fix.
  */
-export async function post(path: string, body?: unknown, quiet = false) {
-  const r = await fetch(path, {
-    method: "POST",
-    headers: body ? { "content-type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await r.text();
-  if (!r.ok && !quiet) toast.error(text, { duration: 12_000 });
-  return { ok: r.ok, text };
+export async function mutate(request: Promise<Response>, quiet?: boolean): Promise<ApiResult<Json>>;
+export async function mutate<S extends z.ZodType>(
+  request: Promise<Response>,
+  quiet: boolean,
+  schema: S,
+): Promise<ApiResult<z.output<S>>>;
+export async function mutate(request: Promise<Response>, quiet = false, schema: z.ZodType = JsonBody) {
+  const r = await request;
+  const result = await readJson(r, schema);
+  if (!result.ok && !quiet) toast.error(result.text, { duration: 12_000 });
+  return result;
 }
 
-/** The one destructive verb. Same error surfacing as `post`. */
-export async function del(path: string) {
-  const r = await fetch(path, { method: "DELETE" });
-  const text = await r.text();
-  if (!r.ok) toast.error(text, { duration: 12_000 });
-  return { ok: r.ok, text };
-}
+type GroupActionRequest = NonNullable<Parameters<(typeof api.groups)[":id"][":action"]["$post"]>[0]>;
+export const groupAction = (
+  id: number,
+  action: GroupActionRequest["param"]["action"],
+  json: GroupActionRequest["json"] = {},
+) => mutate(api.groups[":id"][":action"].$post({ param: { id: String(id), action }, json }));
+
+type SliceDecisionRequest = NonNullable<Parameters<(typeof api.slices)[":id"][":decision"]["$post"]>[0]>;
+export const sliceDecision = (
+  id: number,
+  decision: SliceDecisionRequest["param"]["decision"],
+  json: SliceDecisionRequest["json"] = {},
+) => mutate(api.slices[":id"][":decision"].$post({ param: { id: String(id), decision }, json }));
 
 /**
  * One SSE payload, as the server sends it.
@@ -118,7 +176,9 @@ export async function del(path: string) {
  * `import type` is erased at build time; no server code reaches the browser
  * bundle. Same rule as `State` above.
  */
-export type Wire = ServerFrame & { projectId?: number | null };
+const WireSchema = FrameSchema.and(z.object({ projectId: z.number().nullable().optional() }));
+const NotificationMetaSchema = z.object({ url: z.string().optional(), title: z.string().optional() });
+export type Wire = z.infer<typeof WireSchema>;
 
 export interface Frame {
   /** Stable across renders and SSE reconnects, so the timeline can key on it
@@ -180,10 +240,8 @@ export function appendFrame(prev: Frame[], f: Wire, liveSeq: { current: number }
       },
     ];
   }
-  // /api/stream?since=0 never advances, so a native EventSource reconnect
-  // replays the whole history through this same path — the id is stable but
-  // the frame is not new. Appending it again would put two rows with the same
-  // React key in the array, so a repeat is dropped instead.
+  // A reconnect can overlap a frame already delivered live. The persisted seq
+  // is stable, so the overlap is dropped instead of duplicating a React key.
   const id = `e${f.seq}`;
   if (next.some((x) => x.id === id)) return next;
   return [
@@ -256,7 +314,11 @@ function raise(f: { body: string; at?: number; meta?: { url?: string; title?: st
   };
 }
 
-const get = <T>(path: string) => fetch(path).then((r) => r.json() as Promise<T>);
+const get = async <S extends z.ZodType>(request: Promise<Response>, schema: S): Promise<z.output<S>> => {
+  const result = await readJson(await request, schema);
+  if (!result.ok) throw new Error(result.text);
+  return result.data;
+};
 
 /**
  * The prefix the stream is allowed to invalidate.
@@ -295,14 +357,14 @@ export function useOrch() {
 
   const state = useQuery({
     queryKey: ORCH.concat("state"),
-    queryFn: () => get<State>("/api/state"),
+    queryFn: () => get(api.state.$get(), SnapshotSchema),
     initialData: EMPTY,
     refetchInterval: 60_000,
   });
   const cost = useQuery({
     // The nav says 成本 is this project's, so ask for this project's.
     queryKey: ORCH.concat("cost", String(project)),
-    queryFn: () => get<Cost>(project ? `/api/cost?project=${project}` : "/api/cost"),
+    queryFn: () => get(api.cost.$get({ query: project ? { project: String(project) } : {} }), CostReportSchema),
     refetchInterval: 60_000,
   });
 
@@ -333,10 +395,19 @@ export function useOrch() {
     es.onopen = () => setLive("live");
     es.onerror = () => setLive("retry");
     es.onmessage = (m) => {
-      const f = JSON.parse(m.data);
-      if (f.kind === "notify") return void raise(f);
-      setFrames((prev) => appendFrame(prev, f, liveSeq));
-      if (["state_change", "escalation", "note"].includes(f.kind)) nudge();
+      let f: ReturnType<typeof WireSchema.safeParse>;
+      try {
+        f = WireSchema.safeParse(JSON.parse(m.data));
+      } catch {
+        return;
+      }
+      if (!f.success) return;
+      if (f.data.kind === "notify") {
+        const meta = NotificationMetaSchema.safeParse(f.data.meta);
+        return void raise({ body: f.data.body ?? "", at: f.data.at, meta: meta.success ? meta.data : undefined });
+      }
+      setFrames((prev) => appendFrame(prev, f.data, liveSeq));
+      if (["state_change", "escalation", "note"].includes(f.data.kind)) nudge();
     };
   }, []);
 

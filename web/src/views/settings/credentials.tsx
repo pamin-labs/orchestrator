@@ -1,16 +1,28 @@
+import type { InferResponseType } from "hono/client";
 import { useEffect, useState } from "react";
+import { z } from "zod";
+import { api, mutate } from "../../lib/api";
+import { clock } from "../../lib/utils";
 import { Head, Input, Meta, Textarea } from "../../ui/bits";
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../../ui/field";
 import { Button } from "../../ui/button";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../../ui/field";
 import { Segment, Segments } from "../../ui/segment";
 import { Switch } from "../../ui/switch";
 import { Tip } from "../../ui/tooltip";
-import { post } from "../../lib/api";
-import { clock } from "../../lib/utils";
-import { DeviceCode, type AuthRow, type Mode } from "./shared";
+import { type AuthRow, DeviceCode, type Mode, ModeSchema } from "./shared";
+
+const ClaudeLoginSchema: z.ZodType<InferResponseType<typeof api.auth.claude.login.$post, 200>> = z.object({
+  url: z.string(),
+  expiresAt: z.number(),
+});
+const CodexLoginSchema: z.ZodType<InferResponseType<typeof api.auth.codex.device.$post, 200>> = z.object({
+  code: z.string(),
+  url: z.string(),
+  expiresAt: z.number(),
+});
 
 interface Runtime {
-  key: string;
+  key: "claude" | "codex";
   label: string;
   /** The mode this machine can obtain by running the CLI itself. */
   login?: Mode;
@@ -133,13 +145,17 @@ function Credential(props: {
   const held = cur?.mode === mode ? `已存 ${cur.hint}，粘新的就换掉` : null;
 
   const save = async () => {
-    setBusy(true);
-    const res = await post("/api/auth", {
-      runtime: r.key,
-      mode,
-      secret: secret.trim(),
-      baseUrl: baseUrl.trim() || undefined,
-    });
+    const common = { secret: secret.trim(), ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}) };
+    let res;
+    if (r.key === "claude") {
+      if (mode === "chatgpt") throw new Error("ChatGPT login belongs to codex");
+      setBusy(true);
+      res = await mutate(api.auth.$post({ json: { runtime: r.key, mode, ...common } }));
+    } else {
+      if (mode === "oauth_token") throw new Error("Claude OAuth token belongs to claude");
+      setBusy(true);
+      res = await mutate(api.auth.$post({ json: { runtime: r.key, mode, ...common } }));
+    }
     setBusy(false);
     // Only on success. A rejected token used to be wiped from the box while a
     // toast explained why it was rejected, so the fix was to paste it again.
@@ -159,22 +175,27 @@ function Credential(props: {
     const code = paste.trim();
     if (!code) return;
     setBusy(true);
-    const res = await post("/api/auth/claude/login/code", { code });
+    const res = await mutate(api.auth.claude.login.code.$post({ json: { code } }));
     setBusy(false);
     if (res.ok) setPaste("");
   };
 
   const signIn = async () => {
     setBusy(true);
-    const res = await post(r.key === "codex" ? "/api/auth/codex/device" : "/api/auth/claude/login", {});
-    setBusy(false);
-    if (!res.ok) return;
-    const got = JSON.parse(res.text);
-    if (r.key === "codex") setDevice(got);
-    // Not opened from here. The CLI opens the browser itself, so doing it too
-    // gives the boss two tabs of the same OAuth flow — and finishing the wrong
-    // one leaves the other waiting forever.
-    else setLink(got.url ?? null);
+    if (r.key === "codex") {
+      const res = await mutate(api.auth.codex.device.$post(), false, CodexLoginSchema);
+      setBusy(false);
+      if (!res.ok) return;
+      setDevice(res.data);
+    } else {
+      const res = await mutate(api.auth.claude.login.$post(), false, ClaudeLoginSchema);
+      setBusy(false);
+      if (!res.ok) return;
+      // Not opened from here. The CLI opens the browser itself, so doing it too
+      // gives the boss two tabs of the same OAuth flow — and finishing the wrong
+      // one leaves the other waiting forever.
+      setLink(res.data.url);
+    }
     props.onWaitForLogin(cur?.updatedAt ?? 0);
   };
 
@@ -200,7 +221,13 @@ function Credential(props: {
           <span className="text-[0.75rem] font-medium text-accent">没配</span>
         )}
         <span className="grow" />
-        <Segments value={mode} onValueChange={(v) => setMode(v as Mode)}>
+        <Segments
+          value={mode}
+          onValueChange={(value) => {
+            const parsed = ModeSchema.safeParse(value);
+            if (parsed.success) setMode(parsed.data);
+          }}
+        >
           {r.modes.map((m) => (
             <Segment key={m.mode} value={m.mode}>
               {m.label}
@@ -275,7 +302,7 @@ function Credential(props: {
                 size="sm"
                 variant="quiet"
                 onClick={async () => {
-                  await post("/api/auth/codex/device/cancel", {});
+                  await mutate(api.auth.codex.device.cancel.$post());
                   setDevice(null);
                 }}
               >
@@ -332,7 +359,7 @@ function Credential(props: {
                   size="sm"
                   variant="quiet"
                   onClick={async () => {
-                    await post("/api/auth/claude/login/cancel", {});
+                    await mutate(api.auth.claude.login.cancel.$post());
                     setLink(null);
                     setPaste("");
                   }}
@@ -381,7 +408,7 @@ function Credential(props: {
                 disabled={busy}
                 onCheckedChange={async (v) => {
                   setBusy(true);
-                  await post("/api/git/trailers", { claudeCoauthor: v });
+                  await mutate(api.git.trailers.$post({ json: { claudeCoauthor: v } }));
                   setBusy(false);
                   props.onSaved();
                 }}
@@ -401,7 +428,7 @@ function Credential(props: {
             disabled={busy}
             onClick={async () => {
               setBusy(true);
-              await post("/api/auth", { runtime: r.key, clear: true });
+              await mutate(api.auth.$post({ json: { runtime: r.key, clear: true } }));
               setBusy(false);
               setSecret("");
               setBaseUrl("");

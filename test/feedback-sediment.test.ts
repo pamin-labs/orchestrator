@@ -6,6 +6,7 @@ import { bossFact, type Ctx } from "../src/api.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
+import { loadConfig } from "../src/config.ts";
 
 /**
  * PLAN.md §7③. Without this the boss's dissatisfaction produces N isolated facts:
@@ -22,7 +23,7 @@ function harness() {
     sched: new Scheduler(db, async (j) => void ran.push(j)),
     sandbox: fakeSandbox(),
     waiters: new Map(),
-    config: { language: "中文", feedbackSedimentThreshold: 3 },
+    config: { ...loadConfig(), feedbackSedimentThreshold: 3 },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   for (const n of ["g1", "g2", "g3"]) {

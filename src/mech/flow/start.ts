@@ -61,7 +61,7 @@ export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
     grpId,
     author: "boss",
     kind: "state_change",
-    body: say(ctx.config?.language, "group.dropped", { why: why ? `：${why}` : "" }),
+    body: say(ctx.config.language, "group.dropped", { why: why ? `：${why}` : "" }),
   });
 }
 
@@ -80,7 +80,7 @@ export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<
   sandboxLog(ctx, grpId, "cmd", cmd);
   const stream = execLines(ctx, { grp: grpId }, cmd, {
     cwd: WORK,
-    timeoutMs: ctx.config.installTimeoutMs ?? 10_800_000,
+    timeoutMs: ctx.config.installTimeoutMs,
     // Package managers print progress on stderr; without this an install is
     // silent for its whole run and then dumps everything at once.
     onStderr: (l) => sandboxLog(ctx, grpId, "out", l),
@@ -294,7 +294,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
           grpId,
           author: "orchestrator",
           kind: "state_change",
-          body: say(ctx.config?.language, "group.worktree", { branch }),
+          body: say(ctx.config.language, "group.worktree", { branch }),
         });
 
         // The first moment the repository exists anywhere readable. It runs
@@ -329,7 +329,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
   }
 
   ctx.db.run("UPDATE grp SET status = 'RUNNING', approved_at = NULL WHERE id = ?", [grpId]);
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config?.language, "group.approved") });
+  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.approved") });
   // Approving a plan that then sits still is the most confusing failure there is:
   // it looks like the system ignored you.
   startNextSlice(ctx, grpId);

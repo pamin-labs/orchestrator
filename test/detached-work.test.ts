@@ -1,10 +1,8 @@
 import { expect, test } from "bun:test";
-import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { Scheduler } from "../src/scheduler.ts";
 import { acceptSlice } from "../src/mech/flow/review.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
-import type { Ctx } from "../src/api.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * Work that outlives the thing that started it must not fail out loud.
@@ -24,20 +22,16 @@ import type { Ctx } from "../src/api.ts";
  */
 test("detached work whose record is gone does not surface against an unrelated caller", async () => {
   const seen: string[] = [];
-  const onReject = (e: unknown) => seen.push(String((e as Error)?.message ?? e));
+  const onReject = (error: Error) => seen.push(error.message);
   process.on("unhandledRejection", onReject);
   try {
     const db = openMemory();
-    const ctx = {
+    const ctx = testContext({
       db,
-      bus: new Bus(db),
-      sched: new Scheduler(db, async () => {}),
       // The push is refused, so the failure path — the one that reports, and so
       // the one that writes — is the path under test.
       sandbox: fakeSandbox((cmd) => (cmd.includes("push") ? { code: 1, out: "denied" } : {})),
-      waiters: new Map(),
-      config: { language: "中文" },
-    } as unknown as Ctx;
+    });
     db.run(
       "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'https://github.com/me/x.git', 0)",
     );

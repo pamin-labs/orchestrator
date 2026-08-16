@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Tip } from "../ui/tooltip";
 import { Meta } from "../ui/bits";
-import { post, pull } from "../lib/api";
+import { AnswerDraftSchema, api, mutate, readApi } from "../lib/api";
 import { usePaged } from "../lib/page";
 import type { State } from "../lib/api";
 import { byRequirement, groupName, rank, REASONS, type Reason } from "../lib/rank";
@@ -386,7 +386,7 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
   const send = async (answer: string) => {
     if (busy || !answer.trim()) return;
     setBusy(true);
-    await post(`/api/escalations/${escId}/answer`, { answer });
+    await mutate(api.escalations[":id"].answer.$post({ param: { id: String(escId) }, json: { answer } }));
     setBusy(false);
     setOpen(false);
     setText("");
@@ -438,7 +438,9 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
 function Draft({ escId, onUse }: { escId: number; onUse: (t: string) => void }) {
   const [text, setText] = useState<string | null>(null);
   useEffect(() => {
-    void pull<{ text: string }>(`/api/escalations/${escId}/draft`).then((r) => setText(r?.text?.trim() || ""));
+    void readApi(api.escalations[":id"].draft.$get({ param: { id: String(escId) } }), AnswerDraftSchema).then((r) =>
+      setText(r?.text?.trim() || ""),
+    );
   }, [escId]);
   if (!text) return null;
   return (

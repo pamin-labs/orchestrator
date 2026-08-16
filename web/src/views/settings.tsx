@@ -20,17 +20,27 @@ import {
 import { H2, Head, Meta, Pane } from "../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldTitle } from "../ui/field";
 import { Tip } from "../ui/tooltip";
-import { pull, post } from "../lib/api";
+import { api, mutate, readApi } from "../lib/api";
 import { Knobs } from "./knobs";
 import { cn, repoHref } from "../lib/utils";
 import { ThemeChoice } from "../ui/theme";
-import type { ProjectConfig } from "./project";
+import { ImageChoicesSchema, ProjectConfigSchema, type ProjectPatch } from "./project";
 import { Skills } from "./skills";
 import { CredPane, RUNTIMES } from "./settings/credentials";
-import { EnvPane, ServerPane, type ServerInfo } from "./settings/environment";
-import { GithubPane, type GhStatus } from "./settings/github";
+import { EnvPane, ServerInfoSchema, ServerPane } from "./settings/environment";
+import { GithubPane, GhStatusSchema } from "./settings/github";
 import { ProjectPane, type ProjectSection } from "./settings/project";
-import { type AuthRow, type HostCheck } from "./settings/shared";
+import { AuthRowSchema, HostCheckSchema, type HostCheck } from "./settings/shared";
+import { z } from "zod";
+import type { InferResponseType } from "hono/client";
+
+const AuthResponseSchema: z.ZodType<InferResponseType<typeof api.auth.$get, 200>> = z.object({
+  runtimes: z.array(AuthRowSchema),
+  trailers: z.object({ signoff: z.boolean(), coauthor: z.boolean(), claudeCoauthor: z.boolean() }),
+});
+const PreflightResponseSchema: z.ZodType<InferResponseType<typeof api.preflight.$get, 200>> = z.object({
+  checks: z.array(HostCheckSchema),
+});
 
 /**
  * Everything that is configured rather than worked on, in one dialog.
@@ -51,21 +61,23 @@ import { type AuthRow, type HostCheck } from "./settings/shared";
  * Behaviour is Radix (硬约束 4): focus trap, Esc, restored focus, aria wiring.
  */
 
-export type Section =
-  | "cred"
-  | "github"
-  | "host"
-  | "server"
-  | "skills"
-  | "sched"
-  | "models"
-  | "turn"
-  | "boxdefaults"
-  | "notify"
-  | "prefs"
-  | "gates"
-  | "sandbox"
-  | "remove";
+export const SectionSchema = z.enum([
+  "cred",
+  "github",
+  "host",
+  "server",
+  "skills",
+  "sched",
+  "models",
+  "turn",
+  "boxdefaults",
+  "notify",
+  "prefs",
+  "gates",
+  "sandbox",
+  "remove",
+]);
+export type Section = z.infer<typeof SectionSchema>;
 
 /** Host facts only. The credential rows are the 账号 section, said once. */
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
@@ -173,18 +185,18 @@ export function SettingsDialog({
    */
   const auth = useQuery({
     queryKey: ["auth"],
-    queryFn: () => pull<{ runtimes: AuthRow[]; trailers: { claudeCoauthor: boolean } }>("/api/auth"),
+    queryFn: () => readApi(api.auth.$get(), AuthResponseSchema),
     enabled: open,
     refetchInterval: signin ? 2000 : false,
   });
   const preflight = useQuery({
     queryKey: ["preflight"],
-    queryFn: () => pull<{ checks: HostCheck[] }>("/api/preflight"),
+    queryFn: () => readApi(api.preflight.$get(), PreflightResponseSchema),
     enabled: open,
   });
   const project = useQuery({
     queryKey: ["project", projectId, "config"],
-    queryFn: () => pull<ProjectConfig>(`/api/project/${projectId}/config`),
+    queryFn: () => readApi(api.project[":id"].config.$get({ param: { id: String(projectId) } }), ProjectConfigSchema),
     enabled: open && projectId !== null,
   });
   /**
@@ -194,19 +206,19 @@ export function SettingsDialog({
    */
   const gh = useQuery({
     queryKey: ["gh"],
-    queryFn: () => pull<GhStatus>("/api/auth/github"),
+    queryFn: () => readApi(api.auth.github.$get(), GhStatusSchema),
     enabled: open && section === "github",
     refetchInterval: (q) => (q.state.data?.pending ? 3000 : false),
   });
   const refreshGh = () => void queries.invalidateQueries({ queryKey: ["gh"] });
   const sandboxServer = useQuery({
     queryKey: ["sandbox-server"],
-    queryFn: () => pull<ServerInfo>("/api/sandbox-server"),
+    queryFn: () => readApi(api["sandbox-server"].$get(), ServerInfoSchema),
     enabled: open && section === "server",
   });
   const sandboxImages = useQuery({
     queryKey: ["sandbox-images"],
-    queryFn: () => pull<{ current: string }>("/api/sandbox/images"),
+    queryFn: () => readApi(api.sandbox.images.$get(), ImageChoicesSchema),
     enabled: open && section === "server",
   });
   const refreshServer = () => void queries.invalidateQueries({ queryKey: ["sandbox-server"] });
@@ -239,9 +251,9 @@ export function SettingsDialog({
     return () => clearTimeout(t);
   }, [signin]);
 
-  const patch = async (body: Record<string, unknown>) => {
+  const patch = async (body: ProjectPatch) => {
     setBusy(true);
-    await post(`/api/project/${projectId}/config`, body);
+    await mutate(api.project[":id"].config.$post({ param: { id: String(projectId) }, json: body }));
     setBusy(false);
     void queries.invalidateQueries({ queryKey: ["project", projectId] });
   };

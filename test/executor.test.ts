@@ -2,14 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeApp, type Ctx } from "../src/api.ts";
+import { type Ctx, makeApp } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { Scheduler } from "../src/scheduler.ts";
-import { LOST_SESSION, makeExecutor, cacheRatio, hire, type ExecDeps } from "../src/runtime/executor.ts";
-import type { TurnResult } from "../src/runtime/claude.ts";
-import type { TurnSpec } from "../src/runtime/claude.ts";
+import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
+import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../src/runtime/executor.ts";
+import { Scheduler, type Executor } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 
@@ -33,15 +32,16 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   const bus = new Bus(db);
   const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-data-")) };
   const specs: TurnSpec[] = [];
-  let exec: any = null;
+  let exec: Executor;
   const sched = new Scheduler(db, (j) => exec(j));
+  const sandbox = fakeSandbox();
   const ctx: Ctx = {
     db,
     bus,
     sched,
-    sandbox: fakeSandbox(),
+    sandbox,
     waiters: new Map(),
-    config: { language: cfg.language },
+    config: cfg,
   };
   const deps: ExecDeps = {
     ctx,
@@ -56,7 +56,7 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
 
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  return { db, ctx, sched, deps, specs, app: makeApp(ctx) };
+  return { db, ctx, sched, deps, specs, sandbox, app: makeApp(ctx) };
 }
 
 test("a turn hires the role's agent on first use, with a token", async () => {
@@ -237,8 +237,8 @@ test("unread channel messages are injected once, then the cursor advances", asyn
 });
 
 test("a lease runs its template and unblocks the waiting agent", async () => {
-  const { db, ctx, sched } = harness(async () => ok());
-  const agent = hire({ ...({} as any), ...harnessDeps(ctx, sched) }, 1, "engineer");
+  const { db, ctx, sched, sandbox } = harness(async () => ok());
+  const agent = hire(harnessDeps(ctx), 1, "engineer");
   db.run(
     `INSERT INTO resource (name, template, arg_schema_json, error_regex)
      VALUES ('echo', 'echo hello-lease', '{}', '^error')`,
@@ -259,7 +259,7 @@ test("a lease runs its template and unblocks the waiting agent", async () => {
   // The template reached the sandbox as argv, quoted, with nothing shell-parsed
   // on the way — that is the whole of hard constraint 2 now that `orch` is the
   // only interface an agent has.
-  expect((ctx.sandbox as any).commands.at(-1)).toBe("'echo' 'hello-lease'");
+  expect(sandbox.commands.at(-1)).toBe("'echo' 'hello-lease'");
   const row = db.query<{ state: string; exit_code: number }, []>("SELECT state, exit_code FROM lease").get()!;
   expect(row.state).toBe("done");
   expect(row.exit_code).toBe(0);
@@ -287,13 +287,16 @@ test("a lease whose args stopped validating fails instead of running", async () 
   expect(db.query<{ state: string }, []>("SELECT state FROM lease").get()!.state).toBe("failed");
 });
 
-test("a persisted lease argument root must be an object", async () => {
+test("persisted lease arguments must be a flat object of supported scalars", async () => {
   const { db, ctx, sched } = harness(async () => ok());
-  db.run("INSERT INTO resource (name, template, arg_schema_json) VALUES ('build', 'true', '{}')");
+  db.run(
+    `INSERT INTO resource (name, template, arg_schema_json)
+     VALUES ('build', 'make {target}', '{"target":{"type":"enum","values":["release"]}}')`,
+  );
   const lease = db
     .query<{ id: number }, []>(
       `INSERT INTO lease (resource, grp_id, args_json, enqueued_at)
-       VALUES ('build', 1, 'null', 0) RETURNING id`,
+       VALUES ('build', 1, '{"target":{"nested":"release"}}', 0) RETURNING id`,
     )
     .get()!;
   let digest = "";
@@ -301,7 +304,7 @@ test("a persisted lease argument root must be an object", async () => {
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   await sched.drain();
 
-  expect(digest).toContain("arguments must be a JSON object");
+  expect(digest).toContain("flat JSON object of string, number, or boolean values");
   expect(db.query<{ state: string }, [number]>("SELECT state FROM lease WHERE id = ?").get(lease.id)!.state).toBe(
     "failed",
   );
@@ -309,13 +312,14 @@ test("a persisted lease argument root must be an object", async () => {
 
 test("a lease job without an integer id fails instead of disappearing", async () => {
   const { db, sched } = harness(async () => ok());
-  const job = sched.enqueue("lease", { grp_id: 1, payload: { lease_id: "1" } });
+  const job = sched.enqueue("lease", { grp_id: 1 });
+  db.run("UPDATE job SET payload_json = ? WHERE id = ?", [JSON.stringify({ lease_id: "1" }), job]);
   await sched.drain();
   const row = db
     .query<{ state: string; error: string | null }, [number]>("SELECT state, error FROM job WHERE id = ?")
     .get(job)!;
   expect(row.state).toBe("failed");
-  expect(row.error).toContain("positive integer lease_id");
+  expect(row.error).toContain("invalid lease payload");
 });
 
 test("cacheRatio reports the only visible signal that caching still works", () => {
@@ -346,13 +350,15 @@ test("a turn records whether it opened a cold session, and what caused it", asyn
   expect(reasons()).toEqual(["new", null, "explicit"]);
 });
 
-test("malformed persisted payload fields cannot crash a turn or force rotation", async () => {
+test("malformed persisted payloads fail before a turn starts", async () => {
   const { db, sched, specs } = harness(async () => ok());
   const first = sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   db.run("UPDATE job SET payload_json = 'null' WHERE id = ?", [first]);
   await sched.drain();
-  expect(specs).toHaveLength(1);
-  expect(db.query<{ role: string }, []>("SELECT role FROM agent").get()!.role).toBe("engineer");
+  expect(specs).toHaveLength(0);
+  expect(
+    db.query<{ state: string; error: string }, [number]>("SELECT state, error FROM job WHERE id = ?").get(first),
+  ).toMatchObject({ state: "failed", error: expect.stringContaining("invalid agent_turn payload") });
 
   const second = sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   db.run("UPDATE job SET payload_json = ? WHERE id = ?", [
@@ -360,19 +366,17 @@ test("malformed persisted payload fields cannot crash a turn or force rotation",
     second,
   ]);
   await sched.drain();
-  expect(specs).toHaveLength(2);
-  expect(specs[1]!.resumeSessionId).toBe("s1");
-  expect(db.query<{ state: string }, [number]>("SELECT state FROM job WHERE id = ?").get(second)!.state).toBe("done");
+  expect(specs).toHaveLength(0);
+  expect(db.query<{ state: string }, [number]>("SELECT state FROM job WHERE id = ?").get(second)!.state).toBe("failed");
 });
 
 /** Minimal deps for calling `hire` directly. */
-function harnessDeps(ctx: Ctx, sched: Scheduler) {
+function harnessDeps(ctx: Ctx): ExecDeps {
   return {
     ctx,
     cfg: { ...loadConfig(), dataDir: "data" },
     roles: loadRoles("roles"),
-    sched,
-  } as unknown as ExecDeps;
+  };
 }
 
 test("a woken agent is never handed an empty prompt", async () => {
@@ -415,36 +419,41 @@ test("QA is handed the slice id and the exact command to file its verdict", asyn
   expect(specs[0]!.prompt).toContain("orch review 1 --verdict");
 });
 
-test("a payload key nothing renders is reported instead of silently ignored", async () => {
+test("an unknown persisted payload key fails before the executor sees it", async () => {
   const { db, sched } = harness(async () => ok());
-  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer", cutBoundary: 7 } });
+  const id = sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  db.run("UPDATE job SET payload_json = ? WHERE id = ?", [JSON.stringify({ role: "engineer", cutBoundary: 7 }), id]);
   await sched.drain();
 
-  const warn = db.query<{ body: string }, []>("SELECT body FROM event WHERE body LIKE '%nothing renders%'").get();
-  // This happened twice for real — a mailed message and a boundary request — and
-  // both times the agent was woken with no instruction, improvised something
-  // plausible, and did not do the job.
-  expect(warn?.body).toContain("cutBoundary");
+  const job = db
+    .query<{ state: string; error: string }, [number]>("SELECT state, error FROM job WHERE id = ?")
+    .get(id)!;
+  expect(job.state).toBe("failed");
+  expect(job.error).toContain("cutBoundary");
 });
 
-test("recognized payload keys with invalid values are reported instead of silently dropped", async () => {
+test("invalid persisted payload fields fail together instead of being dropped", async () => {
   const { db, sched } = harness(async () => ok());
-  sched.enqueue("agent_turn", {
-    grp_id: 1,
-    payload: {
+  const id = sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  db.run("UPDATE job SET payload_json = ? WHERE id = ?", [
+    JSON.stringify({
       role: "engineer",
       idea: 1,
       mail: { from: 1 },
       boundary: [null],
       digest: { channel_id: "1" },
       skills: [null],
-    },
-  });
+    }),
+    id,
+  ]);
   await sched.drain();
 
-  const body = db.query<{ body: string }, []>("SELECT body FROM event WHERE body LIKE '%nothing renders%'").get()!.body;
+  const job = db
+    .query<{ state: string; error: string }, [number]>("SELECT state, error FROM job WHERE id = ?")
+    .get(id)!;
+  expect(job.state).toBe("failed");
   for (const key of ["idea", "mail", "boundary", "digest", "skills"]) {
-    expect(body).toContain(`${key} (invalid)`);
+    expect(job.error).toContain(key);
   }
 });
 

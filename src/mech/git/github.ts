@@ -4,6 +4,7 @@ import { say } from "../../lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";
 import { raise } from "../flow/escalate.ts";
 import { jsonOr } from "../util/text.ts";
+import { clearRepositoryHold, holdRepository } from "./repository.ts";
 
 /**
  * GitHub, as eight endpoints of ordinary JSON.
@@ -22,6 +23,8 @@ import { jsonOr } from "../util/text.ts";
 
 const API = "https://api.github.com";
 const TIMEOUT_MS = 15_000;
+const JsonValue = z.json();
+type Json = z.infer<typeof JsonValue>;
 const ErrorBody = z.object({
   message: z.string().optional(),
   errors: z.array(z.object({ message: z.string().optional() })).optional(),
@@ -55,7 +58,7 @@ export type Fetcher = (
 ) => Promise<Response>;
 
 export interface Github {
-  request<T>(method: string, path: string, schema: z.ZodType<T>, body?: unknown): Promise<GhResult<T>>;
+  request<T>(method: string, path: string, schema: z.ZodType<T>, body?: Json): Promise<GhResult<T>>;
   /** `x-ratelimit-remaining` from the last answer; null before the first one. */
   remaining(): number | null;
 }
@@ -101,77 +104,6 @@ export function classify(status: number, message: string): Bucket {
   return "agent";
 }
 
-/** `owner/repo` out of any remote URL git will accept. Null if it is not GitHub. */
-export function parseRepo(remote: string): string | null {
-  const m = /github\.com[:/]+([^/]+)\/(.+?)(?:\.git)?\/?$/i.exec(remote.trim());
-  return m ? `${m[1]}/${m[2]}` : null;
-}
-
-/**
- * The fifth admission gate (007 §6), and the thing the `boss` bucket is for.
- *
- * An expired GitHub token has the signature this codebase has been burned by
- * four times: every group fails at the same moment and each reports a different
- * error — clone failed, push rejected, PR create failed. Retrying is the one
- * thing that cannot help, so the project's turns are simply not dispatched,
- * exactly the way `providerHeld` holds for model quota. Held work costs nothing:
- * no process, no retry loop, no quota spent proving the wall is still there.
- *
- * **Per repository, not global.** One project's dead credential must not stop a
- * project whose credential is fine. In memory, like `net.ts`'s, because a hold
- * is a fact about right now — a restart re-learns it from the first failure.
- */
-const holds = new Map<string, number>();
-
-/**
- * How long before one turn is let through to find out whether it is fixed.
- *
- * Held is not a terminal state, and it must not need anyone to leave it: a
- * project held forever because nothing ever calls GitHub again is precisely the
- * failure this gate exists to prevent. So the hold lapses by clock the way
- * `providerHeld` does, one turn re-tests, and a success clears it for real. If
- * it is still broken that turn fails once and re-holds — one failed turn per ten
- * minutes per project, against a fleet that would otherwise fail every group
- * every tick.
- */
-export const REPO_HOLD_MS = 10 * 60_000;
-
-/** Is this project locked out of GitHub right now? The scheduler's question. */
-export function repoHeld(db: DB, projectId: number, now = Date.now()): boolean {
-  const slug = slugOf(db, projectId);
-  if (!slug) return false;
-  const until = holds.get(slug);
-  if (until === undefined) return false;
-  if (until <= now) {
-    holds.delete(slug);
-    return false;
-  }
-  return true;
-}
-
-/** Tests only: put the module back to its starting state. */
-export function resetRepoHolds(): void {
-  holds.clear();
-}
-
-/**
- * The credential changed, so nothing we learned from the old one still holds.
- *
- * A boss who reconnects GitHub and then watches nothing happen for ten minutes
- * has been told the fix did not work. Called from `saveAuth` for every runtime
- * and a no-op for the rest, so the caller needs no `if`. The open escalation
- * needs no separate sweep: the next successful call revokes it, and the next
- * call is one tick away once turns dispatch again.
- */
-export function forgetHolds(runtime: string): void {
-  if (runtime === "github") holds.clear();
-}
-
-function slugOf(db: DB, projectId: number): string | null {
-  const p = db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId);
-  return p?.remote ? parseRepo(p.remote) : null;
-}
-
 /** `owner/repo` out of an API path, for the endpoints that name one. */
 function slugInPath(path: string): string | null {
   return /^\/repos\/([^/?#]+\/[^/?#]+)/.exec(path)?.[1] ?? null;
@@ -185,7 +117,7 @@ function slugInPath(path: string): string | null {
  * restart and so answering it is what re-arms the warning.
  */
 function holdRepo(db: DB, lang: string | undefined, slug: string, why: string, now: number): void {
-  holds.set(slug, now + REPO_HOLD_MS);
+  holdRepository(slug, now);
   // `chain_state` matters as much as `answer`, and `raise` states it once for
   // every caller: `clearEscalation` revokes rather than answers, so a guard that
   // looks at `answer` alone treats a revoked question as still open — and a
@@ -222,10 +154,7 @@ export function clearEscalation(db: DB, slug: string): void {
 
 export function makeGithub(
   db: DB,
-  // `Fetcher` is deliberately narrower than the global — see its docstring — so
-  // the global is assignable in the direction that matters and only the argument
-  // types need the widening. A double cast said "trust me about all of it".
-  fetchFn: Fetcher = fetch as Fetcher,
+  fetchFn: Fetcher = fetch,
   /** `output.language`, for the one sentence the boss reads. */
   lang?: string,
 ): Github {
@@ -237,13 +166,13 @@ export function makeGithub(
    * 5000/hour re-reading answers it already has. Keyed by the token because a
    * rotated login must not reuse the previous one's cached bodies.
    */
-  const cache = new Map<string, { etag: string; data: unknown }>();
+  const cache = new Map<string, { etag: string; data: Json }>();
   let remaining: number | null = null;
 
   return {
     remaining: () => remaining,
 
-    async request<T>(method: string, path: string, schema: z.ZodType<T>, body?: unknown): Promise<GhResult<T>> {
+    async request<T>(method: string, path: string, schema: z.ZodType<T>, body?: Json): Promise<GhResult<T>> {
       const token = loadAuth(db, "github")?.secret;
       if (!token) {
         return { ok: false, bucket: "boss", status: 0, message: "no GitHub credential: connect GitHub in settings" };
@@ -279,7 +208,7 @@ export function makeGithub(
       const slug = slugInPath(path);
       // Reaching it again is the only proof that matters, and it is free. A 304
       // counts: GitHub answered it, which is the whole question.
-      if (slug && (res.ok || res.status === 304) && holds.delete(slug)) clearEscalation(db, slug);
+      if (slug && (res.ok || res.status === 304) && clearRepositoryHold(slug)) clearEscalation(db, slug);
 
       if (res.status === 304 && hit) {
         const cached = schema.safeParse(hit.data);
@@ -298,9 +227,9 @@ export function makeGithub(
         return { ok: false, status: res.status, bucket, message: why };
       }
 
-      let data: unknown = null;
+      let data: Json;
       try {
-        data = text ? JSON.parse(text) : null;
+        data = JsonValue.parse(text ? JSON.parse(text) : null);
       } catch {
         return {
           ok: false,

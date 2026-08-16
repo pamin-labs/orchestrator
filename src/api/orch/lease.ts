@@ -1,7 +1,7 @@
-import { loadResource, resolveLease } from "../../mech/lease.ts";
+import { LeaseArgsSchema, loadResource, resolveLease } from "../../mech/lease.ts";
 import { z } from "zod";
 import { IdParams } from "../fields.ts";
-import { bad, text, type AgentHandler } from "../shared.ts";
+import { bad, message, type AgentHandler } from "../shared.ts";
 
 /**
  * The one way an agent runs something it did not write.
@@ -15,17 +15,16 @@ import { bad, text, type AgentHandler } from "../shared.ts";
 /**
  * A resource name and its arguments. Never a command.
  *
- * `args` stays `unknown` per key on purpose: what each one has to be is the
- * resource's own `argSchema`, which the boss wrote in the `resource` table, and
- * `resolveLease` is what enforces it. A shape here could only say "some object",
- * and saying it twice is how the two answers drift.
+ * The HTTP boundary accepts only values any resource can consume. The selected
+ * resource's own `argSchema` then applies the exact enum/path/range rules.
  */
 export const LeaseBody = z.object({
   resource: z.string().min(1).max(64),
-  args: z.record(z.string(), z.unknown()).default({}),
+  args: LeaseArgsSchema.default({}),
 });
+export const LeaseLogQuery = z.object({ grep: z.string().max(4000).optional() });
 
-export const postLease: AgentHandler<z.infer<typeof LeaseBody>> = async (ctx, _req, a, _p, b) => {
+export const postLease = (async (ctx, _req, a, _p, b) => {
   const def = loadResource(ctx.db, b.resource);
   if (!def) return bad(`unknown resource ${b.resource}. Ask the boss to add a template.`);
 
@@ -53,7 +52,7 @@ export const postLease: AgentHandler<z.infer<typeof LeaseBody>> = async (ctx, _r
   //
   // Longer than the lease's own timeout: a gate that is legitimately slow must
   // finish and answer rather than be cut off by the thing waiting for it.
-  const deadline = (ctx.config?.leaseTimeoutMs ?? 10_800_000) + 60_000;
+  const deadline = ctx.config.leaseTimeoutMs + 60_000;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const digest = await new Promise<string>((resolve) => {
     ctx.waiters.set(`lease:${row.id}`, resolve);
@@ -68,10 +67,10 @@ export const postLease: AgentHandler<z.infer<typeof LeaseBody>> = async (ctx, _r
   clearTimeout(timer);
   ctx.waiters.delete(`lease:${row.id}`);
   ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ?", [a.id]);
-  return text(digest);
-};
+  return message(digest);
+}) satisfies AgentHandler<z.infer<typeof LeaseBody>>;
 
-export const getLeaseLog: AgentHandler<undefined, z.infer<typeof IdParams>> = async (ctx, req, a, params) => {
+export const getLeaseLog = (async (ctx, _req, a, params, { grep }) => {
   // Whose lease this is. Unchecked, any sandbox could read any group's build log
   // by counting up from 1 — the `/orch/` prefix gate on the mailbox is about
   // which routes are reachable, not about who is reaching them.
@@ -80,20 +79,19 @@ export const getLeaseLog: AgentHandler<undefined, z.infer<typeof IdParams>> = as
       "SELECT log_path, grp_id FROM lease WHERE id = ?",
     )
     .get(params.id);
-  if (!row?.log_path) return text("no log", 404);
-  if (row.grp_id !== a.grp_id) return text("not this group's lease", 403);
+  if (!row?.log_path) return message("no log", 404);
+  if (row.grp_id !== a.grp_id) return message("not this group's lease", 403);
   const raw = await Bun.file(row.log_path).text();
   // A substring, not a regex. `new RegExp` on an agent-supplied string runs on the
   // host, in the single process everything else is waiting on, and one nested
   // quantifier stalls the whole orchestrator. Nobody greps a build log for
   // anything a substring cannot find.
-  const grep = new URL(req.url).searchParams.get("grep");
-  if (!grep) return text(raw.split("\n").slice(-200).join("\n"));
-  return text(
+  if (!grep) return message(raw.split("\n").slice(-200).join("\n"));
+  return message(
     raw
       .split("\n")
       .filter((l) => l.includes(grep))
       .slice(0, 200)
       .join("\n"),
   );
-};
+}) satisfies AgentHandler<z.infer<typeof LeaseLogQuery>, z.infer<typeof IdParams>>;

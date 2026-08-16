@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { clearSandboxLog, sandboxLines, sandboxLog } from "../src/mech/sandbox/sandboxlog.ts";
-import type { Ctx } from "../src/api.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * The container's own output, kept long enough to be read.
@@ -10,7 +10,13 @@ import type { Ctx } from "../src/api.ts";
  * existed had nowhere to be.
  */
 
-const ctx = (out: string[] = []) => ({ bus: { live: (f: { body: string }) => out.push(f.body) } }) as unknown as Ctx;
+const ctx = (out: string[] = []) => {
+  const ctx = testContext();
+  ctx.bus.subscribe((frame) => {
+    if (frame.type === "live") out.push(frame.body);
+  });
+  return ctx;
+};
 
 test("a line is on the feed and in the buffer, and the buffer is capped", () => {
   clearSandboxLog(1);

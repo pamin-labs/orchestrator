@@ -1,5 +1,5 @@
 import { defu } from "defu";
-import type { z } from "zod";
+import { z } from "zod";
 import { ConfigSchema } from "./config-schema.ts";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
@@ -34,16 +34,16 @@ export type Runtime = string;
 /** Which provider a role gets when its yaml does not say. */
 export const DEFAULT_PROVIDER = "claude";
 
-export interface RoleDef {
-  name: string;
+const RoleDefSchema = z.object({
+  name: z.string().min(1),
   /**
    * Which tier this role always needs, regardless of slice difficulty. The
    * Dispatcher is `hard` because a badly split requirement costs more than the
    * strong model does. Omit to let the slice's difficulty tag decide.
    */
-  tier?: "trivial" | "normal" | "hard";
+  tier: z.enum(["trivial", "normal", "hard"]).optional(),
   /** A concrete model id, pinned. Wins over `tier` and over difficulty. */
-  model?: string;
+  model: z.string().optional(),
   /**
    * Tool rounds this role gets, overriding `maxTurnsPerJob`.
    *
@@ -53,15 +53,16 @@ export interface RoleDef {
    * runs a test-fix loop. One cap for both has to be the engineer's, and the
    * reviewers spend it.
    */
-  maxTurns?: number;
+  maxTurns: z.number().int().positive().optional(),
   /** How hard the model thinks per turn. Part of the cached prefix, see assemble.ts. */
-  effort?: Effort;
-  prompt: string;
+  effort: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]).optional(),
+  prompt: z.string().min(1),
   /** Which tools this role gets. The sandbox is the boundary; this is the budget. */
-  allowedTools?: string[];
+  allowedTools: z.array(z.string()).optional(),
   /** Which CLI runs this role's turns. A role is config, so this is too. */
-  runtime?: Runtime;
-}
+  runtime: z.string().optional(),
+});
+export type RoleDef = z.infer<typeof RoleDefSchema>;
 
 /**
  * A type alias rather than an interface, on purpose: an interface has no
@@ -292,7 +293,9 @@ function fromEnv(cfg: Config): Config {
 export const DEFAULTS_FOR_CHECK: Config = DEFAULTS;
 
 export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
-  const parsed = existsSync(path) ? ((Bun.YAML.parse(readFileSync(path, "utf8")) as Partial<Config> | null) ?? {}) : {};
+  const parsed = existsSync(path)
+    ? z.record(z.string(), z.json()).parse(Bun.YAML.parse(readFileSync(path, "utf8")) ?? {})
+    : {};
   // Key by key, not block by block: a spread means a `sandbox:` naming two of
   // its eight fields drops the other six to `undefined`, and the symptom is a
   // container that will not start rather than a config error. `defu` is exactly
@@ -304,7 +307,8 @@ export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
   // is reachable now that settings are written onto the live config — the panel
   // changing an image would also have changed what "default" means, so the
   // "restore default" button would restore the value it was asked to undo.
-  const cfg = fromEnv(withAbsoluteDataDir(defu(parsed, structuredClone(DEFAULTS))));
+  const merged = ConfigSchema.parse(defu(parsed, structuredClone(DEFAULTS)));
+  const cfg = ConfigSchema.parse(fromEnv(withAbsoluteDataDir(merged)));
   const key = process.env[SANDBOX_API_KEY_ENV] || process.env[SANDBOX_API_KEY_ALT];
   return key ? { ...cfg, sandbox: { ...cfg.sandbox, apiKey: key } } : cfg;
 }
@@ -314,8 +318,9 @@ export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {
   if (!existsSync(dir)) return out;
   for (const f of readdirSync(dir)) {
     if (!f.endsWith(".yaml") && !f.endsWith(".yml")) continue;
-    const r = Bun.YAML.parse(readFileSync(join(dir, f), "utf8")) as RoleDef;
-    if (!r?.name || !r?.prompt) throw new Error(`${f}: a role needs at least name and prompt`);
+    const r = RoleDefSchema.parse(Bun.YAML.parse(readFileSync(join(dir, f), "utf8")), {
+      error: () => `${f}: invalid role`,
+    });
     out.set(r.name, r);
   }
   return out;

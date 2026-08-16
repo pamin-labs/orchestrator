@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalise, serve } from "../src/mech/sandbox/mailbox.ts";
+import type { Json } from "../src/http/respond.ts";
 
 /**
  * The agent's only way out.
@@ -54,7 +55,7 @@ test("a call becomes a request file and blocks until an answer appears", async (
   // come back before the build it is waiting for has run.
   expect(proc.exitCode).toBe(null);
 
-  await Bun.write(join(mb, "res", `${env.id}.json`), JSON.stringify({ status: 200, text: "ok" }));
+  await Bun.write(join(mb, "res", `${env.id}.json`), JSON.stringify({ status: 200, body: { message: "ok" } }));
   expect(await proc.exited).toBe(0);
   expect(await new Response(proc.stdout).text()).toContain("ok");
 
@@ -67,19 +68,24 @@ test("a call becomes a request file and blocks until an answer appears", async (
  * A sandbox is a `files` API and nothing else, as far as `serve` is concerned.
  * `writes` is the assertion: the answer the agent would read back.
  */
-function fakeFiles(req: Record<string, unknown>) {
+function fakeFiles(req: Json) {
   const writes: Array<{ path: string; data: string }> = [];
   const deletes: string[][] = [];
+  const sb = {
+    files: {
+      readFile: async () => JSON.stringify(req),
+      deleteFiles: async (paths: string[]) => {
+        deletes.push(paths);
+      },
+      writeFiles: async (fs: Array<{ path: string; data: string }>) => {
+        writes.push(...fs);
+      },
+    },
+  } satisfies Parameters<typeof serve>[0];
   return {
     writes,
     deletes,
-    sb: {
-      files: {
-        readFile: async () => JSON.stringify(req),
-        deleteFiles: async (paths: string[]) => deletes.push(paths),
-        writeFiles: async (fs: Array<{ path: string; data: string }>) => writes.push(...fs),
-      },
-    } as any,
+    sb,
   };
 }
 
@@ -109,7 +115,7 @@ test("an invalid envelope with a safe id receives a bounded failure", async () =
 
   expect(writes).toHaveLength(1);
   expect(writes[0]!.path).toContain("/res/safe-id.json");
-  expect(JSON.parse(writes[0]!.data)).toEqual({ status: 400, text: "invalid mailbox request" });
+  expect(JSON.parse(writes[0]!.data)).toEqual({ status: 400, body: { error: "invalid mailbox request" } });
 });
 
 test("a sandbox cannot reach the boss's routes through the mailbox", async () => {
@@ -128,7 +134,7 @@ test("a sandbox cannot reach the boss's routes through the mailbox", async () =>
   // 403, not silence: a dropped request leaves the agent blocked forever.
   expect(answer.status).toBe(403);
   // 502 would mean it tried the fetch and the (unreachable) port refused it.
-  expect(answer.text).not.toContain("unreachable");
+  expect(answer.body.error).not.toContain("unreachable");
 });
 
 test("the prefix guard cannot be walked out of with dot segments", async () => {
@@ -178,6 +184,6 @@ test("a non-200 answer is passed through as a failure, not swallowed", async () 
     if (!req) await Bun.sleep(20);
   }
   const { id } = JSON.parse(await Bun.file(join(mb, "req", req)).text());
-  await Bun.write(join(mb, "res", `${id}.json`), JSON.stringify({ status: 422, text: "no such group" }));
+  await Bun.write(join(mb, "res", `${id}.json`), JSON.stringify({ status: 422, body: { error: "no such group" } }));
   expect(await proc.exited).not.toBe(0);
 });

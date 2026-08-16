@@ -1,10 +1,14 @@
 import { expect, test } from "bun:test";
 
+import { Bus } from "../src/bus.ts";
+import { loadConfig } from "../src/config.ts";
+import type { Ctx } from "../src/ctx.ts";
 import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { POLL_EVERY_MS, pollClaudeUsage, pollUsage, rateLimitsIn, toRateLimit } from "../src/mech/ops/subusage.ts";
 import { seedAuth } from "./seed-auth.ts";
+import { Scheduler } from "../src/scheduler.ts";
 
 // The real response, trimmed to the two windows this reads. Verbatim shape from
 // GET /api/oauth/usage — a dozen other keys are present and all ignored.
@@ -21,8 +25,14 @@ const RESPONSE = {
  * these tests drive is a sandbox command, and `curl`'s answer is a body plus a
  * status line.
  */
-const ctx = (db: ReturnType<typeof openMemory>, answer = `${JSON.stringify(RESPONSE)}\n200`) =>
-  ({ db, sandbox: fakeSandbox(() => ({ out: answer })), waiters: new Map(), config: { language: "中文" } }) as any;
+const ctx = (db: ReturnType<typeof openMemory>, answer = `${JSON.stringify(RESPONSE)}\n200`): Ctx => ({
+  db,
+  bus: new Bus(db),
+  sched: new Scheduler(db, async () => {}),
+  sandbox: fakeSandbox(() => ({ out: answer })),
+  waiters: new Map(),
+  config: loadConfig(),
+});
 
 test("both windows land in the same shape codex reports", () => {
   const rl = toRateLimit(RESPONSE)!;
@@ -171,15 +181,17 @@ test("the usage read carries a decoy, never the stored token", async () => {
   const db = openMemory();
   saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: `sk-ant-oat01-${"S".repeat(80)}` });
   const seen: string[] = [];
-  const c = {
+  const c: Ctx = {
     db,
+    bus: new Bus(db),
+    sched: new Scheduler(db, async () => {}),
     sandbox: fakeSandbox((cmd) => {
       seen.push(cmd);
       return { out: `${JSON.stringify(RESPONSE)}\n200` };
     }),
     waiters: new Map(),
-    config: { language: "中文" },
-  } as any;
+    config: loadConfig(),
+  };
 
   expect(await pollClaudeUsage(c, Date.now())).toBe(true);
   const cmd = seen.find((x) => x.includes("curl"))!;

@@ -18,6 +18,7 @@ import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
+import type { Json } from "../src/http/respond.ts";
 
 function harness(
   handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}),
@@ -39,7 +40,7 @@ function harness(
     // so both are this one fake.
     sandbox,
     waiters: new Map(),
-    config: { language: "中文" },
+    config: _cfg,
   };
   // The remote is what `owner/repo` is derived from, and since 007 step 5 it is
   // also what the clone and the push use — one answer, not two columns that can
@@ -64,7 +65,7 @@ const boom = (status: number, message: string, bucket: "boss" | "agent" | "trans
  * dropped. Anything not in the table answers empty rather than undefined, which
  * is what a PR with no comments and no checks actually looks like.
  */
-const gh = (script: Record<string, GhResult<unknown>>, calls: string[] = []): Github => ({
+const gh = (script: Record<string, GhResult<Json>>, calls: string[] = []): Github => ({
   remaining: () => 4999,
   async request(method, path, schema) {
     const key = `${method} ${path.split("?")[0]}`;
@@ -87,7 +88,7 @@ const gh = (script: Record<string, GhResult<unknown>>, calls: string[] = []): Gi
 });
 
 /** The PR view every poll starts with. Open, mergeable, one head commit. */
-const pr = (over: Record<string, unknown> = {}) =>
+const pr = (over: Record<string, Json> = {}) =>
   ok({ state: "open", merged: false, mergeable: true, head: { sha: "deadbee" }, ...over });
 
 const okGit = async () => ({ code: 0, out: "" });
@@ -106,9 +107,22 @@ test("opening a PR records its number once", async () => {
   // Calling again is a no-op rather than a second PR — but it does refresh the
   // description, which is three slices out of date by then.
   const second: string[] = [];
-  const again = await openPr({ ...base, gh: gh({}, second) });
+  const again = await openPr({ ...base, gh: gh({ "PATCH /repos/me/x/pulls/42": ok({ number: 42 }) }, second) });
   expect(again).toEqual({ number: 42 });
   expect(second).toEqual(["PATCH /repos/me/x/pulls/42"]);
+});
+
+test("refreshing an existing PR reports GitHub rejection", async () => {
+  const h = harness();
+  h.db.run("UPDATE grp SET pr_number = 42 WHERE id = 1");
+  const result = await openPr({
+    ctx: h.ctx,
+    gh: gh({ "PATCH /repos/me/x/pulls/42": boom(422, "title rejected") }),
+    grpId: 1,
+    title: "t",
+    body: "b",
+  });
+  expect(result).toEqual({ error: "title rejected" });
 });
 
 test("the PR body is built from the record, not from a sentence", () => {

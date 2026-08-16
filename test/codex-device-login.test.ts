@@ -1,12 +1,10 @@
 import { expect, test } from "bun:test";
-import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { Scheduler } from "../src/scheduler.ts";
 import { loadAuth } from "../src/mech/sandbox/auth.ts";
 import { REFRESH_HOME } from "../src/mech/sandbox/chatgpt.ts";
 import { startCodexDeviceLogin } from "../src/mech/sandbox/login.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
-import type { Ctx } from "../src/api.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * Logging in to a ChatGPT account without a browser inside the container.
@@ -36,14 +34,7 @@ function harness(out: string, auth = '{"tokens":{"refresh_token":"real"},"last_r
     return { out };
   });
   if (auth) sandbox.files.set(`${REFRESH_HOME}/auth.json`, auth);
-  const ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    sandbox,
-    waiters: new Map(),
-    config: { language: "中文" },
-  } as unknown as Ctx;
+  const ctx = testContext({ db, sandbox });
   return { ctx, db, cmds };
 }
 

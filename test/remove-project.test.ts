@@ -9,6 +9,8 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Scope } from "../src/mech/sandbox/sandbox.ts";
+import { loadConfig } from "../src/config.ts";
+import { z } from "zod";
 
 /**
  * Removing a project is the one place this codebase deletes rather than
@@ -40,13 +42,13 @@ function harness(dataDir?: string) {
     // and the path rather than answering.
     gh: {
       remaining: () => null,
-      request: async (method: string, path: string) => {
+      request: async (method, path, schema) => {
         asked.push(`${method} ${path}`);
-        return { ok: true as const, status: 200, data: {} as any };
+        return { ok: true as const, status: 200, data: schema.parse({}) };
       },
     },
-    config: { language: "中文", ...(dataDir ? { dataDir } : {}) },
-  } as unknown as Ctx;
+    config: { ...loadConfig(), ...(dataDir ? { dataDir } : {}) },
+  };
 
   db.run(
     `INSERT INTO project (name, repo_path, remote, created_at) VALUES
@@ -82,7 +84,10 @@ function populate(db: DB, projectId: number, tag: string): number {
     .get(projectId, grp)!.id;
   db.run("INSERT INTO member (channel_id, agent_id) VALUES (?, ?)", [channel, agent]);
   db.run("INSERT INTO cursor (channel_id, agent_id, last_seq) VALUES (?, ?, 0)", [channel, agent]);
-  db.run("INSERT INTO task (grp_id, slice_id, title, status, created_at) VALUES (?, ?, 't', 'open', 0)", [grp, slice]);
+  db.run("INSERT INTO task (grp_id, slice_id, title, status, created_at) VALUES (?, ?, 't', 'pending', 0)", [
+    grp,
+    slice,
+  ]);
   db.run("INSERT INTO note (project_id, grp_id, slice_id, kind, body, at) VALUES (?, ?, ?, 'fact', 'n', 0)", [
     projectId,
     grp,
@@ -218,7 +223,14 @@ test("the restart button gets the two numbers it has to show, and never a guess"
   h.db.run("UPDATE grp SET sandbox_id = 'sb-x' WHERE id = ?", [grp]);
   h.db.run("UPDATE job SET state = 'running' WHERE grp_id = ?", [grp]);
 
-  const b = (await (await h.app(new Request("http://x/api/sandbox-server"))).json()) as any;
+  const b = z
+    .object({
+      containers: z.number(),
+      runningTurns: z.number(),
+      restartable: z.boolean(),
+      state: z.enum(["ours", "theirs", "stuck", "started", "down"]),
+    })
+    .parse(await (await h.app(new Request("http://x/api/sandbox-server"))).json());
   expect(b.containers).toBe(1);
   expect(b.runningTurns).toBe(2);
   // `restartable` used to mean "we have seen this process's argv". Seeing a

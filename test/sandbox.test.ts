@@ -19,6 +19,8 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { httpsRemote } from "../src/mech/git/checkout.ts";
 import type { Ctx } from "../src/api.ts";
+import { loadConfig } from "../src/config.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * The boundary's own checks.
@@ -33,10 +35,9 @@ import type { Ctx } from "../src/api.ts";
 function ctx(config: Partial<NonNullable<Ctx["config"]>> = {}): Ctx {
   const db = open(":memory:");
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  return {
-    db,
-    config: { language: "中文", ...config },
-  } as unknown as Ctx;
+  const ctx = testContext({ db });
+  ctx.config = { ...ctx.config, ...config };
+  return ctx;
 }
 
 const BASE = {
@@ -301,8 +302,9 @@ test("a machine's default image is what a new project runs on, and it is not the
   // committed, so anybody self-hosting lost their edit on the next pull.
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'me/x', 0)");
-  const cfg = { sandbox: { image: "ghcr.io/pamin-labs/orch-agent:latest" } } as any;
-  const ctx = { db, config: cfg } as unknown as Ctx;
+  const cfg = loadConfig("config/does-not-exist.yaml");
+  cfg.sandbox.image = "ghcr.io/pamin-labs/orch-agent:latest";
+  const ctx = testContext({ db, config: cfg });
 
   expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:latest");
 

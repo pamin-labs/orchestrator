@@ -2,7 +2,12 @@
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
   "rules": {
     "no-unused-vars": ["warn", { "args": "none", "varsIgnorePattern": "^_" }],
-    "no-control-regex": "off"
+    "no-control-regex": "off",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-restricted-types": [
+      "error",
+      { "types": { "unknown": "Parse boundary data into a concrete type instead." } }
+    ]
   },
   "ignorePatterns": ["web/dist", "data", "leases"]
 }

@@ -1,5 +1,5 @@
 import { ComposerDialog } from "../ui/composer";
-import { post } from "../lib/api";
+import { api, mutate } from "../lib/api";
 
 /**
  * Dropping an idea.
@@ -30,7 +30,7 @@ export function NewRequirement({
       submit="提交"
       rows={6}
       onSubmit={async ({ text, attachments }) => {
-        const r = await post("/api/ideas", { project_id: projectId, text, attachments });
+        const r = await mutate(api.ideas.$post({ json: { project_id: projectId, text, attachments } }));
         if (r.ok) onDone();
         return r.ok;
       }}

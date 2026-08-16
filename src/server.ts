@@ -18,7 +18,8 @@ import { restageSkills } from "./mech/skills.ts";
 import { ensureServer } from "./mech/sandbox/server.ts";
 import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
 import { dispatchFeedback, openPr, pollPrs, prBody, prTitle } from "./mech/git/prwatch.ts";
-import { makeGithub, repoHeld } from "./mech/git/github.ts";
+import { makeGithub } from "./mech/git/github.ts";
+import { repoHeld } from "./mech/git/repository.ts";
 import {
   chargeIndex,
   HEAD_CHARS,
@@ -37,6 +38,7 @@ import { abortAll } from "./runtime/running.ts";
 import { isOnline } from "./mech/sandbox/net.ts";
 import { hold } from "./mech/flow/intercept.ts";
 import { raise } from "./mech/flow/escalate.ts";
+import { restoreWorkspace } from "./mech/flow/start.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -332,6 +334,7 @@ export function start(overrides: Partial<Config> = {}): Started {
         if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u);
       }),
     waiters: new Map(),
+    restoreWorkspace: (grpId) => restoreWorkspace(ctx, grpId),
     // One object, not a copy. See `Ctx` for what the copy used to cost.
     config: cfg,
   };
@@ -369,7 +372,7 @@ export function start(overrides: Partial<Config> = {}): Started {
           // finds a live group with an empty queue and re-queues its last turn —
           // the Auditor's — which passes again and retries the PR. No new
           // mechanism, and no button that only exists for this.
-          hold({ db } as Ctx, grpId, { reason: "merge", settled: true, leaveQueue: true });
+          hold(ctx, grpId, { reason: "merge", settled: true, leaveQueue: true });
           raise(db, {
             grpId,
             question: `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`,
@@ -671,7 +674,7 @@ if (import.meta.main) {
   // Installed once, here, for the same reason as the signal handlers below.
   let saidRejection = "";
   process.on("unhandledRejection", (e) => {
-    const why = String((e as Error)?.stack ?? (e as Error)?.message ?? e).slice(0, 600);
+    const why = (e instanceof Error ? (e.stack ?? e.message) : String(e)).slice(0, 600);
     consola.error(`unhandled rejection (kept running):\n${why}`);
     // The console keeps every one; the feed gets each distinct one once. What
     // this catches is mostly the per-tick chains, so without the check a single

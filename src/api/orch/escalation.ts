@@ -11,13 +11,14 @@ import {
 import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from "../fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
-import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
+import { bad, json, mayAct, resolveGroup, message, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
 import { slug } from "../slug.ts";
 import { sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 import { raise } from "../../mech/flow/escalate.ts";
+import type { SliceState } from "../../states.ts";
 
 /**
  * A question that an agent could not answer for itself, and everything that
@@ -62,7 +63,7 @@ export const AskBossBody = z.object({
   kind: z.string().max(40).optional(),
 });
 
-export const postAskBoss: AgentHandler<z.infer<typeof AskBossBody>> = async (ctx, _req, a, _p, b) => {
+export const postAskBoss = (async (ctx, _req, a, _p, b) => {
   const severity = b.severity === "blocker" ? "blocker" : "advisory";
 
   const id = raise(ctx.db, {
@@ -104,8 +105,8 @@ export const postAskBoss: AgentHandler<z.infer<typeof AskBossBody>> = async (ctx
     ctx.waiters.set(`escalation:${id}`, resolve);
   });
   ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ?", [a.id]);
-  return text(answer);
-};
+  return message(answer);
+}) satisfies AgentHandler<z.infer<typeof AskBossBody>>;
 
 export const AnswerBody = z.object({
   escalation_id: Id,
@@ -115,24 +116,27 @@ export const AnswerBody = z.object({
   ref: Id.optional(),
 });
 
-export const postAnswer2: AgentHandler<z.infer<typeof AnswerBody>> = async (ctx, _req, a, _p, b) => {
+export const postAnswer2 = (async (ctx, _req, a, _p, b) => {
   const deps = { ctx, notifyBoss: ctx.notifyBoss };
+  const level = z.enum(CHAIN).safeParse(a.role);
+  if (!level.success) return bad(`${a.role} is not an answer-chain level`);
 
   if (b.abstain) {
     // Abstaining is the expected move when a level is unsure: a guess made on
     // the boss's behalf becomes a premise the whole group reasons from.
-    abstain(deps, b.escalation_id, a.role, b.why ?? "");
-    return text("passed up");
+    const r = abstain(deps, b.escalation_id, level.data, b.why ?? "", a.grp_id);
+    return r.ok ? message("passed up") : bad(r.error);
   }
   if (!b.answer?.trim()) return bad("an answer needs text, or pass --abstain");
   const r = chainAnswer(deps, {
     escId: b.escalation_id,
-    by: a.role,
+    by: level.data,
     answer: b.answer,
+    actorGrpId: a.grp_id,
     refNoteId: b.ref,
   });
-  return r.ok ? text("ok") : bad(r.error);
-};
+  return r.ok ? message("ok") : bad(r.error);
+}) satisfies AgentHandler<z.infer<typeof AnswerBody>>;
 
 export const TriageBody = z.object({
   group_id: GroupRef,
@@ -140,14 +144,14 @@ export const TriageBody = z.object({
   note: z.string().max(8000).optional(),
 });
 
-export const postTriage: AgentHandler<z.infer<typeof TriageBody>> = async (ctx, _req, a, _p, b) => {
+export const postTriage = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "cos") return bad(`${a.role} does not triage the boss's feedback`);
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return text("not your group", 403);
+  if (!mayAct(ctx, a, gid)) return message("not your group", 403);
   triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, gid, b.as, b.note ?? "");
-  return text("ok");
-};
+  return message("ok");
+}) satisfies AgentHandler<z.infer<typeof TriageBody>>;
 
 /**
  * This question is not a question. It is a piece of work.
@@ -168,19 +172,14 @@ export const RequirementBody = z.object({
   name: z.string().max(80).optional(),
 });
 
-export const postEscalationRequirement: Handler<z.infer<typeof RequirementBody>, z.infer<typeof IdParams>> = async (
-  ctx,
-  _req,
-  params,
-  b,
-) => {
+export const postEscalationRequirement = (async (ctx, _req, params, b) => {
   const id = params.id;
   const esc = ctx.db
     .query<{ grp_id: number | null; question: string; answer: string | null }, [number]>(
       "SELECT grp_id, question, answer FROM escalation WHERE id = ?",
     )
     .get(id);
-  if (!esc) return text("no such question", 404);
+  if (!esc) return message("no such question", 404);
   if (esc.answer) return bad("already answered");
 
   const projectId = esc.grp_id
@@ -225,41 +224,32 @@ export const postEscalationRequirement: Handler<z.infer<typeof RequirementBody>,
   w?.(`the boss turned this into requirement ${name} (grp ${grp.id}); stop and wait for it`);
   ctx.sched.tick();
   return json({ grp_id: grp.id, name });
-};
+}) satisfies Handler<z.infer<typeof RequirementBody>, z.infer<typeof IdParams>>;
 
-export const postRevoke: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
+export const postRevoke = (async (ctx, _req, params) => {
   const out = await revoke({ ctx }, params.id);
   return json(out);
-};
+}) satisfies Handler<undefined, z.infer<typeof IdParams>>;
 
 export const BossAnswerBody = z.object({
   answer: z.string().min(1).max(20_000),
-  answered_by: z.string().max(40).optional(),
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postAnswer: Handler<z.infer<typeof BossAnswerBody>, z.infer<typeof IdParams>> = async (
-  ctx,
-  _req,
-  params,
-  b,
-) => {
+export const postAnswer = (async (ctx, _req, params, b) => {
   const id = params.id;
   const esc = ctx.db
     .query<{ grp_id: number | null; severity: string }, [number]>(
       "SELECT grp_id, severity FROM escalation WHERE id = ?",
     )
     .get(id);
-  if (!esc) return text("no such escalation", 404);
+  if (!esc) return message("no such escalation", 404);
 
   // The boss answers through the same path a stand-in would, so unblocking the
   // caller and un-pausing the group cannot drift between the two.
-  const r = chainAnswer(
-    { ctx },
-    { escId: id, by: b.answered_by ?? "boss", answer: withAttachments(b.answer ?? "", b.attachments) },
-  );
-  return r.ok ? text("ok") : bad(r.error);
-};
+  const r = chainAnswer({ ctx }, { escId: id, by: "boss", answer: withAttachments(b.answer, b.attachments) });
+  return r.ok ? message("ok") : bad(r.error);
+}) satisfies Handler<z.infer<typeof BossAnswerBody>, z.infer<typeof IdParams>>;
 
 /**
  * A first draft of the answer, from the cheapest model there is.
@@ -279,7 +269,7 @@ export const postAnswer: Handler<z.infer<typeof BossAnswerBody>, z.infer<typeof 
  * No draft is a fine outcome. If the model is unreachable or says nothing useful
  * this returns nothing and the composer is the composer.
  */
-export const getAnswerDraft: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
+export const getAnswerDraft = (async (ctx, _req, params) => {
   if (!ctx.askIn) return json({ text: "" });
   const id = params.id;
   const e = ctx.db
@@ -313,14 +303,14 @@ export const getAnswerDraft: Handler<undefined, z.infer<typeof IdParams>> = asyn
     : [];
   const slices = e.grp_id
     ? ctx.db
-        .query<{ seq: number; title: string; status: string }, [number]>(
+        .query<{ seq: number; title: string; status: SliceState }, [number]>(
           "SELECT seq, title, status FROM slice WHERE grp_id = ? ORDER BY seq",
         )
         .all(e.grp_id)
         .map((s) => `S${s.seq} ${s.status} ${s.title}`)
     : [];
 
-  const zh = (ctx.config.language ?? "zh") !== "en";
+  const zh = ctx.config.language !== "en";
   const prompt = [
     zh
       ? "你是老板的助手。下面是一个 agent 提给老板的问题，以及这个需求的黑板内容。写出老板可以直接发出去的答复。"
@@ -342,7 +332,7 @@ export const getAnswerDraft: Handler<undefined, z.infer<typeof IdParams>> = asyn
   } catch {
     return json({ text: "" });
   }
-};
+}) satisfies Handler<undefined, z.infer<typeof IdParams>>;
 
 /**
  * Hand a question back down the chain instead of answering it.
@@ -356,25 +346,17 @@ export const getAnswerDraft: Handler<undefined, z.infer<typeof IdParams>> = asyn
  * chain is the order questions travel in, it lives in one place, and a copy of
  * it in a schema is the copy that goes stale when a level is added.
  */
-export const DelegateBody = z.object({ to: z.string().max(40).optional() });
+export const DelegateBody = z.object({ to: z.enum(CHAIN).exclude(["boss"]).default("architect") });
 
-export const postDelegate: Handler<z.infer<typeof DelegateBody>, z.infer<typeof IdParams>> = async (
-  ctx,
-  _req,
-  params,
-  b,
-) => {
-  const to = b.to ?? "architect";
-  if (!CHAIN.includes(to as never) || to === "boss") {
-    return bad(`to must be one of: ${CHAIN.filter((c) => c !== "boss").join(", ")}`);
-  }
+export const postDelegate = (async (ctx, _req, params, b) => {
+  const to = b.to;
   const id = params.id;
   const esc = ctx.db
     .query<{ grp_id: number | null; question: string }, [number]>(
       "SELECT grp_id, question FROM escalation WHERE id = ?",
     )
     .get(id);
-  if (!esc) return text("no such escalation", 404);
+  if (!esc) return message("no such escalation", 404);
 
   ctx.db.run("UPDATE escalation SET chain_state = ? WHERE id = ?", [to, id]);
   ctx.bus.emit({
@@ -388,5 +370,5 @@ export const postDelegate: Handler<z.infer<typeof DelegateBody>, z.infer<typeof 
   // route() skips a level with nobody in it, so this cannot strand the question:
   // worst case it comes straight back.
   const landed = route({ ctx, notifyBoss: ctx.notifyBoss }, id);
-  return text(landed);
-};
+  return message(landed);
+}) satisfies Handler<z.infer<typeof DelegateBody>, z.infer<typeof IdParams>>;

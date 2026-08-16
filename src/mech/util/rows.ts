@@ -21,22 +21,30 @@ import { jsonOr } from "./text.ts";
  * it. `patchProjectConfig` is the one caller that must not silently discard a
  * bad value, and it is the one that does not come through here.
  */
-const ProjectConfigSchema = z
+export const ProjectConfigSchema = z
   .object({
-    detected: z.boolean().optional().catch(undefined),
-    gates: z.array(z.string()).optional().catch(undefined),
-    install: z.string().nullable().optional().catch(undefined),
-    shared: z.array(z.string()).optional().catch(undefined),
-    sandbox: SandboxOverrideSchema.optional().catch(undefined),
+    detected: z.boolean().optional(),
+    gates: z.array(z.string()).optional(),
+    install: z.string().nullable().optional(),
+    shared: z.array(z.string()).optional(),
+    sandbox: SandboxOverrideSchema.optional(),
     index: z
       .object({ exclude: z.array(z.string()).optional() })
       .strict()
-      .optional()
-      .catch(undefined),
+      .optional(),
   })
   // Old and future releases may own keys this process does not know yet. They
   // stay inert and survive a detection write; known keys never bypass schemas.
-  .passthrough();
+  .catchall(z.json());
+
+const ReadProjectConfigSchema = ProjectConfigSchema.extend({
+  detected: ProjectConfigSchema.shape.detected.catch(undefined),
+  gates: ProjectConfigSchema.shape.gates.catch(undefined),
+  install: ProjectConfigSchema.shape.install.catch(undefined),
+  shared: ProjectConfigSchema.shape.shared.catch(undefined),
+  sandbox: ProjectConfigSchema.shape.sandbox.catch(undefined),
+  index: ProjectConfigSchema.shape.index.catch(undefined),
+});
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 
@@ -45,7 +53,7 @@ export function projectConfig(db: DB, projectId: number | null | undefined): Pro
   const row = db
     .query<{ config_json: string | null }, [number]>("SELECT config_json FROM project WHERE id = ?")
     .get(projectId);
-  return jsonOr(row?.config_json, ProjectConfigSchema, {});
+  return jsonOr(row?.config_json, ReadProjectConfigSchema, {});
 }
 
 /** Which project an agent belongs to. A standing agent has one and no group. */

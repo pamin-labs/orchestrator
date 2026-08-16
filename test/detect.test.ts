@@ -69,6 +69,13 @@ test("workspace and lockfiles are detected as shared", () => {
   expect(shared).toContain("packages/*/package.json");
 });
 
+test("the package.json workspace object uses its official packages field", () => {
+  const objectForm = repo({ "package.json": JSON.stringify({ workspaces: { packages: ["apps/*"] } }) });
+  const malformed = repo({ "package.json": JSON.stringify({ workspaces: { nope: true } }) });
+  expect(detectShared(objectForm)).toContain("packages/*/package.json");
+  expect(detectShared(malformed)).not.toContain("packages/*/package.json");
+});
+
 /**
  * Detection no longer runs at registration: a project is a GitHub repository and
  * there is no checkout to read until a group clones it (007 §2). These functions

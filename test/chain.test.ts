@@ -9,6 +9,7 @@ import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
+import type { Json } from "../src/http/respond.ts";
 
 function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: boolean } = {}) {
   const db: DB = openMemory();
@@ -23,7 +24,7 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
     sched,
     sandbox: fakeSandbox(),
     waiters: new Map(),
-    config: { language: "中文" },
+    config: _cfg,
     notifyBoss: (id) => void notified.push(id),
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
@@ -56,7 +57,7 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
       .get(severity, question)!.id;
 
   const app = makeApp(ctx);
-  const post = (path: string, body?: unknown, token?: string) =>
+  const post = (path: string, body?: Json, token?: string) =>
     app(
       new Request(`http://x${path}`, {
         method: "POST",
@@ -130,6 +131,7 @@ test("abstaining moves the question up one level, and says why", () => {
 test("a level's answer unblocks the caller and un-pauses a blocked group", () => {
   const h = harness({ withArchitect: true });
   const id = h.ask("which library?", "blocker");
+  h.db.run("UPDATE escalation SET chain_state = 'architect' WHERE id = ?", [id]);
   h.db.run("UPDATE grp SET status = 'PAUSED' WHERE id = 1");
   let got = "";
   h.ctx.waiters.set(`escalation:${id}`, (v) => (got = v));
@@ -146,6 +148,7 @@ test("a level's answer unblocks the caller and un-pauses a blocked group", () =>
 test("the CoS may only answer from a recorded decision", () => {
   const h = harness({ withCos: true });
   const id = h.ask("do we keep the legacy header path?");
+  h.db.run("UPDATE escalation SET chain_state = 'cos' WHERE id = ?", [id]);
 
   // No citation: refused. Speaking for the boss without precedent is guessing.
   const bare = answer(h.deps, { escId: id, by: "cos", answer: "keep it" });
@@ -168,6 +171,7 @@ test("the CoS may only answer from a recorded decision", () => {
 test("no stand-in may answer a reserved question, precedent or not", () => {
   const h = harness({ withCos: true });
   const id = h.ask("should we pay for more quota?");
+  h.db.run("UPDATE escalation SET chain_state = 'cos' WHERE id = ?", [id]);
   h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'decision', 'zh', '以前批过一次', 0)");
   const r = answer(h.deps, { escId: id, by: "cos", answer: "yes, we did before", refNoteId: 1 });
   expect(r.ok).toBe(false);
@@ -179,7 +183,7 @@ test("no stand-in may answer a reserved question, precedent or not", () => {
 test("revoking a stand-in's answer reopens it and rolls the checkout back", async () => {
   const h = harness({ withCos: true });
   const id = h.ask("keep the legacy path?");
-  h.db.run("UPDATE escalation SET checkpoint_sha = 'deadbeef' WHERE id = ?", [id]);
+  h.db.run("UPDATE escalation SET checkpoint_sha = 'deadbeef', chain_state = 'cos' WHERE id = ?", [id]);
   h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'decision', 'zh', 'x', 0)");
   answer(h.deps, { escId: id, by: "cos", answer: "keep it", refNoteId: 1 });
   h.sched.enqueue("agent_turn", { grp_id: 1 });
@@ -288,8 +292,26 @@ test("both triage doors spell the verbs from TRIAGE, not each from its own copy"
 test("only the CoS triages, and only reviewers answer their own level", async () => {
   const h = harness({ withCos: true });
   expect((await h.post("/orch/triage", { group_id: 1, as: "patch", note: "x" }, "tok-eng")).status).toBe(422);
-  expect((await h.post("/orch/triage", { group_id: 1, as: "nonsense", note: "x" }, "tok-cos")).status).toBe(422);
+  expect((await h.post("/orch/triage", { group_id: 1, as: "nonsense", note: "x" }, "tok-cos")).status).toBe(400);
   expect((await h.post("/orch/triage", { group_id: 1, as: "patch", note: "x" }, "tok-cos")).status).toBe(200);
+});
+
+test("an answer-chain token cannot answer another level or group's question", async () => {
+  const h = harness({ withArchitect: true });
+  const id = h.ask("where should the seam go?");
+
+  expect((await h.post("/orch/answer", { escalation_id: id, answer: "guess" }, "tok-eng")).status).toBe(422);
+  expect((await h.post("/orch/answer", { escalation_id: id, answer: "skip" }, "tok-arch")).status).toBe(422);
+
+  h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g2', 'RUNNING', 0)");
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 2, 'pm', 'm', 'tok-pm-2', 0)",
+  );
+  expect((await h.post("/orch/answer", { escalation_id: id, abstain: true }, "tok-pm-2")).status).toBe(422);
+  expect(
+    h.db.query<{ chain_state: string }, [number]>("SELECT chain_state FROM escalation WHERE id = ?").get(id)!
+      .chain_state,
+  ).toBe("pm");
 });
 
 test("the agent-side answer verb routes through the same chain the boss uses", async () => {
@@ -440,7 +462,7 @@ test("the boss can hand a question to the Architect instead of answering it", as
   const id = h.ask("用哪个校验库？");
   const r = await h.post(`/api/escalations/${id}/delegate`, { to: "architect" });
   expect(r.status).toBe(200);
-  expect(await r.text()).toBe("architect");
+  expect(await r.json()).toEqual({ message: "architect" });
   // The Architect is actually woken, not just recorded as the new owner.
   const job = h.db
     .query<{ agent_id: number; payload_json: string }, []>(
@@ -454,7 +476,7 @@ test("delegating to the boss is refused — that is where it already is", async 
   const h = harness();
   const id = h.ask("x");
   const r = await h.post(`/api/escalations/${id}/delegate`, { to: "boss" });
-  expect(r.status).toBe(422);
+  expect(r.status).toBe(400);
 });
 
 test("a stopped group's question goes straight to the boss", () => {

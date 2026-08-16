@@ -9,7 +9,6 @@ import {
 } from "../../mech/sandbox/sandbox.ts";
 import { sandboxLines } from "../../mech/sandbox/sandboxlog.ts";
 import { imageChoices, setDefaultImage, type ImageChoices } from "../../mech/sandbox/images.ts";
-import type { Config } from "../../config.ts";
 import {
   driftingPaths,
   ensureServer,
@@ -22,7 +21,8 @@ import {
 import { resetServerRestarts } from "../../mech/ops/watchdog.ts";
 import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
-import { bad, json, text, type Handler } from "../shared.ts";
+import { bad, json, message, type Handler } from "../shared.ts";
+import type { GrpState } from "../../states.ts";
 
 /**
  * What this machine can and cannot do, and the sidecar that decides it.
@@ -40,14 +40,15 @@ import { bad, json, text, type Handler } from "../shared.ts";
  * setting itself up, which is worth watching and scrolling back through, not
  * worth a table. The panel says so rather than pretending the log is durable.
  */
-export const getSandbox: Handler = async (ctx, req) => {
-  const grpId = Number(new URL(req.url).searchParams.get("grp") ?? 0);
+export const SandboxQuery = z.object({ grp: z.coerce.number().int().positive() });
+
+export const getSandbox = (async (ctx, _req, _params, { grp: grpId }) => {
   const grp = ctx.db
     .query<
       {
         id: number;
         name: string;
-        status: string;
+        status: GrpState;
         project_id: number;
         sandbox_id: string | null;
         sandbox_at: number | null;
@@ -56,7 +57,7 @@ export const getSandbox: Handler = async (ctx, req) => {
       [number]
     >("SELECT id, name, status, project_id, sandbox_id, sandbox_at, branch FROM grp WHERE id = ?")
     .get(grpId);
-  if (!grp) return text("no such group", 404);
+  if (!grp) return message("no such group", 404);
   const spec = specFor(ctx, grp.project_id);
   return json({
     group: { id: grp.id, name: grp.name, status: grp.status, branch: grp.branch },
@@ -74,16 +75,16 @@ export const getSandbox: Handler = async (ctx, req) => {
     },
     lines: sandboxLines(grpId),
   });
-};
+}) satisfies Handler<z.infer<typeof SandboxQuery>>;
 
-export const getPreflight: Handler = async (ctx) =>
+export const getPreflight = (async (ctx) =>
   json({
     checks: await preflight({
       db: ctx.db,
-      sandbox: ctx.config.sandbox ?? { server: "127.0.0.1:8080", apiKey: "", image: "" },
+      sandbox: ctx.config.sandbox,
       skillsDir: ctx.config.skillsDir,
     }),
-  });
+  })) satisfies Handler;
 
 /**
  * What the image field may be set to. Two lists, never a text box.
@@ -92,27 +93,27 @@ export const getPreflight: Handler = async (ctx) =>
  * local half shells out to docker, and the settings dialog asks on every open.
  */
 let imageCache: { at: number; v: ImageChoices } | null = null;
-export const getImages: Handler = async (ctx) => {
+export const getImages = (async (ctx) => {
   if (!imageCache || Date.now() - imageCache.at > 60_000) {
     imageCache = { at: Date.now(), v: await imageChoices() };
   }
   // Which one a project gets when it says nothing. Registering a repository
   // sets no image at all, so this is what the fleet actually runs on.
-  return json({ ...imageCache.v, current: ctx.config.sandbox?.image ?? "" });
-};
+  return json({ ...imageCache.v, current: ctx.config.sandbox.image });
+}) satisfies Handler;
 
 /** Empty clears the machine's default back to whatever ships. */
 export const ImageBody = z.object({ image: z.string().max(300).default("") });
 
-export const postImage: Handler<z.infer<typeof ImageBody>> = async (ctx, _req, _p, b) => {
+export const postImage = (async (ctx, _req, _p, b) => {
   const image = b.image.trim();
   // The same rule the container build applies, applied where the boss can read
   // it. Without this the refusal arrives as a container that will not create.
   if (image && !allowedImage(image)) return bad(`${image} 不是我们发布的镜像，也不是本机构建的`);
-  const why = setDefaultImage(ctx.db, ctx.config as Config, image);
+  const why = setDefaultImage(ctx.db, ctx.config, image);
   if (why) return bad(why);
-  return text("ok");
-};
+  return message("ok");
+}) satisfies Handler<z.infer<typeof ImageBody>>;
 
 /**
  * The process that hands out containers, and what a restart of it would cost.
@@ -128,7 +129,7 @@ export const postImage: Handler<z.infer<typeof ImageBody>> = async (ctx, _req, _
  * The two counts are the evidence for that button (硬约束 5): a restart kills
  * every container and every turn inside them.
  */
-export const getSandboxServer: Handler = async (ctx) => {
+export const getSandboxServer = (async (ctx) => {
   const live = runningServer();
   const count = (sql: string) => ctx.db.query<{ c: number }, []>(sql).get()!.c;
   // Inspect, never ensure. Which of the cases this is decides which button the
@@ -158,9 +159,9 @@ export const getSandboxServer: Handler = async (ctx) => {
     containers: count("SELECT count(*) AS c FROM grp WHERE sandbox_id IS NOT NULL"),
     runningTurns: count("SELECT count(*) AS c FROM job WHERE state = 'running'"),
   });
-};
+}) satisfies Handler;
 
-export const postSandboxServerRestart: Handler = async (ctx) => {
+export const postSandboxServerRestart = (async (ctx) => {
   // `ourArgv`, not `runningServer().argv`. The panel only offers this when the
   // server is one we started; this is the same rule enforced where it matters,
   // because a request can arrive from anywhere and "restart" here means killing
@@ -179,12 +180,12 @@ export const postSandboxServerRestart: Handler = async (ctx) => {
   if (err) return bad(err);
   ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "沙盒服务器重启了，容器都没了" });
   return json({ ok: true });
-};
+}) satisfies Handler;
 
 /** Point us at another server. The way out of "that one is not ours". */
 export const AddrBody = z.object({ addr: z.string().max(300).default("") });
 
-export const postSandboxServerAddr: Handler<z.infer<typeof AddrBody>> = async (ctx, _req, _p, b) => {
+export const postSandboxServerAddr = (async (ctx, _req, _p, b) => {
   const addr = b.addr.trim();
   // `host:port`, or empty to fall back to the yaml. Checked because a bad value
   // here makes every container call fail somewhere far away from this box.
@@ -195,10 +196,10 @@ export const postSandboxServerAddr: Handler<z.infer<typeof AddrBody>> = async (c
   }
   setServerAddr(ctx, addr);
   return json({ ok: true, addr: serverAddr(ctx) });
-};
+}) satisfies Handler<z.infer<typeof AddrBody>>;
 
 /** Start one when there is none. The panel's way out of the `down` state. */
-export const postSandboxServerStart: Handler = async (ctx) => {
+export const postSandboxServerStart = (async (ctx) => {
   const st = await ensureServer(ctx);
   if (st.kind === "down") return bad(st.why);
   ctx.bus.emit({
@@ -207,4 +208,4 @@ export const postSandboxServerStart: Handler = async (ctx) => {
     body: st.kind === "started" ? `沙盒服务器起好了（pid ${st.pid}）` : "沙盒服务器本来就在跑，直接用了",
   });
   return json({ ok: true, state: st.kind });
-};
+}) satisfies Handler;

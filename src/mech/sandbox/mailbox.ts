@@ -2,7 +2,12 @@ import { errText, jsonOr } from "../util/text.ts";
 import { consola } from "consola";
 import { z } from "zod";
 import type { Ctx } from "../../ctx.ts";
+import { JsonValue, ProtocolResponse, readJsonResponse } from "../../http/respond.ts";
 import { FILE_MODE, liveSandboxes, MAILBOX_DIR, writeInto } from "./sandbox.ts";
+
+type MailboxSandbox = {
+  files: Pick<ReturnType<typeof liveSandboxes>[number]["files"], "readFile" | "deleteFiles" | "writeFiles">;
+};
 
 /**
  * The host end of the agent's only way out.
@@ -30,7 +35,7 @@ const Envelope = z.object({
   method: z.enum(["GET", "POST"]),
   path: z.string(),
   token: z.string(),
-  body: z.unknown().optional(),
+  body: JsonValue.optional(),
 });
 
 type Envelope = z.infer<typeof Envelope>;
@@ -44,18 +49,18 @@ const POLL_MS = 150;
  * request file is deleted first, which is what keeps a slow call from being
  * dispatched twice on the next tick.
  */
-export async function serve(sb: ReturnType<typeof liveSandboxes>[number], base: string, path: string): Promise<void> {
+export async function serve(sb: MailboxSandbox, base: string, path: string): Promise<void> {
   const raw = await sb.files.readFile(path).catch(() => null);
-  const value = jsonOr(raw, z.unknown(), null);
+  const value = jsonOr(raw, JsonValue, null);
   const id = ReplyId.safeParse(value).data?.id;
   const env = Envelope.safeParse(value).data;
   await sb.files.deleteFiles([path]).catch(() => {});
   if (!env) {
-    if (id) await reply(sb, id, { status: 400, text: "invalid mailbox request" });
+    if (id) await reply(sb, id, { status: 400, body: { error: "invalid mailbox request" } });
     return;
   }
 
-  let answer: { status: number; text: string };
+  let answer: ProtocolResponse;
   // `/orch/*` checks a token on every route; `/api/*` checks nothing, because
   // its only caller was a browser on 127.0.0.1. The mailbox made the sandbox a
   // caller on 127.0.0.1 too, and `orch` is not the only thing that can drop a
@@ -71,7 +76,7 @@ export async function serve(sb: ReturnType<typeof liveSandboxes>[number], base: 
   // did the same. Whatever is judged has to be what is sent.
   const url = normalise(base, env.path);
   if (!url) {
-    await reply(sb, env.id, { status: 403, text: `not reachable from a sandbox: ${env.path}` });
+    await reply(sb, env.id, { status: 403, body: { error: `not reachable from a sandbox: ${env.path}` } });
     return;
   }
   try {
@@ -82,11 +87,14 @@ export async function serve(sb: ReturnType<typeof liveSandboxes>[number], base: 
       headers,
       body: env.body === undefined ? undefined : JSON.stringify(env.body),
     });
-    answer = { status: res.status, text: await res.text() };
+    const body = await readJsonResponse(res);
+    answer = body.ok
+      ? { status: res.status, body: body.data }
+      : { status: 502, body: { error: "orchestrator returned a non-JSON response" } };
   } catch (e) {
     // The agent gets a real failure rather than hanging on a response that will
     // never come. Blocking forever is the one outcome worse than an error.
-    answer = { status: 502, text: `orchestrator unreachable: ${e}` };
+    answer = { status: 502, body: { error: `orchestrator unreachable: ${errText(e)}` } };
   }
   await reply(sb, env.id, answer);
 }
@@ -98,8 +106,8 @@ export async function serve(sb: ReturnType<typeof liveSandboxes>[number], base: 
  * host is not: anything that parses to a different origin, or to a path outside
  * `/orch/`, is refused rather than repaired.
  */
-export function normalise(base: string, path: unknown): string | null {
-  if (typeof path !== "string" || !path.startsWith("/")) return null;
+export function normalise(base: string, path: string): string | null {
+  if (!path.startsWith("/")) return null;
   let u: URL;
   try {
     u = new URL(base + path);
@@ -125,14 +133,10 @@ export function normalise(base: string, path: unknown): string | null {
  * there is nothing left to write the answer with, so it is logged rather than
  * swallowed — the turn's own clock is what ends it from there.
  */
-function reply(
-  sb: ReturnType<typeof liveSandboxes>[number],
-  id: string,
-  answer: { status: number; text: string },
-): Promise<unknown> {
+function reply(sb: MailboxSandbox, id: string, answer: ProtocolResponse): Promise<void> {
   return writeInto(sb, [
     { path: `${MAILBOX_DIR}/res/${id}.json`, data: JSON.stringify(answer), mode: FILE_MODE },
-  ]).catch((e: unknown) => {
+  ]).catch((e) => {
     consola.warn(`mailbox: could not answer ${id}, the agent waits out its turn clock: ${errText(e)}`);
   });
 }
@@ -145,7 +149,7 @@ function reply(
  * lifecycle to get wrong when a group dissolves.
  */
 export function startMailbox(ctx: Ctx): () => void {
-  const base = `http://127.0.0.1:${ctx.config.port ?? 47821}`;
+  const base = `http://127.0.0.1:${ctx.config.port}`;
 
   let stopped = false;
 

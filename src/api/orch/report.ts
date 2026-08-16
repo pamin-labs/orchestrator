@@ -3,7 +3,7 @@ import { validateJournal } from "../../mech/util/validate.ts";
 import { execIn, putFile, WORK } from "../../mech/sandbox/sandbox.ts";
 import { shq } from "../../mech/util/shq.ts";
 import { z } from "zod";
-import { bad, text, type AgentHandler } from "../shared.ts";
+import { bad, message, type AgentHandler } from "../shared.ts";
 import { Id, Prose } from "../fields.ts";
 import { evictOldestLessons } from "../../mech/knowledge/lessons.ts";
 
@@ -19,11 +19,11 @@ import { evictOldestLessons } from "../../mech/knowledge/lessons.ts";
 /** One line of what this agent is doing. Empty is allowed: it clears the line. */
 export const StatusBody = z.object({ text: z.string().max(200).default("") });
 
-export const postStatus: AgentHandler<z.infer<typeof StatusBody>> = async (ctx, _req, a, _p, b) => {
+export const postStatus = (async (ctx, _req, a, _p, b) => {
   ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [b.text, a.id]);
   ctx.bus.live({ grpId: a.grp_id, agentId: a.id, role: a.role, kind: "status", body: b.text });
-  return text("ok");
-};
+  return message("ok");
+}) satisfies AgentHandler<z.infer<typeof StatusBody>>;
 
 /**
  * `kind` is not an enum here on purpose.
@@ -41,7 +41,7 @@ export const JournalBody = z.object({
   slice_id: Id.optional(),
 });
 
-export const postJournal: AgentHandler<z.infer<typeof JournalBody>> = async (ctx, _req, a, _p, b) => {
+export const postJournal = (async (ctx, _req, a, _p, b) => {
   const v = validateJournal({ kind: b.kind, body: b.body, files: b.files });
   if (!v.ok) return bad(v.error);
 
@@ -117,5 +117,5 @@ export const postJournal: AgentHandler<z.infer<typeof JournalBody>> = async (ctx
     body: v.body,
     meta: { kind: v.kind, exportPath },
   });
-  return text(exportPath ? `ok ${exportPath}` : "ok");
-};
+  return message(exportPath ? `ok ${exportPath}` : "ok");
+}) satisfies AgentHandler<z.infer<typeof JournalBody>>;

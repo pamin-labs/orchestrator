@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
-import { post, pull } from "../lib/api";
+import { api, mutate, readApi } from "../lib/api";
 import { cn } from "../lib/utils";
 import {
   COUNT_UNITS,
@@ -22,6 +22,10 @@ import { Button } from "../ui/button";
 import { Segment, Segments, Toggles } from "../ui/segment";
 import { Switch } from "../ui/switch";
 import { Help, Tip } from "../ui/tooltip";
+import { z } from "zod";
+import type { Json } from "../../../src/http/respond";
+import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../src/config-schema";
+import type { InferResponseType } from "hono/client";
 
 /**
  * The operating knobs, as rows.
@@ -50,13 +54,24 @@ import { Help, Tip } from "../ui/tooltip";
  * at the top says when the last write landed.
  */
 
-interface Knob {
-  path: string;
-  type: string;
-  value: unknown;
-  default: unknown;
-  overridden: boolean;
-}
+const RawKnobSchema = z.object({
+  path: z.string(),
+  type: z.string(),
+  value: z.json(),
+  default: z.json(),
+  overridden: z.boolean(),
+});
+type SettingsResponse = InferResponseType<typeof api.settings.$get, 200>;
+type Knob = SettingsResponse["settings"][number];
+const KnobSchema = z.custom<Knob>((value) => {
+  const row = RawKnobSchema.safeParse(value);
+  return (
+    row.success &&
+    SettingWriteSchema.safeParse({ path: row.data.path, value: row.data.value }).success &&
+    SettingWriteSchema.safeParse({ path: row.data.path, value: row.data.default }).success
+  );
+});
+const SettingsResponseSchema: z.ZodType<SettingsResponse> = z.object({ settings: z.array(KnobSchema) });
 
 export type KnobSection = "sched" | "models" | "turn" | "boxdefaults" | "notify";
 
@@ -279,25 +294,25 @@ const SELF_NAMED = new Set([...TABLES, "autoAcceptTiers", "indexModel.runtime"])
  */
 const PAIRED: Record<string, string> = { "indexModel.runtime": "indexModel.model" };
 
-type Write = (path: string, value: unknown) => Promise<{ ok: boolean; text: string }>;
+type Write = (write: SettingWrite) => Promise<{ ok: boolean; text: string }>;
 
 export function Knobs({ section }: { section: KnobSection }) {
   const [knobs, setKnobs] = useState<Knob[] | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
   const load = async () => {
-    const d = await pull<{ settings: Knob[] }>("/api/settings");
+    const d = await readApi(api.settings.$get(), SettingsResponseSchema);
     if (d) setKnobs(d.settings);
   };
   useEffect(() => {
     void load();
   }, []);
 
-  const write: Write = async (path, value) => {
+  const write: Write = async (body) => {
     // Destructured: `post` returns `{ok, text}`, so `if (!ok)` on the object
     // itself is always false and a refused write would still have said 已保存.
     // `quiet` because the row shows the reason where the value is.
-    const r = await post("/api/settings", { path, value }, true);
+    const r = await mutate(api.settings.$post({ json: body }), true);
     if (r.ok) {
       setSaved(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
       await load();
@@ -311,9 +326,12 @@ export function Knobs({ section }: { section: KnobSection }) {
   // still needs the other two to know what to offer.
   const at = (path: string) => (knobs ?? []).find((k) => k.path === path)?.value;
   const src: ModelSources = {
-    difficultyModel: at("difficultyModel") as ModelSources["difficultyModel"],
-    contextWindow: at("contextWindow") as ModelSources["contextWindow"],
-    indexModel: { runtime: at("indexModel.runtime") as string, model: at("indexModel.model") as string },
+    difficultyModel: ConfigSchema.shape.difficultyModel.optional().parse(at("difficultyModel")),
+    contextWindow: ConfigSchema.shape.contextWindow.optional().parse(at("contextWindow")),
+    indexModel: {
+      runtime: ConfigSchema.shape.indexModel.shape.runtime.optional().parse(at("indexModel.runtime")),
+      model: ConfigSchema.shape.indexModel.shape.model.optional().parse(at("indexModel.model")),
+    },
   };
   const rows = (knobs ?? []).filter((k) => spec.paths.includes(k.path));
   rows.sort((a, b) => spec.paths.indexOf(a.path) - spec.paths.indexOf(b.path));
@@ -359,17 +377,22 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate?: Knob; src: Model
   const id = `knob-${knob.path.replace(/\W/g, "-")}`;
   const block = TABLES.has(knob.path);
 
-  const put = async (target: Knob, value: unknown) => {
+  const put = async (target: Knob, value: Json) => {
     // Typing the shipped value back is not an override. Otherwise the row reads
     // 已改 while being identical to the default, and the button that clears it
     // appears to do nothing.
     const same = JSON.stringify(value) === JSON.stringify(target.default);
-    const r = await onWrite(target.path, same ? null : value);
-    // The server's own words. It answers 422 with a plain-text reason, and the
-    // reason is more specific than anything this file could guess.
+    const body = SettingWriteSchema.safeParse({ path: target.path, value: same ? null : value });
+    if (!body.success) {
+      setBad({ why: z.prettifyError(body.error), at: "" });
+      return;
+    }
+    const r = await onWrite(body.data);
+    // The server's own JSON error. It is more specific than anything this file
+    // could guess.
     setBad(r.ok ? null : { why: r.text, at: "" });
   };
-  const write = (value: unknown) => void put(knob, value);
+  const write = (value: Json) => void put(knob, value);
   const refuse = (why: string, at = "") => setBad({ why, at });
   const clear = () => setBad(null);
   // One row, so one 已改 — a paired row is changed if either half is.
@@ -443,15 +466,14 @@ interface Editor {
   src: ModelSources;
   /** Which cell in this row holds the bad value, `""` for the row itself. */
   bad: string | null;
-  onWrite: (value: unknown) => void;
-  onWriteMate?: (value: unknown) => void;
+  onWrite: (value: Json) => void;
+  onWriteMate?: (value: Json) => void;
   onRefuse: (why: string, at?: string) => void;
   /** Nothing changed, so nothing this row said about the last attempt still holds. */
   onClear: () => void;
 }
 
 function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onClear }: Editor) {
-  const v = knob.value;
   const ph = copyFor(knob).ph;
 
   // Six of these are tables. Each is drawn as the table it is, which is also the
@@ -459,14 +481,14 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
   // `{"trivial": "8M"}` and a labelled box for a token count can.
   switch (knob.path) {
     case "difficultyModel":
-      return <ModelTable table={(v ?? {}) as Record<string, Record<string, string>>} src={src} onWrite={onWrite} />;
+      return <ModelTable table={ConfigSchema.shape.difficultyModel.parse(knob.value)} src={src} onWrite={onWrite} />;
     case "sliceBudgetTokens":
-      return <Caps caps={(v ?? {}) as Record<string, number>} onWrite={onWrite} />;
+      return <Caps caps={ConfigSchema.shape.sliceBudgetTokens.parse(knob.value)} onWrite={onWrite} />;
     case "indexModel.runtime":
       return (
         <IndexModel
-          runtime={String(v ?? "")}
-          model={String(mate?.value ?? "")}
+          runtime={ConfigSchema.shape.indexModel.shape.runtime.parse(knob.value)}
+          model={ConfigSchema.shape.indexModel.shape.model.catch("").parse(mate?.value)}
           src={src}
           onRuntime={onWrite}
           onModel={onWriteMate ?? onWrite}
@@ -482,7 +504,7 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
       return (
         <Combobox
           free
-          value={String(v ?? "")}
+          value={ConfigSchema.shape.language.parse(knob.value)}
           options={LANGUAGES}
           placeholder="中文 / English / 日本語 …"
           onCommit={onWrite}
@@ -491,7 +513,7 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
     case "autoAcceptTiers":
       return (
         <Toggles
-          value={(v ?? []) as string[]}
+          value={ConfigSchema.shape.autoAcceptTiers.parse(knob.value)}
           // Sorted back into tier order before it is written: a toggle group
           // hands back the order things were pressed in, and ["normal",
           // "trivial"] is the shipped default with its elements swapped — which
@@ -507,11 +529,11 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
         </Toggles>
       );
     case "contextWindow":
-      return <Windows map={rec(v) as Record<string, number>} src={src} onWrite={onWrite} />;
+      return <Windows map={ConfigSchema.shape.contextWindow.parse(knob.value)} src={src} onWrite={onWrite} />;
     case "leaseSlots":
       return (
         <Pairs
-          map={rec(v)}
+          map={rec(knob.value)}
           kind="int"
           keyPh="闸门名"
           bad={bad}
@@ -523,7 +545,7 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
     case "sandbox.cacheDirs":
       return (
         <Pairs
-          map={rec(v)}
+          map={rec(knob.value)}
           kind="text"
           keyPh={ph ?? "挂载点"}
           bad={bad}
@@ -533,8 +555,10 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
         />
       );
     case "sandbox.denyDomains":
-      return <Lines list={(v ?? []) as string[]} ph={ph} onWrite={onWrite} />;
+      return <Lines list={ConfigSchema.shape.sandbox.shape.denyDomains.parse(knob.value)} ph={ph} onWrite={onWrite} />;
   }
+
+  const v = knob.value;
 
   if (knob.type === "boolean") {
     // Named by the row's own title rather than by an id of its own — a `<label
@@ -614,7 +638,7 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
   );
 }
 
-const rec = (v: unknown) => (v ?? {}) as Record<string, unknown>;
+const rec = (v: Json): Record<string, Json> => (v && !Array.isArray(v) && typeof v === "object" ? v : {});
 
 const PERCENT = ["%"] as const;
 
@@ -876,16 +900,16 @@ function Pairs({
   onRefuse,
   onClear,
 }: {
-  map: Record<string, unknown>;
+  map: Record<string, Json>;
   kind: "int" | "text";
   keyPh: string;
   bad: string | null;
-  onWrite: (v: unknown) => void;
+  onWrite: (v: Json) => void;
   onRefuse: (why: string, at?: string) => void;
   onClear: () => void;
 }) {
   const entries = Object.entries(map);
-  const show = (v: unknown) => String(v ?? "");
+  const show = (v: Json) => String(v ?? "");
   // A number gets the same 9rem a number gets on every other row of this page;
   // only a path needs the rest of the width.
   const vw = kind === "text" ? "" : "w-[9rem] flex-none";
@@ -956,7 +980,7 @@ function Pairs({
 }
 
 /** A list of one-per-line strings. Nothing here is ordered, so nothing sorts it. */
-function Lines({ list, ph, onWrite }: { list: string[]; ph?: string; onWrite: (v: unknown) => void }) {
+function Lines({ list, ph, onWrite }: { list: string[]; ph?: string; onWrite: (v: Json) => void }) {
   const text = list.join("\n");
   return (
     <Textarea
@@ -990,7 +1014,7 @@ function ModelTable({
 }: {
   table: Record<string, Record<string, string>>;
   src: ModelSources;
-  onWrite: (v: unknown) => void;
+  onWrite: (v: Json) => void;
 }) {
   const byRuntime = modelsByRuntime(src);
   return (
@@ -1037,7 +1061,7 @@ function Windows({
 }: {
   map: Record<string, number>;
   src: ModelSources;
-  onWrite: (v: unknown) => void;
+  onWrite: (v: Json) => void;
 }) {
   // `default` first and always present. It is not a model — it is the window
   // every model without a row of its own falls back to — and deleting it drops
@@ -1109,7 +1133,7 @@ function Windows({
 }
 
 /** The three tiers, as three token caps. */
-function Caps({ caps, onWrite }: { caps: Record<string, number>; onWrite: (v: unknown) => void }) {
+function Caps({ caps, onWrite }: { caps: Record<string, number>; onWrite: (v: Json) => void }) {
   return (
     <div className={cn(TIERS_ONLY, "items-center gap-x-2 gap-y-1")}>
       {TIERS.map((t) => (

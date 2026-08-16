@@ -5,6 +5,7 @@
  * validator that returns an error and makes the agent rewrite is not. Every
  * length and shape rule in PLAN.md lives here.
  */
+import { z } from "zod";
 
 export interface Invalid {
   ok: false;
@@ -17,7 +18,8 @@ const JOURNAL_MAX_LINES = 6;
 const DRAFT_MAX_LINES = 12;
 
 const JOURNAL_KINDS = ["fact", "decision", "journal", "retro", "handoff", "risk", "onboarding", "lesson"] as const;
-export type JournalKind = (typeof JOURNAL_KINDS)[number];
+const JournalKindSchema = z.enum(JOURNAL_KINDS);
+export type JournalKind = z.infer<typeof JournalKindSchema>;
 
 export interface JournalInput {
   kind: string;
@@ -38,7 +40,8 @@ export interface JournalOk {
  */
 export function validateJournal(input: JournalInput): Result<JournalOk> {
   const kind = input.kind?.trim();
-  if (!kind || !(JOURNAL_KINDS as readonly string[]).includes(kind)) {
+  const parsedKind = JournalKindSchema.safeParse(kind);
+  if (!parsedKind.success) {
     return {
       ok: false,
       error: `kind must be one of: ${JOURNAL_KINDS.join(", ")} (got ${JSON.stringify(input.kind)})`,
@@ -63,10 +66,11 @@ export function validateJournal(input: JournalInput): Result<JournalOk> {
       error: `drop filler (${filler}). State the change, the reason, the risk.`,
     };
   }
-  return { ok: true, kind: kind as JournalKind, body: lines.join("\n"), lines: lines.length };
+  return { ok: true, kind: parsedKind.data, body: lines.join("\n"), lines: lines.length };
 }
 
-export type Difficulty = "trivial" | "normal" | "hard";
+const DifficultySchema = z.enum(["trivial", "normal", "hard"]);
+export type Difficulty = z.infer<typeof DifficultySchema>;
 
 export interface DraftSlice {
   title: string;
@@ -243,16 +247,14 @@ function checkSplit(slices: DraftSlice[]): string | null {
 const GENERIC_GATE =
   /^(bun|npm|pnpm|yarn|cargo|go|pytest|dotnet|make)?(test|tests|check|build|lint|typecheck)?(全绿|绿|通过|pass|passes|passing|ok|green|全部通过)?$/i;
 
-const DIFFICULTIES = new Set(["trivial", "normal", "hard"]);
-
 function parseSlice(raw: string): DraftSlice | null {
   const m = /^(.*?)\[(\w+)\]\s*(?:[—–-]+\s*)?(.*)$/.exec(raw);
   if (!m) return null;
   const title = m[1]!.trim();
-  const diff = m[2]!.toLowerCase();
+  const difficulty = DifficultySchema.safeParse(m[2]!.toLowerCase());
   const accept = m[3]!.trim();
-  if (!title || !accept || !DIFFICULTIES.has(diff)) return null;
-  return { title, difficulty: diff as Difficulty, accept };
+  if (!title || !accept || !difficulty.success) return null;
+  return { title, difficulty: difficulty.data, accept };
 }
 
 /**

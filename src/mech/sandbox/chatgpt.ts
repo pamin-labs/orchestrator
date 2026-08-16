@@ -20,32 +20,29 @@
  */
 
 import { jsonOr } from "../util/text.ts";
+import { JsonValue, type Json } from "../../http/respond.ts";
 import { z } from "zod";
 
 /** Enough to make codex talk to the API, and nothing anyone has to read. */
 const NUDGE = ["exec", "--skip-git-repo-check", "-c", 'web_search="disabled"', "reply with: ok"];
 
-/** The shape codex writes. Only the parts anything here reads are typed. */
-export interface CodexAuth {
-  auth_mode?: string;
-  OPENAI_API_KEY?: string | null;
-  tokens?: { access_token?: string; id_token?: string; refresh_token?: string; account_id?: string };
-  last_refresh?: string;
-}
-
-const CodexAuthSchema = z.object({
-  auth_mode: z.string().optional(),
-  OPENAI_API_KEY: z.string().nullable().optional(),
-  tokens: z
-    .object({
-      access_token: z.string().optional(),
-      id_token: z.string().optional(),
-      refresh_token: z.string().optional(),
-      account_id: z.string().optional(),
-    })
-    .optional(),
-  last_refresh: z.string().optional(),
-});
+const CodexAuthSchema = z
+  .object({
+    auth_mode: z.string().optional(),
+    OPENAI_API_KEY: z.string().nullable().optional(),
+    tokens: z
+      .object({
+        access_token: z.string().optional(),
+        id_token: z.string().optional(),
+        refresh_token: z.string().optional(),
+        account_id: z.string().optional(),
+      })
+      .catchall(JsonValue)
+      .optional(),
+    last_refresh: z.string().optional(),
+  })
+  .catchall(JsonValue);
+export type CodexAuth = z.infer<typeof CodexAuthSchema>;
 
 export function parseAuth(json: string): CodexAuth | null {
   return jsonOr(json, CodexAuthSchema.nullable(), null);
@@ -189,7 +186,7 @@ export function decoyAuth(a: CodexAuth): string {
 
 /** A JWT in shape only: three base64url segments, no real claim in it. */
 function decoyIdToken(): string {
-  const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const seg = (o: Json) => Buffer.from(JSON.stringify(o)).toString("base64url");
   return [
     seg({ alg: "none", typ: "JWT" }),
     seg({ sub: "decoy", exp: Math.floor(Date.now() / 1000) + 86_400 }),

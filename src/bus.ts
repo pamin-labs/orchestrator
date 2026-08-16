@@ -11,43 +11,51 @@ import { z } from "zod";
  * one home and the UI never needs its own state.
  */
 
-export interface EventInput {
-  channelId?: number | null;
-  grpId?: number | null;
-  author: string;
-  kind: string;
-  intent?: string | null;
-  severity?: string | null;
-  body?: string;
-  target?: string | null;
-  meta?: unknown;
-}
+const EventInputSchema = z.object({
+  channelId: z.number().nullable().optional(),
+  grpId: z.number().nullable().optional(),
+  author: z.string(),
+  kind: z.string(),
+  intent: z.string().nullable().optional(),
+  severity: z.string().nullable().optional(),
+  body: z.string().optional(),
+  target: z.string().nullable().optional(),
+  meta: z.json().optional(),
+});
 
-export interface StoredEvent extends EventInput {
-  seq: number;
-  at: number;
-}
+const StoredEventSchema = EventInputSchema.extend({ seq: z.number(), at: z.number() });
 
 /** Live-only frames (partial text, tool starts). Not persisted: they are noise
  *  in an audit log but essential for the "management feel" of watching a turn. */
-export interface LiveFrame {
-  type: "live";
-  grpId: number | null;
+const LiveFrameSchema = z.object({
+  type: z.literal("live"),
+  grpId: z.number().nullable(),
   /** A standing agent has no group, so this is the only thing that scopes its
       output to a project rather than to every project's feed. */
-  projectId?: number | null;
-  agentId: number | null;
+  projectId: z.number().nullable().optional(),
+  agentId: z.number().nullable(),
   /** Who is talking. Without it the desk wall and the timeline say "agent". */
-  role?: string;
-  kind: "text" | "thinking" | "tool" | "status";
-  body: string;
+  role: z.string().optional(),
+  kind: z.enum(["text", "thinking", "tool", "status"]),
+  body: z.string(),
   /** When the sender says it happened. Omitted, the client stamps its own clock —
       which is why a panel holding both a stored tail and the live feed could not
       tell they were the same line. */
-  at?: number;
-}
+  at: z.number().optional(),
+});
 
-export type Frame = ({ type: "event" } & StoredEvent) | LiveFrame;
+export const FrameSchema = z.discriminatedUnion("type", [
+  StoredEventSchema.extend({ type: z.literal("event") }),
+  LiveFrameSchema,
+]);
+
+export type EventInput = Omit<z.infer<typeof EventInputSchema>, "meta"> & {
+  /** Producers use typed objects; persistence normalises them through JSON. */
+  meta?: object | string | number | boolean | null;
+};
+export type StoredEvent = z.infer<typeof StoredEventSchema>;
+export type LiveFrame = z.infer<typeof LiveFrameSchema>;
+export type Frame = z.infer<typeof FrameSchema>;
 
 type Sink = (f: Frame) => void;
 type EventRow = Omit<StoredEvent, "meta"> & { meta_json: string };
@@ -71,7 +79,7 @@ export class Bus {
    * the CLI's output, which is how one got here.
    */
   emit(e: EventInput): StoredEvent {
-    e = { ...e, body: scrub(e.body ?? "") };
+    const body = scrub(e.body ?? "");
     // `meta` too, not just the body. It is written to the same append-only row and
     // read back by the panel and the cost report, and several emitters put whole
     // CLI payloads in it — a credential landing there was as permanent as one in
@@ -79,6 +87,7 @@ export class Bus {
     // because the masker works on values, and `MASK` carries no quote so the JSON
     // survives it.
     const metaJson = scrub(JSON.stringify(e.meta ?? {}));
+    const event = EventInputSchema.parse({ ...e, body, meta: jsonOr(metaJson, z.json(), {}) });
     const at = Date.now();
     const row = this.db
       .query<
@@ -100,18 +109,18 @@ export class Bus {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING seq`,
       )
       .get(
-        e.channelId ?? null,
-        e.grpId ?? null,
-        e.author,
-        e.kind,
-        e.intent ?? null,
-        e.severity ?? null,
-        e.body ?? "",
-        e.target ?? null,
+        event.channelId ?? null,
+        event.grpId ?? null,
+        event.author,
+        event.kind,
+        event.intent ?? null,
+        event.severity ?? null,
+        event.body ?? "",
+        event.target ?? null,
         metaJson,
         at,
       )!;
-    const stored: StoredEvent = { ...e, seq: row.seq, at };
+    const stored: StoredEvent = { ...event, seq: row.seq, at };
     this.fan({ type: "event", ...stored });
     return stored;
   }
@@ -134,7 +143,19 @@ export class Bus {
          FROM event WHERE seq > ? ORDER BY seq LIMIT ?`,
       )
       .all(seq, limit)
-      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, z.unknown(), {}) }));
+      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, z.json(), {}) }));
+  }
+
+  latest(limit = 500): StoredEvent[] {
+    return this.db
+      .query<EventRow, [number]>(
+        `SELECT seq, channel_id AS channelId, grp_id AS grpId, author, kind, intent, severity,
+                body, target, meta_json, at
+         FROM event ORDER BY seq DESC LIMIT ?`,
+      )
+      .all(limit)
+      .reverse()
+      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr(meta_json, z.json(), {}) }));
   }
 
   private fan(f: Frame): void {

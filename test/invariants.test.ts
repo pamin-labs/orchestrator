@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ESCALATION_STATES, GRP_STATES, JOB_STATES, LEASE_STATES, SLICE_STATES } from "../src/states.ts";
+import { ESCALATION_STATES, GRP_STATES, JOB_STATES, LEASE_STATES, SLICE_STATES, TASK_STATES } from "../src/states.ts";
 import {
   ESCALATION_INVARIANTS,
   UTIL_INVARIANTS,
@@ -9,6 +9,7 @@ import {
   GRP_INVARIANTS,
   JOB_INVARIANTS,
   SLICE_INVARIANTS,
+  TASK_INVARIANTS,
   uncovered,
 } from "../src/mech/ops/invariants.ts";
 
@@ -24,6 +25,7 @@ test("every state says who pushes it out", () => {
   expect(uncovered()).toEqual({
     grp: [],
     slice: [],
+    task: [],
     job: [],
     escalation: [],
     util: [],
@@ -35,6 +37,7 @@ test("every state says who pushes it out", () => {
   for (const i of [
     ...GRP_INVARIANTS,
     ...SLICE_INVARIANTS,
+    ...TASK_INVARIANTS,
     ...JOB_INVARIANTS,
     ...ESCALATION_INVARIANTS,
     ...UTIL_INVARIANTS,
@@ -78,6 +81,7 @@ test("a state in the table is a state something actually writes", () => {
   const STATES = {
     grp: GRP_STATES,
     slice: SLICE_STATES,
+    task: TASK_STATES,
     job: JOB_STATES,
     escalation: ESCALATION_STATES,
     lease: LEASE_STATES,

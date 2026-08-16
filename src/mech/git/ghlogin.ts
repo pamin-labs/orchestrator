@@ -1,5 +1,6 @@
 import type { Ctx } from "../../ctx.ts";
 import type { DB } from "../../db.ts";
+import type { Json } from "../../http/respond.ts";
 import { z } from "zod";
 /**
  * Connect GitHub once, from the settings page, the way GitHub Desktop does.
@@ -49,7 +50,7 @@ export const APP_SLUG = "orchestrator-agentic-app";
 export type Fetcher = (
   url: string,
   init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal },
-) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+) => Promise<{ ok: boolean; status: number; json: () => Promise<Json | undefined> }>;
 
 export interface DeviceCode {
   /** The eight characters the boss types into github.com. The whole interaction. */
@@ -119,7 +120,7 @@ export async function startDeviceFlow(fetchFn: Fetcher = fetch): Promise<DeviceC
  */
 export async function pollForToken(
   d: DeviceCode,
-  opts: { fetchFn?: Fetcher; sleep?: (ms: number) => Promise<unknown>; now?: () => number } = {},
+  opts: { fetchFn?: Fetcher; sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
 ): Promise<string> {
   const fetchFn = opts.fetchFn ?? fetch;
   const sleep = opts.sleep ?? Bun.sleep;

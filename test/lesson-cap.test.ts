@@ -6,6 +6,7 @@ import { lessonsFor } from "../src/mech/knowledge/lessons.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
+import { loadConfig } from "../src/config.ts";
 
 /**
  * PLAN.md §7: the lesson list is injected into every later group's prompt, so an
@@ -21,7 +22,7 @@ function harness() {
     sched: new Scheduler(db, async () => {}),
     sandbox: fakeSandbox(),
     waiters: new Map(),
-    config: { language: "中文" },
+    config: loadConfig(),
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
@@ -41,7 +42,7 @@ const lesson = (app: (r: Request) => Promise<Response>, body: string) =>
   );
 
 test("the 21st lesson evicts the oldest, and only within its own project", async () => {
-  const { db, app } = harness();
+  const { db, ctx, app } = harness();
   for (let i = 1; i <= LESSON_CAP; i++) {
     const r = await lesson(app, `lesson ${i}`);
     expect(r.status).toBe(200);
@@ -64,7 +65,7 @@ test("the 21st lesson evicts the oldest, and only within its own project", async
   // sharing the cap across projects would let a busy one silently empty a quiet one.
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('other', '/tmp/o', 0)");
   db.run("INSERT INTO note (project_id, kind, lang, body, at) VALUES (2, 'lesson', '中文', 'other project', 0)");
-  evictOldestLessons({ ...harness().ctx, db } as any, 1);
+  evictOldestLessons(ctx, 1);
   expect(
     db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'lesson' AND project_id = 2").get()!.c,
   ).toBe(1);

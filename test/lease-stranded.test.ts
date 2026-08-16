@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler, type Executor } from "../src/scheduler.ts";
 import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../src/mech/sandbox/sandbox.ts";
 import { makeExecutor } from "../src/runtime/executor.ts";
 import type { Ctx } from "../src/api.ts";
@@ -26,8 +26,13 @@ import type { Ctx } from "../src/api.ts";
  */
 function stranded() {
   const db = openMemory();
-  const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-lease-")) };
-  let exec: (j: any) => Promise<void>;
+  const base = loadConfig();
+  const cfg = {
+    ...base,
+    dataDir: mkdtempSync(join(tmpdir(), "orch-lease-")),
+    sandbox: { ...base.sandbox, server: "127.0.0.1:9" },
+  };
+  let exec: Executor;
   const sched = new Scheduler(db, (j) => exec(j));
   const ctx = {
     db,
@@ -37,8 +42,8 @@ function stranded() {
     // fails, `ensureSandbox` marks the fleet held and rethrows.
     sandbox: REAL,
     waiters: new Map<string, (v: string) => void>(),
-    config: { language: "中文", sandbox: { ...cfg.sandbox, server: "127.0.0.1:9" } },
-  } as unknown as Ctx;
+    config: cfg,
+  } satisfies Ctx;
   exec = makeExecutor({ ctx, cfg, roles: new Map() });
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'o/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");

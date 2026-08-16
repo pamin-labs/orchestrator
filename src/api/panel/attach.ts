@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { cp, mkdir, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import { Attachment as AttachmentSchema } from "../fields.ts";
-import { bad, json, text, type Handler } from "../shared.ts";
+import { bad, json, message, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 
@@ -60,15 +60,22 @@ export function expandHome(p: string): string {
  * prompt is worth thousands of tokens on every turn that carries it, while a path
  * costs a dozen and the agent can open it with Read exactly once, when it needs to.
  */
-export const postAttach: Handler = async (ctx, req) => {
-  const form = await req.formData();
-  const files = form.getAll("file").filter((f): f is File => f instanceof File);
+export const AttachForm = z.object({
+  file: z
+    .union([z.instanceof(File), z.array(z.instanceof(File))])
+    .transform((value) => (Array.isArray(value) ? value : [value])),
+  rel: z
+    .union([z.string(), z.array(z.string())])
+    .transform((value) => (Array.isArray(value) ? value : [value]))
+    .default([]),
+});
+
+export const postAttach = (async (ctx, _req, _params, { file: files, rel: rels }) => {
   // Each file's path relative to what was dropped. A loose file has none; a file
   // from inside a dropped folder has `<folder>/…/name`, and the folder is what the
   // boss meant to attach — "看这个目录" is one reference, not forty.
-  const rels = form.getAll("rel").map((r) => String(r));
   if (!files.length) return bad("no file");
-  const root = join(ctx.config.dataDir ?? "data", "attachments");
+  const root = join(ctx.config.dataDir, "attachments");
   const out: { name: string; path: string; type: string; size: number }[] = [];
   const dirs = new Map<string, { path: string; bytes: number }>();
   const stamp = Date.now();
@@ -103,7 +110,7 @@ export const postAttach: Handler = async (ctx, req) => {
     out.push({ name, path: d.path, type: "inode/directory", size: d.bytes });
   }
   return json({ files: out });
-};
+}) satisfies Handler<z.output<typeof AttachForm>>;
 
 /**
  * Attach something already on this machine, by path.
@@ -117,10 +124,10 @@ export const postAttach: Handler = async (ctx, req) => {
  */
 export const LocalPathsBody = z.object({ paths: z.array(z.string().max(4000)).max(200).default([]) });
 
-export const postAttachLocal: Handler<z.infer<typeof LocalPathsBody>> = async (ctx, _req, _p, b) => {
+export const postAttachLocal = (async (ctx, _req, _p, b) => {
   const picked = b.paths.filter((s) => s.trim());
   if (!picked.length) return bad("no path");
-  const root = join(ctx.config.dataDir ?? "data", "attachments");
+  const root = join(ctx.config.dataDir, "attachments");
   await mkdir(root, { recursive: true });
   const stamp = Date.now();
   const out: { name: string; path: string; type: string; size: number }[] = [];
@@ -148,7 +155,7 @@ export const postAttachLocal: Handler<z.infer<typeof LocalPathsBody>> = async (c
     });
   }
   return json({ files: out });
-};
+}) satisfies Handler<z.infer<typeof LocalPathsBody>>;
 
 /**
  * Hand one attachment back to the panel.
@@ -163,10 +170,10 @@ export const postAttachLocal: Handler<z.infer<typeof LocalPathsBody>> = async (c
  * only the last segment means a path that arrives with `..` in it resolves to a
  * file that does not exist rather than to one outside the directory.
  */
-export const getAttachment: Handler<undefined, z.infer<typeof AttachmentNameParams>> = async (ctx, _req, params) => {
+export const getAttachment = (async (ctx, _req, params) => {
   const name = basename(params.name);
-  const path = join(ctx.config.dataDir ?? "data", "attachments", name);
-  if (!name || !existsSync(path)) return text("no such attachment", 404);
+  const path = join(ctx.config.dataDir, "attachments", name);
+  if (!name || !existsSync(path)) return message("no such attachment", 404);
   const f = Bun.file(path);
   // Served same-origin, from the origin that has every API route on it and no
   // login in front of them. An `.svg` or an `.html` here is a script running as
@@ -195,7 +202,7 @@ export const getAttachment: Handler<undefined, z.infer<typeof AttachmentNamePara
       "cache-control": "public, max-age=31536000, immutable",
     },
   });
-};
+}) satisfies Handler<undefined, z.infer<typeof AttachmentNameParams>>;
 
 /**
  * The boss said something that should stick. One helper, because "record it and see if
@@ -210,7 +217,7 @@ export function bossFact(ctx: Ctx, grpId: number | null, body: string): void {
     "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
     [projectId, grpId, ctx.config.language, body],
   );
-  sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold ?? 3);
+  sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
 }
 
 export function withAttachments(text: string, attachments?: Attachment[]): string {

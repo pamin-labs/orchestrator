@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Head, Input, Meta } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { pull, post } from "../lib/api";
+import { api, mutate, readApi } from "../lib/api";
 import { forgetSkills } from "../ui/composer";
 import { cn } from "../lib/utils";
+import { z } from "zod";
+import { SkillSchema, type Skill as Row } from "../ui/composer";
 
 /**
  * Which of the boss's skills the agents can see.
@@ -20,14 +22,6 @@ import { cn } from "../lib/utils";
  * in, so they are visible whatever this page says.
  */
 
-interface Row {
-  name: string;
-  path: string;
-  description: string;
-  scope: "project" | "user";
-  on: boolean;
-}
-
 /** Rough, and said as rough. ~4 characters a token is close enough to steer by. */
 const cost = (rows: Row[]) => rows.reduce((n, r) => n + r.name.length + r.description.length + 20, 0) / 4;
 
@@ -37,7 +31,10 @@ export function Skills({ projectId }: { projectId: number | null }) {
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = async () => {
-    const d = await pull<{ skills: Row[] }>(`/api/skills?project=${projectId ?? ""}`);
+    const d = await readApi(
+      api.skills.$get({ query: { project: String(projectId ?? "") } }),
+      z.object({ skills: z.array(SkillSchema) }),
+    );
     setRows(d?.skills ?? []);
   };
   useEffect(() => {
@@ -72,14 +69,14 @@ export function Skills({ projectId }: { projectId: number | null }) {
     // Optimistic: the staging copy takes a moment on a big skill and a tick box
     // that waits for a filesystem walk reads as a dead control.
     setRows((all) => (all ?? []).map((x) => (x.name === r.name ? { ...x, on: !x.on } : x)));
-    await post("/api/skills", { name: r.name, on: !r.on });
+    await mutate(api.skills.$post({ json: { name: r.name, on: !r.on } }));
     forgetSkills();
     setBusy(null);
   };
 
   const rescan = async () => {
     setBusy("*");
-    await post("/api/skills", {});
+    await mutate(api.skills.$post({ json: {} }));
     await load();
     setBusy(null);
   };

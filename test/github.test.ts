@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
-import { classify, makeGithub, parseRepo, type Fetcher } from "../src/mech/git/github.ts";
+import { classify, makeGithub, type Fetcher } from "../src/mech/git/github.ts";
+import { parseRepo } from "../src/mech/git/repository.ts";
+import type { Json } from "../src/http/respond.ts";
 
 /**
  * The REST client, without the network.
@@ -18,7 +20,7 @@ function db(token = "ghp_one") {
   return d;
 }
 
-const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+const json = (status: number, body: Json, headers: Record<string, string> = {}) =>
   new Response(status === 304 ? null : JSON.stringify(body), { status, headers });
 
 test("a 404 says the login cannot reach it, and never that the repo was deleted", async () => {
@@ -26,7 +28,7 @@ test("a 404 says the login cannot reach it, and never that the repo was deleted"
   // "deleted", "org revoked access", "removed from the org" and "lost its scope"
   // are the same response. Naming one of them sends the boss to the wrong page.
   const fetchFn: Fetcher = async () => json(404, { message: "Not Found" });
-  const r = await makeGithub(db(), fetchFn).request("GET", "/repos/me/gone", z.unknown());
+  const r = await makeGithub(db(), fetchFn).request("GET", "/repos/me/gone", z.json());
   expect(r.ok).toBe(false);
   if (r.ok) throw new Error("unreachable");
   expect(r.bucket).toBe("boss");
@@ -93,11 +95,13 @@ test("rotating the login invalidates the ETags rather than reusing them", async 
   const d = db("ghp_one");
   const fetchFn: Fetcher = async (_url, init) => {
     sent.push(init.headers["if-none-match"]);
-    return json(200, { login: init.headers.authorization }, { etag: 'W/"abc"' });
+    const authorization = init.headers.authorization;
+    if (!authorization) throw new Error("missing authorization fixture");
+    return json(200, { login: authorization }, { etag: 'W/"abc"' });
   };
   const gh = makeGithub(d, fetchFn);
-  await gh.request("GET", "/user", z.unknown());
-  await gh.request("GET", "/user", z.unknown());
+  await gh.request("GET", "/user", z.json());
+  await gh.request("GET", "/user", z.json());
   expect(sent).toEqual([undefined, 'W/"abc"']);
 
   saveAuth(d, { runtime: "github", mode: "api_key", secret: "ghp_two" });
@@ -127,7 +131,7 @@ test("a network throw is transient, not a bad credential", async () => {
   const fetchFn: Fetcher = async () => {
     throw new TypeError("fetch failed");
   };
-  const r = await makeGithub(db(), fetchFn).request("GET", "/user", z.unknown());
+  const r = await makeGithub(db(), fetchFn).request("GET", "/user", z.json());
   expect(r.ok).toBe(false);
   if (!r.ok) {
     expect(r.bucket).toBe("transient");
@@ -141,7 +145,7 @@ test("no credential is the boss's, and nothing is sent", async () => {
     called = true;
     return json(200, {});
   };
-  const r = await makeGithub(openMemory(), fetchFn).request("GET", "/user", z.unknown());
+  const r = await makeGithub(openMemory(), fetchFn).request("GET", "/user", z.json());
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.bucket).toBe("boss");
   expect(called).toBe(false);

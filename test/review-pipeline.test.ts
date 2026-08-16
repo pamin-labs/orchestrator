@@ -11,12 +11,13 @@ import { gateState } from "../src/mech/gate.ts";
 import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { handToBoss } from "../src/mech/flow/review.ts";
 import { checkpoint } from "../src/mech/git/worktree.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler, type Executor } from "../src/scheduler.ts";
 import { makeAuditVerdict, makeExecutor, makeReviewVerdict, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { WORK } from "../src/mech/sandbox/sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
+import type { Json } from "../src/http/respond.ts";
 
 const git = testGit;
 
@@ -58,7 +59,7 @@ async function harness(opts: { gates?: string[] } = {}) {
   const bus = new Bus(db);
   const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-rp-data-")), gateRetries: 2 };
   const specs: TurnSpec[] = [];
-  let exec: any = null;
+  let exec: Executor;
   const sched = new Scheduler(db, (j) => exec(j));
   const ctx: Ctx = {
     db,
@@ -82,7 +83,7 @@ async function harness(opts: { gates?: string[] } = {}) {
       };
     }),
     waiters: new Map(),
-    config: { language: cfg.language },
+    config: cfg,
   };
   const deps: ExecDeps = {
     ctx,
@@ -118,7 +119,7 @@ async function harness(opts: { gates?: string[] } = {}) {
   db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (1, 1, 'edit a.txt', 0)");
 
   const app = makeApp(ctx);
-  const post = (path: string, body?: unknown, token?: string) =>
+  const post = (path: string, body?: Json, token?: string) =>
     app(
       new Request(`http://x${path}`, {
         method: "POST",
@@ -146,7 +147,8 @@ async function harness(opts: { gates?: string[] } = {}) {
 
 const REVIEW = "pass: a.txt contains two — the diff line adds it";
 
-const doneClaim = (post: any, claim: unknown) =>
+type Post = (path: string, body?: Json, token?: string) => Promise<Response>;
+const doneClaim = (post: Post, claim: Json) =>
   post("/orch/task/done", { task_id: 1, claim, review: REVIEW }, "tok-eng");
 
 test("a truthful claim with a passing gate reaches QA, not the boss", async () => {
@@ -193,7 +195,7 @@ test("a failing gate sends the slice back with the failing lines", async () => {
   h.gate(1, "FAIL_mw_test");
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
   await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
-  await doneClaim(h.post, { files: ["a.txt"] });
+  await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
   await h.sched.drain();
 
   expect(gateState(h.db, 1)).toEqual({ self: "pass", reconcile: "pass", gate: "fail" });
@@ -229,6 +231,7 @@ test("repeated failures escalate to the boss instead of looping forever", async 
 
 test("QA's pass hands the slice to the boss and rotates the sessions", async () => {
   const h = await harness();
+  h.db.run("UPDATE slice SET difficulty = 'hard' WHERE id = 1");
   h.db.run("UPDATE agent SET session_id = 'old', session_tokens = 90000");
   await h.post("/orch/review", { slice_id: 1, verdict: "pass", note: "all three criteria met" }, "tok-qa");
 
@@ -265,7 +268,7 @@ test("a verdict with nothing behind it is refused", async () => {
 test("only reviewers may file verdicts, and only for their own group", async () => {
   const h = await harness();
   expect((await h.post("/orch/review", { slice_id: 1, verdict: "pass" }, "tok-eng")).status).toBe(422);
-  expect((await h.post("/orch/review", { slice_id: 1, verdict: "maybe" }, "tok-qa")).status).toBe(422);
+  expect((await h.post("/orch/review", { slice_id: 1, verdict: "maybe" }, "tok-qa")).status).toBe(400);
   expect((await h.post("/orch/review", { slice_id: 99, verdict: "pass" }, "tok-qa")).status).toBe(422);
 });
 
@@ -397,7 +400,11 @@ test("a task on a slice that has not started cannot be listed or completed", asy
   expect(list).toContain("S2: 1 cards, not yet open");
   expect(list).toContain("do not ask the boss");
 
-  const done = await h.post("/orch/task/done", { task_id: 2, claim: { files: ["a.txt"] }, review: REVIEW }, "tok-eng");
+  const done = await h.post(
+    "/orch/task/done",
+    { task_id: 2, claim: { files: ["a.txt"], summary: "a.txt now says two" }, review: REVIEW },
+    "tok-eng",
+  );
   expect(done.status).toBe(422);
   expect(await done.text()).toContain("not being worked");
 
@@ -433,12 +440,16 @@ test("task done refuses an empty claim — otherwise reconcile is vacuous", asyn
   const h = await harness();
   // Observed live: every claim arrived as {}, so "claimed vs actual" had degenerated
   // into "did anything change at all".
-  for (const body of [{ task_id: 1 }, { task_id: 1, claim: {} }, { task_id: 1, claim: "" }]) {
+  const invalidBodies: Json[] = [{ task_id: 1 }, { task_id: 1, claim: {} }, { task_id: 1, claim: "" }];
+  for (const body of invalidBodies) {
     const r = await h.post("/orch/task/done", body, "tok-eng");
-    expect(r.status).toBe(422);
-    expect(await r.text()).toContain("--claim");
+    expect(r.status).toBe(400);
   }
-  const ok = await h.post("/orch/task/done", { task_id: 1, claim: { files: ["a.txt"] }, review: REVIEW }, "tok-eng");
+  const ok = await h.post(
+    "/orch/task/done",
+    { task_id: 1, claim: { files: ["a.txt"], summary: "a.txt now says two" }, review: REVIEW },
+    "tok-eng",
+  );
   expect(ok.status).toBe(200);
 });
 
@@ -515,8 +526,9 @@ test("a normal slice still waits for the boss even with trivial auto-accept on",
   );
 });
 
-test("with nothing configured, every slice waits for the boss", async () => {
+test("with auto-accept disabled, every slice waits for the boss", async () => {
   const h = await harness();
+  h.ctx.config = { ...h.ctx.config, autoAcceptTiers: [] };
   handToBoss({ ctx: h.ctx }, 1);
   expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status).toBe(
     "awaiting_boss",
@@ -530,13 +542,17 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
   // The Engineer's role prompt has always said a content-free self-review would be
   // rejected. Until this check existed, nothing rejected anything — the prompt was
   // describing a gate that was not there.
-  const none = await h.post("/orch/task/done", { task_id: 1, claim: { files: ["a.txt"] } }, "tok-eng");
+  const none = await h.post(
+    "/orch/task/done",
+    { task_id: 1, claim: { files: ["a.txt"], summary: "a.txt now says two" } },
+    "tok-eng",
+  );
   expect(none.status).toBe(422);
   expect(await none.text()).toContain("--review");
 
   const vacuous = await h.post(
     "/orch/task/done",
-    { task_id: 1, claim: { files: ["a.txt"] }, review: "looks good" },
+    { task_id: 1, claim: { files: ["a.txt"], summary: "a.txt now says two" }, review: "looks good" },
     "tok-eng",
   );
   expect(vacuous.status).toBe(422);
@@ -544,7 +560,11 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
 
   const ok = await h.post(
     "/orch/task/done",
-    { task_id: 1, claim: { files: ["a.txt"] }, review: "pass: a.txt says two — the diff adds that line" },
+    {
+      task_id: 1,
+      claim: { files: ["a.txt"], summary: "a.txt now says two" },
+      review: "pass: a.txt says two — the diff adds that line",
+    },
     "tok-eng",
   );
   expect(ok.status).toBe(200);

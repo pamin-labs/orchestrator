@@ -10,11 +10,12 @@ import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, Id } from "../fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
-import { bad, firstIdea, json, text, type Handler } from "../shared.ts";
+import { bad, firstIdea, json, message, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "./attach.ts";
 import { slug } from "../slug.ts";
 import { say } from "../../lang.ts";
 import type { Ctx } from "../../ctx.ts";
+import type { GrpState } from "../../states.ts";
 
 /**
  * A requirement, from the sentence the boss typed to the branch coming back.
@@ -32,7 +33,7 @@ export const IdeaBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postIdea: Handler<z.infer<typeof IdeaBody>> = async (ctx, _req, _p, b) => {
+export const postIdea = (async (ctx, _req, _p, b) => {
   const name = (b.name ?? slug(b.text)).slice(0, 40);
   // Attachments go on the blackboard as paths next to the words they came with, so
   // whoever plans this reads them in the same breath as the idea.
@@ -74,7 +75,7 @@ export const postIdea: Handler<z.infer<typeof IdeaBody>> = async (ctx, _req, _p,
   ctx.sched.enqueue("agent_turn", { grp_id: grp.id, payload: { role: "dispatcher", idea: b.text } });
   ctx.sched.tick();
   return json({ grp_id: grp.id, channel_id: grp.channelId, boundaryNeeded: others.length > 0 });
-};
+}) satisfies Handler<z.infer<typeof IdeaBody>>;
 
 export const DraftDecision = z.object({
   id: Id,
@@ -88,12 +89,7 @@ export const DraftDecisionBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>, z.infer<typeof DraftDecision>> = async (
-  ctx,
-  _req,
-  params,
-  b,
-) => {
+export const postDraftDecision = (async (ctx, _req, params, b) => {
   const grpId = params.id;
   const approve = params.decision === "approve";
 
@@ -112,7 +108,7 @@ export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>, z.inf
     ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
     ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: why } });
     ctx.sched.tick();
-    return text("sent back");
+    return message("sent back");
   }
 
   // The boss usually approves what the Dispatcher filed; an edited card in the
@@ -139,7 +135,7 @@ export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>, z.inf
     // that reviewers run on a CLI with no tool whitelist: the whitelist used to be
     // what bounded how much of the repo a review could read, and this is what
     // replaces it. The boss can raise any of them from the requirement page.
-    const ins = ctx.db.prepare(
+    const ins = ctx.db.query<{ id: number }, [number, number, string, string, string, number | null]>(
       `INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, budget_tokens, created_at)
        VALUES (?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
     );
@@ -157,7 +153,7 @@ export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>, z.inf
         sl.accept,
         sl.difficulty,
         ctx.config.sliceBudgetTokens?.[sl.difficulty] ?? ctx.config.sliceBudgetTokens?.normal ?? null,
-      ) as { id: number };
+      )!;
       insTask.run(grpId, row.id, sl.title);
     });
   }
@@ -198,15 +194,15 @@ export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>, z.inf
       grpId,
       author: "orchestrator",
       kind: "state_change",
-      body: say(ctx.config?.language, "group.approve_held", { why: start.reason ?? "" }),
+      body: say(ctx.config.language, "group.approve_held", { why: start.reason ?? "" }),
     });
     // 200, not 422: the boss did decide, and a red error toast says the opposite.
-    return text(say(ctx.config?.language, "group.approve_held", { why: start.reason ?? "" }));
+    return message(say(ctx.config.language, "group.approve_held", { why: start.reason ?? "" }));
   }
 
   const err = await startGroup(ctx, grpId);
-  return err ? bad(err) : text("ok");
-};
+  return err ? bad(err) : message("ok");
+}) satisfies Handler<z.infer<typeof DraftDecisionBody>, z.infer<typeof DraftDecision>>;
 
 /**
  * Wind a merged group up. One path, whether the boss said so or `gh` did.
@@ -216,7 +212,7 @@ export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>, z.inf
  */
 export function landGroup(ctx: Ctx, grpId: number, by: string): number[] {
   const stale = landed(ctx.db, grpId);
-  ctx.bus.emit({ grpId, author: by, kind: "state_change", body: say(ctx.config?.language, "group.merged") });
+  ctx.bus.emit({ grpId, author: by, kind: "state_change", body: say(ctx.config.language, "group.merged") });
 
   // Turn this group's retro into lessons while the branch is fresh. This is
   // the only mechanism by which the twentieth group is smarter than the
@@ -278,12 +274,7 @@ export const GroupControlBody = z.object({
   mode: z.enum(["keep", "rollback"]).optional(),
 });
 
-export const postGroupControl: Handler<z.infer<typeof GroupControlBody>, z.infer<typeof GroupAction>> = async (
-  ctx,
-  req,
-  params,
-  b,
-) => {
+export const postGroupControl = (async (ctx, req, params, b) => {
   const grpId = params.id;
   const action = params.action;
   switch (action) {
@@ -294,9 +285,11 @@ export const postGroupControl: Handler<z.infer<typeof GroupControlBody>, z.infer
       const t = b.tokens == null ? null : Math.round(b.tokens);
       if (t !== null && !(t > 0)) return bad("tokens must be a positive number, or null to lift the cap");
       const spent = ctx.db
-        .query<{ spent_tokens: number; status: string }, [number]>("SELECT spent_tokens, status FROM grp WHERE id = ?")
+        .query<{ spent_tokens: number; status: GrpState }, [number]>(
+          "SELECT spent_tokens, status FROM grp WHERE id = ?",
+        )
         .get(grpId);
-      if (!spent) return text("no such group", 404);
+      if (!spent) return message("no such group", 404);
       if (t !== null && t <= spent.spent_tokens) {
         return bad(`already spent ${spent.spent_tokens} tokens — a cap at ${t} would stop it again immediately`);
       }
@@ -339,11 +332,11 @@ export const postGroupControl: Handler<z.infer<typeof GroupControlBody>, z.infer
         );
       }
       resume(ctx, grpId);
-      return text("ok");
+      return message("ok");
     }
     case "park":
       park(ctx, grpId, "you parked it");
-      return text("ok");
+      return message("ok");
     case "newpr": {
       // A closed PR normally comes back by being reopened on GitHub, and the
       // watchdog picks that up. But a PR cannot be reopened once its branch has
@@ -355,7 +348,7 @@ export const postGroupControl: Handler<z.infer<typeof GroupControlBody>, z.infer
           "SELECT g.name, p.repo_path AS repo, g.pr_number FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
         )
         .get(grpId);
-      if (!g) return text("no such group", 404);
+      if (!g) return message("no such group", 404);
       if (!ctx.gh) return bad("no GitHub client on this server");
       ctx.db.run("UPDATE grp SET pr_number = NULL WHERE id = ?", [grpId]);
       const r = await openPr({
@@ -393,10 +386,10 @@ export const postGroupControl: Handler<z.infer<typeof GroupControlBody>, z.infer
       // Dispatcher, which writes another card for work nobody wants. The paths it
       // held stayed held, so a group waiting on them waited forever.
       const g = ctx.db
-        .query<{ status: string; name: string }, [number]>("SELECT status, name FROM grp WHERE id = ?")
+        .query<{ status: GrpState; name: string }, [number]>("SELECT status, name FROM grp WHERE id = ?")
         .get(grpId);
-      if (!g) return text("no such group", 404);
-      if (g.status === "DISSOLVED") return text("ok");
+      if (!g) return message("no such group", 404);
+      if (g.status === "DISSOLVED") return message("ok");
       dropGroup(ctx, grpId, b.why ?? "");
       // Its paths are free the moment it leaves ACTIVE, so anything the boss
       // already approved behind it can start now.
@@ -404,7 +397,7 @@ export const postGroupControl: Handler<z.infer<typeof GroupControlBody>, z.infer
     }
     case "wake":
       await unpark(ctx, grpId);
-      return text("ok");
+      return message("ok");
     // Throw the container away; the next turn builds a fresh one and
     // `restoreWorkspace` puts the checkout and the dependencies back (the branch
     // itself lives in the boss's repo, so nothing on it is at risk). The way out
@@ -418,10 +411,10 @@ export const postGroupControl: Handler<z.infer<typeof GroupControlBody>, z.infer
         grpId,
         author: "boss",
         kind: "state_change",
-        body: say(ctx.config?.language, "sandbox.rebuild"),
+        body: say(ctx.config.language, "sandbox.rebuild"),
       });
       ctx.sched.tick();
-      return text("ok");
+      return message("ok");
     }
     case "interrupt": {
       const mode = b.mode ?? "keep";
@@ -431,4 +424,4 @@ export const postGroupControl: Handler<z.infer<typeof GroupControlBody>, z.infer
     default:
       return bad(`unknown action ${action}`);
   }
-};
+}) satisfies Handler<z.infer<typeof GroupControlBody>, z.infer<typeof GroupAction>>;

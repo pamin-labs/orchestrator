@@ -1,13 +1,15 @@
-import { useState } from "react";
+import type { InferResponseType } from "hono/client";
 import { Check, CircleAlert } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
+import { api, mutate } from "../../lib/api";
+import { cn } from "../../lib/utils";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
 import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../../ui/field";
 import { Tip } from "../../ui/tooltip";
-import { post } from "../../lib/api";
-import { cn } from "../../lib/utils";
 import { ImageRow } from "../project";
 import type { AuthRow, HostCheck } from "./shared";
 
@@ -44,28 +46,22 @@ export function EnvPane({ checks }: { checks: HostCheck[] }) {
   );
 }
 
-export interface ServerInfo {
-  running: boolean;
-  /** Which address we drive. Overridable, because the default may be taken. */
-  addr: string;
-  /** Plain HTTP to a host that is neither loopback nor an encrypted overlay. */
-  inClear: boolean;
-  /**
-   * Which of the three cases this is, and it decides which control is offered:
-   * a server we did not start is one we may report on and never act on.
-   */
-  state: "ours" | "theirs" | "stuck" | "started" | "down";
-  why: string | null;
-  pid: string | null;
-  config: string | null;
-  argv: string[];
-  /** True only for a server this orchestrator started. */
-  restartable: boolean;
-  /** Host paths our mounts need that the running config will not allow. */
-  drift: { want: string[]; config: string } | null;
-  containers: number;
-  runningTurns: number;
-}
+export const ServerInfoSchema: z.ZodType<InferResponseType<(typeof api)["sandbox-server"]["$get"], 200>> = z.object({
+  running: z.boolean(),
+  addr: z.string(),
+  inClear: z.boolean(),
+  state: z.enum(["ours", "theirs", "stuck", "started", "down"]),
+  why: z.string().nullable(),
+  pid: z.string().nullable(),
+  config: z.string().nullable(),
+  argv: z.array(z.string()),
+  restartable: z.boolean(),
+  drift: z.object({ want: z.array(z.string()), config: z.string() }).nullable(),
+  log: z.string(),
+  containers: z.number(),
+  runningTurns: z.number(),
+});
+export type ServerInfo = z.infer<typeof ServerInfoSchema>;
 
 /** One line each, because the difference between them is what to do next. */
 const SERVER_STATE: Record<ServerInfo["state"], { zh: string; ok: boolean }> = {
@@ -138,7 +134,7 @@ export function ServerPane(props: {
     });
     if (!yes) return;
     setBusy(true);
-    const r = await post("/api/sandbox-server/restart", {});
+    const r = await mutate(api["sandbox-server"].restart.$post());
     setBusy(false);
     load();
     if (r.ok) toast.success("重启了，容器会按需重开");
@@ -146,7 +142,7 @@ export function ServerPane(props: {
 
   const start = async () => {
     setBusy(true);
-    const r = await post("/api/sandbox-server/start", {});
+    const r = await mutate(api["sandbox-server"].start.$post());
     setBusy(false);
     load();
     if (r.ok) toast.success("起来了");
@@ -160,9 +156,10 @@ export function ServerPane(props: {
    * 在跑，直接用 is the shape this project keeps paying for — a stale answer that
    * looks like a healthy one.
    */
-  const sendKey = async (body: Record<string, unknown>) => {
+  type AuthJson = NonNullable<Parameters<typeof api.auth.$post>[0]>["json"];
+  const sendKey = async (json: AuthJson) => {
     setBusy(true);
-    const res = await post("/api/auth", { runtime: "sandbox", ...body });
+    const res = await mutate(api.auth.$post({ json }));
     setBusy(false);
     // Only on success. A rejected key wiped from the box makes the fix "paste it
     // again", which is never the fix.
@@ -217,6 +214,11 @@ export function ServerPane(props: {
           for what a machine produced. */}
       {d?.why && d.why !== st?.zh && <p className="mt-1 ml-5 text-[0.75rem] leading-relaxed text-ink-2">{d.why}</p>}
       {ident && <Meta className="mt-1 ml-5 block truncate">{ident}</Meta>}
+      {d?.log && (
+        <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-sunk px-3 py-2 font-mono text-[0.6875rem] leading-relaxed text-ink-2">
+          {d.log}
+        </pre>
+      )}
 
       {/* Silent when wrong, so it is loud here: a path missing from the
           allowlist mounts an empty directory rather than failing. */}
@@ -253,8 +255,8 @@ export function ServerPane(props: {
               defaultValue={d?.addr ?? ""}
               onKeyDown={async (e) => {
                 if (e.key !== "Enter") return;
-                const v = (e.target as HTMLInputElement).value;
-                const r = await post("/api/sandbox-server/addr", { addr: v });
+                const v = e.currentTarget.value;
+                const r = await mutate(api["sandbox-server"].addr.$post({ json: { addr: v } }));
                 load();
                 if (r.ok) toast.success(v.trim() ? `改成 ${v.trim()} 了` : "改回配置文件里的了");
               }}
@@ -282,7 +284,7 @@ export function ServerPane(props: {
           placeholder="新项目默认用它，留空跟配置文件"
           onSave={async (v) => {
             setBusy(true);
-            const r = await post("/api/sandbox/images", { image: v });
+            const r = await mutate(api.sandbox.images.$post({ json: { image: v } }));
             setBusy(false);
             if (r.ok) {
               // Re-read rather than assume: what the row shows is the server's
@@ -307,7 +309,11 @@ export function ServerPane(props: {
             />
             {/* The server owns this value, so it is read rather than invented. */}
             <Tip label="从沙盒服务器自己的配置里读（OPENSANDBOX_CONFIG、./sandbox.toml、~/.sandbox.toml）。值不经过浏览器。">
-              <Button size="sm" disabled={busy} onClick={() => void sendKey({ mode: "api_key", adopt: true })}>
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={() => void sendKey({ runtime: "sandbox", mode: "api_key", adopt: true })}
+              >
                 从服务器读
               </Button>
             </Tip>
@@ -315,7 +321,12 @@ export function ServerPane(props: {
                 until this button existed there was no way back from the panel
                 that put it there. */}
             {props.current && (
-              <Button size="sm" variant="quiet" disabled={busy} onClick={() => void sendKey({ clear: true })}>
+              <Button
+                size="sm"
+                variant="quiet"
+                disabled={busy}
+                onClick={() => void sendKey({ runtime: "sandbox", clear: true })}
+              >
                 清掉
               </Button>
             )}
@@ -327,7 +338,7 @@ export function ServerPane(props: {
                 variant="go"
                 size="sm"
                 disabled={busy}
-                onClick={() => void sendKey({ mode: "api_key", secret: key.trim() })}
+                onClick={() => void sendKey({ runtime: "sandbox", mode: "api_key", secret: key.trim() })}
               >
                 存下
               </Button>

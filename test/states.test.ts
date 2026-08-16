@@ -9,20 +9,23 @@ import {
   ESCALATION_STATES,
   ESCALATION_TERMINAL_STATES,
   GRP_STATES,
+  isDispatchableGrpState,
+  isTerminalEscalationState,
   JOB_STATES,
+  type JobState,
   LEASE_STATES,
   PROJECT_STATES,
   SERVER_STATES,
   SLICE_STATES,
-  UTIL_STATES,
-  isDispatchableGrpState,
-  isTerminalEscalationState,
   stateParam,
+  UTIL_STATES,
 } from "../src/states.ts";
 
 const unique = (values: readonly string[]): boolean => new Set(values).size === values.length;
-const inside = (subset: readonly string[], all: readonly string[]): boolean =>
-  subset.every((value) => all.includes(value as never));
+const inside = <T>(subset: readonly T[], all: readonly T[]): boolean => {
+  const allowed = new Set<T>(all);
+  return subset.every((value) => allowed.has(value));
+};
 
 test("canonical states and semantic subsets are unique and aligned", () => {
   for (const states of [
@@ -48,11 +51,8 @@ test("canonical states and semantic subsets are unique and aligned", () => {
   expect(inside(ESCALATION_TERMINAL_STATES, ESCALATION_STATES)).toBe(true);
   expect([...ESCALATION_OPEN_STATES, ...ESCALATION_TERMINAL_STATES]).toEqual([...ESCALATION_STATES]);
 
-  expect(JOB_STATES.filter((state) => !ACTIVE_JOB_STATES.includes(state as never))).toEqual([
-    "done",
-    "failed",
-    "cancelled",
-  ]);
+  const activeJobStates: ReadonlySet<JobState> = new Set(ACTIVE_JOB_STATES);
+  expect(JOB_STATES.filter((state) => !activeJobStates.has(state))).toEqual(["done", "failed", "cancelled"]);
   expect(GRP_STATES.filter(isDispatchableGrpState)).toEqual([...DISPATCHABLE_GRP_STATES]);
   expect(ESCALATION_STATES.filter(isTerminalEscalationState)).toEqual([...ESCALATION_TERMINAL_STATES]);
 });

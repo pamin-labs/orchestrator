@@ -17,30 +17,34 @@ import { Home } from "./views/home";
 import { NewRequirement } from "./views/newreq";
 import { FirstProject, Picker } from "./views/picker";
 import { Notes } from "./views/notes";
-import { SettingsDialog, type Section } from "./views/settings";
+import { SectionSchema, SettingsDialog, type Section } from "./views/settings";
 import { Progress } from "./views/progress";
 import { Queue } from "./views/queue";
 import { Requirement } from "./views/requirement";
 import { Timeline } from "./views/timeline";
 import { CostView, Desk, Owns } from "./views/tables";
+import { z } from "zod";
 
 // `req` is a drill-in, not a tab: it only exists with a requirement selected, and
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
-type View =
-  | "home"
-  | "board"
-  | "progress"
-  | "req"
-  | "desk"
-  | "owns"
-  | "cost"
-  | "notes"
-  | "settings"
-  | "config"
-  | "skills"
-  | "github"
-  | "sandbox";
+const ViewSchema = z.enum([
+  "home",
+  "board",
+  "progress",
+  "req",
+  "desk",
+  "owns",
+  "cost",
+  "notes",
+  "settings",
+  "config",
+  "skills",
+  "github",
+  "sandbox",
+]);
+type View = z.infer<typeof ViewSchema>;
+const HashId = z.union([z.coerce.number().int().positive(), z.null()]).catch(null);
 
 /**
  * Views that keep something pinned and scroll the rest themselves.
@@ -71,15 +75,15 @@ interface Sel {
   view: View;
   g: number | null;
   t: string | null;
-  s: string | null;
+  s: Section | null;
 }
 
 const readHash = (): Sel => {
   const h = new URLSearchParams(location.hash.slice(1));
   return {
-    p: h.get("p") ? Number(h.get("p")) : null,
-    view: (h.get("v") as View) || "home",
-    g: h.get("g") ? Number(h.get("g")) : null,
+    p: HashId.parse(h.get("p")),
+    view: ViewSchema.catch("home").parse(h.get("v")),
+    g: HashId.parse(h.get("g")),
     // Which tab, inside whichever view has them. In the hash for the same reason
     // the other three are: a tab lived in component state, so opening a
     // requirement unmounted the list and coming back re-picked a tab by heuristic
@@ -90,7 +94,7 @@ const readHash = (): Sel => {
     // floats over a view that has tabs of its own, and writing the pane into `t`
     // would replace the boss's tab choice underneath — the exact silent
     // replacement the note above exists to prevent.
-    s: h.get("s"),
+    s: SectionSchema.nullable().catch(null).parse(h.get("s")),
   };
 };
 
@@ -328,7 +332,7 @@ export function App() {
       <SettingsDialog
         open={!!section}
         onOpenChange={(o) => !o && go({ view: behind, s: null })}
-        initial={(sel.s as Section) ?? section ?? "cred"}
+        initial={sel.s ?? section ?? "cred"}
         onSection={(k) => go({ s: k })}
         projectId={sel.p}
         projectName={proj?.name}

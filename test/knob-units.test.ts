@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { settablePaths, defaultFor } from "../src/settings.ts";
+import { isSettingPath } from "../src/config-schema.ts";
 import {
   KNOB_SHAPE,
   fmtCount,
@@ -105,8 +106,10 @@ test("every duration knob the server offers has a unit on the page", () => {
   expect(missing).toEqual([]);
 
   // And every shape matches a default that is really a number.
-  for (const path of Object.keys(KNOB_SHAPE)) {
-    expect(typeof defaultFor(path)).toBe("number");
-    expect(showNumber(defaultFor(path) as number, KNOB_SHAPE[path])).not.toContain("NaN");
+  for (const path of Object.keys(KNOB_SHAPE).filter(isSettingPath)) {
+    const value = defaultFor(path);
+    expect(typeof value).toBe("number");
+    if (typeof value !== "number") throw new Error(`${path} is not numeric`);
+    expect(showNumber(value, KNOB_SHAPE[path])).not.toContain("NaN");
   }
 });

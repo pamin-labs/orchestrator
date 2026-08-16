@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Segment, Segments } from "./segment";
+import { z } from "zod";
 
 /**
  * Light / dark / follow the system.
@@ -17,7 +18,8 @@ import { Segment, Segments } from "./segment";
  * (`startTheme`, called at boot), because the page has to come up in the right
  * theme whether or not anyone opens settings.
  */
-type Pref = "system" | "light" | "dark";
+const PrefSchema = z.enum(["system", "light", "dark"]);
+type Pref = z.infer<typeof PrefSchema>;
 const KEY = "orch.theme";
 const NEXT: Record<Pref, Pref> = { system: "light", light: "dark", dark: "system" };
 const ZH: Record<Pref, string> = { system: "跟随系统", light: "浅色", dark: "深色" };
@@ -78,11 +80,12 @@ export function ThemeChoice() {
     <Segments
       value={pref}
       onValueChange={(v) => {
-        set(v as Pref);
-        setPref(v as Pref);
+        const next = PrefSchema.parse(v);
+        set(next);
+        setPref(next);
       }}
     >
-      {(Object.keys(ZH) as Pref[]).map((p) => (
+      {PrefSchema.options.map((p) => (
         <Segment key={p} value={p}>
           {ZH[p]}
         </Segment>

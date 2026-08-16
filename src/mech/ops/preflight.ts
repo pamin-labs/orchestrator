@@ -10,6 +10,8 @@ import {
   SANDBOX_API_KEY_HEADER,
 } from "../sandbox/sandbox.ts";
 import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
+import { decode } from "hono/jwt";
+import { z } from "zod";
 
 /**
  * What has to be true before any agent can run, checked once.
@@ -173,12 +175,13 @@ async function ask(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; d
 }
 
 /** `exp` out of a JWT, in ms. Null when it is not one. */
+const JwtExpiry = z.object({ exp: z.number() });
+
 function jwtExpiry(token?: string): number | null {
-  const body = token?.split(".")[1];
-  if (!body) return null;
+  if (!token) return null;
   try {
-    const json = JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/")));
-    return typeof json.exp === "number" ? json.exp * 1000 : null;
+    const payload = JwtExpiry.safeParse(decode(token).payload);
+    return payload.success ? payload.data.exp * 1000 : null;
   } catch {
     return null;
   }

@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { imagePaths, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig, loadRoles } from "../src/config.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { ATTACH_DIR, stageAttachments } from "../src/runtime/executor.ts";
+import { ATTACH_DIR, stageAttachments, type ExecDeps } from "../src/runtime/executor.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 
 /**
@@ -28,15 +28,17 @@ function harness() {
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   const sandbox = fakeSandbox();
-  const ctx = {
+  const cfg = { ...loadConfig(), dataDir: dir };
+  const ctx: Ctx = {
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
     sandbox,
     waiters: new Map(),
-    config: { language: "中文" },
-  } as unknown as Ctx;
-  return { dir, ctx, sandbox, deps: { ctx, cfg: { ...loadConfig(), dataDir: dir } } as any };
+    config: cfg,
+  };
+  const deps: ExecDeps = { ctx, cfg, roles: loadRoles("roles") };
+  return { dir, ctx, sandbox, deps };
 }
 
 test("an attachment is copied into the sandbox and the prompt points at the copy", async () => {

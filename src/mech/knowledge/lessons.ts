@@ -157,7 +157,7 @@ export function sediment(ctx: Ctx, projectId: number | null, threshold: number):
   ctx.bus.emit({
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config?.language, "sediment", { n: kin.length }),
+    body: say(ctx.config.language, "sediment", { n: kin.length }),
     meta: { notes: ids },
   });
   // The CoS writes it, because a rule the agents must follow has to read like a rule.

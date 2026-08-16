@@ -9,8 +9,20 @@ import { Card, CardBody, CardTitle } from "../ui/card";
 import { Bar } from "../ui/table";
 import { Tip } from "../ui/tooltip";
 import { ask } from "../ui/confirm";
-import { Composer, ComposerDialog } from "../ui/composer";
-import { post, pull, type Escalation, type Frame, type Group, type Slice, type State } from "../lib/api";
+import { Composer, ComposerDialog, type Draft } from "../ui/composer";
+import {
+  AnswerDraftSchema,
+  api,
+  groupAction,
+  mutate,
+  readApi,
+  sliceDecision,
+  type Escalation,
+  type Frame,
+  type Group,
+  type Slice,
+  type State,
+} from "../lib/api";
 import { STOPS, WHERE_ZH, asksOf, gates, heldApproved, mineOf, prUrl, statusLabel } from "../lib/select";
 import { cn, K, nl, waited } from "../lib/utils";
 import { activityOf } from "../lib/activity";
@@ -22,6 +34,8 @@ import { Workspace } from "./workspace";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
 import { bootstrapOf } from "../lib/bootstrap";
+import { jsonOr } from "../../../src/mech/util/text.ts";
+import { z } from "zod";
 
 /** One requirement in full: slices, their tasks, who is on it, and what it asks. */
 /**
@@ -350,8 +364,8 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
   const inQueue = st.mergeQueue.some((m) => m.grpId === g.id);
   const url = prUrl(st, g);
   const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
-  const act = async (a: string) => {
-    await post(`/api/groups/${g.id}/${a}`);
+  const act = async (a: "pause" | "resume" | "park" | "wake") => {
+    await groupAction(g.id, a);
     refresh();
   };
   const running = ["RUNNING", "PAUSING"].includes(g.status);
@@ -395,7 +409,7 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
             <MenuItem
               hint="停止当前 turn，改动留着，下一个 turn 会被告知"
               onSelect={async () => {
-                await post(`/api/groups/${g.id}/interrupt`, { mode: "keep" });
+                await groupAction(g.id, "interrupt", { mode: "keep" });
                 refresh();
               }}
             >
@@ -414,7 +428,7 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
                   danger: true,
                 });
                 if (!go) return;
-                await post(`/api/groups/${g.id}/interrupt`, { mode: "rollback" });
+                await groupAction(g.id, "interrupt", { mode: "rollback" });
                 refresh();
               }}
             >
@@ -435,7 +449,7 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
                 yes: "重开",
               });
               if (!go) return;
-              await post(`/api/groups/${g.id}/rebuild`);
+              await groupAction(g.id, "rebuild");
               refresh();
             }}
           >
@@ -455,7 +469,7 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
                 danger: true,
               });
               if (!go) return;
-              await post(`/api/groups/${g.id}/drop`, {});
+              await groupAction(g.id, "drop");
               refresh();
             }}
           >
@@ -565,7 +579,7 @@ function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; ref
       <Button
         variant="go"
         onClick={async () => {
-          await post(`/api/slices/${s.id}/accept`);
+          await sliceDecision(s.id, "accept");
           refresh();
         }}
       >
@@ -623,7 +637,7 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
           yes: "开新 PR",
         });
         if (!go) return;
-        const r = await post(`/api/groups/${grpId}/newpr`);
+        const r = await groupAction(grpId, "newpr");
         if (!r.ok) await ask({ title: "开不出来", body: r.text, yes: "知道了" });
         refresh();
       }}
@@ -662,7 +676,7 @@ function RejectSlice({
         submit="退回"
         rows={4}
         onSubmit={async ({ text, attachments }) => {
-          const r = await post(`/api/slices/${sliceId}/reject`, { feedback: text, attachments });
+          const r = await sliceDecision(sliceId, "reject", { feedback: text, attachments });
           refresh();
           return r.ok;
         }}
@@ -674,7 +688,7 @@ function RejectSlice({
 /** Spend against its cap, and the cap itself, editable. Nothing sets one otherwise. */
 function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
   const set = async (tokens: number | null) => {
-    await post(`/api/groups/${g.id}/budget`, { tokens });
+    await groupAction(g.id, "budget", { tokens });
     refresh();
   };
   if (g.budget_tokens == null) {
@@ -718,7 +732,7 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
  */
 function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
   const set = async (tokens: number | null) => {
-    await post(`/api/groups/${g.id}/budget`, { tokens });
+    await groupAction(g.id, "budget", { tokens });
     refresh();
   };
   // `budget_tokens` is nullable in the column and the browser used to declare it
@@ -740,7 +754,7 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
           <Button
             variant="quiet"
             onClick={async () => {
-              await post(`/api/groups/${g.id}/park`);
+              await groupAction(g.id, "park");
               refresh();
             }}
           >
@@ -785,7 +799,7 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
                   danger: true,
                 });
                 if (!go) return;
-                await post(`/api/escalations/${a.id}/revoke`);
+                await mutate(api.escalations[":id"].revoke.$post({ param: { id: String(a.id) } }));
                 refresh();
               }}
             >
@@ -846,8 +860,12 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
  */
 function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; projectId?: number }) {
   const draft = g.status === "DRAFT" || g.status === "PLANNING";
-  const send = async (d: { text: string; attachments: unknown[] }, as?: "patch" | "respec" | "reject") => {
-    const r = await post("/api/say", { group_id: g.id, body: d.text, attachments: d.attachments, as });
+  const send = async (d: Draft, as?: "patch" | "respec" | "reject") => {
+    const r = await mutate(
+      api.say.$post({
+        json: { group_id: g.id, body: d.text, attachments: d.attachments, ...(as ? { as } : {}) },
+      }),
+    );
     refresh();
     return r.ok;
   };
@@ -924,14 +942,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
   const late = st.lateObjections.filter((o) => o.grpId === g.id);
   const proposal = st.dropProposals.find((p) => p.grpId === g.id);
   const card0 = st.draftCards.find((c) => c.grpId === g.id);
-  const unknown: string[] = (() => {
-    try {
-      const v = JSON.parse(card0?.unknownPaths ?? "null");
-      return Array.isArray(v) ? (v as string[]) : [];
-    } catch {
-      return [];
-    }
-  })();
+  const unknown = jsonOr(card0?.unknownPaths, z.array(z.string()), []);
   const [card, setCard] = useState(filed);
 
   return (
@@ -975,7 +986,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
                   danger: true,
                 });
                 if (!go) return;
-                await post(`/api/groups/${g.id}/drop`, { why: proposal.body.split("\n")[0] });
+                await groupAction(g.id, "drop", { why: proposal.body.split("\n")[0] ?? "" });
                 refresh();
               }}
             >
@@ -984,11 +995,11 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
             <Button
               size="sm"
               onClick={async () => {
-                await post("/api/say", {
-                  group_id: g.id,
-                  body: "不是重复，也不算已经做完了 —— 接着拆。",
-                  as: "respec",
-                });
+                await mutate(
+                  api.say.$post({
+                    json: { group_id: g.id, body: "不是重复，也不算已经做完了 —— 接着拆。", as: "respec" },
+                  }),
+                );
                 refresh();
               }}
             >
@@ -1027,7 +1038,12 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
                 // Send the text only when edited: an untouched card is approved as
                 // filed, so "approve" and "edit then approve" stay distinct requests.
                 const edited = card.trim() && card.trim() !== filed.trim();
-                await post(`/api/draft/${g.id}/approve`, edited ? { card: card.trim() } : {});
+                await mutate(
+                  api.draft[":id"][":decision"].$post({
+                    param: { id: String(g.id), decision: "approve" },
+                    json: edited ? { card: card.trim() } : {},
+                  }),
+                );
                 refresh();
               }}
             >
@@ -1054,8 +1070,8 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
  * different things depending on which one is pressed.
  */
 function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; projectId: number }) {
-  const send = async (d: { text: string; attachments: unknown[] }, as: "patch" | "respec") => {
-    const r = await post("/api/say", { group_id: g.id, body: d.text, attachments: d.attachments, as });
+  const send = async (d: Draft, as: "patch" | "respec") => {
+    const r = await mutate(api.say.$post({ json: { group_id: g.id, body: d.text, attachments: d.attachments, as } }));
     refresh();
     return r.ok;
   };
@@ -1100,7 +1116,7 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
                     danger: true,
                   });
                   if (!go) return;
-                  await post(`/api/groups/${g.id}/drop`, { why: text });
+                  await groupAction(g.id, "drop", { why: text });
                   refresh();
                 }}
               >
@@ -1140,7 +1156,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
   const askDraft = () => {
     if (draft.busy) return;
     setDraft({ busy: true });
-    void pull<{ text: string }>(`/api/escalations/${e.id}/draft`).then((r) =>
+    void readApi(api.escalations[":id"].draft.$get({ param: { id: String(e.id) } }), AnswerDraftSchema).then((r) =>
       setDraft({ busy: false, text: r?.text?.trim() || "没能拟出来，这条得你自己写。" }),
     );
   };
@@ -1206,7 +1222,12 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             placeholder="答复。发出去直接解开被阻塞的 agent。⌘Enter 发送"
             submit="回答"
             onSubmit={async ({ text, attachments }) => {
-              const r = await post(`/api/escalations/${e.id}/answer`, { answer: text, attachments });
+              const r = await mutate(
+                api.escalations[":id"].answer.$post({
+                  param: { id: String(e.id) },
+                  json: { answer: text, attachments },
+                }),
+              );
               refresh();
               return r.ok;
             }}
@@ -1221,7 +1242,12 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                   <Button
                     size="sm"
                     onClick={async () => {
-                      await post(`/api/escalations/${e.id}/delegate`, { to: "architect" });
+                      await mutate(
+                        api.escalations[":id"].delegate.$post({
+                          param: { id: String(e.id) },
+                          json: { to: "architect" },
+                        }),
+                      );
                       refresh();
                     }}
                   >
@@ -1240,7 +1266,12 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
                     size="sm"
                     disabled={busy}
                     onClick={async () => {
-                      const r = await post(`/api/escalations/${e.id}/requirement`, { text });
+                      const r = await mutate(
+                        api.escalations[":id"].requirement.$post({
+                          param: { id: String(e.id) },
+                          json: { text },
+                        }),
+                      );
                       refresh();
                       if (r.ok) toast.success(r.text);
                     }}

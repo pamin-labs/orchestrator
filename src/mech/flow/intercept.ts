@@ -169,13 +169,13 @@ function settle(ctx: Ctx, grpId: number): void {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config?.language, "group.paused"),
+    body: say(ctx.config.language, "group.paused"),
   });
 }
 
 export function resume(ctx: Ctx, grpId: number): void {
   release(ctx, grpId);
-  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config?.language, "group.resumed") });
+  ctx.bus.emit({ grpId, author: "boss", kind: "state_change", body: say(ctx.config.language, "group.resumed") });
   ctx.sched.tick();
 }
 

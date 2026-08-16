@@ -8,20 +8,27 @@ import { Card, CardHeader, CardTitle } from "./card";
 import { ask } from "./confirm";
 import { cn } from "../lib/utils";
 import { FilePicker } from "../views/picker";
+import { z } from "zod";
+import { api, readApi, readJson } from "../lib/api";
+import type { InferResponseType } from "hono/client";
 
-export interface Attached {
-  name: string;
-  path: string;
-  type: string;
-  size: number;
-  url?: string;
-  label: string;
-}
+const AttachedSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  type: z.string(),
+  size: z.number(),
+  url: z.string().optional(),
+  label: z.string(),
+});
+export type Attached = z.infer<typeof AttachedSchema>;
 /** A file and where it sat inside whatever was dropped. */
 interface Picked {
   file: File;
   rel: string;
 }
+
+const isFileEntry = (entry: FileSystemEntry): entry is FileSystemFileEntry => entry.isFile;
+const isDirectoryEntry = (entry: FileSystemEntry): entry is FileSystemDirectoryEntry => entry.isDirectory;
 
 /**
  * Everything under what was dropped, folders included.
@@ -33,12 +40,14 @@ interface Picked {
  * as the drop handler yields.
  */
 async function walk(items: DataTransferItemList): Promise<Picked[]> {
-  const roots = [...items].map((i) => i.webkitGetAsEntry?.()).filter(Boolean) as FileSystemEntry[];
+  const roots = [...items]
+    .map((i) => i.webkitGetAsEntry?.())
+    .filter((entry): entry is FileSystemEntry => entry !== null && entry !== undefined);
   const out: Picked[] = [];
   const one = (e: FileSystemEntry, prefix: string): Promise<void> =>
     new Promise((done) => {
-      if (e.isFile) {
-        (e as FileSystemFileEntry).file(
+      if (isFileEntry(e)) {
+        e.file(
           (f) => {
             out.push({ file: f, rel: prefix + e.name });
             done();
@@ -47,7 +56,8 @@ async function walk(items: DataTransferItemList): Promise<Picked[]> {
         );
         return;
       }
-      const reader = (e as FileSystemDirectoryEntry).createReader();
+      if (!isDirectoryEntry(e)) return done();
+      const reader = e.createReader();
       // readEntries hands back at most a hundred at a time and signals the end
       // with an empty batch.
       const batch = () =>
@@ -64,18 +74,26 @@ async function walk(items: DataTransferItemList): Promise<Picked[]> {
   await Promise.all(roots.map((r) => one(r, "")));
   return out;
 }
-export interface Skill {
-  name: string;
-  path: string;
-  description: string;
-  scope: "project" | "user";
-  /** Staged into the sandbox mount, so an agent can reach for it unprompted. */
-  on: boolean;
-}
-export interface Draft {
-  text: string;
-  attachments: { name: string; path: string; type: string; label: string }[];
-}
+export const SkillSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  description: z.string(),
+  scope: z.enum(["project", "user"]),
+  on: z.boolean(),
+});
+export type Skill = z.infer<typeof SkillSchema>;
+const DraftAttachmentSchema = AttachedSchema.pick({ name: true, path: true, type: true, label: true });
+const DraftSchema = z.object({ text: z.string(), attachments: z.array(DraftAttachmentSchema) });
+export type Draft = z.infer<typeof DraftSchema>;
+
+const SavedAttachmentSchema = AttachedSchema.omit({ label: true, url: true });
+const AttachmentsSchema: z.ZodType<
+  InferResponseType<typeof api.attach.$post, 200> & InferResponseType<typeof api.attach.local.$post, 200>
+> = z.object({ files: z.array(SavedAttachmentSchema) });
+
+const SkillsResponseSchema: z.ZodType<InferResponseType<typeof api.skills.$get, 200>> = z.object({
+  skills: z.array(SkillSchema),
+});
 
 /**
  * Everything the boss types, typed the same way.
@@ -115,10 +133,9 @@ function loadSkills(projectId?: number): Promise<Skill[]> {
   if (done) return Promise.resolve(done);
   const going = SKILLS_IN_FLIGHT.get(key);
   if (going) return going;
-  const p = fetch(`/api/skills?project=${key}`)
-    .then((r) => (r.ok ? r.json() : { skills: [] }))
-    .then((d) => (d.skills ?? []) as Skill[])
-    .catch(() => [] as Skill[])
+  const p = readApi(api.skills.$get({ query: { project: String(projectId ?? "") } }), SkillsResponseSchema)
+    .then((d) => d?.skills ?? [])
+    .catch(() => [])
     .then((list) => {
       SKILLS.set(key, list);
       SKILLS_IN_FLIGHT.delete(key);
@@ -273,14 +290,12 @@ export function Composer({
    */
   const fromDisk = async (paths: string[]) => {
     setBusy(true);
-    const r = await fetch("/api/attach/local", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ paths }),
-    }).catch(() => null);
+    const r = await api.attach.local.$post({ json: { paths } }).catch(() => null);
     setBusy(false);
-    if (!r?.ok) return void toast.error((await r?.text()) || "加不进来", { duration: 8000 });
-    const { files: saved } = (await r.json()) as { files: Attached[] };
+    if (!r) return void toast.error("加不进来", { duration: 8000 });
+    const result = await readJson(r, AttachmentsSchema);
+    if (!result.ok) return void toast.error(result.text, { duration: 8000 });
+    const { files: saved } = result.data;
     // Labelled before the state update, not inside it: the updater had not run
     // yet when the markers were assembled, so the text got `[undefined]`.
     const taken = files.map((f) => f.label);
@@ -305,23 +320,22 @@ export function Composer({
   };
 
   const upload = async (list: FileList | File[] | Picked[]) => {
-    const picked: Picked[] = [...list].map((f) => (f instanceof File ? { file: f, rel: f.name } : (f as Picked)));
+    const picked: Picked[] = [...list].map((f) => (f instanceof File ? { file: f, rel: f.name } : f));
     if (!picked.length) return;
-    const form = new FormData();
-    // The relative path travels beside the file: the server rebuilds the folder
-    // and hands back one attachment for it, because "看这个目录" is one reference
-    // and forty files is forty.
-    for (const { file, rel } of picked) {
-      form.append("file", file);
-      form.append("rel", rel);
-    }
     setBusy(true);
     // A folder copied in Finder arrives as an unreadable zero-byte entry and the
     // fetch dies with ERR_ACCESS_DENIED — as an unhandled rejection in the console
     // and nothing at all on screen.
     let r: Response;
     try {
-      r = await fetch("/api/attach", { method: "POST", body: form });
+      // Relative paths travel beside files so the server can rebuild a folder as
+      // one attachment. Hono RPC owns the multipart encoding and route contract.
+      r = await api.attach.$post({
+        form: {
+          file: picked.map(({ file }) => file),
+          rel: picked.map(({ rel }) => rel),
+        },
+      });
     } catch {
       setBusy(false);
       return void toast.error("浏览器读不到这些内容。文件夹得拖进来。", { duration: 8000 });
@@ -329,8 +343,9 @@ export function Composer({
     setBusy(false);
     // A file that silently fails to attach is worse than one never added: the text
     // goes out referencing a path, and the agent is told to Read something missing.
-    if (!r.ok) return void toast.error(await r.text(), { duration: 8000 });
-    const { files: saved } = (await r.json()) as { files: Attached[] };
+    const result = await readJson(r, AttachmentsSchema);
+    if (!result.ok) return void toast.error(result.text, { duration: 8000 });
+    const { files: saved } = result.data;
     const taken = files.map((f) => f.label);
     const marked = saved.map((s, i) => {
       const l = label(s, taken);

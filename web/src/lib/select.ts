@@ -1,4 +1,9 @@
 import type { Escalation, Group, Slice, State } from "./api";
+import { z } from "zod";
+import { jsonOr } from "../../../src/mech/util/text.ts";
+
+const OwnsSchema = z.array(z.string());
+const GatesSchema = z.record(z.string(), z.string());
 
 /**
  * DRAFT with the boss's yes already on it: waiting on a boundary, not on the boss.
@@ -40,20 +45,8 @@ export const STOPS: [string, string][] = [
   ["qa", "QA"],
 ];
 
-export const owns = (g: Group) => {
-  try {
-    return JSON.parse(g.owns_json || "[]") as string[];
-  } catch {
-    return [];
-  }
-};
-export const gates = (s: Slice) => {
-  try {
-    return JSON.parse(s.gates_json || "{}") as Record<string, string>;
-  } catch {
-    return {};
-  }
-};
+export const owns = (g: Group) => jsonOr(g.owns_json, OwnsSchema, []);
+export const gates = (s: Slice) => jsonOr(s.gates_json, GatesSchema, {});
 
 /**
  * Everything that cannot move without the boss, per PLAN.md's three approval points.

@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Head } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
-import { del } from "../../lib/api";
-import { Gates, Sandbox, type ProjectConfig } from "../project";
+import { api, mutate } from "../../lib/api";
+import { Gates, Sandbox, type ProjectConfig, type ProjectPatch } from "../project";
 
 export type ProjectSection = "gates" | "sandbox" | "remove";
 
@@ -23,7 +23,7 @@ export function ProjectPane({
   projectId: number;
   projectName?: string;
   groupCount: number;
-  patch: (body: Record<string, unknown>) => Promise<void>;
+  patch: (body: ProjectPatch) => Promise<void>;
   onRemoved: () => void;
 }) {
   if (section === "gates") return <Gates d={data} patch={patch} />;
@@ -78,7 +78,7 @@ function Remove({
     });
     if (!yes) return;
     setBusy(true);
-    const r = await del(`/api/projects/${projectId}`);
+    const r = await mutate(api.projects[":id"].$delete({ param: { id: String(projectId) } }));
     setBusy(false);
     if (r.ok) onRemoved();
   };

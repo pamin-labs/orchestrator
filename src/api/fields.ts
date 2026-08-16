@@ -3,10 +3,8 @@ import { z } from "zod";
 /**
  * The field shapes more than one route needs.
  *
- * Running the schema is `src/http/route.ts`'s job — this file is only the
- * vocabulary. It used to hold a `check()` wrapper around
- * `@hono/standard-validator` too; that went when `route()` started calling
- * Standard Schema itself.
+ * Hono's Zod middleware runs these at the request boundary; this file only owns
+ * the shared vocabulary.
  */
 /**
  * A group, by id or by name.

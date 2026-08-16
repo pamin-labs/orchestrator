@@ -1,25 +1,14 @@
-import { projectOfAgent } from "../mech/util/rows.ts";
-import { basename, join, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-import type { Ctx } from "../ctx.ts";
-import { imagePaths, mintToken } from "../api.ts";
+import { basename, join, resolve } from "node:path";
+import { imagePaths } from "../api/panel/attach.ts";
+import { mintToken } from "../api/shared.ts";
 import type { Config, RoleDef } from "../config.ts";
-import { DEFAULT_PROVIDER, contextWindowFor, modelFor } from "../config.ts";
-import type { Executor, Job } from "../scheduler.ts";
-import { assemble, buildStable, needsRotation, type Delta } from "../prompt/assemble.ts";
+import { contextWindowFor, DEFAULT_PROVIDER, modelFor } from "../config.ts";
+import type { Ctx } from "../ctx.ts";
 import { say } from "../lang.ts";
-import { listSkills, projectSkills, readSkillIn } from "../mech/skills.ts";
+import { raise } from "../mech/flow/escalate.ts";
+import { hold } from "../mech/flow/intercept.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
-import { loadResource, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
-import { checkpoint, changedSince, porcelainPaths, STATUS_Z } from "../mech/git/worktree.ts";
-import { lessonsFor } from "../mech/knowledge/lessons.ts";
-import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
-import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
-import { gitTrailers } from "../mech/git/ghlogin.ts";
-import { track, untrack } from "./running.ts";
-import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
-import { gzipTurnLog, recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/ops/watchdog.ts";
-import { runStandup } from "../mech/flow/standup.ts";
 import {
   auditVerdict,
   handToBoss,
@@ -28,13 +17,24 @@ import {
   runPrReview,
   sendBack,
 } from "../mech/flow/review.ts";
-import { type TurnResult } from "./claude.ts";
-import { clampEffort, providerFor, type Provider } from "./providers.ts";
+import { runStandup } from "../mech/flow/standup.ts";
+import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
+import { gitTrailers } from "../mech/git/ghlogin.ts";
+import { changedSince, checkpoint, porcelainPaths, STATUS_Z } from "../mech/git/worktree.ts";
+import { lessonsFor } from "../mech/knowledge/lessons.ts";
+import { LeaseArgsSchema, loadResource, type ResourceDef, resolveLease, runResource } from "../mech/lease.ts";
+import { gzipTurnLog, REEMIT_MS, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
+import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
+import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
+import { listSkills, projectSkills, readSkillIn } from "../mech/skills.ts";
+import { projectOfAgent } from "../mech/util/rows.ts";
 import { clip, errText, jsonOr } from "../mech/util/text.ts";
-import { hold } from "../mech/flow/intercept.ts";
-import { raise } from "../mech/flow/escalate.ts";
-import { ACTIVE_JOB_STATES, stateParam, type SliceState } from "../states.ts";
-import { z } from "zod";
+import { assemble, buildStable, type Delta, needsRotation } from "../prompt/assemble.ts";
+import { AgentTurnPayloadSchema, type Executor, type Job } from "../scheduler.ts";
+import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../states.ts";
+import { type TurnResult } from "./claude.ts";
+import { clampEffort, type Provider, providerFor } from "./providers.ts";
+import { track, untrack } from "./running.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -59,23 +59,6 @@ export interface ExecDeps {
   roles: Map<string, RoleDef>;
   /** Injectable for tests; defaults to whichever provider the role names. */
   runTurn?: Provider["run"];
-}
-
-const JsonRecord = z.record(z.string(), z.unknown());
-const Id = z.number().int().positive();
-const Sequence = z.number().int().nonnegative();
-const Mail = z.object({
-  from: z.string(),
-  from_group: Id.nullable().optional(),
-  intent: z.string(),
-  body: z.string(),
-});
-const Boundary = z.union([Id, z.array(z.object({ id: Id, name: z.string(), idea: z.string().optional() }))]);
-const Digest = z.object({ channel_id: Id, from: Sequence, to: Sequence });
-
-/** Persisted JSON is untrusted: malformed job rows must not become control data. */
-function jsonRecord(s: string | null | undefined): Record<string, unknown> {
-  return jsonOr(s, JsonRecord, {});
 }
 
 interface AgentRow {
@@ -119,27 +102,23 @@ export function makeExecutor(deps: ExecDeps): Executor {
 }
 
 /** Find or hire the agent this job belongs to. */
-function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
+function resolveAgent(deps: ExecDeps, job: Job<"agent_turn">): AgentRow {
   const { ctx } = deps;
   if (job.agent_id) {
     const a = ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(job.agent_id);
     if (a) return a;
   }
-  const payload = jsonRecord(job.payload_json);
-  const role = z.string().safeParse(payload.role);
-  const roleName = role.success ? role.data : "engineer";
+  const roleName = job.payload.role ?? "engineer";
   const existing = ctx.db
     .query<AgentRow, [number | null, string]>(
       `${SELECT_AGENT_BASE} WHERE grp_id IS ? AND role = ? AND state != 'retired'`,
     )
     .get(job.grp_id, roleName);
   if (existing) return existing;
-  const project = Id.safeParse(payload.project_id);
-  let payloadProject = project.success ? project.data : null;
-  const audit = Id.safeParse(payload.audit);
-  if (!payloadProject && audit.success) {
+  let payloadProject = job.payload.project_id ?? null;
+  if (!payloadProject && job.payload.audit) {
     payloadProject =
-      ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(audit.data)
+      ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.payload.audit)
         ?.project_id ?? null;
   }
   return hire(deps, job.grp_id, roleName, job.slice_id, payloadProject);
@@ -191,12 +170,12 @@ export function hire(
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config?.language, "hired", { role: roleName }),
+    body: say(ctx.config.language, "hired", { role: roleName }),
   });
   return ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(row.id)!;
 }
 
-async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
+async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<void> {
   const { ctx, cfg, roles } = deps;
   const agent = resolveAgent(deps, job);
   const role = roles.get(agent.role);
@@ -237,7 +216,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     ? "hash"
     : overTokenBudget(agent, cfg)
       ? "budget"
-      : jsonRecord(job.payload_json).rotate === true
+      : job.payload.rotate === true
         ? "explicit"
         : !agent.session_id
           ? "new"
@@ -484,15 +463,14 @@ export const LOST_SESSION = /no rollout found for thread|No conversation found w
  * the Engineer's diff under `S2: qa`, and the one place a reviewer looks to find
  * out who wrote a line said the wrong name.
  */
-function checkpointLabel(ctx: Ctx, job: Job): string {
+function checkpointLabel(ctx: Ctx, job: Job<"agent_turn">): string {
   const prev = ctx.db
     .query<{ payload_json: string | null; slice_id: number | null }, [number]>(
       `SELECT payload_json, slice_id FROM job WHERE grp_id = ? AND kind = 'agent_turn'
          AND state IN ('done', 'failed', 'cancelled') ORDER BY id DESC LIMIT 1`,
     )
     .get(job.grp_id!);
-  const parsedRole = z.string().safeParse(jsonRecord(prev?.payload_json).role);
-  const role = parsedRole.success ? parsedRole.data : "agent";
+  const role = jsonOr(prev?.payload_json, AgentTurnPayloadSchema, {}).role ?? "agent";
   const sliceId = prev?.slice_id ?? null;
   const seq = sliceId
     ? ctx.db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(sliceId)?.seq
@@ -523,7 +501,7 @@ function buildStableFor(
   role: RoleDef,
   grp: { name: string; owns_json?: string } | null | undefined,
   repoPath: string,
-  job: Job,
+  job: Job<"agent_turn">,
 ) {
   const { ctx, cfg } = deps;
 
@@ -561,27 +539,20 @@ function buildStableFor(
 async function buildDeltaFor(
   deps: ExecDeps,
   agent: AgentRow,
-  job: Job,
+  job: Job<"agent_turn">,
   rotated: boolean,
   scope: Scope,
 ): Promise<Delta> {
   const { ctx } = deps;
-  const payload = jsonRecord(job.payload_json);
+  const payload = job.payload;
   const delta: Delta = {};
-  const invalid: string[] = [];
-  const field = <T>(key: string, schema: z.ZodType<T>) => {
-    const parsed = schema.safeParse(payload[key]);
-    if (payload[key] !== undefined && !parsed.success) invalid.push(key);
-    return parsed;
-  };
 
-  const escalation = field("escalation", Id);
-  if (escalation.success) {
+  if (payload.escalation) {
     const esc = ctx.db
       .query<{ id: number; question: string; severity: string; agent_id: number | null }, [number]>(
         "SELECT id, question, severity, agent_id FROM escalation WHERE id = ?",
       )
-      .get(escalation.data);
+      .get(payload.escalation);
     if (esc) {
       const asker =
         esc.agent_id !== null
@@ -595,9 +566,8 @@ async function buildDeltaFor(
         `not sure — a guess becomes a premise the whole group then reasons from.`;
     }
   }
-  const mail = field("mail", Mail);
-  if (mail.success) {
-    const m = mail.data;
+  if (payload.mail) {
+    const m = payload.mail;
     const grpNote = m.from_group ? ` (group ${m.from_group})` : "";
     delta.card =
       `${m.from}${grpNote} sent you a "${m.intent}":\n${m.body}\n\n` +
@@ -607,11 +577,10 @@ async function buildDeltaFor(
           ' --intent inform "…"`. If it needs a decision above your level, pass it up.'
         : "");
   }
-  const boundary = field("boundary", Boundary);
-  if (boundary.success) {
-    const groups = Array.isArray(boundary.data)
-      ? boundary.data
-      : [{ id: boundary.data, name: String(boundary.data), idea: undefined }];
+  if (payload.boundary !== undefined) {
+    const groups = Array.isArray(payload.boundary)
+      ? payload.boundary
+      : [{ id: payload.boundary, name: String(payload.boundary), idea: undefined }];
     delta.card =
       `This project now has more than one live group, so every one of them needs a path ` +
       `boundary before work is planned inside it. Cut all of them now — each group's own ` +
@@ -628,25 +597,21 @@ async function buildDeltaFor(
       `groups cannot run in parallel, so make them disjoint. Shared files (manifests, ` +
       `lockfiles, schemas, CI config) belong to no group — leave them out.`;
   }
-  const audit = field("audit", Id);
-  if (audit.success) {
-    const gid = audit.data;
-    const branch = field("audit_branch", z.string());
-    const auditGroup = field("audit_group", z.string());
+  if (payload.audit) {
+    const gid = payload.audit;
     delta.card =
-      `Audit group ${auditGroup.success ? auditGroup.data : gid} (group_id ${gid}) before the boss merges it.\n` +
-      (branch.success
-        ? `Its branch is ${branch.data}; you are in the main checkout, so read it with ` +
-          `\`git diff main...${branch.data}\` and \`git log main..${branch.data}\`.\n`
+      `Audit group ${payload.audit_group ?? gid} (group_id ${gid}) before the boss merges it.\n` +
+      (payload.audit_branch
+        ? `Its branch is ${payload.audit_branch}; you are in the main checkout, so read it with ` +
+          `\`git diff main...${payload.audit_branch}\` and \`git log main..${payload.audit_branch}\`.\n`
         : "") +
       `Coverage against the DRAFT card, architectural consistency, and whether the journals ` +
       `describe what the diff does. Do NOT re-check what the gate covered.\n\n` +
       `File your verdict with exactly:\n` +
       `  orch audit ${gid} --verdict pass|fail --note "what is missing or inconsistent"`;
   }
-  const scribe = field("scribe", Id);
-  if (scribe.success) {
-    const gid = scribe.data;
+  if (payload.scribe) {
+    const gid = payload.scribe;
     // The base is named rather than left to the agent to work out: it is
     // `origin/main` on most repositories and something else on the ones where
     // guessing it produces a diff of the whole history.
@@ -668,9 +633,8 @@ async function buildDeltaFor(
       `subject has no type prefix, runs past 72 characters, ends in a full stop, or ` +
       `either half is not English. A refusal is not the end of your turn — fix it and send it again.`;
   }
-  const digest = field("digest", Digest);
-  if (digest.success) {
-    const d = digest.data;
+  if (payload.digest) {
+    const d = payload.digest;
     const rows = ctx.db
       .query<{ seq: number; author: string; body: string }, [number, number, number]>(
         `SELECT seq, author, body FROM event
@@ -689,22 +653,18 @@ async function buildDeltaFor(
         .join("\n")
         .slice(0, 20_000);
   }
-  const sediment = field("sediment", z.array(z.string()));
-  if (sediment.success) {
+  if (payload.sediment) {
     delta.card =
-      `The boss has said the same thing ${sediment.data.length} times now, to different groups. ` +
+      `The boss has said the same thing ${payload.sediment.length} times now, to different groups. ` +
       `A fact attached to one group is invisible to the next, so this has to become a project rule.\n\n` +
-      sediment.data.map((t, i) => `${i + 1}. ${t}`).join("\n") +
+      payload.sediment.map((t, i) => `${i + 1}. ${t}`).join("\n") +
       `\n\nWrite ONE rule with \`orch journal add --kind lesson -\` — at most 6 lines, phrased as an ` +
       `instruction a later group can follow without knowing this history ("QA 必须…", not "老板不满意…"). ` +
       `If these are not actually the same complaint, say so with \`orch mail cos --intent note\` and write nothing.`;
   }
-  const idea = field("idea", z.string());
-  const respec = field("respec", z.string());
-  const rejection = field("rejection", z.string());
-  if (idea.success) delta.card = `The boss wants: ${idea.data}`;
-  if (respec.success) delta.rejection = `The boss sent the DRAFT back: ${respec.data}`;
-  if (rejection.success) delta.rejection = rejection.data;
+  if (payload.idea) delta.card = `The boss wants: ${payload.idea}`;
+  if (payload.respec) delta.rejection = `The boss sent the DRAFT back: ${payload.respec}`;
+  if (payload.rejection) delta.rejection = payload.rejection;
 
   if (job.slice_id) {
     const s = ctx.db
@@ -724,7 +684,7 @@ async function buildDeltaFor(
           `  orch review ${job.slice_id} --verdict pass|fail --note "one line per criterion"`;
       }
     }
-  } else if (job.grp_id && !idea.success) {
+  } else if (job.grp_id && !payload.idea) {
     const slices = ctx.db
       .query<{ seq: number; title: string; status: SliceState; difficulty: string }, [number]>(
         "SELECT seq, title, status, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
@@ -751,8 +711,7 @@ async function buildDeltaFor(
   // Skill text, read off the host for this turn only. The names travelled on the
   // payload; the bodies are not stored anywhere, so editing a SKILL.md takes effect
   // on the next turn that asks for it.
-  const skills = field("skills", z.array(z.string()));
-  const wanted = skills.success ? skills.data : [];
+  const wanted = payload.skills ?? [];
   if (wanted.length) {
     const row = ctx.db
       .query<{ repo_path: string; project_id: number }, [number | null]>(
@@ -773,52 +732,8 @@ async function buildDeltaFor(
 
   if (unread) delta.unread = unread;
 
-  // A payload key nobody renders means the agent is woken with no instruction —
-  // it happened twice (a mailed message, then a boundary request) and both times
-  // the agent improvised something reasonable-looking and did not do the job.
-  const unhandled = Object.keys(payload).filter((k) => !PAYLOAD_KEYS.has(k));
-  const missing = [...unhandled, ...invalid.map((k) => `${k} (invalid)`)];
-  if (missing.length) {
-    ctx.bus.emit({
-      grpId: job.grp_id,
-      author: "orchestrator",
-      kind: "state_change",
-      body: `job ${job.id} carried payload keys nothing renders: ${missing.join(", ")}`,
-      meta: { unhandled, invalid, job: job.id },
-    });
-  }
-
   return delta;
 }
-
-/**
- * Payload keys the delta builder knows about.
- *
- * Anything else is a bug at the enqueue site, and a silent one: the turn still
- * runs, the agent still answers, and the work simply does not happen.
- */
-const PAYLOAD_KEYS = new Set([
-  "role",
-  "idea",
-  "respec",
-  "rejection",
-  "rotate",
-  "mail",
-  "escalation",
-  "boundary",
-  "conflict",
-  "audit",
-  "audit_branch",
-  "audit_group",
-  "scribe",
-  "review",
-  "skills",
-  "digest",
-  "sediment",
-  "project_id",
-  "onboarding",
-  "lease_id",
-]);
 
 /** Channel delta since this agent's cursor, then advance it. */
 /**
@@ -882,7 +797,7 @@ function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null, cfg?: Confi
         grpId,
         author: "orchestrator",
         kind: "state_change",
-        body: say(ctx.config?.language, "unread.digest", { n: behind.c }),
+        body: say(ctx.config.language, "unread.digest", { n: behind.c }),
         meta: { channel_id: ch.id, behind: behind.c },
       });
     }
@@ -985,9 +900,9 @@ function recordSubscriptionUsage(deps: ExecDeps, provider: string, r: TurnResult
  * it threw on every turn, in the one mechanism that has no second line of defence.
  */
 export async function reconcileOwnership(
-  deps: ExecDeps,
-  agent: AgentRow,
-  job: Job,
+  deps: { ctx: Ctx },
+  agent: { role: string },
+  job: { grp_id: number | null },
   grp: { owns_json?: string } | null | undefined,
 ): Promise<void> {
   const owns = parseOwns(grp?.owns_json ?? null);
@@ -1045,7 +960,7 @@ export async function reconcileOwnership(
     author: "orchestrator",
     kind: "state_change",
     severity: "blocker",
-    body: say(deps.ctx.config?.language, "owns.reverted", {
+    body: say(deps.ctx.config.language, "owns.reverted", {
       role: agent.role,
       files: reverted.slice(0, 5).join(", "),
       n: String(reverted.length),
@@ -1222,7 +1137,7 @@ function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResul
     grpId: job.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config?.language, "rl.waiting", { at: new Date(resetsMs).toLocaleString() }),
+    body: say(ctx.config.language, "rl.waiting", { at: new Date(resetsMs).toLocaleString() }),
     meta: rl,
   });
   if (job.grp_id) {
@@ -1246,7 +1161,7 @@ function overTokenBudget(agent: AgentRow, cfg: Config): boolean {
  * The deterministic half of slice review: reconcile, then gate. Neither consults
  * a model, so a send-back can always be explained exactly.
  */
-async function runGateJob(deps: ExecDeps, job: Job): Promise<void> {
+async function runGateJob(deps: ExecDeps, job: Job<"gate">): Promise<void> {
   if (!job.slice_id) return;
   const rd = { ctx: deps.ctx, cfg: deps.cfg };
   const out = await runDeterministicReview(rd, job.slice_id);
@@ -1310,17 +1225,17 @@ export function makeReviewVerdict(deps: ExecDeps) {
  * the way this actually happened; this is the guarantee rather than the fix, so
  * the next thing that learns to throw cannot buy the same outage.
  */
-async function runLease(deps: ExecDeps, job: Job): Promise<void> {
-  const leaseId = Id.safeParse(jsonRecord(job.payload_json).lease_id);
-  if (!leaseId.success) throw new Error("lease job requires a positive integer lease_id");
+async function runLease(deps: ExecDeps, job: Job<"lease">): Promise<void> {
+  const leaseId = job.payload.lease_id;
+  if (!leaseId) throw new Error("lease job requires a positive integer lease_id");
   try {
-    await lease(deps, job, leaseId.data);
+    await lease(deps, job, leaseId);
   } catch (e) {
-    finishLease(deps, leaseId.data, 126, `the gate could not run: ${errText(e)}`, undefined);
+    finishLease(deps, leaseId, 126, `the gate could not run: ${errText(e)}`, undefined);
   }
 }
 
-async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void> {
+async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Promise<void> {
   const { ctx, cfg } = deps;
   const leaseId = leaseIdIn;
   const lease = ctx.db
@@ -1335,8 +1250,16 @@ async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void>
 
   // Re-validate at execution time. The queued args were checked on the way in,
   // but the resource template may have changed since.
-  const args = jsonOr(lease.args_json, JsonRecord.nullable(), null);
-  if (!args) return finishLease(deps, leaseId, 126, "lease arguments must be a JSON object", undefined);
+  const args = jsonOr(lease.args_json, LeaseArgsSchema.nullable(), null);
+  if (!args) {
+    return finishLease(
+      deps,
+      leaseId,
+      126,
+      "lease arguments must be a flat JSON object of string, number, or boolean values",
+      undefined,
+    );
+  }
   const resolved = resolveLease(def, args);
   if (!resolved.ok) return finishLease(deps, leaseId, 126, resolved.error, undefined);
 

@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
-import { openMemory, type DB } from "../src/db.ts";
-import { Bus } from "../src/bus.ts";
-import { Scheduler, resumeReclaimed, type Job } from "../src/scheduler.ts";
-import { holdForOffline } from "../src/mech/ops/watchdog.ts";
-import { probe, isOnline, resetNet, PROBE_EVERY_MS } from "../src/mech/sandbox/net.ts";
-import { saveAuth } from "../src/mech/sandbox/auth.ts";
-import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../src/mech/sandbox/sandbox.ts";
 import type { Ctx } from "../src/api.ts";
+import { type DB, openMemory } from "../src/db.ts";
+import { holdForOffline } from "../src/mech/ops/watchdog.ts";
+import { saveAuth } from "../src/mech/sandbox/auth.ts";
+import { isOnline, PROBE_EVERY_MS, probe, resetNet } from "../src/mech/sandbox/net.ts";
+import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../src/mech/sandbox/sandbox.ts";
+import { type Job, resumeReclaimed, Scheduler } from "../src/scheduler.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * The host loses its network.
@@ -30,7 +30,7 @@ function seed(): { db: DB; ctx: Ctx; sched: Scheduler; ran: Job[]; online: { v: 
   const online = { v: true };
   const ran: Job[] = [];
   const sched = new Scheduler(db, async (j) => void ran.push(j), { online: () => online.v });
-  const ctx = { db, bus: new Bus(db), sched, waiters: new Map(), config: { language: "中文" } } as unknown as Ctx;
+  const ctx = testContext({ db, sched });
   return { db, ctx, sched, ran, online };
 }
 
@@ -99,6 +99,7 @@ test("a turn the network killed does not spend its one retry", () => {
     agent_id: 1,
     slice_id: null,
     payload_json: JSON.stringify({ role: "engineer", resumed: true }),
+    payload: { role: "engineer", resumed: true },
     priority: 0,
     state: "cancelled",
     error: "offline: the host lost its network",
@@ -194,7 +195,13 @@ test("no container to open holds every turn instead of failing each group once",
   // Driven through the real `ensureSandbox` rather than by poking the flag: the
   // failure this guards against is the wiring being absent, not the flag being
   // wrong. Port 1 has nothing on it.
-  const ctx = { ...h.ctx, config: { language: "中文", sandbox: { server: "127.0.0.1:1", apiKey: "" } } } as Ctx;
+  const ctx = testContext({
+    ...h.ctx,
+    config: {
+      ...h.ctx.config,
+      sandbox: { ...h.ctx.config.sandbox, server: "127.0.0.1:1", apiKey: "" },
+    },
+  });
   await ensureSandbox(ctx, { grp: 1 }).catch(() => {});
   expect(sandboxHeld()).toBe(true);
 

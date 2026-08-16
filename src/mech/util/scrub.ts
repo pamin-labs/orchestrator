@@ -1,5 +1,3 @@
-import type { DB } from "../../db.ts";
-
 /**
  * Nothing that is a credential reaches an event, a frame or a log.
  *
@@ -60,13 +58,6 @@ export function maskValue(v: string): void {
   const s = v.trim();
   if (s.length >= MIN) known.add(s);
   if (s.startsWith("{")) for (const m of s.matchAll(/"([^"]{16,})"/g)) known.add(m[1]!);
-}
-
-/** Register everything already stored. Called at open and after every save. */
-export function rememberSecrets(db: DB): void {
-  for (const r of db.query<{ secret: string }, []>("SELECT secret FROM runtime_auth").all()) {
-    maskValue(r.secret);
-  }
 }
 
 /** Only for the test: the registry outlives a db in this process. */

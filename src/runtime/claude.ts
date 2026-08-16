@@ -1,5 +1,6 @@
 import type { StablePrompt } from "../prompt/assemble.ts";
 import { z } from "zod";
+import { JsonObject, JsonValue, type Json } from "../http/respond.ts";
 import { shq } from "../mech/util/shq.ts";
 import { clip, jsonOr } from "../mech/util/text.ts";
 
@@ -46,7 +47,7 @@ export interface Usage {
  * missed, so nothing is subtracted here — see `codexUsage`, whose whole reason
  * to exist is that codex means the other thing by the same field name.
  */
-export function claudeUsage(raw: unknown = {}): Usage {
+export function claudeUsage(raw: Json = {}): Usage {
   const parsed = UsageSchema.safeParse(raw);
   const u = parsed.success ? parsed.data : {};
   return {
@@ -223,8 +224,26 @@ export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
   return argv;
 }
 
-const Input: z.ZodType<Record<string, unknown>> = z.record(z.string(), z.unknown());
-const UsageSchema = z
+const Input = z
+  .object({
+    command: z.string().optional(),
+    file_path: z.string().optional(),
+    pattern: z.string().optional(),
+    prompt: z.string().optional(),
+  })
+  .catchall(JsonValue);
+type ToolInput = z.infer<typeof Input>;
+type JsonMap = z.infer<typeof JsonObject>;
+const MessageBlock = z
+  .object({
+    type: z.string(),
+    name: z.string().optional(),
+    text: z.string().optional(),
+    content: JsonValue.optional(),
+    input: Input.optional(),
+  })
+  .catchall(JsonValue);
+export const UsageSchema = z
   .object({
     input_tokens: z.number().optional(),
     output_tokens: z.number().optional(),
@@ -232,7 +251,8 @@ const UsageSchema = z
     cache_creation_input_tokens: z.number().optional(),
     output_tokens_details: z.object({ thinking_tokens: z.number().optional() }).optional(),
   })
-  .passthrough();
+  .catchall(JsonValue)
+  .catch({});
 
 /** One validated line of stream-json. Unknown CLI fields stay out of the adapter. */
 const LineSchema = z
@@ -241,9 +261,13 @@ const LineSchema = z
     subtype: z.string().optional(),
     session_id: z.string().optional(),
     status: z.string().optional(),
-    message: z.object({ content: z.array(Input).optional() }).optional(),
+    message: z
+      .object({ content: z.array(MessageBlock).optional() })
+      .catchall(JsonValue)
+      .optional(),
     tool_use_result: z
       .object({ stdout: z.string().optional(), stderr: z.string().optional(), interrupted: z.boolean().optional() })
+      .catchall(JsonValue)
       .optional(),
     event: z
       .object({
@@ -251,6 +275,7 @@ const LineSchema = z
         delta: z.object({ type: z.string(), text: z.string().optional(), thinking: z.string().optional() }).optional(),
         content_block: z.object({ type: z.string(), name: z.string().optional(), input: Input.optional() }).optional(),
       })
+      .catchall(JsonValue)
       .optional(),
     rate_limit_info: z
       .object({
@@ -263,15 +288,16 @@ const LineSchema = z
         weeklyPercent: z.number().optional(),
         weeklyResetsAt: z.number().optional(),
       })
+      .catchall(JsonValue)
       .optional(),
     is_error: z.boolean().optional(),
     terminal_reason: z.string().optional(),
     result: z.string().optional(),
     num_turns: z.number().optional(),
-    usage: z.unknown().optional(),
-    modelUsage: z.record(z.string(), z.object({ contextWindow: z.number().optional() })).optional(),
+    usage: UsageSchema.optional(),
+    modelUsage: z.record(z.string(), z.object({ contextWindow: z.number().optional() }).catchall(JsonValue)).optional(),
   })
-  .passthrough();
+  .catchall(JsonValue);
 
 type Line = z.infer<typeof LineSchema>;
 
@@ -440,7 +466,7 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
  */
 const LOG_RESULT_CHARS = 400;
 
-const clipForLog = (v: unknown): unknown => {
+const clipForLog = (v: Json): Json => {
   if (typeof v !== "string" || v.length <= LOG_RESULT_CHARS) return v;
   return `${v.slice(0, LOG_RESULT_CHARS)}… [${v.length} chars omitted]`;
 };
@@ -454,15 +480,16 @@ const clipForLog = (v: unknown): unknown => {
  * carry a `… [N chars omitted]` marker and a real turn's line has a dozen keys
  * beyond the ones worth declaring. `JSON.stringify` is the only consumer.
  */
-export function trimForLog(line: Line): unknown {
+export function trimForLog(line: Line): Json {
   // `tool_use_result` is where the payload actually is: measured on a real turn,
   // 90.2% of the file, against 0% for the `tool_result` block inside `content`.
   // Trimming only the latter cut 17%, which is how a fix that looks right and is
   // aimed at the wrong field reads in a size chart.
-  let out: Record<string, unknown> = line;
+  let out: JsonMap = line;
   if (line.tool_use_result && typeof line.tool_use_result === "object") {
-    const r: Record<string, unknown> = { ...line.tool_use_result };
-    for (const k of Object.keys(r)) r[k] = clipForLog(r[k]);
+    const r: JsonMap = Object.fromEntries(
+      Object.entries(line.tool_use_result).map(([key, value]) => [key, clipForLog(value)]),
+    );
     out = { ...out, tool_use_result: r };
   }
   const content = line.message?.content;
@@ -476,7 +503,7 @@ export function trimForLog(line: Line): unknown {
   return { ...out, message: { ...line.message, content: trimmed } };
 }
 
-export function summarizeTool(name: string, input: Record<string, unknown>): ToolSummary {
+export function summarizeTool(name: string, input: ToolInput): ToolSummary {
   let detail = name;
   if (typeof input.command === "string") detail = `${name}: ${clip(unwrapShell(input.command), 90, true)}`;
   else if (typeof input.file_path === "string") detail = `${name}: ${input.file_path}`;
@@ -485,8 +512,8 @@ export function summarizeTool(name: string, input: Record<string, unknown>): Too
   return { name, detail };
 }
 
-function inputRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+function inputRecord(value?: ToolInput): ToolInput {
+  return value ?? {};
 }
 
 /**

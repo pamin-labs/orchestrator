@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { buildStable } from "../src/prompt/assemble.ts";
+import type { TurnRunner } from "../src/runtime/claude.ts";
 import { buildArgv, runTurn, trimItem } from "../src/runtime/codex.ts";
+import { z } from "zod";
 
 const stable = buildStable({
   rolePrompt: "You are the Engineer.",
@@ -35,17 +37,20 @@ const LINES = [
  * `wrote` is what the adapter put in the prompt file — the exec API has no
  * stdin, so that is where the delta travels now.
  */
-function fakeRunner(lines: string[], stderr = "") {
-  const r: any = { cmd: "", wrote: "" };
-  r.put = async (_path: string, data: string) => {
-    r.wrote = data;
+function fakeRunner(lines: string[], stderr = ""): TurnRunner & { cmd: string; wrote: string } {
+  const runner: TurnRunner & { cmd: string; wrote: string } = {
+    cmd: "",
+    wrote: "",
+    put: async (_path, data) => {
+      runner.wrote = data;
+    },
+    lines: async function* (cmd) {
+      runner.cmd = cmd;
+      for (const line of lines) yield line;
+      return { code: stderr ? 1 : 0, err: stderr };
+    },
   };
-  r.lines = async function* (cmd: string) {
-    r.cmd = cmd;
-    for (const l of lines) yield l;
-    return { code: stderr ? 1 : 0, err: stderr };
-  };
-  return r;
+  return runner;
 }
 
 test("argv resumes a thread when there is one, and starts one otherwise", () => {
@@ -126,7 +131,11 @@ test("the log keeps the shape of a turn without its command output", () => {
     type: "item.completed",
     item: { type: "command_execution", command: "bun test", aggregated_output: long },
   };
-  const out = trimItem(line as Record<string, unknown>) as typeof line;
+  const out = z
+    .object({
+      item: z.object({ command: z.string(), aggregated_output: z.string() }),
+    })
+    .parse(trimItem(line));
   expect(out.item.command).toBe("bun test");
   expect(out.item.aggregated_output.length).toBeLessThan(500);
   expect(out.item.aggregated_output).toContain("5000 chars omitted");

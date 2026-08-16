@@ -172,6 +172,41 @@ export const ConfigSchema = z.object({
   skillsDir: z.string().min(1),
 });
 
+type DottedSchemaPath<S extends z.ZodType> =
+  S extends z.ZodObject<infer Shape>
+    ? {
+        [K in keyof Shape & string]: Shape[K] extends z.ZodObject ? `${K}.${DottedSchemaPath<Shape[K]>}` : K;
+      }[keyof Shape & string]
+    : never;
+
+type SchemaAtPath<S extends z.ZodType, P extends string> =
+  S extends z.ZodObject<infer Shape>
+    ? P extends `${infer Head}.${infer Tail}`
+      ? Head extends keyof Shape
+        ? Shape[Head] extends z.ZodType
+          ? SchemaAtPath<Shape[Head], Tail>
+          : never
+        : never
+      : P extends keyof Shape
+        ? Shape[P]
+        : never
+    : never;
+
+/** Paths that belong to installation or secret storage, not the live settings table. */
+const SETTING_DENIALS = {
+  host: "where the server listens is a startup argument (config/default.yaml or ORCH_HOST)",
+  port: "where the server listens is a startup argument (config/default.yaml or ORCH_PORT)",
+  dataDir: "the database this would be stored in is the thing it configures (ORCH_DATA_DIR)",
+  "sandbox.apiKey": "a secret; it goes in runtime_auth or ORCH_SANDBOX_API_KEY, never in a settings row",
+} as const;
+
+export type ConfigPath = DottedSchemaPath<typeof ConfigSchema>;
+export type SettingPath = Exclude<ConfigPath, keyof typeof SETTING_DENIALS>;
+export type SettingValue<P extends SettingPath> = z.output<SchemaAtPath<typeof ConfigSchema, P>>;
+export type SettingWrite = {
+  [P in SettingPath]: { path: P; value: SettingValue<P> | null };
+}[SettingPath];
+
 /**
  * The schema for one dotted path, or null if there is no such setting.
  *
@@ -179,6 +214,8 @@ export const ConfigSchema = z.object({
  * `contextWindow` is keyed by model id and `cacheDirs` by mount point, so their
  * keys are data and the whole map is the value being set.
  */
+export function schemaAt<P extends ConfigPath>(path: P): SchemaAtPath<typeof ConfigSchema, P>;
+export function schemaAt(path: string): z.ZodType | null;
 export function schemaAt(path: string): z.ZodType | null {
   let node: z.ZodType = ConfigSchema;
   for (const key of path.split(".")) {
@@ -189,6 +226,45 @@ export function schemaAt(path: string): z.ZodType | null {
   }
   return node;
 }
+
+/** The schema for a live setting, excluding installation and secret paths. */
+export function settingSchema<P extends SettingPath>(path: P): SchemaAtPath<typeof ConfigSchema, P>;
+export function settingSchema(path: string): z.ZodType | null;
+export function settingSchema(path: string): z.ZodType | null {
+  return path in SETTING_DENIALS ? null : schemaAt(path);
+}
+
+export const isSettingPath = (path: string): path is SettingPath => settingSchema(path) !== null;
+
+const SettingInput = z.object({ path: z.string().min(1).max(120), value: z.json() });
+
+/**
+ * One path/value write, with both its RPC type and runtime check derived from ConfigSchema.
+ *
+ * The assertion is the only bridge TypeScript needs: runtime strings cannot preserve
+ * which Map entry supplied which schema. The transform proves that relationship before
+ * producing SettingWrite; every HTTP, database and browser write uses this same schema.
+ */
+export const SettingWriteSchema = SettingInput.transform((input, ctx): SettingWrite => {
+  const denied = SETTING_DENIALS[input.path as keyof typeof SETTING_DENIALS];
+  if (denied) {
+    ctx.addIssue({ code: "custom", path: ["path"], message: denied });
+    return z.NEVER;
+  }
+  const schema = settingSchema(input.path);
+  if (!schema) {
+    ctx.addIssue({ code: "custom", path: ["path"], message: `no setting called ${input.path}` });
+    return z.NEVER;
+  }
+  if (input.value !== null) {
+    const parsed = schema.safeParse(input.value);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) ctx.addIssue({ ...issue, path: ["value", ...issue.path] });
+      return z.NEVER;
+    }
+  }
+  return input as SettingWrite;
+}) as z.ZodType<SettingWrite, SettingWrite>;
 
 /** Every settable dotted path, with the schema that judges it. */
 export function paths(node: z.ZodType = ConfigSchema, prefix = ""): Map<string, z.ZodType> {

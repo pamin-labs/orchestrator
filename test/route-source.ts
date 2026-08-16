@@ -10,18 +10,22 @@ export type RouteCall = {
 
 /** Route declarations, read structurally so formatting cannot disable a guard. */
 export function routeCalls(): RouteCall[] {
-  const source = readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8");
-  const declarations = [...source.matchAll(/\b(?:agentRoute|route)\(\s*app,\s*ctx,/g)];
-  const calls = [
-    ...source.matchAll(/\b(?:agentRoute|route)\(\s*app,\s*ctx,\s*"([^"]+)",\s*"([^"]+)",\s*\{([^}]*)\}\s*\)/g),
-  ].map((match) => ({
-    method: match[1]!,
-    path: match[2]!,
-    body: /\bbody\s*:/.test(match[3]!),
-    params: /\bparams\s*:/.test(match[3]!),
-  }));
-  if (calls.length !== declarations.length) throw new Error("route source reader missed a declaration");
-  return calls;
+  const dir = new URL("../src/http/routes", import.meta.url).pathname;
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".ts"))
+    .flatMap((name) => {
+      const source = readFileSync(join(dir, name), "utf8");
+      return [
+        ...source.matchAll(
+          /\.(get|post|put|patch|delete)\(\s*"([^"]+)"([\s\S]*?)(?=\n\s+\.(?:get|post|put|patch|delete)\(|;\n})/g,
+        ),
+      ].map((match) => ({
+        method: match[1]!,
+        path: match[2]!,
+        body: /\b(?:json|form)Body\(/.test(match[3]!),
+        params: /\bpathParams\(/.test(match[3]!),
+      }));
+    });
 }
 
 /**

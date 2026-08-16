@@ -6,7 +6,7 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler, type Executor } from "../src/scheduler.ts";
 import { makeExecutor, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult } from "../src/runtime/claude.ts";
 import type { TurnSpec } from "../src/runtime/claude.ts";
@@ -35,7 +35,7 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   const bus = new Bus(db);
   const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-data-")) };
   const specs: TurnSpec[] = [];
-  let exec: any = null;
+  let exec: Executor;
   const sched = new Scheduler(db, (j) => exec(j));
   const ctx: Ctx = {
     db,
@@ -43,7 +43,7 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     sched,
     sandbox: fakeSandbox(),
     waiters: new Map(),
-    config: { language: cfg.language },
+    config: cfg,
   };
   const deps: ExecDeps = {
     ctx,

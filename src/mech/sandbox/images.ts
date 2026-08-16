@@ -3,6 +3,7 @@ import type { DB } from "../../db.ts";
 import type { Config } from "../../config.ts";
 import { putSetting } from "../../settings.ts";
 import { hasRegistry, PUBLISHED_REPO } from "./sandbox.ts";
+import { z } from "zod";
 
 /**
  * What the image field may be set to, as two lists rather than a text box.
@@ -42,7 +43,7 @@ async function published(): Promise<{ tags: string[]; note?: string }> {
     const auth = await fetch(`https://ghcr.io/token?scope=repository:${repo}:pull`, {
       signal: AbortSignal.timeout(6000),
     });
-    const token = ((await auth.json()) as { token?: string }).token;
+    const token = z.object({ token: z.string().min(1) }).safeParse(await auth.json()).data?.token;
     if (!token) return { tags: [], note: "拿不到 registry 的读取令牌" };
 
     const res = await fetch(`https://ghcr.io/v2/${repo}/tags/list?n=100`, {
@@ -55,7 +56,7 @@ async function published(): Promise<{ tags: string[]; note?: string }> {
       return { tags: [], note: "还没发布过镜像 —— 先跑一次 release，或者用本地构建的" };
     }
     if (!res.ok) return { tags: [], note: `registry 答 HTTP ${res.status}` };
-    const tags = ((await res.json()) as { tags?: string[] }).tags ?? [];
+    const tags = z.object({ tags: z.array(z.string()).default([]) }).parse(await res.json()).tags;
     // `latest` first, then the rest newest-looking first. Not a semver sort:
     // whatever a release tags is the release's business, and inventing an order
     // it did not ask for is how a "newest" ends up pointing at the wrong one.

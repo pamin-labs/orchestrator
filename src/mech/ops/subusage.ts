@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { DB } from "../../db.ts";
 import type { RateLimitInfo } from "../../runtime/claude.ts";
 import type { Ctx } from "../../ctx.ts";
+import type { Json } from "../../http/respond.ts";
 import { CODEX_HOME, decoy, loadAuth, subscriptionAccount } from "../sandbox/auth.ts";
 import { execIn, UTIL } from "../sandbox/sandbox.ts";
 import { shq } from "../util/shq.ts";
@@ -90,7 +91,7 @@ const secs = (iso?: string | null): number => {
   return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
 };
 
-export function toRateLimit(value: unknown): RateLimitInfo | null {
+export function toRateLimit(value: Json): RateLimitInfo | null {
   const parsed = UsageResponse.safeParse(value);
   if (!parsed.success) return null;
   const u = parsed.data;
@@ -231,17 +232,13 @@ export async function pollClaudeUsage(ctx: Ctx, now = Date.now()): Promise<boole
  */
 function stamp(db: DB, now: number, read: UsageRead): void {
   const patch = "rl" in read ? JSON.stringify(read.rl) : JSON.stringify({ error: read.error });
+  const update = "rl" in read ? JSON.stringify({ ...read.rl, error: null }) : patch;
   db.run(
     `INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', ?, ?)
      ON CONFLICT (runtime) DO UPDATE SET
        json = json_patch(usage_snapshot.json, ?), at = excluded.at`,
-    ["rl" in read ? patch : "{}", now, "rl" in read ? json_clear(patch) : patch],
+    ["rl" in read ? patch : "{}", now, update],
   );
-}
-
-/** A success has to remove a stale `error`, and json_patch removes on null. */
-function json_clear(good: string): string {
-  return JSON.stringify({ ...JSON.parse(good), error: null });
 }
 
 /**

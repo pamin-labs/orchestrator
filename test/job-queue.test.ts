@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
+import { z } from "zod";
+
+const LeaseJobPayload = z.object({ lease_id: z.number() });
 
 function seed(db: DB, groups: number, status = "RUNNING"): number[] {
   seedAuth(db);
@@ -107,6 +110,25 @@ test("a tagged resource draws from its own pool, so one browser cannot stall eve
   release();
   await s.drain();
   expect(started.length).toBe(6);
+});
+
+test("legacy resource tags with the wrong JSON shape fall back to the default pool", async () => {
+  const db = openMemory();
+  const [grp] = seed(db, 1);
+  db.run(`INSERT INTO resource (name, template, tags_json) VALUES ('build', 'echo build', '"repo"')`);
+  const lease = db
+    .query<{ id: number }, [number]>(
+      "INSERT INTO lease (resource, grp_id, enqueued_at) VALUES ('build', ?, 0) RETURNING id",
+    )
+    .get(grp!)!;
+  const ran: Job[] = [];
+  const scheduler = new Scheduler(db, async (job) => void ran.push(job));
+
+  scheduler.enqueue("lease", { grp_id: grp, payload: { lease_id: lease.id } });
+  scheduler.tick();
+  await scheduler.drain();
+
+  expect(ran).toHaveLength(1);
 });
 
 test("non-RUNNING group status is a barrier — this IS intercept L2", async () => {
@@ -458,7 +480,7 @@ test("two gates of one repo do not run at once, but two repos still do", async (
   const inflight = db
     .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'running'")
     .all()
-    .map((r) => JSON.parse(r.payload_json).lease_id as number);
+    .map((row) => LeaseJobPayload.parse(JSON.parse(row.payload_json)).lease_id);
   expect(inflight).toContain(1);
   // Same repo, different group, different gate: still waits.
   expect(inflight).not.toContain(2);

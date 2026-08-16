@@ -1,9 +1,9 @@
 import { projectOfAgent } from "../../mech/util/rows.ts";
 import { Id } from "../fields.ts";
-import { query as ctxQuery, DEFAULT_BUDGET } from "../../mech/knowledge/ctx.ts";
+import { query as ctxQuery } from "../../mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search } from "../../mech/knowledge/pageindex.ts";
 import { z } from "zod";
-import { text, type AgentHandler } from "../shared.ts";
+import { message, type AgentHandler } from "../shared.ts";
 
 /**
  * The first thing every role is told to run, so its cost is everyone's cost.
@@ -20,7 +20,7 @@ export const CtxQueryBody = z.object({
   limit: Id.pipe(z.number().max(64_000)).optional(),
 });
 
-export const postCtxQuery: AgentHandler<z.infer<typeof CtxQueryBody>> = async (ctx, _req, a, _p, b) => {
+export const postCtxQuery = (async (ctx, _req, a, _p, b) => {
   const projectId = projectOfAgent(ctx.db, a.id);
   // PageIndex: a model walks the summary tree and can land on a file whose name
   // shares no word with the question. It costs one cheap call, against grep rounds
@@ -56,7 +56,7 @@ export const postCtxQuery: AgentHandler<z.infer<typeof CtxQueryBody>> = async (c
       }
     } catch {}
   }
-  return text(
+  return message(
     ctxQuery({
       db: ctx.db,
       grpId: a.grp_id,
@@ -65,9 +65,7 @@ export const postCtxQuery: AgentHandler<z.infer<typeof CtxQueryBody>> = async (c
       where,
       // From config, not the module default: `ctxBudgetChars` was a setting that
       // read back as itself and changed nothing, because nobody ever passed it here.
-      budget: b.limit ?? ctx.config.ctxBudgetChars ?? CTX_BUDGET_CHARS,
+      budget: b.limit ?? ctx.config.ctxBudgetChars,
     }),
   );
-};
-
-const CTX_BUDGET_CHARS = DEFAULT_BUDGET;
+}) satisfies AgentHandler<z.infer<typeof CtxQueryBody>>;

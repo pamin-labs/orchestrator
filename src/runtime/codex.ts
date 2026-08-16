@@ -1,4 +1,5 @@
 import { clip, jsonOr } from "../mech/util/text.ts";
+import { JsonObject, JsonValue } from "../http/respond.ts";
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary, Usage } from "./claude.ts";
 import { promptPath, summarizeTool } from "./claude.ts";
 import { shq } from "../mech/util/shq.ts";
@@ -64,12 +65,13 @@ export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
  * codex emits. Everything long lands under `item`, so that is what gets clipped.
  */
 const LOG_ITEM_CHARS = 400;
+type JsonMap = z.infer<typeof JsonObject>;
 
-export function trimItem(l: Record<string, unknown>): Record<string, unknown> {
-  const item = l.item;
-  if (!item || typeof item !== "object") return l;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(item)) {
+export function trimItem(l: JsonMap): JsonMap {
+  const item = JsonObject.safeParse(l.item);
+  if (!item.success) return l;
+  const out: JsonMap = {};
+  for (const [k, v] of Object.entries(item.data)) {
     out[k] =
       typeof v === "string" && v.length > LOG_ITEM_CHARS
         ? `${v.slice(0, LOG_ITEM_CHARS)}… [${v.length} chars omitted]`
@@ -87,14 +89,14 @@ const UsageSchema = z
     output_tokens: Counter.optional(),
     reasoning_output_tokens: Counter.optional(),
   })
-  .passthrough();
+  .catchall(JsonValue);
 const WindowSchema = z
   .object({
     used_percent: Counter.max(100).optional(),
     window_minutes: Counter.optional(),
     resets_in_seconds: Counter.optional(),
   })
-  .passthrough();
+  .catchall(JsonValue);
 
 /** One valid Codex NDJSON event. Unknown fields remain available to the log. */
 const LineSchema = z
@@ -109,19 +111,19 @@ const LineSchema = z
         command: z.string().optional(),
         path: z.string().optional(),
       })
-      .passthrough()
+      .catchall(JsonValue)
       .optional(),
     usage: UsageSchema.optional(),
-    error: z.object({ message: z.string().optional() }).passthrough().optional(),
+    error: z.object({ message: z.string().optional() }).catchall(JsonValue).optional(),
     message: z.string().optional(),
     /** token_count carries the account's own quota state, both windows, as percentages. */
     rate_limits: z
       .object({ primary: WindowSchema.optional(), secondary: WindowSchema.optional() })
-      .passthrough()
+      .catchall(JsonValue)
       .optional(),
-    info: z.object({ model_context_window: Counter.optional() }).passthrough().nullable().optional(),
+    info: z.object({ model_context_window: Counter.optional() }).catchall(JsonValue).nullable().optional(),
   })
-  .passthrough();
+  .catchall(JsonValue);
 
 /**
  * What one codex turn cost, in the shape the rest of the system bills in.
@@ -224,8 +226,8 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
             result.toolSummaries.push({ name: "notice", detail: clip(it.message ?? "", 120, true) });
           } else if (it.type) {
             const t: ToolSummary = summarizeTool(it.type, {
-              command: it.command,
-              file_path: it.path,
+              ...(it.command ? { command: it.command } : {}),
+              ...(it.path ? { file_path: it.path } : {}),
             });
             result.toolSummaries.push(t);
             h.onTool?.(t);

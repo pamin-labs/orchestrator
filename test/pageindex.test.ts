@@ -17,9 +17,8 @@ import {
   summarise,
   type Ask,
 } from "../src/mech/knowledge/pageindex.ts";
-import { Bus } from "../src/bus.ts";
 import { costReport } from "../src/mech/ops/cost.ts";
-import type { Ctx } from "../src/api.ts";
+import { testContext } from "./test-context.ts";
 
 function repo(): string {
   const d = mkdtempSync(join(tmpdir(), "orch-pi-"));
@@ -144,7 +143,7 @@ test("what the index spends shows up in the cost report", async () => {
   // prefix and a session — mixing the two makes "librarian took 4M" unusable.
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  const ctx = { db, bus: new Bus(db) } as unknown as Ctx;
+  const ctx = testContext({ db });
   const spec = { runtime: "codex", model: "gpt-5.6-luna" };
 
   chargeIndex(ctx, 1, spec, { input: 100, output: 20, cacheRead: 5, cacheCreate: 1, thinking: 0 });
@@ -166,7 +165,7 @@ test("a call that reported no usage is not charged", () => {
   // the report rather than an absence.
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  const ctx = { db, bus: new Bus(db) } as unknown as Ctx;
+  const ctx = testContext({ db });
   chargeIndex(
     ctx,
     1,

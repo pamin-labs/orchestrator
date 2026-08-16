@@ -6,7 +6,14 @@ import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } f
 import { Segment, Segments, Toggle, Toggles } from "../ui/segment";
 import { Combobox } from "../ui/combobox";
 import { cn } from "../lib/utils";
-import { pull } from "../lib/api";
+import { api, readApi } from "../lib/api";
+import { z } from "zod";
+import type { InferResponseType } from "hono/client";
+import { SandboxOverrideSchema } from "../../../src/config-schema.ts";
+
+const projectConfigPost = api.project[":id"].config.$post;
+export type ProjectPatch = NonNullable<Parameters<typeof projectConfigPost>[0]>["json"];
+type SandboxPatch = NonNullable<ProjectPatch["sandbox"]>;
 
 /**
  * What this repository does differently, and nothing that is true of all of them.
@@ -16,29 +23,28 @@ import { pull } from "../lib/api";
  * — a dot that only appears once you have looked is a dot that does nothing.
  */
 
-export interface Config {
-  gates?: string[];
-  install?: string | null;
-  sandbox?: {
-    image?: string;
-    cpu?: string;
-    memory?: string;
-    denyDomains?: string[];
-    cacheDirs?: Record<string, string>;
-  };
-}
+type ProjectConfigResponse = InferResponseType<(typeof api.project)[":id"]["config"]["$get"], 200>;
+const ConfigSchema: z.ZodType<ProjectConfigResponse["config"]> = z
+  .object({
+    detected: z.boolean().optional(),
+    gates: z.array(z.string()).optional(),
+    install: z.string().nullable().optional(),
+    shared: z.array(z.string()).optional(),
+    sandbox: SandboxOverrideSchema.optional(),
+    index: z.object({ exclude: z.array(z.string()).optional() }).optional(),
+  })
+  .catchall(z.json());
+export type Config = z.infer<typeof ConfigSchema>;
 
-export interface ProjectConfig {
-  repoPath: string;
-  config: Config;
-  resources: Array<{ name: string; template: string }>;
-  /** What the boss pinned, or null for "ask the remote". */
-  baseBranch: string | null;
-  /** What that resolves to right now. */
-  baseBranchNow: string;
-  /** What the remote has. Empty when GitHub could not be asked — not a failure. */
-  branches?: string[];
-}
+export const ProjectConfigSchema: z.ZodType<ProjectConfigResponse> = z.object({
+  repoPath: z.string(),
+  config: ConfigSchema,
+  resources: z.array(z.object({ name: z.string(), template: z.string() })),
+  baseBranch: z.string().nullable(),
+  baseBranchNow: z.string(),
+  branches: z.array(z.string()),
+});
+export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 
 /** Handle, order, name, command. Fixed, so the commands line up down the page. */
 const GATE_ROW = "grid grid-cols-[1.25rem_1.5rem_7rem_minmax(0,1fr)] items-baseline gap-x-3 px-2";
@@ -58,7 +64,7 @@ const GATE_ROW = "grid grid-cols-[1.25rem_1.5rem_7rem_minmax(0,1fr)] items-basel
  * `Alt` plus an arrow key does the same thing for the keyboard, which native drag
  * does not cover on its own.
  */
-export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: Record<string, unknown>) => void }) {
+export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch) => void }) {
   const [drag, setDrag] = useState<string | null>(null);
   const gates = d.config.gates ?? [];
   const on = gates.filter((g) => d.resources.some((r) => r.name === g));
@@ -159,17 +165,14 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: Record<string
  * Widths follow the values. Six identical full-width boxes for `8Gi` and a path
  * is a wall of frames that says nothing about what goes in them.
  */
-export function Sandbox({
-  d,
-  busy,
-  patch,
-}: {
-  d: ProjectConfig;
-  busy: boolean;
-  patch: (b: Record<string, unknown>) => void;
-}) {
+export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; patch: (b: ProjectPatch) => void }) {
   const sandbox = d.config.sandbox ?? {};
-  const set = (k: string, v: unknown) => patch({ sandbox: { ...sandbox, [k]: v } });
+  const set = <K extends keyof SandboxPatch>(k: K, v: SandboxPatch[K]) => {
+    const next: SandboxPatch = { ...sandbox };
+    if (v === undefined) delete next[k];
+    else next[k] = v;
+    patch({ sandbox: next });
+  };
 
   return (
     <>
@@ -333,11 +336,13 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
   );
 }
 
-interface ImageChoices {
-  published: string[];
-  local: string[];
-  note: { published?: string; local?: string };
-}
+export const ImageChoicesSchema: z.ZodType<InferResponseType<typeof api.sandbox.images.$get, 200>> = z.object({
+  published: z.array(z.string()),
+  local: z.array(z.string()),
+  note: z.object({ published: z.string().optional(), local: z.string().optional() }),
+  current: z.string(),
+});
+type ImageChoices = z.infer<typeof ImageChoicesSchema>;
 
 /**
  * Which image a group's container is made from — picked, never typed.
@@ -374,7 +379,7 @@ export function ImageRow({
   const [src, setSrc] = useState<"remote" | "local">(value && !value.startsWith("ghcr.io/") ? "local" : "remote");
   const [c, setC] = useState<ImageChoices | null>(null);
   useEffect(() => {
-    void pull<ImageChoices>("/api/sandbox/images").then(setC);
+    void readApi(api.sandbox.images.$get(), ImageChoicesSchema).then(setC);
   }, []);
 
   const options = (src === "remote" ? c?.published : c?.local) ?? [];

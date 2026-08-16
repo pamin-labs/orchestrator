@@ -25,6 +25,8 @@ export const GRP_STATES = [
 
 export const SLICE_STATES = ["pending", "running", "gate", "qa", "awaiting_boss", "accepted", "rejected"] as const;
 
+export const TASK_STATES = ["pending", "in_progress", "done"] as const;
+
 export const JOB_STATES = ["pending", "running", "done", "failed", "cancelled"] as const;
 
 /**
@@ -81,6 +83,7 @@ export type UtilState = (typeof UTIL_STATES)[number];
 export type ServerState = (typeof SERVER_STATES)[number];
 export type ProjectState = (typeof PROJECT_STATES)[number];
 export type SliceState = (typeof SLICE_STATES)[number];
+export type TaskState = (typeof TASK_STATES)[number];
 export type JobState = (typeof JOB_STATES)[number];
 export type LeaseState = (typeof LEASE_STATES)[number];
 export type EscalationState = (typeof ESCALATION_STATES)[number];
@@ -91,6 +94,7 @@ type StateSubset =
   | readonly ServerState[]
   | readonly ProjectState[]
   | readonly SliceState[]
+  | readonly TaskState[]
   | readonly JobState[]
   | readonly LeaseState[]
   | readonly EscalationState[];

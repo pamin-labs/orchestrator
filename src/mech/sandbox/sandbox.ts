@@ -114,21 +114,9 @@ function defaultCpu(): string {
   return String(Math.max(2, Math.floor(cpus().length / 4)));
 }
 
-/** Only reached by unit tests that build a Ctx without a config block. */
-const DEFAULTS = {
-  server: "127.0.0.1:8080",
-  apiKey: "",
-  image: "ghcr.io/pamin-labs/orch-agent:latest",
-  cpu: "",
-  memory: "8Gi",
-  ttlSeconds: 86400,
-  denyDomains: [] as string[],
-  cacheDirs: {} as Record<string, string>,
-};
-
 /** Config, then the project's override. Adding a knob is a yaml key. */
 export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
-  const base = ctx.config.sandbox ?? DEFAULTS;
+  const base = ctx.config.sandbox;
   const over = projectConfig(ctx.db, projectId).sandbox ?? {};
   // `||`, not `??`: an empty string is how the yaml says "you decide", and it is
   // never a usable value for any of these.
@@ -361,7 +349,7 @@ function connection(ctx: Ctx): ConnectionConfig {
   // Set from the panel first, then the environment, then the yaml. The yaml is
   // committed, so a key that lives there is a key that leaks; the panel writes
   // it to the same store every other credential uses.
-  const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || (ctx.config.sandbox ?? DEFAULTS).apiKey;
+  const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || ctx.config.sandbox.apiKey;
   return new ConnectionConfig({
     domain: `${host}:${port ?? 8080}`,
     protocol,
@@ -490,7 +478,7 @@ export function resetSandboxHold(): void {
   saidDown = false;
 }
 
-function markDown(ctx: Ctx, e: unknown, now = Date.now()): void {
+function markDown<T>(ctx: Ctx, e: T, now = Date.now()): void {
   downUntil = now + HOLD_MS;
   if (saidDown) return;
   saidDown = true;
@@ -642,7 +630,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         credentials: credentials.map((c) => ({ name: c.name, source: { type: "inline" as const, value: c.value } })),
         bindings: credentials.map((c) => ({ name: c.name, match: matchFor(c), auth: authFor(c) })),
       })
-      .catch((e: unknown) => {
+      .catch((e) => {
         // Said here, because nothing else can say it. This used to claim
         // preflight would report it: preflight runs at boot, and this is a call
         // against a container that did not exist then — it never had a chance.
@@ -664,12 +652,10 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         });
       });
   }
-  // A container this fresh has no clone and nothing installed. Imported here
-  // rather than at the top because `start.ts` reads this module too, and the
-  // cycle only resolves if neither side needs the other while it is loading.
-  if ("grp" in scope) {
-    const { restoreWorkspace } = await import("../flow/start.ts");
-    await restoreWorkspace(ctx, scope.grp).catch((e: unknown) => {
+  // A container this fresh has no clone and nothing installed. The server wires
+  // the flow callback so this low-level module does not import its own caller.
+  if ("grp" in scope && ctx.restoreWorkspace) {
+    await ctx.restoreWorkspace(scope.grp).catch((e) => {
       ctx.bus.emit({
         grpId: scope.grp,
         author: "orchestrator",
@@ -694,7 +680,7 @@ export const FILE_MODE = 644;
 const EXEC_MODE = 755;
 
 /** The one creation failure worth degrading for rather than failing the group. */
-function isPathNotAllowed(e: unknown): boolean {
+function isPathNotAllowed<T>(e: T): boolean {
   return /not under any allowed prefix|allowed_host_paths/i.test(String(e));
 }
 
@@ -828,7 +814,7 @@ export function skillMounts(ctx: Ctx): Volume[] {
   // filesystem path, rejects anything not starting with `/`, and rejects
   // anything outside `allowed_host_paths` — which is why this is not under
   // `dataDir`. A repo checkout is never on that list.
-  const path = resolve(ctx.config?.skillsDir ?? "/var/tmp/orch-cache/skills");
+  const path = resolve(ctx.config.skillsDir);
   if (!existsSync(path)) return [];
   return [{ name: "skills", host: { path: hostPathForDaemon(path) }, mountPath: STAGED_SKILLS, readOnly: true }];
 }
@@ -951,7 +937,7 @@ export function serverAddr(ctx: Ctx): string {
   // One place. The `sandbox_server_addr` row this used to consult first is
   // `cfg.sandbox.server` since migration 039, so the config already carries
   // whatever the panel set.
-  return (ctx.config?.sandbox?.server || DEFAULTS.server).trim();
+  return ctx.config.sandbox.server.trim();
 }
 
 /** The agent's only way out: a request is a file here, the answer is another. */
@@ -1012,7 +998,10 @@ export async function relinkSkills(): Promise<void> {
  * Every caller that writes into a container goes through here. Fixing it at the
  * four call sites instead would leave the fifth one somebody adds next month.
  */
-export async function writeInto(sb: Sandbox, files: Parameters<Sandbox["files"]["writeFiles"]>[0]): Promise<void> {
+export async function writeInto(
+  sb: { files: Pick<Sandbox["files"], "writeFiles"> },
+  files: Parameters<Sandbox["files"]["writeFiles"]>[0],
+): Promise<void> {
   try {
     await sb.files.writeFiles(files);
   } catch {

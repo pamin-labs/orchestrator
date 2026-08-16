@@ -1,7 +1,8 @@
 import { checkPrMessage } from "../../mech/git/prwatch.ts";
 import { z } from "zod";
 import { GroupRef } from "../fields.ts";
-import { bad, mayAct, resolveGroup, text, type AgentHandler } from "../shared.ts";
+import { bad, mayAct, resolveGroup, message, type AgentHandler } from "../shared.ts";
+import type { GrpState } from "../../states.ts";
 
 /**
  * The Scribe's PR message: title and body, checked before anything is pushed.
@@ -32,11 +33,11 @@ export const PrBody = z.object({
   body: z.string().max(20_000).default(""),
 });
 
-export const postPr: AgentHandler<z.infer<typeof PrBody>> = async (ctx, _req, a, _p, b) => {
+export const postPr = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "scribe") return bad(`${a.role} does not write pull request messages`);
   const gid = resolveGroup(ctx, b.group_id);
   if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return text("not your project", 403);
+  if (!mayAct(ctx, a, gid)) return message("not your project", 403);
 
   const title = b.title.trim();
   const summary = b.body.trim();
@@ -44,7 +45,7 @@ export const postPr: AgentHandler<z.infer<typeof PrBody>> = async (ctx, _req, a,
   if (wrong) return bad(wrong);
 
   const g = ctx.db
-    .query<{ status: string; pr_number: number | null }, [number]>("SELECT status, pr_number FROM grp WHERE id = ?")
+    .query<{ status: GrpState; pr_number: number | null }, [number]>("SELECT status, pr_number FROM grp WHERE id = ?")
     .get(gid);
   if (!g) return bad("no such group");
   ctx.db.run("UPDATE grp SET pr_title = ?, pr_summary = ? WHERE id = ?", [title, summary, gid]);
@@ -58,5 +59,5 @@ export const postPr: AgentHandler<z.infer<typeof PrBody>> = async (ctx, _req, a,
   // Already open: the message is stored and `openPr` PATCHes the existing one
   // rather than opening a second. Publishing is still the same call either way.
   ctx.publishBranch?.(gid);
-  return text("ok");
-};
+  return message("ok");
+}) satisfies AgentHandler<z.infer<typeof PrBody>>;

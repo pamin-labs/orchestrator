@@ -4,10 +4,13 @@ import { Badge } from "../ui/badge";
 import { Tip } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
-import { pull } from "../lib/api";
+import { api, readApi } from "../lib/api";
 import { usePaged } from "../lib/page";
 import { clock, cn } from "../lib/utils";
 import { WithAttachments } from "../ui/attachments";
+import { z } from "zod";
+import { jsonOr } from "../../../src/mech/util/text.ts";
+import type { InferResponseType } from "hono/client";
 
 /**
  * The blackboard's static half.
@@ -22,16 +25,20 @@ import { WithAttachments } from "../ui/attachments";
  * the whole body is shown rather than truncated: a 6-line note with a "more" link
  * would be a click to see two extra lines.
  */
-export interface Note {
-  id: number;
-  grpId: number | null;
-  kind: string;
-  body: string;
-  at: number;
-  exportPath: string | null;
-  frontmatter: string | null;
-  group: string | null;
-}
+const NoteSchema = z.object({
+  id: z.number(),
+  grpId: z.number().nullable(),
+  kind: z.string(),
+  body: z.string(),
+  at: z.number(),
+  exportPath: z.string().nullable(),
+  frontmatter: z.string().nullable(),
+  group: z.string().nullable(),
+});
+export type Note = z.infer<typeof NoteSchema>;
+const NotesResponseSchema: z.ZodType<InferResponseType<typeof api.notes.$get, 200>> = z.object({
+  notes: z.array(NoteSchema),
+});
 
 const KINDS: [string, string][] = [
   ["journal", "日志"],
@@ -44,6 +51,10 @@ const KINDS: [string, string][] = [
 ];
 
 const ZH = new Map(KINDS.map(([k, zh]) => [k, zh]));
+const FrontmatterSchema = z.object({
+  files: z.array(z.string()).optional(),
+  gate: z.string().nullable().optional(),
+});
 
 export function Notes({
   projectId,
@@ -67,7 +78,8 @@ export function Notes({
 
   useEffect(() => {
     setNotes(null);
-    void pull<{ notes: Note[] }>(`/api/notes?${scope}`).then((r) => {
+    const query = grpId ? { group: String(grpId) } : projectId ? { project: String(projectId) } : {};
+    void readApi(api.notes.$get({ query }), NotesResponseSchema).then((r) => {
       setNotes(r?.notes ?? []);
       onCount?.(r?.notes?.length ?? 0);
     });
@@ -130,13 +142,9 @@ function List({ notes, size, showKind }: { notes: Note[]; size: number; showKind
 function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
   // frontmatter is structured on purpose: files and the gate verdict are the
   // deterministic anchors that stop a journal being self-congratulation.
-  let files: string[] = [];
-  let gate: string | null = null;
-  try {
-    const f = JSON.parse(n.frontmatter ?? "{}");
-    files = Array.isArray(f.files) ? f.files.slice(0, 4) : [];
-    gate = typeof f.gate === "string" ? f.gate : null;
-  } catch {}
+  const frontmatter = jsonOr(n.frontmatter, FrontmatterSchema, {});
+  const files = frontmatter.files?.slice(0, 4) ?? [];
+  const gate = frontmatter.gate ?? null;
 
   return (
     // Two columns, because there are two things here and they were on one line.

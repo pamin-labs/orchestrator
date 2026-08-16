@@ -13,7 +13,7 @@ import {
 import { head, joinQueue, landed, position, queue } from "../src/mech/flow/mergequeue.ts";
 import { reconcileOwnership } from "../src/runtime/executor.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
-import type { Ctx } from "../src/api.ts";
+import { testContext } from "./test-context.ts";
 
 function seed(groups: Array<{ name: string; owns: string[]; status?: string }>): DB {
   const db = openMemory();
@@ -254,17 +254,16 @@ test("the revert actually runs, against the group's own checkout", async () => {
     if (!cmd.includes("'status'")) return {};
     return { out: ++statuses === 1 ? " M src/auth/mw.ts\0?? web/stray.ts\0" : " M src/auth/mw.ts\0" };
   });
-  const said: string[] = [];
-  const ctx = {
-    db,
-    bus: { emit: (e: { body: string }) => said.push(e.body) },
-    sandbox,
-    config: { language: "中文" },
-  } as unknown as Ctx;
+  const ctx = testContext({ db, sandbox });
 
-  await reconcileOwnership({ ctx } as never, { role: "engineer" } as never, { grp_id: 1 } as never, {
-    owns_json: JSON.stringify(["src/auth/**"]),
-  });
+  await reconcileOwnership(
+    { ctx },
+    { role: "engineer" },
+    { grp_id: 1 },
+    {
+      owns_json: JSON.stringify(["src/auth/**"]),
+    },
+  );
 
   const ran = sandbox.commands.join("\n");
   // The group's own checkout, inside its container. There is no `/work` here.
@@ -274,7 +273,12 @@ test("the revert actually runs, against the group's own checkout", async () => {
   // What it kept: the owned file is not in either repair command.
   expect(ran).not.toContain("src/auth/mw.ts");
   // Said out loud, or the agent watches its own work vanish.
-  expect(said.join(" ")).toContain("web/stray.ts");
+  expect(
+    ctx.bus
+      .since(0)
+      .map((event) => event.body)
+      .join(" "),
+  ).toContain("web/stray.ts");
 });
 
 test("a path git had to quote is still the path that gets rolled back", async () => {
@@ -291,20 +295,24 @@ test("a path git had to quote is still the path that gets rolled back", async ()
     if (!cmd.includes("'status'")) return {};
     return { out: ++statuses === 1 ? "?? docs/设计 稿.md\0" : "" };
   });
-  const said: string[] = [];
-  const ctx = {
-    db,
-    bus: { emit: (e: { body: string }) => said.push(e.body) },
-    sandbox,
-    config: { language: "中文" },
-  } as unknown as Ctx;
+  const ctx = testContext({ db, sandbox });
 
-  await reconcileOwnership({ ctx } as never, { role: "engineer" } as never, { grp_id: 1 } as never, {
-    owns_json: JSON.stringify(["src/auth/**"]),
-  });
+  await reconcileOwnership(
+    { ctx },
+    { role: "engineer" },
+    { grp_id: 1 },
+    {
+      owns_json: JSON.stringify(["src/auth/**"]),
+    },
+  );
 
   expect(sandbox.commands.join("\n")).toContain("'clean' '-fd' '--' 'docs/设计 稿.md'");
-  expect(said.join(" ")).toContain("docs/设计 稿.md");
+  expect(
+    ctx.bus
+      .since(0)
+      .map((event) => event.body)
+      .join(" "),
+  ).toContain("docs/设计 稿.md");
 });
 
 test("a revert that changed nothing says so instead of claiming it worked", async () => {
@@ -314,19 +322,21 @@ test("a revert that changed nothing says so instead of claiming it worked", asyn
   const sandbox = fakeSandbox((cmd) =>
     cmd.includes("'status'") ? { out: "?? web/stray.ts\0" } : { code: 1, out: "error: pathspec did not match" },
   );
-  const said: string[] = [];
-  const ctx = {
-    db,
-    bus: { emit: (e: { body: string }) => said.push(e.body) },
-    sandbox,
-    config: { language: "中文" },
-  } as unknown as Ctx;
+  const ctx = testContext({ db, sandbox });
 
-  await reconcileOwnership({ ctx } as never, { role: "engineer" } as never, { grp_id: 1 } as never, {
-    owns_json: JSON.stringify(["src/auth/**"]),
-  });
+  await reconcileOwnership(
+    { ctx },
+    { role: "engineer" },
+    { grp_id: 1 },
+    {
+      owns_json: JSON.stringify(["src/auth/**"]),
+    },
+  );
 
-  const all = said.join(" ");
+  const all = ctx.bus
+    .since(0)
+    .map((event) => event.body)
+    .join(" ");
   expect(all).toContain("could not roll back");
   expect(all).toContain("web/stray.ts");
 });

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { baseBranch, LINK_AGENTS_MD } from "../src/mech/git/checkout.ts";
 import { openMemory } from "../src/db.ts";
-import type { Ctx } from "../src/api.ts";
+import type { Github } from "../src/mech/git/github.ts";
 import {
   baseRef,
   changedSince,
@@ -16,6 +16,7 @@ import {
   sliceDiffBase,
   squashWip,
 } from "../src/mech/git/worktree.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * A group's checkout, as a plain clone.
@@ -284,34 +285,40 @@ test("a renamed default branch is picked up rather than breaking every clone", a
   // and diff resolving against a ref that is not there.
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'acme/p', 0)");
-  const said: string[] = [];
   let branch = "main";
-  const ctx = {
-    db,
-    bus: { emit: (e: { body: string }) => said.push(e.body) },
-    gh: {
-      remaining: () => null,
-      request: async () => ({ ok: true, status: 200, data: { default_branch: branch, full_name: "acme/p" } }),
-    },
-  } as unknown as Ctx;
+  const gh: Github = {
+    remaining: () => null,
+    request: async (_method, _path, schema) => ({
+      ok: true,
+      status: 200,
+      data: schema.parse({ default_branch: branch, full_name: "acme/p" }),
+    }),
+  };
+  const ctx = testContext({ db, gh });
 
   // Resolved once, then stored: the diff baseline has to mean the same thing on
   // the day a slice was cut and the day the boss reads it.
   expect(await baseBranch(ctx, 1)).toBe("main");
   expect(db.query<{ b: string | null }, []>("SELECT base_branch AS b FROM project").get()!.b).toBe("main");
   // Learning it the first time is not a change, so it is not announced.
-  expect(said).toEqual([]);
+  expect(ctx.bus.since(0)).toEqual([]);
 
   branch = "mainline";
   expect(await baseBranch(ctx, 1)).toBe("mainline");
-  expect(said.join(" ")).toContain("mainline");
+  expect(
+    ctx.bus
+      .since(0)
+      .map((event) => event.body)
+      .join(" "),
+  ).toContain("mainline");
 
   // GitHub unreachable keeps what is stored: resetting a project that develops
   // on `develop` to `main` because the network blinked would repoint every diff.
-  const offline = {
-    ...ctx,
-    gh: { remaining: () => null, request: async () => ({ ok: false, status: 0, bucket: "transient", message: "x" }) },
-  } as unknown as Ctx;
+  const unavailable: Github = {
+    remaining: () => null,
+    request: async () => ({ ok: false, status: 0, bucket: "transient", message: "x" }),
+  };
+  const offline = testContext({ ...ctx, gh: unavailable });
   expect(await baseBranch(offline, 1)).toBe("mainline");
 });
 
@@ -325,24 +332,29 @@ test("a repository renamed or moved to another org is followed, not left pointin
   db.run(
     "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', 'Old-Org/p', 'https://github.com/Old-Org/p.git', 0)",
   );
-  const said: string[] = [];
-  const ctx = {
-    db,
-    bus: { emit: (e: { body: string }) => said.push(e.body) },
-    gh: {
-      remaining: () => null,
-      request: async () => ({
-        ok: true,
-        status: 200,
-        data: { default_branch: "main", full_name: "new-org/p", clone_url: "https://github.com/new-org/p.git" },
+  const gh: Github = {
+    remaining: () => null,
+    request: async (_method, _path, schema) => ({
+      ok: true,
+      status: 200,
+      data: schema.parse({
+        default_branch: "main",
+        full_name: "new-org/p",
+        clone_url: "https://github.com/new-org/p.git",
       }),
-    },
-  } as unknown as Ctx;
+    }),
+  };
+  const ctx = testContext({ db, gh });
 
   await baseBranch(ctx, 1);
   const row = db.query<{ p: string; r: string }, []>("SELECT repo_path AS p, remote AS r FROM project").get()!;
   expect(row.p).toBe("new-org/p");
   // The remote too, or the clone still fetches by the old URL.
   expect(row.r).toBe("https://github.com/new-org/p.git");
-  expect(said.join(" ")).toContain("new-org/p");
+  expect(
+    ctx.bus
+      .since(0)
+      .map((event) => event.body)
+      .join(" "),
+  ).toContain("new-org/p");
 });

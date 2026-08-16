@@ -1,10 +1,31 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
+import { Agent } from "../src/api/panel/shapes.ts";
+import { imagePaths, makeApp, UPLOAD_LIMIT, withAttachments } from "../src/api.ts";
 import { activityOf } from "../web/src/lib/activity.ts";
 import { splitAttachments } from "../web/src/lib/attach.ts";
 import { repoHref } from "../web/src/lib/utils.ts";
-import { imagePaths, makeApp, UPLOAD_LIMIT, withAttachments } from "../src/api.ts";
+import { testContext } from "./test-context.ts";
 
-const of = (activity: string) => activityOf({ activity } as never);
+const of = (activity: string) =>
+  activityOf(
+    Agent.parse({
+      id: 1,
+      grp_id: null,
+      role: "engineer",
+      model: "test",
+      state: "running",
+      activity,
+      session_tokens: 0,
+      total_tokens: 0,
+      turns: 0,
+      slice_id: null,
+    }),
+  );
+
+const AttachResponse = z.object({
+  files: z.array(z.object({ name: z.string(), path: z.string(), type: z.string(), size: z.number() })),
+});
 
 test("the wall says what a command is for, and keeps what it was for", () => {
   // Verbatim off the live wall. Every row was shell, so scanning it meant reading
@@ -58,7 +79,7 @@ test("an upload too big to hold is refused before it is held", async () => {
   // whole body into memory, so it never bounded the request — and a dropped
   // folder is one gesture that sends forty files. `content-length` is what every
   // browser upload carries, so this is decided without reading a byte.
-  const app = makeApp({ db: null as never, config: {} } as never);
+  const app = makeApp(testContext());
   const r = await app(
     new Request("http://x/api/attach", {
       method: "POST",
@@ -84,12 +105,11 @@ test("a dropped folder becomes one attachment, and cannot escape its directory",
   form.append("file", new File(["c"], "c.png", { type: "image/png" }), "c.png");
   form.append("rel", "c.png");
 
-  const app = makeApp({
-    db: null as never,
-    config: { dataDir: dir, language: "中文" },
-  } as never);
+  const ctx = testContext();
+  ctx.config.dataDir = dir;
+  const app = makeApp(ctx);
   const r = await app(new Request("http://x/api/attach", { method: "POST", body: form }));
-  const { files } = (await r.json()) as { files: { name: string; path: string; type: string }[] };
+  const { files } = AttachResponse.parse(await r.json());
 
   // The folder is one entry, the loose image is another. Forty files inside a
   // dropped folder would otherwise be forty things to refer to.

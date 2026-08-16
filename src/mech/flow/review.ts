@@ -3,7 +3,7 @@ import type { Config } from "../../config.ts";
 import { say } from "../../lang.ts";
 import { jsonOr } from "../util/text.ts";
 import { runGates, recordGate, gateState } from "../gate.ts";
-import { extractClaimedFiles, reconcile } from "./reconcile.ts";
+import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
 import { changedSince, filesAt } from "../git/worktree.ts";
 import { resourceExec, WORK } from "../sandbox/sandbox.ts";
 import { pushBranch, sandboxGit } from "../git/checkout.ts";
@@ -68,12 +68,17 @@ export async function runDeterministicReview(
     .get(slice.grp_id);
 
   // --- reconcile: what was claimed against what git shows for THIS slice
-  const claims = ctx.db
+  const storedClaims = ctx.db
     .query<{ claim_json: string | null }, [number]>(
       "SELECT claim_json FROM task WHERE slice_id = ? AND status = 'done'",
     )
     .all(sliceId)
-    .map((r) => jsonOr(r.claim_json, z.unknown(), r.claim_json ?? null));
+    .map((r) => jsonOr(r.claim_json, z.json(), null));
+  const claims = z.array(TaskClaimSchema).safeParse(storedClaims);
+  if (!claims.success) {
+    recordGate(ctx.db, sliceId, "reconcile", "fail");
+    return { pass: false, feedback: `Reconcile failed: ${z.prettifyError(claims.error)}` };
+  }
 
   let changed: string[] = [];
   let absent: string[] = [];
@@ -91,16 +96,16 @@ export async function runDeterministicReview(
     // is in one list or the other; no filesystem check is needed.)
     const known = new Set(await filesAt(sgit, WORK, WORK, slice.base_sha));
     const seen = new Set(changed);
-    absent = extractClaimedFiles(claims).filter((c) => !known.has(c) && !seen.has(c));
+    absent = extractClaimedFiles(claims.data).filter((c) => !known.has(c) && !seen.has(c));
   }
-  const rec = reconcile({ claims, changedFiles: changed, absent });
+  const rec = reconcile({ claims: claims.data, changedFiles: changed, absent });
   recordGate(ctx.db, sliceId, "reconcile", rec.pass ? "pass" : "fail");
   if (!rec.pass) {
     ctx.bus.emit({
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: say(ctx.config?.language, "gate.reconcile", { seq: slice.seq, reason: rec.reason ?? "" }),
+      body: say(ctx.config.language, "gate.reconcile", { seq: slice.seq, reason: rec.reason ?? "" }),
       meta: { slice_id: sliceId, phantom: rec.phantom },
     });
     return {
@@ -127,7 +132,7 @@ export async function runDeterministicReview(
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "gate_result",
-    body: say(ctx.config?.language, out.pass ? "gate.pass" : "gate.fail", { seq: slice.seq }),
+    body: say(ctx.config.language, out.pass ? "gate.pass" : "gate.fail", { seq: slice.seq }),
     meta: { slice_id: sliceId, results: out.results.map((r) => ({ name: r.name, pass: r.pass })) },
   });
   if (!out.pass) return { pass: false, feedback: out.feedback };
@@ -138,7 +143,7 @@ export async function runDeterministicReview(
       grpId: slice.grp_id,
       author: "orchestrator",
       kind: "gate_result",
-      body: say(ctx.config?.language, "gate.unclaimed", {
+      body: say(ctx.config.language, "gate.unclaimed", {
         seq: slice.seq,
         files: rec.unclaimed.slice(0, 10).join(", "),
       }),
@@ -207,7 +212,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
       kind: "escalation",
       intent: "ask",
       severity: "blocker",
-      body: say(ctx.config?.language, "slice.failed", { seq: slice.seq, from, n: retries }),
+      body: say(ctx.config.language, "slice.failed", { seq: slice.seq, from, n: retries }),
       meta: { slice_id: sliceId },
     });
     return;
@@ -217,7 +222,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config?.language, "slice.sentback", { seq: slice.seq, from, n: retries }),
+    body: say(ctx.config.language, "slice.sentback", { seq: slice.seq, from, n: retries }),
     meta: { slice_id: sliceId },
   });
   ctx.sched.enqueue("agent_turn", {
@@ -268,7 +273,7 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
     grpId: slice.grp_id,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config?.language, "slice.ready", { seq: slice.seq, title: slice.title }),
+    body: say(ctx.config.language, "slice.ready", { seq: slice.seq, title: slice.title }),
     meta: { slice_id: sliceId, gates: gateState(ctx.db, sliceId) },
   });
 
@@ -276,13 +281,8 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
   // review, the deterministic gate, an independent QA — so this skips the fourth
   // layer, not the first three. It is announced, never silent: an acceptance
   // nobody can see is indistinguishable from one that did not happen.
-  if ((ctx.config?.autoAcceptTiers ?? []).includes(slice.difficulty)) {
-    acceptSlice(
-      ctx,
-      sliceId,
-      "orchestrator",
-      say(ctx.config?.language, "slice.autoaccept", { tier: slice.difficulty }),
-    );
+  if (ctx.config.autoAcceptTiers.includes(slice.difficulty)) {
+    acceptSlice(ctx, sliceId, "orchestrator", say(ctx.config.language, "slice.autoaccept", { tier: slice.difficulty }));
     return;
   }
 
@@ -290,14 +290,14 @@ export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void
   // starts the next slice, so without this a group does exactly one slice and
   // then waits until morning. The slice still waits to be accepted; only the
   // next one stops waiting.
-  if (ctx.config?.autoAdvance) {
+  if (ctx.config.autoAdvance) {
     const started = startNextSlice(ctx, slice.grp_id);
     if (started) {
       ctx.bus.emit({
         grpId: slice.grp_id,
         author: "orchestrator",
         kind: "state_change",
-        body: say(ctx.config?.language, "group.autoadvance"),
+        body: say(ctx.config.language, "group.autoadvance"),
         meta: { slice_id: started },
       });
     }
@@ -324,7 +324,7 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
     grpId: sl.grp_id,
     author: by,
     kind: "state_change",
-    body: say(ctx.config?.language, "slice.accepted", {
+    body: say(ctx.config.language, "slice.accepted", {
       seq: sl.seq,
       title: sl.title,
       why: why ? `（${why}）` : "",
@@ -398,9 +398,9 @@ function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
       "SELECT meta_json FROM event WHERE kind = 'commit' AND json_extract(meta_json, '$.slice_id') = ?",
     )
     .all(sliceId)) {
-    try {
-      for (const f of JSON.parse(e.meta_json).files ?? []) files.add(String(f));
-    } catch {}
+    for (const f of jsonOr(e.meta_json, z.object({ files: z.array(z.string()).default([]) }), { files: [] }).files) {
+      files.add(f);
+    }
   }
   const decisions = ctx.db
     .query<{ body: string }, [number]>(
@@ -591,7 +591,7 @@ function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string
 export function startNextSlice(ctx: Ctx, grpId: number): number | null {
   // A slice sitting on the boss is not occupying the writer. Counting it as busy
   // is correct only when acceptance is what starts the next one.
-  const idle = ctx.config?.autoAdvance ? "('pending','accepted','awaiting_boss')" : "('pending','accepted')";
+  const idle = ctx.config.autoAdvance ? "('pending','accepted','awaiting_boss')" : "('pending','accepted')";
   const busy = ctx.db
     .query<{ c: number }, [number]>(`SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status NOT IN ${idle}`)
     .get(grpId)!.c;

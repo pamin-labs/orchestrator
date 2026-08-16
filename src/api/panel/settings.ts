@@ -1,7 +1,19 @@
-import { defaultFor, overrides, putSetting, settablePaths } from "../../settings.ts";
+import { currentFor, defaultFor, overrides, putSetting, settablePaths } from "../../settings.ts";
 import { z } from "zod";
-import { bad, json, text, type Handler } from "../shared.ts";
+import { bad, json, message, type Handler } from "../shared.ts";
+import { ConfigSchema, SettingWriteSchema, type SettingPath, type SettingValue } from "../../config-schema.ts";
 import type { Config } from "../../config.ts";
+import type { Json } from "../../http/respond.ts";
+
+type SettingRowFor<P extends SettingPath> = {
+  path: P;
+  type: string;
+  value: SettingValue<P>;
+  default: SettingValue<P>;
+  overridden: boolean;
+};
+
+export type SettingRow = { [P in SettingPath]: SettingRowFor<P> }[SettingPath];
 
 /**
  * The settings the boss changes while the fleet is running.
@@ -13,48 +25,39 @@ import type { Config } from "../../config.ts";
  */
 
 /** Everything the panel needs to draw the page: value, default, and whether it was changed. */
-export const getSettings: Handler = async (ctx) => {
+export const getSettings = (async (ctx) => {
   const set = overrides(ctx.db);
-  const cfg = ctx.config as Config;
+  const cfg = ConfigSchema.parse(ctx.config);
   return json({
-    settings: [...settablePaths()].map(([path, type]) => ({
-      path,
-      type,
-      value: at(cfg, path),
-      default: defaultFor(path),
-      overridden: path in set,
-    })),
+    settings: [...settablePaths()].map(([path, type]) => settingRow(cfg, set, path, type)),
   });
-};
+}) satisfies Handler;
 
-/**
- * One path and its value, never a document.
- *
- * `value` is `unknown` because the type it must be is `DEFAULTS`' — the settings
- * table is the authority on which paths exist and what each one holds, and
- * `putSetting` checks against it. A shape here could only say "anything", twice.
- */
-export const SettingBody = z.object({ path: z.string().min(1).max(120), value: z.unknown().optional() });
+/** One path and its path-specific value, inferred and checked from ConfigSchema. */
+export const SettingBody = SettingWriteSchema;
 
-export const postSetting: Handler<z.infer<typeof SettingBody>> = async (ctx, _req, _p, b) => {
-  // `null` clears the override and falls back to the file. Distinguished from
-  // "absent" so that clearing is an explicit action rather than an empty body.
-  const why = putSetting(ctx.db, ctx.config as Config, b.path, b.value ?? null);
+export const postSetting = (async (ctx, _req, _p, b) => {
+  const cfg = ConfigSchema.parse(ctx.config);
+  const why = putSetting(ctx.db, cfg, b.path, b.value);
   if (why) return bad(why);
+  Object.assign(ctx.config, cfg);
   ctx.bus.emit({
     author: "boss",
     kind: "state_change",
-    body: `设置：${b.path} = ${b.value === undefined || b.value === null ? "恢复默认" : JSON.stringify(b.value)}`,
+    body: `设置：${b.path} = ${b.value === null ? "恢复默认" : JSON.stringify(b.value)}`,
     meta: { setting: b.path },
   });
   // Some of these change what may be dispatched right now — raising `maxGroups`
   // is only a number until something looks at the queue again.
   ctx.sched.tick();
-  return text("ok");
-};
+  return message("ok");
+}) satisfies Handler<z.infer<typeof SettingBody>>;
 
-function at(cfg: Config, path: string): unknown {
-  let node: unknown = cfg;
-  for (const p of path.split(".")) node = (node as Record<string, unknown>)?.[p];
-  return node;
+function settingRow<P extends SettingPath>(
+  cfg: Config,
+  set: Record<string, Json>,
+  path: P,
+  type: string,
+): SettingRowFor<P> {
+  return { path, type, value: currentFor(cfg, path), default: defaultFor(path), overridden: path in set };
 }

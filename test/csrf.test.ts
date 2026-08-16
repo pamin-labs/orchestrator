@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { makeApp } from "../src/api.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * `/api/*` is the boss's own surface and it takes no token: the caller is a
@@ -13,7 +15,8 @@ import { makeApp } from "../src/api.ts";
  * middleware stack in the order `makeApp` registers it, and a check exported as
  * a function stays green while nothing calls it.
  */
-const app = makeApp({ db: null as never, config: {} } as never);
+const app = makeApp(testContext());
+const ErrorResponse = z.object({ error: z.string() });
 const write = (headers: Record<string, string>, method = "POST") =>
   app(new Request("http://127.0.0.1:47821/api/auth", { method, headers }));
 
@@ -60,13 +63,14 @@ test("a refusal keeps its own status through onError", async () => {
   // it, every middleware refusal in the stack arrives as a 500.
   const r = await write({ "sec-fetch-site": "cross-site" });
   expect(r.status).toBe(403);
-  expect(await r.text()).not.toContain("error:");
+  expect(r.headers.get("content-type")).toContain("application/json");
+  expect(ErrorResponse.parse(await r.json())).toEqual({ error: "cross-site writes are refused" });
 });
 
 test("a cross-site write is refused whatever it claims to be", async () => {
   // `csrf()` alone fires only on the content types a cross-site request can send
   // without a preflight, so a cross-site POST labelled `application/json` reached
-  // the schema — measured, 422 not 403. The argument for allowing it is sound and
+  // the schema — measured, 400 not 403. The argument for allowing it is sound and
   // it is an argument about somebody else's browser; the header that settles it
   // is in the request. Only a browser sets `Sec-Fetch-Site`, script cannot, and
   // no legitimate caller of this surface sets it to anything but same-origin/none.
@@ -85,12 +89,9 @@ test("a cross-site write is refused whatever it claims to be", async () => {
   );
 });
 
-test("a body without a content-type is still a body", async () => {
-  // There was a 415 gate here, and it refused requests that would otherwise have
-  // worked: `Request.json()` does not read the header, so a JSON body labelled
-  // `text/plain` — or labelled nothing — parses. The gate existed to say "you
-  // forgot the header" about a failure that stopped happening when `route()`
-  // started parsing the body itself, and its security half is `csrf()`.
+test("JSON routes require the JSON content type", async () => {
+  // Hono owns request extraction. Its `json` validation target only reads a body
+  // declared as JSON; panel, CLI, and mailbox callers all send this header.
   const send = (headers: Record<string, string>) =>
     app(
       new Request("http://127.0.0.1:47821/api/settings", {
@@ -99,15 +100,16 @@ test("a body without a content-type is still a body", async () => {
         body: JSON.stringify({ path: "maxGroups", value: 3 }),
       }),
     );
-  // Not 415, and not "missing fields" — the schema saw the real body.
-  const types: Record<string, string>[] = [
-    {},
-    { "content-type": "text/plain" },
-    { "content-type": "application/json" },
-  ];
-  for (const h of types) {
+  const wrongTypes: Record<string, string>[] = [{}, { "content-type": "text/plain" }];
+  for (const h of wrongTypes) {
     const r = await send(h);
-    expect(r.status).not.toBe(415);
-    expect(await r.text()).not.toContain("path");
+    expect(r.status).toBe(415);
+    expect(ErrorResponse.parse(await r.json())).toEqual({ error: "Content-Type must be application/json" });
   }
+
+  const json = await send({ "content-type": "application/json" });
+  expect(json.status).not.toBe(415);
+
+  const structured = await send({ "content-type": "application/problem+json; charset=utf-8" });
+  expect(structured.status).not.toBe(415);
 });

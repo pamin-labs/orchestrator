@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import type { Ctx } from "../src/api.ts";
-import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { ensureCheckout } from "../src/mech/git/checkout.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * Three ways a checkout goes wrong quietly, and one way it goes wrong loudly.
@@ -20,7 +19,6 @@ import { fakeSandbox } from "./fake-sandbox.ts";
  */
 function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; modules?: boolean } = {}) {
   const db: DB = openMemory();
-  const bus = new Bus(db);
   const sandbox = fakeSandbox((cmd) => {
     if (cmd.includes(".gitmodules")) return { out: opts.modules ? "yes" : "" };
     if (cmd.includes("test -d")) return { out: "" };
@@ -28,13 +26,7 @@ function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; mod
     if (cmd.includes("ls-remote")) return { code: 2 };
     return {};
   });
-  const ctx = {
-    db,
-    bus,
-    sandbox,
-    waiters: new Map(),
-    config: { language: "中文" },
-  } as unknown as Ctx;
+  const ctx = testContext({ db, sandbox });
 
   if (opts.project !== false) {
     db.run(

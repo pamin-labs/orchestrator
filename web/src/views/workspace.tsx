@@ -2,8 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Empty, Meta } from "../ui/bits";
 import { Button } from "../ui/button";
 import { ask } from "../ui/confirm";
-import { pull, post, type Frame } from "../lib/api";
+import { api, groupAction, readApi, type Frame } from "../lib/api";
 import { clock, cn } from "../lib/utils";
+import { z } from "zod";
+import type { InferResponseType } from "hono/client";
+import { GRP_STATES } from "../../../src/states.ts";
 
 /**
  * What this group's container is, and what it is saying right now.
@@ -25,31 +28,22 @@ import { clock, cn } from "../lib/utils";
  * already a line in 记录 and this must not read as a second copy of it.
  */
 
-interface Mount {
-  mountPath: string;
-  hostPath: string;
-  readOnly: boolean;
-}
-
-interface Line {
-  at: number;
-  kind: "cmd" | "out" | "end";
-  text: string;
-}
-
-interface SandboxInfo {
-  group: { id: number; name: string; status: string; branch: string | null };
-  sandbox: {
-    id: string | null;
-    at: number | null;
-    image: string;
-    cpu: string;
-    memory: string;
-    ttlSeconds: number;
-    mounts: Mount[];
-  };
-  lines: Line[];
-}
+const LineSchema = z.object({ at: z.number(), kind: z.enum(["cmd", "out", "end"]), text: z.string() });
+type Line = z.infer<typeof LineSchema>;
+const SandboxInfoSchema: z.ZodType<InferResponseType<typeof api.sandbox.$get, 200>> = z.object({
+  group: z.object({ id: z.number(), name: z.string(), status: z.enum(GRP_STATES), branch: z.string().nullable() }),
+  sandbox: z.object({
+    id: z.string().nullable(),
+    at: z.number().nullable(),
+    image: z.string(),
+    cpu: z.string(),
+    memory: z.string(),
+    ttlSeconds: z.number(),
+    mounts: z.array(z.object({ mountPath: z.string(), hostPath: z.string(), readOnly: z.boolean() })),
+  }),
+  lines: z.array(LineSchema),
+});
+type SandboxInfo = z.infer<typeof SandboxInfoSchema>;
 
 /** A live frame from this group's container, rather than from an agent in it. */
 const fromSandbox = (f: Frame, grpId: number): boolean =>
@@ -58,7 +52,8 @@ const fromSandbox = (f: Frame, grpId: number): boolean =>
 export function Workspace({ frames, grpId }: { frames: Frame[]; grpId: number }) {
   const [info, setInfo] = useState<SandboxInfo | null>(null);
   const [busy, setBusy] = useState(false);
-  const load = async (id: number) => setInfo(await pull<SandboxInfo>(`/api/sandbox?grp=${id}`));
+  const load = async (id: number) =>
+    setInfo(await readApi(api.sandbox.$get({ query: { grp: String(id) } }), SandboxInfoSchema));
   useEffect(() => {
     setInfo(null);
     void load(grpId);
@@ -109,7 +104,7 @@ export function Workspace({ frames, grpId }: { frames: Frame[]; grpId: number })
             });
             if (!go) return;
             setBusy(true);
-            await post(`/api/groups/${grpId}/rebuild`);
+            await groupAction(grpId, "rebuild");
             await load(grpId);
             setBusy(false);
           }}

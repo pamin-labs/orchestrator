@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
-import { rememberSecrets } from "./mech/util/scrub.ts";
-import { parseRepo } from "./mech/git/github.ts";
+import { maskValue } from "./mech/util/scrub.ts";
+import { parseRepo } from "./mech/git/repository.ts";
 
 /**
  * Single source of truth for the schema. See PLAN.md §3.
@@ -694,7 +694,9 @@ export function open(path = "data/orchestrator.sqlite"): DB {
   // Whatever was stored before this process started still has to be masked out
   // of everything it prints. Registered once, here, because every path into the
   // database comes through this function.
-  rememberSecrets(db);
+  for (const { secret } of db.query<{ secret: string }, []>("SELECT secret FROM runtime_auth").all()) {
+    maskValue(secret);
+  }
   return db;
 }
 

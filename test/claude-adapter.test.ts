@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
+import type { Json } from "../src/http/respond.ts";
 import { buildStable } from "../src/prompt/assemble.ts";
 import { buildArgv, runTurn, summarizeTool, trimForLog, type TurnRunner } from "../src/runtime/claude.ts";
 
@@ -16,19 +18,22 @@ const stable = buildStable({
  * than spawning, so the fake is a runner and not a fake `Bun.spawn`.
  */
 function fakeRunner(
-  lines: unknown[],
+  lines: Json[],
   opts: { err?: string; code?: number } = {},
 ): TurnRunner & { cmd: string; wrote: string } {
-  const r: any = { cmd: "", wrote: "" };
-  r.put = async (_p: string, data: string) => {
-    r.wrote = data;
+  const runner: TurnRunner & { cmd: string; wrote: string } = {
+    cmd: "",
+    wrote: "",
+    put: async (_p, data) => {
+      runner.wrote = data;
+    },
+    lines: async function* (cmd) {
+      runner.cmd = cmd;
+      for (const line of lines) yield JSON.stringify(line);
+      return { code: opts.code ?? 0, err: opts.err ?? "" };
+    },
   };
-  r.lines = async function* (cmd: string) {
-    r.cmd = cmd;
-    for (const l of lines) yield JSON.stringify(l);
-    return { code: opts.code ?? 0, err: opts.err ?? "" };
-  };
-  return r;
+  return runner;
 }
 
 test("argv resumes a session and never re-sends the delta as a system prompt", () => {
@@ -57,7 +62,7 @@ test("summarizeTool clips to one line and never dumps the raw input", () => {
 
 test("runTurn extracts usage, cost, rate limit and touched files", async () => {
   // Shapes taken from a real `claude -p --output-format stream-json` run.
-  const lines = [
+  const lines: Json[] = [
     { type: "system", subtype: "init", session_id: "sess-9", model: "sonnet" },
     { type: "system", subtype: "status", status: "requesting" },
     {
@@ -155,7 +160,7 @@ test("JSON-shaped malformed stream frames are ignored", async () => {
 test("the desk wall never shows a bare tool name", async () => {
   // content_block_start arrives before the input has streamed, so announcing it
   // would replace a useful line with just "Bash".
-  const lines = [
+  const lines: Json[] = [
     { type: "system", subtype: "init", session_id: "s" },
     {
       type: "stream_event",
@@ -184,7 +189,7 @@ test("a turn log keeps the shape and drops the payload", () => {
   // 123 MB for ten requirements, and 90% of it was tool results: whole files, whole
   // diffs, whole test runs. Everything these logs are actually read for is shape —
   // rounds, tools, tokens, what failed — so results keep a head and a size.
-  const line = {
+  const line: Parameters<typeof trimForLog>[0] = {
     type: "user",
     message: {
       usage: { cache_read_input_tokens: 5 },
@@ -194,7 +199,16 @@ test("a turn log keeps the shape and drops the payload", () => {
       ],
     },
   };
-  const out = trimForLog(line) as any;
+  const logged = z.object({
+    message: z.object({
+      usage: z.object({ cache_read_input_tokens: z.number() }),
+      content: z.tuple([
+        z.object({ type: z.literal("tool_result"), content: z.string(), tool_use_id: z.string() }),
+        z.object({ type: z.literal("tool_use"), input: z.object({ command: z.string() }) }),
+      ]),
+    }),
+  });
+  const out = logged.parse(trimForLog(line));
   expect(out.message.usage.cache_read_input_tokens).toBe(5);
   expect(out.message.content[0].content).toContain("[5000 chars omitted]");
   expect(out.message.content[0].content.length).toBeLessThan(500);
@@ -203,7 +217,9 @@ test("a turn log keeps the shape and drops the payload", () => {
   expect(out.message.content[1].input.command).toBe("bun test");
   // The field the payload is actually in: 90% of a real turn's file, against 0%
   // for the block inside `content`. Trimming only the latter cut 17%.
-  const big = trimForLog({ type: "user", tool_use_result: { stdout: "z".repeat(9000), interrupted: false } }) as any;
+  const big = z
+    .object({ tool_use_result: z.object({ stdout: z.string(), interrupted: z.boolean() }) })
+    .parse(trimForLog({ type: "user", tool_use_result: { stdout: "z".repeat(9000), interrupted: false } }));
   expect(big.tool_use_result.stdout).toContain("[9000 chars omitted]");
   expect(big.tool_use_result.interrupted).toBe(false);
 
@@ -211,7 +227,9 @@ test("a turn log keeps the shape and drops the payload", () => {
   // `type` is on every line of the real stream; the fixture omitted it while the
   // parameter was `any`.
   expect(
-    (trimForLog({ type: "user", message: { content: [{ type: "tool_result", content: "ok" }] } }) as any).message
-      .content[0].content,
+    z
+      .object({ message: z.object({ content: z.array(z.object({ content: z.string() })) }) })
+      .parse(trimForLog({ type: "user", message: { content: [{ type: "tool_result", content: "ok" }] } })).message
+      .content[0]!.content,
   ).toBe("ok");
 });

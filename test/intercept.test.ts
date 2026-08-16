@@ -1,11 +1,9 @@
 import { expect, test } from "bun:test";
-import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
 import { interrupt } from "../src/mech/flow/intercept.ts";
-import type { Ctx } from "../src/api.ts";
-import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * PLAN.md §7 L3: "打断并回滚" must end with the checkout back at the checkpoint the
@@ -21,14 +19,7 @@ function harness(checkpoint: string) {
   const db = openMemory();
   seedAuth(db);
   const sandbox = fakeSandbox();
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    sandbox,
-    waiters: new Map(),
-    config: { language: "中文" },
-  } as unknown as Ctx;
+  const ctx = testContext({ db, sandbox });
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   db.run(
@@ -63,14 +54,7 @@ test("a rollback that fails says so instead of reporting a clean tree", async ()
   // `reset` refusing is the case that matters: "interrupted and rolled back" that
   // only interrupted leaves a dirty tree the boss believes is clean.
   const sandbox = fakeSandbox((cmd) => (cmd.includes("'reset'") ? { code: 1, out: "fatal: bad object" } : {}));
-  const ctx: Ctx = {
-    db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    sandbox,
-    waiters: new Map(),
-    config: { language: "中文" },
-  } as unknown as Ctx;
+  const ctx = testContext({ db, sandbox });
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   db.run(

@@ -12,7 +12,7 @@ import type {
   Slice,
   Task,
 } from "./shapes.ts";
-import { UsageWindow } from "./shapes.ts";
+import { UsageWindow, type Snapshot } from "./shapes.ts";
 import { jsonOr } from "../../mech/util/text.ts";
 import { costReport } from "../../mech/ops/cost.ts";
 import { canStart } from "../../mech/flow/ownership.ts";
@@ -32,14 +32,15 @@ import { z } from "zod";
  * change the fleet, which is worth being able to see at a glance.
  */
 
-export const getState: Handler = async (ctx) => json(snapshot(ctx));
+export const getState = (async (ctx) => json(snapshot(ctx))) satisfies Handler;
 
-export const getCost: Handler = async (ctx, req) => {
-  const p = new URL(req.url).searchParams.get("project");
-  return json(costReport(ctx.db, p ? Number(p) : undefined));
-};
+export const CostQuery = z.object({ project: z.coerce.number().int().positive().optional() });
 
-export function snapshot(ctx: Ctx) {
+export const getCost = (async (ctx, _req, _params, query) => json(costReport(ctx.db, query.project))) satisfies Handler<
+  z.infer<typeof CostQuery>
+>;
+
+export function snapshot(ctx: Ctx): Snapshot {
   const db = ctx.db;
   return {
     /**
@@ -181,11 +182,11 @@ export function snapshot(ctx: Ctx) {
     // The panel shows "并行 3/3" from this: without the cap, a queued group looks
     // stuck rather than queued, which is the difference between a bug and a setting.
     limits: {
-      maxGroups: ctx.config.maxGroups ?? null,
+      maxGroups: ctx.config.maxGroups,
       // Always the map shape for the panel, whatever the config wrote.
       leaseSlots: poolSizes(ctx.config.leaseSlots),
       autoAdvance: !!ctx.config.autoAdvance,
-      autoAcceptTiers: ctx.config.autoAcceptTiers ?? [],
+      autoAcceptTiers: ctx.config.autoAcceptTiers,
     },
     // How much of each subscription is gone. Not spend — spend is attributable and
     // belongs in 成本. This answers "can this still run tonight", which is the one
@@ -199,7 +200,7 @@ export function snapshot(ctx: Ctx) {
       // while the panel read six more properties off it.
       .map((r): UsageWindow => {
         const parsed = UsageWindow.safeParse({
-          ...jsonOr(r.json, z.record(z.string(), z.unknown()), {}),
+          ...jsonOr(r.json, UsageWindow.partial(), {}),
           runtime: r.runtime,
           at: r.at,
         });

@@ -31,7 +31,13 @@ import { resumeReclaimed, type Job } from "../../scheduler.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { probe } from "../sandbox/net.ts";
 import { z } from "zod";
-import { ACTIVE_JOB_STATES, DISPATCHABLE_GRP_STATES, ESCALATION_TERMINAL_STATES, stateParam } from "../../states.ts";
+import {
+  ACTIVE_JOB_STATES,
+  DISPATCHABLE_GRP_STATES,
+  ESCALATION_TERMINAL_STATES,
+  stateParam,
+  type GrpState,
+} from "../../states.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.
@@ -402,7 +408,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // a key it does not have, so a typo does not throw and does not log — it puts
   // the literal `wd.stalledd` in the boss's feed, in place of the sentence that
   // was supposed to explain why a group stopped.
-  const t = (k: SayKey, a?: Parameters<typeof say>[2]) => say(ctx.config?.language, k, a);
+  const t = (k: SayKey, a?: Parameters<typeof say>[2]) => say(ctx.config.language, k, a);
   const now = deps.now ?? (() => Date.now());
 
   // 19. The machine's own network, before anything that needs it.
@@ -531,7 +537,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // 5. Budget.
   await step("5", findings, async () => {
     const budgets = ctx.db
-      .query<{ id: number; name: string; budget_tokens: number; spent_tokens: number; status: string }, []>(
+      .query<{ id: number; name: string; budget_tokens: number; spent_tokens: number; status: GrpState }, []>(
         "SELECT id, name, budget_tokens, spent_tokens, status FROM grp WHERE budget_tokens IS NOT NULL",
       )
       .all();

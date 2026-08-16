@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
 import { credentialChanged } from "../src/api/panel/authflow.ts";
 import { release } from "../src/mech/flow/intercept.ts";
-import type { Ctx } from "../src/ctx.ts";
+import { testContext } from "./test-context.ts";
 
 /** Every `.ts` under `src/`. */
 function sources(dir = new URL("../src", import.meta.url).pathname): string[] {
@@ -66,12 +66,7 @@ test("signing in restarts what the credential stopped, and nothing else", async 
   mk("codex-token", "auth:codex");
   mk("github-token", "auth:github");
 
-  const ctx = {
-    db,
-    bus: { emit: () => {} },
-    sched: { tick: () => {} },
-    config: {},
-  } as unknown as Ctx;
+  const ctx = testContext({ db });
   await credentialChanged(ctx, "github");
 
   const running = db
@@ -92,7 +87,7 @@ test("signing in answers only the literal runtime's escalation", async () => {
   for (const question of ["a_b 的凭据不好使了", "axb 的凭据不好使了"]) {
     db.run("INSERT INTO escalation (question, chain_state, created_at) VALUES (?, 'boss', 0)", [question]);
   }
-  const ctx = { db, bus: { emit: () => {} }, sched: { tick: () => {} }, config: {} } as unknown as Ctx;
+  const ctx = testContext({ db });
 
   await credentialChanged(ctx, "a_b");
 
@@ -140,7 +135,7 @@ test("a resume clears what the stop was about, and leaves PARKED alone", () => {
   // `blocked_on` is a foreign key, so the group it waits on has to exist.
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'other', 'RUNNING', 0)");
   db.run("UPDATE grp SET blocked_on = 2 WHERE id = 1");
-  const ctx = { db, bus: { emit: () => {} }, sched: { tick: () => {} }, config: {} } as unknown as Ctx;
+  const ctx = testContext({ db });
 
   release(ctx, 1);
   const g = db

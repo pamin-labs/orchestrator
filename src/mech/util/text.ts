@@ -18,7 +18,7 @@
 export function jsonOr<T>(s: string | null | undefined, schema: z.ZodType<T>, fallback: T): T {
   if (s === null || s === undefined) return fallback;
   try {
-    const parsed = schema.safeParse(JSON.parse(s) as unknown);
+    const parsed = schema.safeParse(JSON.parse(s));
     return parsed.success ? parsed.data : fallback;
   } catch {
     return fallback;
@@ -47,8 +47,8 @@ export function clip(s: string, n = 200, collapse = false): string {
  * nobody was asking on purpose. A caught value is not always an `Error`, which
  * is why every one of them has that `?? e`.
  */
-export function errText(e: unknown, n = 300): string {
-  return clip(String((e as Error)?.message ?? e), n);
+export function errText<T>(e: T, n = 300): string {
+  return clip(e instanceof Error ? e.message : String(e), n);
 }
 
 /**

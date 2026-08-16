@@ -4,7 +4,7 @@ import { Button } from "../ui/button";
 import { Segment, Segments } from "../ui/segment";
 import { Tip } from "../ui/tooltip";
 import { DiffView } from "../ui/diff";
-import { pull, type Evidence } from "../lib/api";
+import { api, EvidenceSchema, GateLogResponseSchema, readApi, type Evidence } from "../lib/api";
 import { cn, nl } from "../lib/utils";
 
 /**
@@ -34,7 +34,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
 
   useEffect(() => {
     setEv(null);
-    void pull<Evidence>(`/api/slices/${sliceId}/evidence`).then((r) => {
+    void readApi(api.slices[":id"].evidence.$get({ param: { id: String(sliceId) } }), EvidenceSchema).then((r) => {
       setEv(r);
       // A failed judgement is the reason to look; everything else, the change is.
       setView(r?.verdicts.some(failed) ? "verdicts" : "diff");
@@ -213,7 +213,10 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
 
   useEffect(() => {
     setText(null);
-    void fetch(`/api/slices/${sliceId}/gate/${name}`).then(async (r) => setText(r.ok ? await r.text() : "读不到日志"));
+    void readApi(
+      api.slices[":id"].gate[":name"].$get({ param: { id: String(sliceId), name }, query: {} }),
+      GateLogResponseSchema,
+    ).then((r) => setText(r?.text ?? "读不到日志"));
   }, [sliceId, name]);
 
   // Trailing newline is one empty row on a pane whose whole job is to look like

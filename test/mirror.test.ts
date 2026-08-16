@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import type { Ctx } from "../src/api.ts";
-import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
 import { listTree } from "../src/mech/git/checkout.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * The bare mirror the repo map and the DRAFT path check are read from.
@@ -16,7 +15,7 @@ import { fakeSandbox } from "./fake-sandbox.ts";
 const ctxWith = (run: (cmd: string) => { out?: string; code?: number }) => {
   const db = openMemory();
   const sandbox = fakeSandbox(run);
-  return { db, bus: new Bus(db), sandbox, config: { language: "中文" } } as unknown as Ctx;
+  return testContext({ db, sandbox });
 };
 
 test("the mirror is never asked for a ref a bare repository cannot have", async () => {

@@ -2,7 +2,8 @@ import type { Ctx } from "../../ctx.ts";
 import { settlePausing } from "../flow/intercept.ts";
 import { joinQueue } from "../flow/mergequeue.ts";
 import { reopenTasks, startNextSlice } from "../flow/review.ts";
-import { clearEscalation, parseRepo, repoHeld } from "../git/github.ts";
+import { clearEscalation } from "../git/github.ts";
+import { parseRepo, repoHeld } from "../git/repository.ts";
 import {
   ESCALATION_STATES,
   GRP_STATES,
@@ -10,6 +11,7 @@ import {
   LEASE_STATES,
   SERVER_STATES,
   SLICE_STATES,
+  TASK_STATES,
   PROJECT_STATES,
   UTIL_STATES,
   type EscalationState,
@@ -19,6 +21,7 @@ import {
   type ProjectState,
   type ServerState,
   type SliceState,
+  type TaskState,
   type UtilState,
   ACTIVE_JOB_STATES,
   stateParam,
@@ -245,6 +248,20 @@ export const SLICE_INVARIANTS = rows<SliceState>(
   },
 );
 
+export const TASK_INVARIANTS = rows<TaskState>(
+  {
+    state: "pending",
+    must: "the active writer can claim or complete it while its slice is running",
+    driver: "the writer through orch task claim or orch task done; watchdog rule 8 keeps that turn moving",
+  },
+  {
+    state: "in_progress",
+    must: "its active owner completes it, or a replacement writer can reclaim it",
+    driver: "orch task done; the SLICE.running repair clears ownership left by a retired agent",
+  },
+  { state: "done", must: "it stays closed until a rejected slice explicitly reopens its tasks", driver: null },
+);
+
 export const JOB_INVARIANTS = rows<JobState>(
   { state: "pending", must: "it is dispatched once its group and pool have room", driver: "Scheduler.tick" },
   {
@@ -420,6 +437,7 @@ export const ESCALATION_INVARIANTS = rows<EscalationState>(
 const ALL_INVARIANTS = [
   GRP_INVARIANTS,
   SLICE_INVARIANTS,
+  TASK_INVARIANTS,
   JOB_INVARIANTS,
   UTIL_INVARIANTS,
   PROJECT_INVARIANTS,
@@ -436,6 +454,7 @@ export function runInvariants(ctx: Ctx): void {
 export function uncovered(): {
   grp: string[];
   slice: string[];
+  task: string[];
   job: string[];
   escalation: string[];
   util: string[];
@@ -447,6 +466,7 @@ export function uncovered(): {
   return {
     grp: GRP_STATES.filter((s) => !has(GRP_INVARIANTS, s)),
     slice: SLICE_STATES.filter((s) => !has(SLICE_INVARIANTS, s)),
+    task: TASK_STATES.filter((s) => !has(TASK_INVARIANTS, s)),
     job: JOB_STATES.filter((s) => !has(JOB_INVARIANTS, s)),
     escalation: ESCALATION_STATES.filter((s) => !has(ESCALATION_INVARIANTS, s)),
     util: UTIL_STATES.filter((s) => !has(UTIL_INVARIANTS, s)),

@@ -48,6 +48,8 @@ export interface Ctx {
   publishBranch?: (grpId: number) => void;
   /** Wired by the server: a watchdog finding worth telling the boss about. */
   onFinding?: (rule: string, severity: string, body: string, grpId: number | null) => void;
+  /** Rebuild the checkout after a group sandbox is replaced. */
+  restoreWorkspace?: (grpId: number) => Promise<void>;
   /** Wired by the server: a question that reached the top of the answer chain. */
   notifyBoss?: (escId: number, question: string, severity: string) => void;
   /**
@@ -71,12 +73,11 @@ export interface Ctx {
    * produced was a key that typechecked, read back as undefined, and silently
    * fell through to a default.
    *
-   * `Partial` because the tests build a Ctx with the two or three fields the
-   * code under test reads, and requiring forty would make every one of them a
-   * fixture. `language` is not optional: everything the boss reads goes through
-   * `say()`.
+   * Complete because `loadConfig()` validates and fills every field before a
+   * context exists. Tests use that same legal value and override only what they
+   * exercise; a partial production state would only force fake fallbacks and casts.
    */
-  config: Partial<Config> & { language: string };
+  config: Config;
 }
 
 /** Who is calling, resolved from the `x-orch-token` an agent was issued. */

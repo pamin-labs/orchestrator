@@ -50,6 +50,7 @@ const SkillRefSchema = z.object({
   description: z.string(),
   scope: z.enum(["project", "user"]),
 });
+const SkillFrontmatter = z.object({ description: z.string().optional() });
 
 /**
  * Where a repository can ship its own skills. See `listSkills` for the counts
@@ -77,8 +78,10 @@ export function frontmatterDescription(text: string): string {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text.trimStart());
   if (m) {
     try {
-      const d = (Bun.YAML.parse(m[1]!) as { description?: unknown })?.description;
-      if (typeof d === "string") return d.trim().replace(/\s+/g, " ").slice(0, 140);
+      const parsed = SkillFrontmatter.safeParse(Bun.YAML.parse(m[1]!));
+      if (parsed.success && parsed.data.description) {
+        return parsed.data.description.trim().replace(/\s+/g, " ").slice(0, 140);
+      }
     } catch {}
   }
   const one = /^description:[ \t]*(.*)$/m.exec(text)?.[1]?.trim() ?? "";

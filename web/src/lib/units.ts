@@ -143,7 +143,7 @@ const COUNT_PER: Record<CountUnit, number> = { "": 1, k: 1000, M: 1_000_000 };
  */
 export function splitCount(n: number): { n: number; unit: CountUnit } {
   if (!Number.isFinite(n)) return { n: 0, unit: "" };
-  for (const unit of ["M", "k"] as CountUnit[]) {
+  for (const unit of ["M", "k"] as const) {
     const q = n / COUNT_PER[unit];
     if (q !== 0 && Number.isInteger(q)) return { n: q, unit };
   }

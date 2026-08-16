@@ -14,6 +14,7 @@ import {
   withAbsoluteDataDir,
 } from "../src/config.ts";
 import { ConfigSchema } from "../src/config-schema.ts";
+import { z } from "zod";
 
 test("the shipped roles all parse and declare what the runtime needs", () => {
   const roles = loadRoles("roles");
@@ -187,19 +188,27 @@ test("the shipped yaml never disagrees with the code default", () => {
   // Now that the operating knobs live in the settings table, the yaml keeps only
   // what a startup needs. Anything still in it must say what the code says, or
   // it is a second answer nobody knows about.
-  const yaml = Bun.YAML.parse(readFileSync("config/default.yaml", "utf8")) as Record<string, unknown>;
+  const JsonObject = z.record(z.string(), z.json());
+  const yaml = JsonObject.parse(Bun.YAML.parse(readFileSync("config/default.yaml", "utf8")));
+  const defaults = JsonObject.parse(DEFAULTS_FOR_CHECK);
   const differ: string[] = [];
-  const walk = (a: any, b: any, path = "") => {
-    for (const k of Object.keys(a ?? {})) {
+  const walk = (a: z.infer<typeof JsonObject>, b: z.infer<typeof JsonObject>, path = "") => {
+    for (const k of Object.keys(a)) {
       const p = path ? `${path}.${k}` : k;
-      const [av, bv] = [a[k], b?.[k]];
-      const branch = av && bv && typeof av === "object" && typeof bv === "object" && !Array.isArray(av);
+      const [av, bv] = [a[k], b[k]];
+      const branch =
+        av !== null &&
+        bv !== null &&
+        typeof av === "object" &&
+        typeof bv === "object" &&
+        !Array.isArray(av) &&
+        !Array.isArray(bv);
       if (branch) walk(av, bv, p);
       else if (JSON.stringify(av) !== JSON.stringify(bv))
         differ.push(`${p}: yaml=${JSON.stringify(av)} default=${JSON.stringify(bv)}`);
     }
   };
-  walk(yaml, DEFAULTS_FOR_CHECK);
+  walk(yaml, defaults);
   expect(differ).toEqual([]);
 });
 

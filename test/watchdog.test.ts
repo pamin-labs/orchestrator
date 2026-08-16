@@ -20,13 +20,14 @@ import { Scheduler } from "../src/scheduler.ts";
 import type { Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
+import type { Json } from "../src/http/respond.ts";
 
 /** A GitHub client that answers from a function and records the paths asked. */
-const gh = (answer: (path: string) => unknown) =>
+const gh = (answer: (path: string) => Json) =>
   ({
     remaining: () => null,
-    request: async (_m: string, path: string) => ({ ok: true as const, status: 200, data: answer(path) as any }),
-  }) as unknown as Ctx["gh"];
+    request: async (_method, path, schema) => ({ ok: true as const, status: 200, data: schema.parse(answer(path)) }),
+  }) satisfies NonNullable<Ctx["gh"]>;
 
 function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
   const db: DB = openMemory();
@@ -43,7 +44,7 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     // condition every rule below is about.
     sandbox: fakeSandbox((cmd) => (cmd.includes("merge-base") ? { code: 1 } : { code: 0 })),
     waiters: new Map(),
-    config: { language: cfg.language },
+    config: cfg,
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
@@ -902,10 +903,13 @@ test("delivery is a bus frame the page can raise, plus an optional webhook", asy
   const bus = new Bus(db);
   const posted: Array<{ url: string; body: string }> = [];
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (async (u: any, init: any) => {
-    posted.push({ url: String(u), body: String(init?.body ?? "") });
-    return new Response("ok");
-  }) as typeof fetch;
+  globalThis.fetch = Object.assign(
+    async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      posted.push({ url: String(input), body: String(init?.body ?? "") });
+      return new Response("ok");
+    },
+    { preconnect: realFetch.preconnect },
+  );
   try {
     const n = new Notifier({ deliver: busDeliver(bus, "https://example.invalid/hook") });
     await n.push({
@@ -937,9 +941,12 @@ test("a webhook that is down does not take the run with it", async () => {
   const db = openMemory();
   const bus = new Bus(db);
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    throw new Error("ECONNREFUSED");
-  }) as unknown as typeof fetch;
+  globalThis.fetch = Object.assign(
+    async () => {
+      throw new Error("ECONNREFUSED");
+    },
+    { preconnect: realFetch.preconnect },
+  );
   try {
     const n = new Notifier({ deliver: busDeliver(bus, "https://example.invalid/hook") });
     // The frame is written before the POST is attempted, so the panel is told

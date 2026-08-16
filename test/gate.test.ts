@@ -7,11 +7,12 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory, type DB } from "../src/db.ts";
-import { gateState, gatesFor, recordGate, runGates } from "../src/mech/gate.ts";
+import { gateState, gatesFor, recordGate, runGates, type RunGatesOptions } from "../src/mech/gate.ts";
 import { projectConfig } from "../src/mech/util/rows.ts";
-import { digestOutput, type ResourceDef } from "../src/mech/lease.ts";
+import { digestOutput } from "../src/mech/lease.ts";
+import type { Json } from "../src/http/respond.ts";
 
-function seed(gates: unknown): DB {
+function seed(gates: Json | undefined): DB {
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p', '/tmp/p', ?, 0)", [
     JSON.stringify({ gates }),
@@ -30,14 +31,14 @@ function resource(db: DB, name: string, errorRegex = "^(error|FAIL)") {
 
 /** Fake runner so the tests do not depend on any real toolchain. */
 const fakeRun = (script: Record<string, { code: number; out: string }>) =>
-  (async (def: ResourceDef, _args: any, opts: any) => {
+  (async (def, _args, opts) => {
     const r = script[def.name] ?? { code: 0, out: "" };
     return {
       exitCode: r.code,
       digest: digestOutput(r.code, r.out, def.errorRegex, opts?.logPath),
       logPath: opts?.logPath,
     };
-  }) as any;
+  }) satisfies NonNullable<RunGatesOptions["run"]>;
 
 const dataDir = () => mkdtempSync(join(tmpdir(), "orch-gate-"));
 

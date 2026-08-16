@@ -1,10 +1,17 @@
 import { z } from "zod";
 import { Id } from "../fields.ts";
-import { bad, text, type AgentHandler } from "../shared.ts";
-import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
+import { bad, message, type AgentHandler } from "../shared.ts";
+import {
+  AlreadyDoneClaimSchema,
+  ChangedFilesClaimSchema,
+  extractClaimedFiles,
+  TaskClaimSchema,
+  type TaskClaim,
+} from "../../mech/flow/reconcile.ts";
 import { recordGate } from "../../mech/gate.ts";
 import { validateSelfReview } from "../../mech/util/validate.ts";
-import type { SliceState } from "../../states.ts";
+import type { SliceState, TaskState } from "../../states.ts";
+import { jsonOr } from "../../mech/util/text.ts";
 
 /**
  * The task card and the two verbs that move it.
@@ -14,12 +21,12 @@ import type { SliceState } from "../../states.ts";
  * closing task owes, and the gate job that follows.
  */
 
-export const getTasks: AgentHandler = async (ctx, req, a) => {
+export const getTasks = (async (ctx, req, a) => {
   // The caller's own group, not the one it asked for. Every other `/orch` route
   // checks the token; these two never did, and the `/orch/` prefix gate on the
   // mailbox made them look as if they had — so any sandbox could enumerate any
   // group's cards by putting a number in a query string.
-  if (!a.grp_id) return text("this route is for a group's agent", 401);
+  if (!a.grp_id) return message("this route is for a group's agent", 401);
   const grp = a.grp_id;
   // Only the slice being worked, plus anything not tied to a slice. Showing the
   // whole plan's tasks let the writer mark future slices done, which pushed
@@ -29,7 +36,7 @@ export const getTasks: AgentHandler = async (ctx, req, a) => {
       {
         id: number;
         title: string;
-        status: string;
+        status: TaskState;
         slice_id: number | null;
         owner: string | null;
         claim_json: string | null;
@@ -83,11 +90,8 @@ export const getTasks: AgentHandler = async (ctx, req, a) => {
     ? "\n" +
       reopened
         .map((r) => {
-          let claim: unknown = null;
-          try {
-            claim = JSON.parse(r.claim_json!);
-          } catch {}
-          const files = extractClaimedFiles([claim]).slice(0, 6).join(", ");
+          const claim: TaskClaim | null = jsonOr(r.claim_json, TaskClaimSchema.nullable(), null);
+          const files = claim ? extractClaimedFiles([claim]).slice(0, 6).join(", ") : "";
           return `task ${r.id} was delivered once already${files ? `, touching ${files}` : ""}`;
         })
         .join("\n") +
@@ -95,10 +99,10 @@ export const getTasks: AgentHandler = async (ctx, req, a) => {
       "`git diff origin/main...HEAD`. If the work is still there and still right, claim the card " +
       'and close it with `--already-done "<what is on the branch>"` instead of doing it twice.'
     : "";
-  if (rows.length === 0) return text(`no tasks are open in this group right now${gated}`);
+  if (rows.length === 0) return message(`no tasks are open in this group right now${gated}`);
   // Lines, not a JSON array. Handing an agent `[{"id":1,"title":"…"}]` invites it
   // to pass the title where an id belongs, which is what happened live.
-  return text(
+  return message(
     [
       "id  status       slice  owner       title",
       ...rows.map(
@@ -110,11 +114,11 @@ export const getTasks: AgentHandler = async (ctx, req, a) => {
       redo +
       gated,
   );
-};
+}) satisfies AgentHandler;
 
 export const TaskRef = z.object({ task_id: Id });
 
-export const postTaskClaim: AgentHandler<z.infer<typeof TaskRef>> = async (ctx, _req, a, _p, b) => {
+export const postTaskClaim = (async (ctx, _req, a, _p, b) => {
   // A retired owner is not an owner. Ownership is a row id, and a group that
   // rehires its writer — a rotation, a restart, anything that ends one agent row
   // and starts another — leaves its own cards locked to a session that no longer
@@ -128,35 +132,20 @@ export const postTaskClaim: AgentHandler<z.infer<typeof TaskRef>> = async (ctx, 
             OR slice_id IN (SELECT id FROM slice WHERE id = task.slice_id AND status NOT IN ('pending','accepted')))`,
     [a.id, b.task_id],
   );
-  return r.changes ? text("ok") : bad("already claimed, or its slice is not being worked yet");
+  return r.changes ? message("ok") : bad("already claimed, or its slice is not being worked yet");
+}) satisfies AgentHandler<z.infer<typeof TaskRef>>;
+
+const TaskDoneBase = {
+  task_id: Id,
+  review: z.string().max(8000).optional(),
 };
 
-/**
- * `claim` stays `unknown`.
- *
- * What it has to contain is checked below against what git says changed, which
- * is a stronger question than any shape: an empty object passes a schema and
- * makes reconcile vacuous — "claimed vs actual" degenerates into "did anything
- * change at all", which is what was observed live when every claim arrived `{}`.
- */
-export const TaskDoneBody = z.object({
-  task_id: Id,
-  claim: z.unknown().optional(),
-  already_done: z.string().max(4000).optional(),
-  review: z.string().max(8000).optional(),
-});
+export const TaskDoneBody = z.xor([
+  z.strictObject({ ...TaskDoneBase, claim: ChangedFilesClaimSchema }),
+  z.strictObject({ ...TaskDoneBase, already_done: AlreadyDoneClaimSchema.shape.already_done }),
+]);
 
-export const postTaskDone: AgentHandler<z.infer<typeof TaskDoneBody>> = async (ctx, _req, a, _p, b) => {
-  // An empty claim makes reconcile vacuous: "claimed vs actual" degenerates into
-  // "did anything change at all". Observed live — every claim arrived as {}.
-  const claimText = JSON.stringify(b.claim ?? null);
-  const hasClaim = Boolean(b.claim) && claimText !== "{}" && claimText !== "null" && claimText !== '""';
-  if (!hasClaim && !b.already_done?.trim()) {
-    return bad(
-      "task done needs --claim (what you actually changed: files and a one-line summary), " +
-        'or --already-done "<why>" if an earlier slice already covered it.',
-    );
-  }
+export const postTaskDone = (async (ctx, _req, a, _p, b) => {
   // A task belonging to a slice that has not started cannot be completed: the
   // writer works one slice at a time, and letting it close future tasks pushed
   // unstarted slices into review.
@@ -212,7 +201,7 @@ export const postTaskDone: AgentHandler<z.infer<typeof TaskDoneBody>> = async (c
   // adds a step that gets forgotten. Someone else's task is not — unless that
   // someone else is retired, in which case the card outlived its claimant and the
   // group's current writer is the only one who can finish it. Same reason as claim.
-  const claim = b.already_done?.trim() ? { already_done: b.already_done.trim(), files: [] } : (b.claim as unknown);
+  const claim: TaskClaim = "already_done" in b ? { already_done: b.already_done } : b.claim;
   const done = ctx.db.run(
     `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
      WHERE id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?
@@ -225,7 +214,7 @@ export const postTaskDone: AgentHandler<z.infer<typeof TaskDoneBody>> = async (c
     author: a.role,
     kind: "state_change",
     body: `task ${b.task_id} done`,
-    meta: { task_id: b.task_id, claim: b.claim ?? {} },
+    meta: { task_id: b.task_id, claim },
   });
 
   // A slice enters review only when nothing is left open in it. Reviewing a
@@ -260,5 +249,5 @@ export const postTaskDone: AgentHandler<z.infer<typeof TaskDoneBody>> = async (c
       ctx.sched.tick();
     }
   }
-  return text("ok");
-};
+  return message("ok");
+}) satisfies AgentHandler<z.infer<typeof TaskDoneBody>>;

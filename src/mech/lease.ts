@@ -19,34 +19,29 @@ import { jsonOr } from "./util/text.ts";
  * arg from pointing somewhere it should not (path traversal, unknown target).
  */
 
-export type ArgSpec =
-  | { type: "enum"; values: string[] }
-  // `root` is confined against, and it is a path *inside the container* — the
-  // resolved value is substituted into a template that runs there. `mustExist`
-  // used to sit here too, checked by nothing: the check it implies would be a
-  // host `existsSync` against a container path, which is the pre-005 mistake this
-  // file is otherwise free of. If a resource ever needs it, it is a `test -e` in
-  // the sandbox, not a field.
-  | { type: "path"; root: string }
-  | { type: "string"; pattern: string; maxLength?: number }
-  | { type: "int"; min?: number; max?: number }
-  | { type: "bool" };
-
 const ArgSpecSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("enum"), values: z.array(z.string()) }),
+  z.object({ type: z.literal("enum"), values: z.array(z.string()).min(1) }),
+  // `root` is a path inside the container. Existence cannot be checked on the
+  // host; resources that need it run `test -e` in their sandbox template.
   z.object({ type: z.literal("path"), root: z.string() }),
   z.object({ type: z.literal("string"), pattern: z.string(), maxLength: z.number().int().positive().optional() }),
   z.object({ type: z.literal("int"), min: z.number().optional(), max: z.number().optional() }),
   z.object({ type: z.literal("bool") }),
 ]);
-const ResourceArgs = z.record(z.string(), ArgSpecSchema);
+type ArgSpec = z.infer<typeof ArgSpecSchema>;
+const ResourceArgsSchema = z.record(z.string(), ArgSpecSchema);
+
+const LeaseArgSchema = z.union([z.string(), z.number(), z.boolean()]);
+type LeaseArg = z.infer<typeof LeaseArgSchema>;
+export const LeaseArgsSchema = z.record(z.string(), LeaseArgSchema);
+type LeaseArgs = z.infer<typeof LeaseArgsSchema>;
 
 export interface ResourceDef {
   name: string;
   /** e.g. `bun test {file}` — tokenised, never handed to a shell. */
   template: string;
   concurrency: number;
-  argSchema: Record<string, ArgSpec>;
+  argSchema: z.infer<typeof ResourceArgsSchema>;
   /** Lines matching this are lifted into the digest. */
   errorRegex?: string;
   /**
@@ -102,7 +97,7 @@ export function loadResource(db: DB, name: string): ResourceDef | null {
     name: r.name,
     template: r.template,
     concurrency: r.concurrency,
-    argSchema: jsonOr(r.arg_schema_json, ResourceArgs, {}),
+    argSchema: jsonOr(r.arg_schema_json, ResourceArgsSchema, {}),
     errorRegex: r.error_regex ?? undefined,
     cwd: r.cwd ?? undefined,
     tags: jsonOr(r.tags_json, z.array(z.string()), []),
@@ -147,7 +142,7 @@ const PLACEHOLDER = /\{(\w+)\}/g;
  * must appear in the template. Both directions are checked so a typo cannot
  * silently drop or smuggle an argument.
  */
-export function resolveLease(def: ResourceDef, args: Record<string, unknown>): Result<ResolvedCommand> {
+export function resolveLease(def: ResourceDef, args: LeaseArgs): Result<ResolvedCommand> {
   const tokens = tokenize(def.template);
   if (tokens.length === 0) return { ok: false, error: `resource ${def.name} has an empty template` };
 
@@ -168,11 +163,12 @@ export function resolveLease(def: ResourceDef, args: Record<string, unknown>): R
         failure ??= { ok: false, error: `template references {${name}} but no schema declares it` };
         return "";
       }
-      if (!(name in args)) {
+      const raw = args[name];
+      if (raw === undefined) {
         failure ??= { ok: false, error: `missing arg ${name}` };
         return "";
       }
-      const v = validateArg(name, spec, args[name]);
+      const v = validateArg(name, spec, raw);
       if (!v.ok) {
         failure ??= v;
         return "";
@@ -208,14 +204,12 @@ export function resolveLease(def: ResourceDef, args: Record<string, unknown>): R
 function argSchema(name: string, spec: ArgSpec): z.ZodType<string> {
   switch (spec.type) {
     case "enum":
-      return z
-        .enum(spec.values as [string, ...string[]], { error: `${name} must be one of: ${spec.values.join(", ")}` })
-        .transform(String);
+      return z.enum(spec.values, { error: `${name} must be one of: ${spec.values.join(", ")}` }).transform(String);
     case "int": {
-      // Not `z.coerce.number()`: that is `Number()`, which says `true` is 1,
-      // `""` is 0 and `null` is 0. A checkbox and a blank field would both reach
-      // a command line as a number somebody chose. A number, or a string that is
-      // entirely a number — nothing else.
+      // Not `z.coerce.number()`: that is `Number()`, which says `true` is 1 and
+      // `""` is 0. A checkbox and a blank field would both reach a command line
+      // as a number somebody chose. A number, or a string that is entirely a
+      // number — nothing else.
       let bounded = z.number().int(`${name} must be an integer`);
       if (spec.min !== undefined) bounded = bounded.min(spec.min, `${name} must be >= ${spec.min}`);
       if (spec.max !== undefined) bounded = bounded.max(spec.max, `${name} must be <= ${spec.max}`);
@@ -267,7 +261,7 @@ function argSchema(name: string, spec: ArgSpec): z.ZodType<string> {
   }
 }
 
-function validateArg(name: string, spec: ArgSpec, raw: unknown): { ok: true; value: string } | Invalid {
+function validateArg(name: string, spec: ArgSpec, raw: LeaseArg): { ok: true; value: string } | Invalid {
   const r = argSchema(name, spec).safeParse(raw);
   return r.success
     ? { ok: true, value: r.data }
@@ -356,7 +350,7 @@ export type ResourceExec = (
 
 export async function runResource(
   def: ResourceDef,
-  args: Record<string, unknown>,
+  args: LeaseArgs,
   opts: {
     exec: ResourceExec;
     cwd?: string;

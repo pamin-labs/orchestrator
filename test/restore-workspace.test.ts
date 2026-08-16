@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
-import type { Ctx } from "../src/api.ts";
-import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { Scheduler, type Job } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler } from "../src/scheduler.ts";
 import { restoreWorkspace } from "../src/mech/flow/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * A sandbox is where the work lives and it is replaceable — the TTL reaps an
@@ -14,29 +13,24 @@ import { fakeSandbox } from "./fake-sandbox.ts";
  */
 function harness(opts: { install?: string | null; installFails?: boolean } = {}) {
   const db: DB = openMemory();
-  const bus = new Bus(db);
-  const ran: Job[] = [];
-  const queued: Job[] = [];
-  const sched = new Scheduler(db, async (j) => void ran.push(j));
-  const realEnqueue = sched.enqueue.bind(sched);
-  sched.enqueue = ((kind: string, spec: Record<string, unknown>) => {
-    queued.push({ kind, ...spec } as unknown as Job);
-    return realEnqueue(kind as never, spec as never);
-  }) as typeof sched.enqueue;
+  const sched = new Scheduler(db, async () => {});
+  const queued = () =>
+    db
+      .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn'")
+      .all()
+      .map(({ payload_json }) => AgentTurnPayloadSchema.parse(JSON.parse(payload_json)));
 
   const sandbox = fakeSandbox((cmd) => {
     if (cmd.includes("test -d")) return { out: "" }; // no clone in there yet
     if (opts.installFails && cmd.includes("install")) return { code: 1, err: "boom" };
     return {};
   });
-  const ctx = {
+  const ctx = testContext({
     db,
-    bus,
     sched,
     sandbox,
-    waiters: new Map(),
-    config: { language: "中文", installTimeoutMs: 1000 },
-  } as unknown as Ctx;
+  });
+  ctx.config = { ...ctx.config, installTimeoutMs: 1000 };
 
   // The remote is a column, not something read back out of a host checkout: the
   // host stopped being a git participant at 007 step 5, and a rebuilt container
@@ -59,14 +53,14 @@ test("a rebuilt sandbox gets the branch back and its dependencies installed", as
 test("with no recorded install command, the role that works it out is queued", async () => {
   const { ctx, queued } = harness();
   await restoreWorkspace(ctx, 1);
-  expect(queued.some((j) => (j as { payload?: { role?: string } }).payload?.role === "bootstrap")).toBe(true);
+  expect(queued().some((payload) => payload.role === "bootstrap")).toBe(true);
 });
 
 test("a recorded command that stopped working hands the failure to that role", async () => {
   const { ctx, queued } = harness({ install: "bun install", installFails: true });
   await restoreWorkspace(ctx, 1);
-  const boot = queued.find((j) => (j as { payload?: { role?: string } }).payload?.role === "bootstrap");
-  expect((boot as { payload?: { rejection?: string } })?.payload?.rejection).toContain("bun install");
+  const boot = queued().find((payload) => payload.role === "bootstrap");
+  expect(boot?.rejection).toContain("bun install");
 });
 
 test("a rebuilt container takes its branch off the remote, not out of a bundle", async () => {

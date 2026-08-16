@@ -12,7 +12,7 @@ startTheme();
  *
  * Two defaults are wrong for a panel on loopback and are turned off here.
  * `retry: 3` with a backoff hides a dead server behind ten seconds of nothing —
- * `pull()` already puts the server's own refusal on screen, and the second
+ * `readApi()` already puts the server's own refusal on screen, and the second
  * attempt at 127.0.0.1 tells nobody anything the first did not. `staleTime: 0`
  * stays, deliberately: everything here is somebody else's state — an agent, a
  * container, a login happening in another window — and this page is never the

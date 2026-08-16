@@ -3,7 +3,7 @@ import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../db.ts";
 import type { Ctx } from "../../ctx.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
-import { claudeUsage, promptPath, type Usage } from "../../runtime/claude.ts";
+import { claudeUsage, promptPath, UsageSchema, type Usage } from "../../runtime/claude.ts";
 import { codexUsage } from "../../runtime/codex.ts";
 import { shq } from "../util/shq.ts";
 import { z } from "zod";
@@ -347,7 +347,7 @@ export function readCodex(out: string): { text: string; usage?: AskUsage } {
 }
 
 const ClaudeReply = z
-  .object({ result: z.string().optional(), is_error: z.boolean().optional(), usage: z.unknown().optional() })
+  .object({ result: z.string().optional(), is_error: z.boolean().optional(), usage: UsageSchema.optional() })
   .passthrough();
 const CodexReply = z
   .object({

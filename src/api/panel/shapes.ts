@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ESCALATION_STATES, GRP_STATES, SLICE_STATES, TASK_STATES } from "../../states.ts";
 
 /**
  * What the panel is sent, declared once.
@@ -32,7 +33,7 @@ export const Group = z.object({
   project_id: z.number(),
   name: z.string(),
   branch: z.string().nullable(),
-  status: z.string(),
+  status: z.enum(GRP_STATES),
   owns_json: z.string(),
   budget_tokens: z.number().nullable(),
   spent_tokens: z.number(),
@@ -48,7 +49,7 @@ export const Slice = z.object({
   title: z.string(),
   accept_spec: z.string(),
   difficulty: z.string(),
-  status: z.string(),
+  status: z.enum(SLICE_STATES),
   gates_json: z.string(),
   spent_tokens: z.number(),
   /** When it started waiting on the boss. The clock on 白干的单位. */
@@ -60,7 +61,7 @@ export const Task = z.object({
   grp_id: z.number(),
   slice_id: z.number().nullable(),
   title: z.string(),
-  status: z.string(),
+  status: z.enum(TASK_STATES),
 });
 
 export const Agent = z.object({
@@ -100,7 +101,7 @@ export const Escalation = z.object({
   grp_id: z.number().nullable(),
   severity: z.string(),
   question: z.string(),
-  chain_state: z.string(),
+  chain_state: z.enum(ESCALATION_STATES),
   /** One line of what it is about, for the queue. Written by whoever filed it. */
   brief: z.string().nullable(),
   /**
@@ -170,6 +171,33 @@ export const UsageWindow = z.object({
   error: z.string().optional(),
 });
 
+export const SnapshotSchema = z.object({
+  ready: z.boolean(),
+  projects: z.array(Project),
+  groups: z.array(Group),
+  slices: z.array(Slice),
+  tasks: z.array(Task),
+  agents: z.array(Agent),
+  escalations: z.array(Escalation),
+  channels: z.array(Channel),
+  draftCards: z.array(DraftCard),
+  lateObjections: z.array(GroupSaid),
+  approvedBlocked: z.array(Blocked),
+  dropProposals: z.array(GroupNote),
+  ideas: z.array(GroupNote),
+  answered: z.array(Answered),
+  mergeQueue: z.array(QueueEntry.extend({ place: z.object({ position: z.number(), total: z.number() }).nullable() })),
+  archived: z.array(Archived),
+  usage: z.array(UsageWindow),
+  limits: z.object({
+    maxGroups: z.number().nullable(),
+    leaseSlots: z.record(z.string(), z.number()),
+    autoAdvance: z.boolean(),
+    autoAcceptTiers: z.array(z.string()),
+  }),
+  lastSeq: z.number(),
+});
+
 export type UsageWindow = z.infer<typeof UsageWindow>;
 export type Project = z.infer<typeof Project>;
 export type Group = z.infer<typeof Group>;
@@ -185,3 +213,4 @@ export type GroupNote = z.infer<typeof GroupNote>;
 export type GroupSaid = z.infer<typeof GroupSaid>;
 export type Blocked = z.infer<typeof Blocked>;
 export type QueueEntry = z.infer<typeof QueueEntry>;
+export type Snapshot = z.infer<typeof SnapshotSchema>;

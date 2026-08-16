@@ -48,16 +48,11 @@ interface Rule {
   install?: (repo: Root) => string | null;
 }
 
-/** The two fields any rule below reads. `package.json` is the only caller. */
-interface PackageJson {
-  scripts?: Record<string, string>;
-  workspaces?: unknown;
-}
-
 const PackageJsonSchema = z.object({
   scripts: z.record(z.string(), z.string()).optional(),
-  workspaces: z.unknown().optional(),
+  workspaces: z.union([z.array(z.string()), z.object({ packages: z.array(z.string()) })]).optional(),
 });
+type PackageJson = z.infer<typeof PackageJsonSchema>;
 
 const readJson = (repo: Root, name: string): PackageJson | null =>
   jsonOr(repo.read(name), PackageJsonSchema.nullable(), null);

@@ -5,27 +5,28 @@ import { Button, LinkButton } from "../../ui/button";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "../../ui/field";
 import { Switch } from "../../ui/switch";
 import { Tip } from "../../ui/tooltip";
-import { post } from "../../lib/api";
+import { api, mutate } from "../../lib/api";
 import { DeviceCode } from "./shared";
+import { z } from "zod";
+import type { InferResponseType } from "hono/client";
 
-export interface GhStatus {
-  connected: boolean;
-  account: string | null;
-  /** Stored, and GitHub no longer answers for it. */
-  stale: boolean;
-  /** Authorized, but the app is installed nowhere it could read. `null` = could not tell. */
-  installed: boolean | null;
-  installUrl: string | null;
-  /** Where it is installed, and how many repositories each one can see. */
-  accounts: { id: number; account: string; kind: string; repos: number | null }[];
-  pending: { userCode: string; verificationUri: string } | null;
-  error: string | null;
-  /** What every commit carries besides its message. Both default on. */
-  trailers: { signoff: boolean; coauthor: boolean };
-  /** Who commits are authored as: the connected login, or the bot until there is one. */
-  identity: { name: string; email: string };
-  bot: { name: string; email: string };
-}
+export const GhStatusSchema: z.ZodType<InferResponseType<typeof api.auth.github.$get, 200>> = z.object({
+  connected: z.boolean(),
+  account: z.string().nullable(),
+  stale: z.boolean(),
+  installed: z.boolean().nullable(),
+  installUrl: z.string(),
+  accounts: z.array(z.object({ id: z.number(), account: z.string(), kind: z.string(), repos: z.number().nullable() })),
+  pending: z.object({ userCode: z.string(), verificationUri: z.string() }).nullable(),
+  error: z.string().nullable(),
+  trailers: z.object({ signoff: z.boolean(), coauthor: z.boolean(), claudeCoauthor: z.boolean() }),
+  identity: z.object({ name: z.string(), email: z.string() }),
+  bot: z.object({
+    name: z.literal("orchestrator-agentic-app[bot]"),
+    email: z.literal("317244264+orchestrator-agentic-app[bot]@users.noreply.github.com"),
+  }),
+});
+export type GhStatus = z.infer<typeof GhStatusSchema>;
 
 /**
  * Connect GitHub the way GitHub Desktop does: a code, a browser tab, nothing pasted.
@@ -40,7 +41,7 @@ export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; 
 
   const connect = async () => {
     setBusy(true);
-    await post("/api/auth/github", {});
+    await mutate(api.auth.github.$post());
     setBusy(false);
     onRefresh();
   };
@@ -78,7 +79,7 @@ export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; 
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
-                await post("/api/auth", { runtime: "github", clear: true });
+                await mutate(api.auth.$post({ json: { runtime: "github", clear: true } }));
                 setBusy(false);
                 onRefresh();
               }}
@@ -170,7 +171,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
   const [busy, setBusy] = useState(false);
   const set = async (next: { signoff?: boolean; coauthor?: boolean }) => {
     setBusy(true);
-    await post("/api/git/trailers", next);
+    await mutate(api.git.trailers.$post({ json: next }));
     setBusy(false);
     onSaved();
   };

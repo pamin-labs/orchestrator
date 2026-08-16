@@ -159,10 +159,20 @@ function findResponder(ctx: Ctx, grpId: number | null, role: string): number | n
 
 export interface AnswerInput {
   escId: number;
-  by: string;
+  by: EscalationOpenState;
   answer: string;
+  /** Present for an authenticated agent; omitted for the boss's panel. */
+  actorGrpId?: number | null;
   /** A note id the answer rests on. Required for the CoS. */
   refNoteId?: number;
+}
+
+function responderError(esc: EscRow, by: EscalationOpenState, actorGrpId?: number | null): string | null {
+  if (actorGrpId !== undefined) {
+    if (by === "boss") return "the boss answers through the panel";
+    if (by === "pm" ? actorGrpId !== esc.grp_id : actorGrpId !== null) return "not your question";
+  }
+  return by !== "boss" && esc.chain_state !== by ? `this question is waiting on ${esc.chain_state}, not ${by}` : null;
 }
 
 /** A level answers. Resolves whoever is blocked on `orch ask-boss`. */
@@ -171,6 +181,8 @@ export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok
   const esc = load(ctx, input.escId);
   if (!esc) return { ok: false, error: `no escalation ${input.escId}` };
   if (esc.chain_state === "answered") return { ok: false, error: "already answered" };
+  const refused = responderError(esc, input.by, input.actorGrpId);
+  if (refused) return { ok: false, error: refused };
 
   if (input.by === "cos") {
     // The CoS speaks for the boss only where the boss has already spoken.
@@ -212,11 +224,19 @@ export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok
 }
 
 /** A level declines. Not a failure — it is what keeps a guess from becoming a premise. */
-export function abstain(deps: ChainDeps, escId: number, by: string, why: string): void {
+export function abstain(
+  deps: ChainDeps,
+  escId: number,
+  by: EscalationOpenState,
+  why: string,
+  actorGrpId?: number | null,
+): { ok: true } | { ok: false; error: string } {
   const { ctx } = deps;
   const esc = load(ctx, escId);
-  if (!esc) return;
-  const next = CHAIN[CHAIN.indexOf(by as (typeof CHAIN)[number]) + 1] ?? "boss";
+  if (!esc) return { ok: false, error: `no escalation ${escId}` };
+  const refused = responderError(esc, by, actorGrpId);
+  if (refused) return { ok: false, error: refused };
+  const next = CHAIN[CHAIN.indexOf(by) + 1] ?? "boss";
   ctx.db.run("UPDATE escalation SET chain_state = ? WHERE id = ?", [next, escId]);
   ctx.bus.emit({
     grpId: esc.grp_id,
@@ -228,6 +248,7 @@ export function abstain(deps: ChainDeps, escId: number, by: string, why: string)
     meta: { escalation_id: escId, next },
   });
   route(deps, escId);
+  return { ok: true };
 }
 
 /**

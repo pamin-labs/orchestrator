@@ -7,6 +7,7 @@ import { snapshot } from "../src/api/panel/snapshot.ts";
 import * as S from "../src/api/panel/shapes.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { seedAuth } from "./seed-auth.ts";
+import { loadConfig } from "../src/config.ts";
 
 /**
  * The panel payload is what the SQL actually produced.
@@ -30,7 +31,7 @@ test("every row the panel is sent matches the shape it is declared as", () => {
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
     waiters: new Map(),
-    config: { language: "中文" },
+    config: loadConfig(),
   };
 
   // One of everything the payload can carry, so no list is empty — an empty
@@ -43,7 +44,7 @@ test("every row the panel is sent matches the shape it is declared as", () => {
   db.run(
     "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1,1,'S1','x','normal','gate',0)",
   );
-  db.run("INSERT INTO task (grp_id, slice_id, title, status, created_at) VALUES (1,1,'t','open',0)");
+  db.run("INSERT INTO task (grp_id, slice_id, title, status, created_at) VALUES (1,1,'t','pending',0)");
   db.run("INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1,1,'engineer','m','idle',0)");
   db.run("INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (1,1,'group',0)");
   db.run(

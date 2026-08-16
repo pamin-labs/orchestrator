@@ -2,9 +2,7 @@ import { expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
-import { makeApp, type Ctx } from "../src/api.ts";
-import { Bus } from "../src/bus.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { makeApp } from "../src/api.ts";
 import { loadConfig } from "../src/config.ts";
 import { createCheckout, keepBranch, sandboxGit, utilGit } from "../src/mech/git/checkout.ts";
 import { startMailbox } from "../src/mech/sandbox/mailbox.ts";
@@ -25,6 +23,7 @@ import {
   WORK,
 } from "../src/mech/sandbox/sandbox.ts";
 import { cacheProjectSkills } from "../src/mech/skills.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * The whole boundary, against a real container.
@@ -69,22 +68,18 @@ async function serverUp(): Promise<boolean> {
   }
 }
 
-function ctx(port = cfg.port): Ctx {
+function ctx(port = cfg.port) {
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'live', 'RUNNING', 0)");
-  const sched = new Scheduler(db, async () => {});
-  return {
+  return testContext({
     db,
-    bus: new Bus(db),
-    sched,
     sandbox: REAL,
-    waiters: new Map(),
     // An ephemeral port, not the configured one: this test serves the routes
     // itself, and a fixed port collides with a real orchestrator or with the
     // previous run's socket still in TIME_WAIT.
-    config: { language: "中文", port, sandbox: cfg.sandbox, skillsDir: cfg.skillsDir },
-  } as unknown as Ctx;
+    config: { ...cfg, port },
+  });
 }
 
 const up = await serverUp();

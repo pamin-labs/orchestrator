@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 import { bad, json, type Handler } from "../shared.ts";
 import { expandHome } from "./attach.ts";
+import { errText } from "../../mech/util/text.ts";
 
 /**
  * Three read-mostly panels: the blackboard, the skill tick boxes, and the
@@ -43,11 +44,14 @@ interface NoteRow {
   group: string | null;
 }
 
-export const getNotes: Handler = async (ctx, req) => {
-  const q = new URL(req.url).searchParams;
-  const project = q.get("project");
-  const group = q.get("group");
-  const kind = q.get("kind");
+export const NotesQuery = z.object({
+  project: z.coerce.number().int().positive().optional(),
+  group: z.coerce.number().int().positive().optional(),
+  kind: z.string().min(1).max(80).optional(),
+});
+
+export const getNotes = (async (ctx, _req, _params, query) => {
+  const { project, group, kind } = query;
   const where: string[] = [];
   // What this actually binds: two `Number()`s and a `kind` string. `any[]` let a
   // fourth push of anything at all through, on a query whose bindings are the
@@ -55,12 +59,12 @@ export const getNotes: Handler = async (ctx, req) => {
   const args: (string | number)[] = [];
   if (group) {
     where.push("n.grp_id = ?");
-    args.push(Number(group));
+    args.push(group);
   } else if (project) {
     // Project scope includes the standing notes (onboarding, lessons) that belong
     // to no group, which is exactly where they matter.
     where.push("(n.project_id = ? OR g.project_id = ?)");
-    args.push(Number(project), Number(project));
+    args.push(project, project);
   }
   if (kind) {
     where.push("n.kind = ?");
@@ -83,7 +87,7 @@ export const getNotes: Handler = async (ctx, req) => {
     )
     .all(...args);
   return json({ notes: rows });
-};
+}) satisfies Handler<z.infer<typeof NotesQuery>>;
 
 /**
  * Every skill on this machine, and whether agents can see it.
@@ -93,8 +97,9 @@ export const getNotes: Handler = async (ctx, req) => {
  * listed — naming one in a requirement injects it into that single turn — which is
  * why the composer offers all of them and asks before using an unticked one.
  */
-export const getSkills: Handler = async (ctx, req) => {
-  const id = Number(new URL(req.url).searchParams.get("project"));
+export const SkillsQuery = z.object({ project: z.coerce.number().int().positive() });
+
+export const getSkills = (async (ctx, _req, _params, { project: id }) => {
   const repo = ctx.db
     .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
     .get(id)?.repo_path;
@@ -111,7 +116,7 @@ export const getSkills: Handler = async (ctx, req) => {
       on: scope === "project" || !off.has(name),
     })),
   });
-};
+}) satisfies Handler<z.infer<typeof SkillsQuery>>;
 
 /**
  * Tick or untick one skill, then rebuild the staging directory.
@@ -123,28 +128,29 @@ export const getSkills: Handler = async (ctx, req) => {
 /** No name is a rescan; a name plus `on` is a tick box. */
 export const SkillBody = z.object({ name: z.string().max(200).optional(), on: z.boolean().optional() });
 
-export const postSkill: Handler<z.infer<typeof SkillBody>> = async (ctx, _req, _p, b) => {
+export const postSkill = (async (ctx, _req, _p, b) => {
   // No name is a rescan: the boss installed or removed a skill outside this
   // process, and the staged copy is the only thing that does not know yet.
   if (b.name) setSkillOff(ctx.db, b.name, b.on === false);
-  const { staged, failed } = restageSkills(ctx.db, ctx.config?.skillsDir ?? "/var/tmp/orch-cache/skills");
+  const { staged, failed } = restageSkills(ctx.db, ctx.config.skillsDir);
   // The mount is a staging path now, not either CLI's own directory, so a
   // changed set is not visible until the links are rebuilt. Every live
   // container, because a standing agent's container has no checkout and so no
   // other moment that would ever redo them.
   await relinkSkills();
   return json({ staged: staged.length, failed });
-};
+}) satisfies Handler<z.infer<typeof SkillBody>>;
 
-export const getDirs: Handler = async (ctx, req) => {
-  const q = new URL(req.url).searchParams;
-  const asked = q.get("path") ?? homedir();
+export const DirsQuery = z.object({ path: z.string().max(4000).optional(), files: z.literal("1").optional() });
+
+export const getDirs = (async (ctx, _req, _params, query) => {
+  const asked = query.path ?? homedir();
   const path = resolve(expandHome(asked));
   let entries;
   try {
     entries = readdirSync(path, { withFileTypes: true });
   } catch (e) {
-    return bad(`${path}: ${(e as Error).message}`);
+    return bad(`${path}: ${errText(e)}`);
   }
   const taken = new Set(
     ctx.db
@@ -161,7 +167,7 @@ export const getDirs: Handler = async (ctx, req) => {
     .sort((a, b) => (a.repo === b.repo ? a.name.localeCompare(b.name) : a.repo ? -1 : 1));
   // Files only when someone is picking files. The repo picker asking for them
   // would list a thousand entries in a source directory to choose one folder.
-  const files = q.get("files")
+  const files = query.files
     ? entries
         .filter((d) => d.isFile() && !d.name.startsWith("."))
         .map((d) => {
@@ -182,4 +188,4 @@ export const getDirs: Handler = async (ctx, req) => {
     dirs,
     files,
   });
-};
+}) satisfies Handler<z.infer<typeof DirsQuery>>;

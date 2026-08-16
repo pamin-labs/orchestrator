@@ -23,8 +23,8 @@ test("credential UI owns the login flows while the settings shell owns polling",
   for (const contract of [
     "id={`${r.key}-secret`}",
     "id={`${r.key}-url`}",
-    '"/api/auth/claude/login/code"',
-    '"/api/auth/codex/device/cancel"',
+    "api.auth.claude.login.code.$post",
+    "api.auth.codex.device.cancel.$post",
   ]) {
     expect(pane).toContain(contract);
   }
@@ -45,7 +45,7 @@ test("GitHub controls own their flow while the settings shell owns polling", () 
 
   expect(shell).not.toContain("function GithubPane(");
   for (const contract of [
-    '"/api/auth/github"',
+    "api.auth.github.$post",
     'runtime: "github", clear: true',
     'id="t-signoff"',
     'id="t-coauthor"',
@@ -69,9 +69,9 @@ test("environment controls own actions while the settings shell owns server quer
 
   expect(shell).not.toContain("function ServerPane(");
   for (const contract of [
-    '"/api/sandbox-server/restart"',
-    '"/api/sandbox-server/start"',
-    '"/api/sandbox-server/addr"',
+    'api["sandbox-server"].restart.$post',
+    'api["sandbox-server"].start.$post',
+    'api["sandbox-server"].addr.$post',
     'id="sandbox-key"',
   ]) {
     expect(pane).toContain(contract);
@@ -83,7 +83,7 @@ test("project controls own panes while the settings shell owns project scope", (
   const pane = read("../web/src/views/settings/project.tsx");
 
   expect(shell).toContain('queryKey: ["project", projectId, "config"]');
-  expect(shell).toContain("post(`/api/project/${projectId}/config`, body)");
+  expect(shell).toContain('api.project[":id"].config.$post');
   expect(shell).toContain("<ProjectPane");
   expect(pane).not.toContain("useQuery");
   expect(pane).not.toContain('queryKey: ["project"');
@@ -92,7 +92,7 @@ test("project controls own panes while the settings shell owns project scope", (
   for (const contract of [
     'section === "gates"',
     'section === "sandbox"',
-    "del(`/api/projects/${projectId}`)",
+    'api.projects[":id"].$delete',
     '<Button variant="danger"',
   ]) {
     expect(pane).toContain(contract);

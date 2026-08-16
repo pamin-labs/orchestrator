@@ -1,5 +1,5 @@
 import { beforeEach } from "bun:test";
-import { resetRepoHolds } from "../src/mech/git/github.ts";
+import { resetRepoHolds } from "../src/mech/git/repository.ts";
 import { resetNet } from "../src/mech/sandbox/net.ts";
 import { resetSandboxHold } from "../src/mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "../src/mech/ops/watchdog.ts";

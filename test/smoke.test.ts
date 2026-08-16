@@ -3,6 +3,11 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start, type Started } from "../src/server.ts";
+import { SnapshotSchema } from "../src/api/panel/shapes.ts";
+import { z } from "zod";
+import type { Json } from "../src/http/respond.ts";
+
+const PackageJson = z.object({ scripts: z.record(z.string(), z.string()) });
 
 /**
  * Boots the real server over real HTTP and walks the boss's path as far as the
@@ -32,7 +37,7 @@ afterAll(() => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-const post = (path: string, body?: unknown, token?: string) =>
+const post = (path: string, body?: Json, token?: string) =>
   fetch(`${srv.url}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json", ...(token ? { "x-orch-token": token } : {}) },
@@ -87,11 +92,14 @@ test("boss path: add project, drop an idea, nothing runs without a slot", async 
     .get()!;
   expect(p.id).toBeGreaterThan(0);
 
-  const idea = await (await post("/api/ideas", { project_id: p.id, text: "add rate limiting" })).json();
+  const idea = z
+    .object({ grp_id: z.number() })
+    .parse(await (await post("/api/ideas", { project_id: p.id, text: "add rate limiting" })).json());
   expect(idea.grp_id).toBeGreaterThan(0);
 
-  const state = await (await fetch(`${srv.url}/api/state`)).json();
-  const grp = state.groups.find((g: any) => g.id === idea.grp_id);
+  const state = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/state`)).json());
+  const grp = state.groups.find((group) => group.id === idea.grp_id);
+  if (!grp) throw new Error(`group ${idea.grp_id} missing from snapshot`);
   expect(grp.status).toBe("PLANNING");
 
   // The dispatcher turn is queued and stays queued: no slot, no spend.
@@ -125,14 +133,15 @@ test("boss path: add project, drop an idea, nothing runs without a slot", async 
 });
 
 test("a malformed DRAFT card is refused over the wire, status unchanged", async () => {
-  const state = await (await fetch(`${srv.url}/api/state`)).json();
-  const grp = state.groups.find((g: any) => g.status === "PLANNING");
+  const state = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/state`)).json());
+  const grp = state.groups.find((group) => group.status === "PLANNING");
+  if (!grp) throw new Error("planning group missing from snapshot");
   const r = await post(`/api/draft/${grp.id}/approve`, { card: "目标 : 只有这一行" });
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("missing sections");
 
-  const after = await (await fetch(`${srv.url}/api/state`)).json();
-  expect(after.groups.find((g: any) => g.id === grp.id).status).toBe("PLANNING");
+  const after = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/state`)).json());
+  expect(after.groups.find((group) => group.id === grp.id)?.status).toBe("PLANNING");
 });
 
 test("orch verbs reject a request with no token", async () => {
@@ -155,7 +164,7 @@ test("the SSE stream opens and replays the log from a cursor", async () => {
 });
 
 test("state stays queryable after a reconnect", async () => {
-  const s = await (await fetch(`${srv.url}/api/state`)).json();
+  const s = SnapshotSchema.parse(await (await fetch(`${srv.url}/api/state`)).json());
   expect(s.lastSeq).toBeGreaterThan(0);
   expect(Array.isArray(s.channels)).toBe(true);
 });
@@ -166,7 +175,7 @@ test("no build step resolves a package at gate time", () => {
   // once raced on it: `error: Failed to link jiti: EEXIST`, five times on one
   // slice, and the group read it as its own build being broken. The binaries are
   // already in `node_modules/.bin` — a dependency is a dependency.
-  const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> };
+  const pkg = PackageJson.parse(JSON.parse(readFileSync("package.json", "utf8")));
   for (const [name, cmd] of Object.entries(pkg.scripts)) {
     expect(`${name}: ${cmd}`).not.toContain("bunx");
   }

@@ -5,6 +5,14 @@ import { applyOverrides, defaultFor, overrides, putSetting, refuse, settablePath
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
+import type { Json } from "../src/http/respond.ts";
+import { z } from "zod";
+
+const SettingsResponse = z.object({
+  settings: z.array(
+    z.object({ path: z.string(), type: z.string(), value: z.json(), default: z.json(), overridden: z.boolean() }),
+  ),
+});
 
 test("the settable paths are the config's own, and nothing else is", () => {
   const paths = settablePaths();
@@ -15,12 +23,12 @@ test("the settable paths are the config's own, and nothing else is", () => {
   expect(paths.get("autoAcceptTiers")).toBe("array");
   expect(paths.get("sandbox.memory")).toBe("string");
   expect(paths.get("contextWindow")).toBe("object");
-  expect(paths.has("contextWindow.claude-opus-5")).toBe(false);
+  expect([...paths.keys()]).not.toContain("contextWindow.claude-opus-5");
 
   // Where the server listens cannot be set from a page the server is serving,
   // and the database path cannot live in the database.
   for (const p of ["host", "port", "dataDir", "sandbox.apiKey"]) {
-    expect(paths.has(p)).toBe(false);
+    expect([...paths.keys()]).not.toContain(p);
     expect(refuse(p, 1)).toBeTruthy();
   }
   expect(refuse("nonsense", 1)).toBe("no setting called nonsense");
@@ -69,7 +77,9 @@ test("a setting takes effect on the live config, not only on the next boot", () 
   expect(overrides(db)).not.toHaveProperty("maxGroups");
 
   // And a refused write changes neither.
+  // @ts-expect-error untyped JavaScript callers still need runtime rejection.
   expect(putSetting(db, cfg, "port", 1)).toBeTruthy();
+  // @ts-expect-error untyped JavaScript callers still need runtime rejection.
   expect(putSetting(db, cfg, "maxGroups", "lots")).toBeTruthy();
   expect(cfg.maxGroups).toBe(before);
 });
@@ -89,7 +99,7 @@ test("stored settings are layered over the file at boot, and stale keys are igno
   const fresh = applyOverrides(db, loadConfig("config/does-not-exist.yaml"));
   expect(fresh.autoAdvance).toBe(false);
   expect(fresh.sandbox.ttlSeconds).toBe(3600);
-  expect(fresh.maxGroups).toBe(defaultFor("maxGroups") as number);
+  expect(fresh.maxGroups).toBe(defaultFor("maxGroups"));
 });
 
 test("the panel reads every knob and writes one at a time", async () => {
@@ -102,9 +112,9 @@ test("the panel reads every knob and writes one at a time", async () => {
 
   const read = async () => {
     const r = await app(new Request("http://x/api/settings"));
-    return (await r.json()) as { settings: Array<{ path: string; value: unknown; overridden: boolean }> };
+    return SettingsResponse.parse(await r.json());
   };
-  const write = (body: unknown) =>
+  const write = (body: Json) =>
     app(
       new Request("http://x/api/settings", {
         method: "POST",
@@ -127,11 +137,11 @@ test("the panel reads every knob and writes one at a time", async () => {
   expect(after.settings.find((s) => s.path === "maxGroups")).toMatchObject({ value: 4, overridden: true });
   expect(ctx.config.maxGroups).toBe(4);
 
-  // Refusals come back as text the panel can show, not as a 500.
+  // Refusals come back as JSON the panel can show, not as a 500.
   const no = await write({ path: "port", value: 1 });
-  expect(no.status).toBe(422);
-  expect(await no.text()).toContain("startup argument");
-  expect((await write({ path: "maxGroups", value: "four" })).status).toBe(422);
+  expect(no.status).toBe(400);
+  expect(z.object({ error: z.string() }).parse(await no.json()).error).toContain("startup argument");
+  expect((await write({ path: "maxGroups", value: "four" })).status).toBe(400);
   expect(ctx.config.maxGroups).toBe(4);
 });
 
@@ -169,7 +179,7 @@ test("the two settings that predate the settings table land on it", () => {
 test("writing a setting does not edit what the default means", () => {
   const db = openMemory();
   const cfg = loadConfig("config/does-not-exist.yaml");
-  const shipped = defaultFor("sandbox.image") as string;
+  const shipped = defaultFor("sandbox.image");
 
   // `defu` fills an absent key by reference, so a config whose whole `sandbox:`
   // block came from the defaults *was* the defaults' block. Writing through it

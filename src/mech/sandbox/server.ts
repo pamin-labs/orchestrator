@@ -5,7 +5,6 @@ import { homedir } from "node:os";
 import type { Ctx } from "../../ctx.ts";
 import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
 import { putSetting } from "../../settings.ts";
-import type { Config } from "../../config.ts";
 import {
   allowedHostPaths,
   coveredBy,
@@ -219,7 +218,7 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
   }
 
   const [host, port] = serverAddr(ctx).split(":");
-  const skills = resolve(ctx.config?.skillsDir ?? join(homedir(), ".orch-cache/skills"));
+  const skills = resolve(ctx.config.skillsDir);
   // The parent, not the directory itself: the server matches prefixes, and a
   // sibling cache directory added later should not need this file edited again.
   const allowed = [...new Set([dirname(skills), "/var/tmp/orch-cache"])];
@@ -262,8 +261,7 @@ function ourKey(ctx: Ctx): string {
 }
 
 /** Where the server we start writes its own output. The only thing that can say why. */
-export const serverLogPath = (ctx: Ctx): string =>
-  join(resolve(ctx.config?.dataDir ?? "data"), "opensandbox-server.log");
+export const serverLogPath = (ctx: Ctx): string => join(resolve(ctx.config.dataDir), "opensandbox-server.log");
 
 /** The end of it, which is where a startup failure says what it was. */
 export function serverLogTail(ctx: Ctx, lines = 12): string {
@@ -319,7 +317,7 @@ async function waitUp(
  */
 export async function inspectServer(ctx: Ctx): Promise<ServerState> {
   const server = serverAddr(ctx);
-  const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || ctx.config.sandbox?.apiKey || "";
+  const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || ctx.config.sandbox.apiKey;
   const live = runningServer();
   const p = await probe(server, key);
 
@@ -406,7 +404,7 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
  * it — a value with two homes has a precedence order that lives only in code.
  */
 export function setServerAddr(ctx: Ctx, addr: string): string | null {
-  return putSetting(ctx.db, ctx.config as Config, "sandbox.server", addr.trim() || null);
+  return putSetting(ctx.db, ctx.config, "sandbox.server", addr.trim() || null);
 }
 
 /** The argv we started it with, for the panel's restart button. Ours only. */
@@ -427,9 +425,8 @@ export function ourArgv(ctx: Ctx): string[] | null {
 export function driftingPaths(ctx: Ctx): { want: string[]; config: string } | null {
   const allowed = allowedHostPaths();
   if (!allowed) return null;
-  const want = [
-    resolve(ctx.config?.skillsDir ?? join(homedir(), ".orch-cache/skills")),
-    ...Object.values(specFor(ctx, null).cacheDirs),
-  ].filter((p) => p && !coveredBy(allowed.paths, p));
+  const want = [resolve(ctx.config.skillsDir), ...Object.values(specFor(ctx, null).cacheDirs)].filter(
+    (p) => p && !coveredBy(allowed.paths, p),
+  );
   return want.length ? { want: [...new Set(want)], config: allowed.config } : null;
 }

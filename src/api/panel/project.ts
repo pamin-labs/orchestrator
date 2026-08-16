@@ -3,16 +3,17 @@ import { join, resolve } from "node:path";
 import { allowedImage, killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { baseBranch, listBranches, removeMirror } from "../../mech/git/checkout.ts";
-import { forgetHolds } from "../../mech/git/github.ts";
+import { forgetHolds } from "../../mech/git/repository.ts";
 import { pushBlocked } from "../../mech/git/prwatch.ts";
 import { runInstall } from "../../mech/flow/start.ts";
 import { forgetProjectSkills } from "../../mech/skills.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { z } from "zod";
-import { errText } from "../../mech/util/text.ts";
-import { projectConfig } from "../../mech/util/rows.ts";
+import { JsonObject } from "../../http/respond.ts";
+import { errText, jsonOr } from "../../mech/util/text.ts";
+import { projectConfig, ProjectConfigSchema } from "../../mech/util/rows.ts";
 import { IdParams } from "../fields.ts";
-import { bad, json, text, type AgentHandler, type Handler } from "../shared.ts";
+import { bad, json, message, type AgentHandler, type Handler } from "../shared.ts";
 import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
 import { SandboxOverrideSchema } from "../../config-schema.ts";
 import { GateName } from "../../mech/gate.ts";
@@ -49,7 +50,7 @@ const GithubRepo = z.object({
 /** The install command this project needs, or `none` for "it needs nothing". */
 export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.boolean().optional() });
 
-export const postSetup: AgentHandler<z.infer<typeof SetupBody>> = async (ctx, _req, a, _p, b) => {
+export const postSetup = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "bootstrap") return bad(`${a.role} does not set this project up`);
   if (!a.grp_id) return bad("this agent has no group");
   const grp = ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(a.grp_id);
@@ -60,7 +61,7 @@ export const postSetup: AgentHandler<z.infer<typeof SetupBody>> = async (ctx, _r
       grp.project_id,
     ]);
     ctx.bus.emit({ grpId: a.grp_id, author: a.role, kind: "state_change", body: "这个仓库不需要装什么" });
-    return text("ok");
+    return message("ok");
   }
 
   const cmd = (b.cmd ?? "").trim();
@@ -76,8 +77,8 @@ export const postSetup: AgentHandler<z.infer<typeof SetupBody>> = async (ctx, _r
       grp.project_id,
     ]);
   }
-  return r.ok ? text("ok") : bad(`install failed:\n${r.tail}`);
-};
+  return r.ok ? message("ok") : bad(`install failed:\n${r.tail}`);
+}) satisfies AgentHandler<z.infer<typeof SetupBody>>;
 
 /**
  * Register a repository this login can reach. There is no other kind of project.
@@ -95,7 +96,7 @@ export const ProjectBody = z.object({
   gates: GateNames.optional(),
 });
 
-export const postProject: Handler<z.infer<typeof ProjectBody>> = async (ctx, _req, _p, b) => {
+export const postProject = (async (ctx, _req, _p, b) => {
   const want = b.repo.trim();
   if (!want) return bad("which repository? (owner/name)");
   if (!ctx.gh) return bad("this server has no GitHub client");
@@ -145,7 +146,7 @@ export const postProject: Handler<z.infer<typeof ProjectBody>> = async (ctx, _re
 
   ctx.sched.tick();
   return json({ id: row.id, gates });
-};
+}) satisfies Handler<z.infer<typeof ProjectBody>>;
 
 /**
  * Rows to clear for one project, in an order SQLite will accept.
@@ -208,14 +209,14 @@ const PROJECT_ROWS: string[] = [
  * before containers, so nothing starts a turn against a project that is going
  * away.
  */
-export const deleteProject: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
+export const deleteProject = (async (ctx, _req, params) => {
   const id = params.id;
   const p = ctx.db
     .query<{ name: string; repo_path: string; remote: string | null }, [number]>(
       "SELECT name, repo_path, remote FROM project WHERE id = ?",
     )
     .get(id);
-  if (!p) return text("no such project", 404);
+  if (!p) return message("no such project", 404);
   const grps = ctx.db.query<{ id: number }, [number]>("SELECT id FROM grp WHERE project_id = ?").all(id);
 
   // 1. Nothing new starts, and what is running is actually stopped.
@@ -276,7 +277,7 @@ export const deleteProject: Handler<undefined, z.infer<typeof IdParams>> = async
   if (p.remote && !(await removeMirror(ctx, p.remote))) failed.push("mirror");
 
   // 3. Files, read out of the bodies that name them before those bodies go.
-  const root = resolve(join(ctx.config.dataDir ?? "data", "attachments"));
+  const root = resolve(join(ctx.config.dataDir, "attachments"));
   const said = ctx.db
     .query<{ body: string }, [number]>(
       `SELECT body FROM note WHERE project_id = ?1 OR grp_id IN (${G})
@@ -313,7 +314,7 @@ export const deleteProject: Handler<undefined, z.infer<typeof IdParams>> = async
   });
   ctx.sched.tick();
   return json({ ok: true, groups: grps.length, failed });
-};
+}) satisfies Handler<undefined, z.infer<typeof IdParams>>;
 
 /**
  * A partial `config_json`, merged key by key. `null` removes one override.
@@ -337,43 +338,32 @@ export const ProjectConfigBody = z
   })
   .strict();
 
-export const patchProjectConfig: Handler<z.infer<typeof ProjectConfigBody>, z.infer<typeof IdParams>> = async (
-  ctx,
-  _req,
-  params,
-  data,
-) => {
+export const patchProjectConfig = (async (ctx, _req, params, data) => {
   const id = params.id;
   const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
-  if (!row) return text("no such project", 404);
+  if (!row) return message("no such project", 404);
   const { baseBranch: nextBase, ...patch } = data;
   // `baseBranch` is a column, not a config_json key: it is read on every clone,
   // rebase and diff. Empty means "ask the remote".
   const changesConfig = Object.keys(patch).length > 0;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(row.config_json || "{}");
-  } catch {
-    if (changesConfig) return bad("项目配置的 JSON 已损坏；拒绝用一次局部修改覆盖整份配置");
-    parsed = {};
-  }
-  if ((!parsed || typeof parsed !== "object" || Array.isArray(parsed)) && changesConfig) {
+  const parsed = jsonOr(row.config_json, JsonObject.nullable(), null);
+  if (!parsed && changesConfig) {
     return bad("项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置");
   }
-  const current =
-    parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  const current = parsed ?? {};
+  let validated: z.infer<typeof ProjectConfigSchema> | null = null;
   if (changesConfig) {
     for (const [k, v] of Object.entries(patch)) {
       if (v === null) delete current[k];
       else current[k] = v;
     }
 
-    // The stored row can predate this route or come from detection, so the same
-    // runtime check also runs where every container reads it. Here it makes a bad
-    // override actionable instead of persisting a value the runtime must ignore.
-    const sandbox = SandboxOverrideSchema.safeParse(current.sandbox ?? {});
-    if (!sandbox.success) return bad(z.prettifyError(sandbox.error));
-    const want = sandbox.data.image;
+    // The row can predate this route or come from detection. Validate the whole
+    // merged config so an unrelated patch cannot bless a malformed known field.
+    const checked = ProjectConfigSchema.safeParse(current);
+    if (!checked.success) return bad(z.prettifyError(checked.error));
+    validated = checked.data;
+    const want = validated.sandbox?.image;
     if (want && !allowedImage(want)) {
       return bad(
         `镜像只能是我们发布的（ghcr.io/pamin-labs/…）或者你本地构建的（比如 orch/agent:1）。` +
@@ -381,6 +371,7 @@ export const patchProjectConfig: Handler<z.infer<typeof ProjectConfigBody>, z.in
       );
     }
   }
+  const config = validated ?? current;
 
   // Validate first, then write both homes as one act. A rejected image used to
   // return 422 after `base_branch` had already changed.
@@ -390,19 +381,19 @@ export const patchProjectConfig: Handler<z.infer<typeof ProjectConfigBody>, z.in
       ctx.db.run("UPDATE project SET base_branch = ? WHERE id = ?", [want || null, id]);
     }
     if (changesConfig) {
-      ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(current), id]);
+      ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(config), id]);
     }
   })();
-  return json(current);
-};
+  return json(config);
+}) satisfies Handler<z.infer<typeof ProjectConfigBody>, z.infer<typeof IdParams>>;
 
-export const getProjectConfig: Handler<undefined, z.infer<typeof IdParams>> = async (ctx, _req, params) => {
+export const getProjectConfig = (async (ctx, _req, params) => {
   const row = ctx.db
     .query<{ repo_path: string; base_branch: string | null }, [number]>(
       "SELECT repo_path, base_branch FROM project WHERE id = ?",
     )
     .get(params.id);
-  if (!row) return text("no such project", 404);
+  if (!row) return message("no such project", 404);
   const config = projectConfig(ctx.db, params.id);
   const resources = ctx.db
     .query<{ name: string; template: string }, []>("SELECT name, template FROM resource ORDER BY name")
@@ -417,4 +408,4 @@ export const getProjectConfig: Handler<undefined, z.infer<typeof IdParams>> = as
     // What the remote has, so the box is a choice rather than a memory test.
     branches: await listBranches(ctx, params.id),
   });
-};
+}) satisfies Handler<undefined, z.infer<typeof IdParams>>;

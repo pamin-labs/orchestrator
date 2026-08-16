@@ -8,6 +8,7 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
+import type { Json } from "../src/http/respond.ts";
 
 /**
  * The deadlock that stopped eight groups at once, from both ends.
@@ -36,7 +37,7 @@ function harness() {
     sched,
     sandbox: fakeSandbox(),
     waiters: new Map(),
-    config: { language: "中文" },
+    config: cfg,
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
@@ -63,7 +64,7 @@ function delivered(db: DB, opts: { owner: "live" | "retired" } = { owner: "live"
   return agentId;
 }
 
-const post = (app: (r: Request) => Promise<Response>, path: string, body: unknown, token: string) =>
+const post = (app: (r: Request) => Promise<Response>, path: string, body: Json, token: string) =>
   app(
     new Request(`http://x${path}`, {
       method: "POST",
@@ -76,7 +77,7 @@ test("a slice sent back gets its card back", async () => {
   const h = harness();
   delivered(h.db);
 
-  sendBack(h.deps as never, 1, "gate said no", "gate");
+  sendBack(h.deps, 1, "gate said no", "gate");
 
   const t = h.db
     .query<{ status: string; owner: number | null; claim_json: string | null }, []>(
@@ -94,7 +95,7 @@ test("a slice sent back gets its card back", async () => {
 test("the writer can claim and close the card it was handed back", async () => {
   const h = harness();
   delivered(h.db);
-  sendBack(h.deps as never, 1, "gate said no", "gate");
+  sendBack(h.deps, 1, "gate said no", "gate");
 
   // The retry is a fresh session, so it is a fresh agent row. Ownership used to be
   // the old row's id, which nothing could ever release.
@@ -103,14 +104,18 @@ test("the writer can claim and close the card it was handed back", async () => {
      VALUES (1, 1, 'engineer', 'm', 'tok-new', 0)`,
   );
 
-  expect(await (await post(h.app, "/orch/task/claim", { task_id: 1 }, "tok-new")).text()).toBe("ok");
+  expect(await (await post(h.app, "/orch/task/claim", { task_id: 1 }, "tok-new")).json()).toEqual({ message: "ok" });
   const done = await post(
     h.app,
     "/orch/task/done",
-    { task_id: 1, claim: { files: ["src/one.ts"] }, review: "pass: it works — src/one.ts:1 returns the fixed value" },
+    {
+      task_id: 1,
+      claim: { files: ["src/one.ts"], summary: "src/one.ts returns the fixed value" },
+      review: "pass: it works — src/one.ts:1 returns the fixed value",
+    },
     "tok-new",
   );
-  expect(await done.text()).toBe("ok");
+  expect(await done.json()).toEqual({ message: "ok" });
   expect(h.db.query<{ status: string }, []>("SELECT status FROM slice WHERE id = 1").get()!.status).toBe("gate");
 });
 
@@ -135,7 +140,7 @@ test("a card whose owner retired is not locked away from the group", async () =>
     },
     "tok-new",
   );
-  expect(await done.text()).toBe("ok");
+  expect(await done.json()).toEqual({ message: "ok" });
 });
 
 test("the invariant repair reopens a running slice nobody can work on", () => {
@@ -163,7 +168,7 @@ test("the invariant repair reopens a running slice nobody can work on", () => {
 test("a reopened card says what it already delivered, and how to close it", async () => {
   const h = harness();
   delivered(h.db);
-  sendBack(h.deps as never, 1, "gate said no", "gate");
+  sendBack(h.deps, 1, "gate said no", "gate");
 
   const list = await (
     await h.app(new Request("http://x/orch/task", { headers: { "x-orch-token": "tok-old" } }))

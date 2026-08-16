@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig, loadRoles } from "../src/config.ts";
 import { checkConfig, checkRoles } from "../src/mech/ops/checkconfig.ts";
 
 const yaml = (body: string): string => {
@@ -52,11 +52,12 @@ test("the committed config passes its own checker", () => {
   expect(checkConfig("config/default.yaml").findings).toEqual([]);
 });
 
-test("a role's enums are checked, since loadRoles only wants a name and a prompt", () => {
-  const roles = new Map([
-    ["engineer", { name: "engineer", prompt: "x", effort: "highest" as never }],
-    ["qa", { name: "qa", prompt: "x", runtime: "gemini" }],
-  ]);
+test("a role's schema rejects invalid enums before they reach a CLI", () => {
+  const dir = mkdtempSync(join(tmpdir(), "orch-roles-"));
+  writeFileSync(join(dir, "engineer.yaml"), "name: engineer\nprompt: x\neffort: highest\n");
+  expect(() => loadRoles(dir)).toThrow("engineer.yaml: invalid role");
+
+  const roles = new Map([["qa", { name: "qa", prompt: "x", runtime: "gemini" }]]);
   const out = checkRoles(roles, ["claude", "codex"]);
-  expect(out.map((f) => f.key)).toEqual(["engineer.effort", "qa.runtime"]);
+  expect(out.map((f) => f.key)).toEqual(["qa.runtime"]);
 });

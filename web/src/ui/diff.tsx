@@ -193,7 +193,7 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
-          if (e.isIntersecting) setHere(Number((e.target as HTMLElement).dataset.i));
+          if (e.isIntersecting && e.target instanceof HTMLElement) setHere(Number(e.target.dataset.i));
         }
       },
       { root, rootMargin: "0px 0px -85% 0px" },
@@ -228,7 +228,7 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
           {order.map((fi) => {
             const f = files[fi]!;
             const name = nameOf(f);
-            const rows = f.chunks.flatMap((c) => [{ gap: c.content } as Row, ...rowsOf(c)]);
+            const rows = f.chunks.flatMap((c): Row[] => [{ gap: c.content }, ...rowsOf(c)]);
             // Bounded per file, not per diff: thirty files of four hundred rows each
             // is a DOM nobody scrolls, and the long file is usually not the one being
             // reviewed. Opening one is a click, and it stays open.

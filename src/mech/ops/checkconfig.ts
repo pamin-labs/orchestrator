@@ -2,6 +2,9 @@ import { keysUnder, schemaAt } from "../../config-schema.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { DEFAULTS_FOR_CHECK, type Config } from "../../config.ts";
 import type { RoleDef } from "../../config.ts";
+import { JsonObject, type Json } from "../../http/respond.ts";
+import { errText } from "../util/text.ts";
+import type { z } from "zod";
 
 /**
  * Does the yaml say what it thinks it says?
@@ -26,7 +29,9 @@ export interface Finding {
   says: string;
 }
 
-const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+type JsonMap = z.infer<typeof JsonObject>;
+
+const isMap = (value: Json): value is JsonMap => value !== null && typeof value === "object" && !Array.isArray(value);
 
 /** `maxGroup` for `maxGroups`. Containment, not edit distance: typos here are dropped or doubled characters, and a Levenshtein for that is thirty lines nobody reads. */
 const nearest = (key: string, legal: string[]): string | null => {
@@ -48,7 +53,7 @@ const nearest = (key: string, legal: string[]): string | null => {
  * — which is how `maxGroups: 0` came to be refused in the file and accepted over
  * HTTP.
  */
-function walk(parsed: Record<string, unknown>, at: string, out: Finding[]): void {
+function walk(parsed: JsonMap, at: string, out: Finding[]): void {
   const siblings = keysUnder(at);
   for (const [k, v] of Object.entries(parsed)) {
     const key = at ? `${at}.${k}` : k;
@@ -81,13 +86,14 @@ export function checkConfig(path: string): { findings: Finding[]; overridden: nu
   if (!existsSync(path)) {
     return { findings: [{ level: "warn", key: path, says: "没有这个文件，全用默认值" }], overridden: 0 };
   }
-  let parsed: unknown;
+  let parsed: JsonMap;
   try {
-    parsed = Bun.YAML.parse(readFileSync(path, "utf8"));
+    const result = JsonObject.safeParse(Bun.YAML.parse(readFileSync(path, "utf8")));
+    if (!result.success) return { findings: [], overridden: 0 };
+    parsed = result.data;
   } catch (e) {
-    return { findings: [{ level: "fatal", key: path, says: `读不了：${(e as Error).message}` }], overridden: 0 };
+    return { findings: [{ level: "fatal", key: path, says: `读不了：${errText(e)}` }], overridden: 0 };
   }
-  if (!isMap(parsed)) return { findings: [], overridden: 0 };
   const findings: Finding[] = [];
   walk(parsed, "", findings);
   return { findings, overridden: Object.keys(parsed).length };
@@ -120,7 +126,7 @@ export function checkRoles(roles: Map<string, RoleDef>, runtimes: string[]): Fin
 export function changed(cfg: Config): number {
   // Assignable rather than cast: `Config` is a type alias, so it carries an
   // implicit index signature and this is a plain widening.
-  const base: Record<string, unknown> = DEFAULTS_FOR_CHECK;
+  const base = JsonObject.parse(DEFAULTS_FOR_CHECK);
   return Object.entries(cfg).filter(
     // dataDir is resolved to an absolute path on the way in, so it never equals
     // the default and is not something the boss wrote.

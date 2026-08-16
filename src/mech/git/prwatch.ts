@@ -7,12 +7,16 @@ import type { Ctx } from "../../ctx.ts";
 import { say } from "../../lang.ts";
 import { squashWip } from "./worktree.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
-import { parseRepo, type Github } from "./github.ts";
+import type { Github } from "./github.ts";
+import { parseRepo } from "./repository.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { jsonOr } from "../util/text.ts";
 import { z } from "zod";
+import type { GrpState } from "../../states.ts";
 
 const GateResults = z.record(z.string(), z.string());
+const PullNumber = z.object({ number: z.number().int().positive() });
+const PackageVersion = z.object({ version: z.string() });
 
 /**
  * The PR as a feedback channel.
@@ -62,11 +66,11 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   if (grp.pr_number) {
     // Already open, so this is a retry after rework: refresh what the PR says
     // rather than leaving a description written before the last three slices.
-    await gh.request("PATCH", `/repos/${slug}/pulls/${grp.pr_number}`, z.unknown(), {
+    const updated = await gh.request("PATCH", `/repos/${slug}/pulls/${grp.pr_number}`, PullNumber, {
       title: input.title,
       body: input.body,
     });
-    return { number: grp.pr_number };
+    return updated.ok ? { number: updated.data.number } : { error: updated.message };
   }
 
   const scope = { grp: grpId } as const;
@@ -99,25 +103,18 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   const pushed = await pushBranch(ctx, grpId);
   if (!pushed.ok) return { error: `could not push ${grp.branch}: ${pushed.reason}` };
 
-  const created = await gh.request(
-    "POST",
-    `/repos/${slug}/pulls`,
-    z.object({ number: z.number().int().positive().optional() }),
-    {
-      title: input.title,
-      body: input.body,
-      head: grp.branch,
-      base: await baseBranch(ctx, grp.project_id),
-    },
-  );
+  const created = await gh.request("POST", `/repos/${slug}/pulls`, PullNumber, {
+    title: input.title,
+    body: input.body,
+    head: grp.branch,
+    base: await baseBranch(ctx, grp.project_id),
+  });
   // The create answer carries the number, so the second call `gh` needed is gone.
   // It comes back for one case: a 422 saying a PR for this head already exists,
   // which is what a retry after a half-finished attempt looks like.
-  // `?.`, because a 200 with an empty body is a thing that happens — a proxy in
-  // front of GitHub, a 204, an ETag path that answers with nothing. Reading
-  // `.number` off it threw out of the whole route as a 500, which is the one
-  // answer that tells the boss nothing.
-  let number = created.ok ? (created.data?.number ?? 0) : 0;
+  // The response schema owns the required number. A 200 with an empty body is a
+  // handled invalid-response failure, not a route-level TypeError.
+  let number = created.ok ? created.data.number : 0;
   if (!created.ok) {
     const owner = slug.split("/")[0]!;
     const found = await gh.request(
@@ -135,7 +132,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     grpId,
     author: "orchestrator",
     kind: "state_change",
-    body: say(ctx.config?.language, "pr.opened", { n: number }),
+    body: say(ctx.config.language, "pr.opened", { n: number }),
   });
   return { number };
 }
@@ -167,7 +164,7 @@ const PROJECT_URL = "https://github.com/pamin-labs/orchestrator";
  */
 function version(): string {
   try {
-    return (JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version?: string }).version ?? "";
+    return jsonOr(readFileSync(join(ROOT, "package.json"), "utf8"), PackageVersion.nullable(), null)?.version ?? "";
   } catch {
     return "";
   }
@@ -366,7 +363,7 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
       {
         id: number;
         pr_number: number | null;
-        status: string;
+        status: GrpState;
         pr_seen_at: number;
         pr_checks_sig: string | null;
         remote: string | null;

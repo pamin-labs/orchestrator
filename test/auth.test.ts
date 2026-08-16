@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { z } from "zod";
+import { makeApp } from "../src/api.ts";
 import { openMemory } from "../src/db.ts";
+import type { Json } from "../src/http/respond.ts";
+import { setTrailers } from "../src/mech/git/ghlogin.ts";
+import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
 import {
   CODEX_HOME,
   decoy,
@@ -7,22 +13,20 @@ import {
   isAuthFailure,
   listAuth,
   loadAuth,
+  RuntimeAuthSchema,
   SANDBOX_KEY,
   saveAuth,
   vaultFor,
   wrongShape,
 } from "../src/mech/sandbox/auth.ts";
-import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
-import { REFRESH_HOME } from "../src/mech/sandbox/chatgpt.ts";
-import { accessToken, isStale, parseAuth, renew } from "../src/mech/sandbox/chatgpt.ts";
+import { accessToken, isStale, parseAuth, REFRESH_HOME, renew } from "../src/mech/sandbox/chatgpt.ts";
 import { DEVICE_CODE_TTL_MS } from "../src/mech/sandbox/login.ts";
-import { setTrailers } from "../src/mech/git/ghlogin.ts";
-import { readFileSync } from "node:fs";
-import { makeApp, type Ctx } from "../src/api.ts";
-import { Bus } from "../src/bus.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { testContext } from "./test-context.ts";
 
 const REAL = `sk-ant-oat01-${"R".repeat(80)}`;
+const ClaudeSettings = z.object({ includeCoAuthoredBy: z.boolean() });
+const DeviceLoginResponse = z.object({ code: z.string(), url: z.string(), expiresAt: z.number() });
 
 test("the real value never leaves the process except into the vault", () => {
   const db = openMemory();
@@ -197,7 +201,7 @@ test("Claude Code's own co-author trailer is a switch of its own", () => {
   // itself — on the commits an agent wrote by hand rather than the ones this
   // orchestrator squashes — and nothing in the panel could reach it.
   const db = openMemory();
-  const read = () => JSON.parse(filesFor(db)["/root/.claude/settings.json"]!) as { includeCoAuthoredBy: boolean };
+  const read = () => ClaudeSettings.parse(JSON.parse(filesFor(db)["/root/.claude/settings.json"]!));
   expect(read().includeCoAuthoredBy).toBe(true);
 
   // Not the git one: which tool wrote the diff and what this project puts in its
@@ -241,7 +245,7 @@ test("the ChatGPT login is renewed here, once, and by codex rather than by us", 
     remove: async (p: string) => void files.delete(p),
     run,
   });
-  const wrote = (v: unknown) => files.set(`${REFRESH_HOME}/auth.json`, JSON.stringify(v));
+  const wrote = (value: Json) => files.set(`${REFRESH_HOME}/auth.json`, JSON.stringify(value));
 
   // The CLI ran and rewrote the file: that is a renewal.
   const done = await renew(
@@ -310,18 +314,69 @@ test("a secret that cannot be right is refused before it is stored", () => {
   // The one that actually happened: the login URL pasted into the token box. It
   // saved cleanly, the page said configured, and every turn afterwards failed
   // with a 401 that reads like an expired subscription.
-  expect(wrongShape("claude", "oauth_token", "https://claude.com/cai/oauth/authorize?code=true")).toContain("网址");
-  expect(wrongShape("claude", "oauth_token", "sk-ant-api03-x")).toContain("sk-ant-oat01-");
-  expect(wrongShape("claude", "api_key", "sk-proj-x")).toContain("sk-ant-");
-  expect(wrongShape("codex", "api_key", "not-a-key")).toContain("sk-");
-  expect(wrongShape("codex", "chatgpt", "{}")).toContain("refresh_token");
-  expect(wrongShape("codex", "chatgpt", "half a file")).toContain("JSON");
-  expect(wrongShape("claude", "oauth_token", "  ")).toBe("空的");
+  expect(
+    wrongShape({ runtime: "claude", mode: "oauth_token", secret: "https://claude.com/cai/oauth/authorize?code=true" }),
+  ).toContain("网址");
+  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "sk-ant-api03-x" })).toContain("sk-ant-oat01-");
+  expect(wrongShape({ runtime: "claude", mode: "api_key", secret: "sk-proj-x" })).toContain("sk-ant-");
+  expect(wrongShape({ runtime: "codex", mode: "api_key", secret: "not-a-key" })).toContain("sk-");
+  expect(wrongShape({ runtime: "codex", mode: "chatgpt", secret: "{}" })).toContain("refresh_token");
+  expect(wrongShape({ runtime: "codex", mode: "chatgpt", secret: "half a file" })).toContain("JSON");
+  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: "  " })).toBe("空的");
 
   // And the shapes that are right.
-  expect(wrongShape("claude", "oauth_token", `sk-ant-oat01-${"A".repeat(40)}`)).toBeNull();
-  expect(wrongShape("codex", "api_key", "sk-abc")).toBeNull();
-  expect(wrongShape("codex", "chatgpt", JSON.stringify({ tokens: { refresh_token: "r" } }))).toBeNull();
+  expect(wrongShape({ runtime: "claude", mode: "oauth_token", secret: `sk-ant-oat01-${"A".repeat(40)}` })).toBeNull();
+  expect(wrongShape({ runtime: "codex", mode: "api_key", secret: "sk-abc" })).toBeNull();
+  expect(
+    wrongShape({ runtime: "codex", mode: "chatgpt", secret: JSON.stringify({ tokens: { refresh_token: "r" } }) }),
+  ).toBeNull();
+});
+
+test("runtime and mode are one contract at the route and database boundaries", async () => {
+  const db = openMemory();
+  const app = makeApp(testContext({ db }));
+
+  for (const body of [
+    { runtime: "github", mode: "chatgpt", secret: "not a GitHub token" },
+    { runtime: "claude", mode: "chatgpt", secret: JSON.stringify({ tokens: { refresh_token: "r" } }) },
+  ]) {
+    expect(RuntimeAuthSchema.safeParse(body).success).toBe(false);
+    const response = await app(
+      new Request("http://x/api/auth", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+    expect(response.status).toBe(400);
+  }
+  expect(db.query<{ n: number }, []>("SELECT count(*) n FROM runtime_auth").get()!.n).toBe(0);
+
+  const valid = await app(
+    new Request("http://x/api/auth", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runtime: "codex", mode: "api_key", secret: "sk-valid" }),
+    }),
+  );
+  expect(valid.status).toBe(200);
+  expect(loadAuth(db, "codex")?.mode).toBe("api_key");
+  const cleared = await app(
+    new Request("http://x/api/auth", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runtime: "codex", clear: true }),
+    }),
+  );
+  expect(cleared.status).toBe(200);
+  expect(loadAuth(db, "codex")).toBeNull();
+
+  db.run(
+    "INSERT INTO runtime_auth (runtime, mode, secret, updated_at) VALUES ('github', 'chatgpt', 'dead', 1), ('claude', 'chatgpt', 'dead', 1)",
+  );
+  expect(loadAuth(db, "github")).toBeNull();
+  expect(loadAuth(db, "claude")).toBeNull();
+  expect(listAuth(db)).toEqual([]);
 });
 
 test("a chatgpt login is judged by the expiry it carries, without a request", async () => {
@@ -329,7 +384,8 @@ test("a chatgpt login is judged by the expiry it carries, without a request", as
   // token says when it dies, and codex rotates it from the host. Checking that
   // offline is what keeps the settings page from costing a round trip per open.
   const db = openMemory();
-  const jwt = (exp: number) => `x.${btoa(JSON.stringify({ exp })).replace(/=+$/, "")}.y`;
+  const segment = (value: Json) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const jwt = (exp: number) => `${segment({ alg: "none", typ: "JWT" })}.${segment({ exp })}.eA`;
   const auth = (exp: number) => JSON.stringify({ tokens: { refresh_token: "r", access_token: jwt(exp) } });
 
   saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: auth(Math.floor(Date.now() / 1000) + 86_400 * 9) });
@@ -351,24 +407,16 @@ test("the codex device login shows a code with its link, and stores what the con
   // The panel's half is the pair. A link on its own opens a page asking for a
   // code the boss does not have.
   const db = openMemory();
-  const bus = new Bus(db);
   const sandbox = fakeSandbox((cmd) =>
     cmd.includes("codex login") ? { out: "1. Open https://chatgpt.com/device\n2. Enter code T5M2-76TFM\n" } : {},
   );
   sandbox.files.set(`${REFRESH_HOME}/auth.json`, JSON.stringify({ tokens: { refresh_token: "REAL" } }));
-  const ctx = {
-    db,
-    bus,
-    sandbox,
-    sched: { tick: () => {} },
-    waiters: new Map(),
-    config: { language: "中文" },
-  } as unknown as Ctx;
+  const ctx = testContext({ db, sandbox });
   const app = makeApp(ctx);
 
   const r = await app(new Request("http://x/api/auth/codex/device", { method: "POST" }));
   expect(r.status).toBe(200);
-  const b = (await r.json()) as { code: string; url: string; expiresAt: number };
+  const b = DeviceLoginResponse.parse(await r.json());
   expect(b.code).toBe("T5M2-76TFM");
   expect(b.url).toBe("https://chatgpt.com/device");
   // codex's own expiry, not a second number kept in step by hand.
@@ -387,7 +435,7 @@ test("the codex device login shows a code with its link, and stores what the con
   // Single-flight: a second click hands back the same pair rather than printing
   // a second code, which would invalidate the first.
   const again = await app(new Request("http://x/api/auth/codex/device", { method: "POST" }));
-  expect(((await again.json()) as any).code).toBe("T5M2-76TFM");
+  expect(z.object({ code: z.string() }).parse(await again.json()).code).toBe("T5M2-76TFM");
 });
 
 test("in a container, preflight stops answering questions about somebody else's machine", async () => {

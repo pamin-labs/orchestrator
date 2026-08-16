@@ -1,26 +1,106 @@
+import { z } from "zod";
 import type { DB } from "./db.ts";
 import { isRunning } from "./runtime/running.ts";
-import { isDispatchableGrpState, type GrpState, type JobState } from "./states.ts";
+import { type GrpState, isDispatchableGrpState, type JobState } from "./states.ts";
+import { jsonOr } from "./mech/util/text.ts";
 
 export type { JobState } from "./states.ts";
 
-export type JobKind = "agent_turn" | "lease" | "watchdog" | "digest" | "notify" | "gate" | "reconcile";
+const JobKindSchema = z.enum(["agent_turn", "lease", "watchdog", "digest", "notify", "gate", "reconcile"]);
+export type JobKind = z.infer<typeof JobKindSchema>;
 
-export interface Job {
+const Id = z.number().int().positive();
+const Sequence = z.number().int().nonnegative();
+const Resumable = z.object({ resumed: z.boolean().optional() });
+
+export const AgentTurnPayloadSchema = Resumable.extend({
+  role: z.string().optional(),
+  idea: z.string().optional(),
+  respec: z.string().optional(),
+  rejection: z.string().optional(),
+  rotate: z.boolean().optional(),
+  mail: z
+    .object({
+      from: z.string(),
+      from_group: Id.nullable().optional(),
+      intent: z.string(),
+      body: z.string(),
+    })
+    .optional(),
+  escalation: Id.optional(),
+  boundary: z.union([Id, z.array(z.object({ id: Id, name: z.string(), idea: z.string().optional() }))]).optional(),
+  conflict: z.boolean().optional(),
+  audit: Id.optional(),
+  audit_branch: z.string().nullable().optional(),
+  audit_group: z.string().optional(),
+  scribe: Id.optional(),
+  review: Id.optional(),
+  skills: z.array(z.string()).optional(),
+  digest: z.object({ channel_id: Id, from: Sequence, to: Sequence }).optional(),
+  sediment: z.array(z.string()).optional(),
+  project_id: Id.optional(),
+}).strict();
+
+const EmptyPayloadSchema = Resumable.strict();
+const JobPayloadSchemas = {
+  agent_turn: AgentTurnPayloadSchema,
+  lease: Resumable.extend({ lease_id: Id.optional() }).strict(),
+  watchdog: EmptyPayloadSchema,
+  digest: EmptyPayloadSchema,
+  notify: EmptyPayloadSchema,
+  gate: EmptyPayloadSchema,
+  reconcile: EmptyPayloadSchema,
+} as const satisfies Record<JobKind, z.ZodType>;
+
+export type JobPayload<K extends JobKind> = z.infer<(typeof JobPayloadSchemas)[K]>;
+
+export interface StoredJob {
   id: number;
-  kind: JobKind;
+  kind: string;
   grp_id: number | null;
   agent_id: number | null;
   slice_id: number | null;
   payload_json: string;
   priority: number;
   state: JobState;
-  /** Why it ended, when it ended badly. Read to tell a dead turn from a dead server. */
   error?: string | null;
 }
 
+export type Job<K extends JobKind = JobKind> = {
+  [P in K]: Omit<StoredJob, "kind"> & { kind: P; payload: JobPayload<P> };
+}[K];
+
 /** Runs a job to completion. Throwing marks the job failed. */
 export type Executor = (job: Job) => Promise<void>;
+
+type EnqueueFields<K extends JobKind> = {
+  grp_id?: number | null;
+  agent_id?: number | null;
+  slice_id?: number | null;
+  payload?: JobPayload<K>;
+  priority?: number;
+};
+
+function decodeJob(row: StoredJob): Job {
+  const kind = JobKindSchema.parse(row.kind);
+  const raw = JSON.parse(row.payload_json);
+  switch (kind) {
+    case "agent_turn":
+      return { ...row, kind, payload: JobPayloadSchemas.agent_turn.parse(raw) };
+    case "lease":
+      return { ...row, kind, payload: JobPayloadSchemas.lease.parse(raw) };
+    case "watchdog":
+      return { ...row, kind, payload: JobPayloadSchemas.watchdog.parse(raw) };
+    case "digest":
+      return { ...row, kind, payload: JobPayloadSchemas.digest.parse(raw) };
+    case "notify":
+      return { ...row, kind, payload: JobPayloadSchemas.notify.parse(raw) };
+    case "gate":
+      return { ...row, kind, payload: JobPayloadSchemas.gate.parse(raw) };
+    case "reconcile":
+      return { ...row, kind, payload: JobPayloadSchemas.reconcile.parse(raw) };
+  }
+}
 
 export interface SchedulerOptions {
   /** Max groups with an in-flight agent_turn. Default 3 (see PLAN.md §11). */
@@ -159,16 +239,8 @@ export class Scheduler {
     this.repoHeld = opts.repoHeld ?? (() => false);
   }
 
-  enqueue(
-    kind: JobKind,
-    fields: {
-      grp_id?: number | null;
-      agent_id?: number | null;
-      slice_id?: number | null;
-      payload?: unknown;
-      priority?: number;
-    } = {},
-  ): number {
+  enqueue<K extends JobKind>(kind: K, fields: EnqueueFields<K> = {}): number {
+    const payload = JobPayloadSchemas[kind].parse(fields.payload ?? {});
     const row = this.db
       .query<{ id: number }, [string, number | null, number | null, number | null, string, number, number]>(
         `INSERT INTO job (kind, grp_id, agent_id, slice_id, payload_json, priority, enqueued_at)
@@ -179,7 +251,7 @@ export class Scheduler {
         fields.grp_id ?? null,
         fields.agent_id ?? null,
         fields.slice_id ?? null,
-        JSON.stringify(fields.payload ?? {}),
+        JSON.stringify(payload),
         fields.priority ?? 0,
         this.now(),
       )!;
@@ -232,13 +304,14 @@ export class Scheduler {
    *  - budget must not be exhausted (slice budget first, then group)
    */
   private eligible(): Job[] {
-    const pending = this.db
-      .query<Job, []>(
+    const rows = this.db
+      .query<StoredJob, []>(
         `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state
          FROM job WHERE state = 'pending' ORDER BY priority DESC, id`,
       )
       .all();
-    if (pending.length === 0) return [];
+    if (rows.length === 0) return [];
+    const pending = this.decode(rows);
 
     // Standing agents (Architect, CoS, Librarian) have no group, but their turns
     // cost the same money and CPU as anyone's — so they take a slot too. Letting
@@ -296,11 +369,8 @@ export class Scheduler {
    * unknown tag falls back to `default` rather than to "unlimited": a typo in a
    * tag name must not silently uncap the pool it meant to name.
    */
-  private poolsOf(job: Job): string[] {
-    let leaseId = 0;
-    try {
-      leaseId = Number(JSON.parse(job.payload_json ?? "{}").lease_id ?? 0);
-    } catch {}
+  private poolsOf(job: Job<"lease">): string[] {
+    const leaseId = job.payload.lease_id ?? 0;
     if (!leaseId) return [DEFAULT_POOL];
     const row = this.db
       .query<{ tags_json: string; project_id: number | null }, [number]>(
@@ -308,10 +378,7 @@ export class Scheduler {
          FROM lease l JOIN resource r ON r.name = l.resource WHERE l.id = ?`,
       )
       .get(leaseId);
-    let tags: string[] = [];
-    try {
-      tags = JSON.parse(row?.tags_json ?? "[]");
-    } catch {}
+    const tags = jsonOr(row?.tags_json, z.array(z.string()), []);
     if (!tags.length) return [DEFAULT_POOL];
     // `repo` is one pool per repository, not one pool globally: two projects'
     // gates have nothing to race over, and serialising them would make every
@@ -320,12 +387,31 @@ export class Scheduler {
   }
 
   private runningJobs(): Job[] {
-    return this.db
-      .query<Job, []>(
-        `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state
-         FROM job WHERE state = 'running'`,
-      )
-      .all();
+    return this.decode(
+      this.db
+        .query<StoredJob, []>(
+          `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state
+           FROM job WHERE state = 'running'`,
+        )
+        .all(),
+    );
+  }
+
+  /** Invalid persisted control data is a failed job, never an omitted instruction. */
+  private decode(rows: StoredJob[]): Job[] {
+    const jobs: Job[] = [];
+    for (const row of rows) {
+      try {
+        jobs.push(decodeJob(row));
+      } catch (error) {
+        this.settle(
+          row.id,
+          "failed",
+          `invalid ${row.kind} payload: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    return jobs;
   }
 
   /**
@@ -340,7 +426,7 @@ export class Scheduler {
    * A job whose agent does not exist yet cannot be held: nothing has chosen a
    * provider for it. It will be hired, run once, and hold the provider itself.
    */
-  private providerHeld(job: Job): boolean {
+  private providerHeld(job: Job<"agent_turn">): boolean {
     if (!job.agent_id) return false;
     const row = this.db
       .query<{ hold_until: number | null }, [number]>(
@@ -364,7 +450,7 @@ export class Scheduler {
    * whether *any* credential exists: with none, nothing it could be hired onto
    * would run either.
    */
-  private credentialMissing(job: Job): boolean {
+  private credentialMissing(job: Job<"agent_turn">): boolean {
     const runtime = job.agent_id
       ? (this.db.query<{ runtime: string }, [number]>("SELECT runtime FROM agent WHERE id = ?").get(job.agent_id)
           ?.runtime ?? null)
@@ -386,7 +472,7 @@ export class Scheduler {
    * nothing to look up, and defaulting to held would stop housekeeping over
    * somebody else's credential.
    */
-  private repoLockedOut(job: Job): boolean {
+  private repoLockedOut(job: Job<"agent_turn">): boolean {
     if (!job.grp_id) return false;
     const row = this.db
       .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
@@ -404,13 +490,7 @@ export class Scheduler {
     if (!grp) return false;
     if (!isDispatchableGrpState(grp.status)) {
       if (grp.status !== "DRAFT") return false;
-      let role: unknown;
-      try {
-        role = JSON.parse(job.payload_json)?.role;
-      } catch {
-        return false;
-      }
-      if (typeof role !== "string" || !PLANNING_ROLES.has(role)) return false;
+      if (job.kind !== "agent_turn" || !job.payload.role || !PLANNING_ROLES.has(job.payload.role)) return false;
     }
     if (grp.budget_tokens !== null && grp.spent_tokens >= grp.budget_tokens) return false;
 
@@ -509,16 +589,18 @@ export function reclaimOrphans(
   const alive = opts.alive ?? isRunning;
 
   const running = db
-    .query<Job & { started_at: number | null }, []>(
+    .query<StoredJob & { started_at: number | null }, []>(
       `SELECT id, kind, grp_id, agent_id, slice_id, payload_json, priority, state, started_at
        FROM job WHERE state = 'running'`,
     )
     .all();
 
   const reclaimed: Job[] = [];
+  let stopped = false;
   for (const j of running) {
     const tooOld = j.started_at !== null && now() - j.started_at > maxAge;
     if (!tooOld && alive(j.id)) continue;
+    stopped = true;
 
     const why = tooOld
       ? `orphaned: still running after ${Math.round(maxAge / 60000)} min`
@@ -528,13 +610,20 @@ export function reclaimOrphans(
       why,
       j.id,
     ]);
-    // The reason travels with the row: resumeReclaimed reads it to tell a turn that
-    // died of its own doing from one the server took down on its way out.
-    reclaimed.push({ ...j, state: "failed", error: why });
+    try {
+      // The reason travels with the row: resumeReclaimed reads it to tell a turn that
+      // died of its own doing from one the server took down on its way out.
+      reclaimed.push({ ...decodeJob(j), state: "failed", error: why });
+    } catch (error) {
+      db.run("UPDATE job SET error = ? WHERE id = ?", [
+        `invalid ${j.kind} payload: ${error instanceof Error ? error.message : String(error)}`,
+        j.id,
+      ]);
+    }
   }
 
   // Agents believe they are mid-turn too, and a blocked agent is skipped forever.
-  if (reclaimed.length > 0) {
+  if (stopped) {
     db.run("UPDATE agent SET state = 'idle' WHERE state = 'running'");
   }
   return reclaimed;
@@ -549,19 +638,18 @@ export function reclaimOrphans(
  * intercept, reached from the other direction. `resumed` is stamped on the payload
  * so a turn that takes the server down with it cannot be resurrected forever.
  */
-export function resumeReclaimed(sched: Scheduler, jobs: Job[]): number {
+export function resumeReclaimed(sched: Scheduler, jobs: readonly (Job | StoredJob)[]): number {
   let requeued = 0;
-  for (const j of jobs) {
-    // Housekeeping kinds are re-enqueued by the server's own timer.
-    if (FREE_KINDS.has(j.kind)) continue;
-    // Not `jsonOr(…, {})`: the fallback here is `continue`, not an empty object.
-    let payload: Record<string, unknown> | null;
+  for (const row of jobs) {
+    let j: Job;
     try {
-      payload = JSON.parse(j.payload_json);
+      j = "payload" in row ? row : decodeJob(row);
     } catch {
-      // A payload we cannot read is a payload we cannot re-run faithfully.
+      // Reclaimed rows are already terminal; malformed payloads cannot be replayed.
       continue;
     }
+    // Housekeeping kinds are re-enqueued by the server's own timer.
+    if (FREE_KINDS.has(j.kind)) continue;
     // `resumed` stops a turn that takes the server down with it from being
     // resurrected forever — but an orphan died because the *server* went away, not
     // because of anything it did, and that must not spend its one chance. Six
@@ -573,14 +661,29 @@ export function resumeReclaimed(sched: Scheduler, jobs: Job[]): number {
     // nothing wrong, and spending its one retry on that would leave the group
     // stopped after the connection came back.
     const orphaned = /^(orphaned|offline):/.test(j.error ?? "");
-    if (payload?.resumed && !orphaned) continue;
-    sched.enqueue(j.kind, {
+    if (j.payload.resumed && !orphaned) continue;
+    const fields = {
       grp_id: j.grp_id,
       agent_id: j.agent_id,
       slice_id: j.slice_id,
       priority: j.priority,
-      payload: { ...payload, resumed: true },
-    });
+    };
+    switch (j.kind) {
+      case "agent_turn":
+        sched.enqueue(j.kind, { ...fields, payload: { ...j.payload, resumed: true } });
+        break;
+      case "lease":
+        sched.enqueue(j.kind, { ...fields, payload: { ...j.payload, resumed: true } });
+        break;
+      case "gate":
+        sched.enqueue(j.kind, { ...fields, payload: { resumed: true } });
+        break;
+      case "reconcile":
+        sched.enqueue(j.kind, { ...fields, payload: { resumed: true } });
+        break;
+      default:
+        continue;
+    }
     requeued++;
   }
   return requeued;

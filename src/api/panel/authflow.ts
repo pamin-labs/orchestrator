@@ -1,25 +1,34 @@
+import { z } from "zod";
+import type { Ctx } from "../../ctx.ts";
+import { release } from "../../mech/flow/intercept.ts";
 import {
   APP_SLUG,
   BOT,
   commitIdentity,
   forgetIdentity,
   githubAccount,
+  type Installation,
   listInstallations,
   listRepos,
   pollForToken,
   setTrailers,
   startDeviceFlow,
   trailers,
-  type Installation,
 } from "../../mech/git/ghlogin.ts";
-import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "../../mech/sandbox/auth.ts";
+import {
+  AuthRuntimeSchema,
+  listAuth,
+  loadAuth,
+  type RuntimeAuth,
+  RuntimeAuthSchema,
+  SANDBOX_KEY,
+  saveAuth,
+  wrongShape,
+} from "../../mech/sandbox/auth.ts";
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "../../mech/sandbox/login.ts";
 import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
-import { z } from "zod";
 import { errText } from "../../mech/util/text.ts";
-import { bad, json, text, type Handler } from "../shared.ts";
-import type { Ctx } from "../../ctx.ts";
-import { release } from "../../mech/flow/intercept.ts";
+import { bad, type Handler, json, message } from "../shared.ts";
 
 /**
  * Signing in: to the two model accounts, to GitHub, and to the sandbox server.
@@ -40,7 +49,8 @@ import { release } from "../../mech/flow/intercept.ts";
  */
 // `trailers` rides along: the Claude block draws one of the three switches, and
 // a second fetch for one boolean is a second thing that can be stale.
-export const getAuth: Handler = async (ctx) => json({ runtimes: listAuth(ctx.db), trailers: trailers(ctx.db) });
+export const getAuth = (async (ctx) =>
+  json({ runtimes: listAuth(ctx.db), trailers: trailers(ctx.db) })) satisfies Handler;
 
 /**
  * `secret` is not length-capped and not logged.
@@ -49,71 +59,56 @@ export const getAuth: Handler = async (ctx) => json({ runtimes: listAuth(ctx.db)
  * any cap here would be a guess that refuses a real credential — and the failure
  * would read as "the paste is broken". `wrongShape` is what judges it, by shape.
  */
-export const AuthBody = z.object({
-  runtime: z.string().max(40).default(""),
-  mode: z.string().max(40).optional(),
-  secret: z.string().optional(),
-  baseUrl: z.string().max(2000).optional(),
-  clear: z.boolean().optional(),
-  adopt: z.boolean().optional(),
-});
+export const AuthBody = z.union([
+  z.strictObject({ runtime: AuthRuntimeSchema, clear: z.literal(true) }),
+  z.strictObject({ runtime: z.literal(SANDBOX_KEY), mode: z.literal("api_key"), adopt: z.literal(true) }),
+  RuntimeAuthSchema,
+]);
 
-export const postAuth: Handler<z.infer<typeof AuthBody>> = async (ctx, _req, _p, b) => {
-  const runtime = b.runtime.trim();
-  let secret = (b.secret ?? "").trim();
-  if (!runtime) return bad("which runtime?");
+export const postAuth = (async (ctx, _req, _p, b) => {
+  // Something wrong got stored — a login URL pasted into the token box, an old
+  // account. Removing it is the only way back to "not configured", which is a
+  // state the scheduler and the panel both understand.
+  if ("clear" in b) {
+    ctx.db.run("DELETE FROM runtime_auth WHERE runtime = ?", [b.runtime]);
+    for (const g of ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL").all()) {
+      await killSandbox(ctx, { grp: g.id });
+    }
+    return message("ok");
+  }
+
+  let auth: RuntimeAuth;
   // Read the sandbox server's key out of the server's own config rather than
-  // asking the boss to copy one across. Generating a key here and trusting a
-  // human to mirror it is how the fleet spent a night 401ing: the panel had one
-  // value, the server had another, and nothing on either side could see both.
-  // The value never reaches the browser — it goes config file to store.
-  if (b.adopt) {
-    if (runtime !== SANDBOX_KEY) return bad("adopt is only for the sandbox server");
+  // asking the boss to copy one across. The value never reaches the browser.
+  if ("adopt" in b) {
     const found = serverKeyOnDisk();
     if (!found)
       return bad(
         "没找到沙盒服务器的配置。它是用 --config 启动的，把那个文件的路径放进 OPENSANDBOX_CONFIG，或者放在 ./sandbox.toml、~/.sandbox.toml。",
       );
-    secret = found.key;
+    auth = { runtime: SANDBOX_KEY, mode: "api_key", secret: found.key };
+  } else {
+    auth = b;
   }
-  // Something wrong got stored — a login URL pasted into the token box, an old
-  // account. Removing it is the only way back to "not configured", which is a
-  // state the scheduler and the panel both understand.
-  if (b.clear) {
-    ctx.db.run("DELETE FROM runtime_auth WHERE runtime = ?", [runtime]);
-    for (const g of ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL").all()) {
-      await killSandbox(ctx, { grp: g.id });
-    }
-    return text("ok");
-  }
-  if (!secret) return bad("paste the token or key");
-  if (b.mode !== "oauth_token" && b.mode !== "api_key" && b.mode !== "chatgpt")
-    return bad("mode is oauth_token, api_key or chatgpt");
+
   // The sandbox key is ours, not a provider's, so it has no shape to check.
-  if (runtime !== SANDBOX_KEY) {
-    const wrong = wrongShape(runtime, b.mode, secret);
+  if (auth.runtime !== SANDBOX_KEY) {
+    const wrong = wrongShape(auth);
     if (wrong) return bad(wrong);
-  }
-  if (b.baseUrl) {
-    try {
-      new URL(b.baseUrl);
-    } catch {
-      return bad(`${b.baseUrl} is not a URL`);
-    }
   }
   // The sandbox key is the one credential whose owner we can ask, and the one
   // where a wrong value is silent and total: it overrides the environment, so
   // generating one here and not telling the server made every turn, every gate
   // and every diff 401 — reported as "Authentication credentials are invalid",
   // which reads as a model problem. Refused rather than stored.
-  if (runtime === SANDBOX_KEY) {
-    const said = await sandboxKeyWorks(ctx.config.sandbox?.server ?? "127.0.0.1:8080", secret);
+  if (auth.runtime === SANDBOX_KEY) {
+    const said = await sandboxKeyWorks(ctx.config.sandbox?.server ?? "127.0.0.1:8080", auth.secret);
     if (said === "invalid") return bad("沙盒服务器不认这个密钥。它自己的配置里写的是哪个，这里就得填哪个。");
   }
-  saveAuth(ctx.db, { runtime, mode: b.mode, secret, baseUrl: b.baseUrl || undefined });
-  await credentialChanged(ctx, runtime);
-  return text("ok");
-};
+  saveAuth(ctx.db, auth);
+  await credentialChanged(ctx, auth.runtime);
+  return message("ok");
+}) satisfies Handler<z.infer<typeof AuthBody>>;
 
 /**
  * Ask the sandbox server whether it would accept this key.
@@ -190,7 +185,7 @@ interface ClaudeFlow {
 }
 let claudeFlow: ClaudeFlow | null = null;
 
-export const postClaudeLogin: Handler = async (ctx) => {
+export const postClaudeLogin = (async (ctx) => {
   if (claudeFlow && claudeFlow.expiresAt > Date.now()) return json(claudeFlow);
   const run = startClaudeLogin(ctx);
   const startedAt = Date.now();
@@ -214,24 +209,24 @@ export const postClaudeLogin: Handler = async (ctx) => {
     });
   });
   return json(claudeFlow);
-};
+}) satisfies Handler;
 
 /** The code off that page, handed to the prompt the CLI is sitting at. */
 export const CodeBody = z.object({ code: z.string().max(4000).default("") });
 
-export const postClaudeCode: Handler<z.infer<typeof CodeBody>> = async (ctx, _req, _p, b) => {
+export const postClaudeCode = (async (ctx, _req, _p, b) => {
   const code = b.code.trim();
   if (!code) return bad("没有码");
   if (!claudeFlow) return bad("没有在等码的登录 —— 先点登录");
   await startClaudeLogin(ctx).submit(code);
-  return text("ok");
-};
+  return message("ok");
+}) satisfies Handler<z.infer<typeof CodeBody>>;
 
-export const postClaudeCancel: Handler = async (ctx) => {
+export const postClaudeCancel = (async (ctx) => {
   startClaudeLogin(ctx).cancel();
   claudeFlow = null;
-  return text("ok");
-};
+  return message("ok");
+}) satisfies Handler;
 
 /**
  * Connect GitHub, device flow, no token pasted and no `gh` on this machine.
@@ -254,7 +249,7 @@ let ghFlow: GhFlow | null = null;
 /** Why the last attempt did not land. Shown next to the button that retries it. */
 let ghError: string | null = null;
 
-export const postGithubLogin: Handler = async (ctx) => {
+export const postGithubLogin = (async (ctx) => {
   // A second click while one code is still good hands back the same code rather
   // than starting a second poll: two loops racing for one login is two ways to
   // store a token and one of them wins silently.
@@ -293,7 +288,7 @@ export const postGithubLogin: Handler = async (ctx) => {
   })();
 
   return json({ userCode: d.userCode, verificationUri: d.verificationUri, expiresIn: d.expiresIn });
-};
+}) satisfies Handler;
 
 /**
  * Sign in to a ChatGPT account, from the utility container.
@@ -313,7 +308,7 @@ interface CodexFlow {
 }
 let codexFlow: CodexFlow | null = null;
 
-export const postCodexDevice: Handler = async (ctx) => {
+export const postCodexDevice = (async (ctx) => {
   if (codexFlow && codexFlow.expiresAt > Date.now()) return json(codexFlow);
   const run = startCodexDeviceLogin(ctx);
   const startedAt = Date.now();
@@ -334,13 +329,13 @@ export const postCodexDevice: Handler = async (ctx) => {
     });
   });
   return json(codexFlow);
-};
+}) satisfies Handler;
 
-export const postCodexDeviceCancel: Handler = async (ctx) => {
+export const postCodexDeviceCancel = (async (ctx) => {
   startCodexDeviceLogin(ctx).cancel();
   codexFlow = null;
-  return text("ok");
-};
+  return message("ok");
+}) satisfies Handler;
 
 /**
  * Each installation, with how many repositories it can see.
@@ -366,7 +361,7 @@ async function withCounts(ctx: Ctx, list: Installation[]): Promise<Array<Install
 /** Where the boss installs the app. One app, so one address. */
 const INSTALL_URL = `https://github.com/apps/${APP_SLUG}/installations/new`;
 
-export const getGithubLogin: Handler = async (ctx) => {
+export const getGithubLogin = (async (ctx) => {
   const a = loadAuth(ctx.db, "github");
   // Asked of GitHub rather than read from a stored name: a name in the database
   // keeps saying "connected" for a token that was revoked last week, and an
@@ -402,7 +397,7 @@ export const getGithubLogin: Handler = async (ctx) => {
     identity: await commitIdentity(ctx),
     bot: { ...BOT },
   });
-};
+}) satisfies Handler;
 
 /** The two switches. Both default on; see `TRAILERS_KEY` for why each exists. */
 export const TrailersBody = z.object({
@@ -411,9 +406,9 @@ export const TrailersBody = z.object({
   claudeCoauthor: z.boolean().optional(),
 });
 
-export const postTrailers: Handler<z.infer<typeof TrailersBody>> = async (ctx, _req, _p, b) => {
+export const postTrailers = (async (ctx, _req, _p, b) => {
   return json(setTrailers(ctx.db, b));
-};
+}) satisfies Handler<z.infer<typeof TrailersBody>>;
 
 /**
  * What this login can actually open a project on.
@@ -423,14 +418,15 @@ export const postTrailers: Handler<z.infer<typeof TrailersBody>> = async (ctx, _
  * logging in again — so the switcher's options and the list it drives arrive
  * together rather than as two round trips that can disagree.
  */
-export const getGithubRepos: Handler = async (ctx, req) => {
+export const GithubReposQuery = z.object({ installation: z.coerce.number().int().positive().optional() });
+
+export const getGithubRepos = (async (ctx, _req, _params, { installation: asked = 0 }) => {
   if (!ctx.gh) return bad("this server has no GitHub client");
   if (!loadAuth(ctx.db, "github")) return bad("还没连 GitHub，先去设置里连一下");
   // Both at once when the caller names an installation, which it does on every
   // open after the first: measured, a round trip to api.github.com is 260-630ms,
   // so doing these in series is a second of blank dialog for no reason. The
   // first open of a session still has to learn the id before it can ask.
-  const asked = Number(new URL(req.url).searchParams.get("installation")) || 0;
   const [inst, guess] = await Promise.all([
     listInstallations(ctx.gh),
     asked ? listRepos(ctx.gh, asked) : Promise.resolve(null),
@@ -458,4 +454,4 @@ export const getGithubRepos: Handler = async (ctx, req) => {
     installUrl: INSTALL_URL,
     repos: (repos?.data ?? []).map((r) => ({ ...r, taken: taken.get(r.fullName) ?? null })),
   });
-};
+}) satisfies Handler<z.infer<typeof GithubReposQuery>>;

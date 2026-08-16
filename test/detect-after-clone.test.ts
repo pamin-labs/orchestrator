@@ -1,14 +1,12 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { Scheduler } from "../src/scheduler.ts";
-import type { Ctx } from "../src/api.ts";
 import { detectProject } from "../src/mech/flow/start.ts";
 import { gatesFor } from "../src/mech/gate.ts";
 import { projectConfig } from "../src/mech/util/rows.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * Detection runs once, from the first clone, inside the group's container.
@@ -22,11 +20,8 @@ function harness(files: Record<string, string>) {
   const db: DB = openMemory();
   seedAuth(db);
   const asked: string[] = [];
-  const ctx: Ctx = {
+  const ctx = testContext({
     db,
-    bus: new Bus(db),
-    sched: new Scheduler(db, async () => {}),
-    waiters: new Map(),
     // The container answers exactly what a shell would: a listing, the files
     // detection opens, and whether the browser runner is there.
     sandbox: fakeSandbox((cmd) => {
@@ -37,8 +32,7 @@ function harness(files: Record<string, string>) {
       if (cmd.startsWith("test -f")) return files["scripts/browse.ts"] !== undefined ? { out: "yes" } : { code: 1 };
       return {};
     }),
-    config: { language: "中文" },
-  } as unknown as Ctx;
+  });
 
   db.run(
     `INSERT INTO project (name, repo_path, remote, config_json, created_at)

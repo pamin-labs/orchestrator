@@ -16,7 +16,12 @@
  */
 
 import { errText, jsonOr } from "../mech/util/text.ts";
-import { z } from "zod";
+import { JsonValue, ProtocolResponse, readJsonResponse, type Json } from "../http/respond.ts";
+import { ChangedFilesClaimSchema } from "../mech/flow/reconcile.ts";
+import { SplitRequirements } from "../api/orch/planning.ts";
+import { MailIntent } from "../api/orch/messaging.ts";
+import type { OrchType } from "../http/routes/orch.ts";
+import { hc } from "hono/client";
 const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
 const TOKEN = process.env.ORCH_TOKEN ?? "";
 
@@ -70,6 +75,7 @@ export function parseArgs(argv: string[]): Parsed {
 
 const list = (v: string | string[] | true | undefined): string[] =>
   Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
+const scalar = (v: string | string[] | true | undefined): string | undefined => (typeof v === "string" ? v : undefined);
 
 /** `--arg k=v --arg j=w` -> `{k: "v", j: "w"}` */
 export function kvArgs(v: string | string[] | true | undefined): Record<string, string> {
@@ -95,7 +101,7 @@ export function kvArgs(v: string | string[] | true | undefined): Record<string, 
  */
 const MAILBOX = process.env.ORCH_MAILBOX ?? "";
 
-async function viaMailbox(method: string, path: string, payload?: unknown): Promise<{ status: number; text: string }> {
+async function viaMailbox(method: string, path: string, payload?: Json): Promise<ProtocolResponse> {
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const res = `${MAILBOX}/res/${id}.json`;
   await Bun.write(`${MAILBOX}/req/${id}.json`, JSON.stringify({ id, method, path, token: TOKEN, body: payload }));
@@ -104,7 +110,10 @@ async function viaMailbox(method: string, path: string, payload?: unknown): Prom
   for (;;) {
     const f = Bun.file(res);
     if (await f.exists()) {
-      const answer = JSON.parse(await f.text()) as { status: number; text: string };
+      const answer = jsonOr(await f.text(), ProtocolResponse, {
+        status: 502,
+        body: { error: "mailbox returned an invalid response" },
+      });
       await f.delete().catch(() => {});
       return answer;
     }
@@ -112,36 +121,44 @@ async function viaMailbox(method: string, path: string, payload?: unknown): Prom
   }
 }
 
-async function call(
-  method: "GET" | "POST",
-  path: string,
-  payload?: unknown,
-): Promise<{ status: number; text: string }> {
-  if (MAILBOX) return viaMailbox(method, path, payload);
-  const headers: Record<string, string> = { "x-orch-token": TOKEN };
-  if (payload !== undefined) headers["content-type"] = "application/json";
-  try {
-    const res = await fetch(`${URL_BASE}${path}`, {
-      method,
-      headers,
-      // Only ever set for POST: every GET caller passes no payload, and a body
-      // on a GET is silently dropped by some runtimes and rejected by others.
-      ...(method === "POST" && payload !== undefined ? { body: JSON.stringify(payload) } : {}),
+const transport = Object.assign(
+  async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    if (!MAILBOX) return fetch(input, init);
+    const url = new URL(input instanceof Request ? input.url : input.toString());
+    const raw = typeof init?.body === "string" ? init.body : undefined;
+    const payload = raw ? JsonValue.parse(JSON.parse(raw)) : undefined;
+    const answer = await viaMailbox(init?.method ?? "GET", `${url.pathname}${url.search}`, payload);
+    return new Response(JSON.stringify(answer.body), {
+      status: answer.status,
+      headers: { "content-type": "application/json; charset=utf-8" },
     });
-    return { status: res.status, text: await res.text() };
-  } catch (e) {
-    // Reached only with no mailbox in the environment. Inside a container that is
-    // the whole story: 127.0.0.1 is the container, the orchestrator is not there,
-    // and `ORCH_MAILBOX` is set for a turn and for nothing else — so a gate, a
-    // lease or an install script calling `orch` lands here. Bare "connection
-    // refused" reads as "the server is down" rather than "this process was never
-    // given a route".
+  },
+  { preconnect: fetch.preconnect },
+);
+
+const orch = hc<OrchType>(`${URL_BASE}/orch`, {
+  fetch: transport,
+  headers: { "x-orch-token": TOKEN },
+});
+
+async function result(res: Response): Promise<ProtocolResponse> {
+  const body = await readJsonResponse(res);
+  return body.ok
+    ? { status: res.status, body: body.data }
+    : { status: 502, body: { error: "orchestrator returned a non-JSON response" } };
+}
+
+async function send(request: Promise<Response>): Promise<ProtocolResponse> {
+  try {
+    return await result(await request);
+  } catch (error) {
     return {
       status: 502,
-      text:
-        `cannot reach the orchestrator at ${URL_BASE}: ${errText(e)}\n` +
-        `ORCH_MAILBOX is unset, so this is not running inside a turn — a gate, a lease and an ` +
-        `install script have no route to the orchestrator by design.`,
+      body: {
+        error:
+          `cannot reach the orchestrator at ${URL_BASE}: ${errText(error)}\n` +
+          "ORCH_MAILBOX is unset, so this process has no sandbox transport.",
+      },
     };
   }
 }
@@ -185,17 +202,17 @@ export async function main(argv: string[]): Promise<number> {
     return cmd ? 0 : 2;
   }
 
-  let r: { status: number; text: string };
+  let r: ProtocolResponse;
   switch (cmd) {
     case "ctx": {
       if (sub !== "query") return usageError(`unknown ctx subcommand ${sub}`);
-      r = await call("POST", "/orch/ctx/query", { question: args.slice(2).join(" ") });
+      r = await send(orch.ctx.query.$post({ json: { question: args.slice(2).join(" ") } }));
       break;
     }
     case "setup": {
       // The bootstrap role's one verb: what installs this project's dependencies.
-      if (flags.none) r = await call("POST", "/orch/setup", { none: true });
-      else if (typeof flags.cmd === "string") r = await call("POST", "/orch/setup", { cmd: flags.cmd });
+      if (flags.none) r = await send(orch.setup.$post({ json: { none: true } }));
+      else if (typeof flags.cmd === "string") r = await send(orch.setup.$post({ json: { cmd: flags.cmd } }));
       else return usageError('setup needs --cmd "<command>" or --none');
       break;
     }
@@ -203,57 +220,73 @@ export async function main(argv: string[]): Promise<number> {
       const question = args.slice(1).join(" ");
       if (!question) return usageError("ask-boss needs a question");
       // Blocks until answered — that is the point.
-      r = await call("POST", "/orch/ask-boss", {
-        severity: flags.severity ?? "advisory",
-        question,
-        brief: typeof flags.brief === "string" ? flags.brief : undefined,
-        kind: typeof flags.kind === "string" ? flags.kind : undefined,
-      });
+      r = await send(
+        orch["ask-boss"].$post({
+          json: {
+            severity: scalar(flags.severity) ?? "advisory",
+            question,
+            brief: scalar(flags.brief),
+            kind: scalar(flags.kind),
+          },
+        }),
+      );
       break;
     }
     case "lease": {
       if (sub === "log") {
         const id = args[2];
-        const grep = typeof flags.grep === "string" ? `?grep=${encodeURIComponent(flags.grep)}` : "";
-        r = await call("GET", `/orch/lease/${id}/log${grep}`);
+        if (!id) return usageError("lease log needs an id");
+        r = await send(orch.lease[":id"].log.$get({ param: { id }, query: { grep: scalar(flags.grep) } }));
         break;
       }
       if (!sub) return usageError("lease needs a resource name");
-      r = await call("POST", "/orch/lease", { resource: sub, args: kvArgs(flags.arg) });
+      r = await send(orch.lease.$post({ json: { resource: sub, args: kvArgs(flags.arg) } }));
       break;
     }
     case "mail": {
       if (!sub) return usageError("mail needs a target");
-      r = await call("POST", "/orch/mail", {
-        target: sub,
-        intent: flags.intent ?? "inform",
-        severity: flags.severity,
-        in_reply_to: flags["in-reply-to"],
-        body: args.slice(2).join(" "),
-      });
+      const intent = MailIntent.safeParse(scalar(flags.intent) ?? "inform");
+      if (!intent.success) {
+        return usageError("mail --intent must be ask|request|inform|note|decision");
+      }
+      r = await send(
+        orch.mail.$post({
+          json: {
+            target: sub,
+            intent: intent.data,
+            severity: scalar(flags.severity),
+            in_reply_to: scalar(flags["in-reply-to"]),
+            body: args.slice(2).join(" "),
+          },
+        }),
+      );
       break;
     }
     case "journal": {
       if (sub !== "add") return usageError(`unknown journal subcommand ${sub}`);
-      r = await call("POST", "/orch/journal", {
-        kind: flags.kind ?? "journal",
-        body: await stdin(),
-        files: list(flags.file),
-        slice_id: flags.slice,
-      });
+      r = await send(
+        orch.journal.$post({
+          json: {
+            kind: scalar(flags.kind) ?? "journal",
+            body: await stdin(),
+            files: list(flags.file),
+            slice_id: scalar(flags.slice),
+          },
+        }),
+      );
       break;
     }
     case "task": {
       if (sub === "list" || sub === undefined) {
         // No group id: the token says which group is asking, and a number in a
         // query string was a way to read another group's cards.
-        r = await call("GET", "/orch/task");
+        r = await send(orch.task.$get());
       } else if (sub === "claim") {
         const id = Number(args[2]);
         if (!Number.isInteger(id)) {
           return usageError("task claim needs the numeric id from `orch task list`, not the title");
         }
-        r = await call("POST", "/orch/task/claim", { task_id: id });
+        r = await send(orch.task.claim.$post({ json: { task_id: id } }));
       } else if (sub === "split") {
         // One box, several unrelated asks. Titles+ideas on stdin as JSON, because a
         // paragraph per requirement does not fit in flags.
@@ -265,11 +298,11 @@ export async function main(argv: string[]): Promise<number> {
           );
         }
         const raw = (await stdin()).trim();
-        const parsed = raw ? jsonOr(raw, z.unknown(), raw) : null;
-        if (!Array.isArray(parsed)) {
+        const parsed = raw ? jsonOr(raw, SplitRequirements.nullable(), null) : null;
+        if (!parsed) {
           return usageError('split needs a JSON array on stdin: [{"name":"…","idea":"…"}, …]');
         }
-        r = await call("POST", "/orch/split", { group_id: gid, requirements: parsed });
+        r = await send(orch.split.$post({ json: { group_id: gid, requirements: parsed } }));
       } else if (sub === "done") {
         // Agents reach for a heredoc as naturally as for a flag, so accept the
         // claim on stdin too. The id stays required — silently completing "task
@@ -285,12 +318,18 @@ export async function main(argv: string[]): Promise<number> {
         const inline = typeof flags.claim === "string" ? flags.claim : "";
         const piped = inline || alreadyDone ? "" : await stdin();
         const raw = inline || piped;
-        r = await call("POST", "/orch/task/done", {
-          task_id: id,
-          claim: raw.trim() ? jsonOr(raw.trim(), z.unknown(), raw.trim()) : undefined,
-          already_done: alreadyDone || undefined,
-          review: typeof flags.review === "string" ? flags.review : undefined,
-        });
+        const claim = raw.trim() ? jsonOr(raw.trim(), ChangedFilesClaimSchema.nullable(), null) : undefined;
+        if (raw.trim() && !claim) {
+          return usageError('task done --claim must be JSON: {"files":["src/file.ts"],"summary":"what changed"}');
+        }
+        const review = scalar(flags.review);
+        if (alreadyDone) {
+          r = await send(orch.task.done.$post({ json: { task_id: id, already_done: alreadyDone, review } }));
+        } else if (claim) {
+          r = await send(orch.task.done.$post({ json: { task_id: id, claim, review } }));
+        } else {
+          return usageError("task done needs --claim JSON or --already-done <why>");
+        }
       } else return usageError(`unknown task subcommand ${sub}`);
       break;
     }
@@ -303,7 +342,7 @@ export async function main(argv: string[]): Promise<number> {
         return usageError("review needs --verdict pass|fail");
       }
       const note = typeof flags.note === "string" ? flags.note : args.slice(2).join(" ");
-      r = await call("POST", "/orch/review", { slice_id: id, verdict: flags.verdict, note });
+      r = await send(orch.review.$post({ json: { slice_id: id, verdict: flags.verdict, note } }));
       break;
     }
     case "audit": {
@@ -312,7 +351,7 @@ export async function main(argv: string[]): Promise<number> {
         return usageError("audit needs --verdict pass|fail");
       }
       const note = typeof flags.note === "string" ? flags.note : args.slice(2).join(" ");
-      r = await call("POST", "/orch/audit", { group_id: sub, verdict: flags.verdict, note });
+      r = await send(orch.audit.$post({ json: { group_id: sub, verdict: flags.verdict, note } }));
       break;
     }
     case "pr": {
@@ -322,75 +361,73 @@ export async function main(argv: string[]): Promise<number> {
       }
       // Body on stdin, like `journal add`: it is paragraphs with blank lines in
       // them, and an argv the agent has to quote is an argv the agent gets wrong.
-      r = await call("POST", "/orch/pr", { group_id: sub, title: flags.title, body: await stdin() });
+      r = await send(orch.pr.$post({ json: { group_id: sub, title: flags.title, body: await stdin() } }));
       break;
     }
     case "answer": {
       const id = Number(sub);
       if (!Number.isInteger(id)) return usageError("answer needs an escalation id");
       if (flags.abstain) {
-        r = await call("POST", "/orch/answer", {
-          escalation_id: id,
-          abstain: true,
-          why: typeof flags.why === "string" ? flags.why : "",
-        });
+        r = await send(orch.answer.$post({ json: { escalation_id: id, abstain: true, why: scalar(flags.why) ?? "" } }));
         break;
       }
       const a = typeof flags.answer === "string" ? flags.answer : args.slice(2).join(" ");
       if (!a) return usageError('answer needs --answer "…" or --abstain');
-      r = await call("POST", "/orch/answer", {
-        escalation_id: id,
-        answer: a,
-        ref: flags.ref,
-      });
+      r = await send(orch.answer.$post({ json: { escalation_id: id, answer: a, ref: scalar(flags.ref) } }));
       break;
     }
     case "triage": {
       if (!sub) return usageError("triage needs a group id or name");
-      if (!["patch", "respec", "reject"].includes(String(flags.as))) {
+      const as = scalar(flags.as);
+      if (as !== "patch" && as !== "respec" && as !== "reject") {
         return usageError("triage needs --as patch|respec|reject");
       }
-      r = await call("POST", "/orch/triage", {
-        group_id: sub,
-        as: flags.as,
-        note: typeof flags.note === "string" ? flags.note : args.slice(2).join(" "),
-      });
+      r = await send(
+        orch.triage.$post({
+          json: { group_id: sub, as, note: scalar(flags.note) ?? args.slice(2).join(" ") },
+        }),
+      );
       break;
     }
     case "draft": {
       // id or name; the server resolves either. An agent reaches for the name it
       // can see, and refusing that teaches it nothing.
-      r = await call("POST", "/orch/draft", {
-        group_id: sub ?? process.env.ORCH_GRP_ID,
-        card: await stdin(),
-      });
+      r = await send(orch.draft.$post({ json: { group_id: sub ?? process.env.ORCH_GRP_ID, card: await stdin() } }));
       break;
     }
     case "owns": {
       const paths = list(flags.path);
       if (paths.length === 0) return usageError("owns needs at least one --path <glob>");
-      r = await call("POST", "/orch/owns", { group_id: sub ?? process.env.ORCH_GRP_ID, paths });
+      r = await send(orch.owns.$post({ json: { group_id: sub ?? process.env.ORCH_GRP_ID, paths } }));
       break;
     }
     case "blocked": {
-      r = await call("POST", "/orch/blocked", {
-        group_id: sub ?? process.env.ORCH_GRP_ID,
-        path: typeof flags.path === "string" ? flags.path : "",
-        why: typeof flags.why === "string" ? flags.why : "",
-      });
+      r = await send(
+        orch.blocked.$post({
+          json: {
+            group_id: sub ?? process.env.ORCH_GRP_ID,
+            path: scalar(flags.path) ?? "",
+            why: scalar(flags.why) ?? "",
+          },
+        }),
+      );
       break;
     }
     case "drop": {
-      r = await call("POST", "/orch/drop", {
-        group_id: sub ?? process.env.ORCH_GRP_ID,
-        why: typeof flags.why === "string" ? flags.why : "",
-        commit: typeof flags.commit === "string" ? flags.commit : undefined,
-        duplicate: typeof flags.duplicate === "string" ? flags.duplicate : undefined,
-      });
+      r = await send(
+        orch.drop.$post({
+          json: {
+            group_id: sub ?? process.env.ORCH_GRP_ID,
+            why: scalar(flags.why) ?? "",
+            commit: scalar(flags.commit),
+            duplicate: scalar(flags.duplicate),
+          },
+        }),
+      );
       break;
     }
     case "status": {
-      r = await call("POST", "/orch/status", { text: args.slice(1).join(" ") });
+      r = await send(orch.status.$post({ json: { text: args.slice(1).join(" ") } }));
       break;
     }
     default:
@@ -400,11 +437,19 @@ export async function main(argv: string[]): Promise<number> {
   // Non-2xx goes to stderr with a non-zero exit so the agent sees a real
   // failure instead of mistaking a rejection message for a result.
   if (r.status >= 400) {
-    console.error(r.text);
+    console.error(display(r.body));
     return 1;
   }
-  console.log(r.text);
+  console.log(display(r.body));
   return 0;
+}
+
+function display(body: Json): string {
+  if (body && !Array.isArray(body) && typeof body === "object") {
+    if (typeof body.error === "string") return body.error;
+    if (typeof body.message === "string") return body.message;
+  }
+  return JSON.stringify(body, null, 2);
 }
 
 function usageError(msg: string): number {

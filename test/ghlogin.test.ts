@@ -5,7 +5,11 @@ import { makeGithub, type Github } from "../src/mech/git/github.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
+import { loadConfig } from "../src/config.ts";
 import { seedAuth } from "./seed-auth.ts";
+import { testContext } from "./test-context.ts";
+import { z } from "zod";
+import type { Json } from "../src/http/respond.ts";
 import {
   BOT,
   commitIdentity,
@@ -20,7 +24,7 @@ import {
 } from "../src/mech/git/ghlogin.ts";
 
 /** A fetcher that answers from a script and records what it was sent. */
-function scripted(answers: unknown[]): { fetchFn: Fetcher; sent: Array<{ url: string; body: string }> } {
+function scripted(answers: Json[]): { fetchFn: Fetcher; sent: Array<{ url: string; body: string }> } {
   const sent: Array<{ url: string; body: string }> = [];
   let i = 0;
   const fetchFn: Fetcher = async (url, init) => {
@@ -39,6 +43,26 @@ const DEVICE = {
   interval: 5,
   expiresIn: 900,
 };
+
+const GithubReposResponse = z.object({
+  installations: z.array(z.object({ id: z.number() }).passthrough()),
+  selected: z.number().nullable(),
+  installUrl: z.string(),
+  repos: z.array(
+    z.object({
+      fullName: z.string(),
+      taken: z.object({ id: z.number(), name: z.string() }).nullable(),
+    }),
+  ),
+});
+const GithubAuthResponse = z.object({
+  accounts: z.array(z.object({ id: z.number(), account: z.string(), kind: z.string(), repos: z.number() })),
+  installUrl: z.string(),
+  app: z.never().optional(),
+});
+const ProjectResponse = z.object({ id: z.number() });
+
+const jsonBody = (body: Json): Json => body;
 
 test("the device flow asks for a code, with no secret and no scope", async () => {
   // No secret: that is the whole reason this flow is shippable in an open repo,
@@ -150,7 +174,7 @@ test("the token lands in runtime_auth like every other credential", async () => 
  * Everything past the login goes through `mech/github.ts`, so this is what a
  * test injects — the same seam `prwatch` uses.
  */
-function client(answer: (url: string) => unknown): { gh: Github; asked: string[]; db: DB } {
+function client(answer: (url: string) => Json): { gh: Github; asked: string[]; db: DB } {
   const db = openMemory();
   saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
   const asked: string[] = [];
@@ -190,9 +214,11 @@ test("repositories come from the installation, never /user/repos", async () => {
 
 test("GitHub's legal nulls do not discard an installation or an empty repository", async () => {
   const { gh } = client((url) =>
-    url.includes("/repositories")
-      ? { repositories: [{ ...repo(1), pushed_at: null }] }
-      : { installations: [{ id: 5, account: null }] },
+    jsonBody(
+      url.includes("/repositories")
+        ? { repositories: [{ ...repo(1), pushed_at: null }] }
+        : { installations: [{ id: 5, account: null }] },
+    ),
   );
 
   const installs = await listInstallations(gh);
@@ -255,14 +281,14 @@ test("the account is asked of GitHub, and a dead token reads as no account", asy
 });
 
 /** Enough Ctx for the two routes, with GitHub answered from a table. */
-function server(answer: (url: string) => unknown) {
+function server(answer: (url: string) => Json) {
   const db = openMemory();
   seedAuth(db);
   saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
   const bus = new Bus(db);
   const sched = new Scheduler(db, async () => {});
   const asked: string[] = [];
-  const ctx = {
+  const ctx: Ctx = {
     db,
     bus,
     sched,
@@ -274,8 +300,8 @@ function server(answer: (url: string) => unknown) {
         headers: { "content-type": "application/json" },
       });
     }),
-    config: { language: "中文" },
-  } as unknown as Ctx;
+    config: loadConfig(),
+  };
   return { db, ctx, app: makeApp(ctx), asked };
 }
 
@@ -287,7 +313,7 @@ test("a login with no installations lists nothing and says where to fix it", asy
   const { app } = server(() => ({ total_count: 0, installations: [] }));
   const r = await get(app, "/api/github/repos");
   expect(r.status).toBe(200);
-  const b = (await r.json()) as any;
+  const b = GithubReposResponse.parse(await r.json());
   expect(b.installations).toEqual([]);
   expect(b.repos).toEqual([]);
   expect(b.selected).toBeNull();
@@ -296,27 +322,31 @@ test("a login with no installations lists nothing and says where to fix it", asy
 
 test("switching installation changes the list", async () => {
   const { app, asked } = server((url) =>
-    url.includes("/user/installations?")
-      ? {
-          installations: [
-            { id: 5, account: { login: "octocat", type: "User" } },
-            { id: 9, account: { login: "acme", type: "Organization" } },
-          ],
-        }
-      : {
-          repositories: [{ full_name: url.includes("/9/") ? "acme/site" : "octocat/dotfiles", default_branch: "main" }],
-        },
+    jsonBody(
+      url.includes("/user/installations?")
+        ? {
+            installations: [
+              { id: 5, account: { login: "octocat", type: "User" } },
+              { id: 9, account: { login: "acme", type: "Organization" } },
+            ],
+          }
+        : {
+            repositories: [
+              { full_name: url.includes("/9/") ? "acme/site" : "octocat/dotfiles", default_branch: "main" },
+            ],
+          },
+    ),
   );
 
   // No installation asked for: the first one, so the page has something to show.
-  const first = (await (await get(app, "/api/github/repos")).json()) as any;
+  const first = GithubReposResponse.parse(await (await get(app, "/api/github/repos")).json());
   expect(first.selected).toBe(5);
-  expect(first.repos.map((x: any) => x.fullName)).toEqual(["octocat/dotfiles"]);
+  expect(first.repos.map((repo) => repo.fullName)).toEqual(["octocat/dotfiles"]);
 
   // Picking the org is not a second login — same token, another installation.
-  const org = (await (await get(app, "/api/github/repos?installation=9")).json()) as any;
+  const org = GithubReposResponse.parse(await (await get(app, "/api/github/repos?installation=9")).json());
   expect(org.selected).toBe(9);
-  expect(org.repos.map((x: any) => x.fullName)).toEqual(["acme/site"]);
+  expect(org.repos.map((repo) => repo.fullName)).toEqual(["acme/site"]);
   expect(asked.some((u) => u.includes("/user/installations/9/repositories"))).toBe(true);
 });
 
@@ -337,7 +367,7 @@ test("a project added from the list keeps GitHub's default branch, not a guess",
   // The id is the whole reason the browser can land on what it just made. It was
   // being returned and thrown away, so adding a project put the boss back on the
   // screen they started from with nothing selected.
-  expect((await r.json()).id).toBeGreaterThan(0);
+  expect(ProjectResponse.parse(await r.json()).id).toBeGreaterThan(0);
   const row = db
     .query<{ name: string; repo_path: string; remote: string; base_branch: string }, []>(
       "SELECT name, repo_path, remote, base_branch FROM project ORDER BY id DESC LIMIT 1",
@@ -380,21 +410,25 @@ test("a repository already added names its project, so the row is a route and no
   // stopped there. Which project it became is the way out, and the row already
   // has to be rendered either way.
   const { app, db } = server((url) =>
-    url.includes("/user/installations?")
-      ? { installations: [{ id: 5, account: { login: "acme", type: "Organization" } }] }
-      : {
-          repositories: [
-            { full_name: "acme/site", default_branch: "main" },
-            { full_name: "acme/other", default_branch: "main" },
-          ],
-        },
+    jsonBody(
+      url.includes("/user/installations?")
+        ? { installations: [{ id: 5, account: { login: "acme", type: "Organization" } }] }
+        : {
+            repositories: [
+              { full_name: "acme/site", default_branch: "main" },
+              { full_name: "acme/other", default_branch: "main" },
+            ],
+          },
+    ),
   );
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('工地', 'acme/site', 0)");
 
-  const b = (await (await get(app, "/api/github/repos")).json()) as any;
-  const by = Object.fromEntries(b.repos.map((r: any) => [r.fullName, r.taken]));
-  expect(by["acme/site"].name).toBe("工地");
-  expect(by["acme/site"].id).toBeGreaterThan(0);
+  const b = GithubReposResponse.parse(await (await get(app, "/api/github/repos")).json());
+  const by = Object.fromEntries(b.repos.map((repo) => [repo.fullName, repo.taken]));
+  const site = by["acme/site"];
+  if (!site) throw new Error("registered repository was not marked as taken");
+  expect(site.name).toBe("工地");
+  expect(site.id).toBeGreaterThan(0);
   // Null rather than `false`: there is no project to send anyone to.
   expect(by["acme/other"]).toBeNull();
 });
@@ -477,14 +511,16 @@ test("the status carries which accounts it is installed on, and how much each ca
   // What the page does need is the half the boss asked for — which accounts the
   // app is installed on, and how many repositories each one can see.
   const { app } = server((url) =>
-    url.includes("/user/installations/")
-      ? { total_count: 3 }
-      : url.includes("/user/installations")
-        ? { installations: [{ id: 5, account: { login: "acme", type: "Organization" } }] }
-        : { login: "octocat" },
+    jsonBody(
+      url.includes("/user/installations/")
+        ? { total_count: 3 }
+        : url.includes("/user/installations")
+          ? { installations: [{ id: 5, account: { login: "acme", type: "Organization" } }] }
+          : { login: "octocat" },
+    ),
   );
 
-  const b = (await (await get(app, "/api/auth/github")).json()) as any;
+  const b = GithubAuthResponse.parse(await (await get(app, "/api/auth/github")).json());
   expect(b.accounts).toEqual([{ id: 5, account: "acme", kind: "Organization", repos: 3 }]);
   // The install link comes from the yaml's `appSlug`, which is now its only source.
   expect(b.installUrl).toBe("https://github.com/apps/orchestrator-agentic-app/installations/new");
@@ -506,14 +542,16 @@ test("the list comes back most recently pushed first", async () => {
   // prompted this, 76 months, 51, 4, 61, 72, 71, 14 — and the repository the
   // boss wants is almost always the one they touched last. Sorted at the source
   // so the picker and anything else added later get it for free.
-  const { gh } = client(() => ({
-    repositories: [
-      { full_name: "a/old", pushed_at: "2020-01-01T00:00:00Z" },
-      { full_name: "a/new", pushed_at: "2026-08-01T00:00:00Z" },
-      { full_name: "a/mid", pushed_at: "2024-05-01T00:00:00Z" },
-      { full_name: "a/never" },
-    ],
-  }));
+  const { gh } = client(() =>
+    jsonBody({
+      repositories: [
+        { full_name: "a/old", pushed_at: "2020-01-01T00:00:00Z" },
+        { full_name: "a/new", pushed_at: "2026-08-01T00:00:00Z" },
+        { full_name: "a/mid", pushed_at: "2024-05-01T00:00:00Z" },
+        { full_name: "a/never" },
+      ],
+    }),
+  );
   const r = await listRepos(gh, 1);
   expect(r.ok && r.data.map((x) => x.fullName)).toEqual(["a/new", "a/mid", "a/old", "a/never"]);
 });
@@ -523,13 +561,15 @@ test("naming the installation costs one round trip, not two", async () => {
   // is two trips in series — 260-630ms each, measured. When the caller names one
   // (every open after the first, the panel remembers it) both halves go at once.
   const { app, asked } = server((url) =>
-    url.includes("/user/installations/")
-      ? { repositories: [{ full_name: "acme/site" }] }
-      : { installations: [{ id: 9, account: { login: "acme", type: "Organization" } }] },
+    jsonBody(
+      url.includes("/user/installations/")
+        ? { repositories: [{ full_name: "acme/site" }] }
+        : { installations: [{ id: 9, account: { login: "acme", type: "Organization" } }] },
+    ),
   );
-  const b = (await (await get(app, "/api/github/repos?installation=9")).json()) as any;
+  const b = GithubReposResponse.parse(await (await get(app, "/api/github/repos?installation=9")).json());
   expect(b.selected).toBe(9);
-  expect(b.repos.map((r: any) => r.fullName)).toEqual(["acme/site"]);
+  expect(b.repos.map((repo) => repo.fullName)).toEqual(["acme/site"]);
   // Both were asked for, and neither waited on the other.
   expect(asked.some((u) => u.includes("/user/installations?"))).toBe(true);
   expect(asked.some((u) => u.includes("/user/installations/9/repositories"))).toBe(true);
@@ -543,10 +583,18 @@ test("commits are authored by the connected account, so a DCO sign-off means som
   // the author, and a made-up address is not an identity anyone can be said to
   // have signed as. The account that authorised this orchestrator is one.
   const db = openMemory();
-  const ctx = {
+  saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
+  const ctx = testContext({
     db,
-    gh: { request: async () => ({ ok: true, data: { login: "octo", id: 583231, name: "The Octocat" } }) },
-  } as unknown as Ctx;
+    gh: makeGithub(
+      db,
+      async () =>
+        new Response(JSON.stringify({ login: "octo", id: 583231, name: "The Octocat" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    ),
+  });
 
   const who = await commitIdentity(ctx);
   // GitHub's own noreply form, and the `id+` prefix is required — the bare
@@ -555,7 +603,7 @@ test("commits are authored by the connected account, so a DCO sign-off means som
 
   // Cached, because this runs on every checkout and the answer only changes when
   // the account does.
-  const dead = { db, gh: { request: async () => ({ ok: false }) } } as unknown as Ctx;
+  const dead = testContext({ db, gh: makeGithub(db, async () => new Response("{}", { status: 401 })) });
   expect(await commitIdentity(dead)).toEqual(who);
   forgetIdentity(dead);
   // And with nothing connected a checkout still has to work — as the App's own

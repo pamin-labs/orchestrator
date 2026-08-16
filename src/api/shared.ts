@@ -3,7 +3,7 @@ import type { GroupRef } from "./fields.ts";
 import type { Caller, Ctx } from "../ctx.ts";
 
 export type { AgentHandler, Handler } from "../http/handler.ts";
-export { bad, json, text } from "../http/respond.ts";
+export { bad, json, message } from "../http/respond.ts";
 
 /**
  * What every route module needs and nothing a route module owns.

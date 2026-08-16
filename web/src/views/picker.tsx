@@ -4,23 +4,29 @@ import { useEffect, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Menu, MenuItem } from "../ui/menu";
-import { post } from "../lib/api";
+import { api, mutate, readJson } from "../lib/api";
 import { cn } from "../lib/utils";
+import { z } from "zod";
+import type { InferResponseType } from "hono/client";
 
-interface Entry {
-  name: string;
-  path: string;
-  repo?: boolean;
-  taken?: boolean;
-  size?: number;
-}
-interface Dirs {
-  path: string;
-  parent: string | null;
-  repo: boolean;
-  dirs: Entry[];
-  files: Entry[];
-}
+const EntrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  repo: z.boolean().optional(),
+  taken: z.boolean().optional(),
+  size: z.number().optional(),
+});
+type Entry = z.infer<typeof EntrySchema>;
+const DirEntrySchema = EntrySchema.omit({ size: true }).required({ repo: true, taken: true });
+const FileEntrySchema = EntrySchema.omit({ repo: true, taken: true }).required({ size: true });
+const DirsSchema: z.ZodType<InferResponseType<typeof api.dirs.$get, 200>> = z.object({
+  path: z.string(),
+  parent: z.string().nullable(),
+  repo: z.boolean(),
+  dirs: z.array(DirEntrySchema),
+  files: z.array(FileEntrySchema),
+});
+type Dirs = z.infer<typeof DirsSchema>;
 
 /**
  * The server reads the disk and lists it, so the boss picks instead of typing.
@@ -59,10 +65,15 @@ function Browse({
   const [err, setErr] = useState("");
 
   const load = async (path?: string | null) => {
-    const r = await fetch(`/api/dirs?${files ? "files=1&" : ""}${path ? `path=${encodeURIComponent(path)}` : ""}`);
-    if (!r.ok) return setErr(await r.text());
+    const result = await readJson(
+      await api.dirs.$get({
+        query: { ...(files ? { files: "1" } : {}), ...(path ? { path } : {}) },
+      }),
+      DirsSchema,
+    );
+    if (!result.ok) return setErr(result.text);
     setErr("");
-    setD((await r.json()) as Dirs);
+    setD(result.data);
   };
   useEffect(() => {
     void load(null);
@@ -192,20 +203,27 @@ function Shell({
   );
 }
 
-interface RepoRow {
-  fullName: string;
-  private: boolean;
-  defaultBranch: string;
-  pushedAt: number;
-  /** The project already made from it, so a repeat is a route rather than a wall. */
-  taken: { id: number; name: string } | null;
-}
-interface RepoList {
-  installations: { id: number; account: string; kind: string }[];
-  selected: number | null;
-  installUrl: string | null;
-  repos: RepoRow[];
-}
+const RepoListSchema: z.ZodType<InferResponseType<typeof api.github.repos.$get, 200>> = z.object({
+  installations: z.array(z.object({ id: z.number(), account: z.string(), kind: z.string() })),
+  selected: z.number().nullable(),
+  installUrl: z.string(),
+  repos: z.array(
+    z.object({
+      fullName: z.string(),
+      private: z.boolean(),
+      defaultBranch: z.string(),
+      pushedAt: z.number(),
+      cloneUrl: z.string(),
+      taken: z.object({ id: z.number(), name: z.string() }).nullable(),
+    }),
+  ),
+});
+type RepoList = z.infer<typeof RepoListSchema>;
+
+const ProjectCreatedSchema: z.ZodType<InferResponseType<typeof api.projects.$post, 200>> = z.object({
+  id: z.number(),
+  gates: z.array(z.string()),
+});
 
 /**
  * The account the boss was last in, and the last answer itself.
@@ -273,10 +291,13 @@ function Repos({
 
   const load = async (installation?: number) => {
     const want = installation ?? lastInstallation;
-    const r = await fetch(`/api/github/repos${want ? `?installation=${want}` : ""}`);
-    if (!r.ok) return setErr(await r.text());
+    const result = await readJson(
+      await api.github.repos.$get({ query: want ? { installation: String(want) } : {} }),
+      RepoListSchema,
+    );
+    if (!result.ok) return setErr(result.text);
     setErr("");
-    const next = (await r.json()) as RepoList;
+    const next = result.data;
     lastInstallation = next.selected;
     cached = next;
     setD(next);
@@ -291,11 +312,10 @@ function Repos({
   // has to carry the success forward.
   const add = async (repo: string) => {
     setBusy(repo);
-    const r = await post("/api/projects", { repo });
+    const r = await mutate(api.projects.$post({ json: { repo } }), false, ProjectCreatedSchema);
     setBusy("");
     if (!r.ok) return;
-    const id = Number((JSON.parse(r.text) as { id?: number }).id);
-    if (id) onAdded(id);
+    onAdded(r.data.id);
   };
 
   const here = d?.installations.find((i) => i.id === d.selected);

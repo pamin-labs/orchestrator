@@ -1,5 +1,7 @@
-import { type Handler } from "../shared.ts";
+import type { Ctx } from "../../ctx.ts";
 import type { Frame } from "../../bus.ts";
+import type { SSEStreamingApi } from "hono/streaming";
+import { z } from "zod";
 
 /**
  * One SSE stream, everything the panel draws off it.
@@ -11,75 +13,107 @@ import type { Frame } from "../../bus.ts";
 
 /** Idle SSE connections get dropped by proxies and by browsers' own timeouts. */
 const SSE_HEARTBEAT_MS = 25_000;
+const REPLAY_PAGE = 500;
+const LastEventId = z.coerce.number().int().nonnegative();
 
-export const getStream: Handler = async (ctx, req) => {
-  const since = Number(new URL(req.url).searchParams.get("since") ?? 0);
+export const StreamQuery = z.object({ since: z.coerce.number().int().nonnegative().default(0) });
+
+export async function getStream(
+  ctx: Ctx,
+  req: Request,
+  { since }: z.infer<typeof StreamQuery>,
+  stream: SSEStreamingApi,
+): Promise<void> {
   let unsub = () => {};
   let beat: ReturnType<typeof setInterval> | undefined;
-  const stream = new ReadableStream<Uint8Array>({
-    start(c) {
-      const enc = new TextEncoder();
-      const raw = (s: string) => {
-        try {
-          c.enqueue(enc.encode(s));
-          return true;
-        } catch {
-          unsub();
-          if (beat) clearInterval(beat);
-          return false;
-        }
-      };
-      // Which project a frame belongs to, so the feed can be scoped. grp -> project
-      // is immutable, so it is cached rather than queried per frame — live frames
-      // arrive per token.
-      const ofGrp = new Map<number, number | null>();
-      const projectOf = (grpId: number | null | undefined): number | null => {
-        if (grpId == null) return null;
-        if (!ofGrp.has(grpId)) {
-          ofGrp.set(
-            grpId,
-            ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-              ?.project_id ?? null,
-          );
-        }
-        return ofGrp.get(grpId) ?? null;
-      };
-      // `Frame` is what `bus.subscribe` hands out and what `bus.since` returns.
-      // Typing it also settles where `projectId` comes from: only a `LiveFrame`
-      // carries one, because a standing agent's output has no group to scope it
-      // by. A stored event never does, so `data.projectId` on that branch was
-      // reading a field that does not exist — `any` made that look like a value.
-      const send = (data: Frame) =>
-        raw(
-          `data: ${JSON.stringify({
-            ...data,
-            projectId: (data.type === "live" ? data.projectId : null) ?? projectOf(data.grpId),
-          })}\n\n`,
-        );
-
-      // A stream that sends nothing has sent no bytes, and a browser does not
-      // report a byteless response as open — the UI sat on "connecting…" forever
-      // on a fresh database with no events to replay. The comment also defeats
-      // proxy buffering, and `retry` sets the reconnect delay.
-      raw(`retry: 3000\n: connected\n\n`);
-
-      for (const e of ctx.bus.since(since)) send({ type: "event", ...e });
-      unsub = ctx.bus.subscribe(send);
-      beat = setInterval(() => raw(`: ping\n\n`), SSE_HEARTBEAT_MS);
-      req.signal.addEventListener("abort", () => {
-        unsub();
-        if (beat) clearInterval(beat);
-        try {
-          c.close();
-        } catch {}
-      });
-    },
-    cancel() {
-      unsub();
-      if (beat) clearInterval(beat);
-    },
+  let stopped = false;
+  let finish = () => {};
+  const done = new Promise<void>((resolve) => {
+    finish = resolve;
   });
-  return new Response(stream, {
-    headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" },
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    unsub();
+    if (beat) clearInterval(beat);
+    req.signal.removeEventListener("abort", stop);
+    finish();
+  };
+  stream.onAbort(stop);
+  req.signal.addEventListener("abort", stop, { once: true });
+
+  // grp -> project is immutable, so live tokens do not query once per token.
+  const ofGrp = new Map<number, number | null>();
+  const projectOf = (grpId: number | null | undefined): number | null => {
+    if (grpId == null) return null;
+    if (!ofGrp.has(grpId)) {
+      ofGrp.set(
+        grpId,
+        ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
+          ?.project_id ?? null,
+      );
+    }
+    return ofGrp.get(grpId) ?? null;
+  };
+  const send = (data: Frame) =>
+    stream.writeSSE({
+      data: JSON.stringify({
+        ...data,
+        projectId: (data.type === "live" ? data.projectId : null) ?? projectOf(data.grpId),
+      }),
+      id: data.type === "event" ? String(data.seq) : undefined,
+    });
+  let writes = Promise.resolve();
+  const enqueue = (frame: Frame) => (writes = writes.then(() => send(frame)));
+
+  // Subscribe before replay. Events persisted while a long catch-up is running
+  // are buffered, then deduped against the final replay cursor.
+  const pending: Frame[] = [];
+  let replaying = true;
+  unsub = ctx.bus.subscribe((frame) => {
+    if (replaying) pending.push(frame);
+    else void enqueue(frame);
   });
-};
+  if (req.signal.aborted) {
+    stop();
+    return;
+  }
+
+  await stream.write("retry: 3000\n: connected\n\n");
+  const header = LastEventId.safeParse(req.headers.get("last-event-id"));
+  const cursor = Math.max(since, header.success ? header.data : 0);
+  let lastSeq = cursor;
+  if (cursor === 0) {
+    for (const event of ctx.bus.latest(REPLAY_PAGE)) {
+      if (stopped) break;
+      await enqueue({ type: "event", ...event });
+      lastSeq = event.seq;
+    }
+  } else {
+    for (;;) {
+      const page = ctx.bus.since(lastSeq, REPLAY_PAGE);
+      for (const event of page) {
+        if (stopped) break;
+        await enqueue({ type: "event", ...event });
+        lastSeq = event.seq;
+      }
+      if (stopped || page.length < REPLAY_PAGE) break;
+    }
+  }
+
+  replaying = false;
+  for (const frame of pending) {
+    if (stopped) break;
+    if (frame.type === "event" && frame.seq <= lastSeq) continue;
+    await enqueue(frame);
+    if (frame.type === "event") lastSeq = frame.seq;
+  }
+
+  if (!stopped) {
+    beat = setInterval(() => {
+      writes = writes.then(() => stream.write(": ping\n\n")).then(() => {});
+    }, SSE_HEARTBEAT_MS);
+  }
+  await done;
+  await writes;
+}

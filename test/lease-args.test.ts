@@ -1,12 +1,20 @@
 import { expect, test } from "bun:test";
 import {
   digestOutput,
+  LeaseArgsSchema,
   resolveLease,
   tokenize,
   type ResourceDef,
   runResource,
   LEASE_TIMEOUT_CODE,
 } from "../src/mech/lease.ts";
+
+test("lease arguments are flat JSON scalars before resource-specific validation", () => {
+  expect(LeaseArgsSchema.safeParse({ target: "release", jobs: 8, clean: false }).success).toBe(true);
+  for (const args of [null, { target: null }, { target: ["release"] }, { target: { name: "release" } }]) {
+    expect(LeaseArgsSchema.safeParse(args).success).toBe(false);
+  }
+});
 
 const testRes: ResourceDef = {
   name: "test",
@@ -191,7 +199,7 @@ test("coercion and refusal are one decision, which they were not", () => {
   };
   expect(resolveLease(def, { jobs: 4 })).toMatchObject({ ok: true, argv: ["make", "-j4"] });
   expect(resolveLease(def, { jobs: "4" })).toMatchObject({ ok: true, argv: ["make", "-j4"] });
-  for (const bad of [true, "", " ", "4x", null, 4.5, 0, 65]) {
+  for (const bad of [true, "", " ", "4x", 4.5, 0, 65]) {
     expect(resolveLease(def, { jobs: bad })).toMatchObject({ ok: false });
   }
 
@@ -220,5 +228,5 @@ test("the refusal still says what to write instead", () => {
   };
   const r = resolveLease(def, { mode: "quick" });
   expect(r.ok).toBe(false);
-  expect((r as { error: string }).error).toBe("mode must be one of: fast, full");
+  if (!r.ok) expect(r.error).toBe("mode must be one of: fast, full");
 });

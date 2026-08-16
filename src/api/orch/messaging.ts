@@ -1,7 +1,7 @@
 import { projectOfAgent } from "../../mech/util/rows.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../fields.ts";
-import { bad, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
+import { bad, resolveGroup, message, type AgentHandler, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "../panel/attach.ts";
 import { triage, TRIAGE } from "../../mech/flow/chain.ts";
 import { projectSkills, skillNames } from "../../mech/skills.ts";
@@ -19,14 +19,16 @@ import type { Ctx } from "../../ctx.ts";
 
 const WAKING = new Set(["ask", "request", "inform"]);
 
+export const MailIntent = z.enum(["ask", "request", "inform", "note", "decision"], {
+  error: "intent must be one of: ask, request, inform, note, decision",
+});
+
 export const MailBody = z.object({
   target: z.string().min(1).max(80),
   // A closed set, and the reason it is closed: `ask` and `request` wake the
   // recipient, the other three do not. A free-text intent would be a wake-up
   // decided by spelling.
-  intent: z.enum(["ask", "request", "inform", "note", "decision"], {
-    error: "intent must be one of: ask, request, inform, note, decision",
-  }),
+  intent: MailIntent,
   // Deliberately allows the empty string. The refusal for it is below, in the
   // handler, because the message worth sending names the caller's own `target`
   // and `intent` — and a schema cannot see a sibling field. Shape here, advice
@@ -36,7 +38,7 @@ export const MailBody = z.object({
   in_reply_to: Id.optional(),
 });
 
-export const postMail: AgentHandler<z.infer<typeof MailBody>> = async (ctx, _req, a, _p, b) => {
+export const postMail = (async (ctx, _req, a, _p, b) => {
   // An empty message wakes someone with nothing to answer. Measured: the
   // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
   // out with no body — the Architect burned a turn on "收到的 ask 消息内容为空".
@@ -96,8 +98,8 @@ export const postMail: AgentHandler<z.infer<typeof MailBody>> = async (ctx, _req
     });
   }
   ctx.sched.tick();
-  return text("ok");
-};
+  return message("ok");
+}) satisfies AgentHandler<z.infer<typeof MailBody>>;
 
 /**
  * The boss says something, and it reaches someone.
@@ -124,7 +126,7 @@ export const SayBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postSay: Handler<z.infer<typeof SayBody>> = async (ctx, _req, _p, b) => {
+export const postSay = (async (ctx, _req, _p, b) => {
   // A screenshot is as useful when saying "这里不对" as when filing the idea.
   const said = withAttachments(b.body.trim(), b.attachments);
   const grpId = b.group_id == null ? null : resolveGroup(ctx, b.group_id);
@@ -149,7 +151,7 @@ export const postSay: Handler<z.infer<typeof SayBody>> = async (ctx, _req, _p, b
     ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
     triage({ ctx, bossFact: (g, body) => bossFact(ctx, g, body) }, grpId, b.as, said, skills);
     ctx.sched.tick();
-    return text("ok");
+    return message("ok");
   }
 
   // Plain talk. The recipient defaults to the group's PM: PLAN.md §7 makes the PM
@@ -178,8 +180,8 @@ export const postSay: Handler<z.infer<typeof SayBody>> = async (ctx, _req, _p, b
     payload: { mail: { from: "boss", from_group: null, intent: "request", body: said }, skills },
   });
   ctx.sched.tick();
-  return text("ok");
-};
+  return message("ok");
+}) satisfies Handler<z.infer<typeof SayBody>>;
 
 /**
  * Who a message is for: someone in the sender's group first, then the standing

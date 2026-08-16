@@ -8,8 +8,8 @@ import type { Caller, Ctx } from "../ctx.ts";
  * framework context, which means every one of them can be called from a test
  * with four ordinary arguments and no server.
  *
- * `route()` is what connects this shape to Hono, and it is the only place that
- * knows Hono exists.
+ * `http/routes/*` connects this shape to Hono next to the Zod middleware that
+ * produces `params` and `data`.
  */
 export type Handler<D = undefined, P = Record<string, string>> = (
   ctx: Ctx,

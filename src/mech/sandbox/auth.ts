@@ -1,11 +1,12 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import type { DB } from "../../db.ts";
 import { trailers } from "../git/ghlogin.ts";
-import type { Credential } from "./sandbox.ts";
-import { accessToken, decoyAuth, isStale, parseAuth, renew, seedHome, type CodexHomeIO } from "./chatgpt.ts";
-import { forgetHolds } from "../git/github.ts";
+import { forgetHolds } from "../git/repository.ts";
 import { maskValue } from "../util/scrub.ts";
+import { accessToken, type CodexHomeIO, decoyAuth, isStale, parseAuth, renew, seedHome } from "./chatgpt.ts";
+import type { Credential } from "./sandbox.ts";
 
 /**
  * Where each runtime's credential comes from, and how it reaches the model.
@@ -33,14 +34,27 @@ import { maskValue } from "../util/scrub.ts";
  * gets a decoy file. Its own mode because what is stored is a login rather than
  * a key, and because only this one can go stale on its own.
  */
-export type AuthMode = "oauth_token" | "api_key" | "chatgpt";
+/** The sandbox server key is stored beside model credentials, but never injected. */
+export const SANDBOX_KEY = "sandbox";
 
-export interface RuntimeAuth {
-  runtime: string;
-  mode: AuthMode;
-  secret: string;
-  baseUrl?: string;
-}
+export const AuthRuntimeSchema = z.enum(["claude", "codex", "github", SANDBOX_KEY]);
+const credential = {
+  secret: z.string().trim().min(1),
+  baseUrl: z
+    .url({ protocol: /^https?$/ })
+    .max(2000)
+    .optional(),
+};
+
+/** Runtime and mode are one fact: combinations outside this union cannot run. */
+export const RuntimeAuthSchema = z.discriminatedUnion("runtime", [
+  z.strictObject({ runtime: z.literal("claude"), mode: z.enum(["oauth_token", "api_key"]), ...credential }),
+  z.strictObject({ runtime: z.literal("codex"), mode: z.enum(["chatgpt", "api_key"]), ...credential }),
+  z.strictObject({ runtime: z.literal("github"), mode: z.literal("api_key"), ...credential }),
+  z.strictObject({ runtime: z.literal(SANDBOX_KEY), mode: z.literal("api_key"), ...credential }),
+]);
+export type RuntimeAuth = z.infer<typeof RuntimeAuthSchema>;
+export type AuthMode = RuntimeAuth["mode"];
 
 /** Hosts each runtime talks to, and the header its credential belongs in. */
 const BINDINGS: Record<string, { hosts: string[]; header?: string }> = {
@@ -110,18 +124,14 @@ export function decoy(runtime: string, mode: AuthMode): string {
  * Prefixes only. Length and character set drift; the prefix is what each
  * provider stamps on the thing so it can be told apart from everything else.
  */
-export function wrongShape(runtime: string, mode: AuthMode, secret: string): string | null {
+export function wrongShape({ runtime, mode, secret }: RuntimeAuth): string | null {
   const v = secret.trim();
   if (!v) return "空的";
   if (/^https?:\/\//.test(v)) return "这是个网址，不是凭据 —— 登录页的地址不是 token";
   if (mode === "chatgpt") {
-    try {
-      const parsed = JSON.parse(v) as { tokens?: { refresh_token?: string } };
-      if (!parsed?.tokens?.refresh_token) return "auth.json 里没有 tokens.refresh_token，续不了期";
-      return null;
-    } catch {
-      return "要的是 ~/.codex/auth.json 的完整内容，那是一段 JSON";
-    }
+    const parsed = parseAuth(v);
+    if (!parsed) return "要的是 ~/.codex/auth.json 的完整内容，那是一段 JSON";
+    return parsed.tokens?.refresh_token ? null : "auth.json 里没有 tokens.refresh_token，续不了期";
   }
   if (runtime === "claude") {
     if (mode === "oauth_token" && !v.startsWith("sk-ant-oat01-")) return "订阅 token 是 sk-ant-oat01- 开头的";
@@ -132,19 +142,20 @@ export function wrongShape(runtime: string, mode: AuthMode, secret: string): str
 }
 
 export function saveAuth(db: DB, a: RuntimeAuth): void {
+  const auth = RuntimeAuthSchema.parse(a);
   // Registered the moment it is stored, so the masker knows this value before
   // anything has a chance to print it. Same order as `::add-mask::`.
-  maskValue(a.secret);
+  maskValue(auth.secret);
   // Nothing learned from the old credential still applies. Without this a boss who
   // reconnects GitHub watches nothing happen until the hold's clock lapses, which
   // reads as the fix not having worked.
-  forgetHolds(a.runtime);
+  forgetHolds(auth.runtime);
   db.run(
     `INSERT INTO runtime_auth (runtime, mode, secret, base_url, updated_at)
      VALUES (?, ?, ?, ?, unixepoch() * 1000)
      ON CONFLICT(runtime) DO UPDATE SET mode = excluded.mode, secret = excluded.secret,
        base_url = excluded.base_url, updated_at = excluded.updated_at`,
-    [a.runtime, a.mode, a.secret, a.baseUrl ?? null],
+    [auth.runtime, auth.mode, auth.secret, auth.baseUrl ?? null],
   );
 }
 
@@ -218,15 +229,23 @@ export function probeHosts(db: DB): string[] {
   return [...out];
 }
 
+type StoredAuthRow = { runtime: string; mode: string; secret: string; base_url: string | null };
+
+const parseStoredAuth = (row: StoredAuthRow): RuntimeAuth | null => {
+  const parsed = RuntimeAuthSchema.safeParse({
+    runtime: row.runtime,
+    mode: row.mode,
+    secret: row.secret,
+    ...(row.base_url ? { baseUrl: row.base_url } : {}),
+  });
+  return parsed.success ? parsed.data : null;
+};
+
 export function loadAuth(db: DB, runtime: string): RuntimeAuth | null {
   const r = db
-    .query<{ runtime: string; mode: string; secret: string; base_url: string | null }, [string]>(
-      "SELECT runtime, mode, secret, base_url FROM runtime_auth WHERE runtime = ?",
-    )
+    .query<StoredAuthRow, [string]>("SELECT runtime, mode, secret, base_url FROM runtime_auth WHERE runtime = ?")
     .get(runtime);
-  return r
-    ? { runtime: r.runtime, mode: r.mode as AuthMode, secret: r.secret, baseUrl: r.base_url ?? undefined }
-    : null;
+  return r ? parseStoredAuth(r) : null;
 }
 
 /**
@@ -243,27 +262,23 @@ export function listAuth(
       "SELECT runtime, mode, secret, base_url, updated_at FROM runtime_auth ORDER BY runtime",
     )
     .all()
-    .map((r) => ({
-      runtime: r.runtime,
-      mode: r.mode as AuthMode,
-      // A token's tail identifies it. A pasted auth.json's tail is `11Z" }`,
-      // which identifies nothing — for that one the account it logged in as is
-      // the only thing worth showing.
-      hint: r.mode === "chatgpt" ? chatgptHint(r.secret) : `…${r.secret.slice(-6)}`,
-      baseUrl: r.base_url ?? undefined,
-      updatedAt: r.updated_at,
-    }));
+    .flatMap((r) => {
+      const auth = parseStoredAuth(r);
+      if (!auth) return [];
+      return [
+        {
+          runtime: auth.runtime,
+          mode: auth.mode,
+          // A token's tail identifies it. A pasted auth.json's tail is `11Z" }`,
+          // which identifies nothing — for that one the account it logged in as is
+          // the only thing worth showing.
+          hint: auth.mode === "chatgpt" ? chatgptHint(auth.secret) : `…${auth.secret.slice(-6)}`,
+          baseUrl: auth.baseUrl,
+          updatedAt: r.updated_at,
+        },
+      ];
+    });
 }
-
-/**
- * The sandbox server's own key, stored beside the model credentials.
- *
- * Not a model credential — it never reaches a sidecar and is never injected —
- * but it is a secret the boss has to set, and it has exactly one good home:
- * the store that already keeps secrets out of the committed yaml. Absent from
- * `BINDINGS`, so nothing tries to bind it.
- */
-export const SANDBOX_KEY = "sandbox";
 
 /** Where codex looks for its login inside a sandbox. */
 export const CODEX_HOME = "/root/.codex";

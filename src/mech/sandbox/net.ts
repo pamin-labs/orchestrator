@@ -64,7 +64,7 @@ let lastProbe = 0;
  * answering is a network fault.
  */
 /** Only the shape this uses, so a test stub is two lines rather than a cast. */
-export type Fetcher = (url: string, init: { method: string; signal: AbortSignal }) => Promise<unknown>;
+export type Fetcher = (url: string, init: { method: string; signal: AbortSignal }) => Promise<Response>;
 
 export async function probe(
   db: DB,
