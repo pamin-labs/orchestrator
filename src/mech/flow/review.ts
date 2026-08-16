@@ -198,7 +198,10 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
       ],
     );
     ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [sliceId]);
-    ctx.db.run("UPDATE grp SET status = 'PAUSING' WHERE id = ? AND status = 'RUNNING'", [slice.grp_id]);
+    ctx.db.run(
+      "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000 WHERE id = ? AND status = 'RUNNING'",
+      [slice.grp_id],
+    );
     ctx.bus.emit({
       grpId: slice.grp_id,
       author: "orchestrator",

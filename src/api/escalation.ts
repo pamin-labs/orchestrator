@@ -57,7 +57,10 @@ export const postAskBoss: AgentHandler = async (ctx, req, a) => {
   // A blocker is the one intent that stops the whole group: the answer changes
   // the premise everyone else is reasoning from.
   if (severity === "blocker" && a.grp_id) {
-    ctx.db.run("UPDATE grp SET status = 'PAUSING' WHERE id = ? AND status = 'RUNNING'", [a.grp_id]);
+    ctx.db.run(
+      "UPDATE grp SET status = 'PAUSING', paused_at = unixepoch() * 1000 WHERE id = ? AND status = 'RUNNING'",
+      [a.grp_id],
+    );
   }
   ctx.bus.emit({
     grpId: a.grp_id,
