@@ -36,15 +36,16 @@ agent 真跑了 `rm -rf`，炸的是一个容器。
 
 需要 [Docker](https://docs.docker.com/get-started/get-docker/)、
 [`uv`](https://docs.astral.sh/uv/)，以及一个 Claude 和/或 ChatGPT 订阅。
-不需要 `bun`，不需要 `node`，不需要任何工具链 —— orchestrator 本身就是个镜像，
-而 agent 本来就跑在容器里。
+不需要 `bun`，不需要 `node`，不需要任何工具链 —— orchestrator 就是一个编译好的
+二进制。Docker 是**沙盒**要的，它本来就是干这个的。
 
 ```bash
 docker pull opensandbox/egress:v1.1.6             # v1.1.4 会搞坏 scoped npm 包
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode 要是 "dns+nft"
 
-docker run -d -p 127.0.0.1:47821:47821 -v orch-data:/data \
-  ghcr.io/pamin-labs/orch-server:latest           # → 127.0.0.1:47821
+# 四个平台：linux-x64、linux-arm64、darwin-x64、darwin-arm64
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
+cd orch-server-* && ./orch-server                 # → 127.0.0.1:47821
 ```
 
 只绑 loopback 是故意的：面板前面没有登录，能访问到它的人就是你。要放到别处，

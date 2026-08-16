@@ -8,9 +8,10 @@
 # What it does, in order, and it stops at the first failure:
 #
 #   1. runs every check, because a broken release is worse than a late one
-#   2. builds both images, one job per platform, and merges each into a manifest
-#   3. tags the commit
-#   4. publishes a release, with the notes GitHub generates itself
+#   2. builds the agent image, one job per platform, merged into one manifest
+#   3. cross-compiles the orchestrator for four platforms, as tarballs
+#   4. tags the commit
+#   5. publishes a release, with the notes GitHub generates itself
 #
 # Step 4 is `--generate-notes`, and that is the whole of it. GitHub already
 # knows which pull requests merged since the previous tag and which of their
@@ -25,6 +26,20 @@
 # joins the two digests into one manifest without rebuilding anything. More jobs,
 # less wall clock *and* fewer billed minutes, because emulation was paying
 # several times over for the same work.
+#
+# **On step 3, and why there is no orchestrator image.** There was one, and it
+# created the problem it was meant to avoid. `opensandbox-server` hands bind
+# mount paths to the *host's* docker daemon, so a path inside the orchestrator's
+# own container means nothing to it: the mount succeeds and delivers an empty
+# directory, and every skill the boss ticked silently does not exist. An image
+# also cannot be given the docker socket without making "can open the panel" and
+# "root on the host" the same sentence, since the panel has no login.
+#
+# A compiled binary has none of that — it runs on the host, so the paths it names
+# are the paths the daemon means. `bun build --compile` cross-compiles, so all
+# four targets come out of one ubuntu job in seconds rather than four image
+# builds across two architectures. Docker is still required; it is required for
+# the *sandboxes*, which is what it was always for.
 #
 # Release notes are English. The panel speaks whatever `output.language` says,
 # but a release is read by whoever finds the repository, and the PR titles it is
@@ -92,7 +107,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        image: [orch-agent, orch-server]
+        image: [orch-agent]
         platform: [amd64, arm64]
         include:
           - platform: amd64
@@ -101,8 +116,6 @@ jobs:
             runner: ubuntu-24.04-arm
           - image: orch-agent
             file: docker/agent.Dockerfile
-          - image: orch-server
-            file: docker/server.Dockerfile
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -164,6 +177,67 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Four platforms out of one runner. `bun build --compile` cross-compiles, so
+  # this needs neither a macOS runner nor an arm one, and the whole job is a few
+  # seconds — against several minutes for the image it replaced.
+  binaries:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: set the version
+        run: |
+          node -e '
+            const p = require("./package.json");
+            p.version = "${{ inputs.version }}";
+            require("fs").writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+
+      - run: bun install --frozen-lockfile
+      # The panel is served from `web/dist` and nothing rebuilds it at runtime;
+      # a tarball without this serves a blank page.
+      - run: bun run build:web
+
+      - name: compile
+        run: |
+          set -euo pipefail
+          v="${{ inputs.version }}"
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            # The directory carries the version; the tarball does not, because
+            # `/releases/latest/download/<name>` only resolves for a fixed name —
+            # and a download URL nobody has to edit per release is the whole
+            # point of that endpoint.
+            out="orch-server-$v-$target"
+            mkdir -p "dist/$out/web" "dist/$out/src/orch"
+            bun build --compile --minify --target="bun-$target" src/server.ts \
+              --outfile "dist/$out/orch-server"
+            # `ROOT` is the executable's own directory for a compiled binary — a
+            # bundled module has no path on disk to resolve from — so everything
+            # read at runtime travels beside it.
+            cp -R roles config "dist/$out/"
+            cp -R web/dist "dist/$out/web/dist"
+            cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$out/web/"
+            # Read at runtime *and* copied into every sandbox, so the agents' CLI
+            # always matches the orchestrator serving them.
+            cp src/orch/cli.ts "dist/$out/src/orch/"
+            cp package.json README.md LICENSE "dist/$out/"
+            tar -C dist -czf "dist/orch-server-$target.tar.gz" "$out"
+            rm -rf "dist/$out"
+          done
+          ls -lh dist/*.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binaries
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   # The two digests of one image, joined under the tags people actually pull.
   # Nothing is built here — `imagetools create` writes a manifest list out of
   # images already in the registry.
@@ -172,7 +246,7 @@ jobs:
     if: ${{ !inputs.dry_run }}
     strategy:
       matrix:
-        image: [orch-agent, orch-server]
+        image: [orch-agent]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -200,7 +274,7 @@ jobs:
   # Last, so a failed build never leaves a tag pointing at a release whose images
   # do not exist.
   publish:
-    needs: manifest
+    needs: [manifest, binaries]
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     steps:
@@ -259,18 +333,19 @@ jobs:
             'Run this version:' \
             '' \
             '```bash' \
-            'docker run -d -p 127.0.0.1:47821:47821 -v orch-data:/data \' \
-            "  ${{ env.REGISTRY }}/orch-server:${{ inputs.version }}" \
+            "curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz" \
+            'cd orch-server-* && ./orch-server' \
             '```' \
+            '' \
+            "Also `linux-arm64`, `darwin-x64`, `darwin-arm64`. No toolchain needed — Docker is, for the sandboxes." \
             '' \
             "The agent image (\`${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}\`) is pulled by the sandbox server the first time it builds a container. Nothing to pull by hand." \
             > /tmp/notes.md
-          # `--generate-notes` writes the merged pull requests and the first-time
-          # contributors itself; this is only the part it cannot know.
           gh release create "${{ env.VERSION }}" \
             --title "${{ env.VERSION }}" \
             --generate-notes \
-            --notes-file /tmp/notes.md
+            --notes-file /tmp/notes.md \
+            dist/*.tar.gz
 
       # Bookkeeping, and allowed to fail: the release exists either way. `main`
       # moves on its own — this run took several minutes of image builds, and

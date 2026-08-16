@@ -37,15 +37,16 @@ its own clone. If an agent runs `rm -rf`, it happens to a container.
 
 Needs [Docker](https://docs.docker.com/get-started/get-docker/),
 [`uv`](https://docs.astral.sh/uv/), and a Claude and/or ChatGPT subscription.
-No `bun`, no `node`, no toolchain — the orchestrator ships as an image, and the
-agents were always going to run in containers.
+No `bun`, no `node`, no toolchain — the orchestrator is one compiled binary, and
+Docker is required for the *sandboxes*, which is what it was always for.
 
 ```bash
 docker pull opensandbox/egress:v1.1.6             # v1.1.4 breaks scoped npm packages
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
 
-docker run -d -p 127.0.0.1:47821:47821 -v orch-data:/data \
-  ghcr.io/pamin-labs/orch-server:latest           # → 127.0.0.1:47821
+# linux-x64, linux-arm64, darwin-x64, darwin-arm64
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
+cd orch-server-* && ./orch-server                 # → 127.0.0.1:47821
 ```
 
 Loopback on purpose: there is no login in front of the panel, so whoever reaches

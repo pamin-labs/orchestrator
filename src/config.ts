@@ -328,9 +328,10 @@ export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: reso
  * setup and is fine — preflight reports what it finds either way.
  */
 // Two spellings for one value. `ORCH_SANDBOX_API_KEY` is the original;
-// `ORCH_SANDBOX_KEY` is what `docker-compose.yml` passes to both services, and
-// asking a compose file to spell the same secret two ways is how the two end up
-// disagreeing — which presents as every container failing to open with a 401.
+// `ORCH_SANDBOX_KEY` is the shorter one, and both are accepted because the
+// sandbox server's own key is the single value both processes must agree on —
+// disagreeing presents as every container failing to open with a 401, which
+// reads as a broken server rather than as two names for one secret.
 const SANDBOX_API_KEY_ENV = "ORCH_SANDBOX_API_KEY";
 const SANDBOX_API_KEY_ALT = "ORCH_SANDBOX_KEY";
 
@@ -356,9 +357,10 @@ function fromEnv(cfg: Config): Config {
   const server = process.env.ORCH_SANDBOX_SERVER?.trim();
   if (server) out.sandbox = { ...out.sandbox, server };
   // Where the ticked skills are staged for the mount. An environment variable
-  // because the one deployment that has to set it cannot edit the yaml: in
-  // `docker-compose.yml` this path has to be identical on both sides of a bind
-  // mount, and a path baked into an image is the wrong one by definition.
+  // as well as a yaml key, because the tarball is unpacked wherever somebody
+  // put it: the path the sandbox server must allow is a property of *this*
+  // installation, and editing a file inside the release to say so is worse than
+  // one variable in whatever starts it.
   const skills = process.env.ORCH_SKILLS_DIR?.trim();
   if (skills) out.skillsDir = resolve(skills);
   return out;
