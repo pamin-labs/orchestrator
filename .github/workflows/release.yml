@@ -1,400 +1,556 @@
-# Manual release: fix and format, bump with the App bot, validate, then fan out
-# binary and native-architecture image builds. The tag is pushed only after all
-# artifacts exist; GitHub generates the changelog from merged pull requests.
 name: release
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version, without the v (e.g. 0.2.0)'
+        description: Version already merged in package.json, without the v
         required: true
         type: string
       dry_run:
-        description: 'Build and print the notes, publish nothing'
+        description: Build and verify without publishing
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
+  BUN_VERSION: 1.3.5
   REGISTRY: ghcr.io/${{ github.repository_owner }}
+  TRIVY_VERSION: v0.74.0
 
 jobs:
-  # Everything that can say no, before anything is built or pushed.
   checks:
-    runs-on: ubuntu-latest
+    name: verify release source
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: read # Read the named CI and security results for the selected source SHA.
     outputs:
       source-sha: ${{ steps.source.outputs.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # `git rev-parse` on the tag below needs the tags, and a shallow clone
-          # has none of them.
           fetch-depth: 0
           persist-credentials: false
-
-      - name: reject a version that already exists
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::$RELEASE_VERSION is not a version such as 0.2.0 or 0.2.0-rc.1"
-            exit 1
-          fi
-          v="v$RELEASE_VERSION"
-          if git rev-parse "$v" >/dev/null 2>&1; then
-            echo "::error::$v already exists. A published version is not re-cut; pick the next one."
-            exit 1
-          fi
-
-      - uses: oven-sh/setup-bun@v2
+          ref: ${{ github.sha }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
-
-      # bun's global download cache, not `node_modules`: what an install spends
-      # is the network, and this is keyed by the lockfile so a release that
-      # changed no dependency restores exactly what the last one downloaded.
-      - uses: actions/cache@v6
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
-
-      # `--frozen-lockfile`: a lockfile that does not match package.json is a
-      # difference between what was tested and what will run.
-      - run: bun install --frozen-lockfile
-
-      - name: apply safe Fallow fixes and format
-        run: |
-          bun run audit:fix
-          git restore --source=HEAD -- .fallowrc.json
-          bun run format
-          git diff --check
-
-      - name: set the version
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: bun pm pkg set "version=$RELEASE_VERSION"
-
-      - name: audit release code
-        uses: fallow-rs/fallow@v3
-        with:
-          command: audit
-      - run: bun run validate
-
-      - name: detect release changes
-        id: changes
-        run: |
-          git diff --stat
-          echo "changed=$(git diff --quiet && echo false || echo true)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/create-github-app-token@v3
-        id: cleanup-token
-        if: steps.changes.outputs.changed == 'true' && !inputs.dry_run
-        with:
-          app-id: ${{ vars.ORCH_APP_ID }}
-          private-key: ${{ secrets.ORCH_APP_KEY }}
-
-      - name: commit release changes
-        if: steps.cleanup-token.outcome == 'success'
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-          TOKEN: ${{ steps.cleanup-token.outputs.token }}
-          TARGET_BRANCH: ${{ github.ref_name }}
-        run: |
-          git config user.name 'orchestrator-agentic-app[bot]'
-          git config user.email '317244264+orchestrator-agentic-app[bot]@users.noreply.github.com'
-          git add --all
-          git commit --no-verify -s -m "chore(release): ${RELEASE_VERSION}"
-          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push --no-verify origin "HEAD:${TARGET_BRANCH}"
-          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
-
-      - name: select the source commit
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: select immutable main source
         id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main || { echo '::error::Releases only run from main.'; exit 1; }
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || exit 1
+          package_version=$(bun -e 'console.log((await Bun.file("package.json").json()).version)')
+          test "$package_version" = "$RELEASE_VERSION" || { echo "::error::Merge the $RELEASE_VERSION bump PR first."; exit 1; }
+          sha=$(git rev-parse HEAD)
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          test "$sha" = "$main_sha" || { echo '::error::Selected SHA is not current main.'; exit 1; }
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo "::error::v$RELEASE_VERSION is already published and immutable releases are not re-cut."
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
+            tag_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/v$RELEASE_VERSION" --jq .sha)
+            test "$tag_sha" = "$sha" || {
+              echo "::error::v$RELEASE_VERSION already points to $tag_sha, not selected source $sha."
+              exit 1
+            }
+            echo "::notice::resuming the unpublished v$RELEASE_VERSION release at $sha"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: git diff --exit-code
+      - name: require successful source checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          required=(
+            quality-format quality-types quality-oxlint quality-fallow
+            test-main build-web dco pr-plan
+            security-codeql security-dependencies security-container workflow-static
+          )
+          runs=$(mktemp)
+          gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA/check-runs?per_page=100" > "$runs"
+          failed=0
+          for name in "${required[@]}"; do
+            state=$(jq -r --arg name "$name" '
+              [.check_runs[] | select(.name == $name)]
+              | sort_by(.completed_at // .started_at // "")
+              | last
+              | if . == null then "missing" else "\(.status):\(.conclusion // "")" end
+            ' "$runs")
+            if [ "$state" != "completed:success" ]; then
+              echo "::error::$name is $state for $SOURCE_SHA"
+              failed=1
+            fi
+          done
+          test "$failed" = 0
 
   binaries:
+    name: build five binaries
     needs: checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.checks.outputs.source-sha }}
-      - uses: oven-sh/setup-bun@v2
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
-      - uses: actions/cache@v6
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
+          bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
-      - name: set the version for a dry run
-        if: inputs.dry_run
+      - run: bun run build:web
+      - name: compile five platform archives
         env:
           RELEASE_VERSION: ${{ inputs.version }}
-        run: bun pm pkg set "version=$RELEASE_VERSION"
-      - run: bun run build:web
-      - name: compile
+          SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
+            root="orch-server-$RELEASE_VERSION-$target"; exe=orch-server
+            case "$target" in windows-*) exe=orch-server.exe ;; esac
+            mkdir -p "dist/$root/web" "dist/$root/src/orch"
+            bun build --compile --minify --target="bun-$target" src/server.ts --outfile "dist/$root/$exe"
+            cp -R roles config "dist/$root/"
+            cp -R web/dist "dist/$root/web/dist"
+            cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$root/web/"
+            cp src/orch/cli.ts "dist/$root/src/orch/"
+            cp package.json README.md LICENSE "dist/$root/"
+            test "$(stat -c %s "dist/$root/$exe")" -le $((150 * 1024 * 1024)) || { echo "::error::$target binary exceeds 150 MiB"; exit 1; }
+            TARGET="$target" ROOT="$root" bun -e 'await Bun.write(`dist/${process.env.ROOT}/release-manifest.json`, JSON.stringify({version:process.env.RELEASE_VERSION,source_sha:process.env.SOURCE_SHA,target:process.env.TARGET},null,2)+"\n")'
+            case "$target" in windows-*) (cd dist && zip -qr "orch-server-$target.zip" "$root") ;; *) tar -C dist -czf "dist/orch-server-$target.tar.gz" "$root" ;; esac
+            rm -rf "dist/$root"
+          done
+      - name: verify archives, version, source, and target manifests
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          verify=$(mktemp -d); trap 'rm -rf "$verify"' EXIT
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do tar -xzf "dist/orch-server-$target.tar.gz" -C "$verify"; done
+          unzip -q dist/orch-server-windows-x64.zip -d "$verify"
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
+            TARGET="$target" MANIFEST="$verify/orch-server-$RELEASE_VERSION-$target/release-manifest.json" bun -e 'const m=await Bun.file(process.env.MANIFEST).json();if(m.version!==process.env.RELEASE_VERSION||m.source_sha!==process.env.SOURCE_SHA||m.target!==process.env.TARGET)process.exit(1)'
+          done
+      - name: start the native Linux archive
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
-            out="orch-server-$RELEASE_VERSION-$target"
-            exe="orch-server"
-            case "$target" in windows-*) exe="orch-server.exe" ;; esac
-            mkdir -p "dist/$out/web" "dist/$out/src/orch"
-            bun build --compile --minify --target="bun-$target" src/server.ts --outfile "dist/$out/$exe"
-            cp -R roles config "dist/$out/"
-            cp -R web/dist "dist/$out/web/dist"
-            cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$out/web/"
-            cp src/orch/cli.ts "dist/$out/src/orch/"
-            cp package.json README.md LICENSE "dist/$out/"
-            case "$target" in
-              windows-*) (cd dist && zip -qr "orch-server-$target.zip" "$out") ;;
-              *) tar -C dist -czf "dist/orch-server-$target.tar.gz" "$out" ;;
-            esac
-            rm -rf "dist/$out"
+          smoke=$(mktemp -d); trap 'test -z "${pid:-}" || kill "$pid" 2>/dev/null || true; rm -rf "$smoke"' EXIT
+          tar -xzf dist/orch-server-linux-x64.tar.gz -C "$smoke"
+          root="$smoke/orch-server-$RELEASE_VERSION-linux-x64"
+          ORCH_DATA_DIR="$smoke/data" ORCH_PORT=18080 "$root/orch-server" >"$smoke/server.log" 2>&1 & pid=$!
+          for _ in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:18080/healthz >/dev/null && exit 0
+            kill -0 "$pid" 2>/dev/null || { cat "$smoke/server.log"; exit 1; }
+            sleep 1
           done
-          ls -lh dist/orch-server-*
-      - uses: actions/upload-artifact@v7
+          cat "$smoke/server.log"; exit 1
+      - run: bun run perf:budget
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: binaries
+          name: release-binaries
           path: |
-            dist/*.tar.gz
-            dist/*.zip
+            dist/orch-server-*.tar.gz
+            dist/orch-server-*.zip
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
 
-
-  # One job per image per architecture, each on a runner of that architecture.
-  # Pushed by digest with no tag: a tag here would publish half a release the
-  # moment the first job finished, and anyone pulling `:latest` in between would
-  # get whichever platform won the race.
-  build:
+  source-sbom:
+    name: build source SBOMs
     needs: checks
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: true
-      matrix:
-        image: [orch-agent]
-        platform: [amd64, arm64]
-    runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.checks.outputs.source-sha }}
+          persist-credentials: false
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with: { version: '${{ env.TRIVY_VERSION }}', scan-type: fs, scan-ref: ., format: spdx-json, output: orchestrator-source.spdx.json, exit-code: '0' }
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with: { version: '${{ env.TRIVY_VERSION }}', scan-type: fs, scan-ref: ., format: cyclonedx, output: orchestrator-source.cdx.json, exit-code: '0' }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: source-sboms, path: 'orchestrator-source.*.json', if-no-files-found: error, retention-days: 1 }
 
-      - uses: docker/setup-buildx-action@v4
-
-      - uses: docker/login-action@v4
-        if: ${{ !inputs.dry_run }}
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: build
-        uses: docker/build-push-action@v7
+  image-build:
+    name: build and verify image (${{ matrix.platform }})
+    needs: checks
+    runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: true
+      matrix: { platform: [amd64, arm64] }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { ref: '${{ needs.checks.outputs.source-sha }}', persist-credentials: false }
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: docker/agent.Dockerfile
           platforms: linux/${{ matrix.platform }}
-          # One layer's cache key, so every release picks up the current CLIs
-          # while the apt layer above stays cached.
-          build-args: |
-            CLI_REFRESH=${{ inputs.version }}
-          # By digest; the manifest job below is what gives these names.
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=${{ !inputs.dry_run }}
-          # Per image *and* per architecture. One shared scope means the two
-          # platforms evict each other's layers every run — a cache that costs
-          # upload time and never hits.
-          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.platform }}
-          cache-to: type=gha,scope=${{ matrix.image }}-${{ matrix.platform }}
-
-      # Named after the digest, so two jobs writing into one artifact cannot
-      # collide.
-      - name: hand the digest on
-        if: ${{ !inputs.dry_run }}
-        run: |
-          mkdir -p /tmp/digests
-          touch "/tmp/digests/${DIGEST#sha256:}"
+          load: true
+          push: false
+          tags: orch-agent:verify-${{ matrix.platform }}
+          provenance: mode=max
+          cache-from: type=gha,scope=orch-agent-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=orch-agent-${{ matrix.platform }}
+      - name: verify image digest and provenance material
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-
-      - uses: actions/upload-artifact@v7
+          BUILD_METADATA: ${{ steps.image.outputs.metadata }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+          SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          test -n "$IMAGE_DIGEST"
+          printf '%s\n' "$BUILD_METADATA" > "build-provenance-$PLATFORM.json"
+          jq -e --arg digest "$IMAGE_DIGEST" '
+            .["containerimage.digest"] == $digest and has("buildx.build.provenance")
+          ' "build-provenance-$PLATFORM.json" >/dev/null
+          image_id=$(docker image inspect --format '{{.Id}}' "orch-agent:verify-$PLATFORM")
+          test -n "$image_id"
+          jq -n \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg platform "linux/$PLATFORM" \
+            --arg image_digest "$IMAGE_DIGEST" \
+            --arg image_id "$image_id" \
+            '{source_sha:$source_sha,platform:$platform,image_digest:$image_digest,image_id:$image_id}' \
+            > "image-manifest-$PLATFORM.json"
+      - name: scan verified image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: orch-agent:verify-${{ matrix.platform }}
+          trivy-config: trivy.yaml
+          format: table
+      - name: create verified image SPDX SBOM
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: orch-agent:verify-${{ matrix.platform }}
+          format: spdx-json
+          output: orchestrator-agent-${{ matrix.platform }}.spdx.json
+          exit-code: '0'
+      - name: create verified image CycloneDX SBOM
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: orch-agent:verify-${{ matrix.platform }}
+          format: cyclonedx
+          output: orchestrator-agent-${{ matrix.platform }}.cdx.json
+          exit-code: '0'
+      - name: save verified image for publication
+        if: ${{ !inputs.dry_run }}
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: docker save "orch-agent:verify-$PLATFORM" | gzip -1 > "orch-agent-$PLATFORM.docker.tar.gz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-evidence-${{ matrix.platform }}
+          path: |
+            build-provenance-${{ matrix.platform }}.json
+            image-manifest-${{ matrix.platform }}.json
+            orchestrator-agent-${{ matrix.platform }}.spdx.json
+            orchestrator-agent-${{ matrix.platform }}.cdx.json
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ !inputs.dry_run }}
         with:
-          name: digests-${{ matrix.image }}-${{ matrix.platform }}
-          path: /tmp/digests/*
+          name: image-archive-${{ matrix.platform }}
+          path: orch-agent-${{ matrix.platform }}.docker.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  image-push:
+    name: publish verified image digest (${{ matrix.platform }})
+    needs: [checks, image-build]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    permissions:
+      contents: read
+      packages: write # Push only the image archive that passed local scan and provenance checks.
+    strategy:
+      fail-fast: true
+      matrix: { platform: [amd64, arm64] }
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { name: 'image-archive-${{ matrix.platform }}', path: image }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { name: 'image-evidence-${{ matrix.platform }}', path: image }
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
+      - name: push only the image that passed verification
+        env:
+          IMAGE: ${{ env.REGISTRY }}/orch-agent
+          PLATFORM: ${{ matrix.platform }}
+          SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          gzip -dc "image/orch-agent-$PLATFORM.docker.tar.gz" | docker load
+          loaded_id=$(docker image inspect --format '{{.Id}}' "orch-agent:verify-$PLATFORM")
+          expected_id=$(jq -r .image_id "image/image-manifest-$PLATFORM.json")
+          test "$loaded_id" = "$expected_id" || { echo "::error::loaded image ID $loaded_id differs from verified image ID $expected_id"; exit 1; }
+          stage="$IMAGE:sha-$SOURCE_SHA-$PLATFORM"
+          remote=$(docker buildx imagetools inspect "$stage" --raw 2>/dev/null || true)
+          if [ -n "$remote" ]; then
+            remote_id=$(jq -r '.config.digest // empty' <<<"$remote")
+            test "$remote_id" = "$loaded_id" || {
+              echo "::error::$stage already exists with config $remote_id, not verified config $loaded_id"
+              exit 1
+            }
+          else
+            docker tag "orch-agent:verify-$PLATFORM" "$stage"
+            docker push "$stage" >/dev/null
+          fi
+          remote=$(docker buildx imagetools inspect "$stage" --raw)
+          remote_id=$(jq -r '.config.digest // empty' <<<"$remote")
+          test "$remote_id" = "$loaded_id" || { echo "::error::$stage changed while it was staged"; exit 1; }
+          digest=$(docker buildx imagetools inspect "$stage" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::staged image has no immutable digest"; exit 1; }
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/$PLATFORM-${digest#sha256:}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: 'image-digest-${{ matrix.platform }}', path: '/tmp/digests/*', if-no-files-found: error, retention-days: 1 }
+
+  manifest:
+    name: publish image manifest and attestations
+    needs: [checks, image-push]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-24.04
+    outputs:
+      digest: ${{ steps.manifest.outputs.digest }}
+      previous-latest: ${{ steps.manifest.outputs.previous-latest }}
+    permissions:
+      contents: read
+      packages: write # Join the two verified platform digests into immutable registry tags.
+      id-token: write # Request the OIDC identity used to sign registry attestations.
+      attestations: write # Publish provenance and SBOM attestations for the image digest.
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { path: /tmp/digests, pattern: 'image-digest-*', merge-multiple: true }
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
+      - name: create multi-platform manifest
+        id: manifest
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ env.REGISTRY }}/orch-agent
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          image="$IMAGE"
+          digest_of() {
+            docker buildx imagetools inspect "$1" --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"'
+          }
+          promote() {
+            local destination="$1" expected="$2" source="$3" existing
+            existing=$(digest_of "$destination" || true)
+            if [ -n "$existing" ] && [ "$existing" != "$expected" ]; then
+              echo "::error::$destination already points to $existing, not verified digest $expected"
+              return 1
+            fi
+            if [ -z "$existing" ]; then
+              docker buildx imagetools create -t "$destination" "$source"
+            fi
+            test "$(digest_of "$destination")" = "$expected" || {
+              echo "::error::$destination changed during promotion"
+              return 1
+            }
+          }
+
+          previous_latest=$(digest_of "$image:latest" || true)
+          declare -a refs=() expected_members=()
+          for platform in amd64 arm64; do
+            file=$(find . -maxdepth 1 -type f -name "$platform-*" -print -quit)
+            test -n "$file" || { echo "::error::missing staged digest for $platform"; exit 1; }
+            platform_digest="sha256:${file##*-}"
+            [[ "$platform_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+            stage="$image:sha-$SOURCE_SHA-$platform"
+            test "$(digest_of "$stage")" = "$platform_digest" || {
+              echo "::error::$stage no longer matches the verified digest"
+              exit 1
+            }
+            refs+=("$image@$platform_digest")
+            expected_members+=("$platform_digest")
+            promote "$image:$RELEASE_VERSION-$platform" "$platform_digest" "$image@$platform_digest"
+          done
+
+          stage_manifest="$image:sha-$SOURCE_SHA"
+          if ! digest_of "$stage_manifest" >/dev/null; then
+            docker buildx imagetools create -t "$stage_manifest" "${refs[@]}"
+          fi
+          actual_members=$(docker buildx imagetools inspect "$stage_manifest" --raw | jq -r '.manifests[].digest' | sort)
+          wanted_members=$(printf '%s\n' "${expected_members[@]}" | sort)
+          test "$actual_members" = "$wanted_members" || {
+            echo "::error::$stage_manifest exists with divergent platform digests"
+            exit 1
+          }
+          digest=$(digest_of "$stage_manifest")
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+          promote "$image:$RELEASE_VERSION" "$digest" "$image@$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "previous-latest=$previous_latest" >> "$GITHUB_OUTPUT"
+          jq -n \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg image "$image" \
+            --arg digest "$digest" \
+            '{source_sha:$source_sha,image:$image,digest:$digest,platforms:["linux/amd64","linux/arm64"]}' \
+            > "$GITHUB_WORKSPACE/registry-image-manifest.json"
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', trivy-config: trivy.yaml, format: table }
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', format: spdx-json, output: registry-image.spdx.json, exit-code: '0' }
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', format: cyclonedx, output: registry-image.cdx.json, exit-code: '0' }
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', push-to-registry: true }
+      - uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3
+        with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', sbom-path: registry-image.spdx.json, push-to-registry: true }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: registry-image-evidence
+          path: |
+            registry-image-manifest.json
+            registry-image.spdx.json
+            registry-image.cdx.json
           if-no-files-found: error
           retention-days: 1
 
-  # The two digests of one image, joined under the tags people actually pull.
-  # Nothing is built here — `imagetools create` writes a manifest list out of
-  # images already in the registry.
-  manifest:
-    needs: build
+  release-evidence:
+    name: verify complete release evidence
+    needs: [checks, binaries, source-sbom, image-build, image-push, manifest]
+    if: ${{ always() && needs.checks.result == 'success' && needs.binaries.result == 'success' && needs.source-sbom.result == 'success' && needs.image-build.result == 'success' && (inputs.dry_run || (needs.image-push.result == 'success' && needs.manifest.result == 'success')) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { name: release-binaries, path: dist }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { name: source-sboms, path: dist }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { path: dist, pattern: 'image-evidence-*', merge-multiple: true }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: ${{ !inputs.dry_run }}
+        with: { name: registry-image-evidence, path: dist }
+      - name: checksum every release artifact
+        run: |
+          set -euo pipefail
+          (
+            cd dist
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 \
+              | sort -z \
+              | xargs -0 sha256sum > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-evidence
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    name: publish immutable GitHub release
+    needs: [checks, release-evidence, manifest]
     if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # Create the tag and GitHub release only after every evidence gate passes.
+      id-token: write # Request the OIDC identity used to sign artifact attestations.
+      attestations: write # Attest every file attached to the GitHub release.
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { name: release-evidence, path: dist }
+      - name: verify checksums
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: dist/*
+      - name: atomically bind release tag to verified source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          tag="v$RELEASE_VERSION"
+          if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$tag" -f sha="$SOURCE_SHA" >/dev/null 2>&1; then
+            existing=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)
+            test "$existing" = "$SOURCE_SHA" || {
+              echo "::error::$tag was raced to $existing, expected $SOURCE_SHA"
+              exit 1
+            }
+          fi
+          resolved=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)
+          test "$resolved" = "$SOURCE_SHA" || { echo "::error::$tag does not resolve to verified source"; exit 1; }
+      - name: create release at the verified SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
+        run: gh release create "v$RELEASE_VERSION" dist/* --verify-tag --title "v$RELEASE_VERSION" --generate-notes
+
+  promote-latest:
+    name: promote latest after release publication
+    needs: [manifest, publish]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
-      packages: write
-    strategy:
-      matrix:
-        image: [orch-agent]
-    runs-on: ubuntu-latest
+      packages: write # Advance latest only after the immutable GitHub release exists.
     steps:
-      - uses: actions/download-artifact@v8
-        with:
-          path: /tmp/digests
-          pattern: digests-${{ matrix.image }}-*
-          merge-multiple: true
-
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: join them
-        working-directory: /tmp/digests
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
+      - name: promote the published manifest to latest
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          EXPECTED_DIGEST: ${{ needs.manifest.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/orch-agent
+          PREVIOUS_LATEST: ${{ needs.manifest.outputs.previous-latest }}
         run: |
-          docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ matrix.image }}:$RELEASE_VERSION \
-            -t ${{ env.REGISTRY }}/${{ matrix.image }}:latest \
-            $(printf '${{ env.REGISTRY }}/${{ matrix.image }}@sha256:%s ' *)
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ matrix.image }}:$RELEASE_VERSION
-
-  # Last, so a failed build never leaves a tag pointing at a release whose images
-  # do not exist.
-  publish:
-    needs: [manifest, binaries, checks]
-    if: ${{ !inputs.dry_run }}
-    runs-on: ubuntu-latest
-    steps:
-      # The App is the branch-protection bypass actor and owns the release.
-      - uses: actions/create-github-app-token@v3
-        id: app
-        with:
-          app-id: ${{ vars.ORCH_APP_ID }}
-          private-key: ${{ secrets.ORCH_APP_KEY }}
-
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.checks.outputs.source-sha }}
-          token: ${{ steps.app.outputs.token }}
-
-      # Verify every archive before creating the irreversible tag.
-      - uses: actions/download-artifact@v8
-        with:
-          name: binaries
-          path: dist
-
-      - name: the archives are here
-        run: |
-          ls -lh dist/
-          missing=0
-          for f in linux-x64.tar.gz linux-arm64.tar.gz darwin-x64.tar.gz darwin-arm64.tar.gz windows-x64.zip; do
-            [ -s "dist/orch-server-$f" ] || { echo "::error::dist/orch-server-$f is missing or empty"; missing=1; }
-          done
-          [ "$missing" = 0 ]
-
-      - name: tag it
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          v="v$RELEASE_VERSION"
-          # The App's own bot account, so the commit is attributable to the
-          # thing that made it and `dco` recognises it as a bot.
-          git config user.name  "orchestrator-agentic-app[bot]"
-          git config user.email "317244264+orchestrator-agentic-app[bot]@users.noreply.github.com"
-          git tag "$v"
-          git push origin "$v"
-          echo "VERSION=$v" >> "$GITHUB_ENV"
-          echo "BUMP=${{ needs.checks.outputs.source-sha }}" >> "$GITHUB_ENV"
-
-      - name: publish the release
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          base="https://github.com/${{ github.repository }}/releases/latest/download"
-          printf '%s\n' \
-            '### Linux' \
-            '' \
-            '```bash' \
-            "curl -fsSL $base/orch-server-linux-x64.tar.gz | tar xz   # or -arm64" \
-            'cd orch-server-*-linux-x64 && ./orch-server' \
-            '```' \
-            '' \
-            '### macOS' \
-            '' \
-            '```bash' \
-            "curl -fsSL $base/orch-server-darwin-arm64.tar.gz | tar xz   # or -x64" \
-            'cd orch-server-*-darwin-arm64' \
-            'xattr -dr com.apple.quarantine .   # unsigned; Gatekeeper otherwise refuses' \
-            './orch-server' \
-            '```' \
-            '' \
-            '### Windows' \
-            '' \
-            '```powershell' \
-            "Invoke-WebRequest -Uri $base/orch-server-windows-x64.zip -OutFile orch.zip" \
-            'Expand-Archive .\orch.zip -DestinationPath .' \
-            'cd orch-server-*-windows-x64' \
-            '.\orch-server.exe' \
-            '```' \
-            '' \
-            'The sandbox server is Linux-only, so on Windows it runs under WSL — `uvx opensandbox-server` in there. Drive-letter paths are translated for it (`C:\orch\skills` is `/mnt/c/orch/skills` on its side), and that translated form is what goes in its `allowed_host_paths`; the panel prints the exact line.' \
-            '' \
-            '---' \
-            '' \
-            'It prints its own address on the way up — loopback, no login in front of it. `ORCH_HOST` and `ORCH_PORT` move it. Docker is needed for the sandboxes; nothing else is.' \
-            '' \
-            "The agent image (\`${{ env.REGISTRY }}/orch-agent:$RELEASE_VERSION\`) is pulled by the sandbox server the first time it builds a container. Nothing to pull by hand." \
-            > /tmp/notes.md
-          gh release create "${{ env.VERSION }}" \
-            --title "${{ env.VERSION }}" \
-            --generate-notes \
-            --notes-file /tmp/notes.md \
-            dist/*.tar.gz dist/*.zip
-
-      # A branch release keeps its exact tag, then replays the combined bump and
-      # cleanup commit onto main without making publication depend on that race.
-      - name: carry the bump onto main
-        if: github.ref_name != 'main'
-        continue-on-error: true
-        run: |
-          git fetch origin main
-          git checkout -q -B main origin/main
-          if git cherry-pick "${{ env.BUMP }}"; then
-            git push origin main
-          else
-            git cherry-pick --abort || true
-            echo "::warning::main already carries a different ${VERSION#v}; left alone"
+          set -euo pipefail
+          digest_of() {
+            docker buildx imagetools inspect "$1" --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"'
+          }
+          [[ "$EXPECTED_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+          test "$(digest_of "$IMAGE@$EXPECTED_DIGEST")" = "$EXPECTED_DIGEST" || {
+            echo "::error::verified manifest $EXPECTED_DIGEST is no longer readable"
+            exit 1
+          }
+          current=$(digest_of "$IMAGE:latest" || true)
+          if [ "$current" != "$EXPECTED_DIGEST" ]; then
+            test "$current" = "$PREVIOUS_LATEST" || {
+              echo "::error::$IMAGE:latest changed from $PREVIOUS_LATEST to $current before promotion"
+              exit 1
+            }
+            docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE@$EXPECTED_DIGEST"
           fi
-
-      # A failed pre-publication tag is recoverable; a published release is not.
-      - name: take the tag back
-        if: failure()
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: |
-          v="${{ env.VERSION }}"
-          [ -n "$v" ] || exit 0
-          if gh release view "$v" >/dev/null 2>&1; then
-            echo "::warning::$v is published; keeping the tag"
-          else
-            echo "::warning::$v failed before publishing; taking the tag back so it can be re-cut"
-            git push --delete origin "$v" || true
-          fi
+          test "$(digest_of "$IMAGE:latest")" = "$EXPECTED_DIGEST" || {
+            echo "::error::$IMAGE:latest does not match the published release"
+            exit 1
+          }
