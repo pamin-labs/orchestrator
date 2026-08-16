@@ -672,7 +672,10 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
     await post(`/api/groups/${g.id}/budget`, { tokens });
     refresh();
   };
-  const doubled = Math.max(g.budget_tokens * 2, g.spent_tokens + 100_000);
+  // `budget_tokens` is nullable in the column and the browser used to declare it
+  // a `number` — so "no cap set" arrived as null and this computed NaN, which is
+  // what the raise-the-budget field would have been pre-filled with.
+  const doubled = Math.max((g.budget_tokens ?? 0) * 2, g.spent_tokens + 100_000);
   return (
     <Card tone="mine" className="mt-2.5">
       <CardBody>

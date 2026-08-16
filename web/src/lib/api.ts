@@ -1,34 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-export interface Project {
-  id: number; name: string; repo_path: string; remote: string | null;
-  /** Empty means "ask the remote". Taken from GitHub at add time, correctable in 设置. */
-  base_branch: string | null;
-}
-export interface Group {
-  id: number; project_id: number; name: string; branch: string | null;
-  status: string; owns_json: string; budget_tokens: number; spent_tokens: number;
-  pr_number: number | null;
-  /** The boss approved, but a boundary is holding it. Cleared when it starts. */
-  approved_at: number | null;
-}
-export interface Slice {
-  id: number; grp_id: number; seq: number; title: string; accept_spec: string; difficulty: string;
-  status: string; gates_json: string; spent_tokens: number;
-  /** When it started waiting on the boss. The clock on 白干的单位. */
-  awaiting_at: number | null;
-}
-export interface Task { id: number; grp_id: number; slice_id: number | null; title: string; status: string }
-export interface Agent {
-  id: number; grp_id: number | null; role: string; model: string; state: string;
-  activity: string | null; session_tokens: number; total_tokens: number;
-  turns: number; slice_id: number | null;
-}
-export interface Archived {
-  id: number; project_id: number; name: string; branch: string | null; pr_number: number | null;
-  spent_tokens: number; slices: number; at: number | null;
-}
+/**
+ * The payload types, from the server that produces them.
+ *
+ * These were seventy-two lines of hand-written interfaces re-describing shapes
+ * `snapshot()` and `costReport()` already declare — two copies of one truth,
+ * neither checked against the other, and the browser's copy was the one that
+ * would keep claiming a field was a `string` after a migration renamed the
+ * column out from under it.
+ *
+ * `import type` is erased at build time, so nothing server-side reaches the
+ * bundle: `test/smoke.test.ts` and the bundle's own contents are the check on
+ * that. Hono's RPC (`hc<typeof app>`) is the fuller version of this idea and is
+ * not used here on purpose — it needs handlers to be Hono-native and return
+ * `c.json()`, and these return a bare `Response` so that every one of them can
+ * be called from a test with four ordinary arguments and no server.
+ */
+import type { snapshot } from "../../../src/api/panel/snapshot.ts";
+import type { CostReport, CostRow as ServerCostRow, AgentCost as ServerAgentCost } from "../../../src/mech/ops/cost.ts";
+import type {
+  Agent, Archived, Escalation, Group, Project, Slice, Task,
+} from "../../../src/api/panel/shapes.ts";
+
+export type { Agent, Archived, Escalation, Group, Project, Slice, Task };
+export type State = ReturnType<typeof snapshot>;
+export type Usage = State["usage"][number];
+export type Cost = CostReport;
+export type CostRow = ServerCostRow;
+export type AgentCost = ServerAgentCost;
+
 /** What was actually built, for the one decision that cannot be taken back. */
 export interface Evidence {
   seq: number; title: string; accept_spec: string; retries: number;
@@ -39,76 +40,12 @@ export interface Evidence {
   verdicts: { author: string; body: string; at: number }[];
   gates: { name: string; path: string; size: number }[];
 }
-export interface Escalation {
-  id: number; grp_id: number | null; severity: string; question: string; chain_state: string;
-  /** One line of what it is about, for the queue. Written by whoever filed it. */
-  brief: string | null;
-  /** env | spec | boundary | design | other. The queue folds a requirement's
-      questions by this: a dozen of one kind is one problem, not a dozen. */
-  kind: string | null;
-  answered_by: string | null; answer: string | null; created_at: number; asker: string | null;
-  /** Which project the asker belongs to. A standing agent has no group, so this is
-      the only thing that tells one project's question from another's. */
-  asker_project: number | null;
-}
-export interface State {
-  /** A credential exists. Without one nothing dispatches, so the header says so. */
-  ready: boolean;
-  projects: Project[]; groups: Group[]; slices: Slice[]; tasks: Task[]; agents: Agent[];
-  escalations: Escalation[];
-  /** unknownPaths: paths the card names that are not in the repo — new files, or a plan written from memory. */
-  draftCards: { grpId: number; body: string; at: number; unknownPaths?: string | null }[];
-  lateObjections: { grpId: number; author: string; body: string }[];
-  approvedBlocked: { grpId: number; reason: string }[];
-  /** A planner's checked claim that this requirement is already covered. */
-  dropProposals: { grpId: number; body: string }[];
-  ideas: { grpId: number; body: string }[];
-  answered: { id: number; grp_id: number; question: string; answer: string; answered_by: string; ref_note_id: number | null }[];
-  mergeQueue: { projectId: number; grpId: number; name: string; branch: string | null; seq: number }[];
-  archived: Archived[];
-  limits: { maxGroups: number | null; leaseSlots: Record<string, number>; autoAdvance: boolean; autoAcceptTiers: string[] };
-  /** How much of each subscription window is gone. Percentages are 0-100, or absent. */
-  usage: Usage[];
-  lastSeq: number;
-}
-export interface Usage {
-  runtime: string;
-  at: number;
-  status: string;
-  /** Unix seconds. The five-hour window's reset. */
-  resetsAt: number;
-  fiveHourPercent?: number;
-  weeklyPercent?: number;
-  weeklyResetsAt?: number;
-  /** Why the last read failed, if it did. Percentages beside it are the last good ones. */
-  error?: string;
-}
-export interface CostRow { label: string; tokens: number }
-/** One agent, with what it was spending on. null grpId = standing. */
-export interface AgentCost extends CostRow {
-  id: number; grpId: number | null; role: string; model: string; runtime: string;
-}
-export interface Cost {
-  total: CostRow;
-  byGroup: (CostRow & { grpId: number })[];
-  agents: AgentCost[];
-  byRole: CostRow[];
-  byDifficulty: CostRow[];
-  /** Which subscription paid for it. Two accounts, so this is a real axis now. */
-  byRuntime: CostRow[];
-  /** Last 48h of burn, per hour, split by which subscription paid. */
-  byHour: { hour: string; claude: number; codex: number }[];
-  cacheRatio: number | null;
-  /** Of the same recent turns, how many opened a cold session and why. */
-  rotations?: { turns: number; byReason: Record<string, number> };
-  delivered: { count: number; tokens: number };
-}
 
 const EMPTY: State = {
   // Assume wired until told otherwise: a mark on the header before the first
   // poll lands would flash on every reload.
   ready: true,
-  projects: [], groups: [], slices: [], tasks: [], agents: [], escalations: [],
+  projects: [], groups: [], slices: [], tasks: [], agents: [], escalations: [], channels: [],
   draftCards: [], lateObjections: [], approvedBlocked: [], dropProposals: [],
   ideas: [], answered: [], mergeQueue: [], archived: [], usage: [],
   limits: { maxGroups: null, leaseSlots: {}, autoAdvance: false, autoAcceptTiers: [] }, lastSeq: 0,
