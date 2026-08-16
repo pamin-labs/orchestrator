@@ -28,7 +28,7 @@ export interface ReviewDeps {
   cfg: Config;
 }
 
-export interface SliceRow {
+interface SliceRow {
   id: number;
   grp_id: number;
   seq: number;

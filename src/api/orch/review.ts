@@ -219,8 +219,7 @@ export const getGateLog = (async (ctx, _req, params, { grep }) => {
   return json({ text });
 }) satisfies Handler<z.infer<typeof GateLogQuery>, z.infer<typeof GateLogParams>>;
 
-export const SliceDecision = z.object({
-  id: Id,
+export const SliceDecision = IdParams.extend({
   decision: z.enum(["accept", "reject"]),
 });
 

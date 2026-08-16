@@ -19,7 +19,7 @@ import {
   type JobState,
   type LeaseState,
   type ProjectState,
-  type ServerState,
+  type ServerHealthState,
   type SliceState,
   type TaskState,
   type UtilState,
@@ -346,7 +346,7 @@ export const PROJECT_INVARIANTS = rows<ProjectState>(
  * is refusing produces a restart loop, and waiting for a server that is absent
  * produces a fleet that never moves.
  */
-const SERVER_INVARIANTS = rows<ServerState>(
+const SERVER_INVARIANTS = rows<ServerHealthState>(
   {
     state: "up",
     must: "every container is opened through it, and its config is the one we mount against",

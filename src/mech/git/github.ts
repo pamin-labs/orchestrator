@@ -5,6 +5,7 @@ import { loadAuth } from "../sandbox/auth.ts";
 import { raise } from "../flow/escalate.ts";
 import { jsonOr } from "../util/text.ts";
 import { clearRepositoryHold, holdRepository } from "./repository.ts";
+import type { Json } from "../../http/respond.ts";
 
 /**
  * GitHub, as eight endpoints of ordinary JSON.
@@ -24,7 +25,6 @@ import { clearRepositoryHold, holdRepository } from "./repository.ts";
 const API = "https://api.github.com";
 const TIMEOUT_MS = 15_000;
 const JsonValue = z.json();
-type Json = z.infer<typeof JsonValue>;
 const ErrorBody = z.object({
   message: z.string().optional(),
   errors: z.array(z.object({ message: z.string().optional() })).optional(),

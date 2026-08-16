@@ -34,7 +34,7 @@ const ResourceArgsSchema = z.record(z.string(), ArgSpecSchema);
 const LeaseArgSchema = z.union([z.string(), z.number(), z.boolean()]);
 type LeaseArg = z.infer<typeof LeaseArgSchema>;
 export const LeaseArgsSchema = z.record(z.string(), LeaseArgSchema);
-type LeaseArgs = z.infer<typeof LeaseArgsSchema>;
+export type LeaseArgs = z.infer<typeof LeaseArgsSchema>;
 
 export interface ResourceDef {
   name: string;

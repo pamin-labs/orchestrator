@@ -5,7 +5,7 @@ import type { Ctx } from "../../ctx.ts";
 import { JsonValue, ProtocolResponse, readJsonResponse } from "../../http/respond.ts";
 import { FILE_MODE, liveSandboxes, MAILBOX_DIR, writeInto } from "./sandbox.ts";
 
-type MailboxSandbox = {
+export type MailboxSandbox = {
   files: Pick<ReturnType<typeof liveSandboxes>[number]["files"], "readFile" | "deleteFiles" | "writeFiles">;
 };
 

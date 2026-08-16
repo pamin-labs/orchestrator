@@ -19,7 +19,7 @@ import { z } from "zod";
  */
 
 const CostRowSchema = z.object({ label: z.string(), tokens: z.number() });
-export type CostRow = z.infer<typeof CostRowSchema>;
+type CostRow = z.infer<typeof CostRowSchema>;
 
 /**
  * One agent's spend, with what it was spending it on.
@@ -35,7 +35,7 @@ const HourRowSchema = z.object({
   claude: z.number(),
   codex: z.number(),
 });
-export type HourRow = z.infer<typeof HourRowSchema>;
+type HourRow = z.infer<typeof HourRowSchema>;
 
 const AgentCostSchema = CostRowSchema.extend({
   id: z.number(),
@@ -44,7 +44,7 @@ const AgentCostSchema = CostRowSchema.extend({
   model: z.string(),
   runtime: z.string(),
 });
-export type AgentCost = z.infer<typeof AgentCostSchema>;
+type AgentCost = z.infer<typeof AgentCostSchema>;
 
 export const CostReportSchema = z.object({
   /** Requirements that finished, for a per-requirement average worth quoting. */

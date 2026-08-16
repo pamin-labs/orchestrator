@@ -137,7 +137,7 @@ function usageToken(db: DB): string | null {
  * them right now", and "this account has no windows at all" — the last being an
  * API-key user, who is billed per token and has nothing to run out of.
  */
-export type UsageRead = { rl: RateLimitInfo } | { error: string };
+type UsageRead = { rl: RateLimitInfo } | { error: string };
 
 /**
  * Asked from the utility container, with a decoy, like everything else.

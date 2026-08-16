@@ -18,7 +18,7 @@ export type Dedupe = { prefix: string; scope: "global" } | { prefix: string; sco
  * The bus message stays at the call site: every caller says something different,
  * and a generic message here would announce each question twice.
  */
-export interface Ask {
+export interface EscalationRequest {
   grpId?: number | null;
   agentId?: number | null;
   /** Blocker stops the group. Advisory is a note in the queue. */
@@ -29,7 +29,7 @@ export interface Ask {
   /** env | spec | boundary | design | other. Folds a requirement's questions. */
   kind?: string | null;
   /** `boss` skips the PM → Architect → CoS chain. Omitted questions start at PM. */
-  chain?: FilingState | null;
+  chain?: EscalationOpenState | null;
   dedupe?: Dedupe;
 }
 
@@ -38,7 +38,7 @@ type Insert = [number | null, number | null, "blocker" | "advisory", string, str
 const COLUMNS = "grp_id, agent_id, severity, question, brief, kind, chain_state, created_at";
 const VALUES = "?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000";
 
-export function raise(db: DB, ask: Ask): number | null {
+export function raise(db: DB, ask: EscalationRequest): number | null {
   const values: Insert = [
     ask.grpId ?? null,
     ask.agentId ?? null,

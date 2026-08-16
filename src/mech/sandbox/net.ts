@@ -21,7 +21,7 @@ import { probeHosts } from "./auth.ts";
  * is offline. `preflight.ts` draws the same line for the same reason.
  */
 
-export interface NetState {
+interface NetState {
   online: boolean;
   /** When it last changed, for the message the boss reads. */
   since: number;

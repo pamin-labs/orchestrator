@@ -80,7 +80,7 @@ export const SERVER_STATES = ["up", "absent", "refusing", "stale_config"] as con
 
 export type GrpState = (typeof GRP_STATES)[number];
 export type UtilState = (typeof UTIL_STATES)[number];
-export type ServerState = (typeof SERVER_STATES)[number];
+export type ServerHealthState = (typeof SERVER_STATES)[number];
 export type ProjectState = (typeof PROJECT_STATES)[number];
 export type SliceState = (typeof SLICE_STATES)[number];
 export type TaskState = (typeof TASK_STATES)[number];
@@ -88,10 +88,10 @@ export type JobState = (typeof JOB_STATES)[number];
 export type LeaseState = (typeof LEASE_STATES)[number];
 export type EscalationState = (typeof ESCALATION_STATES)[number];
 
-type StateSubset =
+export type StateSubset =
   | readonly GrpState[]
   | readonly UtilState[]
-  | readonly ServerState[]
+  | readonly ServerHealthState[]
   | readonly ProjectState[]
   | readonly SliceState[]
   | readonly TaskState[]
