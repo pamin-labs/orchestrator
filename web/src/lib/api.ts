@@ -243,6 +243,23 @@ export function useOrch() {
     setCost((await c.json()) as Cost);
   };
 
+  /**
+   * Re-read state and cost, at most once every 250ms.
+   *
+   * Ten groups moving at once is ten `state_change` frames inside a second, and
+   * every one of them used to call `refresh()` — twenty requests to answer a
+   * question that has one answer. Trailing rather than leading: the last frame
+   * of a burst is the one whose state we want to end up showing.
+   */
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nudge = () => {
+    if (pending.current) return;
+    pending.current = setTimeout(() => {
+      pending.current = null;
+      void refresh();
+    }, 250);
+  };
+
   useEffect(() => {
     if (started.current) return;
     started.current = true;
@@ -255,7 +272,7 @@ export function useOrch() {
       es.onmessage = (m) => {
         const f = JSON.parse(m.data);
         setFrames((prev) => appendFrame(prev, f, liveSeq));
-        if (["state_change", "escalation", "note"].includes(f.kind)) void refresh();
+        if (["state_change", "escalation", "note"].includes(f.kind)) nudge();
       };
     });
   }, []);
