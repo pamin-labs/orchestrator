@@ -5,7 +5,7 @@ import { rm } from "node:fs/promises";
 import { dropSlices } from "./db.ts";
 import { resolveLease, type ResourceDef } from "./mech/sandbox/lease.ts";
 import { sliceDiffBase } from "./mech/git/worktree.ts";
-import { allowedImage, execIn, killSandbox, putFile, relinkSkills, remoteInClear, restartServer, runningServer, serverAddr, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
+import { allowedImage, killSandbox, relinkSkills, remoteInClear, restartServer, runningServer, serverAddr, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { preflight } from "./mech/ops/preflight.ts";
@@ -13,7 +13,6 @@ import { defaultImage, imageChoices, setDefaultImage, type ImageChoices } from "
 import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "./mech/sandbox/server.ts";
 import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit } from "./mech/git/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
-import { triage, type Triage } from "./mech/flow/chain.ts";
 import { canStart, parseOwns } from "./mech/flow/ownership.ts";
 import { acceptSlice } from "./mech/flow/review.ts";
 import { dropGroup, runInstall, startGroup, sweepApproved } from "./mech/flow/start.ts";
@@ -23,8 +22,7 @@ import { forgetHolds } from "./mech/git/github.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search } from "./mech/knowledge/pageindex.ts";
 import { gatesFor } from "./mech/flow/gate.ts";
-import { forgetProjectSkills, listSkills, projectSkills, projectSkillsPending, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/util/skills.ts";
-import { shq } from "./mech/util/shq.ts";
+import { forgetProjectSkills, listSkills, projectSkills, projectSkillsPending, restageSkills, setSkillOff, skillsOff } from "./mech/util/skills.ts";
 import { abortJob } from "./runtime/running.ts";
 import { say } from "./lang.ts";
 import { Hono } from "hono";
@@ -34,6 +32,11 @@ import { getCost, getState, snapshot } from "./api/snapshot.ts";
 import { bossFact, expandHome, getAttachment, imagePaths, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/attach.ts";
 import { postBlocked, postDraft, postDrop, postOwns, postSplit } from "./api/planning.ts";
 import { slug } from "./api/slug.ts";
+import { evictOldestLessons, LESSON_CAP, postJournal, postStatus } from "./api/report.ts";
+import { postMail, postSay } from "./api/messaging.ts";
+
+// The lesson cap is asserted in a test; eviction is called from the note route.
+export { evictOldestLessons, LESSON_CAP };
 import { ASK_KINDS, askKind, brief, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage } from "./api/escalation.ts";
 
 // The queue groups by kind and shows the brief; both are read outside the routes.
@@ -50,7 +53,7 @@ import { getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, po
 // Re-exported: `mintToken` and `agentOf` are wired from outside the routes, and
 // the tests reach for them here.
 export { agentOf, mayAct, mintToken, resolveGroup };
-import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/flow/validate.ts";
+import { criteriaIn, validateDraftCard, validateSelfReview } from "./mech/flow/validate.ts";
 import type { Caller, Ctx } from "./ctx.ts";
 
 // Both live in `ctx.ts` now — eighteen files under `mech/` want the type and
@@ -65,307 +68,13 @@ export type { Caller, Ctx };
 
 // ---------------------------------------------------------------- agent verbs
 
-const postStatus: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ text: string }>(req);
-  ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [b.text ?? "", a.id]);
-  ctx.bus.live({ grpId: a.grp_id, agentId: a.id, role: a.role, kind: "status", body: b.text ?? "" });
-  return text("ok");
-};
 
-const postJournal: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ kind: string; body: string; files?: string[]; slice_id?: number }>(req);
 
-  const v = validateJournal({ kind: b.kind, body: b.body, files: b.files });
-  if (!v.ok) return bad(v.error);
 
-  const grp = a.grp_id
-    ? ctx.db
-        .query<{ name: string; project_id: number }, [number]>(
-          "SELECT name, project_id FROM grp WHERE id = ?",
-        )
-        .get(a.grp_id)
-    : null;
 
-  const frontmatter = {
-    group: grp?.name ?? null,
-    role: a.role,
-    slice: b.slice_id ?? null,
-    kind: v.kind,
-    files: b.files ?? [],
-  };
 
-  // journal/retro live in the repo so they merge with the PR and the next group
-  // can grep them; the rest stay on the blackboard only.
-  let exportPath: string | null = null;
-  if ((v.kind === "journal" || v.kind === "retro" || v.kind === "decision") && a.grp_id) {
-    const seq = ctx.db
-      .query<{ c: number }, [number]>("SELECT count(*) AS c FROM note WHERE grp_id = ?")
-      .get(a.grp_id!)!.c;
-    exportPath = join("docs", "journal", grp!.name, `${String(seq + 1).padStart(3, "0")}-${v.kind}.md`);
-    const fm = Object.entries(frontmatter)
-      .map(([k, val]) => `${k}: ${Array.isArray(val) ? `[${val.join(", ")}]` : val}`)
-      .join("\n");
-    // Into the sandbox's checkout, so it merges with the PR like any other file.
-    // Quoted: the path carries `grp.name`, and a group can name its own children
-    // (`orch split`). Unquoted this was one `;` away from being a command.
-    await execIn(ctx, { grp: a.grp_id }, `mkdir -p ${shq(`${WORK}/${dirname(exportPath)}`)}`);
-    await putFile(ctx, { grp: a.grp_id }, `${WORK}/${exportPath}`, `---\n${fm}\n---\n${v.body}\n`);
-  }
 
-  ctx.db.run(
-    `INSERT INTO note (project_id, grp_id, slice_id, kind, lang, body, frontmatter_json, export_path, at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      grp?.project_id ?? null,
-      a.grp_id,
-      b.slice_id ?? null,
-      v.kind,
-      ctx.config.language,
-      v.body,
-      JSON.stringify(frontmatter),
-      exportPath,
-      Date.now(),
-    ],
-  );
-  // The lessons list is capped where it is written, not where it is read: an
-  // ever-growing list becomes the very context cost it exists to prevent.
-  if (v.kind === "lesson") evictOldestLessons(ctx, grp?.project_id ?? null);
 
-  // A retro is what PR-level review was waiting for. Without this the flow
-  // dead-ends: the PM writes the retro nobody asked for again, and the branch sits
-  // finished and unreviewed until someone nudges it by hand.
-  if (v.kind === "retro" && a.grp_id) {
-    const open = ctx.db
-      .query<{ c: number }, [number]>(
-        "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status != 'accepted'",
-      )
-      .get(a.grp_id)!.c;
-    if (open === 0) {
-      ctx.sched.enqueue("reconcile", { grp_id: a.grp_id, priority: 5 });
-      ctx.sched.tick();
-    }
-  }
-
-  ctx.bus.emit({
-    grpId: a.grp_id,
-    author: a.role,
-    kind: "note",
-    intent: v.kind === "decision" ? "decision" : "note",
-    body: v.body,
-    meta: { kind: v.kind, exportPath },
-  });
-  return text(exportPath ? `ok ${exportPath}` : "ok");
-};
-
-export const LESSON_CAP = 20;
-
-/** Keep only the newest LESSON_CAP lessons for a project. */
-export function evictOldestLessons(ctx: Ctx, projectId: number | null): number {
-  const r = ctx.db.run(
-    `DELETE FROM note WHERE kind = 'lesson' AND (project_id IS ? OR (? IS NULL AND project_id IS NULL))
-       AND id NOT IN (
-         SELECT id FROM note WHERE kind = 'lesson' AND (project_id IS ? OR (? IS NULL AND project_id IS NULL))
-         ORDER BY at DESC, id DESC LIMIT ?
-       )`,
-    [projectId, projectId, projectId, projectId, LESSON_CAP],
-  );
-  return r.changes;
-}
-
-const WAKING = new Set(["ask", "request", "inform"]);
-
-const postMail: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{
-    target: string;
-    intent: string;
-    body: string;
-    severity?: string;
-    in_reply_to?: number;
-  }>(req);
-  if (!["ask", "request", "inform", "note", "decision"].includes(b.intent)) {
-    return bad("intent must be one of: ask, request, inform, note, decision");
-  }
-  // An empty message wakes someone with nothing to answer. Measured: the
-  // Dispatcher invented a `--wait` flag, the parser took it, and the mail went
-  // out with no body — the Architect burned a turn on "收到的 ask 消息内容为空".
-  if (!b.body?.trim()) {
-    return bad(
-      `mail to "${b.target}" has an empty body. Put the message in quotes as the last ` +
-        `argument: orch mail ${b.target} --intent ${b.intent} "…". There is no --wait flag; ` +
-        `ask blocks on its own.`,
-    );
-  }
-
-  // The recipient is an explicit parameter, not an `@` parsed out of prose:
-  // waking someone means enqueueing an agent_turn for them, nothing more.
-  let target: { agentId: number; grpId: number | null } | null = null;
-  if (WAKING.has(b.intent)) {
-    const senderProject = ctx.db
-      .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
-      .get(a.id)?.project_id ?? null;
-    target = resolveTarget(ctx, a.grp_id, b.target, senderProject);
-    if (!target) {
-      const known = (ctx.knownRoles?.() ?? []).join(", ");
-      // Never a silent no-op: an unreachable recipient is exactly how an agent
-      // ends up asking a wall twice and then giving up.
-      return bad(`no such recipient "${b.target}". Roles that exist: ${known || "none configured"}`);
-    }
-  }
-
-  // A standing agent has no group of its own, so stamping the sender's group
-  // would file its reply under nothing and drop it out of the group's timeline.
-  // Measured: the Architect's objection to a DRAFT card landed with grp_id NULL
-  // and the boss approved a card that said 反对 : 无.
-  ctx.bus.emit({
-    grpId: a.grp_id ?? target?.grpId ?? null,
-    author: a.role,
-    kind: "say",
-    intent: b.intent,
-    severity: b.severity ?? null,
-    body: b.body,
-    target: b.target,
-    meta: { in_reply_to: b.in_reply_to ?? null },
-  });
-
-  if (target) {
-    // The message travels with the job. A standing recipient is not in the
-    // sender's channel, so relying on the unread cursor would wake it with an
-    // empty prompt and it would never see the question at all.
-    ctx.sched.enqueue("agent_turn", {
-      grp_id: target.grpId,
-      agent_id: target.agentId,
-      priority: b.intent === "ask" ? 4 : 0,
-      payload: {
-        mail: {
-          from: a.role,
-          from_group: a.grp_id,
-          intent: b.intent,
-          body: b.body,
-        },
-      },
-    });
-  }
-  ctx.sched.tick();
-  return text("ok");
-};
-
-/**
- * The boss says something, and it reaches someone.
- *
- * PLAN.md §7 makes this the whole feedback loop: dissatisfaction that only gets
- * heard as "change one line" is how a wrong decomposition never gets corrected.
- * The panel had no way to say anything at all — every route into the blackboard
- * needed an agent token, so the boss could approve and reject but never explain.
- *
- * `triage` decides what the words mean: patch keeps going, respec sends the whole
- * requirement back to the Dispatcher, reject dissolves it. The CoS normally makes
- * that call; the boss saying it directly is the same call, made by the one person
- * whose opinion it is.
- */
-const postSay: Handler = async (ctx, req) => {
-  const b = await body<{
-    group_id?: number | string; target?: string; body: string; as?: string; attachments?: Attachment[];
-  }>(req);
-  if (!b.body?.trim()) return bad("nothing to send");
-  // A screenshot is as useful when saying "这里不对" as when filing the idea.
-  const said = withAttachments(b.body.trim(), b.attachments);
-  const grpId = b.group_id == null ? null : resolveGroup(ctx, b.group_id);
-  if (b.group_id != null && !grpId) return bad("no such requirement");
-
-  const project = grpId
-    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-        ?.project_id ?? null
-    : null;
-  const repo = project
-    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(project)
-        ?.repo_path
-    : null;
-  // A skill the boss pointed at is inlined into that turn — for triage too,
-  // since "do it this way instead" is exactly when it matters. `/name` resolves
-  // against the repository's own skills as well as this machine's: they are what
-  // a project ships to be used, and being unable to name one was the gap.
-  const skills = skillNames(said, repo, projectSkills(ctx.db, project));
-
-  if (b.as) {
-    if (!["patch", "respec", "reject"].includes(b.as)) return bad("as must be patch, respec or reject");
-    if (!grpId) return bad("triage needs a requirement");
-    ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: said });
-    triage(
-      { ctx, bossFact: (g, body) => bossFact(ctx, g, body) },
-      grpId,
-      b.as as Triage,
-      said,
-      skills,
-    );
-    ctx.sched.tick();
-    return text("ok");
-  }
-
-  // Plain talk. The recipient defaults to the group's PM: PLAN.md §7 makes the PM
-  // the group's only conversational entrance so one sentence costs one turn
-  // instead of five.
-  const to = b.target || "pm";
-  const target = resolveTarget(ctx, grpId, to, project);
-  if (!target) {
-    const known = (ctx.knownRoles?.() ?? []).join(", ");
-    return bad(`没有 "${to}" 这个收件人。现有角色：${known || "none configured"}`);
-  }
-  ctx.bus.emit({
-    grpId: grpId ?? target.grpId ?? null,
-    author: "boss",
-    kind: "boss_say",
-    intent: "request",
-    body: said,
-    target: to,
-  });
-  // Boss talk jumps the queue: the whole point of L1 intercept is that it lands on
-  // the next turn rather than after everything already enqueued.
-  ctx.sched.enqueue("agent_turn", {
-    grp_id: target.grpId ?? grpId,
-    agent_id: target.agentId,
-    priority: 6,
-    payload: { mail: { from: "boss", from_group: null, intent: "request", body: said }, skills },
-  });
-  ctx.sched.tick();
-  return text("ok");
-};
-
-/**
- * Who a message is for: someone in the sender's group first, then the standing
- * holder of that role, and finally — for a role that exists in config but has no
- * agent yet — a newly hired one.
- */
-function resolveTarget(
-  ctx: Ctx,
-  senderGrp: number | null,
-  role: string,
-  senderProject: number | null,
-): { agentId: number; grpId: number | null } | null {
-  if (senderGrp) {
-    const inGroup = ctx.db
-      .query<{ id: number }, [number, string]>(
-        "SELECT id FROM agent WHERE grp_id = ? AND role = ? AND state != 'retired'",
-      )
-      .get(senderGrp, role);
-    if (inGroup) return { agentId: inGroup.id, grpId: senderGrp };
-  }
-  // Anyone in this project with that role, group or not. A standing Architect
-  // replying to `orch mail dispatcher` must reach the group's Dispatcher rather
-  // than cause a second one to be hired — which is how one project ended up
-  // paying for two opus Dispatchers.
-  const inProject = ctx.db
-    .query<{ id: number; grp_id: number | null }, [string, number | null, number | null]>(
-      `SELECT id, grp_id FROM agent
-       WHERE role = ? AND state != 'retired' AND (project_id IS ? OR ? IS NULL)
-       ORDER BY (grp_id IS NOT NULL) DESC, id DESC LIMIT 1`,
-    )
-    .get(role, senderProject, senderProject);
-  if (inProject) return { agentId: inProject.id, grpId: inProject.grp_id };
-
-  if (!(ctx.knownRoles?.() ?? []).includes(role)) return null;
-  const hired = ctx.hire?.(null, role, senderProject) ?? null;
-  return hired === null ? null : { agentId: hired, grpId: null };
-}
 
 /**
  * The line the queue shows.
