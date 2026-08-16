@@ -29,3 +29,27 @@ test("credential UI owns the login flows while the settings shell owns polling",
     expect(pane).toContain(contract);
   }
 });
+
+test("GitHub controls own their flow while the settings shell owns polling", () => {
+  const shell = read("../web/src/views/settings.tsx");
+  const pane = read("../web/src/views/settings/github.tsx");
+
+  // The shell keeps the query mounted only for this section and coordinates the
+  // device-flow timer. The pane starts actions and asks for one cache refresh.
+  expect(shell).toContain('queryKey: ["gh"]');
+  expect(shell).toContain('enabled: open && section === "github"');
+  expect(shell).toContain("q.state.data?.pending ? 3000 : false");
+  expect(shell).toContain("<GithubPane");
+  expect(pane).not.toContain("useQuery");
+  expect(pane).not.toContain('queryKey: ["gh"]');
+
+  expect(shell).not.toContain("function GithubPane(");
+  for (const contract of [
+    '"/api/auth/github"',
+    'runtime: "github", clear: true',
+    'id="t-signoff"',
+    'id="t-coauthor"',
+  ]) {
+    expect(pane).toContain(contract);
+  }
+});
