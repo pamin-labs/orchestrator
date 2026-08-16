@@ -6,6 +6,7 @@ import { joinQueue } from "./mech/flow/mergequeue.ts";
 import { Bus } from "./bus.ts";
 import { consola } from "consola";
 import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "./config.ts";
+import { applyOverrides } from "./settings.ts";
 import { changed, checkConfig, checkRoles } from "./mech/ops/checkconfig.ts";
 import { open } from "./db.ts";
 import { REAL, sandboxHeld } from "./mech/sandbox/sandbox.ts";
@@ -266,6 +267,10 @@ export function start(overrides: Partial<Config> = {}): Started {
       chmodSync(p, p === cfg.dataDir ? 0o700 : 0o600);
     } catch {}
   }
+  // The panel's settings, over the file's. Before anything reads `cfg`: the
+  // scheduler, the watchdog timer and every handler share this one object.
+  applyOverrides(db, cfg);
+
   const bus = new Bus(db);
   const roles = loadRoles();
 
@@ -273,8 +278,10 @@ export function start(overrides: Partial<Config> = {}): Started {
   // created with a thunk that resolves once both exist.
   let exec: ReturnType<typeof makeExecutor> | null = null;
   const sched = new Scheduler(db, (job) => exec!(job), {
-    maxGroups: cfg.maxGroups,
-    leaseSlots: cfg.leaseSlots,
+    // Thunks, not values: both are settings the boss can change while the fleet
+    // runs, and the scheduler outlives the change.
+    maxGroups: () => cfg.maxGroups,
+    leaseSlots: () => cfg.leaseSlots,
     // The watchdog probes; this only reads the answer, so a tick never blocks a
     // dispatch decision on a DNS timeout.
     online: isOnline,
@@ -457,7 +464,16 @@ export function start(overrides: Partial<Config> = {}): Started {
 
   // The watchdog is an ordinary job, enqueued on a timer. It bypasses the group
   // slot pool, or it could never fire on the very group that is stuck.
-  const tick = setInterval(() => {
+  // The period is a setting, and `setInterval` captures it. Rather than juggle a
+  // timer handle from the settings route, the callback notices its own period
+  // changed and re-arms — one place, and it cannot be forgotten by a new writer.
+  let armed = cfg.watchdogIntervalMs;
+  let tick = setInterval(function beat() {
+    if (cfg.watchdogIntervalMs !== armed) {
+      clearInterval(tick);
+      armed = cfg.watchdogIntervalMs;
+      tick = setInterval(beat, armed);
+    }
     const queued = db
       .query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'watchdog' AND state = 'pending'")
       .get()!.c;
@@ -506,7 +522,7 @@ export function start(overrides: Partial<Config> = {}): Started {
         }
       })
       .catch((e) => consola.error(`pollPrs: ${(e as Error)?.message ?? e}`));
-  }, cfg.watchdogIntervalMs);
+  }, armed);
 
   // The agents' only way out. Nothing in a sandbox can reach this process
   // directly, so their requests arrive as files and are replayed against these

@@ -30,7 +30,7 @@ export type Executor = (job: Job) => Promise<void>;
 
 export interface SchedulerOptions {
   /** Max groups with an in-flight agent_turn. Default 3 (see PLAN.md §11). */
-  maxGroups?: number;
+  maxGroups?: number | (() => number);
   /**
    * Slots for the Runner pool, per resource tag. Leases never consume group slots.
    *
@@ -41,7 +41,7 @@ export interface SchedulerOptions {
    * wants as many as the machine has cores. One global number could only ever be
    * the minimum of those, which is the browser's, which starves everything else.
    */
-  leaseSlots?: number | Record<string, number>;
+  leaseSlots?: number | Record<string, number> | (() => number | Record<string, number> | undefined);
   /** Kinds that are cheap bookkeeping and bypass the group slot pool. */
   now?: () => number;
   /**
@@ -136,8 +136,16 @@ function slotOf(job: Pick<Job, "grp_id" | "agent_id">): number {
  */
 export class Scheduler {
   private inflight = new Map<number, Promise<void>>();
-  private readonly maxGroups: number;
-  private readonly pools: Record<string, number>;
+  /**
+   * Read per tick, not captured at construction.
+   *
+   * Both are settings the boss can change while the fleet is running, and the
+   * scheduler outlives every one of those changes — a value frozen here would
+   * have meant restarting the server to raise a concurrency limit. Same shape as
+   * `now` and `online` below, which are injected for the same reason.
+   */
+  private readonly maxGroups: () => number;
+  private readonly pools: () => Record<string, number>;
   private readonly now: () => number;
   private readonly online: () => boolean;
   private readonly sandboxReady: () => boolean;
@@ -149,8 +157,10 @@ export class Scheduler {
     private exec: Executor,
     opts: SchedulerOptions = {},
   ) {
-    this.maxGroups = opts.maxGroups ?? 3;
-    this.pools = poolSizes(opts.leaseSlots);
+    const groups = opts.maxGroups ?? 3;
+    this.maxGroups = typeof groups === "function" ? groups : () => groups;
+    const slots = opts.leaseSlots;
+    this.pools = typeof slots === "function" ? () => poolSizes(slots()) : () => poolSizes(slots);
     this.now = opts.now ?? (() => Date.now());
     this.online = opts.online ?? (() => true);
     this.sandboxReady = opts.sandboxReady ?? (() => true);
@@ -254,7 +264,8 @@ export class Scheduler {
         // Every pool the resource is tagged with has to have room: a lease that
         // is both `browser` and `heavy` waits for whichever is tighter.
         const want = this.poolsOf(job);
-        if (want.some((p) => (taken[p] ?? 0) >= (this.pools[p] ?? this.pools[DEFAULT_POOL]!))) continue;
+        const pools = this.pools();
+        if (want.some((p) => (taken[p] ?? 0) >= (pools[p] ?? pools[DEFAULT_POOL]!))) continue;
         for (const p of want) taken[p] = (taken[p] ?? 0) + 1;
         out.push(job);
         continue;
@@ -265,7 +276,7 @@ export class Scheduler {
       }
       const slot = slotOf(job);
       if (busyGroups.has(slot)) continue;
-      if (busyGroups.size >= this.maxGroups) continue;
+      if (busyGroups.size >= this.maxGroups()) continue;
       // Only a group-scoped job has a status and a budget to check.
       if (job.grp_id !== null && !this.admits(job)) continue;
       // Offline is the third gate of the same shape as the two below, and for the

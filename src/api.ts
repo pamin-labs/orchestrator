@@ -14,6 +14,7 @@ import { postPr } from "./api/pr.ts";
 import { deleteProject, getProjectConfig, patchProjectConfig, postProject, postSetup } from "./api/project.ts";
 import { evictOldestLessons, LESSON_CAP, postJournal, postStatus } from "./api/report.ts";
 import { getEvidence, getGateLog, postAudit, postReview, postSliceDecision } from "./api/review.ts";
+import { getSettings, postSetting } from "./api/settings.ts";
 import { getImages, getPreflight, getSandbox, getSandboxServer, postImage, postSandboxServerAddr, postSandboxServerRestart, postSandboxServerStart } from "./api/sandbox.ts";
 import { getCost, getState, snapshot } from "./api/snapshot.ts";
 import { getStream } from "./api/stream.ts";
@@ -65,6 +66,8 @@ const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/project\/(?<id>\d+)\/config$/, getProjectConfig],
   ["POST", /^\/api\/project\/(?<id>\d+)\/config$/, patchProjectConfig],
 
+  ["GET", /^\/api\/settings$/, getSettings],
+  ["POST", /^\/api\/settings$/, postSetting],
   ["GET", /^\/api\/state$/, getState],
   ["GET", /^\/api\/cost$/, getCost],
   ["GET", /^\/api\/stream$/, getStream],
