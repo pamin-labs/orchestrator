@@ -590,6 +590,25 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `
   ALTER TABLE grp ADD COLUMN pr_summary TEXT;
   `,
+
+  // 039 — two settings that predate the settings table, onto it.
+  //
+  // `sandbox_image` and `sandbox_server_addr` were the first two things the
+  // panel could change about this machine, and each got its own key, its own
+  // reader and its own writer. Now that every config path is settable the same
+  // way, keeping them special means one value with two homes and a precedence
+  // order that exists only in code — the shape this project has been burned by
+  // (see `grp.worktree`, a column nothing wrote and four things read).
+  //
+  // JSON-quoted on the way across, because the settings table stores JSON and
+  // these two stored the bare string.
+  `
+  INSERT OR REPLACE INTO setting (k, v)
+    SELECT 'cfg.sandbox.image', json_quote(v) FROM setting WHERE k = 'sandbox_image';
+  INSERT OR REPLACE INTO setting (k, v)
+    SELECT 'cfg.sandbox.server', json_quote(v) FROM setting WHERE k = 'sandbox_server_addr';
+  DELETE FROM setting WHERE k IN ('sandbox_image', 'sandbox_server_addr');
+  `,
 ];
 
 export type DB = Database;

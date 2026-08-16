@@ -6,7 +6,6 @@ import type { Ctx } from "../../ctx.ts";
 import { ROOT } from "../../config.ts";
 import type { ResourceExec } from "./lease.ts";
 import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
-import { defaultImage } from "./images.ts";
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../util/shq.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
@@ -181,9 +180,12 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
   // merges arbitrary keys into `config_json`, so refusing it only in the panel
   // would be a check a request can walk around; this is where every container is
   // actually built, which makes it the only place the rule holds.
-  // Three layers, narrowest first: this project, this machine's default, the
-  // yaml a fresh install ships with.
-  const fallback = defaultImage(ctx.db, base.image);
+  // Two layers now, narrowest first: this project, then the machine's answer.
+  // That second one used to be three — a `sandbox_image` row read here, with the
+  // yaml under it — and it is one since the settings table holds every config
+  // path: `cfg.sandbox.image` already *is* the row when there is one and the
+  // shipped default when there is not.
+  const fallback = base.image;
   const image = over.image || fallback;
   return {
     image: allowedImage(image) ? image : fallback,
@@ -927,8 +929,6 @@ done
 export const SANDBOX_API_KEY_HEADER = "OPEN-SANDBOX-API-KEY";
 
 /** Where the panel stores an address that overrides the yaml. */
-export const SANDBOX_ADDR = "sandbox_server_addr";
-
 /**
  * Split an address into scheme and authority.
  *
@@ -977,8 +977,10 @@ export function remoteInClear(addr: string): boolean {
  * a different address. A yaml-only knob makes the second one an edit-and-restart.
  */
 export function serverAddr(ctx: Ctx): string {
-  const set = ctx.db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(SANDBOX_ADDR)?.v;
-  return (set || ctx.config?.sandbox?.server || DEFAULTS.server).trim();
+  // One place. The `sandbox_server_addr` row this used to consult first is
+  // `cfg.sandbox.server` since migration 039, so the config already carries
+  // whatever the panel set.
+  return (ctx.config?.sandbox?.server || DEFAULTS.server).trim();
 }
 
 /** The agent's only way out: a request is a file here, the answer is another. */

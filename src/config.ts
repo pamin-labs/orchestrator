@@ -395,7 +395,13 @@ export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
   // container that will not start rather than a config error. `defu` is exactly
   // this and nothing else — arrays and scalars replace, plain objects recurse —
   // and JS has no stdlib deep merge worth hand-rolling around.
-  const cfg = fromEnv(withAbsoluteDataDir(defu(parsed, DEFAULTS)));
+  // Cloned, because `defu` fills an absent key by reference: a config whose
+  // `sandbox:` block came entirely from the defaults *was* the defaults' block,
+  // and one write through it edited `DEFAULTS` for the rest of the process. That
+  // is reachable now that settings are written onto the live config — the panel
+  // changing an image would also have changed what "default" means, so the
+  // "restore default" button would restore the value it was asked to undo.
+  const cfg = fromEnv(withAbsoluteDataDir(defu(parsed, structuredClone(DEFAULTS))));
   const key = process.env[SANDBOX_API_KEY_ENV] || process.env[SANDBOX_API_KEY_ALT];
   return key ? { ...cfg, sandbox: { ...cfg.sandbox, apiKey: key } } : cfg;
 }

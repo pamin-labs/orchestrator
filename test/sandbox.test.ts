@@ -276,11 +276,14 @@ test("a machine's default image is what a new project runs on, and it is not the
   // committed, so anybody self-hosting lost their edit on the next pull.
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'me/x', 0)");
-  const ctx = { db, config: { sandbox: { image: "ghcr.io/pamin-labs/orch-agent:latest" } } } as unknown as Ctx;
+  const cfg = { sandbox: { image: "ghcr.io/pamin-labs/orch-agent:latest" } } as any;
+  const ctx = { db, config: cfg } as unknown as Ctx;
 
   expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:latest");
 
-  setDefaultImage(db, "ghcr.io/pamin-labs/orch-agent:0.2.0");
+  // Writes the settings row *and* the live config, which is what makes the next
+  // container use it without a restart.
+  setDefaultImage(db, cfg, "ghcr.io/pamin-labs/orch-agent:0.2.0");
   expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:0.2.0");
 
   // The project's own answer still wins, and an image the boundary refuses falls

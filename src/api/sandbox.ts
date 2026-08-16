@@ -1,6 +1,7 @@
 import { allowedImage, remoteInClear, restartServer, runningServer, serverAddr, skillMounts, specFor } from "../mech/sandbox/sandbox.ts";
 import { sandboxLines } from "../mech/sandbox/sandboxlog.ts";
-import { defaultImage, imageChoices, setDefaultImage, type ImageChoices } from "../mech/sandbox/images.ts";
+import { imageChoices, setDefaultImage, type ImageChoices } from "../mech/sandbox/images.ts";
+import type { Config } from "../config.ts";
 import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "../mech/sandbox/server.ts";
 import { resetServerRestarts } from "../mech/ops/watchdog.ts";
 import { preflight } from "../mech/ops/preflight.ts";
@@ -72,7 +73,7 @@ export const getImages: Handler = async (ctx) => {
   }
   // Which one a project gets when it says nothing. Registering a repository
   // sets no image at all, so this is what the fleet actually runs on.
-  return json({ ...imageCache.v, current: defaultImage(ctx.db, ctx.config.sandbox?.image ?? "") });
+  return json({ ...imageCache.v, current: ctx.config.sandbox?.image ?? "" });
 };
 
 export const postImage: Handler = async (ctx, req) => {
@@ -81,7 +82,8 @@ export const postImage: Handler = async (ctx, req) => {
   // The same rule the container build applies, applied where the boss can read
   // it. Without this the refusal arrives as a container that will not create.
   if (image && !allowedImage(image)) return bad(`${image} 不是我们发布的镜像，也不是本机构建的`);
-  setDefaultImage(ctx.db, image);
+  const why = setDefaultImage(ctx.db, ctx.config as Config, image);
+  if (why) return bad(why);
   return text("ok");
 };
 

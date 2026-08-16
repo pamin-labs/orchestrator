@@ -3,7 +3,9 @@ import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { Ctx } from "../../ctx.ts";
 import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
-import { allowedHostPaths, coveredBy, runningServer, SANDBOX_ADDR, SANDBOX_API_KEY_HEADER, serverAddr, splitAddr, specFor } from "./sandbox.ts";
+import { putSetting } from "../../settings.ts";
+import type { Config } from "../../config.ts";
+import { allowedHostPaths, coveredBy, runningServer, SANDBOX_API_KEY_HEADER, serverAddr, splitAddr, specFor } from "./sandbox.ts";
 
 /**
  * Starting opensandbox-server, and knowing when not to.
@@ -386,9 +388,15 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   }
 }
 
-/** Point us at a different server. Empty clears the override back to the yaml. */
-export function setServerAddr(ctx: Ctx, addr: string): void {
-  put(ctx, SANDBOX_ADDR, addr.trim() || null);
+/**
+ * Point us at a different server. Empty clears the override back to the default.
+ *
+ * Through the settings table like every other config path. It had a row of its
+ * own (`sandbox_server_addr`) from before there was one, and migration 039 moved
+ * it — a value with two homes has a precedence order that lives only in code.
+ */
+export function setServerAddr(ctx: Ctx, addr: string): string | null {
+  return putSetting(ctx.db, ctx.config as Config, "sandbox.server", addr.trim() || null);
 }
 
 /** The argv we started it with, for the panel's restart button. Ours only. */

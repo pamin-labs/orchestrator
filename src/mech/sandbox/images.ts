@@ -1,4 +1,6 @@
 import type { DB } from "../../db.ts";
+import type { Config } from "../../config.ts";
+import { putSetting } from "../../settings.ts";
 import { hasRegistry, PUBLISHED_REPO } from "./sandbox.ts";
 
 /**
@@ -110,16 +112,17 @@ export async function imageChoices(): Promise<ImageChoices> {
  * will not start, and the message would be about a container rather than about
  * this field.
  */
-export const DEFAULT_IMAGE_KEY = "sandbox_image";
+export const DEFAULT_IMAGE_PATH = "sandbox.image";
 
-export const defaultImage = (db: DB, fallback: string): string =>
-  db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(DEFAULT_IMAGE_KEY)?.v || fallback;
-
-export function setDefaultImage(db: DB, ref: string): void {
+/**
+ * The machine's default image is `cfg.sandbox.image` and nothing else.
+ *
+ * It had its own row, its own reader and its own writer, from before every
+ * config path was settable. Two homes for one value is a precedence order that
+ * lives only in code — migration 039 moved the row across, and this is the
+ * writer that keeps it there.
+ */
+export function setDefaultImage(db: DB, cfg: Config, ref: string): string | null {
   const image = ref.trim();
-  if (!image) return void db.run("DELETE FROM setting WHERE k = ?", [DEFAULT_IMAGE_KEY]);
-  db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
-    DEFAULT_IMAGE_KEY,
-    image,
-  ]);
+  return putSetting(db, cfg, DEFAULT_IMAGE_PATH, image || null);
 }

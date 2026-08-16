@@ -42,7 +42,7 @@ import { Skills } from "./skills";
 type Mode = "oauth_token" | "api_key" | "chatgpt";
 export type Section =
   | "cred" | "github" | "host" | "server" | "skills"
-  | "sched" | "models" | "turn"
+  | "sched" | "models" | "turn" | "boxdefaults"
   | "prefs" | "gates" | "sandbox" | "remove";
 
 interface AuthRow {
@@ -120,6 +120,10 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   { key: "sched", zh: "调度", icon: Gauge },
   { key: "models", zh: "模型与预算", icon: Coins },
   { key: "turn", zh: "turn 与上下文", icon: Timer },
+  // Under 沙盒服务器, because it is the same subject one level down: that pane is
+  // the process, this is what it is told to build. A project's own 沙盒 pane
+  // overrides these; nothing overrides them for a project that says nothing.
+  { key: "boxdefaults", zh: "沙盒默认值", icon: Box },
   { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
   { key: "gates", zh: "闸门", icon: ListChecks, project: true },
   { key: "sandbox", zh: "沙盒", icon: Box, project: true },
@@ -296,7 +300,7 @@ export function SettingsDialog({
                 <ServerPane current={rows.find((x) => x.runtime === "sandbox")} checks={checks} onSaved={load} />
               ) : here === "skills" ? (
                 <Skills projectId={projectId} />
-              ) : here === "sched" || here === "models" || here === "turn" ? (
+              ) : here === "sched" || here === "models" || here === "turn" || here === "boxdefaults" ? (
                 <Knobs section={here} />
               ) : here === "prefs" ? (
                 <>

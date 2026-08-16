@@ -28,7 +28,7 @@ interface Knob {
   overridden: boolean;
 }
 
-export type KnobSection = "sched" | "models" | "turn";
+export type KnobSection = "sched" | "models" | "turn" | "boxdefaults";
 
 /** Which rows a section shows, in the order they are shown. */
 const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] }> = {
@@ -50,6 +50,11 @@ const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] 
       "unreadDigestThreshold", "feedbackSedimentThreshold", "gateRetries",
       "leaseTimeoutMs", "installTimeoutMs", "skillsDir",
     ],
+  },
+  boxdefaults: {
+    zh: "沙盒默认值",
+    note: "没自己设的项目用这些",
+    paths: ["sandbox.server", "sandbox.image", "sandbox.cpu", "sandbox.memory", "sandbox.ttlSeconds", "sandbox.denyDomains", "sandbox.cacheDirs"],
   },
 };
 
@@ -73,7 +78,7 @@ const COPY: Record<string, { zh: string; why?: string }> = {
   },
   autoAcceptTiers: {
     zh: "自动查收的难度档",
-    why: "四道闸（自评 / 对账 / 跑测试 / QA）全过之后，省掉的是第五层「你亲自看一眼」。默认只有 trivial，因为那正是这一眼最不值钱的档。",
+    why: "四道闸（自评 / 对账 / 跑测试 / QA）全过之后，省掉的是第五层「你亲自看一眼」。默认 trivial 和 normal，hard 仍然等你——那一眼在最便宜的两档上最不值钱。",
   },
   parkAfterPausedMs: {
     zh: "暂停多久后封存",
@@ -125,6 +130,31 @@ const COPY: Record<string, { zh: string; why?: string }> = {
   installTimeoutMs: {
     zh: "装依赖上限",
     why: "和 lease 同一个量级，因为是同一类东西——真的在编译。卡太紧的失败长得像「这个项目坏了」而不像「超时了」，而组在两种情况下都一样卡住。",
+  },
+  "sandbox.server": {
+    zh: "沙盒服务器地址",
+    why: "opensandbox-server 在哪。必须是 dns+nft 模式，否则凭据注入静默失效。它不一定在这台机器上——Tailscale 上的一台或者一台云机器都行，SDK 只跟它说 HTTP。",
+  },
+  "sandbox.image": {
+    zh: "默认镜像",
+    why: "只认两个来源：我们发布的 ghcr.io/pamin-labs/…，和没有 registry 前缀的本机 build。这里面跑的是 agent，而 agent 手里有你的代码——换一个来路不明的镜像就是把整条边界交给别人，而且从面板上看不出任何异常。",
+  },
+  "sandbox.cpu": {
+    zh: "CPU",
+    why: "留空 = 宿主核数的 1/4。SDK 自己的默认值是 \"1\"，这个仓库的 tsc --noEmit 因此要 7.6 秒（6 核是 3.2 秒）。",
+  },
+  "sandbox.memory": { zh: "内存", why: "每个沙盒的内存上限。" },
+  "sandbox.ttlSeconds": {
+    zh: "沙盒存活时间",
+    why: "turn 开始时会续期，所以这是「没人管了多久回收」，不是任务时长上限。",
+  },
+  "sandbox.denyDomains": {
+    zh: "禁止访问的域名",
+    why: "黑名单而不是白名单——白名单才是穷举不完的那个（每个 registry、每个文档站）。凭据安全不靠它：真 token 在 sidecar 里，沙盒里是格式合法的假值。",
+  },
+  "sandbox.cacheDirs": {
+    zh: "共享缓存目录",
+    why: "所有沙盒共享的宿主目录，「容器里的挂载点: 宿主路径」。只放包管理器缓存。实测这个仓库第二个组的 bun install：不共享 2.9 秒，共享 1.2 秒——小是因为仓库小，到 monorepo 上是分钟级差别。默认关，因为这个仓库最惨的一次事故就是所有 worktree 共用一份 node_modules，两个闸门同时装，组把 EEXIST 当成自己的 build 坏了。另外沙盒服务端的 allowed_host_paths 也得列上这个路径。",
   },
   skillsDir: {
     zh: "技能暂存目录",

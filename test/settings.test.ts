@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { openMemory } from "../src/db.ts";
+import { migrate, openMemory } from "../src/db.ts";
 import { loadConfig } from "../src/config.ts";
 import { applyOverrides, defaultFor, overrides, putSetting, refuse, settablePaths } from "../src/settings.ts";
 import { Bus } from "../src/bus.ts";
@@ -108,4 +108,52 @@ test("the panel reads every knob and writes one at a time", async () => {
   expect(await no.text()).toContain("startup argument");
   expect((await write({ path: "maxGroups", value: "four" })).status).toBe(422);
   expect(ctx.config.maxGroups).toBe(4);
+});
+
+test("the two settings that predate the settings table land on it", () => {
+  const db = openMemory();
+  // What migration 039 finds on an existing install: the panel's own image and
+  // address rows, each written by a reader and a writer of its own.
+  db.run("INSERT INTO setting (k, v) VALUES ('sandbox_image', 'orch/agent:1')");
+  db.run("INSERT INTO setting (k, v) VALUES ('sandbox_server_addr', '10.0.0.4:8080')");
+  // `openMemory` has already run every migration, so rewind the stamp for this
+  // one and let the runner do it again — the point is what the SQL does to rows
+  // that are already there, which a fresh database can never show.
+  const n = db.query<{ n: number }, []>("SELECT max(n) AS n FROM migration").get()!.n;
+  db.run("DELETE FROM migration WHERE n = ?", [n]);
+  migrate(db);
+
+  // One home per value. Two is a precedence order that lives only in code, and
+  // it is the shape that produced `grp.worktree` — a column nothing wrote and
+  // four things read.
+  expect(overrides(db)).toMatchObject({
+    "sandbox.image": "orch/agent:1",
+    "sandbox.server": "10.0.0.4:8080",
+  });
+  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM setting WHERE k NOT LIKE 'cfg.%'").get()!.c).toBe(0);
+
+  // And they arrive on the config the same way every other override does.
+  const cfg = applyOverrides(db, loadConfig("config/does-not-exist.yaml"));
+  expect(cfg.sandbox.image).toBe("orch/agent:1");
+  expect(cfg.sandbox.server).toBe("10.0.0.4:8080");
+});
+
+test("writing a setting does not edit what the default means", () => {
+  const db = openMemory();
+  const cfg = loadConfig("config/does-not-exist.yaml");
+  const shipped = defaultFor("sandbox.image") as string;
+
+  // `defu` fills an absent key by reference, so a config whose whole `sandbox:`
+  // block came from the defaults *was* the defaults' block. Writing through it
+  // edited `DEFAULTS` for the rest of the process — and the visible symptom
+  // would have been the "restore default" button restoring the value it was
+  // asked to undo.
+  putSetting(db, cfg, "sandbox.image", "orch/agent:1");
+  expect(cfg.sandbox.image).toBe("orch/agent:1");
+  expect(defaultFor("sandbox.image")).toBe(shipped);
+  expect(loadConfig("config/does-not-exist.yaml").sandbox.image).toBe(shipped);
+
+  // Which is what makes clearing it mean anything.
+  putSetting(db, cfg, "sandbox.image", null);
+  expect(cfg.sandbox.image).toBe(shipped);
 });
