@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../src/db.ts";
 import {
   canStart,
+  CLAIMING,
+  WRITING,
   claimsShared,
   overlaps,
   outsideOwns,
@@ -336,4 +338,27 @@ test("a revert that changed nothing says so instead of claiming it worked", asyn
   const all = said.join(" ");
   expect(all).toContain("could not roll back");
   expect(all).toContain("web/stray.ts");
+});
+
+test("a DRAFT group owns its paths for the boundary check, and blocks nobody's start", () => {
+  // Two questions, and they had been sharing one hardcoded status list per call
+  // site — four sites, three different lists. A DRAFT group has declared paths
+  // (`newGroup` populates owns_json at insert) but holds no worktree, so it must
+  // count for "who claimed this" and must not count for "who is writing".
+  expect(CLAIMING).toContain("DRAFT");
+  expect(CLAIMING).toContain("PLANNING");
+  expect(CLAIMING).not.toContain("DISSOLVED");
+  expect(WRITING).not.toContain("DRAFT");
+  expect(WRITING).not.toContain("PLANNING");
+
+  // The direction that would have deadlocked: two unstarted groups on the same
+  // path. Neither is writing, so approving either one still starts it — and the
+  // second is refused then, because by that point the first is RUNNING.
+  const db = seed([
+    { name: "a", owns: ["src/x/**"], status: "DRAFT" },
+    { name: "b", owns: ["src/x/**"], status: "DRAFT" },
+  ]);
+  expect(canStart(db, 1).ok).toBe(true);
+  db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 1");
+  expect(canStart(db, 2).ok).toBe(false);
 });

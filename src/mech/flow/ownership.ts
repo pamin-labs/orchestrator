@@ -1,4 +1,5 @@
 import type { DB } from "../../db.ts";
+import { GRP_STATES } from "../../states.ts";
 
 /**
  * Which paths a group owns, decided before it starts.
@@ -133,8 +134,40 @@ export interface StartCheck {
   reason?: string;
 }
 
-/** Groups that still hold their paths: anything not finished. */
-const ACTIVE = "('RUNNING', 'PAUSING', 'PAUSED', 'PARKED', 'PR_OPEN')";
+/**
+ * Two questions, which four call sites had been answering with four ad-hoc
+ * string lists and three different answers.
+ *
+ * "Who could be writing a file right now" is not "who has spoken for these
+ * paths", and conflating them breaks in both directions. `canStart` wants the
+ * first: a group only holds a worktree from RUNNING onward (`watchdog.ts` only
+ * keeps sandboxes for RUNNING and PR_OPEN), and refusing a start because some
+ * *unstarted* group claimed the same paths deadlocks both — neither can begin
+ * until the other dissolves, and `sweepApproved` retries that silently forever.
+ * Two groups still never run overlapping: the sweep is sequential, so whichever
+ * starts second sees the first as RUNNING.
+ *
+ * The boundary questions want the second: "somebody already claimed this, cut a
+ * boundary before planning inside it" and `orch blocked`'s "who owns this path"
+ * are both about the claim, which exists from birth — `newGroup` inserts a group
+ * as PLANNING with `owns_json` already populated. Those three sites had drifted
+ * apart by one state each: two of them missed DRAFT, so a requirement waiting on
+ * the boss's approval owned its paths as far as the panel was concerned and
+ * owned nothing as far as `orch blocked` was concerned.
+ *
+ * Derived from `GRP_STATES` so a new state joins by existing. Interpolated into
+ * SQL because these are compile-time constants from an `as const` array;
+ * nothing user-supplied reaches the string.
+ */
+const sql = (states: readonly string[]) => `(${states.map((s) => `'${s}'`).join(", ")})`;
+
+/** Groups whose agents can be writing files this second. */
+export const WRITING = ["RUNNING", "PAUSING", "PAUSED", "PARKED", "PR_OPEN"] as const;
+const WRITING_SQL = sql(WRITING);
+
+/** Groups whose declared paths are spoken for: everything that has not dissolved. */
+export const CLAIMING = GRP_STATES.filter((s) => s !== "DISSOLVED");
+export const CLAIMING_SQL = sql(CLAIMING);
 
 export function canStart(db: DB, grpId: number): StartCheck {
   const me = db
@@ -147,7 +180,7 @@ export function canStart(db: DB, grpId: number): StartCheck {
   const others = db
     .query<{ id: number; name: string; owns_json: string }, [number, number]>(
       `SELECT id, name, owns_json FROM grp
-       WHERE project_id = ? AND id != ? AND status IN ${ACTIVE}`,
+       WHERE project_id = ? AND id != ? AND status IN ${WRITING_SQL}`,
     )
     .all(me.project_id, grpId);
 

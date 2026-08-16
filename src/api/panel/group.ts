@@ -4,7 +4,7 @@ import { dropGroup, startGroup, sweepApproved } from "../../mech/flow/start.ts";
 import { openPr, prBody, prTitle } from "../../mech/git/prwatch.ts";
 import { joinQueue, landed } from "../../mech/flow/mergequeue.ts";
 import { validateDraftCard } from "../../mech/util/validate.ts";
-import { canStart, parseOwns } from "../../mech/flow/ownership.ts";
+import { canStart, CLAIMING_SQL, parseOwns } from "../../mech/flow/ownership.ts";
 import { killSandbox } from "../../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
@@ -48,7 +48,7 @@ export const postIdea: Handler<z.infer<typeof IdeaBody>> = async (ctx, _req, _p,
   const others = ctx.db
     .query<{ id: number; name: string; owns_json: string }, [number, number]>(
       `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
-         AND status IN ('PLANNING','RUNNING','PAUSING','PAUSED','PARKED','PR_OPEN')`,
+         AND status IN ${CLAIMING_SQL}`,
     )
     .all(b.project_id, grp.id);
   if (others.length > 0) {
@@ -177,7 +177,7 @@ export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>> = asy
       .query<{ id: number; name: string }, [number]>(
         `SELECT id, name FROM grp
          WHERE project_id = (SELECT project_id FROM grp WHERE id = ?)
-           AND status IN ('PLANNING','DRAFT','RUNNING','PAUSING','PAUSED','PARKED','PR_OPEN')
+           AND status IN ${CLAIMING_SQL}
            AND (owns_json IS NULL OR owns_json = '[]')`,
       )
       .all(grpId);

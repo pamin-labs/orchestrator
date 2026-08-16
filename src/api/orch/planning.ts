@@ -1,5 +1,5 @@
 import { validateDraftCard } from "../../mech/util/validate.ts";
-import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
+import { canStart, claimsShared, CLAIMING_SQL, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
 import { sweepApproved } from "../../mech/flow/start.ts";
 import { baseRefFor, sandboxGit, treeFiles } from "../../mech/git/checkout.ts";
 import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
@@ -356,7 +356,7 @@ export const postBlocked: AgentHandler<z.infer<typeof BlockedBody>> = async (ctx
   const owner = ctx.db
     .query<{ id: number; name: string; owns_json: string }, [number, number]>(
       `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
-         AND status IN ('PLANNING','RUNNING','PAUSING','PAUSED','PARKED','PR_OPEN')`,
+         AND status IN ${CLAIMING_SQL}`,
     )
     .all(me.project_id, gid)
     .find((o) => parseOwns(o.owns_json).some((glob) => overlaps(glob, path)));
