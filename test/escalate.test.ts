@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { openMemory, type DB } from "../src/db.ts";
 import { raise } from "../src/mech/flow/escalate.ts";
 
@@ -27,6 +29,20 @@ function seeded(): DB {
   db.run("INSERT INTO grp (id, project_id, name, status, created_at) VALUES (7, 1, 'g7', 'RUNNING', 0)");
   db.run("INSERT INTO agent (id, project_id, grp_id, role, model, created_at) VALUES (9, 1, 7, 'engineer', 'm', 0)");
   return db;
+}
+
+/** Every runtime TypeScript source, relative to `src/`. */
+function sources(
+  dir = new URL("../src", import.meta.url).pathname,
+  root = dir,
+): Array<{ path: string; text: string }> {
+  const out: Array<{ path: string; text: string }> = [];
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) out.push(...sources(path, root));
+    else if (entry.endsWith(".ts")) out.push({ path: path.slice(root.length + 1), text: readFileSync(path, "utf8") });
+  }
+  return out;
 }
 
 test("raise owns the filing defaults and preserves explicit fields", () => {
@@ -117,4 +133,25 @@ test("dedupe prefixes are literal data, not LIKE patterns", () => {
     expect(raise(db, { question: `${prefix}: again`, dedupe: { prefix, scope: "global" } })).toBeNull();
   }
   expect(rows(db)).toHaveLength(8);
+});
+
+test("runtime escalation rows can only be filed through raise", () => {
+  // Defaults and the meaning of "open" only stay unified if a new caller cannot
+  // quietly copy the INSERT again. `db.ts` is the one exception: it files a data
+  // repair while the database itself is opening, below the runtime flow layer.
+  const insert = /INSERT\s+INTO\s+escalation\b/gi;
+  const offenders: string[] = [];
+  for (const source of sources()) {
+    const matches = [...source.text.matchAll(insert)];
+    if (source.path === "mech/flow/escalate.ts") continue;
+    if (source.path === "db.ts") {
+      for (const match of matches) {
+        const before = source.text.slice(Math.max(0, match.index - 180), match.index);
+        if (!before.includes("Escalation INSERT exception:")) offenders.push(source.path);
+      }
+      continue;
+    }
+    offenders.push(...matches.map(() => source.path));
+  }
+  expect(offenders).toEqual([]);
 });

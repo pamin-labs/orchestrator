@@ -209,10 +209,13 @@ test("repeated failures escalate to the boss instead of looping forever", async 
     await h.sched.drain();
   }
 
-  const esc = h.db.query<{ severity: string; question: string }, []>(
-    "SELECT severity, question FROM escalation",
+  const esc = h.db.query<{ severity: string; question: string; brief: string; kind: string; chain_state: string }, []>(
+    "SELECT severity, question, brief, kind, chain_state FROM escalation",
   ).get()!;
   expect(esc.severity).toBe("blocker");
+  expect(esc.brief).toBe("S1 连着 3 次没过 gate");
+  expect(esc.kind).toBe("spec");
+  expect(esc.chain_state).toBe("boss");
   // Two failures usually means the criteria are wrong, not the code — so the
   // message says that rather than just reporting another failure.
   expect(esc.question).toContain("failed gate");
@@ -573,12 +576,14 @@ test("a branch the Auditor keeps rejecting stops instead of paying for another r
   expect(g.status).toBe("PAUSED");
   expect(g.pr_retries).toBe(3);
   const esc = h.db
-    .query<{ severity: string; chain_state: string; question: string }, []>(
-      "SELECT severity, chain_state, question FROM escalation ORDER BY id DESC LIMIT 1",
+    .query<{ severity: string; chain_state: string; question: string; brief: string; kind: string }, []>(
+      "SELECT severity, chain_state, question, brief, kind FROM escalation ORDER BY id DESC LIMIT 1",
     )
     .get()!;
   expect(esc.severity).toBe("blocker");
   expect(esc.chain_state).toBe("boss");
+  expect(esc.brief).toBe("整条分支被 the Auditor 打回 3 次");
+  expect(esc.kind).toBe("spec");
   // The likely cause, said out loud: three rounds usually means the acceptance
   // wording is wrong, not the code.
   expect(esc.question).toContain("验收口径");

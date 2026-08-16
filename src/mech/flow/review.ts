@@ -9,6 +9,7 @@ import { resourceExec, WORK } from "../sandbox/sandbox.ts";
 import { pushBranch, sandboxGit } from "../git/checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
+import { raise } from "./escalate.ts";
 
 /**
  * Slice-level review, in the one order that makes sense.
@@ -190,15 +191,13 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
     // never reached 待你决策, and the only visible symptom was a paused group with
     // no reason attached. Observed on pm-ai-agent: a blocker filed two hours
     // earlier that the boss had no way to see.
-    ctx.db.run(
-      `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
-       VALUES (?, 'blocker', ?, ?, 'spec', 'boss', unixepoch() * 1000)`,
-      [
-        slice.grp_id,
-        `S${slice.seq} "${slice.title}" failed ${from} ${retries} times. Latest:\n${feedback}`,
-        `S${slice.seq} 连着 ${retries} 次没过 ${from}`,
-      ],
-    );
+    raise(ctx.db, {
+      grpId: slice.grp_id,
+      question: `S${slice.seq} "${slice.title}" failed ${from} ${retries} times. Latest:\n${feedback}`,
+      brief: `S${slice.seq} 连着 ${retries} 次没过 ${from}`,
+      kind: "spec",
+      chain: "boss",
+    });
     ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [sliceId]);
     hold(ctx, slice.grp_id, { reason: "escalation", from: "RUNNING" });
     ctx.bus.emit({
@@ -559,15 +558,13 @@ function branchRework(deps: ReviewDeps, grpId: number, from: string, why: string
   if (n <= cfg.gateRetries) return false;
 
   hold(ctx, grpId, { reason: "escalation", settled: true });
-  ctx.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
-     VALUES (?, 'blocker', ?, ?, 'spec', 'boss', unixepoch() * 1000)`,
-    [
-      grpId,
-      `整个分支被 ${from} 打回 ${n} 次了。多半是验收口径本身有问题，不是代码：\n${why}`,
-      `整条分支被 ${from} 打回 ${n} 次`,
-    ],
-  );
+  raise(ctx.db, {
+    grpId,
+    question: `整个分支被 ${from} 打回 ${n} 次了。多半是验收口径本身有问题，不是代码：\n${why}`,
+    brief: `整条分支被 ${from} 打回 ${n} 次`,
+    kind: "spec",
+    chain: "boss",
+  });
   ctx.bus.emit({
     grpId,
     author: "orchestrator",

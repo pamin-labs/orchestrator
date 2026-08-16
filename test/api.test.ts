@@ -122,11 +122,16 @@ test("a waking intent enqueues a turn for the named target; note does not", asyn
 });
 
 test("ask-boss blocks the caller and a blocker pauses the whole group", async () => {
-  const { app, db, ctx } = harness();
+  const { app, db, ctx } = harness((_cmd) => ({ code: 0, out: "deadbeef\n" }));
   const pending = post(
     app,
     "/orch/ask-boss",
-    { severity: "blocker", question: "which validation library?" },
+    {
+      severity: "blocker",
+      question: "which validation library?",
+      brief: "validation library",
+      kind: "design",
+    },
     "tok-eng",
   );
 
@@ -135,6 +140,26 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSING");
   expect(db.query<{ state: string }, [number]>("SELECT state FROM agent WHERE id = ?").get(1)!.state).toBe("blocked");
   expect(ctx.waiters.size).toBe(1);
+  // The route still owns its fields and rollback checkpoint; `raise` only owns how
+  // the row is filed, so moving the INSERT cannot silently drop either contract.
+  expect(
+    db
+      .query<
+        { grp_id: number; agent_id: number; severity: string; brief: string; kind: string; chain_state: string; checkpoint_sha: string },
+        []
+      >("SELECT grp_id, agent_id, severity, brief, kind, chain_state, checkpoint_sha FROM escalation")
+      .get(),
+  ).toEqual({
+    grp_id: 1,
+    agent_id: 1,
+    severity: "blocker",
+    brief: "validation library",
+    kind: "design",
+    // No PM/Architect/CoS exists in this fixture, so route immediately skips the
+    // ordinary PM entry point and leaves the question on the boss.
+    chain_state: "boss",
+    checkpoint_sha: "deadbeef",
+  });
 
   const ans = await post(app, "/api/escalations/1/answer", { answer: "use zod" });
   expect(ans.status).toBe(200);
@@ -143,6 +168,22 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
   expect(await r.text()).toBe("use zod");
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
   expect(db.query<{ state: string }, [number]>("SELECT state FROM agent WHERE id = ?").get(1)!.state).toBe("idle");
+});
+
+test("reserved ask-boss questions start at the boss after filing", async () => {
+  const { app, db } = harness();
+  const pending = post(app, "/orch/ask-boss", { question: "what is the API token?" }, "tok-eng");
+  await Bun.sleep(5);
+
+  const row = db.query<{ severity: string; chain_state: string }, []>(
+    "SELECT severity, chain_state FROM escalation",
+  ).get()!;
+  // A typo or omission is advisory at this API boundary, but credentials must still
+  // skip every stand-in. Both policies used to be a second UPDATE after the INSERT.
+  expect(row).toEqual({ severity: "advisory", chain_state: "boss" });
+
+  await post(app, "/api/escalations/1/answer", { answer: "do not disclose it" });
+  expect(await (await pending).text()).toBe("do not disclose it");
 });
 
 test("an unknown lease resource says how to get one added", async () => {

@@ -671,6 +671,7 @@ export function slugRepoPaths(db: DB): void {
   if (!stuck.length) return;
   // One question, not one per project: they are the same problem said N times,
   // and a queue of them is N decisions on a page where there is one.
+  // Escalation INSERT exception: this data repair runs while db.ts is opening.
   db.run(
     `INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at)
      VALUES (NULL, 'blocker', ?, ?, 'env', 'boss', unixepoch() * 1000)`,

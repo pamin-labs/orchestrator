@@ -354,11 +354,12 @@ export function start(overrides: Partial<Config> = {}): Started {
           // the Auditor's — which passes again and retries the PR. No new
           // mechanism, and no button that only exists for this.
           hold({ db } as Ctx, grpId, { reason: "merge", settled: true, leaveQueue: true });
-          db.run(
-            `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
-             VALUES (?, 'blocker', ?, 'PR 开不出来', 'boss', unixepoch() * 1000)`,
-            [grpId, `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`],
-          );
+          raise(db, {
+            grpId,
+            question: `分支做完了但 PR 开不出来：${r.error}\n\n修好之后回答这条，这一组会自己重试。`,
+            brief: "PR 开不出来",
+            chain: "boss",
+          });
           ctx.bus.emit({
             grpId,
             author: "orchestrator",

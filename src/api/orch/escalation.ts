@@ -8,6 +8,7 @@ import { slug } from "../slug.ts";
 import { sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
 import { hold } from "../../mech/flow/intercept.ts";
+import { raise } from "../../mech/flow/escalate.ts";
 
 /**
  * A question that an agent could not answer for itself, and everything that
@@ -55,22 +56,23 @@ export const AskBossBody = z.object({
 export const postAskBoss: AgentHandler<z.infer<typeof AskBossBody>> = async (ctx, _req, a, _p, b) => {
   const severity = b.severity === "blocker" ? "blocker" : "advisory";
 
-  const row = ctx.db
-    .query<{ id: number }, [number | null, number, string, string, string, string]>(
-      `INSERT INTO escalation (grp_id, agent_id, severity, question, brief, kind, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
-    )
-    .get(a.grp_id, a.id, severity, b.question, brief(b.brief, b.question), askKind(b.kind))!;
+  const id = raise(ctx.db, {
+    grpId: a.grp_id,
+    agentId: a.id,
+    severity,
+    question: b.question,
+    brief: brief(b.brief, b.question),
+    kind: askKind(b.kind),
+    chain: entryPoint(b.question),
+  })!;
 
   // The commit the question was asked at, so a stand-in's answer can be undone.
   if (a.grp_id) {
     const head = await sandboxGit(ctx, { grp: a.grp_id })(WORK, ["rev-parse", "HEAD"], WORK);
     if (head.code === 0) {
-      ctx.db.run("UPDATE escalation SET checkpoint_sha = ? WHERE id = ?", [head.out.trim(), row.id]);
+      ctx.db.run("UPDATE escalation SET checkpoint_sha = ? WHERE id = ?", [head.out.trim(), id]);
     }
   }
-  ctx.db.run("UPDATE escalation SET chain_state = ? WHERE id = ?", [entryPoint(b.question), row.id]);
-
   ctx.db.run("UPDATE agent SET state = 'blocked' WHERE id = ?", [a.id]);
   // A blocker is the one intent that stops the whole group: the answer changes
   // the premise everyone else is reasoning from.
@@ -84,13 +86,13 @@ export const postAskBoss: AgentHandler<z.infer<typeof AskBossBody>> = async (ctx
     intent: "ask",
     severity,
     body: b.question,
-    meta: { escalation_id: row.id },
+    meta: { escalation_id: id },
   });
 
-  route({ ctx, notifyBoss: ctx.notifyBoss }, row.id);
+  route({ ctx, notifyBoss: ctx.notifyBoss }, id);
 
   const answer = await new Promise<string>((resolve) => {
-    ctx.waiters.set(`escalation:${row.id}`, resolve);
+    ctx.waiters.set(`escalation:${id}`, resolve);
   });
   ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ?", [a.id]);
   return text(answer);
