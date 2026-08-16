@@ -1,24 +1,48 @@
 {
   "analysis_identity": {
-    "mode": "type-aware",
-    "semantic_schema_version": 2,
-    "capabilities": [
-      "symbol-use",
-      "api-surface"
-    ],
-    "project_config_hash": "sha256:967a52ffa4208daf4357ecdbd4fa221812d026c777ff7a15e06e005f35931cbf",
-    "backend_family": "typescript-go",
-    "completeness": "partial"
+    "mode": "syntactic",
+    "semantic_schema_version": 1,
+    "capabilities": [],
+    "project_config_hash": "",
+    "backend_family": "",
+    "completeness": "complete"
   },
-  "unused_files": [],
-  "unused_exports": [],
+  "unused_files": [
+    "test/test-context.ts"
+  ],
+  "unused_exports": [
+    "src/api/panel/shapes.ts:Answered",
+    "src/api/panel/shapes.ts:GroupNote",
+    "src/api/panel/shapes.ts:GroupSaid",
+    "src/api/shared.ts:failure",
+    "src/api.ts:mintToken",
+    "src/bus.ts:EventInputSchema",
+    "src/bus.ts:StoredEventSchema",
+    "src/bus.ts:LiveFrameSchema",
+    "src/config-schema.ts:SETTING_DENIALS",
+    "src/config.ts:RoleDefSchema",
+    "src/http/respond.ts:failure",
+    "src/mech/flow/reconcile.ts:declaredNoOp",
+    "src/mech/sandbox/auth.ts:AuthModeSchema",
+    "src/mech/util/rows.ts:ProjectConfigSchema",
+    "src/scheduler.ts:JobKindSchema",
+    "src/scheduler.ts:JobPayloadSchemas",
+    "web/src/ui/composer.tsx:AttachedSchema",
+    "web/src/ui/composer.tsx:DraftSchema",
+    "web/src/views/notes.tsx:NoteSchema",
+    "web/src/views/project.tsx:ConfigSchema",
+    "web/src/views/settings/shared.tsx:ModeSchema"
+  ],
   "unused_types": [
+    "src/api/panel/settings.ts:SettingRow",
     "src/api/panel/shapes.ts:Blocked",
     "src/api/panel/shapes.ts:QueueEntry",
     "src/api.ts:Caller",
     "src/api.ts:Attachment",
+    "src/config.ts:Runtime",
     "src/mech/flow/chain.ts:ChainState",
     "src/mech/flow/review.ts:SliceRow",
+    "src/mech/ops/cost.ts:HourRow",
     "src/mech/ops/invariants.ts:Invariant",
     "src/mech/ops/subusage.ts:UsageRead",
     "src/mech/sandbox/net.ts:NetState",
@@ -27,36 +51,10 @@
     "web/src/lib/api.ts:Task",
     "web/src/lib/api.ts:CostRow",
     "web/src/ui/composer.tsx:Attached",
-    "web/src/ui/composer.tsx:Skill",
-    "web/src/views/notes.tsx:Note"
+    "web/src/views/notes.tsx:Note",
+    "web/src/views/project.tsx:Config"
   ],
-  "private_type_leaks": [
-    "src/bus.ts:Bus->Sink",
-    "src/http/route.ts:route->Method",
-    "src/http/route.ts:route->ParsedBodyOpts",
-    "src/http/route.ts:route->EmptyParsedOpts",
-    "src/http/route.ts:route->RawBodyOpts",
-    "src/http/route.ts:route->EmptyRawOpts",
-    "src/http/route.ts:agentRoute->AgentEnv",
-    "src/http/route.ts:agentRoute->Method",
-    "src/http/route.ts:agentRoute->AgentParsedBodyOpts",
-    "src/http/route.ts:agentRoute->EmptyParsedAgentOpts",
-    "src/http/route.ts:agentRoute->AgentRawBodyOpts",
-    "src/http/route.ts:agentRoute->EmptyRawAgentOpts",
-    "src/lang.ts:say->Args",
-    "src/mech/flow/escalate.ts:Ask->FilingState",
-    "src/orch/cli.ts:parseArgs->Parsed",
-    "src/runtime/claude.ts:trimForLog->Line",
-    "src/runtime/executor.ts:hire->AgentRow",
-    "src/runtime/executor.ts:reconcileOwnership->AgentRow",
-    "src/states.ts:stateParam->StateSubset",
-    "web/src/ui/card.tsx:Card->Div",
-    "web/src/ui/card.tsx:CardHeader->Div",
-    "web/src/ui/card.tsx:CardTitle->Div",
-    "web/src/ui/card.tsx:CardBody->Div",
-    "web/src/ui/diff.tsx:rowsOf->Row",
-    "web/src/views/settings/credentials.tsx:RUNTIMES->Runtime"
-  ],
+  "private_type_leaks": [],
   "unused_dependencies": [],
   "unused_dev_dependencies": [],
   "circular_dependencies": [
@@ -72,6 +70,8 @@
   "unused_optional_dependencies": [],
   "unused_enum_members": [],
   "unused_class_members": [
+    "src/bus.ts:Bus.subscribe",
+    "src/bus.ts:Bus.since",
     "src/scheduler.ts:Scheduler.runningCount"
   ],
   "unused_store_members": [],

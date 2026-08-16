@@ -20,9 +20,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  pull-requests: write
-  checks: write
 
 # A second push to the same PR makes the first run's answer irrelevant.
 concurrency:
@@ -31,11 +28,18 @@ concurrency:
 
 jobs:
   check:
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+      checks: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -55,45 +59,65 @@ jobs:
       # that has to fail rather than resolve itself quietly.
       - run: bun install --frozen-lockfile
 
-      - name: format
-        run: bun run format:check
+      - name: apply safe Fallow fixes and format
+        id: cleanup
+        run: |
+          bun run audit:fix
+          git restore --source=HEAD -- .fallowrc.json .fallow/.gitignore
+          bun run format
+          git diff --check
+          if git diff --quiet; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            git diff --stat
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: preview safe Fallow fixes
-        env:
-          FALLOW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: bun run audit:fix -- --base "$FALLOW_BASE"
+      - name: report cleanup required on a fork
+        if: >-
+          steps.cleanup.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo '::error::Biome or Fallow changed this fork; run bun run audit:fix && bun run format and push the result.'
+          exit 1
 
       - name: audit changed code
-        uses: fallow-rs/fallow@v3.16.0
+        uses: fallow-rs/fallow@v3
         with:
           command: audit
           changed-since: ${{ github.event.pull_request.base.sha || github.event.before }}
-          type-aware: true
           dead-code-baseline: .fallow/dead-code.json
           health-baseline: .fallow/health.json
           dupes-baseline: .fallow/dupes.json
           comment: ${{ github.event_name == 'pull_request' }}
           comment-layout: compact
 
-      - name: typecheck
-        run: bunx tsc --noEmit -p .
+      - name: validate
+        run: bun run validate
 
-      # oxlint rather than eslint: one binary, no config file, no plugin set to
-      # keep in step. What it catches that `tsc` does not is the class of thing
-      # that typechecks and is still wrong — an unused disable, a promise nobody
-      # awaited, a condition that is always true.
-      - name: lint
-        run: bunx oxlint --deny-warnings src web/src test
+      - uses: actions/create-github-app-token@v3
+        id: cleanup-token
+        if: >-
+          steps.cleanup.outputs.changed == 'true' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        with:
+          app-id: ${{ vars.ORCH_APP_ID }}
+          private-key: ${{ secrets.ORCH_APP_KEY }}
 
-      # Before the tests, not after: `test/smoke.test.ts` asserts that the built
-      # bundle is served, so with no `web/dist` it fails with a 404 that reads
-      # like a routing bug. The build is also where the tailwind pass runs, which
-      # is where an unknown utility class shows up.
-      - name: build the panel
-        run: bun run build:web
-
-      - name: test
-        run: bun test
+      - name: commit automated cleanup
+        if: steps.cleanup-token.outcome == 'success'
+        env:
+          TOKEN: ${{ steps.cleanup-token.outputs.token }}
+          TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        run: |
+          git config user.name 'orchestrator-agentic-app[bot]'
+          git config user.email '317244264+orchestrator-agentic-app[bot]@users.noreply.github.com'
+          git add --all
+          git commit --no-verify -s -m 'chore(quality): apply automated cleanup'
+          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --no-verify origin "HEAD:${TARGET_BRANCH}"
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
 
   # Every commit carries `Signed-off-by`, checked here rather than by an app.
   #

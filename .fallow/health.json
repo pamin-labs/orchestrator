@@ -214,10 +214,13 @@
       "complexity_critical": {
         "count": 1
       },
+      "complexity_moderate": {
+        "count": 1
+      },
       "crap_critical": {
         "count": 1
       },
-      "crap_high": {
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -230,6 +233,11 @@
       }
     },
     "test/config.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "test/test-context.ts": {
       "crap_moderate": {
         "count": 1
       }
@@ -354,9 +362,6 @@
       }
     },
     "web/src/views/notes.tsx": {
-      "complexity_critical": {
-        "count": 1
-      },
       "crap_critical": {
         "count": 1
       },
@@ -425,7 +430,7 @@
         "count": 1
       },
       "crap_moderate": {
-        "count": 4
+        "count": 3
       }
     },
     "web/src/views/settings.tsx": {
@@ -443,7 +448,7 @@
       "crap_critical": {
         "count": 1
       },
-      "crap_high": {
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -507,27 +512,28 @@
   },
   "runtime_coverage_findings": [],
   "target_keys": [
+    "src/bus.ts:dead code",
+    "src/scheduler.ts:complexity",
     "web/src/views/settings.tsx:complexity",
     "src/mech/sandbox/sandbox.ts:circular dependency",
     "src/mech/flow/start.ts:circular dependency",
     "test/fake-sandbox.ts:high impact",
     "src/mech/git/github.ts:circular dependency",
     "src/runtime/executor.ts:complexity",
-    "src/mech/flow/intercept.ts:circular dependency",
-    "src/scheduler.ts:complexity",
     "web/src/lib/select.ts:high impact",
-    "web/src/views/queue.tsx:complexity",
+    "src/mech/flow/intercept.ts:circular dependency",
     "src/mech/sandbox/auth.ts:circular dependency",
-    "src/mech/git/checkout.ts:circular dependency",
-    "web/src/ui/confirm.tsx:high impact",
+    "web/src/views/queue.tsx:complexity",
+    "src/orch/cli.ts:complexity",
     "src/api/panel/group.ts:complexity",
+    "web/src/ui/confirm.tsx:high impact",
+    "src/mech/git/checkout.ts:circular dependency",
     "web/src/app.tsx:complexity",
     "web/src/views/requirement.tsx:complexity",
     "web/src/views/settings/environment.tsx:complexity",
-    "web/src/views/settings/credentials.tsx:complexity",
-    "src/mech/flow/review.ts:circular dependency",
     "src/runtime/codex.ts:complexity",
-    "src/orch/cli.ts:complexity",
+    "src/mech/flow/review.ts:circular dependency",
+    "web/src/views/settings/credentials.tsx:complexity",
     "src/runtime/claude.ts:complexity",
     "web/src/views/settings/github.tsx:complexity",
     "src/mech/git/prwatch.ts:complexity",

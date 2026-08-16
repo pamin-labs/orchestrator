@@ -19,7 +19,8 @@ them will otherwise look like arbitrary review comments.
 
 ```bash
 bun install
-bun test                     # every check
+bun run check                # full local quality gate
+bun test                     # test suite only
 bun run dev                  # build the panel and serve it on 127.0.0.1:47821
 ```
 
@@ -31,9 +32,9 @@ loudly without one, which is fine — CI skips it too.
 
 Two required checks, and both are cheap to satisfy locally:
 
-**`check`** — `bunx tsc --noEmit -p .`, `bunx oxlint@latest --deny-warnings src
-web/src test`, `bun run build:web`, `bun test`. Run them before pushing; the
-suite takes about fifteen seconds.
+**`check`** — Biome formatting, Fallow audit, TypeScript, Oxlint, panel build,
+and the Bun test suite. Run `bun run check` before pushing; the suite takes
+about fifteen seconds.
 
 **`dco`** — every commit carries a `Signed-off-by` line matching its author:
 
