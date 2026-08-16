@@ -573,3 +573,44 @@ TypeScript 会擦掉，**运行期没有环** —— 所以那几个文件不搬
 重入保护让它们再 tick 一次也是空操作，所以是对的。而把 `enqueue` 改成默认 tick 会改变批量入队的
 调度顺序：现在「入队 A、入队 B、tick 一次」是一起参与评估，改完就变成 A 先占掉组的槽位 ——
 一条为了整齐而引入的优先级 bug，不划算。
+
+## 配置搬进面板，通知换成浏览器
+
+**两个 config 对象在打架，而且是无声的。** `cfg` 给 executor / watchdog / review，`ctx.config`
+是 `server.ts` 里一个手抄十三个字段的字面量，给所有路由。六个 key 从来没抄过去 ——
+`maxTurnsPerJob` / `turnTimeoutMs` / `sessionRotateFraction` / `gateRetries` / `difficultyModel` /
+`contextWindow`。handler 读到 undefined，落进一个看起来像决定的默认值。抄写的本意是不让 handler
+乱伸手，实际买到的是第二个「类型检查通过但是错的」对象。现在 `ctx.config` 就是 `cfg`，
+那条守卫它的测试从三十行变成一行 —— 要守的东西已经不存在了。
+
+**yaml 从 156 行到 39 行。** 发布物是五个平台的单文件，`ROOT` 是可执行文件自己的目录，
+所以 `config/default.yaml` 躺在解包出来的发布物里面 —— 改并发上限等于改下载下来的东西。
+剩下 host / port / dataDir 三个真·启动参数，其余 35 个进 `setting` 表，`DEFAULTS` 是「哪些
+path 存在、各是什么类型」的唯一权威，老版本留下的行跳过而不是抛（一行设置永远不该让服务器起不来）。
+
+**顺手抓到三处 yaml 和 DEFAULTS 的分歧，每一处底下都有一段注释解释自己为什么是谨慎的那个答案。**
+`turnTimeoutMs` 代码写 10 分钟、文件写 20；`leaseSlots` 代码是一个大小 2 的池、文件是
+`{default:2, browser:1}`（browser 池存在是因为每个 browser lease 是一个真的 Chromium，
+拍平成一个数就让所有 typecheck 排在一次截图后面）；`autoAcceptTiers` 代码 trivial、文件
+trivial+normal，而且有一条测试钉着代码那个值 —— 那条断言一直在为一个没有任何安装跑过的值放行。
+三处都以文件为准，因为文件是实际在跑的那个。没人能看见这件事，因为 yaml 键就是会覆盖默认值，
+而默认值只在键缺席时被读 —— 所以现在有一条检查：留在 yaml 里的必须和 `src/config.ts` 说的一样。
+
+**三个冻进闭包的知道自己变了。** `maxGroups` / `leaseSlots` 改成每次 tick 现读（和 `now` /
+`online` 一样的注入形状），看门狗周期发现自己的值变了就重新挂 —— 把这个知识留在唯一知道它的地方，
+而不是让设置路由去持有一个 timer handle。
+
+**写设置的时候差点把「默认值」本身改掉。** `defu` 对缺席的键是按引用填的，所以一份 `sandbox:`
+整块来自默认值的 config **就是**默认值那一块，一次写入就改掉了本进程后面所有的 `DEFAULTS`。
+在没人写活配置的年代无害；面板一能写，「恢复默认」就会把你刚要撤销的那个值恢复回来。
+`structuredClone`，加一条「写完设置再问默认值是什么」的测试。
+
+**通知：mac 专有的两个二进制换成浏览器。** `terminal-notifier` / `osascript` 都是 macOS 独有，
+而 windows-x64 是正式发布目标 —— 唯一那条本该找到老板的路径，在一个我们发布的平台上根本不存在。
+服务器推一帧 `notify`，页面用 Notification API 弹真正的系统通知：零依赖、零安装、五个平台同一份代码，
+点一下把已经在跑的面板拉到前台并跳到对应组。**后台标签页照样弹**（EventSource 还连着），
+那才是 terminal-notifier 真正在覆盖的场景；浏览器整个关掉才收不到，重新打开时游标重放把队列补回屏幕。
+规则 / 分级 / 去重 / 5-15-60 退避 / 批量一行没动。写死的 ntfy 变成一个 `notifyWebhook` 设置，
+默认关，出站前脱敏 —— 那是唯一把内容送出这台机器的通道。Web Push 能覆盖「浏览器关着」，
+刻意不做：为了让手机为一台在家里跑的机器震动，要付一个 service worker、VAPID 密钥、一张订阅表
+和一次经 FCM 的往返。
