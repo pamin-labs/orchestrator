@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
-import { lessonsFor } from "../src/api/orch/report.ts";
+import { lessonsFor } from "../src/mech/knowledge/lessons.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
@@ -19,8 +19,9 @@ function harness() {
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async () => {}),
-    sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: "中文"},
+    sandbox: fakeSandbox(),
+    waiters: new Map(),
+    config: { language: "中文" },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
@@ -45,8 +46,7 @@ test("the 21st lesson evicts the oldest, and only within its own project", async
     const r = await lesson(app, `lesson ${i}`);
     expect(r.status).toBe(200);
   }
-  const count = () =>
-    db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'lesson'").get()!.c;
+  const count = () => db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'lesson'").get()!.c;
   expect(count()).toBe(LESSON_CAP);
 
   expect((await lesson(app, "lesson 21")).status).toBe(200);

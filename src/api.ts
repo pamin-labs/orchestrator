@@ -6,22 +6,119 @@ import { HTTPException } from "hono/http-exception";
 import { agentRoute, route } from "./http/route.ts";
 import type { Caller, Ctx } from "./ctx.ts";
 import { agentOf, mayAct, mintToken, resolveGroup } from "./api/shared.ts";
-import { AuthBody, CodeBody, getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers, TrailersBody } from "./api/panel/authflow.ts";
-import { AttachmentNameParams, bossFact, expandHome, getAttachment, imagePaths, LocalPathsBody, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/panel/attach.ts";
+import {
+  AuthBody,
+  CodeBody,
+  getAuth,
+  getGithubLogin,
+  getGithubRepos,
+  postAuth,
+  postClaudeCancel,
+  postClaudeCode,
+  postClaudeLogin,
+  postCodexDevice,
+  postCodexDeviceCancel,
+  postGithubLogin,
+  postTrailers,
+  TrailersBody,
+} from "./api/panel/authflow.ts";
+import {
+  AttachmentNameParams,
+  bossFact,
+  expandHome,
+  getAttachment,
+  imagePaths,
+  LocalPathsBody,
+  postAttach,
+  postAttachLocal,
+  withAttachments,
+  type Attachment,
+} from "./api/panel/attach.ts";
 import { CTX_BUDGET_CHARS, CtxQueryBody, postCtxQuery } from "./api/orch/ctxquery.ts";
 import { IdParams } from "./api/fields.ts";
-import { AnswerBody, ASK_KINDS, AskBossBody, askKind, BossAnswerBody, brief, DelegateBody, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage, RequirementBody, TriageBody } from "./api/orch/escalation.ts";
-import { DraftDecision, DraftDecisionBody, GroupAction, GroupControlBody, IdeaBody, landGroup, postDraftDecision, postGroupControl, postIdea } from "./api/panel/group.ts";
+import {
+  AnswerBody,
+  ASK_KINDS,
+  AskBossBody,
+  askKind,
+  BossAnswerBody,
+  brief,
+  DelegateBody,
+  getAnswerDraft,
+  postAnswer,
+  postAnswer2,
+  postAskBoss,
+  postDelegate,
+  postEscalationRequirement,
+  postRevoke,
+  postTriage,
+  RequirementBody,
+  TriageBody,
+} from "./api/orch/escalation.ts";
+import {
+  DraftDecision,
+  DraftDecisionBody,
+  GroupAction,
+  GroupControlBody,
+  IdeaBody,
+  landGroup,
+  postDraftDecision,
+  postGroupControl,
+  postIdea,
+} from "./api/panel/group.ts";
 import { getLeaseLog, LeaseBody, postLease } from "./api/orch/lease.ts";
 import { MailBody, postMail, postSay, SayBody } from "./api/orch/messaging.ts";
 import { getDirs, getNotes, getSkills, postSkill, SkillBody } from "./api/panel/panel.ts";
-import { BlockedBody, DraftBody, DropBody, OwnsBody, postBlocked, postDraft, postDrop, postOwns, postSplit, SplitBody } from "./api/orch/planning.ts";
+import {
+  BlockedBody,
+  DraftBody,
+  DropBody,
+  OwnsBody,
+  postBlocked,
+  postDraft,
+  postDrop,
+  postOwns,
+  postSplit,
+  SplitBody,
+} from "./api/orch/planning.ts";
 import { postPr, PrBody } from "./api/orch/pr.ts";
-import { deleteProject, getProjectConfig, patchProjectConfig, postProject, postSetup, ProjectBody, ProjectConfigBody, SetupBody } from "./api/panel/project.ts";
-import { evictOldestLessons, JournalBody, LESSON_CAP, postJournal, postStatus, StatusBody } from "./api/orch/report.ts";
-import { AuditBody, GateLogParams, getEvidence, getGateLog, postAudit, postReview, postSliceDecision, ReviewBody, SliceDecision, SliceDecisionBody } from "./api/orch/review.ts";
+import {
+  deleteProject,
+  getProjectConfig,
+  patchProjectConfig,
+  postProject,
+  postSetup,
+  ProjectBody,
+  ProjectConfigBody,
+  SetupBody,
+} from "./api/panel/project.ts";
+import { JournalBody, postJournal, postStatus, StatusBody } from "./api/orch/report.ts";
+import { evictOldestLessons, LESSON_CAP } from "./mech/knowledge/lessons.ts";
+import {
+  AuditBody,
+  GateLogParams,
+  getEvidence,
+  getGateLog,
+  postAudit,
+  postReview,
+  postSliceDecision,
+  ReviewBody,
+  SliceDecision,
+  SliceDecisionBody,
+} from "./api/orch/review.ts";
 import { getSettings, postSetting, SettingBody } from "./api/panel/settings.ts";
-import { AddrBody, getImages, getPreflight, getSandbox, getSandboxServer, ImageBody, postImage, postSandboxServerAddr, postSandboxServerRestart, postSandboxServerStart } from "./api/panel/sandbox.ts";
+import {
+  AddrBody,
+  getImages,
+  getPreflight,
+  getSandbox,
+  getSandboxServer,
+  ImageBody,
+  postImage,
+  postSandboxServerAddr,
+  postSandboxServerRestart,
+  postSandboxServerStart,
+} from "./api/panel/sandbox.ts";
 import { getCost, getState, snapshot } from "./api/panel/snapshot.ts";
 import { getStream } from "./api/panel/stream.ts";
 import { getTasks, postTaskClaim, postTaskDone, TaskDoneBody, TaskRef } from "./api/orch/tasks.ts";
@@ -95,7 +192,11 @@ function apiRoutes(ctx: Ctx): Hono {
   route(app, ctx, "post", "/projects", { body: ProjectBody, handler: postProject });
   route(app, ctx, "delete", "/projects/:id", { params: IdParams, handler: deleteProject });
   route(app, ctx, "get", "/project/:id/config", { params: IdParams, handler: getProjectConfig });
-  route(app, ctx, "post", "/project/:id/config", { params: IdParams, body: ProjectConfigBody, handler: patchProjectConfig });
+  route(app, ctx, "post", "/project/:id/config", {
+    params: IdParams,
+    body: ProjectConfigBody,
+    handler: patchProjectConfig,
+  });
 
   route(app, ctx, "post", "/ideas", { body: IdeaBody, handler: postIdea });
   route(app, ctx, "post", "/say", { body: SayBody, handler: postSay });
@@ -103,19 +204,35 @@ function apiRoutes(ctx: Ctx): Hono {
   route(app, ctx, "post", "/attach/local", { body: LocalPathsBody, handler: postAttachLocal });
   route(app, ctx, "get", "/attach/:name", { params: AttachmentNameParams, handler: getAttachment });
 
-  route(app, ctx, "post", "/draft/:id/:decision", { params: DraftDecision, body: DraftDecisionBody, handler: postDraftDecision });
+  route(app, ctx, "post", "/draft/:id/:decision", {
+    params: DraftDecision,
+    body: DraftDecisionBody,
+    handler: postDraftDecision,
+  });
   // No `landed`: whether a PR is merged is GitHub's answer, and `pollPrs` asks it
   // every tick. A button for it was a boss confirming by hand what the server
   // already knew — and one mis-click dissolved a group whose PR was still open.
-  route(app, ctx, "post", "/groups/:id/:action", { params: GroupAction, body: GroupControlBody, handler: postGroupControl });
+  route(app, ctx, "post", "/groups/:id/:action", {
+    params: GroupAction,
+    body: GroupControlBody,
+    handler: postGroupControl,
+  });
 
   route(app, ctx, "get", "/slices/:id/evidence", { params: IdParams, handler: getEvidence });
   route(app, ctx, "get", "/slices/:id/gate/:name", { params: GateLogParams, handler: getGateLog });
-  route(app, ctx, "post", "/slices/:id/:decision", { params: SliceDecision, body: SliceDecisionBody, handler: postSliceDecision });
+  route(app, ctx, "post", "/slices/:id/:decision", {
+    params: SliceDecision,
+    body: SliceDecisionBody,
+    handler: postSliceDecision,
+  });
 
   route(app, ctx, "post", "/escalations/:id/answer", { params: IdParams, body: BossAnswerBody, handler: postAnswer });
   route(app, ctx, "post", "/escalations/:id/revoke", { params: IdParams, handler: postRevoke });
-  route(app, ctx, "post", "/escalations/:id/requirement", { params: IdParams, body: RequirementBody, handler: postEscalationRequirement });
+  route(app, ctx, "post", "/escalations/:id/requirement", {
+    params: IdParams,
+    body: RequirementBody,
+    handler: postEscalationRequirement,
+  });
   route(app, ctx, "post", "/escalations/:id/delegate", { params: IdParams, body: DelegateBody, handler: postDelegate });
   route(app, ctx, "get", "/escalations/:id/draft", { params: IdParams, handler: getAnswerDraft });
   return app;

@@ -3,21 +3,16 @@ import type { GroupRef } from "./fields.ts";
 import type { Caller, Ctx } from "../ctx.ts";
 
 export type { AgentHandler, Handler } from "../http/handler.ts";
+export { bad, json, text } from "../http/respond.ts";
 
 /**
  * What every route module needs and nothing a route module owns.
  *
  * `api.ts` used to be one 3900-line file, so "shared" meant "further up the
  * same file". Splitting it by cluster needs these five in one place first: the
- * two handler shapes, the three response constructors, and the four lookups
+ * two handler shapes and the four lookups
  * that more than one cluster does.
  */
-
-export const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
-export const text = (s: string, status = 200) =>
-  new Response(s, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
-export const bad = (msg: string) => text(msg, 422);
 
 /**
  * May this caller act on that group?
@@ -50,9 +45,7 @@ export function agentOf(ctx: Ctx, req: Request): Caller | null {
   const token = req.headers.get("x-orch-token");
   if (!token) return null;
   return (
-    ctx.db
-      .query<Caller, [string]>("SELECT id, grp_id, project_id, role FROM agent WHERE token = ?")
-      .get(token) ?? null
+    ctx.db.query<Caller, [string]>("SELECT id, grp_id, project_id, role FROM agent WHERE token = ?").get(token) ?? null
   );
 }
 

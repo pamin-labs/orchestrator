@@ -1,4 +1,5 @@
 import type { Ctx } from "../../ctx.ts";
+import type { DB } from "../../db.ts";
 import { say } from "../../lang.ts";
 
 /**
@@ -20,11 +21,70 @@ import { say } from "../../lang.ts";
 
 /** Words that carry no topic. Deliberately short: over-filtering hides the signal. */
 const STOP = new Set([
-  "the", "a", "an", "and", "or", "but", "is", "are", "was", "be", "to", "of", "in", "on", "for", "with",
-  "this", "that", "it", "too", "so", "not", "no", "do", "does", "did", "you", "i", "we", "my", "your",
-  "boss", "rejected", "sent", "back", "slice", "again",
-  "的", "了", "是", "在", "和", "还", "太", "又", "被", "把", "给", "我", "你", "它", "这", "那", "个",
-  "不", "没", "要", "就", "都", "很", "点", "些", "上", "下",
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "but",
+  "is",
+  "are",
+  "was",
+  "be",
+  "to",
+  "of",
+  "in",
+  "on",
+  "for",
+  "with",
+  "this",
+  "that",
+  "it",
+  "too",
+  "so",
+  "not",
+  "no",
+  "do",
+  "does",
+  "did",
+  "you",
+  "i",
+  "we",
+  "my",
+  "your",
+  "boss",
+  "rejected",
+  "sent",
+  "back",
+  "slice",
+  "again",
+  "的",
+  "了",
+  "是",
+  "在",
+  "和",
+  "还",
+  "太",
+  "又",
+  "被",
+  "把",
+  "给",
+  "我",
+  "你",
+  "它",
+  "这",
+  "那",
+  "个",
+  "不",
+  "没",
+  "要",
+  "就",
+  "都",
+  "很",
+  "点",
+  "些",
+  "上",
+  "下",
 ]);
 
 /**
@@ -44,7 +104,7 @@ export function terms(text: string): Set<string> {
   for (const run of cjk.split(" ")) {
     for (let i = 0; i + 2 <= run.length; i++) {
       const pair = run.slice(i, i + 2);
-      if (!STOP.has(pair) && !STOP.has(pair[0]!) ) out.add(pair);
+      if (!STOP.has(pair) && !STOP.has(pair[0]!)) out.add(pair);
     }
   }
   return out;
@@ -110,4 +170,30 @@ export function sediment(ctx: Ctx, projectId: number | null, threshold: number):
   });
   ctx.sched.tick();
   return kin.length;
+}
+
+export const LESSON_CAP = 20;
+
+/** Newest first; id breaks same-millisecond ties consistently for reader and eviction. */
+const NEWEST = "ORDER BY at DESC, id DESC";
+
+/** What one project's agents are told: its own lessons and every global one. */
+export function lessonsFor(db: DB, projectId: number | null): string[] {
+  return db
+    .query<{ body: string }, [number | null]>(
+      `SELECT body FROM note WHERE kind = 'lesson' AND (project_id IS ? OR project_id IS NULL)
+       ${NEWEST} LIMIT ${LESSON_CAP}`,
+    )
+    .all(projectId)
+    .map((r) => r.body);
+}
+
+/** Keep the newest LESSON_CAP lessons in each project/global scope. */
+export function evictOldestLessons(ctx: Ctx, projectId: number | null): number {
+  const scope = "kind = 'lesson' AND (project_id IS ? OR (? IS NULL AND project_id IS NULL))";
+  return ctx.db.run(
+    `DELETE FROM note WHERE ${scope}
+       AND id NOT IN (SELECT id FROM note WHERE ${scope} ${NEWEST} LIMIT ?)`,
+    [projectId, projectId, projectId, projectId, LESSON_CAP],
+  ).changes;
 }
