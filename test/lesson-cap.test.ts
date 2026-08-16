@@ -9,7 +9,7 @@ import { seedAuth } from "./seed-auth.ts";
 import { loadConfig } from "../src/config.ts";
 
 /**
- * PLAN.md §7: the lesson list is injected into every later group's prompt, so an
+ * docs/project/plan.md §7: the lesson list is injected into every later group's prompt, so an
  * unbounded one is "the cure becoming the disease" — a fixed tax on every turn that
  * grows forever. The cap was implemented and never checked.
  */

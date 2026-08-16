@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Tokens are the ones DESIGN.md already committed to, moved into Tailwind's theme
+ * Tokens are the ones docs/design/ui.md already committed to, moved into Tailwind's theme
  * so components can use them by name. The look does not change here; the
  * component layer underneath it does.
  *

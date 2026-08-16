@@ -43,7 +43,7 @@ export const REASONS = {
     why: `已经花了 ${K(tokens)} tokens`,
     points: Math.min(30, (tokens / 1e6) * 10),
   }),
-  /** The clock. PLAN.md's whole argument for slicing work up. */
+  /** The clock. docs/project/plan.md's whole argument for slicing work up. */
   waited: (ms: number): Reason => {
     const h = ms / 3_600_000;
     return {

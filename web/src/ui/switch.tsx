@@ -40,7 +40,7 @@ export function Switch({
         // No focus ring of its own. `outline-none` is a utility and the page's one
         // ring is in `@layer base`, so a local ring does not sit beside the global
         // one — it replaces it, and this row alone then says "focused" a different
-        // way than every other control in the dialog. DESIGN.md: one focus ring.
+        // way than every other control in the dialog. docs/design/ui.md: one focus ring.
         "disabled:cursor-default disabled:opacity-40",
       )}
     >

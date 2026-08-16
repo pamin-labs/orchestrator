@@ -7,7 +7,7 @@ deny-only ceiling recorded below is exactly why the boundary moved into a
 container, so nothing generates these profiles any more.
 
 **Date**: 2026-08-13
-**Deviates from**: PLAN.md §2 and §10, which specified a unix socket.
+**Deviates from**: docs/project/plan.md §2 and §10, which specified a unix socket.
 
 ## What we measured
 

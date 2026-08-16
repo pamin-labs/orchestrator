@@ -7,7 +7,7 @@
  * identical shape for codex, and it can be exercised by hand from a terminal.
  *
  * Transport is the mailbox when `ORCH_MAILBOX` is set, which it always is inside
- * a sandbox — see viaMailbox below and docs/decisions/005. The HTTP path is what
+ * a sandbox — see viaMailbox below and docs/adr/005. The HTTP path is what
  * a human gets running this by hand against a local orchestrator.
  *
  * The token arrives in the environment, injected by whoever spawned the turn. It
@@ -96,7 +96,7 @@ export function kvArgs(v: string | string[] | true | undefined): Record<string, 
  * make the orchestrator macOS-and-Windows-only.
  *
  * Latency is the host's poll interval plus a couple of file operations, which
- * were measured at 1-5ms (docs/decisions/005). A lease that blocks for an hour
+ * were measured at 1-5ms (docs/adr/005). A lease that blocks for an hour
  * blocks here exactly as it did over HTTP.
  */
 const MAILBOX = process.env.ORCH_MAILBOX ?? "";

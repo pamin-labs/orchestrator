@@ -36,7 +36,7 @@ export const WHERE_ZH: Record<string, string> = {
  *
  * `self` was drawn here once while nothing recorded it, so its tick sat grey forever
  * and taught the boss to ignore the row. It is back because `orch task done --review`
- * now records it — PLAN.md §7 layer 1, the only one where the writer is the reviewer.
+ * now records it — docs/project/plan.md §7 layer 1, the only one where the writer is the reviewer.
  */
 export const STOPS: [string, string][] = [
   ["self", "自评"],
@@ -49,7 +49,7 @@ export const owns = (g: Group) => jsonOr(g.owns_json, OwnsSchema, []);
 export const gates = (s: Slice) => jsonOr(s.gates_json, GatesSchema, {});
 
 /**
- * Everything that cannot move without the boss, per PLAN.md's three approval points.
+ * Everything that cannot move without the boss, per docs/project/plan.md's three approval points.
  *
  * Called 待办 everywhere in the panel. It used to be 等你 in the nav, 等你决策 in the
  * requirement list and 无待办 when empty — three names for one concept, one of which

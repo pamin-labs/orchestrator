@@ -53,7 +53,7 @@ const BASE = {
 
 test("cpu defaults to a quarter of the host rather than the SDK's one core", () => {
   // The SDK default of "1" made this repo's typecheck 3.7x slower than the host
-  // (docs/decisions/005), and the failure mode is "gates are slow", which nobody
+  // (docs/adr/005), and the failure mode is "gates are slow", which nobody
   // traces back to a resource limit.
   const spec = specFor(ctx({ sandbox: BASE }), 1);
   expect(Number(spec.cpu)).toBeGreaterThanOrEqual(2);

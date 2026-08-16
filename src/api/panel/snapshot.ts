@@ -86,7 +86,7 @@ export function snapshot(ctx: Ctx): Snapshot {
                 spent_tokens, awaiting_at FROM slice ORDER BY grp_id, seq`,
       )
       .all(),
-    // PLAN.md §8 asks the desk wall for the current slice, the turn count and the
+    // docs/project/plan.md §8 asks the desk wall for the current slice, the turn count and the
     // live last line. Two of the three are here; the third is the SSE stream,
     // which the client already holds. Turn count is what tells a stuck agent from
     // a busy one — "in_progress" looks identical either way.

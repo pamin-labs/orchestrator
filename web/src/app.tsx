@@ -266,7 +266,7 @@ export function App() {
   // No badge on 概览: the header already carries that count, and two copies of one
   // number is how a reader stops trusting either.
   // 「进展」 named a feeling, not a thing. The page is the list of requirements, and
-  // `grp` is the requirement — so the tab is 需求, matching the vocabulary PLAN.md
+  // `grp` is the requirement — so the tab is 需求, matching the vocabulary docs/project/plan.md
   // uses everywhere else. The hash key stays `progress` so links already sent still
   // land.
   const VIEWS: [View, string][] = [

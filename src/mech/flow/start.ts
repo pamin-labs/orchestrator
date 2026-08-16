@@ -234,7 +234,7 @@ export async function detectProject(ctx: Ctx, grpId: number, projectId: number):
       "browser",
       "bun run scripts/browse.ts --steps {steps}",
       // A step file, never a command: the Runner has real permissions, so the only
-      // thing an agent may hand it is data (PLAN.md, hard constraint 2).
+      // thing an agent may hand it is data (docs/project/plan.md, hard constraint 2).
       JSON.stringify({ steps: { type: "string", pattern: "^(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$", maxLength: 200 } }),
       "FAIL:",
       JSON.stringify(["browser"]),

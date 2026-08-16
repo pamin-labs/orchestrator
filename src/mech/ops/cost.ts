@@ -157,7 +157,7 @@ export function costReport(db: DB, projectId?: number): CostReport {
     .get(...args)!;
 
   // What a finished requirement costs is the number to compare against doing it by
-  // hand — PLAN.md §13 risk ② turns on exactly this ratio.
+  // hand — docs/project/plan.md §13 risk ② turns on exactly this ratio.
   const delivered = db
     .query<{ count: number; tokens: number }, number[]>(
       `SELECT count(*) AS count, coalesce(sum(spent_tokens), 0) AS tokens FROM grp

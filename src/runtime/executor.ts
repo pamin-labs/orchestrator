@@ -741,7 +741,7 @@ async function buildDeltaFor(
  *
  * The cursor only ever advances to the last row actually handed over, so a backlog is
  * not lost — but it drains 30 per turn, and an agent that comes back to 200 events
- * spends six turns reading history at full price. PLAN.md §7 puts the Librarian here:
+ * spends six turns reading history at full price. docs/project/plan.md §7 puts the Librarian here:
  * past the threshold it compresses the run into one note, and the compression itself
  * is an event so the boss can see what was compressed.
  */
@@ -1290,7 +1290,7 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
     logPath,
     timeoutMs: cfg.leaseTimeoutMs,
     // The group's own sandbox. A lease used to be the one thing that ran on the
-    // boss's machine with the boss's permissions — PLAN.md called the runner the
+    // boss's machine with the boss's permissions — docs/project/plan.md called the runner the
     // sandbox's only hole. There is no hole now.
     exec: resourceExec(ctx, scope),
   });

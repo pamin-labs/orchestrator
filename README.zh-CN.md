@@ -184,8 +184,8 @@ MIT 协议。
 
 ## 更多
 
-`bun test` 跑全部 check。设计在 [`PLAN.md`](PLAN.md)，
-所有用代价换来的结论在 [`PROGRESS.md`](PROGRESS.md) 和 [`docs/decisions/`](docs/decisions/)，
+`bun test` 跑全部 check。设计在 [`docs/project/plan.md`](docs/project/plan.md)，
+所有用代价换来的结论在 [`docs/project/progress.md`](docs/project/progress.md) 和 [`docs/adr/`](docs/adr/)，
 改代码之前先读 [`CLAUDE.md`](CLAUDE.md)。
 
 基于 [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox)。

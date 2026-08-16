@@ -20,7 +20,7 @@ export type MailboxSandbox = {
  * Why not just let the sandbox reach 127.0.0.1: `host.docker.internal` is a
  * Docker Desktop invention and has no equivalent on Linux, so relying on it
  * would quietly make this macOS-only. The files API is the same everywhere and
- * costs 1-5ms a call (docs/decisions/005).
+ * costs 1-5ms a call (docs/adr/005).
  */
 
 /** Enough to make a request; anything else is the orchestrator's business. */

@@ -356,7 +356,7 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // fetch while a credential is bound, and the symptom is "this project cannot
   // install its dependencies" — which nobody traces back to a sidecar version.
   // Checked by image tag rather than by probing, because probing it means
-  // creating a sandbox on every boot (docs/decisions/005).
+  // creating a sandbox on every boot (docs/adr/005).
   // Which tag the sidecar actually runs is in the sandbox server's own TOML,
   // which is not ours to read — so this reports what is available rather than
   // what is configured. Having a good one is the part we can check; pointing at

@@ -31,6 +31,9 @@ M7 — executable engineering governance and versioned protocol.
   worktree.
 - Project plan and progress responsibilities moved under `docs/project/` and
   were reduced to active product state; TypeScript and 772 tests remain green.
+- `AGENTS.md` is now the real engineering entrypoint, `CLAUDE.md` is its
+  compatibility link, and a source guard prevents legacy documentation paths;
+  TypeScript and 773 tests are green.
 
 ## Blockers and deviations
 

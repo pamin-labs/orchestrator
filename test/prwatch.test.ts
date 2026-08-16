@@ -535,7 +535,7 @@ test("every pull request says what opened it", () => {
   // banned from a repository rather than asked about.
   //
   // One line, at the bottom, no badge — the body above it is already the
-  // evidence, and DESIGN.md's rule holds here too: say it once.
+  // evidence, and docs/design/ui.md's rule holds here too: say it once.
   const h = harness();
   const body = prBody(h.ctx, 1);
   expect(body).toContain("https://github.com/pamin-labs/orchestrator");

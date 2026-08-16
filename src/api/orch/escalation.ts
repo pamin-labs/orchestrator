@@ -366,7 +366,7 @@ export const getAnswerDraft = (async (ctx, _req, params) => {
 /**
  * Hand a question back down the chain instead of answering it.
  *
- * PLAN.md §8 puts `[回答] [转 Architect]` on the same line for a reason: plenty of
+ * docs/project/plan.md §8 puts `[回答] [转 Architect]` on the same line for a reason: plenty of
  * what reaches the boss is a technical call somebody else should make, and
  * without this the only ways out are answering it or leaving it to rot.
  */

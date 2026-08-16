@@ -113,7 +113,7 @@ async function probe(server: string, key: string): Promise<Probe> {
  *
  * The first version was three sentences of reasoning — where the server came
  * from, why we did not touch it, both ways out — set as a paragraph above the
- * two controls that are the ways out. DESIGN.md's rule applies here as much as
+ * two controls that are the ways out. docs/design/ui.md's rule applies here as much as
  * anywhere: say it once, and let the control next to it do the explaining.
  */
 function say(p: Probe, server: string): string {

@@ -63,7 +63,7 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
   // point of planning. But a plan written from memory of a codebase rather than
   // from reading it names files that were never there, and that is the cheapest
   // detectable symptom of the one failure with no deterministic line under it
-  // (PLAN.md §13 risk ①): a decomposition pointed the wrong way. The boss gets the
+  // (docs/project/plan.md §13 risk ①): a decomposition pointed the wrong way. The boss gets the
   // list beside the card and decides which it is, in the same 20 seconds.
   //
   // Against the base ref rather than what is on disk: the host checkout sits on
@@ -122,7 +122,7 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
  * that was not true ("多项改进"), and `checkSplit` would not object, because four
  * unrelated slices genuinely do have four different acceptance criteria.
  *
- * A requirement is the unit of a PR and of acceptance (PLAN.md §7), so unrelated work
+ * A requirement is the unit of a PR and of acceptance (docs/project/plan.md §7), so unrelated work
  * must be unrelated requirements: separate branches, separate boundaries, separately
  * mergeable, separately rejectable. Splitting IS decomposition, which makes it the
  * Dispatcher's job — so it gets a verb rather than a prompt telling it to cope.
@@ -224,7 +224,7 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
  * typing it and the Dispatcher reading the code, has no exit: the Dispatcher digs
  * in, slices it, and files a card for work that does not need doing. The only
  * thing standing between that and a group burning a day on it is the boss's 20
- * seconds on the DRAFT card — PLAN.md §13's risk ①, and the one judgement in the
+ * seconds on the DRAFT card — docs/project/plan.md §13's risk ①, and the one judgement in the
  * system with no deterministic line under it.
  *
  * This is not the agent dissolving the group. It cannot be: "there is nothing to

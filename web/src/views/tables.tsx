@@ -14,7 +14,7 @@ import { cn, K } from "../lib/utils";
 import { activityOf } from "../lib/activity";
 
 /**
- * Per PLAN.md §8: current slice, turn count, the live last line, model, spend.
+ * Per docs/project/plan.md §8: current slice, turn count, the live last line, model, spend.
  *
  * The turn count and the last line are what separate a working agent from a stuck
  * one — "in_progress" looks identical either way, and turn 19 on one slice is the

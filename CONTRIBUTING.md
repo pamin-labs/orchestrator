@@ -7,13 +7,13 @@ them will otherwise look like arbitrary review comments.
 
 ## Before you write code
 
-- **[`PROGRESS.md`](PROGRESS.md)** — where things are and what is known to be
+- **[`docs/project/progress.md`](docs/project/progress.md)** — where things are and what is known to be
   broken. The 反直觉事实 section is a list of things that were measured and are
   the opposite of what you would guess; changing one back is the most common way
   to reintroduce a bug here.
-- **[`PLAN.md`](PLAN.md)** — the design. Design changes go in this file, not in a
+- **[`docs/project/plan.md`](docs/project/plan.md)** — the design. Design changes go in this file, not in a
   commit message.
-- **[`docs/decisions/`](docs/decisions/)** — why a thing is the way it is.
+- **[`docs/adr/`](docs/adr/)** — why a thing is the way it is.
 
 ## Running it
 

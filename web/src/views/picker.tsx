@@ -507,7 +507,7 @@ export function Picker({
  * It was a card explaining that a button would open a list, over a page with
  * nothing else on it: two screens to show one list, and the second one paid the
  * full second of latency after a click rather than during the page load that was
- * happening anyway. DESIGN.md already says it — with no project at all, the page
+ * happening anyway. docs/design/ui.md already says it — with no project at all, the page
  * is the one panel it needs, not a tutorial.
  */
 export function FirstProject({

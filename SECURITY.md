@@ -51,7 +51,7 @@ if it comes with a way past the mitigation described:
 - The egress sidecar follows the container's own name resolution, so an agent can
   point a bound host name at an address it controls. What stops the credential
   arriving there is **upstream certificate verification** — measured, see
-  `PROGRESS.md`. Turning that off in the sidecar's configuration would make it
+  `docs/project/progress.md`. Turning that off in the sidecar's configuration would make it
   exploitable.
 - `web_commit_signoff_required` and the `dco` check cover sign-off; commit
   signatures (GPG/SSH) are deliberately not required, because agents commit

@@ -2,7 +2,7 @@
 
 **Status**: accepted
 **Date**: 2026-08-15
-**Amends**: 002 (which turned the catalogue off wholesale), PLAN.md §4 技能, §5 spawn.
+**Amends**: 002 (which turned the catalogue off wholesale), docs/project/plan.md §4 技能, §5 spawn.
 
 ## The problem
 

@@ -9,7 +9,7 @@ body:
       description: >
         What you were trying to do and where it got awkward. Not the solution —
         this project has a standing habit of deleting proposed features once the
-        problem behind them turns out to be one `if` (`docs/decisions/003`).
+        problem behind them turns out to be one `if` (`docs/adr/003`).
     validations:
       required: true
 

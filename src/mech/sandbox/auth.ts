@@ -13,7 +13,7 @@ import type { Credential } from "./sandbox.ts";
  *
  * Never into the sandbox. The value is written to the egress sidecar's vault and
  * injected into outbound requests on the way past; the sandbox's environment
- * holds a format-plausible fake. Measured (docs/decisions/005): the sidecar
+ * holds a format-plausible fake. Measured (docs/adr/005): the sidecar
  * REPLACES an `Authorization` header the CLI already set, and `claude` does not
  * validate its token locally — a synthetic one comes back as a server-side 401 —
  * which together are what make this work at all.

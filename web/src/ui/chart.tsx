@@ -11,7 +11,7 @@ import { K } from "../lib/utils";
  * exact, comparable, and openable.
  *
  * Colours come from the token set as `var(--color-…)`, so both charts follow the
- * theme switch with no JS. The accent is never used: DESIGN.md reserves it for
+ * theme switch with no JS. The accent is never used: docs/design/ui.md reserves it for
  * "needs you", and a chart that borrows it teaches the eye to ignore it.
  */
 

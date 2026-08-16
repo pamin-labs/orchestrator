@@ -5,7 +5,7 @@ import { say } from "../../lang.ts";
 /**
  * The boss's repeated complaints become a project rule.
  *
- * PLAN.md §7③: without this, dissatisfaction produces N isolated facts and never
+ * docs/project/plan.md §7③: without this, dissatisfaction produces N isolated facts and never
  * changes how the agents behave — you say "tests are too shallow" three times to three
  * different groups and the fourth group writes shallow tests too, because a fact
  * attached to one group is invisible to the next. A `lesson` is not: it is injected

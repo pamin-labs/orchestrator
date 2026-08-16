@@ -105,7 +105,7 @@ function decodeJob(row: StoredJob): Job {
 }
 
 export interface SchedulerOptions {
-  /** Max groups with an in-flight agent_turn. Default 3 (see PLAN.md §11). */
+  /** Max groups with an in-flight agent_turn. Default 3 (see docs/project/plan.md §11). */
   maxGroups?: number | (() => number);
   /**
    * Slots for the Runner pool, per resource tag. Leases never consume group slots.

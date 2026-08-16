@@ -3,7 +3,7 @@
  *
  * A prompt that says "keep it under six lines" is forgotten by turn 20. A
  * validator that returns an error and makes the agent rewrite is not. Every
- * length and shape rule in PLAN.md lives here.
+ * length and shape rule in docs/project/plan.md lives here.
  */
 import { z } from "zod";
 
@@ -95,7 +95,7 @@ const DRAFT_FIELDS = ["目标", "不做", "验收", "切片", "风险", "反对"
  * Rejecting a long card and making the Dispatcher rewrite is cheaper than
  * training the boss to skim.
  *
- * Expected shape (see PLAN.md §7):
+ * Expected shape (see docs/project/plan.md §7):
  *   目标 : one line
  *   不做 : one line
  *   验收 : 2-3 executable lines

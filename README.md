@@ -202,9 +202,9 @@ MIT licensed.
 
 ## More
 
-`bun test` runs the checks. Design is in [`PLAN.md`](PLAN.md), everything
-measured the hard way is in [`PROGRESS.md`](PROGRESS.md) and
-[`docs/decisions/`](docs/decisions/), and [`CLAUDE.md`](CLAUDE.md) is required
+`bun test` runs the checks. Design is in [`docs/project/plan.md`](docs/project/plan.md), everything
+measured the hard way is in [`docs/project/progress.md`](docs/project/progress.md) and
+[`docs/adr/`](docs/adr/), and [`CLAUDE.md`](CLAUDE.md) is required
 reading before changing code.
 
 Built on [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox). The agents

@@ -853,7 +853,7 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
 /**
  * The boss's own voice, and what it counts as.
  *
- * PLAN.md §7 puts three readings on the same words: patch keeps going, respec
+ * docs/project/plan.md §7 puts three readings on the same words: patch keeps going, respec
  * throws the decomposition out, reject drops the whole thing. Without respec here
  * every complaint is heard as "change one line", which is exactly how a wrong
  * decomposition survives to the end.

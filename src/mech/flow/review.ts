@@ -550,7 +550,7 @@ export function auditVerdict(deps: ReviewDeps, grpId: number, pass: boolean, not
  * branch had no counter at all: a red branch gate sent the Engineer round, a
  * rejected audit sent the PM round, and neither loop had an end — the same money
  * spent forever on the same disagreement, with nothing on the boss's screen saying
- * so. PLAN.md's rule is two rounds, then escalate.
+ * so. docs/project/plan.md's rule is two rounds, then escalate.
  *
  * Returns true when the caller should stop rather than send it round again.
  */

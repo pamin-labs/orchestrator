@@ -21,7 +21,7 @@
 # start of every requirement.
 #
 # Deliberately not opensandbox/code-interpreter either — 7GB for a superset
-# nothing here uses (docs/decisions/005).
+# nothing here uses (docs/adr/005).
 FROM oven/bun:1
 
 RUN apt-get update \

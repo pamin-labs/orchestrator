@@ -66,7 +66,7 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
   return (
     // Flat, and full width. This opens inside a slice row inside a bordered list,
     // so a rounded panel here was the third box drawn around the same content —
-    // DESIGN.md: hairlines and spacing instead of card borders, cards never
+    // docs/design/ui.md: hairlines and spacing instead of card borders, cards never
     // nested. Rules and the three surfaces carry the structure instead.
     <div>
       {/* What you are being asked to agree to, then the measurements of it, then

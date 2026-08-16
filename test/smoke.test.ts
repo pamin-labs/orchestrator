@@ -125,7 +125,7 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     expect(jobs.every((j) => j.kind === "agent_turn" && j.state === "pending")).toBe(true);
     expect(srv.ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM agent").get()!.c).toBe(0);
 
-    // PLAN.md §12 asks the smoke run to assert the four first-class tables, because
+    // docs/project/plan.md §12 asks the smoke run to assert the four first-class tables, because
     // "the request was accepted" and "the request was recorded" are different claims and
     // only the second one matters after a restart.
     const count = (t: string) => srv.ctx.db.query<{ c: number }, []>(`SELECT count(*) AS c FROM ${t}`).get()!.c;

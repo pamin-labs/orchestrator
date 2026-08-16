@@ -155,7 +155,7 @@ export const ConfigSchema = z.object({
    */
   contextWindow: z.record(z.string(), count),
   /**
-   * One sandbox per group — the write boundary (docs/decisions/005).
+   * One sandbox per group — the write boundary (docs/adr/005).
    *
    * `cpu` empty means a quarter of the host's cores; the SDK's own default of
    * "1" made this repo's typecheck 3.7x slower than the host. Per-project

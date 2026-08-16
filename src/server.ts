@@ -46,7 +46,7 @@ import { restoreWorkspace } from "./mech/flow/start.ts";
  * One process: HTTP + SSE for the web UI, the same routes for `orch`, the job
  * queue, and the sandboxes it drives. Bound to 127.0.0.1: nothing outside this
  * machine needs it, and agents reach it through the mailbox rather than the
- * network (docs/decisions/005).
+ * network (docs/adr/005).
  */
 
 export interface Started {

@@ -15,7 +15,7 @@ import type { InferResponseType } from "hono/client";
 /**
  * The blackboard's static half.
  *
- * PLAN.md §7: the journal is where "做了啥 + 为啥 + 风险" lives, the retro is the only
+ * docs/project/plan.md §7: the journal is where "做了啥 + 为啥 + 风险" lives, the retro is the only
  * thing a dissolved group leaves behind, and the lesson list is the single mechanism
  * by which the twentieth group is smarter than the first. All of it was written,
  * exported to the repo, injected into prompts — and unreadable from the panel, which

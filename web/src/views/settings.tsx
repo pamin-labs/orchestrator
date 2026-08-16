@@ -56,7 +56,7 @@ const EMPTY_PREFLIGHT = { checks: [] as HostCheck[] };
  * rail can hold both scopes as two groups, which is the thing neither page could
  * say about itself.
  *
- * DESIGN.md bans modal-as-first-thought. This is the fifth thought, and settings
+ * docs/design/ui.md bans modal-as-first-thought. This is the fifth thought, and settings
  * is the one surface here nobody is ever *in*: you come to fix something and go
  * back to the work, which is exactly what closing a dialog does and what
  * navigating back from a view does not.

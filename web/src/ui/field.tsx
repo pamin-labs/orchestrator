@@ -12,7 +12,7 @@ import { cn } from "../lib/utils";
  * aligned down the page, a hairline between rows. `vertical` exists for the one
  * case where a value is a block (a pasted auth.json) rather than a line.
  *
- * Deliberately not shadcn's own styling. The look is ours (DESIGN.md): hairlines
+ * Deliberately not shadcn's own styling. The look is ours (docs/design/ui.md): hairlines
  * rather than cards, `sunk` for machine output, the accent reserved for what
  * waits on the boss.
  */

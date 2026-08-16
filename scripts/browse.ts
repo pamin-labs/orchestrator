@@ -9,7 +9,7 @@
  *
  * Run as a lease, inside the group's own sandbox, against the checkout at /work.
  * It still takes a *step file* rather than a script — `orch lease` never accepts a
- * free command (PLAN.md, hard constraint 2), and that rule did not soften when the
+ * free command (docs/project/plan.md, hard constraint 2), and that rule did not soften when the
  * container became the boundary; `orch` is now the only interface there is. The
  * steps are data:
  *

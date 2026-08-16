@@ -1,5 +1,5 @@
 /**
- * The ONLY place a turn's input is assembled. See PLAN.md §7 token economics #1.
+ * The ONLY place a turn's input is assembled. See docs/project/plan.md §7 token economics #1.
  *
  * The rule: everything that varies per turn goes in `prompt` (a fresh user
  * message, appended at the end). Everything else is `stable` and must be

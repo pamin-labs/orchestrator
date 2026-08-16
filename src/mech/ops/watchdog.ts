@@ -576,7 +576,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 6. Quota came back. PLAN.md §11 says a rate-limited group waits for the reset,
+  // 6. Quota came back. docs/project/plan.md §11 says a rate-limited group waits for the reset,
   // and waiting is only useful if something is watching the clock.
   await step("6", findings, async () => {
     const throttled = ctx.db
@@ -600,7 +600,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   //
   // Ten requirements produced 123 MB of raw NDJSON, median 324 KB a turn and 3 MB
   // at the tail, because a turn's transcript is mostly tool output and all of it is
-  // written verbatim. It is worth keeping — every measurement in PROGRESS.md came
+  // written verbatim. It is worth keeping — every measurement in docs/project/progress.md came
   // out of these files — but not worth keeping uncompressed: NDJSON gzips about
   // ten to one, and nothing reads a turn from a week ago without unzipping it
   // first anyway.
@@ -1023,7 +1023,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // left is memory, CPU and disk held against every group that comes next.
   //
   // `pause` is not the cheap alternative it looks like: measured, it is a real
-  // `docker pause`, so the container and its disk both stay (docs/decisions/005).
+  // `docker pause`, so the container and its disk both stay (docs/adr/005).
   // Only kill frees anything.
   await step("17", findings, async () => {
     for (const g of ctx.db

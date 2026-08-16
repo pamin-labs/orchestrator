@@ -6,7 +6,7 @@ was paid for with the whole skill feature. Skills are now a read-only mount of t
 set the boss ticked, so the prefix carries what was chosen rather than everything
 or nothing. The `--tools` and `--setting-sources` findings still hold.
 **Date**: 2026-08-13
-**Adds to**: PLAN.md §7 token economics (a lever that section did not have).
+**Adds to**: docs/project/plan.md §7 token economics (a lever that section did not have).
 
 ## What we measured
 

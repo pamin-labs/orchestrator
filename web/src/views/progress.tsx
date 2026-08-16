@@ -285,7 +285,7 @@ function Seg({ s }: { s: Slice }) {
         <span className="mt-px block truncate text-[0.6875rem] text-ink-2">{s.title}</span>
         {/* The layers review.ts actually records. `self` was drawn here for a while
             and recorded nowhere, so the first tick sat grey forever — and the layer
-            it stood in for, reconcile, is the one PLAN.md §7 calls worth more than
+            it stood in for, reconcile, is the one docs/project/plan.md §7 calls worth more than
             the whole Auditor. Progress is which gates passed, never a percentage:
             a model's percentage is a guess, a gate is a fact. */}
         <span className="mt-1 flex gap-1">

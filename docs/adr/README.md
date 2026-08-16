@@ -18,4 +18,4 @@ Node would need better-sqlite3 + a server framework.
 **Consequence**: bun becomes a hard dependency; no build step needed.
 ```
 
-初始设计决策全部在 `PLAN.md` 里，不重复记录。这里只记**开发过程中偏离 `PLAN.md` 的地方**。
+初始设计决策全部在 `docs/project/plan.md` 里，不重复记录。这里只记**开发过程中偏离 `docs/project/plan.md` 的地方**。

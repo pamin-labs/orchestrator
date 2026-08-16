@@ -2,7 +2,7 @@
  * The strings the orchestrator itself says to the boss.
  *
  * `output.language` governs journals, channel messages, questions and status text
- * (PLAN.md §11); code, commit messages, branch names, PR title/body and error
+ * (docs/project/plan.md §11); code, commit messages, branch names, PR title/body and error
  * messages stay English. The rule was being kept by the agents — their role prompts
  * carry it — and broken by us: every `bus.emit` body the orchestrator wrote was
  * English, so a Chinese panel's own event feed read "perf-rewrite is at 102% of its

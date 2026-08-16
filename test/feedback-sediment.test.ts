@@ -9,7 +9,7 @@ import { seedAuth } from "./seed-auth.ts";
 import { loadConfig } from "../src/config.ts";
 
 /**
- * PLAN.md §7③. Without this the boss's dissatisfaction produces N isolated facts:
+ * docs/project/plan.md §7③. Without this the boss's dissatisfaction produces N isolated facts:
  * "tests are too shallow" said to three groups leaves the fourth group writing shallow
  * tests, because a fact on one group is invisible to the next.
  */

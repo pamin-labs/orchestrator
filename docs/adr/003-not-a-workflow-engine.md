@@ -19,7 +19,7 @@ A DAG engine is for a known graph of steps with data on the edges. Here:
   decides how many slices exist. QA sends one back. The boss respecs, parks,
   interrupts, rolls back to a git checkpoint. Every node would need an escape
   edge to every other state, which is a queue plus a state machine drawn badly.
-- **Intercept must work at any instant** (PLAN.md §7). That is possible only
+- **Intercept must work at any instant** (docs/project/plan.md §7). That is possible only
   because exactly one serial dispatch point exists. A DAG's equivalent is
   cancelling a run and reconstructing where it was.
 - **Admission control is per group and per budget.** Those are checks before
@@ -28,7 +28,7 @@ A DAG engine is for a known graph of steps with data on the edges. Here:
 ## LangChain / LangGraph want to own the model call, and we want the CLI to
 
 The agent runtime is deliberately `claude -p` / `codex exec` as a subprocess
-(PLAN.md §2): per-turn model switch is one flag, a crashed agent cannot take down
+(docs/project/plan.md §2): per-turn model switch is one flag, a crashed agent cannot take down
 the orchestrator, and the CLI's own hooks, skills, `CLAUDE.md` and settings all
 keep working inside the container. A framework that wraps the model call throws
 that away and gives back nothing this system needs.

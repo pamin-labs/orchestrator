@@ -28,7 +28,7 @@ import { errText } from "../../mech/util/text.ts";
  * The blackboard's static half, readable.
  *
  * `note` holds every journal, decision, retro, risk, handoff, onboarding pack and
- * lesson — PLAN.md §7 calls the lesson list "the only mechanism by which the
+ * lesson — docs/project/plan.md §7 calls the lesson list "the only mechanism by which the
  * twentieth group is smarter than the first" — and none of it was reachable from
  * the panel at all. Agents could `orch ctx query` it; the boss could not read it.
  */

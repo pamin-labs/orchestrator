@@ -3,7 +3,7 @@ import { maskValue } from "./mech/util/scrub.ts";
 import { parseRepo } from "./mech/git/repository.ts";
 
 /**
- * Single source of truth for the schema. See PLAN.md §3.
+ * Single source of truth for the schema. See docs/project/plan.md §3.
  *
  * Four first-class entities: `job` (what will happen), `event` (what happened),
  * `note` (the static blackboard), `task`/`slice` (units of work).
@@ -240,7 +240,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // 002 — per-agent bearer token.
   //
   // `orch` reaches the server over localhost TCP (see
-  // docs/decisions/001-agent-transport-and-sandbox.md), and anything else on
+  // docs/adr/001-agent-transport-and-sandbox.md), and anything else on
   // 127.0.0.1 can reach it too. Identity therefore comes from a token the
   // spawner injects into the turn's environment, never from a field in the
   // request body that an agent could simply change.
@@ -299,14 +299,14 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
 
   // 009 — when a slice started waiting on the boss.
   //
-  // "白干的单位是一个切片" (PLAN.md §7) only means something if the clock on it is
+  // "白干的单位是一个切片" (docs/project/plan.md §7) only means something if the clock on it is
   // visible: a slice that has waited four hours is a different problem from one
   // that finished a minute ago, and the queue could not tell them apart.
   `ALTER TABLE slice ADD COLUMN awaiting_at INTEGER;`,
 
   // 010 — when the account's quota comes back.
   //
-  // PLAN.md §11: hitting a rate limit degrades to a cheaper model and, if there is
+  // docs/project/plan.md §11: hitting a rate limit degrades to a cheaper model and, if there is
   // nothing cheaper, waits for the reset. Without the timestamp "wait" meant "wait
   // for the boss", so one 429 at 01:00 cost the whole night.
   `ALTER TABLE grp ADD COLUMN rl_resets_at INTEGER;`,
@@ -339,7 +339,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // A slice that keeps failing stops after `gateRetries` and asks the boss
   // (slice.retries). The branch had no such counter at all: a red branch gate sent
   // the Engineer round, a rejected audit sent the PM round, and neither loop had
-  // an end. PLAN.md §"Gate 与审批顺序" says two rounds then escalate; this is the
+  // an end. docs/project/plan.md §"Gate 与审批顺序" says two rounds then escalate; this is the
   // column that makes that true.
   `ALTER TABLE grp ADD COLUMN pr_retries INTEGER NOT NULL DEFAULT 0;`,
 
@@ -470,7 +470,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // 035 — where each runtime's credentials come from.
   //
   // The value never enters the sandbox: it is written to the egress sidecar's
-  // vault and injected on the way out (docs/decisions/005). It never enters an
+  // vault and injected on the way out (docs/adr/005). It never enters an
   // event, a prompt or a log either, and the API only ever returns it masked.
   //
   // `base_url` is what makes an OpenAI-compatible endpoint a configuration

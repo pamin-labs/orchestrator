@@ -6,7 +6,7 @@ import { seedAuth } from "./seed-auth.ts";
 import { testContext } from "./test-context.ts";
 
 /**
- * PLAN.md §7 L3: "打断并回滚" must end with the checkout back at the checkpoint the
+ * docs/project/plan.md §7 L3: "打断并回滚" must end with the checkout back at the checkpoint the
  * turn started from. The pieces were tested apart — rollbackTo in worktree.test.ts,
  * the chain's revoke in chain.test.ts — and this end of it, kill plus rollback,
  * never was.

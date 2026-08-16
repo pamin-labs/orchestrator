@@ -434,7 +434,7 @@ test("a batched notification carries a link, and one item links to its requireme
 
 test("a rate-limited group resumes itself when the quota comes back", async () => {
   const h = harness();
-  // PLAN.md §11: on the cheapest tier there is nothing to downgrade to, so it waits —
+  // docs/project/plan.md §11: on the cheapest tier there is nothing to downgrade to, so it waits —
   // and waiting is only useful if something watches the clock. Before this, one 429 at
   // 01:00 held the group until the boss woke up, which is the failure the whole system
   // exists to prevent.

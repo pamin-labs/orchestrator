@@ -1,6 +1,6 @@
 # PROGRESS 归档
 
-`PROGRESS.md` 是开发断点文件，读它是为了知道**现在在哪、下一步是什么**。它长到
+`docs/project/progress.md` 是开发断点文件，读它是为了知道**现在在哪、下一步是什么**。它长到
 114KB 之后就不再是那个文件了 —— 一份要从头读到尾才能找到当前状态的断点文件，等于
 没有断点文件。
 
@@ -8,7 +8,7 @@ settled 的部分搬到这里。三类：已经完成并且不再变的里程碑
 经过（worktree、host runner、clearance 那一整套），以及一次性的实测记录。**没有删任何
 一个字** —— 这些是「为什么是这样」的原始出处，只是不该每次开工都读一遍。
 
-还留在 `PROGRESS.md` 里的：当前状态、状态机、里程碑表、反直觉事实（那一节是
+还留在 `docs/project/progress.md` 里的：当前状态、状态机、里程碑表、反直觉事实（那一节是
 「别凭直觉改回去」，不是历史）、已知偏离，以及最近两次的记录。
 
 ---
@@ -131,7 +131,7 @@ bun run src/server.ts                     # 起服务
 
 ### 固有限制：切错方向只能靠你在 DRAFT 那 20 秒拦
 
-`checkSplit` 拦得住「切重了」，拦不住「切错了」。就是 `PLAN.md` §13 风险①，实测确认成立 —— 也是全系统唯一没有确定性防线的判断点。两条补强已经做了：卡上有 Architect 的反对栏，而**卡交完之后才到的反对意见现在也摆在卡旁边**，所以「反对 : 无」不再能盖住一条真反对。
+`checkSplit` 拦得住「切重了」，拦不住「切错了」。就是 `docs/project/plan.md` §13 风险①，实测确认成立 —— 也是全系统唯一没有确定性防线的判断点。两条补强已经做了：卡上有 Architect 的反对栏，而**卡交完之后才到的反对意见现在也摆在卡旁边**，所以「反对 : 无」不再能盖住一条真反对。
 
 ## 用之前
 
@@ -184,7 +184,7 @@ bun run src/server.ts                     # 起服务
 
 codex 每个 turn 的 `token_count` 里自带 5h 和周窗口的 `used_percent`。claude 的流里没有 —— 267 条真实 `rate_limit_event` 只有 status 和重置时间，所以 `src/mech/subusage.ts` 走那个社区通用但**未文档化**的 `api/oauth/usage`（token 从 Keychain 读，只读不写），5 分钟一次，挂了就静默降级回 status + 倒计时。整套东西不许让任何主流程依赖它。
 
-放进 header 是对 `DESIGN.md` 那条「不放仅仅为真的东西」的有意让步：花了多少钱属于 成本 页，**今晚还能不能干活**属于这里。80% 以下是灰的。
+放进 header 是对 `docs/design/ui.md` 那条「不放仅仅为真的东西」的有意让步：花了多少钱属于 成本 页，**今晚还能不能干活**属于这里。80% 以下是灰的。
 
 ## turns 日志
 
@@ -243,7 +243,7 @@ check 在 `test/stuck-slice.test.ts`（五条，去掉任一修复都会红）+ 
 
 `git diff <slice.base_sha>` 在规则 15 rebase 之后就不再是这一片的改动 —— base_sha 变成 main 的祖先，别的组已合入的东西全算到这片头上。`sliceDiffBase` 只在 base_sha 仍然落在本分支（且在与 main 的分叉点之后）时用它，否则从分叉点开始 diff（= 整条分支相对 origin/main，也就是 PR 会显示的东西），面板上标出用的是哪一种。check 在 `test/worktree.test.ts`。
 
-UI 这轮的三件事，写进了 `DESIGN.md`：
+UI 这轮的三件事，写进了 `docs/design/ui.md`：
 
 - **less is more，克制** —— 砍的是屏幕上的记号，不是事实。同一个数字只印一次；已经在框里的东西不再套框；控件不许比它控制的内容更响。
 - **三层表面各有含义**：`paper` 你操作的东西（行、问题、表头）/ `rail` 你正打开的那一行 / `sunk` 机器产出的东西（diff、闸门日志、代拟答复）。分界线 `rule` 分种类、`rule-soft` 分同类，左右一样的 gutter。
@@ -253,7 +253,7 @@ UI 这轮的三件事，写进了 `DESIGN.md`：
 
 ## OpenSandbox Phase 0：探针跑完，边界要换
 
-宿主 deny-list 那条路 001 自己写着天花板：**一条没人想到去 deny 的路径就是可写的**。换成容器边界，命题反过来 —— agent 碰不到宿主，宿主只通过 `orch` 暴露有限动作。实测结论全在 `docs/decisions/005-opensandbox-is-the-boundary.md`，几条和官方文档相反的：
+宿主 deny-list 那条路 001 自己写着天花板：**一条没人想到去 deny 的路径就是可写的**。换成容器边界，命题反过来 —— agent 碰不到宿主，宿主只通过 `orch` 暴露有限动作。实测结论全在 `docs/adr/005-opensandbox-is-the-boundary.md`，几条和官方文档相反的：
 
 - **Credential Vault 在 `defaultAction: allow` 下照样注入**（文档说必须 deny）。所以「网随便上」和「凭据不进 sandbox」不是二选一，是都要。注入是**替换** `Authorization` 头，沙盒里的假值不上线。
 - **`allow "*"` 匹配不到任何东西** —— 通配符只有 `*.domain` 形式。要全放行就 `defaultAction: allow` + 项目黑名单。
@@ -268,7 +268,7 @@ UI 这轮的三件事，写进了 `DESIGN.md`：
 
 ## OpenSandbox 落地：边界换掉了，clearance 整个删了
 
-Phase 0 的实测在 `docs/decisions/005`。这一轮把它做完了，净效果是删代码。
+Phase 0 的实测在 `docs/adr/005`。这一轮把它做完了，净效果是删代码。
 
 **边界**：一个组一个容器。`ensureSandbox` / `execIn` / `execLines` / `putFile` / `killSandbox` 全在 `src/mech/sandbox.ts`，那是唯一知道 OpenSandbox 存在的文件。驱动挂在 `Ctx.sandbox` 上，和 `git`/`gh`/`ask` 一个模式 —— 单元测试注一个假的（`test/fake-sandbox.ts`），真的连不上就报错，不静默兜底。
 
@@ -359,7 +359,7 @@ preflight 那条改准了：本地留着旧 egress 不再误报 —— server �
 
 **两页并一个 dialog。** 『设置』（齿轮）和『配置』（tab）是两个作用域 —— 这台服务器 vs 这个仓库 —— 但它们由同一套 `Pane + 2 列网格 + H2 + Field` 拼出来，长得一模一样，谁也没说自己管到哪。而且视图有 76rem 宽、内容只有十来个字段，四版页面每一版都是右下角一片死白。
 
-现在是一个 dialog：左栏两组（`服务器` / `这个项目 · <名字>` + repo 路径），右栏一节内容。作用域由分组说，不由每页自我介绍。`#v=settings` 和 `#v=config` 都还能开，各自落在原来那一节；`配置` 从头部 tab 条摘掉了。DESIGN.md 的 modal 禁令加了这一条例外的来由 —— 这是第五版，不是第一想法。
+现在是一个 dialog：左栏两组（`服务器` / `这个项目 · <名字>` + repo 路径），右栏一节内容。作用域由分组说，不由每页自我介绍。`#v=settings` 和 `#v=config` 都还能开，各自落在原来那一节；`配置` 从头部 tab 条摘掉了。docs/design/ui.md 的 modal 禁令加了这一条例外的来由 —— 这是第五版，不是第一想法。
 
 **闸门看得出是开关了。** 之前按 `resource` 表的字母序渲染、却给每行标运行序号，屏幕上是 4/1/3/2。现在开的排上面、按运行序编号、有拖拽手柄，关的在一条 rule 底下没有序号。拖拽是原生 HTML5 DnD（手柄 draggable，不是整行 —— 整行是那个开关，drag 结束还会当成 click 把闸门关掉），键盘 `Alt+↑/↓`。没加依赖。
 
@@ -379,13 +379,13 @@ preflight 那条改准了：本地留着旧 egress 不再误报 —— server �
 
 **两个从来没被写过的列**（migration 022 DROP）：`clearance` 每行都是默认 `'L1'`，工位墙照着它显示「权限 L1」—— 一个没有权限等级的系统在给老板看权限等级；`denial_turns` 数的是权限拒绝的连续次数，而容器里不会再有权限拒绝。
 
-**文档扫尾**：PLAN.md 的 §2/§4/§5/§8/§10/§12 还在写 Seatbelt、`--settings <clearance-profile.json>`、「Runner 跑在 host 上有真权限」、`denyWrite` 挡住越界写；decisions 003/004 重新标了 status（004 的三条决定有两条被 005 取代）；005 的 header 说 vault 还开着，其实早落了，Ceiling 里补上信箱这条。**不扫的话，下一个人照着 PLAN.md 会把 clearance 那套建回来。**
+**文档扫尾**：docs/project/plan.md 的 §2/§4/§5/§8/§10/§12 还在写 Seatbelt、`--settings <clearance-profile.json>`、「Runner 跑在 host 上有真权限」、`denyWrite` 挡住越界写；decisions 003/004 重新标了 status（004 的三条决定有两条被 005 取代）；005 的 header 说 vault 还开着，其实早落了，Ceiling 里补上信箱这条。**不扫的话，下一个人照着 docs/project/plan.md 会把 clearance 那套建回来。**
 
 `bun test test/` 498 pass。
 
 ## 技能进沙盒（决策 006）
 
-**`--disable-slash-commands` 的 help 原文是 "Disable all skills"。** 002 用它省前缀，省下来的那部分是拿整个技能功能换的 —— 打给 agent 的 `/impeccable` 一直什么都不发生，而 PLAN.md 把这件事写成「技能不走 slash 命令」，读起来像个设计选择。剩下的那条注入路径（老板在输入框提到技能名 → 宿主读 SKILL.md → 塞进那一个 turn 的 delta）是好的，但只有老板能发起：agent 干到第 20 个 turn 时，不知道有哪个技能能帮它。005 之后还更糟 —— 技能正文里指的 `reference/*.md` 是宿主 home 里的路径，容器里根本不存在。
+**`--disable-slash-commands` 的 help 原文是 "Disable all skills"。** 002 用它省前缀，省下来的那部分是拿整个技能功能换的 —— 打给 agent 的 `/impeccable` 一直什么都不发生，而 docs/project/plan.md 把这件事写成「技能不走 slash 命令」，读起来像个设计选择。剩下的那条注入路径（老板在输入框提到技能名 → 宿主读 SKILL.md → 塞进那一个 turn 的 delta）是好的，但只有老板能发起：agent 干到第 20 个 turn 时，不知道有哪个技能能帮它。005 之后还更糟 —— 技能正文里指的 `reference/*.md` 是宿主 home 里的路径，容器里根本不存在。
 
 现在两条路并存：
 

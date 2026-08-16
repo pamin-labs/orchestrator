@@ -104,7 +104,7 @@ export const postMail = (async (ctx, _req, a, _p, b) => {
 /**
  * The boss says something, and it reaches someone.
  *
- * PLAN.md §7 makes this the whole feedback loop: dissatisfaction that only gets
+ * docs/project/plan.md §7 makes this the whole feedback loop: dissatisfaction that only gets
  * heard as "change one line" is how a wrong decomposition never gets corrected.
  * The panel had no way to say anything at all — every route into the blackboard
  * needed an agent token, so the boss could approve and reject but never explain.
@@ -154,7 +154,7 @@ export const postSay = (async (ctx, _req, _p, b) => {
     return message("ok");
   }
 
-  // Plain talk. The recipient defaults to the group's PM: PLAN.md §7 makes the PM
+  // Plain talk. The recipient defaults to the group's PM: docs/project/plan.md §7 makes the PM
   // the group's only conversational entrance so one sentence costs one turn
   // instead of five.
   const to = b.target || "pm";

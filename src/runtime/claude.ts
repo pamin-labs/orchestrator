@@ -12,7 +12,7 @@ import { runLineStream } from "./line-stream.ts";
  * (needed for per-slice difficulty tiering), a crashed turn cannot take the
  * orchestrator with it, and codex has the same shape (`codex exec resume`).
  *
- * Field names below were read off a real run, not guessed — see PLAN.md §5.
+ * Field names below were read off a real run, not guessed — see docs/project/plan.md §5.
  */
 
 export interface RateLimitInfo {

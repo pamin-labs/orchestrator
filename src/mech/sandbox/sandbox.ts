@@ -25,7 +25,7 @@ import { projectConfig } from "../util/rows.ts";
  * from the sandbox's only gap into its only interface.
  *
  * This file is the only place that knows OpenSandbox exists. See
- * docs/decisions/005 for what was measured, including the several places where
+ * docs/adr/005 for what was measured, including the several places where
  * the observed behaviour contradicts that project's docs.
  */
 
@@ -1049,7 +1049,7 @@ export async function writeInto(
  * Injected on `Ctx` the same way `git`, `gh` and `ask` are, and for the same
  * reason: a unit test has no container to talk to, and the alternative — every
  * one of these swallowing its own connection error — is how a silent failure
- * gets to look exactly like success (docs/decisions/001).
+ * gets to look exactly like success (docs/adr/001).
  */
 export interface SandboxDriver {
   exec(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): Promise<ExecOutcome>;

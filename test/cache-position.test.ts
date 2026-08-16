@@ -6,7 +6,7 @@ import { listSkills, readSkill, referencedSkills } from "../src/mech/skills.ts";
 import { assemble, buildDelta, buildStable, needsRotation, type StableParts } from "../src/prompt/assemble.ts";
 
 /**
- * Regression guard for PLAN.md §7 token economics #1.
+ * Regression guard for docs/project/plan.md §7 token economics #1.
  *
  * Busting the prompt cache is invisible: the agent still works, tests still
  * pass, and every turn costs 3-5x. These assertions are the only thing that
