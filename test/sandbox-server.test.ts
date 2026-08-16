@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
-import { allowedHostPaths, coveredBy } from "../src/mech/sandbox/sandbox.ts";
+import { allowedHostPaths, coveredBy, restartServer } from "../src/mech/sandbox/sandbox.ts";
 import { preflight } from "../src/mech/ops/preflight.ts";
 import { serverAction, serverBackoffMs, SERVER_RESTART_CAP } from "../src/mech/ops/watchdog.ts";
 
@@ -106,4 +106,60 @@ test("a server that is present is never restarted, whatever it is doing", () => 
   expect(serverAction(false, argv, SERVER_RESTART_CAP, 1_000_000, 0)).toBe("give_up");
   expect(serverBackoffMs(1)).toBe(30_000);
   expect(serverBackoffMs(3)).toBeGreaterThan(serverBackoffMs(2));
+});
+
+const LIVE_SERVER = { pid: "42", argv: ["opensandbox-server"], config: null };
+
+function stuckServer(kill: (signal: "SIGTERM" | "SIGKILL") => void) {
+  let starts = 0;
+  return {
+    ops: {
+      running: () => LIVE_SERVER,
+      kill: (_pid: number, signal: "SIGTERM" | "SIGKILL") => kill(signal),
+      sleep: async () => {},
+      start: () => {
+        starts++;
+      },
+    },
+    starts: () => starts,
+  };
+}
+
+test("a failed SIGKILL cannot be reported as a successful restart", async () => {
+  const server = stuckServer((signal) => {
+    if (signal === "SIGKILL") throw new Error("operation not permitted");
+  });
+
+  const error = await restartServer(LIVE_SERVER.argv, undefined, server.ops);
+
+  expect(error).toContain("could not force-stop pid 42");
+  expect(error).toContain("operation not permitted");
+  expect(server.starts()).toBe(0);
+});
+
+test("a process still alive after SIGKILL blocks a second server", async () => {
+  const server = stuckServer(() => {});
+
+  const error = await restartServer(LIVE_SERVER.argv, undefined, server.ops);
+
+  expect(error).toBe("pid 42 is still running after SIGKILL");
+  expect(server.starts()).toBe(0);
+});
+
+test("a process stopped by SIGKILL is replaced exactly once", async () => {
+  let alive = true;
+  let starts = 0;
+  const error = await restartServer(LIVE_SERVER.argv, undefined, {
+    running: () => (alive ? LIVE_SERVER : null),
+    kill: (_pid, signal) => {
+      if (signal === "SIGKILL") alive = false;
+    },
+    sleep: async () => {},
+    start: () => {
+      starts++;
+    },
+  });
+
+  expect(error).toBeNull();
+  expect(starts).toBe(1);
 });

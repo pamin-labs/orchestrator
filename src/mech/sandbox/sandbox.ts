@@ -5,14 +5,13 @@ import { join, resolve } from "node:path";
 import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../../ctx.ts";
 import { ROOT } from "../../config.ts";
+import type { SandboxSpec } from "../../config-schema.ts";
 import type { ResourceExec } from "../lease.ts";
 import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../util/shq.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
 import { projectConfig } from "../util/rows.ts";
-
-export type SandboxSpec = import("../../config-schema.ts").SandboxSpec;
 
 /**
  * One sandbox per group. The boundary.
@@ -280,6 +279,31 @@ export function allowedHostPaths(home = homedir()): { paths: string[]; config: s
 export const coveredBy = (allowed: string[], want: string): boolean =>
   allowed.some((a) => want === a.replace(/\/+$/, "") || want.startsWith(a.replace(/\/+$/, "") + "/"));
 
+type RestartOps = {
+  running: typeof runningServer;
+  kill: (pid: number, signal: "SIGTERM" | "SIGKILL") => void;
+  sleep: (ms: number) => Promise<void>;
+  start: (argv: string[], log?: string) => void;
+};
+
+const restartOps: RestartOps = {
+  running: runningServer,
+  kill: process.kill,
+  sleep: Bun.sleep,
+  start: (argv, log) => {
+    const out = log ? Bun.file(log) : "ignore";
+    Bun.spawn(argv, { stdout: out, stderr: out, stdin: "ignore" }).unref();
+  },
+};
+
+async function waitForServerExit(ops: RestartOps): Promise<boolean> {
+  for (let i = 0; i < 50; i++) {
+    if (!ops.running()) return true;
+    await ops.sleep(100);
+  }
+  return !ops.running();
+}
+
 /**
  * Restart the server the way it was started.
  *
@@ -292,22 +316,28 @@ export const coveredBy = (allowed: string[], want: string): boolean =>
  * turn in flight. That is why the deliberate one is a button with hard
  * constraint 5's evidence beside it, and the automatic one below is narrow.
  */
-export async function restartServer(argv: string[], log?: string): Promise<string | null> {
+export async function restartServer(
+  argv: string[],
+  log?: string,
+  ops: RestartOps = restartOps,
+): Promise<string | null> {
   if (!argv.length) return "nothing recorded about how this server was started";
-  const live = runningServer();
+  const live = ops.running();
   if (live) {
     try {
-      process.kill(Number(live.pid), "SIGTERM");
+      ops.kill(Number(live.pid), "SIGTERM");
     } catch (e) {
       return `could not stop pid ${live.pid}: ${errText(e)}`;
     }
     // It has containers to let go of. SIGKILL after, or a wedged process never
     // releases the port and the restart lands on an address already in use.
-    for (let i = 0; i < 50 && runningServer(); i++) await new Promise((r) => setTimeout(r, 100));
-    if (runningServer()) {
+    if (!(await waitForServerExit(ops))) {
       try {
-        process.kill(Number(live.pid), "SIGKILL");
-      } catch {}
+        ops.kill(Number(live.pid), "SIGKILL");
+      } catch (e) {
+        return `could not force-stop pid ${live.pid}: ${errText(e)}`;
+      }
+      if (!(await waitForServerExit(ops))) return `pid ${live.pid} is still running after SIGKILL`;
     }
   }
   try {
@@ -315,8 +345,7 @@ export async function restartServer(argv: string[], log?: string): Promise<strin
     // does: a server that comes back up and immediately dies on its config
     // leaves nothing behind otherwise, and the only report left is our own
     // failed probe — which describes the symptom and none of the causes.
-    const out = log ? Bun.file(log) : "ignore";
-    Bun.spawn(argv, { stdout: out, stderr: out, stdin: "ignore" }).unref();
+    ops.start(argv, log);
     return null;
   } catch (e) {
     return `could not start ${argv[0]}: ${errText(e)}`;
