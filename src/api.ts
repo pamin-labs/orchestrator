@@ -2,21 +2,21 @@ import { Hono } from "hono";
 import { check } from "./api/valid.ts";
 import type { Caller, Ctx } from "./ctx.ts";
 import { agentOf, mayAct, mintToken, resolveGroup, type AgentHandler, type Handler } from "./api/shared.ts";
-import { getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers } from "./api/authflow.ts";
-import { bossFact, expandHome, getAttachment, imagePaths, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/attach.ts";
+import { AuthBody, CodeBody, getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers, TrailersBody } from "./api/authflow.ts";
+import { bossFact, expandHome, getAttachment, imagePaths, LocalPathsBody, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/attach.ts";
 import { CTX_BUDGET_CHARS, CtxQueryBody, postCtxQuery } from "./api/ctxquery.ts";
-import { AnswerBody, ASK_KINDS, AskBossBody, askKind, brief, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage, TriageBody } from "./api/escalation.ts";
-import { GroupAction, landGroup, postDraftDecision, postGroupControl, postIdea } from "./api/group.ts";
+import { AnswerBody, ASK_KINDS, AskBossBody, askKind, BossAnswerBody, brief, DelegateBody, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage, RequirementBody, TriageBody } from "./api/escalation.ts";
+import { DraftDecision, DraftDecisionBody, GroupAction, GroupControlBody, IdeaBody, landGroup, postDraftDecision, postGroupControl, postIdea } from "./api/group.ts";
 import { getLeaseLog, LeaseBody, postLease } from "./api/lease.ts";
 import { MailBody, postMail, postSay, SayBody } from "./api/messaging.ts";
-import { getDirs, getNotes, getSkills, postSkill } from "./api/panel.ts";
+import { getDirs, getNotes, getSkills, postSkill, SkillBody } from "./api/panel.ts";
 import { BlockedBody, DraftBody, DropBody, OwnsBody, postBlocked, postDraft, postDrop, postOwns, postSplit, SplitBody } from "./api/planning.ts";
 import { postPr, PrBody } from "./api/pr.ts";
-import { deleteProject, getProjectConfig, patchProjectConfig, postProject, postSetup } from "./api/project.ts";
+import { deleteProject, getProjectConfig, patchProjectConfig, postProject, postSetup, ProjectBody, ProjectConfigBody, SetupBody } from "./api/project.ts";
 import { evictOldestLessons, JournalBody, LESSON_CAP, postJournal, postStatus, StatusBody } from "./api/report.ts";
-import { AuditBody, getEvidence, getGateLog, postAudit, postReview, postSliceDecision, ReviewBody } from "./api/review.ts";
-import { getSettings, postSetting } from "./api/settings.ts";
-import { getImages, getPreflight, getSandbox, getSandboxServer, postImage, postSandboxServerAddr, postSandboxServerRestart, postSandboxServerStart } from "./api/sandbox.ts";
+import { AuditBody, getEvidence, getGateLog, postAudit, postReview, postSliceDecision, ReviewBody, SliceDecision, SliceDecisionBody } from "./api/review.ts";
+import { getSettings, postSetting, SettingBody } from "./api/settings.ts";
+import { AddrBody, getImages, getPreflight, getSandbox, getSandboxServer, ImageBody, postImage, postSandboxServerAddr, postSandboxServerRestart, postSandboxServerStart } from "./api/sandbox.ts";
 import { getCost, getState, snapshot } from "./api/snapshot.ts";
 import { getStream } from "./api/stream.ts";
 import { getTasks, postTaskClaim, postTaskDone, TaskDoneBody, TaskRef } from "./api/tasks.ts";
@@ -81,61 +81,61 @@ function apiRoutes(ctx: Ctx): Hono {
   const on = (fn: Handler<any>) => (c: HonoCtx) => fn(ctx, c.req.raw, c.req.param(), valid(c));
 
   app.get("/auth", on(getAuth));
-  app.post("/auth", on(postAuth));
+  app.post("/auth", check("json", AuthBody), on(postAuth));
   app.post("/auth/claude/login", on(postClaudeLogin));
-  app.post("/auth/claude/login/code", on(postClaudeCode));
+  app.post("/auth/claude/login/code", check("json", CodeBody), on(postClaudeCode));
   app.post("/auth/claude/login/cancel", on(postClaudeCancel));
   app.get("/auth/github", on(getGithubLogin));
   app.post("/auth/github", on(postGithubLogin));
   app.get("/github/repos", on(getGithubRepos));
-  app.post("/git/trailers", on(postTrailers));
+  app.post("/git/trailers", check("json", TrailersBody), on(postTrailers));
   app.post("/auth/codex/device", on(postCodexDevice));
   app.post("/auth/codex/device/cancel", on(postCodexDeviceCancel));
 
   app.get("/preflight", on(getPreflight));
   app.get("/sandbox", on(getSandbox));
   app.get("/sandbox/images", on(getImages));
-  app.post("/sandbox/images", on(postImage));
+  app.post("/sandbox/images", check("json", ImageBody), on(postImage));
   app.get("/sandbox-server", on(getSandboxServer));
   app.post("/sandbox-server/restart", on(postSandboxServerRestart));
   app.post("/sandbox-server/start", on(postSandboxServerStart));
-  app.post("/sandbox-server/addr", on(postSandboxServerAddr));
+  app.post("/sandbox-server/addr", check("json", AddrBody), on(postSandboxServerAddr));
 
   app.get("/settings", on(getSettings));
-  app.post("/settings", on(postSetting));
+  app.post("/settings", check("json", SettingBody), on(postSetting));
   app.get("/state", on(getState));
   app.get("/cost", on(getCost));
   app.get("/stream", on(getStream));
   app.get("/dirs", on(getDirs));
   app.get("/notes", on(getNotes));
   app.get("/skills", on(getSkills));
-  app.post("/skills", on(postSkill));
+  app.post("/skills", check("json", SkillBody), on(postSkill));
 
-  app.post("/projects", on(postProject));
+  app.post("/projects", check("json", ProjectBody), on(postProject));
   app.delete("/projects/:id", on(deleteProject));
   app.get("/project/:id/config", on(getProjectConfig));
-  app.post("/project/:id/config", on(patchProjectConfig));
+  app.post("/project/:id/config", check("json", ProjectConfigBody), on(patchProjectConfig));
 
-  app.post("/ideas", on(postIdea));
+  app.post("/ideas", check("json", IdeaBody), on(postIdea));
   app.post("/say", check("json", SayBody), on(postSay));
   app.post("/attach", on(postAttach));
-  app.post("/attach/local", on(postAttachLocal));
+  app.post("/attach/local", check("json", LocalPathsBody), on(postAttachLocal));
   app.get("/attach/:name", on(getAttachment));
 
-  app.post("/draft/:id/:decision", on(postDraftDecision));
+  app.post("/draft/:id/:decision", check("param", DraftDecision), check("json", DraftDecisionBody), on(postDraftDecision));
   // No `landed`: whether a PR is merged is GitHub's answer, and `pollPrs` asks it
   // every tick. A button for it was a boss confirming by hand what the server
   // already knew — and one mis-click dissolved a group whose PR was still open.
-  app.post("/groups/:id/:action", check("param", GroupAction), on(postGroupControl));
+  app.post("/groups/:id/:action", check("param", GroupAction), check("json", GroupControlBody), on(postGroupControl));
 
   app.get("/slices/:id/evidence", on(getEvidence));
   app.get("/slices/:id/gate/:name", on(getGateLog));
-  app.post("/slices/:id/:decision", on(postSliceDecision));
+  app.post("/slices/:id/:decision", check("param", SliceDecision), check("json", SliceDecisionBody), on(postSliceDecision));
 
-  app.post("/escalations/:id/answer", on(postAnswer));
+  app.post("/escalations/:id/answer", check("json", BossAnswerBody), on(postAnswer));
   app.post("/escalations/:id/revoke", on(postRevoke));
-  app.post("/escalations/:id/requirement", on(postEscalationRequirement));
-  app.post("/escalations/:id/delegate", on(postDelegate));
+  app.post("/escalations/:id/requirement", check("json", RequirementBody), on(postEscalationRequirement));
+  app.post("/escalations/:id/delegate", check("json", DelegateBody), on(postDelegate));
   app.get("/escalations/:id/draft", on(getAnswerDraft));
   return app;
 }
@@ -145,10 +145,14 @@ function apiRoutes(ctx: Ctx): Hono {
  *
  * `/api/*` takes no token — its caller is a browser on 127.0.0.1 and the port is
  * the whole authentication story. That stops the network and does not stop a web
- * page: `body<T>()` never checks `content-type`, so a POST with the default
- * `text/plain` is a *simple* request, no preflight, delivered. The attacker
- * cannot read the reply and does not need to — wiping the boss's credentials,
- * approving a DRAFT and dropping a group are all one-way.
+ * page: a POST with the default `text/plain` used to be a *simple* request —
+ * no preflight, delivered, and parsed. The attacker cannot read the reply and
+ * does not need to: wiping the boss's credentials, approving a DRAFT and
+ * dropping a group are all one-way.
+ *
+ * Two things stop it now. This, and the content-type gate in `makeApp` — a body
+ * that does not say `application/json` is refused before a route sees it, and
+ * saying it is what earns the preflight this was written to survive.
  *
  * A deny-list, not an allow-list, because the legitimate non-browser callers —
  * `curl`, `bun test`, the mailbox replay — send neither header, and refusing
@@ -200,7 +204,7 @@ function orchRoutes(ctx: Ctx): Hono<{ Variables: { agent: Caller } }> {
   app.post("/journal", check("json", JournalBody), on(postJournal));
   app.post("/mail", check("json", MailBody), on(postMail));
   app.post("/ask-boss", check("json", AskBossBody), on(postAskBoss));
-  app.post("/setup", on(postSetup));
+  app.post("/setup", check("json", SetupBody), on(postSetup));
   app.post("/lease", check("json", LeaseBody), on(postLease));
   app.get("/lease/:id/log", on(getLeaseLog));
   app.post("/ctx/query", check("json", CtxQueryBody), on(postCtxQuery));

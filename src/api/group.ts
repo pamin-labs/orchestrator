@@ -8,8 +8,9 @@ import { canStart, parseOwns } from "../mech/flow/ownership.ts";
 import { killSandbox } from "../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
-import { bad, body, firstIdea, json, text, type Handler } from "./shared.ts";
-import { bossFact, withAttachments, type Attachment } from "./attach.ts";
+import { Attachment as AttachmentSchema } from "./valid.ts";
+import { bad, firstIdea, json, text, type Handler } from "./shared.ts";
+import { bossFact, withAttachments } from "./attach.ts";
 import { slug } from "./slug.ts";
 import { say } from "../lang.ts";
 import type { Ctx } from "../ctx.ts";
@@ -23,14 +24,14 @@ import type { Ctx } from "../ctx.ts";
  * thing.
  */
 
-export const postIdea: Handler = async (ctx, req) => {
-  const b = await body<{
-    project_id: number;
-    text: string;
-    name?: string;
-    attachments?: { name: string; path: string; type: string }[];
-  }>(req);
-  if (!b.text?.trim()) return bad("empty idea");
+export const IdeaBody = z.object({
+  project_id: z.number().int().positive(),
+  text: z.string().trim().min(1, "empty idea").max(20_000),
+  name: z.string().max(80).optional(),
+  attachments: z.array(AttachmentSchema).max(20).optional(),
+});
+
+export const postIdea: Handler<z.infer<typeof IdeaBody>> = async (ctx, _req, _p, b) => {
   const name = (b.name ?? slug(b.text)).slice(0, 40);
   const grp = ctx.db
     .query<{ id: number }, [number, string]>(
@@ -85,8 +86,19 @@ export const postIdea: Handler = async (ctx, req) => {
   return json({ grp_id: grp.id, channel_id: ch.id, boundaryNeeded: others.length > 0 });
 };
 
-export const postDraftDecision: Handler = async (ctx, req, params) => {
-  const b = await body<{ card?: string; reason?: string; attachments?: Attachment[] }>(req);
+export const DraftDecision = z.object({
+  id: z.coerce.number().int().positive(),
+  decision: z.enum(["approve", "reject"]),
+});
+
+/** The edited card on an approve, the reason on a reject. Neither is required. */
+export const DraftDecisionBody = z.object({
+  card: z.string().max(20_000).optional(),
+  reason: z.string().max(8000).optional(),
+  attachments: z.array(AttachmentSchema).max(20).optional(),
+});
+
+export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>> = async (ctx, _req, params, b) => {
   const grpId = Number(params.id);
   const approve = params.decision === "approve";
 
@@ -259,7 +271,22 @@ export const GroupAction = z.object({
   action: z.enum(["pause", "resume", "park", "wake", "interrupt", "budget", "drop", "newpr", "rebuild"]),
 });
 
-export const postGroupControl: Handler = async (ctx, req, params) => {
+/**
+ * One body for nine actions, each field optional.
+ *
+ * A discriminated union would be the honest shape, and it cannot be written:
+ * the discriminant is `action`, which is in the path rather than the body. So
+ * the schema says what each field must be *if present* and the branch that
+ * wants one checks that it is there — which is the same division as everywhere
+ * else here, shape in the schema and meaning in the handler.
+ */
+export const GroupControlBody = z.object({
+  tokens: z.number().nullable().optional(),
+  why: z.string().max(4000).optional(),
+  mode: z.enum(["keep", "rollback"]).optional(),
+});
+
+export const postGroupControl: Handler<z.infer<typeof GroupControlBody>> = async (ctx, req, params, b) => {
   const grpId = Number(params.id);
   const action = params.action;
   switch (action) {
@@ -267,8 +294,7 @@ export const postGroupControl: Handler = async (ctx, req, params) => {
       // Budget exhaustion suspends the group, and until this existed there was no
       // route out of it: 继续 un-paused a group the scheduler refused to admit,
       // so the next tick suspended it again. A limit needs a way to be raised.
-      const b = await body<{ tokens?: number | null }>(req);
-      const t = b.tokens == null ? null : Math.round(Number(b.tokens));
+      const t = b.tokens == null ? null : Math.round(b.tokens);
       if (t !== null && !(t > 0)) return bad("tokens must be a positive number, or null to lift the cap");
       const spent = ctx.db
         .query<{ spent_tokens: number; status: string }, [number]>("SELECT spent_tokens, status FROM grp WHERE id = ?")
@@ -369,7 +395,6 @@ export const postGroupControl: Handler = async (ctx, req, params) => {
       // else already fixed, had no way off the board: 退回重拆 sends it back to the
       // Dispatcher, which writes another card for work nobody wants. The paths it
       // held stayed held, so a group waiting on them waited forever.
-      const b = await body<{ why?: string }>(req);
       const g = ctx.db
         .query<{ status: string; name: string }, [number]>("SELECT status, name FROM grp WHERE id = ?")
         .get(grpId);
@@ -402,8 +427,7 @@ export const postGroupControl: Handler = async (ctx, req, params) => {
       return text("ok");
     }
     case "interrupt": {
-      const b = await body<{ mode?: string }>(req);
-      const mode = b.mode === "rollback" ? "rollback" : "keep";
+      const mode = b.mode ?? "keep";
       const out = await interrupt(ctx, grpId, mode);
       return json(out);
     }

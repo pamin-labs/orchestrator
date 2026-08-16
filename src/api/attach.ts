@@ -2,7 +2,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cp, mkdir, writeFile } from "node:fs/promises";
-import { bad, body, json, text, type Handler } from "./shared.ts";
+import { z } from "zod";
+import { bad, json, text, type Handler } from "./shared.ts";
 import type { Ctx } from "../ctx.ts";
 import { sediment } from "../mech/knowledge/lessons.ts";
 
@@ -107,9 +108,10 @@ export const postAttach: Handler = async (ctx, req) => {
  * the agent reads has to still be there when it reads it, and the boss's working
  * copy moves.
  */
-export const postAttachLocal: Handler = async (ctx, req) => {
-  const b = await body<{ paths?: string[] }>(req);
-  const picked = (b.paths ?? []).filter((s) => typeof s === "string" && s.trim());
+export const LocalPathsBody = z.object({ paths: z.array(z.string().max(4000)).max(200).default([]) });
+
+export const postAttachLocal: Handler<z.infer<typeof LocalPathsBody>> = async (ctx, _req, _p, b) => {
+  const picked = b.paths.filter((s) => s.trim());
   if (!picked.length) return bad("no path");
   const root = join(ctx.config.dataDir ?? "data", "attachments");
   await mkdir(root, { recursive: true });

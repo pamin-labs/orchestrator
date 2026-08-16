@@ -41,14 +41,6 @@ export const text = (s: string, status = 200) =>
   new Response(s, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 export const bad = (msg: string) => text(msg, 422);
 
-export async function body<T>(req: Request): Promise<T> {
-  try {
-    return (await req.json()) as T;
-  } catch {
-    return {} as T;
-  }
-}
-
 /**
  * May this caller act on that group?
  *

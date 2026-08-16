@@ -1,5 +1,6 @@
 import { defaultFor, overrides, putSetting, settablePaths } from "../settings.ts";
-import { bad, body, json, text, type Handler } from "./shared.ts";
+import { z } from "zod";
+import { bad, json, text, type Handler } from "./shared.ts";
 import type { Config } from "../config.ts";
 
 /**
@@ -26,9 +27,16 @@ export const getSettings: Handler = async (ctx) => {
   });
 };
 
-export const postSetting: Handler = async (ctx, req) => {
-  const b = await body<{ path?: string; value?: unknown }>(req);
-  if (!b.path) return bad("which setting");
+/**
+ * One path and its value, never a document.
+ *
+ * `value` is `unknown` because the type it must be is `DEFAULTS`' — the settings
+ * table is the authority on which paths exist and what each one holds, and
+ * `putSetting` checks against it. A shape here could only say "anything", twice.
+ */
+export const SettingBody = z.object({ path: z.string().min(1).max(120), value: z.unknown().optional() });
+
+export const postSetting: Handler<z.infer<typeof SettingBody>> = async (ctx, _req, _p, b) => {
   // `null` clears the override and falls back to the file. Distinguished from
   // "absent" so that clearing is an explicit action rather than an empty body.
   const why = putSetting(ctx.db, ctx.config as Config, b.path, b.value ?? null);

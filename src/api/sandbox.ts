@@ -5,7 +5,8 @@ import type { Config } from "../config.ts";
 import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "../mech/sandbox/server.ts";
 import { resetServerRestarts } from "../mech/ops/watchdog.ts";
 import { preflight } from "../mech/ops/preflight.ts";
-import { bad, body, json, text, type Handler } from "./shared.ts";
+import { z } from "zod";
+import { bad, json, text, type Handler } from "./shared.ts";
 
 /**
  * What this machine can and cannot do, and the sidecar that decides it.
@@ -76,9 +77,11 @@ export const getImages: Handler = async (ctx) => {
   return json({ ...imageCache.v, current: ctx.config.sandbox?.image ?? "" });
 };
 
-export const postImage: Handler = async (ctx, req) => {
-  const b = await body<{ image?: string }>(req);
-  const image = (b.image ?? "").trim();
+/** Empty clears the machine's default back to whatever ships. */
+export const ImageBody = z.object({ image: z.string().max(300).default("") });
+
+export const postImage: Handler<z.infer<typeof ImageBody>> = async (ctx, _req, _p, b) => {
+  const image = b.image.trim();
   // The same rule the container build applies, applied where the boss can read
   // it. Without this the refusal arrives as a container that will not create.
   if (image && !allowedImage(image)) return bad(`${image} 不是我们发布的镜像，也不是本机构建的`);
@@ -155,9 +158,10 @@ export const postSandboxServerRestart: Handler = async (ctx) => {
 };
 
 /** Point us at another server. The way out of "that one is not ours". */
-export const postSandboxServerAddr: Handler = async (ctx, req) => {
-  const b = await body<{ addr?: string }>(req);
-  const addr = (b.addr ?? "").trim();
+export const AddrBody = z.object({ addr: z.string().max(300).default("") });
+
+export const postSandboxServerAddr: Handler<z.infer<typeof AddrBody>> = async (ctx, _req, _p, b) => {
+  const addr = b.addr.trim();
   // `host:port`, or empty to fall back to the yaml. Checked because a bad value
   // here makes every container call fail somewhere far away from this box.
   // A hostname and an optional scheme, because the server does not have to be on

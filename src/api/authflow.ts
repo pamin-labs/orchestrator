@@ -2,7 +2,8 @@ import { APP_SLUG, BOT, commitIdentity, forgetIdentity, githubAccount, listInsta
 import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "../mech/sandbox/auth.ts";
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "../mech/sandbox/login.ts";
 import { killSandbox, serverKeyOnDisk } from "../mech/sandbox/sandbox.ts";
-import { bad, body, json, text, type Handler } from "./shared.ts";
+import { z } from "zod";
+import { bad, json, text, type Handler } from "./shared.ts";
 import type { Ctx } from "../ctx.ts";
 
 /**
@@ -26,11 +27,24 @@ import type { Ctx } from "../ctx.ts";
 // a second fetch for one boolean is a second thing that can be stale.
 export const getAuth: Handler = async (ctx) => json({ runtimes: listAuth(ctx.db), trailers: trailers(ctx.db) });
 
-export const postAuth: Handler = async (ctx, req) => {
-  const b = await body<{
-    runtime?: string; mode?: string; secret?: string; baseUrl?: string; clear?: boolean; adopt?: boolean;
-  }>(req);
-  const runtime = (b.runtime ?? "").trim();
+/**
+ * `secret` is not length-capped and not logged.
+ *
+ * A pasted `auth.json` is tens of kilobytes and a token is a hundred bytes, so
+ * any cap here would be a guess that refuses a real credential — and the failure
+ * would read as "the paste is broken". `wrongShape` is what judges it, by shape.
+ */
+export const AuthBody = z.object({
+  runtime: z.string().max(40).default(""),
+  mode: z.string().max(40).optional(),
+  secret: z.string().optional(),
+  baseUrl: z.string().max(2000).optional(),
+  clear: z.boolean().optional(),
+  adopt: z.boolean().optional(),
+});
+
+export const postAuth: Handler<z.infer<typeof AuthBody>> = async (ctx, _req, _p, b) => {
+  const runtime = b.runtime.trim();
   let secret = (b.secret ?? "").trim();
   if (!runtime) return bad("which runtime?");
   // Read the sandbox server's key out of the server's own config rather than
@@ -183,9 +197,10 @@ export const postClaudeLogin: Handler = async (ctx) => {
 };
 
 /** The code off that page, handed to the prompt the CLI is sitting at. */
-export const postClaudeCode: Handler = async (ctx, req) => {
-  const b = await body<{ code?: string }>(req);
-  const code = (b.code ?? "").trim();
+export const CodeBody = z.object({ code: z.string().max(4000).default("") });
+
+export const postClaudeCode: Handler<z.infer<typeof CodeBody>> = async (ctx, _req, _p, b) => {
+  const code = b.code.trim();
   if (!code) return bad("没有码");
   if (!claudeFlow) return bad("没有在等码的登录 —— 先点登录");
   await startClaudeLogin(ctx).submit(code);
@@ -359,8 +374,13 @@ export const getGithubLogin: Handler = async (ctx) => {
 };
 
 /** The two switches. Both default on; see `TRAILERS_KEY` for why each exists. */
-export const postTrailers: Handler = async (ctx, req) => {
-  const b = await body<{ signoff?: boolean; coauthor?: boolean; claudeCoauthor?: boolean }>(req);
+export const TrailersBody = z.object({
+  signoff: z.boolean().optional(),
+  coauthor: z.boolean().optional(),
+  claudeCoauthor: z.boolean().optional(),
+});
+
+export const postTrailers: Handler<z.infer<typeof TrailersBody>> = async (ctx, _req, _p, b) => {
   return json(setTrailers(ctx.db, b));
 };
 

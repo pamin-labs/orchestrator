@@ -6,9 +6,9 @@ import { sliceDiffBase } from "../mech/git/worktree.ts";
 import { baseRefFor, sandboxGit } from "../mech/git/checkout.ts";
 import { WORK } from "../mech/sandbox/sandbox.ts";
 import { z } from "zod";
-import { GroupRef } from "./valid.ts";
-import { bad, body, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
-import { bossFact, withAttachments, type Attachment } from "./attach.ts";
+import { Attachment as AttachmentSchema, GroupRef } from "./valid.ts";
+import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
+import { bossFact, withAttachments } from "./attach.ts";
 import { gatesFor } from "../mech/flow/gate.ts";
 
 /**
@@ -212,8 +212,17 @@ export const getGateLog: Handler = async (ctx, req, params) => {
   return text(grep ? lines.filter((l) => l.includes(grep)).slice(0, 4000).join("\n") : lines.slice(-4000).join("\n"));
 };
 
-export const postSliceDecision: Handler = async (ctx, req, params) => {
-  const raw = await body<{ feedback?: string; attachments?: Attachment[] }>(req);
+export const SliceDecision = z.object({
+  id: z.coerce.number().int().positive(),
+  decision: z.enum(["accept", "reject"]),
+});
+
+export const SliceDecisionBody = z.object({
+  feedback: z.string().max(20_000).optional(),
+  attachments: z.array(AttachmentSchema).max(20).optional(),
+});
+
+export const postSliceDecision: Handler<z.infer<typeof SliceDecisionBody>> = async (ctx, _req, params, raw) => {
   const b = { feedback: raw.feedback ? withAttachments(raw.feedback, raw.attachments) : raw.feedback };
   const id = Number(params.id);
   const accept = params.decision === "accept";

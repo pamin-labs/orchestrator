@@ -8,7 +8,8 @@ import { pushBlocked } from "../mech/git/prwatch.ts";
 import { runInstall } from "../mech/flow/start.ts";
 import { forgetProjectSkills } from "../mech/util/skills.ts";
 import { abortJob } from "../runtime/running.ts";
-import { bad, body, json, text, type AgentHandler, type Handler } from "./shared.ts";
+import { z } from "zod";
+import { bad, json, text, type AgentHandler, type Handler } from "./shared.ts";
 
 /**
  * A repository this fleet works on: added, configured, and removed.
@@ -30,8 +31,10 @@ import { bad, body, json, text, type AgentHandler, type Handler } from "./shared
  * mattering. What is worth keeping is the answer, so the next group does not pay
  * to read the same repo again.
  */
-export const postSetup: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ cmd?: string; none?: boolean }>(req);
+/** The install command this project needs, or `none` for "it needs nothing". */
+export const SetupBody = z.object({ cmd: z.string().max(2000).optional(), none: z.boolean().optional() });
+
+export const postSetup: AgentHandler<z.infer<typeof SetupBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "bootstrap") return bad(`${a.role} does not set this project up`);
   if (!a.grp_id) return bad("this agent has no group");
   const grp = ctx.db
@@ -74,9 +77,14 @@ export const postSetup: AgentHandler = async (ctx, req, a) => {
  * after the first group's clone, writing its guess into project config. What is
  * left here is what GitHub can answer in one request.
  */
-export const postProject: Handler = async (ctx, req) => {
-  const b = await body<{ name?: string; repo?: string; gates?: string[] }>(req);
-  const want = (b.repo ?? "").trim();
+export const ProjectBody = z.object({
+  repo: z.string().max(200).default(""),
+  name: z.string().max(80).optional(),
+  gates: z.array(z.string().max(80)).max(40).optional(),
+});
+
+export const postProject: Handler<z.infer<typeof ProjectBody>> = async (ctx, _req, _p, b) => {
+  const want = b.repo.trim();
   if (!want) return bad("which repository? (owner/name)");
   if (!ctx.gh) return bad("this server has no GitHub client");
 
@@ -310,11 +318,20 @@ export const deleteProject: Handler = async (ctx, _req, params) => {
  */
 const CONFIG_KEYS = new Set(["gates", "install", "sandbox", "container", "index"]);
 
-export const patchProjectConfig: Handler = async (ctx, req, params) => {
+/**
+ * A partial `config_json`, merged key by key.
+ *
+ * The keys are checked against `CONFIG_KEYS` below rather than enumerated here,
+ * and the values where they are used — `gates` by `gate.ts`, `sandbox` by
+ * `specFor`. A shape in this file would be a fourth place that has to agree.
+ */
+export const ProjectConfigBody = z.record(z.string(), z.unknown());
+
+export const patchProjectConfig: Handler<z.infer<typeof ProjectConfigBody>> = async (ctx, _req, params, data) => {
   const id = Number(params.id);
   const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
   if (!row) return text("no such project", 404);
-  const patch = await body<Record<string, unknown>>(req);
+  const patch = data;
   // A column, not a config_json key: it is read on every clone, rebase and diff,
   // and it is re-detected and written back when the remote renames it. Empty
   // means "ask the remote", which is what a fresh project starts as.

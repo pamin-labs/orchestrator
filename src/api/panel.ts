@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { relinkSkills } from "../mech/sandbox/sandbox.ts";
 import { listSkills, projectSkills, projectSkillsPending, restageSkills, setSkillOff, skillsOff } from "../mech/util/skills.ts";
+import { z } from "zod";
 import { bad, json, type Handler } from "./shared.ts";
 import { expandHome } from "./attach.ts";
 
@@ -97,8 +98,10 @@ export const getSkills: Handler = async (ctx, req) => {
  * changes here is visible to every running container as soon as the next turn's CLI
  * process starts. No sandbox is rebuilt for a tick box.
  */
-export const postSkill: Handler = async (ctx, req) => {
-  const b = (await req.json().catch(() => ({}))) as { name?: string; on?: boolean };
+/** No name is a rescan; a name plus `on` is a tick box. */
+export const SkillBody = z.object({ name: z.string().max(200).optional(), on: z.boolean().optional() });
+
+export const postSkill: Handler<z.infer<typeof SkillBody>> = async (ctx, _req, _p, b) => {
   // No name is a rescan: the boss installed or removed a skill outside this
   // process, and the staged copy is the only thing that does not know yet.
   if (b.name) setSkillOff(ctx.db, b.name, b.on === false);

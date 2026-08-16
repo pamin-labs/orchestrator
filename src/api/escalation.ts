@@ -1,8 +1,8 @@
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "../mech/flow/chain.ts";
 import { z } from "zod";
-import { GroupRef, Prose } from "./valid.ts";
-import { bad, body, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
-import { bossFact, withAttachments, type Attachment } from "./attach.ts";
+import { Attachment as AttachmentSchema, GroupRef, Prose } from "./valid.ts";
+import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
+import { bossFact, withAttachments } from "./attach.ts";
 import { slug } from "./slug.ts";
 import { sandboxGit } from "../mech/git/checkout.ts";
 import { WORK } from "../mech/sandbox/sandbox.ts";
@@ -152,9 +152,14 @@ export const postTriage: AgentHandler<z.infer<typeof TriageBody>> = async (ctx, 
  * `orch blocked` is the same move made by an agent. This is it made by the boss,
  * on anything already in the queue, including the findings agents cannot act on.
  */
-export const postEscalationRequirement: Handler = async (ctx, req, params) => {
+/** A question the boss turns into a requirement of its own. */
+export const RequirementBody = z.object({
+  text: z.string().max(20_000).optional(),
+  name: z.string().max(80).optional(),
+});
+
+export const postEscalationRequirement: Handler<z.infer<typeof RequirementBody>> = async (ctx, _req, params, b) => {
   const id = Number(params.id);
-  const b = await body<{ text?: string; name?: string }>(req);
   const esc = ctx.db
     .query<{ grp_id: number | null; question: string; answer: string | null }, [number]>(
       "SELECT grp_id, question, answer FROM escalation WHERE id = ?",
@@ -223,8 +228,13 @@ export const postRevoke: Handler = async (ctx, _req, params) => {
   return json(out);
 };
 
-export const postAnswer: Handler = async (ctx, req, params) => {
-  const b = await body<{ answer: string; answered_by?: string; attachments?: Attachment[] }>(req);
+export const BossAnswerBody = z.object({
+  answer: z.string().min(1).max(20_000),
+  answered_by: z.string().max(40).optional(),
+  attachments: z.array(AttachmentSchema).max(20).optional(),
+});
+
+export const postAnswer: Handler<z.infer<typeof BossAnswerBody>> = async (ctx, _req, params, b) => {
   const id = Number(params.id);
   const esc = ctx.db
     .query<{ grp_id: number | null; severity: string }, [number]>(
@@ -329,8 +339,14 @@ export const getAnswerDraft: Handler = async (ctx, _req, params) => {
  * what reaches the boss is a technical call somebody else should make, and
  * without this the only ways out are answering it or leaving it to rot.
  */
-export const postDelegate: Handler = async (ctx, req, params) => {
-  const b = await body<{ to?: string }>(req);
+/**
+ * `to` is checked against `CHAIN` rather than restated as an enum here: the
+ * chain is the order questions travel in, it lives in one place, and a copy of
+ * it in a schema is the copy that goes stale when a level is added.
+ */
+export const DelegateBody = z.object({ to: z.string().max(40).optional() });
+
+export const postDelegate: Handler<z.infer<typeof DelegateBody>> = async (ctx, _req, params, b) => {
   const to = b.to ?? "architect";
   if (!CHAIN.includes(to as never) || to === "boss") {
     return bad(`to must be one of: ${CHAIN.filter((c) => c !== "boss").join(", ")}`);
