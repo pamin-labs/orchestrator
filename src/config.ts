@@ -75,9 +75,14 @@ export interface RoleDef {
  * under `$HOME` is shared into the VM and works.
  */
 export function defaultSkillsDir(): string {
-  return platform() === "darwin"
-    ? join(homedir(), ".orch-cache/skills")
-    : "/var/tmp/orch-cache/skills";
+  if (platform() === "darwin") return join(homedir(), ".orch-cache/skills");
+  // Windows has no `/var/tmp`, and the path matters more here than anywhere
+  // else: it is one side of a bind mount performed by a docker daemon that, on
+  // Windows, lives in WSL and does not read drive letters the same way. A path
+  // under the user's profile is at least one this process can create; making the
+  // two ends agree is `ORCH_SKILLS_DIR` and a line in `allowed_host_paths`.
+  if (platform() === "win32") return join(homedir(), ".orch-cache", "skills");
+  return "/var/tmp/orch-cache/skills";
 }
 
 export type Config = {

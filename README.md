@@ -44,10 +44,15 @@ Docker is required for the *sandboxes*, which is what it was always for.
 docker pull opensandbox/egress:v1.1.6             # v1.1.4 breaks scoped npm packages
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
 
-# linux-x64, linux-arm64, darwin-x64, darwin-arm64
 curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
 cd orch-server-* && ./orch-server                 # → 127.0.0.1:47821
 ```
+
+| | |
+|---|---|
+| Linux | `orch-server-linux-x64.tar.gz` · `orch-server-linux-arm64.tar.gz` |
+| macOS | `orch-server-darwin-arm64.tar.gz` · `orch-server-darwin-x64.tar.gz` — unsigned, so `xattr -dr com.apple.quarantine orch-server-*` once |
+| Windows | `orch-server-windows-x64.zip` — the sandbox server itself has to run under WSL, and `ORCH_SKILLS_DIR` has to name a path both sides of the mount agree on |
 
 Loopback on purpose: there is no login in front of the panel, so whoever reaches
 it is you. Put a reverse proxy with auth in front before publishing it anywhere

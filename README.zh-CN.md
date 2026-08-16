@@ -43,10 +43,15 @@ agent 真跑了 `rm -rf`，炸的是一个容器。
 docker pull opensandbox/egress:v1.1.6             # v1.1.4 会搞坏 scoped npm 包
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode 要是 "dns+nft"
 
-# 四个平台：linux-x64、linux-arm64、darwin-x64、darwin-arm64
 curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
 cd orch-server-* && ./orch-server                 # → 127.0.0.1:47821
 ```
+
+| | |
+|---|---|
+| Linux | `orch-server-linux-x64.tar.gz` · `orch-server-linux-arm64.tar.gz` |
+| macOS | `orch-server-darwin-arm64.tar.gz` · `orch-server-darwin-x64.tar.gz` —— 没签名，先跑一次 `xattr -dr com.apple.quarantine orch-server-*` |
+| Windows | `orch-server-windows-x64.zip` —— 沙盒服务器本身要跑在 WSL 里，而且 `ORCH_SKILLS_DIR` 要是挂载两侧都认的同一个路径 |
 
 只绑 loopback 是故意的：面板前面没有登录，能访问到它的人就是你。要放到别处，
 前面加一层带鉴权的反向代理。
