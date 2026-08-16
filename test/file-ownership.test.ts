@@ -242,11 +242,15 @@ test("the revert actually runs, against the group's own checkout", async () => {
   // mechanism enforcing file ownership after 005 threw on every turn. Nothing
   // asserted the wiring, only the pure function above it.
   const db = seed([{ name: "g1", owns: ["src/auth/**"] }]);
-  // shq quotes every argument, so the command is `git 'status' '--porcelain'`.
+  // shq quotes every argument, so the command is `git 'status' '--porcelain' '-z'`,
+  // and `-z` means the separator is NUL. The second status is the read-back: the
+  // announcement is made from what is gone, not from what we tried to remove.
   const cwds: string[] = [];
+  let statuses = 0;
   const sandbox = fakeSandbox((cmd, cwd) => {
     cwds.push(cwd);
-    return cmd.includes("'status'") ? { out: " M src/auth/mw.ts\n?? web/stray.ts\n" } : {};
+    if (!cmd.includes("'status'")) return {};
+    return { out: ++statuses === 1 ? " M src/auth/mw.ts\0?? web/stray.ts\0" : " M src/auth/mw.ts\0" };
   });
   const said: string[] = [];
   const ctx = {
@@ -272,4 +276,64 @@ test("the revert actually runs, against the group's own checkout", async () => {
   expect(ran).not.toContain("src/auth/mw.ts");
   // Said out loud, or the agent watches its own work vanish.
   expect(said.join(" ")).toContain("web/stray.ts");
+});
+
+test("a path git had to quote is still the path that gets rolled back", async () => {
+  // `git status --porcelain` applies core.quotePath, which is on by default, so
+  // any path outside ASCII — or merely containing a space — arrives as
+  // `"docs/\\350\\256\\276\\350\\256\\241.md"`. That string matches no pathspec:
+  // git answers `error: pathspec ... did not match any file(s)`, exits 1, changes
+  // nothing. The exit code was not read, so the bus announced a revert that had
+  // not happened — decision 005's last enforcement failing open and reporting
+  // success, in a project whose output language is Chinese.
+  const db = seed([{ name: "g1", owns: ["src/auth/**"] }]);
+  let statuses = 0;
+  const sandbox = fakeSandbox((cmd) => {
+    if (!cmd.includes("'status'")) return {};
+    return { out: ++statuses === 1 ? "?? docs/设计 稿.md\0" : "" };
+  });
+  const said: string[] = [];
+  const ctx = {
+    db,
+    bus: { emit: (e: { body: string }) => said.push(e.body) },
+    sandbox,
+    config: { language: "中文" },
+  } as unknown as Ctx;
+
+  await reconcileOwnership(
+    { ctx } as never,
+    { role: "engineer" } as never,
+    { grp_id: 1 } as never,
+    { owns_json: JSON.stringify(["src/auth/**"]) },
+  );
+
+  expect(sandbox.commands.join("\n")).toContain("'clean' '-fd' '--' 'docs/设计 稿.md'");
+  expect(said.join(" ")).toContain("docs/设计 稿.md");
+});
+
+test("a revert that changed nothing says so instead of claiming it worked", async () => {
+  const db = seed([{ name: "g1", owns: ["src/auth/**"] }]);
+  // Both status calls report the stray: git ran, git exited non-zero, the file
+  // is still there.
+  const sandbox = fakeSandbox((cmd) =>
+    cmd.includes("'status'") ? { out: "?? web/stray.ts\0" } : { code: 1, out: "error: pathspec did not match" },
+  );
+  const said: string[] = [];
+  const ctx = {
+    db,
+    bus: { emit: (e: { body: string }) => said.push(e.body) },
+    sandbox,
+    config: { language: "中文" },
+  } as unknown as Ctx;
+
+  await reconcileOwnership(
+    { ctx } as never,
+    { role: "engineer" } as never,
+    { grp_id: 1 } as never,
+    { owns_json: JSON.stringify(["src/auth/**"]) },
+  );
+
+  const all = said.join(" ");
+  expect(all).toContain("could not roll back");
+  expect(all).toContain("web/stray.ts");
 });

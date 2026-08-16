@@ -1,7 +1,6 @@
 import { projectOfAgent } from "../mech/util/rows.ts";
 import { basename, join, resolve } from "node:path";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { gzipSync } from "node:zlib";
+import { mkdirSync } from "node:fs";
 import type { Ctx } from "../ctx.ts";
 import { imagePaths, mintToken } from "../api.ts";
 import type { Config, RoleDef } from "../config.ts";
@@ -12,13 +11,13 @@ import { say } from "../lang.ts";
 import { listSkills, projectSkills, readSkillIn } from "../mech/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
 import { resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
-import { checkpoint, changedSince } from "../mech/git/worktree.ts";
+import { checkpoint, changedSince, porcelainPaths, STATUS_Z } from "../mech/git/worktree.ts";
 import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { gitTrailers } from "../mech/git/ghlogin.ts";
 import { track, untrack } from "./running.ts";
 import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
-import { recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/ops/watchdog.ts";
+import { gzipTurnLog, recordTurnOutcome, runWatchdog, REEMIT_MS } from "../mech/ops/watchdog.ts";
 import { runStandup } from "../mech/flow/standup.ts";
 import {
   auditVerdict,
@@ -897,24 +896,6 @@ export async function stageAttachments(
 }
 
 /**
- * Compress a finished turn's log and drop the raw file.
- *
- * The sweep in watchdog.ts did this after 24 hours, which meant a day of raw
- * NDJSON on disk at all times — most of the 59 MB this directory had reached.
- * Nothing reads a warm log: every consumer is a person looking at it afterwards.
- * The sweep stays as the backstop for logs left behind by a crash.
- */
-function gzipTurnLog(path: string): void {
-  try {
-    if (!existsSync(path)) return;
-    writeFileSync(`${path}.gz`, gzipSync(readFileSync(path)));
-    rmSync(path, { force: true });
-  } catch {
-    // A log that will not compress is not worth failing a turn over.
-  }
-}
-
-/**
  * The account's own quota state, for the header.
  *
  * Only codex volunteers this, and only in `token_count`. The claude side is
@@ -958,7 +939,7 @@ export async function reconcileOwnership(
   if (!owns.length || !job.grp_id) return;
 
   const git = sandboxGit(deps.ctx, { grp: job.grp_id });
-  const status = await git(WORK, ["status", "--porcelain"], WORK);
+  const status = await git(WORK, STATUS_Z, WORK);
   if (status.code !== 0) {
     // Said out loud. This is the only file-ownership enforcement there is since
     // 005 deleted the deny-list, and `engineer.yaml` promises it to the agent —
@@ -974,20 +955,36 @@ export async function reconcileOwnership(
     });
     return;
   }
-  // "XY path" and "XY old -> new"; the destination is the one that exists now.
-  const changed = status.out
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => l.slice(3).trim())
-    .map((p) => (p.includes(" -> ") ? p.split(" -> ")[1]!.trim() : p))
-    .map((p) => p.replace(/^"|"$/g, ""));
-
-  const stray = outsideOwns(changed, owns);
+  const stray = outsideOwns(porcelainPaths(status.out), owns);
   if (!stray.length) return;
 
-  // Untracked files have nothing to check out, so they are removed instead.
-  await git(WORK, ["checkout", "--", ...stray], WORK);
-  await git(WORK, ["clean", "-fd", "--", ...stray], WORK);
+  // Untracked files have nothing to check out, so they are removed instead — the
+  // pair is expected to disagree about which paths it can act on, which is why
+  // neither exit code alone is the test.
+  const [co, cl] = await Promise.all([
+    git(WORK, ["checkout", "--", ...stray], WORK),
+    git(WORK, ["clean", "-fd", "--", ...stray], WORK),
+  ]);
+  // What is actually gone, read back rather than assumed. This announcement used
+  // to be made from the list of files we had *tried* to revert: when the pathspec
+  // did not match — every non-ASCII and every spaced path, before `-z` — git
+  // exited 1, changed nothing, and the boss was told the boundary had held.
+  const after = await git(WORK, STATUS_Z, WORK);
+  const left = after.code === 0 ? new Set(outsideOwns(porcelainPaths(after.out), owns)) : new Set<string>();
+  const reverted = stray.filter((p) => !left.has(p));
+  if (!reverted.length) {
+    deps.ctx.bus.emit({
+      grpId: job.grp_id,
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "blocker",
+      body:
+        `could not roll back ${stray.length} file(s) outside this group's paths ` +
+        `(${stray.slice(0, 5).join(", ")}): ${(co.out || cl.out || "git changed nothing").slice(0, 200)}`,
+      meta: { stray, owns },
+    });
+    return;
+  }
   deps.ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",
@@ -995,10 +992,10 @@ export async function reconcileOwnership(
     severity: "blocker",
     body: say(deps.ctx.config?.language, "owns.reverted", {
       role: agent.role,
-      files: stray.slice(0, 5).join(", "),
-      n: String(stray.length),
+      files: reverted.slice(0, 5).join(", "),
+      n: String(reverted.length),
     }),
-    meta: { reverted: stray, owns },
+    meta: { reverted, stray, owns },
   });
 }
 

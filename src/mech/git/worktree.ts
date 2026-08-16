@@ -133,14 +133,46 @@ export async function detectBaseBranch(git: GitRunner, repoPath: string): Promis
  */
 const CAP = 12;
 function touched(porcelain: string): string {
-  const files = porcelain
-    .split("\n")
-    .map((l) => l.slice(3).trim())
-    // `R  old -> new`: the new name is the one that exists now.
-    .map((p) => p.split(" -> ").pop()!)
-    .filter(Boolean);
+  const files = porcelainPaths(porcelain);
   const head = files.slice(0, CAP).join("\n");
   return files.length > CAP ? `${head}\n… and ${files.length - CAP} more` : head;
+}
+
+/** `git status --porcelain -z` and friends. Always `-z`; see `porcelainPaths`. */
+export const STATUS_Z = ["status", "--porcelain", "-z"];
+
+/**
+ * The paths `git status --porcelain -z` reports, as they exist on disk.
+ *
+ * Must be the `-z` form, and the reason is not tidiness. Without it git applies
+ * `core.quotePath`, which defaults to on: a path outside ASCII comes back as
+ * `"docs/\350\256\276\350\256\241.md"` and a path containing a space comes back
+ * quoted too. The caller that mattered is the file-ownership sweep in
+ * `executor.ts`, which feeds these names straight to `git checkout --` and
+ * `git clean -fd` — and a mangled name matches no pathspec, so git answers
+ *
+ *     error: pathspec 'docs/\350\256\276\350\256\241.md' did not match any file(s)
+ *
+ * exits 1, changes nothing, and the exit code was not read. The out-of-bounds
+ * file survived and the bus announced it had been reverted, with a count. That
+ * is decision 005's only remaining enforcement failing open and reporting
+ * success, in a project whose runtime output language is Chinese.
+ *
+ * `-z` also removes the second guess: entries are NUL-separated, so a rename is
+ * `XY new\0old\0` rather than `XY old -> new`, and a path that legitimately
+ * contains " -> " stops being ambiguous.
+ */
+export function porcelainPaths(zOut: string): string[] {
+  const fields = zOut.split("\0");
+  const out: string[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i]!;
+    if (f.length < 4) continue;
+    out.push(f.slice(3));
+    // R and C records are two fields: the name now, then the name before.
+    if (f[0] === "R" || f[0] === "C" || f[1] === "R" || f[1] === "C") i++;
+  }
+  return out;
 }
 
 /**
@@ -157,7 +189,7 @@ export async function checkpoint(
   label: string,
   trailers: Trailers = DEFAULT_TRAILERS,
 ): Promise<string | null> {
-  const status = await git(repoPath, ["status", "--porcelain"], worktree);
+  const status = await git(repoPath, STATUS_Z, worktree);
   if (status.code !== 0) return null;
   if (status.out.trim()) {
     await git(repoPath, ["add", "-A"], worktree);
@@ -328,13 +360,16 @@ export async function changedSince(
   worktree: string,
   sha: string,
 ): Promise<string[]> {
+  // `-z` for the same reason `porcelainPaths` insists on it: without it these
+  // two also come back with non-ASCII and spaced paths quoted and escaped, and
+  // these names are what the boss's slice diff is built from.
   const [tracked, untracked] = await Promise.all([
-    git(repoPath, ["diff", "--name-only", sha], worktree),
-    git(repoPath, ["ls-files", "--others", "--exclude-standard"], worktree),
+    git(repoPath, ["diff", "--name-only", "-z", sha], worktree),
+    git(repoPath, ["ls-files", "--others", "--exclude-standard", "-z"], worktree),
   ]);
   const lines = [
-    ...(tracked.code === 0 ? tracked.out.split("\n") : []),
-    ...(untracked.code === 0 ? untracked.out.split("\n") : []),
+    ...(tracked.code === 0 ? tracked.out.split("\0") : []),
+    ...(untracked.code === 0 ? untracked.out.split("\0") : []),
   ];
-  return [...new Set(lines.map((l) => l.trim()).filter(Boolean))];
+  return [...new Set(lines.filter(Boolean))];
 }
