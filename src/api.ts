@@ -1,450 +1,46 @@
-import { dirname, join, resolve } from "node:path";
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import { relinkSkills } from "./mech/sandbox/sandbox.ts";
-import { checkPrMessage } from "./mech/git/prwatch.ts";
-import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/knowledge/ctx.ts";
-import { loadTree, NOTE_PREFIX, render, search } from "./mech/knowledge/pageindex.ts";
-import { listSkills, projectSkills, projectSkillsPending, restageSkills, setSkillOff, skillsOff } from "./mech/util/skills.ts";
 import { Hono } from "hono";
-import { agentOf, bad, body, json, mayAct, mintToken, resolveGroup, text, type AgentHandler, type Handler } from "./api/shared.ts";
-import { getTasks, postTaskClaim, postTaskDone } from "./api/tasks.ts";
-import { getCost, getState, snapshot } from "./api/snapshot.ts";
-import { bossFact, expandHome, getAttachment, imagePaths, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/attach.ts";
-import { postBlocked, postDraft, postDrop, postOwns, postSplit } from "./api/planning.ts";
-import { evictOldestLessons, LESSON_CAP, postJournal, postStatus } from "./api/report.ts";
-import { postMail, postSay } from "./api/messaging.ts";
-import { getLeaseLog, postLease } from "./api/lease.ts";
-import { getEvidence, getGateLog, postAudit, postReview, postSliceDecision } from "./api/review.ts";
-import { landGroup, postDraftDecision, postGroupControl, postIdea } from "./api/group.ts";
-import { deleteProject, getProjectConfig, patchProjectConfig, postProject, postSetup } from "./api/project.ts";
-import { getImages, getPreflight, getSandbox, getSandboxServer, postImage, postSandboxServerAddr, postSandboxServerRestart, postSandboxServerStart } from "./api/sandbox.ts";
-
-// `landGroup` is called by the server and the watchdog when a PR merges.
-export { landGroup };
-
-// The lesson cap is asserted in a test; eviction is called from the note route.
-export { evictOldestLessons, LESSON_CAP };
-import { ASK_KINDS, askKind, brief, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage } from "./api/escalation.ts";
-
-// The queue groups by kind and shows the brief; both are read outside the routes.
-export { ASK_KINDS, askKind, brief };
-
-// `bossFact` is called from the answer chain, `imagePaths` and `withAttachments`
-// from the executor. Re-exported so those two keep one import each.
-export { bossFact, expandHome, imagePaths, withAttachments, type Attachment };
-
-// The panel payload. Re-exported: several tests build a fleet and assert on it.
-export { snapshot };
-import { getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers } from "./api/authflow.ts";
-
-// Re-exported: `mintToken` and `agentOf` are wired from outside the routes, and
-// the tests reach for them here.
-export { agentOf, mayAct, mintToken, resolveGroup };
 import type { Caller, Ctx } from "./ctx.ts";
-
-// Both live in `ctx.ts` now — eighteen files under `mech/` want the type and
-// nothing else here. Re-exported so no importer had to change.
-export type { Caller, Ctx };
+import { agentOf, mayAct, mintToken, resolveGroup, text, type AgentHandler, type Handler } from "./api/shared.ts";
+import { getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers } from "./api/authflow.ts";
+import { bossFact, expandHome, getAttachment, imagePaths, postAttach, postAttachLocal, withAttachments, type Attachment } from "./api/attach.ts";
+import { CTX_BUDGET_CHARS, postCtxQuery } from "./api/ctxquery.ts";
+import { ASK_KINDS, askKind, brief, getAnswerDraft, postAnswer, postAnswer2, postAskBoss, postDelegate, postEscalationRequirement, postRevoke, postTriage } from "./api/escalation.ts";
+import { landGroup, postDraftDecision, postGroupControl, postIdea } from "./api/group.ts";
+import { getLeaseLog, postLease } from "./api/lease.ts";
+import { postMail, postSay } from "./api/messaging.ts";
+import { getDirs, getNotes, getSkills, postSkill } from "./api/panel.ts";
+import { postBlocked, postDraft, postDrop, postOwns, postSplit } from "./api/planning.ts";
+import { postPr } from "./api/pr.ts";
+import { deleteProject, getProjectConfig, patchProjectConfig, postProject, postSetup } from "./api/project.ts";
+import { evictOldestLessons, LESSON_CAP, postJournal, postStatus } from "./api/report.ts";
+import { getEvidence, getGateLog, postAudit, postReview, postSliceDecision } from "./api/review.ts";
+import { getImages, getPreflight, getSandbox, getSandboxServer, postImage, postSandboxServerAddr, postSandboxServerRestart, postSandboxServerStart } from "./api/sandbox.ts";
+import { getCost, getState, snapshot } from "./api/snapshot.ts";
+import { getStream } from "./api/stream.ts";
+import { getTasks, postTaskClaim, postTaskDone } from "./api/tasks.ts";
 
 /**
  * One API, two clients: the web UI (the boss's main surface) and `orch` (what
  * agents call over Bash). Anything the web can do has an `orch` verb and vice
  * versa — there is deliberately no second implementation anywhere.
+ *
+ * This file is the wiring: which module owns which path, the two checks that
+ * run ahead of every route, and nothing else. The verbs live in `./api/*`, one
+ * file per subject.
  */
-
-// ---------------------------------------------------------------- agent verbs
-
-
-
-
-
-
-
-
 
 /**
- * The line the queue shows.
+ * The public face of the route layer.
  *
- * Asked for with `--brief`, because the agent knows what its question is about
- * and the queue cannot work it out from prose written for another agent. Derived
- * when it is missing rather than rejected: a question that cannot be filed is an
- * agent stuck on a formatting rule, and the fallback is right often enough — the
- * first sentence of a question usually names the problem.
+ * Everything here is imported from outside the routes — by `server.ts`, by the
+ * executor, by the answer chain, or by a test. It is re-exported rather than
+ * moved so that splitting this file cost its callers nothing.
  */
-
-
-
-
-
-
-
-
-
-
-/** The Architect cuts a group's boundary before work is planned inside it. */
-
-
-
-
-
-/**
- * The Scribe's message, and the thing that publishes the branch.
- *
- * The validator is the convention — the role's prompt states these four
- * refusals by name, and `checkPrMessage` is what enforces them. A Scribe that
- * gets it wrong is told which rule and can send it again within the same turn:
- * nothing is published until one lands, so there is no half state to undo.
- */
-const postPr: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id: number | string; title: string; body?: string }>(req);
-  if (a.role !== "scribe") return bad(`${a.role} does not write pull request messages`);
-  const gid = resolveGroup(ctx, b.group_id);
-  if (!gid) return bad("which group? pass its id or name");
-  if (!mayAct(ctx, a, gid)) return text("not your project", 403);
-
-  const title = (b.title ?? "").trim();
-  const summary = (b.body ?? "").trim();
-  const wrong = checkPrMessage(title, summary);
-  if (wrong) return bad(wrong);
-
-  const g = ctx.db
-    .query<{ status: string; pr_number: number | null }, [number]>("SELECT status, pr_number FROM grp WHERE id = ?")
-    .get(gid);
-  if (!g) return bad("no such group");
-  ctx.db.run("UPDATE grp SET pr_title = ?, pr_summary = ? WHERE id = ?", [title, summary, gid]);
-  ctx.bus.emit({
-    grpId: gid,
-    author: "scribe",
-    kind: "note",
-    intent: "note",
-    body: title,
-  });
-  // Already open: the message is stored and `openPr` PATCHes the existing one
-  // rather than opening a second. Publishing is still the same call either way.
-  ctx.publishBranch?.(gid);
-  return text("ok");
-};
-
-
-const postCtxQuery: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ question: string; limit?: number }>(req);
-  const projectId =
-    ctx.db
-      .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
-      .get(a.id)?.project_id ?? null;
-  // PageIndex: a model walks the summary tree and can land on a file whose name
-  // shares no word with the question. It costs one cheap call, against grep rounds
-  // that each re-read the agent's whole transcript. No tree yet, or a navigator
-  // that fails, falls through to the lexical map inside ctxQuery.
-  let where = "";
-  const tree = loadTree(ctx.db, projectId);
-  if (tree && ctx.askIn && projectId) {
-    try {
-      // In the caller's own sandbox, not the project's.
-      //
-      // The walk reads nothing from a checkout: the menu is built from summaries
-      // already in the database and the model answers with ids. So the container
-      // it runs in cannot change the answer — and routing every group's query into
-      // the one project sandbox would put ten agents' first step through a single
-      // container with a single CPU quota, on the step `assemble.ts` tells every
-      // role to take FIRST. The index *build* stays project-scoped; it is shared
-      // work and there is one of it.
-      const scope = a.grp_id ? { grp: a.grp_id } : { project: projectId };
-      const hits = await search(tree, b.question, ctx.askIn(scope));
-      if (hits.length) {
-        where = render(tree, hits);
-        // A note the walk landed on is the answer, not a pointer to it: journals and
-        // retros are already short, and making the agent go and fetch one costs
-        // another round, which is the thing this whole path exists to avoid.
-        const noteIds = hits.filter((h) => h.startsWith(NOTE_PREFIX)).map((h) => Number(h.split("/").pop()));
-        for (const id of noteIds) {
-          const n = ctx.db
-            .query<{ kind: string; body: string }, [number]>("SELECT kind, body FROM note WHERE id = ?")
-            .get(id);
-          if (n) where += `\n\n### ${n.kind} #${id}\n${n.body.slice(0, 1200)}`;
-        }
-      }
-    } catch {}
-  }
-  return text(
-    ctxQuery({
-      db: ctx.db,
-      grpId: a.grp_id,
-      projectId,
-      question: b.question,
-      where,
-      // From config, not the module default: `ctxBudgetChars` was a setting that
-      // read back as itself and changed nothing, because nobody ever passed it here.
-      budget: b.limit ?? ctx.config.ctxBudgetChars ?? CTX_BUDGET_CHARS,
-    }),
-  );
-};
-
-export const CTX_BUDGET_CHARS = DEFAULT_BUDGET;
-
-
-
-
-
-
-// ------------------------------------------------------------------ boss verbs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/** Idle SSE connections get dropped by proxies and by browsers' own timeouts. */
-const SSE_HEARTBEAT_MS = 25_000;
-
-
-
-/**
- * This machine's directories, for the **attachment** picker and nothing else.
- *
- * It used to be how a project was added, which is why it reports `.git` on each
- * entry — a project is a GitHub repository now and comes from the repo list. It
- * stays because attaching a file or a folder to a message is genuinely about
- * this machine: a browser cannot hand over a real path.
- *
- * Names only, never contents: this endpoint has no business reading files, and
- * the page it serves only needs to know what to offer.
- */
-/**
- * The blackboard's static half, readable.
- *
- * `note` holds every journal, decision, retro, risk, handoff, onboarding pack and
- * lesson — PLAN.md §7 calls the lesson list "the only mechanism by which the
- * twentieth group is smarter than the first" — and none of it was reachable from
- * the panel at all. Agents could `orch ctx query` it; the boss could not read it.
- */
-const getNotes: Handler = async (ctx, req) => {
-  const q = new URL(req.url).searchParams;
-  const project = q.get("project");
-  const group = q.get("group");
-  const kind = q.get("kind");
-  const where: string[] = [];
-  const args: any[] = [];
-  if (group) {
-    where.push("n.grp_id = ?");
-    args.push(Number(group));
-  } else if (project) {
-    // Project scope includes the standing notes (onboarding, lessons) that belong
-    // to no group, which is exactly where they matter.
-    where.push("(n.project_id = ? OR g.project_id = ?)");
-    args.push(Number(project), Number(project));
-  }
-  if (kind) {
-    where.push("n.kind = ?");
-    args.push(kind);
-  }
-  // The draft card is a note too, and it already has its own screen.
-  where.push("coalesce(json_extract(n.frontmatter_json, '$.draft_card'), 0) != 1");
-  // Nor are the index's own rows notes: `pageindex` is a serialised tree and
-  // `map` is a rendered directory listing, both stored here because `note` was
-  // the table that already existed. Neither is anything the boss reads.
-  where.push("n.kind NOT IN ('pageindex', 'map')");
-
-  const rows = ctx.db
-    .query<unknown, any[]>(
-      `SELECT n.id, n.grp_id AS grpId, n.kind, n.body, n.at, n.export_path AS exportPath,
-              n.frontmatter_json AS frontmatter, g.name AS "group"
-       FROM note n LEFT JOIN grp g ON g.id = n.grp_id
-       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-       ORDER BY n.at DESC LIMIT 300`,
-    )
-    .all(...args);
-  return json({ notes: rows });
-};
-
-/**
- * Every skill on this machine, and whether agents can see it.
- *
- * `on` is what the boss ticked: those get staged into the directory every sandbox
- * mounts, so an agent discovers and invokes them itself. Unticked ones are still
- * listed — naming one in a requirement injects it into that single turn — which is
- * why the composer offers all of them and asks before using an unticked one.
- */
-const getSkills: Handler = async (ctx, req) => {
-  const id = Number(new URL(req.url).searchParams.get("project"));
-  const repo = ctx.db
-    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-    .get(id)?.repo_path;
-  projectSkillsPending(ctx, id, repo);
-  const off = new Set(skillsOff(ctx.db));
-  return json({
-    skills: listSkills(repo, projectSkills(ctx.db, id)).map(({ name, rel, description, scope }) => ({
-      name,
-      path: rel,
-      description,
-      scope,
-      // A project skill ships with the repository the group is working on, so it
-      // is always delivered and there is nothing to tick.
-      on: scope === "project" || !off.has(name),
-    })),
-  });
-};
-
-/**
- * Tick or untick one skill, then rebuild the staging directory.
- *
- * Rebuilt now rather than at the next sandbox: the mount is a directory, so what
- * changes here is visible to every running container as soon as the next turn's CLI
- * process starts. No sandbox is rebuilt for a tick box.
- */
-const postSkill: Handler = async (ctx, req) => {
-  const b = (await req.json().catch(() => ({}))) as { name?: string; on?: boolean };
-  // No name is a rescan: the boss installed or removed a skill outside this
-  // process, and the staged copy is the only thing that does not know yet.
-  if (b.name) setSkillOff(ctx.db, b.name, b.on === false);
-  const { staged, failed } = restageSkills(ctx.db, ctx.config?.skillsDir ?? "/var/tmp/orch-cache/skills");
-  // The mount is a staging path now, not either CLI's own directory, so a
-  // changed set is not visible until the links are rebuilt. Every live
-  // container, because a standing agent's container has no checkout and so no
-  // other moment that would ever redo them.
-  await relinkSkills();
-  return json({ staged: staged.length, failed });
-};
-
-const getDirs: Handler = async (ctx, req) => {
-  const q = new URL(req.url).searchParams;
-  const asked = q.get("path") ?? homedir();
-  const path = resolve(expandHome(asked));
-  let entries;
-  try {
-    entries = readdirSync(path, { withFileTypes: true });
-  } catch (e) {
-    return bad(`${path}: ${(e as Error).message}`);
-  }
-  const taken = new Set(
-    ctx.db.query<{ repo_path: string }, []>("SELECT repo_path FROM project").all().map((r) => r.repo_path),
-  );
-  const dirs = entries
-    .filter((d) => d.isDirectory() && !d.name.startsWith("."))
-    .map((d) => {
-      const full = join(path, d.name);
-      return { name: d.name, path: full, repo: existsSync(join(full, ".git")), taken: taken.has(full) };
-    })
-    .sort((a, b) => (a.repo === b.repo ? a.name.localeCompare(b.name) : a.repo ? -1 : 1));
-  // Files only when someone is picking files. The repo picker asking for them
-  // would list a thousand entries in a source directory to choose one folder.
-  const files = q.get("files")
-    ? entries
-        .filter((d) => d.isFile() && !d.name.startsWith("."))
-        .map((d) => {
-          const full = join(path, d.name);
-          let size = 0;
-          try {
-            size = statSync(full).size;
-          } catch {}
-          return { name: d.name, path: full, size };
-        })
-        .sort((a, b) => a.name.localeCompare(b.name))
-    : [];
-  // A repo can be picked at any level, including the one being listed.
-  return json({
-    path,
-    parent: path === "/" ? null : dirname(path),
-    repo: existsSync(join(path, ".git")),
-    dirs,
-    files,
-  });
-};
-
-const getStream: Handler = async (ctx, req) => {
-  const since = Number(new URL(req.url).searchParams.get("since") ?? 0);
-  let unsub = () => {};
-  let beat: ReturnType<typeof setInterval> | undefined;
-  const stream = new ReadableStream<Uint8Array>({
-    start(c) {
-      const enc = new TextEncoder();
-      const raw = (s: string) => {
-        try {
-          c.enqueue(enc.encode(s));
-          return true;
-        } catch {
-          unsub();
-          if (beat) clearInterval(beat);
-          return false;
-        }
-      };
-      // Which project a frame belongs to, so the feed can be scoped. grp -> project
-      // is immutable, so it is cached rather than queried per frame — live frames
-      // arrive per token.
-      const ofGrp = new Map<number, number | null>();
-      const projectOf = (grpId: number | null | undefined): number | null => {
-        if (grpId == null) return null;
-        if (!ofGrp.has(grpId)) {
-          ofGrp.set(
-            grpId,
-            ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-              ?.project_id ?? null,
-          );
-        }
-        return ofGrp.get(grpId) ?? null;
-      };
-      const send = (data: any) =>
-        raw(`data: ${JSON.stringify({ ...data, projectId: data.projectId ?? projectOf(data.grpId) })}\n\n`);
-
-      // A stream that sends nothing has sent no bytes, and a browser does not
-      // report a byteless response as open — the UI sat on "connecting…" forever
-      // on a fresh database with no events to replay. The comment also defeats
-      // proxy buffering, and `retry` sets the reconnect delay.
-      raw(`retry: 3000\n: connected\n\n`);
-
-      for (const e of ctx.bus.since(since)) send({ type: "event", ...e });
-      unsub = ctx.bus.subscribe(send);
-      beat = setInterval(() => raw(`: ping\n\n`), SSE_HEARTBEAT_MS);
-      req.signal.addEventListener("abort", () => {
-        unsub();
-        if (beat) clearInterval(beat);
-        try {
-          c.close();
-        } catch {}
-      });
-    },
-    cancel() {
-      unsub();
-      if (beat) clearInterval(beat);
-    },
-  });
-  return new Response(stream, {
-    headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" },
-  });
-};
-
-// ---------------------------------------------------------------------- router
-
-
-/**
- * A project's own knobs: what it gates on, how it installs, what its sandboxes
- * look like. Merged into `config_json` key by key, so a page that only knows
- * about gates cannot blank the sandbox block on save.
- */
-
-
-
+export type { Caller, Ctx };
+export { agentOf, mayAct, mintToken, resolveGroup };
+export { bossFact, expandHome, imagePaths, withAttachments, type Attachment };
+export { ASK_KINDS, askKind, brief };
+export { CTX_BUDGET_CHARS, evictOldestLessons, landGroup, LESSON_CAP, snapshot };
 
 const ROUTES: Array<[string, RegExp, Handler]> = [
   ["GET", /^\/api\/auth$/, getAuth],
@@ -621,5 +217,4 @@ export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   app.all("*", (c) => legacyRoutes(ctx)(c.req.raw));
   return async (req) => app.fetch(req);
 }
-
 

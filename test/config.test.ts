@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { routeSource } from "./route-source.ts";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -128,7 +129,10 @@ test("ctxBudgetChars actually reaches the thing it configures", () => {
   expect(cfg.ctxBudgetChars).toBeGreaterThan(0);
   const wired = readFileSync("src/server.ts", "utf8");
   expect(wired).toContain("ctxBudgetChars: cfg.ctxBudgetChars");
-  expect(readFileSync("src/api.ts", "utf8")).toContain("ctx.config.ctxBudgetChars");
+  // The whole route layer, not one file: `api.ts` was split into `src/api/*` and
+  // pinning this to whichever module holds the reader today would put the guard
+  // back where the next move breaks it.
+  expect(routeSource()).toContain("ctx.config.ctxBudgetChars");
 });
 
 test("a reviewer does not get the writer's tool budget", () => {

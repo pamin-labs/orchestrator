@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { routeSource } from "./route-source.ts";
 import { readFileSync } from "node:fs";
 import { loadConfig } from "../src/config.ts";
 
@@ -41,7 +42,6 @@ test("every config key a handler can read is one the server copies in", () => {
   // watch. It missed `leaseTimeoutMs` — read as `ctx.config?.leaseTimeoutMs`,
   // never copied in, silently falling back to a three-hour default on the one
   // deadline that stops an agent waiting forever.
-  expect(missing.filter((k) => new RegExp(`config\\??\\.${k}\\b`).test(readFileSync(
-    new URL("../src/api.ts", import.meta.url).pathname, "utf8",
-  )))).toEqual([]);
+  const routes = routeSource();
+  expect(missing.filter((k) => new RegExp(`config\\??\\.${k}\\b`).test(routes))).toEqual([]);
 });
