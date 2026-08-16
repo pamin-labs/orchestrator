@@ -262,13 +262,60 @@ test("a standing agent's turn takes a slot like anyone else's", async () => {
   expect(started.length).toBe(2);
 });
 
-test("two standing turns do not run at once", async () => {
+/** Two standing agents, no group between them. Returns their ids. */
+function standing(db: DB, ...roles: string[]): number[] {
+  return roles.map(
+    (role) =>
+      db
+        .query<{ id: number }, [string]>(
+          "INSERT INTO agent (project_id, role, model, state, created_at) VALUES (1, ?, 'm', 'idle', 0) RETURNING id",
+        )
+        .get(role)!.id,
+  );
+}
+
+test("two standing agents run at once — they share nothing", async () => {
   const db = openMemory();
   seed(db, 1);
+  const [lib, arch] = standing(db, "librarian", "architect");
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 3 });
-  s.enqueue("agent_turn", { grp_id: null, payload: { role: "librarian" } });
-  s.enqueue("agent_turn", { grp_id: null, payload: { role: "architect" } });
+  s.enqueue("agent_turn", { grp_id: null, agent_id: lib, payload: { role: "librarian" } });
+  s.enqueue("agent_turn", { grp_id: null, agent_id: arch, payload: { role: "architect" } });
+  s.tick();
+
+  // These four roles used to collapse onto one slot keyed 0, so Architect waited
+  // for Librarian for no reason anyone could name: measured 4309s of queueing for
+  // the Dispatcher, 1752s for the CoS, on turns that touch no common state. The
+  // slot is per agent now; the cost ceiling is still `maxGroups`, below.
+  expect(started.length).toBe(2);
+  release();
+  await s.drain();
+});
+
+test("one standing agent still writes one transcript at a time", async () => {
+  const db = openMemory();
+  seed(db, 1);
+  const [lib] = standing(db, "librarian");
+  const { started, release, exec } = gate();
+  const s = new Scheduler(db, exec, { maxGroups: 3 });
+  s.enqueue("agent_turn", { grp_id: null, agent_id: lib });
+  s.enqueue("agent_turn", { grp_id: null, agent_id: lib });
+  s.tick();
+  expect(started.length).toBe(1);
+  release();
+  await s.drain();
+  expect(started.length).toBe(2);
+});
+
+test("standing turns still count against maxGroups", async () => {
+  const db = openMemory();
+  seed(db, 1);
+  const [lib, arch] = standing(db, "librarian", "architect");
+  const { started, release, exec } = gate();
+  const s = new Scheduler(db, exec, { maxGroups: 1 });
+  s.enqueue("agent_turn", { grp_id: null, agent_id: lib });
+  s.enqueue("agent_turn", { grp_id: null, agent_id: arch });
   s.tick();
   expect(started.length).toBe(1);
   release();

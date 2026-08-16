@@ -1648,7 +1648,12 @@ const postTaskDone: Handler = async (ctx, req) => {
       .get(slice.slice_id)!.c;
     if (open === 0) {
       ctx.db.run("UPDATE slice SET status = 'gate' WHERE id = ?", [slice.slice_id]);
-      ctx.sched.enqueue("gate", { grp_id: a.grp_id, slice_id: slice.slice_id });
+      // Same priority as reconcile, and for the same reason: this job consults no
+      // model, runs in 16 seconds, and the whole slice → QA → boss chain is stuck
+      // behind it. At the default 0 it queued behind every priority-4 and -6 turn
+      // in the fleet — measured 3235s of waiting for 16s of work, which is most of
+      // why QA turns averaged an hour and 54 minutes before they started.
+      ctx.sched.enqueue("gate", { grp_id: a.grp_id, slice_id: slice.slice_id, priority: 5 });
       ctx.sched.tick();
     }
   }

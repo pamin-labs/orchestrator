@@ -110,6 +110,23 @@ const PLANNING_ROLES = new Set(["dispatcher", "architect", "cos", "librarian"]);
 const FREE_KINDS = new Set<JobKind>(["watchdog", "notify", "digest"]);
 
 /**
+ * Which writer slot a job occupies. One in-flight job per slot.
+ *
+ * For a group it is the group: that is the "one writer per group" rule, and the
+ * L2 barrier falls out of it. A group-less job belongs to a standing agent, and
+ * those used to collapse onto slot 0 — so Architect, CoS, Dispatcher and
+ * Librarian, who share nothing, took turns waiting for each other. Measured on
+ * this database: Dispatcher averaged 4309s of queueing, CoS 1752s, for turns
+ * that touch no common state. Negative keys can never collide with a group id,
+ * so an agent still serialises against itself (it cannot write two transcripts
+ * at once) while the four of them run in parallel. They still count towards
+ * `maxGroups`, which was the actual reason slot 0 existed.
+ */
+function slotOf(job: Pick<Job, "grp_id" | "agent_id">): number {
+  return job.grp_id ?? -(job.agent_id ?? 0);
+}
+
+/**
  * The only thing that can start an agent.
  *
  * Because every turn is dispatched from one serialized point, intercept is
@@ -222,14 +239,13 @@ export class Scheduler {
     if (pending.length === 0) return [];
 
     // Standing agents (Architect, CoS, Librarian) have no group, but their turns
-    // cost the same money and CPU as anyone's — so they take a slot too, keyed by
-    // 0. Letting them bypass the pool was how a "no slots" configuration still
-    // spawned agents.
+    // cost the same money and CPU as anyone's — so they take a slot too. Letting
+    // them bypass the pool was how a "no slots" configuration still spawned agents.
     const busyGroups = new Set<number>();
     const taken: Record<string, number> = {};
     for (const j of this.runningJobs()) {
       if (j.kind === "lease") for (const p of this.poolsOf(j)) taken[p] = (taken[p] ?? 0) + 1;
-      else if (!FREE_KINDS.has(j.kind)) busyGroups.add(j.grp_id ?? 0);
+      else if (!FREE_KINDS.has(j.kind)) busyGroups.add(slotOf(j));
     }
 
     const out: Job[] = [];
@@ -247,7 +263,7 @@ export class Scheduler {
         out.push(job);
         continue;
       }
-      const slot = job.grp_id ?? 0;
+      const slot = slotOf(job);
       if (busyGroups.has(slot)) continue;
       if (busyGroups.size >= this.maxGroups) continue;
       // Only a group-scoped job has a status and a budget to check.
