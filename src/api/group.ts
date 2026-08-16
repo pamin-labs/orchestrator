@@ -9,6 +9,7 @@ import { killSandbox } from "../mech/sandbox/sandbox.ts";
 import { clearSandboxLog } from "../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema } from "./valid.ts";
+import { newGroup } from "../mech/flow/newgroup.ts";
 import { bad, firstIdea, json, text, type Handler } from "./shared.ts";
 import { bossFact, withAttachments } from "./attach.ts";
 import { slug } from "./slug.ts";
@@ -33,27 +34,14 @@ export const IdeaBody = z.object({
 
 export const postIdea: Handler<z.infer<typeof IdeaBody>> = async (ctx, _req, _p, b) => {
   const name = (b.name ?? slug(b.text)).slice(0, 40);
-  const grp = ctx.db
-    .query<{ id: number }, [number, string]>(
-      "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'PLANNING', unixepoch() * 1000) RETURNING id",
-    )
-    .get(b.project_id, name)!;
-  // `channel.grp_id` is the only link between the two; a reverse pointer on grp
-  // would be a second source of truth for the same edge.
-  const ch = ctx.db
-    .query<{ id: number }, [number, number]>(
-      "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000) RETURNING id",
-    )
-    .get(b.project_id, grp.id)!;
-
   // Attachments go on the blackboard as paths next to the words they came with, so
   // whoever plans this reads them in the same breath as the idea.
-  const noteBody = withAttachments(b.text, b.attachments);
-  ctx.db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-    [b.project_id, grp.id, ctx.config.language, noteBody],
-  );
-  ctx.bus.emit({ channelId: ch.id, grpId: grp.id, author: "boss", kind: "boss_say", intent: "request", body: b.text });
+  const grp = newGroup(ctx, {
+    projectId: b.project_id,
+    name,
+    idea: b.text,
+    note: withAttachments(b.text, b.attachments),
+  });
   // With another group already holding paths, the boundary has to be cut before
   // anyone plans work inside it — otherwise the plan is written against paths the
   // group turns out not to own.
@@ -81,9 +69,11 @@ export const postIdea: Handler<z.infer<typeof IdeaBody>> = async (ctx, _req, _p,
     });
   }
 
+  // After the Architect's, when there is one: the boundary has to be cut before
+  // anyone plans work inside it.
   ctx.sched.enqueue("agent_turn", { grp_id: grp.id, payload: { role: "dispatcher", idea: b.text } });
   ctx.sched.tick();
-  return json({ grp_id: grp.id, channel_id: ch.id, boundaryNeeded: others.length > 0 });
+  return json({ grp_id: grp.id, channel_id: grp.channelId, boundaryNeeded: others.length > 0 });
 };
 
 export const DraftDecision = z.object({

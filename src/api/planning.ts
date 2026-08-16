@@ -10,6 +10,7 @@ import { z } from "zod";
 import { GroupRef } from "./valid.ts";
 import { bad, json, mayAct, resolveGroup, text, type AgentHandler } from "./shared.ts";
 import { slug } from "./slug.ts";
+import { newGroup } from "../mech/flow/newgroup.ts";
 
 /**
  * What a group does with its own plan: file the DRAFT card, fan out into
@@ -181,34 +182,17 @@ export const postSplit: AgentHandler<z.infer<typeof SplitBody>> = async (ctx, _r
     // (`orch/<name>`), a path under docs/journal and an argument to host git —
     // "whatever 40 characters an agent felt like" is not a shape any of those want.
     const name = slug(item.name?.trim() || item.idea);
-    const child = ctx.db
-      .query<{ id: number }, [number, string]>(
-        "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'PLANNING', unixepoch() * 1000) RETURNING id",
-      )
-      .get(grp.project_id, name)!;
-    const ch = ctx.db
-      .query<{ id: number }, [number, number]>(
-        "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000) RETURNING id",
-      )
-      .get(grp.project_id, child.id)!;
-    ctx.db.run(
-      "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-      [
-        grp.project_id,
-        child.id,
-        ctx.config.language,
-        `${item.idea.trim()}\n\n（从「${grp.name}」拆出来的一条${original ? `，原始整段见 note #${original.id}` : ""}）`,
-      ],
-    );
-    ctx.bus.emit({
-      channelId: ch.id,
-      grpId: child.id,
-      author: "boss",
-      kind: "boss_say",
-      intent: "request",
-      body: item.idea.trim(),
+    const child = newGroup(ctx, {
+      projectId: grp.project_id,
+      name,
+      idea: item.idea.trim(),
+      note: `${item.idea.trim()}\n\n（从「${grp.name}」拆出来的一条${original ? `，原始整段见 note #${original.id}` : ""}）`,
     });
-    ctx.sched.enqueue("agent_turn", { grp_id: child.id, priority: 5, payload: { role: "dispatcher", idea: item.idea.trim() } });
+    ctx.sched.enqueue("agent_turn", {
+      grp_id: child.id,
+      priority: 5,
+      payload: { role: "dispatcher", idea: item.idea.trim() },
+    });
     made.push({ id: child.id, name });
   }
 
@@ -418,24 +402,15 @@ export const postBlocked: AgentHandler<z.infer<typeof BlockedBody>> = async (ctx
     // refused, and the boundary is settled here rather than costing an Architect
     // turn to discover there is only one answer.
     const grant = claimsShared([path], sharedFor(ctx.db, me.project_id));
-    const grp = ctx.db
-      .query<{ id: number }, [number, string, string | null, string]>(
-        `INSERT INTO grp (project_id, name, status, shared_grant, owns_json, created_at)
-         VALUES (?, ?, 'PLANNING', ?, ?, unixepoch() * 1000) RETURNING id`,
-      )
-      .get(me.project_id, name, grant.length ? JSON.stringify(grant) : null, JSON.stringify([path]))!;
-    ctx.db.run(
-      "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000)",
-      [me.project_id, grp.id],
-    );
     const idea = `${why}\n\n（${me.name} 报的：${path} 不在它的边界内，它改不了）`;
-    ctx.db.run(
-      "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-      [me.project_id, grp.id, ctx.config.language, idea],
-    );
-    // boss_say, because that is what every planner reads as the requirement, and a
-    // second shape for "this is the ask" would be a second thing to remember.
-    ctx.bus.emit({ grpId: grp.id, author: a.role, kind: "boss_say", intent: "request", body: idea });
+    const grp = newGroup(ctx, {
+      projectId: me.project_id,
+      name,
+      idea,
+      author: a.role,
+      owns: [path],
+      sharedGrant: grant,
+    });
     ctx.sched.enqueue("agent_turn", { grp_id: grp.id, priority: 6, payload: { role: "dispatcher", idea } });
     target = grp.id;
   }

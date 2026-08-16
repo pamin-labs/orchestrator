@@ -1,6 +1,7 @@
 import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "../mech/flow/chain.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Prose } from "./valid.ts";
+import { newGroup } from "../mech/flow/newgroup.ts";
 import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
 import { bossFact, withAttachments } from "./attach.ts";
 import { slug } from "./slug.ts";
@@ -179,20 +180,7 @@ export const postEscalationRequirement: Handler<z.infer<typeof RequirementBody>>
 
   const idea = [b.text?.trim(), esc.question].filter(Boolean).join("\n\n");
   const name = (b.name ?? slug(idea)).slice(0, 40) || `esc-${id}`;
-  const grp = ctx.db
-    .query<{ id: number }, [number, string]>(
-      "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'PLANNING', unixepoch() * 1000) RETURNING id",
-    )
-    .get(projectId, name)!;
-  ctx.db.run("INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', unixepoch() * 1000)", [
-    projectId,
-    grp.id,
-  ]);
-  ctx.db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-    [projectId, grp.id, ctx.config.language, idea],
-  );
-  ctx.bus.emit({ grpId: grp.id, author: "boss", kind: "boss_say", intent: "request", body: idea });
+  const grp = newGroup(ctx, { projectId, name, idea });
   ctx.sched.enqueue("agent_turn", { grp_id: grp.id, priority: 6, payload: { role: "dispatcher", idea } });
 
   ctx.db.run(
