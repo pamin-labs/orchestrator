@@ -155,3 +155,13 @@ test("runtime escalation rows can only be filed through raise", () => {
   }
   expect(offenders).toEqual([]);
 });
+
+test("dynamic escalation subjects are never matched as LIKE patterns", () => {
+  // Repository slugs and provider names may contain `_`, which LIKE treats as a
+  // one-character wildcard. Filing already compares literal prefixes; every
+  // reverse path that answers or revokes one must use the same identity rule.
+  const offenders = sources().flatMap((source) =>
+    [...source.text.matchAll(/\b(?:question|brief|kind)\s+LIKE\s+\?/gi)].map(() => source.path),
+  );
+  expect(offenders).toEqual([]);
+});

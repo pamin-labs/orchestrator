@@ -83,6 +83,27 @@ test("signing in restarts what the credential stopped, and nothing else", async 
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM grp WHERE status = 'RUNNING' AND pause_reason IS NOT NULL").get()!.n).toBe(0);
 });
 
+test("signing in answers only the literal runtime's escalation", async () => {
+  const db = openMemory();
+  for (const question of ["a_b 的凭据不好使了", "axb 的凭据不好使了"]) {
+    db.run("INSERT INTO escalation (question, chain_state, created_at) VALUES (?, 'boss', 0)", [question]);
+  }
+  const ctx = { db, bus: { emit: () => {} }, sched: { tick: () => {} }, config: {} } as unknown as Ctx;
+
+  await credentialChanged(ctx, "a_b");
+
+  expect(
+    db
+      .query<{ question: string; chain_state: string }, []>(
+        "SELECT question, chain_state FROM escalation ORDER BY id",
+      )
+      .all(),
+  ).toEqual([
+    { question: "a_b 的凭据不好使了", chain_state: "answered" },
+    { question: "axb 的凭据不好使了", chain_state: "boss" },
+  ]);
+});
+
 test("nothing stops or starts a group without going through hold/release", () => {
   // 硬约束 7 is here because three callers wrote PAUSING and forgot `paused_at`,
   // and every watchdog timer keys on it — the group went invisible to the park

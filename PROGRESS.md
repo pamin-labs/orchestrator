@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-**D4-3 已验证：** escalation 的 INSERT、默认值和开放问题判定收进 `mech/flow/escalate.ts`；去重范围不再从插入行的 `grp_id` 猜，凭据/GitHub 是全局 subject，预算是 group subject；前缀按绑定字面量比较，且去重检查与 INSERT 是一条原子语句。GitHub 恢复后的反向清理也使用相同的字面前缀语义：合法仓库 `a_b` 不会再借 SQLite `LIKE` 的 `_` 通配误撤销 `axb` 的待办。全部运行期调用方都走 `raise()`，`db.ts` 打开数据库时的数据修复是唯一有标记的直写例外；`test/escalate.test.ts` 的源码守卫会在下一处直写落下时直接报错。ask-boss 的 checkpoint/chain、slice/branch review 的 brief/kind、PR 失败和各调用方事件仍由原路径持有。反向清理回归 17 绿，`bunx tsc --noEmit -p .` 绿。
+**D4-3 已验证：** escalation 的 INSERT、默认值和开放问题判定收进 `mech/flow/escalate.ts`；去重范围不再从插入行的 `grp_id` 猜，凭据/GitHub 是全局 subject，预算是 group subject；前缀按绑定字面量比较，且去重检查与 INSERT 是一条原子语句。所有动态 subject 的反向清理使用同一字面前缀语义：合法仓库或开放 provider 名 `a_b` 不会再借 SQLite `LIKE` 的 `_` 通配误撤销/回答 `axb` 的待办，源码闸禁止 `question|brief|kind LIKE ?` 再进入。全部运行期调用方都走 `raise()`，`db.ts` 打开数据库时的数据修复是唯一有标记的直写例外；`test/escalate.test.ts` 的源码守卫会在下一处直写落下时直接报错。ask-boss 的 checkpoint/chain、slice/branch review 的 brief/kind、PR 失败和各调用方事件仍由原路径持有。动态清理回归 74 绿，`bunx tsc --noEmit -p .` 绿。
 
 **Settings pane 拆分已验证：** 账号、GitHub、host/server 与项目设置分别只有 `settings/{credentials,github,environment,project}.tsx` 一份实现；不可逆的项目移除证据、确认和按钮仍在同一个 pane。409 行 dialog shell 持有全部 query、project scope、条件挂载、2/3 秒轮询、5 分钟截止与 cache invalidation；pane 只启动动作并请求刷新。`test/settings-boundary.test.ts` 守住 endpoint、DOM ID 和协调边界。TypeScript、oxlint、web build、90 个定向 checks 及完整测试全绿。
 

@@ -118,10 +118,11 @@ function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
     "UPDATE grp SET status = 'PR_OPEN', paused_at = NULL, pause_reason = NULL WHERE id = ? AND status = 'PAUSED'",
     [grpId],
   );
+  const prefix = `PR #${prNumber} 被关掉了`;
   ctx.db.run(
     `UPDATE escalation SET chain_state = 'answered', answered_by = 'github', answer = 'reopened'
-     WHERE grp_id = ? AND answer IS NULL AND question LIKE ?`,
-    [grpId, `PR #${prNumber} 被关掉了%`],
+     WHERE grp_id = ? AND answer IS NULL AND substr(question, 1, length(?)) = ?`,
+    [grpId, prefix, prefix],
   );
   joinQueue(ctx.db, grpId);
   ctx.bus.emit({

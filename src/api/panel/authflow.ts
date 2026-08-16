@@ -138,11 +138,12 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
     .all()) {
     await killSandbox(ctx, { grp: g.id });
   }
+  const prefix = `${runtime} 的凭据`;
   ctx.db.run(
     `UPDATE escalation SET chain_state = 'answered', answered_by = 'boss', answer = 'reconfigured',
        answered_at = unixepoch() * 1000
-     WHERE answer IS NULL AND question LIKE ?`,
-    [`${runtime} 的凭据%`],
+     WHERE answer IS NULL AND substr(question, 1, length(?)) = ?`,
+    [prefix, prefix],
   );
   // Only the groups this credential stopped. Unscoped, this matched every PAUSED
   // row there was: a group the boss paused by hand restarted itself the moment
