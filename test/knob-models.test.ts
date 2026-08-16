@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Knobs } from "../web/src/views/knobs";
 import { allModels, cheapest, modelsByRuntime } from "../web/src/lib/models";
 import { COUNT_UNITS, countOf, splitCount } from "../web/src/lib/units";
 import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../src/config.ts";
@@ -18,6 +21,10 @@ const src = {
   contextWindow: DEFAULTS.contextWindow,
   indexModel: DEFAULTS.indexModel,
 };
+
+test("the knob editor has a renderable loading state", () => {
+  expect(renderToStaticMarkup(createElement(Knobs, { section: "models" }))).toContain("读取中");
+});
 
 test("every runtime is offered its own models and nobody else's", () => {
   const by = modelsByRuntime(src);

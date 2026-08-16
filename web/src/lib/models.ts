@@ -41,8 +41,7 @@ export function modelsByRuntime(src: ModelSources): Record<string, string[]> {
 
   for (const [runtime, tiers] of Object.entries(src.difficultyModel ?? {})) {
     const set = bucket(runtime);
-    for (const model of Object.values(tiers ?? {})) {
-      if (!model) continue;
+    for (const model of Object.values(tiers ?? {}).filter(Boolean)) {
       set.add(model);
       owner[family(model)] = runtime;
     }
@@ -58,8 +57,7 @@ export function modelsByRuntime(src: ModelSources): Record<string, string[]> {
     // `default` is the fallback window, not a model anyone can pick.
     if (model === "default") continue;
     const runtime = owner[family(model)];
-    if (runtime) byRuntime[runtime]?.add(model);
-    else for (const set of Object.values(byRuntime)) set.add(model);
+    for (const target of runtime ? [runtime] : Object.keys(byRuntime)) bucket(target).add(model);
   }
 
   return Object.fromEntries(Object.entries(byRuntime).map(([r, s]) => [r, [...s].sort()]));

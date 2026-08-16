@@ -369,34 +369,58 @@ export function Knobs({ section }: { section: KnobSection }) {
 /** Label and reason for a knob, falling back to the raw path. */
 const copyFor = (k: Knob) => COPY[k.path] ?? { zh: k.path, why: undefined, ph: undefined };
 
+function KnobLabel({ knob, id }: { knob: Knob; id: string }) {
+  const copy = copyFor(knob);
+  const title = SELF_NAMED.has(knob.path) || knob.type === "boolean";
+  return (
+    <div className="flex min-w-0 items-baseline gap-1.5">
+      {title ? <FieldTitle id={id}>{copy.zh}</FieldTitle> : <FieldLabel htmlFor={id}>{copy.zh}</FieldLabel>}
+      {copy.why && <Help>{copy.why}</Help>}
+    </div>
+  );
+}
+
+function ResetOverride({ onReset }: { onReset: () => void }) {
+  return (
+    <Tip label="恢复默认">
+      <Button variant="quiet" size="sm" aria-label="恢复默认" className="shrink-0" onClick={onReset}>
+        <RotateCcw className="size-3" />
+        已改
+      </Button>
+    </Tip>
+  );
+}
+
+async function saveKnob(target: Knob, value: Json, onWrite: Write): Promise<string | null> {
+  // Typing the shipped value back is not an override. Otherwise the row reads
+  // 已改 while being identical to the default, and clearing appears to do nothing.
+  const same = JSON.stringify(value) === JSON.stringify(target.default);
+  const body = SettingWriteSchema.safeParse({ path: target.path, value: same ? null : value });
+  if (!body.success) return z.prettifyError(body.error);
+  const result = await onWrite(body.data);
+  return result.ok ? null : result.text;
+}
+
+function resetKnobs(knob: Knob, mate: Knob | undefined, write: (target: Knob, value: Json) => void) {
+  write(knob, knob.default);
+  if (mate) write(mate, mate.default);
+}
+
 function Row({ knob, mate, src, onWrite }: { knob: Knob; mate?: Knob; src: ModelSources; onWrite: Write }) {
   // What is wrong, and which box it is wrong in. A table row can hold six boxes
   // and "要一个数量" under all of them says nothing about which.
   const [bad, setBad] = useState<{ why: string; at: string } | null>(null);
-  const copy = copyFor(knob);
   const id = `knob-${knob.path.replace(/\W/g, "-")}`;
-  const block = TABLES.has(knob.path);
 
   const put = async (target: Knob, value: Json) => {
-    // Typing the shipped value back is not an override. Otherwise the row reads
-    // 已改 while being identical to the default, and the button that clears it
-    // appears to do nothing.
-    const same = JSON.stringify(value) === JSON.stringify(target.default);
-    const body = SettingWriteSchema.safeParse({ path: target.path, value: same ? null : value });
-    if (!body.success) {
-      setBad({ why: z.prettifyError(body.error), at: "" });
-      return;
-    }
-    const r = await onWrite(body.data);
-    // The server's own JSON error. It is more specific than anything this file
-    // could guess.
-    setBad(r.ok ? null : { why: r.text, at: "" });
+    const why = await saveKnob(target, value, onWrite);
+    setBad(why ? { why, at: "" } : null);
   };
   const write = (value: Json) => void put(knob, value);
   const refuse = (why: string, at = "") => setBad({ why, at });
   const clear = () => setBad(null);
   // One row, so one 已改 — a paired row is changed if either half is.
-  const changed = knob.overridden || !!mate?.overridden;
+  const changed = [knob, mate].some((item) => item?.overridden);
 
   const value = (
     <Value
@@ -404,7 +428,7 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate?: Knob; src: Model
       knob={knob}
       mate={mate}
       src={src}
-      bad={bad?.at ?? null}
+      bad={bad?.at}
       onWrite={write}
       onWriteMate={mate ? (v) => void put(mate, v) : undefined}
       onRefuse={refuse}
@@ -420,35 +444,17 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate?: Knob; src: Model
       {/* The `?` is a sibling of the label, not a child of it: inside a
           `<label htmlFor>` every click on it would also focus the field it
           explains, which is a control that moves the cursor somewhere else. */}
-      <div className="flex min-w-0 items-baseline gap-1.5">
-        {SELF_NAMED.has(knob.path) || knob.type === "boolean" ? (
-          <FieldTitle id={id}>{copy.zh}</FieldTitle>
-        ) : (
-          <FieldLabel htmlFor={id}>{copy.zh}</FieldLabel>
-        )}
-        {copy.why && <Help>{copy.why}</Help>}
-      </div>
+      <KnobLabel knob={knob} id={id} />
       <FieldContent className="flex-col items-stretch gap-1">
-        <div className={cn("flex w-full gap-2", block ? "items-start" : "items-center")}>
+        <div
+          data-block={TABLES.has(knob.path)}
+          className="flex w-full items-center gap-2 data-[block=true]:items-start"
+        >
           {value}
           {/* Neutral, not the accent: the accent means "waiting on you" and this
               is only "not the shipped value". */}
           {changed && (
-            <Tip label="恢复默认">
-              <Button
-                variant="quiet"
-                size="sm"
-                aria-label="恢复默认"
-                className="shrink-0"
-                onClick={() => {
-                  write(knob.default);
-                  if (mate) void put(mate, mate.default);
-                }}
-              >
-                <RotateCcw className="size-3" />
-                已改
-              </Button>
-            </Tip>
+            <ResetOverride onReset={() => resetKnobs(knob, mate, (target, next) => void put(target, next))} />
           )}
         </div>
         {bad && <span className="text-[0.6875rem] leading-snug text-accent">{bad.why}</span>}
@@ -465,7 +471,7 @@ interface Editor {
   /** Every model this config names, so a picker can offer them. */
   src: ModelSources;
   /** Which cell in this row holds the bad value, `""` for the row itself. */
-  bad: string | null;
+  bad?: string;
   onWrite: (value: Json) => void;
   onWriteMate?: (value: Json) => void;
   onRefuse: (why: string, at?: string) => void;
@@ -473,12 +479,7 @@ interface Editor {
   onClear: () => void;
 }
 
-function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onClear }: Editor) {
-  const ph = copyFor(knob).ph;
-
-  // Six of these are tables. Each is drawn as the table it is, which is also the
-  // only way to keep the keys valid: a JSON line cannot stop you writing
-  // `{"trivial": "8M"}` and a labelled box for a token count can.
+function modelValue({ knob, mate, src, onWrite, onWriteMate }: Editor) {
   switch (knob.path) {
     case "difficultyModel":
       return <ModelTable table={ConfigSchema.shape.difficultyModel.parse(knob.value)} src={src} onWrite={onWrite} />;
@@ -494,6 +495,49 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
           onModel={onWriteMate ?? onWrite}
         />
       );
+    default:
+      return null;
+  }
+}
+
+function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
+  const ph = copyFor(knob).ph;
+  switch (knob.path) {
+    case "contextWindow":
+      return <Windows map={ConfigSchema.shape.contextWindow.parse(knob.value)} src={src} onWrite={onWrite} />;
+    case "leaseSlots":
+      return (
+        <Pairs
+          map={rec(knob.value)}
+          kind="int"
+          keyPh="闸门名"
+          bad={bad}
+          onWrite={onWrite}
+          onRefuse={onRefuse}
+          onClear={onClear}
+        />
+      );
+    case "sandbox.cacheDirs":
+      return (
+        <Pairs
+          map={rec(knob.value)}
+          kind="text"
+          keyPh={ph ?? "挂载点"}
+          bad={bad}
+          onWrite={onWrite}
+          onRefuse={onRefuse}
+          onClear={onClear}
+        />
+      );
+    case "sandbox.denyDomains":
+      return <Lines list={ConfigSchema.shape.sandbox.shape.denyDomains.parse(knob.value)} ph={ph} onWrite={onWrite} />;
+    default:
+      return null;
+  }
+}
+
+function choiceValue({ knob, onWrite }: Editor) {
+  switch (knob.path) {
     case "language":
       // Any language, suggested rather than restricted. What this governs is
       // what the *agents* write — journals, channel messages, the questions they
@@ -528,36 +572,19 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
           ))}
         </Toggles>
       );
-    case "contextWindow":
-      return <Windows map={ConfigSchema.shape.contextWindow.parse(knob.value)} src={src} onWrite={onWrite} />;
-    case "leaseSlots":
-      return (
-        <Pairs
-          map={rec(knob.value)}
-          kind="int"
-          keyPh="闸门名"
-          bad={bad}
-          onWrite={onWrite}
-          onRefuse={onRefuse}
-          onClear={onClear}
-        />
-      );
-    case "sandbox.cacheDirs":
-      return (
-        <Pairs
-          map={rec(knob.value)}
-          kind="text"
-          keyPh={ph ?? "挂载点"}
-          bad={bad}
-          onWrite={onWrite}
-          onRefuse={onRefuse}
-          onClear={onClear}
-        />
-      );
-    case "sandbox.denyDomains":
-      return <Lines list={ConfigSchema.shape.sandbox.shape.denyDomains.parse(knob.value)} ph={ph} onWrite={onWrite} />;
+    default:
+      return null;
   }
+}
 
+function Value(props: Editor) {
+  // Six are structured values. They stay out of the scalar parser because a
+  // labelled table can keep keys valid where a JSON text box cannot.
+  return modelValue(props) ?? mapValue(props) ?? choiceValue(props) ?? scalarValue(props);
+}
+
+function scalarValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
+  const ph = copyFor(knob).ph;
   const v = knob.value;
 
   if (knob.type === "boolean") {
@@ -883,6 +910,17 @@ function Box({
   );
 }
 
+function RemoveRow({ name, onRemove }: { name: string; onRemove?: () => void }) {
+  if (!onRemove) return <span className="w-7 shrink-0" />;
+  return (
+    <Tip label="删掉这一行">
+      <Button variant="quiet" size="sm" aria-label={`删掉 ${name}`} className="shrink-0" onClick={onRemove}>
+        <X className="size-3" />
+      </Button>
+    </Tip>
+  );
+}
+
 /**
  * A map the boss fills in: model id to window, mount point to host path.
  *
@@ -903,7 +941,7 @@ function Pairs({
   map: Record<string, Json>;
   kind: "int" | "text";
   keyPh: string;
-  bad: string | null;
+  bad?: string;
   onWrite: (v: Json) => void;
   onRefuse: (why: string, at?: string) => void;
   onClear: () => void;
@@ -944,17 +982,7 @@ function Pairs({
             onUnchanged={onClear}
             onCommit={(raw) => commit(k, raw)}
           />
-          <Tip label="删掉这一行">
-            <Button
-              variant="quiet"
-              size="sm"
-              aria-label={`删掉 ${k}`}
-              className="shrink-0"
-              onClick={() => onWrite(Object.fromEntries(entries.filter(([ek]) => ek !== k)))}
-            >
-              <X className="size-3" />
-            </Button>
-          </Tip>
+          <RemoveRow name={k} onRemove={() => onWrite(Object.fromEntries(entries.filter(([ek]) => ek !== k)))} />
         </div>
       ))}
       <div className="flex items-center gap-1.5">
@@ -1091,21 +1119,12 @@ function Windows({
             />
           </div>
           <CountAmount value={Number(v)} label={k} onWrite={(n) => onWrite({ ...map, [k]: n })} />
-          {k === DEFAULT_KEY ? (
-            <span className="w-7 shrink-0" />
-          ) : (
-            <Tip label="删掉这一行">
-              <Button
-                variant="quiet"
-                size="sm"
-                aria-label={`删掉 ${k}`}
-                className="shrink-0"
-                onClick={() => onWrite(Object.fromEntries(entries.filter(([ek]) => ek !== k)))}
-              >
-                <X className="size-3" />
-              </Button>
-            </Tip>
-          )}
+          <RemoveRow
+            name={k}
+            onRemove={
+              k === DEFAULT_KEY ? undefined : () => onWrite(Object.fromEntries(entries.filter(([ek]) => ek !== k)))
+            }
+          />
         </div>
       ))}
       <div className="flex items-center gap-1.5">

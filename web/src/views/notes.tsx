@@ -55,6 +55,30 @@ const FrontmatterSchema = z.object({
   files: z.array(z.string()).optional(),
   gate: z.string().nullable().optional(),
 });
+const GATES: Record<string, { text: string; className?: string }> = {
+  pass: { text: "过", className: "text-ok" },
+  fail: { text: "没过", className: "text-bad" },
+};
+
+function Evidence({ note, gate, files }: { note: Note; gate: string | null; files: string[] }) {
+  if (![gate, note.exportPath, ...files].some(Boolean)) return null;
+  const verdict = gate ? (GATES[gate] ?? { text: gate }) : null;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
+      {verdict && <Meta className={verdict.className}>闸门 {verdict.text}</Meta>}
+      {files.map((file) => (
+        <Tip key={file} label={file}>
+          <Meta className="min-w-0 truncate font-mono">{file}</Meta>
+        </Tip>
+      ))}
+      {note.exportPath && (
+        <Tip label={note.exportPath}>
+          <Meta className="cursor-default underline decoration-dotted">md</Meta>
+        </Tip>
+      )}
+    </div>
+  );
+}
 
 export function Notes({
   projectId,
@@ -174,25 +198,7 @@ function Row({ n, showKind }: { n: Note; showKind?: boolean }) {
             self-congratulation. The export path was the widest thing on the old
             header — 60 characters of docs/journal/<一个很长的中文需求名>/020-journal.md
             saying less than the requirement name inside it. It is a hover. */}
-        {(gate || files.length > 0 || n.exportPath) && (
-          <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
-            {gate && (
-              <Meta className={gate === "pass" ? "text-ok" : gate === "fail" ? "text-bad" : undefined}>
-                闸门 {gate === "pass" ? "过" : gate === "fail" ? "没过" : gate}
-              </Meta>
-            )}
-            {files.map((f) => (
-              <Tip key={f} label={f}>
-                <Meta className="min-w-0 truncate font-mono">{f}</Meta>
-              </Tip>
-            ))}
-            {n.exportPath && (
-              <Tip label={n.exportPath}>
-                <Meta className="cursor-default underline decoration-dotted">md</Meta>
-              </Tip>
-            )}
-          </div>
-        )}
+        <Evidence note={n} gate={gate} files={files} />
       </div>
     </div>
   );
