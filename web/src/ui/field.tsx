@@ -53,7 +53,9 @@ export function Field({
           ? "grid grid-cols-[var(--label,10rem)_minmax(0,1fr)] items-baseline"
           : "flex flex-col gap-y-1.5",
         // A value the boss has to act on, said by the label's ink rather than by
-        // a badge next to it.
+        // a badge next to it. The control that holds the bad value marks itself
+        // (`aria-invalid`), because a row can carry four of them and the row-wide
+        // rule would light all four.
         "data-[invalid=true]:[&_[data-slot=field-label]]:text-accent",
         className,
       )}

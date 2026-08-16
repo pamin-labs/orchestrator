@@ -13,11 +13,13 @@ import { cn } from "../lib/utils";
  * The label is the caller's, and it should be a `<label htmlFor>` pointing at
  * `id`: the whole surface being clickable is what makes a 20px target usable.
  */
-export function Switch({ id, checked, onCheckedChange, disabled }: {
+export function Switch({ id, checked, onCheckedChange, disabled, ...rest }: {
   id?: string;
   checked: boolean;
   onCheckedChange: (v: boolean) => void;
   disabled?: boolean;
+  /** For the rows whose name is a `FieldTitle` rather than a `<label htmlFor>`. */
+  "aria-labelledby"?: string;
 }) {
   return (
     <S.Root
@@ -25,6 +27,7 @@ export function Switch({ id, checked, onCheckedChange, disabled }: {
       checked={checked}
       onCheckedChange={onCheckedChange}
       disabled={disabled}
+      {...rest}
       className={cn(
         "relative h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors",
         "bg-rule data-[state=checked]:bg-accent",
