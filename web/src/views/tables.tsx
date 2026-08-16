@@ -469,18 +469,21 @@ export function CostView({ cost }: { cost: Cost | null }) {
               </b>
             </div>
           </Tip>
-          {/* The second half of the same question. A low hit rate can mean the
-              prompt assembly broke or it can mean nobody is resuming anything,
-              and only this line separates them. One line of text, no card: it is
-              a footnote to the number above it, not a metric of its own. */}
+          {/* The second half of the same question, over the same sample as the
+              line above it. A low hit rate can mean the prompt assembly broke or
+              it can mean nobody is resuming anything, and only this line
+              separates them. One line of text, no card: it is a footnote to the
+              number above it, not a metric of its own.
+              The breakdown by reason is in the tip rather than on the line,
+              because those counts sum to the count already printed — the same
+              number said twice, once as a total and once as its parts. */}
           {cold > 0 && (
-            <Tip label="重开一次会话，缓存前缀要从头建一遍">
+            <Tip label={`${turns} 个 turn 里重开了 ${cold} 次：${why}。重开一次，缓存前缀要从头建一遍`}>
               <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
                 重开会话{" "}
                 <b className={cn("font-mono font-semibold", cold * 2 > turns ? "text-warn" : "text-ink")}>
                   {cold}/{turns}
                 </b>
-                <span className="text-ink-3"> · {why}</span>
               </div>
             </Tip>
           )}

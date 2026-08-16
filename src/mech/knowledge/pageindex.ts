@@ -166,7 +166,7 @@ export async function summarise(
   return { tree, calls, failed };
 }
 
-const oneLine = (s: string) => s.trim().split("\n").filter(Boolean).pop()?.slice(0, 160) ?? "";
+const oneLine = (s: string) => s.trim().split("\n").findLast(Boolean)?.slice(0, 160) ?? "";
 
 /**
  * Retrieval: the model walks the tree.
