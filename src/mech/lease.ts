@@ -284,7 +284,7 @@ export interface LeaseDigest {
   text: string;
 }
 
-export const TAIL_LINES = 200;
+const TAIL_LINES = 200;
 const MAX_ERROR_LINES = 40;
 
 /**

@@ -29,7 +29,7 @@ export function WithAttachments({ body, className }: { body: string; className?:
   );
 }
 
-export function Attachments({ files }: { files: Attached[] }) {
+function Attachments({ files }: { files: Attached[] }) {
   const [full, setFull] = useState<Attached | null>(null);
   if (!files.length) return null;
   const images = files.filter((f) => f.image);

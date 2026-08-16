@@ -37,7 +37,7 @@ import { raise } from "../../mech/flow/escalate.ts";
  * than being rejected — same rule as the brief, an agent must never be stuck on
  * a taxonomy.
  */
-export const ASK_KINDS = ["env", "spec", "boundary", "design", "other"] as const;
+const ASK_KINDS = ["env", "spec", "boundary", "design", "other"] as const;
 
 export const askKind = (given: string | undefined): string =>
   ASK_KINDS.includes((given ?? "").trim() as (typeof ASK_KINDS)[number]) ? given!.trim() : "other";

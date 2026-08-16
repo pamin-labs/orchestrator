@@ -55,10 +55,10 @@ const SkillRefSchema = z.object({
  * Where a repository can ship its own skills. See `listSkills` for the counts
  * behind this list and which CLI actually reads each one.
  */
-export const PROJECT_SKILL_DIRS = [".claude/skills", ".codex/skills", ".agents/skills"] as const;
+const PROJECT_SKILL_DIRS = [".claude/skills", ".codex/skills", ".agents/skills"] as const;
 
 /** Skill text is instructions, not a library. Past this it is being used wrong. */
-export const SKILL_CAP = 12_000;
+const SKILL_CAP = 12_000;
 
 /**
  * The `description:` from a skill's frontmatter, including the block-scalar form.

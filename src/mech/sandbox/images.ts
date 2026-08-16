@@ -117,7 +117,7 @@ export async function imageChoices(): Promise<ImageChoices> {
  * will not start, and the message would be about a container rather than about
  * this field.
  */
-export const DEFAULT_IMAGE_PATH = "sandbox.image";
+const DEFAULT_IMAGE_PATH = "sandbox.image";
 
 /**
  * The machine's default image is `cfg.sandbox.image` and nothing else.

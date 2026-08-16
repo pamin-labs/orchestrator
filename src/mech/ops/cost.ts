@@ -210,7 +210,7 @@ export function recentCacheRatio(db: DB, limit = 50): number | null {
  * of prefix rebuilt each time — and there was no way to tell whether the cause
  * was a moving prefix, the rotation ceiling, or send-backs asking for it.
  */
-export function recentRotations(db: DB, limit = 50): { turns: number; byReason: Record<string, number> } {
+function recentRotations(db: DB, limit = 50): { turns: number; byReason: Record<string, number> } {
   const rows = db
     .query<{ why: string | null }, [number]>(
       `SELECT json_extract(meta_json, '$.rotate') AS why FROM event

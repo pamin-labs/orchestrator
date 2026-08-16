@@ -75,7 +75,7 @@ export async function rebaseOntoBase(git: GitRunner, repoPath: string, worktree:
  * rebase that is about to redo the work anyway. `--abort` restores the pre-rebase
  * HEAD, which is exactly the state the caller assumes.
  */
-export async function abortStaleRebase(git: GitRunner, repoPath: string, worktree: string): Promise<boolean> {
+async function abortStaleRebase(git: GitRunner, repoPath: string, worktree: string): Promise<boolean> {
   // Ask git rather than look for `.git/rebase-merge` on disk: the checkout lives
   // in the group's sandbox now, and `--abort` on a repository that is not
   // rebasing is a harmless error. One round trip either way.
@@ -224,11 +224,11 @@ export async function checkpoint(
  * that can disagree with itself, and the half that is wrong is the half a DCO
  * check rejects — after every gate has already passed.
  */
-export const DEFAULT_TRAILERS: Trailers = { signoff: true, coauthor: true, bot: { ...BOT } };
+const DEFAULT_TRAILERS: Trailers = { signoff: true, coauthor: true, bot: { ...BOT } };
 
-export const signoffArgs = (t: Trailers = DEFAULT_TRAILERS): string[] => (t.signoff ? ["-s"] : []);
+const signoffArgs = (t: Trailers = DEFAULT_TRAILERS): string[] => (t.signoff ? ["-s"] : []);
 
-export function withTrailers(message: string, t: Trailers = DEFAULT_TRAILERS): string {
+function withTrailers(message: string, t: Trailers = DEFAULT_TRAILERS): string {
   if (!t.coauthor) return message;
   const line = `Co-Authored-By: ${t.bot.name} <${t.bot.email}>`;
   // Already there — a squash rewrites a message that may carry it from the wip

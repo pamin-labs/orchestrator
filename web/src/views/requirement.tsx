@@ -640,7 +640,7 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
  * the correction from them, so this is the same composer as everywhere else and
  * takes a screenshot of what is wrong.
  */
-export function RejectSlice({
+function RejectSlice({
   sliceId,
   refresh,
   children,

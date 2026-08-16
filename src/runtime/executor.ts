@@ -119,7 +119,7 @@ export function makeExecutor(deps: ExecDeps): Executor {
 }
 
 /** Find or hire the agent this job belongs to. */
-export function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
+function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
   const { ctx } = deps;
   if (job.agent_id) {
     const a = ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(job.agent_id);

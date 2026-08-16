@@ -366,7 +366,7 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
  * Settings rather than yaml: they are decisions about a repository's
  * conventions, and the person making them is looking at the settings page.
  */
-export const TRAILERS_KEY = "git_trailers";
+const TRAILERS_KEY = "git_trailers";
 
 /** All three on. A record that credits too much is fixable; one that credits
  *  nobody is a diff whose author cannot be asked about it a year later. */
@@ -422,5 +422,5 @@ export function gitTrailers(ctx: Ctx): { signoff: boolean; coauthor: boolean; bo
 }
 
 /** Cleared when the GitHub credential changes, or it outlives the account. */
-export const IDENTITY_KEY = "git_identity";
+const IDENTITY_KEY = "git_identity";
 export const forgetIdentity = (ctx: Ctx): void => void ctx.db?.run("DELETE FROM setting WHERE k = ?", [IDENTITY_KEY]);

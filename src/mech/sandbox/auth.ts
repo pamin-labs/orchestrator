@@ -372,7 +372,7 @@ function gitFilesFor(db: DB): Record<string, string> {
  */
 let refreshing = false;
 
-export async function currentChatgptToken(db: DB, io: CodexHomeIO | null, now = Date.now()): Promise<string | null> {
+async function currentChatgptToken(db: DB, io: CodexHomeIO | null, now = Date.now()): Promise<string | null> {
   const a = loadAuth(db, "codex");
   if (a?.mode !== "chatgpt") return null;
   let parsed = parseAuth(a.secret);

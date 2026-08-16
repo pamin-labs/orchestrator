@@ -199,7 +199,7 @@ function jwtExpiry(token?: string): number | null {
  * for anyone who builds their own image or runs the binary in a container of
  * their own.
  */
-export const inContainer = (): boolean => process.env.ORCH_IN_CONTAINER === "1" || existsSync("/.dockerenv");
+const inContainer = (): boolean => process.env.ORCH_IN_CONTAINER === "1" || existsSync("/.dockerenv");
 
 export interface PreflightInput {
   db: DB;

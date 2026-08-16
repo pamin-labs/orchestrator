@@ -25,7 +25,7 @@ const LeaseSlots = z.union([count, z.record(z.string(), count)]);
 const ModelRef = z.object({ runtime: z.string().min(1), model: z.string() });
 
 /** The six values that become an OpenSandbox request. */
-export const SandboxSpecSchema = z.object({
+const SandboxSpecSchema = z.object({
   image: z.string(),
   /** Kubernetes-style quantities, e.g. "4" and "8Gi". */
   cpu: z.string(),

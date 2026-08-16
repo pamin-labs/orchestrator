@@ -1,7 +1,4 @@
 import type { Escalation, Group, Slice, State } from "./api";
-import { waited } from "./utils";
-
-export const waitedLabel = waited;
 
 /**
  * DRAFT with the boss's yes already on it: waiting on a boundary, not on the boss.

@@ -187,7 +187,7 @@ export function buildStable(parts: StableParts): StablePrompt {
   return { ...stable, hash: hashStable(stable) };
 }
 
-export function hashStable(s: Omit<StablePrompt, "hash">): string {
+function hashStable(s: Omit<StablePrompt, "hash">): string {
   const h = new Bun.CryptoHasher("sha256");
   // Field order is part of the contract; do not sort or reformat. The separator
   // is escaped rather than a raw NUL byte so the source survives tooling.
@@ -212,7 +212,7 @@ export function hashStable(s: Omit<StablePrompt, "hash">): string {
  * The built-in tools implied by a permission whitelist: `Bash(orch *)` needs
  * `Bash` loaded, `Read` needs `Read`. Everything else stays out of the prefix.
  */
-export function toolsFromAllowed(allowed: string[]): string[] {
+function toolsFromAllowed(allowed: string[]): string[] {
   const set = new Set<string>();
   for (const a of allowed) {
     const name = a.includes("(") ? a.slice(0, a.indexOf("(")) : a;

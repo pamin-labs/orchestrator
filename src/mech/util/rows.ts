@@ -8,19 +8,6 @@ import { jsonOr } from "./text.ts";
  */
 
 /**
- * Which project a group belongs to.
- *
- * Eighteen sites wrote this out, most as the same three-line ternary. It is the
- * lookup that turns a group-scoped thing into a project-scoped one — the scope a
- * standing agent works at — so it appears wherever those two meet.
- */
-export const projectOfGrp = (db: DB, grpId: number | null | undefined): number | null =>
-  grpId == null
-    ? null
-    : (db.query<{ project_id: number | null }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-        ?.project_id ?? null);
-
-/**
  * A project's `config_json`, parsed, `{}` when there is none or it is broken.
  *
  * Six functions asked this and each wrote out the same four things: the SELECT,

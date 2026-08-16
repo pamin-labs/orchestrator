@@ -60,7 +60,7 @@ export const POLL_EVERY_MS = 10 * 60_000;
  * lockout. The header keeps showing the last good reading meanwhile, which is
  * what it should do: the window moves in hours.
  */
-export const BACKOFF_MS = 45 * 60_000;
+const BACKOFF_MS = 45 * 60_000;
 
 /** Only the two windows are consumed; the response has a dozen more fields. */
 const SubscriptionWindow = z.object({
@@ -156,7 +156,7 @@ export type UsageRead = { rl: RateLimitInfo } | { error: string };
  * `-w` puts the status on its own last line, because curl's body and its exit
  * code cannot tell 429 from 500 and 429 is the one worth naming.
  */
-export async function fetchClaudeUsage(ctx: Ctx): Promise<UsageRead> {
+async function fetchClaudeUsage(ctx: Ctx): Promise<UsageRead> {
   const auth = `Authorization: Bearer ${decoy("claude", "oauth_token")}`;
   const r = await execIn(
     ctx,
@@ -285,7 +285,7 @@ export function rateLimitsIn(text: string, now: number): RateLimitInfo | null {
   return null;
 }
 
-export function codexUsage(dataDir: string, now = Date.now()): RateLimitInfo | null {
+function codexUsage(dataDir: string, now = Date.now()): RateLimitInfo | null {
   // Not just the newest file: a session that ended before its first quota ping has
   // none, and short ones are common. Walk back through the recent ones.
   for (const file of recentFiles(join(dataDir, "codex-home", "sessions"), 12)) {

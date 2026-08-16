@@ -39,7 +39,7 @@ export interface SliceRow {
   retries: number;
 }
 
-export function loadSlice(ctx: Ctx, sliceId: number): SliceRow | null {
+function loadSlice(ctx: Ctx, sliceId: number): SliceRow | null {
   return (
     ctx.db
       .query<SliceRow, [number]>(
@@ -391,7 +391,7 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
  * "summarise for the next slice" would be a model call producing what a SELECT
  * already knows, and would be forgotten on the turn it mattered.
  */
-export function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
+function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
   const files = new Set<string>();
   for (const e of ctx.db
     .query<{ meta_json: string }, [number]>(

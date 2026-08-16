@@ -329,7 +329,7 @@ export const PROJECT_INVARIANTS = rows<ProjectState>(
  * is refusing produces a restart loop, and waiting for a server that is absent
  * produces a fleet that never moves.
  */
-export const SERVER_INVARIANTS = rows<ServerState>(
+const SERVER_INVARIANTS = rows<ServerState>(
   {
     state: "up",
     must: "every container is opened through it, and its config is the one we mount against",
@@ -358,7 +358,7 @@ export const SERVER_INVARIANTS = rows<ServerState>(
   },
 );
 
-export const LEASE_INVARIANTS = rows<LeaseState>(
+const LEASE_INVARIANTS = rows<LeaseState>(
   {
     state: "queued",
     must: "a lease job is queued for it, and the agent is waiting on the answer",
@@ -417,7 +417,7 @@ export const ESCALATION_INVARIANTS = rows<EscalationState>(
  * row runs, which is why `test/invariants.test.ts` now asserts this list against
  * the tables the module exports.
  */
-export const ALL_INVARIANTS = [
+const ALL_INVARIANTS = [
   GRP_INVARIANTS,
   SLICE_INVARIANTS,
   JOB_INVARIANTS,

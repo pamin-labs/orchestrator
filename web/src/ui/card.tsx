@@ -38,30 +38,6 @@ export function CardTitle({ className, ...rest }: Div) {
   return <div className={cn("font-display text-[1.0625rem] font-semibold", className)} {...rest} />;
 }
 
-/** Small-caps header, for a strip that labels rows rather than titling a panel. */
-export function CardLabel({ className, ...rest }: Div) {
-  return (
-    <div
-      className={cn("flex items-center gap-2 px-3.5 py-2 text-[0.75rem] font-semibold tracking-[0.02em]", className)}
-      {...rest}
-    />
-  );
-}
-
 export function CardBody({ className, ...rest }: Div) {
   return <div className={cn("px-3.5 py-3", className)} {...rest} />;
-}
-
-export function CardFooter({ className, ...rest }: Div) {
-  return (
-    <div
-      className={cn("flex flex-wrap items-center gap-2 border-t border-rule-soft px-3.5 py-2", className)}
-      {...rest}
-    />
-  );
-}
-
-/** A rule-separated row inside a card. First one carries no rule. */
-export function CardRow({ className, ...rest }: Div) {
-  return <div className={cn("border-t border-rule-soft px-3.5 py-3 first:border-t-0", className)} {...rest} />;
 }

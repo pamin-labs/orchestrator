@@ -67,9 +67,9 @@ export interface SchedulerOptions {
   repoHeld?: (projectId: number) => boolean;
 }
 
-export const DEFAULT_POOL = "default";
+const DEFAULT_POOL = "default";
 /** Resources tagged with this run one at a time per repository. */
-export const REPO_POOL = "repo";
+const REPO_POOL = "repo";
 
 /** `2` and `{default: 2}` mean the same thing; the rest is per tag. */
 export function poolSizes(slots: number | Record<string, number> | undefined): Record<string, number> {

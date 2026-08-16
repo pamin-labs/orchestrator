@@ -27,11 +27,11 @@ export interface Provider {
 }
 
 /** Weakest to strongest. The clamp below is an index comparison on this. */
-export const EFFORT_LADDER: Effort[] = ["low", "medium", "high", "xhigh", "max", "ultra"];
+const EFFORT_LADDER: Effort[] = ["low", "medium", "high", "xhigh", "max", "ultra"];
 
 const CLAUDE_EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
 
-export const PROVIDERS: Record<string, Provider> = {
+const PROVIDERS: Record<string, Provider> = {
   claude: { name: "claude", run: runClaude, efforts: CLAUDE_EFFORTS },
   codex: { name: "codex", run: runCodex, efforts: EFFORT_LADDER },
 };

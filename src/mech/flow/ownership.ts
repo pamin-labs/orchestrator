@@ -22,7 +22,7 @@ export interface OwnershipConflict {
 }
 
 /** Files that belong to no group: a change here affects everyone. */
-export const DEFAULT_SHARED = [
+const DEFAULT_SHARED = [
   "package.json",
   "bun.lock",
   "package-lock.json",

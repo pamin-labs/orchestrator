@@ -131,7 +131,7 @@ function say(p: Probe, server: string): string {
 }
 
 /** Where our own config lives when we are the one starting the server. */
-export const ourConfigPath = (home = homedir()): string => join(home, ".orch-cache", "sandbox.toml");
+const ourConfigPath = (home = homedir()): string => join(home, ".orch-cache", "sandbox.toml");
 
 /**
  * Set one key inside one TOML section.
@@ -205,7 +205,7 @@ export function setIn(toml: string, section: string, key: string, line: string):
  *
  * Created once. A user who edits it keeps their edits.
  */
-export async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promise<string> {
+async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promise<string> {
   if (existsSync(path)) return path;
   mkdirSync(dirname(path), { recursive: true });
   const gen = Bun.spawnSync(["uvx", "opensandbox-server", "init-config", path, "--example", "docker"], {

@@ -46,7 +46,7 @@ export function settablePaths(): Map<string, string> {
 }
 
 /** The same paths, with the schema that judges a write rather than a render hint. */
-export function settableSchemas(): Map<string, z.ZodType> {
+function settableSchemas(): Map<string, z.ZodType> {
   const all = paths();
   for (const k of Object.keys(NOT_SETTABLE)) all.delete(k);
   return all;

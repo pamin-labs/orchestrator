@@ -5,7 +5,7 @@ import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
 import { agentRoute, route } from "./http/route.ts";
 import type { Caller, Ctx } from "./ctx.ts";
-import { agentOf, mayAct, mintToken, resolveGroup } from "./api/shared.ts";
+import { agentOf, mintToken } from "./api/shared.ts";
 import {
   AuthBody,
   CodeBody,
@@ -25,7 +25,6 @@ import {
 import {
   AttachmentNameParams,
   bossFact,
-  expandHome,
   getAttachment,
   imagePaths,
   LocalPathsBody,
@@ -34,11 +33,10 @@ import {
   withAttachments,
   type Attachment,
 } from "./api/panel/attach.ts";
-import { CTX_BUDGET_CHARS, CtxQueryBody, postCtxQuery } from "./api/orch/ctxquery.ts";
+import { CtxQueryBody, postCtxQuery } from "./api/orch/ctxquery.ts";
 import { IdParams } from "./api/fields.ts";
 import {
   AnswerBody,
-  ASK_KINDS,
   AskBossBody,
   askKind,
   BossAnswerBody,
@@ -119,7 +117,7 @@ import {
   postSandboxServerRestart,
   postSandboxServerStart,
 } from "./api/panel/sandbox.ts";
-import { getCost, getState, snapshot } from "./api/panel/snapshot.ts";
+import { getCost, getState } from "./api/panel/snapshot.ts";
 import { getStream } from "./api/panel/stream.ts";
 import { getTasks, postTaskClaim, postTaskDone, TaskDoneBody, TaskRef } from "./api/orch/tasks.ts";
 
@@ -141,10 +139,10 @@ import { getTasks, postTaskClaim, postTaskDone, TaskDoneBody, TaskRef } from "./
  * moved so that splitting this file cost its callers nothing.
  */
 export type { Caller, Ctx };
-export { agentOf, mayAct, mintToken, resolveGroup };
-export { bossFact, expandHome, imagePaths, withAttachments, type Attachment };
-export { ASK_KINDS, askKind, brief };
-export { CTX_BUDGET_CHARS, evictOldestLessons, landGroup, LESSON_CAP, snapshot };
+export { mintToken };
+export { bossFact, imagePaths, withAttachments, type Attachment };
+export { askKind, brief };
+export { evictOldestLessons, landGroup, LESSON_CAP };
 
 /**
  * The panel's routes.
@@ -318,7 +316,7 @@ export const UPLOAD_LIMIT = 256 * 1024 * 1024;
  * same-origin, `Origin` calls them different strings. So the `Origin` fallback
  * compares loopback-to-loopback and only insists on the port.
  */
-export function elsewhere(site: string | undefined, origin: string | undefined, url: string): boolean {
+function elsewhere(site: string | undefined, origin: string | undefined, url: string): boolean {
   if (site) return site !== "same-origin" && site !== "none";
   if (!origin) return false;
   try {

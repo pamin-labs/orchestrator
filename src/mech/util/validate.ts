@@ -16,16 +16,7 @@ export type Result<T> = ({ ok: true } & T) | Invalid;
 const JOURNAL_MAX_LINES = 6;
 const DRAFT_MAX_LINES = 12;
 
-export const JOURNAL_KINDS = [
-  "fact",
-  "decision",
-  "journal",
-  "retro",
-  "handoff",
-  "risk",
-  "onboarding",
-  "lesson",
-] as const;
+const JOURNAL_KINDS = ["fact", "decision", "journal", "retro", "handoff", "risk", "onboarding", "lesson"] as const;
 export type JournalKind = (typeof JOURNAL_KINDS)[number];
 
 export interface JournalInput {
@@ -203,7 +194,7 @@ export function validateDraftCard(text: string): Result<DraftOk> {
  * already in the Dispatcher's prompt when a real run produced three steps of one
  * change. These three cases are the ones that can be caught without judgement.
  */
-export function checkSplit(slices: DraftSlice[]): string | null {
+function checkSplit(slices: DraftSlice[]): string | null {
   const norm = (s: string) => s.toLowerCase().replace(/[\s\p{P}]+/gu, "");
 
   for (let i = 0; i < slices.length; i++) {

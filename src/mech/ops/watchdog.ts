@@ -61,13 +61,13 @@ export interface Finding {
 
 export const IDLE_TURN_LIMIT = 3;
 export const SAME_FILE_LIMIT = 5;
-export const PAUSED_NOTIFY_MS = 15 * 60 * 1000;
+const PAUSED_NOTIFY_MS = 15 * 60 * 1000;
 /** How often one standing finding may reappear in the timeline. */
 export const REEMIT_MS = 30 * 60 * 1000;
 /** How long one of the boss's own decisions may sit before it is worth a word. */
-export const NUDGE_AFTER_MS = 4 * 60 * 60 * 1000;
+const NUDGE_AFTER_MS = 4 * 60 * 60 * 1000;
 /** And how often to say it again. Nagging every half hour is how a feed is ignored. */
-export const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
+const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
 
 /**
  * How often the codex rollout sweep reaches into the containers.
@@ -77,7 +77,7 @@ export const NUDGE_REEMIT_MS = 6 * 60 * 60 * 1000;
  * spent on ten `find`s that delete nothing — and spent inside the containers,
  * against the CPU the agents are capped at.
  */
-export const SWEEP_EVERY_MS = 60 * 60 * 1000;
+const SWEEP_EVERY_MS = 60 * 60 * 1000;
 
 // ponytail: in-memory, like `lastFetch` above. A restart sweeps once more than it
 // needed to, which is a `find` that finds nothing.
@@ -178,7 +178,7 @@ export function gzipTurnLog(path: string): boolean {
  * refresh nudge's own rollouts. The 110 MB grows in the sandboxes, and
  * `sweepSandboxSessions` below is what reaches it.
  */
-export function sweepCodexSessions(home: string, now: number): number {
+function sweepCodexSessions(home: string, now: number): number {
   const root = join(home, "sessions");
   if (!existsSync(root)) return 0;
   let dropped = 0;

@@ -62,7 +62,7 @@ export function tierFor(rule: string, severity?: string): Tier {
 }
 
 /** 5 min, then 15, then hourly. A repeat is a reminder, not a new problem. */
-export const BACKOFF_MS = [5 * 60_000, 15 * 60_000, 60 * 60_000];
+const BACKOFF_MS = [5 * 60_000, 15 * 60_000, 60 * 60_000];
 
 export interface NotifierOptions {
   /** Flush the batch when this many pile up. */

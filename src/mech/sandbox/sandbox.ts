@@ -715,7 +715,7 @@ function isPathNotAllowed(e: unknown): boolean {
  * one: `sandbox.ts` -> `auth.ts` -> `chatgpt.ts` already, and reaching back
  * closes the cycle.
  */
-export function codexHomeIO(ctx: Ctx): CodexHomeIO {
+function codexHomeIO(ctx: Ctx): CodexHomeIO {
   return {
     read: (path) => getFile(ctx, UTIL, path),
     write: (path, data) => putFile(ctx, UTIL, path, data),

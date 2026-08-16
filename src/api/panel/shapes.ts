@@ -138,8 +138,8 @@ export const Answered = z.object({
 
 export const GroupNote = z.object({ grpId: z.number(), body: z.string() });
 export const GroupSaid = z.object({ grpId: z.number(), author: z.string(), body: z.string() });
-export const Blocked = z.object({ grpId: z.number(), reason: z.string() });
-export const QueueEntry = z.object({
+const Blocked = z.object({ grpId: z.number(), reason: z.string() });
+const QueueEntry = z.object({
   projectId: z.number(),
   grpId: z.number(),
   name: z.string(),

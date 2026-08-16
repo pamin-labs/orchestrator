@@ -70,4 +70,4 @@ export const postCtxQuery: AgentHandler<z.infer<typeof CtxQueryBody>> = async (c
   );
 };
 
-export const CTX_BUDGET_CHARS = DEFAULT_BUDGET;
+const CTX_BUDGET_CHARS = DEFAULT_BUDGET;

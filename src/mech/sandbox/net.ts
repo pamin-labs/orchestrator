@@ -32,8 +32,6 @@ let state: NetState = { online: true, since: 0 };
 /** What the scheduler asks. Never blocks: the probe runs on the watchdog tick. */
 export const isOnline = (): boolean => state.online;
 
-export const netState = (): NetState => ({ ...state });
-
 /** Tests only: put the module back to its starting state. */
 export function resetNet(): void {
   state = { online: true, since: 0 };

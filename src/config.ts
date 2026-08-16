@@ -76,7 +76,7 @@ export interface RoleDef {
  * own, so the bind succeeds and delivers nothing — see `Config.skillsDir`. A path
  * under `$HOME` is shared into the VM and works.
  */
-export function defaultSkillsDir(): string {
+function defaultSkillsDir(): string {
   if (platform() === "darwin") return join(homedir(), ".orch-cache/skills");
   // Windows has no `/var/tmp`, and the path matters more here than anywhere
   // else: it is one side of a bind mount performed by a docker daemon that, on
@@ -351,10 +351,4 @@ export const MAX_CONTEXT = 2_000_000;
 export function contextWindowFor(cfg: Config, model: string, reported?: number | null): number {
   const raw = reported || cfg.contextWindow?.[model] || cfg.contextWindow?.default || MIN_CONTEXT;
   return Math.min(MAX_CONTEXT, Math.max(MIN_CONTEXT, raw));
-}
-
-/** Token cap for a new slice at this difficulty. */
-export function sliceBudgetFor(cfg: Config, difficulty?: string | null): number {
-  const t = cfg.sliceBudgetTokens;
-  return t[difficulty ?? "normal"] ?? t.normal!;
 }

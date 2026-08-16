@@ -7,7 +7,7 @@ import { cn, clock } from "../lib/utils";
  *  React bails out before touching their DOM. Without this, Timeline's
  *  re-render on every SSE message would re-run every row's JSX, and
  *  DevTools' Highlight Updates would flag the whole list on each frame. */
-export const TimelineRow = memo(function TimelineRow({
+const TimelineRow = memo(function TimelineRow({
   f,
   showHeader,
   showDivider,
