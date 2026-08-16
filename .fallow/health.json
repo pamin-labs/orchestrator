@@ -1,0 +1,539 @@
+{
+  "finding_counts": {
+    "src/api/orch/ctxquery.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/api/orch/escalation.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/api/orch/messaging.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/api/orch/planning.ts": {
+      "complexity_moderate": {
+        "count": 3
+      }
+    },
+    "src/api/orch/report.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/api/orch/tasks.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/api/panel/authflow.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/api/panel/group.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "src/api/panel/project.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/flow/chain.ts": {
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/flow/ownership.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/git/checkout.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/git/github.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "src/mech/git/prwatch.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/git/worktree.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/knowledge/ctx.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/knowledge/pageindex.ts": {
+      "complexity_moderate": {
+        "count": 2
+      }
+    },
+    "src/mech/lease.ts": {
+      "complexity_moderate": {
+        "count": 2
+      }
+    },
+    "src/mech/ops/checkconfig.ts": {
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/ops/preflight.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 2
+      }
+    },
+    "src/mech/ops/watchdog.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/sandbox/auth.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "src/mech/sandbox/login.ts": {
+      "crap_high": {
+        "count": 2
+      }
+    },
+    "src/mech/sandbox/sandbox.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "src/mech/util/detect.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "src/mech/util/validate.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/orch/cli.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "src/runtime/claude.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "src/runtime/codex.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "src/runtime/executor.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "src/scheduler.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "src/server.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "test/config.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/app.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/lib/api.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/lib/models.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/lib/rank.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/lib/select.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "web/src/ui/attachments.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/ui/combobox.tsx": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "web/src/ui/composer.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "web/src/ui/confirm.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "web/src/ui/diff.tsx": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "web/src/ui/switcher.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/ui/theme.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/ui/usage.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/views/evidence.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      }
+    },
+    "web/src/views/home.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "web/src/views/knobs.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "web/src/views/notes.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "web/src/views/picker.tsx": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "web/src/views/progress.tsx": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/views/project.tsx": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "web/src/views/queue.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "web/src/views/requirement.tsx": {
+      "complexity_critical": {
+        "count": 3
+      },
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 5
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "web/src/views/settings.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "web/src/views/settings/credentials.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "web/src/views/settings/environment.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/views/settings/github.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "web/src/views/skills.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/views/tables.tsx": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "web/src/views/timeline.tsx": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "web/src/views/workspace.tsx": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": [
+    "src/runtime/providers.ts:dead code",
+    "web/src/ui/table.tsx:dead code",
+    "src/scheduler.ts:complexity",
+    "web/src/views/settings.tsx:complexity",
+    "web/src/views/requirement.tsx:complexity",
+    "src/mech/sandbox/sandbox.ts:circular dependency",
+    "src/mech/flow/start.ts:circular dependency",
+    "src/runtime/executor.ts:complexity",
+    "web/src/lib/select.ts:high impact",
+    "test/fake-sandbox.ts:high impact",
+    "src/mech/git/github.ts:circular dependency",
+    "src/mech/flow/intercept.ts:circular dependency",
+    "src/mech/sandbox/auth.ts:circular dependency",
+    "web/src/views/queue.tsx:complexity",
+    "src/mech/git/checkout.ts:circular dependency",
+    "web/src/ui/confirm.tsx:high impact",
+    "src/mech/flow/review.ts:circular dependency",
+    "src/api/panel/group.ts:complexity",
+    "web/src/app.tsx:complexity",
+    "web/src/views/settings/environment.tsx:complexity",
+    "web/src/views/settings/credentials.tsx:complexity",
+    "src/runtime/codex.ts:complexity",
+    "src/orch/cli.ts:complexity",
+    "src/mech/ops/preflight.ts:complexity",
+    "src/runtime/claude.ts:complexity",
+    "web/src/views/settings/github.tsx:complexity",
+    "src/mech/git/prwatch.ts:complexity",
+    "src/mech/knowledge/ctx.ts:complexity"
+  ]
+}

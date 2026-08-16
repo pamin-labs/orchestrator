@@ -22,6 +22,10 @@
 
 **外部 JSON 都先过边界：** Claude/Codex 流、PageIndex 结果和 GitHub device-flow 都用 Zod 解析后才读字段；JSON 合法但为 `null`、内容数组里是 `null` 或 usage token 是字符串时不再异常解引用、伪造用量或伪造成功。事件重放不再将 sqlite row 取成 `any`，项目配置在已有 row 上仍复用统一的 JSON object 窄化；专门回归与完整 suite 绿。
 
+**JSON 边界的同类入口已封：** `jsonOr()` 必须同时拿到 Zod schema 和 fallback，调用方不能再用泛型把 `JSON.parse()` 的 `any` 宣称成业务类型；27 个持久化、CLI 和供应商响应入口都已迁移。GitHub client 的 endpoint schema 是必填参数，合法 nullable 字段不误拒，ETag cache 保存原始响应并按当前调用方 schema 重新验证；坏 job payload 不再静默丢字段，安全 mailbox id 的坏 envelope 会回 400。项目配置同样只有一个 `.passthrough()` schema，坏 `detected` / `gates` 会重新探测而不是永久冻结旧状态。边界定向 149 绿，TypeScript、oxlint、web build 绿。
+
+**质量工具进入可复现链路：** Biome 是唯一 formatter，Fallow 3.16.0 固定为项目依赖；Tailwind v4 继续由官方 `@tailwindcss/cli` 构建，package script 直接调用本地 `tailwindcss` bin，Fallow 能从 manifest script 正确认出这份 dev dependency，不留 ignore。CI/release 都先预演 `fallow fix --dry-run`，再用固定版本的官方 Action 做 changed-code audit；PR 额外写 sticky comment 和 check。存量 findings 用提交进仓库的三份 baseline 隔离，新引入项仍阻断。
+
 **项目沙盒 override 不再靠类型断言：** `sandbox.image: 7` 原来在 PATCH 的 `.trim()` 当场 500，`denyDomains: "x"` 则 200 持久化后以 `string[]` 身份进入 OpenSandbox 网络层。现在机器配置、项目 PATCH 与容器读取共用一个 Zod `SandboxSpecSchema`：入口拒绝坏内层类型且不改数据库，读边界对旧库/旁路坏值完整回退，拒绝镜像时 `base_branch` 也不会先被部分写入，局部 patch 不再静默覆盖损坏的整份 JSON。config/sandbox 定向 31 绿、完整 API 66 绿，TypeScript 与 oxlint 绿。
 
 **旧报告逐项按当前分支复核，不重复实现：** pause/resume 统一入口定向 7 绿（`88aa1e7`）；job 结束立即补位定向 25 绿（`6445c48`）；bare mirror heads/refspec 定向 3 绿（`0706062`）。D2 点名的三个 handler 已分别位于 `api/orch/tasks.ts`、`api/panel/group.ts`、`api/orch/planning.ts`，当前没有第二调用方或重复政策证明需要再包一层 flow；`api.ts` 仍负责路由、中间件和 app 组装，并非纯 route table。Claude/Codex/GitHub 登录和 sandbox server start/restart 的 timeout/error 都会取消、返回失败或升级终止，专项 28 绿；SIGKILL 后再确认退出若有复现证据应另立问题。`db.ts` 运行期依赖 `scrub.ts`，反向只有 `import type`，编译后无循环。no-op 项不制造空提交。

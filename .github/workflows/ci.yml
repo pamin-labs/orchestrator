@@ -18,6 +18,12 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+  checks: write
+
 # A second push to the same PR makes the first run's answer irrelevant.
 concurrency:
   group: ci-${{ github.ref }}
@@ -28,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -46,6 +54,26 @@ jobs:
       # difference between what was tested and what will run, and CI is where
       # that has to fail rather than resolve itself quietly.
       - run: bun install --frozen-lockfile
+
+      - name: format
+        run: bun run format:check
+
+      - name: preview safe Fallow fixes
+        env:
+          FALLOW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bun run audit:fix -- --base "$FALLOW_BASE"
+
+      - name: audit changed code
+        uses: fallow-rs/fallow@v3.16.0
+        with:
+          command: audit
+          changed-since: ${{ github.event.pull_request.base.sha || github.event.before }}
+          type-aware: true
+          dead-code-baseline: .fallow/dead-code.json
+          health-baseline: .fallow/health.json
+          dupes-baseline: .fallow/dupes.json
+          comment: ${{ github.event_name == 'pull_request' }}
+          comment-layout: compact
 
       - name: typecheck
         run: bunx tsc --noEmit -p .
