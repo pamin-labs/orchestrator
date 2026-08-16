@@ -512,3 +512,64 @@ HTTP 请求的，握手不成就没有请求，也就没有 token。
 **还有一条是潜伏的：** 读 lessons 是 `ORDER BY at DESC`，而决定哪 20 条活下来的淘汰逻辑是 `ORDER BY at DESC, id DESC`。`at` 是整毫秒，Librarian 一轮写好几条，一旦并列，两次读回的顺序就可能不同 → `systemAppend` 字节变 → 全舰队冷启动，且**每个组看起来都健康**。今天只有 6 条 lesson、没有并列，所以还没炸过。
 
 **claude 那半还有个更隐蔽的：** 默认 system prompt 里有一段 cwd / env / memory paths / **git status**，排在 `--append-system-prompt` 前面。而这个 executor 在每个 turn 开头都提交一次 checkpoint —— 工作树每轮都不一样。前缀的头一百个 token 每轮都变，就等于前缀从来没被复用过，而这件事没有任何症状：turn 照跑，只有 cache 命中率安静地记着这笔损失。CLI 有 `--exclude-dynamic-system-prompt-sections` 正好把那段挪进第一条 user message，加上了。这条标着**待验证** —— 用上面那个重开原因的分布和首步 cache_read 做 A/B，没效果就撤掉（一行）。
+
+## `api.ts` 3885 行拆成 20 个文件，而路由层换成 Hono
+
+**手抄 21 遍的鉴权是这次真正要修的东西。** `/orch` 的每个 handler 开头都是
+`const a = agentOf(ctx, req); if (!a) return bad(...)` —— 这是 agent 那侧全部的身份验证
+（信箱的 `/orch/` 前缀决定哪些路由**够得着**，从来不决定**谁**够得着），而它是一条靠人记得的
+约定，21 个副本里已经有 2 个漂成了另一个状态码。现在挂在 mount 上，注册在 `/orch` 下面就绕不开，
+测试也从抽查 5 条改成列出全部 19 条。顺带：没带 token 统一成 401（`orch` 对 400 以上一视同仁地打印
+body，没有调用方分支于此）。
+
+**拆分是一次一簇、每簇一个提交、每步四条门槛全绿**（`tsc` / `oxlint --deny-warnings` /
+`build:web` / `bun test`）。Hono 先上，旧的正则表退居 fallback，簇搬完一个就从表里删一批 ——
+这样每个提交都能单独 review，而不是一个 3800 行的 diff。最后 `api.ts` 剩 220 行：路由挂载、
+两条中间件、一个给外部的 re-export 块。
+
+**`Ctx` 从 `api.ts` 搬到 `src/ctx.ts` 是前置。** 18 个 `src/mech/**` 文件为了一个类型 import
+整张路由表，其中 14 个和它构成 2-环。搬完 `src/mech` 里 import `api.ts` 的文件数是 **0**。
+顺带查清一件事：剩下的 `db.ts` ↔ `scrub.ts`、`sandbox` ↔ `auth` 都是 `import type`，
+TypeScript 会擦掉，**运行期没有环** —— 所以那几个文件不搬，搬了是纯粹的 churn。
+
+## 三个「自己造的轮子」里，只有一个真的坏了
+
+**`covers()` 放行了两整类 glob。** 它决定 turn 结束后哪些越界文件要被 `git checkout --` 回滚，
+而它只认识结尾的 `/*`，别的通配符一律当前缀处理 —— 于是 `src/a/**/*.ts` 覆盖 `src/a/b.js`，
+`src/*.ts` 覆盖 `src/deep/nested/x.ts`。两个错都是「是，这个文件是它的」，而这个方向没有第二道防线：
+容器不知道组的存在，turn 后对着 `git status` 跑的这一次就是最后一道闸。它漏掉的文件没有任何人回滚，
+而组全程看起来是健康的。换成 `Bun.Glob`，只保留一条我们自己的规则：不带通配符的条目是目录声明
+（agent 写 `owns: ["src/mech"]` 意思是整个目录，glob 库的意思是那一个路径）。
+
+**技能描述的两个手写解析器**：正则版对 `description: |` 返回 "|"（picker 上显示的就是这个），
+替代它的 20 行缩进遍历把 `>-` 按 `|` 折叠，还会命中 frontmatter 下面正文里的 `description:`。
+`Bun.YAML.parse` 三个文件之外就在用。MIME 表同理：`Bun.file(path).type` 回答同一个问题，
+不需要文件存在，而且同一个文件往下 40 行早就在这么用了。
+
+**CLI 的重复 flag 用 `\n` 拼接，读的时候按 `\n` 切** —— 于是「两个值」和「一个带换行的值」
+是同一个字符串，而后者一行就能踩到：`orch pr --body "$(cat msg.txt)"`。改成数组。
+
+**查过之后明确不换的**：`node:util` 的 `parseArgs` 要每个子命令声明选项才能分辨
+`--flag value` 和布尔值，配置比它替掉的 50 行还多；lease 的参数校验器保持手写 —— 五个分支最后都是
+`String()`，错误信息是写给要据此自我纠正的 agent 看的，而 zod 的 `coerce.boolean()` 会把 "no" 当 true，
+偏偏这个函数是整条沙盒边界；`shell-quote` 会把 `>` `&&` 解析成操作符对象，对一个**不过 shell** 的
+上下文来说那是多出来的语义，方向反了；`K()` / `waited()` 换 `Intl` 会把 token 数显示成 120万 而不是
+1.2M，而 DESIGN.md 早把 token 数和路径、分支一起归进等宽的技术列 —— 那是已经做过的产品决定，不是 bug。
+
+## 已经咬过人的那条 DRY，用 `if` 而不是 helper 收口
+
+`paused_at` 是所有能推动一个暂停组的定时器读的那口钟（两小时后封存、十五分钟后提醒老板、解封）。
+带着 NULL 到 PAUSED 的行对这三条同时隐形，而且**看起来完全健康** —— 组是 PAUSED、有 agent、
+哪儿都不报错，它只是再也不动了。`settle()` 里早就有一句 `coalesce` 和一条点名三个调用方的注释；
+三个调用方今天还在那么写。所以时间戳挪到写入处，同时加一条**源码检查**：任何
+`UPDATE grp SET ... status = 'PAUSED'|'PAUSING'` 不带 `paused_at`，`bun test` 直接红
+（故意改坏验证过，它会指名文件和语句）。
+
+用检查而不是 helper，因为要修的正是「靠记得」这件事本身，而 helper 是又一个要记得的东西；
+而且检查在这行被写下来的时候就响，不是在它真正要命的那个夜里。
+
+**`enqueue` 后面那个 `tick()` 没有跟着改。** 19 处配对、5 处没配，看起来像漏写 —— 查了一遍，
+那 5 处全都跑在 tick 周期内部（invariants、watchdog、start、executor），`tick()` 的 `draining`
+重入保护让它们再 tick 一次也是空操作，所以是对的。而把 `enqueue` 改成默认 tick 会改变批量入队的
+调度顺序：现在「入队 A、入队 B、tick 一次」是一起参与评估，改完就变成 A 先占掉组的槽位 ——
+一条为了整齐而引入的优先级 bug，不划算。
