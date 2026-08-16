@@ -9,13 +9,21 @@ export const cn = (...v: ClassValue[]) => twMerge(clsx(v));
  * Stopped at k, so a real project's total printed as "1834k" — which is both wrong
  * as a unit and unreadable as a number. A long-running project passes a billion
  * cached tokens, so B is not hypothetical.
+ *
+ * The tiers were hand-written, and the tier was chosen before the rounding: 999500
+ * printed as "1000k" and 999999999 as "1000M" — a quantity in a unit that does not
+ * exist, on the one panel the boss reads spend from. 1200 printed as "1k", a fifth
+ * of it gone. `Intl` picks the tier from the rounded value, so neither can happen,
+ * and it is the same call `toLocaleString` already makes elsewhere on this page.
  */
+const COMPACT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 export const K = (v?: number | null) => {
   const n = v ?? 0;
-  if (n >= 1e9) return `${(n / 1e9).toFixed(n >= 1e10 ? 0 : 1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M`;
-  if (n >= 1000) return `${Math.round(n / 1000)}k`;
-  return String(n);
+  // A count that is not a number used to reach the screen spelled "NaN".
+  if (!Number.isFinite(n)) return "0";
+  // en-US stamps the thousands tier "K"; the rest of the panel — the settings
+  // rows in units.ts — writes it lowercase, and M / B already agree.
+  return COMPACT.format(n).replace("K", "k");
 };
 export const clock = (ms: number) => {
   const d = new Date(ms);
