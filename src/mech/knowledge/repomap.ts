@@ -1,3 +1,4 @@
+import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../db.ts";
 
 /**
@@ -171,30 +172,15 @@ export function mapFor(nodes: MapNode[], question: string, maxChars: number): st
 
 /** Store the map as a project note, and only when it actually changed. */
 export function saveMap(db: DB, projectId: number, rendered: string): boolean {
-  const prev = db
-    .query<{ id: number; body: string }, [number]>(
-      "SELECT id, body FROM note WHERE project_id = ? AND kind = 'map' ORDER BY id DESC LIMIT 1",
-    )
-    .get(projectId);
-  if (prev?.body === rendered) return false;
-  if (prev) db.run("DELETE FROM note WHERE id = ?", [prev.id]);
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, 'map', ?, unixepoch() * 1000)", [
-    projectId,
-    rendered,
-  ]);
-  return true;
+  return saveSingletonNote(db, projectId, "map", rendered);
 }
 
 export function loadMap(db: DB, projectId: number | null): MapNode[] {
   if (!projectId) return [];
-  const row = db
-    .query<{ body: string }, [number]>(
-      "SELECT body FROM note WHERE project_id = ? AND kind = 'map' ORDER BY id DESC LIMIT 1",
-    )
-    .get(projectId);
-  if (!row) return [];
+  const body = singletonNote(db, projectId, "map");
+  if (!body) return [];
   const nodes: MapNode[] = [];
-  for (const line of row.body.split("\n")) {
+  for (const line of body.split("\n")) {
     if (line.endsWith("/")) nodes.push({ dir: line.slice(0, -1), files: [] });
     else if (nodes.length) {
       const [name, syms] = line.trim().split(" — ");

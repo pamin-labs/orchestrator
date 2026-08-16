@@ -1,3 +1,4 @@
+import { errText } from "../util/text.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
@@ -354,7 +355,7 @@ export async function restartServer(argv: string[], log?: string): Promise<strin
     try {
       process.kill(Number(live.pid), "SIGTERM");
     } catch (e) {
-      return `could not stop pid ${live.pid}: ${(e as Error)?.message ?? e}`;
+      return `could not stop pid ${live.pid}: ${errText(e)}`;
     }
     // It has containers to let go of. SIGKILL after, or a wedged process never
     // releases the port and the restart lands on an address already in use.
@@ -374,7 +375,7 @@ export async function restartServer(argv: string[], log?: string): Promise<strin
     Bun.spawn(argv, { stdout: out, stderr: out, stdin: "ignore" }).unref();
     return null;
   } catch (e) {
-    return `could not start ${argv[0]}: ${(e as Error)?.message ?? e}`;
+    return `could not start ${argv[0]}: ${errText(e)}`;
   }
 }
 
@@ -536,7 +537,7 @@ function markDown(ctx: Ctx, e: unknown, now = Date.now()): void {
     intent: "inform",
     severity: "blocker",
     body:
-      `开不了容器，所有 turn 先挂起：${String((e as Error)?.message ?? e).slice(0, 200)}\n` +
+      `开不了容器，所有 turn 先挂起：${errText(e, 200)}\n` +
       `多半是 docker 没起或者 opensandbox-server 没在跑 —— 设置页的自检那一栏会说是哪个。好了自动继续。`,
   });
 }
@@ -694,7 +695,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
           severity: "blocker",
           body:
             `这个容器的凭据没绑上，里面的假值会原样发出去 —— 接下来每次模型调用都会 401，` +
-            `而那不是 token 的问题，重新登录也没用。原因：${(e as Error)?.message ?? e}`.slice(0, 400),
+            `而那不是 token 的问题，重新登录也没用。原因：${errText(e, 400)}`,
         });
       });
   }
@@ -709,7 +710,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         author: "orchestrator",
         kind: "state_change",
         severity: "warn",
-        body: `沙盒重建了，但工作区没装回去：${(e as Error)?.message ?? e}`,
+        body: `沙盒重建了，但工作区没装回去：${errText(e)}`,
       });
     });
   }
@@ -1052,7 +1053,7 @@ export async function writeInto(
       await sb.files.writeFiles(files);
     } catch (e) {
       const where = files.map((f) => f.path).join(", ");
-      throw new Error(`could not write ${where} into the container: ${(e as Error)?.message ?? e}`);
+      throw new Error(`could not write ${where} into the container: ${errText(e)}`);
     }
   }
 }
@@ -1433,7 +1434,7 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
   try {
     return await driver(ctx).exec(ctx, scope, cmd, opts);
   } catch (e) {
-    return { code: EXEC_UNAVAILABLE, out: "", err: `container unavailable: ${(e as Error)?.message ?? e}` };
+    return { code: EXEC_UNAVAILABLE, out: "", err: `container unavailable: ${errText(e)}` };
   }
 }
 

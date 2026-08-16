@@ -15,6 +15,7 @@
  * agent.
  */
 
+import { jsonOr } from "../mech/util/text.ts";
 const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
 const TOKEN = process.env.ORCH_TOKEN ?? "";
 
@@ -270,7 +271,7 @@ export async function main(argv: string[]): Promise<number> {
           );
         }
         const raw = (await stdin()).trim();
-        const parsed = raw ? safeJson(raw) : null;
+        const parsed = raw ? jsonOr(raw, raw) : null;
         if (!Array.isArray(parsed)) {
           return usageError('split needs a JSON array on stdin: [{"name":"…","idea":"…"}, …]');
         }
@@ -292,7 +293,7 @@ export async function main(argv: string[]): Promise<number> {
         const raw = inline || piped;
         r = await call("POST", "/orch/task/done", {
           task_id: id,
-          claim: raw.trim() ? safeJson(raw.trim()) : undefined,
+          claim: raw.trim() ? jsonOr(raw.trim(), raw.trim()) : undefined,
           already_done: alreadyDone || undefined,
           review: typeof flags.review === "string" ? flags.review : undefined,
         });
@@ -415,14 +416,6 @@ export async function main(argv: string[]): Promise<number> {
 function usageError(msg: string): number {
   console.error(`${msg}\n\n${USAGE}`);
   return 2;
-}
-
-function safeJson(s: string): unknown {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return s;
-  }
 }
 
 if (import.meta.main) process.exit(await main(process.argv.slice(2)));

@@ -1,3 +1,4 @@
+import { errText } from "../util/text.ts";
 import type { DB } from "../../db.ts";
 import type { Config } from "../../config.ts";
 import { putSetting } from "../../settings.ts";
@@ -60,7 +61,7 @@ async function published(): Promise<{ tags: string[]; note?: string }> {
     // it did not ask for is how a "newest" ends up pointing at the wrong one.
     return { tags: [...tags].sort((a, b) => (a === "latest" ? -1 : b === "latest" ? 1 : b.localeCompare(a, undefined, { numeric: true }))) };
   } catch (e) {
-    return { tags: [], note: `连不上 ghcr.io：${String((e as Error)?.message ?? e).slice(0, 80)}` };
+    return { tags: [], note: `连不上 ghcr.io：${errText(e, 80)}` };
   }
 }
 

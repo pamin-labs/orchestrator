@@ -1,3 +1,4 @@
+import { errText } from "./mech/util/text.ts";
 import { Hono } from "hono";
 import { check } from "./api/valid.ts";
 import type { Caller, Ctx } from "./ctx.ts";
@@ -240,7 +241,7 @@ export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   // An uncaught handler error was a 500 with the message in the body, and stays
   // one: `orch` prints this text straight at an agent, and "error: ..." is more
   // use to it than an empty 500.
-  app.onError((e, c) => c.text(`error: ${(e as Error)?.message ?? e}`, 500));
+  app.onError((e, c) => c.text(`error: ${errText(e)}`, 500));
 
   /**
    * A body has to say it is JSON.

@@ -1,3 +1,4 @@
+import { errText } from "../util/text.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -94,7 +95,7 @@ async function probe(server: string, key: string): Promise<Probe> {
     if (res.status === 401 || res.status === 403) return { kind: "auth" };
     return { kind: "http", status: res.status };
   } catch (e) {
-    return { kind: "none", why: String((e as Error)?.message ?? e).slice(0, 120) };
+    return { kind: "none", why: errText(e, 120) };
   }
 }
 
@@ -366,7 +367,7 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   try {
     config = await writeConfig(ctx, startKey);
   } catch (e) {
-    return { kind: "down", why: `写不出配置：${String((e as Error)?.message ?? e).slice(0, 200)}` };
+    return { kind: "down", why: `写不出配置：${errText(e, 200)}` };
   }
   const argv = ["uvx", "opensandbox-server", "--config", config];
   try {
@@ -384,7 +385,7 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
     if (!up.ok) return { kind: "down", why: up.why, log };
     return { kind: "started", pid: String(p.pid), config };
   } catch (e) {
-    return { kind: "down", why: `起不来：${String((e as Error)?.message ?? e).slice(0, 160)}` };
+    return { kind: "down", why: `起不来：${errText(e, 160)}` };
   }
 }
 

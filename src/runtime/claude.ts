@@ -1,5 +1,6 @@
 import type { StablePrompt } from "../prompt/assemble.ts";
 import { shq } from "../mech/util/shq.ts";
+import { clip, jsonOr } from "../mech/util/text.ts";
 
 /**
  * `claude -p` as one subprocess per turn.
@@ -427,10 +428,10 @@ export function trimForLog(line: any): any {
 
 export function summarizeTool(name: string, input: Record<string, any>): ToolSummary {
   let detail = name;
-  if (typeof input.command === "string") detail = `${name}: ${clip(unwrapShell(input.command), 90)}`;
+  if (typeof input.command === "string") detail = `${name}: ${clip(unwrapShell(input.command), 90, true)}`;
   else if (typeof input.file_path === "string") detail = `${name}: ${input.file_path}`;
-  else if (typeof input.pattern === "string") detail = `${name}: ${clip(input.pattern, 60)}`;
-  else if (typeof input.prompt === "string") detail = `${name}: ${clip(input.prompt, 60)}`;
+  else if (typeof input.pattern === "string") detail = `${name}: ${clip(input.pattern, 60, true)}`;
+  else if (typeof input.prompt === "string") detail = `${name}: ${clip(input.prompt, 60, true)}`;
   return { name, detail };
 }
 
@@ -447,17 +448,6 @@ function unwrapShell(cmd: string): string {
   return (m?.[2] ?? cmd).trim();
 }
 
-function clip(s: string, n: number): string {
-  const one = s.replace(/\s+/g, " ").trim();
-  return one.length > n ? one.slice(0, n - 1) + "…" : one;
-}
-
-function safeParse(line: string): Line {
-  try {
-    return JSON.parse(line) as Line;
-  } catch {
-    // The CLI prints the occasional non-JSON line (login prompts, warnings).
-    // Surfacing it as text beats crashing the turn.
-    return { type: "system", subtype: "noise", status: line };
-  }
-}
+/** The CLI prints the occasional non-JSON line (login prompts, warnings). */
+const safeParse = (line: string): Line =>
+  jsonOr<Line>(line, { type: "system", subtype: "noise", status: line });

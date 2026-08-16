@@ -1,3 +1,4 @@
+import { projectOfAgent } from "../mech/util/rows.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Prose } from "./valid.ts";
 import { bad, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
@@ -61,9 +62,7 @@ export const postMail: AgentHandler<z.infer<typeof MailBody>> = async (ctx, _req
   // waking someone means enqueueing an agent_turn for them, nothing more.
   let target: { agentId: number; grpId: number | null } | null = null;
   if (WAKING.has(b.intent)) {
-    const senderProject = ctx.db
-      .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
-      .get(a.id)?.project_id ?? null;
+    const senderProject = projectOfAgent(ctx.db, a.id);
     target = resolveTarget(ctx, a.grp_id, b.target, senderProject);
     if (!target) {
       const known = (ctx.knownRoles?.() ?? []).join(", ");

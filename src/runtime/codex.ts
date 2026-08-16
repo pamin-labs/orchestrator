@@ -1,3 +1,4 @@
+import { clip } from "../mech/util/text.ts";
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary } from "./claude.ts";
 import { promptPath, summarizeTool } from "./claude.ts";
 import { shq } from "../mech/util/shq.ts";
@@ -52,11 +53,6 @@ export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
   for (const img of spec.images ?? []) argv.push("-i", img);
   return argv;
 }
-
-const clip = (s: string, n = 120) => {
-  const one = s.replace(/\s+/g, " ").trim();
-  return one.length > n ? `${one.slice(0, n - 1)}…` : one;
-};
 
 /**
  * What goes on disk, minus the command output.
@@ -171,7 +167,7 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
             result.text = it.text;
             h.onText?.(it.text);
           } else if (it.type === "error") {
-            result.toolSummaries.push({ name: "notice", detail: clip(it.message ?? "") });
+            result.toolSummaries.push({ name: "notice", detail: clip(it.message ?? "", 120, true) });
           } else if (it.type) {
             const t: ToolSummary = summarizeTool(it.type, {
               command: it.command,

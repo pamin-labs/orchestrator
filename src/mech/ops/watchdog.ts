@@ -1,3 +1,4 @@
+import { hours, minutes } from "../util/text.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../config.ts";
 import { say } from "../../lang.ts";
@@ -210,7 +211,6 @@ export function sweepTurnLogs(dir: string, now: number): { zipped: number; dropp
  */
 function waitingOnBoss(db: WatchdogDeps["ctx"]["db"], now: number): Finding[] {
   const out: Finding[] = [];
-  const hours = (ms: number) => Math.round(ms / 3_600_000);
 
   for (const g of db
     .query<{ id: number; name: string; at: number }, [number]>(
@@ -423,7 +423,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "turn_timeout",
         grpId: j.grp_id,
         severity: "advisory",
-        body: t("wd.turn_timeout", { min: Math.round(cfg.turnTimeoutMs / 60000) }),
+        body: t("wd.turn_timeout", { min: minutes(cfg.turnTimeoutMs) }),
       });
       if (j.grp_id) await interrupt(ctx, j.grp_id, "keep");
     }
@@ -823,19 +823,19 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     for (const g of paused) {
       const waited = now() - g.paused_at;
       if (waited >= cfg.parkAfterPausedMs) {
-        park(ctx, g.id, `waited ${Math.round(waited / 60000)} min for you`);
+        park(ctx, g.id, `waited ${minutes(waited)} min for you`);
         findings.push({
           rule: "parked",
           grpId: g.id,
           severity: "advisory",
-          body: t("wd.parked", { name: g.name, min: Math.round(waited / 60000) }),
+          body: t("wd.parked", { name: g.name, min: minutes(waited) }),
         });
       } else if (waited >= PAUSED_NOTIFY_MS) {
         findings.push({
           rule: "waiting_on_you",
           grpId: g.id,
           severity: "blocker",
-          body: t("wd.waiting_on_you", { name: g.name, min: Math.round(waited / 60000) }),
+          body: t("wd.waiting_on_you", { name: g.name, min: minutes(waited) }),
         });
       }
     }
@@ -968,7 +968,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         rule: "waiting_parked",
         grpId: g.id,
         severity: "advisory",
-        body: `${g.name} 封存了 ${Math.round((now() - g.paused_at) / 3_600_000)} 小时，唤醒还是不做了？`,
+        body: `${g.name} 封存了 ${hours(now() - g.paused_at)} 小时，唤醒还是不做了？`,
       });
     }
   });

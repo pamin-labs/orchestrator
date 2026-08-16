@@ -1,3 +1,5 @@
+import { jsonOr } from "../util/text.ts";
+import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../db.ts";
 import type { Ctx } from "../../ctx.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
@@ -424,31 +426,9 @@ export function noteLeaves(db: DB, projectId: number | null): { ids: string[]; r
 // ------------------------------------------------------------------ storage
 
 export function saveTree(db: DB, projectId: number, tree: Tree): void {
-  const body = JSON.stringify(tree);
-  const prev = db
-    .query<{ id: number; body: string }, [number]>(
-      "SELECT id, body FROM note WHERE project_id = ? AND kind = 'pageindex' ORDER BY id DESC LIMIT 1",
-    )
-    .get(projectId);
-  if (prev?.body === body) return;
-  if (prev) db.run("DELETE FROM note WHERE id = ?", [prev.id]);
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, 'pageindex', ?, unixepoch() * 1000)", [
-    projectId,
-    body,
-  ]);
+  saveSingletonNote(db, projectId, "pageindex", JSON.stringify(tree));
 }
 
 export function loadTree(db: DB, projectId: number | null): Tree | null {
-  if (!projectId) return null;
-  const row = db
-    .query<{ body: string }, [number]>(
-      "SELECT body FROM note WHERE project_id = ? AND kind = 'pageindex' ORDER BY id DESC LIMIT 1",
-    )
-    .get(projectId);
-  if (!row) return null;
-  try {
-    return JSON.parse(row.body) as Tree;
-  } catch {
-    return null;
-  }
+  return jsonOr<Tree | null>(singletonNote(db, projectId, "pageindex"), null);
 }

@@ -1,3 +1,4 @@
+import { projectOfAgent } from "../mech/util/rows.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "../mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search } from "../mech/knowledge/pageindex.ts";
 import { z } from "zod";
@@ -20,9 +21,7 @@ export const CtxQueryBody = z.object({
 
 export const postCtxQuery: AgentHandler<z.infer<typeof CtxQueryBody>> = async (ctx, _req, a, _p, b) => {
   const projectId =
-    ctx.db
-      .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
-      .get(a.id)?.project_id ?? null;
+    projectOfAgent(ctx.db, a.id);
   // PageIndex: a model walks the summary tree and can land on a file whose name
   // shares no word with the question. It costs one cheap call, against grep rounds
   // that each re-read the agent's whole transcript. No tree yet, or a navigator

@@ -1,3 +1,4 @@
+import { projectOfAgent } from "../mech/util/rows.ts";
 import { basename, join, resolve } from "node:path";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
@@ -29,6 +30,7 @@ import {
 } from "../mech/flow/review.ts";
 import { type TurnResult } from "./claude.ts";
 import { clampEffort, providerFor, type Provider } from "./providers.ts";
+import { clip, errText, jsonOr } from "../mech/util/text.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -102,7 +104,7 @@ export function resolveAgent(deps: ExecDeps, job: Job): AgentRow {
     const a = ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(job.agent_id);
     if (a) return a;
   }
-  const payload = safeJson(job.payload_json);
+  const payload = jsonOr<Record<string, unknown>>(job.payload_json, {});
   const roleName = String(payload.role ?? "engineer");
   const existing = ctx.db
     .query<AgentRow, [number | null, string]>(
@@ -198,9 +200,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
           "SELECT repo_path FROM project WHERE id = ?",
         )
         .get(
-          ctx.db
-            .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
-            .get(agent.id)?.project_id ?? null,
+          projectOfAgent(ctx.db, agent.id),
         )?.repo_path ?? null);
   // Always the sandbox's own checkout. There is no host path a turn can run in
   // any more, which is the point: nothing an agent does touches this machine.
@@ -221,7 +221,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job): Promise<void> {
     ? "hash"
     : overTokenBudget(agent, cfg)
       ? "budget"
-      : safeJson(job.payload_json).rotate
+      : jsonOr<Record<string, unknown>>(job.payload_json, {}).rotate
         ? "explicit"
         : !agent.session_id
           ? "new"
@@ -483,9 +483,7 @@ function buildStableFor(
 ) {
   const { ctx, cfg } = deps;
 
-  const projectId = ctx.db
-    .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
-    .get(agent.id)?.project_id ?? null;
+  const projectId = projectOfAgent(ctx.db, agent.id);
 
   const onboarding = noteBody(ctx, projectId, "onboarding");
   // `id DESC` is not decoration. `at` is whole milliseconds and the Librarian
@@ -533,7 +531,7 @@ async function buildDeltaFor(
   scope: Scope,
 ): Promise<Delta> {
   const { ctx } = deps;
-  const payload = safeJson(job.payload_json);
+  const payload = jsonOr<Record<string, unknown>>(job.payload_json, {});
   const delta: Delta = {};
 
   if (payload.escalation) {
@@ -1282,11 +1280,11 @@ export function makeReviewVerdict(deps: ExecDeps) {
  * the next thing that learns to throw cannot buy the same outage.
  */
 async function runLease(deps: ExecDeps, job: Job): Promise<void> {
-  const leaseId = Number(safeJson(job.payload_json).lease_id);
+  const leaseId = Number(jsonOr<Record<string, unknown>>(job.payload_json, {}).lease_id);
   try {
     await lease(deps, job, leaseId);
   } catch (e) {
-    finishLease(deps, leaseId, 126, `the gate could not run: ${(e as Error)?.message ?? e}`, undefined);
+    finishLease(deps, leaseId, 126, `the gate could not run: ${errText(e)}`, undefined);
   }
 }
 
@@ -1305,7 +1303,7 @@ async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void>
 
   // Re-validate at execution time. The queued args were checked on the way in,
   // but the resource template may have changed since.
-  const resolved = resolveLease(def, safeJson(lease.args_json));
+  const resolved = resolveLease(def, jsonOr<Record<string, unknown>>(lease.args_json, {}));
   if (!resolved.ok) return finishLease(deps, leaseId, 126, resolved.error, undefined);
 
   const cwd = leaseCwd(def);
@@ -1330,7 +1328,7 @@ async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void>
 
   // Same runner as the gates use. This used to spawn its own process, which meant
   // two implementations of "run a resource" and a timeout on only one of them.
-  const out = await runResource(def, safeJson(lease.args_json) as Record<string, unknown>, {
+  const out = await runResource(def, jsonOr<Record<string, unknown>>(lease.args_json, {}) as Record<string, unknown>, {
     cwd,
     logPath,
     timeoutMs: cfg.leaseTimeoutMs,
@@ -1389,7 +1387,7 @@ function loadResource(ctx: Ctx, name: string): ResourceDef | null {
     name: r.name,
     template: r.template,
     concurrency: r.concurrency,
-    argSchema: safeJson(r.arg_schema_json) as ResourceDef["argSchema"],
+    argSchema: jsonOr<Record<string, unknown>>(r.arg_schema_json, {}) as ResourceDef["argSchema"],
     errorRegex: r.error_regex ?? undefined,
     cwd: r.cwd ?? undefined,
   };
@@ -1406,14 +1404,3 @@ function noteBody(ctx: Ctx, projectId: number | null, kind: string): string | nu
   );
 }
 
-function safeJson(s: string): Record<string, unknown> {
-  try {
-    return JSON.parse(s) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
-function clip(s: string, n = 200): string {
-  return s.length > n ? `${s.slice(0, n)}…` : s;
-}

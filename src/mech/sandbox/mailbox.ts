@@ -1,3 +1,4 @@
+import { errText } from "../util/text.ts";
 import { consola } from "consola";
 import type { Ctx } from "../../ctx.ts";
 import { FILE_MODE, liveSandboxes, MAILBOX_DIR, writeInto } from "./sandbox.ts";
@@ -126,7 +127,7 @@ function reply(
   return writeInto(sb, [
     { path: `${MAILBOX_DIR}/res/${id}.json`, data: JSON.stringify(answer), mode: FILE_MODE },
   ]).catch((e: unknown) => {
-    consola.warn(`mailbox: could not answer ${id}, the agent waits out its turn clock: ${(e as Error)?.message ?? e}`);
+    consola.warn(`mailbox: could not answer ${id}, the agent waits out its turn clock: ${errText(e)}`);
   });
 }
 

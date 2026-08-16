@@ -1,5 +1,6 @@
 import type { DB } from "./db.ts";
 import { scrub } from "./mech/util/scrub.ts";
+import { jsonOr } from "./mech/util/text.ts";
 
 /**
  * Append-only event log plus fan-out.
@@ -120,7 +121,7 @@ export class Bus {
          FROM event WHERE seq > ? ORDER BY seq LIMIT ?`,
       )
       .all(seq, limit)
-      .map((r) => ({ ...r, meta: safeJson(r.meta_json) }));
+      .map((r) => ({ ...r, meta: jsonOr<unknown>(r.meta_json, {}) }));
   }
 
   private fan(f: Frame): void {
@@ -134,10 +135,3 @@ export class Bus {
   }
 }
 
-function safeJson(s: string): unknown {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return {};
-  }
-}

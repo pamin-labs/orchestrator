@@ -1,6 +1,7 @@
 import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../config.ts";
 import { say } from "../../lang.ts";
+import { jsonOr } from "../util/text.ts";
 import { runGates, recordGate, gateState } from "./gate.ts";
 import { extractClaimedFiles, reconcile } from "./reconcile.ts";
 import { changedSince, filesAt } from "../git/worktree.ts";
@@ -68,7 +69,7 @@ export async function runDeterministicReview(
       "SELECT claim_json FROM task WHERE slice_id = ? AND status = 'done'",
     )
     .all(sliceId)
-    .map((r) => safeJson(r.claim_json));
+    .map((r) => jsonOr(r.claim_json, r.claim_json ?? null));
 
   let changed: string[] = [];
   let absent: string[] = [];
@@ -423,14 +424,7 @@ export function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
   );
 }
 
-function safeJson(s: string | null): unknown {
-  if (!s) return null;
-  try {
-    return JSON.parse(s);
-  } catch {
-    return s;
-  }
-}
+
 
 /**
  * PR-level review, run once every slice has been accepted by the boss.

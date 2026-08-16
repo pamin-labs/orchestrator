@@ -1,3 +1,4 @@
+import { errText } from "./mech/util/text.ts";
 import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { landGroup, makeApp } from "./api.ts";
@@ -521,7 +522,7 @@ export function start(overrides: Partial<Config> = {}): Started {
           else dispatchFeedback(ctx, f);
         }
       })
-      .catch((e) => consola.error(`pollPrs: ${(e as Error)?.message ?? e}`));
+      .catch((e) => consola.error(`pollPrs: ${errText(e)}`));
   }, armed);
 
   // The agents' only way out. Nothing in a sandbox can reach this process
@@ -565,7 +566,7 @@ export function start(overrides: Partial<Config> = {}): Started {
         consola.warn(`opensandbox-server: ${st.why}`);
       }
     })
-    .catch((e) => consola.error(`ensureServer: ${(e as Error)?.message ?? e}`));
+    .catch((e) => consola.error(`ensureServer: ${errText(e)}`));
 
   // Say what is missing here, once, rather than letting every group discover it
   // one failed turn at a time. Not fatal: the panel can be opened and the
@@ -575,7 +576,7 @@ export function start(overrides: Partial<Config> = {}): Started {
       const bad = report(checks);
       if (bad) consola.warn(`preflight:\n${bad}`);
     })
-    .catch((e) => consola.error(`preflight: ${(e as Error)?.message ?? e}`));
+    .catch((e) => consola.error(`preflight: ${errText(e)}`));
 
   sched.tick();
   return {

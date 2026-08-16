@@ -1,3 +1,4 @@
+import { errText, tail } from "../util/text.ts";
 import type { Ctx } from "../../ctx.ts";
 import { execIn, execLines, getBytes, putBytes, SKILL_SYNC, UTIL, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
@@ -553,7 +554,7 @@ export async function keepBranch(ctx: Ctx, grpId: number): Promise<{ ok: boolean
   try {
     return await keep(ctx, grpId);
   } catch (e) {
-    return { ok: false, reason: `${(e as Error)?.message ?? e}`.slice(-300) };
+    return { ok: false, reason: tail(errText(e, 100_000), 300) };
   }
 }
 
@@ -617,7 +618,7 @@ export async function pushBranch(ctx: Ctx, grpId: number): Promise<{ ok: boolean
   try {
     return await push(ctx, grpId);
   } catch (e) {
-    return { ok: false, reason: `${(e as Error)?.message ?? e}`.slice(-300) };
+    return { ok: false, reason: tail(errText(e, 100_000), 300) };
   }
 }
 
