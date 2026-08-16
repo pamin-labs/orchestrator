@@ -4,11 +4,11 @@
 
 # orchestrator
 
-**Say what you want. A team assembles around it, builds it, reviews it twice, and
-hands you a pull request.**
+**An AI team for a company of one.**
 
-You do three things — say it, approve the plan, merge. Everything else happens
-inside containers you never have to look at.
+Say what you want. A team assembles around it, builds it, reviews it twice, and
+hands you a pull request. You do three things — say it, approve the plan, merge.
+Everything else happens inside containers you never have to look at.
 
 ```
 ●  you say one sentence
