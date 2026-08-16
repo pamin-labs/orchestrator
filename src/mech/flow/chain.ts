@@ -1,4 +1,4 @@
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { rollbackTo } from "../git/worktree.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";

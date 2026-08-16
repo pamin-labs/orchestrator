@@ -1,4 +1,4 @@
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../config.ts";
 import { say } from "../../lang.ts";
 import { interrupt, park, unpark } from "../flow/intercept.ts";

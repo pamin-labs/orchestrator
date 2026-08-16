@@ -1,7 +1,7 @@
 import { basename, join, resolve } from "node:path";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
-import type { Ctx } from "../api.ts";
+import type { Ctx } from "../ctx.ts";
 import { imagePaths, mintToken } from "../api.ts";
 import type { Config, RoleDef } from "../config.ts";
 import { DEFAULT_PROVIDER, contextWindowFor, modelFor } from "../config.ts";

@@ -1,4 +1,4 @@
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { say } from "../../lang.ts";
 import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";

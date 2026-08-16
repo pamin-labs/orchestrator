@@ -2,9 +2,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
-import { dropSlices, type DB } from "./db.ts";
-import type { Bus } from "./bus.ts";
-import { poolSizes, type Scheduler } from "./scheduler.ts";
+import { dropSlices } from "./db.ts";
+import { poolSizes } from "./scheduler.ts";
 import { resolveLease, type ResourceDef } from "./mech/sandbox/lease.ts";
 import { sliceDiffBase } from "./mech/git/worktree.ts";
 import { allowedImage, execIn, killSandbox, putFile, relinkSkills, remoteInClear, restartServer, runningServer, serverAddr, serverKeyOnDisk, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
@@ -28,7 +27,7 @@ import { costReport } from "./mech/ops/cost.ts";
 import { checkPrMessage, openPr, prBody, prTitle, pushBlocked } from "./mech/git/prwatch.ts";
 import { forgetHolds } from "./mech/git/github.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/knowledge/ctx.ts";
-import { loadTree, NOTE_PREFIX, render, search, type Ask } from "./mech/knowledge/pageindex.ts";
+import { loadTree, NOTE_PREFIX, render, search } from "./mech/knowledge/pageindex.ts";
 import { gatesFor, recordGate } from "./mech/flow/gate.ts";
 import { forgetProjectSkills, listSkills, projectSkills, projectSkillsPending, restageSkills, setSkillOff, skillNames, skillsOff } from "./mech/util/skills.ts";
 import { shq } from "./mech/util/shq.ts";
@@ -36,93 +35,17 @@ import { abortJob } from "./runtime/running.ts";
 import { sediment } from "./mech/knowledge/lessons.ts";
 import { say } from "./lang.ts";
 import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/flow/validate.ts";
+import type { Caller, Ctx } from "./ctx.ts";
+
+// Both live in `ctx.ts` now — eighteen files under `mech/` want the type and
+// nothing else here. Re-exported so no importer had to change.
+export type { Caller, Ctx };
 
 /**
  * One API, two clients: the web UI (the boss's main surface) and `orch` (what
  * agents call over Bash). Anything the web can do has an `orch` verb and vice
  * versa — there is deliberately no second implementation anywhere.
  */
-
-export interface Ctx {
-  db: DB;
-  bus: Bus;
-  sched: Scheduler;
-  /** Resolves a blocking `ask-boss` / `lease` call. Keyed by "kind:id". */
-  waiters: Map<string, (value: string) => void>;
-  /** Where turns, gates and leases run. Absent in unit tests that need no container. */
-  sandbox?: import("./mech/sandbox/sandbox.ts").SandboxDriver;
-  /** Talks to GitHub's REST API. Absent in unit tests that need no GitHub. */
-  gh?: import("./mech/git/github.ts").Github;
-  /**
-   * One cheap model call, for PageIndex navigation. Absent in unit tests.
-   *
-   * A factory, not a closure, because the call runs **in a sandbox** and which
-   * one depends on the project. It used to be a host `Bun.spawn` with the boss's
-   * own CLI login — a second credential path nothing in the settings page could
-   * see, whose failure mode was a permanently empty index that looked built.
-   */
-  askIn?: (scope: import("./mech/sandbox/sandbox.ts").Scope) => Ask;
-  /** Wired by the server: advances the review pipeline on a QA verdict. */
-  reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
-  /** Wired by the server: the Auditor's PR-level verdict. */
-  auditVerdict?: (grpId: number, pass: boolean, note: string) => void;
-  /**
-   * Wired by the server: squash, push, open the PR.
-   *
-   * Not called by the audit any more. A passed audit means the branch may be
-   * published; the Scribe's message is what it is published *as*, and this runs
-   * when that lands — or when the watchdog stops waiting for one.
-   */
-  publishBranch?: (grpId: number) => void;
-  /** Wired by the server: a watchdog finding worth telling the boss about. */
-  onFinding?: (rule: string, severity: string, body: string, grpId: number | null) => void;
-  /** Wired by the server: a question that reached the top of the answer chain. */
-  notifyBoss?: (escId: number, question: string, severity: string) => void;
-  /**
-   * Wired by the server: hire an agent for a role that has none yet.
-   *
-   * Standing roles are event-triggered, and the first message addressed to one IS
-   * the event — otherwise mailing the Architect before an Architect exists is a
-   * silent no-op, and the sender waits on a reply that can never come.
-   */
-  hire?: (grpId: number | null, role: string, projectId?: number | null) => number | null;
-  /** Wired by the server: role names that exist in roles/*.yaml. */
-  knownRoles?: () => string[];
-  config: {
-    language: string;
-    /** difficulty -> token cap written onto each new slice. */
-    sliceBudgetTokens?: Record<string, number>;
-    dataDir?: string;
-    /** Where ticked skills are staged for the sandboxes to mount. */
-    skillsDir?: string;
-    autoAdvance?: boolean;
-    autoAcceptTiers?: string[];
-    /** Surfaced to the panel: how many groups may run at once, and lease slots. */
-    maxGroups?: number;
-    leaseSlots?: number | Record<string, number>;
-    /** Same complaint this many times becomes a project rule (PLAN.md §7③). */
-    feedbackSediment?: number;
-    /** Chars an `orch ctx query` answer may spend. Was a setting that changed nothing. */
-    ctxBudgetChars?: number;
-    /** How long a gate may run. The lease route waits a minute longer than this. */
-    leaseTimeoutMs?: number;
-    /** Where the orchestrator listens; the mailbox replays agent calls to it. */
-    port?: number;
-    /** Wall clock for a dependency install. See config.ts for why it is generous. */
-    installTimeoutMs?: number;
-    /** Where turns run. See mech/sandbox/sandbox.ts and docs/decisions/005. */
-    sandbox?: {
-      server: string;
-      apiKey: string;
-      image: string;
-      cpu: string;
-      memory: string;
-      ttlSeconds: number;
-      denyDomains: string[];
-      cacheDirs: Record<string, string>;
-    };
-  };
-}
 
 type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) => Promise<Response>;
 
@@ -140,12 +63,6 @@ async function body<T>(req: Request): Promise<T> {
   }
 }
 
-export interface Caller {
-  id: number;
-  grp_id: number | null;
-  project_id: number | null;
-  role: string;
-}
 
 /**
  * May this caller act on that group?

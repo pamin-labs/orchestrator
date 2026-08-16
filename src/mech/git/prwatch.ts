@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "../../config.ts";
 import { gitTrailers } from "./ghlogin.ts";
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { say } from "../../lang.ts";
 import { squashWip } from "./worktree.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";

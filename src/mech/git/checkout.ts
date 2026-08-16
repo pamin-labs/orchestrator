@@ -1,4 +1,4 @@
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { execIn, execLines, getBytes, putBytes, SKILL_SYNC, UTIL, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { cacheProjectSkills } from "../util/skills.ts";

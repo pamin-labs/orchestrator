@@ -1,4 +1,4 @@
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import type { DB } from "../../db.ts";
 /**
  * Connect GitHub once, from the settings page, the way GitHub Desktop does.

@@ -1,5 +1,5 @@
 import type { DB } from "../../db.ts";
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { promptPath } from "../../runtime/claude.ts";
 import { shq } from "../util/shq.ts";

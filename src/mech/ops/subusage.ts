@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { DB } from "../../db.ts";
 import type { RateLimitInfo } from "../../runtime/claude.ts";
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { CODEX_HOME, decoy, loadAuth, subscriptionAccount } from "../sandbox/auth.ts";
 import { execIn, UTIL } from "../sandbox/sandbox.ts";
 import { shq } from "../util/shq.ts";

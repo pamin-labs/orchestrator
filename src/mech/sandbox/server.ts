@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
 import { allowedHostPaths, coveredBy, runningServer, SANDBOX_ADDR, SANDBOX_API_KEY_HEADER, serverAddr, splitAddr, specFor } from "./sandbox.ts";
 

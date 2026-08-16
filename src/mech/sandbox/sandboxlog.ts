@@ -1,4 +1,4 @@
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 
 /**
  * The last few hundred lines a group's container printed, in memory.

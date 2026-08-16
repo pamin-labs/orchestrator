@@ -1,4 +1,4 @@
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
 import { hostClaudeHome, hostCodexHome } from "../sandbox/auth.ts";
 import { homedir } from "node:os";

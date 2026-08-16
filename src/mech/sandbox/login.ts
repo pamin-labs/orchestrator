@@ -1,4 +1,4 @@
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { saveAuth } from "./auth.ts";
 import { REFRESH_HOME } from "./chatgpt.ts";
 import { execIn, execLines, getFile, putFile, UTIL } from "./sandbox.ts";

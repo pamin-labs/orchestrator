@@ -1,5 +1,5 @@
 import { consola } from "consola";
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { FILE_MODE, liveSandboxes, MAILBOX_DIR, writeInto } from "./sandbox.ts";
 
 /**

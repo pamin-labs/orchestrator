@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
-import type { Ctx } from "../../api.ts";
+import type { Ctx } from "../../ctx.ts";
 import { ROOT } from "../../config.ts";
 import type { ResourceExec } from "./lease.ts";
 import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
