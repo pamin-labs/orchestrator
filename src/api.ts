@@ -3,25 +3,21 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { rm } from "node:fs/promises";
 import { dropSlices } from "./db.ts";
-import { resolveLease, type ResourceDef } from "./mech/sandbox/lease.ts";
-import { sliceDiffBase } from "./mech/git/worktree.ts";
-import { allowedImage, killSandbox, relinkSkills, remoteInClear, restartServer, runningServer, serverAddr, skillMounts, specFor, WORK } from "./mech/sandbox/sandbox.ts";
+import { allowedImage, killSandbox, relinkSkills, remoteInClear, restartServer, runningServer, serverAddr, skillMounts, specFor } from "./mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "./mech/ops/watchdog.ts";
 import { clearSandboxLog, sandboxLines } from "./mech/sandbox/sandboxlog.ts";
 import { preflight } from "./mech/ops/preflight.ts";
 import { defaultImage, imageChoices, setDefaultImage, type ImageChoices } from "./mech/sandbox/images.ts";
 import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "./mech/sandbox/server.ts";
-import { baseBranch, baseRefFor, listBranches, removeMirror, sandboxGit } from "./mech/git/checkout.ts";
+import { baseBranch, listBranches, removeMirror } from "./mech/git/checkout.ts";
 import { interrupt, park, pause, resume, unpark } from "./mech/flow/intercept.ts";
 import { canStart, parseOwns } from "./mech/flow/ownership.ts";
-import { acceptSlice } from "./mech/flow/review.ts";
 import { dropGroup, runInstall, startGroup, sweepApproved } from "./mech/flow/start.ts";
 import { joinQueue, landed } from "./mech/flow/mergequeue.ts";
 import { checkPrMessage, openPr, prBody, prTitle, pushBlocked } from "./mech/git/prwatch.ts";
 import { forgetHolds } from "./mech/git/github.ts";
 import { query as ctxQuery, DEFAULT_BUDGET } from "./mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search } from "./mech/knowledge/pageindex.ts";
-import { gatesFor } from "./mech/flow/gate.ts";
 import { forgetProjectSkills, listSkills, projectSkills, projectSkillsPending, restageSkills, setSkillOff, skillsOff } from "./mech/util/skills.ts";
 import { abortJob } from "./runtime/running.ts";
 import { say } from "./lang.ts";
@@ -34,6 +30,8 @@ import { postBlocked, postDraft, postDrop, postOwns, postSplit } from "./api/pla
 import { slug } from "./api/slug.ts";
 import { evictOldestLessons, LESSON_CAP, postJournal, postStatus } from "./api/report.ts";
 import { postMail, postSay } from "./api/messaging.ts";
+import { getLeaseLog, postLease } from "./api/lease.ts";
+import { getEvidence, getGateLog, postAudit, postReview, postSliceDecision } from "./api/review.ts";
 
 // The lesson cap is asserted in a test; eviction is called from the note route.
 export { evictOldestLessons, LESSON_CAP };
@@ -53,7 +51,7 @@ import { getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, po
 // Re-exported: `mintToken` and `agentOf` are wired from outside the routes, and
 // the tests reach for them here.
 export { agentOf, mayAct, mintToken, resolveGroup };
-import { criteriaIn, validateDraftCard, validateSelfReview } from "./mech/flow/validate.ts";
+import { validateDraftCard } from "./mech/flow/validate.ts";
 import type { Caller, Ctx } from "./ctx.ts";
 
 // Both live in `ctx.ts` now — eighteen files under `mech/` want the type and
@@ -131,80 +129,7 @@ const postSetup: AgentHandler = async (ctx, req, a) => {
   return r.ok ? text("ok") : bad(`install failed:\n${r.tail}`);
 };
 
-const postLease: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ resource: string; args?: Record<string, unknown> }>(req);
 
-  const def = loadResource(ctx, b.resource);
-  if (!def) return bad(`unknown resource ${b.resource}. Ask the boss to add a template.`);
-
-  const r = resolveLease(def, b.args ?? {});
-  if (!r.ok) return bad(r.error);
-
-  const row = ctx.db
-    .query<{ id: number }, [string, number | null, number, string, string]>(
-      `INSERT INTO lease (resource, grp_id, agent_id, args_json, resolved_cmd, enqueued_at)
-       VALUES (?, ?, ?, ?, ?, unixepoch() * 1000) RETURNING id`,
-    )
-    .get(b.resource, a.grp_id, a.id, JSON.stringify(b.args ?? {}), r.argv.join(" "))!;
-
-  ctx.db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [a.id]);
-  ctx.sched.enqueue("lease", { grp_id: a.grp_id, agent_id: a.id, payload: { lease_id: row.id } });
-  ctx.sched.tick();
-
-  // A deadline, because "the agent waits forever" is the worst state in the
-  // system and `finishLease` is not the only way to reach it. Every path through
-  // `runLease` resolves this now — but a job that is *cancelled* never reaches
-  // `runLease` at all (watchdog rule 9 cancels a dropped group's queue), so the
-  // waiter would still be there with nothing left to answer it. This is the
-  // backstop for the paths nobody has thought of yet, and it is the difference
-  // between one failed gate and an agent that never takes another turn.
-  //
-  // Longer than the lease's own timeout: a gate that is legitimately slow must
-  // finish and answer rather than be cut off by the thing waiting for it.
-  const deadline = (ctx.config?.leaseTimeoutMs ?? 10_800_000) + 60_000;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const digest = await new Promise<string>((resolve) => {
-    ctx.waiters.set(`lease:${row.id}`, resolve);
-    // `unref`, or this three-hour timer is a reason the process cannot exit —
-    // which a test run finds first, and a shutdown finds later.
-    timer = setTimeout(
-      () => resolve(`lease ${row.id} never reported back within ${Math.round(deadline / 1000)}s — treat it as not run`),
-      deadline,
-    );
-    timer.unref?.();
-  });
-  clearTimeout(timer);
-  ctx.waiters.delete(`lease:${row.id}`);
-  ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ?", [a.id]);
-  return text(digest);
-};
-
-const getLeaseLog: AgentHandler = async (ctx, req, a, params) => {
-  // Whose lease this is. Unchecked, any sandbox could read any group's build log
-  // by counting up from 1 — the `/orch/` prefix gate on the mailbox is about
-  // which routes are reachable, not about who is reaching them.
-  const row = ctx.db
-    .query<{ log_path: string | null; grp_id: number | null }, [number]>(
-      "SELECT log_path, grp_id FROM lease WHERE id = ?",
-    )
-    .get(Number(params.id));
-  if (!row?.log_path) return text("no log", 404);
-  if (row.grp_id !== a.grp_id) return text("not this group's lease", 403);
-  const raw = await Bun.file(row.log_path).text();
-  // A substring, not a regex. `new RegExp` on an agent-supplied string runs on the
-  // host, in the single process everything else is waiting on, and one nested
-  // quantifier stalls the whole orchestrator. Nobody greps a build log for
-  // anything a substring cannot find.
-  const grep = new URL(req.url).searchParams.get("grep");
-  if (!grep) return text(raw.split("\n").slice(-200).join("\n"));
-  return text(
-    raw
-      .split("\n")
-      .filter((l) => l.includes(grep))
-      .slice(0, 200)
-      .join("\n"),
-  );
-};
 
 
 
@@ -255,30 +180,6 @@ const postPr: AgentHandler = async (ctx, req, a) => {
   return text("ok");
 };
 
-const postAudit: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ group_id: number | string; verdict: string; note?: string }>(req);
-  if (a.role !== "auditor") return bad(`${a.role} does not file audit verdicts`);
-  if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
-  const gid = resolveGroup(ctx, b.group_id);
-  if (!gid) return bad("which group? pass its id or name");
-  // The Auditor is deliberately not a member of the group it reviews, so it is
-  // the one role whose group check is inverted. It is still bounded by its
-  // project — a pass here opens a PR, which is a host `git push`, and that is not
-  // an action to leave addressable by any group id an agent cares to name.
-  if (a.grp_id === gid) return bad("an auditor may not audit its own group");
-  if (!mayAct(ctx, a, gid)) return text("not your project", 403);
-
-  ctx.bus.emit({
-    grpId: gid,
-    author: "auditor",
-    kind: "gate_result",
-    intent: "decision",
-    body: `audit ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
-    meta: { verdict: b.verdict },
-  });
-  ctx.auditVerdict?.(gid, b.verdict === "pass", b.note ?? "");
-  return text("ok");
-};
 
 const postCtxQuery: AgentHandler = async (ctx, req, a) => {
   const b = await body<{ question: string; limit?: number }>(req);
@@ -339,77 +240,7 @@ export const CTX_BUDGET_CHARS = DEFAULT_BUDGET;
 
 
 
-/**
- * QA's verdict, as a value rather than as prose.
- *
- * Parsing a review out of natural language means occasionally mis-reading a
- * "fail" as a "pass", which is the one error this whole pipeline exists to
- * prevent. So the verdict is an explicit verb.
- */
-const postReview: AgentHandler = async (ctx, req, a) => {
-  const b = await body<{ slice_id: number; verdict: string; note?: string }>(req);
-  if (a.role !== "qa" && a.role !== "auditor") return bad(`${a.role} does not file review verdicts`);
-  if (b.verdict !== "pass" && b.verdict !== "fail") return bad("verdict must be pass or fail");
 
-  const slice = ctx.db
-    .query<{ id: number; grp_id: number; seq: number; accept_spec: string }, [number]>(
-      "SELECT id, grp_id, seq, accept_spec FROM slice WHERE id = ?",
-    )
-    .get(b.slice_id);
-  if (!slice) return bad(`no slice ${b.slice_id}`);
-  if (slice.grp_id !== a.grp_id) return bad("that slice belongs to another group");
-
-  // QA's verdict was the one review layer with no floor under it: `--verdict pass`
-  // with an empty note was accepted, which makes the independent check a formality
-  // and leaves "the acceptance criterion itself was wrong" to surface three slices
-  // later. Same validator the Engineer's self-review uses, and the same reason —
-  // a verdict per criterion, or it carries no information.
-  const need = criteriaIn(slice.accept_spec);
-  const v = validateSelfReview(b.note ?? "", need);
-  if (!v.ok) {
-    return bad(
-      `${v.error}\n\nAcceptance for S${slice.seq}: ${slice.accept_spec}\n` +
-        `  orch review ${b.slice_id} --verdict ${b.verdict} --note "pass: <criterion> — <what you ran and saw>"`,
-    );
-  }
-
-  ctx.bus.emit({
-    grpId: slice.grp_id,
-    author: a.role,
-    kind: "gate_result",
-    intent: "decision",
-    body: `S${slice.seq} ${b.verdict}${b.note ? `: ${b.note}` : ""}`,
-    meta: { slice_id: slice.id, verdict: b.verdict },
-  });
-  ctx.reviewVerdict?.(slice.id, b.verdict === "pass", b.note ?? "");
-  return text("ok");
-};
-
-function loadResource(ctx: Ctx, name: string): ResourceDef | null {
-  const r = ctx.db
-    .query<
-      {
-        name: string; template: string; concurrency: number; arg_schema_json: string;
-        error_regex: string | null; cwd: string | null; tags_json: string;
-      },
-      [string]
-    >("SELECT * FROM resource WHERE name = ?")
-    .get(name);
-  if (!r) return null;
-  let tags: string[] = [];
-  try {
-    tags = JSON.parse(r.tags_json ?? "[]");
-  } catch {}
-  return {
-    name: r.name,
-    template: r.template,
-    concurrency: r.concurrency,
-    argSchema: JSON.parse(r.arg_schema_json),
-    errorRegex: r.error_regex ?? undefined,
-    cwd: r.cwd ?? undefined,
-    tags,
-  };
-}
 
 // ------------------------------------------------------------------ boss verbs
 
@@ -799,166 +630,9 @@ const postGroupControl: Handler = async (ctx, req, params) => {
   }
 };
 
-/** Roughly a screenful of diff. Beyond this the boss wants the editor, not a panel. */
-// 400k. The old 80k was sized for a page that pasted the whole diff into one
-// <pre>: past that it was unreadable anyway, so truncating cost nothing. The
-// viewer now renders one file at a time from a parsed diff, so the ceiling that
-// matters is the browser's, not the reader's — and a slice that touched thirty
-// files was being cut off mid-review, which is the one moment the boss needs all
-// of it.
-const DIFF_CAP = 400_000;
-
-/**
- * What actually happened in one slice: the diff, QA's verdict, the gate output.
- *
- * Accepting is one of the boss's three approval points, and it was being asked
- * for on a title and an acceptance line — the same information the boss already
- * approved on the DRAFT card. Nothing new to judge means the button is a rubber
- * stamp, which makes the three gates in front of it decorative.
- */
-const getEvidence: Handler = async (ctx, _req, params) => {
-  const id = Number(params.id);
-  const sl = ctx.db
-    .query<
-      { grp_id: number; seq: number; title: string; accept_spec: string; base_sha: string | null; retries: number },
-      [number]
-    >("SELECT grp_id, seq, title, accept_spec, base_sha, retries FROM slice WHERE id = ?")
-    .get(id);
-  if (!sl) return text("no such slice", 404);
 
 
-  let stat = "";
-  let diff = "";
-  let truncated = false;
-  // Never `git diff <base_sha>` straight: after a rebase that base is a commit on
-  // old main and the diff picks up every other group's landed work. See
-  // `sliceDiffBase`.
-  let scope: "slice" | "branch" = "slice";
-  {
-    const git = sandboxGit(ctx, { grp: sl.grp_id });
-    // The project's base branch, not whatever the sandbox's clone thinks the
-    // default is: the boss is reading this diff against the branch this work
-    // will land on, and a project that develops on `develop` says so once.
-    const projectId = ctx.db
-      .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-      .get(sl.grp_id)?.project_id;
-    const from = await sliceDiffBase(
-      git,
-      WORK,
-      WORK,
-      sl.base_sha,
-      projectId ? await baseRefFor(ctx, projectId) : undefined,
-    );
-    if (from) {
-      scope = from.scope;
-      const [s, d] = await Promise.all([
-        git(WORK, ["diff", "--stat", from.base, "--"], WORK),
-        git(WORK, ["diff", from.base, "--"], WORK),
-      ]);
-      stat = s.code === 0 ? s.out.trim() : "";
-      diff = d.code === 0 ? d.out : "";
-      truncated = diff.length > DIFF_CAP;
-      if (truncated) diff = diff.slice(0, DIFF_CAP);
-    }
-  }
 
-  // Both reviewers file through the same route, so this is QA's verdict on a
-  // slice and the Auditor's on a branch, in the order they were given.
-  const verdicts = ctx.db
-    .query<{ author: string; body: string; at: number }, [number]>(
-      `SELECT author, body, at FROM event
-       WHERE kind = 'gate_result' AND json_extract(meta_json, '$.slice_id') = ?
-       ORDER BY seq`,
-    )
-    .all(id);
-
-  // The gate wrote these itself (gate.ts logPath). Tail only: a build log is
-  // megabytes and the useful part is at the end.
-  const projectId =
-    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(sl.grp_id)
-      ?.project_id ?? 0;
-  const gates = gatesFor(ctx.db, projectId).flatMap((name) => {
-    const path = join(ctx.config.dataDir ?? "data", "gates", `${id}-${name}.log`);
-    if (!existsSync(path)) return [];
-    const raw = Bun.file(path);
-    return [{ name, path, size: raw.size }];
-  });
-
-  return json({ ...sl, stat, diff, truncated, scope, verdicts, gates });
-};
-
-/** Tail of one gate's log, on demand: it is only opened when a verdict is doubted. */
-const getGateLog: Handler = async (ctx, req, params) => {
-  const name = (params.name ?? "").replace(/[^\w.-]/g, "");
-  const path = join(ctx.config.dataDir ?? "data", "gates", `${Number(params.id)}-${name}.log`);
-  if (!existsSync(path)) return text("no log", 404);
-  const raw = await Bun.file(path).text();
-  const grep = new URL(req.url).searchParams.get("grep");
-  const lines = raw.split("\n");
-  // The panel scrolls this locally, so the tail is about not shipping a 200MB
-  // build log, not about what is worth reading. 400 lines was the latter, and it
-  // cut a `bun test` run in half.
-  //
-  // A substring, not a regex — the same rule as `getLeaseLog`, which was fixed
-  // and never generalised. `new RegExp` on a caller-supplied string runs on the
-  // host, in the single process that is also the SSE fan-out, the scheduler, the
-  // mailbox poller and every blocked `orch lease`; one nested quantifier stalls
-  // all of it. This route takes no token either.
-  return text(grep ? lines.filter((l) => l.includes(grep)).slice(0, 4000).join("\n") : lines.slice(-4000).join("\n"));
-};
-
-const postSliceDecision: Handler = async (ctx, req, params) => {
-  const raw = await body<{ feedback?: string; attachments?: Attachment[] }>(req);
-  const b = { feedback: raw.feedback ? withAttachments(raw.feedback, raw.attachments) : raw.feedback };
-  const id = Number(params.id);
-  const accept = params.decision === "accept";
-  const sl = ctx.db
-    .query<{ grp_id: number; seq: number; title: string }, [number]>(
-      "SELECT grp_id, seq, title FROM slice WHERE id = ?",
-    )
-    .get(id);
-  if (!sl) return text("no such slice", 404);
-
-  // One acceptance path, whoever accepted: see acceptSlice.
-  if (accept) acceptSlice(ctx, id, "boss");
-
-  if (!accept) {
-    ctx.db.run("UPDATE slice SET status = 'rejected' WHERE id = ?", [id]);
-    ctx.bus.emit({
-      grpId: sl.grp_id,
-      author: "boss",
-      kind: "boss_say",
-      intent: "request",
-      body: b.feedback ?? "rejected",
-      meta: { slice_id: id },
-    });
-    bossFact(ctx, sl.grp_id, b.feedback ?? "boss rejected the slice");
-    // With autoAdvance on, later slices were built on the one just rejected. Fixing
-    // it underneath work that assumed it is how two problems become four, so the
-    // group stops and says so instead.
-    const ahead = ctx.db
-      .query<{ c: number }, [number, number]>(
-        "SELECT count(*) AS c FROM slice WHERE grp_id = ? AND seq > (SELECT seq FROM slice WHERE id = ?) AND status != 'pending'",
-      )
-      .get(sl.grp_id, id)!.c;
-    if (ctx.config.autoAdvance && ahead > 0) {
-      ctx.db.run("UPDATE grp SET status = 'PAUSING' WHERE id = ? AND status = 'RUNNING'", [sl.grp_id]);
-      ctx.bus.emit({
-        grpId: sl.grp_id,
-        author: "orchestrator",
-        kind: "escalation",
-        intent: "ask",
-        severity: "blocker",
-        body:
-          `你退回了 S${sl.seq}，但 autoAdvance 已经让后面 ${ahead} 片开工了 —— 它们是在这一片的基础上做的。` +
-          `全组先停下：要么让它先修这一片，要么把后面几片一起退回。`,
-      });
-    }
-    ctx.sched.enqueue("agent_turn", { grp_id: sl.grp_id, slice_id: id, payload: { rejection: b.feedback } });
-  }
-  ctx.sched.tick();
-  return text("ok");
-};
 
 
 /**
