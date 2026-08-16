@@ -12,6 +12,7 @@ import { z } from "zod";
 import { errText } from "../../mech/util/text.ts";
 import { bad, json, text, type AgentHandler, type Handler } from "../shared.ts";
 import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
+import { SandboxOverrideSchema } from "../../config-schema.ts";
 
 /**
  * A repository this fleet works on: added, configured, and removed.
@@ -33,8 +34,11 @@ import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
  * mattering. What is worth keeping is the answer, so the next group does not pay
  * to read the same repo again.
  */
+const InstallCommand = z.string().max(2000);
+const GateNames = z.array(z.string().max(80)).max(40);
+
 /** The install command this project needs, or `none` for "it needs nothing". */
-export const SetupBody = z.object({ cmd: z.string().max(2000).optional(), none: z.boolean().optional() });
+export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.boolean().optional() });
 
 export const postSetup: AgentHandler<z.infer<typeof SetupBody>> = async (ctx, _req, a, _p, b) => {
   if (a.role !== "bootstrap") return bad(`${a.role} does not set this project up`);
@@ -82,7 +86,7 @@ export const postSetup: AgentHandler<z.infer<typeof SetupBody>> = async (ctx, _r
 export const ProjectBody = z.object({
   repo: z.string().max(200).default(""),
   name: z.string().max(80).optional(),
-  gates: z.array(z.string().max(80)).max(40).optional(),
+  gates: GateNames.optional(),
 });
 
 export const postProject: Handler<z.infer<typeof ProjectBody>> = async (ctx, _req, _p, b) => {
@@ -311,71 +315,79 @@ export const deleteProject: Handler = async (ctx, _req, params) => {
 };
 
 /**
- * Everything `config_json` means. Read from it, in this order: `gate.ts`,
- * `start.ts`, `executor.ts`, `sandbox.ts`, `repomap.ts`.
+ * A partial `config_json`, merged key by key. `null` removes one override.
  *
- * A list rather than a shape check — the values are validated where they are
- * used, and the thing this stops is a key nobody validates because nobody knew
- * it was there.
+ * Every value with a runtime consumer is checked here. Sandbox uses the same
+ * schema as `specFor`, so the write door and the container boundary cannot
+ * disagree. Stale keys with no runtime consumer are not accepted: inert data can
+ * otherwise become active in a later release without ever crossing validation.
  */
-const CONFIG_KEYS = new Set(["gates", "install", "sandbox", "container", "index"]);
-
-/**
- * A partial `config_json`, merged key by key.
- *
- * The keys are checked against `CONFIG_KEYS` below rather than enumerated here,
- * and the values where they are used — `gates` by `gate.ts`, `sandbox` by
- * `specFor`. A shape in this file would be a fourth place that has to agree.
- */
-export const ProjectConfigBody = z.record(z.string(), z.unknown());
+export const ProjectConfigBody = z
+  .object({
+    baseBranch: z.string().nullable().optional(),
+    gates: GateNames.nullable().optional(),
+    install: InstallCommand.nullable().optional(),
+    sandbox: SandboxOverrideSchema.nullable().optional(),
+    index: z
+      .object({ exclude: z.array(z.string()).optional() })
+      .strict()
+      .nullable()
+      .optional(),
+  })
+  .strict();
 
 export const patchProjectConfig: Handler<z.infer<typeof ProjectConfigBody>> = async (ctx, _req, params, data) => {
   const id = Number(params.id);
   const row = ctx.db.query<{ config_json: string }, [number]>("SELECT config_json FROM project WHERE id = ?").get(id);
   if (!row) return text("no such project", 404);
-  const patch = data;
-  // A column, not a config_json key: it is read on every clone, rebase and diff,
-  // and it is re-detected and written back when the remote renames it. Empty
-  // means "ask the remote", which is what a fresh project starts as.
-  if ("baseBranch" in patch) {
-    const want = String(patch.baseBranch ?? "").trim();
-    ctx.db.run("UPDATE project SET base_branch = ? WHERE id = ?", [want || null, id]);
-    delete patch.baseBranch;
-  }
-  let current: Record<string, unknown> = {};
+  const { baseBranch: nextBase, ...patch } = data;
+  // `baseBranch` is a column, not a config_json key: it is read on every clone,
+  // rebase and diff. Empty means "ask the remote".
+  const changesConfig = Object.keys(patch).length > 0;
+  let parsed: unknown;
   try {
-    current = JSON.parse(row.config_json || "{}");
+    parsed = JSON.parse(row.config_json || "{}");
   } catch {
-    current = {};
+    if (changesConfig) return bad("项目配置的 JSON 已损坏；拒绝用一次局部修改覆盖整份配置");
+    parsed = {};
   }
-  // The keys this config actually has. It used to merge whatever arrived, and
-  // `config_json` is not inert data: `install` is run as a shell command inside
-  // the sandbox and `gates` decides which resource templates a slice must pass,
-  // so an unknown key is either a typo that silently does nothing or a name some
-  // later version will start honouring — set by whoever could reach this route
-  // before anybody decided what it means.
-  //
-  // A refusal rather than a filter, for the same reason as the image above: a
-  // setting that is quietly dropped is worse than one that is turned away.
-  for (const k of Object.keys(patch)) {
-    if (!CONFIG_KEYS.has(k)) return bad(`项目配置里没有 ${k} 这一项`);
+  if ((!parsed || typeof parsed !== "object" || Array.isArray(parsed)) && changesConfig) {
+    return bad("项目配置必须是一个 JSON 对象；拒绝用一次局部修改覆盖整份配置");
   }
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === null) delete current[k];
-    else current[k] = v;
+  const current = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
+  if (changesConfig) {
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null) delete current[k];
+      else current[k] = v;
+    }
+
+    // The stored row can predate this route or come from detection, so the same
+    // runtime check also runs where every container reads it. Here it makes a bad
+    // override actionable instead of persisting a value the runtime must ignore.
+    const sandbox = SandboxOverrideSchema.safeParse(current.sandbox ?? {});
+    if (!sandbox.success) return bad(z.prettifyError(sandbox.error));
+    const want = sandbox.data.image;
+    if (want && !allowedImage(want)) {
+      return bad(
+        `镜像只能是我们发布的（ghcr.io/pamin-labs/…）或者你本地构建的（比如 orch/agent:1）。` +
+          `agent 在这个镜像里跑，而它面前是你的代码 —— 换成别处的镜像等于把整条边界交出去，而且从面板上看不出来。`,
+      );
+    }
   }
-  // Said here as well as enforced in `specFor`. The enforcement is what makes it
-  // true — this route merges arbitrary keys, and a check only in the panel is a
-  // check a curl walks around — but a config that is silently ignored is worse
-  // than one that is refused, so the door answers.
-  const want = (current as { sandbox?: { image?: string } }).sandbox?.image;
-  if (want && !allowedImage(want)) {
-    return bad(
-      `镜像只能是我们发布的（ghcr.io/pamin-labs/…）或者你本地构建的（比如 orch/agent:1）。` +
-        `agent 在这个镜像里跑，而它面前是你的代码 —— 换成别处的镜像等于把整条边界交出去，而且从面板上看不出来。`,
-    );
-  }
-  ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(current), id]);
+
+  // Validate first, then write both homes as one act. A rejected image used to
+  // return 422 after `base_branch` had already changed.
+  ctx.db.transaction(() => {
+    if ("baseBranch" in data) {
+      const want = (nextBase ?? "").trim();
+      ctx.db.run("UPDATE project SET base_branch = ? WHERE id = ?", [want || null, id]);
+    }
+    if (changesConfig) {
+      ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(current), id]);
+    }
+  })();
   return json(current);
 };
 

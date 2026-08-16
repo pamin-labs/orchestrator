@@ -24,6 +24,37 @@ const LeaseSlots = z.union([count, z.record(z.string(), count)]);
 
 const ModelRef = z.object({ runtime: z.string().min(1), model: z.string() });
 
+/** The six values that become an OpenSandbox request. */
+export const SandboxSpecSchema = z.object({
+  image: z.string(),
+  /** Kubernetes-style quantities, e.g. "4" and "8Gi". */
+  cpu: z.string(),
+  memory: z.string(),
+  ttlSeconds: count,
+  /**
+   * Domains the group may not reach. Everything else is open.
+   *
+   * The real tokens never enter the sandbox, and an allowlist cannot enumerate
+   * every registry, docs site and package a project needs. Measured in decision
+   * 005: credential injection still works with defaultAction allow, so blocking
+   * selected destinations costs nothing in credential safety.
+   */
+  denyDomains: z.array(z.string()),
+  /**
+   * Container mount path -> host package-cache path.
+   *
+   * Package caches only, and off by default. Sharing node_modules caused
+   * concurrent installs to fail with EEXIST; content-addressed package caches are
+   * built for concurrent readers. The sandbox server must allow every host path.
+   */
+  cacheDirs: z.record(z.string(), z.string()),
+});
+
+export type SandboxSpec = z.infer<typeof SandboxSpecSchema>;
+
+/** A project's per-sandbox differences, never the server credential. */
+export const SandboxOverrideSchema = SandboxSpecSchema.partial().strict();
+
 export const ConfigSchema = z.object({
   language: z.string().min(1),
   maxGroups: count,
@@ -112,18 +143,10 @@ export const ConfigSchema = z.object({
    * "1" made this repo's typecheck 3.7x slower than the host. Per-project
    * overrides live in `project.config_json.sandbox`.
    */
-  sandbox: z.object({
+  sandbox: SandboxSpecSchema.extend({
     server: z.string().min(1),
     apiKey: z.string(),
-    image: z.string(),
-    cpu: z.string(),
-    memory: z.string(),
-    ttlSeconds: count,
-    denyDomains: z.array(z.string()),
-    /** mount path -> host path, shared by every sandbox. Package caches only. */
-    cacheDirs: z.record(z.string(), z.string()),
   }),
-    /** mount path -> host path, shared by every sandbox. Package caches only. */
   dataDir: z.string().min(1),
   /**
    * Where the ticked skills are staged for the sandboxes to mount.

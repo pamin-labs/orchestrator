@@ -11,6 +11,9 @@ import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../util/shq.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
 import { projectConfig } from "../util/rows.ts";
+import { SandboxOverrideSchema } from "../../config-schema.ts";
+
+export type SandboxSpec = import("../../config-schema.ts").SandboxSpec;
 
 /**
  * One sandbox per group. The boundary.
@@ -30,43 +33,6 @@ import { projectConfig } from "../util/rows.ts";
 
 /** Reconnecting on every call would build a new undici pool each time. */
 const live = new Map<string, Sandbox>();
-
-export interface SandboxSpec {
-  image: string;
-  /** Kubernetes-style quantities, e.g. "4" and "8Gi". */
-  cpu: string;
-  memory: string;
-  ttlSeconds: number;
-  /**
-   * Domains the group may NOT reach. Everything else is open.
-   *
-   * A blocklist rather than an allowlist because the allowlist is the thing that
-   * cannot be enumerated — every registry, every docs site, every package a
-   * project happens to need. Measured (005): credential injection still works
-   * under `defaultAction: allow`, contradicting the vault docs, so open egress
-   * costs nothing in credential safety. The real tokens are never in here.
-   */
-  denyDomains: string[];
-  /**
-   * Host directories shared by every sandbox of this project, by mount path.
-   *
-   * For package-manager caches, and only those. Measured on this repo, a second
-   * group's `bun install`: 2.9s cold against 1.2s with the cache shared — small
-   * here because the repo is small, and the whole point on a monorepo where the
-   * install is minutes.
-   *
-   * Off by default, and the reason is this repo's own worst outage: every
-   * worktree shared one `node_modules` through a symlink, two gates installed at
-   * once, and the group read `Failed to link jiti: EEXIST` as its own build
-   * being broken. A package cache is not that — bun's and npm's are
-   * content-addressed and built for concurrent readers — but the shape is close
-   * enough that it should be something a project turns on deliberately.
-   *
-   * The sandbox server must also list the host path under `allowed_host_paths`,
-   * or creation fails outright.
-   */
-  cacheDirs: Record<string, string>;
-}
 
 /**
  * Which images a group's container may be made from.
@@ -164,7 +130,8 @@ const DEFAULTS = {
 /** Config, then the project's override. Adding a knob is a yaml key. */
 export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
   const base = ctx.config.sandbox ?? DEFAULTS;
-  const over = (projectConfig(ctx.db, projectId).sandbox ?? {}) as Partial<SandboxSpec>;
+  const parsed = SandboxOverrideSchema.safeParse(projectConfig(ctx.db, projectId).sandbox ?? {});
+  const over = parsed.success ? parsed.data : {};
   // `||`, not `??`: an empty string is how the yaml says "you decide", and it is
   // never a usable value for any of these.
   //

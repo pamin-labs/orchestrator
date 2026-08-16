@@ -69,6 +69,26 @@ test("a malformed project config falls back instead of failing the group", () =>
   expect(specFor(c, 1).image).toBe("img:1");
 });
 
+test("malformed sandbox overrides never escape with asserted types", () => {
+  const c = ctx({ sandbox: { ...BASE, cpu: "4" } });
+  for (const sandbox of [
+    { image: 7 },
+    { denyDomains: "evil.example.com" },
+    { cacheDirs: [] },
+    { extra: true },
+  ]) {
+    c.db.run("UPDATE project SET config_json = ? WHERE id = 1", [JSON.stringify({ sandbox })]);
+    expect(specFor(c, 1)).toEqual({
+      image: "img:1",
+      cpu: "4",
+      memory: "8Gi",
+      ttlSeconds: 3600,
+      denyDomains: [],
+      cacheDirs: {},
+    });
+  }
+});
+
 test("stdout lines survive chunks that split mid-object", () => {
   // SSE frames do not respect line boundaries, and both CLIs emit NDJSON: a
   // chunk that lands mid-object must be held, not parsed.
