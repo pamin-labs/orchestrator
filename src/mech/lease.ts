@@ -1,6 +1,8 @@
 import { resolve as resolvePath, relative, isAbsolute } from "node:path";
 import { z } from "zod";
 import type { Invalid, Result } from "./util/validate.ts";
+import type { DB } from "../db.ts";
+import { jsonOr } from "./util/text.ts";
 
 /**
  * A lease runs in the group's own sandbox, so this is no longer the host's only
@@ -54,6 +56,43 @@ export interface ResourceDef {
 export interface ResolvedCommand {
   argv: string[];
   cwd?: string;
+}
+
+/**
+ * The resource row as a `ResourceDef`.
+ *
+ * There were three of these — `gate.ts`, `api/orch/lease.ts`, `executor.ts` —
+ * and they did not agree on what a broken column means. `arg_schema_json` was
+ * defaulted to `{}` in two and parsed unguarded in the third, which is the one
+ * reached by `POST /orch/lease`: a malformed row there threw out of the handler
+ * and reached the agent as a 500 with a JSON syntax error in it, where the other
+ * two would have refused the call politely. `tags_json` was read by exactly one
+ * of the three, and nothing read the result.
+ *
+ * `{}` rather than a throw, everywhere, because an empty schema is a boundary
+ * that refuses every argument (硬约束 2) — the safe end of the failure, and the
+ * one the two majority copies already picked.
+ */
+export function loadResource(db: DB, name: string): ResourceDef | null {
+  const r = db
+    .query<
+      {
+        name: string; template: string; concurrency: number; arg_schema_json: string;
+        error_regex: string | null; cwd: string | null; tags_json: string | null;
+      },
+      [string]
+    >("SELECT * FROM resource WHERE name = ?")
+    .get(name);
+  if (!r) return null;
+  return {
+    name: r.name,
+    template: r.template,
+    concurrency: r.concurrency,
+    argSchema: jsonOr<ResourceDef["argSchema"]>(r.arg_schema_json, {}),
+    errorRegex: r.error_regex ?? undefined,
+    cwd: r.cwd ?? undefined,
+    tags: jsonOr<string[]>(r.tags_json, []),
+  };
 }
 
 /** Split a template into argv tokens, honouring quotes. No shell involved. */

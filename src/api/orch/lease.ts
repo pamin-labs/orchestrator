@@ -1,7 +1,6 @@
-import { resolveLease, type ResourceDef } from "../../mech/lease.ts";
+import { loadResource, resolveLease } from "../../mech/lease.ts";
 import { z } from "zod";
 import { bad, text, type AgentHandler } from "../shared.ts";
-import type { Ctx } from "../../ctx.ts";
 
 /**
  * The one way an agent runs something it did not write.
@@ -26,7 +25,7 @@ export const LeaseBody = z.object({
 });
 
 export const postLease: AgentHandler<z.infer<typeof LeaseBody>> = async (ctx, _req, a, _p, b) => {
-  const def = loadResource(ctx, b.resource);
+  const def = loadResource(ctx.db, b.resource);
   if (!def) return bad(`unknown resource ${b.resource}. Ask the boss to add a template.`);
 
   const r = resolveLease(def, b.args);
@@ -98,28 +97,3 @@ export const getLeaseLog: AgentHandler = async (ctx, req, a, params) => {
   );
 };
 
-function loadResource(ctx: Ctx, name: string): ResourceDef | null {
-  const r = ctx.db
-    .query<
-      {
-        name: string; template: string; concurrency: number; arg_schema_json: string;
-        error_regex: string | null; cwd: string | null; tags_json: string;
-      },
-      [string]
-    >("SELECT * FROM resource WHERE name = ?")
-    .get(name);
-  if (!r) return null;
-  let tags: string[] = [];
-  try {
-    tags = JSON.parse(r.tags_json ?? "[]");
-  } catch {}
-  return {
-    name: r.name,
-    template: r.template,
-    concurrency: r.concurrency,
-    argSchema: JSON.parse(r.arg_schema_json),
-    errorRegex: r.error_regex ?? undefined,
-    cwd: r.cwd ?? undefined,
-    tags,
-  };
-}

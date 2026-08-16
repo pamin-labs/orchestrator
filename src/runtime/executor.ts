@@ -10,7 +10,7 @@ import { assemble, buildStable, needsRotation, type Delta } from "../prompt/asse
 import { say } from "../lang.ts";
 import { listSkills, projectSkills, readSkillIn } from "../mech/skills.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";
-import { resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
+import { loadResource, resolveLease, runResource, type ResourceDef } from "../mech/lease.ts";
 import { checkpoint, changedSince, porcelainPaths, STATUS_Z } from "../mech/git/worktree.ts";
 import { lessonsFor } from "../api/orch/report.ts";
 import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, WORK, type Scope } from "../mech/sandbox/sandbox.ts";
@@ -1287,7 +1287,7 @@ async function lease(deps: ExecDeps, job: Job, leaseIdIn: number): Promise<void>
     .get(leaseId);
   if (!lease) return;
 
-  const def = loadResource(ctx, lease.resource);
+  const def = loadResource(ctx.db, lease.resource);
   if (!def) return finishLease(deps, leaseId, 127, "unknown resource", undefined);
 
   // Re-validate at execution time. The queued args were checked on the way in,
@@ -1362,24 +1362,6 @@ function finishLease(
 
 function leaseCwd(def: ResourceDef): string {
   return def.cwd ?? WORK;
-}
-
-function loadResource(ctx: Ctx, name: string): ResourceDef | null {
-  const r = ctx.db
-    .query<
-      { name: string; template: string; concurrency: number; arg_schema_json: string; error_regex: string | null; cwd: string | null },
-      [string]
-    >("SELECT * FROM resource WHERE name = ?")
-    .get(name);
-  if (!r) return null;
-  return {
-    name: r.name,
-    template: r.template,
-    concurrency: r.concurrency,
-    argSchema: jsonOr<Record<string, unknown>>(r.arg_schema_json, {}) as ResourceDef["argSchema"],
-    errorRegex: r.error_regex ?? undefined,
-    cwd: r.cwd ?? undefined,
-  };
 }
 
 /** Newest note of a kind. `id DESC` for the same reason the lessons query has it. */

@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import type { DB } from "../db.ts";
 import { projectConfig } from "./util/rows.ts";
-import { type ResourceExec, runResource, type ResourceDef } from "./lease.ts";
+import { loadResource, type ResourceExec, runResource } from "./lease.ts";
 
 /**
  * The deterministic gate: build, test, lint, typecheck, secret scan.
@@ -37,35 +37,6 @@ export interface GateOutcome {
 export function gatesFor(db: DB, projectId: number): string[] {
   const gates = projectConfig(db, projectId).gates;
   return Array.isArray(gates) ? gates.filter((g: unknown) => typeof g === "string") : [];
-}
-
-export function loadResource(db: DB, name: string): ResourceDef | null {
-  const r = db
-    .query<
-      {
-        name: string;
-        template: string;
-        concurrency: number;
-        arg_schema_json: string;
-        error_regex: string | null;
-        cwd: string | null;
-      },
-      [string]
-    >("SELECT * FROM resource WHERE name = ?")
-    .get(name);
-  if (!r) return null;
-  let argSchema: ResourceDef["argSchema"] = {};
-  try {
-    argSchema = JSON.parse(r.arg_schema_json);
-  } catch {}
-  return {
-    name: r.name,
-    template: r.template,
-    concurrency: r.concurrency,
-    argSchema,
-    errorRegex: r.error_regex ?? undefined,
-    cwd: r.cwd ?? undefined,
-  };
 }
 
 export interface RunGatesOptions {
