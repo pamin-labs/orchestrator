@@ -53,7 +53,7 @@ uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode 要是 "dns+nf
 ```bash
 curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
 cd orch-server-*-linux-x64
-./orch-server                                     # → 127.0.0.1:47821
+./orch-server
 ```
 </details>
 
@@ -63,32 +63,30 @@ cd orch-server-*-linux-x64
 curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-darwin-arm64.tar.gz | tar xz
 cd orch-server-*-darwin-arm64
 xattr -dr com.apple.quarantine .                  # 没签名，不去掉 Gatekeeper 不让跑
-./orch-server                                     # → 127.0.0.1:47821
+./orch-server
 ```
 
 Intel 的 Mac 用 `orch-server-darwin-x64.tar.gz`。
 </details>
 
-<details><summary><b>Windows</b> —— 老实说建议走 WSL</summary>
-
-Docker Desktop 的容器跑在 WSL 里，而沙盒服务器必须待在那个 daemon 所在的地方。
-**两个都放进 WSL**，挂载两侧的路径就自然是同一个意思 —— 这正是 Windows 上唯一
-会静默出错的地方。进了 WSL 之后照上面 Linux 那段做。
-
-要把面板进程放在 Windows 本体上，也有原生版：
+<details><summary><b>Windows</b> —— x64</summary>
 
 ```powershell
-irm https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-windows-x64.zip -OutFile orch.zip
-Expand-Archive orch.zip -DestinationPath .
+Invoke-WebRequest -Uri https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-windows-x64.zip -OutFile orch.zip
+Expand-Archive .\orch.zip -DestinationPath .
 cd orch-server-*-windows-x64
-# 技能目录要是 WSL 那侧的 daemon 挂得到的路径，盘符不是 —— 见 ORCH_SKILLS_DIR
-# 和 allowed_host_paths。
-.\orch-server.exe                                 # → 127.0.0.1:47821
+.\orch-server.exe
 ```
+
+沙盒服务器是 Linux only 的（出站过滤用 `nft`），所以在 Windows 上它跑在 WSL 里、
+挨着 Docker Desktop 的 daemon：在 WSL 里 `uvx opensandbox-server`。挂载路径会替它
+翻译 —— 这个进程写成 `C:\orch\skills` 的路径，在它那边是 `/mnt/c/orch/skills`，
+而要写进 `allowed_host_paths` 的正是翻译后的那个。设置 → 环境 会把那一行原样打出来。
 </details>
 
-只绑 loopback 是故意的：面板前面没有登录，能访问到它的人就是你。要放到别处，
-前面加一层带鉴权的反向代理。
+起来的时候它自己会把地址打出来。只绑 loopback 是故意的：面板前面没有登录，
+能访问到它的人就是你 —— 要放到别处，前面加一层带鉴权的反向代理。`ORCH_HOST`
+和 `ORCH_PORT` 能改，`config/default.yaml` 里是同样两项、改了长期有效。
 
 agent 镜像由沙盒服务器在第一次建容器时自己拉，不用手动 pull。
 
@@ -96,7 +94,7 @@ agent 镜像由沙盒服务器在第一次建容器时自己拉，不用手动 p
 
 ```bash
 bun install
-bun start                                         # → 127.0.0.1:47821
+bun start
 ```
 
 需要 [`bun`](https://bun.sh)。上面那两行沙盒服务器照样要。

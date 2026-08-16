@@ -366,17 +366,18 @@ jobs:
             '' \
             '### Windows' \
             '' \
-            'Docker Desktop runs its containers in WSL and the sandbox server has to be where that daemon is — run both there and use the Linux archive. The native build is for putting the panel process on Windows itself, and then `ORCH_SKILLS_DIR` has to name a path the WSL-side daemon can mount:' \
-            '' \
             '```powershell' \
-            "irm $base/orch-server-windows-x64.zip -OutFile orch.zip" \
-            'Expand-Archive orch.zip -DestinationPath .' \
-            'cd orch-server-*-windows-x64 && .\orch-server.exe' \
+            "Invoke-WebRequest -Uri $base/orch-server-windows-x64.zip -OutFile orch.zip" \
+            'Expand-Archive .\orch.zip -DestinationPath .' \
+            'cd orch-server-*-windows-x64' \
+            '.\orch-server.exe' \
             '```' \
+            '' \
+            'The sandbox server is Linux-only, so on Windows it runs under WSL — `uvx opensandbox-server` in there. Drive-letter paths are translated for it (`C:\orch\skills` is `/mnt/c/orch/skills` on its side), and that translated form is what goes in its `allowed_host_paths`; the panel prints the exact line.' \
             '' \
             '---' \
             '' \
-            'The panel is on `127.0.0.1:47821`. Docker is needed for the sandboxes, nothing else is.' \
+            'It prints its own address on the way up — loopback, no login in front of it. `ORCH_HOST` and `ORCH_PORT` move it. Docker is needed for the sandboxes; nothing else is.' \
             '' \
             "The agent image (\`${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}\`) is pulled by the sandbox server the first time it builds a container. Nothing to pull by hand." \
             > /tmp/notes.md

@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DB } from "../../db.ts";
 import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "../sandbox/auth.ts";
-import { allowedHostPaths, coveredBy, hasRegistry, SANDBOX_API_KEY_HEADER } from "../sandbox/sandbox.ts";
+import { allowedHostPaths, coveredBy, hasRegistry, hostPathForDaemon, SANDBOX_API_KEY_HEADER } from "../sandbox/sandbox.ts";
 import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 
 /**
@@ -411,7 +411,11 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // The fix is one line in a file we can already find, so this prints that line
   // rather than describing it.
   const allowed = allowedHostPaths();
-  const wanted = [staged, ...Object.values(input.cacheDirs ?? {})].map((p) => resolve(p));
+  // As the daemon will read them, not as this process writes them: on Windows
+  // the sandbox server is under WSL and the path it must allow is `/mnt/c/...`,
+  // so comparing the drive-letter form against its config would report a
+  // mismatch that no edit could fix.
+  const wanted = [staged, ...Object.values(input.cacheDirs ?? {})].map((p) => hostPathForDaemon(resolve(p)));
   const missing = allowed ? wanted.filter((p) => !coveredBy(allowed.paths, p)) : [];
   out.push({
     name: "allowed_host_paths",

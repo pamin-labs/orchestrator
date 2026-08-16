@@ -54,7 +54,7 @@ uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
 ```bash
 curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
 cd orch-server-*-linux-x64
-./orch-server                                     # → 127.0.0.1:47821
+./orch-server
 ```
 </details>
 
@@ -64,34 +64,32 @@ cd orch-server-*-linux-x64
 curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-darwin-arm64.tar.gz | tar xz
 cd orch-server-*-darwin-arm64
 xattr -dr com.apple.quarantine .                  # unsigned; Gatekeeper otherwise refuses
-./orch-server                                     # → 127.0.0.1:47821
+./orch-server
 ```
 
 Intel Macs: `orch-server-darwin-x64.tar.gz`.
 </details>
 
-<details><summary><b>Windows</b> — and the honest advice is to use WSL</summary>
-
-Docker Desktop runs its containers in WSL, and the sandbox server has to be
-where that daemon is. Run **both** there and every path means the same thing on
-both sides of a mount — which is the one thing on Windows that silently does not
-work otherwise. Inside WSL, follow the Linux block above.
-
-There is a native build for putting the panel process on Windows itself:
+<details><summary><b>Windows</b> — x64</summary>
 
 ```powershell
-irm https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-windows-x64.zip -OutFile orch.zip
-Expand-Archive orch.zip -DestinationPath .
+Invoke-WebRequest -Uri https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-windows-x64.zip -OutFile orch.zip
+Expand-Archive .\orch.zip -DestinationPath .
 cd orch-server-*-windows-x64
-# The staging directory has to be one the WSL-side daemon can mount, and a
-# drive letter is not — see ORCH_SKILLS_DIR and allowed_host_paths.
-.\orch-server.exe                                 # → 127.0.0.1:47821
+.\orch-server.exe
 ```
+
+The sandbox server is Linux-only — its egress mode is `nft` — so on Windows it
+runs under WSL, next to the Docker Desktop daemon: `uvx opensandbox-server` in
+there. Mount paths are translated for it, because a path this process writes as
+`C:\orch\skills` is `/mnt/c/orch/skills` on its side, and the translated form is
+what belongs in its `allowed_host_paths`. The 环境 pane prints the exact line.
 </details>
 
-Loopback on purpose: there is no login in front of the panel, so whoever reaches
-it is you. Put a reverse proxy with auth in front before publishing it anywhere
-else.
+It prints its own address on the way up. Loopback on purpose: there is no login
+in front of the panel, so whoever reaches it is you — put a reverse proxy with
+auth in front before publishing it anywhere else. `ORCH_HOST` and `ORCH_PORT`
+move it; `config/default.yaml` is the same two settings for good.
 
 The agent image is pulled by the sandbox server the first time it builds a
 container — nothing to pull by hand.
@@ -100,7 +98,7 @@ container — nothing to pull by hand.
 
 ```bash
 bun install
-bun start                                         # → 127.0.0.1:47821
+bun start
 ```
 
 Needs [`bun`](https://bun.sh). Same two lines above it for the sandbox server.
