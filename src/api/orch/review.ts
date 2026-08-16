@@ -1,15 +1,15 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import { acceptSlice } from "../mech/flow/review.ts";
-import { criteriaIn, validateSelfReview } from "../mech/util/validate.ts";
-import { sliceDiffBase } from "../mech/git/worktree.ts";
-import { baseRefFor, sandboxGit } from "../mech/git/checkout.ts";
-import { WORK } from "../mech/sandbox/sandbox.ts";
+import { acceptSlice } from "../../mech/flow/review.ts";
+import { criteriaIn, validateSelfReview } from "../../mech/util/validate.ts";
+import { sliceDiffBase } from "../../mech/git/worktree.ts";
+import { baseRefFor, sandboxGit } from "../../mech/git/checkout.ts";
+import { WORK } from "../../mech/sandbox/sandbox.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef } from "./valid.ts";
-import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
-import { bossFact, withAttachments } from "./attach.ts";
-import { gatesFor } from "../mech/gate.ts";
+import { Attachment as AttachmentSchema, GroupRef } from "../valid.ts";
+import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
+import { bossFact, withAttachments } from "../panel/attach.ts";
+import { gatesFor } from "../../mech/gate.ts";
 
 /**
  * The verdicts, and the evidence the boss reads before adding one.

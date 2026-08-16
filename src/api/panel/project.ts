@@ -1,15 +1,15 @@
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { allowedImage, killSandbox } from "../mech/sandbox/sandbox.ts";
-import { clearSandboxLog } from "../mech/sandbox/sandboxlog.ts";
-import { baseBranch, listBranches, removeMirror } from "../mech/git/checkout.ts";
-import { forgetHolds } from "../mech/git/github.ts";
-import { pushBlocked } from "../mech/git/prwatch.ts";
-import { runInstall } from "../mech/flow/start.ts";
-import { forgetProjectSkills } from "../mech/skills.ts";
-import { abortJob } from "../runtime/running.ts";
+import { allowedImage, killSandbox } from "../../mech/sandbox/sandbox.ts";
+import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
+import { baseBranch, listBranches, removeMirror } from "../../mech/git/checkout.ts";
+import { forgetHolds } from "../../mech/git/github.ts";
+import { pushBlocked } from "../../mech/git/prwatch.ts";
+import { runInstall } from "../../mech/flow/start.ts";
+import { forgetProjectSkills } from "../../mech/skills.ts";
+import { abortJob } from "../../runtime/running.ts";
 import { z } from "zod";
-import { bad, json, text, type AgentHandler, type Handler } from "./shared.ts";
+import { bad, json, text, type AgentHandler, type Handler } from "../shared.ts";
 
 /**
  * A repository this fleet works on: added, configured, and removed.

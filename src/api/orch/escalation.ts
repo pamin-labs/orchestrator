@@ -1,12 +1,12 @@
-import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "../mech/flow/chain.ts";
+import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, type Triage } from "../../mech/flow/chain.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Prose } from "./valid.ts";
-import { newGroup } from "../mech/flow/newgroup.ts";
-import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
-import { bossFact, withAttachments } from "./attach.ts";
-import { slug } from "./slug.ts";
-import { sandboxGit } from "../mech/git/checkout.ts";
-import { WORK } from "../mech/sandbox/sandbox.ts";
+import { Attachment as AttachmentSchema, GroupRef, Prose } from "../valid.ts";
+import { newGroup } from "../../mech/flow/newgroup.ts";
+import { bad, json, mayAct, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
+import { bossFact, withAttachments } from "../panel/attach.ts";
+import { slug } from "../slug.ts";
+import { sandboxGit } from "../../mech/git/checkout.ts";
+import { WORK } from "../../mech/sandbox/sandbox.ts";
 
 /**
  * A question that an agent could not answer for itself, and everything that

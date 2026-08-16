@@ -1,12 +1,12 @@
-import { allowedImage, remoteInClear, restartServer, runningServer, serverAddr, skillMounts, specFor } from "../mech/sandbox/sandbox.ts";
-import { sandboxLines } from "../mech/sandbox/sandboxlog.ts";
-import { imageChoices, setDefaultImage, type ImageChoices } from "../mech/sandbox/images.ts";
-import type { Config } from "../config.ts";
-import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "../mech/sandbox/server.ts";
-import { resetServerRestarts } from "../mech/ops/watchdog.ts";
-import { preflight } from "../mech/ops/preflight.ts";
+import { allowedImage, remoteInClear, restartServer, runningServer, serverAddr, skillMounts, specFor } from "../../mech/sandbox/sandbox.ts";
+import { sandboxLines } from "../../mech/sandbox/sandboxlog.ts";
+import { imageChoices, setDefaultImage, type ImageChoices } from "../../mech/sandbox/images.ts";
+import type { Config } from "../../config.ts";
+import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "../../mech/sandbox/server.ts";
+import { resetServerRestarts } from "../../mech/ops/watchdog.ts";
+import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
-import { bad, json, text, type Handler } from "./shared.ts";
+import { bad, json, text, type Handler } from "../shared.ts";
 
 /**
  * What this machine can and cannot do, and the sidecar that decides it.

@@ -1,9 +1,9 @@
-import { costReport } from "../mech/ops/cost.ts";
-import { canStart } from "../mech/flow/ownership.ts";
-import { poolSizes } from "../scheduler.ts";
-import { head, position } from "../mech/flow/mergequeue.ts";
-import { json, type Handler } from "./shared.ts";
-import type { Ctx } from "../ctx.ts";
+import { costReport } from "../../mech/ops/cost.ts";
+import { canStart } from "../../mech/flow/ownership.ts";
+import { poolSizes } from "../../scheduler.ts";
+import { head, position } from "../../mech/flow/mergequeue.ts";
+import { json, type Handler } from "../shared.ts";
+import type { Ctx } from "../../ctx.ts";
 
 /**
  * Everything the panel draws, in one payload.

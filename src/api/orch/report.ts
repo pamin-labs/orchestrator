@@ -1,11 +1,11 @@
 import { dirname, join } from "node:path";
-import { validateJournal } from "../mech/util/validate.ts";
-import { execIn, putFile, WORK } from "../mech/sandbox/sandbox.ts";
-import { shq } from "../mech/util/shq.ts";
+import { validateJournal } from "../../mech/util/validate.ts";
+import { execIn, putFile, WORK } from "../../mech/sandbox/sandbox.ts";
+import { shq } from "../../mech/util/shq.ts";
 import { z } from "zod";
-import { bad, text, type AgentHandler } from "./shared.ts";
-import { Prose } from "./valid.ts";
-import type { Ctx } from "../ctx.ts";
+import { bad, text, type AgentHandler } from "../shared.ts";
+import { Prose } from "../valid.ts";
+import type { Ctx } from "../../ctx.ts";
 
 /**
  * What an agent says about itself: the one-line status, and the journal.

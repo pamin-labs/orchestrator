@@ -1,4 +1,4 @@
-import { type Handler } from "./shared.ts";
+import { type Handler } from "../shared.ts";
 
 /**
  * One SSE stream, everything the panel draws off it.

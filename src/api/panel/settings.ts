@@ -1,7 +1,7 @@
-import { defaultFor, overrides, putSetting, settablePaths } from "../settings.ts";
+import { defaultFor, overrides, putSetting, settablePaths } from "../../settings.ts";
 import { z } from "zod";
-import { bad, json, text, type Handler } from "./shared.ts";
-import type { Config } from "../config.ts";
+import { bad, json, text, type Handler } from "../shared.ts";
+import type { Config } from "../../config.ts";
 
 /**
  * The settings the boss changes while the fleet is running.

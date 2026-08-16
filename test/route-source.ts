@@ -12,8 +12,16 @@ import { join } from "node:path";
  * failure they exist to catch.
  */
 export function routeSource(): string {
-  const dir = new URL("../src/api", import.meta.url).pathname;
-  const parts = [readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8")];
-  for (const f of readdirSync(dir)) if (f.endsWith(".ts")) parts.push(readFileSync(join(dir, f), "utf8"));
-  return parts.join("\n");
+  // Recursive: `src/api` grew a level (orch/ and panel/) and a guard that only
+  // read the top of it would have gone quietly blind — which is the failure it
+  // exists to catch, one directory up.
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(join(dir, e.name)) : e.name.endsWith(".ts") ? [readFileSync(join(dir, e.name), "utf8")] : [],
+    );
+  return [
+    readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8"),
+    ...walk(new URL("../src/api", import.meta.url).pathname),
+    ...walk(new URL("../src/http", import.meta.url).pathname),
+  ].join("\n");
 }

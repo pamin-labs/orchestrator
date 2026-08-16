@@ -1,7 +1,7 @@
-import { resolveLease, type ResourceDef } from "../mech/lease.ts";
+import { resolveLease, type ResourceDef } from "../../mech/lease.ts";
 import { z } from "zod";
-import { bad, text, type AgentHandler } from "./shared.ts";
-import type { Ctx } from "../ctx.ts";
+import { bad, text, type AgentHandler } from "../shared.ts";
+import type { Ctx } from "../../ctx.ts";
 
 /**
  * The one way an agent runs something it did not write.

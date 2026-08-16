@@ -1,10 +1,10 @@
-import { APP_SLUG, BOT, commitIdentity, forgetIdentity, githubAccount, listInstallations, listRepos, pollForToken, setTrailers, startDeviceFlow, trailers, type Installation } from "../mech/git/ghlogin.ts";
-import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "../mech/sandbox/auth.ts";
-import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "../mech/sandbox/login.ts";
-import { killSandbox, serverKeyOnDisk } from "../mech/sandbox/sandbox.ts";
+import { APP_SLUG, BOT, commitIdentity, forgetIdentity, githubAccount, listInstallations, listRepos, pollForToken, setTrailers, startDeviceFlow, trailers, type Installation } from "../../mech/git/ghlogin.ts";
+import { listAuth, loadAuth, SANDBOX_KEY, saveAuth, wrongShape } from "../../mech/sandbox/auth.ts";
+import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "../../mech/sandbox/login.ts";
+import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { z } from "zod";
-import { bad, json, text, type Handler } from "./shared.ts";
-import type { Ctx } from "../ctx.ts";
+import { bad, json, text, type Handler } from "../shared.ts";
+import type { Ctx } from "../../ctx.ts";
 
 /**
  * Signing in: to the two model accounts, to GitHub, and to the sandbox server.

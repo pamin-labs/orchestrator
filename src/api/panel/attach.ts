@@ -3,9 +3,9 @@ import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cp, mkdir, writeFile } from "node:fs/promises";
 import { z } from "zod";
-import { bad, json, text, type Handler } from "./shared.ts";
-import type { Ctx } from "../ctx.ts";
-import { sediment } from "../mech/knowledge/lessons.ts";
+import { bad, json, text, type Handler } from "../shared.ts";
+import type { Ctx } from "../../ctx.ts";
+import { sediment } from "../../mech/knowledge/lessons.ts";
 
 export interface Attachment {
   name: string;

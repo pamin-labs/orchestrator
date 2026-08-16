@@ -1,7 +1,7 @@
-import { checkPrMessage } from "../mech/git/prwatch.ts";
+import { checkPrMessage } from "../../mech/git/prwatch.ts";
 import { z } from "zod";
-import { GroupRef } from "./valid.ts";
-import { bad, mayAct, resolveGroup, text, type AgentHandler } from "./shared.ts";
+import { GroupRef } from "../valid.ts";
+import { bad, mayAct, resolveGroup, text, type AgentHandler } from "../shared.ts";
 
 /**
  * The Scribe's PR message: title and body, checked before anything is pushed.

@@ -1,20 +1,20 @@
-import { dropSlices } from "../db.ts";
-import { interrupt, park, pause, resume, unpark } from "../mech/flow/intercept.ts";
-import { dropGroup, startGroup, sweepApproved } from "../mech/flow/start.ts";
-import { openPr, prBody, prTitle } from "../mech/git/prwatch.ts";
-import { joinQueue, landed } from "../mech/flow/mergequeue.ts";
-import { validateDraftCard } from "../mech/util/validate.ts";
-import { canStart, parseOwns } from "../mech/flow/ownership.ts";
-import { killSandbox } from "../mech/sandbox/sandbox.ts";
-import { clearSandboxLog } from "../mech/sandbox/sandboxlog.ts";
+import { dropSlices } from "../../db.ts";
+import { interrupt, park, pause, resume, unpark } from "../../mech/flow/intercept.ts";
+import { dropGroup, startGroup, sweepApproved } from "../../mech/flow/start.ts";
+import { openPr, prBody, prTitle } from "../../mech/git/prwatch.ts";
+import { joinQueue, landed } from "../../mech/flow/mergequeue.ts";
+import { validateDraftCard } from "../../mech/util/validate.ts";
+import { canStart, parseOwns } from "../../mech/flow/ownership.ts";
+import { killSandbox } from "../../mech/sandbox/sandbox.ts";
+import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema } from "./valid.ts";
-import { newGroup } from "../mech/flow/newgroup.ts";
-import { bad, firstIdea, json, text, type Handler } from "./shared.ts";
+import { Attachment as AttachmentSchema } from "../valid.ts";
+import { newGroup } from "../../mech/flow/newgroup.ts";
+import { bad, firstIdea, json, text, type Handler } from "../shared.ts";
 import { bossFact, withAttachments } from "./attach.ts";
-import { slug } from "./slug.ts";
-import { say } from "../lang.ts";
-import type { Ctx } from "../ctx.ts";
+import { slug } from "../slug.ts";
+import { say } from "../../lang.ts";
+import type { Ctx } from "../../ctx.ts";
 
 /**
  * A requirement, from the sentence the boss typed to the branch coming back.

@@ -1,16 +1,16 @@
-import { validateDraftCard } from "../mech/util/validate.ts";
-import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../mech/flow/ownership.ts";
-import { sweepApproved } from "../mech/flow/start.ts";
-import { baseRefFor, sandboxGit, treeFiles } from "../mech/git/checkout.ts";
-import { execIn, WORK } from "../mech/sandbox/sandbox.ts";
-import { extractClaimedFiles } from "../mech/flow/reconcile.ts";
-import { shq } from "../mech/util/shq.ts";
-import { say } from "../lang.ts";
+import { validateDraftCard } from "../../mech/util/validate.ts";
+import { canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
+import { sweepApproved } from "../../mech/flow/start.ts";
+import { baseRefFor, sandboxGit, treeFiles } from "../../mech/git/checkout.ts";
+import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
+import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
+import { shq } from "../../mech/util/shq.ts";
+import { say } from "../../lang.ts";
 import { z } from "zod";
-import { GroupRef } from "./valid.ts";
-import { bad, json, mayAct, resolveGroup, text, type AgentHandler } from "./shared.ts";
-import { slug } from "./slug.ts";
-import { newGroup } from "../mech/flow/newgroup.ts";
+import { GroupRef } from "../valid.ts";
+import { bad, json, mayAct, resolveGroup, text, type AgentHandler } from "../shared.ts";
+import { slug } from "../slug.ts";
+import { newGroup } from "../../mech/flow/newgroup.ts";
 
 /**
  * What a group does with its own plan: file the DRAFT card, fan out into

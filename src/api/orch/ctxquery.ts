@@ -1,8 +1,8 @@
-import { projectOfAgent } from "../mech/util/rows.ts";
-import { query as ctxQuery, DEFAULT_BUDGET } from "../mech/knowledge/ctx.ts";
-import { loadTree, NOTE_PREFIX, render, search } from "../mech/knowledge/pageindex.ts";
+import { projectOfAgent } from "../../mech/util/rows.ts";
+import { query as ctxQuery, DEFAULT_BUDGET } from "../../mech/knowledge/ctx.ts";
+import { loadTree, NOTE_PREFIX, render, search } from "../../mech/knowledge/pageindex.ts";
 import { z } from "zod";
-import { text, type AgentHandler } from "./shared.ts";
+import { text, type AgentHandler } from "../shared.ts";
 
 /**
  * The first thing every role is told to run, so its cost is everyone's cost.

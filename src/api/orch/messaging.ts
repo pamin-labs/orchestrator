@@ -1,11 +1,11 @@
-import { projectOfAgent } from "../mech/util/rows.ts";
+import { projectOfAgent } from "../../mech/util/rows.ts";
 import { z } from "zod";
-import { Attachment as AttachmentSchema, GroupRef, Prose } from "./valid.ts";
-import { bad, resolveGroup, text, type AgentHandler, type Handler } from "./shared.ts";
-import { bossFact, withAttachments } from "./attach.ts";
-import { triage, type Triage } from "../mech/flow/chain.ts";
-import { projectSkills, skillNames } from "../mech/skills.ts";
-import type { Ctx } from "../ctx.ts";
+import { Attachment as AttachmentSchema, GroupRef, Prose } from "../valid.ts";
+import { bad, resolveGroup, text, type AgentHandler, type Handler } from "../shared.ts";
+import { bossFact, withAttachments } from "../panel/attach.ts";
+import { triage, type Triage } from "../../mech/flow/chain.ts";
+import { projectSkills, skillNames } from "../../mech/skills.ts";
+import type { Ctx } from "../../ctx.ts";
 
 /**
  * Agent to agent, and boss to anyone.
