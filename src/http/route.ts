@@ -60,7 +60,17 @@ async function parse<T>(schema: Schema<T>, value: unknown): Promise<T | string> 
   );
 }
 
-/** A missing body is `{}`, so a schema made of defaults still runs on an empty POST. */
+/**
+ * A missing body is `{}`, so a schema made of defaults still runs on an empty
+ * POST, and so does one that arrived without a `content-type`.
+ *
+ * There used to be a 415 gate in front of this. It went because `Request.json()`
+ * does not read the header — measured: a JSON body labelled `text/plain` parses
+ * — so the gate refused requests that would otherwise have worked, to explain a
+ * failure that no longer happened. Its security half is `csrf()` in `api.ts`,
+ * which is where it belongs: that check is about who sent the request, not about
+ * what it said it was.
+ */
 const body = async (req: Request): Promise<unknown> => {
   if (req.body === null) return {};
   return req.json().catch(() => ({}));
@@ -110,31 +120,4 @@ export function agentRoute<B = undefined>(
     const v = await checked(c, o);
     return v instanceof Response ? v : o.handler(ctx, c.req.raw, c.get("agent"), c.req.param(), v.data);
   });
-}
-
-/**
- * A body has to say it is JSON.
- *
- * Hono's own validator read the content type and treated anything else as *no
- * input at all* — a POST that forgot the header arrived with every field
- * defaulted and the real body discarded. That is gone with the validator, and so
- * is the CSRF half of the reason: `csrf()` in `api.ts` refuses the cross-site
- * `text/plain` shape itself now, on the mount that has no token.
- *
- * What is left is a message. Without it a mislabelled body reaches the schema
- * and comes back as a list of missing fields — and `orch` prints that list at an
- * agent, which then adds the fields it is already sending. Naming the header is
- * the difference between a correction the agent can make and one it cannot.
- *
- * `multipart/form-data` is exempt — uploads read `req.formData()` themselves.
- */
-export async function labelledBody(
-  c: { req: { header: (n: string) => string | undefined; raw: Request } },
-  next: () => Promise<void>,
-) {
-  const type = c.req.header("content-type") ?? "";
-  if (c.req.raw.body !== null && !/^application\/json\b|^multipart\/form-data\b/.test(type)) {
-    return text(`this endpoint takes application/json, not ${type || "an unlabelled body"}`, 415);
-  }
-  await next();
 }

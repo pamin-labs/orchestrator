@@ -1,3 +1,5 @@
+import type { z } from "zod";
+import type { GroupRef } from "./fields.ts";
 import type { Caller, Ctx } from "../ctx.ts";
 
 /**
@@ -100,17 +102,32 @@ export function mintToken(): string {
  * Agents reach for the name they can see — one was observed running
  * `orch draft greet -` — and refusing that teaches nothing. Accepting both costs
  * one query and removes a whole class of confusion.
+ *
+ * Takes `GroupRef`, not `unknown`. Every caller passes a field zod has already
+ * decided is `z.union([z.number().int().positive(), z.string().min(1)])`, and
+ * the old signature threw that away at the door and rebuilt it inside with
+ * `typeof ref === "number" && Number.isInteger(ref)` — a check the schema had
+ * already made, written where nothing kept the two in step. `unknown` on a
+ * parameter is a claim that the caller could pass anything, and it made the
+ * compiler stop checking the ten places that cannot.
  */
-export function resolveGroup(ctx: Ctx, ref: unknown, fallbackGrp?: number | null): number | null {
-  if (typeof ref === "number" && Number.isInteger(ref)) return ref;
-  if (typeof ref === "string" && ref.trim()) {
-    const n = Number(ref);
+export function resolveGroup(
+  ctx: Ctx,
+  ref: z.infer<typeof GroupRef> | null | undefined,
+  fallbackGrp?: number | null,
+): number | null {
+  if (typeof ref === "number") return ref;
+  // A name, unless it spells a number — `orch draft 12` means the group with
+  // that id. `.min(1)` allows "   ", which is not a name and not an id.
+  const name = ref?.trim();
+  if (name) {
+    const n = Number(name);
     if (Number.isInteger(n)) return n;
     const row = ctx.db
       .query<{ id: number }, [string]>(
         "SELECT id FROM grp WHERE name = ? AND status != 'DISSOLVED' ORDER BY id DESC LIMIT 1",
       )
-      .get(ref.trim());
+      .get(name);
     if (row) return row.id;
   }
   return fallbackGrp ?? null;

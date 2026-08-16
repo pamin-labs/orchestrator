@@ -81,3 +81,23 @@ test("a cross-site write is refused whatever it claims to be", async () => {
   // Still a read, still allowed.
   expect((await write({ "sec-fetch-site": "cross-site", "content-type": "application/json" }, "GET")).status).not.toBe(403);
 });
+
+test("a body without a content-type is still a body", async () => {
+  // There was a 415 gate here, and it refused requests that would otherwise have
+  // worked: `Request.json()` does not read the header, so a JSON body labelled
+  // `text/plain` — or labelled nothing — parses. The gate existed to say "you
+  // forgot the header" about a failure that stopped happening when `route()`
+  // started parsing the body itself, and its security half is `csrf()`.
+  const send = (headers: Record<string, string>) =>
+    app(new Request("http://127.0.0.1:47821/api/settings", {
+      method: "POST",
+      headers: { "sec-fetch-site": "same-origin", ...headers },
+      body: JSON.stringify({ path: "maxGroups", value: 3 }),
+    }));
+  // Not 415, and not "missing fields" — the schema saw the real body.
+  for (const h of [{}, { "content-type": "text/plain" }, { "content-type": "application/json" }]) {
+    const r = await send(h);
+    expect(r.status).not.toBe(415);
+    expect(await r.text()).not.toContain("path");
+  }
+});

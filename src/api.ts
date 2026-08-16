@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
-import { agentRoute, labelledBody, route } from "./http/route.ts";
+import { agentRoute, route } from "./http/route.ts";
 import type { Caller, Ctx } from "./ctx.ts";
 import { agentOf, mayAct, mintToken, resolveGroup } from "./api/shared.ts";
 import { AuthBody, CodeBody, getAuth, getGithubLogin, getGithubRepos, postAuth, postClaudeCancel, postClaudeCode, postClaudeLogin, postCodexDevice, postCodexDeviceCancel, postGithubLogin, postTrailers, TrailersBody } from "./api/panel/authflow.ts";
@@ -302,8 +302,6 @@ export function makeApp(ctx: Ctx): (req: Request) => Promise<Response> {
   // and setting `onError` replaces Hono's default handler outright — without
   // this branch `csrf()`'s 403 would arrive as a 500 saying "error: Forbidden".
   app.onError((e, c) => (e instanceof HTTPException ? e.getResponse() : c.text(`error: ${errText(e)}`, 500)));
-
-  app.use("*", labelledBody);
 
   app.route("/orch", orchRoutes(ctx));
   app.route("/api", apiRoutes(ctx));
