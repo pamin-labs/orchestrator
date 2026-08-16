@@ -184,7 +184,11 @@ export function referencedSkills(text: string, all: SkillRef[]): SkillRef[] {
   const hit: SkillRef[] = [];
   for (const s of all) {
     const byPath = text.includes(s.rel) || text.includes(s.file);
-    const bySlash = new RegExp(`(?:^|\\s)/${s.name}(?![\\w-])`).test(text);
+    // Escaped: a skill name is a directory name off disk, and it went into the
+    // pattern raw. `c++` is a legal directory and an illegal regex, so one such
+    // skill made every message throw on its way to being read; a name with a `.`
+    // silently matched the wrong skill and injected it into the turn.
+    const bySlash = new RegExp(`(?:^|\\s)/${RegExp.escape(s.name)}(?![\\w-])`).test(text);
     if (byPath || bySlash) hit.push(s);
   }
   return hit.slice(0, 3);

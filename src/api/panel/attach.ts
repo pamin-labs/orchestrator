@@ -219,6 +219,8 @@ export function withAttachments(text: string, attachments?: Attachment[]): strin
 
 /** The image attachments in an assembled prompt, for CLIs that need them as flags. */
 export function imagePaths(prompt: string): string[] {
-  const re = new RegExp(`^- (?:\\[[^\\]]+\\] )?(\\S+)${IMAGE_TAG.replace(/[()]/g, "\\$&")}$`, "gm");
+  // The escape used to list the metacharacters IMAGE_TAG happens to contain, so
+  // it was correct only for the tag's current spelling.
+  const re = new RegExp(`^- (?:\\[[^\\]]+\\] )?(\\S+)${RegExp.escape(IMAGE_TAG)}$`, "gm");
   return [...prompt.matchAll(re)].map((m) => m[1]!);
 }

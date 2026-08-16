@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { frontmatterDescription, pathInSandbox, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/skills.ts";
+import { frontmatterDescription, pathInSandbox, referencedSkills, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/skills.ts";
 import { openMemory, rewriteSkillPaths } from "../src/db.ts";
 
 /**
@@ -170,4 +170,18 @@ test("a skill's description survives every shape real skills are written in", ()
   // The caller reads a truncated head, so an unterminated document is normal and
   // must not throw — one line is better than nothing at all.
   expect(frontmatterDescription("---\nname: a\ndescription: trunc")).toBe("trunc");
+});
+
+test("a skill whose name is not a regex is still matched by its name", () => {
+  // The name went into the pattern raw. Skill names are directory names off
+  // disk: `c++` is legal there and illegal in a regex, so one installed skill
+  // threw a SyntaxError on the way to reading *any* message — and a `.` in a
+  // name quietly matched a different skill and shipped it into the turn.
+  const ref = (name: string): SkillRef => ({
+    name, file: `/s/${name}/SKILL.md`, rel: `.claude/skills/${name}/SKILL.md`, description: "d", scope: "user",
+  });
+  const all = [ref("c++"), ref("a.b"), ref("ponytail")];
+  expect(referencedSkills("走 /c++ 这条", all).map((s) => s.name)).toEqual(["c++"]);
+  expect(referencedSkills("走 /axb 这条", all)).toEqual([]);
+  expect(referencedSkills("走 /a.b 这条", all).map((s) => s.name)).toEqual(["a.b"]);
 });
