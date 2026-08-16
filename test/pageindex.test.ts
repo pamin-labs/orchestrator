@@ -226,3 +226,9 @@ test("an index call is billed for its cached tokens once, not twice", () => {
   );
   expect(claude.usage).toEqual({ input: 2_000, output: 50, cacheRead: 8_000, cacheCreate: 0, thinking: 0 });
 });
+
+test("JSON-shaped malformed index output degrades without a cast", () => {
+  expect(readClaude("null")).toEqual({ text: "" });
+  expect(readClaude(JSON.stringify({ result: 1 }))).toEqual({ text: "" });
+  expect(readCodex(["null", JSON.stringify({ type: "item.completed", item: null })].join("\n"))).toEqual({ text: "" });
+});

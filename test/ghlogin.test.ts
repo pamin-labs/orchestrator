@@ -11,13 +11,14 @@ import { BOT, commitIdentity, forgetIdentity,
 } from "../src/mech/git/ghlogin.ts";
 
 /** A fetcher that answers from a script and records what it was sent. */
-function scripted(answers: any[]): { fetchFn: Fetcher; sent: Array<{ url: string; body: string }> } {
+function scripted(answers: unknown[]): { fetchFn: Fetcher; sent: Array<{ url: string; body: string }> } {
   const sent: Array<{ url: string; body: string }> = [];
   let i = 0;
   const fetchFn: Fetcher = async (url, init) => {
     sent.push({ url, body: init?.body ?? "" });
     const a = answers[Math.min(i++, answers.length - 1)];
-    return { ok: a.status ? a.status < 400 : true, status: a.status ?? 200, json: async () => a };
+    const status = a && typeof a === "object" && "status" in a && typeof a.status === "number" ? a.status : 200;
+    return { ok: status < 400, status, json: async () => a };
   };
   return { fetchFn, sent };
 }
@@ -45,6 +46,10 @@ test("the device flow asks for a code, with no secret and no scope", async () =>
   expect(sent[0]!.body).toBe(`client_id=${CLIENT_ID}`);
   expect(sent[0]!.body).not.toContain("scope");
   expect(sent[0]!.body).not.toContain("secret");
+});
+
+test("a JSON response still has to be a device-flow response", async () => {
+  await expect(startDeviceFlow(scripted([null]).fetchFn)).rejects.toThrow("invalid device-flow response");
 });
 
 test("authorization_pending keeps polling, and the exchange carries the device grant", async () => {

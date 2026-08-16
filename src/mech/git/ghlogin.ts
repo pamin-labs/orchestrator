@@ -1,5 +1,6 @@
 import type { Ctx } from "../../ctx.ts";
 import type { DB } from "../../db.ts";
+import { z } from "zod";
 /**
  * Connect GitHub once, from the settings page, the way GitHub Desktop does.
  *
@@ -47,7 +48,7 @@ export const APP_SLUG = "orchestrator-agentic-app";
 export type Fetcher = (
   url: string,
   init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal },
-) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>;
+) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
 
 export interface DeviceCode {
   /** The eight characters the boss types into github.com. The whole interaction. */
@@ -67,16 +68,18 @@ export interface DeviceCode {
  * the return being `any`, which let `b.<anything>` compile at four call sites
  * that are reading a form-encoded reply from another host.
  */
-interface DeviceFlowBody {
-  error?: string;
-  error_description?: string;
-  device_code?: string;
-  user_code?: string;
-  verification_uri?: string;
-  interval?: string | number;
-  expires_in?: string | number;
-  access_token?: string;
-}
+const Seconds = z.union([z.number().positive(), z.string().regex(/^\d+$/).transform(Number)]);
+const DeviceFlowBody = z.object({
+  error: z.string().optional(),
+  error_description: z.string().optional(),
+  device_code: z.string().optional(),
+  user_code: z.string().optional(),
+  verification_uri: z.string().url().optional(),
+  interval: Seconds.optional(),
+  expires_in: Seconds.optional(),
+  access_token: z.string().optional(),
+});
+type DeviceFlowBody = z.infer<typeof DeviceFlowBody>;
 
 async function form(fetchFn: Fetcher, url: string, params: Record<string, string>): Promise<DeviceFlowBody> {
   const r = await fetchFn(url, {
@@ -87,7 +90,9 @@ async function form(fetchFn: Fetcher, url: string, params: Record<string, string
     signal: AbortSignal.timeout(15_000),
   });
   if (!r.ok) throw new Error(`GitHub 回了 ${r.status}`);
-  return await r.json();
+  const parsed = DeviceFlowBody.safeParse(await r.json());
+  if (!parsed.success) throw new Error("GitHub returned an invalid device-flow response");
+  return parsed.data;
 }
 
 /** Ask for a code. Returns as soon as there is something to show. */
@@ -95,11 +100,11 @@ export async function startDeviceFlow(fetchFn: Fetcher = fetch): Promise<DeviceC
   const b = await form(fetchFn, DEVICE_CODE_URL, { client_id: CLIENT_ID });
   if (b.error || !b.device_code) throw new Error(b.error_description || b.error || "GitHub 没给出登录码");
   return {
-    userCode: String(b.user_code),
-    verificationUri: String(b.verification_uri ?? "https://github.com/login/device"),
-    deviceCode: String(b.device_code),
-    interval: Number(b.interval) || 5,
-    expiresIn: Number(b.expires_in) || 900,
+    userCode: b.user_code ?? "",
+    verificationUri: b.verification_uri ?? "https://github.com/login/device",
+    deviceCode: b.device_code,
+    interval: b.interval ?? 5,
+    expiresIn: b.expires_in ?? 900,
   };
 }
 
@@ -128,12 +133,12 @@ export async function pollForToken(
       device_code: d.deviceCode,
       grant_type: GRANT_TYPE,
     });
-    if (b.access_token) return String(b.access_token);
+    if (b.access_token) return b.access_token;
     switch (b.error) {
       case "authorization_pending":
         break;
       case "slow_down":
-        interval = Number(b.interval) || interval + 5;
+        interval = b.interval ?? interval + 5;
         break;
       case "expired_token":
         throw new Error("登录码过期了，重新点一次「连接 GitHub」");

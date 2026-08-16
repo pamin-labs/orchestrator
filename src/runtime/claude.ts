@@ -1,4 +1,5 @@
 import type { StablePrompt } from "../prompt/assemble.ts";
+import { z } from "zod";
 import { shq } from "../mech/util/shq.ts";
 import { clip, jsonOr } from "../mech/util/text.ts";
 
@@ -46,8 +47,10 @@ export interface Usage {
  * to exist is that codex means the other thing by the same field name.
  */
 export function claudeUsage(
-  u: { output_tokens_details?: { thinking_tokens?: number } } & Record<string, number | undefined> = {},
+  raw: unknown = {},
 ): Usage {
+  const parsed = UsageSchema.safeParse(raw);
+  const u = parsed.success ? parsed.data : {};
   return {
     input: u.input_tokens ?? 0,
     output: u.output_tokens ?? 0,
@@ -222,28 +225,55 @@ export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
   return argv;
 }
 
-/** One line of stream-json. Only the fields we consume are typed. */
-type Line = {
-  type: string;
-  subtype?: string;
-  session_id?: string;
-  status?: string;
-  message?: { content?: Array<Record<string, any>> };
-  tool_use_result?: { stdout?: string; stderr?: string; interrupted?: boolean };
-  event?: {
-    type: string;
-    delta?: { type: string; text?: string; thinking?: string };
-    content_block?: { type: string; name?: string; input?: Record<string, any> };
-  };
-  rate_limit_info?: RateLimitInfo;
-  // result
-  is_error?: boolean;
-  terminal_reason?: string;
-  result?: string;
-  num_turns?: number;
-  usage?: Record<string, any>;
-  modelUsage?: Record<string, { contextWindow?: number }>;
-};
+const Input: z.ZodType<Record<string, unknown>> = z.record(z.string(), z.unknown());
+const UsageSchema = z
+  .object({
+    input_tokens: z.number().optional(),
+    output_tokens: z.number().optional(),
+    cache_read_input_tokens: z.number().optional(),
+    cache_creation_input_tokens: z.number().optional(),
+    output_tokens_details: z.object({ thinking_tokens: z.number().optional() }).optional(),
+  })
+  .passthrough();
+
+/** One validated line of stream-json. Unknown CLI fields stay out of the adapter. */
+const LineSchema = z
+  .object({
+    type: z.string(),
+    subtype: z.string().optional(),
+    session_id: z.string().optional(),
+    status: z.string().optional(),
+    message: z.object({ content: z.array(Input).optional() }).optional(),
+    tool_use_result: z.object({ stdout: z.string().optional(), stderr: z.string().optional(), interrupted: z.boolean().optional() }).optional(),
+    event: z
+      .object({
+        type: z.string(),
+        delta: z.object({ type: z.string(), text: z.string().optional(), thinking: z.string().optional() }).optional(),
+        content_block: z.object({ type: z.string(), name: z.string().optional(), input: Input.optional() }).optional(),
+      })
+      .optional(),
+    rate_limit_info: z
+      .object({
+        status: z.string(),
+        rateLimitType: z.string(),
+        resetsAt: z.number(),
+        overageStatus: z.string().optional(),
+        isUsingOverage: z.boolean().optional(),
+        fiveHourPercent: z.number().optional(),
+        weeklyPercent: z.number().optional(),
+        weeklyResetsAt: z.number().optional(),
+      })
+      .optional(),
+    is_error: z.boolean().optional(),
+    terminal_reason: z.string().optional(),
+    result: z.string().optional(),
+    num_turns: z.number().optional(),
+    usage: z.unknown().optional(),
+    modelUsage: z.record(z.string(), z.object({ contextWindow: z.number().optional() })).optional(),
+  })
+  .passthrough();
+
+type Line = z.infer<typeof LineSchema>;
 
 const WRITE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 
@@ -341,7 +371,7 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
         // At content_block_start the input has not streamed yet, so this is the
         // tool's name and nothing else. Recorded, but not announced: "Bash" alone
         // on the desk wall tells the boss less than the previous line did.
-        const t = summarizeTool(ev.content_block.name ?? "?", ev.content_block.input ?? {});
+        const t = summarizeTool(ev.content_block.name ?? "?", inputRecord(ev.content_block.input));
         r.toolSummaries.push(t);
       }
       return;
@@ -352,7 +382,7 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
         if (block.type === "text" && typeof block.text === "string") r.text = block.text;
         if (block.type === "tool_use") {
           const name = String(block.name ?? "?");
-          const input = (block.input ?? {}) as Record<string, any>;
+          const input = inputRecord(block.input);
           if (WRITE_TOOLS.has(name) && typeof input.file_path === "string") {
             acc.files.add(input.file_path);
           }
@@ -446,13 +476,17 @@ export function trimForLog(line: Line): unknown {
   return { ...out, message: { ...line.message, content: trimmed } };
 }
 
-export function summarizeTool(name: string, input: Record<string, any>): ToolSummary {
+export function summarizeTool(name: string, input: Record<string, unknown>): ToolSummary {
   let detail = name;
   if (typeof input.command === "string") detail = `${name}: ${clip(unwrapShell(input.command), 90, true)}`;
   else if (typeof input.file_path === "string") detail = `${name}: ${input.file_path}`;
   else if (typeof input.pattern === "string") detail = `${name}: ${clip(input.pattern, 60, true)}`;
   else if (typeof input.prompt === "string") detail = `${name}: ${clip(input.prompt, 60, true)}`;
   return { name, detail };
+}
+
+function inputRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 /**
@@ -469,5 +503,7 @@ function unwrapShell(cmd: string): string {
 }
 
 /** The CLI prints the occasional non-JSON line (login prompts, warnings). */
-const safeParse = (line: string): Line =>
-  jsonOr<Line>(line, { type: "system", subtype: "noise", status: line });
+const safeParse = (line: string): Line => {
+  const parsed = LineSchema.safeParse(jsonOr<unknown>(line, null));
+  return parsed.success ? parsed.data : { type: "system", subtype: "noise", status: line };
+};

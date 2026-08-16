@@ -49,6 +49,7 @@ export interface LiveFrame {
 export type Frame = ({ type: "event" } & StoredEvent) | LiveFrame;
 
 type Sink = (f: Frame) => void;
+type EventRow = Omit<StoredEvent, "meta"> & { meta_json: string };
 
 export class Bus {
   private sinks = new Set<Sink>();
@@ -115,13 +116,13 @@ export class Bus {
 
   since(seq: number, limit = 500): StoredEvent[] {
     return this.db
-      .query<any, [number, number]>(
+      .query<EventRow, [number, number]>(
         `SELECT seq, channel_id AS channelId, grp_id AS grpId, author, kind, intent, severity,
                 body, target, meta_json, at
          FROM event WHERE seq > ? ORDER BY seq LIMIT ?`,
       )
       .all(seq, limit)
-      .map((r) => ({ ...r, meta: jsonOr<unknown>(r.meta_json, {}) }));
+      .map(({ meta_json, ...event }) => ({ ...event, meta: jsonOr<unknown>(meta_json, {}) }));
   }
 
   private fan(f: Frame): void {
@@ -134,4 +135,3 @@ export class Bus {
     }
   }
 }
-

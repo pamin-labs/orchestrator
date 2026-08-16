@@ -135,6 +135,17 @@ test("a turn with no result line is a failure, not a silent success", async () =
   }
 });
 
+test("JSON-shaped malformed stream frames are ignored", async () => {
+  const runner = fakeRunner([
+    null,
+    { type: "assistant", message: { content: [null] } },
+    { type: "result", is_error: false, usage: { input_tokens: "not a number" } },
+  ]);
+  const r = await runTurn({ stable, prompt: "x", cwd: "/tmp", resumeSessionId: "s", runner });
+  expect(r.ok).toBe(true);
+  expect(r.usage).toEqual({ input: 0, output: 0, cacheRead: 0, cacheCreate: 0, thinking: 0 });
+});
+
 test("the desk wall never shows a bare tool name", async () => {
   // content_block_start arrives before the input has streamed, so announcing it
   // would replace a useful line with just "Bash".

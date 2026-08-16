@@ -6,6 +6,7 @@ import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { claudeUsage, promptPath, type Usage } from "../../runtime/claude.ts";
 import { codexUsage } from "../../runtime/codex.ts";
 import { shq } from "../util/shq.ts";
+import { z } from "zod";
 
 /**
  * PageIndex over this repo: a summary tree, navigated by reasoning.
@@ -289,7 +290,9 @@ export function modelAsk(
 /** `claude -p --output-format json`: one object, with the answer and the bill. */
 export function readClaude(out: string): { text: string; usage?: AskUsage } {
   try {
-    const o = JSON.parse(out) as { result?: string; is_error?: boolean; usage?: Record<string, any> };
+    const parsed = ClaudeReply.safeParse(JSON.parse(out));
+    if (!parsed.success) return { text: "" };
+    const o = parsed.data;
     if (o.is_error) return { text: "" };
     return {
       text: typeof o.result === "string" ? o.result : "",
@@ -315,11 +318,9 @@ export function readCodex(out: string): { text: string; usage?: AskUsage } {
   for (const line of out.split("\n")) {
     if (!line.startsWith("{")) continue;
     try {
-      const l = JSON.parse(line) as {
-        type?: string;
-        item?: { type?: string; text?: string };
-        usage?: Record<string, number>;
-      };
+      const parsed = CodexReply.safeParse(JSON.parse(line));
+      if (!parsed.success) continue;
+      const l = parsed.data;
       if (
         l.type === "item.completed" &&
         l.item?.type === "agent_message" &&
@@ -335,6 +336,17 @@ export function readCodex(out: string): { text: string; usage?: AskUsage } {
   }
   return { text, usage };
 }
+
+const ClaudeReply = z
+  .object({ result: z.string().optional(), is_error: z.boolean().optional(), usage: z.unknown().optional() })
+  .passthrough();
+const CodexReply = z
+  .object({
+    type: z.string().optional(),
+    item: z.object({ type: z.string().optional(), text: z.string().optional() }).optional(),
+    usage: z.record(z.string(), z.number()).optional(),
+  })
+  .passthrough();
 
 /**
  * Charge an index call to the project's `indexer`.
