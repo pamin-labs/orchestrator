@@ -418,10 +418,30 @@ const mirrorPath = (remote: string): string => `/repos/${remote.replace(/[^\w.-]
  * reason it is on the group's clone — this one never needs file contents at all,
  * only refs and the objects a bundle brings.
  */
+/**
+ * The project's bare mirror, brought up to date.
+ *
+ * It used to return early whenever the directory existed, and `git clone --bare`
+ * writes **no** `remote.origin.fetch` refspec — `--mirror` does, `--bare` does
+ * not — so even a fetch by hand would have updated nothing. The mirror was
+ * therefore frozen at the moment it was first cloned, and everything read off it
+ * described the repository as it had been that day: the repo map, and the DRAFT
+ * card's check for whether a path exists. A card naming a file added last week
+ * came back "not in the repo", forever, on a project that had been working.
+ *
+ * So the refspec is passed explicitly, and `--prune` because a branch deleted on
+ * the remote is one this mirror would otherwise keep offering.
+ */
 async function ensureMirror(ctx: Ctx, remote: string): Promise<string> {
   const path = mirrorPath(remote);
   const there = await execIn(ctx, UTIL, `test -d ${shq(path)} && echo yes`);
-  if (there.out.trim() === "yes") return path;
+  if (there.out.trim() === "yes") {
+    // Best-effort: a mirror that cannot reach the remote right now is stale, and
+    // stale is what the caller already reports. Refusing here would turn one
+    // unreachable network into an empty file list.
+    await utilGit(ctx, ["fetch", "--prune", "origin", "+refs/heads/*:refs/heads/*"], path);
+    return path;
+  }
   const made = await utilGit(ctx, ["clone", "--bare", "--filter=blob:none", remote, path]);
   if (made.code !== 0) throw new Error(`utility container could not mirror ${remote}: ${made.out.slice(-300)}`);
   return path;
@@ -463,8 +483,8 @@ export async function removeMirror(ctx: Ctx, remote: string): Promise<boolean> {
  * Empty on any failure, and the callers say so once — a mirror that cannot be
  * built is a project whose map goes stale, not a reason to stop a tick.
  */
-export async function treeFiles(ctx: Ctx, remote: string, ref: string): Promise<string[]> {
-  return (await listTree(ctx, remote, ref)).files;
+export async function treeFiles(ctx: Ctx, remote: string, branch: string): Promise<string[]> {
+  return (await listTree(ctx, remote, branch)).files;
 }
 
 /**
@@ -480,12 +500,22 @@ export async function treeFiles(ctx: Ctx, remote: string, ref: string): Promise<
  * That is worth a second return value rather than a better sentence: an
  * advisory that lists three possible causes is one the reader has to go and
  * check three of, which is the work the check existed to do for them.
+ *
+ * Takes a **branch**, not a ref. A bare mirror has `refs/heads/main` and no
+ * `refs/remotes/` at all, so the `origin/main` that `baseRefFor` builds — which
+ * is right for a worktree, where it is the remote-tracking ref — is not a name
+ * this repository has. It failed with
+ *
+ *     git ls-tree origin/main exited 128: fatal: Not a valid object name origin/main
+ *
+ * which is the repo map going permanently stale and saying so once a tick.
  */
 export async function listTree(
   ctx: Ctx,
   remote: string,
-  ref: string,
+  branch: string,
 ): Promise<{ files: string[]; why: string | null }> {
+  const ref = branch.replace(/^origin\//, "");
   let mirror: string;
   try {
     mirror = await ensureMirror(ctx, remote);

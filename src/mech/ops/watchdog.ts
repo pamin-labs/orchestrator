@@ -9,7 +9,7 @@ import { runInvariants } from "./invariants.ts";
 import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
 import { CODEX_HOME } from "../sandbox/auth.ts";
 import { execIn, killSandbox, renewSandbox, restartServer, runningServer, UTIL, utilSandbox, WORK, type Scope } from "../sandbox/sandbox.ts";
-import { baseRefFor, listTree, sandboxGit, treeHeads } from "../git/checkout.ts";
+import { baseBranch, baseRefFor, listTree, sandboxGit, treeHeads } from "../git/checkout.ts";
 import { serverLogPath } from "../sandbox/server.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -647,7 +647,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       )
       .all()) {
       const { files, why } = p.remote
-        ? await listTree(ctx, p.remote, await baseRefFor(ctx, p.id))
+        ? await listTree(ctx, p.remote, await baseBranch(ctx, p.id))
         : { files: [], why: "这个项目没记下 remote，没有可以镜像的地址" };
       // The mirror is the corpus now. Said once per project rather than never
       // (the map silently stops being refreshed and seven groups go back to

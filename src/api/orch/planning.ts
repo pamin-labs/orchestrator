@@ -1,7 +1,7 @@
 import { validateDraftCard } from "../../mech/util/validate.ts";
 import { canStart, claimsShared, CLAIMING_SQL, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";
 import { sweepApproved } from "../../mech/flow/start.ts";
-import { baseRefFor, sandboxGit, treeFiles } from "../../mech/git/checkout.ts";
+import { baseBranch, baseRefFor, sandboxGit, treeFiles } from "../../mech/git/checkout.ts";
 import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
 import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
 import { shq } from "../../mech/util/shq.ts";
@@ -75,7 +75,7 @@ export const postDraft: AgentHandler<z.infer<typeof DraftBody>> = async (ctx, _r
     // is none since step 6, and asking one that was not there threw rather than
     // returning a code — which is how this handler used to 500 with the DRAFT
     // card unfiled and nothing saying so.
-    const inBase = new Set(await treeFiles(ctx, remote, await baseRefFor(ctx, grp.project_id)));
+    const inBase = new Set(await treeFiles(ctx, remote, await baseBranch(ctx, grp.project_id)));
     if (inBase.size) unknown = claimed.filter((p) => !inBase.has(p)).slice(0, 8);
   }
 
