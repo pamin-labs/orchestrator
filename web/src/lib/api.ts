@@ -19,6 +19,7 @@ import { toast } from "sonner";
  * be called from a test with four ordinary arguments and no server.
  */
 import type { snapshot } from "../../../src/api/panel/snapshot.ts";
+import type { Frame as ServerFrame } from "../../../src/bus.ts";
 import type { CostReport, CostRow as ServerCostRow, AgentCost as ServerAgentCost } from "../../../src/mech/ops/cost.ts";
 import type {
   Agent, Archived, Escalation, Group, Project, Slice, Task,
@@ -88,6 +89,20 @@ export async function del(path: string) {
   return { ok: r.ok, text };
 }
 
+/**
+ * One SSE payload, as the server sends it.
+ *
+ * The server's own union, not a hand-written copy and not `any` — which is what
+ * this was, on the one function that turns the wire into everything the timeline
+ * renders. `stream.ts` adds `projectId` to every frame on the way out, including
+ * the stored ones whose own type has no such field, so that is the one thing
+ * stated here rather than imported.
+ *
+ * `import type` is erased at build time; no server code reaches the browser
+ * bundle. Same rule as `State` above.
+ */
+export type Wire = ServerFrame & { projectId?: number | null };
+
 export interface Frame {
   /** Stable across renders and SSE reconnects, so the timeline can key on it
    *  instead of array position. Persisted events use their bus seq (`e<seq>`);
@@ -117,7 +132,7 @@ const KIND: Record<string, Frame["cls"]> = {
  *  streaming) reuses that entry's id and mutates it in place — otherwise the
  *  row being streamed into would remount on every token. `liveSeq` is an
  *  external counter so it survives across calls without living in React state. */
-export function appendFrame(prev: Frame[], f: any, liveSeq: { current: number }): Frame[] {
+export function appendFrame(prev: Frame[], f: Wire, liveSeq: { current: number }): Frame[] {
   const at = f.at ?? Date.now();
   const next = prev.slice(-600);
   if (f.type === "live") {
@@ -142,7 +157,11 @@ export function appendFrame(prev: Frame[], f: any, liveSeq: { current: number })
   return [...next, {
     id,
     cls: KIND[f.kind] ?? "say", grpId: f.grpId ?? null, projectId: f.projectId ?? null, at,
-    author: f.author, target: f.target, intent: f.intent, text: f.body,
+    // `?? ""`, because the server's `body` is optional and this row's `text` is
+    // not. Nothing emits without one today — 110 call sites, all carry it — but
+    // `any` on this parameter is what kept that from being checked, and the
+    // failure it hides is a row in the boss's timeline that renders blank.
+    author: f.author, target: f.target, intent: f.intent, text: f.body ?? "",
   }];
 }
 

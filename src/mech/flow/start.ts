@@ -9,6 +9,7 @@ import { shq } from "../util/shq.ts";
 import { baseRefFor } from "../git/checkout.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { projectConfig } from "../util/rows.ts";
+import { errText } from "../util/text.ts";
 
 /** `project.config_json.install`, or null. */
 function installFor(ctx: Ctx, projectId: number): string | null {
@@ -316,9 +317,9 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
         } else {
           ctx.sched.enqueue("agent_turn", { grp_id: grpId, priority: 9, payload: { role: "bootstrap" } });
         }
-      } catch (e: any) {
+      } catch (e) {
         // Refuse to start rather than let the group run without its own checkout.
-        return `could not prepare the group's checkout: ${e?.message ?? e}`;
+        return `could not prepare the group's checkout: ${errText(e)}`;
       }
     }
   }

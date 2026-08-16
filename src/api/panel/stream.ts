@@ -1,4 +1,5 @@
 import { type Handler } from "../shared.ts";
+import type { Frame } from "../../bus.ts";
 
 /**
  * One SSE stream, everything the panel draws off it.
@@ -43,8 +44,18 @@ export const getStream: Handler = async (ctx, req) => {
         }
         return ofGrp.get(grpId) ?? null;
       };
-      const send = (data: any) =>
-        raw(`data: ${JSON.stringify({ ...data, projectId: data.projectId ?? projectOf(data.grpId) })}\n\n`);
+      // `Frame` is what `bus.subscribe` hands out and what `bus.since` returns.
+      // Typing it also settles where `projectId` comes from: only a `LiveFrame`
+      // carries one, because a standing agent's output has no group to scope it
+      // by. A stored event never does, so `data.projectId` on that branch was
+      // reading a field that does not exist — `any` made that look like a value.
+      const send = (data: Frame) =>
+        raw(
+          `data: ${JSON.stringify({
+            ...data,
+            projectId: (data.type === "live" ? data.projectId : null) ?? projectOf(data.grpId),
+          })}\n\n`,
+        );
 
       // A stream that sends nothing has sent no bytes, and a browser does not
       // report a byteless response as open — the UI sat on "connecting…" forever

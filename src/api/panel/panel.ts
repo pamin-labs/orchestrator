@@ -24,13 +24,28 @@ import { expandHome } from "./attach.ts";
  * twentieth group is smarter than the first" — and none of it was reachable from
  * the panel at all. Agents could `orch ctx query` it; the boss could not read it.
  */
+/** Exactly the columns the SELECT below names. `unknown` said nothing at all. */
+interface NoteRow {
+  id: number;
+  grpId: number | null;
+  kind: string;
+  body: string;
+  at: number;
+  exportPath: string | null;
+  frontmatter: string | null;
+  group: string | null;
+}
+
 export const getNotes: Handler = async (ctx, req) => {
   const q = new URL(req.url).searchParams;
   const project = q.get("project");
   const group = q.get("group");
   const kind = q.get("kind");
   const where: string[] = [];
-  const args: any[] = [];
+  // What this actually binds: two `Number()`s and a `kind` string. `any[]` let a
+  // fourth push of anything at all through, on a query whose bindings are the
+  // only thing between a query string and the table.
+  const args: (string | number)[] = [];
   if (group) {
     where.push("n.grp_id = ?");
     args.push(Number(group));
@@ -52,7 +67,7 @@ export const getNotes: Handler = async (ctx, req) => {
   where.push("n.kind NOT IN ('pageindex', 'map')");
 
   const rows = ctx.db
-    .query<unknown, any[]>(
+    .query<NoteRow, (string | number)[]>(
       `SELECT n.id, n.grp_id AS grpId, n.kind, n.body, n.at, n.export_path AS exportPath,
               n.frontmatter_json AS frontmatter, g.name AS "group"
        FROM note n LEFT JOIN grp g ON g.id = n.grp_id

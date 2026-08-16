@@ -222,7 +222,10 @@ export function clearEscalation(db: DB, slug: string): void {
 
 export function makeGithub(
   db: DB,
-  fetchFn: Fetcher = fetch as unknown as Fetcher,
+  // `Fetcher` is deliberately narrower than the global — see its docstring — so
+  // the global is assignable in the direction that matters and only the argument
+  // types need the widening. A double cast said "trust me about all of it".
+  fetchFn: Fetcher = fetch as Fetcher,
   /** `output.language`, for the one sentence the boss reads. */
   lang?: string,
 ): Github {
