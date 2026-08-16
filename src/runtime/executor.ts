@@ -33,6 +33,7 @@ import { clampEffort, providerFor, type Provider } from "./providers.ts";
 import { clip, errText, jsonOr } from "../mech/util/text.ts";
 import { hold } from "../mech/flow/intercept.ts";
 import { raise } from "../mech/flow/escalate.ts";
+import { ACTIVE_JOB_STATES, stateParam, type SliceState } from "../states.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -664,7 +665,7 @@ async function buildDeltaFor(
     }
   } else if (job.grp_id && !payload.idea) {
     const slices = ctx.db
-      .query<{ seq: number; title: string; status: string; difficulty: string }, [number]>(
+      .query<{ seq: number; title: string; status: SliceState; difficulty: string }, [number]>(
         "SELECT seq, title, status, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
       )
       .all(job.grp_id);
@@ -804,11 +805,12 @@ function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null, cfg?: Confi
       .get(ch.id, rows.at(-1)!.seq)!;
     if (behind.c > 0) {
       const queued = ctx.db
-        .query<{ c: number }, [number]>(
-          `SELECT count(*) AS c FROM job WHERE kind = 'agent_turn' AND state IN ('pending','running')
+        .query<{ c: number }, [string, number]>(
+          `SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'
+           AND state IN (SELECT value FROM json_each(?))
            AND json_extract(payload_json, '$.digest.channel_id') = ?`,
         )
-        .get(ch.id)!.c;
+        .get(stateParam(ACTIVE_JOB_STATES), ch.id)!.c;
       if (queued === 0) {
         ctx.sched.enqueue("agent_turn", {
           grp_id: grpId,

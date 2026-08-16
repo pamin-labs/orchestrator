@@ -4,6 +4,7 @@ import { bad, text, type AgentHandler } from "../shared.ts";
 import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
 import { recordGate } from "../../mech/gate.ts";
 import { validateSelfReview } from "../../mech/util/validate.ts";
+import type { SliceState } from "../../states.ts";
 
 /**
  * The task card and the two verbs that move it.
@@ -154,7 +155,7 @@ export const postTaskDone: AgentHandler<z.infer<typeof TaskDoneBody>> = async (c
   // writer works one slice at a time, and letting it close future tasks pushed
   // unstarted slices into review.
   const owning = ctx.db
-    .query<{ status: string | null }, [number]>(
+    .query<{ status: SliceState | null }, [number]>(
       "SELECT (SELECT status FROM slice WHERE id = t.slice_id) AS status FROM task t WHERE t.id = ?",
     )
     .get(b.task_id);

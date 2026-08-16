@@ -20,6 +20,8 @@ import {
   type ServerState,
   type SliceState,
   type UtilState,
+  ACTIVE_JOB_STATES,
+  stateParam,
 } from "../../states.ts";
 
 /**
@@ -82,14 +84,15 @@ export const GRP_INVARIANTS = rows<GrpState>(
       // acceptance — so when none of those fires again nobody starts it, and
       // RUNNING with an empty queue is indistinguishable from working.
       for (const g of ctx.db
-        .query<{ id: number }, []>(
+        .query<{ id: number }, [string]>(
           `SELECT g.id FROM grp g
            WHERE g.status = 'RUNNING'
              AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status = 'pending')
              AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status NOT IN ('pending','accepted'))
-             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id AND state IN ('pending','running'))`,
+             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id
+                             AND state IN (SELECT value FROM json_each(?)))`,
         )
-        .all()) {
+        .all(stateParam(ACTIVE_JOB_STATES))) {
         startNextSlice(ctx, g.id);
       }
 
@@ -98,16 +101,17 @@ export const GRP_INVARIANTS = rows<GrpState>(
       // again after the Auditor sends the branch back. Not while the boss is being
       // asked: pr_retries is spent by then and shipping would walk past them.
       for (const g of ctx.db
-        .query<{ id: number }, []>(
+        .query<{ id: number }, [string]>(
           `SELECT g.id FROM grp g
            WHERE g.status = 'RUNNING' AND g.pr_number IS NULL
              AND EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id)
              AND NOT EXISTS (SELECT 1 FROM slice WHERE grp_id = g.id AND status != 'accepted')
-             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id AND state IN ('pending','running'))
+             AND NOT EXISTS (SELECT 1 FROM job WHERE grp_id = g.id
+                             AND state IN (SELECT value FROM json_each(?)))
              AND NOT EXISTS (SELECT 1 FROM escalation
                              WHERE grp_id = g.id AND answer IS NULL AND chain_state = 'boss')`,
         )
-        .all()) {
+        .all(stateParam(ACTIVE_JOB_STATES))) {
         ctx.sched.enqueue("reconcile", { grp_id: g.id, priority: 5 });
       }
     },
@@ -155,13 +159,14 @@ export const GRP_INVARIANTS = rows<GrpState>(
       // the query below. A place in the merge queue is only handed out by a
       // passed audit.
       for (const g of ctx.db
-        .query<{ id: number }, []>(
+        .query<{ id: number }, [string]>(
           `SELECT id FROM grp g WHERE status = 'PR_OPEN' AND pr_number IS NULL AND merge_seq IS NOT NULL
              AND NOT EXISTS (
-               SELECT 1 FROM job WHERE grp_id = g.id AND kind = 'agent_turn' AND state IN ('pending', 'running')
+               SELECT 1 FROM job WHERE grp_id = g.id AND kind = 'agent_turn'
+                 AND state IN (SELECT value FROM json_each(?))
              )`,
         )
-        .all()) {
+        .all(stateParam(ACTIVE_JOB_STATES))) {
         ctx.publishBranch?.(g.id);
       }
       // waiting_merge reads merge_seq_at, so a null one is invisible to it: finished

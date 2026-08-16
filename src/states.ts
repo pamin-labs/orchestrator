@@ -92,3 +92,37 @@ export type SliceState = (typeof SLICE_STATES)[number];
 export type JobState = (typeof JOB_STATES)[number];
 export type LeaseState = (typeof LEASE_STATES)[number];
 export type EscalationState = (typeof ESCALATION_STATES)[number];
+
+type StateSubset =
+  | readonly GrpState[]
+  | readonly UtilState[]
+  | readonly ServerState[]
+  | readonly ProjectState[]
+  | readonly SliceState[]
+  | readonly JobState[]
+  | readonly LeaseState[]
+  | readonly EscalationState[];
+
+/** Jobs that still occupy a queue or executor slot. */
+export const ACTIVE_JOB_STATES = ["pending", "running"] as const satisfies readonly JobState[];
+
+/** Group states in which an agent turn can run and answer a routed question. */
+export const DISPATCHABLE_GRP_STATES = ["PLANNING", "RUNNING", "PR_OPEN"] as const satisfies readonly GrpState[];
+
+/** A question in any of these states can still move through the answer chain. */
+export const ESCALATION_OPEN_STATES = ["pm", "architect", "cos", "boss"] as const satisfies readonly EscalationState[];
+export type EscalationOpenState = (typeof ESCALATION_OPEN_STATES)[number];
+
+/** A question in either state is closed: no routing, dedupe, display, or repair. */
+export const ESCALATION_TERMINAL_STATES = ["answered", "revoked"] as const satisfies readonly EscalationState[];
+export type EscalationTerminalState = (typeof ESCALATION_TERMINAL_STATES)[number];
+
+const dispatchableGrpStates = new Set<GrpState>(DISPATCHABLE_GRP_STATES);
+const terminalEscalationStates = new Set<EscalationState>(ESCALATION_TERMINAL_STATES);
+
+export const isDispatchableGrpState = (state: GrpState): boolean => dispatchableGrpStates.has(state);
+export const isTerminalEscalationState = (state: EscalationState): state is EscalationTerminalState =>
+  terminalEscalationStates.has(state);
+
+/** Encode one typed state-machine subset as a SQLite `json_each(?)` binding. */
+export const stateParam = (states: StateSubset): string => JSON.stringify(states);

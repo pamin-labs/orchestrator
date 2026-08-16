@@ -4,6 +4,14 @@ import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { dropGroup } from "./start.ts";
 import { release } from "./intercept.ts";
+import {
+  ESCALATION_OPEN_STATES,
+  isDispatchableGrpState,
+  isTerminalEscalationState,
+  type EscalationOpenState,
+  type EscalationState,
+  type GrpState,
+} from "../../states.ts";
 
 /**
  * The answer chain: PM -> Architect -> CoS -> the boss.
@@ -15,8 +23,8 @@ import { release } from "./intercept.ts";
  * from.
  */
 
-export const CHAIN = ["pm", "architect", "cos", "boss"] as const;
-export type ChainState = (typeof CHAIN)[number] | "answered" | "revoked";
+export const CHAIN = ESCALATION_OPEN_STATES;
+export type ChainState = EscalationState;
 
 /**
  * Topics that never route through the chain, however clear the precedent.
@@ -57,7 +65,7 @@ interface EscRow {
   agent_id: number | null;
   severity: string;
   question: string;
-  chain_state: string;
+  chain_state: EscalationState;
 }
 
 function load(ctx: Ctx, id: number): EscRow | null {
@@ -79,7 +87,7 @@ function load(ctx: Ctx, id: number): EscRow | null {
 export function route(deps: ChainDeps, escId: number): string {
   const { ctx } = deps;
   const esc = load(ctx, escId);
-  if (!esc || esc.chain_state === "answered" || esc.chain_state === "revoked") return "closed";
+  if (!esc || isTerminalEscalationState(esc.chain_state)) return "closed";
 
   // A stopped group can answer nothing: every level below the boss replies by
   // taking a turn, and a turn on a paused, parked or draft group is never
@@ -92,12 +100,12 @@ export function route(deps: ChainDeps, escId: number): string {
   // call, not a decision. Lifting those to the boss put five of them on the phone
   // as "things need you" and buried the one blocker that did.
   const status = esc.grp_id
-    ? ctx.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(esc.grp_id)?.status
+    ? ctx.db.query<{ status: GrpState }, [number]>("SELECT status FROM grp WHERE id = ?").get(esc.grp_id)?.status
     : null;
-  let level =
-    esc.severity === "blocker" && status && !["PLANNING", "RUNNING", "PR_OPEN"].includes(status)
+  let level: EscalationOpenState =
+    esc.severity === "blocker" && status && !isDispatchableGrpState(status)
       ? "boss"
-      : (esc.chain_state as (typeof CHAIN)[number]);
+      : esc.chain_state;
   for (;;) {
     if (level === "boss") {
       ctx.db.run("UPDATE escalation SET chain_state = 'boss' WHERE id = ?", [escId]);
@@ -347,7 +355,7 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
     // Sending it to a PM meant the addition was never read and the boss approved a
     // card that did not contain what they had just asked for.
     const draft =
-      ctx.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)?.status ===
+      ctx.db.query<{ status: GrpState }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)?.status ===
       "DRAFT";
     if (draft) {
       ctx.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = ?", [grpId]);

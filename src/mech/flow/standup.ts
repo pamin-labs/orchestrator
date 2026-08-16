@@ -1,5 +1,6 @@
 import type { DB } from "../../db.ts";
 import { overlaps, parseOwns } from "./ownership.ts";
+import { ESCALATION_TERMINAL_STATES, stateParam } from "../../states.ts";
 
 /**
  * What a standup is actually for.
@@ -49,14 +50,14 @@ export function runStandup(db: DB, now = Date.now()): StandupItem[] {
   // Work that stopped without anybody saying so. A blocked group is fine: it is
   // waiting on an answer and somebody knows. Silence is the problem.
   const stalled = db
-    .query<{ id: number; name: string; last: number | null }, [number]>(
+    .query<{ id: number; name: string; last: number | null }, [string, number]>(
       `SELECT g.id, g.name, (SELECT max(at) FROM event WHERE grp_id = g.id) AS last
        FROM grp g WHERE g.status = 'RUNNING'
-         AND (SELECT count(*) FROM escalation e
-              WHERE e.grp_id = g.id AND e.chain_state NOT IN ('answered','revoked')) = 0
+         AND (SELECT count(*) FROM escalation e WHERE e.grp_id = g.id
+              AND e.chain_state NOT IN (SELECT value FROM json_each(?))) = 0
          AND coalesce((SELECT max(at) FROM event WHERE grp_id = g.id), 0) < ?`,
     )
-    .all(now - STALL_MS);
+    .all(stateParam(ESCALATION_TERMINAL_STATES), now - STALL_MS);
   for (const g of stalled) {
     const mins = g.last ? Math.round((now - g.last) / 60000) : null;
     items.push({

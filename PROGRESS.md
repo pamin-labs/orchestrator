@@ -14,7 +14,11 @@
 
 **PageIndex Codex 输出只解析一遍：** `readCodex()` 一次 NDJSON 遍历同时保留最后一条非空 agent message 和最后一条合法 usage；banner、坏 JSON、无关 item、乱序、空消息都不破坏已有结果，cached input 仍只计一次。`test/pageindex.test.ts` 11 checks 绿。
 
-**`bun test` 709 checks 绿（6 skip 是要真沙盒服务器的）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
+**语义状态政策集中完成：** `states.ts` 是 active job、dispatchable group、escalation open/terminal 政策的唯一来源；open 与 terminal 精确分割 canonical escalation 全集，成员受各自状态 union 约束，多状态 SQL 用 `json_each(?)` 绑定 JSON 数据，不拼 SQL。`test/states.test.ts` 守住 canonical/subset 关系、SQL 外观字符串仍只是数据，以及消费者不得重新手写同一集合。直接消费者定向 199 绿，TypeScript 与 oxlint 绿。
+
+**旧报告逐项按当前分支复核，不重复实现：** pause/resume 统一入口定向 7 绿（`88aa1e7`）；job 结束立即补位定向 25 绿（`6445c48`）；bare mirror heads/refspec 定向 3 绿（`0706062`）。D2 点名的三个 handler 已分别位于 `api/orch/tasks.ts`、`api/panel/group.ts`、`api/orch/planning.ts`，当前没有第二调用方或重复政策证明需要再包一层 flow；`api.ts` 仍负责路由、中间件和 app 组装，并非纯 route table。Claude/Codex/GitHub 登录和 sandbox server start/restart 的 timeout/error 都会取消、返回失败或升级终止，专项 28 绿；SIGKILL 后再确认退出若有复现证据应另立问题。`db.ts` 运行期依赖 `scrub.ts`，反向只有 `import type`，编译后无循环。no-op 项不制造空提交。
+
+**`bun test` 712 checks 绿（6 skip 是要可控的真沙盒服务器与密钥）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
 
 **你只需要三个动作**：丢想法 → 批 DRAFT 卡 → 查收切片。gate 探测、入职包、推送权限预检都在注册项目时自动完成。
 

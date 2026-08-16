@@ -9,6 +9,7 @@ import { poolSizes } from "../../scheduler.ts";
 import { head, position } from "../../mech/flow/mergequeue.ts";
 import { json, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
+import { ESCALATION_TERMINAL_STATES, stateParam } from "../../states.ts";
 
 /**
  * Everything the panel draws, in one payload.
@@ -138,13 +139,13 @@ export function snapshot(ctx: Ctx) {
       )
       .all(),
     escalations: db
-      .query<Escalation, []>(
+      .query<Escalation, [string]>(
         `SELECT e.id, e.grp_id, e.severity, e.question, e.brief, e.kind, e.chain_state, e.answered_by, e.answer,
                 e.created_at, a.role AS asker, a.project_id AS asker_project
          FROM escalation e LEFT JOIN agent a ON a.id = e.agent_id
-         WHERE e.chain_state NOT IN ('answered', 'revoked') ORDER BY e.created_at`,
+         WHERE e.chain_state NOT IN (SELECT value FROM json_each(?)) ORDER BY e.created_at`,
       )
-      .all(),
+      .all(stateParam(ESCALATION_TERMINAL_STATES)),
     // Only the queue head is offered for merging; the rest carry their place in
     // line so the boss can see why they are waiting.
     mergeQueue: db

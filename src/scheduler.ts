@@ -1,5 +1,8 @@
 import type { DB } from "./db.ts";
 import { isRunning } from "./runtime/running.ts";
+import { isDispatchableGrpState, type GrpState, type JobState } from "./states.ts";
+
+export type { JobState } from "./states.ts";
 
 export type JobKind =
   | "agent_turn"
@@ -9,8 +12,6 @@ export type JobKind =
   | "notify"
   | "gate"
   | "reconcile";
-
-export type JobState = "pending" | "running" | "done" | "failed" | "cancelled";
 
 export interface Job {
   id: number;
@@ -92,8 +93,6 @@ export function poolSizes(slots: number | Record<string, number> | undefined): R
  * work" and "waiting for the boss" cannot be the same state. Everything else is a
  * barrier: PAUSING/PAUSED (intercept L2), PARKED, DRAFT (the card is ready).
  */
-const DISPATCHABLE = new Set(["PLANNING", "RUNNING", "PR_OPEN"]);
-
 /**
  * Roles DRAFT does not block.
  *
@@ -406,12 +405,12 @@ export class Scheduler {
   /** Admission check: group status is a barrier, budget is a hard stop. */
   private admits(job: Job): boolean {
     const grp = this.db
-      .query<{ status: string; budget_tokens: number | null; spent_tokens: number }, [number]>(
+      .query<{ status: GrpState; budget_tokens: number | null; spent_tokens: number }, [number]>(
         "SELECT status, budget_tokens, spent_tokens FROM grp WHERE id = ?",
       )
       .get(job.grp_id!);
     if (!grp) return false;
-    if (!DISPATCHABLE.has(grp.status)) {
+    if (!isDispatchableGrpState(grp.status)) {
       if (grp.status !== "DRAFT") return false;
       let role: unknown;
       try {

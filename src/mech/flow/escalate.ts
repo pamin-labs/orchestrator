@@ -1,8 +1,12 @@
 import type { DB } from "../../db.ts";
-import type { EscalationState } from "../../states.ts";
+import {
+  ESCALATION_TERMINAL_STATES,
+  stateParam,
+  type EscalationOpenState,
+} from "../../states.ts";
 
 /** A state a newly filed question may enter. The other two are terminal. */
-type FilingState = Exclude<EscalationState, "answered" | "revoked">;
+type FilingState = EscalationOpenState;
 
 /** What counts as the same still-open subject. Row ownership is independent. */
 export type Dedupe =
@@ -66,26 +70,27 @@ export function raise(db: DB, ask: Ask): number | null {
 
   // One statement, not SELECT then INSERT: two simultaneous failures cannot both
   // pass a stale check. `substr` keeps %, _ and \ as literal subject characters.
-  const open = `answer IS NULL AND chain_state NOT IN ('answered', 'revoked')
+  const open = `answer IS NULL AND chain_state NOT IN (SELECT value FROM json_each(?))
     AND substr(question, 1, length(?)) = ?`;
+  const terminal = stateParam(ESCALATION_TERMINAL_STATES);
   if (ask.dedupe.scope === "global") {
     return (
       db
-        .query<{ id: number }, [...Insert, string, string]>(
+        .query<{ id: number }, [...Insert, string, string, string]>(
           `INSERT INTO escalation (${COLUMNS})
            SELECT ${VALUES} WHERE NOT EXISTS (SELECT 1 FROM escalation WHERE ${open})
            RETURNING id`,
         )
-        .get(...values, ask.dedupe.prefix, ask.dedupe.prefix)?.id ?? null
+        .get(...values, terminal, ask.dedupe.prefix, ask.dedupe.prefix)?.id ?? null
     );
   }
   return (
     db
-      .query<{ id: number }, [...Insert, string, string, number]>(
+      .query<{ id: number }, [...Insert, string, string, string, number]>(
         `INSERT INTO escalation (${COLUMNS})
          SELECT ${VALUES} WHERE NOT EXISTS (SELECT 1 FROM escalation WHERE ${open} AND grp_id = ?)
          RETURNING id`,
       )
-      .get(...values, ask.dedupe.prefix, ask.dedupe.prefix, ask.dedupe.grpId)?.id ?? null
+      .get(...values, terminal, ask.dedupe.prefix, ask.dedupe.prefix, ask.dedupe.grpId)?.id ?? null
   );
 }

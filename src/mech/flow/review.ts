@@ -10,6 +10,7 @@ import { pushBranch, sandboxGit } from "../git/checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
 import { raise } from "./escalate.ts";
+import type { SliceState } from "../../states.ts";
 
 /**
  * Slice-level review, in the one order that makes sense.
@@ -604,7 +605,7 @@ export function startNextSlice(ctx: Ctx, grpId: number): number | null {
 
   if (next.depends_on) {
     const dep = ctx.db
-      .query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?")
+      .query<{ status: SliceState }, [number]>("SELECT status FROM slice WHERE id = ?")
       .get(next.depends_on);
     if (dep && dep.status !== "accepted") return null;
   }

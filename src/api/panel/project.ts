@@ -11,6 +11,7 @@ import { abortJob } from "../../runtime/running.ts";
 import { z } from "zod";
 import { errText } from "../../mech/util/text.ts";
 import { bad, json, text, type AgentHandler, type Handler } from "../shared.ts";
+import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
 
 /**
  * A repository this fleet works on: added, configured, and removed.
@@ -225,21 +226,21 @@ export const deleteProject: Handler = async (ctx, _req, params) => {
   // `grp_id` NULL and `project_id` set, so a `grp_id IN (…)` filter left every
   // one of their turns running against a project that was being erased.
   const doomed = ctx.db
-    .query<{ id: number }, [number]>(
+    .query<{ id: number }, [string, number]>(
       `SELECT id FROM job
-        WHERE state IN ('pending', 'running')
-          AND (grp_id IN (SELECT id FROM grp WHERE project_id = ?1)
-               OR agent_id IN (SELECT id FROM agent WHERE project_id = ?1))`,
+        WHERE state IN (SELECT value FROM json_each(?1))
+          AND (grp_id IN (SELECT id FROM grp WHERE project_id = ?2)
+               OR agent_id IN (SELECT id FROM agent WHERE project_id = ?2))`,
     )
-    .all(id);
+    .all(stateParam(ACTIVE_JOB_STATES), id);
   let stopped = 0;
   for (const j of doomed) if (abortJob(j.id)) stopped++;
   ctx.db.run(
     `UPDATE job SET state = 'cancelled', ended_at = unixepoch() * 1000, error = 'project removed'
-      WHERE state IN ('pending', 'running')
-        AND (grp_id IN (SELECT id FROM grp WHERE project_id = ?1)
-             OR agent_id IN (SELECT id FROM agent WHERE project_id = ?1))`,
-    [id],
+      WHERE state IN (SELECT value FROM json_each(?1))
+        AND (grp_id IN (SELECT id FROM grp WHERE project_id = ?2)
+             OR agent_id IN (SELECT id FROM agent WHERE project_id = ?2))`,
+    [stateParam(ACTIVE_JOB_STATES), id],
   );
   if (stopped) {
     ctx.bus.emit({

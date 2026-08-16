@@ -20,6 +20,12 @@ import { HEAD_CHARS } from "../knowledge/pageindex.ts";
 import { resumeReclaimed, type Job } from "../../scheduler.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { probe } from "../sandbox/net.ts";
+import {
+  ACTIVE_JOB_STATES,
+  DISPATCHABLE_GRP_STATES,
+  ESCALATION_TERMINAL_STATES,
+  stateParam,
+} from "../../states.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.
@@ -699,14 +705,15 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // automatic retry, then the boss.
   await step("8", findings, async () => {
     const stalled = ctx.db
-      .query<Job, []>(
+      .query<Job, [string]>(
         `SELECT j.id, j.kind, j.grp_id, j.agent_id, j.slice_id, j.payload_json, j.priority, j.state, j.error
          FROM job j JOIN grp g ON g.id = j.grp_id
          WHERE g.status IN ('RUNNING', 'PLANNING') AND j.kind = 'agent_turn'
            AND j.id = (SELECT max(id) FROM job WHERE grp_id = j.grp_id AND kind = 'agent_turn')
-           AND NOT EXISTS (SELECT 1 FROM job k WHERE k.grp_id = j.grp_id AND k.state IN ('pending','running'))`,
+           AND NOT EXISTS (SELECT 1 FROM job k WHERE k.grp_id = j.grp_id
+                           AND k.state IN (SELECT value FROM json_each(?)))`,
       )
-      .all();
+      .all(stateParam(ACTIVE_JOB_STATES));
     for (const j of stalled) {
       // A rebase that beat the Engineer twice is a design question, not a harder
       // rebase. It only reaches here after failing with the fork spelled out, so the
@@ -777,16 +784,17 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // a stopped group, and a 待办 count of zero.
   await step("11", findings, async () => {
     const stranded = ctx.db
-      .query<{ id: number }, []>(
+      .query<{ id: number }, [string, string]>(
         // Blockers only, same reason route() lifts only blockers: an advisory that
         // nobody answers costs nothing, and a clearance denial is a JSON blob about
         // a tool call rather than a decision anyone can take.
         `SELECT e.id FROM escalation e JOIN grp g ON g.id = e.grp_id
          WHERE e.answer IS NULL AND e.severity = 'blocker'
-           AND e.chain_state NOT IN ('boss', 'answered', 'revoked')
-           AND g.status NOT IN ('PLANNING', 'RUNNING', 'PR_OPEN')`,
+           AND e.chain_state != 'boss'
+           AND e.chain_state NOT IN (SELECT value FROM json_each(?))
+           AND g.status NOT IN (SELECT value FROM json_each(?))`,
       )
-      .all();
+      .all(stateParam(ESCALATION_TERMINAL_STATES), stateParam(DISPATCHABLE_GRP_STATES));
     for (const e of stranded) route({ ctx, notifyBoss: ctx.notifyBoss }, e.id);
   });
 
@@ -1153,11 +1161,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // would change nothing, so the queue must stop asking.
   await step("16", findings, async () => {
     for (const e of ctx.db
-      .query<{ id: number; grp_id: number; name: string }, []>(
+      .query<{ id: number; grp_id: number; name: string }, [string]>(
         `SELECT e.id, e.grp_id, g.name FROM escalation e JOIN grp g ON g.id = e.grp_id
-         WHERE e.chain_state NOT IN ('answered','revoked') AND g.status IN ('PR_OPEN','DISSOLVED')`,
+         WHERE e.chain_state NOT IN (SELECT value FROM json_each(?))
+           AND g.status IN ('PR_OPEN','DISSOLVED')`,
       )
-      .all()) {
+      .all(stateParam(ESCALATION_TERMINAL_STATES))) {
       ctx.db.run(
         `UPDATE escalation SET chain_state = 'revoked', answered_by = 'orchestrator',
            answer = ?, answered_at = unixepoch() * 1000 WHERE id = ?`,

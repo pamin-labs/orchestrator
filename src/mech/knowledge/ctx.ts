@@ -1,5 +1,13 @@
 import type { DB } from "../../db.ts";
 import { loadMap, mapFor } from "./repomap.ts";
+import {
+  ESCALATION_TERMINAL_STATES,
+  stateParam,
+  type EscalationState,
+  type GrpState,
+  type LeaseState,
+  type SliceState,
+} from "../../states.ts";
 
 
 /**
@@ -147,7 +155,7 @@ export function query(opts: QueryOptions): string {
 
   if (opts.grpId) {
     const slices = opts.db
-      .query<{ seq: number; title: string; accept_spec: string; status: string }, [number]>(
+      .query<{ seq: number; title: string; accept_spec: string; status: SliceState }, [number]>(
         "SELECT seq, title, accept_spec, status FROM slice WHERE grp_id = ? ORDER BY seq",
       )
       .all(opts.grpId);
@@ -164,18 +172,19 @@ export function query(opts: QueryOptions): string {
     // long turns is where the token bill actually is. Answering it here costs a
     // SELECT and removes the reason to go looking.
     const g = opts.db
-      .query<{ name: string; status: string; branch: string | null; pr: number | null }, [number]>(
+      .query<{ name: string; status: GrpState; branch: string | null; pr: number | null }, [number]>(
         "SELECT name, status, branch, pr_number AS pr FROM grp WHERE id = ?",
       )
       .get(opts.grpId);
     const open = opts.db
-      .query<{ id: number; chain_state: string; severity: string; question: string }, [number]>(
+      .query<{ id: number; chain_state: EscalationState; severity: string; question: string }, [number, string]>(
         `SELECT id, chain_state, severity, question FROM escalation
-         WHERE grp_id = ? AND answer IS NULL AND chain_state NOT IN ('answered','revoked') ORDER BY id`,
+         WHERE grp_id = ? AND answer IS NULL
+           AND chain_state NOT IN (SELECT value FROM json_each(?)) ORDER BY id`,
       )
-      .all(opts.grpId);
+      .all(opts.grpId, stateParam(ESCALATION_TERMINAL_STATES));
     const gates = opts.db
-      .query<{ resource: string; state: string }, [number, number]>(
+      .query<{ resource: string; state: LeaseState }, [number, number]>(
         `SELECT resource, state FROM lease WHERE grp_id = ? AND id IN
            (SELECT max(id) FROM lease WHERE grp_id = ? GROUP BY resource)`,
       )
