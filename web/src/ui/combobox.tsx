@@ -32,6 +32,7 @@ export function Combobox({
   empty = "没有匹配的分支",
   disabled,
   width,
+  free,
   onCommit,
 }: {
   value: string;
@@ -40,6 +41,15 @@ export function Combobox({
   empty?: string;
   disabled?: boolean;
   width?: string;
+  /**
+   * The list is a suggestion, not the authority.
+   *
+   * For a base branch the list *is* the authority — a branch that does not exist
+   * fails at clone time four steps later. A model id is the other case: the only
+   * way a new one ever enters the config is by being typed somewhere first, and a
+   * picker that refused it would be a picker you edit the yaml to get around.
+   */
+  free?: boolean;
   onCommit: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -60,7 +70,7 @@ export function Combobox({
     setOpen(false);
     // Refused rather than saved: see the note above. `options.length` is the
     // whole condition — an empty list means unverifiable, not invalid.
-    if (options.length && !options.includes(next)) return setDraft(value);
+    if (!free && options.length && !options.includes(next)) return setDraft(value);
     setDraft(next);
     if (next !== value.trim()) onCommit(next);
   };
