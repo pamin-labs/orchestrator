@@ -312,22 +312,8 @@ export function start(overrides: Partial<Config> = {}): Started {
         if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u);
       }),
     waiters: new Map(),
-    config: {
-      language: cfg.language,
-      sliceBudgetTokens: cfg.sliceBudgetTokens,
-      dataDir: cfg.dataDir,
-      skillsDir: cfg.skillsDir,
-      autoAdvance: cfg.autoAdvance,
-      autoAcceptTiers: cfg.autoAcceptTiers,
-      maxGroups: cfg.maxGroups,
-      leaseSlots: cfg.leaseSlots,
-      feedbackSediment: cfg.feedbackSedimentThreshold,
-      port: cfg.port,
-      sandbox: cfg.sandbox,
-      installTimeoutMs: cfg.installTimeoutMs,
-      ctxBudgetChars: cfg.ctxBudgetChars,
-      leaseTimeoutMs: cfg.leaseTimeoutMs,
-    },
+    // One object, not a copy. See `Ctx` for what the copy used to cost.
+    config: cfg,
   };
   const execDeps = { ctx, cfg, roles };
 

@@ -21,7 +21,7 @@ function harness() {
     bus: new Bus(db),
     sched: new Scheduler(db, async (j) => void ran.push(j)),
     sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: "中文", feedbackSediment: 3 },
+    config: { language: "中文", feedbackSedimentThreshold: 3 },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   for (const n of ["g1", "g2", "g3"]) {

@@ -127,11 +127,15 @@ test("ctxBudgetChars actually reaches the thing it configures", () => {
   // does nothing is worse than no knob — it reads as tried.
   const cfg = loadConfig("config/does-not-exist.yaml");
   expect(cfg.ctxBudgetChars).toBeGreaterThan(0);
-  const wired = readFileSync("src/server.ts", "utf8");
-  expect(wired).toContain("ctxBudgetChars: cfg.ctxBudgetChars");
+  // No hand-copied literal to check any more — `ctx.config` is the config
+  // object, so a key reaches the handlers by existing. What is still worth
+  // asserting is the other half, the one that was actually broken: that the
+  // route reads the setting instead of the module default.
+  //
   // The whole route layer, not one file: `api.ts` was split into `src/api/*` and
   // pinning this to whichever module holds the reader today would put the guard
   // back where the next move breaks it.
+  expect(readFileSync("src/server.ts", "utf8")).toContain("config: cfg,");
   expect(routeSource()).toContain("ctx.config.ctxBudgetChars");
 });
 

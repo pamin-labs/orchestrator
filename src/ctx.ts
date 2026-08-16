@@ -1,6 +1,7 @@
 import type { DB } from "./db.ts";
 import type { Bus } from "./bus.ts";
 import type { Scheduler } from "./scheduler.ts";
+import type { Config } from "./config.ts";
 
 /**
  * The handle everything below the HTTP layer is given.
@@ -59,40 +60,23 @@ export interface Ctx {
   hire?: (grpId: number | null, role: string, projectId?: number | null) => number | null;
   /** Wired by the server: role names that exist in roles/*.yaml. */
   knownRoles?: () => string[];
-  config: {
-    language: string;
-    /** difficulty -> token cap written onto each new slice. */
-    sliceBudgetTokens?: Record<string, number>;
-    dataDir?: string;
-    /** Where ticked skills are staged for the sandboxes to mount. */
-    skillsDir?: string;
-    autoAdvance?: boolean;
-    autoAcceptTiers?: string[];
-    /** Surfaced to the panel: how many groups may run at once, and lease slots. */
-    maxGroups?: number;
-    leaseSlots?: number | Record<string, number>;
-    /** Same complaint this many times becomes a project rule (PLAN.md §7③). */
-    feedbackSediment?: number;
-    /** Chars an `orch ctx query` answer may spend. Was a setting that changed nothing. */
-    ctxBudgetChars?: number;
-    /** How long a gate may run. The lease route waits a minute longer than this. */
-    leaseTimeoutMs?: number;
-    /** Where the orchestrator listens; the mailbox replays agent calls to it. */
-    port?: number;
-    /** Wall clock for a dependency install. See config.ts for why it is generous. */
-    installTimeoutMs?: number;
-    /** Where turns run. See mech/sandbox/sandbox.ts and docs/decisions/005. */
-    sandbox?: {
-      server: string;
-      apiKey: string;
-      image: string;
-      cpu: string;
-      memory: string;
-      ttlSeconds: number;
-      denyDomains: string[];
-      cacheDirs: Record<string, string>;
-    };
-  };
+  /**
+   * The one config object, not a copy of the parts a handler was trusted with.
+   *
+   * It used to be a hand-written literal in `server.ts` listing thirteen fields,
+   * which meant two objects that could disagree — and they did: `ctx.config`
+   * never carried `maxTurnsPerJob`, `turnTimeoutMs`, `sessionRotateFraction`,
+   * `gateRetries`, `difficultyModel` or `contextWindow` at all. Copying was
+   * meant to stop a handler reaching for whatever it liked; what it actually
+   * produced was a key that typechecked, read back as undefined, and silently
+   * fell through to a default.
+   *
+   * `Partial` because the tests build a Ctx with the two or three fields the
+   * code under test reads, and requiring forty would make every one of them a
+   * fixture. `language` is not optional: everything the boss reads goes through
+   * `say()`.
+   */
+  config: Partial<Config> & { language: string };
 }
 
 /** Who is calling, resolved from the `x-orch-token` an agent was issued. */

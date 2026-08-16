@@ -199,7 +199,7 @@ export function bossFact(ctx: Ctx, grpId: number | null, body: string): void {
     "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
     [projectId, grpId, ctx.config.language, body],
   );
-  sediment(ctx, projectId, ctx.config.feedbackSediment ?? 3);
+  sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold ?? 3);
 }
 
 export function withAttachments(text: string, attachments?: Attachment[]): string {
