@@ -6,6 +6,7 @@ import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "../ui/f
 import { Switch } from "../ui/switch";
 import { Tip } from "../ui/tooltip";
 import { Meta } from "../ui/bits";
+import { toast } from "sonner";
 
 /**
  * The operating knobs, as rows.
@@ -221,8 +222,11 @@ export function Knobs({ section }: { section: KnobSection }) {
   );
 }
 
+/** Label and reason for a knob, falling back to the raw path. */
+const copyFor = (k: Knob) => COPY[k.path] ?? { zh: k.path, why: undefined as string | undefined };
+
 function Row({ knob, onWrite }: { knob: Knob; onWrite: (path: string, value: unknown) => void }) {
-  const copy = COPY[knob.path] ?? { zh: knob.path };
+  const copy = copyFor(knob);
   const id = `knob-${knob.path.replace(/\W/g, "-")}`;
   const label = copy.why ? (
     <Tip label={copy.why}>
@@ -282,17 +286,26 @@ function Value({ id, knob, onWrite }: { id: string; knob: Knob; onWrite: (p: str
       onBlur={(e) => {
         const raw = e.currentTarget.value.trim();
         if (raw === text) return;
+        let value: unknown;
         if (knob.type === "number") {
-          const n = Number(raw);
-          if (Number.isFinite(n)) onWrite(knob.path, n);
-          return;
+          value = Number(raw);
+          if (!Number.isFinite(value as number)) return void toast.error(`${copyFor(knob).zh}要一个数字`);
+        } else if (!json) {
+          value = raw;
+        } else {
+          try {
+            value = JSON.parse(raw);
+          } catch {
+            // Said out loud. Silently keeping the typed text and quietly not
+            // saving it is the worst of the three options: the row looks changed
+            // and is not.
+            return void toast.error(`${copyFor(knob).zh}要一段 JSON，这段解析不了`);
+          }
         }
-        if (!json) return void onWrite(knob.path, raw);
-        try {
-          onWrite(knob.path, JSON.parse(raw));
-        } catch {
-          // Leave it as typed; the row still shows what the server has.
-        }
+        // Typing the shipped value back is not an override. Otherwise the row
+        // reads 已改 while being identical to the default, and the button that
+        // clears it appears to do nothing.
+        onWrite(knob.path, JSON.stringify(value) === JSON.stringify(knob.default) ? null : value);
       }}
     />
   );
