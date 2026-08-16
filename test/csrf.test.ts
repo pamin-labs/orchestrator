@@ -95,7 +95,8 @@ test("a body without a content-type is still a body", async () => {
       body: JSON.stringify({ path: "maxGroups", value: 3 }),
     }));
   // Not 415, and not "missing fields" — the schema saw the real body.
-  for (const h of [{}, { "content-type": "text/plain" }, { "content-type": "application/json" }]) {
+  const types: Record<string, string>[] = [{}, { "content-type": "text/plain" }, { "content-type": "application/json" }];
+  for (const h of types) {
     const r = await send(h);
     expect(r.status).not.toBe(415);
     expect(await r.text()).not.toContain("path");

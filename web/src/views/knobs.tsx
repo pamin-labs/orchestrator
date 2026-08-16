@@ -142,7 +142,11 @@ const COPY: Record<string, { zh: string; why?: string; ph?: string }> = {
   },
   language: {
     zh: "对外语言",
-    why: "管 journal / 频道消息 / 问你的问题 / 状态摘要。代码、commit message、分支名、PR、错误信息永远是英文。改这一项会让全舰队轮换一次 session——它在缓存前缀里。",
+    why:
+      "管 journal / 频道消息 / 问你的问题 / 状态摘要。这些都是 agent 写的，所以写什么语言都行——列表只是省打字，不是能选的全部。" +
+      "代码、commit message、分支名、PR、错误信息永远是英文。" +
+      "orchestrator 自己那二十几条状态文案只有中文和英文两套，别的语言它们会退回英文——agent 写的东西不受影响。" +
+      "改这一项会让全舰队轮换一次 session——它在缓存前缀里。",
   },
   turnTimeoutMs: {
     zh: "单轮墙钟上限",
@@ -431,14 +435,14 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
         />
       );
     case "language":
-      // Two values, because `say()` is a two-column table: anything that does
-      // not start with 中 or zh gets the English column. A free box invited a
-      // third answer that silently means English.
+      // Any language, suggested rather than restricted. What this governs is
+      // what the *agents* write — journals, channel messages, the questions they
+      // ask — and a model writes whatever it is told to. `say()`'s two-column
+      // table is only the orchestrator's own two dozen status lines, and it
+      // falls back to English for anything it does not have; that is a smaller
+      // fact than this field, and it is in the row's note.
       return (
-        <Segments value={String(v ?? "")} onValueChange={(l) => l && onWrite(l)}>
-          <Segment value="中文">中文</Segment>
-          <Segment value="English">English</Segment>
-        </Segments>
+        <Combobox free value={String(v ?? "")} options={LANGUAGES} placeholder="中文 / English / 日本語 …" onCommit={onWrite} />
       );
     case "autoAcceptTiers":
       return (
@@ -541,6 +545,16 @@ const rec = (v: unknown) => (v ?? {}) as Record<string, unknown>;
 
 const PERCENT = ["%"] as const;
 
+/** The window every model without a row of its own falls back to. Not a model. */
+const DEFAULT_KEY = "default";
+
+/**
+ * Suggestions, not a set. `output.language` is an instruction to a model, and a
+ * model writes whatever it is told to — the list is here to save typing and to
+ * say what the field wants, not to have an opinion about which languages exist.
+ */
+const LANGUAGES = ["中文", "English", "日本語", "한국어", "Español", "Français", "Deutsch", "Português", "Русский"];
+
 /**
  * One box, written when it loses focus.
  *
@@ -585,7 +599,7 @@ function Amount<U extends string>({
   };
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex min-w-0 items-center gap-1.5">
       <Input
         type="number"
         inputMode="numeric"
@@ -594,7 +608,10 @@ function Amount<U extends string>({
         value={draft}
         aria-label={label}
         aria-invalid={invalid || undefined}
-        className="w-[6.5rem] flex-none py-0.5 font-mono text-[0.75rem] aria-[invalid=true]:border-accent"
+        // Shrinks rather than holding 6.5rem: three of these share the tier grid
+        // with a label column, and a fixed width pushed the unit toggle off the
+        // right edge of the dialog.
+        className="min-w-0 max-w-[6.5rem] flex-1 py-0.5 font-mono text-[0.75rem] aria-[invalid=true]:border-accent"
         onChange={(e) => setDraft(e.currentTarget.value)}
         onBlur={(e) => send(e.currentTarget.value, unit)}
         onKeyDown={(e) => {
@@ -609,7 +626,7 @@ function Amount<U extends string>({
       {units.length === 1 ? (
         <Meta>{units[0]}</Meta>
       ) : (
-        <Segments value={unit} onValueChange={(u) => u && send(draft, u as U)} aria-label={`${label} 的单位`}>
+        <Segments value={unit} onValueChange={(u) => u && send(draft, u as U)} aria-label={`${label} 的单位`} className="shrink-0">
           {units.map((u) => (
             <Segment key={u} value={u}>{u || "个"}</Segment>
           ))}
@@ -649,15 +666,17 @@ function CountAmount({
  * neither CLI will tell us.
  */
 function ModelPick({
-  value, options, onCommit,
+  value, options, disabled, onCommit,
 }: {
   value: string;
   options: string[];
+  disabled?: boolean;
   onCommit: (v: string) => void;
 }) {
   return (
     <Combobox
       free
+      disabled={disabled}
       value={value}
       options={options}
       placeholder="模型 id"
@@ -873,7 +892,14 @@ function Windows({
   src: ModelSources;
   onWrite: (v: unknown) => void;
 }) {
-  const entries = Object.entries(map);
+  // `default` first and always present. It is not a model — it is the window
+  // every model without a row of its own falls back to — and deleting it drops
+  // all of them to `MIN_CONTEXT`, which is a fleet-wide rotation nobody asked
+  // for and nothing reports. Sorted rather than left where the object put it,
+  // because the fallback belongs above the exceptions to it.
+  const entries = Object.entries({ default: 0, ...map }).sort(([a], [b]) =>
+    a === DEFAULT_KEY ? -1 : b === DEFAULT_KEY ? 1 : 0,
+  );
   const taken = new Set(entries.map(([k]) => k));
   const free = allModels(src).filter((m) => !taken.has(m));
   return (
@@ -885,7 +911,8 @@ function Windows({
               value={k}
               // Its own name plus the unclaimed ones: a list that dropped the
               // current value would show the row's own key as no match.
-              options={k === "default" ? [] : [k, ...free]}
+              options={[k, ...free]}
+              disabled={k === DEFAULT_KEY}
               onCommit={(name) => {
                 if (!name.trim() || name === k) return;
                 onWrite(Object.fromEntries(entries.map(([ek, ev]) => [ek === k ? name : ek, ev])));
@@ -893,17 +920,21 @@ function Windows({
             />
           </div>
           <CountAmount value={Number(v)} label={k} onWrite={(n) => onWrite({ ...map, [k]: n })} />
-          <Tip label="删掉这一行">
-            <Button
-              variant="quiet"
-              size="sm"
-              aria-label={`删掉 ${k}`}
-              className="shrink-0"
-              onClick={() => onWrite(Object.fromEntries(entries.filter(([ek]) => ek !== k)))}
-            >
-              <X className="size-3" />
-            </Button>
-          </Tip>
+          {k === DEFAULT_KEY ? (
+            <span className="w-7 shrink-0" />
+          ) : (
+            <Tip label="删掉这一行">
+              <Button
+                variant="quiet"
+                size="sm"
+                aria-label={`删掉 ${k}`}
+                className="shrink-0"
+                onClick={() => onWrite(Object.fromEntries(entries.filter(([ek]) => ek !== k)))}
+              >
+                <X className="size-3" />
+              </Button>
+            </Tip>
+          )}
         </div>
       ))}
       <div className="flex items-center gap-1.5">
