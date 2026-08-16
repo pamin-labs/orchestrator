@@ -19,3 +19,4 @@ leases/            # full lease logs (only digests go in the DB)
 # built web bundle
 web/dist/
 .fallow/
+.cache/tsc/

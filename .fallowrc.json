@@ -1,6 +1,197 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
-  "entry": ["scripts/*.ts"],
+  "entry": ["scripts/*.ts", "src/server.ts", "src/orch/cli.ts", "web/src/main.tsx"],
   "ignoreUnresolvedImports": ["/dist/app.css", "/dist/main.js"],
-  "typeAware": { "enabled": true }
+  "typeAware": {
+    "enabled": true,
+    "projects": ["tsconfig.src.json", "web/tsconfig.json", "tsconfig.test.json"],
+    "require": "best-effort"
+  },
+  "audit": {
+    "gate": "new-only",
+    "healthBaseline": ".fallow-health-baseline.json"
+  },
+  "rules": {
+    "private-type-leaks": "error",
+    "boundary-violation": "error",
+    "security-client-server-leak": "warn",
+    "security-sink": "warn"
+  },
+  "ignoreExports": [
+    { "file": "src/mech/git/ghlogin.ts", "exports": ["Fetcher"] },
+    { "file": "src/mech/git/github.ts", "exports": ["Fetcher"] },
+    { "file": "src/mech/sandbox/net.ts", "exports": ["Fetcher"] },
+    { "file": "src/api.ts", "exports": ["Attachment", "Caller"] },
+    { "file": "src/api/panel/authflow.ts", "exports": ["ClaudeFlow", "CodexFlow"] },
+    { "file": "src/api/panel/panel.ts", "exports": ["NoteRow"] },
+    { "file": "src/http/request-context.ts", "exports": ["RequestContext"] },
+    { "file": "src/runtime/executor.ts", "exports": ["RotateReason"] },
+    { "file": "src/runtime/claude.ts", "exports": ["buildArgv", "runTurn"] },
+    { "file": "src/runtime/codex.ts", "exports": ["buildArgv", "runTurn"] }
+  ],
+  "ignoreDependencies": ["tailwindcss"],
+  "framework": [
+    {
+      "name": "orchestrator-web-tooling",
+      "enablers": ["tailwindcss"],
+      "toolingDependencies": ["tailwindcss"]
+    }
+  ],
+  "boundaries": {
+    "zones": [
+      {
+        "name": "shared-contracts",
+        "patterns": ["src/contracts/**", "src/config-schema.ts", "src/states.ts"]
+      },
+      { "name": "web", "patterns": ["web/**"] },
+      {
+        "name": "public-rpc",
+        "patterns": ["src/http/routes/panel.ts", "src/http/routes/orch.ts"]
+      },
+      {
+        "name": "http-edge",
+        "patterns": ["src/http/handler.ts", "src/http/idempotency.ts", "src/http/respond.ts", "src/http/validate.ts"]
+      },
+      { "name": "composition", "patterns": ["src/api.ts", "src/server.ts"] },
+      { "name": "api", "patterns": ["src/api/**"] },
+      { "name": "application", "patterns": ["src/runtime/executor.ts"] },
+      { "name": "prompt", "patterns": ["src/prompt/**"] },
+      {
+        "name": "runtime-adapters",
+        "patterns": [
+          "src/runtime/claude.ts",
+          "src/runtime/codex.ts",
+          "src/runtime/line-stream.ts",
+          "src/runtime/providers.ts"
+        ]
+      },
+      {
+        "name": "platform",
+        "patterns": [
+          "src/runtime/running.ts",
+          "src/mech/util/text.ts",
+          "src/mech/util/shq.ts",
+          "src/mech/util/scrub.ts",
+          "src/bus.ts",
+          "src/config.ts",
+          "src/db.ts",
+          "src/lang.ts",
+          "src/observability.ts",
+          "src/http/request-context.ts",
+          "src/scheduler.ts",
+          "src/settings.ts"
+        ]
+      },
+      {
+        "name": "mechanisms",
+        "patterns": [
+          "src/mech/flow/**",
+          "src/mech/git/**",
+          "src/mech/knowledge/**",
+          "src/mech/ops/**",
+          "src/mech/sandbox/**",
+          "src/mech/gate.ts",
+          "src/mech/lease.ts",
+          "src/mech/skills.ts",
+          "src/ctx.ts",
+          "src/mech/util/attachment-text.ts",
+          "src/mech/util/detect.ts",
+          "src/mech/util/rows.ts",
+          "src/mech/util/validate.ts"
+        ]
+      },
+      { "name": "cli", "patterns": ["src/orch/**"] },
+      { "name": "tests", "patterns": ["test/**"] },
+      { "name": "server-script", "patterns": ["scripts/browse.ts"] },
+      { "name": "benchmark-script", "patterns": ["scripts/benchmark.ts"] },
+      {
+        "name": "tooling-scripts",
+        "patterns": ["scripts/make-github-app.ts", "scripts/performance-budget.ts", "scripts/stress-tests.ts"]
+      }
+    ],
+    "rules": [
+      { "from": "web", "allow": ["web", "shared-contracts"], "allowTypeOnly": ["public-rpc"] },
+      {
+        "from": "public-rpc",
+        "allow": ["public-rpc", "http-edge", "api", "mechanisms", "platform", "shared-contracts"]
+      },
+      {
+        "from": "http-edge",
+        "allow": ["http-edge", "mechanisms", "platform", "shared-contracts"]
+      },
+      {
+        "from": "api",
+        "allow": ["api", "http-edge", "mechanisms", "platform", "shared-contracts"]
+      },
+      {
+        "from": "composition",
+        "allow": [
+          "composition",
+          "public-rpc",
+          "http-edge",
+          "api",
+          "application",
+          "mechanisms",
+          "runtime-adapters",
+          "prompt",
+          "platform",
+          "shared-contracts"
+        ]
+      },
+      {
+        "from": "application",
+        "allow": ["application", "mechanisms", "runtime-adapters", "prompt", "platform", "shared-contracts"]
+      },
+      {
+        "from": "mechanisms",
+        "allow": ["mechanisms", "runtime-adapters", "platform", "shared-contracts"]
+      },
+      {
+        "from": "runtime-adapters",
+        "allow": ["runtime-adapters", "platform", "shared-contracts"],
+        "allowTypeOnly": ["prompt"]
+      },
+      { "from": "prompt", "allow": ["prompt", "shared-contracts"] },
+      { "from": "platform", "allow": ["platform", "shared-contracts"] },
+      { "from": "shared-contracts", "allow": ["shared-contracts"] },
+      { "from": "cli", "allow": ["cli", "shared-contracts"], "allowTypeOnly": ["public-rpc"] },
+      {
+        "from": "tests",
+        "allow": [
+          "tests",
+          "server-script",
+          "benchmark-script",
+          "tooling-scripts",
+          "cli",
+          "web",
+          "public-rpc",
+          "http-edge",
+          "composition",
+          "api",
+          "application",
+          "mechanisms",
+          "runtime-adapters",
+          "prompt",
+          "platform",
+          "shared-contracts"
+        ]
+      },
+      { "from": "server-script", "allow": ["server-script", "composition"] },
+      {
+        "from": "benchmark-script",
+        "allow": ["benchmark-script", "api", "mechanisms", "prompt", "platform", "shared-contracts"]
+      },
+      { "from": "tooling-scripts", "allow": ["tooling-scripts"] }
+    ],
+    "coverage": { "requireAllFiles": true, "allowUnmatched": [] },
+    "calls": {
+      "forbidden": [
+        { "from": "web", "callee": "node:child_process.*" },
+        { "from": "web", "callee": "Bun.spawn" },
+        { "from": "http-edge", "callee": "node:child_process.*" },
+        { "from": "public-rpc", "callee": "node:child_process.*" }
+      ]
+    }
+  },
+  "security": {}
 }
