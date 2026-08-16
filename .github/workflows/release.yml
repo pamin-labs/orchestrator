@@ -337,6 +337,25 @@ jobs:
       # So the two are separated. The tag is the release and must point at the
       # tree the images came from; moving the bump onto `main` is bookkeeping,
       # and bookkeeping may not fail a release that has already been built.
+      # Before the tag, and that ordering is the point. This job pushed `v0.1.2`
+      # and *then* found `dist/` empty — the download step had been dropped in a
+      # refactor — so a version was burned by a mistake that was already visible
+      # one step earlier. Nothing irreversible happens until the things being
+      # released are on disk.
+      - uses: actions/download-artifact@v8
+        with:
+          name: binaries
+          path: dist
+
+      - name: the archives are here
+        run: |
+          ls -lh dist/
+          missing=0
+          for f in linux-x64.tar.gz linux-arm64.tar.gz darwin-x64.tar.gz darwin-arm64.tar.gz windows-x64.zip; do
+            [ -s "dist/orch-server-$f" ] || { echo "::error::dist/orch-server-$f is missing or empty"; missing=1; }
+          done
+          [ "$missing" = 0 ]
+
       - name: tag it
         run: |
           v="v${{ inputs.version }}"
@@ -425,4 +444,26 @@ jobs:
           else
             git cherry-pick --abort || true
             echo "::warning::main already carries a different ${{ inputs.version }}; left alone"
+          fi
+
+      # A tag with nothing behind it is a burned version number: the next attempt
+      # at the same one is refused by `checks`, and `v0.1.2` was lost that way —
+      # tagged, then the release failed one step later. So a failure after the tag
+      # exists takes it back.
+      #
+      # Unless the release was created. Then the tag is what it points at, GitHub
+      # marks it immutable, and deleting it would be destroying the thing that
+      # succeeded because something after it did not.
+      - name: take the tag back
+        if: failure()
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          v="${{ env.VERSION }}"
+          [ -n "$v" ] || exit 0
+          if gh release view "$v" >/dev/null 2>&1; then
+            echo "::warning::$v is published; keeping the tag"
+          else
+            echo "::warning::$v failed before publishing; taking the tag back so it can be re-cut"
+            git push --delete origin "$v" || true
           fi
