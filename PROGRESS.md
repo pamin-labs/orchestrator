@@ -10,7 +10,9 @@
 
 **D4-3 已验证：** escalation 的 INSERT、默认值和开放问题判定收进 `mech/flow/escalate.ts`；去重范围不再从插入行的 `grp_id` 猜，凭据/GitHub 是全局 subject，预算是 group subject；前缀按绑定字面量比较，且去重检查与 INSERT 是一条原子语句。全部运行期调用方都走 `raise()`，`db.ts` 打开数据库时的数据修复是唯一有标记的直写例外；`test/escalate.test.ts` 的源码守卫会在下一处直写落下时直接报错。ask-boss 的 checkpoint/chain、slice/branch review 的 brief/kind、PR 失败和各调用方事件仍由原路径持有。定向 152 绿，`bunx tsc --noEmit -p .` 绿。
 
-**`bun test` 703 checks 绿（6 skip 是要真沙盒服务器的）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
+**Settings credentials 拆分已验证：** 账号表单、Claude setup-token 与 Codex device flow 只有 `web/src/views/settings/credentials.tsx` 一份实现；dialog shell 继续持有 `auth` query、2 秒轮询、5 分钟截止与 runtime 归属。`test/settings-boundary.test.ts` 守住 endpoint、DOM ID 和协调边界。TypeScript、oxlint、web build、87 个定向 checks 及完整测试全绿。
+
+**`bun test` 704 checks 绿（6 skip 是要真沙盒服务器的）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
 
 **你只需要三个动作**：丢想法 → 批 DRAFT 卡 → 查收切片。gate 探测、入职包、推送权限预检都在注册项目时自动完成。
 
