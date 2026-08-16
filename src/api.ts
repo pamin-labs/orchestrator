@@ -35,6 +35,11 @@ import { abortJob } from "./runtime/running.ts";
 import { sediment } from "./mech/knowledge/lessons.ts";
 import { say } from "./lang.ts";
 import { Hono } from "hono";
+import { agentOf, bad, body, firstIdea, json, mayAct, mintToken, resolveGroup, text, type AgentHandler, type Handler } from "./api/shared.ts";
+
+// Re-exported: `mintToken` and `agentOf` are wired from outside the routes, and
+// the tests reach for them here.
+export { agentOf, mayAct, mintToken, resolveGroup };
 import { criteriaIn, validateDraftCard, validateJournal, validateSelfReview } from "./mech/flow/validate.ts";
 import type { Caller, Ctx } from "./ctx.ts";
 
@@ -47,114 +52,6 @@ export type { Caller, Ctx };
  * agents call over Bash). Anything the web can do has an `orch` verb and vice
  * versa — there is deliberately no second implementation anywhere.
  */
-
-type Handler = (ctx: Ctx, req: Request, params: Record<string, string>) => Promise<Response>;
-
-/**
- * A route only an agent may call, with the agent already resolved.
- *
- * The caller arrives as an argument because the alternative was 21 handlers each
- * opening with the same two lines, and a trust boundary that is retyped 21 times
- * is a trust boundary with 21 chances to be left out. `agentOf` still exists and
- * is still the only thing that reads the token; what changed is that a route
- * cannot be registered under `/orch` without going through it.
- */
-type AgentHandler = (
-  ctx: Ctx,
-  req: Request,
-  a: Caller,
-  params: Record<string, string>,
-) => Promise<Response>;
-
-const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
-const text = (s: string, status = 200) =>
-  new Response(s, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
-const bad = (msg: string) => text(msg, 422);
-
-async function body<T>(req: Request): Promise<T> {
-  try {
-    return (await req.json()) as T;
-  } catch {
-    return {} as T;
-  }
-}
-
-
-/**
- * May this caller act on that group?
- *
- * The token says who is calling; several routes then take a `group_id` from the
- * body and never compared the two. Any Architect could rewrite any group's
- * `owns_json` — which `canStart` reads to gate dispatch, so one call stalls a
- * whole fleet — and any Dispatcher could flip another group to DRAFT and cancel
- * its queued turns.
- *
- * Not a flat "same group": standing roles have no group and are *supposed* to
- * reach across a project. So the scope is whichever the caller has — its group
- * if it is in one, its project if it is not.
- */
-export function mayAct(ctx: Ctx, me: Caller, grpId: number): boolean {
-  if (me.grp_id !== null) return me.grp_id === grpId;
-  if (me.project_id === null) return false;
-  const g = ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId);
-  return g?.project_id === me.project_id;
-}
-
-/**
- * Who is calling.
- *
- * The token comes from the environment the spawner injected, never from the
- * request body — the server listens on localhost TCP, so anything else on
- * 127.0.0.1 could otherwise claim to be any agent by sending an id.
- */
-export function agentOf(ctx: Ctx, req: Request): Caller | null {
-  const token = req.headers.get("x-orch-token");
-  if (!token) return null;
-  return (
-    ctx.db
-      .query<Caller, [string]>("SELECT id, grp_id, project_id, role FROM agent WHERE token = ?")
-      .get(token) ?? null
-  );
-}
-
-/** What the boss first asked for, for this group. */
-function firstIdea(ctx: Ctx, grpId: number): string {
-  return (
-    ctx.db
-      .query<{ body: string }, [number]>(
-        "SELECT body FROM event WHERE grp_id = ? AND kind = 'boss_say' ORDER BY seq LIMIT 1",
-      )
-      .get(grpId)?.body ?? ""
-  );
-}
-
-/** A fresh token for a newly hired agent. */
-export function mintToken(): string {
-  return crypto.randomUUID().replaceAll("-", "");
-}
-
-/**
- * A group, by id or by name.
- *
- * Agents reach for the name they can see — one was observed running
- * `orch draft greet -` — and refusing that teaches nothing. Accepting both costs
- * one query and removes a whole class of confusion.
- */
-export function resolveGroup(ctx: Ctx, ref: unknown, fallbackGrp?: number | null): number | null {
-  if (typeof ref === "number" && Number.isInteger(ref)) return ref;
-  if (typeof ref === "string" && ref.trim()) {
-    const n = Number(ref);
-    if (Number.isInteger(n)) return n;
-    const row = ctx.db
-      .query<{ id: number }, [string]>(
-        "SELECT id FROM grp WHERE name = ? AND status != 'DISSOLVED' ORDER BY id DESC LIMIT 1",
-      )
-      .get(ref.trim());
-    if (row) return row.id;
-  }
-  return fallbackGrp ?? null;
-}
 
 // ---------------------------------------------------------------- agent verbs
 
