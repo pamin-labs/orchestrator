@@ -17,7 +17,7 @@ import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { WORK } from "../src/mech/sandbox/sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
-import type { Json } from "../src/http/respond.ts";
+import type { Json } from "../src/contracts/json.ts";
 
 const git = testGit;
 
@@ -34,23 +34,28 @@ function turnOk(): TurnResult {
   };
 }
 
-/** A real repo + worktree, so reconcile sees a real diff. */
-async function harness(opts: { gates?: string[] } = {}) {
-  const repo = mkdtempSync(join(tmpdir(), "orch-rp-repo-"));
-  await git(repo, ["init", "-q", "-b", "main"]);
-  await git(repo, ["config", "user.email", "t@e.com"]);
-  await git(repo, ["config", "user.name", "t"]);
-  writeFileSync(join(repo, "a.txt"), "one\n");
-  await git(repo, ["add", "-A"]);
-  await git(repo, ["commit", "-q", "-m", "init"]);
-
-  // The group's checkout: a clone, the way it is inside a sandbox.
+/** Real Git is reserved for the four tests whose subject is reconcile itself. */
+async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
+  const realGit = opts.realGit ?? false;
   const wtDir = mkdtempSync(join(tmpdir(), "orch-rp-wt-"));
-  const work = join(wtDir, "work");
-  await git(wtDir, ["clone", "-q", repo, work]);
-  await git(work, ["config", "user.email", "a@orch.local"], work);
-  await git(work, ["config", "user.name", "orch agent"], work);
-  await git(work, ["checkout", "-q", "-b", "orch/g1"], work);
+  const work = realGit ? join(wtDir, "work") : wtDir;
+  const repo = realGit ? mkdtempSync(join(tmpdir(), "orch-rp-repo-")) : work;
+  if (realGit) {
+    await git(repo, ["init", "-q", "-b", "main"]);
+    await git(repo, ["config", "user.email", "t@e.com"]);
+    await git(repo, ["config", "user.name", "t"]);
+    writeFileSync(join(repo, "a.txt"), "one\n");
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-q", "-m", "init"]);
+
+    // Reconcile's four integration cases use the same clone shape as a sandbox.
+    await git(wtDir, ["clone", "-q", repo, work]);
+    await git(work, ["config", "user.email", "a@orch.local"], work);
+    await git(work, ["config", "user.name", "orch agent"], work);
+    await git(work, ["checkout", "-q", "-b", "orch/g1"], work);
+  } else {
+    await Bun.write(join(work, "a.txt"), "one\n");
+  }
   const wt = { worktree: work, branch: "orch/g1" };
 
   const db = openMemory();
@@ -69,6 +74,10 @@ async function harness(opts: { gates?: string[] } = {}) {
     // is all these tests need: what is under test is what the pipeline does with
     // an exit code, not how a command is spawned.
     sandbox: fakeSandbox((cmd, cwd) => {
+      if (!realGit) {
+        const failure = /console\.log\("([^"]*)"\);process\.exit\((\d+)\)/.exec(cmd);
+        return failure ? { code: Number(failure[2]), out: failure[1] ?? "" } : { code: 0 };
+      }
       // In the group's checkout, never in this process's. Without the cwd these
       // spawns ran `git add -A && git commit` in the orchestrator's own repo.
       const p = Bun.spawnSync(["sh", "-c", cmd], {
@@ -124,12 +133,16 @@ async function harness(opts: { gates?: string[] } = {}) {
       new Request(`http://x${path}`, {
         method: "POST",
         body: JSON.stringify(body ?? {}),
-        headers: { "content-type": "application/json", ...(token ? { "x-orch-token": token } : {}) },
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": crypto.randomUUID(),
+          ...(token ? { "x-orch-token": token } : {}),
+        },
       }),
     );
 
   // Baseline for reconcile, as the executor would set on the slice's first turn.
-  const base = await checkpoint(git, repo, wt.worktree, "start");
+  const base = realGit ? await checkpoint(git, repo, wt.worktree, "start") : null;
   db.run("UPDATE slice SET base_sha = ? WHERE id = 1", [base]);
 
   const gate = (code: number, out = "") =>
@@ -149,10 +162,10 @@ const REVIEW = "pass: a.txt contains two — the diff line adds it";
 
 type Post = (path: string, body?: Json, token?: string) => Promise<Response>;
 const doneClaim = (post: Post, claim: Json) =>
-  post("/orch/task/done", { task_id: 1, claim, review: REVIEW }, "tok-eng");
+  post("/orch/v1/task/done", { task_id: 1, claim, review: REVIEW }, "tok-eng");
 
-test("a truthful claim with a passing gate reaches QA, not the boss", async () => {
-  const h = await harness();
+test.concurrent("a truthful claim with a passing gate reaches QA, not the boss", async () => {
+  const h = await harness({ realGit: true });
   h.gate(0);
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
   await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
@@ -169,8 +182,8 @@ test("a truthful claim with a passing gate reaches QA, not the boss", async () =
   expect(h.specs.some((s) => s.stable.systemAppend.includes("You are QA"))).toBe(true);
 });
 
-test("a claim git cannot corroborate is sent back before any reviewer sees it", async () => {
-  const h = await harness();
+test.concurrent("a claim git cannot corroborate is sent back before any reviewer sees it", async () => {
+  const h = await harness({ realGit: true });
   h.gate(0);
   // Nothing changed on disk, but the claim says otherwise.
   await doneClaim(h.post, { files: ["a.txt"], summary: "edited a.txt" });
@@ -190,8 +203,8 @@ test("a claim git cannot corroborate is sent back before any reviewer sees it", 
   expect(retry.newSessionId).toBeTruthy();
 });
 
-test("a failing gate sends the slice back with the failing lines", async () => {
-  const h = await harness();
+test.concurrent("a failing gate sends the slice back with the failing lines", async () => {
+  const h = await harness({ realGit: true });
   h.gate(1, "FAIL_mw_test");
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
   await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
@@ -202,8 +215,8 @@ test("a failing gate sends the slice back with the failing lines", async () => {
   expect(h.specs.at(-1)!.prompt).toContain("FAIL_mw_test");
 });
 
-test("repeated failures escalate to the boss instead of looping forever", async () => {
-  const h = await harness();
+test.concurrent("repeated failures escalate to the boss instead of looping forever", async () => {
+  const h = await harness({ realGit: true });
   h.gate(1, "FAIL_again");
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
   await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
@@ -233,7 +246,7 @@ test("QA's pass hands the slice to the boss and rotates the sessions", async () 
   const h = await harness();
   h.db.run("UPDATE slice SET difficulty = 'hard' WHERE id = 1");
   h.db.run("UPDATE agent SET session_id = 'old', session_tokens = 90000");
-  await h.post("/orch/review", { slice_id: 1, verdict: "pass", note: "all three criteria met" }, "tok-qa");
+  await h.post("/orch/v1/review", { slice_id: 1, verdict: "pass", note: "all three criteria met" }, "tok-qa");
 
   expect(h.db.query<{ status: string }, []>("SELECT status FROM slice WHERE id = 1").get()!.status).toBe(
     "awaiting_boss",
@@ -248,7 +261,7 @@ test("QA's pass hands the slice to the boss and rotates the sessions", async () 
 
 test("QA's fail sends the slice back with QA's note", async () => {
   const h = await harness();
-  await h.post("/orch/review", { slice_id: 1, verdict: "fail", note: "fail: criterion 2 unchecked" }, "tok-qa");
+  await h.post("/orch/v1/review", { slice_id: 1, verdict: "fail", note: "fail: criterion 2 unchecked" }, "tok-qa");
   await h.sched.drain();
   expect(h.db.query<{ retries: number }, []>("SELECT retries FROM slice WHERE id = 1").get()!.retries).toBe(1);
   expect(h.specs.at(-1)!.prompt).toContain("criterion 2 unchecked");
@@ -259,17 +272,17 @@ test("a verdict with nothing behind it is refused", async () => {
   // check a formality and leaves "the criterion itself was wrong" to surface three
   // slices later.
   const h = await harness();
-  expect((await h.post("/orch/review", { slice_id: 1, verdict: "pass" }, "tok-qa")).status).toBe(422);
-  const vague = await h.post("/orch/review", { slice_id: 1, verdict: "pass", note: "looks good" }, "tok-qa");
+  expect((await h.post("/orch/v1/review", { slice_id: 1, verdict: "pass" }, "tok-qa")).status).toBe(422);
+  const vague = await h.post("/orch/v1/review", { slice_id: 1, verdict: "pass", note: "looks good" }, "tok-qa");
   expect(vague.status).toBe(422);
   expect(await vague.text()).toContain("carries no information");
 });
 
 test("only reviewers may file verdicts, and only for their own group", async () => {
   const h = await harness();
-  expect((await h.post("/orch/review", { slice_id: 1, verdict: "pass" }, "tok-eng")).status).toBe(422);
-  expect((await h.post("/orch/review", { slice_id: 1, verdict: "maybe" }, "tok-qa")).status).toBe(400);
-  expect((await h.post("/orch/review", { slice_id: 99, verdict: "pass" }, "tok-qa")).status).toBe(422);
+  expect((await h.post("/orch/v1/review", { slice_id: 1, verdict: "pass" }, "tok-eng")).status).toBe(422);
+  expect((await h.post("/orch/v1/review", { slice_id: 1, verdict: "maybe" }, "tok-qa")).status).toBe(400);
+  expect((await h.post("/orch/v1/review", { slice_id: 99, verdict: "pass" }, "tok-qa")).status).toBe(422);
 });
 
 test("a slice with open tasks does not enter review", async () => {
@@ -285,10 +298,10 @@ test("accepting the last slice starts PR review; accepting an earlier one does n
   const h = await harness();
   h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
 
-  await h.post("/api/slices/1/accept");
+  await h.post("/api/v1/slices/1/accept");
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
 
-  await h.post("/api/slices/2/accept");
+  await h.post("/api/v1/slices/2/accept");
   // "The boss is satisfied" is not a verdict an agent can reach, so nothing an
   // agent does can start this.
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
@@ -297,7 +310,7 @@ test("accepting the last slice starts PR review; accepting an earlier one does n
 test("a group with no retro cannot wind up — the PM is sent back to write one", async () => {
   const h = await harness();
   h.gate(0);
-  await h.post("/api/slices/1/accept");
+  await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
 
   // retro is the only long-term memory this system has, and "later" means never
@@ -312,7 +325,7 @@ test("with a retro and a green branch gate, the Auditor is called in", async () 
   h.db.run(
     "INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'retro', 'zh', 'S1 返工一次，验收标准写模糊了', 0)",
   );
-  await h.post("/api/slices/1/accept");
+  await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
 
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PR_OPEN");
@@ -328,8 +341,8 @@ test("an auditor may not audit its own group", async () => {
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'tok-out', 0)",
   );
   // Sharing the group's context means reviewing your own reasoning.
-  expect((await h.post("/orch/audit", { group_id: 1, verdict: "pass" }, "tok-in")).status).toBe(422);
-  expect((await h.post("/orch/audit", { group_id: 1, verdict: "pass" }, "tok-out")).status).toBe(200);
+  expect((await h.post("/orch/v1/audit", { group_id: 1, verdict: "pass" }, "tok-in")).status).toBe(422);
+  expect((await h.post("/orch/v1/audit", { group_id: 1, verdict: "pass" }, "tok-out")).status).toBe(200);
 });
 
 test("a failed audit reopens the group and sends the PM back", async () => {
@@ -338,7 +351,7 @@ test("a failed audit reopens the group and sends the PM back", async () => {
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'tok-aud', 0)",
   );
   h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1");
-  await h.post("/orch/audit", { group_id: 1, verdict: "fail", note: "S2's promise is not in the diff" }, "tok-aud");
+  await h.post("/orch/v1/audit", { group_id: 1, verdict: "fail", note: "S2's promise is not in the diff" }, "tok-aud");
   await h.sched.drain();
 
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
@@ -359,7 +372,7 @@ test("accepting a slice starts the next one, and only one runs at a time", async
   h.db.run("UPDATE slice SET status = 'accepted' WHERE id = 1");
   expect(startNextSlice(h.ctx, 1)).toBe(2);
   h.db.run("UPDATE slice SET status = 'pending' WHERE id = 2");
-  await h.post("/api/slices/1/accept");
+  await h.post("/api/v1/slices/1/accept");
   const running = h.db
     .query<{ seq: number }, []>("SELECT seq FROM slice WHERE status = 'running'")
     .all()
@@ -389,7 +402,7 @@ test("a task on a slice that has not started cannot be listed or completed", asy
   h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
   h.db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (1, 2, 'later work', 0)");
   const list = await (
-    await h.app(new Request("http://x/orch/task", { headers: { "x-orch-token": "tok-eng" } }))
+    await h.app(new Request("http://x/orch/v1/task", { headers: { "x-orch-token": "tok-eng" } }))
   ).text();
   // Showing the whole plan let the writer close future slices' tasks, which
   // pushed slices that had never started into review.
@@ -401,14 +414,14 @@ test("a task on a slice that has not started cannot be listed or completed", asy
   expect(list).toContain("do not ask the boss");
 
   const done = await h.post(
-    "/orch/task/done",
+    "/orch/v1/task/done",
     { task_id: 2, claim: { files: ["a.txt"], summary: "a.txt now says two" }, review: REVIEW },
     "tok-eng",
   );
   expect(done.status).toBe(422);
   expect(await done.text()).toContain("not being worked");
 
-  const claim = await h.post("/orch/task/claim", { task_id: 2 }, "tok-eng");
+  const claim = await h.post("/orch/v1/task/claim", { task_id: 2 }, "tok-eng");
   expect(claim.status).toBe(422);
 });
 
@@ -416,7 +429,7 @@ test("the Auditor is hired outside the group it audits, and told how to read the
   const h = await harness();
   h.gate(0);
   h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'retro', 'zh', 'S1 返工一次', 0)");
-  await h.post("/api/slices/1/accept");
+  await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
 
   const auditor = h.db
@@ -442,11 +455,11 @@ test("task done refuses an empty claim — otherwise reconcile is vacuous", asyn
   // into "did anything change at all".
   const invalidBodies: Json[] = [{ task_id: 1 }, { task_id: 1, claim: {} }, { task_id: 1, claim: "" }];
   for (const body of invalidBodies) {
-    const r = await h.post("/orch/task/done", body, "tok-eng");
+    const r = await h.post("/orch/v1/task/done", body, "tok-eng");
     expect(r.status).toBe(400);
   }
   const ok = await h.post(
-    "/orch/task/done",
+    "/orch/v1/task/done",
     { task_id: 1, claim: { files: ["a.txt"], summary: "a.txt now says two" }, review: REVIEW },
     "tok-eng",
   );
@@ -456,7 +469,7 @@ test("task done refuses an empty claim — otherwise reconcile is vacuous", asyn
 test("--already-done is accepted and recorded as such", async () => {
   const h = await harness();
   const r = await h.post(
-    "/orch/task/done",
+    "/orch/v1/task/done",
     { task_id: 1, already_done: "S1 covered it", review: "pass: nothing to change — S1 already did it" },
     "tok-eng",
   );
@@ -471,12 +484,12 @@ test("writing the retro resumes PR-level review instead of dead-ending", async (
   const h = await harness();
   h.gate(0);
   // Every slice accepted but no retro: review asks for one and stops.
-  await h.post("/api/slices/1/accept");
+  await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
   expect(h.specs.at(-1)!.prompt).toContain("no retro");
 
   const before = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c;
-  await h.post("/orch/journal", { kind: "retro", body: "S1 返工一次，验收标准写模糊了" }, "tok-eng");
+  await h.post("/orch/v1/journal", { kind: "retro", body: "S1 返工一次，验收标准写模糊了" }, "tok-eng");
   // Without this the PM writes a retro nobody asked for again and the finished
   // branch sits unreviewed until someone nudges it by hand.
   const after = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c;
@@ -486,7 +499,7 @@ test("writing the retro resumes PR-level review instead of dead-ending", async (
 test("a retro written mid-flight does not trigger PR review", async () => {
   const h = await harness();
   h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
-  await h.post("/orch/journal", { kind: "retro", body: "早写的 retro" }, "tok-eng");
+  await h.post("/orch/v1/journal", { kind: "retro", body: "早写的 retro" }, "tok-eng");
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
 });
 
@@ -543,7 +556,7 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
   // rejected. Until this check existed, nothing rejected anything — the prompt was
   // describing a gate that was not there.
   const none = await h.post(
-    "/orch/task/done",
+    "/orch/v1/task/done",
     { task_id: 1, claim: { files: ["a.txt"], summary: "a.txt now says two" } },
     "tok-eng",
   );
@@ -551,7 +564,7 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
   expect(await none.text()).toContain("--review");
 
   const vacuous = await h.post(
-    "/orch/task/done",
+    "/orch/v1/task/done",
     { task_id: 1, claim: { files: ["a.txt"], summary: "a.txt now says two" }, review: "looks good" },
     "tok-eng",
   );
@@ -559,7 +572,7 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
   expect(await vacuous.text()).toContain("carries no information");
 
   const ok = await h.post(
-    "/orch/task/done",
+    "/orch/v1/task/done",
     {
       task_id: 1,
       claim: { files: ["a.txt"], summary: "a.txt now says two" },

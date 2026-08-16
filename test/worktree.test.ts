@@ -49,7 +49,7 @@ async function repo(): Promise<string> {
   return dir;
 }
 
-test("a worktree installs its own dependencies and keeps them out of git", async () => {
+test.concurrent("a worktree installs its own dependencies and keeps them out of git", async () => {
   const dir = await repo();
   mkdirSync(join(dir, "node_modules"), { recursive: true });
   mkdirSync(join(dir, "web/dist"), { recursive: true });
@@ -75,14 +75,14 @@ test("a worktree installs its own dependencies and keeps them out of git", async
   expect((await git(wt.worktree, ["status", "--porcelain"], wt.worktree)).out).toBe("");
 });
 
-test("a repo that has never been built still gets a worktree", async () => {
+test.concurrent("a repo that has never been built still gets a worktree", async () => {
   const dir = await repo();
   const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
   expect(existsSync(join(wt.worktree, "a.txt"))).toBe(true);
   expect(existsSync(join(wt.worktree, "node_modules"))).toBe(false);
 });
 
-test("checkpoint commits dirty work and returns a sha to come back to", async () => {
+test.concurrent("checkpoint commits dirty work and returns a sha to come back to", async () => {
   const dir = await repo();
   const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
@@ -103,7 +103,7 @@ test("checkpoint commits dirty work and returns a sha to come back to", async ()
   expect(msg).toContain("b.txt");
 });
 
-test("checkpoint on a clean tree does not create an empty commit", async () => {
+test.concurrent("checkpoint on a clean tree does not create an empty commit", async () => {
   const dir = await repo();
   const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
   const a = await checkpoint(git, dir, wt.worktree, "turn");
@@ -111,7 +111,7 @@ test("checkpoint on a clean tree does not create an empty commit", async () => {
   expect(a).toBe(b);
 });
 
-test("rollback discards a turn's work — this is intercept L3", async () => {
+test.concurrent("rollback discards a turn's work — this is intercept L3", async () => {
   const dir = await repo();
   const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
   const before = (await checkpoint(git, dir, wt.worktree, "turn"))!;
@@ -128,7 +128,7 @@ test("rollback discards a turn's work — this is intercept L3", async () => {
   expect(existsSync(join(wt.worktree, "a.txt"))).toBe(true);
 });
 
-test("changedSince sees uncommitted work — reconcile runs before any commit", async () => {
+test.concurrent("changedSince sees uncommitted work — reconcile runs before any commit", async () => {
   const dir = await repo();
   const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
   const base = (await checkpoint(git, dir, wt.worktree, "start"))!;
@@ -144,7 +144,7 @@ test("changedSince sees uncommitted work — reconcile runs before any commit", 
   expect(changed.sort()).toEqual(["a.txt", "new.txt"]);
 });
 
-test("wip checkpoints are squashed into one commit, and the tree survives", async () => {
+test.concurrent("wip checkpoints are squashed into one commit, and the tree survives", async () => {
   const dir = await repo();
   const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
@@ -168,7 +168,7 @@ test("wip checkpoints are squashed into one commit, and the tree survives", asyn
   expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out.trim()).toBe("");
 });
 
-test("a real commit message is never squashed away", async () => {
+test.concurrent("a real commit message is never squashed away", async () => {
   const dir = await repo();
   const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
@@ -184,7 +184,7 @@ test("a real commit message is never squashed away", async () => {
   expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out).toContain("fix: the actual bug");
 });
 
-test("a rebased branch stops reporting other groups' landed work as this slice's diff", async () => {
+test.concurrent("a rebased branch stops reporting other groups' landed work as this slice's diff", async () => {
   const dir = await repo();
   const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
@@ -240,7 +240,7 @@ test("a repo with only AGENTS.md gets CLAUDE.md, and the other way round", () =>
   expect(readFileSync(join(both, "AGENTS.md"), "utf8")).toBe("for codex\n");
 });
 
-test("the base branch is a bare name, whatever the remote calls it", async () => {
+test.concurrent("the base branch is a bare name, whatever the remote calls it", async () => {
   // The bug: this returned `origin/main` when `origin/HEAD` was set and `main`
   // when it was not, while four callers wrote `origin/${...}` around it. On any
   // ordinary clone they were asking git for `origin/origin/main`.
@@ -256,7 +256,7 @@ test("the base branch is a bare name, whatever the remote calls it", async () =>
   expect(await detectBaseBranch(git, work)).toBe("trunk");
 });
 
-test("with no base branch to rebase onto, the caller is told that and not `ambiguous argument`", async () => {
+test.concurrent("with no base branch to rebase onto, the caller is told that and not `ambiguous argument`", async () => {
   // Three helpers used to write `origin/${detectBaseBranch(...)}` and hand git a
   // ref they had never verified. In a clone with no remote — or one whose remote
   // has gone — that is `origin/main` against a repository that has no `origin`
