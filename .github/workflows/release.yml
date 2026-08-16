@@ -60,6 +60,9 @@ on:
 permissions:
   contents: write
   packages: write
+  # The version bump goes to `main` as a pull request, because `main` is
+  # protected and that rule applies to this workflow too.
+  pull-requests: write
 
 env:
   REGISTRY: ghcr.io/${{ github.repository_owner }}
@@ -387,19 +390,31 @@ jobs:
             --notes-file /tmp/notes.md \
             dist/*.tar.gz dist/*.zip
 
-      # Bookkeeping, and allowed to fail: the release exists either way. `main`
-      # moves on its own — this run took several minutes of image builds, and
-      # anything merged in that window is ahead of us.
-      - name: carry the bump onto main
+      # Bookkeeping, as a pull request, because `main` is protected and the rule
+      # is right: nothing pushes there directly, including us. v0.1.1 shipped
+      # with `main` still saying 0.1.0 because this step tried to push and the
+      # ruleset refused — the release was fine, the record was not.
+      #
+      # Still `continue-on-error`. The release exists the moment the tag does;
+      # failing the run over a bookkeeping branch would report a published
+      # version as broken.
+      - name: open the bump as a pull request
         continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          v="${{ inputs.version }}"
           git fetch origin main
+          git checkout -q -B "release/$v" origin/main
           # Replay just the bump. A merge would drag this run's base commit along
           # with it and rewrite what `main` is; a cherry-pick moves one file.
-          git checkout -q -B main origin/main
-          if git cherry-pick "${{ env.BUMP }}"; then
-            git push origin main
-          else
+          if ! git cherry-pick "${{ env.BUMP }}"; then
             git cherry-pick --abort || true
-            echo "::warning::main already carries a different ${{ inputs.version }}; left alone"
+            echo "::warning::main already carries a different $v; nothing to open"
+            exit 0
           fi
+          git push -f origin "release/$v"
+          gh pr create --base main --head "release/$v" \
+            --title "chore(release): $v" \
+            --body "Version bump for ${{ env.VERSION }}, which is already tagged and published. Merging keeps \`main\` saying what the latest release is." \
+            || gh pr edit "release/$v" --title "chore(release): $v"
