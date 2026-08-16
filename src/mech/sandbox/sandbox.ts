@@ -1222,7 +1222,12 @@ async function* realLines(
 ): AsyncGenerator<string, { code: number; err: string }, void> {
   const sb = await ensureSandbox(ctx, scope);
   const queue: string[] = [];
-  let notify: (() => void) | null = null;
+  // Callbacks on one side, an async generator on the other, and one promise as
+  // the gate between them. `Promise.withResolvers()` is the platform's answer to
+  // the thing this used to be: a nullable `let` that the executor of a
+  // `new Promise` reached out and assigned, cleared again after every await, and
+  // that every producer had to remember to null-check before calling.
+  let gate = Promise.withResolvers<void>();
   let done = false;
   const split = lineSplitter();
   const errSplit = lineSplitter();
@@ -1245,7 +1250,7 @@ async function* realLines(
         // stream stops being a stream and the live timeline goes quiet.
         onStdout: (m) => {
           queue.push(...split.push(`${oneLine(m)}\n`));
-          notify?.();
+          gate.resolve();
         },
         onStderr: (m) => {
           stderr += `${oneLine(m)}\n`;
@@ -1264,16 +1269,16 @@ async function* realLines(
     })
     .finally(() => {
       done = true;
-      notify?.();
+      gate.resolve();
     });
 
   while (true) {
     while (queue.length) yield queue.shift()!;
     if (done) break;
-    await new Promise<void>((r) => {
-      notify = r;
-    });
-    notify = null;
+    await gate.promise;
+    // Re-arm *after* the await, so a line pushed while the consumer was busy
+    // has already resolved the gate it is about to wait on — no lost wakeup.
+    gate = Promise.withResolvers<void>();
   }
   await finished;
   const tail = split.rest();
