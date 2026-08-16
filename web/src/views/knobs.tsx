@@ -549,11 +549,22 @@ const PERCENT = ["%"] as const;
 const DEFAULT_KEY = "default";
 
 /**
+ * Unit sets where "none" is a real answer, so the toggle may be turned all the
+ * way off. Counts qualify — 45 is forty-five — and durations do not.
+ */
+const BARE_OK = new Set<string>(COUNT_UNITS);
+
+/**
  * Suggestions, not a set. `output.language` is an instruction to a model, and a
  * model writes whatever it is told to — the list is here to save typing and to
  * say what the field wants, not to have an opinion about which languages exist.
  */
-const LANGUAGES = ["中文", "English", "日本語", "한국어", "Español", "Français", "Deutsch", "Português", "Русский"];
+const LANGUAGES = [
+  "中文", "繁體中文", "English", "日本語", "한국어",
+  "Español", "Français", "Deutsch", "Português", "Italiano", "Nederlands", "Polski", "Svenska",
+  "Русский", "Українська", "Türkçe", "Čeština", "Română", "Magyar", "Ελληνικά",
+  "العربية", "עברית", "हिन्दी", "ไทย", "Tiếng Việt", "Bahasa Indonesia",
+];
 
 /**
  * One box, written when it loses focus.
@@ -626,9 +637,20 @@ function Amount<U extends string>({
       {units.length === 1 ? (
         <Meta>{units[0]}</Meta>
       ) : (
-        <Segments value={unit} onValueChange={(u) => u && send(draft, u as U)} aria-label={`${label} 的单位`} className="shrink-0">
-          {units.map((u) => (
-            <Segment key={u} value={u}>{u || "个"}</Segment>
+        <Segments
+          value={unit}
+          // Nothing selected *is* the answer when a bare number is legal — 8 is
+          // eight, not eight of some unit that had to be given a name. So the
+          // empty member is never drawn: pressing the lit one turns it off,
+          // which is what a toggle group already means. A unit set with no empty
+          // member (毫秒/秒/分钟/小时) keeps what it had instead, because there
+          // is no such thing as a duration without one.
+          onValueChange={(u) => send(draft, (u || (BARE_OK.has(unit as string) ? "" : unit)) as U)}
+          aria-label={`${label} 的单位`}
+          className="shrink-0"
+        >
+          {units.filter(Boolean).map((u) => (
+            <Segment key={u} value={u}>{u}</Segment>
           ))}
         </Segments>
       )}
