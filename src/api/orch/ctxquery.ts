@@ -21,8 +21,7 @@ export const CtxQueryBody = z.object({
 });
 
 export const postCtxQuery: AgentHandler<z.infer<typeof CtxQueryBody>> = async (ctx, _req, a, _p, b) => {
-  const projectId =
-    projectOfAgent(ctx.db, a.id);
+  const projectId = projectOfAgent(ctx.db, a.id);
   // PageIndex: a model walks the summary tree and can land on a file whose name
   // shares no word with the question. It costs one cheap call, against grep rounds
   // that each re-read the agent's whole transcript. No tree yet, or a navigator

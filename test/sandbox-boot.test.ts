@@ -3,7 +3,13 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setIn } from "../src/mech/sandbox/server.ts";
-import { isServerLine, keyInConfig, remoteInClear, SANDBOX_API_KEY_HEADER, splitAddr } from "../src/mech/sandbox/sandbox.ts";
+import {
+  isServerLine,
+  keyInConfig,
+  remoteInClear,
+  SANDBOX_API_KEY_HEADER,
+  splitAddr,
+} from "../src/mech/sandbox/sandbox.ts";
 
 /**
  * Starting the container server, and the four ways the first attempt lied.
@@ -67,9 +73,7 @@ test("a commented-out key is the key, not a missing one", () => {
   // Replaced in place, not appended beside the commented one. Counting
   // assignment lines, not the word: the example also mentions `api_key` in a
   // sentence, and that line is prose.
-  expect(toml.split("\n").filter((l) => /^[ \t]*#?[ \t]*api_key[ \t]*=/.test(l))).toEqual([
-    `api_key = "orch-abc"`,
-  ]);
+  expect(toml.split("\n").filter((l) => /^[ \t]*#?[ \t]*api_key[ \t]*=/.test(l))).toEqual([`api_key = "orch-abc"`]);
 });
 
 test("a key with no line anywhere is added, and a missing section is created", () => {

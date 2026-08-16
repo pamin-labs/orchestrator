@@ -19,10 +19,10 @@ test("credential UI owns the login flows while the settings shell owns polling",
   // One implementation, not an extracted copy left beside the original. The
   // endpoints and field IDs move with the account UI that owns their controls.
   expect(shell).not.toContain("function Credential(");
-  expect(shell).not.toContain('id={`${r.key}-secret`}');
+  expect(shell).not.toContain("id={`${r.key}-secret`}");
   for (const contract of [
-    'id={`${r.key}-secret`}',
-    'id={`${r.key}-url`}',
+    "id={`${r.key}-secret`}",
+    "id={`${r.key}-url`}",
     '"/api/auth/claude/login/code"',
     '"/api/auth/codex/device/cancel"',
   ]) {
@@ -83,7 +83,7 @@ test("project controls own panes while the settings shell owns project scope", (
   const pane = read("../web/src/views/settings/project.tsx");
 
   expect(shell).toContain('queryKey: ["project", projectId, "config"]');
-  expect(shell).toContain('post(`/api/project/${projectId}/config`, body)');
+  expect(shell).toContain("post(`/api/project/${projectId}/config`, body)");
   expect(shell).toContain("<ProjectPane");
   expect(pane).not.toContain("useQuery");
   expect(pane).not.toContain('queryKey: ["project"');
@@ -92,7 +92,7 @@ test("project controls own panes while the settings shell owns project scope", (
   for (const contract of [
     'section === "gates"',
     'section === "sandbox"',
-    'del(`/api/projects/${projectId}`)',
+    "del(`/api/projects/${projectId}`)",
     '<Button variant="danger"',
   ]) {
     expect(pane).toContain(contract);

@@ -89,10 +89,22 @@ export function fmtDuration(ms: number): string {
  * prints. A bare number keeps the unit already on screen.
  */
 const ALIAS: Record<string, DurationUnit> = {
-  ms: "毫秒", 毫秒: "毫秒",
-  s: "秒", sec: "秒", secs: "秒", 秒: "秒",
-  m: "分钟", min: "分钟", mins: "分钟", 分: "分钟", 分钟: "分钟",
-  h: "小时", hr: "小时", hrs: "小时", 时: "小时", 小时: "小时",
+  ms: "毫秒",
+  毫秒: "毫秒",
+  s: "秒",
+  sec: "秒",
+  secs: "秒",
+  秒: "秒",
+  m: "分钟",
+  min: "分钟",
+  mins: "分钟",
+  分: "分钟",
+  分钟: "分钟",
+  h: "小时",
+  hr: "小时",
+  hrs: "小时",
+  时: "小时",
+  小时: "小时",
 };
 
 /** Text back to milliseconds. `null` = not a duration. */
@@ -140,7 +152,6 @@ export function splitCount(n: number): { n: number; unit: CountUnit } {
 
 export const countOf = (n: number, unit: CountUnit): number => n * COUNT_PER[unit];
 
-
 /** `null` = not a count. Thousands separators are allowed on the way in. */
 export function parseCount(raw: string): number | null {
   const m = /^(\d+(?:\.\d+)?)\s*([km])?$/i.exec(raw.trim().replace(/[,_\s]/g, ""));
@@ -168,11 +179,16 @@ export function parsePercent(raw: string): number | null {
 /** A stored number as the row shows it. */
 export function showNumber(value: number, shape?: Shape): string {
   switch (shape) {
-    case "ms": return fmtDuration(value);
-    case "seconds": return fmtDuration(value * 1000);
-    case "count": return fmtCount(value);
-    case "percent": return fmtPercent(value);
-    default: return String(value);
+    case "ms":
+      return fmtDuration(value);
+    case "seconds":
+      return fmtDuration(value * 1000);
+    case "count":
+      return fmtCount(value);
+    case "percent":
+      return fmtPercent(value);
+    default:
+      return String(value);
   }
 }
 

@@ -108,7 +108,10 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
       }
       if (!run.code) {
         // Said rather than waited out: this is what a changed CLI looks like.
-        return { ok: false, detail: "could not read a device code from codex's output — check `codex login --device-auth` in the image" };
+        return {
+          ok: false,
+          detail: "could not read a device code from codex's output — check `codex login --device-auth` in the image",
+        };
       }
       const secret = (await getFile(ctx, UTIL, `${REFRESH_HOME}/auth.json`)) ?? "";
       if (!secret.trim()) return { ok: false, detail: "codex login finished but produced no credential" };
@@ -238,12 +241,10 @@ export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) 
       // The runner opens this before the CLI starts. Truncated, so a code from
       // an abandoned attempt is not fed to this one.
       await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
-      const stream = execLines(
-        ctx,
-        UTIL,
-        `ORCH_PTY_IN=${CODE_FILE} python3 ${PTY_PATH} claude setup-token`,
-        { timeoutMs: PASTE_TTL_MS + 60_000, signal: abort.signal },
-      );
+      const stream = execLines(ctx, UTIL, `ORCH_PTY_IN=${CODE_FILE} python3 ${PTY_PATH} claude setup-token`, {
+        timeoutMs: PASTE_TTL_MS + 60_000,
+        signal: abort.signal,
+      });
       let token: string | null = null;
       let sawPrompt = false;
       for (;;) {

@@ -11,14 +11,23 @@ export const waitedLabel = waited;
  */
 export const heldApproved = (g: Group) => g.status === "DRAFT" && !!g.approved_at;
 
-export const statusLabel = (g: Group) => (heldApproved(g) ? "已批·等边界" : STATUS_ZH[g.status] ?? g.status);
+export const statusLabel = (g: Group) => (heldApproved(g) ? "已批·等边界" : (STATUS_ZH[g.status] ?? g.status));
 
 export const STATUS_ZH: Record<string, string> = {
-  PLANNING: "拆解中", DRAFT: "待批", RUNNING: "在跑", PAUSING: "正在停",
-  PAUSED: "已暂停", PARKED: "已封存", PR_OPEN: "PR 开着", DISSOLVED: "已解散",
+  PLANNING: "拆解中",
+  DRAFT: "待批",
+  RUNNING: "在跑",
+  PAUSING: "正在停",
+  PAUSED: "已暂停",
+  PARKED: "已封存",
+  PR_OPEN: "PR 开着",
+  DISSOLVED: "已解散",
 };
 export const WHERE_ZH: Record<string, string> = {
-  pm: "PM 处理中", architect: "Architect 处理中", cos: "CoS 处理中", boss: "待你决策",
+  pm: "PM 处理中",
+  architect: "Architect 处理中",
+  cos: "CoS 处理中",
+  boss: "待你决策",
 };
 /**
  * The layers actually recorded, in order.
@@ -34,8 +43,20 @@ export const STOPS: [string, string][] = [
   ["qa", "QA"],
 ];
 
-export const owns = (g: Group) => { try { return JSON.parse(g.owns_json || "[]") as string[]; } catch { return []; } };
-export const gates = (s: Slice) => { try { return JSON.parse(s.gates_json || "{}") as Record<string, string>; } catch { return {}; } };
+export const owns = (g: Group) => {
+  try {
+    return JSON.parse(g.owns_json || "[]") as string[];
+  } catch {
+    return [];
+  }
+};
+export const gates = (s: Slice) => {
+  try {
+    return JSON.parse(s.gates_json || "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+};
 
 /**
  * Everything that cannot move without the boss, per PLAN.md's three approval points.
@@ -45,9 +66,7 @@ export const gates = (s: Slice) => { try { return JSON.parse(s.gates_json || "{}
  * was a verb phrase doing a noun's job in a nav badge.
  */
 export function pending(st: State, projectId: number | null) {
-  const ids = new Set(
-    (projectId ? st.groups.filter((g) => g.project_id === projectId) : st.groups).map((g) => g.id),
-  );
+  const ids = new Set((projectId ? st.groups.filter((g) => g.project_id === projectId) : st.groups).map((g) => g.id));
   return {
     // A card that has not been filed is not a decision. Counting it inflates the
     // badge and produces a queue row whose button leads to nothing actionable.

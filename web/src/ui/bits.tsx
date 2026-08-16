@@ -10,9 +10,7 @@ import { cn } from "../lib/utils";
  * were already too small to read. 12px, normal case, ink-2.
  */
 export const H2 = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <h2 className={cn("mb-2.5 text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2", className)}>
-    {children}
-  </h2>
+  <h2 className={cn("mb-2.5 text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2", className)}>{children}</h2>
 );
 
 /** A sub-heading inside a view. The display face earns its place at ≥15px only. */
@@ -29,9 +27,13 @@ export const H3 = ({ children, className }: { children: React.ReactNode; classNa
  * three hand-written copies of it drift.
  */
 export const Head = ({
-  title, note, children,
+  title,
+  note,
+  children,
 }: {
-  title: React.ReactNode; note?: React.ReactNode; children?: React.ReactNode;
+  title: React.ReactNode;
+  note?: React.ReactNode;
+  children?: React.ReactNode;
 }) => (
   <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
     <H2 className="mb-0">{title}</H2>

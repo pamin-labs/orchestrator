@@ -97,4 +97,3 @@ export const getLeaseLog: AgentHandler<undefined, z.infer<typeof IdParams>> = as
       .join("\n"),
   );
 };
-

@@ -8,9 +8,13 @@ import { cn, clock } from "../lib/utils";
  *  re-render on every SSE message would re-run every row's JSX, and
  *  DevTools' Highlight Updates would flag the whole list on each frame. */
 export const TimelineRow = memo(function TimelineRow({
-  f, showHeader, showDivider,
+  f,
+  showHeader,
+  showDivider,
 }: {
-  f: Frame; showHeader: boolean; showDivider: boolean;
+  f: Frame;
+  showHeader: boolean;
+  showDivider: boolean;
 }) {
   return (
     <div
@@ -26,9 +30,7 @@ export const TimelineRow = memo(function TimelineRow({
             <span className={cn("font-semibold", f.author === "boss" && "text-accent")}>{f.author}</span>
             {f.target && <span className="text-ink-3"> → {f.target}</span>}
             {f.intent && f.intent !== "inform" && (
-              <span className="ml-1 font-mono text-[0.5625rem] uppercase tracking-[0.06em] text-ink-3">
-                {f.intent}
-              </span>
+              <span className="ml-1 font-mono text-[0.5625rem] uppercase tracking-[0.06em] text-ink-3">{f.intent}</span>
             )}{" "}
           </>
         )}
@@ -57,9 +59,15 @@ export const TimelineRow = memo(function TimelineRow({
  * A feed that ignores where the boss is looking is a wall of unrelated lines.
  */
 export function Timeline({
-  st, frames, grpId, projectId,
+  st,
+  frames,
+  grpId,
+  projectId,
 }: {
-  st: State; frames: Frame[]; grpId: number | null; projectId: number | null;
+  st: State;
+  frames: Frame[];
+  grpId: number | null;
+  projectId: number | null;
 }) {
   let ids: Set<number> | null = null;
   let label = "全部";

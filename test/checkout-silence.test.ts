@@ -37,9 +37,10 @@ function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; mod
   } as unknown as Ctx;
 
   if (opts.project !== false) {
-    db.run("INSERT INTO project (name, repo_path, remote, config_json, created_at) VALUES ('p', '/tmp/p', ?, '{}', 0)", [
-      opts.remote === false ? null : "https://github.com/me/x.git",
-    ]);
+    db.run(
+      "INSERT INTO project (name, repo_path, remote, config_json, created_at) VALUES ('p', '/tmp/p', ?, '{}', 0)",
+      [opts.remote === false ? null : "https://github.com/me/x.git"],
+    );
   } else {
     // A group whose project is gone. The foreign key is what normally stops
     // this; it does not stop a project deleted out from under a live group.

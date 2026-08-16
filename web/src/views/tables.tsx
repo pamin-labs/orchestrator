@@ -55,7 +55,9 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
         <h2 className="text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2">工位</h2>
-        <Meta>在跑 {running.length} · 共 {rows.length}</Meta>
+        <Meta>
+          在跑 {running.length} · 共 {rows.length}
+        </Meta>
         <span className="grow" />
         {running.length > 0 && rows.length > running.length && (
           <Button variant="quiet" size="sm" onClick={() => setIdle((v) => !v)}>
@@ -70,10 +72,7 @@ export function Desk({ st, frames, projectId }: { st: State; frames: Frame[]; pr
             sticky because the pane scrolls and a heading that scrolls away stops
             being a heading. */}
         <div
-          className={cn(
-            DESK_ROW,
-            "sticky top-0 z-10 border-b border-rule bg-paper pb-1.5 text-[0.6875rem] text-ink-3",
-          )}
+          className={cn(DESK_ROW, "sticky top-0 z-10 border-b border-rule bg-paper pb-1.5 text-[0.6875rem] text-ink-3")}
         >
           <span>谁 · 模型</span>
           <span>在做什么</span>
@@ -96,9 +95,15 @@ const DESK_ROW =
   "grid grid-cols-[11rem_minmax(0,1fr)_2.5rem_4rem] items-baseline gap-x-4 px-3 max-[52rem]:grid-cols-[9rem_minmax(0,1fr)_2.5rem]";
 
 function Desks({
-  name, agents, slices, tail,
+  name,
+  agents,
+  slices,
+  tail,
 }: {
-  name: string; agents: Agent[]; slices: Slice[]; tail: Map<number, string>;
+  name: string;
+  agents: Agent[];
+  slices: Slice[];
+  tail: Map<number, string>;
 }) {
   const runners = agents.filter((a) => a.state === "running").length;
   const [open, setOpen] = useState(runners > 0);
@@ -121,12 +126,7 @@ function Desks({
         {/* The requirement is the thing being scanned for, so it gets the weight —
             it was the same size and colour as the shell command beside it. */}
         <Tip label={name}>
-          <span
-            className={cn(
-              "truncate font-display text-[0.9375rem] font-semibold",
-              runners === 0 && "text-ink-3",
-            )}
-          >
+          <span className={cn("truncate font-display text-[0.9375rem] font-semibold", runners === 0 && "text-ink-3")}>
             {name}
           </span>
         </Tip>
@@ -134,7 +134,10 @@ function Desks({
             one thing you opened it for. */}
         <Meta className="truncate">
           {runners > 0
-            ? agents.filter((a) => a.state === "running").map((a) => a.role).join(" · ")
+            ? agents
+                .filter((a) => a.state === "running")
+                .map((a) => a.role)
+                .join(" · ")
             : "空闲"}
         </Meta>
         <span className="grow" />
@@ -189,7 +192,9 @@ function Desks({
                     </Tip>
                   </span>
                   {stream && (
-                    <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-ink-3">{stream.slice(-120)}</span>
+                    <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-ink-3">
+                      {stream.slice(-120)}
+                    </span>
                   )}
                 </span>
                 {/* A high count on one slice is the visible shape of circling, and
@@ -267,9 +272,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
           once. */}
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {hit.length ? (
-          <b className="text-[0.8125rem] font-semibold text-bad">
-            {hit.length} 个需求想改同一批文件，不能一起跑
-          </b>
+          <b className="text-[0.8125rem] font-semibold text-bad">{hit.length} 个需求想改同一批文件，不能一起跑</b>
         ) : (
           <b className="text-[0.8125rem] font-semibold">
             {gs.length} 个需求各改各的，可以一起跑{bare.length ? `（还有 ${bare.length} 个没分` : ""}
@@ -279,8 +282,10 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
       </div>
 
       {/* A column of paths under no heading is a column of paths. */}
-      <div className="grid grid-cols-[13rem_minmax(0,1fr)] gap-x-5 border-b border-rule pb-1.5 text-[0.6875rem]
-                      text-ink-3 max-[52rem]:grid-cols-1">
+      <div
+        className="grid grid-cols-[13rem_minmax(0,1fr)] gap-x-5 border-b border-rule pb-1.5 text-[0.6875rem]
+                      text-ink-3 max-[52rem]:grid-cols-1"
+      >
         <span>需求</span>
         <span>能改哪些文件</span>
       </div>
@@ -352,11 +357,7 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
  */
 export function CostView({ cost }: { cost: Cost | null }) {
   if (!cost?.total?.tokens) {
-    return (
-      <Empty>
-        还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。
-      </Empty>
-    );
+    return <Empty>还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。</Empty>;
   }
   const per = cost.delivered?.count ? cost.delivered.tokens / cost.delivered.count : null;
   // Plain words, not the field names: "前缀变了" is a thing the boss can act on,
@@ -440,36 +441,35 @@ export function CostView({ cost }: { cost: Cost | null }) {
         </Tabs>
 
         <aside className="flex min-h-0 min-w-0 flex-col overflow-y-auto pr-1">
-        {/* The totals ride the rail, above the charts they are the sum of.
+          {/* The totals ride the rail, above the charts they are the sum of.
             They had a band of their own with a rule under it, and the tab strip
             below had another — two horizontal lines a centimetre apart, dividing
             a page into three when it has two parts. "Dashboards of big numbers"
             is an anti-reference in PRODUCT.md, so this stays one line of text
             with one number set in display size, not a row of stat cards. */}
-        <div className="mb-5">
-          <div className="flex items-baseline gap-1.5">
-            <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
-            <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
-          </div>
-          <div className="mt-1.5 text-[0.75rem] text-ink-2">
-            每个已交付需求{" "}
-            <b className="font-mono font-semibold text-ink">{per == null ? "—" : K(per)}</b>
-            <span className="text-ink-3">{per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`}</span>
-          </div>
-          <Tip label="掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍">
-            <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
-              cache 命中{" "}
-              <b
-                className={cn(
-                  "font-mono font-semibold",
-                  cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
-                )}
-              >
-                {cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`}
-              </b>
+          <div className="mb-5">
+            <div className="flex items-baseline gap-1.5">
+              <b className="font-mono text-[1.375rem] font-semibold leading-none">{K(cost.total.tokens)}</b>
+              <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
             </div>
-          </Tip>
-          {/* The second half of the same question, over the same sample as the
+            <div className="mt-1.5 text-[0.75rem] text-ink-2">
+              每个已交付需求 <b className="font-mono font-semibold text-ink">{per == null ? "—" : K(per)}</b>
+              <span className="text-ink-3">{per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`}</span>
+            </div>
+            <Tip label="掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍">
+              <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
+                cache 命中{" "}
+                <b
+                  className={cn(
+                    "font-mono font-semibold",
+                    cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
+                  )}
+                >
+                  {cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`}
+                </b>
+              </div>
+            </Tip>
+            {/* The second half of the same question, over the same sample as the
               line above it. A low hit rate can mean the prompt assembly broke or
               it can mean nobody is resuming anything, and only this line
               separates them. One line of text, no card: it is a footnote to the
@@ -477,17 +477,17 @@ export function CostView({ cost }: { cost: Cost | null }) {
               The breakdown by reason is in the tip rather than on the line,
               because those counts sum to the count already printed — the same
               number said twice, once as a total and once as its parts. */}
-          {cold > 0 && (
-            <Tip label={`${turns} 个 turn 里重开了 ${cold} 次：${why}。重开一次，缓存前缀要从头建一遍`}>
-              <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
-                重开会话{" "}
-                <b className={cn("font-mono font-semibold", cold * 2 > turns ? "text-warn" : "text-ink")}>
-                  {cold}/{turns}
-                </b>
-              </div>
-            </Tip>
-          )}
-        </div>
+            {cold > 0 && (
+              <Tip label={`${turns} 个 turn 里重开了 ${cold} 次：${why}。重开一次，缓存前缀要从头建一遍`}>
+                <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
+                  重开会话{" "}
+                  <b className={cn("font-mono font-semibold", cold * 2 > turns ? "text-warn" : "text-ink")}>
+                    {cold}/{turns}
+                  </b>
+                </div>
+              </Tip>
+            )}
+          </div>
           <Rail title="烧得多快" note="近 24 小时，按小时">
             <BurnChart data={cost.byHour ?? []} />
           </Rail>
@@ -550,9 +550,6 @@ function Rail({ title, note, children }: { title: string; note: string; children
   );
 }
 
-
-
-
 /**
  * One requirement, opening onto the agents inside it.
  *
@@ -561,7 +558,12 @@ function Rail({ title, note, children }: { title: string; note: string; children
  * handling come with it, and this page had none of the three.
  */
 function Node({
-  label, note, tokens, top, share, rows,
+  label,
+  note,
+  tokens,
+  top,
+  share,
+  rows,
 }: {
   label: string;
   note?: string;
@@ -626,5 +628,3 @@ function Node({
     </Collapsible.Root>
   );
 }
-
-

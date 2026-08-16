@@ -2,8 +2,20 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Bell, Box, Coins, Gauge, GitBranch, KeyRound, ListChecks, MonitorCog, Server,
-  SlidersHorizontal, Sparkles, Timer, Trash2, X,
+  Bell,
+  Box,
+  Coins,
+  Gauge,
+  GitBranch,
+  KeyRound,
+  ListChecks,
+  MonitorCog,
+  Server,
+  SlidersHorizontal,
+  Sparkles,
+  Timer,
+  Trash2,
+  X,
 } from "lucide-react";
 import { H2, Head, Meta, Pane } from "../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldTitle } from "../ui/field";
@@ -40,9 +52,20 @@ import { type AuthRow, type HostCheck } from "./settings/shared";
  */
 
 export type Section =
-  | "cred" | "github" | "host" | "server" | "skills"
-  | "sched" | "models" | "turn" | "boxdefaults" | "notify"
-  | "prefs" | "gates" | "sandbox" | "remove";
+  | "cred"
+  | "github"
+  | "host"
+  | "server"
+  | "skills"
+  | "sched"
+  | "models"
+  | "turn"
+  | "boxdefaults"
+  | "notify"
+  | "prefs"
+  | "gates"
+  | "sandbox"
+  | "remove";
 
 /** Host facts only. The credential rows are the 账号 section, said once. */
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
@@ -86,7 +109,14 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
 ];
 
 export function SettingsDialog({
-  open, onOpenChange, initial, onSection, projectId, projectName, groupCount, onRemoved,
+  open,
+  onOpenChange,
+  initial,
+  onSection,
+  projectId,
+  projectName,
+  groupCount,
+  onRemoved,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -244,17 +274,21 @@ export function SettingsDialog({
               which of the two it is. */}
           <nav className="flex min-h-0 flex-col gap-4 overflow-y-auto border-r border-rule bg-rail px-2.5 py-4">
             <Group label="服务器" note="所有项目共用">
-              {items.filter((n) => !n.project).map((n) => (
-                <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => pick(n.key)} />
-              ))}
+              {items
+                .filter((n) => !n.project)
+                .map((n) => (
+                  <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => pick(n.key)} />
+                ))}
             </Group>
             {projectId && (
               // Same shape as 服务器 above it: the group names the scope, the small
               // line says which one, and the path is a hover away.
               <Group label="项目" note={projectName} hint={proj?.repoPath}>
-                {items.filter((n) => n.project).map((n) => (
-                  <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => pick(n.key)} />
-                ))}
+                {items
+                  .filter((n) => n.project)
+                  .map((n) => (
+                    <Item key={n.key} n={n} on={here === n.key} nag={!!nags[n.key]} go={() => pick(n.key)} />
+                  ))}
               </Group>
             )}
           </nav>
@@ -281,9 +315,7 @@ export function SettingsDialog({
                   prefs={prefs}
                   waiting={signin?.runtime}
                   onSaved={load}
-                  onWaitForLogin={(runtime, since) =>
-                    setSignin({ runtime, since, until: Date.now() + 300_000 })
-                  }
+                  onWaitForLogin={(runtime, since) => setSignin({ runtime, since, until: Date.now() + 300_000 })}
                 />
               ) : here === "github" ? (
                 <GithubPane status={gh.data ?? null} onRefresh={refreshGh} />
@@ -301,7 +333,11 @@ export function SettingsDialog({
                 />
               ) : here === "skills" ? (
                 <Skills projectId={projectId} />
-              ) : here === "sched" || here === "models" || here === "turn" || here === "boxdefaults" || here === "notify" ? (
+              ) : here === "sched" ||
+                here === "models" ||
+                here === "turn" ||
+                here === "boxdefaults" ||
+                here === "notify" ? (
                 <Knobs section={here} />
               ) : here === "prefs" ? (
                 <>
@@ -344,7 +380,10 @@ export function SettingsDialog({
 }
 
 function Group({
-  label, note, hint, children,
+  label,
+  note,
+  hint,
+  children,
 }: {
   label: string;
   note?: string;
@@ -381,7 +420,10 @@ function Group({
 }
 
 function Item({
-  n, on, nag, go,
+  n,
+  on,
+  nag,
+  go,
 }: {
   n: { key: Section; zh: string; icon: typeof KeyRound };
   on: boolean;

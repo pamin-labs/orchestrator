@@ -94,7 +94,8 @@ export function readOnlyGitPaths(remote: string): string[] | null {
 
 /** A value the CLI will accept as well-formed and the API will reject. */
 export function decoy(runtime: string, mode: AuthMode): string {
-  if (runtime === "claude") return mode === "oauth_token" ? `sk-ant-oat01-${"A".repeat(80)}` : `sk-ant-api03-${"A".repeat(80)}`;
+  if (runtime === "claude")
+    return mode === "oauth_token" ? `sk-ant-oat01-${"A".repeat(80)}` : `sk-ant-api03-${"A".repeat(80)}`;
   return `sk-${"A".repeat(48)}`;
 }
 
@@ -187,8 +188,7 @@ export function subscriptionAccount(db: DB, runtime: string): boolean {
  * above is the path inside the container, which is ours to fix and never varies.
  */
 export const hostCodexHome = (home = homedir()): string => process.env.CODEX_HOME || join(home, ".codex");
-export const hostClaudeHome = (home = homedir()): string =>
-  process.env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+export const hostClaudeHome = (home = homedir()): string => process.env.CLAUDE_CONFIG_DIR || join(home, ".claude");
 
 /**
  * The hosts a turn has to be able to reach, for the configured credentials.
@@ -224,7 +224,9 @@ export function loadAuth(db: DB, runtime: string): RuntimeAuth | null {
       "SELECT runtime, mode, secret, base_url FROM runtime_auth WHERE runtime = ?",
     )
     .get(runtime);
-  return r ? { runtime: r.runtime, mode: r.mode as AuthMode, secret: r.secret, baseUrl: r.base_url ?? undefined } : null;
+  return r
+    ? { runtime: r.runtime, mode: r.mode as AuthMode, secret: r.secret, baseUrl: r.base_url ?? undefined }
+    : null;
 }
 
 /**
@@ -233,7 +235,9 @@ export function loadAuth(db: DB, runtime: string): RuntimeAuth | null {
  * Never the secret. A masked tail is enough to tell two tokens apart, which is
  * the only question a human asks of one they already pasted.
  */
-export function listAuth(db: DB): Array<{ runtime: string; mode: AuthMode; hint: string; baseUrl?: string; updatedAt: number }> {
+export function listAuth(
+  db: DB,
+): Array<{ runtime: string; mode: AuthMode; hint: string; baseUrl?: string; updatedAt: number }> {
   return db
     .query<{ runtime: string; mode: string; secret: string; base_url: string | null; updated_at: number }, []>(
       "SELECT runtime, mode, secret, base_url, updated_at FROM runtime_auth ORDER BY runtime",
@@ -332,7 +336,9 @@ const GIT_USER = "x-access-token";
 function gitFilesFor(db: DB): Record<string, string> {
   if (!loadAuth(db, "github")) return {};
   return {
-    "/root/.git-credentials": BINDINGS.github!.hosts.map((h) => `https://${GIT_USER}:${decoy("github", "api_key")}@${h}\n`).join(""),
+    "/root/.git-credentials": BINDINGS.github!.hosts.map(
+      (h) => `https://${GIT_USER}:${decoy("github", "api_key")}@${h}\n`,
+    ).join(""),
     // `store` is what makes git read the file above without asking anyone.
     // Written here rather than with `git config --global` because the checkout
     // sets its identity with a repo-local `git config`, so nothing else owns
@@ -366,11 +372,7 @@ function gitFilesFor(db: DB): Record<string, string> {
  */
 let refreshing = false;
 
-export async function currentChatgptToken(
-  db: DB,
-  io: CodexHomeIO | null,
-  now = Date.now(),
-): Promise<string | null> {
+export async function currentChatgptToken(db: DB, io: CodexHomeIO | null, now = Date.now()): Promise<string | null> {
   const a = loadAuth(db, "codex");
   if (a?.mode !== "chatgpt") return null;
   let parsed = parseAuth(a.secret);

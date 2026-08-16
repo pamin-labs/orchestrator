@@ -55,7 +55,13 @@ test("a count splits into an integer and a unit, and multiplies back exactly", (
     ...Object.values(DEFAULTS.sliceBudgetTokens),
     ...Object.values(DEFAULTS.contextWindow),
     DEFAULTS.ctxBudgetChars,
-    0, 1, 45, 999, 1000, 8_500_000, 1_000_001,
+    0,
+    1,
+    45,
+    999,
+    1000,
+    8_500_000,
+    1_000_001,
   ];
   for (const v of values) {
     const { n, unit } = splitCount(Number(v));
@@ -75,7 +81,11 @@ test("a row the panel creates is a row the server accepts", () => {
   // nowhere to type a value before the row exists, so the row could never be
   // created at all. A born value has to be one the schema takes.
   const CFG = ConfigSchema.shape;
-  for (const [path, born] of [["contextWindow", 200_000], ["leaseSlots", 1], ["sliceBudgetTokens", 1]] as const) {
+  for (const [path, born] of [
+    ["contextWindow", 200_000],
+    ["leaseSlots", 1],
+    ["sliceBudgetTokens", 1],
+  ] as const) {
     const schema = CFG[path as keyof typeof CFG];
     expect(schema.safeParse({ "new-thing": born }).success).toBe(true);
     // And the value that used to be written is exactly what the server refuses.

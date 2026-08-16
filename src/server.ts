@@ -19,7 +19,17 @@ import { ensureServer } from "./mech/sandbox/server.ts";
 import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
 import { dispatchFeedback, openPr, pollPrs, prBody, prTitle } from "./mech/git/prwatch.ts";
 import { makeGithub, repoHeld } from "./mech/git/github.ts";
-import { chargeIndex, HEAD_CHARS, modelAsk, noteLeaves, NOTE_PREFIX, saveTree, skeleton, summarise, loadTree } from "./mech/knowledge/pageindex.ts";
+import {
+  chargeIndex,
+  HEAD_CHARS,
+  modelAsk,
+  noteLeaves,
+  NOTE_PREFIX,
+  saveTree,
+  skeleton,
+  summarise,
+  loadTree,
+} from "./mech/knowledge/pageindex.ts";
 import { indexable, indexExcludes } from "./mech/knowledge/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
@@ -151,8 +161,7 @@ const indexModelDown = new Set<number>();
 
 async function refreshIndex(ctx: Ctx): Promise<void> {
   if (!ctx.askIn) return;
-  for (const p of ctx.db
-    .query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project").all()) {
+  for (const p of ctx.db.query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project").all()) {
     if (!p.remote) continue;
     // The corpus lives in the project's own container now. It is the one reader
     // that needs file *contents* rather than names, so the utility container's
@@ -162,7 +171,12 @@ async function refreshIndex(ctx: Ctx): Promise<void> {
     const base = await baseRefFor(ctx, p.id);
     let heads: Map<string, string>;
     try {
-      await createCheckout(ctx, scope, { remote: p.remote, branch: base.replace(/^origin\//, ""), base, projectId: p.id });
+      await createCheckout(ctx, scope, {
+        remote: p.remote,
+        branch: base.replace(/^origin\//, ""),
+        base,
+        projectId: p.id,
+      });
       heads = await treeHeads(ctx, scope, HEAD_CHARS);
     } catch (e) {
       // Once per project: silently indexing nothing leaves `orch ctx query`
@@ -329,18 +343,19 @@ export function start(overrides: Partial<Config> = {}): Started {
    * with whatever the record can say by itself.
    */
   ctx.publishBranch = (grpId: number) => {
-      const grp = db
-        .query<{ name: string; repo_path: string }, [number]>(
-          "SELECT g.name, p.repo_path FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
-        )
-        .get(grpId);
-      void openPr({
-        ctx,
-        gh,
-                grpId,
-        title: prTitle(ctx, grpId),
-        body: prBody(ctx, grpId),
-      }).then((r) => {
+    const grp = db
+      .query<{ name: string; repo_path: string }, [number]>(
+        "SELECT g.name, p.repo_path FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
+      )
+      .get(grpId);
+    void openPr({
+      ctx,
+      gh,
+      grpId,
+      title: prTitle(ctx, grpId),
+      body: prBody(ctx, grpId),
+    })
+      .then((r) => {
         if ("error" in r) {
           // No remote, no gh auth, a rejected push: the branch is finished and has
           // nowhere to go. This used to be an event and nothing else — not a row in
@@ -377,12 +392,12 @@ export function start(overrides: Partial<Config> = {}): Started {
           });
         }
       })
-        // Detached, and its handler writes rows and pushes notifications, so
-        // anything it throws surfaces against whoever is running when it lands
-        // rather than against the PR that caused it. The careful PAUSED path
-        // above is the answer to a *failed* PR; this is the answer to a failure
-        // while answering one.
-        .catch((e) => consola.warn(`opening the PR for ${grpId} threw: ${e?.message ?? e}`));
+      // Detached, and its handler writes rows and pushes notifications, so
+      // anything it throws surfaces against whoever is running when it lands
+      // rather than against the PR that caused it. The careful PAUSED path
+      // above is the answer to a *failed* PR; this is the answer to a failure
+      // while answering one.
+      .catch((e) => consola.warn(`opening the PR for ${grpId} threw: ${e?.message ?? e}`));
   };
   exec = makeExecutor(execDeps);
   ctx.knownRoles = () => [...roles.keys()];
@@ -392,7 +407,6 @@ export function start(overrides: Partial<Config> = {}): Started {
   };
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
   ctx.auditVerdict = makeAuditVerdict(execDeps);
-
 
   const app = makeApp(ctx);
   const webDir = join(ROOT, "web");
@@ -545,7 +559,11 @@ export function start(overrides: Partial<Config> = {}): Started {
     .then((st) => {
       if (st.kind === "started") {
         consola.success(`opensandbox-server started (pid ${st.pid}, ${st.config})`);
-        ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `沙盒服务器起好了（我们起的，pid ${st.pid}）` });
+        ctx.bus.emit({
+          author: "orchestrator",
+          kind: "state_change",
+          body: `沙盒服务器起好了（我们起的，pid ${st.pid}）`,
+        });
       } else if (st.kind === "theirs") {
         consola.info(`opensandbox-server already running (pid ${st.pid}) — using it, not touching it`);
       } else if (st.kind === "stuck") {

@@ -104,10 +104,7 @@ export function Queue({
       who: "qa",
       sub: s.accept_spec,
       grpId: s.grp_id,
-      ...rank([
-        halted(s.grp_id) && REASONS.halted(),
-        s.awaiting_at ? REASONS.waited(now - s.awaiting_at) : null,
-      ]),
+      ...rank([halted(s.grp_id) && REASONS.halted(), s.awaiting_at ? REASONS.waited(now - s.awaiting_at) : null]),
       // 查收 and 不满意 both happen on the requirement page, next to the diff and
       // the verdicts: accepting from a list is accepting a title, and rejecting
       // from one is rejecting a title.
@@ -199,18 +196,12 @@ export function Queue({
     // A question from a standing agent has no requirement to sit under, so it
     // gets one row of its own rather than a second shape in the list.
     ...(loose.length
-      ? [{
-          points: Math.max(...loose.map((i) => i.points)),
-          node: (
-            <Cluster
-              key="standing"
-              st={st}
-              c={{ grpId: -1, items: loose }}
-              onOpen={onOpen}
-              refresh={refresh}
-            />
-          ),
-        }]
+      ? [
+          {
+            points: Math.max(...loose.map((i) => i.points)),
+            node: <Cluster key="standing" st={st} c={{ grpId: -1, items: loose }} onOpen={onOpen} refresh={refresh} />,
+          },
+        ]
       : []),
   ].sort((a, b) => b.points - a.points);
 
@@ -237,7 +228,9 @@ function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
       {page.map((b) => b.node)}
       {rest > 0 && (
         <div className="border-t border-rule-soft px-2 py-2">
-          <Button variant="quiet" size="sm" onClick={more}>还有 {rest} 条需求</Button>
+          <Button variant="quiet" size="sm" onClick={more}>
+            还有 {rest} 条需求
+          </Button>
         </div>
       )}
     </div>
@@ -257,9 +250,15 @@ function Paged({ blocks }: { blocks: { node: React.ReactNode }[] }) {
  * how the boss decides which requirement to open.
  */
 function Cluster({
-  st, c, onOpen, refresh,
+  st,
+  c,
+  onOpen,
+  refresh,
 }: {
-  st: State; c: { grpId: number; items: Item[] }; onOpen: (id: number) => void; refresh: () => void;
+  st: State;
+  c: { grpId: number; items: Item[] };
+  onOpen: (id: number) => void;
+  refresh: () => void;
 }) {
   const standing = c.grpId < 0;
   const g = st.groups.find((x) => x.id === c.grpId);
@@ -339,11 +338,7 @@ function fold(items: Item[]): { item: Item; n: number }[] {
   return [...by.values()].sort((a, b) => Number(b.item.hard) - Number(a.item.hard));
 }
 
-function Ticket({
-  item, n, refresh, standing,
-}: {
-  item: Item; n: number; refresh: () => void; standing: boolean;
-}) {
+function Ticket({ item, n, refresh, standing }: { item: Item; n: number; refresh: () => void; standing: boolean }) {
   return (
     <Tip label={item.what}>
       <span
@@ -398,9 +393,18 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
     refresh();
   };
   if (fyi) {
-    return <Button variant="go" disabled={busy} onClick={() => send("知道了")}>知道了</Button>;
+    return (
+      <Button variant="go" disabled={busy} onClick={() => send("知道了")}>
+        知道了
+      </Button>
+    );
   }
-  if (!open) return <Button variant="go" onClick={() => setOpen(true)}>回答</Button>;
+  if (!open)
+    return (
+      <Button variant="go" onClick={() => setOpen(true)}>
+        回答
+      </Button>
+    );
   return (
     <span className="flex items-end gap-1.5">
       <Draft escId={escId} onUse={setText} />
@@ -416,7 +420,9 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
         placeholder="回答…  ⌘↵ 发送"
         className="w-[20rem] resize-none rounded-md border border-rule bg-paper px-2 py-1.5 text-[0.8125rem] outline-none focus:border-accent"
       />
-      <Button variant="go" disabled={busy || !text.trim()} onClick={() => void send(text)}>发送</Button>
+      <Button variant="go" disabled={busy || !text.trim()} onClick={() => void send(text)}>
+        发送
+      </Button>
     </span>
   );
 }
@@ -437,7 +443,9 @@ function Draft({ escId, onUse }: { escId: number; onUse: (t: string) => void }) 
   if (!text) return null;
   return (
     <Tip label={text}>
-      <Button size="sm" onClick={() => onUse(text)}>用草稿</Button>
+      <Button size="sm" onClick={() => onUse(text)}>
+        用草稿
+      </Button>
     </Tip>
   );
 }

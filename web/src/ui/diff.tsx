@@ -225,73 +225,77 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
 
       <Panel className="min-w-0">
         <div ref={pane} className="h-full overflow-auto">
-        {order.map((fi) => {
-          const f = files[fi]!;
-          const name = nameOf(f);
-          const rows = f.chunks.flatMap((c) => [{ gap: c.content } as Row, ...rowsOf(c)]);
-          // Bounded per file, not per diff: thirty files of four hundred rows each
-          // is a DOM nobody scrolls, and the long file is usually not the one being
-          // reviewed. Opening one is a click, and it stays open.
-          const shown = open.has(fi) ? rows : rows.slice(0, 400);
-          return (
-            <div key={name}>
-              <div
-                ref={(el) => {
-                  heads.current[fi] = el;
-                }}
-                data-i={fi}
-                className="mt-2 flex items-baseline gap-2 border-y-2 border-rule bg-sunk px-3.5 py-1.5 first:mt-0"
-              >
-                <span className="font-mono text-[0.6875rem] font-semibold">{name}</span>
-                <span className="font-mono text-[0.625rem]">
-                  <span className="text-ok">+{f.additions}</span> <span className="text-bad">−{f.deletions}</span>
-                </span>
-              </div>
-              <table className="w-full table-fixed border-collapse font-mono text-[0.6875rem] leading-[1.55]">
-                <colgroup>
-                  <col className="w-10" />
-                  <col className="w-[calc(50%-2.5rem)]" />
-                  <col className="w-10" />
-                  <col />
-                </colgroup>
-                <tbody>
-                  {shown.map((r, i) =>
-                    r.gap !== undefined ? (
-                      <tr key={i}>
-                        <td colSpan={4} className="border-y border-rule-soft bg-sunk px-3.5 py-0.5 text-ink-3">
-                          {/* The useful half of `@@ -1,7 +1,9 @@` is the context after it. */}
-                          {r.gap.replace(/^@@[^@]*@@\s*/, "") || "…"}
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={i}>
-                        <Gutter n={r.left?.n} tone={r.left && (!r.right || r.left.changed) ? "bad" : undefined} />
-                        <Side cell={r.left} other={r.right} side="left" />
-                        <Gutter n={r.right?.n} tone={r.right && (!r.left || r.right.changed) ? "ok" : undefined} split />
-                        <Side cell={r.right} other={r.left} side="right" />
-                      </tr>
-                    ),
-                  )}
-                </tbody>
-              </table>
-              {rows.length > shown.length && (
-                <div className="border-y border-rule-soft bg-sunk px-3.5 py-1">
-                  {/* The project's Button, not a hand-styled one: this is an action,
+          {order.map((fi) => {
+            const f = files[fi]!;
+            const name = nameOf(f);
+            const rows = f.chunks.flatMap((c) => [{ gap: c.content } as Row, ...rowsOf(c)]);
+            // Bounded per file, not per diff: thirty files of four hundred rows each
+            // is a DOM nobody scrolls, and the long file is usually not the one being
+            // reviewed. Opening one is a click, and it stays open.
+            const shown = open.has(fi) ? rows : rows.slice(0, 400);
+            return (
+              <div key={name}>
+                <div
+                  ref={(el) => {
+                    heads.current[fi] = el;
+                  }}
+                  data-i={fi}
+                  className="mt-2 flex items-baseline gap-2 border-y-2 border-rule bg-sunk px-3.5 py-1.5 first:mt-0"
+                >
+                  <span className="font-mono text-[0.6875rem] font-semibold">{name}</span>
+                  <span className="font-mono text-[0.625rem]">
+                    <span className="text-ok">+{f.additions}</span> <span className="text-bad">−{f.deletions}</span>
+                  </span>
+                </div>
+                <table className="w-full table-fixed border-collapse font-mono text-[0.6875rem] leading-[1.55]">
+                  <colgroup>
+                    <col className="w-10" />
+                    <col className="w-[calc(50%-2.5rem)]" />
+                    <col className="w-10" />
+                    <col />
+                  </colgroup>
+                  <tbody>
+                    {shown.map((r, i) =>
+                      r.gap !== undefined ? (
+                        <tr key={i}>
+                          <td colSpan={4} className="border-y border-rule-soft bg-sunk px-3.5 py-0.5 text-ink-3">
+                            {/* The useful half of `@@ -1,7 +1,9 @@` is the context after it. */}
+                            {r.gap.replace(/^@@[^@]*@@\s*/, "") || "…"}
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={i}>
+                          <Gutter n={r.left?.n} tone={r.left && (!r.right || r.left.changed) ? "bad" : undefined} />
+                          <Side cell={r.left} other={r.right} side="left" />
+                          <Gutter
+                            n={r.right?.n}
+                            tone={r.right && (!r.left || r.right.changed) ? "ok" : undefined}
+                            split
+                          />
+                          <Side cell={r.right} other={r.left} side="right" />
+                        </tr>
+                      ),
+                    )}
+                  </tbody>
+                </table>
+                {rows.length > shown.length && (
+                  <div className="border-y border-rule-soft bg-sunk px-3.5 py-1">
+                    {/* The project's Button, not a hand-styled one: this is an action,
                       and every control in the page shares one shape and one set of
                       focus / hover / disabled states. The rows above are not — they
                       are a list you navigate, and dressing them as buttons would say
                       the wrong thing about what they do. */}
-                  <Button variant="quiet" size="sm" onClick={() => setOpen(new Set([...open, fi]))}>
-                    还有 {rows.length - shown.length} 行
-                  </Button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {truncated && (
-          <Meta className="block px-3.5 py-2">改动超过 400k 字符，尾部没取回来，剩下的在沙盒的 checkout 里</Meta>
-        )}
+                    <Button variant="quiet" size="sm" onClick={() => setOpen(new Set([...open, fi]))}>
+                      还有 {rows.length - shown.length} 行
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {truncated && (
+            <Meta className="block px-3.5 py-2">改动超过 400k 字符，尾部没取回来，剩下的在沙盒的 checkout 里</Meta>
+          )}
         </div>
       </Panel>
     </Group>

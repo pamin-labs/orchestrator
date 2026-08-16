@@ -83,20 +83,26 @@ function populate(db: DB, projectId: number, tag: string): number {
   db.run("INSERT INTO member (channel_id, agent_id) VALUES (?, ?)", [channel, agent]);
   db.run("INSERT INTO cursor (channel_id, agent_id, last_seq) VALUES (?, ?, 0)", [channel, agent]);
   db.run("INSERT INTO task (grp_id, slice_id, title, status, created_at) VALUES (?, ?, 't', 'open', 0)", [grp, slice]);
-  db.run(
-    "INSERT INTO note (project_id, grp_id, slice_id, kind, body, at) VALUES (?, ?, ?, 'fact', 'n', 0)",
-    [projectId, grp, slice],
-  );
+  db.run("INSERT INTO note (project_id, grp_id, slice_id, kind, body, at) VALUES (?, ?, ?, 'fact', 'n', 0)", [
+    projectId,
+    grp,
+    slice,
+  ]);
   db.run("INSERT INTO event (grp_id, channel_id, author, kind, body, at) VALUES (?, ?, 'boss', 'say', 'e', 0)", [
     grp,
     channel,
   ]);
+  db.run("INSERT INTO escalation (grp_id, agent_id, question, chain_state, created_at) VALUES (?, ?, 'q', 'boss', 0)", [
+    grp,
+    agent,
+  ]);
   db.run(
-    "INSERT INTO escalation (grp_id, agent_id, question, chain_state, created_at) VALUES (?, ?, 'q', 'boss', 0)",
-    [grp, agent],
+    "INSERT INTO job (kind, state, grp_id, slice_id, agent_id, priority, enqueued_at) VALUES ('agent_turn', 'pending', ?, ?, ?, 5, 0)",
+    [grp, slice, agent],
   );
-  db.run("INSERT INTO job (kind, state, grp_id, slice_id, agent_id, priority, enqueued_at) VALUES ('agent_turn', 'pending', ?, ?, ?, 5, 0)", [grp, slice, agent]);
-  db.run("INSERT INTO job (kind, state, grp_id, priority, enqueued_at) VALUES ('agent_turn', 'running', ?, 5, 0)", [grp]);
+  db.run("INSERT INTO job (kind, state, grp_id, priority, enqueued_at) VALUES ('agent_turn', 'running', ?, 5, 0)", [
+    grp,
+  ]);
   return grp;
 }
 
@@ -228,4 +234,3 @@ test("the restart button gets the two numbers it has to show, and never a guess"
   // control the panel may show at all.
   expect(["ours", "theirs", "stuck", "started", "down"]).toContain(b.state);
 });
-

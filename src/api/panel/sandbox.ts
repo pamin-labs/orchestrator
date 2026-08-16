@@ -1,8 +1,24 @@
-import { allowedImage, remoteInClear, restartServer, runningServer, serverAddr, skillMounts, specFor } from "../../mech/sandbox/sandbox.ts";
+import {
+  allowedImage,
+  remoteInClear,
+  restartServer,
+  runningServer,
+  serverAddr,
+  skillMounts,
+  specFor,
+} from "../../mech/sandbox/sandbox.ts";
 import { sandboxLines } from "../../mech/sandbox/sandboxlog.ts";
 import { imageChoices, setDefaultImage, type ImageChoices } from "../../mech/sandbox/images.ts";
 import type { Config } from "../../config.ts";
-import { driftingPaths, ensureServer, inspectServer, ourArgv, serverLogPath, serverLogTail, setServerAddr } from "../../mech/sandbox/server.ts";
+import {
+  driftingPaths,
+  ensureServer,
+  inspectServer,
+  ourArgv,
+  serverLogPath,
+  serverLogTail,
+  setServerAddr,
+} from "../../mech/sandbox/server.ts";
 import { resetServerRestarts } from "../../mech/ops/watchdog.ts";
 import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
@@ -28,7 +44,15 @@ export const getSandbox: Handler = async (ctx, req) => {
   const grpId = Number(new URL(req.url).searchParams.get("grp") ?? 0);
   const grp = ctx.db
     .query<
-      { id: number; name: string; status: string; project_id: number; sandbox_id: string | null; sandbox_at: number | null; branch: string | null },
+      {
+        id: number;
+        name: string;
+        status: string;
+        project_id: number;
+        sandbox_id: string | null;
+        sandbox_at: number | null;
+        branch: string | null;
+      },
       [number]
     >("SELECT id, name, status, project_id, sandbox_id, sandbox_at, branch FROM grp WHERE id = ?")
     .get(grpId);

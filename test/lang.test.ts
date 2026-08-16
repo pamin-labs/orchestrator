@@ -28,8 +28,23 @@ test("both languages answer every key, with the arguments filled in", () => {
 test("no placeholder survives into the boss's feed unfilled", () => {
   // `{name}` reaching the screen is the visible half of the same failure the key
   // check covers: the sentence is there, and the thing it was about is not.
-  const args = { name: "g1", n: 3, seq: 2, role: "engineer", from: "qa", file: "a.ts", tokens: "8M",
-    min: 5, at: "18:00", resource: "test", repo: "o/r", files: "a.ts", why: "boom", pr: 7, branch: "b" };
+  const args = {
+    name: "g1",
+    n: 3,
+    seq: 2,
+    role: "engineer",
+    from: "qa",
+    file: "a.ts",
+    tokens: "8M",
+    min: 5,
+    at: "18:00",
+    resource: "test",
+    repo: "o/r",
+    files: "a.ts",
+    why: "boom",
+    pr: 7,
+    branch: "b",
+  };
   for (const lang of ["中文", "English"]) {
     for (const key of SAY_KEYS) {
       const out = say(lang, key, args);

@@ -41,8 +41,9 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     // `merge-base --is-ancestor` runs in the group's checkout, which lives in its
     // sandbox. Not an ancestor = the group has not rebased yet, which is the
     // condition every rule below is about.
-    sandbox: fakeSandbox((cmd) => (cmd.includes("merge-base") ? { code: 1 } : { code: 0 })), waiters: new Map(),
-    config: { language: cfg.language},
+    sandbox: fakeSandbox((cmd) => (cmd.includes("merge-base") ? { code: 1 } : { code: 0 })),
+    waiters: new Map(),
+    config: { language: cfg.language },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
@@ -65,9 +66,7 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
 
 test("a turn past its wall clock is killed and reported", async () => {
   const h = harness({ turnTimeoutMs: 1000 });
-  h.db.run(
-    "INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 0, 0)",
-  );
+  h.db.run("INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 0, 0)");
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("turn_timeout");
   expect(h.db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("cancelled");
@@ -82,9 +81,7 @@ test("a RUNNING group whose last turn failed is put back once, then handed to th
      VALUES ('agent_turn', 1, NULL, '{"role":"engineer"}', 'failed', 'Settings file not found', 0)`,
   );
   expect((await runWatchdog(h.deps)).map((x) => x.rule)).not.toContain("stalled");
-  const back = h.db
-    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'")
-    .all();
+  const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").all();
   expect(back).toHaveLength(1);
   expect(JSON.parse(back[0]!.payload_json).role).toBe("engineer");
 
@@ -107,9 +104,7 @@ test("a turn that ended cleanly without arranging the next one also counts as st
      VALUES ('agent_turn', 1, '{"role":"dispatcher"}', 'done', 0)`,
   );
   await runWatchdog(h.deps);
-  const back = h.db
-    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'")
-    .get()!;
+  const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!;
   expect(JSON.parse(back.payload_json).role).toBe("dispatcher");
 });
 
@@ -419,7 +414,10 @@ test("a batched notification carries a link, and one item links to its requireme
   // Without this the batched path built notifications with no url, which fell
   // back to osascript: no click target, and the notification belonged to
   // whatever app ran the script rather than to the page it is about.
-  const one = batchForBoss([{ id: 7, grpId: 3, severity: "blocker", question: "which library?", group: "auth" }], "http://127.0.0.1:47821")!;
+  const one = batchForBoss(
+    [{ id: 7, grpId: 3, severity: "blocker", question: "which library?", group: "auth" }],
+    "http://127.0.0.1:47821",
+  )!;
   expect(one.url).toBe("http://127.0.0.1:47821/#g=3&v=progress");
 
   const many = batchForBoss(
@@ -445,9 +443,9 @@ test("a rate-limited group resumes itself when the quota comes back", async () =
   ]);
   const found = await runWatchdog(h.deps);
   expect(found.some((f) => f.rule === "rate_limit_resumed")).toBe(true);
-  const g = h.db.query<{ status: string; rl: number | null }, []>(
-    "SELECT status, rl_resets_at AS rl FROM grp WHERE id = 1",
-  ).get()!;
+  const g = h.db
+    .query<{ status: string; rl: number | null }, []>("SELECT status, rl_resets_at AS rl FROM grp WHERE id = 1")
+    .get()!;
   expect(g.status).toBe("RUNNING");
   expect(g.rl).toBe(null);
 });
@@ -499,9 +497,7 @@ test("a question stranded on a stopped group is lifted to the boss", async () =>
      VALUES (1, 'blocker', 'S1 failed the gate 3 times', 'pm', 0)`,
   );
   await runWatchdog(h.deps);
-  expect(
-    h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state,
-  ).toBe("boss");
+  expect(h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state).toBe("boss");
 });
 
 test("a parked group whose question got answered comes back", async () => {
@@ -536,10 +532,10 @@ test("the three places that wait on the boss each carry a clock", async () => {
   const h = harness();
   const old = 1_000_000 - 5 * 3_600_000;
   h.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = 1");
-  h.db.run(
-    "INSERT INTO note (grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, 'fact', 'zh', 'card', ?, ?)",
-    [JSON.stringify({ draft_card: 1 }), old],
-  );
+  h.db.run("INSERT INTO note (grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, 'fact', 'zh', 'card', ?, ?)", [
+    JSON.stringify({ draft_card: 1 }),
+    old,
+  ]);
   h.db.run(
     `INSERT INTO slice (grp_id, seq, title, accept_spec, status, awaiting_at, created_at)
      VALUES (1, 1, 'S1', 'a', 'awaiting_boss', ?, 0)`,
@@ -731,9 +727,7 @@ test("a group already on the base is not nudged", async () => {
 
   const f = await runWatchdog(deps);
   expect(f.map((x) => x.rule)).not.toContain("base_moved");
-  const jobs = h.db
-    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn'")
-    .all();
+  const jobs = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn'").all();
   expect(jobs.map((j) => JSON.parse(j.payload_json).role)).not.toContain("engineer");
 });
 
@@ -801,9 +795,9 @@ test("a question the work went past is closed rather than left in 待办", async
   );
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("stale_ask");
-  expect(
-    h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state,
-  ).toBe("revoked");
+  expect(h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state).toBe(
+    "revoked",
+  );
 });
 
 test("a question on a group that is still working is left alone", async () => {
@@ -813,9 +807,7 @@ test("a question on a group that is still working is left alone", async () => {
      VALUES (1, 'blocker', 'which library?', 'boss', 0)`,
   );
   await runWatchdog(h.deps);
-  expect(
-    h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state,
-  ).toBe("boss");
+  expect(h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state).toBe("boss");
 });
 
 test("a dissolved group's sandbox is killed, so it stops holding two containers", async () => {
@@ -826,7 +818,12 @@ test("a dissolved group's sandbox is killed, so it stops holding two containers"
   h.db.run("UPDATE grp SET status = 'DISSOLVED', sandbox_id = 'sb-1', branch = 'orch/g1', pr_number = 7 WHERE id = 1");
 
   const killed: string[] = [];
-  h.ctx.sandbox = { ...h.ctx.sandbox!, kill: async (_c, scope) => { killed.push(JSON.stringify(scope)); } };
+  h.ctx.sandbox = {
+    ...h.ctx.sandbox!,
+    kill: async (_c, scope) => {
+      killed.push(JSON.stringify(scope));
+    },
+  };
 
   const findings = await runWatchdog(h.deps);
   expect(findings.map((x) => x.rule)).toContain("sandbox_swept");
@@ -849,7 +846,8 @@ test("losing the network holds the fleet without pausing a single requirement", 
   // and the park timer would file it away while the network was down.
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
   expect(
-    h.db.query<{ n: number }, []>("SELECT count(*) AS n FROM job WHERE state = 'pending' AND kind = 'agent_turn'")
+    h.db
+      .query<{ n: number }, []>("SELECT count(*) AS n FROM job WHERE state = 'pending' AND kind = 'agent_turn'")
       .get()!.n,
   ).toBe(1);
   expect(h.db.query<{ state: string }, []>("SELECT state FROM agent WHERE id = 1").get()!.state).toBe("idle");
@@ -910,14 +908,21 @@ test("delivery is a bus frame the page can raise, plus an optional webhook", asy
   }) as typeof fetch;
   try {
     const n = new Notifier({ deliver: busDeliver(bus, "https://example.invalid/hook") });
-    await n.push({ key: "escalation:1", tier: "immediate", body: "谁来定一下基线分支", url: "http://127.0.0.1:47821/#g=3&v=progress" });
+    await n.push({
+      key: "escalation:1",
+      tier: "immediate",
+      body: "谁来定一下基线分支",
+      url: "http://127.0.0.1:47821/#g=3&v=progress",
+    });
 
     // One frame, its own kind. The page raises a system notification for this and
     // for nothing else — "everything the boss might want" is what turns a
     // notification into noise, and the rules upstream exist to avoid exactly that.
-    const [f] = db.query<{ kind: string; body: string; meta_json: string }, []>(
-      "SELECT kind, body, meta_json FROM event WHERE kind = 'notify'",
-    ).all();
+    const [f] = db
+      .query<{ kind: string; body: string; meta_json: string }, []>(
+        "SELECT kind, body, meta_json FROM event WHERE kind = 'notify'",
+      )
+      .all();
     expect(f?.body).toBe("谁来定一下基线分支");
     expect(JSON.parse(f!.meta_json).url).toContain("#g=3");
 

@@ -36,7 +36,9 @@ test("every row the panel is sent matches the shape it is declared as", () => {
   // One of everything the payload can carry, so no list is empty — an empty
   // array parses against any element schema and would make this vacuous.
   db.run("INSERT INTO project (name, repo_path, remote, base_branch, created_at) VALUES ('p','o/p','g','main',0)");
-  db.run("INSERT INTO grp (project_id, name, status, branch, budget_tokens, created_at) VALUES (1,'g1','RUNNING','orch/g1',100,0)");
+  db.run(
+    "INSERT INTO grp (project_id, name, status, branch, budget_tokens, created_at) VALUES (1,'g1','RUNNING','orch/g1',100,0)",
+  );
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1,'g2','DISSOLVED',0)");
   db.run(
     "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1,1,'S1','x','normal','gate',0)",

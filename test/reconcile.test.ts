@@ -73,10 +73,7 @@ test("a claim naming a file by its tail still matches git's full path", () => {
 });
 
 test("path extraction reads prose, arrays and nested objects alike", () => {
-  expect(extractClaimedFiles(["edited src/a.ts, then src/b.tsx"]).sort()).toEqual([
-    "src/a.ts",
-    "src/b.tsx",
-  ]);
+  expect(extractClaimedFiles(["edited src/a.ts, then src/b.tsx"]).sort()).toEqual(["src/a.ts", "src/b.tsx"]);
   expect(extractClaimedFiles([{ files: ["docs/x.md"] }, ["nested/y.json"]]).sort()).toEqual([
     "docs/x.md",
     "nested/y.json",

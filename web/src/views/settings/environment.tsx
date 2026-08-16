@@ -215,18 +215,14 @@ export function ServerPane(props: {
           once as its own reason, which reads as a stuck panel. It was a bordered
           box on `sunk` too: a frame around one sentence, on the surface reserved
           for what a machine produced. */}
-      {d?.why && d.why !== st?.zh && (
-        <p className="mt-1 ml-5 text-[0.75rem] leading-relaxed text-ink-2">{d.why}</p>
-      )}
+      {d?.why && d.why !== st?.zh && <p className="mt-1 ml-5 text-[0.75rem] leading-relaxed text-ink-2">{d.why}</p>}
       {ident && <Meta className="mt-1 ml-5 block truncate">{ident}</Meta>}
 
       {/* Silent when wrong, so it is loud here: a path missing from the
           allowlist mounts an empty directory rather than failing. */}
       {(d?.drift || (paths && !paths.ok)) && (
         <div className="mt-2.5 rounded-md bg-sunk px-3 py-2">
-          <div className="text-[0.8125rem] text-accent">
-            {d?.drift ? "配置里没允许我们要挂的路径" : paths!.detail}
-          </div>
+          <div className="text-[0.8125rem] text-accent">{d?.drift ? "配置里没允许我们要挂的路径" : paths!.detail}</div>
           <p className="mt-1 text-[0.75rem] text-ink-3">
             容器不报错，只挂个空目录，勾上的技能就这么没了。把这行写进配置，然后重启：
           </p>

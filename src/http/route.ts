@@ -90,20 +90,8 @@ export function route<E extends Env, P>(
   path: string,
   o: EmptyParsedOpts<P>,
 ): void;
-export function route<E extends Env, B>(
-  app: Hono<E>,
-  ctx: Ctx,
-  method: Method,
-  path: string,
-  o: RawBodyOpts<B>,
-): void;
-export function route<E extends Env>(
-  app: Hono<E>,
-  ctx: Ctx,
-  method: Method,
-  path: string,
-  o: EmptyRawOpts,
-): void;
+export function route<E extends Env, B>(app: Hono<E>, ctx: Ctx, method: Method, path: string, o: RawBodyOpts<B>): void;
+export function route<E extends Env>(app: Hono<E>, ctx: Ctx, method: Method, path: string, o: EmptyRawOpts): void;
 /** A route the panel calls. */
 export function route<E extends Env, B, P>(
   app: Hono<E>,

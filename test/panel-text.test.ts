@@ -21,10 +21,7 @@ test("the wall says what a command is for, and keeps what it was for", () => {
 test("an unrecognised command keeps its own words rather than being filed as 其他", () => {
   // A wrong category is worse than none: the boss would stop trusting the ones
   // that are right.
-  expect(of("command_execution: ./scripts/deploy.sh --dry-run")).toEqual([
-    "",
-    "./scripts/deploy.sh --dry-run",
-  ]);
+  expect(of("command_execution: ./scripts/deploy.sh --dry-run")).toEqual(["", "./scripts/deploy.sh --dry-run"]);
 });
 
 test("a message hands its attachments back as things the panel can open", () => {
@@ -62,11 +59,13 @@ test("an upload too big to hold is refused before it is held", async () => {
   // folder is one gesture that sends forty files. `content-length` is what every
   // browser upload carries, so this is decided without reading a byte.
   const app = makeApp({ db: null as never, config: {} } as never);
-  const r = await app(new Request("http://x/api/attach", {
-    method: "POST",
-    body: "x",
-    headers: { "content-type": "multipart/form-data; boundary=b", "content-length": String(UPLOAD_LIMIT + 1) },
-  }));
+  const r = await app(
+    new Request("http://x/api/attach", {
+      method: "POST",
+      body: "x",
+      headers: { "content-type": "multipart/form-data; boundary=b", "content-length": String(UPLOAD_LIMIT + 1) },
+    }),
+  );
   expect(r.status).toBe(413);
   expect(await r.text()).toContain("MB");
 });
@@ -87,7 +86,7 @@ test("a dropped folder becomes one attachment, and cannot escape its directory",
 
   const app = makeApp({
     db: null as never,
-    config: { dataDir: dir, language: "中文"},
+    config: { dataDir: dir, language: "中文" },
   } as never);
   const r = await app(new Request("http://x/api/attach", { method: "POST", body: form }));
   const { files } = (await r.json()) as { files: { name: string; path: string; type: string }[] };

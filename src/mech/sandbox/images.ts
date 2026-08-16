@@ -59,7 +59,11 @@ async function published(): Promise<{ tags: string[]; note?: string }> {
     // `latest` first, then the rest newest-looking first. Not a semver sort:
     // whatever a release tags is the release's business, and inventing an order
     // it did not ask for is how a "newest" ends up pointing at the wrong one.
-    return { tags: [...tags].sort((a, b) => (a === "latest" ? -1 : b === "latest" ? 1 : b.localeCompare(a, undefined, { numeric: true }))) };
+    return {
+      tags: [...tags].sort((a, b) =>
+        a === "latest" ? -1 : b === "latest" ? 1 : b.localeCompare(a, undefined, { numeric: true }),
+      ),
+    };
   } catch (e) {
     return { tags: [], note: `连不上 ghcr.io：${errText(e, 80)}` };
   }

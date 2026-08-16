@@ -31,7 +31,9 @@ export class Boundary extends Component<{ children: ReactNode }, { err: Error | 
             {err.message}
           </pre>
           <div className="mt-3 flex gap-1.5">
-            <Button variant="go" onClick={() => location.reload()}>刷新</Button>
+            <Button variant="go" onClick={() => location.reload()}>
+              刷新
+            </Button>
             <Button onClick={() => this.setState({ err: null })}>重试这个视图</Button>
           </div>
         </CardBody>

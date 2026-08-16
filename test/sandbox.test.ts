@@ -1,6 +1,16 @@
 import { expect, test } from "bun:test";
 import { open, openMemory } from "../src/db.ts";
-import { allowedImage, hostPathForDaemon, keyInConfig, lineSplitter, skillMounts, SKILL_LINE, SKILL_SYNC, specFor, STAGED_SKILLS } from "../src/mech/sandbox/sandbox.ts";
+import {
+  allowedImage,
+  hostPathForDaemon,
+  keyInConfig,
+  lineSplitter,
+  skillMounts,
+  SKILL_LINE,
+  SKILL_SYNC,
+  specFor,
+  STAGED_SKILLS,
+} from "../src/mech/sandbox/sandbox.ts";
 import { CODEX_HOME } from "../src/mech/sandbox/auth.ts";
 import { setDefaultImage } from "../src/mech/sandbox/images.ts";
 import { cacheProjectSkills, projectSkills } from "../src/mech/skills.ts";
@@ -71,12 +81,7 @@ test("a malformed project config falls back instead of failing the group", () =>
 
 test("malformed sandbox overrides never escape with asserted types", () => {
   const c = ctx({ sandbox: { ...BASE, cpu: "4" } });
-  for (const sandbox of [
-    { image: 7 },
-    { denyDomains: "evil.example.com" },
-    { cacheDirs: [] },
-    { extra: true },
-  ]) {
+  for (const sandbox of [{ image: 7 }, { denyDomains: "evil.example.com" }, { cacheDirs: [] }, { extra: true }]) {
     c.db.run("UPDATE project SET config_json = ? WHERE id = 1", [JSON.stringify({ sandbox })]);
     expect(specFor(c, 1)).toEqual({
       image: "img:1",
@@ -102,7 +107,7 @@ test("stdout lines survive chunks that split mid-object", () => {
 
 test("blank lines never reach the parser", () => {
   const s = lineSplitter();
-  expect(s.push("\n\n{\"a\":1}\n\n")).toEqual(['{"a":1}']);
+  expect(s.push('\n\n{"a":1}\n\n')).toEqual(['{"a":1}']);
   expect(s.rest()).toBe("");
 });
 

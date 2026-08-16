@@ -98,7 +98,12 @@ const res = await fetch(`https://api.github.com/app-manifests/${code}/conversion
   headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
 });
 const app = (await res.json()) as {
-  id: number; slug: string; client_id: string; pem: string; html_url: string; owner: { login: string };
+  id: number;
+  slug: string;
+  client_id: string;
+  pem: string;
+  html_url: string;
+  owner: { login: string };
 };
 if (!res.ok) {
   console.error(`GitHub 拒绝了这次转换：${res.status}`, app);

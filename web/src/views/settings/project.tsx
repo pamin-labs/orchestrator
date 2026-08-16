@@ -8,7 +8,14 @@ import { Gates, Sandbox, type ProjectConfig } from "../project";
 export type ProjectSection = "gates" | "sandbox" | "remove";
 
 export function ProjectPane({
-  section, data, busy, projectId, projectName, groupCount, patch, onRemoved,
+  section,
+  data,
+  busy,
+  projectId,
+  projectName,
+  groupCount,
+  patch,
+  onRemoved,
 }: {
   section: ProjectSection;
   data: ProjectConfig;
@@ -47,7 +54,11 @@ export function ProjectPane({
  * is touched. The branches and PRs stay exactly where they are.
  */
 function Remove({
-  projectId, name, repoPath, groups, onRemoved,
+  projectId,
+  name,
+  repoPath,
+  groups,
+  onRemoved,
 }: {
   projectId: number;
   name: string;

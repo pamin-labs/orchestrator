@@ -59,9 +59,7 @@ function Browse({
   const [err, setErr] = useState("");
 
   const load = async (path?: string | null) => {
-    const r = await fetch(
-      `/api/dirs?${files ? "files=1&" : ""}${path ? `path=${encodeURIComponent(path)}` : ""}`,
-    );
+    const r = await fetch(`/api/dirs?${files ? "files=1&" : ""}${path ? `path=${encodeURIComponent(path)}` : ""}`);
     if (!r.ok) return setErr(await r.text());
     setErr("");
     setD((await r.json()) as Dirs);
@@ -85,7 +83,9 @@ function Browse({
       <div className="flex flex-wrap items-center gap-1 border-b border-rule-soft px-3 py-2 font-mono text-[0.6875rem]">
         {/* The root button IS the first slash. Printing a separator before every
             segment as well gave `/ / Users / me`. */}
-        <Button size="sm" variant="quiet" onClick={() => load("/")}>/</Button>
+        <Button size="sm" variant="quiet" onClick={() => load("/")}>
+          /
+        </Button>
         {parts.map((seg, i) => (
           <span key={i} className="flex items-center">
             {i > 0 && <span className="text-ink-3">/</span>}
@@ -151,10 +151,7 @@ function Browse({
               ) : (
                 glyph
               )}
-              <button
-                onClick={() => onRow(x, isDir)}
-                className="cursor-pointer truncate text-left"
-              >
+              <button onClick={() => onRow(x, isDir)} className="cursor-pointer truncate text-left">
                 {x.name}
               </button>
               <span className="text-[0.75rem] text-ink-3">{meta}</span>
@@ -168,8 +165,14 @@ function Browse({
 }
 
 /** The dialog shell both pickers sit in. */
-function Shell({ open, onOpenChange, children }: {
-  open: boolean; onOpenChange: (v: boolean) => void; children: React.ReactNode;
+function Shell({
+  open,
+  onOpenChange,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  children: React.ReactNode;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -391,9 +394,7 @@ function Repos({
           {/* cmdk renders Empty on any zero count, and a list still loading is
               also zero — so unguarded it says 没有匹配的 over the skeleton, before
               a single repository has arrived. */}
-          {!!d?.repos.length && (
-            <Command.Empty className="p-3.5 text-[0.75rem] text-ink-3">没有匹配的</Command.Empty>
-          )}
+          {!!d?.repos.length && <Command.Empty className="p-3.5 text-[0.75rem] text-ink-3">没有匹配的</Command.Empty>}
           {/* Name, private, last activity. The `owner/` prefix repeats on every row
               of a list that is already one account, and the default branch is not
               something you choose between 87 of — it appears on the highlighted
@@ -449,7 +450,12 @@ function Repos({
 }
 
 /** From a project that already exists: you come to add one and go back to the work. */
-export function Picker({ open, onOpenChange, onAdded, onSettings }: {
+export function Picker({
+  open,
+  onOpenChange,
+  onAdded,
+  onSettings,
+}: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onAdded: (projectId: number) => void;
@@ -484,7 +490,10 @@ export function Picker({ open, onOpenChange, onAdded, onSettings }: {
  * happening anyway. DESIGN.md already says it — with no project at all, the page
  * is the one panel it needs, not a tutorial.
  */
-export function FirstProject({ onAdded, onSettings }: {
+export function FirstProject({
+  onAdded,
+  onSettings,
+}: {
   onAdded: (projectId: number) => void;
   onSettings: () => void;
 }) {
@@ -508,7 +517,11 @@ export function FirstProject({ onAdded, onSettings }: {
  * folder copied in Finder failed outright. This walks the real disk, so a folder
  * is one click and the server copies it.
  */
-export function FilePicker({ open, onOpenChange, onPick }: {
+export function FilePicker({
+  open,
+  onOpenChange,
+  onPick,
+}: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onPick: (paths: string[]) => void;

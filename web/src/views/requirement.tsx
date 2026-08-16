@@ -40,11 +40,22 @@ import { bootstrapOf } from "../lib/bootstrap";
  * what needs you, and what to type — in that order.
  */
 export function Requirement({
-  st, g, frames, refresh, open, tab, onTab,
+  st,
+  g,
+  frames,
+  refresh,
+  open,
+  tab,
+  onTab,
 }: {
-  st: State; g: Group; frames: Frame[]; refresh: () => void; open: boolean;
+  st: State;
+  g: Group;
+  frames: Frame[];
+  refresh: () => void;
+  open: boolean;
   /** From the hash: leaving the drill-in and coming back kept unmounting this. */
-  tab?: string | null; onTab?: (t: string) => void;
+  tab?: string | null;
+  onTab?: (t: string) => void;
 }) {
   const slices = st.slices.filter((s) => s.grp_id === g.id);
   // The ones on the boss first: the rest are reference, and reading order should
@@ -78,7 +89,7 @@ export function Requirement({
   // default one; without a distinct value that click falls straight back to the
   // default and the row will not close.
   const [picked, setPicked] = useState<number | "none" | null>(null);
-  const shown = picked === "none" ? undefined : slices.find((s) => s.id === picked) ?? worked;
+  const shown = picked === "none" ? undefined : (slices.find((s) => s.id === picked) ?? worked);
 
   const draft = g.status === "DRAFT" || g.status === "PLANNING";
   const active = tab ?? (mine.length ? "ask" : "slice");
@@ -108,20 +119,20 @@ export function Requirement({
           <Draft st={st} g={g} refresh={refresh} />
         </Pane>
       ) : (
-        <Tabs
-          value={active}
-          onValueChange={onTab}
-          className="mt-3 flex min-h-0 flex-1 flex-col"
-        >
+        <Tabs value={active} onValueChange={onTab} className="mt-3 flex min-h-0 flex-1 flex-col">
           <TabList>
-            <Tab value="slice" count={slices.length}>切片</Tab>
+            <Tab value="slice" count={slices.length}>
+              切片
+            </Tab>
             {/* Only the ones on the boss are 待你决策. The rest are open questions
                 the chain is still holding, and counting them under that heading
                 made the badge lie about how much of this was a decision. */}
             <Tab value="ask" count={asks.length} mine={mine.length > 0}>
               {mine.length ? "待你决策" : "问题"}
             </Tab>
-            <Tab value="notes" count={notes ?? undefined}>记录</Tab>
+            <Tab value="notes" count={notes ?? undefined}>
+              记录
+            </Tab>
             {/* No count: a container is one or none, and a badge reading 1 next
                 to 工作区 says nothing the tab does not already. */}
             <Tab value="work">工作区</Tab>
@@ -141,7 +152,10 @@ export function Requirement({
                  rows. The scroll still lives here once the open slice outgrows
                  the pane. */
               <div className="min-h-0 max-h-full overflow-y-auto overflow-x-hidden rounded-lg border border-rule">
-                <Accordion value={shown ? String(shown.id) : ""} onValueChange={(v) => setPicked(v ? Number(v) : "none")}>
+                <Accordion
+                  value={shown ? String(shown.id) : ""}
+                  onValueChange={(v) => setPicked(v ? Number(v) : "none")}
+                >
                   {slices.map((s) => (
                     <AccordionItem key={s.id} value={String(s.id)}>
                       <SliceRow st={st} g={g} s={s} selected={s.id === shown?.id} />
@@ -228,9 +242,7 @@ export function Requirement({
       {/* A decision carries its own answer box, and that box is the one that
           unblocks the agent hanging on it. Two inputs on one screen asks the boss
           to work out which of them the words go to. */}
-      {open && !draft && !(active === "ask" && mine.length > 0) && (
-        <SayDock g={g} refresh={refresh} />
-      )}
+      {open && !draft && !(active === "ask" && mine.length > 0) && <SayDock g={g} refresh={refresh} />}
     </section>
   );
 }
@@ -306,13 +318,13 @@ function Bootstrap({ frames, grpId }: { frames: Frame[]; grpId: number }) {
           )}
         >
           {lines.slice(-300).map((f) => (
-            <div key={f.id} className="break-all whitespace-pre-wrap">{f.text}</div>
+            <div key={f.id} className="break-all whitespace-pre-wrap">
+              {f.text}
+            </div>
           ))}
         </div>
       )}
-      {failed && (
-        <Meta className="mt-1.5 block">交给 bootstrap 重试，它会带着上面的报错读一遍仓库</Meta>
-      )}
+      {failed && <Meta className="mt-1.5 block">交给 bootstrap 重试，它会带着上面的报错读一遍仓库</Meta>}
     </div>
   );
 }
@@ -338,16 +350,17 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
   const inQueue = st.mergeQueue.some((m) => m.grpId === g.id);
   const url = prUrl(st, g);
   const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
-  const act = async (a: string) => { await post(`/api/groups/${g.id}/${a}`); refresh(); };
+  const act = async (a: string) => {
+    await post(`/api/groups/${g.id}/${a}`);
+    refresh();
+  };
   const running = ["RUNNING", "PAUSING"].includes(g.status);
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule pb-3">
       <span className="font-display text-[1.25rem] font-semibold">{g.name}</span>
       <Badge
-        tone={
-          heldApproved(g) ? "muted" : g.status === "DRAFT" ? "mine" : g.status === "RUNNING" ? "live" : "muted"
-        }
+        tone={heldApproved(g) ? "muted" : g.status === "DRAFT" ? "mine" : g.status === "RUNNING" ? "live" : "muted"}
       >
         {statusLabel(g)}
       </Badge>
@@ -369,7 +382,11 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
         {!inQueue && g.status === "PR_OPEN" && <Badge>排队中</Badge>}
         {g.status === "RUNNING" && <Button onClick={() => act("pause")}>暂停</Button>}
         {["PAUSED", "PAUSING"].includes(g.status) && !broke && <Button onClick={() => act("resume")}>继续</Button>}
-        {g.status === "PARKED" && <Button variant="go" onClick={() => act("wake")}>唤醒</Button>}
+        {g.status === "PARKED" && (
+          <Button variant="go" onClick={() => act("wake")}>
+            唤醒
+          </Button>
+        )}
         {/* Interrupt and park are rare and consequential. Sitting in the header at
             the same weight as 暂停 they read as ordinary, and one of them discards a
             turn's work. */}
@@ -377,7 +394,10 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
           {running && (
             <MenuItem
               hint="停止当前 turn，改动留着，下一个 turn 会被告知"
-              onSelect={async () => { await post(`/api/groups/${g.id}/interrupt`, { mode: "keep" }); refresh(); }}
+              onSelect={async () => {
+                await post(`/api/groups/${g.id}/interrupt`, { mode: "keep" });
+                refresh();
+              }}
             >
               打断，保留改动
             </MenuItem>
@@ -388,8 +408,10 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
               hint="回到这一轮开始前的 checkpoint，这个 turn 的改动全丢"
               onSelect={async () => {
                 const go = await ask({
-                  title: "打断并回滚", body: "丢弃当前 turn 的全部改动，退回到这一轮开始前。",
-                  yes: "打断并回滚", danger: true,
+                  title: "打断并回滚",
+                  body: "丢弃当前 turn 的全部改动，退回到这一轮开始前。",
+                  yes: "打断并回滚",
+                  danger: true,
                 });
                 if (!go) return;
                 await post(`/api/groups/${g.id}/interrupt`, { mode: "rollback" });
@@ -400,10 +422,7 @@ function Header({ st, g, refresh, slices }: { st: State; g: Group; refresh: () =
             </MenuItem>
           )}
           {["RUNNING", "PAUSING", "PAUSED"].includes(g.status) && (
-            <MenuItem
-              hint="释放并发槽，沙盒里的代码和 checkpoint 原地不动"
-              onSelect={() => act("park")}
-            >
+            <MenuItem hint="释放并发槽，沙盒里的代码和 checkpoint 原地不动" onSelect={() => act("park")}>
               封存
             </MenuItem>
           )}
@@ -477,7 +496,12 @@ function SliceRow({ st, g, s, selected }: { st: State; g: Group; s: Slice; selec
                   ? `待你查收 · ${waited(s.awaiting_at)}`
                   : "待你查收"
                 : on.length
-                  ? on.map((a) => { const [verb, detail] = activityOf(a); return `${a.role} ▸ ${verb ? `${verb} ` : ""}${detail}`; }).join(" · ")
+                  ? on
+                      .map((a) => {
+                        const [verb, detail] = activityOf(a);
+                        return `${a.role} ▸ ${verb ? `${verb} ` : ""}${detail}`;
+                      })
+                      .join(" · ")
                   : s.accept_spec}
         </span>
       </span>
@@ -538,7 +562,13 @@ function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; ref
   // are a verdict on.
   const act = waiting ? (
     <span className="flex shrink-0 gap-1.5">
-      <Button variant="go" onClick={async () => { await post(`/api/slices/${s.id}/accept`); refresh(); }}>
+      <Button
+        variant="go"
+        onClick={async () => {
+          await post(`/api/slices/${s.id}/accept`);
+          refresh();
+        }}
+      >
         查收
       </Button>
       <RejectSlice sliceId={s.id} refresh={refresh} />
@@ -546,7 +576,11 @@ function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; ref
   ) : null;
 
   if (s.status === "pending") {
-    return <div className="border-t border-rule-soft py-2 pl-14 pr-3 text-[0.75rem] text-ink-3">还没开工，等前面的切片查收。</div>;
+    return (
+      <div className="border-t border-rule-soft py-2 pl-14 pr-3 text-[0.75rem] text-ink-3">
+        还没开工，等前面的切片查收。
+      </div>
+    );
   }
   return (
     <div className="border-t border-rule-soft">
@@ -569,7 +603,6 @@ function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; ref
   );
 }
 
-
 /**
  * A second PR for a branch whose first one was closed.
  *
@@ -581,17 +614,22 @@ function SliceDetail({ st, g, s, refresh }: { st: State; g: Group; s: Slice; ref
  */
 function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
   return (
-    <Button variant="go" onClick={async () => {
-      const go = await ask({
-        title: "开一个新 PR",
-        body: "能在 GitHub 上重开旧 PR 就不用这个。分支被强推或删过才用：会用当前分支重提一个，回到合入队列。",
-        yes: "开新 PR",
-      });
-      if (!go) return;
-      const r = await post(`/api/groups/${grpId}/newpr`);
-      if (!r.ok) await ask({ title: "开不出来", body: r.text, yes: "知道了" });
-      refresh();
-    }}>开新 PR</Button>
+    <Button
+      variant="go"
+      onClick={async () => {
+        const go = await ask({
+          title: "开一个新 PR",
+          body: "能在 GitHub 上重开旧 PR 就不用这个。分支被强推或删过才用：会用当前分支重提一个，回到合入队列。",
+          yes: "开新 PR",
+        });
+        if (!go) return;
+        const r = await post(`/api/groups/${grpId}/newpr`);
+        if (!r.ok) await ask({ title: "开不出来", body: r.text, yes: "知道了" });
+        refresh();
+      }}
+    >
+      开新 PR
+    </Button>
   );
 }
 
@@ -603,9 +641,13 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
  * takes a screenshot of what is wrong.
  */
 export function RejectSlice({
-  sliceId, refresh, children,
+  sliceId,
+  refresh,
+  children,
 }: {
-  sliceId: number; refresh: () => void; children?: React.ReactNode;
+  sliceId: number;
+  refresh: () => void;
+  children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -640,7 +682,12 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
       <button
         className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 underline decoration-dotted hover:text-ink"
         onClick={async () => {
-          const v = await ask({ title: "给这个需求设 token 上限", body: "用满就挂起，等你决定加不加。", yes: "设定", field: "例如 2000000" });
+          const v = await ask({
+            title: "给这个需求设 token 上限",
+            body: "用满就挂起，等你决定加不加。",
+            yes: "设定",
+            field: "例如 2000000",
+          });
           const n = Number(String(v ?? "").replace(/[^\d]/g, ""));
           if (n > 0) await set(n);
         }}
@@ -654,7 +701,9 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
     <Tip label={`${g.spent_tokens} / ${g.budget_tokens} tokens。用满即挂起全组。`}>
       <span className="flex w-20 items-center gap-1.5">
         <Bar frac={frac} tone={frac >= 1 ? "bad" : frac >= 0.8 ? "warn" : "ink"} />
-        <Meta>{K(g.spent_tokens)}/{K(g.budget_tokens)}</Meta>
+        <Meta>
+          {K(g.spent_tokens)}/{K(g.budget_tokens)}
+        </Meta>
       </span>
     </Tip>
   );
@@ -681,13 +730,20 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
       <CardBody>
         <CardTitle className="text-[0.9375rem] text-accent">预算用尽，全组挂起</CardTitle>
         <div className="mt-0.5 text-[0.75rem] text-ink-2">
-          已花 {K(g.spent_tokens)} tokens，上限 {K(g.budget_tokens)}。
-          加上限才动得了，「继续」不生效。
+          已花 {K(g.spent_tokens)} tokens，上限 {K(g.budget_tokens)}。 加上限才动得了，「继续」不生效。
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
-          <Button variant="go" onClick={() => set(doubled)}>翻倍到 {K(doubled)}</Button>
+          <Button variant="go" onClick={() => set(doubled)}>
+            翻倍到 {K(doubled)}
+          </Button>
           <Button onClick={() => set(null)}>取消上限</Button>
-          <Button variant="quiet" onClick={async () => { await post(`/api/groups/${g.id}/park`); refresh(); }}>
+          <Button
+            variant="quiet"
+            onClick={async () => {
+              await post(`/api/groups/${g.id}/park`);
+              refresh();
+            }}
+          >
             就停在这里（封存）
           </Button>
         </div>
@@ -696,17 +752,12 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
   );
 }
 
-
 /**
  * Answers given on the boss's behalf, with the undo that makes delegation
  * acceptable at all: roll back to the checkpoint that escalation was raised at,
  * answer it yourself, and re-run from there.
  */
-function Delegated({
-  rows, refresh,
-}: {
-  rows: State["answered"]; refresh: () => void;
-}) {
+function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => void }) {
   // Nothing at all when nobody has answered for you. A sentence explaining what
   // an empty block would have contained is the page reporting an absence, which
   // is what PRODUCT.md says an empty state must not do — and this one sat under
@@ -714,43 +765,50 @@ function Delegated({
   if (!rows.length) return null;
   return (
     <div className="overflow-hidden rounded-lg border border-rule-soft">
-        {rows.map((a) => (
-          // Question, then answer, in the order they happened, at a measure that
-          // can be read. Both used to run the full width of the page, the question
-          // in body text and the answer in a grey slab under it — two paragraphs
-          // of somebody else's words at the weight of live work.
-          <div key={a.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-[0.6875rem] text-ink-3">{a.answered_by} 代答</span>
-              <span className="grow" />
-              <Button variant="quiet" size="sm" onClick={async () => {
+      {rows.map((a) => (
+        // Question, then answer, in the order they happened, at a measure that
+        // can be read. Both used to run the full width of the page, the question
+        // in body text and the answer in a grey slab under it — two paragraphs
+        // of somebody else's words at the weight of live work.
+        <div key={a.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-[0.6875rem] text-ink-3">{a.answered_by} 代答</span>
+            <span className="grow" />
+            <Button
+              variant="quiet"
+              size="sm"
+              onClick={async () => {
                 const go = await ask({
                   title: "撤销并接管",
                   body: "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。",
-                  yes: "撤销并接管", danger: true,
+                  yes: "撤销并接管",
+                  danger: true,
                 });
                 if (!go) return;
                 await post(`/api/escalations/${a.id}/revoke`);
                 refresh();
-              }}>撤销并接管</Button>
-            </div>
-            {/* An exchange, laid out as one: what was asked on the left, what was
+              }}
+            >
+              撤销并接管
+            </Button>
+          </div>
+          {/* An exchange, laid out as one: what was asked on the left, what was
                 said back on the right. Labelled rows in a gutter (`问` / `答`) read
                 as a form, and a paragraph over a grey slab read as two unrelated
                 blocks — this is a conversation the boss was not in, and the shape
                 everyone already knows for that is two sides. */}
-            <div className="mt-1.5 space-y-1.5">
-              <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2 text-[0.75rem] text-ink-3">
-                <Clamp lines={3}>{nl(a.question)}</Clamp>
-              </div>
-              <div className="flex justify-end">
-                <div className="max-w-[46rem] rounded-2xl rounded-tr-sm border border-rule bg-paper px-3.5 py-2 text-[0.8125rem] text-ink-2">
-                  <Clamp lines={3}>{nl(a.answer)}</Clamp>
-                </div>
+          <div className="mt-1.5 space-y-1.5">
+            <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2 text-[0.75rem] text-ink-3">
+              <Clamp lines={3}>{nl(a.question)}</Clamp>
+            </div>
+            <div className="flex justify-end">
+              <div className="max-w-[46rem] rounded-2xl rounded-tr-sm border border-rule bg-paper px-3.5 py-2 text-[0.8125rem] text-ink-2">
+                <Clamp lines={3}>{nl(a.answer)}</Clamp>
               </div>
             </div>
           </div>
-        ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -812,30 +870,46 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
           <>
             <span className="mr-1 text-[0.75rem] text-ink-3 max-[40rem]:hidden">分量：</span>
             <Tip label="原话记进黑板，PM 安排一条修正 task，组继续跑">
-              <Button size="sm" disabled={busy || !text}
-                      onClick={async () => (await send({ text, attachments }, "patch")) && clear()}>
+              <Button
+                size="sm"
+                disabled={busy || !text}
+                onClick={async () => (await send({ text, attachments }, "patch")) && clear()}
+              >
                 要改一处
               </Button>
             </Tip>
             <Tip label="整个需求退回 Dispatcher 重新深挖，已写的代码留在分支上">
-              <Button size="sm" disabled={busy || !text} onClick={async () => {
-                const go = await ask({
-                  title: "退回重新拆解",
-                  body: "这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖。已写的代码留在分支上。",
-                  yes: "退回重拆",
-                });
-                if (go && (await send({ text, attachments }, "respec"))) clear();
-              }}>方向错了</Button>
+              <Button
+                size="sm"
+                disabled={busy || !text}
+                onClick={async () => {
+                  const go = await ask({
+                    title: "退回重新拆解",
+                    body: "这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖。已写的代码留在分支上。",
+                    yes: "退回重拆",
+                  });
+                  if (go && (await send({ text, attachments }, "respec"))) clear();
+                }}
+              >
+                方向错了
+              </Button>
             </Tip>
             <Tip label="停止派发，分支保留不合入，仍然要写 retro">
-              <Button size="sm" disabled={busy || !text} onClick={async () => {
-                const go = await ask({
-                  title: "作废这个需求",
-                  body: "停止派发，分支保留不合入。仍然要求写 retro。",
-                  yes: "作废", danger: true,
-                });
-                if (go && (await send({ text, attachments }, "reject"))) clear();
-              }}>不做了</Button>
+              <Button
+                size="sm"
+                disabled={busy || !text}
+                onClick={async () => {
+                  const go = await ask({
+                    title: "作废这个需求",
+                    body: "停止派发，分支保留不合入。仍然要求写 retro。",
+                    yes: "作废",
+                    danger: true,
+                  });
+                  if (go && (await send({ text, attachments }, "reject"))) clear();
+                }}
+              >
+                不做了
+              </Button>
             </Tip>
           </>
         )}
@@ -890,24 +964,36 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           <div className="text-[0.8125rem] font-semibold text-warn">规划岗建议作废</div>
           <div className="my-1 break-words whitespace-pre-wrap text-[0.8125rem]">{proposal.body}</div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Button variant="go" size="sm" onClick={async () => {
-              const go = await ask({
-                title: "作废这条需求",
-                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
-                yes: "作废", danger: true,
-              });
-              if (!go) return;
-              await post(`/api/groups/${g.id}/drop`, { why: proposal.body.split("\n")[0] });
-              refresh();
-            }}>确认作废</Button>
-            <Button size="sm" onClick={async () => {
-              await post("/api/say", {
-                group_id: g.id,
-                body: "不是重复，也不算已经做完了 —— 接着拆。",
-                as: "respec",
-              });
-              refresh();
-            }}>不，接着做</Button>
+            <Button
+              variant="go"
+              size="sm"
+              onClick={async () => {
+                const go = await ask({
+                  title: "作废这条需求",
+                  body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
+                  yes: "作废",
+                  danger: true,
+                });
+                if (!go) return;
+                await post(`/api/groups/${g.id}/drop`, { why: proposal.body.split("\n")[0] });
+                refresh();
+              }}
+            >
+              确认作废
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () => {
+                await post("/api/say", {
+                  group_id: g.id,
+                  body: "不是重复，也不算已经做完了 —— 接着拆。",
+                  as: "respec",
+                });
+                refresh();
+              }}
+            >
+              不，接着做
+            </Button>
           </div>
         </div>
       )}
@@ -935,13 +1021,18 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
             aria-label="计划卡"
           />
           <div className="mt-3 flex items-baseline gap-3">
-            <Button variant="go" onClick={async () => {
-              // Send the text only when edited: an untouched card is approved as
-              // filed, so "approve" and "edit then approve" stay distinct requests.
-              const edited = card.trim() && card.trim() !== filed.trim();
-              await post(`/api/draft/${g.id}/approve`, edited ? { card: card.trim() } : {});
-              refresh();
-            }}>批准开工</Button>
+            <Button
+              variant="go"
+              onClick={async () => {
+                // Send the text only when edited: an untouched card is approved as
+                // filed, so "approve" and "edit then approve" stay distinct requests.
+                const edited = card.trim() && card.trim() !== filed.trim();
+                await post(`/api/draft/${g.id}/approve`, edited ? { card: card.trim() } : {});
+                refresh();
+              }}
+            >
+              批准开工
+            </Button>
             <span className="text-[0.75rem] text-ink-3">卡可以直接改再批</span>
           </div>
         </>
@@ -979,36 +1070,47 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
         actions={({ text, attachments, busy, clear }) => (
           <>
             <Tip label="整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact">
-              <Button size="sm" disabled={busy || !text} onClick={async () => {
-                const go = await ask({
-                  title: "退回重新拆解",
-                  body: "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。",
-                  yes: "退回重拆",
-                });
-                if (go && (await send({ text, attachments }, "respec"))) clear();
-              }}>退回重拆</Button>
+              <Button
+                size="sm"
+                disabled={busy || !text}
+                onClick={async () => {
+                  const go = await ask({
+                    title: "退回重新拆解",
+                    body: "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。",
+                    yes: "退回重拆",
+                  });
+                  if (go && (await send({ text, attachments }, "respec"))) clear();
+                }}
+              >
+                退回重拆
+              </Button>
             </Tip>
             <Tip label="排队的 turn 全取消，占的路径交还给别的组">
               {/* Not a red button. Two filled buttons on one row and the destructive
                   one outweighs 批准开工, which is the answer this screen usually wants.
                   The confirm carries the weight instead. */}
-              <Button size="sm" disabled={busy} onClick={async () => {
-                const go = await ask({
-                  title: "不做了",
-                  body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
-                  yes: "不做了", danger: true,
-                });
-                if (!go) return;
-                await post(`/api/groups/${g.id}/drop`, { why: text });
-                refresh();
-              }}>不做了</Button>
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={async () => {
+                  const go = await ask({
+                    title: "不做了",
+                    body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
+                    yes: "不做了",
+                    danger: true,
+                  });
+                  if (!go) return;
+                  await post(`/api/groups/${g.id}/drop`, { why: text });
+                  refresh();
+                }}
+              >
+                不做了
+              </Button>
             </Tip>
           </>
         )}
       />
-      <div className="mt-1.5 text-[0.75rem] text-ink-3">
-        两个都发给 Dispatcher，它改完卡再回来给你批。
-      </div>
+      <div className="mt-1.5 text-[0.75rem] text-ink-3">两个都发给 Dispatcher，它改完卡再回来给你批。</div>
     </div>
   );
 }
@@ -1097,49 +1199,58 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
           </div>
         )}
         <div className="ml-auto mt-2 max-w-[46rem]">
-        <Composer
-          key={seed.n}
-          initial={seed.text}
-          rows={2}
-          placeholder="答复。发出去直接解开被阻塞的 agent。⌘Enter 发送"
-          submit="回答"
-          onSubmit={async ({ text, attachments }) => {
-            const r = await post(`/api/escalations/${e.id}/answer`, { answer: text, attachments });
-            refresh();
-            return r.ok;
-          }}
-          actions={({ text, busy }) => (
-            <>
-              <Tip label="用这一组的黑板现算一份草稿，不会发出去">
-                <Button size="sm" variant="quiet" disabled={draft.busy} onClick={askDraft}>
-                  {draft.text ? "再拟一份" : "让 AI 拟一份"}
-                </Button>
-              </Tip>
-              <Tip label="技术选型和架构边界归 Architect 判断，它答不了会自己回来">
-                <Button size="sm"
-                  onClick={async () => { await post(`/api/escalations/${e.id}/delegate`, { to: "architect" }); refresh(); }}>
-                  转 Architect
-                </Button>
-              </Tip>
-              {/* The commonest blocker here is one no answer resolves — a config file
+          <Composer
+            key={seed.n}
+            initial={seed.text}
+            rows={2}
+            placeholder="答复。发出去直接解开被阻塞的 agent。⌘Enter 发送"
+            submit="回答"
+            onSubmit={async ({ text, attachments }) => {
+              const r = await post(`/api/escalations/${e.id}/answer`, { answer: text, attachments });
+              refresh();
+              return r.ok;
+            }}
+            actions={({ text, busy }) => (
+              <>
+                <Tip label="用这一组的黑板现算一份草稿，不会发出去">
+                  <Button size="sm" variant="quiet" disabled={draft.busy} onClick={askDraft}>
+                    {draft.text ? "再拟一份" : "让 AI 拟一份"}
+                  </Button>
+                </Tip>
+                <Tip label="技术选型和架构边界归 Architect 判断，它答不了会自己回来">
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      await post(`/api/escalations/${e.id}/delegate`, { to: "architect" });
+                      refresh();
+                    }}
+                  >
+                    转 Architect
+                  </Button>
+                </Tip>
+                {/* The commonest blocker here is one no answer resolves — a config file
                   is wrong, a shared fixture is broken. Answering it means typing the
                   fix into a chat box for an agent that is not allowed to apply it, so
                   these sat in 待办 until the boss did the work by hand.
 
                   Not `go`: two filled violet buttons side by side is two primaries,
                   and answering is the primary here. */}
-              <Tip label="开成一条需求去做，这一组等它落地后自动继续">
-                <Button size="sm" disabled={busy} onClick={async () => {
-                  const r = await post(`/api/escalations/${e.id}/requirement`, { text });
-                  refresh();
-                  if (r.ok) toast.success(r.text);
-                }}>
-                  开成需求
-                </Button>
-              </Tip>
-            </>
-          )}
-        />
+                <Tip label="开成一条需求去做，这一组等它落地后自动继续">
+                  <Button
+                    size="sm"
+                    disabled={busy}
+                    onClick={async () => {
+                      const r = await post(`/api/escalations/${e.id}/requirement`, { text });
+                      refresh();
+                      if (r.ok) toast.success(r.text);
+                    }}
+                  >
+                    开成需求
+                  </Button>
+                </Tip>
+              </>
+            )}
+          />
         </div>
       </AccordionBody>
     </>

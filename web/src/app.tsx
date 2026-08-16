@@ -28,8 +28,19 @@ import { CostView, Desk, Owns } from "./views/tables";
 // the breadcrumb is the way back out. `progress` deep links from before (and from
 // every notification already sent) carry a group id, so they land on the drill-in.
 type View =
-  | "home" | "board" | "progress" | "req" | "desk" | "owns" | "cost" | "notes"
-  | "settings" | "config" | "skills" | "github" | "sandbox";
+  | "home"
+  | "board"
+  | "progress"
+  | "req"
+  | "desk"
+  | "owns"
+  | "cost"
+  | "notes"
+  | "settings"
+  | "config"
+  | "skills"
+  | "github"
+  | "sandbox";
 
 /**
  * Views that keep something pinned and scroll the rest themselves.
@@ -49,9 +60,19 @@ const SELF_SCROLL = new Set<View>(["cost", "owns", "desk", "notes", "progress", 
  * sent still lands, on the section it used to be.
  */
 const DIALOG: Partial<Record<View, Section>> = {
-  settings: "cred", config: "gates", skills: "skills", github: "github", sandbox: "sandbox",
+  settings: "cred",
+  config: "gates",
+  skills: "skills",
+  github: "github",
+  sandbox: "sandbox",
 };
-interface Sel { p: number | null; view: View; g: number | null; t: string | null; s: string | null }
+interface Sel {
+  p: number | null;
+  view: View;
+  g: number | null;
+  t: string | null;
+  s: string | null;
+}
 
 const readHash = (): Sel => {
   const h = new URLSearchParams(location.hash.slice(1));
@@ -75,9 +96,15 @@ const readHash = (): Sel => {
 
 /** A name in the trail. Clicking it offers the others of its kind. */
 function Crumb({
-  children, dim, onClick, className,
+  children,
+  dim,
+  onClick,
+  className,
 }: {
-  children: React.ReactNode; dim?: boolean; onClick: () => void; className?: string;
+  children: React.ReactNode;
+  dim?: boolean;
+  onClick: () => void;
+  className?: string;
 }) {
   return (
     <button
@@ -295,9 +322,7 @@ export function App() {
         }))}
         onPick={(id) => go({ view: "req", g: id })}
       />
-      {sel.p && (
-        <NewRequirement open={adding} onOpenChange={setAdding} projectId={sel.p} onDone={refresh} />
-      )}
+      {sel.p && <NewRequirement open={adding} onOpenChange={setAdding} projectId={sel.p} onDone={refresh} />}
       {/* The hash names the way in, not the section the boss is standing on: once
           it is open the left rail moves inside it. */}
       <SettingsDialog
@@ -332,245 +357,258 @@ export function App() {
           any change to the header silently detuned the region below it, and a child
           that overflowed grew the window because nothing above it was constrained. */}
       <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)]">
-      <header className="z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
-        <button
-          className="cursor-pointer font-display text-[1.0625rem] font-semibold"
-          onClick={() => go({ view: "home", p: null, g: null })}
-        >
-          orchestrator
-        </button>
-        {/* Each name in the trail switches to another of its own kind. A separate
+        <header className="z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
+          <button
+            className="cursor-pointer font-display text-[1.0625rem] font-semibold"
+            onClick={() => go({ view: "home", p: null, g: null })}
+          >
+            orchestrator
+          </button>
+          {/* Each name in the trail switches to another of its own kind. A separate
             切换 control beside them had to explain which of the two it meant, and
             the answer changed depending on how deep the boss had drilled in. */}
-        {!home && (
-          <span className="flex min-w-0 shrink items-baseline gap-2 text-[0.8125rem]">
-            <span className="text-ink-3">/</span>
-            <Crumb dim={view === "req"} onClick={() => setPickProject(true)}>
-              {proj!.name}
-            </Crumb>
-            {view === "req" && openGroup && (
-              <>
-                <span className="text-ink-3">/</span>
-                    {/* Requirement names are a sentence the boss typed, and one of
+          {!home && (
+            <span className="flex min-w-0 shrink items-baseline gap-2 text-[0.8125rem]">
+              <span className="text-ink-3">/</span>
+              <Crumb dim={view === "req"} onClick={() => setPickProject(true)}>
+                {proj!.name}
+              </Crumb>
+              {view === "req" && openGroup && (
+                <>
+                  <span className="text-ink-3">/</span>
+                  {/* Requirement names are a sentence the boss typed, and one of
                     them ran the views off the bar. The trail gives up width
                     first: it says where you are, and the tabs are how you leave. */}
-                <Crumb className="max-w-[18rem]" onClick={() => setPickReq(true)}>
-                  {openGroup.name}
-                </Crumb>
-              </>
-            )}
-            <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">⌘K</span>
-          </span>
-        )}
-        {/* The views, on the same line as everything else. They had a row of
+                  <Crumb className="max-w-[18rem]" onClick={() => setPickReq(true)}>
+                    {openGroup.name}
+                  </Crumb>
+                </>
+              )}
+              <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">⌘K</span>
+            </span>
+          )}
+          {/* The views, on the same line as everything else. They had a row of
             their own, which read as a second tab bar above whatever tabs the view
             itself has — three levels of the same affordance stacked. Five items
             fit here, and the row they cost is worth more to the list below. */}
-        {/* A rule between the trail and the views: they were touching, and two
+          {/* A rule between the trail and the views: they were touching, and two
             different kinds of navigation reading as one run of words is how you
             click the wrong one. */}
-        {!home && (
-          <span className="flex min-w-0 gap-4 overflow-x-auto border-l border-rule pl-5">
-            {VIEWS.map(([k, zh]) => (
-              <button
-                key={k}
-                // Every tab clears the drill-in, 需求 included: keeping `g` there
-                // made the tab reopen the requirement the boss was trying to leave.
-                onClick={() => go({ view: k, g: null, t: null })}
-                className={cn(
-                  "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-1 text-[0.8125rem] transition-colors",
-                  // The drill-in belongs to 需求, so that tab stays lit inside it.
-                  view === k || (view === "req" && k === "progress")
-                    ? "border-accent font-medium text-ink"
-                    : "border-transparent text-ink-3 hover:text-ink",
-                )}
-              >
-                {zh}
-              </button>
-            ))}
-          </span>
-        )}
-        <span className="grow" />
-        {/* Three groups, three rhythms: what is true (usage, queue), what you can
+          {!home && (
+            <span className="flex min-w-0 gap-4 overflow-x-auto border-l border-rule pl-5">
+              {VIEWS.map(([k, zh]) => (
+                <button
+                  key={k}
+                  // Every tab clears the drill-in, 需求 included: keeping `g` there
+                  // made the tab reopen the requirement the boss was trying to leave.
+                  onClick={() => go({ view: k, g: null, t: null })}
+                  className={cn(
+                    "-mb-px cursor-pointer whitespace-nowrap border-b-2 py-1 text-[0.8125rem] transition-colors",
+                    // The drill-in belongs to 需求, so that tab stays lit inside it.
+                    view === k || (view === "req" && k === "progress")
+                      ? "border-accent font-medium text-ink"
+                      : "border-transparent text-ink-3 hover:text-ink",
+                  )}
+                >
+                  {zh}
+                </button>
+              ))}
+            </span>
+          )}
+          <span className="grow" />
+          {/* Three groups, three rhythms: what is true (usage, queue), what you can
             do (new requirement), and the two switches. They had one gap between
             every pair, which reads as a single run of eight things rather than
             three groups of two or three. */}
-        <UsageBar usage={st.usage} />
-        {live !== "live" && (
-          <span className="flex items-center gap-1.5 rounded-md bg-sunk px-2 py-0.5 font-mono text-[0.6875rem] text-warn">
-            <i className="breathe size-1.5 rounded-full bg-warn" />
-            {live === "retry" ? "连接断了，重连中" : "连接中"}
-          </span>
-        )}
-        {/* One number, always the same number: how many things cannot move without
+          <UsageBar usage={st.usage} />
+          {live !== "live" && (
+            <span className="flex items-center gap-1.5 rounded-md bg-sunk px-2 py-0.5 font-mono text-[0.6875rem] text-warn">
+              <i className="breathe size-1.5 rounded-full bg-warn" />
+              {live === "retry" ? "连接断了，重连中" : "连接中"}
+            </span>
+          )}
+          {/* One number, always the same number: how many things cannot move without
             you. Zero is a state worth showing plainly — it is the goal. */}
-        {waiting > 0 ? (
-          <Button
-            variant="go"
-            size="sm"
-            onClick={() => go(sel.p ? { view: "board", g: null } : { view: "home", p: null, g: null })}
-          >
-            待办 {waiting}
-          </Button>
-        ) : (
-          <span className="font-mono text-[0.6875rem] text-ink-3">无待办</span>
-        )}
-        {sel.p && !!st.projects.length && (
-          <Button size="sm" className="ml-1" onClick={() => setAdding(true)}>＋ 新需求</Button>
-        )}
-        <span className="ml-2 flex items-center gap-1 border-l border-rule pl-3">
-        {!home && (
-          <Tip label={`${side ? "收起事件流" : "展开事件流：谁跟谁说了什么，按时间倒序"} ⌘B`}>
-            <button
-              onClick={() => setSide((v) => !v)}
-              aria-label="事件流"
-              className={cn(
-                "grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
-                side ? "text-ink" : "text-ink-3 hover:text-ink",
-              )}
+          {waiting > 0 ? (
+            <Button
+              variant="go"
+              size="sm"
+              onClick={() => go(sel.p ? { view: "board", g: null } : { view: "home", p: null, g: null })}
             >
-              <PanelRight size={14} strokeWidth={1.75} />
-            </button>
-          </Tip>
-        )}
-        {/* Not a sixth peer view. The five answer "where is the work"; this
+              待办 {waiting}
+            </Button>
+          ) : (
+            <span className="font-mono text-[0.6875rem] text-ink-3">无待办</span>
+          )}
+          {sel.p && !!st.projects.length && (
+            <Button size="sm" className="ml-1" onClick={() => setAdding(true)}>
+              ＋ 新需求
+            </Button>
+          )}
+          <span className="ml-2 flex items-center gap-1 border-l border-rule pl-3">
+            {!home && (
+              <Tip label={`${side ? "收起事件流" : "展开事件流：谁跟谁说了什么，按时间倒序"} ⌘B`}>
+                <button
+                  onClick={() => setSide((v) => !v)}
+                  aria-label="事件流"
+                  className={cn(
+                    "grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
+                    side ? "text-ink" : "text-ink-3 hover:text-ink",
+                  )}
+                >
+                  <PanelRight size={14} strokeWidth={1.75} />
+                </button>
+              </Tip>
+            )}
+            {/* Not a sixth peer view. The five answer "where is the work"; this
             answers "is this wired up", which is asked once and then never again
             until something breaks — and when it does break, the accent says so
             from here. It opens over the work rather than replacing it. */}
-        <Tip label="设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S">
-          <button
-            onClick={() => go({ view: "github" })}
-            aria-label="设置"
-            className={cn(
-              "relative grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
-              section ? "text-ink" : "text-ink-3 hover:text-ink",
-            )}
-          >
-            <SlidersHorizontal size={14} strokeWidth={1.75} />
-            {!st.ready && (
-              <i className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-accent" aria-hidden />
-            )}
-          </button>
-        </Tip>
-        </span>
-      </header>
+            <Tip label="设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S">
+              <button
+                onClick={() => go({ view: "github" })}
+                aria-label="设置"
+                className={cn(
+                  "relative grid size-6.5 cursor-pointer place-items-center rounded-md transition-colors hover:bg-sunk",
+                  section ? "text-ink" : "text-ink-3 hover:text-ink",
+                )}
+              >
+                <SlidersHorizontal size={14} strokeWidth={1.75} />
+                {!st.ready && <i className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-accent" aria-hidden />}
+              </button>
+            </Tip>
+          </span>
+        </header>
 
-
-      {/* Draggable when the feed is open. 20rem was a guess that has to serve both
+        {/* Draggable when the feed is open. 20rem was a guess that has to serve both
           "glance at what just happened" and "read a long journal entry", and the
           reader is the only one who knows which. Below 64rem it goes back to one
           column: there is no width to split. */}
-      {/* The document does not scroll; the view does. Header and nav were sticky,
+        {/* The document does not scroll; the view does. Header and nav were sticky,
           which kept them visible but still let the page grow to whatever the
           longest list wanted — so every view had a different height and the
           scrollbar belonged to the window. One region, fixed to the viewport, and
           each view decides what scrolls inside it. 4.5rem is header plus nav. */}
-      <Group
-        orientation="horizontal"
-        className={cn("h-full min-h-0", showSide ? "flex max-[64rem]:block" : "block")}
-      >
-        <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
-          {/* The view decides what scrolls. 成本 has a tab strip and a rail that
+        <Group orientation="horizontal" className={cn("h-full min-h-0", showSide ? "flex max-[64rem]:block" : "block")}>
+          <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
+            {/* The view decides what scrolls. 成本 has a tab strip and a rail that
               must stay put, so it manages its own panes; everything else scrolls
               whole. Two scrollbars, or a page that grows past the viewport with
               its controls at the top, are the two failures this picks between. */}
-          <div
-            className={cn(
-              "flex h-full max-w-[76rem] flex-col px-6 pt-5",
-              SELF_SCROLL.has(view) ? "overflow-hidden pb-4" : "overflow-y-auto pb-16",
-            )}
-          >
-          <Boundary key={`${sel.view}:${sel.p}:${sel.g}`}>
-          {!st.projects.length ? (
-            /* The list itself, not a card describing the button that opens it.
+            <div
+              className={cn(
+                "flex h-full max-w-[76rem] flex-col px-6 pt-5",
+                SELF_SCROLL.has(view) ? "overflow-hidden pb-4" : "overflow-y-auto pb-16",
+              )}
+            >
+              <Boundary key={`${sel.view}:${sel.p}:${sel.g}`}>
+                {!st.projects.length ? (
+                  /* The list itself, not a card describing the button that opens it.
                The one second the repo list costs is spent inside this page load
                rather than after a click. */
-            <FirstProject onAdded={added} onSettings={() => go({ view: "github" })} />
-          ) : home ? (
-            <Home st={st} onEnter={(p) => go({ p, view: "progress", g: null })} onOpen={openReq}
-                  // Writing the first requirement without leaving the list: the row
-                  // that had nothing in it is where the state changes, so that is
-                  // where it should be watched changing.
-                  onNew={(p) => { go({ p }); setAdding(true); }}
-                  onAdd={() => setPicking(true)} refresh={refresh} />
-          ) : view === "progress" ? (
-            groups.length || delivered ? (
-              <Progress
-                st={st}
-                projectId={sel.p!}
-                onOpen={openReq}
-                maxGroups={st.limits?.maxGroups}
-                tab={sel.t}
-                onTab={(t) => go({ t })}
-                queue={<Queue st={st} projectId={sel.p} onOpen={openReq} refresh={refresh} />}
-              />
-            ) : (
-              /* Also the screen you land on the moment a project is added, so it
+                  <FirstProject onAdded={added} onSettings={() => go({ view: "github" })} />
+                ) : home ? (
+                  <Home
+                    st={st}
+                    onEnter={(p) => go({ p, view: "progress", g: null })}
+                    onOpen={openReq}
+                    // Writing the first requirement without leaving the list: the row
+                    // that had nothing in it is where the state changes, so that is
+                    // where it should be watched changing.
+                    onNew={(p) => {
+                      go({ p });
+                      setAdding(true);
+                    }}
+                    onAdd={() => setPicking(true)}
+                    refresh={refresh}
+                  />
+                ) : view === "progress" ? (
+                  groups.length || delivered ? (
+                    <Progress
+                      st={st}
+                      projectId={sel.p!}
+                      onOpen={openReq}
+                      maxGroups={st.limits?.maxGroups}
+                      tab={sel.t}
+                      onTab={(t) => go({ t })}
+                      queue={<Queue st={st} projectId={sel.p} onOpen={openReq} refresh={refresh} />}
+                    />
+                  ) : (
+                    /* Also the screen you land on the moment a project is added, so it
                  carries what adding decided on your behalf. The branch was taken
                  from GitHub without asking; unstated, that is a silent default,
                  and the first sign of a wrong one is a group branching off
                  nothing. Gates and the install command are genuinely unknown
                  until a container has the repository in hand (决策 007 §2) —
                  said as expected rather than left looking missing. */
-              <Card className="max-w-[40rem]">
-                <CardBody>
-                  <CardTitle>还没有需求</CardTitle>
-                  {/* One sentence. The second one used to promise 20 秒, which
+                    <Card className="max-w-[40rem]">
+                      <CardBody>
+                        <CardTitle>还没有需求</CardTitle>
+                        {/* One sentence. The second one used to promise 20 秒, which
                       nothing here measures — a number the page invented. */}
-                  <div className="mt-1 text-[0.75rem] text-ink-3">
-                    写一句话，拆成计划卡再回来给你批。
-                  </div>
-                  <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-[0.75rem]">
-                    <dt className="text-ink-3">仓库</dt>
-                    <dd className="truncate font-mono text-[0.6875rem]">{proj?.repo_path}</dd>
-                    <dt className="text-ink-3">从这个分支开</dt>
-                    <dd className="font-mono text-[0.6875rem]">{proj?.base_branch || "问 GitHub 要"}</dd>
-                    <dt className="text-ink-3">闸门 / 安装命令</dt>
-                    <dd className="text-ink-2">第一个组克隆完才猜得出来，到时候填进设置</dd>
-                  </dl>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button variant="go" onClick={() => setAdding(true)}>＋ 新需求</Button>
-                    {/* Named for what it changes, not 改这些. It also went to 闸门,
+                        <div className="mt-1 text-[0.75rem] text-ink-3">写一句话，拆成计划卡再回来给你批。</div>
+                        <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-rule-soft pt-3 text-[0.75rem]">
+                          <dt className="text-ink-3">仓库</dt>
+                          <dd className="truncate font-mono text-[0.6875rem]">{proj?.repo_path}</dd>
+                          <dt className="text-ink-3">从这个分支开</dt>
+                          <dd className="font-mono text-[0.6875rem]">{proj?.base_branch || "问 GitHub 要"}</dd>
+                          <dt className="text-ink-3">闸门 / 安装命令</dt>
+                          <dd className="text-ink-2">第一个组克隆完才猜得出来，到时候填进设置</dd>
+                        </dl>
+                        <div className="mt-3 flex items-center gap-2">
+                          <Button variant="go" onClick={() => setAdding(true)}>
+                            ＋ 新需求
+                          </Button>
+                          {/* Named for what it changes, not 改这些. It also went to 闸门,
                         which is the one row here nothing can be done about yet —
                         the branch and the install command live under 沙盒. */}
-                    <Button variant="quiet" onClick={() => go({ view: "sandbox" })}>改基线分支</Button>
+                          <Button variant="quiet" onClick={() => go({ view: "sandbox" })}>
+                            改基线分支
+                          </Button>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  )
+                ) : view === "req" ? (
+                  openGroup ? (
+                    <Requirement
+                      st={st}
+                      g={openGroup}
+                      frames={frames}
+                      refresh={refresh}
+                      open
+                      tab={sel.t}
+                      onTab={(t) => go({ t })}
+                    />
+                  ) : (
+                    <div className="text-[0.8125rem] text-ink-3">这个需求已经归档或不存在了。</div>
+                  )
+                ) : view === "desk" ? (
+                  <Desk st={st} frames={frames} projectId={sel.p!} />
+                ) : view === "notes" ? (
+                  <Notes projectId={sel.p!} tab={sel.t} onTab={(t) => go({ t })} />
+                ) : view === "owns" ? (
+                  <Owns st={st} projectId={sel.p!} />
+                ) : (
+                  <CostView cost={cost} />
+                )}
+              </Boundary>
+            </div>
+          </Panel>
+          {showSide && (
+            <>
+              <Separator className="w-px shrink-0 cursor-col-resize bg-rule transition-colors hover:bg-accent data-[state=dragging]:bg-accent max-[64rem]:hidden" />
+              <Panel defaultSize="20rem" minSize="14rem" maxSize="40rem" className="min-w-0">
+                <aside className="h-full overflow-auto">
+                  <div className="px-4 pb-24 pt-4">
+                    <Timeline st={st} frames={frames} grpId={sel.g} projectId={sel.p} />
                   </div>
-                </CardBody>
-              </Card>
-            )
-          ) : view === "req" ? (
-            openGroup ? (
-              <Requirement st={st} g={openGroup} frames={frames} refresh={refresh} open tab={sel.t} onTab={(t) => go({ t })} />
-            ) : (
-              <div className="text-[0.8125rem] text-ink-3">这个需求已经归档或不存在了。</div>
-            )
-          ) : view === "desk" ? (
-            <Desk st={st} frames={frames} projectId={sel.p!} />
-          ) : view === "notes" ? (
-            <Notes projectId={sel.p!} tab={sel.t} onTab={(t) => go({ t })} />
-          ) : view === "owns" ? (
-            <Owns st={st} projectId={sel.p!} />
-          ) : (
-            <CostView cost={cost} />
+                </aside>
+              </Panel>
+            </>
           )}
-          </Boundary>
-          </div>
-        </Panel>
-        {showSide && (
-          <>
-            <Separator className="w-px shrink-0 cursor-col-resize bg-rule transition-colors hover:bg-accent data-[state=dragging]:bg-accent max-[64rem]:hidden" />
-            <Panel defaultSize="20rem" minSize="14rem" maxSize="40rem" className="min-w-0">
-              <aside className="h-full overflow-auto">
-                <div className="px-4 pb-24 pt-4">
-                  <Timeline st={st} frames={frames} grpId={sel.g} projectId={sel.p} />
-                </div>
-              </aside>
-            </Panel>
-          </>
-        )}
-      </Group>
+        </Group>
       </div>
     </TipRoot>
   );
-
 }

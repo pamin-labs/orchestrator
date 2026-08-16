@@ -2,7 +2,13 @@ import { existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DB } from "../../db.ts";
 import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "../sandbox/auth.ts";
-import { allowedHostPaths, coveredBy, hasRegistry, hostPathForDaemon, SANDBOX_API_KEY_HEADER } from "../sandbox/sandbox.ts";
+import {
+  allowedHostPaths,
+  coveredBy,
+  hasRegistry,
+  hostPathForDaemon,
+  SANDBOX_API_KEY_HEADER,
+} from "../sandbox/sandbox.ts";
 import { isStale, parseAuth } from "../sandbox/chatgpt.ts";
 
 /**
@@ -138,13 +144,16 @@ async function ask(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; d
       if (r.ok) return { ok: true, detail: "能用" };
       // 404 included: GitHub answers it for a token that cannot see something,
       // deliberately, so it is not evidence of anything being deleted.
-      if (r.status === 401 || r.status === 403 || r.status === 404) return { ok: false, detail: "GitHub 不认这个 token 了" };
+      if (r.status === 401 || r.status === 403 || r.status === 404)
+        return { ok: false, detail: "GitHub 不认这个 token 了" };
       return { ok: true, detail: `没验成（HTTP ${r.status}）` };
     } catch {
       return { ok: true, detail: "连不上，没验" };
     }
   }
-  const base = auth.baseUrl?.replace(/\/+$/, "") ?? (runtime === "claude" ? "https://api.anthropic.com" : "https://api.openai.com");
+  const base =
+    auth.baseUrl?.replace(/\/+$/, "") ??
+    (runtime === "claude" ? "https://api.anthropic.com" : "https://api.openai.com");
   const headers: Record<string, string> =
     runtime === "claude"
       ? auth.mode === "api_key"
@@ -190,8 +199,7 @@ function jwtExpiry(token?: string): number | null {
  * for anyone who builds their own image or runs the binary in a container of
  * their own.
  */
-export const inContainer = (): boolean =>
-  process.env.ORCH_IN_CONTAINER === "1" || existsSync("/.dockerenv");
+export const inContainer = (): boolean => process.env.ORCH_IN_CONTAINER === "1" || existsSync("/.dockerenv");
 
 export interface PreflightInput {
   db: DB;
@@ -223,7 +231,11 @@ function localImages(ref: string): boolean {
 function egressImages(): string[] {
   try {
     const p = Bun.spawnSync(["docker", "images", "--format", "{{.Tag}}", "opensandbox/egress"], { stdout: "pipe" });
-    return p.stdout.toString().split("\n").map((l) => l.trim()).filter(Boolean);
+    return p.stdout
+      .toString()
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
   } catch {
     return [];
   }
@@ -266,25 +278,27 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // installed at all is a download, installed but not started is one click.
   const docker = probe("docker", ["info"]);
   const installed = docker || probe("docker");
-  if (!contained) out.push({
-    name: "docker",
-    ok: docker,
-    detail: docker ? "running" : installed ? "装了，但没启动（daemon 不理人）" : "not reachable",
-    fix: installed
-      ? "Docker 装了但没跑起来 —— 启动 Docker Desktop（或 colima start），等它变绿再回来。"
-      : "装 Docker（或 Colima / Podman，任何提供 docker socket 的都行）并启动。",
-  });
+  if (!contained)
+    out.push({
+      name: "docker",
+      ok: docker,
+      detail: docker ? "running" : installed ? "装了，但没启动（daemon 不理人）" : "not reachable",
+      fix: installed
+        ? "Docker 装了但没跑起来 —— 启动 Docker Desktop（或 colima start），等它变绿再回来。"
+        : "装 Docker（或 Colima / Podman，任何提供 docker socket 的都行）并启动。",
+    });
 
   // Only ever consulted when the server is down, but reported always: the fix
   // for a missing server is `uvx opensandbox-server`, and a machine without uv
   // cannot run that either. Two failures that look identical from the panel.
   const uvx = probe("uvx");
-  if (!contained) out.push({
-    name: "uv / python",
-    ok: uvx,
-    detail: uvx ? "uvx available" : "no uvx on PATH",
-    fix: "brew install uv —— opensandbox-server 是个 Python 包，没有它就没东西可启动。",
-  });
+  if (!contained)
+    out.push({
+      name: "uv / python",
+      ok: uvx,
+      detail: uvx ? "uvx available" : "no uvx on PATH",
+      fix: "brew install uv —— opensandbox-server 是个 Python 包，没有它就没东西可启动。",
+    });
 
   // The same order `connection()` resolves it in: panel, then environment, then
   // the yaml. Checking a different key than the one the turns use is how a green
@@ -347,19 +361,20 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   const egress = !contained && probe("docker") ? egressImages() : [];
   const good = egress.filter((t) => newEnough(t));
   const stale = egress.filter((t) => !newEnough(t));
-  if (!contained) out.push({
-    name: "egress sidecar",
-    ok: good.length > 0,
-    detail:
-      egress.length === 0
-        ? "no opensandbox/egress image pulled"
-        : good.length === 0
-          ? `only ${stale.join(", ")}, which is too old`
-          : stale.length
-            ? `${good.join(", ")} (also has ${stale.join(", ")} — check [egress] image)`
-            : good.join(", "),
-    fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
-  });
+  if (!contained)
+    out.push({
+      name: "egress sidecar",
+      ok: good.length > 0,
+      detail:
+        egress.length === 0
+          ? "no opensandbox/egress image pulled"
+          : good.length === 0
+            ? `only ${stale.join(", ")}, which is too old`
+            : stale.length
+              ? `${good.join(", ")} (also has ${stale.join(", ")} — check [egress] image)`
+              : good.join(", "),
+      fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
+    });
 
   // The image every group's container is made from — reported only when it can
   // fail, which is not the usual case any more.

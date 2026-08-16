@@ -1,6 +1,29 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+export type RouteCall = {
+  method: string;
+  path: string;
+  body: boolean;
+  params: boolean;
+};
+
+/** Route declarations, read structurally so formatting cannot disable a guard. */
+export function routeCalls(): RouteCall[] {
+  const source = readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8");
+  const declarations = [...source.matchAll(/\b(?:agentRoute|route)\(\s*app,\s*ctx,/g)];
+  const calls = [
+    ...source.matchAll(/\b(?:agentRoute|route)\(\s*app,\s*ctx,\s*"([^"]+)",\s*"([^"]+)",\s*\{([^}]*)\}\s*\)/g),
+  ].map((match) => ({
+    method: match[1]!,
+    path: match[2]!,
+    body: /\bbody\s*:/.test(match[3]!),
+    params: /\bparams\s*:/.test(match[3]!),
+  }));
+  if (calls.length !== declarations.length) throw new Error("route source reader missed a declaration");
+  return calls;
+}
+
 /**
  * Every line of the route layer, as one string.
  *
@@ -17,7 +40,11 @@ export function routeSource(): string {
   // exists to catch, one directory up.
   const walk = (dir: string): string[] =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-      e.isDirectory() ? walk(join(dir, e.name)) : e.name.endsWith(".ts") ? [readFileSync(join(dir, e.name), "utf8")] : [],
+      e.isDirectory()
+        ? walk(join(dir, e.name))
+        : e.name.endsWith(".ts")
+          ? [readFileSync(join(dir, e.name), "utf8")]
+          : [],
     );
   return [
     readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8"),

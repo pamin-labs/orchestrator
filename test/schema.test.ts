@@ -45,9 +45,7 @@ test("agent tokens are unique, and NULL is not a duplicate", () => {
 
 test("foreign keys are enforced", () => {
   const db = openMemory();
-  expect(() =>
-    db.run("INSERT INTO grp (project_id, name, created_at) VALUES (999, 'x', 0)"),
-  ).toThrow();
+  expect(() => db.run("INSERT INTO grp (project_id, name, created_at) VALUES (999, 'x', 0)")).toThrow();
 });
 
 test("event.seq is monotonic — the timeline never reorders", () => {
@@ -62,9 +60,7 @@ test("slice seq is unique per group", () => {
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, created_at) VALUES (1, 'g', 0)");
-  const ins = db.prepare(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (?, ?, ?, ?, 0)",
-  );
+  const ins = db.prepare("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (?, ?, ?, ?, 0)");
   ins.run(1, 1, "S1", "tests pass");
   expect(() => ins.run(1, 1, "dup", "x")).toThrow();
 });

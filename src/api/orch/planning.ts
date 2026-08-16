@@ -47,9 +47,7 @@ export const postDraft: AgentHandler<z.infer<typeof DraftBody>> = async (ctx, _r
   const grpId = resolveGroup(ctx, b.group_id, a.grp_id);
   if (!grpId) return bad("which group? pass its id or name");
   if (!mayAct(ctx, a, grpId)) return text("not your group", 403);
-  const grp = ctx.db
-    .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-    .get(grpId);
+  const grp = ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId);
   if (!grp) return bad(`no group ${grpId}`);
 
   // Paths the card names that are not in the repo.
@@ -129,7 +127,9 @@ const MAX_SPLIT = 6;
 
 export const SplitBody = z.object({
   group_id: GroupRef,
-  requirements: z.array(z.object({ name: z.string().max(80).optional(), idea: z.string().min(1).max(8000) })).optional(),
+  requirements: z
+    .array(z.object({ name: z.string().max(80).optional(), idea: z.string().min(1).max(8000) }))
+    .optional(),
   why: z.string().max(4000).optional(),
 });
 
@@ -151,16 +151,12 @@ export const postSplit: AgentHandler<z.infer<typeof SplitBody>> = async (ctx, _r
         `after that the branch exists and re-cutting the work is the boss's respec, not yours.`,
     );
   }
-  const hasWork = ctx.db
-    .query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ?")
-    .get(gid)!.c;
+  const hasWork = ctx.db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ?").get(gid)!.c;
   if (hasWork > 0 || grp.branch) return bad(`${grp.name} already has slices or a branch; split before that`);
 
   const items = (b.requirements ?? []).filter((r) => r?.idea?.trim());
   if (items.length < 2) {
-    return bad(
-      "a split needs at least 2 requirements. If it is one thing, just file the card with `orch draft`.",
-    );
+    return bad("a split needs at least 2 requirements. If it is one thing, just file the card with `orch draft`.");
   }
   if (items.length > MAX_SPLIT) {
     return bad(
@@ -368,8 +364,9 @@ export const postBlocked: AgentHandler<z.infer<typeof BlockedBody>> = async (ctx
   if (owner) {
     for (let at: number | null = owner.id, hops = 0; at && hops < 32; hops++) {
       if (at === gid) return bad(`${owner.name} is already waiting on you — one of you has to go first`);
-      at = ctx.db.query<{ blocked_on: number | null }, [number]>("SELECT blocked_on FROM grp WHERE id = ?").get(at)
-        ?.blocked_on ?? null;
+      at =
+        ctx.db.query<{ blocked_on: number | null }, [number]>("SELECT blocked_on FROM grp WHERE id = ?").get(at)
+          ?.blocked_on ?? null;
     }
   }
 

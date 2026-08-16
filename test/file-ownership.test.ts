@@ -262,12 +262,9 @@ test("the revert actually runs, against the group's own checkout", async () => {
     config: { language: "中文" },
   } as unknown as Ctx;
 
-  await reconcileOwnership(
-    { ctx } as never,
-    { role: "engineer" } as never,
-    { grp_id: 1 } as never,
-    { owns_json: JSON.stringify(["src/auth/**"]) },
-  );
+  await reconcileOwnership({ ctx } as never, { role: "engineer" } as never, { grp_id: 1 } as never, {
+    owns_json: JSON.stringify(["src/auth/**"]),
+  });
 
   const ran = sandbox.commands.join("\n");
   // The group's own checkout, inside its container. There is no `/work` here.
@@ -302,12 +299,9 @@ test("a path git had to quote is still the path that gets rolled back", async ()
     config: { language: "中文" },
   } as unknown as Ctx;
 
-  await reconcileOwnership(
-    { ctx } as never,
-    { role: "engineer" } as never,
-    { grp_id: 1 } as never,
-    { owns_json: JSON.stringify(["src/auth/**"]) },
-  );
+  await reconcileOwnership({ ctx } as never, { role: "engineer" } as never, { grp_id: 1 } as never, {
+    owns_json: JSON.stringify(["src/auth/**"]),
+  });
 
   expect(sandbox.commands.join("\n")).toContain("'clean' '-fd' '--' 'docs/设计 稿.md'");
   expect(said.join(" ")).toContain("docs/设计 稿.md");
@@ -328,12 +322,9 @@ test("a revert that changed nothing says so instead of claiming it worked", asyn
     config: { language: "中文" },
   } as unknown as Ctx;
 
-  await reconcileOwnership(
-    { ctx } as never,
-    { role: "engineer" } as never,
-    { grp_id: 1 } as never,
-    { owns_json: JSON.stringify(["src/auth/**"]) },
-  );
+  await reconcileOwnership({ ctx } as never, { role: "engineer" } as never, { grp_id: 1 } as never, {
+    owns_json: JSON.stringify(["src/auth/**"]),
+  });
 
   const all = said.join(" ");
   expect(all).toContain("could not roll back");

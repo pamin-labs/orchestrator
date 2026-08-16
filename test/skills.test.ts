@@ -1,8 +1,26 @@
 import { expect, test } from "bun:test";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+  utimesSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { frontmatterDescription, pathInSandbox, referencedSkills, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/skills.ts";
+import {
+  frontmatterDescription,
+  pathInSandbox,
+  referencedSkills,
+  setSkillOff,
+  skillsOff,
+  stageSkills,
+  type SkillRef,
+} from "../src/mech/skills.ts";
 import { openMemory, rewriteSkillPaths } from "../src/db.ts";
 
 /**
@@ -138,10 +156,9 @@ test("old messages stop pointing at a machine the agent cannot see", () => {
   // on the host is an instruction to read a file that is not there.
   const db = openMemory();
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run(
-    "INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'fact', 'zh', ?, 0)",
-    ["按 .claude/skills/impeccable/SKILL.md 来做，再看 .agents/skills/ponytail/SKILL.md"],
-  );
+  db.run("INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'fact', 'zh', ?, 0)", [
+    "按 .claude/skills/impeccable/SKILL.md 来做，再看 .agents/skills/ponytail/SKILL.md",
+  ]);
   db.run("INSERT INTO event (author, kind, body, at) VALUES ('boss', 'boss_say', ?, 0)", [
     "用 .claude/skills/tdd/SKILL.md",
   ]);
@@ -178,7 +195,11 @@ test("a skill whose name is not a regex is still matched by its name", () => {
   // threw a SyntaxError on the way to reading *any* message — and a `.` in a
   // name quietly matched a different skill and shipped it into the turn.
   const ref = (name: string): SkillRef => ({
-    name, file: `/s/${name}/SKILL.md`, rel: `.claude/skills/${name}/SKILL.md`, description: "d", scope: "user",
+    name,
+    file: `/s/${name}/SKILL.md`,
+    rel: `.claude/skills/${name}/SKILL.md`,
+    description: "d",
+    scope: "user",
   });
   const all = [ref("c++"), ref("a.b"), ref("ponytail")];
   expect(referencedSkills("走 /c++ 这条", all).map((s) => s.name)).toEqual(["c++"]);

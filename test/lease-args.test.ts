@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { digestOutput, resolveLease, tokenize, type ResourceDef, runResource, LEASE_TIMEOUT_CODE } from "../src/mech/lease.ts";
+import {
+  digestOutput,
+  resolveLease,
+  tokenize,
+  type ResourceDef,
+  runResource,
+  LEASE_TIMEOUT_CODE,
+} from "../src/mech/lease.ts";
 
 const testRes: ResourceDef = {
   name: "test",
@@ -143,10 +150,14 @@ test("a hung command is killed and says so, instead of holding the slot forever"
   // The exec API enforces the wall clock server-side and reports 124, the same
   // number `timeout(1)` has always used; what is checked here is that the digest
   // says something the agent can act on rather than "exit 124".
-  const out = await runResource(def, {}, {
-    timeoutMs: 400,
-    exec: async () => ({ code: LEASE_TIMEOUT_CODE, out: "" }),
-  });
+  const out = await runResource(
+    def,
+    {},
+    {
+      timeoutMs: 400,
+      exec: async () => ({ code: LEASE_TIMEOUT_CODE, out: "" }),
+    },
+  );
   expect("digest" in out).toBe(true);
   if (!("digest" in out)) return;
   expect(out.exitCode).toBe(LEASE_TIMEOUT_CODE);
@@ -156,10 +167,14 @@ test("a hung command is killed and says so, instead of holding the slot forever"
 });
 
 test("a command that finishes in time is untouched by the timeout", async () => {
-  const out = await runResource({ name: "ok", template: "echo hi", concurrency: 1, argSchema: {} }, {}, {
-    timeoutMs: 10_000,
-    exec: async () => ({ code: 0, out: "hi" }),
-  });
+  const out = await runResource(
+    { name: "ok", template: "echo hi", concurrency: 1, argSchema: {} },
+    {},
+    {
+      timeoutMs: 10_000,
+      exec: async () => ({ code: 0, out: "hi" }),
+    },
+  );
   expect("digest" in out && out.exitCode).toBe(0);
 });
 

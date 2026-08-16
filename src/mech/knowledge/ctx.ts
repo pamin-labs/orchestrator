@@ -9,7 +9,6 @@ import {
   type SliceState,
 } from "../../states.ts";
 
-
 /**
  * Retrieval for `orch ctx query`.
  *
@@ -45,14 +44,71 @@ export function terms(text: string): string[] {
 }
 
 const STOP = new Set([
-  "the", "a", "an", "and", "or", "of", "to", "in", "is", "it", "for", "on", "with",
-  "this", "that", "was", "we", "i", "be", "as", "at", "by", "from", "how", "what",
-  "which", "should", "would", "can", "do", "does", "not", "but", "if", "then",
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "of",
+  "to",
+  "in",
+  "is",
+  "it",
+  "for",
+  "on",
+  "with",
+  "this",
+  "that",
+  "was",
+  "we",
+  "i",
+  "be",
+  "as",
+  "at",
+  "by",
+  "from",
+  "how",
+  "what",
+  "which",
+  "should",
+  "would",
+  "can",
+  "do",
+  "does",
+  "not",
+  "but",
+  "if",
+  "then",
   // Common verbs carry no information about which note is relevant, and keeping
   // them while dropping "should" would be an inconsistent list.
-  "use", "used", "using", "need", "needs", "make", "makes", "get", "gets", "set",
-  "sets", "have", "has", "are", "were", "will", "just", "also", "when", "where",
-  "why", "who", "there", "their", "its", "our", "you", "your",
+  "use",
+  "used",
+  "using",
+  "need",
+  "needs",
+  "make",
+  "makes",
+  "get",
+  "gets",
+  "set",
+  "sets",
+  "have",
+  "has",
+  "are",
+  "were",
+  "will",
+  "just",
+  "also",
+  "when",
+  "where",
+  "why",
+  "who",
+  "there",
+  "their",
+  "its",
+  "our",
+  "you",
+  "your",
 ]);
 
 const KIND_WEIGHT: Record<string, number> = {
@@ -242,7 +298,6 @@ export function query(opts: QueryOptions): string {
   }
   // Say what was dropped: silent truncation reads as "that is everything there
   // is", which is worse than a smaller answer that admits its own limit.
-  const trailer =
-    shown < hits.length ? `\n\n(${hits.length - shown} more matches omitted to stay in budget)` : "";
+  const trailer = shown < hits.length ? `\n\n(${hits.length - shown} more matches omitted to stay in budget)` : "";
   return parts.join("\n\n") + trailer;
 }

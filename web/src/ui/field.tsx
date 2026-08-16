@@ -87,9 +87,7 @@ export function FieldTitle({ className, ...rest }: React.ComponentProps<"div">) 
 
 /** The value side. Anything wider than one control goes in here. */
 export function FieldContent({ className, ...rest }: React.ComponentProps<"div">) {
-  return (
-    <div data-slot="field-content" className={cn("flex min-w-0 items-center gap-2", className)} {...rest} />
-  );
+  return <div data-slot="field-content" className={cn("flex min-w-0 items-center gap-2", className)} {...rest} />;
 }
 
 /**
@@ -100,11 +98,5 @@ export function FieldContent({ className, ...rest }: React.ComponentProps<"div">
  * two-boxes-around-one-thing rule.
  */
 export function InputGroup({ className, ...rest }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="input-group"
-      className={cn("flex min-w-0 flex-1 items-center gap-2", className)}
-      {...rest}
-    />
-  );
+  return <div data-slot="input-group" className={cn("flex min-w-0 flex-1 items-center gap-2", className)} {...rest} />;
 }

@@ -25,8 +25,9 @@ test("a page on another origin cannot write", async () => {
   expect((await write({ origin: "http://127.0.0.1:3000" })).status).toBe(403);
   // A form is the shape that needs no preflight, so it is the shape the attack
   // takes — and the one `csrf()` exists to name.
-  expect((await write({ origin: "https://evil.example", "content-type": "application/x-www-form-urlencoded" })).status)
-    .toBe(403);
+  expect(
+    (await write({ origin: "https://evil.example", "content-type": "application/x-www-form-urlencoded" })).status,
+  ).toBe(403);
 });
 
 test("the panel writes, however the boss spelled the host", async () => {
@@ -79,7 +80,9 @@ test("a cross-site write is refused whatever it claims to be", async () => {
     expect((await write({ origin: "http://localhost:47821", "content-type": type })).status).not.toBe(403);
   }
   // Still a read, still allowed.
-  expect((await write({ "sec-fetch-site": "cross-site", "content-type": "application/json" }, "GET")).status).not.toBe(403);
+  expect((await write({ "sec-fetch-site": "cross-site", "content-type": "application/json" }, "GET")).status).not.toBe(
+    403,
+  );
 });
 
 test("a body without a content-type is still a body", async () => {
@@ -89,13 +92,19 @@ test("a body without a content-type is still a body", async () => {
   // forgot the header" about a failure that stopped happening when `route()`
   // started parsing the body itself, and its security half is `csrf()`.
   const send = (headers: Record<string, string>) =>
-    app(new Request("http://127.0.0.1:47821/api/settings", {
-      method: "POST",
-      headers: { "sec-fetch-site": "same-origin", ...headers },
-      body: JSON.stringify({ path: "maxGroups", value: 3 }),
-    }));
+    app(
+      new Request("http://127.0.0.1:47821/api/settings", {
+        method: "POST",
+        headers: { "sec-fetch-site": "same-origin", ...headers },
+        body: JSON.stringify({ path: "maxGroups", value: 3 }),
+      }),
+    );
   // Not 415, and not "missing fields" — the schema saw the real body.
-  const types: Record<string, string>[] = [{}, { "content-type": "text/plain" }, { "content-type": "application/json" }];
+  const types: Record<string, string>[] = [
+    {},
+    { "content-type": "text/plain" },
+    { "content-type": "application/json" },
+  ];
   for (const h of types) {
     const r = await send(h);
     expect(r.status).not.toBe(415);

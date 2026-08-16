@@ -37,10 +37,14 @@ test("dropping a group's slices clears every reference to them first", () => {
   // The plan goes with the slices.
   expect(db.query<{ n: number }, []>("SELECT count(*) n FROM task").get()!.n).toBe(0);
   // What happened does not: a job and a journal entry survive, pointing at nothing.
-  expect(db.query<{ n: number; s: number | null }, []>("SELECT count(*) n, max(slice_id) s FROM job").get())
-    .toEqual({ n: 1, s: null });
-  expect(db.query<{ n: number; s: number | null }, []>("SELECT count(*) n, max(slice_id) s FROM note").get())
-    .toEqual({ n: 1, s: null });
+  expect(db.query<{ n: number; s: number | null }, []>("SELECT count(*) n, max(slice_id) s FROM job").get()).toEqual({
+    n: 1,
+    s: null,
+  });
+  expect(db.query<{ n: number; s: number | null }, []>("SELECT count(*) n, max(slice_id) s FROM note").get()).toEqual({
+    n: 1,
+    s: null,
+  });
 });
 
 test("every foreign key onto slice has a policy in SLICE_REFS", () => {

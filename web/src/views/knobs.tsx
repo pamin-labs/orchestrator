@@ -3,7 +3,15 @@ import { RotateCcw, X } from "lucide-react";
 import { post, pull } from "../lib/api";
 import { cn } from "../lib/utils";
 import {
-  COUNT_UNITS, DURATION_UNITS, KNOB_SHAPE, WANTS, countOf, msOf, readNumber, showNumber, splitCount,
+  COUNT_UNITS,
+  DURATION_UNITS,
+  KNOB_SHAPE,
+  WANTS,
+  countOf,
+  msOf,
+  readNumber,
+  showNumber,
+  splitCount,
   splitDuration,
 } from "../lib/units";
 import { allModels, cheapest, modelsByRuntime, type ModelSources } from "../lib/models";
@@ -85,9 +93,16 @@ const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] 
     zh: "turn 与上下文",
     note: "一轮能跑多久、能读多少",
     paths: [
-      "turnTimeoutMs", "maxTurnsPerJob", "sessionRotateFraction", "ctxBudgetChars",
-      "unreadDigestThreshold", "feedbackSedimentThreshold", "gateRetries",
-      "leaseTimeoutMs", "installTimeoutMs", "skillsDir",
+      "turnTimeoutMs",
+      "maxTurnsPerJob",
+      "sessionRotateFraction",
+      "ctxBudgetChars",
+      "unreadDigestThreshold",
+      "feedbackSedimentThreshold",
+      "gateRetries",
+      "leaseTimeoutMs",
+      "installTimeoutMs",
+      "skillsDir",
     ],
   },
   notify: {
@@ -98,7 +113,15 @@ const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] 
   boxdefaults: {
     zh: "沙盒默认值",
     note: "没自己设的项目用这些",
-    paths: ["sandbox.server", "sandbox.image", "sandbox.cpu", "sandbox.memory", "sandbox.ttlSeconds", "sandbox.denyDomains", "sandbox.cacheDirs"],
+    paths: [
+      "sandbox.server",
+      "sandbox.image",
+      "sandbox.cpu",
+      "sandbox.memory",
+      "sandbox.ttlSeconds",
+      "sandbox.denyDomains",
+      "sandbox.cacheDirs",
+    ],
   },
 };
 
@@ -176,7 +199,10 @@ const COPY: Record<string, { zh: string; why?: string; ph?: string }> = {
     why: "约等于 4k token。这个答案会落进 transcript，而 transcript 这个会话剩下的每一轮都要重读一遍——所以慷慨的答案在问题被回答完很久之后还在收费。",
   },
   unreadDigestThreshold: { zh: "未读摘要条数", why: "一轮最多把多少条频道消息塞进 delta。" },
-  feedbackSedimentThreshold: { zh: "几次抱怨变规则", why: "同一件事说到第 N 次，它就该是项目的一条规则，而不是第 N+1 次抱怨。" },
+  feedbackSedimentThreshold: {
+    zh: "几次抱怨变规则",
+    why: "同一件事说到第 N 次，它就该是项目的一条规则，而不是第 N+1 次抱怨。",
+  },
   gateRetries: { zh: "闸门重试次数", why: "同一片连着几次没过就升级给人，而不是一直重试同一条路。" },
   leaseTimeoutMs: {
     zh: "单条闸门上限",
@@ -198,7 +224,7 @@ const COPY: Record<string, { zh: string; why?: string; ph?: string }> = {
   "sandbox.cpu": {
     zh: "CPU",
     ph: "留空 = 宿主核数的 1/4",
-    why: "留空 = 宿主核数的 1/4。SDK 自己的默认值是 \"1\"，这个仓库的 tsc --noEmit 因此要 7.6 秒（6 核是 3.2 秒）。",
+    why: '留空 = 宿主核数的 1/4。SDK 自己的默认值是 "1"，这个仓库的 tsc --noEmit 因此要 7.6 秒（6 核是 3.2 秒）。',
   },
   "sandbox.memory": { zh: "内存", ph: "8Gi", why: "每个沙盒的内存上限。" },
   "sandbox.ttlSeconds": {
@@ -228,8 +254,12 @@ const COPY: Record<string, { zh: string; why?: string; ph?: string }> = {
 
 /** Rows whose value is a table rather than a line: the block sits under nothing. */
 const TABLES = new Set([
-  "difficultyModel", "sliceBudgetTokens", "contextWindow", "leaseSlots",
-  "sandbox.cacheDirs", "sandbox.denyDomains",
+  "difficultyModel",
+  "sliceBudgetTokens",
+  "contextWindow",
+  "leaseSlots",
+  "sandbox.cacheDirs",
+  "sandbox.denyDomains",
 ]);
 
 /** Rows with no single control for a `<label>` to point at. They name themselves. */
@@ -310,13 +340,7 @@ export function Knobs({ section }: { section: KnobSection }) {
         <FieldGroup>
           {section === "notify" && <Permission />}
           {rows.map((k) => (
-            <Row
-              key={k.path}
-              knob={k}
-              mate={knobs.find((x) => x.path === PAIRED[k.path])}
-              src={src}
-              onWrite={write}
-            />
+            <Row key={k.path} knob={k} mate={knobs.find((x) => x.path === PAIRED[k.path])} src={src} onWrite={write} />
           ))}
         </FieldGroup>
       )}
@@ -366,7 +390,10 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate?: Knob; src: Model
   );
 
   return (
-    <Field data-invalid={bad ? "true" : undefined} {...(SELF_NAMED.has(knob.path) || knob.type === "boolean" ? { "aria-labelledby": id } : {})}>
+    <Field
+      data-invalid={bad ? "true" : undefined}
+      {...(SELF_NAMED.has(knob.path) || knob.type === "boolean" ? { "aria-labelledby": id } : {})}
+    >
       {/* The `?` is a sibling of the label, not a child of it: inside a
           `<label htmlFor>` every click on it would also focus the field it
           explains, which is a control that moves the cursor somewhere else. */}
@@ -453,7 +480,13 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
       // falls back to English for anything it does not have; that is a smaller
       // fact than this field, and it is in the row's note.
       return (
-        <Combobox free value={String(v ?? "")} options={LANGUAGES} placeholder="中文 / English / 日本語 …" onCommit={onWrite} />
+        <Combobox
+          free
+          value={String(v ?? "")}
+          options={LANGUAGES}
+          placeholder="中文 / English / 日本語 …"
+          onCommit={onWrite}
+        />
       );
     case "autoAcceptTiers":
       return (
@@ -467,16 +500,38 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
           className="flex items-center gap-0.5"
         >
           {TIERS.map((t) => (
-            <Segment key={t} value={t}>{t}</Segment>
+            <Segment key={t} value={t}>
+              {t}
+            </Segment>
           ))}
         </Toggles>
       );
     case "contextWindow":
       return <Windows map={rec(v) as Record<string, number>} src={src} onWrite={onWrite} />;
     case "leaseSlots":
-      return <Pairs map={rec(v)} kind="int" keyPh="闸门名" bad={bad} onWrite={onWrite} onRefuse={onRefuse} onClear={onClear} />;
+      return (
+        <Pairs
+          map={rec(v)}
+          kind="int"
+          keyPh="闸门名"
+          bad={bad}
+          onWrite={onWrite}
+          onRefuse={onRefuse}
+          onClear={onClear}
+        />
+      );
     case "sandbox.cacheDirs":
-      return <Pairs map={rec(v)} kind="text" keyPh={ph ?? "挂载点"} bad={bad} onWrite={onWrite} onRefuse={onRefuse} onClear={onClear} />;
+      return (
+        <Pairs
+          map={rec(v)}
+          kind="text"
+          keyPh={ph ?? "挂载点"}
+          bad={bad}
+          onWrite={onWrite}
+          onRefuse={onRefuse}
+          onClear={onClear}
+        />
+      );
     case "sandbox.denyDomains":
       return <Lines list={(v ?? []) as string[]} ph={ph} onWrite={onWrite} />;
   }
@@ -548,7 +603,14 @@ function Value({ id, knob, mate, src, bad, onWrite, onWriteMate, onRefuse, onCle
   }
 
   return (
-    <Box id={id} value={String(v ?? "")} placeholder={ph} invalid={bad === ""} onUnchanged={onClear} onCommit={onWrite} />
+    <Box
+      id={id}
+      value={String(v ?? "")}
+      placeholder={ph}
+      invalid={bad === ""}
+      onUnchanged={onClear}
+      onCommit={onWrite}
+    />
   );
 }
 
@@ -571,10 +633,32 @@ const BARE_OK = new Set<string>(COUNT_UNITS);
  * say what the field wants, not to have an opinion about which languages exist.
  */
 const LANGUAGES = [
-  "中文", "繁體中文", "English", "日本語", "한국어",
-  "Español", "Français", "Deutsch", "Português", "Italiano", "Nederlands", "Polski", "Svenska",
-  "Русский", "Українська", "Türkçe", "Čeština", "Română", "Magyar", "Ελληνικά",
-  "العربية", "עברית", "हिन्दी", "ไทย", "Tiếng Việt", "Bahasa Indonesia",
+  "中文",
+  "繁體中文",
+  "English",
+  "日本語",
+  "한국어",
+  "Español",
+  "Français",
+  "Deutsch",
+  "Português",
+  "Italiano",
+  "Nederlands",
+  "Polski",
+  "Svenska",
+  "Русский",
+  "Українська",
+  "Türkçe",
+  "Čeština",
+  "Română",
+  "Magyar",
+  "Ελληνικά",
+  "العربية",
+  "עברית",
+  "हिन्दी",
+  "ไทย",
+  "Tiếng Việt",
+  "Bahasa Indonesia",
 ];
 
 /**
@@ -600,7 +684,12 @@ const LANGUAGES = [
  * or an integer field can hold. The picker shows 8500k instead.
  */
 function Amount<U extends string>({
-  n, unit, units, invalid, label, onCommit,
+  n,
+  unit,
+  units,
+  invalid,
+  label,
+  onCommit,
 }: {
   n: number;
   unit: U;
@@ -661,7 +750,9 @@ function Amount<U extends string>({
           className="shrink-0"
         >
           {units.filter(Boolean).map((u) => (
-            <Segment key={u} value={u}>{u}</Segment>
+            <Segment key={u} value={u}>
+              {u}
+            </Segment>
           ))}
         </Segments>
       )}
@@ -671,7 +762,10 @@ function Amount<U extends string>({
 
 /** A count knob as digits plus k/M. */
 function CountAmount({
-  value, label, invalid, onWrite,
+  value,
+  label,
+  invalid,
+  onWrite,
 }: {
   value: number;
   label: string;
@@ -699,7 +793,10 @@ function CountAmount({
  * neither CLI will tell us.
  */
 function ModelPick({
-  value, options, disabled, onCommit,
+  value,
+  options,
+  disabled,
+  onCommit,
 }: {
   value: string;
   options: string[];
@@ -720,7 +817,12 @@ function ModelPick({
 }
 
 function Box({
-  value, onCommit, onUnchanged, invalid, className, ...rest
+  value,
+  onCommit,
+  onUnchanged,
+  invalid,
+  className,
+  ...rest
 }: {
   value: string;
   onCommit: (raw: string) => void;
@@ -740,11 +842,7 @@ function Box({
       spellCheck={false}
       aria-invalid={invalid || undefined}
       {...rest}
-      className={cn(
-        "min-w-0 flex-1 py-0.5 font-mono text-[0.75rem]",
-        "aria-[invalid=true]:border-accent",
-        className,
-      )}
+      className={cn("min-w-0 flex-1 py-0.5 font-mono text-[0.75rem]", "aria-[invalid=true]:border-accent", className)}
       onBlur={(e) => {
         const raw = e.currentTarget.value.trim();
         if (raw !== value) onCommit(raw);
@@ -770,7 +868,13 @@ function Box({
  * makes a blank row and a blank row are the same thing one click apart.
  */
 function Pairs({
-  map, kind, keyPh, bad, onWrite, onRefuse, onClear,
+  map,
+  kind,
+  keyPh,
+  bad,
+  onWrite,
+  onRefuse,
+  onClear,
 }: {
   map: Record<string, unknown>;
   kind: "int" | "text";
@@ -862,7 +966,10 @@ function Lines({ list, ph, onWrite }: { list: string[]; ph?: string; onWrite: (v
       rows={Math.min(6, Math.max(2, list.length + 1))}
       spellCheck={false}
       onBlur={(e) => {
-        const next = e.currentTarget.value.split("\n").map((s) => s.trim()).filter(Boolean);
+        const next = e.currentTarget.value
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
         if (JSON.stringify(next) !== JSON.stringify(list)) onWrite(next);
       }}
     />
@@ -877,7 +984,9 @@ function Lines({ list, ph, onWrite }: { list: string[]; ph?: string; onWrite: (v
  * claude and codex would be wrong the day a third one lands.
  */
 function ModelTable({
-  table, src, onWrite,
+  table,
+  src,
+  onWrite,
 }: {
   table: Record<string, Record<string, string>>;
   src: ModelSources;
@@ -922,7 +1031,9 @@ function ModelTable({
  * else can still be typed, because that is how a new one gets added at all.
  */
 function Windows({
-  map, src, onWrite,
+  map,
+  src,
+  onWrite,
 }: {
   map: Record<string, number>;
   src: ModelSources;
@@ -1022,7 +1133,11 @@ function Caps({ caps, onWrite }: { caps: Record<string, number>; onWrite: (v: un
  * answer is in the config rather than in a price table nobody would update.
  */
 function IndexModel({
-  runtime, model, src, onRuntime, onModel,
+  runtime,
+  model,
+  src,
+  onRuntime,
+  onModel,
 }: {
   runtime: string;
   model: string;
@@ -1044,7 +1159,9 @@ function IndexModel({
         }}
       >
         {runtimes.map((r) => (
-          <Segment key={r} value={r}>{r}</Segment>
+          <Segment key={r} value={r}>
+            {r}
+          </Segment>
         ))}
       </Segments>
       <ModelPick value={model} options={byRuntime[runtime] ?? []} onCommit={onModel} />

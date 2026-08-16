@@ -38,7 +38,12 @@ test("12 lines is the limit; 13 are rejected — the card blocks the boss", () =
 });
 
 test("a missing section is named, not silently defaulted", () => {
-  const r = validateDraftCard(good.split("\n").filter((l) => !l.startsWith("不做")).join("\n"));
+  const r = validateDraftCard(
+    good
+      .split("\n")
+      .filter((l) => !l.startsWith("不做"))
+      .join("\n"),
+  );
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.error).toContain("不做");
 });
@@ -80,7 +85,10 @@ test("more than five slices is rejected", () => {
 });
 
 test("wrong acceptance-criteria count is rejected", () => {
-  const one = good.split("\n").filter((l) => !l.includes("只查 DB")).join("\n");
+  const one = good
+    .split("\n")
+    .filter((l) => !l.includes("只查 DB"))
+    .join("\n");
   const r = validateDraftCard(one);
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.error).toContain("2-3");
@@ -98,7 +106,10 @@ test("full-width colons and bullet continuations are accepted", () => {
 });
 
 test("two slices accepted by the same thing are one deliverable", () => {
-  const dup = good.replace("切片 : legacy header 兼容 [trivial] — 老 client 的 e2e 用例绿", "切片 : legacy header 兼容 [trivial] — mw.test.ts 绿");
+  const dup = good.replace(
+    "切片 : legacy header 兼容 [trivial] — 老 client 的 e2e 用例绿",
+    "切片 : legacy header 兼容 [trivial] — mw.test.ts 绿",
+  );
   const r = validateDraftCard(dup);
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.error).toContain("one deliverable");
@@ -117,7 +128,10 @@ test("nested acceptance criteria mean one slice finishes the other", () => {
 test("a tests-only slice is refused — tests belong with their change", () => {
   // The exact shape a real run produced: 加参数 / 实现分支 / 补充测试用例.
   for (const title of ["补充测试用例", "添加单元测试", "add tests", "测试"]) {
-    const card = good.replace("切片 : 补 middleware 单测 [normal] — 覆盖 401/403 两条路径", `切片 : ${title} [trivial] — 覆盖两条路径`);
+    const card = good.replace(
+      "切片 : 补 middleware 单测 [normal] — 覆盖 401/403 两条路径",
+      `切片 : ${title} [trivial] — 覆盖两条路径`,
+    );
     const r = validateDraftCard(card);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain("Tests belong with");

@@ -131,8 +131,8 @@ export const postSay: Handler<z.infer<typeof SayBody>> = async (ctx, _req, _p, b
   if (b.group_id != null && !grpId) return bad("no such requirement");
 
   const project = grpId
-    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-        ?.project_id ?? null
+    ? (ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
+        ?.project_id ?? null)
     : null;
   const repo = project
     ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(project)

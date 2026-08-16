@@ -66,9 +66,7 @@ test("maxGroups caps how many groups run at once", async () => {
 test("leases use their own pool and do not consume group slots", async () => {
   const db = openMemory();
   const ids = seed(db, 3);
-  db.run(
-    "INSERT INTO resource (name, template) VALUES ('build', 'echo build')",
-  );
+  db.run("INSERT INTO resource (name, template) VALUES ('build', 'echo build')");
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 3, leaseSlots: 1 });
   for (const id of ids) s.enqueue("agent_turn", { grp_id: id });
@@ -204,9 +202,7 @@ test("a job never stays in `running` — success and failure both settle", async
     .all();
   expect(states.map((r) => r.state)).toEqual(["failed", "done"]);
   expect(states[0]!.error).toContain("boom");
-  expect(
-    db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'running'").get()!.c,
-  ).toBe(0);
+  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'running'").get()!.c).toBe(0);
 });
 
 test("cancelPending drops queued work but leaves the in-flight job alone (park)", async () => {
@@ -226,9 +222,7 @@ test("cancelPending drops queued work but leaves the in-flight job alone (park)"
   await s.drain();
 
   expect(started.length).toBe(1);
-  const cancelled = db
-    .query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'cancelled'")
-    .get()!.c;
+  const cancelled = db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'cancelled'").get()!.c;
   expect(cancelled).toBe(2);
 });
 
@@ -342,10 +336,9 @@ test("a turn left running by a dead server is reclaimed, not left holding the sl
   );
   // Started just now, so what identifies the orphan is that nothing is reading
   // the turn, rather than the age check.
-  db.run(
-    "INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', ?, 0)",
-    [Date.now()],
-  );
+  db.run("INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', ?, 0)", [
+    Date.now(),
+  ]);
   db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('reconcile', 1, 'pending', 0)");
 
   const { reclaimOrphans } = await import("../src/scheduler.ts");
@@ -445,7 +438,11 @@ test("two gates of one repo do not run at once, but two repos still do", async (
        ('build','x',1,'["repo"]'), ('typecheck','y',1,'["repo"]')`,
   );
   const lease = (id: number, resource: string, grp: number) => {
-    db.run("INSERT INTO lease (id, resource, grp_id, state, enqueued_at) VALUES (?,?,?,'queued',0)", [id, resource, grp]);
+    db.run("INSERT INTO lease (id, resource, grp_id, state, enqueued_at) VALUES (?,?,?,'queued',0)", [
+      id,
+      resource,
+      grp,
+    ]);
     sched.enqueue("lease", { grp_id: grp, payload: { lease_id: id } });
   };
   // Concurrency is per resource, so build and typecheck ran side by side — and

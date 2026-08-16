@@ -61,9 +61,7 @@ export function Combobox({
   // focus is the point of opening it — filtering by the value already in the box
   // would offer exactly the one branch already selected.
   const q = draft.trim().toLowerCase();
-  const shown = q && q !== value.trim().toLowerCase()
-    ? options.filter((o) => o.toLowerCase().includes(q))
-    : options;
+  const shown = q && q !== value.trim().toLowerCase() ? options.filter((o) => o.toLowerCase().includes(q)) : options;
 
   const commit = (v: string) => {
     const next = v.trim();

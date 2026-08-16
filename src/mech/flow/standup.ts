@@ -34,9 +34,7 @@ export function runStandup(db: DB, now = Date.now()): StandupItem[] {
       const a = live[i]!;
       const b = live[j]!;
       if (a.project_id !== b.project_id) continue;
-      const hit = parseOwns(a.owns_json).find((x) =>
-        parseOwns(b.owns_json).some((y) => overlaps(x, y)),
-      );
+      const hit = parseOwns(a.owns_json).find((x) => parseOwns(b.owns_json).some((y) => overlaps(x, y)));
       if (hit) {
         items.push({
           kind: "duplicate_effort",

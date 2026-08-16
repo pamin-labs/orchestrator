@@ -60,8 +60,11 @@ test("the web UI is served and fetches nothing from a remote origin", async () =
   // rather than as an artefact nobody built yet.
   for (const asset of ["/dist/main.js", "/dist/app.css"]) {
     const a = await fetch(`${srv.url}${asset}`);
-    expect({ asset, status: a.status, hint: a.status === 200 ? "" : "run `bun run build:web` first" })
-      .toEqual({ asset, status: 200, hint: "" });
+    expect({ asset, status: a.status, hint: a.status === 200 ? "" : "run `bun run build:web` first" }).toEqual({
+      asset,
+      status: 200,
+      hint: "",
+    });
     // The bundle name carries no hash, so without this the browser keeps serving
     // the previous build: a deleted button survived a rebuild and a restart.
     expect(a.headers.get("cache-control")).toBe("no-cache");
@@ -93,9 +96,7 @@ test("boss path: add project, drop an idea, nothing runs without a slot", async 
 
   // The dispatcher turn is queued and stays queued: no slot, no spend.
   await Bun.sleep(50);
-  const jobs = srv.ctx.db
-    .query<{ state: string; kind: string }, []>("SELECT state, kind FROM job")
-    .all();
+  const jobs = srv.ctx.db.query<{ state: string; kind: string }, []>("SELECT state, kind FROM job").all();
   // One queued turn: the Dispatcher's planning pass. It stays pending — no slot,
   // no spend. The Librarian's onboarding pass is not here any more: it read the
   // host checkout, and a project has none until a group clones (007 §2).
@@ -106,8 +107,7 @@ test("boss path: add project, drop an idea, nothing runs without a slot", async 
   // PLAN.md §12 asks the smoke run to assert the four first-class tables, because
   // "the request was accepted" and "the request was recorded" are different claims and
   // only the second one matters after a restart.
-  const count = (t: string) =>
-    srv.ctx.db.query<{ c: number }, []>(`SELECT count(*) AS c FROM ${t}`).get()!.c;
+  const count = (t: string) => srv.ctx.db.query<{ c: number }, []>(`SELECT count(*) AS c FROM ${t}`).get()!.c;
   expect(count("job")).toBe(1);
   // event: the project, the idea, the group's channel opening — the append-only half.
   expect(count("event")).toBeGreaterThanOrEqual(1);

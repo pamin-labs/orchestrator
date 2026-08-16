@@ -68,9 +68,7 @@ export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; 
               {s.account ? `@${s.account} 授权了` : "授权了"}，但 App 还没装到任何账号上
             </span>
           ) : (
-            <span className="text-[0.8125rem]">
-              {s.account ? `@${s.account}` : "已连"}
-            </span>
+            <span className="text-[0.8125rem]">{s.account ? `@${s.account}` : "已连"}</span>
           )}
           <span className="grow" />
           {s?.connected && (

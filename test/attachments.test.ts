@@ -34,7 +34,7 @@ function harness() {
     sched: new Scheduler(db, async () => {}),
     sandbox,
     waiters: new Map(),
-    config: { language: "中文"},
+    config: { language: "中文" },
   } as unknown as Ctx;
   return { dir, ctx, sandbox, deps: { ctx, cfg: { ...loadConfig(), dataDir: dir } } as any };
 }

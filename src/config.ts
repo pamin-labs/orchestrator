@@ -291,11 +291,8 @@ function fromEnv(cfg: Config): Config {
 /** The defaults, for the checker that reads types and legal keys off them. */
 export const DEFAULTS_FOR_CHECK: Config = DEFAULTS;
 
-
 export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
-  const parsed = existsSync(path)
-    ? ((Bun.YAML.parse(readFileSync(path, "utf8")) as Partial<Config> | null) ?? {})
-    : {};
+  const parsed = existsSync(path) ? ((Bun.YAML.parse(readFileSync(path, "utf8")) as Partial<Config> | null) ?? {}) : {};
   // Key by key, not block by block: a spread means a `sandbox:` naming two of
   // its eight fields drops the other six to `undefined`, and the symptom is a
   // container that will not start rather than a config error. `defu` is exactly

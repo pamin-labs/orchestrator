@@ -49,10 +49,7 @@ test("adding a role is a file, not a code change", () => {
   // Assert the property, not the current roster: nothing in the loader
   // enumerates known names, so an unfamiliar yaml simply appears.
   const dir = mkdtempSync(join(tmpdir(), "orch-roles-"));
-  writeFileSync(
-    join(dir, "composer.yaml"),
-    "name: composer\ntier: hard\nprompt: |\n  You write music.\n",
-  );
+  writeFileSync(join(dir, "composer.yaml"), "name: composer\ntier: hard\nprompt: |\n  You write music.\n");
   const roles = loadRoles(dir);
   expect([...roles.keys()]).toEqual(["composer"]);
   expect(roles.get("composer")!.tier).toBe("hard");
@@ -198,7 +195,8 @@ test("the shipped yaml never disagrees with the code default", () => {
       const [av, bv] = [a[k], b?.[k]];
       const branch = av && bv && typeof av === "object" && typeof bv === "object" && !Array.isArray(av);
       if (branch) walk(av, bv, p);
-      else if (JSON.stringify(av) !== JSON.stringify(bv)) differ.push(`${p}: yaml=${JSON.stringify(av)} default=${JSON.stringify(bv)}`);
+      else if (JSON.stringify(av) !== JSON.stringify(bv))
+        differ.push(`${p}: yaml=${JSON.stringify(av)} default=${JSON.stringify(bv)}`);
     }
   };
   walk(yaml, DEFAULTS_FOR_CHECK);

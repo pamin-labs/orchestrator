@@ -5,8 +5,6 @@ import { ESCALATION_STATES, GRP_STATES, JOB_STATES, LEASE_STATES, SLICE_STATES }
 import {
   ESCALATION_INVARIANTS,
   UTIL_INVARIANTS,
-  
-  
   PROJECT_INVARIANTS,
   GRP_INVARIANTS,
   JOB_INVARIANTS,
@@ -23,9 +21,25 @@ import {
  * that failure happens here instead — at `bun test`, in the commit that adds it.
  */
 test("every state says who pushes it out", () => {
-  expect(uncovered()).toEqual({ grp: [], slice: [], job: [], escalation: [], util: [], project: [], server: [], lease: [] });
+  expect(uncovered()).toEqual({
+    grp: [],
+    slice: [],
+    job: [],
+    escalation: [],
+    util: [],
+    project: [],
+    server: [],
+    lease: [],
+  });
 
-  for (const i of [...GRP_INVARIANTS, ...SLICE_INVARIANTS, ...JOB_INVARIANTS, ...ESCALATION_INVARIANTS, ...UTIL_INVARIANTS, ...PROJECT_INVARIANTS]) {
+  for (const i of [
+    ...GRP_INVARIANTS,
+    ...SLICE_INVARIANTS,
+    ...JOB_INVARIANTS,
+    ...ESCALATION_INVARIANTS,
+    ...UTIL_INVARIANTS,
+    ...PROJECT_INVARIANTS,
+  ]) {
     // `driver: null` is a real answer — terminal, or a human is deliberately being
     // waited on. An empty string is the unanswered question.
     expect(i.driver === null || i.driver.length > 10).toBe(true);
@@ -61,7 +75,13 @@ test("a state in the table is a state something actually writes", () => {
   // Stored states only. `project`, `server` and `util` are computed conditions —
   // `repoHeld()` answers a boolean, `serverAction()` decides absent/refusing —
   // so there is no literal to write and nothing here to check.
-  const STATES = { grp: GRP_STATES, slice: SLICE_STATES, job: JOB_STATES, escalation: ESCALATION_STATES, lease: LEASE_STATES };
+  const STATES = {
+    grp: GRP_STATES,
+    slice: SLICE_STATES,
+    job: JOB_STATES,
+    escalation: ESCALATION_STATES,
+    lease: LEASE_STATES,
+  };
   for (const [table, states] of Object.entries(STATES)) {
     for (const s of states) {
       expect(`${table}.${s}: ${all.includes(`'${s}'`) || all.includes(`"${s}"`)}`).toBe(`${table}.${s}: true`);

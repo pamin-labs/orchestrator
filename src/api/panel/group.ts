@@ -88,10 +88,12 @@ export const DraftDecisionBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postDraftDecision: Handler<
-  z.infer<typeof DraftDecisionBody>,
-  z.infer<typeof DraftDecision>
-> = async (ctx, _req, params, b) => {
+export const postDraftDecision: Handler<z.infer<typeof DraftDecisionBody>, z.infer<typeof DraftDecision>> = async (
+  ctx,
+  _req,
+  params,
+  b,
+) => {
   const grpId = params.id;
   const approve = params.decision === "approve";
 
@@ -105,10 +107,7 @@ export const postDraftDecision: Handler<
     // Clearing approved_at as well: sending a plan back withdraws the approval, or
     // the next card to reach DRAFT would start itself on the strength of a yes the
     // boss said to a plan that no longer exists.
-    ctx.db.run(
-      "UPDATE grp SET status = 'PLANNING', approved_at = NULL WHERE id = ? AND status = 'DRAFT'",
-      [grpId],
-    );
+    ctx.db.run("UPDATE grp SET status = 'PLANNING', approved_at = NULL WHERE id = ? AND status = 'DRAFT'", [grpId]);
     const why = withAttachments(b.reason ?? "respec", b.attachments);
     ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
     ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: why } });
@@ -279,10 +278,12 @@ export const GroupControlBody = z.object({
   mode: z.enum(["keep", "rollback"]).optional(),
 });
 
-export const postGroupControl: Handler<
-  z.infer<typeof GroupControlBody>,
-  z.infer<typeof GroupAction>
-> = async (ctx, req, params, b) => {
+export const postGroupControl: Handler<z.infer<typeof GroupControlBody>, z.infer<typeof GroupAction>> = async (
+  ctx,
+  req,
+  params,
+  b,
+) => {
   const grpId = params.id;
   const action = params.action;
   switch (action) {
@@ -360,7 +361,7 @@ export const postGroupControl: Handler<
       const r = await openPr({
         ctx,
         gh: ctx.gh,
-                grpId,
+        grpId,
         title: prTitle(ctx, grpId),
         body: prBody(ctx, grpId),
       });

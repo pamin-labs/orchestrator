@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Bus } from "../src/bus.ts";
@@ -10,6 +10,7 @@ import { listSkills } from "../src/mech/skills.ts";
 import { landed } from "../src/mech/flow/mergequeue.ts";
 import { sweepApproved } from "../src/mech/flow/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
+import { routeCalls } from "./route-source.ts";
 import { seedAuth } from "./seed-auth.ts";
 
 function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: string; err?: string }) {
@@ -22,12 +23,15 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
     db,
     bus,
     sched,
-    sandbox: fakeSandbox(handle), waiters: new Map(),
-    config: { language: "中文"},
+    sandbox: fakeSandbox(handle),
+    waiters: new Map(),
+    config: { language: "中文" },
   };
   const app = makeApp(ctx);
 
-  db.run("INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'https://github.com/o/p.git', 0)");
+  db.run(
+    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'https://github.com/o/p.git', 0)",
+  );
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
   // Identity is the token, never a body field: the server listens on localhost
   // TCP, so anything else on 127.0.0.1 could otherwise claim to be any agent.
@@ -40,12 +44,7 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
   return { db, bus, sched, ctx, app, ran, engineer: "tok-eng", qa: "tok-qa" };
 }
 
-const post = (
-  app: (r: Request) => Promise<Response>,
-  path: string,
-  body?: unknown,
-  token?: string,
-) =>
+const post = (app: (r: Request) => Promise<Response>, path: string, body?: unknown, token?: string) =>
   app(
     new Request(`http://x${path}`, {
       method: "POST",
@@ -56,15 +55,13 @@ const post = (
       headers: { "content-type": "application/json", ...(token ? { "x-orch-token": token } : {}) },
     }),
   );
-const get = (app: (r: Request) => Promise<Response>, path: string) =>
-  app(new Request(`http://x${path}`));
+const get = (app: (r: Request) => Promise<Response>, path: string) => app(new Request(`http://x${path}`));
 const withToken = (app: (r: Request) => Promise<Response>, path: string, token: string) =>
   app(new Request(`http://x${path}`, { headers: { "x-orch-token": token } }));
 
 test("an over-long journal is rejected with a reason the agent can act on", async () => {
   const { app } = harness();
-  const r = await post(app, "/orch/journal", { kind: "journal", body: "a\nb\nc\nd\ne\nf\ng" },
-    "tok-eng");
+  const r = await post(app, "/orch/journal", { kind: "journal", body: "a\nb\nc\nd\ne\nf\ng" }, "tok-eng");
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("max 6");
 });
@@ -145,7 +142,15 @@ test("ask-boss blocks the caller and a blocker pauses the whole group", async ()
   expect(
     db
       .query<
-        { grp_id: number; agent_id: number; severity: string; brief: string; kind: string; chain_state: string; checkpoint_sha: string },
+        {
+          grp_id: number;
+          agent_id: number;
+          severity: string;
+          brief: string;
+          kind: string;
+          chain_state: string;
+          checkpoint_sha: string;
+        },
         []
       >("SELECT grp_id, agent_id, severity, brief, kind, chain_state, checkpoint_sha FROM escalation")
       .get(),
@@ -175,9 +180,9 @@ test("reserved ask-boss questions start at the boss after filing", async () => {
   const pending = post(app, "/orch/ask-boss", { question: "what is the API token?" }, "tok-eng");
   await Bun.sleep(5);
 
-  const row = db.query<{ severity: string; chain_state: string }, []>(
-    "SELECT severity, chain_state FROM escalation",
-  ).get()!;
+  const row = db
+    .query<{ severity: string; chain_state: string }, []>("SELECT severity, chain_state FROM escalation")
+    .get()!;
   // A typo or omission is advisory at this API boundary, but credentials must still
   // skip every stand-in. Both policies used to be a second UPDATE after the INSERT.
   expect(row).toEqual({ severity: "advisory", chain_state: "boss" });
@@ -283,17 +288,19 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
   const planningTurns = ran.length;
   const ok = await post(app, `/api/draft/${grp_id}/approve`);
   expect(ok.status).toBe(200);
-  expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe("RUNNING");
+  expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe(
+    "RUNNING",
+  );
 
-  const slices = db.query<{ title: string; difficulty: string }, [number]>(
-    "SELECT title, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
-  ).all(grp_id);
+  const slices = db
+    .query<{ title: string; difficulty: string }, [number]>(
+      "SELECT title, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
+    )
+    .all(grp_id);
   expect(slices.map((s) => s.difficulty)).toEqual(["normal", "trivial", "hard"]);
   // Approval also creates one task per slice, or the writer has nothing to claim
   // and the whole review pipeline never fires.
-  expect(
-    db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM task WHERE grp_id = ?").get(grp_id)!.c,
-  ).toBe(3);
+  expect(db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM task WHERE grp_id = ?").get(grp_id)!.c).toBe(3);
 
   await sched.drain();
   // Approval also starts the first slice: a plan that is approved and then sits
@@ -333,7 +340,9 @@ test("sending a DRAFT back records the reason and re-runs the dispatcher", async
 
   const notes = db.query<{ body: string }, [number]>("SELECT body FROM note WHERE grp_id = ? ORDER BY id").all(grp_id);
   expect(notes.at(-1)!.body).toContain("wrong layer");
-  const jobs = db.query<{ payload_json: string }, [number]>("SELECT payload_json FROM job WHERE grp_id = ?").all(grp_id);
+  const jobs = db
+    .query<{ payload_json: string }, [number]>("SELECT payload_json FROM job WHERE grp_id = ?")
+    .all(grp_id);
   expect(JSON.parse(jobs.at(-1)!.payload_json).respec).toBe("wrong layer");
 });
 
@@ -357,7 +366,10 @@ test("park cancels queued work and leaves the worktree alone", async () => {
   sched.enqueue("agent_turn", { grp_id: 1 });
   sched.enqueue("agent_turn", { grp_id: 1 });
   await post(app, "/api/groups/1/park");
-  const states = db.query<{ state: string }, []>("SELECT state FROM job").all().map((r) => r.state);
+  const states = db
+    .query<{ state: string }, []>("SELECT state FROM job")
+    .all()
+    .map((r) => r.state);
   expect(states).toEqual(["cancelled", "cancelled"]);
   expect(db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PARKED");
 });
@@ -557,12 +569,7 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
   );
-  await post(
-    app,
-    "/orch/mail",
-    { target: "dispatcher", intent: "inform", body: "反对：第三片与验收冲突" },
-    "tok-arch",
-  );
+  await post(app, "/orch/mail", { target: "dispatcher", intent: "inform", body: "反对：第三片与验收冲突" }, "tok-arch");
   const s2 = (await (await get(app, "/api/state")).json()) as any;
   const late = (s2.lateObjections ?? []).find((o: any) => o.grpId === grp_id);
   expect(late?.body).toContain("与验收冲突");
@@ -648,9 +655,7 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
   expect(await held.text()).toContain("自动开工");
 
   const g = db
-    .query<{ status: string; approved_at: number | null }, [number]>(
-      "SELECT status, approved_at FROM grp WHERE id = ?",
-    )
+    .query<{ status: string; approved_at: number | null }, [number]>("SELECT status, approved_at FROM grp WHERE id = ?")
     .get(grp_id)!;
   expect(g.status).toBe("DRAFT");
   expect(g.approved_at).toBeGreaterThan(0);
@@ -669,10 +674,7 @@ async function blocked(h: ReturnType<typeof harness>) {
   db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
   const r = await post(app, "/api/ideas", { project_id: 1, text: "second idea" });
   const { grp_id } = (await r.json()) as { grp_id: number };
-  db.run("UPDATE grp SET status = 'DRAFT', owns_json = ? WHERE id = ?", [
-    JSON.stringify(["src/a/mw.ts"]),
-    grp_id,
-  ]);
+  db.run("UPDATE grp SET status = 'DRAFT', owns_json = ? WHERE id = ?", [JSON.stringify(["src/a/mw.ts"]), grp_id]);
   db.run(
     "INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, ?, 'fact', 'zh', ?, ?, 0)",
     [
@@ -702,9 +704,7 @@ test("approving a held group twice does not blow up", async () => {
   const h = harness();
   const grpId = await blocked(h);
   expect((await post(h.app, `/api/draft/${grpId}/approve`)).status).toBe(200);
-  expect(
-    h.db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ?").get(grpId)!.c,
-  ).toBe(3);
+  expect(h.db.query<{ c: number }, [number]>("SELECT count(*) AS c FROM slice WHERE grp_id = ?").get(grpId)!.c).toBe(3);
 });
 
 test("the group holding the paths dissolves, and the approved one starts itself", async () => {
@@ -714,9 +714,7 @@ test("the group holding the paths dissolves, and the approved one starts itself"
   await sweepApproved(h.ctx);
 
   const g = h.db
-    .query<{ status: string; approved_at: number | null }, [number]>(
-      "SELECT status, approved_at FROM grp WHERE id = ?",
-    )
+    .query<{ status: string; approved_at: number | null }, [number]>("SELECT status, approved_at FROM grp WHERE id = ?")
     .get(grpId)!;
   expect(g.status).toBe("RUNNING");
   // Left set, the sweep would keep finding it forever.
@@ -741,9 +739,9 @@ test("the Architect re-cutting someone else's boundary starts the approved group
   // The re-cut moves group 1 off the contested path. Nothing touches group 2 —
   // sweeping only the group `owns` names would leave it waiting.
   await post(h.app, "/orch/owns", { group_id: 1, paths: ["src/c/**"] }, "tok-a");
-  expect(
-    h.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)!.status,
-  ).toBe("RUNNING");
+  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grpId)!.status).toBe(
+    "RUNNING",
+  );
 });
 
 test("a token is only good for the scope it was hired into", async () => {
@@ -754,7 +752,9 @@ test("a token is only good for the scope it was hired into", async () => {
   // and are supposed to reach across their project.
   const h = harness();
   await blocked(h);
-  h.db.run("INSERT INTO project (name, repo_path, remote, created_at) VALUES ('other', '/tmp/o', 'https://github.com/o/other.git', 0)");
+  h.db.run(
+    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('other', '/tmp/o', 'https://github.com/o/other.git', 0)",
+  );
   h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (2, 'elsewhere', 'RUNNING', 0)");
   const outsider = h.db.query<{ id: number }, []>("SELECT id FROM grp WHERE name = 'elsewhere'").get()!.id;
 
@@ -827,18 +827,14 @@ test("a planner may propose dropping already-covered work, but only with evidenc
   expect(p.body).toContain("grp2 已经覆盖");
   expect(p.body).toContain("other");
   // Still the boss's call: proposing does not dissolve anything.
-  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).not.toBe(
-    "DISSOLVED",
-  );
+  expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).not.toBe("DISSOLVED");
 });
 
 test("the boundary request quotes each group's own requirement", async () => {
   const { app, db } = harness();
   // The pre-existing group's idea has to be recoverable, or the Architect cannot
   // tell the groups apart — observed live, it gave one group the other's files.
-  db.run(
-    "INSERT INTO event (grp_id, author, kind, body, at) VALUES (1, 'boss', 'boss_say', 'greet 加中文支持', 1)",
-  );
+  db.run("INSERT INTO event (grp_id, author, kind, body, at) VALUES (1, 'boss', 'boss_say', 'greet 加中文支持', 1)");
   const r = await post(app, "/api/ideas", { project_id: 1, text: "farewell: bye(name) 返回 goodbye X" });
   const { grp_id } = (await r.json()) as { grp_id: number };
 
@@ -871,7 +867,7 @@ test("registering a repo you cannot push to succeeds, and says so at once", asyn
   const { app, db, ctx } = harness();
   ctx.gh = {
     remaining: () => null,
-    request: async <T,>() => ({
+    request: async <T>() => ({
       ok: true as const,
       status: 200,
       data: {
@@ -885,7 +881,9 @@ test("registering a repo you cannot push to succeeds, and says so at once", asyn
 
   const r = await post(app, "/api/projects", { repo: "someone/theirs" });
   expect(r.status).toBe(200);
-  expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM project WHERE repo_path = 'someone/theirs'").get()!.c).toBe(1);
+  expect(
+    db.query<{ c: number }, []>("SELECT count(*) AS c FROM project WHERE repo_path = 'someone/theirs'").get()!.c,
+  ).toBe(1);
 
   // Named level, so the boss knows what to ask for rather than that "something"
   // is wrong.
@@ -930,7 +928,7 @@ test("a closed PR whose branch cannot be reopened can still get a new one", asyn
   const { app, db, ctx } = harness();
   db.run("UPDATE grp SET status = 'PAUSED', pr_number = 7, branch = 'orch/g1' WHERE id = 1");
   db.run("UPDATE project SET remote = 'git@github.com:me/x.git' WHERE id = 1");
-  ctx.gh = { remaining: () => null, request: async <T,>() => ({ ok: true, status: 200, data: { number: 9 } as T }) };
+  ctx.gh = { remaining: () => null, request: async <T>() => ({ ok: true, status: 200, data: { number: 9 } as T }) };
 
   const r = await post(app, "/api/groups/1/newpr");
   expect(r.status).toBe(200);
@@ -960,7 +958,7 @@ test("a failed second PR leaves the old number in place rather than none at all"
   // nothing to do with the push — the test passes and asserts nothing.
   ctx.gh = {
     remaining: () => null,
-    request: async <T,>() => ({ ok: true, status: 200, data: { number: 9 } as T }),
+    request: async <T>() => ({ ok: true, status: 200, data: { number: 9 } as T }),
   };
 
   expect((await post(app, "/api/groups/1/newpr")).status).toBe(422);
@@ -1006,9 +1004,9 @@ test("raising a budget resumes the group and closes the question that asked", as
   expect((await post(app, "/api/groups/1/budget", { tokens: 110 })).status).toBe(422);
 
   expect((await post(app, "/api/groups/1/budget", { tokens: 300 })).status).toBe(200);
-  const g = db.query<{ status: string; budget_tokens: number }, []>(
-    "SELECT status, budget_tokens FROM grp WHERE id = 1",
-  ).get()!;
+  const g = db
+    .query<{ status: string; budget_tokens: number }, []>("SELECT status, budget_tokens FROM grp WHERE id = 1")
+    .get()!;
   expect(g.status).toBe("RUNNING");
   expect(g.budget_tokens).toBe(300);
   expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM escalation WHERE answer IS NULL").get()!.c).toBe(0);
@@ -1210,9 +1208,7 @@ test("a group blocked outside its boundary hands the work on and waits for it", 
   expect(me.blocked_on).toBe(target);
   // Nobody owns package.json, so it becomes a requirement the boss approves like
   // any other — planning starts without waiting for anyone.
-  const planning = h.db
-    .query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?")
-    .get(target)!;
+  const planning = h.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(target)!;
   expect(planning.status).toBe("PLANNING");
 });
 
@@ -1224,16 +1220,20 @@ test("a live group that owns the path gets it as an addition, not a rival group"
   writeFileSync(join(repo, "package.json"), "{}");
   h.db.run("UPDATE project SET repo_path = ? WHERE id = 1", [repo]);
   h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
-  h.db.run(
-    "INSERT INTO grp (project_id, name, status, owns_json, created_at) VALUES (1, 'owner', 'RUNNING', ?, 0)",
-    [JSON.stringify(["package.json"])],
+  h.db.run("INSERT INTO grp (project_id, name, status, owns_json, created_at) VALUES (1, 'owner', 'RUNNING', ?, 0)", [
+    JSON.stringify(["package.json"]),
+  ]);
+  const r = await post(
+    h.app,
+    "/orch/blocked",
+    { group_id: 1, path: "package.json", why: "缺一行配置，闸门必红" },
+    "tok-eng",
   );
-  const r = await post(h.app, "/orch/blocked", { group_id: 1, path: "package.json", why: "缺一行配置，闸门必红" }, "tok-eng");
   expect(((await r.json()) as any).handedTo).toBe("owner");
   const p = JSON.parse(
-    h.db.query<{ payload_json: string }, []>(
-      "SELECT payload_json FROM job WHERE grp_id = 2 ORDER BY id DESC LIMIT 1",
-    ).get()!.payload_json,
+    h.db
+      .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE grp_id = 2 ORDER BY id DESC LIMIT 1")
+      .get()!.payload_json,
   );
   expect(p.role).toBe("pm");
   expect(p.rejection).toContain("package.json");
@@ -1258,14 +1258,16 @@ test("a question no answer can resolve becomes a requirement, and the group wait
   const made = h.db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!;
   expect(made.status).toBe("PLANNING");
   // The question is closed with a pointer, not left as a second thing to remember.
-  const esc = h.db.query<{ answer: string; chain_state: string }, []>("SELECT answer, chain_state FROM escalation").get()!;
+  const esc = h.db
+    .query<{ answer: string; chain_state: string }, []>("SELECT answer, chain_state FROM escalation")
+    .get()!;
   expect(esc.chain_state).toBe("answered");
   expect(esc.answer).toContain(String(grp_id));
   // And the stopped group comes back by itself when that lands — same mechanism
   // as `orch blocked`, so this is not a new thing to remember either.
-  expect(h.db.query<{ blocked_on: number | null }, []>("SELECT blocked_on FROM grp WHERE id = 1").get()!.blocked_on).toBe(
-    grp_id,
-  );
+  expect(
+    h.db.query<{ blocked_on: number | null }, []>("SELECT blocked_on FROM grp WHERE id = 1").get()!.blocked_on,
+  ).toBe(grp_id);
 });
 
 test("two groups cannot end up waiting on each other", async () => {
@@ -1280,7 +1282,12 @@ test("two groups cannot end up waiting on each other", async () => {
     "INSERT INTO grp (project_id, name, status, owns_json, blocked_on, created_at) VALUES (1, 'other', 'PAUSED', ?, 1, 0)",
     [JSON.stringify(["shared.ts"])],
   );
-  const r = await post(h.app, "/orch/blocked", { group_id: 1, path: "shared.ts", why: "缺一行配置，闸门必红" }, "tok-eng");
+  const r = await post(
+    h.app,
+    "/orch/blocked",
+    { group_id: 1, path: "shared.ts", why: "缺一行配置，闸门必红" },
+    "tok-eng",
+  );
   expect(r.status).toBe(422);
   expect(await r.text()).toContain("already waiting on you");
 });
@@ -1300,7 +1307,8 @@ test("a worktree that cannot be created withdraws the approval instead of retryi
   expect(g.approved_at).toBeNull();
   expect(g.status).toBe("DRAFT");
   const esc = h.db
-    .query<{ chain_state: string; question: string }, []>("SELECT chain_state, question FROM escalation").get()!;
+    .query<{ chain_state: string; question: string }, []>("SELECT chain_state, question FROM escalation")
+    .get()!;
   expect(esc.chain_state).toBe("boss");
   expect(esc.question).toContain("批准没能落地");
 });
@@ -1325,7 +1333,6 @@ test("what a question is about comes from a closed set", () => {
   expect(askKind("环境")).toBe("other");
   expect(askKind(undefined)).toBe("other");
 });
-
 
 test("reads are scoped by the token too, not only writes", async () => {
   // `/orch/task` and the lease log never called agentOf. The mailbox's `/orch/`
@@ -1374,7 +1381,10 @@ test("a group name an agent chose is still branch-shaped", async () => {
     "tok-d",
   );
   expect(r.status).toBe(200);
-  const names = db.query<{ name: string }, []>("SELECT name FROM grp WHERE id > 1").all().map((g) => g.name);
+  const names = db
+    .query<{ name: string }, []>("SELECT name FROM grp WHERE id > 1")
+    .all()
+    .map((g) => g.name);
   expect(names).toHaveLength(2);
   for (const n of names) expect(n).toMatch(/^[a-z0-9][a-z0-9.-]*$/);
 });
@@ -1410,9 +1420,15 @@ test("project config validates the values that runtime consumers receive", async
   // `denyDomains` persisted and reached the network layer as if it were string[].
   const h = harness();
   const patch = (b: unknown) =>
-    h.app(new Request("http://x/api/project/1/config", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(b) }));
-  const stored = () => h.db.query<{ config_json: string }, []>("SELECT config_json FROM project WHERE id = 1").get()!.config_json;
+    h.app(
+      new Request("http://x/api/project/1/config", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(b),
+      }),
+    );
+  const stored = () =>
+    h.db.query<{ config_json: string }, []>("SELECT config_json FROM project WHERE id = 1").get()!.config_json;
 
   expect((await patch({ install: "bun install" })).status).toBe(200);
   const before = stored();
@@ -1431,30 +1447,38 @@ test("project config validates the values that runtime consumers receive", async
 test("a rejected project config patch changes neither of its storage homes", async () => {
   const h = harness();
   h.db.run("UPDATE project SET base_branch = 'main' WHERE id = 1");
-  const r = await h.app(new Request("http://x/api/project/1/config", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      baseBranch: "next",
-      sandbox: { image: "evil.example.com/agent:1" },
+  const r = await h.app(
+    new Request("http://x/api/project/1/config", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        baseBranch: "next",
+        sandbox: { image: "evil.example.com/agent:1" },
+      }),
     }),
-  }));
+  );
 
   expect(r.status).toBe(422);
-  expect(h.db.query<{ base_branch: string }, []>("SELECT base_branch FROM project WHERE id = 1").get()!.base_branch).toBe("main");
+  expect(
+    h.db.query<{ base_branch: string }, []>("SELECT base_branch FROM project WHERE id = 1").get()!.base_branch,
+  ).toBe("main");
 });
 
 test("a partial patch cannot silently replace malformed stored project config", async () => {
   const h = harness();
   h.db.run("UPDATE project SET config_json = 'not json' WHERE id = 1");
-  const r = await h.app(new Request("http://x/api/project/1/config", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ install: "bun install" }),
-  }));
+  const r = await h.app(
+    new Request("http://x/api/project/1/config", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ install: "bun install" }),
+    }),
+  );
 
   expect(r.status).toBe(422);
-  expect(h.db.query<{ config_json: string }, []>("SELECT config_json FROM project WHERE id = 1").get()!.config_json).toBe("not json");
+  expect(
+    h.db.query<{ config_json: string }, []>("SELECT config_json FROM project WHERE id = 1").get()!.config_json,
+  ).toBe("not json");
 });
 
 test("malformed JSON cannot become an empty control request", async () => {
@@ -1492,12 +1516,9 @@ test("every route that takes a body declares its shape", () => {
   // The check that keeps the next route honest. The shared parser owns both JSON
   // syntax and the declared schema, so handlers cannot silently re-derive either
   // through their own `?? ""` and `String(...)` fallbacks.
-  const src = readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8");
-  // Registration is `route(app, ctx, "post", path, {body, handler})`, so a POST
-  // with no `body:` is a POST that declared no shape.
-  const undeclared = [...src.matchAll(/^\s*(?:agent)?[Rr]oute\(app, ctx, "(post|put|patch)", "([^"]+)", (.*)$/gm)]
-    .filter((m) => !m[3]!.includes("body:"))
-    .map((m) => m[2]!);
+  const undeclared = routeCalls()
+    .filter(({ method, body }) => ["post", "put", "patch"].includes(method) && !body)
+    .map(({ path }) => path);
   // The exceptions, named rather than tolerated: multipart upload reads
   // `req.formData()` itself, and the rest take no body at all.
   expect(undeclared).toEqual([
@@ -1519,9 +1540,8 @@ test("every route that takes a body declares its shape", () => {
 });
 
 test("every dynamic route declares its path shape", () => {
-  const src = readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8");
-  const unvalidated = [...src.matchAll(/^\s*(?:agent)?[Rr]oute\(app, ctx, "\w+", "([^"\n]*:[^"\n]*)", (.*)$/gm)]
-    .filter((m) => !m[2]!.includes("params:"))
-    .map((m) => m[1]!);
+  const unvalidated = routeCalls()
+    .filter(({ path, params }) => path.includes(":") && !params)
+    .map(({ path }) => path);
   expect(unvalidated).toEqual([]);
 });

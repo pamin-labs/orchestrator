@@ -79,7 +79,9 @@ test("a turn in flight is re-queued and its requirement is left running", () => 
   // The agent is idle again, or everything downstream skips it forever.
   expect(h.db.query<{ state: string }, []>("SELECT state FROM agent WHERE id = 1").get()!.state).toBe("idle");
   const back = h.db
-    .query<{ id: number; state: string }, []>("SELECT id, state FROM job WHERE kind = 'agent_turn' AND state = 'pending'")
+    .query<{ id: number; state: string }, []>(
+      "SELECT id, state FROM job WHERE kind = 'agent_turn' AND state = 'pending'",
+    )
     .all();
   expect(back).toHaveLength(1);
 });
@@ -202,8 +204,6 @@ test("no container to open holds every turn instead of failing each group once",
   // Said once, not once per attempt — a held job makes no attempt, and the same
   // line every minute is how a feed stops being read.
   await ensureSandbox(ctx, { grp: 1 }).catch(() => {});
-  expect(
-    h.db.query<{ n: number }, []>("SELECT count(*) AS n FROM event WHERE kind = 'escalation'").get()!.n,
-  ).toBe(1);
+  expect(h.db.query<{ n: number }, []>("SELECT count(*) AS n FROM event WHERE kind = 'escalation'").get()!.n).toBe(1);
   resetSandboxHold();
 });

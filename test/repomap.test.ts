@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { buildMap, indexable } from "../src/mech/knowledge/repomap.ts";
 
-
 test("what belongs in an index is decided by exclusion, not by an extension list", () => {
   // Both indexes used to carry their own allow-list. repomap's named eighteen
   // languages while its symbol regex parses JS/TS only; PageIndex's named seven,
@@ -75,7 +74,12 @@ test("the map's symbols come from a reader the caller supplies, not from this ma
     "src/b.go": "func Gamma() {}\n",
   };
 
-  const withReader = buildMap("owner/repo", () => files, [], (rel) => text[rel]);
+  const withReader = buildMap(
+    "owner/repo",
+    () => files,
+    [],
+    (rel) => text[rel],
+  );
   const a = withReader.find((n) => n.dir === "src")!.files.find((f) => f.name === "a.ts")!;
   expect(a.symbols).toEqual(["alpha", "beta"]);
   // Opportunistic, not universal: `EXPORTED` is JS/TS syntax, so a Go file gets

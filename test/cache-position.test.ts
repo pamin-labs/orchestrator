@@ -3,13 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listSkills, readSkill, referencedSkills } from "../src/mech/skills.ts";
-import {
-  assemble,
-  buildDelta,
-  buildStable,
-  needsRotation,
-  type StableParts,
-} from "../src/prompt/assemble.ts";
+import { assemble, buildDelta, buildStable, needsRotation, type StableParts } from "../src/prompt/assemble.ts";
 
 /**
  * Regression guard for PLAN.md §7 token economics #1.

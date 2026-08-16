@@ -236,7 +236,8 @@ export function checkSplit(slices: DraftSlice[]): string | null {
 
   // "Add tests" is never a deliverable on its own: tests belong with the change
   // they test, and a slice of them can only be accepted after another slice is.
-  const testOnly = /^(补充?|添加|新增|加上?|补齐|write|add|create)?\s*(单元)?(测试|单测|test|tests|unit ?tests?|用例|测试用例)\s*$/i;
+  const testOnly =
+    /^(补充?|添加|新增|加上?|补齐|write|add|create)?\s*(单元)?(测试|单测|test|tests|unit ?tests?|用例|测试用例)\s*$/i;
   const idx = slices.findIndex((s) => testOnly.test(s.title.trim()));
   if (idx !== -1 && slices.length > 1) {
     return (
@@ -269,8 +270,7 @@ function parseSlice(raw: string): DraftSlice | null {
  */
 export function validateSelfReview(text: string, criteriaCount: number): Result<{ checked: number }> {
   const lines = nonEmptyLines(text);
-  const vacuous =
-    /^(looks?\s+(good|fine|ok)|lgtm|no\s+(issues?|problems?)|all\s+good|seems?\s+(fine|correct))\b/i;
+  const vacuous = /^(looks?\s+(good|fine|ok)|lgtm|no\s+(issues?|problems?)|all\s+good|seems?\s+(fine|correct))\b/i;
   if (lines.length === 0 || (lines.length === 1 && vacuous.test(lines[0]!))) {
     return {
       ok: false,

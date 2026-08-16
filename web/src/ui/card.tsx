@@ -26,7 +26,12 @@ export function Card({ className, tone, ...rest }: Div & VariantProps<typeof car
 
 /** Header rule included: a header without one is a paragraph in bold. */
 export function CardHeader({ className, ...rest }: Div) {
-  return <div className={cn("flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-rule px-3.5 py-2", className)} {...rest} />;
+  return (
+    <div
+      className={cn("flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-rule px-3.5 py-2", className)}
+      {...rest}
+    />
+  );
 }
 
 export function CardTitle({ className, ...rest }: Div) {
@@ -37,10 +42,7 @@ export function CardTitle({ className, ...rest }: Div) {
 export function CardLabel({ className, ...rest }: Div) {
   return (
     <div
-      className={cn(
-        "flex items-center gap-2 px-3.5 py-2 text-[0.75rem] font-semibold tracking-[0.02em]",
-        className,
-      )}
+      className={cn("flex items-center gap-2 px-3.5 py-2 text-[0.75rem] font-semibold tracking-[0.02em]", className)}
       {...rest}
     />
   );
@@ -51,7 +53,12 @@ export function CardBody({ className, ...rest }: Div) {
 }
 
 export function CardFooter({ className, ...rest }: Div) {
-  return <div className={cn("flex flex-wrap items-center gap-2 border-t border-rule-soft px-3.5 py-2", className)} {...rest} />;
+  return (
+    <div
+      className={cn("flex flex-wrap items-center gap-2 border-t border-rule-soft px-3.5 py-2", className)}
+      {...rest}
+    />
+  );
 }
 
 /** A rule-separated row inside a card. First one carries no rule. */

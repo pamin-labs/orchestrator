@@ -10,8 +10,7 @@ import type { Ctx } from "../src/api.ts";
  * existed had nowhere to be.
  */
 
-const ctx = (out: string[] = []) =>
-  ({ bus: { live: (f: { body: string }) => out.push(f.body) } }) as unknown as Ctx;
+const ctx = (out: string[] = []) => ({ bus: { live: (f: { body: string }) => out.push(f.body) } }) as unknown as Ctx;
 
 test("a line is on the feed and in the buffer, and the buffer is capped", () => {
   clearSandboxLog(1);

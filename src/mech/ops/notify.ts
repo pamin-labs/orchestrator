@@ -239,7 +239,10 @@ export function batchForBoss(items: PendingItem[], url?: string): Notification |
 
   // Keyed by the set, so the reminder backs off while the set is unchanged and
   // fires immediately when something new joins it.
-  const key = `batch:${items.map((i) => i.id).sort((a, b) => a - b).join(",")}`;
+  const key = `batch:${items
+    .map((i) => i.id)
+    .sort((a, b) => a - b)
+    .join(",")}`;
   const lines = items.map((i) => `• ${i.group ?? "?"}: ${i.question.slice(0, 120)}`);
   return {
     key,

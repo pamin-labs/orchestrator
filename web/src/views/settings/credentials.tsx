@@ -42,7 +42,11 @@ export const RUNTIMES: Runtime[] = [
 ];
 
 export function CredPane({
-  rows, prefs, waiting, onSaved, onWaitForLogin,
+  rows,
+  prefs,
+  waiting,
+  onSaved,
+  onWaitForLogin,
 }: {
   rows: AuthRow[];
   prefs?: { claudeCoauthor: boolean };
@@ -291,12 +295,7 @@ function Credential(props: {
                   it. It stays selectable for the case where the browser that opened
                   it is not the one you want to log in with. */}
               <span className="flex min-w-0 items-baseline gap-2">
-                <a
-                  href={link}
-                  target="_blank"
-                  rel="noopener"
-                  className="shrink-0 text-[0.75rem] text-accent underline"
-                >
+                <a href={link} target="_blank" rel="noopener" className="shrink-0 text-[0.75rem] text-accent underline">
                   打开登录页
                 </a>
                 <Meta className="min-w-0 truncate">{link}</Meta>
@@ -361,9 +360,7 @@ function Credential(props: {
                 only ever read from the provider's own endpoint, so a gateway
                 account has no window to show and the header would look broken
                 rather than deliberate. */}
-            {mode !== "api_key" && baseUrl.trim() && (
-              <Meta className="block">自建网关，头部不显示额度</Meta>
-            )}
+            {mode !== "api_key" && baseUrl.trim() && <Meta className="block">自建网关，头部不显示额度</Meta>}
           </FieldContent>
         </Field>
 

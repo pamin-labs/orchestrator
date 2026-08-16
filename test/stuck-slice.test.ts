@@ -34,8 +34,9 @@ function harness() {
     db,
     bus,
     sched,
-    sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: "中文"},
+    sandbox: fakeSandbox(),
+    waiters: new Map(),
+    config: { language: "中文" },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
@@ -63,7 +64,13 @@ function delivered(db: DB, opts: { owner: "live" | "retired" } = { owner: "live"
 }
 
 const post = (app: (r: Request) => Promise<Response>, path: string, body: unknown, token: string) =>
-  app(new Request(`http://x${path}`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", "x-orch-token": token } }));
+  app(
+    new Request(`http://x${path}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json", "x-orch-token": token },
+    }),
+  );
 
 test("a slice sent back gets its card back", async () => {
   const h = harness();
@@ -71,9 +78,11 @@ test("a slice sent back gets its card back", async () => {
 
   sendBack(h.deps as never, 1, "gate said no", "gate");
 
-  const t = h.db.query<{ status: string; owner: number | null; claim_json: string | null }, []>(
-    "SELECT status, owner_agent_id AS owner, claim_json FROM task WHERE id = 1",
-  ).get()!;
+  const t = h.db
+    .query<{ status: string; owner: number | null; claim_json: string | null }, []>(
+      "SELECT status, owner_agent_id AS owner, claim_json FROM task WHERE id = 1",
+    )
+    .get()!;
   expect(t.status).toBe("pending");
   expect(t.owner).toBeNull();
   // claim_json survives on purpose: reconcile only reads it off `done` rows, so it
@@ -119,7 +128,11 @@ test("a card whose owner retired is not locked away from the group", async () =>
   const done = await post(
     h.app,
     "/orch/task/done",
-    { task_id: 1, already_done: "already on the branch from the previous session", review: "pass: it works — already on origin/main" },
+    {
+      task_id: 1,
+      already_done: "already on the branch from the previous session",
+      review: "pass: it works — already on origin/main",
+    },
     "tok-new",
   );
   expect(await done.text()).toBe("ok");
@@ -133,9 +146,11 @@ test("the invariant repair reopens a running slice nobody can work on", () => {
   // by any other path that flips a slice back without looking at its cards.
   runInvariants(h.ctx);
 
-  const t = h.db.query<{ status: string; owner: number | null }, []>(
-    "SELECT status, owner_agent_id AS owner FROM task WHERE id = 1",
-  ).get()!;
+  const t = h.db
+    .query<{ status: string; owner: number | null }, []>(
+      "SELECT status, owner_agent_id AS owner FROM task WHERE id = 1",
+    )
+    .get()!;
   expect(t.status).toBe("pending");
   expect(t.owner).toBeNull();
 

@@ -21,9 +21,7 @@ import { toast } from "sonner";
 import type { snapshot } from "../../../src/api/panel/snapshot.ts";
 import type { Frame as ServerFrame } from "../../../src/bus.ts";
 import type { CostReport, CostRow as ServerCostRow, AgentCost as ServerAgentCost } from "../../../src/mech/ops/cost.ts";
-import type {
-  Agent, Archived, Escalation, Group, Project, Slice, Task,
-} from "../../../src/api/panel/shapes.ts";
+import type { Agent, Archived, Escalation, Group, Project, Slice, Task } from "../../../src/api/panel/shapes.ts";
 
 export type { Agent, Archived, Escalation, Group, Project, Slice, Task };
 export type State = ReturnType<typeof snapshot>;
@@ -34,8 +32,13 @@ export type AgentCost = ServerAgentCost;
 
 /** What was actually built, for the one decision that cannot be taken back. */
 export interface Evidence {
-  seq: number; title: string; accept_spec: string; retries: number;
-  stat: string; diff: string; truncated: boolean;
+  seq: number;
+  title: string;
+  accept_spec: string;
+  retries: number;
+  stat: string;
+  diff: string;
+  truncated: boolean;
   /** `slice` = since this slice started. `branch` = the whole branch against
       origin/main, which is what a rebase leaves recoverable. */
   scope: "slice" | "branch";
@@ -47,10 +50,24 @@ const EMPTY: State = {
   // Assume wired until told otherwise: a mark on the header before the first
   // poll lands would flash on every reload.
   ready: true,
-  projects: [], groups: [], slices: [], tasks: [], agents: [], escalations: [], channels: [],
-  draftCards: [], lateObjections: [], approvedBlocked: [], dropProposals: [],
-  ideas: [], answered: [], mergeQueue: [], archived: [], usage: [],
-  limits: { maxGroups: null, leaseSlots: {}, autoAdvance: false, autoAcceptTiers: [] }, lastSeq: 0,
+  projects: [],
+  groups: [],
+  slices: [],
+  tasks: [],
+  agents: [],
+  escalations: [],
+  channels: [],
+  draftCards: [],
+  lateObjections: [],
+  approvedBlocked: [],
+  dropProposals: [],
+  ideas: [],
+  answered: [],
+  mergeQueue: [],
+  archived: [],
+  usage: [],
+  limits: { maxGroups: null, leaseSlots: {}, autoAdvance: false, autoAcceptTiers: [] },
+  lastSeq: 0,
 };
 
 /** GET that surfaces its own failure. Used for the on-demand panels (evidence, logs). */
@@ -123,8 +140,15 @@ export interface Frame {
 }
 
 const KIND: Record<string, Frame["cls"]> = {
-  say: "say", boss_say: "say", note: "say", escalation: "ask", state_change: "state",
-  gate_result: "state", commit: "state", tool_summary: "tool", digest: "tool",
+  say: "say",
+  boss_say: "say",
+  note: "say",
+  escalation: "ask",
+  state_change: "state",
+  gate_result: "state",
+  commit: "state",
+  tool_summary: "tool",
+  digest: "tool",
 };
 
 /** Appends one raw SSE payload to the frame buffer, assigning it a stable id.
@@ -142,11 +166,19 @@ export function appendFrame(prev: Frame[], f: Wire, liveSeq: { current: number }
       next[next.length - 1] = { ...last, text: (last.text + f.body).slice(-300) };
       return next;
     }
-    return [...next, {
-      id: `l${++liveSeq.current}`,
-      cls, grpId: f.grpId ?? null, projectId: f.projectId ?? null, at,
-      author: f.role ?? "agent", text: f.body, agentId: f.agentId,
-    }];
+    return [
+      ...next,
+      {
+        id: `l${++liveSeq.current}`,
+        cls,
+        grpId: f.grpId ?? null,
+        projectId: f.projectId ?? null,
+        at,
+        author: f.role ?? "agent",
+        text: f.body,
+        agentId: f.agentId,
+      },
+    ];
   }
   // /api/stream?since=0 never advances, so a native EventSource reconnect
   // replays the whole history through this same path — the id is stable but
@@ -154,15 +186,24 @@ export function appendFrame(prev: Frame[], f: Wire, liveSeq: { current: number }
   // React key in the array, so a repeat is dropped instead.
   const id = `e${f.seq}`;
   if (next.some((x) => x.id === id)) return next;
-  return [...next, {
-    id,
-    cls: KIND[f.kind] ?? "say", grpId: f.grpId ?? null, projectId: f.projectId ?? null, at,
-    // `?? ""`, because the server's `body` is optional and this row's `text` is
-    // not. Nothing emits without one today — 110 call sites, all carry it — but
-    // `any` on this parameter is what kept that from being checked, and the
-    // failure it hides is a row in the boss's timeline that renders blank.
-    author: f.author, target: f.target, intent: f.intent, text: f.body ?? "",
-  }];
+  return [
+    ...next,
+    {
+      id,
+      cls: KIND[f.kind] ?? "say",
+      grpId: f.grpId ?? null,
+      projectId: f.projectId ?? null,
+      at,
+      // `?? ""`, because the server's `body` is optional and this row's `text` is
+      // not. Nothing emits without one today — 110 call sites, all carry it — but
+      // `any` on this parameter is what kept that from being checked, and the
+      // failure it hides is a row in the boss's timeline that renders blank.
+      author: f.author,
+      target: f.target,
+      intent: f.intent,
+      text: f.body ?? "",
+    },
+  ];
 }
 
 /** Derives each row's render props from a newest-first frame list. Pulled out
@@ -215,7 +256,7 @@ function raise(f: { body: string; at?: number; meta?: { url?: string; title?: st
   };
 }
 
-const get = <T,>(path: string) => fetch(path).then((r) => r.json() as Promise<T>);
+const get = <T>(path: string) => fetch(path).then((r) => r.json() as Promise<T>);
 
 /**
  * The prefix the stream is allowed to invalidate.

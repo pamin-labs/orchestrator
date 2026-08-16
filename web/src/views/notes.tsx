@@ -45,10 +45,20 @@ const KINDS: [string, string][] = [
 
 const ZH = new Map(KINDS.map(([k, zh]) => [k, zh]));
 
-export function Notes({ projectId, grpId, compact, tab, onTab, onCount }: {
-  projectId?: number; grpId?: number; compact?: boolean;
+export function Notes({
+  projectId,
+  grpId,
+  compact,
+  tab,
+  onTab,
+  onCount,
+}: {
+  projectId?: number;
+  grpId?: number;
+  compact?: boolean;
   /** From the hash where this is a whole view; local where it is embedded. */
-  tab?: string | null; onTab?: (t: string) => void;
+  tab?: string | null;
+  onTab?: (t: string) => void;
   /** How many were found, for a tab label that cannot fetch them itself. */
   onCount?: (n: number) => void;
 }) {
@@ -79,11 +89,7 @@ export function Notes({ projectId, grpId, compact, tab, onTab, onCount }: {
 
   const present = KINDS.filter(([k]) => notes.some((n) => n.kind === k));
   return (
-    <Tabs
-      value={tab ?? present[0]?.[0] ?? "journal"}
-      onValueChange={onTab}
-      className="flex min-h-0 flex-1 flex-col"
-    >
+    <Tabs value={tab ?? present[0]?.[0] ?? "journal"} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
       <TabList>
         {present.map(([k, zh]) => (
           <Tab key={k} value={k} count={notes.filter((n) => n.kind === k).length}>

@@ -49,11 +49,21 @@ const BUCKETS: Bucket[] = [
 const DONE = "done";
 
 export function Progress({
-  st, projectId, onOpen, maxGroups, tab, onTab, queue,
+  st,
+  projectId,
+  onOpen,
+  maxGroups,
+  tab,
+  onTab,
+  queue,
 }: {
-  st: State; projectId: number; onOpen: (id: number) => void; maxGroups?: number | null;
+  st: State;
+  projectId: number;
+  onOpen: (id: number) => void;
+  maxGroups?: number | null;
   /** From the hash, so it survives opening a requirement and coming back. */
-  tab: string | null; onTab: (t: string) => void;
+  tab: string | null;
+  onTab: (t: string) => void;
   /** What needs the boss. Rendered as the 待办 tab, not above it. */
   queue?: React.ReactNode;
 }) {
@@ -61,8 +71,7 @@ export function Progress({
   const archived = (st.archived ?? []).filter((a) => a.project_id === projectId);
   // A group already approved is not the boss's to act on: it belongs with the
   // other things that are simply waiting.
-  const of = (b: Bucket) =>
-    groups.filter((g) => (heldApproved(g) ? b.key === "held" : b.of.includes(g.status)));
+  const of = (b: Bucket) => groups.filter((g) => (heldApproved(g) ? b.key === "held" : b.of.includes(g.status)));
   const live = groups.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
   const todo = countWaiting(st, projectId);
 
@@ -75,51 +84,43 @@ export function Progress({
     : (BUCKETS.slice(1).find((b) => of(b).length)?.key ?? (archived.length ? DONE : "live"));
 
   if (!groups.length && !archived.length) {
-    return (
-      <div className="text-[0.8125rem] text-ink-3">
-        这个项目还没有需求。右上角 ＋ 新需求，写一句话就行。
-      </div>
-    );
+    return <div className="text-[0.8125rem] text-ink-3">这个项目还没有需求。右上角 ＋ 新需求，写一句话就行。</div>;
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Tabs value={tab ?? fallback} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
         <TabList>
-        {BUCKETS.map((b) => (
-          <Tab key={b.key} value={b.key} count={b.mine ? todo : of(b).length} mine={b.mine}>
-            {b.zh}
+          {BUCKETS.map((b) => (
+            <Tab key={b.key} value={b.key} count={b.mine ? todo : of(b).length} mine={b.mine}>
+              {b.zh}
+            </Tab>
+          ))}
+          <Tab value={DONE} count={archived.length}>
+            已交付
           </Tab>
-        ))}
-        <Tab value={DONE} count={archived.length}>已交付</Tab>
-        <span className="grow" />
-        {/* The slot cap is why an approved requirement can sit still: queued, not
+          <span className="grow" />
+          {/* The slot cap is why an approved requirement can sit still: queued, not
             stuck. Without it that difference is invisible. */}
-        {maxGroups != null && (
-          <Tip label={`并发上限 ${maxGroups} 组。满了已批准的需求排队等槽位，不是卡住了。`}>
-            <Meta className={cn("self-center underline decoration-dotted", live >= maxGroups && "text-warn")}>
-              并行 {live}/{maxGroups}
-            </Meta>
-          </Tip>
-        )}
-      </TabList>
+          {maxGroups != null && (
+            <Tip label={`并发上限 ${maxGroups} 组。满了已批准的需求排队等槽位，不是卡住了。`}>
+              <Meta className={cn("self-center underline decoration-dotted", live >= maxGroups && "text-warn")}>
+                并行 {live}/{maxGroups}
+              </Meta>
+            </Tip>
+          )}
+        </TabList>
 
-      {BUCKETS.map((b) => (
-        <TabPanel key={b.key} value={b.key} className="flex min-h-0 flex-1 flex-col">
+        {BUCKETS.map((b) => (
+          <TabPanel key={b.key} value={b.key} className="flex min-h-0 flex-1 flex-col">
+            <Pane>{b.mine ? queue : <List st={st} groups={of(b)} onOpen={onOpen} empty={emptyOf(b.key)} />}</Pane>
+          </TabPanel>
+        ))}
+        <TabPanel value={DONE} className="flex min-h-0 flex-1 flex-col">
           <Pane>
-            {b.mine ? (
-              queue
-            ) : (
-              <List st={st} groups={of(b)} onOpen={onOpen} empty={emptyOf(b.key)} />
-            )}
+            <Done rows={archived} />
           </Pane>
         </TabPanel>
-      ))}
-      <TabPanel value={DONE} className="flex min-h-0 flex-1 flex-col">
-        <Pane>
-          <Done rows={archived} />
-        </Pane>
-      </TabPanel>
       </Tabs>
     </div>
   );
@@ -134,9 +135,15 @@ function emptyOf(key: string): string {
 }
 
 function List({
-  st, groups, onOpen, empty,
+  st,
+  groups,
+  onOpen,
+  empty,
 }: {
-  st: State; groups: Group[]; onOpen: (id: number) => void; empty: string;
+  st: State;
+  groups: Group[];
+  onOpen: (id: number) => void;
+  empty: string;
 }) {
   const { page, rest, more, total } = usePaged(groups, 25);
   if (!groups.length) return <div className="text-[0.8125rem] text-ink-3">{empty}</div>;
@@ -196,11 +203,15 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
           <span className="text-[0.75rem] text-ink-3">无切片</span>
         ) : (
           <div className="flex flex-wrap items-stretch gap-1.5">
-            {slices.map((s) => <Seg key={s.id} s={s} />)}
+            {slices.map((s) => (
+              <Seg key={s.id} s={s} />
+            ))}
           </div>
         )}
         {doing && (
-          <div className="mt-1 truncate font-mono text-[0.6875rem] text-ink-2">{doing.role} ▸ {doing.activity}</div>
+          <div className="mt-1 truncate font-mono text-[0.6875rem] text-ink-2">
+            {doing.role} ▸ {doing.activity}
+          </div>
         )}
       </div>
       <span className="flex items-center gap-2 whitespace-nowrap">
@@ -237,7 +248,13 @@ function Seg({ s }: { s: Slice }) {
   const failed = Object.values(gs).includes("fail");
   const mark = waiting
     ? "待查收"
-    : s.status === "accepted" ? "✓" : s.status === "rejected" ? "退回" : s.status === "pending" ? "等" : "";
+    : s.status === "accepted"
+      ? "✓"
+      : s.status === "rejected"
+        ? "退回"
+        : s.status === "pending"
+          ? "等"
+          : "";
   return (
     <Tip label={`${s.title} — ${s.accept_spec}`}>
       <span
@@ -246,11 +263,21 @@ function Seg({ s }: { s: Slice }) {
           waiting && "border-accent bg-accent-soft",
           !waiting && s.status === "accepted" && "border-rule-soft bg-sunk",
           !waiting && s.status !== "accepted" && (failed || s.status === "rejected") && "border-bad",
-          !waiting && s.status !== "accepted" && !failed && s.status !== "rejected" && s.status !== "pending" && "border-ink-3",
+          !waiting &&
+            s.status !== "accepted" &&
+            !failed &&
+            s.status !== "rejected" &&
+            s.status !== "pending" &&
+            "border-ink-3",
           !waiting && s.status === "pending" && "border-rule",
         )}
       >
-        <span className={cn("flex items-center gap-1 font-mono text-[0.625rem] text-ink-3", waiting && "font-semibold text-accent")}>
+        <span
+          className={cn(
+            "flex items-center gap-1 font-mono text-[0.625rem] text-ink-3",
+            waiting && "font-semibold text-accent",
+          )}
+        >
           S{s.seq}
           <span className="grow" />
           {mark}
@@ -300,7 +327,9 @@ function Done({ rows }: { rows: Archived[] }) {
         </div>
       ))}
       {rest > 0 && (
-        <Button variant="quiet" size="sm" className="mt-2" onClick={more}>还有 {rest} 个（共 {total}）</Button>
+        <Button variant="quiet" size="sm" className="mt-2" onClick={more}>
+          还有 {rest} 个（共 {total}）
+        </Button>
       )}
     </>
   );

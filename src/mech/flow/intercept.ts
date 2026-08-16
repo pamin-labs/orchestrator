@@ -70,11 +70,7 @@ export interface Hold {
 }
 
 export function hold(ctx: Ctx, grpId: number, h: Hold): void {
-  const sets = [
-    `status = '${h.settled ? "PAUSED" : "PAUSING"}'`,
-    "paused_at = unixepoch() * 1000",
-    "pause_reason = ?",
-  ];
+  const sets = [`status = '${h.settled ? "PAUSED" : "PAUSING"}'`, "paused_at = unixepoch() * 1000", "pause_reason = ?"];
   const args: (string | number)[] = [h.reason];
   if (h.until !== undefined) {
     sets.push("rl_resets_at = ?");
@@ -86,10 +82,7 @@ export function hold(ctx: Ctx, grpId: number, h: Hold): void {
   }
   if (h.leaveQueue) sets.push("merge_seq = NULL, merge_seq_at = NULL");
   args.push(grpId);
-  ctx.db.run(
-    `UPDATE grp SET ${sets.join(", ")} WHERE id = ?${h.from ? ` AND status = '${h.from}'` : ""}`,
-    args,
-  );
+  ctx.db.run(`UPDATE grp SET ${sets.join(", ")} WHERE id = ?${h.from ? ` AND status = '${h.from}'` : ""}`, args);
 }
 
 /**
@@ -119,9 +112,7 @@ export function release(
 ): void {
   const states = (opts.from ?? STOPPED).map((x) => `'${x}'`).join(", ");
   const where =
-    grpId === null
-      ? "pause_reason = ?"
-      : `id = ? AND status IN (${states})${opts.only ? " AND pause_reason = ?" : ""}`;
+    grpId === null ? "pause_reason = ?" : `id = ? AND status IN (${states})${opts.only ? " AND pause_reason = ?" : ""}`;
   ctx.db.run(
     `UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL,
        rl_resets_at = NULL, blocked_on = NULL
@@ -151,9 +142,7 @@ export function pause(ctx: Ctx, grpId: number, reason: PauseReason = "boss"): nu
  * so a crashed turn cannot leave a group stuck in PAUSING forever.
  */
 export function settlePausing(ctx: Ctx): number {
-  const groups = ctx.db
-    .query<{ id: number }, []>("SELECT id FROM grp WHERE status = 'PAUSING'")
-    .all();
+  const groups = ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE status = 'PAUSING'").all();
   let settled = 0;
   for (const g of groups) {
     if (runningJobs(ctx, g.id).length === 0) {
@@ -176,7 +165,12 @@ function settle(ctx: Ctx, grpId: number): void {
      WHERE id = ? AND status = 'PAUSING'`,
     [grpId],
   );
-  ctx.bus.emit({ grpId, author: "orchestrator", kind: "state_change", body: say(ctx.config?.language, "group.paused") });
+  ctx.bus.emit({
+    grpId,
+    author: "orchestrator",
+    kind: "state_change",
+    body: say(ctx.config?.language, "group.paused"),
+  });
 }
 
 export function resume(ctx: Ctx, grpId: number): void {
@@ -284,10 +278,7 @@ function runningJobs(ctx: Ctx, grpId: number): RunningJob[] {
  */
 export function park(ctx: Ctx, grpId: number, reason: string): void {
   const cancelled = ctx.sched.cancelPending(grpId, `parked: ${reason}`);
-  ctx.db.run(
-    "UPDATE agent SET session_id = NULL, session_tokens = 0 WHERE grp_id = ? AND state != 'retired'",
-    [grpId],
-  );
+  ctx.db.run("UPDATE agent SET session_id = NULL, session_tokens = 0 WHERE grp_id = ? AND state != 'retired'", [grpId]);
   ctx.db.run("UPDATE grp SET status = 'PARKED' WHERE id = ?", [grpId]);
   ctx.bus.emit({
     grpId,

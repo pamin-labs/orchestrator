@@ -16,7 +16,10 @@ import { cn } from "../lib/utils";
  * kind of thing nobody notices is missing.
  */
 export function Segments({
-  value, onValueChange, className, children,
+  value,
+  onValueChange,
+  className,
+  children,
 }: {
   value: string;
   onValueChange: (v: string) => void;
@@ -66,7 +69,10 @@ export function Segment({ value, children }: { value: string; children: React.Re
  * checked box does.
  */
 export function Toggles({
-  value, onValueChange, className, children,
+  value,
+  onValueChange,
+  className,
+  children,
 }: {
   value: string[];
   onValueChange: (v: string[]) => void;
@@ -87,7 +93,10 @@ export function Toggles({
  * `draggable` plus the drag handlers belong on the element the pointer is on.
  */
 export function Toggle({
-  value, className, children, ...rest
+  value,
+  className,
+  children,
+  ...rest
 }: React.ComponentProps<typeof TG.Item> & { value: string }) {
   return (
     <TG.Item

@@ -48,13 +48,10 @@ function until(unixSecs?: number): string {
   return h >= 1 ? `${h}h${min % 60}m` : `${min}m`;
 }
 
-
 export function UsageBar({ usage }: { usage: Usage[] }) {
   // No window and no error means an account with nothing to run out of — API-key
   // billing — and it gets no bar rather than an empty one.
-  const rows = usage.filter(
-    (u) => u.fiveHourPercent !== undefined || u.weeklyPercent !== undefined || u.error,
-  );
+  const rows = usage.filter((u) => u.fiveHourPercent !== undefined || u.weeklyPercent !== undefined || u.error);
   if (!rows.length) return null;
 
   // One row per account, two rings per row, each ring carrying its own label and
@@ -88,9 +85,19 @@ const C = 2 * Math.PI * R;
  * this needs none of them.
  */
 function Ring({
-  label, v, at, read, stale, why,
+  label,
+  v,
+  at,
+  read,
+  stale,
+  why,
 }: {
-  label: string; v?: number; at?: number; read?: number; stale: boolean; why?: string;
+  label: string;
+  v?: number;
+  at?: number;
+  read?: number;
+  stale: boolean;
+  why?: string;
 }) {
   const known = v !== undefined;
   // An account without this window holds the column open and says nothing in it.

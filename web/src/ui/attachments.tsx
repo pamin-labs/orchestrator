@@ -40,22 +40,22 @@ export function Attachments({ files }: { files: Attached[] }) {
         <div className="mt-2 flex flex-wrap gap-2">
           {images.map((f) => (
             <Tip key={f.path} label={f.name}>
-            <button
-              onClick={() => setFull(f)}
-              className={cn(
-                "relative block h-24 cursor-zoom-in overflow-hidden rounded-md border border-rule bg-sunk",
-                "transition-colors hover:border-accent",
-              )}
-            >
-              <img src={f.url} alt={f.name} className="h-full w-auto max-w-[22rem] object-cover" loading="lazy" />
-              {/* The same marker the text uses. Three screenshots and a sentence
+              <button
+                onClick={() => setFull(f)}
+                className={cn(
+                  "relative block h-24 cursor-zoom-in overflow-hidden rounded-md border border-rule bg-sunk",
+                  "transition-colors hover:border-accent",
+                )}
+              >
+                <img src={f.url} alt={f.name} className="h-full w-auto max-w-[22rem] object-cover" loading="lazy" />
+                {/* The same marker the text uses. Three screenshots and a sentence
                   about 「第二张」 is a puzzle without it. */}
-              {f.label && (
-                <span className="absolute left-1 top-1 rounded-sm bg-ink/75 px-1 font-mono text-[0.625rem] text-paper">
-                  {f.label}
-                </span>
-              )}
-            </button>
+                {f.label && (
+                  <span className="absolute left-1 top-1 rounded-sm bg-ink/75 px-1 font-mono text-[0.625rem] text-paper">
+                    {f.label}
+                  </span>
+                )}
+              </button>
             </Tip>
           ))}
         </div>
@@ -70,7 +70,8 @@ export function Attachments({ files }: { files: Attached[] }) {
               rel="noreferrer"
               className="truncate font-mono text-[0.6875rem] text-ink-3 underline decoration-dotted hover:text-accent"
             >
-              {f.label ? `[${f.label}] ` : ""}{f.name}
+              {f.label ? `[${f.label}] ` : ""}
+              {f.name}
             </a>
           ))}
         </div>

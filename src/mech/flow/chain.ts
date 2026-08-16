@@ -103,9 +103,7 @@ export function route(deps: ChainDeps, escId: number): string {
     ? ctx.db.query<{ status: GrpState }, [number]>("SELECT status FROM grp WHERE id = ?").get(esc.grp_id)?.status
     : null;
   let level: EscalationOpenState =
-    esc.severity === "blocker" && status && !isDispatchableGrpState(status)
-      ? "boss"
-      : esc.chain_state;
+    esc.severity === "blocker" && status && !isDispatchableGrpState(status) ? "boss" : esc.chain_state;
   for (;;) {
     if (level === "boss") {
       ctx.db.run("UPDATE escalation SET chain_state = 'boss' WHERE id = ?", [escId]);
@@ -150,9 +148,7 @@ function findResponder(ctx: Ctx, grpId: number | null, role: string): number | n
     );
   }
   const standing = ctx.db
-    .query<{ id: number }, [string]>(
-      "SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'",
-    )
+    .query<{ id: number }, [string]>("SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'")
     .get(role)?.id;
   if (standing) return standing;
   // A configured-but-not-yet-hired standing role is a level that exists; skipping
@@ -181,9 +177,7 @@ export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok
     if (!input.refNoteId) {
       return { ok: false, error: "a stand-in answer must cite the decision it rests on (--ref <note_id>)" };
     }
-    const note = ctx.db
-      .query<{ kind: string }, [number]>("SELECT kind FROM note WHERE id = ?")
-      .get(input.refNoteId);
+    const note = ctx.db.query<{ kind: string }, [number]>("SELECT kind FROM note WHERE id = ?").get(input.refNoteId);
     if (!note) return { ok: false, error: `no note ${input.refNoteId}` };
     if (note.kind !== "decision" && note.kind !== "fact") {
       return { ok: false, error: `note ${input.refNoteId} is a ${note.kind}, not a decision` };
@@ -243,10 +237,7 @@ export function abstain(deps: ChainDeps, escId: number, by: string, why: string)
  * rightly never enable them. Rolling the worktree back to the checkpoint recorded
  * when the question was asked is what makes the bet reversible.
  */
-export async function revoke(
-  deps: ChainDeps,
-  escId: number,
-): Promise<{ rolledBackTo?: string; answeredBy?: string }> {
+export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBackTo?: string; answeredBy?: string }> {
   const { ctx } = deps;
   const esc = ctx.db
     .query<{ grp_id: number | null; answered_by: string | null; checkpoint_sha: string | null }, [number]>(

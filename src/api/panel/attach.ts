@@ -79,7 +79,10 @@ export const postAttach: Handler = async (ctx, req) => {
     // sanitising keeps a crafted filename inside the directory. Every segment of
     // a relative path is sanitised the same way, so `..` cannot survive one.
     const safe = (s: string) => s.replace(/[^\w.\-\u4e00-\u9fff]/g, "_").slice(-80);
-    const rel = (rels[i] ?? "").split("/").filter((s) => s && s !== "." && s !== "..").map(safe);
+    const rel = (rels[i] ?? "")
+      .split("/")
+      .filter((s) => s && s !== "." && s !== "..")
+      .map(safe);
     if (rel.length > 1) {
       const top = rel[0]!;
       const base = dirs.get(top)?.path ?? join(root, `${stamp}-${top}`);
@@ -129,7 +132,9 @@ export const postAttachLocal: Handler<z.infer<typeof LocalPathsBody>> = async (c
     } catch {
       return bad(`${raw}: 读不到`);
     }
-    const safe = basename(src).replace(/[^\w.\-\u4e00-\u9fff]/g, "_").slice(-80);
+    const safe = basename(src)
+      .replace(/[^\w.\-\u4e00-\u9fff]/g, "_")
+      .slice(-80);
     const dest = join(root, `${stamp}-${out.length}-${safe}`);
     await cp(src, dest, { recursive: st.isDirectory() });
     out.push({
@@ -198,8 +203,8 @@ export const getAttachment: Handler<undefined, z.infer<typeof AttachmentNamePara
  */
 export function bossFact(ctx: Ctx, grpId: number | null, body: string): void {
   const projectId = grpId
-    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
-        ?.project_id ?? null
+    ? (ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
+        ?.project_id ?? null)
     : null;
   ctx.db.run(
     "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",

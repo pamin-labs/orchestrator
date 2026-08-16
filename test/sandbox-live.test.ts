@@ -21,7 +21,6 @@ import {
   putFile,
   REAL,
   SKILL_SYNC,
-  
   UTIL,
   WORK,
 } from "../src/mech/sandbox/sandbox.ts";
@@ -197,7 +196,11 @@ live(
     c.db.run("UPDATE project SET remote = ?, base_branch = 'master' WHERE id = 1", [remote]);
     try {
       // Not a sandbox in the 005 sense: no agent, so none of an agent's furniture.
-      const bare = await execIn(c, UTIL, "test -x /usr/local/bin/orch || test -d /var/orch || test -d /root/.claude/skills");
+      const bare = await execIn(
+        c,
+        UTIL,
+        "test -x /usr/local/bin/orch || test -d /var/orch || test -d /root/.claude/skills",
+      );
       expect(bare.code).not.toBe(0);
 
       // The verb allowlist, refusing for real rather than in a unit test.
@@ -249,9 +252,11 @@ live(
         { name: "probe", value: real, hosts: ["postman-echo.com"], header: "x-probe", paths: ["/get"] },
       ]);
       const ask = async (path: string) =>
-        (await execIn(c, scope, `curl -s -H 'x-probe: ${decoy}' https://postman-echo.com${path}`, {
-          timeoutMs: 60_000,
-        })).out;
+        (
+          await execIn(c, scope, `curl -s -H 'x-probe: ${decoy}' https://postman-echo.com${path}`, {
+            timeoutMs: 60_000,
+          })
+        ).out;
 
       // On the list: the sidecar swaps the decoy for the real value.
       expect(await ask("/get")).toContain(real);
@@ -331,7 +336,9 @@ live(
       expect(w.out).not.toContain("rc=0");
       // And the listing travels back out, which is what the settings page and
       // `/name` read. It cannot come from this machine: the checkout is in here.
-      const found = cacheProjectSkills(c.db, 1, synced.out).map((s) => s.name).sort();
+      const found = cacheProjectSkills(c.db, 1, synced.out)
+        .map((s) => s.name)
+        .sort();
       expect(found).toEqual(["repo-agents", "repo-codex"]);
       expect(cacheProjectSkills(c.db, 1, synced.out)[0]!.description).toBe("shipped by the repository");
     } finally {

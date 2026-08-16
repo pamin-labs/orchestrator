@@ -20,7 +20,8 @@ function harness() {
     db,
     bus: new Bus(db),
     sched: new Scheduler(db, async (j) => void ran.push(j)),
-    sandbox: fakeSandbox(), waiters: new Map(),
+    sandbox: fakeSandbox(),
+    waiters: new Map(),
     config: { language: "中文", feedbackSedimentThreshold: 3 },
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
@@ -59,9 +60,7 @@ test("the third time it becomes a project rule, and does not fire again on the s
   expect(cosTurns().length).toBe(1);
 
   const marked = h.db
-    .query<{ c: number }, []>(
-      "SELECT count(*) AS c FROM note WHERE json_extract(frontmatter_json, '$.sedimented') = 1",
-    )
+    .query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE json_extract(frontmatter_json, '$.sedimented') = 1")
     .get()!.c;
   expect(marked).toBe(3);
 });

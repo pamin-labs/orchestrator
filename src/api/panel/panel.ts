@@ -2,7 +2,14 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { relinkSkills } from "../../mech/sandbox/sandbox.ts";
-import { listSkills, projectSkills, projectSkillsPending, restageSkills, setSkillOff, skillsOff } from "../../mech/skills.ts";
+import {
+  listSkills,
+  projectSkills,
+  projectSkillsPending,
+  restageSkills,
+  setSkillOff,
+  skillsOff,
+} from "../../mech/skills.ts";
 import { z } from "zod";
 import { bad, json, type Handler } from "../shared.ts";
 import { expandHome } from "./attach.ts";
@@ -140,7 +147,10 @@ export const getDirs: Handler = async (ctx, req) => {
     return bad(`${path}: ${(e as Error).message}`);
   }
   const taken = new Set(
-    ctx.db.query<{ repo_path: string }, []>("SELECT repo_path FROM project").all().map((r) => r.repo_path),
+    ctx.db
+      .query<{ repo_path: string }, []>("SELECT repo_path FROM project")
+      .all()
+      .map((r) => r.repo_path),
   );
   const dirs = entries
     .filter((d) => d.isDirectory() && !d.name.startsWith("."))

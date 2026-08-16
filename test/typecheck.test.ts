@@ -13,5 +13,11 @@ import { ROOT } from "../src/config.ts";
 test("the project typechecks, because the gate says so", async () => {
   const r = Bun.spawnSync(["bunx", "tsc", "--noEmit", "-p", "."], { cwd: ROOT });
   const out = new TextDecoder().decode(r.stdout) + new TextDecoder().decode(r.stderr);
-  expect(out.split("\n").filter((l) => l.includes("error TS")).slice(0, 20).join("\n")).toBe("");
+  expect(
+    out
+      .split("\n")
+      .filter((l) => l.includes("error TS"))
+      .slice(0, 20)
+      .join("\n"),
+  ).toBe("");
 }, 120_000);

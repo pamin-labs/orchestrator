@@ -146,9 +146,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: Record<string
               </Toggle>
             ))}
           </Toggles>
-          {!on.length && (
-            <Meta className="mt-2 block text-accent">一道都没开，LLM 审阅底下就没有地板。</Meta>
-          )}
+          {!on.length && <Meta className="mt-2 block text-accent">一道都没开，LLM 审阅底下就没有地板。</Meta>}
         </>
       )}
     </>
@@ -162,7 +160,9 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: Record<string
  * is a wall of frames that says nothing about what goes in them.
  */
 export function Sandbox({
-  d, busy, patch,
+  d,
+  busy,
+  patch,
 }: {
   d: ProjectConfig;
   busy: boolean;
@@ -271,7 +271,12 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
   // Whatever is pasted, reduced to the thing the sidecar matches on. A URL, a
   // trailing slash, a port, capitals — all of them are somebody meaning a host.
   const host = (raw: string) =>
-    raw.trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "").replace(/:\d+$/, "");
+    raw
+      .trim()
+      .toLowerCase()
+      .replace(/^[a-z]+:\/\//, "")
+      .replace(/[/?#].*$/, "")
+      .replace(/:\d+$/, "");
   const add = () => {
     const h = host(draft);
     setDraft("");
@@ -285,7 +290,10 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
         {value.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {value.map((d) => (
-              <span key={d} className="flex items-center gap-1 rounded-sm bg-sunk py-0.5 pr-1 pl-1.5 font-mono text-[0.6875rem] text-ink-2">
+              <span
+                key={d}
+                className="flex items-center gap-1 rounded-sm bg-sunk py-0.5 pr-1 pl-1.5 font-mono text-[0.6875rem] text-ink-2"
+              >
                 {d}
                 <button
                   type="button"
@@ -349,7 +357,11 @@ interface ImageChoices {
  * "could not reach ghcr.io" send a reader to different places.
  */
 export function ImageRow({
-  value, busy, onSave, label = "镜像", placeholder,
+  value,
+  busy,
+  onSave,
+  label = "镜像",
+  placeholder,
 }: {
   value: string;
   busy: boolean;

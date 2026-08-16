@@ -174,9 +174,7 @@ function VerdictRow({ author, body }: { author: string; body: string }) {
     <div className="border-t border-rule-soft py-2.5 first:border-t-0">
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-[0.6875rem] text-ink-3">{author}</span>
-        <span className={cn("text-[0.6875rem] font-semibold", no ? "text-bad" : "text-ok")}>
-          {no ? "没过" : "过"}
-        </span>
+        <span className={cn("text-[0.6875rem] font-semibold", no ? "text-bad" : "text-ok")}>{no ? "没过" : "过"}</span>
         <span className="grow" />
         {long && (
           <Button variant="quiet" size="sm" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -215,9 +213,7 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
 
   useEffect(() => {
     setText(null);
-    void fetch(`/api/slices/${sliceId}/gate/${name}`).then(async (r) =>
-      setText(r.ok ? await r.text() : "读不到日志"),
-    );
+    void fetch(`/api/slices/${sliceId}/gate/${name}`).then(async (r) => setText(r.ok ? await r.text() : "读不到日志"));
   }, [sliceId, name]);
 
   // Trailing newline is one empty row on a pane whose whole job is to look like
@@ -255,12 +251,21 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
 
           `max-h`, not `h`: a typecheck gate that printed one line was drawing a
           34rem field of empty grey under it. */}
-      <pre className={cn(PAD, "max-h-[34rem] overflow-auto bg-sunk py-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2")}>
-        {body.length === 0 ? (q ? "没有匹配的行" : "这份日志是空的") : body.map((l, i) => (
-          <div key={i} className={cn(/^\s*\(fail\)/.test(l) && "bg-bad-soft", /error|Error/.test(l) && "text-bad")}>
-            {l || " "}
-          </div>
-        ))}
+      <pre
+        className={cn(
+          PAD,
+          "max-h-[34rem] overflow-auto bg-sunk py-2 font-mono text-[0.6875rem] leading-[1.5] text-ink-2",
+        )}
+      >
+        {body.length === 0
+          ? q
+            ? "没有匹配的行"
+            : "这份日志是空的"
+          : body.map((l, i) => (
+              <div key={i} className={cn(/^\s*\(fail\)/.test(l) && "bg-bad-soft", /error|Error/.test(l) && "text-bad")}>
+                {l || " "}
+              </div>
+            ))}
       </pre>
     </div>
   );

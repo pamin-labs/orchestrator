@@ -46,9 +46,7 @@ test("canonical states and semantic subsets are unique and aligned", () => {
   expect(inside(DISPATCHABLE_GRP_STATES, GRP_STATES)).toBe(true);
   expect(inside(ESCALATION_OPEN_STATES, ESCALATION_STATES)).toBe(true);
   expect(inside(ESCALATION_TERMINAL_STATES, ESCALATION_STATES)).toBe(true);
-  expect([...ESCALATION_OPEN_STATES, ...ESCALATION_TERMINAL_STATES]).toEqual([
-    ...ESCALATION_STATES,
-  ]);
+  expect([...ESCALATION_OPEN_STATES, ...ESCALATION_TERMINAL_STATES]).toEqual([...ESCALATION_STATES]);
 
   expect(JOB_STATES.filter((state) => !ACTIVE_JOB_STATES.includes(state as never))).toEqual([
     "done",
@@ -56,9 +54,7 @@ test("canonical states and semantic subsets are unique and aligned", () => {
     "cancelled",
   ]);
   expect(GRP_STATES.filter(isDispatchableGrpState)).toEqual([...DISPATCHABLE_GRP_STATES]);
-  expect(ESCALATION_STATES.filter(isTerminalEscalationState)).toEqual([
-    ...ESCALATION_TERMINAL_STATES,
-  ]);
+  expect(ESCALATION_STATES.filter(isTerminalEscalationState)).toEqual([...ESCALATION_TERMINAL_STATES]);
 });
 
 test("state subsets cross the SQL boundary as data, not syntax", () => {
@@ -68,9 +64,7 @@ test("state subsets cross the SQL boundary as data, not syntax", () => {
 
   const count = (param: string) =>
     db
-      .query<{ n: number }, [string]>(
-        "SELECT count(*) AS n FROM job WHERE state IN (SELECT value FROM json_each(?))",
-      )
+      .query<{ n: number }, [string]>("SELECT count(*) AS n FROM job WHERE state IN (SELECT value FROM json_each(?))")
       .get(param)!.n;
 
   expect(count(stateParam(ACTIVE_JOB_STATES))).toBe(1);
@@ -89,12 +83,9 @@ test("shared state policies are not restated by consumers", () => {
   };
   walk("src");
 
-  const policies = [
-    ACTIVE_JOB_STATES,
-    DISPATCHABLE_GRP_STATES,
-    ESCALATION_OPEN_STATES,
-    ESCALATION_TERMINAL_STATES,
-  ].map((states) => [...states].sort().join("\0"));
+  const policies = [ACTIVE_JOB_STATES, DISPATCHABLE_GRP_STATES, ESCALATION_OPEN_STATES, ESCALATION_TERMINAL_STATES].map(
+    (states) => [...states].sort().join("\0"),
+  );
   const restatements: string[] = [];
   for (const path of files) {
     const source = readFileSync(path, "utf8");

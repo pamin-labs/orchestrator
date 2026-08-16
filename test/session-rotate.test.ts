@@ -41,8 +41,9 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
     db,
     bus,
     sched,
-    sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: cfg.language},
+    sandbox: fakeSandbox(),
+    waiters: new Map(),
+    config: { language: cfg.language },
   };
   const deps: ExecDeps = {
     ctx,
@@ -68,9 +69,7 @@ test("session_tokens only counts input+cacheCreate, so heavy cacheRead never tri
   }
 
   const agent = db
-    .query<{ session_tokens: number; total_tokens: number }, []>(
-      "SELECT session_tokens, total_tokens FROM agent",
-    )
+    .query<{ session_tokens: number; total_tokens: number }, []>("SELECT session_tokens, total_tokens FROM agent")
     .get()!;
   // 5 turns * (input 10 + cacheCreate 100) = 550, far under the 120k ceiling —
   // counting cacheRead too would have put this at 1.5M and rotated every turn.

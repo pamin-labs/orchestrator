@@ -80,7 +80,11 @@ test("signing in restarts what the credential stopped, and nothing else", async 
     .map((r) => r.name);
   expect(running).toEqual(["github-token"]);
   // And the reason is cleared with the pause, or the next sign-in resumes it twice.
-  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM grp WHERE status = 'RUNNING' AND pause_reason IS NOT NULL").get()!.n).toBe(0);
+  expect(
+    db
+      .query<{ n: number }, []>("SELECT count(*) AS n FROM grp WHERE status = 'RUNNING' AND pause_reason IS NOT NULL")
+      .get()!.n,
+  ).toBe(0);
 });
 
 test("signing in answers only the literal runtime's escalation", async () => {
@@ -94,9 +98,7 @@ test("signing in answers only the literal runtime's escalation", async () => {
 
   expect(
     db
-      .query<{ question: string; chain_state: string }, []>(
-        "SELECT question, chain_state FROM escalation ORDER BY id",
-      )
+      .query<{ question: string; chain_state: string }, []>("SELECT question, chain_state FROM escalation ORDER BY id")
       .all(),
   ).toEqual([
     { question: "a_b 的凭据不好使了", chain_state: "answered" },
@@ -141,9 +143,11 @@ test("a resume clears what the stop was about, and leaves PARKED alone", () => {
   const ctx = { db, bus: { emit: () => {} }, sched: { tick: () => {} }, config: {} } as unknown as Ctx;
 
   release(ctx, 1);
-  const g = db.query<{ status: string; rl: number | null; waits: number | null; why: string | null }, []>(
-    "SELECT status, rl_resets_at AS rl, blocked_on AS waits, pause_reason AS why FROM grp WHERE id = 1",
-  ).get()!;
+  const g = db
+    .query<{ status: string; rl: number | null; waits: number | null; why: string | null }, []>(
+      "SELECT status, rl_resets_at AS rl, blocked_on AS waits, pause_reason AS why FROM grp WHERE id = 1",
+    )
+    .get()!;
   expect(g).toEqual({ status: "RUNNING", rl: null, waits: null, why: null });
 
   // PARKED is not a state `release` leaves: a parked group's base may have moved,

@@ -12,12 +12,7 @@ import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { handToBoss } from "../src/mech/flow/review.ts";
 import { checkpoint } from "../src/mech/git/worktree.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import {
-  makeAuditVerdict,
-  makeExecutor,
-  makeReviewVerdict,
-  type ExecDeps,
-} from "../src/runtime/executor.ts";
+import { makeAuditVerdict, makeExecutor, makeReviewVerdict, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { WORK } from "../src/mech/sandbox/sandbox.ts";
@@ -75,14 +70,19 @@ async function harness(opts: { gates?: string[] } = {}) {
     sandbox: fakeSandbox((cmd, cwd) => {
       // In the group's checkout, never in this process's. Without the cwd these
       // spawns ran `git add -A && git commit` in the orchestrator's own repo.
-      const p = Bun.spawnSync(["sh", "-c", cmd], { cwd: cwd === WORK || !cwd ? work : cwd, stdout: "pipe", stderr: "pipe" });
+      const p = Bun.spawnSync(["sh", "-c", cmd], {
+        cwd: cwd === WORK || !cwd ? work : cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       return {
         code: p.exitCode,
         out: p.stdout.toString(),
         err: p.stderr.toString(),
       };
-    }), waiters: new Map(),
-    config: { language: cfg.language},
+    }),
+    waiters: new Map(),
+    config: { language: cfg.language },
   };
   const deps: ExecDeps = {
     ctx,
@@ -132,11 +132,14 @@ async function harness(opts: { gates?: string[] } = {}) {
   db.run("UPDATE slice SET base_sha = ? WHERE id = 1", [base]);
 
   const gate = (code: number, out = "") =>
-    db.run("INSERT OR REPLACE INTO resource (name, template, arg_schema_json, error_regex) VALUES ('test', ?, '{}', '^(FAIL|error)')", [
-      // A template is tokenised, not shell-parsed: one argv, no spaces inside a
-      // single token, no nesting. That constraint is the point of templates.
-      code === 0 ? "true" : `bun -e console.log("${out}");process.exit(${code})`,
-    ]);
+    db.run(
+      "INSERT OR REPLACE INTO resource (name, template, arg_schema_json, error_regex) VALUES ('test', ?, '{}', '^(FAIL|error)')",
+      [
+        // A template is tokenised, not shell-parsed: one argv, no spaces inside a
+        // single token, no nesting. That constraint is the point of templates.
+        code === 0 ? "true" : `bun -e console.log("${out}");process.exit(${code})`,
+      ],
+    );
 
   return { db, ctx, sched, deps, app, post, repo, wt, specs, gate, git };
 }
@@ -172,9 +175,9 @@ test("a claim git cannot corroborate is sent back before any reviewer sees it", 
   await h.sched.drain();
 
   expect(gateState(h.db, 1).reconcile).toBe("fail");
-  const slice = h.db.query<{ status: string; retries: number }, []>(
-    "SELECT status, retries FROM slice WHERE id = 1",
-  ).get()!;
+  const slice = h.db
+    .query<{ status: string; retries: number }, []>("SELECT status, retries FROM slice WHERE id = 1")
+    .get()!;
   expect(slice.retries).toBe(1);
   // Straight back to the writer — the reviewer's judgement is not spent on this.
   expect(h.specs.some((s) => s.stable.systemAppend.includes("You are QA"))).toBe(false);
@@ -209,9 +212,11 @@ test("repeated failures escalate to the boss instead of looping forever", async 
     await h.sched.drain();
   }
 
-  const esc = h.db.query<{ severity: string; question: string; brief: string; kind: string; chain_state: string }, []>(
-    "SELECT severity, question, brief, kind, chain_state FROM escalation",
-  ).get()!;
+  const esc = h.db
+    .query<{ severity: string; question: string; brief: string; kind: string; chain_state: string }, []>(
+      "SELECT severity, question, brief, kind, chain_state FROM escalation",
+    )
+    .get()!;
   expect(esc.severity).toBe("blocker");
   expect(esc.brief).toBe("S1 连着 3 次没过 gate");
   expect(esc.kind).toBe("spec");
@@ -232,9 +237,9 @@ test("QA's pass hands the slice to the boss and rotates the sessions", async () 
   );
   // The slice boundary is the primary rotation point: cheapest handoff, and it
   // stops a session growing across unrelated work.
-  const agents = h.db.query<{ session_id: string | null; session_tokens: number }, []>(
-    "SELECT session_id, session_tokens FROM agent",
-  ).all();
+  const agents = h.db
+    .query<{ session_id: string | null; session_tokens: number }, []>("SELECT session_id, session_tokens FROM agent")
+    .all();
   expect(agents.every((a) => a.session_id === null && a.session_tokens === 0)).toBe(true);
 });
 
@@ -301,7 +306,9 @@ test("a group with no retro cannot wind up — the PM is sent back to write one"
 test("with a retro and a green branch gate, the Auditor is called in", async () => {
   const h = await harness();
   h.gate(0);
-  h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'retro', 'zh', 'S1 返工一次，验收标准写模糊了', 0)");
+  h.db.run(
+    "INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'retro', 'zh', 'S1 返工一次，验收标准写模糊了', 0)",
+  );
   await h.post("/api/slices/1/accept");
   await h.sched.drain();
 
@@ -458,11 +465,7 @@ test("writing the retro resumes PR-level review instead of dead-ending", async (
   expect(h.specs.at(-1)!.prompt).toContain("no retro");
 
   const before = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c;
-  await h.post(
-    "/orch/journal",
-    { kind: "retro", body: "S1 返工一次，验收标准写模糊了" },
-    "tok-eng",
-  );
+  await h.post("/orch/journal", { kind: "retro", body: "S1 返工一次，验收标准写模糊了" }, "tok-eng");
   // Without this the PM writes a retro nobody asked for again and the finished
   // branch sits unreviewed until someone nudges it by hand.
   const after = h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c;
@@ -479,7 +482,9 @@ test("a retro written mid-flight does not trigger PR review", async () => {
 test("a trivial slice is accepted automatically once all three gates pass", async () => {
   const h = await harness();
   h.ctx.config.autoAcceptTiers = ["trivial"];
-  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 2, 'S2', 'b', 'normal', 'pending', 0)");
+  h.db.run(
+    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 2, 'S2', 'b', 'normal', 'pending', 0)",
+  );
 
   handToBoss({ ctx: h.ctx }, 1);
 
@@ -494,8 +499,9 @@ test("a trivial slice is accepted automatically once all three gates pass", asyn
   expect(said.author).toBe("orchestrator");
   expect(said.body).toContain("自动查收");
   // And the next slice starts, which is the point of the whole thing.
-  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(2)!.status)
-    .not.toBe("pending");
+  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(2)!.status).not.toBe(
+    "pending",
+  );
 });
 
 test("a normal slice still waits for the boss even with trivial auto-accept on", async () => {
@@ -504,17 +510,18 @@ test("a normal slice still waits for the boss even with trivial auto-accept on",
   h.db.run("UPDATE slice SET difficulty = 'normal' WHERE id = 1");
 
   handToBoss({ ctx: h.ctx }, 1);
-  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status)
-    .toBe("awaiting_boss");
+  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status).toBe(
+    "awaiting_boss",
+  );
 });
 
 test("with nothing configured, every slice waits for the boss", async () => {
   const h = await harness();
   handToBoss({ ctx: h.ctx }, 1);
-  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status)
-    .toBe("awaiting_boss");
+  expect(h.db.query<{ status: string }, [number]>("SELECT status FROM slice WHERE id = ?").get(1)!.status).toBe(
+    "awaiting_boss",
+  );
 });
-
 
 test("the task that closes a slice needs a self-review, and vacuous does not count", async () => {
   const h = await harness();
@@ -572,7 +579,9 @@ test("a branch the Auditor keeps rejecting stops instead of paying for another r
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
 
   h.ctx.auditVerdict!(1, false, "and again");
-  const g = h.db.query<{ status: string; pr_retries: number }, []>("SELECT status, pr_retries FROM grp WHERE id = 1").get()!;
+  const g = h.db
+    .query<{ status: string; pr_retries: number }, []>("SELECT status, pr_retries FROM grp WHERE id = 1")
+    .get()!;
   expect(g.status).toBe("PAUSED");
   expect(g.pr_retries).toBe(3);
   const esc = h.db

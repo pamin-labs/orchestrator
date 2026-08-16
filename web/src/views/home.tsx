@@ -19,7 +19,12 @@ import { Queue } from "./queue";
  * to land on the name.
  */
 export function Home({
-  st, onEnter, onOpen, onNew, onAdd, refresh,
+  st,
+  onEnter,
+  onOpen,
+  onNew,
+  onAdd,
+  refresh,
 }: {
   st: State;
   onEnter: (p: number) => void;
@@ -96,7 +101,9 @@ export function Home({
                 {state.fresh ? (
                   // Nothing has ever been asked of this project, so the row is where to
                   // ask. `relative` puts it above the stretched name, not on it.
-                  <Button className="relative" onClick={() => onNew(p.id)}>＋ 新需求</Button>
+                  <Button className="relative" onClick={() => onNew(p.id)}>
+                    ＋ 新需求
+                  </Button>
                 ) : (
                   meta.length > 0 && <Meta className="whitespace-nowrap">{meta.join(" · ")}</Meta>
                 )}
@@ -105,7 +112,9 @@ export function Home({
           })}
         </div>
         {/* Adding a project happens once. It does not outrank the rows it adds to. */}
-        <Button variant="quiet" className="mt-2.5" onClick={onAdd}>＋ 添加项目</Button>
+        <Button variant="quiet" className="mt-2.5" onClick={onAdd}>
+          ＋ 添加项目
+        </Button>
       </div>
     </>
   );

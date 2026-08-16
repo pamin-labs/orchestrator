@@ -21,8 +21,9 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
     db,
     bus,
     sched,
-    sandbox: fakeSandbox(), waiters: new Map(),
-    config: { language: "中文"},
+    sandbox: fakeSandbox(),
+    waiters: new Map(),
+    config: { language: "中文" },
     notifyBoss: (id) => void notified.push(id),
   };
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
@@ -68,9 +69,11 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
 }
 
 const jobsFor = (db: DB) =>
-  db.query<{ payload_json: string; agent_id: number | null }, []>(
-    "SELECT payload_json, agent_id FROM job WHERE kind = 'agent_turn'",
-  ).all();
+  db
+    .query<{ payload_json: string; agent_id: number | null }, []>(
+      "SELECT payload_json, agent_id FROM job WHERE kind = 'agent_turn'",
+    )
+    .all();
 
 test("an ordinary question starts at the PM", () => {
   const h = harness();
@@ -116,7 +119,10 @@ test("abstaining moves the question up one level, and says why", () => {
   route(h.deps, id);
   abstain(h.deps, id, "pm", "architecture, not scope");
 
-  expect(h.db.query<{ chain_state: string }, [number]>("SELECT chain_state FROM escalation WHERE id = ?").get(id)!.chain_state).toBe("architect");
+  expect(
+    h.db.query<{ chain_state: string }, [number]>("SELECT chain_state FROM escalation WHERE id = ?").get(id)!
+      .chain_state,
+  ).toBe("architect");
   const said = h.db.query<{ body: string }, []>("SELECT body FROM event WHERE author = 'pm'").get()!;
   expect(said.body).toContain("architecture, not scope");
 });
@@ -131,7 +137,10 @@ test("a level's answer unblocks the caller and un-pauses a blocked group", () =>
   expect(answer(h.deps, { escId: id, by: "architect", answer: "use the stdlib one" }).ok).toBe(true);
   expect(got).toBe("use the stdlib one");
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
-  expect(h.db.query<{ answered_by: string }, [number]>("SELECT answered_by FROM escalation WHERE id = ?").get(id)!.answered_by).toBe("architect");
+  expect(
+    h.db.query<{ answered_by: string }, [number]>("SELECT answered_by FROM escalation WHERE id = ?").get(id)!
+      .answered_by,
+  ).toBe("architect");
 });
 
 test("the CoS may only answer from a recorded decision", () => {
@@ -150,7 +159,10 @@ test("the CoS may only answer from a recorded decision", () => {
   h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'decision', 'zh', '老 client 必须继续可用', 0)");
   const ok = answer(h.deps, { escId: id, by: "cos", answer: "keep it", refNoteId: 2 });
   expect(ok.ok).toBe(true);
-  expect(h.db.query<{ ref_note_id: number }, [number]>("SELECT ref_note_id FROM escalation WHERE id = ?").get(id)!.ref_note_id).toBe(2);
+  expect(
+    h.db.query<{ ref_note_id: number }, [number]>("SELECT ref_note_id FROM escalation WHERE id = ?").get(id)!
+      .ref_note_id,
+  ).toBe(2);
 });
 
 test("no stand-in may answer a reserved question, precedent or not", () => {
@@ -177,9 +189,11 @@ test("revoking a stand-in's answer reopens it and rolls the checkout back", asyn
   // boss would rightly never turn them on.
   expect(out.rolledBackTo).toBe("deadbeef");
   expect(out.answeredBy).toBe("cos");
-  const esc = h.db.query<{ chain_state: string; answer: string | null }, [number]>(
-    "SELECT chain_state, answer FROM escalation WHERE id = ?",
-  ).get(id)!;
+  const esc = h.db
+    .query<{ chain_state: string; answer: string | null }, [number]>(
+      "SELECT chain_state, answer FROM escalation WHERE id = ?",
+    )
+    .get(id)!;
   expect(esc.chain_state).toBe("boss");
   expect(esc.answer).toBeNull();
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE state = 'cancelled'").get()!.c).toBe(1);
@@ -384,7 +398,11 @@ test("a standing agent's mail is filed under the recipient's group, not nowhere"
     "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
   );
 
-  await h.post("/orch/mail", { target: "dispatcher", intent: "inform", body: "反对：locale 推断与验收冲突" }, "tok-arch");
+  await h.post(
+    "/orch/mail",
+    { target: "dispatcher", intent: "inform", body: "反对：locale 推断与验收冲突" },
+    "tok-arch",
+  );
 
   // Stamped with the sender's group, this lands as NULL and vanishes from the
   // group's timeline — which is how a real objection went unseen while the card

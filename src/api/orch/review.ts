@@ -132,7 +132,6 @@ export const getEvidence: Handler<undefined, z.infer<typeof IdParams>> = async (
     .get(id);
   if (!sl) return text("no such slice", 404);
 
-
   let stat = "";
   let diff = "";
   let truncated = false;
@@ -211,7 +210,14 @@ export const getGateLog: Handler<undefined, z.infer<typeof GateLogParams>> = asy
   // host, in the single process that is also the SSE fan-out, the scheduler, the
   // mailbox poller and every blocked `orch lease`; one nested quantifier stalls
   // all of it. This route takes no token either.
-  return text(grep ? lines.filter((l) => l.includes(grep)).slice(0, 4000).join("\n") : lines.slice(-4000).join("\n"));
+  return text(
+    grep
+      ? lines
+          .filter((l) => l.includes(grep))
+          .slice(0, 4000)
+          .join("\n")
+      : lines.slice(-4000).join("\n"),
+  );
 };
 
 export const SliceDecision = z.object({
@@ -224,10 +230,12 @@ export const SliceDecisionBody = z.object({
   attachments: z.array(AttachmentSchema).max(20).optional(),
 });
 
-export const postSliceDecision: Handler<
-  z.infer<typeof SliceDecisionBody>,
-  z.infer<typeof SliceDecision>
-> = async (ctx, _req, params, raw) => {
+export const postSliceDecision: Handler<z.infer<typeof SliceDecisionBody>, z.infer<typeof SliceDecision>> = async (
+  ctx,
+  _req,
+  params,
+  raw,
+) => {
   const b = { feedback: raw.feedback ? withAttachments(raw.feedback, raw.attachments) : raw.feedback };
   const id = params.id;
   const accept = params.decision === "accept";

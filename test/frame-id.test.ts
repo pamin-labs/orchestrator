@@ -37,11 +37,7 @@ test("a reconnect replay (same seq) is deduped, not appended as a second row", (
 test("a streaming partial frame merges into the last live entry, keeping its id", () => {
   const live = { current: 0 };
   let frames: Frame[] = [];
-  frames = appendFrame(
-    frames,
-    { type: "live", agentId: 9, kind: "text", body: "hel", grpId: 1 },
-    live,
-  );
+  frames = appendFrame(frames, { type: "live", agentId: 9, kind: "text", body: "hel", grpId: 1 }, live);
   const id = frames[0]!.id;
   expect(frames[0]!.cls).toBe("partial");
 

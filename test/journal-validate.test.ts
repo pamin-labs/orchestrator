@@ -40,9 +40,7 @@ test("a real entry passes and is normalised", () => {
   expect(r.ok).toBe(true);
   if (r.ok) {
     expect(r.lines).toBe(2);
-    expect(r.body).toBe(
-      "Token check moved into middleware.\nOld spot queried the DB twice per request.",
-    );
+    expect(r.body).toBe("Token check moved into middleware.\nOld spot queried the DB twice per request.");
   }
 });
 

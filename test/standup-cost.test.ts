@@ -103,9 +103,7 @@ test("one group failing its own gate is not a standup item", () => {
 
 test("cost is attributed four ways, because they answer different questions", () => {
   const db = seed();
-  db.run(
-    "INSERT INTO grp (project_id, name, status, spent_tokens, created_at) VALUES (1, 'g1', 'RUNNING', 5000, 0)",
-  );
+  db.run("INSERT INTO grp (project_id, name, status, spent_tokens, created_at) VALUES (1, 'g1', 'RUNNING', 5000, 0)");
   db.run(
     "INSERT INTO agent (project_id, grp_id, role, model, total_tokens, created_at) VALUES (1, 1, 'engineer', 'm', 4000, 0)",
   );

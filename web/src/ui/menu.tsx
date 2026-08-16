@@ -38,7 +38,10 @@ export function Menu({ label, children }: { label: string; children: React.React
 }
 
 export function MenuItem({
-  children, hint, danger, onSelect,
+  children,
+  hint,
+  danger,
+  onSelect,
 }: {
   children: React.ReactNode;
   /** What it does, in one line. A menu of verbs with no consequences stated is a trap. */

@@ -42,9 +42,7 @@ function stranded() {
   exec = makeExecutor({ ctx, cfg, roles: new Map() });
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'o/p', 0)");
   db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO resource (name, template, arg_schema_json) VALUES ('test', 'true', '{}')",
-  );
+  db.run("INSERT INTO resource (name, template, arg_schema_json) VALUES ('test', 'true', '{}')");
   return { db, ctx, sched };
 }
 
@@ -82,9 +80,7 @@ test("a lease whose container is gone finishes as failed and releases the agent"
   await sched.drain();
 
   const row = db
-    .query<{ state: string; exit_code: number | null }, [number]>(
-      "SELECT state, exit_code FROM lease WHERE id = ?",
-    )
+    .query<{ state: string; exit_code: number | null }, [number]>("SELECT state, exit_code FROM lease WHERE id = ?")
     .get(lease.id)!;
   expect(row.state).toBe("failed");
   // 126 is "found it, could not run it" — the guard that was written for exactly

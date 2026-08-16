@@ -26,8 +26,7 @@ export interface Finding {
   says: string;
 }
 
-const isMap = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === "object" && !Array.isArray(v);
+const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** `maxGroup` for `maxGroups`. Containment, not edit distance: typos here are dropped or doubled characters, and a Levenshtein for that is thirty lines nobody reads. */
 const nearest = (key: string, legal: string[]): string | null => {
@@ -56,7 +55,11 @@ function walk(parsed: Record<string, unknown>, at: string, out: Finding[]): void
     const schema = schemaAt(key);
     if (!schema) {
       const near = nearest(k, siblings);
-      out.push({ level: "warn", key, says: near ? `没这个键，是不是 ${at ? `${at}.` : ""}${near}` : "没这个键，被忽略了" });
+      out.push({
+        level: "warn",
+        key,
+        says: near ? `没这个键，是不是 ${at ? `${at}.` : ""}${near}` : "没这个键，被忽略了",
+      });
       continue;
     }
     if (v === null || v === undefined) {

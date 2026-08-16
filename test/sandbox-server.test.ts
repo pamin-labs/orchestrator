@@ -68,7 +68,9 @@ test("drift is reported with the line to paste, not a description of it", async 
     expect(c.ok).toBe(false);
     expect(c.detail).toContain("/Users/me/.orch-cache/skills");
     // Both wanted paths, and what was already there, in one pasteable line.
-    expect(c.fix).toContain(`allowed_host_paths = ["/var/tmp/orch-cache", "/Users/me/.orch-cache/skills", "/Users/me/.orch-cache/bun"]`);
+    expect(c.fix).toContain(
+      `allowed_host_paths = ["/var/tmp/orch-cache", "/Users/me/.orch-cache/skills", "/Users/me/.orch-cache/bun"]`,
+    );
 
     const ok = await preflight({
       db: openMemory(),

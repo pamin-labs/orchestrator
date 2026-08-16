@@ -84,7 +84,9 @@ export const getTasks: AgentHandler = async (ctx, req, a) => {
       reopened
         .map((r) => {
           let claim: unknown = null;
-          try { claim = JSON.parse(r.claim_json!); } catch {}
+          try {
+            claim = JSON.parse(r.claim_json!);
+          } catch {}
           const files = extractClaimedFiles([claim]).slice(0, 6).join(", ");
           return `task ${r.id} was delivered once already${files ? `, touching ${files}` : ""}`;
         })
@@ -97,11 +99,16 @@ export const getTasks: AgentHandler = async (ctx, req, a) => {
   // Lines, not a JSON array. Handing an agent `[{"id":1,"title":"…"}]` invites it
   // to pass the title where an id belongs, which is what happened live.
   return text(
-    ["id  status       slice  owner       title", ...rows.map(
-      (r) =>
-        `${String(r.id).padEnd(4)}${r.status.padEnd(13)}${String(r.slice_id ?? "-").padEnd(7)}` +
-        `${(r.owner ?? "-").padEnd(12)}${r.title}`,
-    )].join("\n") + redo + gated,
+    [
+      "id  status       slice  owner       title",
+      ...rows.map(
+        (r) =>
+          `${String(r.id).padEnd(4)}${r.status.padEnd(13)}${String(r.slice_id ?? "-").padEnd(7)}` +
+          `${(r.owner ?? "-").padEnd(12)}${r.title}`,
+      ),
+    ].join("\n") +
+      redo +
+      gated,
   );
 };
 
@@ -140,7 +147,6 @@ export const TaskDoneBody = z.object({
 });
 
 export const postTaskDone: AgentHandler<z.infer<typeof TaskDoneBody>> = async (ctx, _req, a, _p, b) => {
-
   // An empty claim makes reconcile vacuous: "claimed vs actual" degenerates into
   // "did anything change at all". Observed live — every claim arrived as {}.
   const claimText = JSON.stringify(b.claim ?? null);
@@ -206,9 +212,7 @@ export const postTaskDone: AgentHandler<z.infer<typeof TaskDoneBody>> = async (c
   // adds a step that gets forgotten. Someone else's task is not — unless that
   // someone else is retired, in which case the card outlived its claimant and the
   // group's current writer is the only one who can finish it. Same reason as claim.
-  const claim = b.already_done?.trim()
-    ? { already_done: b.already_done.trim(), files: [] }
-    : (b.claim as unknown);
+  const claim = b.already_done?.trim() ? { already_done: b.already_done.trim(), files: [] } : (b.claim as unknown);
   const done = ctx.db.run(
     `UPDATE task SET status = 'done', claim_json = ?, owner_agent_id = ?
      WHERE id = ? AND (owner_agent_id IS NULL OR owner_agent_id = ?
@@ -243,9 +247,7 @@ export const postTaskDone: AgentHandler<z.infer<typeof TaskDoneBody>> = async (c
 
   if (slice?.slice_id) {
     const open = ctx.db
-      .query<{ c: number }, [number]>(
-        "SELECT count(*) AS c FROM task WHERE slice_id = ? AND status != 'done'",
-      )
+      .query<{ c: number }, [number]>("SELECT count(*) AS c FROM task WHERE slice_id = ? AND status != 'done'")
       .get(slice.slice_id)!.c;
     if (open === 0) {
       ctx.db.run("UPDATE slice SET status = 'gate' WHERE id = ?", [slice.slice_id]);

@@ -23,7 +23,7 @@ type Args = Record<string, string | number>;
  * language rather than a build error.
  */
 const ZH: Partial<Record<SayKey, string>> = {
-  "slice.ready": 'S{seq}「{title}」做完了，等你查收',
+  "slice.ready": "S{seq}「{title}」做完了，等你查收",
   "slice.accepted": "查收 S{seq} {title}{why}",
   "slice.sentback": "S{seq} 被 {from} 打回（第 {n} 次）",
   "slice.failed": "S{seq} 连续 {n} 次没过 {from} —— 大概是验收标准的问题，不是代码",
@@ -57,7 +57,8 @@ const ZH: Partial<Record<SayKey, string>> = {
   "wd.parked": "{name} 等你 {min} 分钟后自动封存 —— 代码留着，并发槽释放了",
   "wd.waiting_on_you": "{name} 已经等你 {min} 分钟",
   "wd.unshipped": "{name} 每一片都查收了但没有 PR，队列也空了 —— 重新走一遍分支复核",
-  "rl.waiting": "撞到限额，这个 CLI 上的活全部挂起等额度恢复（约 {at}），到点自动继续 —— 换模型不换池子，等是唯一的选择",
+  "rl.waiting":
+    "撞到限额，这个 CLI 上的活全部挂起等额度恢复（约 {at}），到点自动继续 —— 换模型不换池子，等是唯一的选择",
   "rl.resumed": "额度恢复，自动继续",
   "net.lost": "宿主断网了，{n} 个 turn 挂起等联网 —— 需求还在跑的状态，活儿排着，通了自动接上",
   "net.back": "网络恢复，挂起的活自动继续",
@@ -65,8 +66,8 @@ const ZH: Partial<Record<SayKey, string>> = {
     "GitHub 认不了这个登录了，{repo} 这个项目的活先全部挂起 —— 重试帮不上忙。去设置页重连 GitHub，好了自动接着走。别的项目不受影响。",
   "owns.reverted": "{role} 改了本组不拥有的 {n} 个文件（{files}），已回滚 —— 这个 CLI 的沙盒拦不住写入，只能事后对账",
   "unread.digest": "未读 {n} 条，已让 Librarian 压成摘要",
-  "sediment": "同一类反馈第 {n} 次了，让 CoS 归纳成项目规约",
-  "hired": "雇了 {role}",
+  sediment: "同一类反馈第 {n} 次了，让 CoS 归纳成项目规约",
+  hired: "雇了 {role}",
   "boss.reject_slice": "退回了这一片",
 };
 
@@ -99,7 +100,8 @@ const EN = {
   "group.merged": "merged into main",
   "group.paused": "PAUSED",
   "group.parked": "parked: {why}. checkout and checkpoint kept",
-  "sandbox.rebuild": "container discarded; the next turn rebuilds it — clone and install. The branch lives in the host repo",
+  "sandbox.rebuild":
+    "container discarded; the next turn rebuilds it — clone and install. The branch lives in the host repo",
   "group.resumed": "resumed",
   "group.autoadvance": "autoAdvance: started the next slice without waiting for you",
   "pr.opened": "PR #{n} opened",
@@ -108,7 +110,8 @@ const EN = {
   "wd.stalled": "group is RUNNING with an empty queue, and one re-queue did not revive it. Last failure: {why}",
   "wd.turn_timeout": "turn ran past {min} min and was killed",
   "wd.no_progress": "{role} finished {n} turns without changing a file, a task or a note",
-  "wd.circling": "{role} has rewritten {file} {n} turns running — probably a design problem, sending it to the Architect",
+  "wd.circling":
+    "{role} has rewritten {file} {n} turns running — probably a design problem, sending it to the Architect",
   "wd.env_suspect": "{resource} failed {n}x with no code change in between — treat the environment as the suspect",
   "wd.budget_exhausted": "{name} spent its whole budget ({tokens} tokens) and is suspended",
   "wd.budget_80": "{name} is at {pct}% of its budget",
@@ -125,7 +128,7 @@ const EN = {
   "owns.reverted":
     "{role} wrote {n} files this group does not own ({files}) — reverted; this CLI's sandbox cannot stop the write, so the check runs after it",
   "unread.digest": "{n} unread — the Librarian is compressing them",
-  "sediment": "the same feedback for the {n}th time; asking the CoS to make it a project rule",
+  sediment: "the same feedback for the {n}th time; asking the CoS to make it a project rule",
   hired: "hired {role}",
   "boss.reject_slice": "rejected the slice",
 };

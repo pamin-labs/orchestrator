@@ -23,15 +23,7 @@ export const GRP_STATES = [
   "DISSOLVED",
 ] as const;
 
-export const SLICE_STATES = [
-  "pending",
-  "running",
-  "gate",
-  "qa",
-  "awaiting_boss",
-  "accepted",
-  "rejected",
-] as const;
+export const SLICE_STATES = ["pending", "running", "gate", "qa", "awaiting_boss", "accepted", "rejected"] as const;
 
 export const JOB_STATES = ["pending", "running", "done", "failed", "cancelled"] as const;
 

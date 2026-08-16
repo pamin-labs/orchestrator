@@ -18,7 +18,6 @@ export interface GitRun {
 
 export type GitRunner = (repo: string, argv: string[], cwd?: string) => Promise<GitRun>;
 
-
 /**
  * The ref this branch is measured against, verified to exist: `origin/main`,
  * `origin/develop`, a bare `master` in a clone with no remote — whatever this
@@ -195,7 +194,14 @@ export async function checkpoint(
     await git(repoPath, ["add", "-A"], worktree);
     await git(
       repoPath,
-      ["commit", "-q", "--no-verify", ...signoffArgs(trailers), "-m", withTrailers(`wip: ${label}\n\n${touched(status.out)}`, trailers)],
+      [
+        "commit",
+        "-q",
+        "--no-verify",
+        ...signoffArgs(trailers),
+        "-m",
+        withTrailers(`wip: ${label}\n\n${touched(status.out)}`, trailers),
+      ],
       worktree,
     );
   }
@@ -274,7 +280,11 @@ export async function squashWip(
   // --soft keeps the tree exactly as it is; only the history collapses.
   const reset = await git(repoPath, ["reset", "--soft", from], worktree);
   if (reset.code !== 0) return { squashed: 0, reason: reset.out.split("\n").slice(-2).join(" ") };
-  const commit = await git(repoPath, ["commit", "-q", "--no-verify", ...signoffArgs(trailers), "-m", withTrailers(message, trailers)], worktree);
+  const commit = await git(
+    repoPath,
+    ["commit", "-q", "--no-verify", ...signoffArgs(trailers), "-m", withTrailers(message, trailers)],
+    worktree,
+  );
   if (commit.code !== 0) return { squashed: 0, reason: commit.out.split("\n").slice(-2).join(" ") };
   return { squashed: subjects.length, reason: `${subjects.length} wip commits -> 1` };
 }
@@ -312,7 +322,12 @@ export async function rollbackTo(
 /** Every path the branch point knew about. Used to tell a deletion from a fiction. */
 export async function filesAt(git: GitRunner, repoPath: string, worktree: string, sha: string): Promise<string[]> {
   const r = await git(repoPath, ["ls-tree", "-r", "--name-only", sha], worktree);
-  return r.code === 0 ? r.out.split("\n").map((l) => l.trim()).filter(Boolean) : [];
+  return r.code === 0
+    ? r.out
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+    : [];
 }
 
 /**
@@ -354,12 +369,7 @@ export async function sliceDiffBase(
   return fork ? { base: fork, scope: "branch" } : { base: baseSha, scope: "slice" };
 }
 
-export async function changedSince(
-  git: GitRunner,
-  repoPath: string,
-  worktree: string,
-  sha: string,
-): Promise<string[]> {
+export async function changedSince(git: GitRunner, repoPath: string, worktree: string, sha: string): Promise<string[]> {
   // `-z` for the same reason `porcelainPaths` insists on it: without it these
   // two also come back with non-ASCII and spaced paths quoted and escaped, and
   // these names are what the boss's slice diff is built from.

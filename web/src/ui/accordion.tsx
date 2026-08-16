@@ -14,7 +14,10 @@ import { cn } from "../lib/utils";
  * slices the boss reads one and shuts it to see the shape of the rest.
  */
 export function Accordion({
-  value, onValueChange, className, children,
+  value,
+  onValueChange,
+  className,
+  children,
 }: {
   /** `""` = everything shut. */
   value: string;
@@ -29,7 +32,15 @@ export function Accordion({
   );
 }
 
-export function AccordionItem({ value, className, children }: { value: string; className?: string; children: React.ReactNode }) {
+export function AccordionItem({
+  value,
+  className,
+  children,
+}: {
+  value: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
     <A.Item value={value} className={cn("border-t border-rule-soft first:border-t-0", className)}>
       {children}

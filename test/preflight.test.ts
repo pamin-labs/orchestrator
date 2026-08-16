@@ -3,7 +3,6 @@ import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { preflight } from "../src/mech/ops/preflight.ts";
 
-
 test("a ChatGPT login is called out when it is old, not when the host lacks codex", async () => {
   // This used to check `probe("codex")`. Since 007 step 7 the renewal runs real
   // codex inside the **utility container** — codex is in the agent image because
@@ -29,8 +28,9 @@ test("a ChatGPT login is called out when it is old, not when the host lacks code
     });
   };
 
-  const stale = (await withLogin(new Date(Date.now() - 9 * 24 * 3600_000).toISOString()))
-    .find((c) => c.name === "codex-refresher")!;
+  const stale = (await withLogin(new Date(Date.now() - 9 * 24 * 3600_000).toISOString())).find(
+    (c) => c.name === "codex-refresher",
+  )!;
   expect(stale.ok).toBe(false);
   expect(stale.fix).toContain("API key");
 
@@ -39,7 +39,6 @@ test("a ChatGPT login is called out when it is old, not when the host lacks code
   // And it says where the renewal happens, so nobody re-adds the host requirement.
   expect(fresh.detail).toContain("工具容器");
 });
-
 
 test("the other credential modes need nothing on this host", async () => {
   // A pasted `sk-ant-oat01-` is good for a year and an API key does not expire,

@@ -146,7 +146,8 @@ export const GRP_INVARIANTS = rows<GrpState>(
   {
     state: "PR_OPEN",
     must: "it has a number, a place in the merge queue, and something reading GitHub",
-    driver: "the Scribe filing `orch pr` publishes it; then pollPrs — merged winds it up, closed pauses it, reopened puts it back",
+    driver:
+      "the Scribe filing `orch pr` publishes it; then pollPrs — merged winds it up, closed pauses it, reopened puts it back",
     repair: (ctx) => {
       // Audited, queued, and no PR: the Scribe's turn died, or ended without
       // filing a message. Its own liveness is the scheduler's — a job that fails
@@ -237,7 +238,11 @@ export const SLICE_INVARIANTS = rows<SliceState>(
     driver: "boss accepts or rejects; waiting_slice nudges after 4h",
   },
   { state: "accepted", must: "the next slice starts, or the branch goes to review", driver: null },
-  { state: "rejected", must: "an engineer turn carries the rejection back", driver: "postSliceDecision; watchdog rule 8" },
+  {
+    state: "rejected",
+    must: "an engineer turn carries the rejection back",
+    driver: "postSliceDecision; watchdog rule 8",
+  },
 );
 
 export const JOB_INVARIANTS = rows<JobState>(
@@ -245,7 +250,8 @@ export const JOB_INVARIANTS = rows<JobState>(
   {
     state: "running",
     must: "it ends, or something ends it",
-    driver: "the executor; watchdog rule 1 kills a turn past its wall clock, and reclaimOrphans frees one whose process died with the server",
+    driver:
+      "the executor; watchdog rule 1 kills a turn past its wall clock, and reclaimOrphans frees one whose process died with the server",
   },
   { state: "done", must: "whatever it was doing arranged what comes next", driver: null },
   {
@@ -412,8 +418,14 @@ export const ESCALATION_INVARIANTS = rows<EscalationState>(
  * the tables the module exports.
  */
 export const ALL_INVARIANTS = [
-  GRP_INVARIANTS, SLICE_INVARIANTS, JOB_INVARIANTS, UTIL_INVARIANTS,
-  PROJECT_INVARIANTS, SERVER_INVARIANTS, LEASE_INVARIANTS, ESCALATION_INVARIANTS,
+  GRP_INVARIANTS,
+  SLICE_INVARIANTS,
+  JOB_INVARIANTS,
+  UTIL_INVARIANTS,
+  PROJECT_INVARIANTS,
+  SERVER_INVARIANTS,
+  LEASE_INVARIANTS,
+  ESCALATION_INVARIANTS,
 ];
 
 export function runInvariants(ctx: Ctx): void {
@@ -422,7 +434,14 @@ export function runInvariants(ctx: Ctx): void {
 
 /** States with no row. The test fails on a non-empty result; nothing else calls it. */
 export function uncovered(): {
-  grp: string[]; slice: string[]; job: string[]; escalation: string[]; util: string[]; project: string[]; server: string[]; lease: string[];
+  grp: string[];
+  slice: string[];
+  job: string[];
+  escalation: string[];
+  util: string[];
+  project: string[];
+  server: string[];
+  lease: string[];
 } {
   const has = (rs: { state: string }[], s: string) => rs.some((r) => r.state === s);
   return {

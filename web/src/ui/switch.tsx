@@ -13,7 +13,13 @@ import { cn } from "../lib/utils";
  * The label is the caller's, and it should be a `<label htmlFor>` pointing at
  * `id`: the whole surface being clickable is what makes a 20px target usable.
  */
-export function Switch({ id, checked, onCheckedChange, disabled, ...rest }: {
+export function Switch({
+  id,
+  checked,
+  onCheckedChange,
+  disabled,
+  ...rest
+}: {
   id?: string;
   checked: boolean;
   onCheckedChange: (v: boolean) => void;

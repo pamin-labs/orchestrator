@@ -9,9 +9,19 @@ import { ask } from "./confirm";
 import { cn } from "../lib/utils";
 import { FilePicker } from "../views/picker";
 
-export interface Attached { name: string; path: string; type: string; size: number; url?: string; label: string }
+export interface Attached {
+  name: string;
+  path: string;
+  type: string;
+  size: number;
+  url?: string;
+  label: string;
+}
 /** A file and where it sat inside whatever was dropped. */
-interface Picked { file: File; rel: string }
+interface Picked {
+  file: File;
+  rel: string;
+}
 
 /**
  * Everything under what was dropped, folders included.
@@ -41,18 +51,24 @@ async function walk(items: DataTransferItemList): Promise<Picked[]> {
       // readEntries hands back at most a hundred at a time and signals the end
       // with an empty batch.
       const batch = () =>
-        reader.readEntries(async (list) => {
-          if (!list.length) return done();
-          await Promise.all(list.map((c) => one(c, `${prefix + e.name}/`)));
-          batch();
-        }, () => done());
+        reader.readEntries(
+          async (list) => {
+            if (!list.length) return done();
+            await Promise.all(list.map((c) => one(c, `${prefix + e.name}/`)));
+            batch();
+          },
+          () => done(),
+        );
       batch();
     });
   await Promise.all(roots.map((r) => one(r, "")));
   return out;
 }
 export interface Skill {
-  name: string; path: string; description: string; scope: "project" | "user";
+  name: string;
+  path: string;
+  description: string;
+  scope: "project" | "user";
   /** Staged into the sandbox mount, so an agent can reach for it unprompted. */
   on: boolean;
 }
@@ -289,9 +305,7 @@ export function Composer({
   };
 
   const upload = async (list: FileList | File[] | Picked[]) => {
-    const picked: Picked[] = [...list].map((f) =>
-      f instanceof File ? { file: f, rel: f.name } : (f as Picked),
-    );
+    const picked: Picked[] = [...list].map((f) => (f instanceof File ? { file: f, rel: f.name } : (f as Picked)));
     if (!picked.length) return;
     const form = new FormData();
     // The relative path travels beside the file: the server rebuilds the folder
@@ -373,7 +387,11 @@ export function Composer({
 
   return (
     <div
-      className={cn("rounded-lg border border-rule transition-colors", drag && "border-accent bg-accent-soft", className)}
+      className={cn(
+        "rounded-lg border border-rule transition-colors",
+        drag && "border-accent bg-accent-soft",
+        className,
+      )}
       onDragOver={(e) => {
         e.preventDefault();
         setDrag(true);
@@ -427,9 +445,7 @@ export function Composer({
       {slash && matches.length > 0 && (
         <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
           <div className="flex items-baseline gap-2 border-b border-rule-soft px-2 py-1 text-[0.6875rem] text-ink-3">
-            <span className="min-w-0 grow">
-              选中的技能，正文随这一个 turn 发给 agent，只花这一次钱
-            </span>
+            <span className="min-w-0 grow">选中的技能，正文随这一个 turn 发给 agent，只花这一次钱</span>
             <span className="shrink-0 font-mono">{matches.length}</span>
           </div>
           {/* Scrolls, capped by height. It used to render the first six and stop —
@@ -437,25 +453,25 @@ export function Composer({
               exist as far as the boss could tell, and typing more of its name was
               the only way to find out otherwise. */}
           <div className="max-h-56 overflow-y-auto">
-          {matches.map((sk) => (
-            <button
-              key={sk.path}
-              onClick={() => insertSkill(sk)}
-              className="flex w-full cursor-pointer items-baseline gap-2 px-2 py-1.5 text-left hover:bg-sunk"
-            >
-              <span className="font-mono text-[0.75rem] text-ink">{sk.name}</span>
-              {/* Where it came from matters: a project skill is versioned with the
+            {matches.map((sk) => (
+              <button
+                key={sk.path}
+                onClick={() => insertSkill(sk)}
+                className="flex w-full cursor-pointer items-baseline gap-2 px-2 py-1.5 text-left hover:bg-sunk"
+              >
+                <span className="font-mono text-[0.75rem] text-ink">{sk.name}</span>
+                {/* Where it came from matters: a project skill is versioned with the
                   code, a user one is the boss's own and shadowed by the project's. */}
-              <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">
-                {sk.scope === "project" ? "项目" : "全局"}
-              </span>
-              {/* Still offerable — the text is injected either way — but the agent
+                <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">
+                  {sk.scope === "project" ? "项目" : "全局"}
+                </span>
+                {/* Still offerable — the text is injected either way — but the agent
                   cannot reach for this one by itself until it is ticked. */}
-              {!sk.on && <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">未启用</span>}
-              <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{sk.description}</span>
-              <span className="shrink-0 font-mono text-[0.625rem] text-ink-3">Tab</span>
-            </button>
-          ))}
+                {!sk.on && <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">未启用</span>}
+                <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{sk.description}</span>
+                <span className="shrink-0 font-mono text-[0.625rem] text-ink-3">Tab</span>
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -533,7 +549,15 @@ export function Composer({
 
 /** The same composer, in a dialog, for the places that interrupt rather than sit inline. */
 export function ComposerDialog({
-  open, onOpenChange, title, hint, placeholder, submit, onSubmit, rows = 5, projectId,
+  open,
+  onOpenChange,
+  title,
+  hint,
+  placeholder,
+  submit,
+  onSubmit,
+  rows = 5,
+  projectId,
 }: {
   projectId?: number;
   open: boolean;
@@ -555,10 +579,10 @@ export function ComposerDialog({
         >
           <Card className="rounded-none border-0">
             <CardHeader className="block">
-              <Dialog.Title asChild><CardTitle>{title}</CardTitle></Dialog.Title>
-              {hint && (
-                <Dialog.Description className="mt-1 text-[0.75rem] text-ink-3">{hint}</Dialog.Description>
-              )}
+              <Dialog.Title asChild>
+                <CardTitle>{title}</CardTitle>
+              </Dialog.Title>
+              {hint && <Dialog.Description className="mt-1 text-[0.75rem] text-ink-3">{hint}</Dialog.Description>}
             </CardHeader>
             <div className="p-3.5">
               <Composer
@@ -573,7 +597,9 @@ export function ComposerDialog({
                   return ok;
                 }}
                 actions={() => (
-                  <Button size="sm" onClick={() => onOpenChange(false)}>取消</Button>
+                  <Button size="sm" onClick={() => onOpenChange(false)}>
+                    取消
+                  </Button>
                 )}
               />
             </div>

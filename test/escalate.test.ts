@@ -16,9 +16,7 @@ interface Row {
 
 const rows = (db: DB): Row[] =>
   db
-    .query<Row, []>(
-      "SELECT grp_id, agent_id, severity, question, brief, kind, chain_state FROM escalation ORDER BY id",
-    )
+    .query<Row, []>("SELECT grp_id, agent_id, severity, question, brief, kind, chain_state FROM escalation ORDER BY id")
     .all();
 
 function seeded(): DB {
@@ -32,10 +30,7 @@ function seeded(): DB {
 }
 
 /** Every runtime TypeScript source, relative to `src/`. */
-function sources(
-  dir = new URL("../src", import.meta.url).pathname,
-  root = dir,
-): Array<{ path: string; text: string }> {
+function sources(dir = new URL("../src", import.meta.url).pathname, root = dir): Array<{ path: string; text: string }> {
   const out: Array<{ path: string; text: string }> = [];
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);

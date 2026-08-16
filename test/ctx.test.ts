@@ -71,9 +71,7 @@ function seeded(): DB {
   db.run(
     "INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES (1, 1, 'zh support', 'greet(\"x\",\"zh\") returns 你好 x', 'running', 0)",
   );
-  const ins = db.prepare(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, ?, 'zh', ?, ?)",
-  );
+  const ins = db.prepare("INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, ?, 'zh', ?, ?)");
   ins.run("decision", "lang 参数用 lang?: string + map 回退，不用字面量联合", 100);
   ins.run("journal", "无关的日常记录", 200);
   return db;
@@ -95,7 +93,9 @@ test("a matching decision is retrieved and labelled", () => {
 
 test("the budget is a hard cap, not a suggestion", () => {
   const db = seeded();
-  const ins = db.prepare("INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'journal', 'zh', ?, ?)");
+  const ins = db.prepare(
+    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'journal', 'zh', ?, ?)",
+  );
   for (let i = 0; i < 200; i++) ins.run(`middleware token check note ${i} ` + "x".repeat(500), i);
 
   const out = query({ db, grpId: 1, projectId: 1, question: "middleware token check" });
@@ -109,7 +109,9 @@ test("the budget is a hard cap, not a suggestion", () => {
 
 test("when the budget truncates, it says how many matches were dropped", () => {
   const db = seeded();
-  const ins = db.prepare("INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'journal', 'zh', ?, ?)");
+  const ins = db.prepare(
+    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'journal', 'zh', ?, ?)",
+  );
   for (let i = 0; i < 30; i++) ins.run(`middleware token note ${i} ` + "x".repeat(400), i);
   const out = query({ db, grpId: 1, projectId: 1, question: "middleware token", budget: 2000 });
   // Silent truncation reads as "that is everything there is", which is worse than

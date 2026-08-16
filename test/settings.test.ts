@@ -105,8 +105,13 @@ test("the panel reads every knob and writes one at a time", async () => {
     return (await r.json()) as { settings: Array<{ path: string; value: unknown; overridden: boolean }> };
   };
   const write = (body: unknown) =>
-    app(new Request("http://x/api/settings", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(body) }));
+    app(
+      new Request("http://x/api/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
 
   const before = await read();
   const groups = before.settings.find((s) => s.path === "maxGroups")!;

@@ -15,6 +15,10 @@ export const badgeStyles = cva("inline-block rounded-sm px-1.5 py-px font-mono t
   defaultVariants: { tone: "muted" },
 });
 
-export function Badge({ className, tone, ...rest }: React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeStyles>) {
+export function Badge({
+  className,
+  tone,
+  ...rest
+}: React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeStyles>) {
   return <span className={cn(badgeStyles({ tone }), className)} {...rest} />;
 }

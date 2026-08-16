@@ -1,6 +1,17 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
-import { CODEX_HOME, decoy, filesFor, isAuthFailure, listAuth, loadAuth, SANDBOX_KEY, saveAuth, vaultFor, wrongShape } from "../src/mech/sandbox/auth.ts";
+import {
+  CODEX_HOME,
+  decoy,
+  filesFor,
+  isAuthFailure,
+  listAuth,
+  loadAuth,
+  SANDBOX_KEY,
+  saveAuth,
+  vaultFor,
+  wrongShape,
+} from "../src/mech/sandbox/auth.ts";
 import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
 import { REFRESH_HOME } from "../src/mech/sandbox/chatgpt.ts";
 import { accessToken, isStale, parseAuth, renew } from "../src/mech/sandbox/chatgpt.ts";
@@ -31,14 +42,17 @@ test("the real value never leaves the process except into the vault", () => {
   expect(env.CLAUDE_CODE_OAUTH_TOKEN!.startsWith("sk-ant-oat01-")).toBe(true);
 
   // And what the sidecar gets, bound to the one host it is for.
-  expect(credentials).toEqual([
-    { name: "claude", value: REAL, hosts: ["api.anthropic.com"], header: undefined },
-  ]);
+  expect(credentials).toEqual([{ name: "claude", value: REAL, hosts: ["api.anthropic.com"], header: undefined }]);
 });
 
 test("an api key goes in the header the API wants, and can name its own endpoint", () => {
   const db = openMemory();
-  saveAuth(db, { runtime: "claude", mode: "api_key", secret: "sk-ant-api03-x", baseUrl: "https://proxy.example.com/v1" });
+  saveAuth(db, {
+    runtime: "claude",
+    mode: "api_key",
+    secret: "sk-ant-api03-x",
+    baseUrl: "https://proxy.example.com/v1",
+  });
   const { credentials, env } = vaultFor(db);
   expect(credentials[0]!.header).toBe("x-api-key");
   // The compatible endpoint has to be bound too, or the injection never fires
@@ -166,7 +180,6 @@ test("nothing reads a credential back out of a sandbox", async () => {
   expect(src).not.toContain(`${"$"}{CODEX_HOME}/auth.json`);
 });
 
-
 test("an api key for codex goes to the sidecar like everything else", () => {
   const db = openMemory();
   saveAuth(db, { runtime: "codex", mode: "api_key", secret: "sk-real" });
@@ -212,9 +225,16 @@ test("the ChatGPT login is renewed here, once, and by codex rather than by us", 
 
   // The refresher's own CODEX_HOME, inside the utility container: renewing must
   // not touch the boss's own terminal login, and must not be a group's.
-  const files = new Map<string, string>([[`${REFRESH_HOME}/auth.json`, JSON.stringify({
-    auth_mode: "chatgpt", tokens: { access_token: "old" }, last_refresh: old,
-  })]]);
+  const files = new Map<string, string>([
+    [
+      `${REFRESH_HOME}/auth.json`,
+      JSON.stringify({
+        auth_mode: "chatgpt",
+        tokens: { access_token: "old" },
+        last_refresh: old,
+      }),
+    ],
+  ]);
   const io = (run: () => Promise<boolean>) => ({
     read: async (p: string) => files.get(p) ?? null,
     write: async (p: string, d: string) => void files.set(p, d),
@@ -249,8 +269,6 @@ test("the ChatGPT login is renewed here, once, and by codex rather than by us", 
   );
   expect(accessToken(salvaged!)).toBe("newer");
 });
-
-
 
 test("no login runs a CLI on this machine any more", () => {
   // Running the real CLI beats reimplementing two OAuth flows against
@@ -311,8 +329,7 @@ test("a chatgpt login is judged by the expiry it carries, without a request", as
   // token says when it dies, and codex rotates it from the host. Checking that
   // offline is what keeps the settings page from costing a round trip per open.
   const db = openMemory();
-  const jwt = (exp: number) =>
-    `x.${btoa(JSON.stringify({ exp })).replace(/=+$/, "")}.y`;
+  const jwt = (exp: number) => `x.${btoa(JSON.stringify({ exp })).replace(/=+$/, "")}.y`;
   const auth = (exp: number) => JSON.stringify({ tokens: { refresh_token: "r", access_token: jwt(exp) } });
 
   saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: auth(Math.floor(Date.now() / 1000) + 86_400 * 9) });
@@ -336,12 +353,17 @@ test("the codex device login shows a code with its link, and stores what the con
   const db = openMemory();
   const bus = new Bus(db);
   const sandbox = fakeSandbox((cmd) =>
-    cmd.includes("codex login")
-      ? { out: "1. Open https://chatgpt.com/device\n2. Enter code T5M2-76TFM\n" }
-      : {},
+    cmd.includes("codex login") ? { out: "1. Open https://chatgpt.com/device\n2. Enter code T5M2-76TFM\n" } : {},
   );
   sandbox.files.set(`${REFRESH_HOME}/auth.json`, JSON.stringify({ tokens: { refresh_token: "REAL" } }));
-  const ctx = { db, bus, sandbox, sched: { tick: () => {} }, waiters: new Map(), config: { language: "中文" } } as unknown as Ctx;
+  const ctx = {
+    db,
+    bus,
+    sandbox,
+    sched: { tick: () => {} },
+    waiters: new Map(),
+    config: { language: "中文" },
+  } as unknown as Ctx;
   const app = makeApp(ctx);
 
   const r = await app(new Request("http://x/api/auth/codex/device", { method: "POST" }));
@@ -396,8 +418,7 @@ test("in a container, preflight stops answering questions about somebody else's 
 
   // The one check that still means something is reachability — and its fix has
   // to stop telling a container to start a server it cannot start.
-  const server = (c: Awaited<ReturnType<typeof preflight>>) =>
-    c.find((x) => x.name === "opensandbox-server")!;
+  const server = (c: Awaited<ReturnType<typeof preflight>>) => c.find((x) => x.name === "opensandbox-server")!;
   expect(server(host).fix).toContain("uvx opensandbox-server");
   expect(server(inside).fix).toContain("ORCH_SANDBOX_SERVER");
 });

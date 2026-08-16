@@ -10,9 +10,15 @@ import { post } from "../lib/api";
  * something is being sent back.
  */
 export function NewRequirement({
-  open, onOpenChange, projectId, onDone,
+  open,
+  onOpenChange,
+  projectId,
+  onDone,
 }: {
-  open: boolean; onOpenChange: (v: boolean) => void; projectId: number; onDone: () => void;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  projectId: number;
+  onDone: () => void;
 }) {
   return (
     <ComposerDialog

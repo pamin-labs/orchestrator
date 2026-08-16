@@ -50,12 +50,8 @@ export function AskHost() {
                      border border-rule bg-paper shadow-[0_12px_40px_var(--shade)] fade-in"
         >
           <div className="p-3.5">
-            <Dialog.Title className="mb-1.5 font-display text-[1.0625rem] font-semibold">
-              {spec?.title}
-            </Dialog.Title>
-            {spec?.body && (
-              <Dialog.Description className="text-[0.8125rem] text-ink-2">{spec.body}</Dialog.Description>
-            )}
+            <Dialog.Title className="mb-1.5 font-display text-[1.0625rem] font-semibold">{spec?.title}</Dialog.Title>
+            {spec?.body && <Dialog.Description className="text-[0.8125rem] text-ink-2">{spec.body}</Dialog.Description>}
             {spec?.field && (
               <Textarea
                 autoFocus
@@ -70,10 +66,7 @@ export function AskHost() {
           <div className="flex items-center gap-2 border-t border-rule p-3.5">
             <span className="grow" />
             <Button onClick={() => done(null)}>取消</Button>
-            <Button
-              variant={spec?.danger ? "danger" : "go"}
-              onClick={() => done(spec?.field ? text : true)}
-            >
+            <Button variant={spec?.danger ? "danger" : "go"} onClick={() => done(spec?.field ? text : true)}>
               {spec?.yes ?? "确定"}
             </Button>
           </div>

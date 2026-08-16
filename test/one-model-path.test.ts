@@ -164,4 +164,3 @@ test("seeding the refresher's home removes what is there before writing", async 
   // Without this codex reads the OS keychain instead of the file we just wrote.
   expect(files.get(`${REFRESH_HOME}/config.toml`)).toContain("cli_auth_credentials_store");
 });
-

@@ -1,4 +1,13 @@
-import { abstain, answer as chainAnswer, CHAIN, entryPoint, revoke, route, triage, TRIAGE } from "../../mech/flow/chain.ts";
+import {
+  abstain,
+  answer as chainAnswer,
+  CHAIN,
+  entryPoint,
+  revoke,
+  route,
+  triage,
+  TRIAGE,
+} from "../../mech/flow/chain.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from "../fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
@@ -159,10 +168,12 @@ export const RequirementBody = z.object({
   name: z.string().max(80).optional(),
 });
 
-export const postEscalationRequirement: Handler<
-  z.infer<typeof RequirementBody>,
-  z.infer<typeof IdParams>
-> = async (ctx, _req, params, b) => {
+export const postEscalationRequirement: Handler<z.infer<typeof RequirementBody>, z.infer<typeof IdParams>> = async (
+  ctx,
+  _req,
+  params,
+  b,
+) => {
   const id = params.id;
   const esc = ctx.db
     .query<{ grp_id: number | null; question: string; answer: string | null }, [number]>(
@@ -175,10 +186,12 @@ export const postEscalationRequirement: Handler<
   const projectId = esc.grp_id
     ? (ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(esc.grp_id)
         ?.project_id ?? null)
-    : (ctx.db.query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?").get(
-        ctx.db.query<{ agent_id: number | null }, [number]>("SELECT agent_id FROM escalation WHERE id = ?").get(id)
-          ?.agent_id ?? 0,
-      )?.project_id ?? null);
+    : (ctx.db
+        .query<{ project_id: number | null }, [number]>("SELECT project_id FROM agent WHERE id = ?")
+        .get(
+          ctx.db.query<{ agent_id: number | null }, [number]>("SELECT agent_id FROM escalation WHERE id = ?").get(id)
+            ?.agent_id ?? 0,
+        )?.project_id ?? null);
   if (!projectId) return bad("cannot tell which project this belongs to");
 
   const idea = [b.text?.trim(), esc.question].filter(Boolean).join("\n\n");
@@ -195,10 +208,10 @@ export const postEscalationRequirement: Handler<
   // group comes back by itself when the new requirement lands, so this does not
   // become a second thing for the boss to remember.
   if (esc.grp_id) {
-    ctx.db.run(
-      `UPDATE grp SET blocked_on = ? WHERE id = ? AND status IN ('PAUSED','PAUSING') AND blocked_on IS NULL`,
-      [grp.id, esc.grp_id],
-    );
+    ctx.db.run(`UPDATE grp SET blocked_on = ? WHERE id = ? AND status IN ('PAUSED','PAUSING') AND blocked_on IS NULL`, [
+      grp.id,
+      esc.grp_id,
+    ]);
     ctx.bus.emit({
       grpId: esc.grp_id,
       author: "boss",
@@ -270,7 +283,10 @@ export const getAnswerDraft: Handler<undefined, z.infer<typeof IdParams>> = asyn
   if (!ctx.askIn) return json({ text: "" });
   const id = params.id;
   const e = ctx.db
-    .query<{ grp_id: number | null; question: string; severity: string; asker: string | null; project_id: number | null }, [number]>(
+    .query<
+      { grp_id: number | null; question: string; severity: string; asker: string | null; project_id: number | null },
+      [number]
+    >(
       `SELECT e.grp_id, e.question, e.severity, a.role AS asker,
               coalesce(g.project_id, a.project_id) AS project_id
        FROM escalation e LEFT JOIN agent a ON a.id = e.agent_id
@@ -374,4 +390,3 @@ export const postDelegate: Handler<z.infer<typeof DelegateBody>, z.infer<typeof 
   const landed = route({ ctx, notifyBoss: ctx.notifyBoss }, id);
   return text(landed);
 };
-

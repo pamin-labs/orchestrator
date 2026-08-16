@@ -46,7 +46,10 @@ export const REASONS = {
   /** The clock. PLAN.md's whole argument for slicing work up. */
   waited: (ms: number): Reason => {
     const h = ms / 3_600_000;
-    return { why: h >= 1 ? `等了 ${Math.round(h)}h` : `等了 ${Math.max(1, Math.round(h * 60))}m`, points: Math.min(40, h * 8) };
+    return {
+      why: h >= 1 ? `等了 ${Math.round(h)}h` : `等了 ${Math.max(1, Math.round(h * 60))}m`,
+      points: Math.min(40, h * 8),
+    };
   },
 } as const;
 

@@ -14,9 +14,11 @@ test("a file with no trailing newline does not grow a line of source", () => {
   // before it — same `type`, same `ln` — so the marker used to arrive as a
   // second del and a second add, equal counts, paired, and rendered as a changed
   // row reading " No newline at end of file" on both sides at line 3.
-  const rows = rowsOf(chunks(
-    "@@ -1,3 +1,3 @@\n one\n two\n-three\n\\ No newline at end of file\n+four\n\\ No newline at end of file\n",
-  )[0]!);
+  const rows = rowsOf(
+    chunks(
+      "@@ -1,3 +1,3 @@\n one\n two\n-three\n\\ No newline at end of file\n+four\n\\ No newline at end of file\n",
+    )[0]!,
+  );
   expect(rows.map((r) => [r.left?.text, r.right?.text])).toEqual([
     ["one", "one"],
     ["two", "two"],
@@ -26,7 +28,10 @@ test("a file with no trailing newline does not grow a line of source", () => {
 
 test("a real edit still pairs, and an unrelated insert still does not", () => {
   const edit = rowsOf(chunks("@@ -1,2 +1,2 @@\n keep\n-old\n+new\n")[0]!);
-  expect(edit.at(-1)).toEqual({ left: { n: 2, text: "old", changed: true }, right: { n: 2, text: "new", changed: true } });
+  expect(edit.at(-1)).toEqual({
+    left: { n: 2, text: "old", changed: true },
+    right: { n: 2, text: "new", changed: true },
+  });
 
   // Two additions against one deletion is not an edit of that line, so neither
   // side gets word-level marks.

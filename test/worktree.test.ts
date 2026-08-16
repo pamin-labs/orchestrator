@@ -147,7 +147,11 @@ test("wip checkpoints are squashed into one commit, and the tree survives", asyn
   const dir = await repo();
   const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
 
-  for (const [file, body] of [["b.txt", "one\n"], ["c.txt", "two\n"], ["d.txt", "three\n"]]) {
+  for (const [file, body] of [
+    ["b.txt", "one\n"],
+    ["c.txt", "two\n"],
+    ["d.txt", "three\n"],
+  ]) {
     writeFileSync(join(wt.worktree, file!), body!);
     await checkpoint(git, dir, wt.worktree, "engineer turn");
   }
@@ -304,7 +308,10 @@ test("a renamed default branch is picked up rather than breaking every clone", a
 
   // GitHub unreachable keeps what is stored: resetting a project that develops
   // on `develop` to `main` because the network blinked would repoint every diff.
-  const offline = { ...ctx, gh: { remaining: () => null, request: async () => ({ ok: false, status: 0, bucket: "transient", message: "x" }) } } as unknown as Ctx;
+  const offline = {
+    ...ctx,
+    gh: { remaining: () => null, request: async () => ({ ok: false, status: 0, bucket: "transient", message: "x" }) },
+  } as unknown as Ctx;
   expect(await baseBranch(offline, 1)).toBe("mainline");
 });
 
@@ -315,7 +322,9 @@ test("a repository renamed or moved to another org is followed, not left pointin
   // said anything — but a POST to open a pull request does not survive a
   // redirect, and the old path only works until somebody claims the freed name.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', 'Old-Org/p', 'https://github.com/Old-Org/p.git', 0)");
+  db.run(
+    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', 'Old-Org/p', 'https://github.com/Old-Org/p.git', 0)",
+  );
   const said: string[] = [];
   const ctx = {
     db,

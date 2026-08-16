@@ -1,17 +1,11 @@
 import type { DB } from "../../db.ts";
-import {
-  ESCALATION_TERMINAL_STATES,
-  stateParam,
-  type EscalationOpenState,
-} from "../../states.ts";
+import { ESCALATION_TERMINAL_STATES, stateParam, type EscalationOpenState } from "../../states.ts";
 
 /** A state a newly filed question may enter. The other two are terminal. */
 type FilingState = EscalationOpenState;
 
 /** What counts as the same still-open subject. Row ownership is independent. */
-export type Dedupe =
-  | { prefix: string; scope: "global" }
-  | { prefix: string; scope: "group"; grpId: number };
+export type Dedupe = { prefix: string; scope: "global" } | { prefix: string; scope: "group"; grpId: number };
 
 /**
  * Filing a question for a human, in one place.
@@ -39,15 +33,7 @@ export interface Ask {
   dedupe?: Dedupe;
 }
 
-type Insert = [
-  number | null,
-  number | null,
-  "blocker" | "advisory",
-  string,
-  string | null,
-  string | null,
-  FilingState,
-];
+type Insert = [number | null, number | null, "blocker" | "advisory", string, string | null, string | null, FilingState];
 
 const COLUMNS = "grp_id, agent_id, severity, question, brief, kind, chain_state, created_at";
 const VALUES = "?, ?, ?, ?, ?, ?, ?, unixepoch() * 1000";
