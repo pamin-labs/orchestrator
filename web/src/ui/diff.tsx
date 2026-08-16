@@ -106,7 +106,7 @@ type Row = {
 };
 
 /** Pair deletions with additions inside one hunk, so the two sides line up. */
-function rowsOf(chunk: parseDiff.Chunk): Row[] {
+export function rowsOf(chunk: parseDiff.Chunk): Row[] {
   const out: Row[] = [];
   let dels: { n: number; text: string }[] = [];
   let adds: { n: number; text: string }[] = [];
@@ -128,6 +128,15 @@ function rowsOf(chunk: parseDiff.Chunk): Row[] {
   };
 
   for (const c of chunk.changes) {
+    // `\ No newline at end of file` is not a line of the file, and `parse-diff`
+    // does not say so: it carries the marker by cloning the change before it, so
+    // it arrives with that change's `type` and its `ln`. A file without a
+    // trailing newline — a `.env`, generated JSON, anything a `printf` wrote —
+    // therefore produced a second del *and* a second add, equal counts, paired,
+    // tinted red and green, both gutters repeating line 3, reading
+    // " No newline at end of file" as if it were source. No prefixed diff line
+    // can begin with a backslash, so this is the marker and nothing else.
+    if (c.content.startsWith("\\ ")) continue;
     if (c.type === "del") dels.push({ n: (c as any).ln, text: c.content.slice(1) });
     else if (c.type === "add") adds.push({ n: (c as any).ln, text: c.content.slice(1) });
     else {
