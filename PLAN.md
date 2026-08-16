@@ -435,6 +435,8 @@ Librarian（haiku）把长 event 流压成 `note` + digest，压缩过程本身�
 
 **任何 web 能做的操作 `orch` 都有对应子命令，反之亦然** —— UI 只是 API 的一层壳，不做第二份逻辑。
 
+**协议只有一份。** `src/http/routes/{panel,orch}.ts` 按 Hono 官方 RPC 形状链式注册；所有 body / params / query 由 `@hono/zod-validator` 在入口校验，普通响应只发 JSON。浏览器和 `orch` CLI 都从服务端导出的路由类型创建 `hc<...>` 客户端，不再维护 method、URL 和 payload 的第二张表。SSE、附件下载和 multipart 上传是媒体传输，不伪装成 JSON。
+
 ### 首页抽象：决策队列 + 每需求一条流水线（**不是看板**，实现后修正）
 
 看板被否掉了，理由是实测的：看板的核心动作是拖卡，而老板从不拖 —— 列是系统写的，拖拽这个 affordance 是死的且误导；五列里四列都在说「不用你管」却占同等视觉重量；而且列丢掉了顺序，而一个需求是有序流水线（切片有序、闸门有序）。
@@ -537,6 +539,11 @@ orchestrator/
   docs/decisions/      # 开发期设计变更记录
   src/
     server.ts            # bun HTTP + SSE + 静态
+    http/
+      routes/            # Hono 链式路由 + RPC 类型
+      validate.ts        # zod-validator + content-type 闸
+      respond.ts         # framework-free JSON 响应
+    api/                  # framework-free panel/orch handlers
     db.ts                # bun:sqlite schema + 迁移
     scheduler.ts         # job 队列、并发槽、准入检查（预算）
     runtime/

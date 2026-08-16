@@ -13,8 +13,8 @@
 ## 技术栈
 
 - **bun + TypeScript**，单进程：HTTP + SSE + `bun:sqlite` + 子进程管理
-- **HTTP = hono，校验 = zod**（经 `@hono/standard-validator`）。协议层在 `src/http/`（响应构造、handler 形状、校验适配、content-type 闸），业务在 `src/api/`：`orch/` 是 agent 调的，`panel/` 是浏览器调的。**handler 不认识框架** —— 签名是 `(ctx, req, params, data)`，测试里四个参数直接调，不用起服务器；`route()` 是唯一知道 hono 存在的地方，同时把 schema 和 handler 接给 TS，改了 schema 忘了 handler 直接编译不过
-- **面板的类型从服务端推出来**，不手写：`type State = ReturnType<typeof snapshot>`，行的形状是 `src/api/panel/shapes.ts` 里的 zod。`import type` 构建时擦除，不会把服务端代码打进浏览器包
+- **HTTP = Hono，校验 = Zod**（官方 `@hono/zod-validator`）。`src/http/routes/{panel,orch}.ts` 用 Hono 的链式路由显式注册，导出的 `ApiType` / `OrchType` 是协议类型；web 和 `orch` CLI 都用 `hc<...>`，不手写 method/path/body。普通协议只返回 JSON；SSE、附件下载和 multipart 上传是媒体传输例外。业务在 `src/api/{panel,orch}/`，handler 仍是可直接单测的 `(ctx, req, params, data)`，不认识框架。
+- **面板的类型和运行时 schema 都从服务端复用**，不手写：Hono RPC 推导请求/响应类型，`src/api/panel/shapes.ts`、`src/bus.ts`、`src/mech/ops/cost.ts` 的 Zod schema 校验线上 JSON。`import type` 构建时擦除，不会把服务端代码打进浏览器包
 - **web = React + Tailwind v4 + shadcn/ui**（Radix 行为层），`bun run build:web` 出 `web/dist`。视觉语言是自己的（见 `DESIGN.md`），shadcn 只负责行为：焦点陷阱、Esc、aria、菜单、toast。手写过一遍，不值得
 - **页面仍然不 fetch 任何外部资源** —— 字体用本机已有的，脚本样式只从 `web/dist` 出，`test/smoke.test.ts` 守着
 - agent runtime = **CLI 子进程**（`claude -p` / `codex exec`），不用 Agent SDK
@@ -27,7 +27,8 @@
 ```bash
 bun install
 bun run src/server.ts        # 起 orchestrator
-bun test                     # 全部 check
+bun run check                # 完整本地质量闸
+bun test                     # 只跑测试套件
 bun test test/xxx.test.ts     # 单个
 ```
 

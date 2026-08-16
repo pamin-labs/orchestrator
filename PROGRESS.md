@@ -24,13 +24,19 @@
 
 **JSON 边界的同类入口已封：** `jsonOr()` 必须同时拿到 Zod schema 和 fallback，调用方不能再用泛型把 `JSON.parse()` 的 `any` 宣称成业务类型；27 个持久化、CLI 和供应商响应入口都已迁移。GitHub client 的 endpoint schema 是必填参数，合法 nullable 字段不误拒，ETag cache 保存原始响应并按当前调用方 schema 重新验证；坏 job payload 不再静默丢字段，安全 mailbox id 的坏 envelope 会回 400。项目配置同样只有一个 `.passthrough()` schema，坏 `detected` / `gates` 会重新探测而不是永久冻结旧状态。边界定向 149 绿，TypeScript、oxlint、web build 绿。
 
-**质量工具进入可复现链路：** Biome 是唯一 formatter，Fallow 3.16.0 固定为项目依赖；Tailwind v4 继续由官方 `@tailwindcss/cli` 构建，package script 直接调用本地 `tailwindcss` bin，Fallow 能从 manifest script 正确认出这份 dev dependency，不留 ignore。CI/release 都先预演 `fallow fix --dry-run`，再用固定版本的官方 Action 做 changed-code audit；PR 额外写 sticky comment 和 check。存量 findings 用提交进仓库的三份 baseline 隔离，新引入项仍阻断。
+**网络协议已统一为 Hono RPC：** panel 与 `orch` 路由按 Hono 官方链式形状注册，body / params / query 统一由 `@hono/zod-validator` 验证；web 与 CLI 都用 `hc<...>`，普通请求不再维护 method/path/body 的第二份表。数据型响应 schema 绑定 `InferResponseType` 后再做运行时 Zod 解析，gate 日志的 `{message}` / `{text}` 漂移和 sandbox 日志被 schema 静默剥掉都会在 TypeScript 闸门报错。普通协议只发 JSON；SSE、附件下载和 multipart 上传保留为媒体传输。
+
+**不安全顶层类型已封：** `src`、`web/src`、`test` 中显式 `any`、`unknown`、`z.unknown()` 以及 `as never` 清零；Oxlint 将 `any` / `unknown` 设为 error，`test/type-hygiene.test.ts` 同时扫描 Zod escape hatch。JWT 用 Hono JWT decoder 后过 Zod，旧 resource tags、auth 文件、CLI 流与持久化 payload 都在读取边界按具体 schema 验证；合法 JSON 但形状错误的 tags 会回落默认池而不是在调度时崩溃。runtime/mode 是一张 Zod 判别联合，非法组合在 HTTP 和旧数据库两侧都进不来；项目配置 patch 验证整份合并结果，不会替坏的已知字段盖章。TypeScript、Oxlint、Biome、web build 绿；完整 suite 764 pass / 6 个真沙盒 skip。
+
+**响应与实时流不再吞边界错误：** web、CLI、mailbox 共用 `readJsonResponse()`，非 JSON 字节不会再借合法的 `null` 穿过 schema；普通响应仍全部是 JSON。SSE 改用 Hono `streamSSE` / `writeSSE`，初次连接回放最新 500 条，每个持久事件写 `id`，重连按 `Last-Event-ID` 分页追齐；订阅先于回放并按 seq 去重，不留竞态窗口。1101 条事件回归证明初次只拿尾部 500、断线 601 条仍全部追齐、显式 cursor 也生效。
+
+**质量工具进入可复现链路：** Biome 是唯一 formatter，Fallow 3.16.0 固定为项目依赖；Tailwind v4 继续由官方 `@tailwindcss/cli` 构建，package script 直接调用本地 `tailwindcss` bin，Fallow 能从 manifest script 正确认出这份 dev dependency，不留 ignore。CI/release 都实际跑 `fallow fix --yes` 后再交给 Biome；策略文件不接受自动 suppression，业务 diff 通过闸门后由 `orchestrator-agentic-app[bot]` 用 `chore` 提交并 bypass 推回触发分支。固定版本的官方 Action 继续做 changed-code audit，PR 写 sticky comment 和 check。release 把二进制与双架构镜像并行构建，后续 job 都 checkout bot 提交的新 SHA。存量 findings 用提交进仓库的三份 baseline 隔离，新引入项仍阻断。
 
 **项目沙盒 override 不再靠类型断言：** `sandbox.image: 7` 原来在 PATCH 的 `.trim()` 当场 500，`denyDomains: "x"` 则 200 持久化后以 `string[]` 身份进入 OpenSandbox 网络层。现在机器配置、项目 PATCH 与容器读取共用一个 Zod `SandboxSpecSchema`：入口拒绝坏内层类型且不改数据库，读边界对旧库/旁路坏值完整回退，拒绝镜像时 `base_branch` 也不会先被部分写入，局部 patch 不再静默覆盖损坏的整份 JSON。config/sandbox 定向 31 绿、完整 API 66 绿，TypeScript 与 oxlint 绿。
 
 **旧报告逐项按当前分支复核，不重复实现：** pause/resume 统一入口定向 7 绿（`88aa1e7`）；job 结束立即补位定向 25 绿（`6445c48`）；bare mirror heads/refspec 定向 3 绿（`0706062`）。D2 点名的三个 handler 已分别位于 `api/orch/tasks.ts`、`api/panel/group.ts`、`api/orch/planning.ts`，当前没有第二调用方或重复政策证明需要再包一层 flow；`api.ts` 仍负责路由、中间件和 app 组装，并非纯 route table。Claude/Codex/GitHub 登录和 sandbox server start/restart 的 timeout/error 都会取消、返回失败或升级终止，专项 28 绿；SIGKILL 后再确认退出若有复现证据应另立问题。`db.ts` 运行期依赖 `scrub.ts`，反向只有 `import type`，编译后无循环。no-op 项不制造空提交。
 
-**`bun test` 712 checks 绿（6 skip 是要可控的真沙盒服务器与密钥）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
+**完整 suite 764 checks 绿（6 skip 是要可控的真沙盒服务器与密钥）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
 
 **你只需要三个动作**：丢想法 → 批 DRAFT 卡 → 查收切片。gate 探测、入职包、推送权限预检都在注册项目时自动完成。
 
