@@ -77,3 +77,24 @@ test("environment controls own actions while the settings shell owns server quer
     expect(pane).toContain(contract);
   }
 });
+
+test("project controls own panes while the settings shell owns project scope", () => {
+  const shell = read("../web/src/views/settings.tsx");
+  const pane = read("../web/src/views/settings/project.tsx");
+
+  expect(shell).toContain('queryKey: ["project", projectId, "config"]');
+  expect(shell).toContain('post(`/api/project/${projectId}/config`, body)');
+  expect(shell).toContain("<ProjectPane");
+  expect(pane).not.toContain("useQuery");
+  expect(pane).not.toContain('queryKey: ["project"');
+
+  expect(shell).not.toContain("function Remove(");
+  for (const contract of [
+    'section === "gates"',
+    'section === "sandbox"',
+    'del(`/api/projects/${projectId}`)',
+    '<Button variant="danger"',
+  ]) {
+    expect(pane).toContain(contract);
+  }
+});

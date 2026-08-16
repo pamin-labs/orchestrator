@@ -7,18 +7,17 @@ import {
 } from "lucide-react";
 import { H2, Head, Meta, Pane } from "../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldTitle } from "../ui/field";
-import { Button } from "../ui/button";
-import { ask } from "../ui/confirm";
 import { Tip } from "../ui/tooltip";
-import { pull, post, del } from "../lib/api";
+import { pull, post } from "../lib/api";
 import { Knobs } from "./knobs";
 import { cn, repoHref } from "../lib/utils";
 import { ThemeChoice } from "../ui/theme";
-import { Gates, Sandbox, type ProjectConfig } from "./project";
+import type { ProjectConfig } from "./project";
 import { Skills } from "./skills";
 import { CredPane, RUNTIMES } from "./settings/credentials";
 import { EnvPane, ServerPane, type ServerInfo } from "./settings/environment";
 import { GithubPane, type GhStatus } from "./settings/github";
+import { ProjectPane, type ProjectSection } from "./settings/project";
 import { type AuthRow, type HostCheck } from "./settings/shared";
 
 /**
@@ -227,6 +226,8 @@ export function SettingsDialog({
     gates: !!proj && !(proj.config.gates ?? []).length,
   };
   const title = items.find((n) => n.key === here)?.zh ?? "设置";
+  const projectSection: ProjectSection | null =
+    here === "gates" || here === "sandbox" || here === "remove" ? here : null;
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -317,23 +318,20 @@ export function SettingsDialog({
                     </Field>
                   </FieldGroup>
                 </>
-              ) : proj ? (
-                here === "gates" ? (
-                  <Gates d={proj} patch={patch} />
-                ) : here === "remove" ? (
-                  <Remove
-                    projectId={projectId!}
-                    name={projectName ?? proj.repoPath}
-                    repoPath={proj.repoPath}
-                    groups={groupCount ?? 0}
-                    onRemoved={() => {
-                      onOpenChange(false);
-                      onRemoved?.();
-                    }}
-                  />
-                ) : (
-                  <Sandbox d={proj} busy={busy} patch={patch} />
-                )
+              ) : proj && projectSection ? (
+                <ProjectPane
+                  section={projectSection}
+                  data={proj}
+                  busy={busy}
+                  projectId={projectId!}
+                  projectName={projectName}
+                  groupCount={groupCount ?? 0}
+                  patch={patch}
+                  onRemoved={() => {
+                    onOpenChange(false);
+                    onRemoved?.();
+                  }}
+                />
               ) : (
                 <Meta className="block py-2">读取中…</Meta>
               )}
@@ -408,78 +406,5 @@ function Item({
       <span className="grow" />
       {nag && <i className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="有事等你" />}
     </button>
-  );
-}
-
-/**
- * The one irreversible thing in this dialog, and the only place in the panel
- * that deletes rather than archives.
- *
- * 不做了 winds a requirement up and keeps every event, because what a group did
- * is the record. Removing a project is the boss saying they do not want the
- * record either — a different act, so it lives on its own page, behind its own
- * confirm, in the danger colour, and never next to a switch somebody flips while
- * working.
- *
- * The confirm carries what it costs (硬约束 5): how many requirements go with
- * it, and — the one thing a boss would be right to fear — that nothing on GitHub
- * is touched. The branches and PRs stay exactly where they are.
- */
-function Remove({
-  projectId, name, repoPath, groups, onRemoved,
-}: {
-  projectId: number;
-  name: string;
-  repoPath: string;
-  groups: number;
-  onRemoved: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const go = async () => {
-    const yes = await ask({
-      title: `移除 ${name}？`,
-      body:
-        `${repoPath} 的 ${groups} 个需求、它们的容器、卡片、记录和附件都会删掉，删了找不回来。\n\n` +
-        `GitHub 上什么都不动：分支还在，PR 还在，代码一行不少。移除的只是这台机器上的这份工作。`,
-      yes: "移除",
-      danger: true,
-    });
-    if (!yes) return;
-    setBusy(true);
-    const r = await del(`/api/projects/${projectId}`);
-    setBusy(false);
-    if (r.ok) onRemoved();
-  };
-
-  return (
-    <>
-      <Head title="移除项目" />
-      {/* Two columns, one measure: what goes, what stays. It was one paragraph of
-          running prose across the full panel, and a destructive decision read as
-          an essay puts all the weight on the button being red. The confirm still
-          says it in sentences — this is the part you scan before clicking. */}
-      {/* Same left edge as every field row in the dialog: the boss arrives here
-          from a pane of labelled values, and a column that moves between panes
-          is the one thing a fixed grid is for. */}
-      <dl className="grid max-w-[34rem] grid-cols-[var(--label)_minmax(0,1fr)] gap-x-4 gap-y-3 pt-1 text-[0.8125rem]">
-        <dt className="font-semibold text-bad">删掉</dt>
-        <dd className="min-w-0">
-          <span className="font-mono text-[0.75rem]">{repoPath}</span> 的 {groups} 个需求
-          <div className="mt-0.5 text-[0.75rem] text-ink-3">
-            在跑的 turn 会停，容器、切片、卡片、提问、附件一起删，找不回来
-          </div>
-        </dd>
-        <dt className="font-semibold text-ok">留着</dt>
-        <dd className="min-w-0 text-ink-2">
-          GitHub 上的分支、PR、代码
-          {/* 不做了 archives and keeps every event. This does not, and the two
-              buttons are one dialog apart. */}
-          <div className="mt-0.5 text-[0.75rem] text-ink-3">想留下记录就用「不做了」封存，那个不删</div>
-        </dd>
-      </dl>
-      <Button variant="danger" className="mt-5" disabled={busy} onClick={go}>
-        {busy ? "移除中…" : "移除这个项目"}
-      </Button>
-    </>
   );
 }
