@@ -26,6 +26,7 @@ import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
 import { abortAll } from "./runtime/running.ts";
 import { isOnline } from "./mech/sandbox/net.ts";
 import { hold } from "./mech/flow/intercept.ts";
+import { raise } from "./mech/flow/escalate.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -86,15 +87,14 @@ const NO_CACHE = "no-cache";
 function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): void {
   const g = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grpId);
   hold(ctx, grpId, { reason: "merge", settled: true, from: "PR_OPEN", leaveQueue: true });
-  ctx.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
-     VALUES (?, 'blocker', ?, 'PR 被关掉了，要不要重开', 'boss', unixepoch() * 1000)`,
-    [
-      grpId,
+  raise(ctx.db, {
+    grpId,
+    brief: "PR 被关掉了，要不要重开",
+    chain: "boss",
+    question:
       `PR #${prNumber} 被关掉了（没有合入）。这一组已经停下并让出了合入队列。\n` +
-        `要继续：在 GitHub 上重开这个 PR，它会自己回到队列。不想要了：在这个需求上点「不做了」。`,
-    ],
-  );
+      `要继续：在 GitHub 上重开这个 PR，它会自己回到队列。不想要了：在这个需求上点「不做了」。`,
+  });
   ctx.bus.emit({
     grpId,
     author: "pr-watcher",

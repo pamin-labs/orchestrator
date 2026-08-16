@@ -32,6 +32,7 @@ import { type TurnResult } from "./claude.ts";
 import { clampEffort, providerFor, type Provider } from "./providers.ts";
 import { clip, errText, jsonOr } from "../mech/util/text.ts";
 import { hold } from "../mech/flow/intercept.ts";
+import { raise } from "../mech/flow/escalate.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.
@@ -1125,23 +1126,20 @@ function handleAuthFailure(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnRes
   if (job.grp_id) {
     hold(ctx, job.grp_id, { reason: `auth:${runtime}`, settled: true, from: "RUNNING" });
   }
-  const open = ctx.db
-    .query<{ id: number }, [string]>(
-      "SELECT id FROM escalation WHERE answer IS NULL AND question LIKE ?",
-    )
-    .get(`${runtime} 的凭据%`);
-  if (open) return;
-  ctx.db.run(
-    `INSERT INTO escalation (grp_id, agent_id, severity, question, brief, kind, created_at)
-     VALUES (?, ?, 'blocker', ?, ?, 'env', unixepoch() * 1000)`,
-    [
-      job.grp_id,
-      agent.id,
-      `${runtime} 的凭据不好使了：${r.text.slice(0, 200)}\n` +
+  if (
+    raise(ctx.db, {
+      grpId: job.grp_id,
+      agentId: agent.id,
+      kind: "env",
+      brief: `${runtime} 凭据过期`,
+      dedupe: { prefix: `${runtime} 的凭据`, scope: "global" },
+      question:
+        `${runtime} 的凭据不好使了：${r.text.slice(0, 200)}\n` +
         `去设置页 → ${runtime} → 登录，重新配一个。登录是在工具容器里跑官方 CLI 做的，本机不用装。配完这一组会自己接着走。`,
-      `${runtime} 凭据过期`,
-    ],
-  );
+    }) === null
+  ) {
+    return;
+  }
   ctx.bus.emit({
     grpId: job.grp_id,
     author: "orchestrator",

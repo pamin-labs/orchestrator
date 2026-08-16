@@ -8,7 +8,9 @@
 
 ## 当前状态
 
-**`bun test` 641 checks 绿（6 skip 是要真沙盒服务器的）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
+**D4-3 第一段已验证：** escalation 的 INSERT、默认值和开放问题判定收进 `mech/flow/escalate.ts`；去重范围不再从插入行的 `grp_id` 猜，凭据/GitHub 是全局 subject，预算是 group subject；前缀按绑定字面量比较，且去重检查与 INSERT 是一条原子语句。`test/escalate.test.ts` 覆盖默认/显式字段、两种 scope、answered/revoked 重新放行和 `%` / `_` / `\\` / SQL 外观输入。`test/escalate.test.ts` + `test/repo-hold.test.ts` 15 绿，`test/api.test.ts` + `test/watchdog.test.ts` 114 绿，`bunx tsc --noEmit -p .` 绿。首批五个调用方已接入；其余运行期 INSERT 下一单元迁移。
+
+**`bun test` 701 checks 绿（6 skip 是要真沙盒服务器的）。** `bun run dev`（构建前端 + 起服务），web 在 `http://127.0.0.1:47821`。
 
 **你只需要三个动作**：丢想法 → 批 DRAFT 卡 → 查收切片。gate 探测、入职包、推送权限预检都在注册项目时自动完成。
 

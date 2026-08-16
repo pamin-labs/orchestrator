@@ -10,6 +10,7 @@ import { baseRefFor } from "../git/checkout.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { projectConfig } from "../util/rows.ts";
 import { errText } from "../util/text.ts";
+import { raise } from "./escalate.ts";
 
 /** `project.config_json.install`, or null. */
 function installFor(ctx: Ctx, projectId: number): string | null {
@@ -358,11 +359,12 @@ export async function sweepApproved(ctx: Ctx): Promise<number[]> {
     // and this runs on the watchdog tick, so leaving the intent set retried it
     // every thirty seconds forever, returning an error to nobody.
     ctx.db.run("UPDATE grp SET approved_at = NULL WHERE id = ?", [g.id]);
-    ctx.db.run(
-      `INSERT INTO escalation (grp_id, severity, question, brief, chain_state, created_at)
-       VALUES (?, 'blocker', ?, '批准没能落地', 'boss', unixepoch() * 1000)`,
-      [g.id, `批准没能落地：${err}。修好之后再批一次。`],
-    );
+    raise(ctx.db, {
+      grpId: g.id,
+      brief: "批准没能落地",
+      chain: "boss",
+      question: `批准没能落地：${err}。这次批准已撤回，修好之后再批一次。`,
+    });
     ctx.bus.emit({
       grpId: g.id,
       author: "orchestrator",

@@ -1,6 +1,7 @@
 import type { DB } from "../../db.ts";
 import { say } from "../../lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";
+import { raise } from "../flow/escalate.ts";
 
 /**
  * GitHub, as eight endpoints of ordinary JSON.
@@ -181,28 +182,21 @@ function slugInPath(path: string): string | null {
  */
 function holdRepo(db: DB, lang: string | undefined, slug: string, why: string, now: number): void {
   holds.set(slug, now + REPO_HOLD_MS);
-  const open = db
-    .query<{ id: number }, [string]>(
-      // `chain_state` matters as much as `answer`: `clearEscalation` revokes
-      // rather than answers, so without it a project that recovered once could
-      // never file a second warning.
-      `SELECT id FROM escalation
-       WHERE answer IS NULL AND chain_state NOT IN ('answered', 'revoked') AND question LIKE ?`,
-    )
-    .get(`GitHub ${slug}:%`);
-  if (open) return;
-  db.run(
-    `INSERT INTO escalation (grp_id, severity, question, chain_state, kind, created_at)
-     VALUES (NULL, 'blocker', ?, 'boss', 'env', ?)`,
-    // `chain_state = 'boss'` directly rather than through `route()`: no agent can
-    // answer "the login stopped working", and this escalation belongs to a
-    // project rather than to a group, so there is no PM to hand it to.
-    //
+  // `chain_state` matters as much as `answer`, and `raise` states it once for
+  // every caller: `clearEscalation` revokes rather than answers, so a guard that
+  // looks at `answer` alone treats a revoked question as still open — and a
+  // project that recovered once could never file a second warning.
+  raise(db, {
     // `why` goes in verbatim. It is the message built below, which deliberately
     // does not guess which of the four causes it was — and a wrapper that
     // "helpfully" summarised it as "token expired" would put the guess back.
-    [`GitHub ${slug}: ${why}\n\n${say(lang, "repo.held", { repo: slug })}`, now],
-  );
+    question: `GitHub ${slug}: ${why}\n\n${say(lang, "repo.held", { repo: slug })}`,
+    brief: "GitHub 连不上了",
+    kind: "env",
+    // No agent can repair a project credential, and there is no group PM here.
+    chain: "boss",
+    dedupe: { prefix: `GitHub ${slug}:`, scope: "global" },
+  });
 }
 
 /**
