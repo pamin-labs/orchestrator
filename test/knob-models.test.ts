@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { allModels, cheapest, modelsByRuntime } from "../web/src/lib/models";
 import { COUNT_UNITS, countOf, splitCount } from "../web/src/lib/units";
 import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../src/config.ts";
+import { ConfigSchema } from "../src/config-schema.ts";
 
 /**
  * The model pickers offer what this config already names.
@@ -65,4 +66,19 @@ test("a count splits into an integer and a unit, and multiplies back exactly", (
   expect(splitCount(8_500_000)).toEqual({ n: 8500, unit: "k" });
   expect(splitCount(272_000)).toEqual({ n: 272, unit: "k" });
   expect(splitCount(45)).toEqual({ n: 45, unit: "" });
+});
+
+test("a row the panel creates is a row the server accepts", () => {
+  // The add box wrote the new entry with value 0, and every map knob on this page
+  // is `z.number().int().positive()`. So naming a model produced
+  // "contextWindow: Too small: expected number to be >0" and no row: there is
+  // nowhere to type a value before the row exists, so the row could never be
+  // created at all. A born value has to be one the schema takes.
+  const CFG = ConfigSchema.shape;
+  for (const [path, born] of [["contextWindow", 200_000], ["leaseSlots", 1], ["sliceBudgetTokens", 1]] as const) {
+    const schema = CFG[path as keyof typeof CFG];
+    expect(schema.safeParse({ "new-thing": born }).success).toBe(true);
+    // And the value that used to be written is exactly what the server refuses.
+    expect(schema.safeParse({ "new-thing": 0 }).success).toBe(false);
+  }
 });

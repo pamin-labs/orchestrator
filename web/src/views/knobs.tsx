@@ -826,9 +826,12 @@ function Pairs({
           placeholder={keyPh}
           aria-label="加一项"
           className="w-[13rem] flex-none"
+          // Same reason as the window table: an integer knob here is
+          // `z.number().int().positive()`, so a row born at 0 is a row the
+          // server refuses and the boss cannot create.
           onCommit={(k) => {
             const name = k.trim();
-            if (name) onWrite({ ...map, [name]: kind === "text" ? "" : 0 });
+            if (name) onWrite({ ...map, [name]: kind === "text" ? "" : 1 });
           }}
         />
         <Meta>填个名字就多一行</Meta>
@@ -965,8 +968,15 @@ function Windows({
             key={`add-${entries.length}`}
             value=""
             options={free}
+            // Born at the fallback window, not at 0. A row is written the moment
+            // it is named — there is nowhere to put a value first — and 0 is
+            // refused by the schema (`z.number().int().positive()`), so a new
+            // model could not be added at all: the box came back
+            // "contextWindow: Too small: expected number to be >0" and the row
+            // never appeared. The fallback is the honest starting guess anyway,
+            // since it is what this model was already being sized by.
             onCommit={(name) => {
-              if (name.trim()) onWrite({ ...map, [name.trim()]: 0 });
+              if (name.trim()) onWrite({ ...map, [name.trim()]: Number(map[DEFAULT_KEY]) || 200_000 });
             }}
           />
         </div>
