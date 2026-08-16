@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
-import { POLL_EVERY_MS, objectsAfter, pollClaudeUsage, pollUsage, toRateLimit } from "../src/mech/ops/subusage.ts";
+import { POLL_EVERY_MS, pollClaudeUsage, pollUsage, rateLimitsIn, toRateLimit } from "../src/mech/ops/subusage.ts";
 import { seedAuth } from "./seed-auth.ts";
 
 // The real response, trimmed to the two windows this reads. Verbatim shape from
@@ -119,17 +119,28 @@ test("codex quota comes from its rollout file, not the stream", () => {
   // Note what this account reports: one 10080-minute window and a null secondary,
   // with an absolute resets_at. The window is identified by its length, not by
   // which slot it arrived in.
-  const line =
+  const ping = (pct: number, resets: number) =>
     '{"type":"event_msg","payload":{"rate_limits":{"limit_id":"codex","limit_name":null,' +
-    '"primary":{"used_percent":12.5,"window_minutes":10080,"resets_at":1787207305},' +
+    `"primary":{"used_percent":${pct},"window_minutes":10080,"resets_at":${resets}},` +
     '"secondary":null,"credits":{"has_credits":false,"balance":"0"}}}}';
-  const objs = objectsAfter(line, '"rate_limits":');
-  expect(objs.length).toBe(1);
-  // Brace-matched, not regexed: `primary` nests, so a non-greedy match would stop
-  // at its closing brace and parse to the wrong object.
-  const rl = JSON.parse(objs[0]!);
-  expect(rl.primary.used_percent).toBe(12.5);
-  expect(rl.secondary).toBeNull();
+
+  // A rollout is `.jsonl`, so the line is the object. Drives `rateLimitsIn`
+  // rather than the brace matcher it replaced: what matters is the number that
+  // comes out, and the matcher was a JSON parser written to avoid calling one.
+  const rl = rateLimitsIn(ping(12.5, 1787207305), 0)!;
+  expect(rl.weeklyPercent).toBe(12.5);
+  expect(rl.weeklyResetsAt).toBe(1787207305);
+  // The five-hour window is genuinely absent here, not zero.
+  expect(rl.fiveHourPercent).toBeUndefined();
+
+  // The file grows as the session runs, so the last reading wins — and the
+  // first line of a `tail -c` is a fragment that must not stop the walk.
+  const tailed = ["_limits\":{\"primary\":{\"used_percent\":99,", ping(12.5, 1), ping(40, 2)].join("\n");
+  expect(rateLimitsIn(tailed, 0)!.weeklyPercent).toBe(40);
+
+  // Nothing to find is null, not a zeroed reading that would read as "plenty left".
+  expect(rateLimitsIn('{"type":"event_msg","payload":{}}', 0)).toBeNull();
+  expect(rateLimitsIn("", 0)).toBeNull();
 });
 
 test("codex quota is read from a sandbox first, and the host is only the fallback", async () => {

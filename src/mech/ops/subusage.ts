@@ -6,6 +6,7 @@ import type { Ctx } from "../../ctx.ts";
 import { CODEX_HOME, decoy, loadAuth, subscriptionAccount } from "../sandbox/auth.ts";
 import { execIn, UTIL } from "../sandbox/sandbox.ts";
 import { shq } from "../util/shq.ts";
+import { jsonOr } from "../util/text.ts";
 
 /**
  * How much of the claude subscription's windows is gone.
@@ -249,15 +250,27 @@ function json_clear(good: string): string {
  * than by which slot it arrived in.
  */
 export function rateLimitsIn(text: string, now: number): RateLimitInfo | null {
+  // A rollout is `.jsonl` — one object per line — so the line is the object and
+  // `JSON.parse` is the parser. This used to brace-match its way through the raw
+  // text with its own string and escape state, which is a JSON parser written to
+  // avoid calling one.
+  //
+  // `NEWEST_ROLLOUT` tails the last 200KB, so the first line can be a fragment.
+  // It throws, it is skipped, and it is the oldest reading in the window — which
+  // is the one this function discards anyway.
+  const lines = text.split("\n").filter((l) => l.includes('"rate_limits"'));
   // Last reading in the file wins: it grows as the session runs.
-  for (const raw of objectsAfter(text, '"rate_limits":').reverse()) {
-    try {
-      const rl = JSON.parse(raw) as { primary?: CodexWindow; secondary?: CodexWindow };
-      const out = fromCodex(rl.primary ?? null, rl.secondary ?? null, now);
-      if (out) return out;
-    } catch {}
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const rl = jsonOr<{ payload?: { rate_limits?: Windows } } | null>(lines[i]!, null)?.payload?.rate_limits;
+    const out = rl && fromCodex(rl.primary ?? null, rl.secondary ?? null, now);
+    if (out) return out;
   }
   return null;
+}
+
+interface Windows {
+  primary?: CodexWindow;
+  secondary?: CodexWindow;
 }
 
 export function codexUsage(dataDir: string, now = Date.now()): RateLimitInfo | null {
@@ -285,38 +298,6 @@ export function codexUsage(dataDir: string, now = Date.now()): RateLimitInfo | n
 export const NEWEST_ROLLOUT =
   `f=$(find ${CODEX_HOME}/sessions -type f -name '*.jsonl' -printf '%T@ %p\\n' 2>/dev/null | ` +
   `sort -rn | head -1 | cut -d' ' -f2-); [ -n "$f" ] && tail -c 200000 "$f"`;
-
-/**
- * Every JSON object following `key` in the text, brace-matched.
- *
- * A regex cannot do this: the object nests (`primary` is an object inside it), so
- * a non-greedy match ends at the first inner `}` and produces something that
- * parses to the wrong thing or not at all.
- */
-export function objectsAfter(text: string, key: string): string[] {
-  const out: string[] = [];
-  let i = text.indexOf(key);
-  while (i !== -1) {
-    const start = text.indexOf("{", i + key.length);
-    if (start === -1) break;
-    let depth = 0;
-    let inStr = false;
-    let esc = false;
-    for (let j = start; j < text.length; j++) {
-      const c = text[j]!;
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
-      else if (c === '"') inStr = !inStr;
-      else if (!inStr && c === "{") depth++;
-      else if (!inStr && c === "}" && --depth === 0) {
-        out.push(text.slice(start, j + 1));
-        break;
-      }
-    }
-    i = text.indexOf(key, i + key.length);
-  }
-  return out;
-}
 
 type CodexWindow = { used_percent?: number; window_minutes?: number; resets_at?: number; resets_in_seconds?: number } | null;
 
