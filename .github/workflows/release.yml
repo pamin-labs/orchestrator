@@ -7,11 +7,10 @@
 #
 # What it does, in order, and it stops at the first failure:
 #
-#   1. runs every check, because a broken release is worse than a late one
+#   1. runs every check and cross-compiles the four tarballs, in one job
 #   2. builds the agent image, one job per platform, merged into one manifest
-#   3. cross-compiles the orchestrator for four platforms, as tarballs
-#   4. tags the commit
-#   5. publishes a release, with the notes GitHub generates itself
+#   3. tags the commit
+#   4. publishes a release, with the notes GitHub generates itself
 #
 # Step 4 is `--generate-notes`, and that is the whole of it. GitHub already
 # knows which pull requests merged since the previous tag and which of their
@@ -88,15 +87,77 @@ jobs:
         with:
           bun-version: latest
 
+      # Before the checks, because the tarballs are built in this job now and
+      # `package.json` is what the running orchestrator reads its own version
+      # from — it is on the line every pull request carries.
+      - name: set the version
+        run: |
+          node -e '
+            const p = require("./package.json");
+            p.version = "${{ inputs.version }}";
+            require("fs").writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+            console.log("package.json -> " + p.version);
+          '
+
+      # bun's global download cache, not `node_modules`: what an install spends
+      # is the network, and this is keyed by the lockfile so a release that
+      # changed no dependency restores exactly what the last one downloaded.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
       # `--frozen-lockfile`: a lockfile that does not match package.json is a
       # difference between what was tested and what will run.
       - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit -p .
-      - run: bunx oxlint@latest --deny-warnings src web/src test
+      - run: bunx oxlint --deny-warnings src web/src test
       # Build before test, for the reason ci.yml states: the smoke test asserts
       # the built bundle is served, and with no `web/dist` it fails as a 404.
       - run: bun run build:web
       - run: bun test
+
+      # In this job rather than one of its own, and the reason is the two lines
+      # above it: a separate job repeats `bun install` and `bun run build:web`
+      # for the same tree, which is more time than the compile itself takes.
+      # `bun build --compile` cross-compiles, so one ubuntu runner emits all four
+      # targets — no macOS runner, no arm runner, a few seconds each.
+      - name: compile
+        run: |
+          set -euo pipefail
+          v="${{ inputs.version }}"
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            # The directory carries the version; the tarball does not, because
+            # `/releases/latest/download/<name>` only resolves for a fixed name —
+            # and a download URL nobody has to edit per release is the whole
+            # point of that endpoint.
+            out="orch-server-$v-$target"
+            mkdir -p "dist/$out/web" "dist/$out/src/orch"
+            bun build --compile --minify --target="bun-$target" src/server.ts \
+              --outfile "dist/$out/orch-server"
+            # `ROOT` is the executable's own directory for a compiled binary — a
+            # bundled module has no path on disk to resolve from — so everything
+            # read at runtime travels beside it.
+            cp -R roles config "dist/$out/"
+            cp -R web/dist "dist/$out/web/dist"
+            cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$out/web/"
+            # Read at runtime *and* copied into every sandbox, so the agents' CLI
+            # always matches the orchestrator serving them.
+            cp src/orch/cli.ts "dist/$out/src/orch/"
+            cp package.json README.md LICENSE "dist/$out/"
+            tar -C dist -czf "dist/orch-server-$target.tar.gz" "$out"
+            rm -rf "dist/$out"
+          done
+          ls -lh dist/*.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binaries
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
 
   # One job per image per architecture, each on a runner of that architecture.
   # Pushed by digest with no tag: a tag here would publish half a release the
@@ -151,6 +212,10 @@ jobs:
           context: .
           file: ${{ matrix.file }}
           platforms: linux/${{ matrix.platform }}
+          # One layer's cache key, so every release picks up the current CLIs
+          # while the apt layer above stays cached.
+          build-args: |
+            CLI_REFRESH=${{ inputs.version }}
           # By digest; the manifest job below is what gives these names.
           outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=${{ !inputs.dry_run }}
           # Per image *and* per architecture. One shared scope means the two
@@ -174,67 +239,6 @@ jobs:
         with:
           name: digests-${{ matrix.image }}-${{ matrix.platform }}
           path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  # Four platforms out of one runner. `bun build --compile` cross-compiles, so
-  # this needs neither a macOS runner nor an arm one, and the whole job is a few
-  # seconds — against several minutes for the image it replaced.
-  binaries:
-    needs: checks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: set the version
-        run: |
-          node -e '
-            const p = require("./package.json");
-            p.version = "${{ inputs.version }}";
-            require("fs").writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
-          '
-
-      - run: bun install --frozen-lockfile
-      # The panel is served from `web/dist` and nothing rebuilds it at runtime;
-      # a tarball without this serves a blank page.
-      - run: bun run build:web
-
-      - name: compile
-        run: |
-          set -euo pipefail
-          v="${{ inputs.version }}"
-          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            # The directory carries the version; the tarball does not, because
-            # `/releases/latest/download/<name>` only resolves for a fixed name —
-            # and a download URL nobody has to edit per release is the whole
-            # point of that endpoint.
-            out="orch-server-$v-$target"
-            mkdir -p "dist/$out/web" "dist/$out/src/orch"
-            bun build --compile --minify --target="bun-$target" src/server.ts \
-              --outfile "dist/$out/orch-server"
-            # `ROOT` is the executable's own directory for a compiled binary — a
-            # bundled module has no path on disk to resolve from — so everything
-            # read at runtime travels beside it.
-            cp -R roles config "dist/$out/"
-            cp -R web/dist "dist/$out/web/dist"
-            cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$out/web/"
-            # Read at runtime *and* copied into every sandbox, so the agents' CLI
-            # always matches the orchestrator serving them.
-            cp src/orch/cli.ts "dist/$out/src/orch/"
-            cp package.json README.md LICENSE "dist/$out/"
-            tar -C dist -czf "dist/orch-server-$target.tar.gz" "$out"
-            rm -rf "dist/$out"
-          done
-          ls -lh dist/*.tar.gz
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: binaries
-          path: dist/*.tar.gz
           if-no-files-found: error
           retention-days: 1
 
@@ -274,7 +278,7 @@ jobs:
   # Last, so a failed build never leaves a tag pointing at a release whose images
   # do not exist.
   publish:
-    needs: [manifest, binaries]
+    needs: [manifest, checks]
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     steps:

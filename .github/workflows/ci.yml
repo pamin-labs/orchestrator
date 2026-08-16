@@ -33,6 +33,15 @@ jobs:
         with:
           bun-version: latest
 
+      # bun's global download cache, not `node_modules`: the install itself is
+      # fast, and what it spends is the network. Keyed by the lockfile, so a run
+      # that changes no dependency restores exactly what the last one downloaded.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
       # `--frozen-lockfile`: a lockfile that does not match package.json is a
       # difference between what was tested and what will run, and CI is where
       # that has to fail rather than resolve itself quietly.
@@ -46,7 +55,7 @@ jobs:
       # that typechecks and is still wrong — an unused disable, a promise nobody
       # awaited, a condition that is always true.
       - name: lint
-        run: bunx oxlint@latest --deny-warnings src web/src test
+        run: bunx oxlint --deny-warnings src web/src test
 
       # Before the tests, not after: `test/smoke.test.ts` asserts that the built
       # bundle is served, so with no `web/dist` it fails with a 404 that reads

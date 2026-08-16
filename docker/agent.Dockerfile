@@ -28,7 +28,14 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates curl nodejs npm \
  && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g --no-fund --no-audit @anthropic-ai/claude-code@latest @openai/codex@latest \
+# `@latest` and a layer cache disagree: the cache key is this command's text, so
+# a warm cache reuses whichever versions were current when it was written and the
+# image ages while claiming to ship the newest CLIs. The release passes its own
+# version in, which busts this one layer once per release and leaves the apt
+# layer above it — the expensive one — cached.
+ARG CLI_REFRESH=dev
+RUN echo "refresh ${CLI_REFRESH}" \
+ && npm install -g --no-fund --no-audit @anthropic-ai/claude-code@latest @openai/codex@latest \
  && npm cache clean --force
 
 # execd replaces the entrypoint; this only matters if the image is run by hand.
