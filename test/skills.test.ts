@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathInSandbox, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/util/skills.ts";
+import { frontmatterDescription, pathInSandbox, setSkillOff, skillsOff, stageSkills, type SkillRef } from "../src/mech/util/skills.ts";
 import { openMemory, rewriteSkillPaths } from "../src/db.ts";
 
 /**
@@ -150,4 +150,24 @@ test("old messages stop pointing at a machine the agent cannot see", () => {
     "按 /impeccable 来做，再看 /ponytail",
   );
   expect(db.query<{ body: string }, []>("SELECT body FROM event").get()!.body).toBe("用 /tdd");
+});
+
+test("a skill's description survives every shape real skills are written in", () => {
+  // The picker shows this string. A regex returned "|" for the block-scalar form,
+  // which is what it displayed; the hand-rolled walk that replaced it folded `>-`
+  // the way `|` folds and could match a `description:` in the body below the
+  // frontmatter. `Bun.YAML.parse` was already in use three files over.
+  const fm = (b: string) => frontmatterDescription(`---\nname: a\n${b}\n---\nbody\n`);
+  expect(fm("description: one line here")).toBe("one line here");
+  expect(fm("description: |\n  first line\n  second line")).toBe("first line second line");
+  expect(fm("description: >-\n  folded one\n  folded two")).toBe("folded one folded two");
+  expect(fm('description: "quoted"')).toBe("quoted");
+
+  // No frontmatter description: the word appearing in the body is not one.
+  expect(frontmatterDescription("---\nname: a\n---\nbody says description: not this\n")).toBe("");
+  expect(frontmatterDescription("no frontmatter at all")).toBe("");
+
+  // The caller reads a truncated head, so an unterminated document is normal and
+  // must not throw — one line is better than nothing at all.
+  expect(frontmatterDescription("---\nname: a\ndescription: trunc")).toBe("trunc");
 });

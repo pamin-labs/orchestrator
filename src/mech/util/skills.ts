@@ -53,29 +53,26 @@ export const SKILL_CAP = 12_000;
 /**
  * The `description:` from a skill's frontmatter, including the block-scalar form.
  *
- * Real skills are written `description: |` with the text on the following indented
- * lines, and a one-line regex returns "|" — which is what the picker was showing.
+ * `Bun.YAML.parse` rather than a regex and a hand-rolled indentation walk.
+ * Real skills are written `description: |` with the text on the following
+ * indented lines; the one-line regex this started as returned "|", which is
+ * what the picker showed. The replacement for that was 20 lines that folded
+ * `>-` the way `|` folds and could match a `description:` in the body text
+ * below the frontmatter — and the parser was already in use three files over.
+ *
+ * The head may be a truncated read (`slice(0, 4000)`), so a parse failure is
+ * normal rather than exceptional: fall back to the first line, do not throw.
  */
 export function frontmatterDescription(text: string): string {
-  const m = /^description:[ \t]*(.*)$/m.exec(text);
-  if (!m) return "";
-  const first = m[1]!.trim();
-  if (first && first !== "|" && first !== ">" && first !== "|-" && first !== ">-") {
-    return first.replace(/^["']|["']$/g, "").slice(0, 140);
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text.trimStart());
+  if (m) {
+    try {
+      const d = (Bun.YAML.parse(m[1]!) as { description?: unknown })?.description;
+      if (typeof d === "string") return d.trim().replace(/\s+/g, " ").slice(0, 140);
+    } catch {}
   }
-  // Block scalar: take the indented run that follows.
-  const rest = text.slice(m.index + m[0]!.length).split("\n").slice(1);
-  const out: string[] = [];
-  for (const line of rest) {
-    if (!line.trim()) {
-      if (out.length) break;
-      continue;
-    }
-    if (!/^\s/.test(line)) break;
-    out.push(line.trim());
-    if (out.join(" ").length > 140) break;
-  }
-  return out.join(" ").slice(0, 140);
+  const one = /^description:[ \t]*(.*)$/m.exec(text)?.[1]?.trim() ?? "";
+  return /^[|>][-+]?$/.test(one) ? "" : one.replace(/^["']|["']$/g, "").slice(0, 140);
 }
 
 /**

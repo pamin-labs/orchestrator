@@ -129,22 +129,15 @@ export const postAttachLocal: Handler = async (ctx, req) => {
     out.push({
       name: basename(src),
       path: dest,
-      type: st.isDirectory() ? "inode/directory" : guessType(src),
+      // `Bun.file(path).type` is the same question the upload route below already
+      // asks this way, and it does not need the file to exist. A six-extension
+      // table beside it was two mechanisms for one answer in one file.
+      type: st.isDirectory() ? "inode/directory" : Bun.file(src).type || "application/octet-stream",
       size: st.size,
     });
   }
   return json({ files: out });
 };
-
-/** Enough to tell an image from everything else, which is all this decides. */
-function guessType(path: string): string {
-  const ext = path.toLowerCase().split(".").pop() ?? "";
-  const img: Record<string, string> = {
-    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
-    gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
-  };
-  return img[ext] ?? "application/octet-stream";
-}
 
 /**
  * Hand one attachment back to the panel.
