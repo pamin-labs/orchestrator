@@ -496,3 +496,19 @@ HTTP 请求的，握手不成就没有请求，也就没有 token。
 决定了以后什么动作是危险的 —— 谁哪天在 sidecar 配置里关掉上游证书校验（很多代理都有
 这么个开关），这条路立刻变成一条完整的凭据外泄通道，而且没有任何症状：agent 拿到的
 仍然是正常的 200。
+
+## 缓存和排队：账本身是错的，而慢的那 2/3 不在模型里
+
+拿这个库自己的 725 个记账 turn、907 个 `agent_turn` 量了一遍，四条都不是猜的。
+
+**codex 的 token 数一直被算两遍。** codex 的 `input_tokens` 含 `cached_input_tokens`，claude 的不含 —— 两个 adapter 把语义不同的两个数填进同一个字段。实测 438k input / 402k cacheRead，于是同一个错误在三处呈现三种样子：面板上 codex 的 cache 命中率写着 0.39（真值 0.92），切片预算在真实花费一半时熔断，而 `contextTokens = input + cacheCreate` 一个 turn 就吃掉 272k 窗口 60% 的天花板 —— **18 个 codex agent 有 15 个的 `session_tokens` 已经在 ceiling 之上，也就是下一轮必然重开会话**。重开 = 丢掉整条 transcript = 下一轮重读一遍仓库。改动是一行减法。
+
+**「重开了几次、为什么」以前没人记。** 13 个 claude turn log 抽样，10 个的首步 `cache_read_input_tokens` 是 0、首步 cacheCreate ≈ 17k —— 全新 session、只有前缀。而四个触发源（前缀变了 / 上下文满了 / 打回重做 / 新雇的）合成一个 boolean 就丢掉了。现在带进 `tool_summary.meta.rotate`，成本页在 cache 命中下面多一行「重开会话 N/50 · 原因」。**低命中率和高重开率是同一张图，但修法相反**，没这个数只能猜。
+
+**gate 的优先级是 0。** 它不花模型、跑 16 秒，却卡着 slice → QA → 老板查收整条链 —— 实测排队 **3235 秒**。旁边的 `reconcile` 用 `priority: 5`，排队 74 秒。这就是 QA 的 turn 平均等 6876 秒才开始的原因。补一个 `priority: 5`。
+
+**四个常驻角色在抢同一个槽位。** `job.grp_id ?? 0` —— Architect / CoS / Dispatcher / Librarian 都没有 `grp_id`，于是全局串行，Dispatcher 平均排队 4309 秒、CoS 1752 秒，而它们之间没有任何共享状态。槽位改成按 agent（`grp_id ?? -(agent_id ?? 0)`，负数永远撞不上 group id），同一个 agent 仍然一次只写一份 transcript，`maxGroups` 那道成本上限一点没松 —— 那才是当初写 0 的真实理由。
+
+**还有一条是潜伏的：** 读 lessons 是 `ORDER BY at DESC`，而决定哪 20 条活下来的淘汰逻辑是 `ORDER BY at DESC, id DESC`。`at` 是整毫秒，Librarian 一轮写好几条，一旦并列，两次读回的顺序就可能不同 → `systemAppend` 字节变 → 全舰队冷启动，且**每个组看起来都健康**。今天只有 6 条 lesson、没有并列，所以还没炸过。
+
+**claude 那半还有个更隐蔽的：** 默认 system prompt 里有一段 cwd / env / memory paths / **git status**，排在 `--append-system-prompt` 前面。而这个 executor 在每个 turn 开头都提交一次 checkpoint —— 工作树每轮都不一样。前缀的头一百个 token 每轮都变，就等于前缀从来没被复用过，而这件事没有任何症状：turn 照跑，只有 cache 命中率安静地记着这笔损失。CLI 有 `--exclude-dynamic-system-prompt-sections` 正好把那段挪进第一条 user message，加上了。这条标着**待验证** —— 用上面那个重开原因的分布和首步 cache_read 做 A/B，没效果就撤掉（一行）。
