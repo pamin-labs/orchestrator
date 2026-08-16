@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import { openMemory } from "../src/db.ts";
 import { loadConfig } from "../src/config.ts";
 import { applyOverrides, defaultFor, overrides, putSetting, refuse, settablePaths } from "../src/settings.ts";
+import { Bus } from "../src/bus.ts";
+import { Scheduler } from "../src/scheduler.ts";
+import { makeApp, type Ctx } from "../src/api.ts";
 
 test("the settable paths are the config's own, and nothing else is", () => {
   const paths = settablePaths();
@@ -68,4 +71,41 @@ test("stored settings are layered over the file at boot, and stale keys are igno
   expect(fresh.autoAdvance).toBe(false);
   expect(fresh.sandbox.ttlSeconds).toBe(3600);
   expect(fresh.maxGroups).toBe(defaultFor("maxGroups") as number);
+});
+
+test("the panel reads every knob and writes one at a time", async () => {
+  const db = openMemory();
+  const bus = new Bus(db);
+  const cfg = applyOverrides(db, loadConfig("config/does-not-exist.yaml"));
+  const sched = new Scheduler(db, async () => {});
+  const ctx: Ctx = { db, bus, sched, waiters: new Map(), config: cfg };
+  const app = makeApp(ctx);
+
+  const read = async () => {
+    const r = await app(new Request("http://x/api/settings"));
+    return (await r.json()) as { settings: Array<{ path: string; value: unknown; overridden: boolean }> };
+  };
+  const write = (body: unknown) =>
+    app(new Request("http://x/api/settings", { method: "POST", body: JSON.stringify(body) }));
+
+  const before = await read();
+  const groups = before.settings.find((s) => s.path === "maxGroups")!;
+  expect(groups.value).toBe(cfg.maxGroups);
+  expect(groups.overridden).toBe(false);
+  // The paths the file keeps are not offered at all, rather than offered and refused.
+  expect(before.settings.map((s) => s.path)).not.toContain("port");
+
+  expect((await write({ path: "maxGroups", value: 4 })).status).toBe(200);
+  // Both halves: what the next boot will read, and what this process is using
+  // right now. A row alone is a knob that changes nothing until tomorrow.
+  const after = await read();
+  expect(after.settings.find((s) => s.path === "maxGroups")).toMatchObject({ value: 4, overridden: true });
+  expect(ctx.config.maxGroups).toBe(4);
+
+  // Refusals come back as text the panel can show, not as a 500.
+  const no = await write({ path: "port", value: 1 });
+  expect(no.status).toBe(422);
+  expect(await no.text()).toContain("startup argument");
+  expect((await write({ path: "maxGroups", value: "four" })).status).toBe(422);
+  expect(ctx.config.maxGroups).toBe(4);
 });

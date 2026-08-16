@@ -1,7 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useState } from "react";
 import {
-  Box, Check, CircleAlert, GitBranch, KeyRound, ListChecks, MonitorCog, Server, SlidersHorizontal, Sparkles, Trash2, X,
+  Box, Check, CircleAlert, Coins, Gauge, GitBranch, KeyRound, ListChecks, MonitorCog, Server,
+  SlidersHorizontal, Sparkles, Timer, Trash2, X,
 } from "lucide-react";
 import { H2, Head, Input, Meta, Pane, Textarea } from "../ui/bits";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../ui/field";
@@ -13,6 +14,7 @@ import { Badge } from "../ui/badge";
 import { Tip } from "../ui/tooltip";
 import { ask } from "../ui/confirm";
 import { pull, post, del } from "../lib/api";
+import { Knobs } from "./knobs";
 import { clock, cn, repoHref } from "../lib/utils";
 import { ThemeChoice } from "../ui/theme";
 import { Gates, ImageRow, Sandbox, type ProjectConfig } from "./project";
@@ -38,7 +40,10 @@ import { Skills } from "./skills";
  */
 
 type Mode = "oauth_token" | "api_key" | "chatgpt";
-export type Section = "cred" | "github" | "host" | "server" | "skills" | "prefs" | "gates" | "sandbox" | "remove";
+export type Section =
+  | "cred" | "github" | "host" | "server" | "skills"
+  | "sched" | "models" | "turn"
+  | "prefs" | "gates" | "sandbox" | "remove";
 
 interface AuthRow {
   runtime: string;
@@ -108,6 +113,13 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   // This machine's skills, not this project's: the same staged directory is
   // mounted into every group of every project.
   { key: "skills", zh: "技能", icon: Sparkles },
+  // The operating knobs, which used to be a yaml inside the release tarball.
+  // Three sections rather than one, because forty rows in one list is a list
+  // nobody reads to the bottom of — and the three answer different questions:
+  // how much runs at once, what it costs, how long one turn may take.
+  { key: "sched", zh: "调度", icon: Gauge },
+  { key: "models", zh: "模型与预算", icon: Coins },
+  { key: "turn", zh: "turn 与上下文", icon: Timer },
   { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
   { key: "gates", zh: "闸门", icon: ListChecks, project: true },
   { key: "sandbox", zh: "沙盒", icon: Box, project: true },
@@ -284,6 +296,8 @@ export function SettingsDialog({
                 <ServerPane current={rows.find((x) => x.runtime === "sandbox")} checks={checks} onSaved={load} />
               ) : here === "skills" ? (
                 <Skills projectId={projectId} />
+              ) : here === "sched" || here === "models" || here === "turn" ? (
+                <Knobs section={here} />
               ) : here === "prefs" ? (
                 <>
                   <Head title="偏好" note="只在这台机器上，不跟着项目走" />
