@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { open, openMemory } from "../src/db.ts";
-import { allowedImage, keyInConfig, lineSplitter, skillMounts, SKILL_LINE, SKILL_SYNC, specFor, STAGED_SKILLS } from "../src/mech/sandbox/sandbox.ts";
+import { allowedImage, hostPathForDaemon, keyInConfig, lineSplitter, skillMounts, SKILL_LINE, SKILL_SYNC, specFor, STAGED_SKILLS } from "../src/mech/sandbox/sandbox.ts";
 import { CODEX_HOME } from "../src/mech/sandbox/auth.ts";
 import { setDefaultImage } from "../src/mech/sandbox/images.ts";
 import { cacheProjectSkills, projectSkills } from "../src/mech/util/skills.ts";
@@ -290,4 +290,23 @@ test("a machine's default image is what a new project runs on, and it is not the
   expect(specFor(ctx, 1).image).toBe("orch/agent:1");
   db.run(`UPDATE project SET config_json = '{"sandbox":{"image":"evil.example.com/x:1"}}' WHERE id = 1`);
   expect(specFor(ctx, 1).image).toBe("ghcr.io/pamin-labs/orch-agent:0.2.0");
+});
+
+test("on Windows the mount path is the one the daemon can read, not the one we wrote", () => {
+  // `opensandbox-server` is Linux-only — its egress mode is `dns+nft` — so on a
+  // Windows machine it runs under WSL, beside the Docker Desktop daemon, and the
+  // path it is handed is resolved in *that* filesystem. `C:\orch\skills` is not
+  // a path it has.
+  //
+  // Untranslated, nothing errors: the server rejects it for not starting with
+  // `/`, or accepts it and mounts an empty directory. Both end with every ticked
+  // skill silently absent, which is this project's oldest failure shape.
+  expect(hostPathForDaemon("C:\\orch\\skills", "win32")).toBe("/mnt/c/orch/skills");
+  expect(hostPathForDaemon("D:/data/cache", "win32")).toBe("/mnt/d/data/cache");
+  // Already POSIX, on Windows: somebody who has thought about this. Left alone.
+  expect(hostPathForDaemon("/mnt/c/orch/skills", "win32")).toBe("/mnt/c/orch/skills");
+  // Everywhere else it is the identity, and has to be: a macOS path that grew a
+  // `/mnt` prefix would fail the same way in the other direction.
+  expect(hostPathForDaemon("/var/tmp/orch-cache/skills", "darwin")).toBe("/var/tmp/orch-cache/skills");
+  expect(hostPathForDaemon("/var/tmp/orch-cache/skills", "linux")).toBe("/var/tmp/orch-cache/skills");
 });

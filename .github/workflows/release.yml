@@ -127,15 +127,21 @@ jobs:
         run: |
           set -euo pipefail
           v="${{ inputs.version }}"
-          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            # The directory carries the version; the tarball does not, because
+          # Every target bun can compile for. No `windows-arm64` — bun does not
+          # build one — and no `-baseline` variants: those are for x64 CPUs
+          # without AVX2, which is pre-2013, and two more artifacts is a worse
+          # trade than an issue from whoever has one.
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
+            # The directory carries the version; the archive does not, because
             # `/releases/latest/download/<name>` only resolves for a fixed name —
             # and a download URL nobody has to edit per release is the whole
             # point of that endpoint.
             out="orch-server-$v-$target"
+            exe="orch-server"
+            case "$target" in windows-*) exe="orch-server.exe" ;; esac
             mkdir -p "dist/$out/web" "dist/$out/src/orch"
             bun build --compile --minify --target="bun-$target" src/server.ts \
-              --outfile "dist/$out/orch-server"
+              --outfile "dist/$out/$exe"
             # `ROOT` is the executable's own directory for a compiled binary — a
             # bundled module has no path on disk to resolve from — so everything
             # read at runtime travels beside it.
@@ -146,15 +152,22 @@ jobs:
             # always matches the orchestrator serving them.
             cp src/orch/cli.ts "dist/$out/src/orch/"
             cp package.json README.md LICENSE "dist/$out/"
-            tar -C dist -czf "dist/orch-server-$target.tar.gz" "$out"
+            # zip for Windows, which has no tar in every shell and treats a
+            # `.tar.gz` as two steps.
+            case "$target" in
+              windows-*) (cd dist && zip -qr "orch-server-$target.zip" "$out") ;;
+              *) tar -C dist -czf "dist/orch-server-$target.tar.gz" "$out" ;;
+            esac
             rm -rf "dist/$out"
           done
-          ls -lh dist/*.tar.gz
+          ls -lh dist/orch-server-*
 
       - uses: actions/upload-artifact@v7
         with:
           name: binaries
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -333,15 +346,38 @@ jobs:
           # multi-line argument ends up in the release body — and ten spaces in
           # front of ```bash is an indented code block, which renders the fence
           # markers as text.
+          base="https://github.com/${{ github.repository }}/releases/latest/download"
           printf '%s\n' \
-            'Run this version:' \
+            '### Linux' \
             '' \
             '```bash' \
-            "curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz" \
-            'cd orch-server-* && ./orch-server' \
+            "curl -fsSL $base/orch-server-linux-x64.tar.gz | tar xz   # or -arm64" \
+            'cd orch-server-*-linux-x64 && ./orch-server' \
             '```' \
             '' \
-            "Also `linux-arm64`, `darwin-x64`, `darwin-arm64`. No toolchain needed — Docker is, for the sandboxes." \
+            '### macOS' \
+            '' \
+            '```bash' \
+            "curl -fsSL $base/orch-server-darwin-arm64.tar.gz | tar xz   # or -x64" \
+            'cd orch-server-*-darwin-arm64' \
+            'xattr -dr com.apple.quarantine .   # unsigned; Gatekeeper otherwise refuses' \
+            './orch-server' \
+            '```' \
+            '' \
+            '### Windows' \
+            '' \
+            '```powershell' \
+            "Invoke-WebRequest -Uri $base/orch-server-windows-x64.zip -OutFile orch.zip" \
+            'Expand-Archive .\orch.zip -DestinationPath .' \
+            'cd orch-server-*-windows-x64' \
+            '.\orch-server.exe' \
+            '```' \
+            '' \
+            'The sandbox server is Linux-only, so on Windows it runs under WSL — `uvx opensandbox-server` in there. Drive-letter paths are translated for it (`C:\orch\skills` is `/mnt/c/orch/skills` on its side), and that translated form is what goes in its `allowed_host_paths`; the panel prints the exact line.' \
+            '' \
+            '---' \
+            '' \
+            'It prints its own address on the way up — loopback, no login in front of it. `ORCH_HOST` and `ORCH_PORT` move it. Docker is needed for the sandboxes; nothing else is.' \
             '' \
             "The agent image (\`${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}\`) is pulled by the sandbox server the first time it builds a container. Nothing to pull by hand." \
             > /tmp/notes.md
@@ -349,7 +385,7 @@ jobs:
             --title "${{ env.VERSION }}" \
             --generate-notes \
             --notes-file /tmp/notes.md \
-            dist/*.tar.gz
+            dist/*.tar.gz dist/*.zip
 
       # Bookkeeping, and allowed to fail: the release exists either way. `main`
       # moves on its own — this run took several minutes of image builds, and

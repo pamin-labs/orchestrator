@@ -40,18 +40,56 @@ Needs [Docker](https://docs.docker.com/get-started/get-docker/),
 No `bun`, no `node`, no toolchain — the orchestrator is one compiled binary, and
 Docker is required for the *sandboxes*, which is what it was always for.
 
+**1. The sandbox server**, once, on the machine with Docker:
+
 ```bash
 docker pull opensandbox/egress:v1.1.6             # v1.1.4 breaks scoped npm packages
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode = "dns+nft"
-
-# linux-x64, linux-arm64, darwin-x64, darwin-arm64
-curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
-cd orch-server-* && ./orch-server                 # → 127.0.0.1:47821
 ```
 
-Loopback on purpose: there is no login in front of the panel, so whoever reaches
-it is you. Put a reverse proxy with auth in front before publishing it anywhere
-else.
+**2. The orchestrator.** One archive, no toolchain.
+
+<details open><summary><b>Linux</b> — x64 · arm64</summary>
+
+```bash
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
+cd orch-server-*-linux-x64
+./orch-server
+```
+</details>
+
+<details><summary><b>macOS</b> — Apple silicon · Intel</summary>
+
+```bash
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-darwin-arm64.tar.gz | tar xz
+cd orch-server-*-darwin-arm64
+xattr -dr com.apple.quarantine .                  # unsigned; Gatekeeper otherwise refuses
+./orch-server
+```
+
+Intel Macs: `orch-server-darwin-x64.tar.gz`.
+</details>
+
+<details><summary><b>Windows</b> — x64</summary>
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-windows-x64.zip -OutFile orch.zip
+Expand-Archive .\orch.zip -DestinationPath .
+cd orch-server-*-windows-x64
+.\orch-server.exe
+```
+
+The sandbox server is Linux-only — its egress mode is `nft` — so on Windows it
+runs under WSL, next to the Docker Desktop daemon: `uvx opensandbox-server` in
+there. Mount paths are translated for it, because a path this process writes as
+`C:\orch\skills` is `/mnt/c/orch/skills` on its side, and the translated form is
+what belongs in its `allowed_host_paths`. The 环境 pane prints the exact line.
+</details>
+
+It prints its own address on the way up. Loopback on purpose: there is no login
+in front of the panel, so whoever reaches it is you — put a reverse proxy with
+auth in front before publishing it anywhere else. `ORCH_HOST` and `ORCH_PORT`
+move it; `config/default.yaml` is the same two settings for good.
 
 The agent image is pulled by the sandbox server the first time it builds a
 container — nothing to pull by hand.
@@ -60,7 +98,7 @@ container — nothing to pull by hand.
 
 ```bash
 bun install
-bun start                                         # → 127.0.0.1:47821
+bun start
 ```
 
 Needs [`bun`](https://bun.sh). Same two lines above it for the sandbox server.

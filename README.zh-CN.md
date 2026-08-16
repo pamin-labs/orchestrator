@@ -39,17 +39,54 @@ agent 真跑了 `rm -rf`，炸的是一个容器。
 不需要 `bun`，不需要 `node`，不需要任何工具链 —— orchestrator 就是一个编译好的
 二进制。Docker 是**沙盒**要的，它本来就是干这个的。
 
+**1. 沙盒服务器**，在有 Docker 的那台机器上跑一次：
+
 ```bash
 docker pull opensandbox/egress:v1.1.6             # v1.1.4 会搞坏 scoped npm 包
 uvx opensandbox-server --config ~/.sandbox.toml   # [egress] mode 要是 "dns+nft"
-
-# 四个平台：linux-x64、linux-arm64、darwin-x64、darwin-arm64
-curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
-cd orch-server-* && ./orch-server                 # → 127.0.0.1:47821
 ```
 
-只绑 loopback 是故意的：面板前面没有登录，能访问到它的人就是你。要放到别处，
-前面加一层带鉴权的反向代理。
+**2. orchestrator 本体。** 一个压缩包，不需要任何工具链。
+
+<details open><summary><b>Linux</b> —— x64 · arm64</summary>
+
+```bash
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-linux-x64.tar.gz | tar xz
+cd orch-server-*-linux-x64
+./orch-server
+```
+</details>
+
+<details><summary><b>macOS</b> —— Apple 芯片 · Intel</summary>
+
+```bash
+curl -fsSL https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-darwin-arm64.tar.gz | tar xz
+cd orch-server-*-darwin-arm64
+xattr -dr com.apple.quarantine .                  # 没签名，不去掉 Gatekeeper 不让跑
+./orch-server
+```
+
+Intel 的 Mac 用 `orch-server-darwin-x64.tar.gz`。
+</details>
+
+<details><summary><b>Windows</b> —— x64</summary>
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/pamin-labs/orchestrator/releases/latest/download/orch-server-windows-x64.zip -OutFile orch.zip
+Expand-Archive .\orch.zip -DestinationPath .
+cd orch-server-*-windows-x64
+.\orch-server.exe
+```
+
+沙盒服务器是 Linux only 的（出站过滤用 `nft`），所以在 Windows 上它跑在 WSL 里、
+挨着 Docker Desktop 的 daemon：在 WSL 里 `uvx opensandbox-server`。挂载路径会替它
+翻译 —— 这个进程写成 `C:\orch\skills` 的路径，在它那边是 `/mnt/c/orch/skills`，
+而要写进 `allowed_host_paths` 的正是翻译后的那个。设置 → 环境 会把那一行原样打出来。
+</details>
+
+起来的时候它自己会把地址打出来。只绑 loopback 是故意的：面板前面没有登录，
+能访问到它的人就是你 —— 要放到别处，前面加一层带鉴权的反向代理。`ORCH_HOST`
+和 `ORCH_PORT` 能改，`config/default.yaml` 里是同样两项、改了长期有效。
 
 agent 镜像由沙盒服务器在第一次建容器时自己拉，不用手动 pull。
 
@@ -57,7 +94,7 @@ agent 镜像由沙盒服务器在第一次建容器时自己拉，不用手动 p
 
 ```bash
 bun install
-bun start                                         # → 127.0.0.1:47821
+bun start
 ```
 
 需要 [`bun`](https://bun.sh)。上面那两行沙盒服务器照样要。

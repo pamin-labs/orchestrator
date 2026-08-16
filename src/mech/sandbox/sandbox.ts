@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
-import { cpus, homedir } from "node:os";
+import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../../api.ts";
@@ -117,6 +117,30 @@ export function allowedImage(ref: string): boolean {
   if (!image) return false;
   if (PUBLISHED.test(image)) return true;
   return !hasRegistry(image);
+}
+
+/**
+ * A host path, as the daemon that performs the mount will read it.
+ *
+ * On Windows this is not the path this process would use. `opensandbox-server`
+ * is Linux-only — its egress mode is `dns+nft` — so on a Windows machine it runs
+ * under WSL, next to the Docker Desktop daemon, and the path it is handed is
+ * resolved in *that* filesystem. `C:\orch\skills` is not a path it has; the
+ * same directory is `/mnt/c/orch/skills` there.
+ *
+ * Left untranslated, nothing errors: the server rejects it for not starting with
+ * `/`, or accepts it and mounts an empty directory. Both end with every skill
+ * the boss ticked silently absent, which is this project's oldest failure shape.
+ *
+ * Only drive-letter paths are touched. A path that is already absolute-POSIX is
+ * somebody who has thought about this, and a UNC path (`\\wsl$\...`) is one the
+ * daemon cannot use either way.
+ */
+export function hostPathForDaemon(path: string, os: string = platform()): string {
+  if (os !== "win32") return path;
+  const m = /^([A-Za-z]):[\\/](.*)$/.exec(path);
+  if (!m) return path.replace(/\\/g, "/");
+  return `/mnt/${m[1]!.toLowerCase()}/${m[2]!.replace(/\\/g, "/")}`;
 }
 
 /** `1` is the SDK default and makes a typecheck 3.7x slower (005). */
@@ -554,7 +578,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   const spec = specFor(ctx, projectId);
   const cacheVolumes = Object.entries(spec.cacheDirs).map(([mountPath, hostPath], i) => ({
     name: `cache-${i}`,
-    host: { path: hostPath },
+    host: { path: hostPathForDaemon(hostPath) },
     mountPath,
   }));
   const make = (volumes: Volume[]) =>
@@ -833,7 +857,7 @@ export function skillMounts(ctx: Ctx): Volume[] {
   // `dataDir`. A repo checkout is never on that list.
   const path = resolve(ctx.config?.skillsDir ?? "/var/tmp/orch-cache/skills");
   if (!existsSync(path)) return [];
-  return [{ name: "skills", host: { path }, mountPath: STAGED_SKILLS, readOnly: true }];
+  return [{ name: "skills", host: { path: hostPathForDaemon(path) }, mountPath: STAGED_SKILLS, readOnly: true }];
 }
 
 /**
