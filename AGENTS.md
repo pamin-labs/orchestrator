@@ -29,6 +29,8 @@ file. Record an architectural exception or changed decision in a new ADR.
 7. Prompt assembly goes through `src/prompt/assemble.ts`, and injected delta is
    appended to the newest user message.
 8. `orch lease` accepts only registered resources plus schema-validated data.
+   It returns after enqueue; a single durable follow-up turn carries the result.
+   Agents never poll or resubmit a queued lease.
 9. `src/states.ts` is the lifecycle vocabulary; every stored state has a driver,
    terminal declaration, or idempotent repair in the invariant table.
 10. Expected failures use stable error codes. External I/O has timeout,

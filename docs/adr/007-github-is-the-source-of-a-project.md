@@ -44,7 +44,7 @@ decoys to.
 
 ## Why
 
-A project is added today by browsing the host's filesystem (`/api/dirs`) and
+A project was added by browsing the host's filesystem (`/api/v1/dirs`) and
 storing an absolute path in `project.repo_path`. Three things follow, and all
 three are load-bearing in ways nobody chose:
 
@@ -120,7 +120,7 @@ Not `isomorphic-git`: its selling point is running git without the binary, which
 sounds like this problem and is the opposite of it — we are removing git from the
 host, not reimplementing it there. Also measurably slower on large repositories.
 
-### 2. `project.repo_path` becomes `owner/repo`, and `/api/dirs` goes
+### 2. `project.repo_path` becomes `owner/repo`, and `/api/v1/dirs` goes
 
 Add `project.default_branch`. Delete the host-filesystem browser — it is also one
 of the things a mailbox escape could read.
@@ -271,7 +271,7 @@ coordinate that.
 | `seedBranch` (`checkout.ts:136`) + the "three places the branch can be" branch in `createCheckout` | the branch lived on the host between turns | it lives on the remote |
 | rule 15's `git fetch` + `merge-base --is-ancestor` per group per tick | reading the baseline out of a container | one conditional API request per project |
 | the `gh` wrapper + 6 call sites (`prwatch.ts`) | shelling out to parse JSON | 8 REST endpoints |
-| `/api/dirs` + the host directory picker | finding a repo on this machine | the repo list |
+| `/api/v1/dirs` + the host directory picker | finding a repo on this machine | the repo list |
 | `missingBinaries()` → `[]` | | no external binary on the host at all |
 
 What stays in `worktree.ts` is the part that is our workflow rather than git
@@ -480,7 +480,7 @@ columns wraps the URL mid-token, and `script` ignores `COLUMNS`) and the pasted
 code arrives on stdin through a file the orchestrator appends to, because the
 sandbox SDK has no stdin channel. The real CLI performs the whole OAuth exchange;
 nothing here builds a URL or calls a token endpoint. `startLogin` and
-`/api/auth/login` are gone with it — no login runs a CLI on this machine.
+`/api/v1/auth/login` are gone with it — no login runs a CLI on this machine.
 
 **Found on the way: the sandbox SDK delivers stdout one line per message with the
 newline removed.** Measured:

@@ -95,7 +95,7 @@ agent 镜像由沙盒服务器在第一次建容器时自己拉，不用手动 p
 <details><summary>或者从源码跑</summary>
 
 ```bash
-bun install
+bun install --frozen-lockfile
 bun start
 ```
 
@@ -184,9 +184,15 @@ MIT 协议。
 
 ## 更多
 
-`bun test` 跑全部 check。设计在 [`docs/project/plan.md`](docs/project/plan.md)，
-所有用代价换来的结论在 [`docs/project/progress.md`](docs/project/progress.md) 和 [`docs/adr/`](docs/adr/)，
-改代码之前先读 [`CLAUDE.md`](CLAUDE.md)。
+[`docs/README.md`](docs/README.md) 汇总架构、工程规范、运维流程、项目状态和 ADR。
+改代码前先读 [`AGENTS.md`](AGENTS.md)，提 PR 前读
+[`CONTRIBUTING.md`](CONTRIBUTING.md)。安全问题按
+[`SECURITY.md`](SECURITY.md) 私下报告；支持渠道和项目决策流程见
+[`SUPPORT.md`](SUPPORT.md) 与 [`GOVERNANCE.md`](GOVERNANCE.md)。
+
+`bun run check` 跑完整本地质量闸。项目采用 MIT 协议，并遵守
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)。
+当前老板端和 agent 端协议根路径分别是 `/api/v1/*` 与 `/orch/v1/*`，不保留未版本化兼容 alias。
 
 基于 [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox)。
 跑的是真的 `claude` 和 `codex` CLI，不是我们自己实现的。

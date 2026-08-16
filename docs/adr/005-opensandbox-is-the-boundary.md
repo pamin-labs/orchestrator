@@ -186,8 +186,8 @@ overlay fs, which is why the usual macOS Docker filesystem penalty never appears
 - The vault's protection assumes the egress sidecar is in the path. If a future
   config drops `credentialProxy.enabled` the failure mode is a 401, not a visible
   "vault off". Preflight asserts it.
-- The mailbox replays whatever path the request file names, and `/api/*` (the
+- The mailbox replays whatever path the request file names, and `/api/v1/*` (the
   boss's own routes) takes no token — it was only ever reachable from a browser on
   127.0.0.1, and the mailbox made the sandbox reachable the same way. `serve()`
-  refuses anything outside `/orch/`; without that an agent approves its own DRAFT.
+  refuses anything outside `/orch/v1/`; without that an agent approves its own DRAFT.
   Moving the transport moved the trust boundary with it.

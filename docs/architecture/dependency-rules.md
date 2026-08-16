@@ -1,0 +1,45 @@
+# Dependency rules
+
+Fallow is the sole owner of repository dependency graphs. TypeScript proves
+project build boundaries; Oxlint checks source-level correctness. Do not repeat
+Fallow cycle or zone rules in Oxlint.
+
+## Enforced rules
+
+1. `web/src` can import shared contracts and the panel route type only. It cannot
+   import API handlers, generic HTTP modules, Bun modules, SQLite, or runtime adapters.
+2. `src/orch` can import shared runtime schemas and the Orch route type only. It
+   cannot import API handlers or mechanisms.
+3. `src/http/routes` composes Hono, schemas, middleware, and handlers but owns no
+   state transition or business policy.
+4. `src/api` may call `src/mech`; `src/mech` may not import `src/api`,
+   `src/http`, or `web`.
+5. Runtime adapters cannot import mechanisms, application orchestration, panel,
+   web, or route policy. `src/runtime/executor.ts` belongs to the application
+   zone, not the adapter zone.
+6. Prompt construction outside `src/prompt/assemble.ts` is forbidden.
+7. Production dependencies must be declared in `dependencies`; test/build-only
+   packages belong in `devDependencies`.
+8. Cycles are forbidden. A cycle is resolved by moving the shared contract
+   inward or deleting the back-edge, not by adding a barrel.
+9. A public signature may expose only public types from the same or an inward
+   zone.
+10. Cross-zone imports use named public files. Barrels must not expand the public
+   API accidentally.
+11. Each maintainer script has a purpose-specific zone. No catch-all scripts rule
+    grants access to every production layer.
+12. Every production file has boundary coverage.
+13. Zone rules form a directed acyclic graph, including type-only edges. A new
+    back-edge fails `test/architecture-boundaries.test.ts`.
+
+Run a touched-area guard before editing and the repository audit after:
+
+```bash
+bunx fallow guard <file...>
+bun run audit
+```
+
+Fallow also owns dead code, duplicate exports, private type leaks, public
+signature coupling, complexity, and change-risk findings. Deterministic findings
+must be zero. Complexity is a non-regression signal: refactor a hotspot when the
+change makes it worse or when measurement identifies it as a failure source.

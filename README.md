@@ -100,7 +100,7 @@ container — nothing to pull by hand.
 <details><summary>From source instead</summary>
 
 ```bash
-bun install
+bun install --frozen-lockfile
 bun start
 ```
 
@@ -202,10 +202,17 @@ MIT licensed.
 
 ## More
 
-`bun test` runs the checks. Design is in [`docs/project/plan.md`](docs/project/plan.md), everything
-measured the hard way is in [`docs/project/progress.md`](docs/project/progress.md) and
-[`docs/adr/`](docs/adr/), and [`CLAUDE.md`](CLAUDE.md) is required
-reading before changing code.
+The [documentation index](docs/README.md) links the architecture, engineering
+standards, operations, project state, and ADRs. Read [`AGENTS.md`](AGENTS.md)
+before changing code and [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a
+pull request. Security reports use the private process in
+[`SECURITY.md`](SECURITY.md); support and project decisions are described in
+[`SUPPORT.md`](SUPPORT.md) and [`GOVERNANCE.md`](GOVERNANCE.md).
+
+`bun run check` runs the complete local quality gate. The project is MIT
+licensed and follows the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+The current owner and agent protocol roots are `/api/v1/*` and `/orch/v1/*`;
+there are no unversioned compatibility aliases.
 
 Built on [OpenSandbox](https://github.com/opensandbox-group/OpenSandbox). The agents
 are the real `claude` and `codex` CLIs, not reimplementations of them.
