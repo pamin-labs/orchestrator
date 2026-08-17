@@ -4,6 +4,7 @@ import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { message } from "../../http/respond.ts";
 import { query as ctxQuery } from "../../mech/knowledge/ctx.ts";
+import { makeNoteIndex } from "../../mech/knowledge/note-index.ts";
 import { loadTree, NOTE_PREFIX, render, search } from "../../mech/knowledge/pageindex.ts";
 import { projectOfAgent } from "../../mech/util/rows.ts";
 import { Id } from "../../contracts/fields.ts";
@@ -58,6 +59,7 @@ export const postCtxQuery = (async (ctx, _req, a, _p, b) => {
   return message(
     ctxQuery({
       db: ctx.db,
+      index: ctx.notes ?? makeNoteIndex(ctx.db),
       grpId: a.grp_id,
       projectId,
       question: b.question,

@@ -21,6 +21,14 @@ export interface Ctx {
   sched: Scheduler;
   /** Resolves a blocking `ask-boss` call. */
   waiters: Map<string, (value: string) => void>;
+  /**
+   * Retrieval for `orch ctx query`. Absent in unit tests that never search.
+   *
+   * Here rather than reached for from a module because it is state: the index is
+   * built once and kept fresh, which needs an owner, and the composition layer
+   * is the one place that can say when it comes into being.
+   */
+  notes?: import("./knowledge/note-index.ts").NoteIndex;
   /** Where turns, gates and leases run. Absent in unit tests that need no container. */
   sandbox?: import("./sandbox/sandbox.ts").SandboxDriver;
   /** Talks to GitHub's REST API. Absent in unit tests that need no GitHub. */

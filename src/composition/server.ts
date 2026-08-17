@@ -1,4 +1,5 @@
 import { errText } from "../platform/process/text.ts";
+import { makeNoteIndex } from "../mech/knowledge/note-index.ts";
 import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { makeApp } from "./api.ts";
@@ -557,6 +558,10 @@ export function start(overrides: Partial<Config> = {}): Started {
         if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u);
       }),
     waiters: new Map(),
+    // Built here because it outlives every request and has to be kept fresh,
+    // which is state — and state gets one owner rather than a module reaching
+    // for it. Construction is cheap; the index fills itself on first search.
+    notes: makeNoteIndex(db),
     restoreWorkspace: (grpId) => restoreWorkspace(ctx, grpId),
     // One object, not a copy. See `Ctx` for what the copy used to cost.
     config: cfg,

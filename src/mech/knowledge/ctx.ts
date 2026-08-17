@@ -1,5 +1,6 @@
 import type { DB } from "../../platform/persistence/database.ts";
 import { loadMap, mapFor } from "./repomap.ts";
+import type { NoteIndex } from "./note-index.ts";
 import {
   ESCALATION_TERMINAL_STATES,
   stateParam,
@@ -137,7 +138,7 @@ const STOP = new Set([
   "your",
 ]);
 
-const KIND_WEIGHT: Record<string, number> = {
+export const KIND_WEIGHT: Record<string, number> = {
   decision: 1.6, // what was settled, and why — the highest-value thing to recall
   lesson: 1.5,
   retro: 1.3,
@@ -147,56 +148,16 @@ const KIND_WEIGHT: Record<string, number> = {
   handoff: 1.0,
   journal: 1.0,
 };
-const BM25 = { k1: 1.4, b: 0.7 };
-
-/** BM25-style rare-term scoring with saturation and length normalisation. */
-export function rank(docs: Doc[], query: string, now = Date.now()): Hit[] {
-  const q = [...new Set(terms(query))];
-  if (q.length === 0 || docs.length === 0) return [];
-  const tokenised = docs.map((d) => terms(d.body));
-  const avgLen = tokenised.reduce((n, t) => n + t.length, 0) / docs.length || 1;
-  const df = termCounts(tokenised.flatMap((tokens) => [...new Set(tokens)]));
-  const hits: Hit[] = [];
-  for (const [i, doc] of docs.entries()) {
-    const score = docScore(doc, tokenised[i]!, q, df, docs.length, avgLen, now);
-    if (!score) continue;
-    hits.push({ doc, score });
-  }
-  return hits.sort((a, b) => b.score - a.score);
-}
-
-function termCounts(values: Iterable<string>): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
-  return counts;
-}
-
-function docScore(
-  doc: Doc,
-  tokens: string[],
-  query: string[],
-  documentFrequency: Map<string, number>,
-  documentCount: number,
-  averageLength: number,
-  now: number,
-): number {
-  const frequency = termCounts(tokens);
-  let score = 0;
-  for (const term of query) {
-    const count = frequency.get(term);
-    if (!count) continue;
-    const documents = documentFrequency.get(term) ?? 0;
-    const idf = Math.log(1 + (documentCount - documents + 0.5) / (documents + 0.5));
-    score +=
-      idf * ((count * (BM25.k1 + 1)) / (count + BM25.k1 * (1 - BM25.b + (BM25.b * tokens.length) / averageLength)));
-  }
-  if (!score) return 0;
-  const days = Math.max(0, (now - doc.at) / 86_400_000);
-  return score * (KIND_WEIGHT[doc.kind] ?? 1) * (1 + 0.25 / (1 + days));
-}
-
 export interface QueryOptions {
   db: DB;
+  /**
+   * The retrieval index, owned by the composition layer.
+   *
+   * Passed in rather than built here: building it costs hundreds of milliseconds
+   * and it has to outlive the call, which makes it state — and state gets an
+   * explicit owner. Tests build their own with `makeNoteIndex(db)`.
+   */
+  index: NoteIndex;
   grpId: number | null;
   projectId: number | null;
   question: string;
@@ -227,7 +188,7 @@ export function query(opts: QueryOptions): string {
   const room = Math.floor(budget / 4);
   const where = opts.where || mapFor(loadMap(opts.db, opts.projectId ?? null), opts.question, room);
   if (where) output.push(`## Where that lives\n${where.slice(0, room)}`);
-  const hits = rank(queryDocs(opts), opts.question, now);
+  const hits = opts.index.search(opts.question, { grpId: opts.grpId, projectId: opts.projectId }, now);
   const shown = appendHits(output, hits);
   return queryResult(output.parts, hits.length, shown);
 }
@@ -292,17 +253,6 @@ function groupContext(db: DB, groupId: number): string | null {
         .join(" | ")
     : "none";
   return `## This group right now\nstatus ${group.status}${branch}${pullRequest}\n${gateState}open questions: ${questions}`;
-}
-
-function queryDocs(opts: QueryOptions): Doc[] {
-  return opts.db
-    .query<Doc, [number | null, number | null]>(
-      `SELECT id, kind, body, export_path AS exportPath, at, slice_id AS sliceId FROM note
-       WHERE kind NOT IN ('pageindex', 'map')
-         AND (grp_id IS ? OR project_id IS ? OR (grp_id IS NULL AND project_id IS NULL))
-       ORDER BY at DESC LIMIT 400`,
-    )
-    .all(opts.grpId, opts.projectId);
 }
 
 function appendHits(output: { push: (text: string) => boolean }, hits: Hit[]): number {

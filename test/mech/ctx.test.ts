@@ -1,16 +1,12 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { query, rank, terms, DEFAULT_BUDGET, type Doc } from "../../src/mech/knowledge/ctx.ts";
+import { query, terms, DEFAULT_BUDGET } from "../../src/mech/knowledge/ctx.ts";
+import { makeNoteIndex } from "../../src/mech/knowledge/note-index.ts";
 import * as fx from "../support/factories.ts";
 
-const doc = (id: number, kind: string, body: string, at = 0): Doc => ({
-  id,
-  kind,
-  body,
-  exportPath: null,
-  at,
-  sliceId: null,
-});
+/** `query` needs an index and every caller builds the same one. */
+const queryWith = (db: DB, rest: Omit<Parameters<typeof query>[0], "db" | "index">) =>
+  query({ db, index: makeNoteIndex(db), ...rest });
 
 test("terms are words in whatever script the writing uses, and stopwords go", () => {
   expect(terms("Should we use the middleware for auth?")).toEqual(["middleware", "auth"]);
@@ -45,48 +41,105 @@ test("every script the corpus might be written in produces terms", () => {
   expect(terms("サンドボックスの認証情報")).toContain("認証");
 });
 
+/**
+ * The ranking that stayed ours after Orama took the relevance.
+ *
+ * Orama answers how well words match; it cannot know that a recorded decision
+ * is worth more to recall than a journal entry, or that this morning beats last
+ * quarter. Those two are policy and they are still multiplied over the library's
+ * score — so they are still what these assert, now through the index rather than
+ * through a hand-written BM25.
+ */
+
+function indexed(rows: Array<{ kind: string; body: string; at?: number }>) {
+  const db = openMemory();
+  const p = fx.project.insert(db, { name: "p" });
+  for (const row of rows) {
+    db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, ?, ?, ?)", [
+      p.id,
+      row.kind,
+      row.body,
+      row.at ?? 0,
+    ]);
+  }
+  const hits = (question: string, now = 0) =>
+    makeNoteIndex(db).search(question, { grpId: null, projectId: p.id }, now);
+  return { db, hits };
+}
+
 test("a rare term beats a common one", () => {
-  const docs = [
-    doc(1, "journal", "middleware middleware middleware middleware"),
-    doc(2, "journal", "middleware and the legacy header fallback"),
-  ];
   // Every document mentions middleware, so it carries almost no information;
   // "legacy" is what distinguishes them.
-  const hits = rank(docs, "middleware legacy fallback");
-  expect(hits[0]!.doc.id).toBe(2);
+  const { hits } = indexed([
+    { kind: "journal", body: "middleware middleware middleware middleware" },
+    { kind: "journal", body: "middleware and the legacy header fallback" },
+  ]);
+  expect(hits("middleware legacy fallback")[0]!.doc.body).toContain("legacy");
 });
 
 test("a long document does not win merely by containing more words", () => {
-  const noise = "unrelated words ".repeat(200);
-  const docs = [
-    doc(1, "journal", `${noise} token check middleware`),
-    doc(2, "journal", "token check moved into middleware"),
-  ];
   // Naive keyword counting scores these equally; length normalisation does not.
-  expect(rank(docs, "token check middleware")[0]!.doc.id).toBe(2);
+  const noise = "unrelated words ".repeat(200);
+  const { hits } = indexed([
+    { kind: "journal", body: `${noise} token check middleware` },
+    { kind: "journal", body: "token check moved into middleware" },
+  ]);
+  expect(hits("token check middleware")[0]!.doc.body).toBe("token check moved into middleware");
 });
 
 test("a decision outranks a journal that matches equally well", () => {
+  // What was settled and why is the highest-value thing to recall, and no search
+  // library can know that — which is why the weight is applied after it.
   const body = "token check moved into middleware";
-  const hits = rank([doc(1, "journal", body), doc(2, "decision", body)], "token middleware");
-  // What was settled and why is the highest-value thing to recall.
-  expect(hits[0]!.doc.kind).toBe("decision");
+  const { hits } = indexed([
+    { kind: "journal", body },
+    { kind: "decision", body },
+  ]);
+  expect(hits("token middleware")[0]!.doc.kind).toBe("decision");
 });
 
 test("recency breaks a tie, but only mildly", () => {
   const now = 10 * 86_400_000;
   const body = "token check middleware";
-  const recent = rank([doc(1, "journal", body, 0), doc(2, "journal", body, now)], "token", now);
-  expect(recent[0]!.doc.id).toBe(2);
+  expect(
+    indexed([
+      { kind: "journal", body, at: 0 },
+      { kind: "journal", body, at: now },
+    ]).hits("token", now)[0]!.doc.at,
+  ).toBe(now);
 
   // An old decision still beats a fresh journal: age is a nudge, not a verdict.
-  const mixed = rank([doc(1, "decision", body, 0), doc(2, "journal", body, now)], "token", now);
-  expect(mixed[0]!.doc.kind).toBe("decision");
+  expect(
+    indexed([
+      { kind: "decision", body, at: 0 },
+      { kind: "journal", body, at: now },
+    ]).hits("token", now)[0]!.doc.kind,
+  ).toBe("decision");
 });
 
-test("no query terms and no documents both return nothing rather than everything", () => {
-  expect(rank([doc(1, "journal", "x")], "the and of")).toEqual([]);
-  expect(rank([], "middleware")).toEqual([]);
+test("a question of only stopwords finds nothing rather than everything", () => {
+  const { hits } = indexed([{ kind: "journal", body: "x" }]);
+  expect(hits("the and of")).toEqual([]);
+});
+
+test("a note written after the index was built is still found", () => {
+  // The index is kept, not rebuilt per query, so freshness is a property rather
+  // than an accident: without the stamp check, everything written during a
+  // server's life would be invisible until it restarted.
+  const db = openMemory();
+  const p = fx.project.insert(db, { name: "p" });
+  const index = makeNoteIndex(db);
+  const ask = () => index.search("kestrel", { grpId: null, projectId: p.id }, 0);
+  expect(ask()).toEqual([]);
+
+  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, 'decision', 'the kestrel decision', 0)", [p.id]);
+  expect(ask()).toHaveLength(1);
+
+  // And a rewritten note, which `saveSingletonNote` does, is re-read rather than
+  // served from the copy the index took the first time.
+  db.run("UPDATE note SET body = 'the osprey decision', at = 1 WHERE project_id = ?", [p.id]);
+  expect(ask()).toEqual([]);
+  expect(index.search("osprey", { grpId: null, projectId: p.id }, 0)).toHaveLength(1);
 });
 
 function seeded(): DB {
@@ -108,7 +161,7 @@ function seeded(): DB {
 }
 
 test("the group's acceptance criteria come back whatever the question was", () => {
-  const out = query({ db: seeded(), grpId: 1, projectId: 1, question: "totally unrelated" });
+  const out = queryWith(seeded(), { grpId: 1, projectId: 1, question: "totally unrelated" });
   // They are the frame for every question inside a slice; an agent that has to
   // search for them will guess instead.
   expect(out).toContain("S1 [running] zh support");
@@ -116,7 +169,7 @@ test("the group's acceptance criteria come back whatever the question was", () =
 });
 
 test("a matching decision is retrieved and labelled", () => {
-  const out = query({ db: seeded(), grpId: 1, projectId: 1, question: "lang 参数怎么定的" });
+  const out = queryWith(seeded(), { grpId: 1, projectId: 1, question: "lang 参数怎么定的" });
   expect(out).toContain("## decision");
   expect(out).toContain("字面量联合");
 });
@@ -133,12 +186,12 @@ test("the budget is a hard cap, not a suggestion", () => {
     });
   }
 
-  const out = query({ db, grpId: 1, projectId: 1, question: "middleware token check" });
+  const out = queryWith(db, { grpId: 1, projectId: 1, question: "middleware token check" });
   // An unbounded answer costs more than the file the agent was about to read,
   // which defeats the whole point of the verb.
   expect(out.length).toBeLessThanOrEqual(DEFAULT_BUDGET);
 
-  const tight = query({ db, grpId: 1, projectId: 1, question: "middleware token", budget: 800 });
+  const tight = queryWith(db, { grpId: 1, projectId: 1, question: "middleware token", budget: 800 });
   expect(tight.length).toBeLessThanOrEqual(800);
 });
 
@@ -153,7 +206,7 @@ test("when the budget truncates, it says how many matches were dropped", () => {
       at: i,
     });
   }
-  const out = query({ db, grpId: 1, projectId: 1, question: "middleware token", budget: 2000 });
+  const out = queryWith(db, { grpId: 1, projectId: 1, question: "middleware token", budget: 2000 });
   // Silent truncation reads as "that is everything there is", which is worse than
   // a smaller answer that admits what it left out.
   expect(out).toContain("more matches omitted");
@@ -169,7 +222,7 @@ test("an export path is shown so the agent can go read the file itself", () => {
     export_path: "docs/journal/g1/003-retro.md",
     at: 300,
   });
-  const out = query({ db, grpId: 1, projectId: 1, question: "返工 验收标准" });
+  const out = queryWith(db, { grpId: 1, projectId: 1, question: "返工 验收标准" });
   expect(out).toContain("docs/journal/g1/003-retro.md");
 });
 
@@ -187,7 +240,7 @@ test("the index's own rows are not answers to a question", () => {
   fx.note.insert(db, { project_id: p.id, kind: "map", body: "src/\n  auth.ts — token", at: 9 });
   fx.note.insert(db, { project_id: p.id, kind: "decision", body: "token 校验放在中间件", at: 8 });
 
-  const out = query({ db, grpId: 1, projectId: 1, question: "token", budget: 4000 });
+  const out = queryWith(db, { grpId: 1, projectId: 1, question: "token", budget: 4000 });
   expect(out).toContain("token 校验放在中间件");
   expect(out).not.toContain("pageindex");
   expect(out).not.toContain("summary");
