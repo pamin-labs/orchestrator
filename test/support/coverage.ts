@@ -27,7 +27,7 @@ const COVERAGE_DIR = process.env.COVERAGE_DIR ?? "coverage";
 const root = process.cwd();
 
 /**
- * Imported unconditionally as the first line of `test/setup.ts` — that is the
+ * Imported unconditionally as the first line of `test/support/setup.ts` — that is the
  * only position early enough to instrument what the resets there import — so the
  * switch has to live here rather than at the import site.
  */

@@ -31,7 +31,7 @@ Fallow cycle or zone rules in Oxlint.
     they may assemble internal harnesses without adding fake production edges.
 12. Every production file has boundary coverage.
 13. Constrained production zone rules form a directed acyclic graph, including
-    type-only edges. A new back-edge fails `test/architecture-boundaries.test.ts`.
+    type-only edges. A new back-edge fails `test/governance/architecture-boundaries.test.ts`.
 
 `src/platform/**` is directory-owned by the platform zone. Configuration,
 persistence, observability, and process primitives belong there without another

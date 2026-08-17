@@ -16,4 +16,4 @@ root = "test"
 #
 # setup.ts clears the module-scope holds before every test, so no file inherits
 # one from whatever ran before it.
-preload = ["./test/support/coverage.ts", "./test/setup.ts"]
+preload = ["./test/support/coverage.ts", "./test/support/setup.ts"]

@@ -1,8 +1,16 @@
-export const NON_REPLAYABLE = new Set(["test/sandbox-live.test.ts", "test/smoke.test.ts"]);
+/**
+ * Suites that carry state across a run, so repeating them proves nothing.
+ *
+ * This used to be a list of two filenames, which meant the next non-replayable
+ * suite was replayed until somebody remembered the list existed. The two
+ * directories are the property: `live` talks to a real OpenSandbox server and
+ * `integration` boots a real server on a real port.
+ */
+const NON_REPLAYABLE = /^test\/(live|integration)\//;
 
 export function stressFiles(): string[] {
   return [...new Bun.Glob("test/**/*.test.ts").scanSync({ cwd: ".", absolute: false })]
-    .filter((file) => !NON_REPLAYABLE.has(file))
+    .filter((file) => !NON_REPLAYABLE.test(file))
     .toSorted();
 }
 

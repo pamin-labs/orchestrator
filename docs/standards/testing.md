@@ -16,6 +16,19 @@ Test count and coverage percentage are not goals.
 - **Smoke/end-to-end:** verify the built panel and a representative owner flow.
   Live OpenSandbox tests may be environment-gated but must report a skip.
 
+## Where a test file goes
+
+`test/` mirrors the source zones, one directory per subject: `api`, `application`,
+`cli`, `governance`, `http`, `integration`, `live`, `mech`, `platform`, `runtime`,
+and `web`. `test/support` holds shared harness code and `test/fixtures` holds data
+read from disk; neither contains tests.
+
+`governance` is for suites whose subject is the repository rather than a
+subsystem — boundary configuration, workflow files, source hygiene, invariants
+across all of `src/`. `integration` and `live` are excluded from `test:stress` by
+directory, so a suite that boots a server or talks to OpenSandbox is excluded on
+the day it is written rather than when somebody remembers a list.
+
 Test behavior, not private method calls or implementation order. Cover happy
 path, invalid input, boundaries, dependency failure, cancellation/concurrency,
 and regression evidence for a repaired incident. Avoid excessive mocks and
@@ -53,7 +66,7 @@ randomized order/rerun 10.
 Replay fast-check with both values printed by the failure:
 
 ```bash
-FC_SEED=<seed> FC_PATH=<path> bun test test/properties.test.ts
+FC_SEED=<seed> FC_PATH=<path> bun test test/governance/properties.test.ts
 ```
 
 Replay Bun's randomized stress order with its printed seed:
