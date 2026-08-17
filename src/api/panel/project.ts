@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import type { Ctx } from "../../ctx.ts";
 import { SandboxOverrideSchema, StoredProjectConfigSchema } from "../../contracts/config.ts";
 import { JsonObject, JsonValue, jsonOr } from "../../contracts/json.ts";
 import { runInstall } from "../../mech/flow/start.ts";
@@ -52,16 +53,26 @@ const GithubRepo = z.object({
 /** The install command this project needs, or `none` for "it needs nothing". */
 export const SetupBody = z.object({ cmd: InstallCommand.optional(), none: z.boolean().optional() });
 
+/**
+ * The answer, remembered on the project so the next group does not pay to read
+ * the same repository — and so the boss can see and correct what its groups run.
+ * `null` is "it needs nothing", which is an answer too: an absent key is only
+ * ever "nobody has looked".
+ */
+function rememberInstall(ctx: Ctx, projectId: number, cmd: string | null): void {
+  ctx.db.run("UPDATE project SET config_json = json_set(config_json, '$.install', ?) WHERE id = ?", [cmd, projectId]);
+}
+
 export const postSetup = (async (ctx, _req, a, _p, b) => {
   if (a.role !== "bootstrap") return bad(`${a.role} does not set this project up`);
-  if (!a.grp_id) return bad("this agent has no group");
-  const grp = ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(a.grp_id);
-  if (!grp) return bad("this agent has no group");
+  const projectId = a.grp_id
+    ? ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(a.grp_id)
+        ?.project_id
+    : undefined;
+  if (!a.grp_id || !projectId) return bad("this agent has no group");
 
   if (b.none) {
-    ctx.db.run("UPDATE project SET config_json = json_set(config_json, '$.install', json('null')) WHERE id = ?", [
-      grp.project_id,
-    ]);
+    rememberInstall(ctx, projectId, null);
     ctx.bus.emit({ grpId: a.grp_id, author: a.role, kind: "state_change", body: "这个仓库不需要装什么" });
     return message("ok");
   }
@@ -71,15 +82,9 @@ export const postSetup = (async (ctx, _req, a, _p, b) => {
   // Same streamed install the first turn gets: the boss watches this one too,
   // and an agent's own attempt is the one most likely to need watching.
   const r = await runInstall(ctx, a.grp_id, cmd);
-  // Remembered on the project, so the next group does not pay for the same
-  // reading — and so the boss can see and correct what its groups run.
-  if (r.ok) {
-    ctx.db.run("UPDATE project SET config_json = json_set(config_json, '$.install', ?) WHERE id = ?", [
-      cmd,
-      grp.project_id,
-    ]);
-  }
-  return r.ok ? message("ok") : bad(`install failed:\n${r.tail}`);
+  if (!r.ok) return bad(`install failed:\n${r.tail}`);
+  rememberInstall(ctx, projectId, cmd);
+  return message("ok");
 }) satisfies AgentHandler<z.infer<typeof SetupBody>>;
 
 /**

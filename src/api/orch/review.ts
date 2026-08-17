@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
+import type { Ctx } from "../../ctx.ts";
 import { acceptSlice } from "../../mech/flow/review.ts";
 import { criteriaIn, validateSelfReview } from "../../mech/util/validate.ts";
 import { sliceDiffBase } from "../../mech/git/worktree.ts";
@@ -118,6 +119,51 @@ export const postReview = (async (ctx, _req, a, _p, b) => {
 const DIFF_CAP = 400_000;
 
 /**
+ * The diff, against the base this work will actually land on.
+ *
+ * Never `git diff <base_sha>` straight: after a rebase that base is a commit on
+ * old main and the diff picks up every other group's landed work — see
+ * `sliceDiffBase`. And the project's base branch rather than whatever the
+ * sandbox's clone thinks the default is, because a project that develops on
+ * `develop` says so once.
+ */
+async function sliceDiff(
+  ctx: Ctx,
+  grpId: number,
+  projectId: number,
+  baseSha: string | null,
+): Promise<{ stat: string; diff: string; truncated: boolean; scope: "slice" | "branch" }> {
+  const empty = { stat: "", diff: "", truncated: false, scope: "slice" as const };
+  const git = sandboxGit(ctx, { grp: grpId });
+  const from = await sliceDiffBase(git, WORK, WORK, baseSha, projectId ? await baseRefFor(ctx, projectId) : undefined);
+  if (!from) return empty;
+
+  const [s, d] = await Promise.all([
+    git(WORK, ["diff", "--stat", from.base, "--"], WORK),
+    git(WORK, ["diff", from.base, "--"], WORK),
+  ]);
+  const diff = d.code === 0 ? d.out : "";
+  return {
+    stat: s.code === 0 ? s.out.trim() : "",
+    diff: diff.slice(0, DIFF_CAP),
+    truncated: diff.length > DIFF_CAP,
+    scope: from.scope,
+  };
+}
+
+/**
+ * The gate logs that exist. The gate wrote these itself (gate.ts logPath), and a
+ * configured gate that never ran is left out rather than offered as a link to
+ * nothing.
+ */
+function gateLogs(ctx: Ctx, projectId: number, sliceId: number): Array<{ name: string; path: string; size: number }> {
+  return gatesFor(ctx.db, projectId).flatMap((name) => {
+    const path = join(ctx.config.dataDir, "gates", `${sliceId}-${name}.log`);
+    return existsSync(path) ? [{ name, path, size: Bun.file(path).size }] : [];
+  });
+}
+
+/**
  * What actually happened in one slice: the diff, QA's verdict, the gate output.
  *
  * Accepting is one of the boss's three approval points, and it was being asked
@@ -135,41 +181,11 @@ export const getEvidence = (async (ctx, _req, params) => {
     .get(id);
   if (!sl) return message("no such slice", 404);
 
-  let stat = "";
-  let diff = "";
-  let truncated = false;
-  // Never `git diff <base_sha>` straight: after a rebase that base is a commit on
-  // old main and the diff picks up every other group's landed work. See
-  // `sliceDiffBase`.
-  let scope: "slice" | "branch" = "slice";
-  {
-    const git = sandboxGit(ctx, { grp: sl.grp_id });
-    // The project's base branch, not whatever the sandbox's clone thinks the
-    // default is: the boss is reading this diff against the branch this work
-    // will land on, and a project that develops on `develop` says so once.
-    const projectId = ctx.db
-      .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-      .get(sl.grp_id)?.project_id;
-    const from = await sliceDiffBase(
-      git,
-      WORK,
-      WORK,
-      sl.base_sha,
-      projectId ? await baseRefFor(ctx, projectId) : undefined,
-    );
-    if (from) {
-      scope = from.scope;
-      const [s, d] = await Promise.all([
-        git(WORK, ["diff", "--stat", from.base, "--"], WORK),
-        git(WORK, ["diff", from.base, "--"], WORK),
-      ]);
-      stat = s.code === 0 ? s.out.trim() : "";
-      diff = d.code === 0 ? d.out : "";
-      truncated = diff.length > DIFF_CAP;
-      if (truncated) diff = diff.slice(0, DIFF_CAP);
-    }
-  }
-
+  // One lookup for both halves: the diff base and the gate list are the same
+  // project's answers, and asking twice is two places for them to disagree.
+  const projectId =
+    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(sl.grp_id)
+      ?.project_id ?? 0;
   // Both reviewers file through the same route, so this is QA's verdict on a
   // slice and the Auditor's on a branch, in the order they were given.
   const verdicts = ctx.db
@@ -180,19 +196,12 @@ export const getEvidence = (async (ctx, _req, params) => {
     )
     .all(id);
 
-  // The gate wrote these itself (gate.ts logPath). Tail only: a build log is
-  // megabytes and the useful part is at the end.
-  const projectId =
-    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(sl.grp_id)
-      ?.project_id ?? 0;
-  const gates = gatesFor(ctx.db, projectId).flatMap((name) => {
-    const path = join(ctx.config.dataDir, "gates", `${id}-${name}.log`);
-    if (!existsSync(path)) return [];
-    const raw = Bun.file(path);
-    return [{ name, path, size: raw.size }];
+  return json({
+    ...sl,
+    ...(await sliceDiff(ctx, sl.grp_id, projectId, sl.base_sha)),
+    verdicts,
+    gates: gateLogs(ctx, projectId, id),
   });
-
-  return json({ ...sl, stat, diff, truncated, scope, verdicts, gates });
 }) satisfies Handler<undefined, z.infer<typeof IdParams>>;
 
 /** Tail of one gate's log, on demand: it is only opened when a verdict is doubted. */

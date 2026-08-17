@@ -5,6 +5,8 @@ import {
   APP_SLUG,
   BOT,
   commitIdentity,
+  type DeviceCode,
+  type DeviceFlowFetcher,
   forgetIdentity,
   githubAccount,
   type Installation,
@@ -25,7 +27,13 @@ import {
   saveAuth,
   wrongShape,
 } from "../../mech/sandbox/auth.ts";
-import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "../../mech/sandbox/login.ts";
+import {
+  DEVICE_CODE_TTL_MS,
+  type LoginRun,
+  PASTE_TTL_MS,
+  startClaudeLogin,
+  startCodexDeviceLogin,
+} from "../../mech/sandbox/login.ts";
 import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { errText } from "../../platform/process/text.ts";
 import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/panel.ts";
@@ -183,20 +191,37 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
  */
 let claudeFlow: ClaudeLoginFlow | null = null;
 
+/**
+ * Wait for the CLI to print what the boss has to see, or for the run to end.
+ *
+ * A pty plus a TUI's first paint puts the link a second or two out, so a button
+ * that returns before there is one has nothing to show. The run's own exit ends
+ * the wait as well: a CLI that printed nothing and quit is already an answer,
+ * and sitting out the whole window for it is minutes of spinner over a process
+ * that is gone.
+ */
+async function printed<T>(run: LoginRun, read: () => T | null | undefined, tries: number): Promise<T | null> {
+  const ended = run.done.then(
+    () => true,
+    () => true,
+  );
+  const tick = () => Promise.race([ended, Bun.sleep(100).then(() => false)]);
+  for (let i = 0; i < tries && !read(); i++) if (await tick()) break;
+  return read() ?? null;
+}
+
 export const postClaudeLogin = (async (ctx) => {
   if (claudeFlow && claudeFlow.expiresAt > Date.now()) return json(claudeFlow);
   const run = startClaudeLogin(ctx);
   const startedAt = Date.now();
-  // A pty plus a TUI's first paint: the link is a second or two out, and a
-  // button that returns before it has one has nothing to show.
-  for (let i = 0; i < 150 && !run.url; i++) await Bun.sleep(100);
-  if (!run.url) {
+  const url = await printed(run, () => run.url, 150);
+  if (!url) {
     run.cancel();
     return bad(
       "容器里的 claude 没打印出登录链接 —— 镜像里跑一下 `claude setup-token` 看看（它需要一个 pty，没有 pty 时它什么都不打印就退出 0）。",
     );
   }
-  claudeFlow = { url: run.url, expiresAt: startedAt + PASTE_TTL_MS };
+  claudeFlow = { url, expiresAt: startedAt + PASTE_TTL_MS };
   void run.done.then(async (r) => {
     claudeFlow = null;
     if (r.ok) await credentialChanged(ctx, "claude");
@@ -247,20 +272,50 @@ let ghFlow: GhFlow | null = null;
 /** Why the last attempt did not land. Shown next to the button that retries it. */
 let ghError: string | null = null;
 
-export const postGithubLogin = (async (ctx) => {
+/** The code the boss is still meant to be typing, if it has not expired. */
+function livePending(): GhFlow | null {
+  return ghFlow && ghFlow.expiresAt > Date.now() ? ghFlow : null;
+}
+
+/**
+ * Wait out the browser half, then store what it produced.
+ *
+ * Its own function, and awaited by nothing in production, because the poll
+ * outlives the request that started it — the settings dialog may be closed long
+ * before GitHub answers. The device code never leaves here: what the panel is
+ * told is the outcome, and a failure carries GitHub's reason, not the exchange.
+ */
+export async function finishGithubLogin(ctx: Ctx, d: DeviceCode, fetchFn?: DeviceFlowFetcher): Promise<void> {
+  try {
+    const token = await pollForToken(d, fetchFn ? { fetchFn } : {});
+    saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
+    // Every running sandbox holds the old (absent) credential in its sidecar.
+    await credentialChanged(ctx, "github");
+    ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "GitHub 连上了" });
+  } catch (e) {
+    ghError = errText(e);
+    ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `GitHub 没连上：${ghError}` });
+  } finally {
+    ghFlow = null;
+  }
+}
+
+/** `fetchFn` is how a test scripts GitHub's two endpoints; production has one. */
+export async function githubDeviceLogin(ctx: Ctx, fetchFn?: DeviceFlowFetcher): Promise<Response> {
   // A second click while one code is still good hands back the same code rather
   // than starting a second poll: two loops racing for one login is two ways to
   // store a token and one of them wins silently.
-  if (ghFlow && ghFlow.expiresAt > Date.now()) {
+  const live = livePending();
+  if (live) {
     return json({
-      userCode: ghFlow.userCode,
-      verificationUri: ghFlow.verificationUri,
-      expiresIn: Math.round((ghFlow.expiresAt - Date.now()) / 1000),
+      userCode: live.userCode,
+      verificationUri: live.verificationUri,
+      expiresIn: Math.round((live.expiresAt - Date.now()) / 1000),
     });
   }
-  let d: Awaited<ReturnType<typeof startDeviceFlow>>;
+  let d: DeviceCode;
   try {
-    d = await startDeviceFlow();
+    d = await startDeviceFlow(fetchFn);
   } catch (e) {
     // `errText`, not `e?.message`: a thrown non-Error has no `message`, and
     // under `e: any` the fallback `??` handed `bad()` the object itself — a 422
@@ -269,24 +324,11 @@ export const postGithubLogin = (async (ctx) => {
   }
   ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
   ghError = null;
-
-  void (async () => {
-    try {
-      const token = await pollForToken(d);
-      saveAuth(ctx.db, { runtime: "github", mode: "api_key", secret: token });
-      // Every running sandbox holds the old (absent) credential in its sidecar.
-      await credentialChanged(ctx, "github");
-      ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: "GitHub 连上了" });
-    } catch (e) {
-      ghError = errText(e);
-      ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `GitHub 没连上：${ghError}` });
-    } finally {
-      ghFlow = null;
-    }
-  })();
-
+  void finishGithubLogin(ctx, d, fetchFn);
   return json({ userCode: d.userCode, verificationUri: d.verificationUri, expiresIn: d.expiresIn });
-}) satisfies Handler;
+}
+
+export const postGithubLogin = (async (ctx) => githubDeviceLogin(ctx)) satisfies Handler;
 
 /**
  * Sign in to a ChatGPT account, from the utility container.
@@ -307,12 +349,12 @@ export const postCodexDevice = (async (ctx) => {
   const startedAt = Date.now();
   // Both, or neither: the link alone opens a page asking for a code the boss
   // does not have. codex prints them on two lines, so this waits for the second.
-  for (let i = 0; i < 100 && !(run.url && run.code); i++) await Bun.sleep(100);
-  if (!run.url || !run.code) {
+  const both = await printed(run, () => (run.url && run.code ? { url: run.url, code: run.code } : null), 100);
+  if (!both) {
     run.cancel();
     return bad("容器里的 codex 没打印出登录码 —— 镜像里跑一下 `codex login --device-auth` 看看。");
   }
-  codexFlow = { code: run.code, url: run.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
+  codexFlow = { code: both.code, url: both.url, expiresAt: startedAt + DEVICE_CODE_TTL_MS };
   void run.done.then((r) => {
     codexFlow = null;
     ctx.bus.emit({
@@ -372,6 +414,9 @@ export const getGithubLogin = (async (ctx, req) => {
   // that looks like success and is not: a green 已连接 over a repo list that
   // can never fill.
   const installs = a && account && ctx.gh ? await listInstallations(ctx.gh, req.signal) : null;
+  // Read after the requests above, not before: a code that expired while they
+  // were in flight is not a code the panel should still be offering.
+  const waiting = livePending();
   return json({
     connected: !!a,
     account,
@@ -383,10 +428,7 @@ export const getGithubLogin = (async (ctx, req) => {
     installUrl: INSTALL_URL,
     /** Which accounts it is installed on, and how many repositories each can see. */
     accounts: installs?.ok ? await withCounts(ctx, installs.data, req.signal) : [],
-    pending:
-      ghFlow && ghFlow.expiresAt > Date.now()
-        ? { userCode: ghFlow.userCode, verificationUri: ghFlow.verificationUri }
-        : null,
+    pending: waiting ? { userCode: waiting.userCode, verificationUri: waiting.verificationUri } : null,
     error: ghError,
     /** What every commit carries besides its message, and who it is authored as.
      *  On this route because both answers come from the connection above: the

@@ -79,11 +79,17 @@ async function replay(ctx: Ctx, cursor: number, stopped: () => boolean, enqueue:
   return lastSeq;
 }
 
-async function flushPending(
+/**
+ * The buffer that built up behind a long replay, minus what the replay already
+ * sent. Exported because the dedupe is the whole point of buffering: a browser
+ * that reconnects mid-catch-up must not see one event twice, and that rule is
+ * not otherwise reachable without racing a live catch-up.
+ */
+export async function flushPending(
   pending: Frame[],
   lastSeq: number,
   stopped: () => boolean,
-  enqueue: Enqueue,
+  enqueue: (frame: Frame) => Promise<void>,
 ): Promise<void> {
   for (const frame of pending) {
     if (stopped()) return;

@@ -7,7 +7,8 @@ import type { Delta } from "../../prompt/assemble.ts";
 import type { Job } from "../../scheduler.ts";
 import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../../contracts/states.ts";
 
-interface TurnAgent {
+/** Exported because `applySkills` takes one and is called from tests. */
+export interface TurnAgent {
   id: number;
   project_id: number | null;
   role: string;

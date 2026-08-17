@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const AttachedSchema = z.object({
+/** Not exported: the derived types are the contract, this is how they are built. */
+const AttachedSchema = z.object({
   name: z.string(),
   path: z.string(),
   type: z.string(),
@@ -23,7 +24,7 @@ export const SkillSchema = z.object({
 export type Skill = z.infer<typeof SkillSchema>;
 
 const DraftAttachmentSchema = AttachedSchema.pick({ name: true, path: true, type: true, label: true });
-export const DraftSchema = z.object({ text: z.string(), attachments: z.array(DraftAttachmentSchema) });
+const DraftSchema = z.object({ text: z.string(), attachments: z.array(DraftAttachmentSchema) });
 export type Draft = z.infer<typeof DraftSchema>;
 
 /** A file and where it sat inside whatever was dropped. */

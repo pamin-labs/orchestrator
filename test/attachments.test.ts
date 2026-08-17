@@ -1,8 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { z } from "zod";
+import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
+import type { Json } from "../src/contracts/json.ts";
 import { imagePaths } from "../src/mech/util/attachment-text.ts";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
@@ -85,4 +88,78 @@ test("an attachment that cannot be staged is said out loud", async () => {
   // Silence is what made the original bug survive; a broken attachment has to be
   // a line the boss can see.
   expect(said?.body).toContain("gone.png");
+});
+
+/**
+ * Picking a file off this machine, which is the half a browser cannot do.
+ *
+ * The upload route exists because a file input has no real path; the picker has
+ * one, and what it hands over is copied rather than referenced — the boss's
+ * working copy moves, and the file the agent reads has to still be there.
+ */
+
+const Staged = z.object({
+  files: z.array(z.object({ name: z.string(), path: z.string(), type: z.string(), size: z.number() })),
+});
+
+function localHarness() {
+  const h = harness();
+  const app = makeApp(h.ctx);
+  const post = (paths: Json) =>
+    app(
+      new Request("http://x/api/v1/attach/local", {
+        method: "POST",
+        body: JSON.stringify({ paths }),
+        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+      }),
+    );
+  return { ...h, post };
+}
+
+test("an empty pick is refused rather than answered with an empty list", async () => {
+  const h = localHarness();
+  for (const paths of [[], ["   "]]) {
+    const r = await h.post(paths);
+    expect(r.status).toBe(422);
+    expect(await r.text()).toContain("no path");
+  }
+});
+
+test("a path that cannot be read names itself in the refusal", async () => {
+  const h = localHarness();
+  const r = await h.post([join(h.dir, "not-here.png")]);
+  expect(r.status).toBe(422);
+  expect(await r.text()).toContain("not-here.png");
+});
+
+test("a picked file is copied under the data directory, typed and sized", async () => {
+  const h = localHarness();
+  const src = join(h.dir, "shot.png");
+  writeFileSync(src, "PNGDATA");
+
+  const r = await h.post([src]);
+  expect(r.status).toBe(200);
+  const [f] = Staged.parse(await r.json()).files;
+  expect(f!.name).toBe("shot.png");
+  expect(f!.type).toBe("image/png");
+  expect(f!.size).toBe(7);
+  // A copy, not a reference: the boss's own file is free to move afterwards.
+  expect(f!.path.startsWith(join(h.dir, "attachments"))).toBe(true);
+  expect(f!.path).not.toBe(src);
+  expect(readFileSync(f!.path, "utf8")).toBe("PNGDATA");
+  expect(basename(f!.path)).toEndWith("-shot.png");
+});
+
+test("a picked directory is one attachment, copied whole", async () => {
+  const h = localHarness();
+  const src = join(h.dir, "spec");
+  mkdirSync(join(src, "img"), { recursive: true });
+  writeFileSync(join(src, "README.md"), "read me");
+  writeFileSync(join(src, "img", "one.png"), "PNG");
+
+  const [f] = Staged.parse(await (await h.post([src])).json()).files;
+  // "看这个目录" is one reference, not forty — and the agent walks it itself.
+  expect(f!.name).toBe("spec");
+  expect(f!.type).toBe("inode/directory");
+  expect(readFileSync(join(f!.path, "img", "one.png"), "utf8")).toBe("PNG");
 });
