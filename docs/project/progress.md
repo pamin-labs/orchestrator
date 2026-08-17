@@ -72,11 +72,14 @@ M7 — executable engineering governance and versioned protocol.
 - CLI argument/command dispatch and Claude stream event parsing now have narrow
   owners under `src/orch/commands` and `src/runtime/providers`; the former giant
   switches no longer produce Fallow complexity findings.
+- Queue selection, ranking, filtering, and keyboard policy now live in a tested
+  feature model; the queue view and its helpers have no remaining Fallow
+  complexity/CRAP findings.
 - Release archives carry a version-reporting bundled CLI, Linux/Windows x64 use
   Bun baseline targets, required archive contents are verified, and interrupted
   publication documents its immutable resume points instead of claiming no
   external state can remain.
-- Full suite reached 831 pass and 0 fail. Six OpenSandbox tests are gated on a
+- Full suite reached 841 pass and 0 fail. Six OpenSandbox tests are gated on a
   live server; nine HTTP smoke cases also skip only in restricted environments
   that cannot bind loopback. Normal CI must run the HTTP smoke suite.
 - Clean TypeScript build, hard Oxlint gate, formatting, web build, performance
@@ -89,7 +92,7 @@ M7 — executable engineering governance and versioned protocol.
 ## Blockers and deviations
 
 - Fallow's default new-only audit is green. `bun run audit:all` remains red on
-  88 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
+  75 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
   threshold increase, or inline suppression.
 - Live OpenSandbox tests remain environment-gated and are skipped without a
   running sandbox server.

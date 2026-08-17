@@ -79,31 +79,25 @@ export function rank(reasons: (Reason | null | false | undefined)[]): Ranked {
  * to. Grouping by it would sort the list by a dimension none of the buttons operate on.
  */
 export function byRequirement<T extends { grpId: number | null; points: number }>(items: T[]) {
+  const grouped = groupByRequirement(items.filter((item) => item.grpId != null));
+  const loose = items.filter((item) => item.grpId == null).sort((a, b) => b.points - a.points);
+  const clustered = [...grouped].map(([grpId, list]) => ({
+    grpId,
+    items: list.sort((a, b) => b.points - a.points),
+    points: Math.max(...list.map((item) => item.points)),
+  }));
+  return { clustered: clustered.sort((a, b) => b.points - a.points), loose };
+}
+
+function groupByRequirement<T extends { grpId: number | null }>(items: T[]) {
   const groups = new Map<number, T[]>();
-  const loose: T[] = [];
-  for (const i of items) {
-    if (i.grpId == null) {
-      loose.push(i);
-      continue;
-    }
-    const list = groups.get(i.grpId) ?? [];
-    list.push(i);
-    groups.set(i.grpId, list);
+  for (const item of items) {
+    if (item.grpId == null) continue;
+    const list = groups.get(item.grpId) ?? [];
+    list.push(item);
+    groups.set(item.grpId, list);
   }
-  const clustered: { grpId: number; items: T[]; points: number }[] = [];
-  for (const [grpId, list] of groups) {
-    // One item gets a header too. Singletons used to render bare, with the
-    // requirement name inline on the row, so a list of five was three shapes and
-    // the boss could not see where one requirement stopped and the next began.
-    list.sort((a, b) => b.points - a.points);
-    // A cluster is as urgent as its most urgent member: burying a blocker under an
-    // average would be the one mistake this ordering exists to avoid.
-    clustered.push({ grpId, items: list, points: Math.max(...list.map((i) => i.points)) });
-  }
-  return {
-    clustered: clustered.sort((a, b) => b.points - a.points),
-    loose: loose.sort((a, b) => b.points - a.points),
-  };
+  return groups;
 }
 
 export const groupName = (st: State, id: number | null) => st.groups.find((g) => g.id === id)?.name ?? "";

@@ -48,6 +48,10 @@ export const STOPS: [string, string][] = [
 export const owns = (g: Group) => jsonOr(g.owns_json, OwnsSchema, []);
 export const gates = (s: Slice) => jsonOr(s.gates_json, GatesSchema, {});
 
+const needsDraftDecision = (g: Group) => g.status === "DRAFT" && !g.approved_at;
+const hasDraftDecision = (st: State, id: number) =>
+  st.draftCards.some((c) => c.grpId === id) || st.dropProposals.some((p) => p.grpId === id);
+
 /**
  * Everything that cannot move without the boss, per docs/project/plan.md's three approval points.
  *
@@ -65,11 +69,10 @@ export function pending(st: State, projectId: number | null) {
     cards: st.groups.filter(
       (g) =>
         ids.has(g.id) &&
-        g.status === "DRAFT" &&
-        !g.approved_at &&
+        needsDraftDecision(g) &&
         // A proposal to drop the requirement is a decision too, and it arrives
         // instead of a card — the whole point is that no card gets written.
-        (st.draftCards.some((c) => c.grpId === g.id) || st.dropProposals.some((p) => p.grpId === g.id)),
+        hasDraftDecision(st, g.id),
     ),
     slices: st.slices.filter((s) => ids.has(s.grp_id) && s.status === "awaiting_boss"),
     merges: st.mergeQueue.filter((m) => ids.has(m.grpId)),
@@ -99,23 +102,33 @@ export function projectState(st: State, p: number): { zh: string; mine: boolean;
   const n = countWaiting(st, p);
   if (n) return { zh: `${n} 件待办`, mine: true };
   const gs = st.groups.filter((g) => g.project_id === p);
-  if (!gs.length) {
-    return (st.archived ?? []).some((a) => a.project_id === p)
-      ? { zh: "都做完了", mine: false }
-      : { zh: "空着", mine: false, fresh: true };
-  }
-  const live = gs.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
+  return gs.length ? activeProjectState(gs) : emptyProjectState(st, p);
+}
+
+const emptyProjectState = (st: State, p: number) =>
+  (st.archived ?? []).some((a) => a.project_id === p)
+    ? { zh: "都做完了", mine: false }
+    : { zh: "空着", mine: false, fresh: true };
+
+function activeProjectState(groups: Group[]) {
+  const live = groups.filter((g) => ["RUNNING", "PLANNING", "PAUSING"].includes(g.status)).length;
   if (live) return { zh: `${live} 个在跑`, mine: false, live: true };
-  const held = gs.filter((g) => ["PAUSED", "PARKED"].includes(g.status)).length;
+  const held = groups.filter((g) => ["PAUSED", "PARKED"].includes(g.status)).length;
   return held ? { zh: `${held} 个停着`, mine: false } : { zh: "都做完了", mine: false };
 }
 
 /** Where the PR lives, so "go and merge it" is one click rather than a hunt. */
 export function prUrl(st: State, g: Group) {
-  const remote = st.projects.find((p) => p.id === g.project_id)?.remote ?? "";
-  const m = /github\.com[:/]+([^/]+)\/(.+?)(?:\.git)?$/.exec(remote);
-  return m && g.pr_number ? `https://github.com/${m[1]}/${m[2]}/pull/${g.pr_number}` : null;
+  const repo = githubRepo(projectRemote(st, g.project_id));
+  return repo && g.pr_number ? `https://github.com/${repo}/pull/${g.pr_number}` : null;
 }
+
+const projectRemote = (st: State, projectId: number) => st.projects.find((p) => p.id === projectId)?.remote ?? "";
+
+const githubRepo = (remote: string) => {
+  const match = /github\.com[:/]+([^/]+)\/(.+?)(?:\.git)?$/.exec(remote);
+  return match ? `${match[1]}/${match[2]}` : null;
+};
 
 /**
  * This group's open questions. Answered ones are history, not a decision.
