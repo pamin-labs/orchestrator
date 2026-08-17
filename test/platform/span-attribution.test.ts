@@ -169,4 +169,11 @@ test("a watchdog tick is stored rule by rule, not as one opaque number", async (
   // Every rule hangs off the job, so "which rule" is a query rather than a guess.
   const job = byName(spans, "job watchdog");
   for (const rule of rules) expect(byName(spans, rule).parentSpanId).toBe(job.spanId);
+
+  // And the span carries the rule's name, not its number. Splitting the tick into
+  // twenty-four spans only moves the guess if the panel reads `watchdog.7d2` and
+  // `watchdog.7e`. The number survives as the id — ADR 007 cites "rule 15" and
+  // `emit` dedups broken rules on `rule_broke:<id>` — but it is not what is shown.
+  expect(rules).toContain("watchdog.turn_timeout");
+  for (const rule of rules) expect(rule.slice("watchdog.".length)).not.toMatch(/^\d/);
 });

@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
+import { SqliteSpanExporter } from "../../src/platform/observability/span-store.ts";
+import { installTracerProvider } from "../../src/platform/observability/traces.ts";
 import { Database } from "bun:sqlite";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
@@ -984,5 +987,80 @@ test("a webhook that is down does not take the run with it", async () => {
     expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE kind = 'notify'").get()!.c).toBe(1);
   } finally {
     globalThis.fetch = realFetch;
+  }
+});
+
+/**
+ * The container sweep is hourly, and the hour has to survive a restart.
+ *
+ * It was a module-level `lastSweep` compared against `SWEEP_EVERY_MS` inside the
+ * rule's own body: process memory, so every restart swept again, and two ticks
+ * running at once would each see the other's zero. Nothing covered it — this is
+ * the first test of the cadence at all, which is how it stayed a hand-written
+ * throttle while twenty-three sibling rules had none.
+ */
+test("the container sweep runs hourly, and the clock is not in this process", async () => {
+  const h = harness();
+  // The harness's own driver is typed as the interface, which does not carry the
+  // recorder. Same behaviour, kept as the concrete fake so `commands` is typed.
+  const sandbox = fakeSandbox((cmd) => (cmd.includes("merge-base") ? { code: 1 } : { code: 0 }));
+  h.ctx.sandbox = sandbox;
+  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
+  let clock = 1_000_000;
+  const deps = { ...h.deps, now: () => clock };
+  const swept = () => sandbox.commands.filter((c) => c.includes("sessions -type f -mtime +7")).length;
+
+  await runWatchdog(deps);
+  expect(swept()).toBe(1);
+
+  // The next tick, 30s later. The old code answered this correctly too; what it
+  // could not answer is the two below.
+  clock += 30_000;
+  await runWatchdog(deps);
+  expect(swept()).toBe(1);
+
+  // A restart: fresh module state, same database. `lastSweep` was zero here, so
+  // the sweep ran again — one `execIn` per live sandbox, deleting nothing.
+  clock += 30_000;
+  await runWatchdog({ ...deps, ctx: { ...h.ctx } });
+  expect(swept()).toBe(1);
+
+  clock += 60 * 60 * 1000;
+  await runWatchdog(deps);
+  expect(swept()).toBe(2);
+});
+
+/**
+ * A rule that threw has to look broken in the panel, not merely in the findings.
+ *
+ * The catch used to sit outside `startActiveSpan`, so the span ended green and a
+ * rule that threw was indistinguishable there from one that worked — in the one
+ * surface built to answer "which rule". The finding is for the boss; the status
+ * is for whoever is looking at where the tick went.
+ */
+test("a rule that throws marks its own span, not just the findings", async () => {
+  const h = harness();
+  const provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(new SqliteSpanExporter(h.db))] });
+  installTracerProvider(provider);
+  try {
+    await runWatchdog({
+      ...h.deps,
+      pollUsage: async () => {
+        throw new Error("usage endpoint exploded");
+      },
+    });
+    await provider.forceFlush();
+
+    const rows = h.db
+      .query<{ name: string; status: string }, []>("SELECT name, status FROM span WHERE name LIKE 'watchdog.%'")
+      .all();
+    // Lowercase: `spanStatusName` is what the column stores, and the aggregation
+    // in `span-store.ts` counts `status = 'error'`.
+    expect(rows.find((r) => r.name === "watchdog.subscription_usage")?.status).toBe("error");
+    // And only that one: a tick where one rule throws still reports the rest as
+    // having run, or the panel would blame twenty-three innocent rules.
+    expect(rows.filter((r) => r.status === "error").map((r) => r.name)).toEqual(["watchdog.subscription_usage"]);
+  } finally {
+    installTracerProvider(new NodeTracerProvider());
   }
 });
