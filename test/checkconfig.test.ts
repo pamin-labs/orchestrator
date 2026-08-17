@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, loadRoles } from "../src/config.ts";
+import { loadConfig, loadRoles } from "../src/platform/config/load.ts";
 import { checkConfig, checkRoles } from "../src/mech/ops/checkconfig.ts";
 
 const yaml = (body: string): string => {

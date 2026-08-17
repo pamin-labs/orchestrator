@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { Bus } from "../src/bus.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { busDeliver, Notifier, notifiable, tierFor, batchForBoss } from "../src/mech/ops/notify.ts";
 import { pause, resume, settlePausing, park } from "../src/mech/flow/intercept.ts";

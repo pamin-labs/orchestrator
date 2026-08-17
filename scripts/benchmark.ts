@@ -1,5 +1,5 @@
 import { Bus } from "../src/bus.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { snapshot } from "../src/api/panel/snapshot.ts";
 import { reconcile } from "../src/mech/flow/reconcile.ts";

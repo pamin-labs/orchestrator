@@ -1,7 +1,7 @@
 import type { SQLQueryBindings } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT } from "../../config.ts";
+import { ROOT } from "../../platform/config/load.ts";
 import { gitTrailers } from "./ghlogin.ts";
 import type { Ctx } from "../../ctx.ts";
 import { say } from "../../lang.ts";

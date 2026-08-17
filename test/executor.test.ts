@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { Bus } from "../src/bus.ts";
-import { loadConfig, loadRoles } from "../src/config.ts";
+import { loadConfig, loadRoles } from "../src/platform/config/load.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../src/runtime/executor.ts";

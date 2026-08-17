@@ -1,7 +1,14 @@
 import { expect, test } from "bun:test";
 import { migrate, migrationMentioning, openMemory } from "../src/db.ts";
-import { loadConfig } from "../src/config.ts";
-import { applyOverrides, defaultFor, overrides, putSetting, refuse, settablePaths } from "../src/settings.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
+import {
+  applyOverrides,
+  defaultFor,
+  overrides,
+  putSetting,
+  refuse,
+  settablePaths,
+} from "../src/platform/config/settings.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp } from "../src/api.ts";

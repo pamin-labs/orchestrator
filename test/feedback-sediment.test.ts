@@ -7,7 +7,7 @@ import type { Ctx } from "../src/ctx.ts";
 import { AgentTurnPayloadSchema, Scheduler, type Job } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 
 /**
  * docs/project/plan.md §7③. Without this the boss's dissatisfaction produces N isolated facts:

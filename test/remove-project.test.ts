@@ -10,7 +10,7 @@ import type { Ctx } from "../src/ctx.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Scope } from "../src/mech/sandbox/sandbox.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { z } from "zod";
 
 /**

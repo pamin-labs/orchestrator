@@ -7,7 +7,7 @@ import { snapshot } from "../src/api/panel/snapshot.ts";
 import * as S from "../src/contracts/panel.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { seedAuth } from "./seed-auth.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 
 /**
  * The panel payload is what the SQL actually produced.

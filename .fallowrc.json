@@ -36,12 +36,10 @@
         "patterns": [
           "src/platform/**",
           "src/bus.ts",
-          "src/config.ts",
           "src/db.ts",
           "src/lang.ts",
           "src/observability.ts",
-          "src/scheduler.ts",
-          "src/settings.ts"
+          "src/scheduler.ts"
         ]
       },
       { "name": "http-edge", "patterns": ["src/http/**"] },

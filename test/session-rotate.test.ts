@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { Bus } from "../src/bus.ts";
-import { loadConfig, loadRoles } from "../src/config.ts";
+import { loadConfig, loadRoles } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/db.ts";
 import { Scheduler, type Executor } from "../src/scheduler.ts";
 import { makeExecutor, type ExecDeps } from "../src/runtime/executor.ts";

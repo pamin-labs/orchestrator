@@ -1,5 +1,5 @@
-import type { DB } from "./db.ts";
-import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "./config.ts";
+import type { DB } from "../../db.ts";
+import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "./load.ts";
 import {
   ConfigSchema,
   isSettingPath,
@@ -10,8 +10,8 @@ import {
   type SettingPath,
   type SettingValue,
   type SettingWrite,
-} from "./contracts/config.ts";
-import { JsonObject, JsonValue, type Json } from "./contracts/json.ts";
+} from "../../contracts/config.ts";
+import { JsonObject, JsonValue, type Json } from "../../contracts/json.ts";
 
 /**
  * Settings the boss changes in the panel, layered over the file.

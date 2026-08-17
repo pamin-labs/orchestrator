@@ -1,7 +1,7 @@
 import type { DB } from "./db.ts";
 import type { Bus } from "./bus.ts";
 import type { Scheduler } from "./scheduler.ts";
-import type { Config } from "./config.ts";
+import type { Config } from "./platform/config/load.ts";
 
 /**
  * The handle everything below the HTTP layer is given.

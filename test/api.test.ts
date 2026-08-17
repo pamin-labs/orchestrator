@@ -15,7 +15,7 @@ import { sweepApproved } from "../src/mech/flow/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { routeCalls } from "./route-source.ts";
 import { seedAuth } from "./seed-auth.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { NotesResponseSchema, SnapshotSchema } from "../src/contracts/panel.ts";
 import { z } from "zod";
 import { JsonValue, type Json } from "../src/contracts/json.ts";

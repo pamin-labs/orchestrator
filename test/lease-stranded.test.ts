@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Bus } from "../src/bus.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/db.ts";
 import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/scheduler.ts";
 import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../src/mech/sandbox/sandbox.ts";

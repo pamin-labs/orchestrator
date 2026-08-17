@@ -6,7 +6,7 @@ import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { testContext } from "./test-context.ts";
 import { z } from "zod";

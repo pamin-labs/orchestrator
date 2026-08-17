@@ -6,7 +6,7 @@ import type { Ctx } from "../src/ctx.ts";
 import { imagePaths } from "../src/mech/util/attachment-text.ts";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { loadConfig, loadRoles } from "../src/config.ts";
+import { loadConfig, loadRoles } from "../src/platform/config/load.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { ATTACH_DIR, stageAttachments, type ExecDeps } from "../src/runtime/executor.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";

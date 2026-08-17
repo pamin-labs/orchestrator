@@ -12,7 +12,7 @@ import {
   MIN_CONTEXT,
   modelFor,
   withAbsoluteDataDir,
-} from "../src/config.ts";
+} from "../src/platform/config/load.ts";
 import { ConfigSchema } from "../src/contracts/config.ts";
 import { routeSource } from "./route-source.ts";
 

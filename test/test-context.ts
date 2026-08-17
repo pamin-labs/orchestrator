@@ -1,5 +1,5 @@
 import { Bus } from "../src/bus.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { openMemory } from "../src/db.ts";
 import { Scheduler } from "../src/scheduler.ts";

@@ -1,6 +1,6 @@
 import { defu } from "defu";
 import { z } from "zod";
-import { ConfigSchema } from "./contracts/config.ts";
+import { ConfigSchema } from "../../contracts/config.ts";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -193,7 +193,7 @@ const DEFAULTS: Config = {
  *
  * Three shapes this has to answer for, and the third is why it is a function:
  *
- *   source        `<root>/src/config.ts`   ->  `..`
+ *   source        `<root>/src/platform/config/load.ts` -> `../../..`
  *   bundled       `<root>/dist/server.js`  ->  `..`
  *   compiled      `/$bunfs/root/config.ts` ->  nothing. `bun build --compile`
  *                 puts modules in a read-only virtual filesystem, so `..` is
@@ -214,6 +214,7 @@ function resolveRoot(): string {
   // `/$bunfs` on posix, `B:\~BUN` on Windows — bun's own markers for "this
   // module came out of the binary, not off the disk".
   if (here.startsWith("/$bunfs") || /^[A-Z]:\\~BUN/i.test(here)) return dirname(process.execPath);
+  if (here.endsWith("/src/platform/config")) return resolve(here, "../../..");
   return resolve(here, "..");
 }
 

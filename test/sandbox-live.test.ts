@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
 import { makeApp } from "../src/api.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { createCheckout, keepBranch, sandboxGit, utilGit } from "../src/mech/git/checkout.ts";
 import { startMailbox } from "../src/mech/sandbox/mailbox.ts";
 import { CODEX_HOME } from "../src/mech/sandbox/auth.ts";

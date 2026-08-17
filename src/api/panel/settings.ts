@@ -1,9 +1,9 @@
-import { currentFor, defaultFor, overrides, putSetting, settablePaths } from "../../settings.ts";
+import { currentFor, defaultFor, overrides, putSetting, settablePaths } from "../../platform/config/settings.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
 import { ConfigSchema, SettingWriteSchema, type SettingPath, type SettingValue } from "../../contracts/config.ts";
-import type { Config } from "../../config.ts";
+import type { Config } from "../../platform/config/load.ts";
 import type { Json } from "../../contracts/json.ts";
 
 type SettingRowFor<P extends SettingPath> = {

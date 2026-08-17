@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { abstain, answer, entryPoint, isReserved, revoke, route, triage, TRIAGE } from "../src/mech/flow/chain.ts";
 import { SayBody } from "../src/api/orch/messaging.ts";

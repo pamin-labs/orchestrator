@@ -1,5 +1,5 @@
 import type { Ctx } from "../../ctx.ts";
-import type { Config } from "../../config.ts";
+import type { Config } from "../../platform/config/load.ts";
 import { say } from "../../lang.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { runGates, recordGate, gateState } from "../gate.ts";

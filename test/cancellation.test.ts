@@ -3,7 +3,7 @@ import { z } from "zod";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { Bus } from "../src/bus.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/db.ts";
 import { makeGithub, type GithubFetcher } from "../src/mech/git/github.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";

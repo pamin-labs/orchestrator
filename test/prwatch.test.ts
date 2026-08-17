@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/db.ts";
 import {
   checkPrMessage,

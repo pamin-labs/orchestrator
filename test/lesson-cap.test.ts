@@ -7,7 +7,7 @@ import { evictOldestLessons, LESSON_CAP, lessonsFor } from "../src/mech/knowledg
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/platform/config/load.ts";
 
 /**
  * docs/project/plan.md §7: the lesson list is injected into every later group's prompt, so an

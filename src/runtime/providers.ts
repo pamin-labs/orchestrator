@@ -1,4 +1,4 @@
-import { DEFAULT_PROVIDER, type Effort } from "../config.ts";
+import { DEFAULT_PROVIDER, type Effort } from "../platform/config/load.ts";
 import type { TurnHandlers, TurnResult, TurnSpec } from "./claude.ts";
 import { runClaudeTurn as runClaude } from "./claude.ts";
 import { runCodexTurn as runCodex } from "./codex.ts";

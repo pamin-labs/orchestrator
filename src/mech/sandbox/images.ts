@@ -1,7 +1,7 @@
 import { errText } from "../../platform/process/text.ts";
 import type { DB } from "../../db.ts";
-import type { Config } from "../../config.ts";
-import { putSetting } from "../../settings.ts";
+import type { Config } from "../../platform/config/load.ts";
+import { putSetting } from "../../platform/config/settings.ts";
 import { hasRegistry, PUBLISHED_REPO } from "./sandbox.ts";
 import { z } from "zod";
 

@@ -13,7 +13,7 @@
 | Build info | `src/platform/process/version.ts` | Package/release identity shared by executable entry points | No runtime policy |
 | Mechanisms | `src/mech/**` except platform primitives, plus `src/ctx.ts` | Scheduling, state transitions, Git/sandbox operations, injected mechanism context | Runtime adapters and platform primitives |
 | Runtime adapters | Provider files in `src/runtime/**` | Provider subprocess protocol | Platform, shared contracts, type-only prompt shape |
-| Platform | `src/platform/**` plus the root scheduler, DB, bus, config, settings, language, and observability leaves | Process-wide observability and process primitives | Shared contracts |
+| Platform | `src/platform/**` plus the root scheduler, DB, bus, language, and observability leaves | Process-wide configuration, observability, and process primitives | Shared contracts |
 | Prompt | `src/prompt/**` | Cache-safe prompt assembly | Shared data only |
 | CLI | `src/orch/**` | Agent-facing client transport | Shared runtime schemas plus type-only public Orch RPC |
 | Scripts | `scripts/**` | Maintainer-only development, benchmark, and setup entry points | Unrestricted; never shipped as production runtime |
