@@ -1,5 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Ctx } from "../../src/mech/ctx.ts";
+import { orchRoutes } from "../../src/http/routes/orch.ts";
+import { panelRoutes } from "../../src/http/routes/panel.ts";
 
 export type RouteCall = {
   method: string;
@@ -8,24 +11,32 @@ export type RouteCall = {
   params: boolean;
 };
 
-/** Route declarations, read structurally so formatting cannot disable a guard. */
-export function routeCalls(): RouteCall[] {
-  const dir = new URL("../../src/http/routes", import.meta.url).pathname;
-  return readdirSync(dir)
-    .filter((name) => name.endsWith(".ts"))
-    .flatMap((name) => {
-      const source = readFileSync(join(dir, name), "utf8");
-      return [
-        ...source.matchAll(
-          /\.(get|post|put|patch|delete)\(\s*"([^"]+)"([\s\S]*?)(?=\n\s+\.(?:get|post|put|patch|delete)\(|;\n})/g,
-        ),
-      ].map((match) => ({
-        method: match[1]!,
-        path: match[2]!,
-        body: /\b(?:json|form)Body\(/.test(match[3]!),
-        params: /\bpathParams\(/.test(match[3]!),
-      }));
-    });
+/**
+ * What the router actually registered, asked of the router.
+ *
+ * This used to match `.post("…", jsonBody(Schema), handler)` with a regular
+ * expression over the route files, which meant a reformat, a helper rename or a
+ * route declared through a variable could silently switch a guard off — and the
+ * guards this feeds are the ones asserting that every body-taking route declares
+ * its shape.
+ *
+ * Hono lists every middleware in `app.routes` as its own entry against the same
+ * method and path, and keeps the function's name, so the validators name
+ * themselves in `src/http/validate.ts` and the declaration is read rather than
+ * recognised.
+ */
+export function routeCalls(ctx: Ctx): RouteCall[] {
+  const calls = new Map<string, RouteCall>();
+  for (const { method, path, handler } of [...panelRoutes(ctx).routes, ...orchRoutes(ctx).routes]) {
+    // `ALL` is Hono's entry for `use()` middleware, which is not a route.
+    if (method === "ALL") continue;
+    const key = `${method} ${path}`;
+    const call = calls.get(key) ?? { method: method.toLowerCase(), path, body: false, params: false };
+    if (handler.name === "jsonBody" || handler.name === "formBody") call.body = true;
+    if (handler.name === "pathParams") call.params = true;
+    calls.set(key, call);
+  }
+  return [...calls.values()];
 }
 
 /**

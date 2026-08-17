@@ -12,6 +12,7 @@ import type { Ctx } from "../../src/mech/ctx.ts";
 import { listSkills } from "../../src/mech/skills.ts";
 import { landed } from "../../src/mech/flow/mergequeue.ts";
 import { sweepApproved } from "../../src/mech/flow/start.ts";
+import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { routeCalls } from "../support/route-source.ts";
 import { seedAuth } from "../support/seed-auth.ts";
@@ -52,18 +53,12 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
   };
   const app = makeApp(ctx);
 
-  db.run(
-    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'https://github.com/o/p.git', 0)",
-  );
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  const p = fx.project.insert(db, { name: "p", remote: "https://github.com/o/p.git" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
   // Identity is the token, never a body field: the server listens on localhost
   // TCP, so anything else on 127.0.0.1 could otherwise claim to be any agent.
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'tok-eng', 0)",
-  );
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'qa', 'sonnet', 'tok-qa', 0)",
-  );
+  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, model: "sonnet", token: "tok-eng" });
+  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, role: "qa", model: "sonnet", token: "tok-qa" });
   return { db, bus, sched, ctx, app, ran, sandbox, engineer: "tok-eng", qa: "tok-qa" };
 }
 
@@ -263,10 +258,11 @@ test("an unknown lease resource says how to get one added", async () => {
 
 test("a lease with bad args never reaches the queue", async () => {
   const { app, db } = harness();
-  db.run(
-    `INSERT INTO resource (name, template, arg_schema_json) VALUES
-     ('build', 'make {target}', '{"target":{"type":"enum","values":["debug","release"]}}')`,
-  );
+  fx.resource.insert(db, {
+    name: "build",
+    template: "make {target}",
+    arg_schema_json: '{"target":{"type":"enum","values":["debug","release"]}}',
+  });
   const r = await post(app, "/orch/v1/lease", { resource: "build", args: { target: "prod; rm -rf ~" } }, "tok-eng");
   expect(r.status).toBe(422);
   expect(db.query<{ c: number }, []>("SELECT count(*) AS c FROM lease").get()!.c).toBe(0);
@@ -335,10 +331,7 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
 反对 : 无
 名字 : group-approval-planning`;
   // Filing the card is what moves the group to DRAFT, and DRAFT blocks.
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
-    [grp_id],
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id, role: "dispatcher", token: "tok-disp" });
   const filed = await post(app, "/orch/v1/draft", { group_id: grp_id, card }, "tok-disp");
   expect(filed.status).toBe(200);
   expect(db.query<{ status: string }, [number]>("SELECT status FROM grp WHERE id = ?").get(grp_id)!.status).toBe(
@@ -381,10 +374,7 @@ test("a malformed card is refused both when filed and when approved", async () =
   const { app, db } = harness();
   const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
-    [grp_id],
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id, role: "dispatcher", token: "tok-disp" });
 
   // Validated where it is filed, so the boss is never shown a broken card.
   const filed = await post(app, "/orch/v1/draft", { group_id: grp_id, card: "目标 : only this" }, "tok-disp");
@@ -414,7 +404,7 @@ test("sending a DRAFT back records the reason and re-runs the dispatcher", async
 
 test("pause is PAUSING only while something is in flight, PAUSED once idle", async () => {
   const { app, db } = harness();
-  db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('agent_turn', 1, 'running', 0)");
+  fx.job.insert(db, { grp_id: 1, state: "running" });
   const r = PauseResponse.parse(await (await post(app, "/api/v1/groups/1/pause")).json());
   // An in-flight turn cannot be steered, so claiming PAUSED would be a lie —
   // and the reply says how many turns it is waiting on.
@@ -442,7 +432,7 @@ test("park cancels queued work and leaves the worktree alone", async () => {
 
 test("rejecting a slice records the feedback as a fact and re-runs the group", async () => {
   const { app, db } = harness();
-  db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 1, 'S1', 'tests', 0)");
+  fx.slice.insert(db, { grp_id: 1, seq: 1, title: "S1", accept_spec: "tests" });
   await post(app, "/api/v1/slices/1/reject", { feedback: "tests are too shallow" });
 
   expect(db.query<{ status: string }, []>("SELECT status FROM slice WHERE id = 1").get()!.status).toBe("rejected");
@@ -454,8 +444,9 @@ test("rejecting a slice records the feedback as a fact and re-runs the group", a
 
 test("ctx query is capped so it never costs more than the file it replaces", async () => {
   const { app, db } = harness();
-  const ins = db.prepare("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'fact', 'zh', ?, 0)");
-  for (let i = 0; i < 200; i++) ins.run(`middleware note ${i} ` + "x".repeat(400));
+  for (let i = 0; i < 200; i++) {
+    fx.note.insert(db, { grp_id: 1, body: `middleware note ${i} ` + "x".repeat(400) });
+  }
 
   const r = await post(app, "/orch/v1/ctx/query", { question: "middleware token check" }, "tok-eng");
   const { message: out } = MessageResponse.parse(await r.json());
@@ -534,10 +525,7 @@ test("filing the card drops the group's other queued planning turns", async () =
   const { app, db, sched } = harness();
   const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
-    [grp_id],
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id, role: "dispatcher", token: "tok-disp" });
   sched.enqueue("agent_turn", { grp_id, payload: { role: "architect" } });
 
   const card = `目标 : x
@@ -578,10 +566,7 @@ test("a group can be named instead of numbered, everywhere it is referenced", as
   const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "greet lang parameter" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   const name = db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grp_id)!.name;
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
-    [grp_id],
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id, role: "dispatcher", token: "tok-disp" });
 
   const card = `目标 : x
 不做 : y
@@ -606,10 +591,7 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   const { app, db } = harness();
   const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "greet lang" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-disp', 0)",
-    [grp_id],
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id, role: "dispatcher", token: "tok-disp" });
   const card = `目标 : 支持 zh
 不做 : 不引依赖
 验收 : bun test 全绿
@@ -632,9 +614,7 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   // 反对 : 无 because the Dispatcher does not wait for the Architect — measured,
   // the objection arrived a minute later and said the plan contradicted its own
   // acceptance criterion.
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
-  );
+  fx.agent.insert(db, { project_id: 1, role: "architect", token: "tok-arch" });
   await post(
     app,
     "/orch/v1/mail",
@@ -689,10 +669,7 @@ test("the snapshot carries the boss's original words alongside the card", async 
   expect(s.ideas.find((item) => item.grpId === grp_id)?.body).toBe(idea);
 
   // The first thing the boss said, not the latest — later messages are feedback.
-  db.run(
-    "INSERT INTO event (grp_id, author, kind, body, at) VALUES (?, 'boss', 'boss_say', 'and also make it fast', 999)",
-    [grp_id],
-  );
+  fx.event.insert(db, { grp_id, author: "boss", kind: "boss_say", body: "and also make it fast", at: 999 });
   const s2 = await state(app);
   expect(s2.ideas.find((item) => item.grpId === grp_id)?.body).toBe(idea);
 });
@@ -702,10 +679,7 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
   db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/**"])]);
   const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "second idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, ?, 'dispatcher', 'm', 'tok-d', 0)",
-    [grp_id],
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id, role: "dispatcher", token: "tok-d" });
   const card = `目标 : x
 不做 : y
 验收 : a.test.ts 绿
@@ -714,10 +688,12 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
 切片 : b [trivial] — b 的回归用例绿
 切片 : c [hard] — 端到端场景通过`;
   db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grp_id]);
-  db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, ?, 'fact', 'zh', ?, ?, 0)",
-    [grp_id, card + "\n风险 : 无\n反对 : 无\n名字 : boundary-block-approval", JSON.stringify({ draft_card: true })],
-  );
+  fx.note.insert(db, {
+    project_id: 1,
+    grp_id,
+    body: card + "\n风险 : 无\n反对 : 无\n名字 : boundary-block-approval",
+    frontmatter_json: JSON.stringify({ draft_card: true }),
+  });
 
   const held = await post(app, `/api/v1/draft/${grp_id}/approve`);
   // 200: the boss did decide. A 422 shows a red error and asks for the same click
@@ -747,11 +723,10 @@ async function blocked(h: ReturnType<typeof harness>) {
   const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "second idea" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
   db.run("UPDATE grp SET status = 'DRAFT', owns_json = ? WHERE id = ?", [JSON.stringify(["src/a/mw.ts"]), grp_id]);
-  db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, ?, 'fact', 'zh', ?, ?, 0)",
-    [
-      grp_id,
-      `目标 : x
+  fx.note.insert(db, {
+    project_id: 1,
+    grp_id,
+    body: `目标 : x
 不做 : y
 验收 : a.test.ts 绿
 验收 : 无回归
@@ -761,9 +736,8 @@ async function blocked(h: ReturnType<typeof harness>) {
 风险 : 无
 反对 : 无
 名字 : held-group-reapprove`,
-      JSON.stringify({ draft_card: true }),
-    ],
-  );
+    frontmatter_json: JSON.stringify({ draft_card: true }),
+  });
   expect((await post(app, `/api/v1/draft/${grp_id}/approve`)).status).toBe(200);
   return grp_id;
 }
@@ -805,9 +779,7 @@ test("the group holding the paths dissolves, and the approved one starts itself"
 test("the Architect re-cutting someone else's boundary starts the approved group", async () => {
   const h = harness();
   const grpId = await blocked(h);
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'architect', 'm', 'tok-a', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "architect", token: "tok-a" });
   // The re-cut moves group 1 off the contested path. Nothing touches group 2 —
   // sweeping only the group `owns` names would leave it waiting.
   await post(h.app, "/orch/v1/owns", { group_id: 1, paths: ["src/c/**"] }, "tok-a");
@@ -824,23 +796,21 @@ test("a token is only good for the scope it was hired into", async () => {
   // and are supposed to reach across their project.
   const h = harness();
   await blocked(h);
-  h.db.run(
-    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('other', '/tmp/o', 'https://github.com/o/other.git', 0)",
-  );
-  h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (2, 'elsewhere', 'RUNNING', 0)");
+  const elsewhereProject = fx.project.insert(h.db, {
+    name: "other",
+    repo_path: "/tmp/o",
+    remote: "https://github.com/o/other.git",
+  });
+  fx.runningGrp.insert(h.db, { project_id: elsewhereProject.id, name: "elsewhere" });
   const outsider = h.db.query<{ id: number }, []>("SELECT id FROM grp WHERE name = 'elsewhere'").get()!.id;
 
   // Standing: no group, so its reach is its project — and it stops at the edge.
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-standing', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, role: "architect", token: "tok-standing" });
   expect((await post(h.app, "/orch/v1/owns", { group_id: 1, paths: ["src/c/**"] }, "tok-standing")).status).toBe(200);
   expect((await post(h.app, "/orch/v1/owns", { group_id: outsider, paths: ["**"] }, "tok-standing")).status).toBe(403);
 
   // Hired into a group: that group and no other, even inside the same project.
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'architect', 'm', 'tok-g1', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "architect", token: "tok-g1" });
   const other = h.db.query<{ id: number }, []>("SELECT id FROM grp WHERE project_id = 1 AND id != 1 LIMIT 1").get()!.id;
   expect((await post(h.app, "/orch/v1/owns", { group_id: other, paths: ["**"] }, "tok-g1")).status).toBe(403);
   // Untouched: a refused call must not be a half-applied one.
@@ -855,11 +825,8 @@ test("dropping a requirement frees its paths and starts whoever was waiting", as
   // to stop waiting on paths nobody will ever use.
   const h = harness();
   const grpId = await blocked(h);
-  h.db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('agent_turn', 1, 'pending', 0)");
-  h.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
-     VALUES (1, 'blocker', 'still needed?', 'boss', 0)`,
-  );
+  fx.job.insert(h.db, { grp_id: 1, state: "pending" });
+  fx.escalation.insert(h.db, { grp_id: 1, severity: "blocker", question: "still needed?", chain_state: "boss" });
 
   const r = await post(h.app, "/api/v1/groups/1/drop", { why: "grp2 covers it" });
   expect(r.status).toBe(200);
@@ -881,10 +848,8 @@ test("a planner may propose dropping already-covered work, but only with evidenc
   // the model's opinion of its own workload. The server checks the evidence, and
   // the boss still presses the button.
   const h = harness();
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-d', 0)",
-  );
-  h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'other', 'RUNNING', 0)");
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "dispatcher", token: "tok-d" });
+  fx.runningGrp.insert(h.db, { project_id: 1, name: "other" });
   const drop = (b: Json, tok = "tok-d") => post(h.app, "/orch/v1/drop", b, tok);
 
   expect((await drop({ group_id: 1, why: "已经做完了" })).status).toBe(422);
@@ -914,9 +879,7 @@ test("a commit is evidence only when it is real and already on the base branch",
     if (cmd.includes("merge-base")) return landed;
     return {};
   });
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-d', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "dispatcher", token: "tok-d" });
   const sha = "0123456789abcdef0123456789abcdef01234567";
   const drop = (b: Json) => post(h.app, "/orch/v1/drop", b, "tok-d");
 
@@ -942,7 +905,7 @@ test("the boundary request quotes each group's own requirement", async () => {
   const { app, db } = harness();
   // The pre-existing group's idea has to be recoverable, or the Architect cannot
   // tell the groups apart — observed live, it gave one group the other's files.
-  db.run("INSERT INTO event (grp_id, author, kind, body, at) VALUES (1, 'boss', 'boss_say', 'greet 加中文支持', 1)");
+  fx.event.insert(db, { grp_id: 1, author: "boss", kind: "boss_say", body: "greet 加中文支持", at: 1 });
   const r = await post(app, "/api/v1/ideas", { project_id: 1, text: "farewell: bye(name) 返回 goodbye X" });
   const { grp_id } = GroupIdResponse.parse(await r.json());
 
@@ -1002,7 +965,7 @@ test("the directory list marks git repos and what is already registered", async 
   mkdirSync(join(root, "b-repo/.git"), { recursive: true });
   mkdirSync(join(root, "c-taken/.git"), { recursive: true });
   mkdirSync(join(root, ".hidden"));
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('t', ?, 0)", [join(root, "c-taken")]);
+  fx.project.insert(db, { name: "t", repo_path: join(root, "c-taken") });
 
   const r = await get(app, `/api/v1/dirs?path=${encodeURIComponent(root)}`);
   expect(r.status).toBe(200);
@@ -1089,9 +1052,7 @@ test("nobody confirms a merge by hand: GitHub is the only source, and it winds t
 test("raising a budget resumes the group and closes the question that asked", async () => {
   const { app, db } = harness();
   db.run("UPDATE grp SET status = 'PAUSED', budget_tokens = 100, spent_tokens = 120 WHERE id = 1");
-  db.run(
-    "INSERT INTO escalation (grp_id, severity, question, chain_state, created_at) VALUES (1, 'blocker', 'budget: g1 用完了', 'boss', 0)",
-  );
+  fx.escalation.insert(db, { grp_id: 1, severity: "blocker", question: "budget: g1 用完了", chain_state: "boss" });
 
   // 继续 alone is a lie: the scheduler will not admit an over-budget group.
   const resumed = await post(app, "/api/v1/groups/1/resume");
@@ -1113,10 +1074,14 @@ test("raising a budget resumes the group and closes the question that asked", as
 test("a sent-back DRAFT stops being approvable", async () => {
   const { app, db } = harness();
   db.run("UPDATE grp SET status = 'DRAFT' WHERE id = 1");
-  db.run(
-    `INSERT INTO note (grp_id, kind, lang, body, frontmatter_json, at)
-     VALUES (1, 'decision', '中文', 'old card', '{"draft_card":1}', 1)`,
-  );
+  fx.note.insert(db, {
+    grp_id: 1,
+    kind: "decision",
+    lang: "中文",
+    body: "old card",
+    frontmatter_json: '{"draft_card":1}',
+    at: 1,
+  });
   expect((await get(app, "/api/v1/state")).status).toBe(200);
 
   await post(app, "/api/v1/draft/1/reject", { reason: "切得太粗" });
@@ -1128,9 +1093,7 @@ test("a sent-back DRAFT stops being approvable", async () => {
 
 test("the boss can talk to the team, and triage decides what the words mean", async () => {
   const { app, db, ran } = harness();
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'pm', 'sonnet', 'tok-pm', 0)",
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id: 1, role: "pm", model: "sonnet", token: "tok-pm" });
   expect((await post(app, "/api/v1/say", { group_id: 1, body: "" })).status).toBe(400);
 
   expect((await post(app, "/api/v1/say", { group_id: 1, body: "测试写得太浅" })).status).toBe(200);
@@ -1146,18 +1109,32 @@ test("the boss can talk to the team, and triage decides what the words mean", as
 
 test("the blackboard is readable: notes by project, by group, and by kind", async () => {
   const { app, db } = harness();
-  db.run(
-    `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
-     VALUES (1, 1, 'journal', '中文', 'moved token check into middleware', '{"files":["auth/mw.ts"],"gate":"pass"}', 10)`,
-  );
-  db.run(
-    "INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'lesson', '中文', 'QA 只看 diff，不重读全库', 20)",
-  );
+  fx.note.insert(db, {
+    project_id: 1,
+    grp_id: 1,
+    kind: "journal",
+    lang: "中文",
+    body: "moved token check into middleware",
+    frontmatter_json: '{"files":["auth/mw.ts"],"gate":"pass"}',
+    at: 10,
+  });
+  fx.note.insert(db, {
+    project_id: 1,
+    kind: "lesson",
+    lang: "中文",
+    body: "QA 只看 diff，不重读全库",
+    at: 20,
+  });
   // The DRAFT card is a note too, and it has its own screen; it must not show up here.
-  db.run(
-    `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
-     VALUES (1, 1, 'decision', '中文', 'card', '{"draft_card":1}', 30)`,
-  );
+  fx.note.insert(db, {
+    project_id: 1,
+    grp_id: 1,
+    kind: "decision",
+    lang: "中文",
+    body: "card",
+    frontmatter_json: '{"draft_card":1}',
+    at: 30,
+  });
 
   const all = NotesResponseSchema.parse(await (await get(app, "/api/v1/notes?project=1")).json());
   expect(all.notes.map((note) => note.kind)).toEqual(["lesson", "journal"]);
@@ -1196,12 +1173,14 @@ test("skills are found through symlinks, and a block-scalar description is read"
 test("one box holding several unrelated asks becomes several requirements", async () => {
   const { app, db, ran } = harness();
   db.run("UPDATE grp SET status = 'PLANNING' WHERE id = 1");
-  db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'fact', '中文', '记住我；导出 CSV；顺便问下缓存怎么配', 1)",
-  );
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'opus', 'tok-disp', 0)",
-  );
+  fx.note.insert(db, {
+    project_id: 1,
+    grp_id: 1,
+    lang: "中文",
+    body: "记住我；导出 CSV；顺便问下缓存怎么配",
+    at: 1,
+  });
+  fx.agent.insert(db, { project_id: 1, grp_id: 1, role: "dispatcher", model: "opus", token: "tok-disp" });
 
   // A split of one is not a split.
   const one = await post(app, "/orch/v1/split", { group_id: 1, requirements: [{ idea: "只有一件事" }] }, "tok-disp");
@@ -1254,9 +1233,7 @@ test("one box holding several unrelated asks becomes several requirements", asyn
 
   // After a card is approved there is a branch, and re-cutting is the boss's respec.
   db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 2");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 2, 'dispatcher', 'opus', 'tok-disp-2', 0)",
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id: 2, role: "dispatcher", model: "opus", token: "tok-disp-2" });
   const late = await post(
     app,
     "/orch/v1/split",
@@ -1320,9 +1297,7 @@ test("a live group that owns the path gets it as an addition, not a rival group"
   writeFileSync(join(repo, "package.json"), "{}");
   h.db.run("UPDATE project SET repo_path = ? WHERE id = 1", [repo]);
   h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
-  h.db.run("INSERT INTO grp (project_id, name, status, owns_json, created_at) VALUES (1, 'owner', 'RUNNING', ?, 0)", [
-    JSON.stringify(["package.json"]),
-  ]);
+  fx.runningGrp.insert(h.db, { project_id: 1, name: "owner", owns_json: JSON.stringify(["package.json"]) });
   const r = await post(
     h.app,
     "/orch/v1/blocked",
@@ -1348,10 +1323,12 @@ test("a question no answer can resolve becomes a requirement, and the group wait
   // until the boss did the work by hand.
   const h = harness();
   h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = 1 WHERE id = 1");
-  h.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
-     VALUES (1, 'blocker', 'S1 连续 3 次没过闸门，根因是 tsconfig.json 少一行', 'boss', 0)`,
-  );
+  fx.escalation.insert(h.db, {
+    grp_id: 1,
+    severity: "blocker",
+    question: "S1 连续 3 次没过闸门，根因是 tsconfig.json 少一行",
+    chain_state: "boss",
+  });
 
   const r = await post(h.app, "/api/v1/escalations/1/requirement", { text: "加 allowImportingTsExtensions" });
   expect(r.status).toBe(200);
@@ -1380,10 +1357,13 @@ test("two groups cannot end up waiting on each other", async () => {
   writeFileSync(join(repo, "shared.ts"), "");
   h.db.run("UPDATE project SET repo_path = ? WHERE id = 1", [repo]);
   h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
-  h.db.run(
-    "INSERT INTO grp (project_id, name, status, owns_json, blocked_on, created_at) VALUES (1, 'other', 'PAUSED', ?, 1, 0)",
-    [JSON.stringify(["shared.ts"])],
-  );
+  fx.grp.insert(h.db, {
+    project_id: 1,
+    name: "other",
+    status: "PAUSED",
+    owns_json: JSON.stringify(["shared.ts"]),
+    blocked_on: 1,
+  });
   const r = await post(
     h.app,
     "/orch/v1/blocked",
@@ -1442,15 +1422,11 @@ test("reads are scoped by the token too, not only writes", async () => {
   // is reaching them, so any group could read any other group's cards and build
   // logs by putting a number in the URL.
   const { app, db } = harness();
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g2', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 2, 'engineer', 'sonnet', 'tok-other', 0)",
-  );
-  db.run("INSERT INTO task (grp_id, title, created_at) VALUES (1, 'g1 only', 0)");
-  db.run("INSERT INTO resource (name, template) VALUES ('browser', 'echo {url}')");
-  db.run(
-    "INSERT INTO lease (resource, grp_id, state, log_path, enqueued_at) VALUES ('browser', 1, 'done', '/tmp/nope.log', 0)",
-  );
+  fx.runningGrp.insert(db, { project_id: 1, name: "g2" });
+  fx.agent.insert(db, { project_id: 1, grp_id: 2, model: "sonnet", token: "tok-other" });
+  fx.task.insert(db, { grp_id: 1, title: "g1 only" });
+  fx.resource.insert(db, { name: "browser", template: "echo {url}" });
+  fx.lease.insert(db, { resource: "browser", grp_id: 1, state: "done", log_path: "/tmp/nope.log" });
 
   expect((await get(app, "/orch/v1/task")).status).toBe(401);
   expect(await (await withToken(app, "/orch/v1/task", "tok-eng")).text()).toContain("g1 only");
@@ -1467,9 +1443,7 @@ test("a group name an agent chose is still branch-shaped", async () => {
   // characters the splitting agent sent, `;` included.
   const { app, db } = harness();
   db.run("UPDATE grp SET status = 'PLANNING' WHERE id = 1");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'opus', 'tok-d', 0)",
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id: 1, role: "dispatcher", model: "opus", token: "tok-d" });
   const r = await post(
     app,
     "/orch/v1/split",
@@ -1601,9 +1575,12 @@ test("malformed JSON cannot become an empty control request", async () => {
 
 test("path ids are decimal records, not JavaScript number expressions", async () => {
   const h = harness();
-  h.db.run(
-    "INSERT INTO project (id, name, repo_path, remote, created_at) VALUES (16, 'sixteen', '/tmp/16', 'https://github.com/o/16.git', 0)",
-  );
+  fx.project.insert(h.db, {
+    id: 16,
+    name: "sixteen",
+    repo_path: "/tmp/16",
+    remote: "https://github.com/o/16.git",
+  });
 
   const bad = await h.app(
     new Request("http://x/api/v1/projects/0x10", {
@@ -1626,7 +1603,7 @@ test("every route that takes a body declares its shape", () => {
   // The check that keeps the next route honest. The shared parser owns both JSON
   // syntax and the declared schema, so handlers cannot silently re-derive either
   // through their own `?? ""` and `String(...)` fallbacks.
-  const undeclared = routeCalls()
+  const undeclared = routeCalls(harness().ctx)
     .filter(({ method, body }) => ["post", "put", "patch"].includes(method) && !body)
     .map(({ path }) => path);
   // The exceptions, named rather than tolerated: these routes take no body at all.
@@ -1647,7 +1624,7 @@ test("every route that takes a body declares its shape", () => {
 });
 
 test("every dynamic route declares its path shape", () => {
-  const unvalidated = routeCalls()
+  const unvalidated = routeCalls(harness().ctx)
     .filter(({ path, params }) => path.includes(":") && !params)
     .map(({ path }) => path);
   expect(unvalidated).toEqual([]);
