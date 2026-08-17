@@ -59,6 +59,16 @@ bun run check
 ```
 
 Use targeted tests while iterating, then the complete gates before a commit.
+
+**Read CRAP numbers only from `bun run audit:crap`.** It regenerates coverage
+first; plain `bun run audit` reads whatever `coverage/coverage-final.json`
+happens to hold, and a stale one is worse than none — functions it can no longer
+match fall back to an export-reference estimate of "0% tested" and breach the
+threshold. Measured twice in one session: once as 189 phantom complexity
+findings across thirty files, once as a single finding against a function with
+twelve passing unit tests. The structural findings in plain `audit` — boundaries,
+cycles, dead code, duplication — are unaffected and can be trusted.
+
 Do not run overlapping enforcement owners. Replacing TypeScript, Oxlint,
 Fallow, Bun test, CodeQL, or another owner requires an ADR and migration
 evidence; adding a second tool beside it is forbidden. Dependency selection is
