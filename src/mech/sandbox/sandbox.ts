@@ -1558,11 +1558,29 @@ export const REAL: SandboxDriver = {
  * Here rather than in `realExec`, so the fake driver's failures land the same way.
  */
 export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): Promise<ExecOutcome> {
-  try {
-    return await driver(ctx).exec(ctx, scope, cmd, opts);
-  } catch (e) {
-    return { code: EXEC_UNAVAILABLE, out: "", err: `container unavailable: ${errText(e)}` };
-  }
+  // The span is here for the same reason the guard is: about thirty call sites
+  // converge on this one function, and the thirty-first would not have got one.
+  // The command itself is never an attribute — it carries repository paths and
+  // file names, which `docs/standards/observability.md` forbids on labels — so
+  // the scope is what identifies it.
+  const attributes = sandboxScope(scope, "project" in scope ? scope.project : null);
+  return activeTracer().startActiveSpan("sandbox.exec", { attributes }, async (span) => {
+    try {
+      const out = await driver(ctx).exec(ctx, scope, cmd, opts);
+      // This function is documented as never rejecting, so a span that errored
+      // only on a throw could never error at all. An unreachable container is
+      // the case the guard below was written for — a stopped agent — and it has
+      // to look like a failure in the panel as well as to the caller.
+      if (out.code === EXEC_UNAVAILABLE) span.setStatus({ code: SpanStatusCode.ERROR, message: out.err });
+      return out;
+    } catch (e) {
+      const err = `container unavailable: ${errText(e)}`;
+      span.setStatus({ code: SpanStatusCode.ERROR, message: err });
+      return { code: EXEC_UNAVAILABLE, out: "", err };
+    } finally {
+      span.end();
+    }
+  });
 }
 
 /** `sh`'s "found it, could not run it". The lease guard already speaks it. */

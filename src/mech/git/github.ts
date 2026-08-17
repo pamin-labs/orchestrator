@@ -8,6 +8,9 @@ import { loadAuth } from "../sandbox/auth.ts";
 import { raise } from "../flow/escalate.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { clearRepositoryHold, holdRepository } from "./repository.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { errText } from "../../platform/process/text.ts";
+import { activeTracer } from "../../platform/observability/traces.ts";
 import type { Json } from "../../contracts/json.ts";
 import { recordCache, recordRetry } from "../../platform/observability/metrics.ts";
 import { currentRequestId, requestContext } from "../../platform/observability/request-context.ts";
@@ -527,7 +530,45 @@ function transportMessage(thrown: unknown): string {
   return String(cause).slice(0, 200);
 }
 
+/**
+ * A GitHub path as a bounded label.
+ *
+ * The raw path carries the repository name and the query string carries
+ * cursors, both of which `docs/standards/observability.md` forbids on labels and
+ * neither of which is bounded — one span name per pull request is a span table
+ * nobody can group by. Owner, repository and every number become placeholders,
+ * which leaves about a dozen distinct templates for the whole product.
+ */
+export const githubRoute = (path: string): string =>
+  path
+    .split("?")[0]!
+    .replace(/^\/repos\/[^/]+\/[^/]+/, "/repos/{owner}/{repo}")
+    .replace(/\/\d+(?=\/|$)/g, "/{n}");
+
 async function requestGithub<T>(state: GithubState, input: RequestInput<T>): Promise<GhResult<T>> {
+  return activeTracer().startActiveSpan(
+    "github.request",
+    { attributes: { "http.method": input.method, "http.route": githubRoute(input.path) } },
+    async (span) => {
+      try {
+        const result = await requestGithubInner(state, input);
+        // `requestGithub` reports failure by returning a `GhResult`, so a span
+        // that errored only on a throw would stay green through a 500, a refused
+        // credential and a rate limit alike. Measured before this landed: 18
+        // calls to one route, 132.1s, and not one error row in the whole table.
+        if (!result.ok) span.setStatus({ code: SpanStatusCode.ERROR, message: `${result.status} ${result.bucket}` });
+        return result;
+      } catch (e) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+        throw e;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
+async function requestGithubInner<T>(state: GithubState, input: RequestInput<T>): Promise<GhResult<T>> {
   const callerSignal = input.callerSignal ?? requestContext.getStore()?.signal;
   const activeSignal = callerSignal
     ? AbortSignal.any([callerSignal, AbortSignal.timeout(TIMEOUT_MS)])

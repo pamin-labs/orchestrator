@@ -76,6 +76,11 @@ test("a turn's stages are stored as one nested trace under the job that ran them
   const spans = soleTrace(db);
   expect(spans.map((s) => s.name).toSorted()).toEqual([
     "job agent_turn",
+    // The container round trips the checkpoint makes, timed since the exec
+    // funnel got a span. Listed exactly rather than filtered out, because an
+    // unexpected span appearing here is itself worth failing on.
+    "sandbox.exec",
+    "sandbox.exec",
     "turn",
     "turn.checkpoint",
     "turn.prepare",

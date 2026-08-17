@@ -28,7 +28,19 @@ function traced(handler: Parameters<typeof fakeSandbox>[0]) {
   return { db, provider, ctx: testContext({ db, sandbox: fakeSandbox(handler) }) };
 }
 
-const spans = (db: DB) => db.query<{ name: string; status: string }, []>("SELECT name, status FROM span").all();
+const spans = (db: DB) =>
+  db.query<{ name: string; status: string }, []>("SELECT name, status FROM span ORDER BY started_at").all();
+
+/** Which span each one hangs off, by name, so nesting is assertable without ids. */
+const parents = (db: DB) =>
+  Object.fromEntries(
+    db
+      .query<{ name: string; parent: string | null }, []>(
+        "SELECT c.name, p.name AS parent FROM span c LEFT JOIN span p ON p.span_id = c.parent_span_id",
+      )
+      .all()
+      .map((r) => [r.name, r.parent]),
+  );
 
 test("reading the corpus out of a container is timed", async () => {
   const t = traced(() => ({ out: `${MARKER}a.ts\nexport const a = 1\n` }));
@@ -36,7 +48,9 @@ test("reading the corpus out of a container is timed", async () => {
     const heads = await treeHeads(t.ctx, { grp: 1 }, 64);
     await t.provider.forceFlush();
     expect([...heads.keys()]).toEqual(["a.ts"]);
-    expect(spans(t.db).map((s) => s.name)).toEqual(["git.tree_heads"]);
+    // The container round trip nests under the read that made it, so "the index
+    // rule is slow" resolves one level further than it used to.
+    expect(parents(t.db)).toEqual({ "git.tree_heads": null, "sandbox.exec": "git.tree_heads" });
   } finally {
     installTracerProvider(new NodeTracerProvider());
   }
@@ -52,7 +66,14 @@ test("a container that refuses marks the span, and still answers empty", async (
   try {
     expect(await treeHeads(t.ctx, { grp: 1 }, 64)).toEqual(new Map());
     await t.provider.forceFlush();
-    expect(spans(t.db)).toEqual([{ name: "git.tree_heads", status: "error" }]);
+    // One of the two, and the distinction is the point: the container answered,
+    // so `sandbox.exec` succeeded — a command that exits non-zero inside a
+    // healthy container is not a transport failure. `execIn` marks its span only
+    // for exit 126, which it reserves for a container it could not reach at all.
+    expect(spans(t.db)).toEqual([
+      { name: "sandbox.exec", status: "unset" },
+      { name: "git.tree_heads", status: "error" },
+    ]);
   } finally {
     installTracerProvider(new NodeTracerProvider());
   }
@@ -70,7 +91,9 @@ test("a container that refuses marks the span, and still answers empty", async (
  */
 
 test("a failed ls-tree marks the span, and an empty repository does not", async () => {
-  const failing = traced((cmd) => (cmd.includes("ls-tree") ? { code: 128, out: "fatal: not a valid object name" } : {}));
+  const failing = traced((cmd) =>
+    cmd.includes("ls-tree") ? { code: 128, out: "fatal: not a valid object name" } : {},
+  );
   try {
     // Only `ls-tree` fails: the `test -d` and the bare clone before it succeed,
     // so this is the path where the mirror is fine and the read is not.

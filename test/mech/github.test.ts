@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Json } from "../../src/contracts/json.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
-import { classify, makeGithub, type GithubFetcher } from "../../src/mech/git/github.ts";
+import { classify, githubRoute, makeGithub, type GithubFetcher } from "../../src/mech/git/github.ts";
 import { parseRepo } from "../../src/contracts/repository.ts";
 import { server, mockHttp } from "../support/http.ts";
 
@@ -412,4 +412,24 @@ test("owner/repo comes out of whatever shape the remote is in", () => {
   expect(parseRepo("https://github.com/me/x")).toBe("me/x");
   expect(parseRepo("ssh://git@github.com/me/x.git")).toBe("me/x");
   expect(parseRepo("git@gitlab.com:me/x.git")).toBeNull();
+});
+
+/**
+ * A span label has to be groupable, and a repository name is neither.
+ *
+ * `docs/standards/observability.md` forbids repository paths on labels, and the
+ * cardinality argument is the same point from the other side: one span name per
+ * pull request is a table nobody can aggregate. The templates below are the
+ * whole product's GitHub surface — about a dozen of them.
+ */
+test("a GitHub path becomes a route template, not a repository name", () => {
+  expect(githubRoute("/repos/pamin-labs/orchestrator/pulls/12")).toBe("/repos/{owner}/{repo}/pulls/{n}");
+  expect(githubRoute("/repos/pamin-labs/orchestrator/pulls/12/reviews?per_page=100")).toBe(
+    "/repos/{owner}/{repo}/pulls/{n}/reviews",
+  );
+  expect(githubRoute("/repos/pamin-labs/orchestrator")).toBe("/repos/{owner}/{repo}");
+  // Cursors are the unbounded half: `?page=` walks every page of every repo.
+  expect(githubRoute("/installation/repositories?per_page=100&page=7")).toBe("/installation/repositories");
+  // Nothing to redact, nothing changed.
+  expect(githubRoute("/user")).toBe("/user");
 });
