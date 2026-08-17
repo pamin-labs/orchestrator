@@ -231,6 +231,37 @@ export function isServerLine(l: string): boolean {
   return !/\b(ps|grep|pkill|pgrep|kill|killall|tail|less|vim|nano|echo|which)\b/.test(l);
 }
 
+/**
+ * Is this pid still there — without asking `ps`.
+ *
+ * POSIX signal 0 delivers nothing and only reports whether the process exists
+ * and whether we may signal it. No subprocess, no allocation: the whole check is
+ * one `kill(2)`, against the 30.6ms `runningServer()` spends forking `ps`.
+ * `EPERM` counts as alive — the process is there and belongs to somebody else,
+ * which for "did the server die" is a yes.
+ *
+ * The known limit is pid reuse: a pid that was the server's and now belongs to
+ * something unrelated reads as alive. That is why this answers "still", not
+ * "which" — callers pair it with a pid they recorded and fall back to
+ * `runningServer()` the moment it says no, which is when the argv is needed
+ * anyway.
+ *
+ * There is no library for this. The maintained ones (`ps-list`, `find-process`)
+ * enumerate processes and therefore fork `ps` themselves; the ones that check a
+ * single pid (`is-running` 2016, `process-exists` 2021, `ps-node` 2017) are
+ * abandoned wrappers around exactly the two lines below.
+ */
+export function pidAlive(pid: string): boolean {
+  const n = Number(pid);
+  if (!Number.isSafeInteger(n) || n <= 0) return false;
+  try {
+    process.kill(n, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 export function runningServer(): { pid: string; argv: string[]; config: string | null } | null {
   try {
     const ps = Bun.spawnSync(["ps", "-Ao", "pid=,args="], { stdout: "pipe" }).stdout.toString();

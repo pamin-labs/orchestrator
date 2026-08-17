@@ -14,6 +14,7 @@ import {
   execIn,
   killSandbox,
   renewSandbox,
+  pidAlive,
   restartServer,
   runningServer,
   UTIL,
@@ -107,6 +108,8 @@ let lastSweep = 0;
  * right answer, because a command line we did not observe is a guess.
  */
 let seenServerArgv: string[] | null = null;
+/** Its pid, so the steady state is a `kill(pid, 0)` rather than a forked `ps`. */
+let seenServerPid: string | null = null;
 let serverRestarts = 0;
 let nextServerTry = 0;
 
@@ -116,6 +119,7 @@ export const SERVER_RESTART_CAP = 3;
 /** Tests, and the boss's button: a deliberate restart clears the automatic count. */
 export function resetServerRestarts(): void {
   seenServerArgv = null;
+  seenServerPid = null;
   serverRestarts = 0;
   nextServerTry = 0;
 }
@@ -1141,12 +1145,19 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // - a hard cap. On reaching it this stops and escalates, because N failed
   //   restarts is evidence that restarting is not the answer.
   await step("19", findings, async () => {
-    const server = (deps.runningServer ?? runningServer)();
+    // The steady state — server up, seen before — is one `kill(pid, 0)` and no
+    // subprocess. `ps` runs only when that says the pid is gone, which is also
+    // the only time its argv is worth re-reading. A pid that has been reused
+    // reads as alive here; the pairing is deliberate, since the next thing this
+    // rule would do is restart a server that is in fact running.
+    const stillThere = seenServerPid !== null && pidAlive(seenServerPid);
+    const server = stillThere ? null : (deps.runningServer ?? runningServer)();
     if (server?.argv.length) {
       seenServerArgv = server.argv;
-      serverRestarts = 0;
+      seenServerPid = server.pid;
     }
-    switch (serverAction(!!server, seenServerArgv, serverRestarts, now(), nextServerTry)) {
+    if (stillThere || server) serverRestarts = 0;
+    switch (serverAction(stillThere || !!server, seenServerArgv, serverRestarts, now(), nextServerTry)) {
       case "give_up":
         nextServerTry = now() + REEMIT_MS;
         findings.push({
