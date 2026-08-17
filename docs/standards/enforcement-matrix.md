@@ -50,7 +50,7 @@ These encode product policy. There is no external owner to rent.
 | Dependency/action updates | Dependabot | reviewable pull request | handwritten update scripts | — |
 | Filesystem/container vulnerabilities and SBOM | Trivy | scan plus SPDX/CycloneDX artifacts | Snyk Container, separate Syft pipeline — two scanners for one answer | — |
 | Workflow syntax | actionlint | `workflow-static` | handwritten YAML parser | — |
-| Other CI/tool config schemas | ajv + published schemas | `codecov.yml`, `dependabot.yml`, `trivy.yaml` validated | nothing today — a malformed `codecov.yml` is silently ignored and the gate disappears | actionlint covers these files |
+| Other CI/tool config schemas | ajv + SchemaStore JSON vendored under `test/fixtures/schemas/` | `codecov.yml` and `.github/dependabot.yml` validated in `test/governance/config-schemas.test.ts` | nothing before this — a malformed `codecov.yml` is silently ignored and the gate disappears. Not the `@schemastore/*` npm packages: they ship TypeScript types only, and a type assertion over parsed YAML validates nothing | actionlint covers these files, or SchemaStore publishes the schemas themselves to npm |
 | Workflow security | zizmor | `workflow-static` | repository-specific imitation rules | — |
 
 Repository settings own branch protection, required checks, secret scanning,
