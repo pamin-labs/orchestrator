@@ -13,14 +13,9 @@ test("stress repeats replay-safe suites and leaves stateful live integration to 
 });
 
 test("stress replay forwards Bun's failing seed", () => {
-  expect(stressArgs({ BUN_TEST_SEED: "1234" })).toEqual([
-    "--randomize",
-    "--seed",
-    "1234",
-    "--rerun-each",
-    "10",
-    "--max-concurrency",
-    "4",
-  ]);
+  expect(stressArgs({ BUN_TEST_SEED: "1234" })).toEqual(["--randomize", "--seed", "1234", "--rerun-each", "10"]);
+  // Bun's default concurrency, not a cap. Interleaving is what this job hunts, so
+  // narrowing it to a fifth of the default searched less for no recorded reason.
+  expect(stressArgs({})).not.toContain("--max-concurrency");
   expect(() => stressArgs({ BUN_TEST_SEED: "not-a-seed" })).toThrow("BUN_TEST_SEED must be a safe integer");
 });

@@ -417,6 +417,17 @@ export function stageSkills(dir: string, want: SkillRef[]): { dir: string; stage
  * poll is a feed nobody reads.
  */
 const skillsWarned = new Set<number>();
+
+/**
+ * Tests, and only tests. The fifth module-level hold, and the one that was not
+ * reset between them: `bun test --rerun-each` runs a test again in the same
+ * process, the set still remembers the first run, and the second emits nothing.
+ * Reset from `test/support/setup.ts` beside the other four, because a rule every
+ * caller has to remember is one the twentieth caller forgets.
+ */
+export function resetSkillsWarned(): void {
+  skillsWarned.clear();
+}
 export function projectSkillsPending(ctx: Ctx, projectId: number, repoPath?: string | null): void {
   if (!repoPath || repoPath.startsWith("/") || skillsWarned.has(projectId)) return;
   if (projectSkills(ctx.db, projectId).length) return;

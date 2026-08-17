@@ -5,6 +5,7 @@ import { resetRepoHolds } from "../../src/mech/git/repository.ts";
 import { resetNet } from "../../src/mech/sandbox/net.ts";
 import { resetSandboxHold } from "../../src/mech/sandbox/sandbox.ts";
 import { resetServerRestarts } from "../../src/mech/ops/watchdog.ts";
+import { resetSkillsWarned } from "../../src/mech/skills.ts";
 
 /**
  * The three holds are module state, and `bun test` runs every file in one
@@ -31,6 +32,7 @@ beforeEach(() => {
   resetRepoHolds();
   resetNet();
   resetServerRestarts();
+  resetSkillsWarned();
 });
 
 /**

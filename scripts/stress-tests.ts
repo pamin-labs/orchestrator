@@ -21,13 +21,18 @@ export function stressFiles(): string[] {
  * cross-file order dependence is exactly what this job exists to find. Running
  * the stress pass the same way as CI would test the configuration that cannot
  * have the bug. One shared process, shuffled, ten times over is the harder case.
+ *
+ * Concurrency is Bun's default rather than the `--max-concurrency 4` this used to
+ * pass, which had no recorded reason and was backwards for the job: interleaving
+ * is what a stress pass hunts, so capping it at a fifth of the default narrowed
+ * the space being searched.
  */
 export function stressArgs(env: Readonly<Record<string, string | undefined>>): string[] {
   const rawSeed = env.BUN_TEST_SEED;
-  if (rawSeed === undefined) return ["--randomize", "--rerun-each", "10", "--max-concurrency", "4"];
+  if (rawSeed === undefined) return ["--randomize", "--rerun-each", "10"];
   const seed = Number(rawSeed);
   if (!Number.isSafeInteger(seed)) throw new Error("BUN_TEST_SEED must be a safe integer");
-  return ["--randomize", "--seed", String(seed), "--rerun-each", "10", "--max-concurrency", "4"];
+  return ["--randomize", "--seed", String(seed), "--rerun-each", "10"];
 }
 
 if (import.meta.main) {
