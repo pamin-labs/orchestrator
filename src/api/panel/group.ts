@@ -59,6 +59,7 @@ export const postIdea = (async (ctx, _req, _p, b) => {
   // With another group already holding paths, the boundary has to be cut before
   // anyone plans work inside it — otherwise the plan is written against paths the
   // group turns out not to own.
+  // fallow-ignore-next-line security-sink -- `CLAIMING_SQL` is `sql(CLAIMING)` in `mech/flow/ownership.ts`: a module-level constant built once from `GRP_STATES`, a source literal tuple. No value on this path is an input. The ids are bound through `?`.
   const others = ctx.db
     .query<{ id: number; name: string; owns_json: string }, [number, number]>(
       `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
@@ -193,6 +194,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
     ctx.db.run("UPDATE grp SET approved_at = unixepoch() * 1000 WHERE id = ?", [grpId]);
     // Put the Architect back on it — the boundary is its job, and it was observed
     // cutting one group's paths and forgetting the other's.
+    // fallow-ignore-next-line security-sink -- `CLAIMING_SQL` is `sql(CLAIMING)` in `mech/flow/ownership.ts`: a module-level constant built once from `GRP_STATES`, a source literal tuple. No value on this path is an input. The ids are bound through `?`.
     const undeclared = ctx.db
       .query<{ id: number; name: string }, [number]>(
         `SELECT id, name FROM grp

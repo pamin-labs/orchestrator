@@ -68,6 +68,7 @@ export const getNotes = (async (ctx, _req, _params, query) => {
   // the table that already existed. Neither is anything the boss reads.
   where.push("n.kind NOT IN ('pageindex', 'map')");
 
+  // fallow-ignore-next-line security-sink -- every element of `where` is pushed as a source literal a few lines above, and each one carries `?` for its value; the values themselves travel in `args` and are bound by `.all(...args)`. The interpolation joins clauses, never data.
   const rows = ctx.db
     .query<PanelNote, (string | number)[]>(
       `SELECT n.id, n.grp_id AS grpId, n.kind, n.body, n.at, n.export_path AS exportPath,

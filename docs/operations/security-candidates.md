@@ -42,6 +42,13 @@ because there is nothing left to annotate.
 | ssrf | `src/mech/ops/preflight.ts:62` | false positive | destination is `cfg.sandbox.server` and the key sent is the one stored for that address | mech |
 | ssrf | `src/mech/ops/preflight.ts:201` | false positive | gateway and secret come from the same `runtime_auth` row; they cannot be substituted for each other | mech |
 | ssrf | `src/mech/sandbox/images.ts:44` | false positive | fixed `ghcr.io` origin, `PUBLISHED_REPO` in the path | mech |
+| sql-injection | `src/platform/persistence/database.ts:709` | false positive | `table` loops a two-element `as const` and `key` is a ternary of two literals, so both interpolations are fixed at compile time | platform |
+| sql-injection | `src/api/panel/group.ts:64` | false positive | `CLAIMING_SQL` is `sql(CLAIMING)`, built once from the `GRP_STATES` literal tuple; the ids are bound | api |
+| sql-injection | `src/api/panel/group.ts:199` | false positive | same constant, group id bound | api |
+| sql-injection | `src/api/orch/planning.ts:348` | false positive | same constant, project and group ids bound | api |
+| sql-injection | `src/api/panel/panel.ts:72` | false positive | every `where` element is a source literal carrying `?`; the values travel in `args` and are bound by `.all(...args)` | api |
+| ssrf | `src/api/panel/authflow.ts:132` | false positive | destination is `cfg.sandbox.server` and the key sent is the one stored for that address — the same disposition as `preflight.ts:62` | api |
+| ssrf | `src/orch/cli.ts:88` | false positive | the URL is the generated client's, built from `ORCH_URL` or loopback; inside a sandbox `ORCH_MAILBOX` is set and this branch is never taken | orch |
 | ssrf | `src/mech/sandbox/images.ts:51` | false positive | fixed `ghcr.io` origin; token was minted for that same repository | mech |
 | ssrf | `src/mech/sandbox/mailbox.ts:94` | false positive | `normalise` pins the origin and the `/orch/v1/` prefix and returns the string that is sent | mech |
 | ssrf | `src/mech/sandbox/server.ts:93` | false positive | destination is `cfg.sandbox.server`, paired with its own key | mech |

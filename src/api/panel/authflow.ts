@@ -128,6 +128,7 @@ export const postAuth = (async (ctx, _req, _p, b) => {
  */
 async function sandboxKeyWorks(server: string, key: string): Promise<"ok" | "invalid" | "unknown"> {
   try {
+    // fallow-ignore-next-line security-sink -- `server` is `cfg.sandbox.server`, the address of the boss's own sandbox server, and the key sent with it is the key stored for that same address. Choosing that address is the feature; the panel is loopback-only and no request field reaches this. Same disposition as the probe in `mech/sandbox/server.ts`.
     const r = await fetch(`http://${server}/v1/sandboxes`, {
       headers: { "OPEN-SANDBOX-API-KEY": key },
       signal: AbortSignal.timeout(3000),

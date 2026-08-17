@@ -84,6 +84,7 @@ function requestPayload(init?: Parameters<typeof fetch>[1]): Json | undefined {
 const transport = Object.assign(
   async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const { method, headers, requestId, idempotencyKey } = transportMetadata(input, init);
+    // fallow-ignore-next-line security-sink -- `input` is built by the generated Hono client from `URL_BASE`, which is `ORCH_URL` or loopback, and the path is a route name from this file's own commands. This branch is the developer one: inside a sandbox `ORCH_MAILBOX` is set and every request goes to the file transport below, never to the network.
     if (!MAILBOX) return fetch(input, { ...init, headers });
     const url = new URL(input instanceof Request ? input.url : input.toString());
     const answer = await viaMailbox(

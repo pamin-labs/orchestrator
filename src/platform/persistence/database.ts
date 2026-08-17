@@ -705,6 +705,7 @@ export function rewriteSkillPaths(db: DB): void {
   const like = "%skills/%/SKILL.md";
   for (const table of ["note", "event"] as const) {
     const key = table === "note" ? "id" : "seq";
+    // fallow-ignore-next-line security-sink -- `table` is the loop variable over a two-element `as const` literal and `key` is a ternary between two source literals, so both interpolations have exactly two possible values, fixed at compile time. The pattern being matched is bound through `?`.
     const rows = db
       .query<{ id: number; body: string }, [string]>(`SELECT ${key} AS id, body FROM ${table} WHERE body LIKE ?`)
       .all(like);

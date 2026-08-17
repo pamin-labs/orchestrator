@@ -342,6 +342,7 @@ type PathOwner = { id: number; name: string; owns_json: string };
 
 function pathOwner(ctx: Ctx, projectId: number, blockedGroupId: number, path: string): PathOwner | null {
   return (
+    // fallow-ignore-next-line security-sink -- `CLAIMING_SQL` is `sql(CLAIMING)` in `mech/flow/ownership.ts`: a module-level constant built once from `GRP_STATES`, a source literal tuple. No value on this path is an input. The ids are bound through `?`.
     ctx.db
       .query<PathOwner, [number, number]>(
         `SELECT id, name, owns_json FROM grp WHERE project_id = ? AND id != ?
