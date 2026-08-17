@@ -11,15 +11,16 @@ import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from ".
 import { applyOverrides } from "./platform/config/settings.ts";
 import { changed, checkConfig, checkRoles } from "./mech/ops/checkconfig.ts";
 import { open } from "./platform/persistence/database.ts";
-import { REAL, sandboxHeld } from "./mech/sandbox/sandbox.ts";
+import { REAL, sandboxHeld, type Scope } from "./mech/sandbox/sandbox.ts";
+import type { DB } from "./platform/persistence/database.ts";
 import { startMailbox } from "./mech/sandbox/mailbox.ts";
 import { baseRefFor, createCheckout, treeHeads } from "./mech/git/checkout.ts";
 import { preflight, report, type Check } from "./mech/ops/preflight.ts";
 import { restageSkills } from "./mech/skills.ts";
 import { ensureServer } from "./mech/sandbox/server.ts";
 import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
-import { dispatchFeedback, openPr, pollPrs, prBody, prTitle } from "./mech/git/prwatch.ts";
-import { makeGithub } from "./mech/git/github.ts";
+import { dispatchFeedback, type Feedback, openPr, pollPrs, prBody, prTitle } from "./mech/git/prwatch.ts";
+import { type Github, makeGithub } from "./mech/git/github.ts";
 import { repoHeld } from "./mech/git/repository.ts";
 import {
   chargeIndex,
@@ -137,6 +138,138 @@ const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 function isApplicationPath(path: string): boolean {
   return path === "/healthz" || path === "/readyz" || path.startsWith("/api/v1/") || path.startsWith("/orch/v1/");
+}
+
+/** What the heartbeat has already started and must not start twice. */
+export interface InFlight {
+  index: Promise<void> | null;
+  poll: Promise<void> | null;
+}
+
+export interface HeartbeatDeps {
+  ctx: Ctx;
+  db: DB;
+  /** Only the two calls a tick makes, so a test does not have to build a Scheduler. */
+  sched: { enqueue: (kind: string, payload: Record<string, never>) => unknown; tick: () => unknown };
+  gh: Github;
+  url: string;
+  notifier: Notifier;
+  /** Registers background work so shutdown can wait for it. */
+  track: <T>(work: Promise<T>) => Promise<T>;
+  inFlight: InFlight;
+}
+
+/**
+ * One tick of the server's own work, separated from the timer that drives it.
+ *
+ * Only the re-arming stays in the callback, because that is about the timer
+ * handle. Everything decided here — whether a watchdog is already queued, what
+ * the boss is waiting on, whether the network is worth trying, and whether the
+ * last index or poll has come back — used to be reachable only by starting the
+ * process and waiting thirty seconds per branch.
+ */
+export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }: HeartbeatDeps): void {
+  // The watchdog is an ordinary job. One pending is enough: a second would only
+  // re-examine the same groups, and the queue is not where it should pile up.
+  const queued = db
+    .query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'watchdog' AND state = 'pending'")
+    .get()!.c;
+  if (queued === 0) sched.enqueue("watchdog", {});
+  sched.tick();
+
+  // Everything waiting on the boss, as one message. The CoS is meant to do this
+  // in its own words; this is the backstop for when it does not run at all.
+  const waiting = db
+    .query<PendingItem, []>(
+      `SELECT e.id, e.severity, e.question, e.grp_id AS grpId, g.name AS "group"
+         FROM escalation e LEFT JOIN grp g ON g.id = e.grp_id
+         WHERE e.chain_state = 'boss' AND e.answer IS NULL
+         ORDER BY e.created_at`,
+    )
+    .all();
+  const batched = batchForBoss(waiting, url);
+  if (batched) void notifier.push(batched);
+
+  // Both of these need the network — the index spawns a model, `pollPrs` asks
+  // GitHub — so they sit behind the same gate the scheduler uses. Offline they
+  // would each spend their timeout every thirty seconds and fill the feed with
+  // failures the boss can do nothing about.
+  if (!isOnline()) return;
+
+  // Keep the PageIndex tree current. Incremental by file signature, so a quiet
+  // repo costs zero model calls; a busy one pays for the files that changed.
+  // `void` with no `.catch` sent every throw to the process backstop, which
+  // emits a blocker — one per tick, forever, and `bus.emit` has no dedup.
+  if (!inFlight.index) {
+    inFlight.index = track(
+      refreshIndex(ctx).catch((error: unknown) => {
+        ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${errText(error)}` });
+      }),
+    ).finally(() => {
+      inFlight.index = null;
+    });
+  }
+
+  // Polling is arithmetic, not judgement, so it happens here rather than in an
+  // agent. Only a change wakes the PM.
+  // The `.then` writes rows, enqueues turns and pushes notifications, so a group
+  // dropped between the poll and the handler lands here as an unhandled
+  // rejection — which is a process-wide blocker for one stale row.
+  if (!inFlight.poll) {
+    inFlight.poll = track(
+      pollPrs(ctx, gh)
+        .then((fs) => {
+          for (const f of fs) applyPrOutcome(ctx, f, url, notifier);
+        })
+        .catch((e: unknown) => consola.error(`pollPrs: ${errText(e)}`)),
+    ).finally(() => {
+      inFlight.poll = null;
+    });
+  }
+}
+
+/**
+ * Log every unhandled rejection, but put each distinct one on the boss's feed
+ * once. Returns the text to compare the next one against.
+ *
+ * What this catches is mostly the per-tick chains, so without the check a single
+ * recurring bug is a blocker line every thirty seconds and the feed stops being
+ * readable — worse than the bug it is reporting. The console keeps all of them.
+ */
+export function reportRejection(ctx: Ctx, e: unknown, said: string): string {
+  const why = (e instanceof Error ? (e.stack ?? e.message) : String(e)).slice(0, 600);
+  consola.error(`unhandled rejection (kept running):\n${why}`);
+  if (why === said) return said;
+  try {
+    ctx.bus.emit({
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "blocker",
+      body: `有个后台任务崩了，服务没跟着退出。这是个 bug，请把这段贴给开发：\n${why.slice(0, 400)}`,
+    });
+  } catch {
+    // The record is the thing that failed. The console line above is the report.
+  }
+  return why;
+}
+
+/**
+ * What one poll result means for the group behind it.
+ *
+ * Four outcomes and they are not interchangeable: a merge lands the group, a
+ * close stops it and asks the boss, a reopen puts it back, and anything else is
+ * review feedback for the agents. Ordering matters — a PR can come back merged
+ * and closed in the same poll, and treating that as a close would stop a group
+ * whose work is already on the default branch.
+ */
+export function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifier: Notifier): void {
+  if (f.merged) {
+    landGroup(ctx, f.grpId, "github");
+    return;
+  }
+  if (f.closed) return prClosed(ctx, f.grpId, f.prNumber, url, notifier);
+  if (f.reopened) return prReopened(ctx, f.grpId, f.prNumber);
+  dispatchFeedback(ctx, f);
 }
 
 /**
@@ -282,7 +415,15 @@ async function buildProjectIndex(ctx: Ctx, projectId: number, heads: Map<string,
   return { calls: result.calls, failed: result.failed, files: files.length };
 }
 
-function recordIndexResult(
+/**
+ * What an index pass is allowed to conclude from its own numbers.
+ *
+ * Three separate decisions the loop above cannot make: a pass that did real work
+ * without failing marks the tree fresh, a pass where every call failed is the
+ * model being down rather than the repository being broken, and a pass that made
+ * no calls at all says nothing and must not clear the down flag.
+ */
+export function recordIndexResult(
   ctx: Ctx,
   projectId: number,
   at: string,
@@ -297,6 +438,22 @@ function recordIndexResult(
     kind: "state_change",
     body: `PageIndex: summarised ${result.calls - result.failed} node(s), ${result.files} files indexed`,
   });
+}
+
+/**
+ * Which project pays for an index model call.
+ *
+ * Charged to the project's `indexer` row, so the most frequent model call in the
+ * system stops being invisible in every cost total. A project-scoped call bills
+ * itself; a group-scoped one bills the group's project. There is no util case:
+ * nothing in the utility container asks a model — it has no agent in it, which
+ * is the entire reason it may hold real tokens.
+ */
+export function chargedProject(db: DB, scope: Scope): number | undefined {
+  if ("project" in scope) return scope.project;
+  if (!("grp" in scope)) return undefined;
+  return db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)
+    ?.project_id;
 }
 
 function warnModelDownOnce(ctx: Ctx, projectId: number, failed: number): void {
@@ -377,15 +534,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     // bill the group's project; a project-scoped one bills itself.
     askIn: (scope) =>
       modelAsk(ctx, cfg.indexModel, scope, undefined, (u) => {
-        // No util case: nothing in the utility container asks a model — it has
-        // no agent in it, which is the entire reason it may hold real tokens.
-        const projectId =
-          "project" in scope
-            ? scope.project
-            : "grp" in scope
-              ? db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)
-                  ?.project_id
-              : undefined;
+        const projectId = chargedProject(db, scope);
         if (projectId) chargeIndex(ctx, projectId, cfg.indexModel, u);
       }),
     waiters: new Map(),
@@ -556,74 +705,14 @@ export function start(overrides: Partial<Config> = {}): Started {
   // timer handle from the settings route, the callback notices its own period
   // changed and re-arms — one place, and it cannot be forgotten by a new writer.
   let armed = cfg.watchdogIntervalMs;
-  let indexWork: Promise<void> | null = null;
-  let pollWork: Promise<void> | null = null;
+  const inFlight: InFlight = { index: null, poll: null };
   let tick = setInterval(function beat() {
     if (cfg.watchdogIntervalMs !== armed) {
       clearInterval(tick);
       armed = cfg.watchdogIntervalMs;
       tick = setInterval(beat, armed);
     }
-    const queued = db
-      .query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'watchdog' AND state = 'pending'")
-      .get()!.c;
-    if (queued === 0) sched.enqueue("watchdog", {});
-    sched.tick();
-
-    // Everything waiting on the boss, as one message. The CoS is meant to do this
-    // in its own words; this is the backstop for when it does not run at all.
-    const waiting = db
-      .query<PendingItem, []>(
-        `SELECT e.id, e.severity, e.question, e.grp_id AS grpId, g.name AS "group"
-         FROM escalation e LEFT JOIN grp g ON g.id = e.grp_id
-         WHERE e.chain_state = 'boss' AND e.answer IS NULL
-         ORDER BY e.created_at`,
-      )
-      .all();
-    const batched = batchForBoss(waiting, url);
-    if (batched) void notifier.push(batched);
-
-    // Both of these need the network — the index spawns a model, `pollPrs` asks
-    // GitHub — so they sit behind the same gate the scheduler uses. Offline they
-    // would each spend their timeout every thirty seconds and fill the feed with
-    // failures the boss can do nothing about.
-    if (!isOnline()) return;
-
-    // Keep the PageIndex tree current. Incremental by file signature, so a quiet
-    // repo costs zero model calls; a busy one pays for the files that changed.
-    // `void` with no `.catch` sent every throw to the process backstop, which
-    // emits a blocker — one per tick, forever, and `bus.emit` has no dedup.
-    if (!indexWork) {
-      indexWork = track(
-        refreshIndex(ctx).catch((error: unknown) => {
-          ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${errText(error)}` });
-        }),
-      ).finally(() => {
-        indexWork = null;
-      });
-    }
-
-    // Polling is arithmetic, not judgement, so it happens here rather than in an
-    // agent. Only a change wakes the PM.
-    // The `.then` writes rows, enqueues turns and pushes notifications, so a
-    // group dropped between the poll and the handler lands here as an unhandled
-    // rejection — which is a process-wide blocker for one stale row.
-    if (!pollWork) {
-      pollWork = track(
-        pollPrs(ctx, gh)
-          .then((fs) => {
-            for (const f of fs) {
-              if (f.merged) landGroup(ctx, f.grpId, "github");
-              else if (f.closed) prClosed(ctx, f.grpId, f.prNumber, url, notifier);
-              else if (f.reopened) prReopened(ctx, f.grpId, f.prNumber);
-              else dispatchFeedback(ctx, f);
-            }
-          })
-          .catch((e: unknown) => consola.error(`pollPrs: ${errText(e)}`)),
-      ).finally(() => {
-        pollWork = null;
-      });
-    }
+    heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight });
   }, armed);
 
   // The agents' only way out. Nothing in a sandbox can reach this process
@@ -818,24 +907,7 @@ if (import.meta.main) {
   // Installed once, here, for the same reason as the signal handlers below.
   let saidRejection = "";
   process.on("unhandledRejection", (e) => {
-    const why = (e instanceof Error ? (e.stack ?? e.message) : String(e)).slice(0, 600);
-    consola.error(`unhandled rejection (kept running):\n${why}`);
-    // The console keeps every one; the feed gets each distinct one once. What
-    // this catches is mostly the per-tick chains, so without the check a single
-    // recurring bug is a blocker line every thirty seconds and the feed stops
-    // being readable — which is worse than the bug it is reporting.
-    if (why === saidRejection) return;
-    saidRejection = why;
-    try {
-      ctx.bus.emit({
-        author: "orchestrator",
-        kind: "state_change",
-        severity: "blocker",
-        body: `有个后台任务崩了，服务没跟着退出。这是个 bug，请把这段贴给开发：\n${why.slice(0, 400)}`,
-      });
-    } catch {
-      // The record is the thing that failed. The console line above is the report.
-    }
+    saidRejection = reportRejection(ctx, e, saidRejection);
   });
 
   // Let go of every turn we are reading before exiting, so the next boot sees
