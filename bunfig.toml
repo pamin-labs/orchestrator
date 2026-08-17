@@ -16,4 +16,9 @@ root = "test"
 #
 # setup.ts clears the module-scope holds before every test, so no file inherits
 # one from whatever ran before it.
-preload = ["./test/support/coverage.ts", "./test/support/setup.ts"]
+#
+# `dom.ts` is here for the same reason and one step later: it must install a
+# document before any module that reaches `web/src` is evaluated, because Radix
+# reads `globalThis?.document` once when it loads and never asks again. It runs
+# after coverage.ts so the instrumentation sees it, and before setup.ts.
+preload = ["./test/support/coverage.ts", "./test/support/dom.ts", "./test/support/setup.ts"]

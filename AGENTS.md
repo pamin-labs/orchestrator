@@ -116,6 +116,17 @@ or run the full suite unless they own integration.
 - A new dependency must delete its replaced implementation in the same coherent
   change and document maintenance, security, licence, cost, and rollback. It
   must not become a second owner for a risk in the enforcement matrix.
+- **Use a library the way its current documentation says to.** Read the installed
+  version — `node_modules/<pkg>` types and README, plus the project's own docs —
+  before writing against it, and take the API from what is in front of you rather
+  than from recall or a blog post: majors move, and result shapes move with them.
+  Prefer its documented extension point over a wrapper of your own; if you find
+  yourself writing a loop, a timer, a statistics helper or a queue beside it, that
+  is a feature you have not reached for. Wiring it the unofficial way is how a
+  correct dependency still produces a defect that reads as the library's fault —
+  a lazily-registered DOM instead of the documented preload entry, a
+  `SpanProcessor` where the SDK wanted a `SpanExporter`. State in the change which
+  documented pattern you followed.
 - Validate `unknown` data at trust boundaries; avoid `any` and unsafe type
   assertions.
 - Test observable behavior and failure paths. Keep incident regression tests;
