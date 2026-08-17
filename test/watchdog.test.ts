@@ -49,7 +49,7 @@ const watchdogDbImage = (() => {
 
 function watchdogDb(): DB {
   const db = Database.deserialize(watchdogDbImage, { strict: true });
-  db.exec("PRAGMA foreign_keys = ON");
+  db.run("PRAGMA foreign_keys = ON");
   return db;
 }
 

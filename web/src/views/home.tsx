@@ -76,6 +76,7 @@ export function Home({
                       action inside it, and a button inside a button is not a thing the
                       DOM has. The name owns the card via a stretched pseudo-element. */}
                   <button
+                    type="button"
                     onClick={() => onEnter(p.id)}
                     className={cn(
                       "cursor-pointer text-left font-display text-[1.0625rem] font-semibold",

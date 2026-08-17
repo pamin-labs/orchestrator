@@ -45,6 +45,10 @@ M7 — executable engineering governance and versioned protocol.
   DAG have non-overlapping ownership. `entry` contains only undiscovered scripts,
   and the default new-only audit needs no health baseline. Fallow reports zero
   dead-code, duplication, boundary, cycle, coverage, or private-leak findings.
+- Oxlint now rejects deprecated APIs, unsafe arguments, import-type side
+  effects, unsafe catch callbacks, promise-executor returns, loop captures, and
+  implicit button types. Zod 4 and Bun SQLite deprecations are removed; Fallow
+  also gates stale suppressions and misplaced dev/optional dependencies.
 - `/api/v1/*` and `/orch/v1/*` are the only protocol surfaces. Typed client
   contracts include middleware errors and durable idempotency discovery,
   inspection, and operator recovery without re-running an unknown side effect.

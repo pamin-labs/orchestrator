@@ -228,7 +228,7 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
                 v
                   .split(/\s+/)
                   .filter(Boolean)
-                  .map((pair) => {
+                  .map((pair): [string, string] => {
                     const i = pair.lastIndexOf(":");
                     return i > 0 ? [pair.slice(0, i), pair.slice(i + 1)] : [pair, ""];
                   })

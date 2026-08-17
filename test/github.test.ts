@@ -192,7 +192,10 @@ test("caller cancellation aborts an active GitHub request without retrying", asy
       if (!signal) throw new Error("missing deadline signal");
       entered();
       return await new Promise<Response>((_resolve, reject) => {
-        if (signal.aborted) return reject(signal.reason);
+        if (signal.aborted) {
+          reject(signal.reason);
+          return;
+        }
         signal.addEventListener("abort", () => reject(signal.reason), { once: true });
       });
     }).request("GET", "/user", z.json(), undefined, controller.signal);

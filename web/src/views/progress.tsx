@@ -175,6 +175,7 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
   const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
   return (
     <button
+      type="button"
       onClick={() => onOpen(g.id)}
       className={cn(
         "grid w-full cursor-pointer grid-cols-[14rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5",

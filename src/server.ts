@@ -453,7 +453,7 @@ export function start(overrides: Partial<Config> = {}): Started {
       // rather than against the PR that caused it. The careful PAUSED path
       // above is the answer to a *failed* PR; this is the answer to a failure
       // while answering one.
-      .catch((error) => consola.warn(`opening the PR for ${grpId} threw: ${errText(error)}`));
+      .catch((error: unknown) => consola.warn(`opening the PR for ${grpId} threw: ${errText(error)}`));
   };
   exec = makeExecutor(execDeps);
   ctx.knownRoles = () => [...roles.keys()];
@@ -593,7 +593,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     // emits a blocker — one per tick, forever, and `bus.emit` has no dedup.
     if (!indexWork) {
       indexWork = track(
-        refreshIndex(ctx).catch((error) => {
+        refreshIndex(ctx).catch((error: unknown) => {
           ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${errText(error)}` });
         }),
       ).finally(() => {
@@ -617,7 +617,7 @@ export function start(overrides: Partial<Config> = {}): Started {
               else dispatchFeedback(ctx, f);
             }
           })
-          .catch((e) => consola.error(`pollPrs: ${errText(e)}`)),
+          .catch((e: unknown) => consola.error(`pollPrs: ${errText(e)}`)),
       ).finally(() => {
         pollWork = null;
       });
@@ -670,7 +670,7 @@ export function start(overrides: Partial<Config> = {}): Started {
           consola.warn(`opensandbox-server: ${st.why}`);
         }
       })
-      .catch((e) => consola.error(`ensureServer: ${errText(e)}`)),
+      .catch((e: unknown) => consola.error(`ensureServer: ${errText(e)}`)),
   );
 
   // Say what is missing here, once, rather than letting every group discover it
@@ -837,11 +837,12 @@ if (import.meta.main) {
   // job that nothing will ever finish. Only installed here: `start()` is called
   // many times per test run, and each would add a listener.
   let shuttingDown = false;
+  const onSignal = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    void shutdown().then((code) => process.exit(code));
+  };
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
-    process.on(sig, () => {
-      if (shuttingDown) return;
-      shuttingDown = true;
-      void shutdown().then((code) => process.exit(code));
-    });
+    process.on(sig, onSignal);
   }
 }

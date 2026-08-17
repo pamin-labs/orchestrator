@@ -45,7 +45,7 @@ const DEVICE = {
 };
 
 const GithubReposResponse = z.object({
-  installations: z.array(z.object({ id: z.number() }).passthrough()),
+  installations: z.array(z.looseObject({ id: z.number() })),
   selected: z.number().nullable(),
   installUrl: z.string(),
   repos: z.array(

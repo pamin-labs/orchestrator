@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context, type MiddlewareHandler, type Next } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
@@ -31,7 +31,7 @@ export type { ApiType } from "./http/routes/panel.ts";
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
 /** Treat every loopback spelling as the same host while keeping the port boundary. */
-const sameOriginWrite = csrf({
+const sameOriginWrite: MiddlewareHandler<Record<never, never>> = csrf({
   secFetchSite: ["same-origin", "none"],
   origin: (origin, c) => {
     try {
@@ -41,6 +41,11 @@ const sameOriginWrite = csrf({
       return false;
     }
   },
+});
+
+const jsonBodyLimit: MiddlewareHandler<Record<never, never>> = bodyLimit({
+  maxSize: JSON_BODY_LIMIT,
+  onError: () => failure("request body is too large", 413),
 });
 
 /** Total request limit; the per-file limit runs only after multipart parsing. */
@@ -64,7 +69,7 @@ function elsewhere(site: string | undefined, origin: string | undefined, url: st
 export function makeApp(ctx: Ctx, runtime: RuntimeStatus = runtimeStatus()): (req: Request) => Promise<Response> {
   const app = new Hono();
 
-  app.use("*", async (c, next) => {
+  app.use("*", async (c: Context<Record<never, never>, "*">, next: Next) => {
     const id = requestId(c.req.header("x-request-id"));
     const path = new URL(c.req.url).pathname;
     const trace = startTrace(c.req.header("traceparent"));
@@ -104,7 +109,7 @@ export function makeApp(ctx: Ctx, runtime: RuntimeStatus = runtimeStatus()): (re
     }
     return next();
   });
-  app.use("/api/v1/*", async (c, next) => {
+  app.use("/api/v1/*", async (c: Context<Record<never, never>, "/api/v1/*">, next: Next) => {
     const site = c.req.header("sec-fetch-site");
     const origin = c.req.header("origin");
     if (c.req.method !== "GET" && c.req.method !== "HEAD" && elsewhere(site, origin, c.req.url)) {
@@ -114,9 +119,9 @@ export function makeApp(ctx: Ctx, runtime: RuntimeStatus = runtimeStatus()): (re
     await next();
   });
 
-  app.use("/api/v1/*", async (c, next) => {
+  app.use("/api/v1/*", async (c: Context<Record<never, never>, "/api/v1/*">, next: Next) => {
     if (c.req.path === "/api/v1/attach") return next();
-    return bodyLimit({ maxSize: JSON_BODY_LIMIT, onError: () => failure("request body is too large", 413) })(c, next);
+    return jsonBodyLimit(c, next);
   });
   app.use(
     "/api/v1/attach",

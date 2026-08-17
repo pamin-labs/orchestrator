@@ -41,7 +41,9 @@ test("detached work whose record is gone does not surface against an unrelated c
     acceptSlice(ctx, 1, "boss");
     // The record goes away while the detached work is still in flight.
     db.close();
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
 
     expect(seen).toEqual([]);
   } finally {

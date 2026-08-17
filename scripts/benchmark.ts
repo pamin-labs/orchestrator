@@ -108,7 +108,6 @@ await budget("scheduler x500", 400, async () => {
 });
 await budget("watchdog x20", 1_200, async () => {
   for (let i = 0; i < 20; i++) {
-    // oxlint-disable-next-line eslint/no-await-in-loop -- production watchdog ticks are serialized.
     await runWatchdog({
       ctx,
       cfg,

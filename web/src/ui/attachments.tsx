@@ -41,6 +41,7 @@ function Attachments({ files }: { files: Attached[] }) {
           {images.map((f) => (
             <Tip key={f.path} label={f.name}>
               <button
+                type="button"
                 onClick={() => setFull(f)}
                 className={cn(
                   "relative block h-24 cursor-zoom-in overflow-hidden rounded-md border border-rule bg-sunk",

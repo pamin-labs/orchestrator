@@ -163,7 +163,9 @@ test("recovery clears only the literal repository prefix", async () => {
   expect(openEscalations(h.db)).toHaveLength(2);
 
   await makeGithub(h.db, answer(200, { number: 7 })).request("GET", "/repos/me/a_b/pulls/7", z.json());
-  expect(openEscalations(h.db).map((row) => row.question)).toEqual([expect.stringContaining("GitHub me/axb:")]);
+  const remaining = openEscalations(h.db);
+  expect(remaining).toHaveLength(1);
+  expect(remaining[0]?.question).toContain("GitHub me/axb:");
 });
 
 test("the escalation reaches the boss without waiting for an agent to pass it up", async () => {

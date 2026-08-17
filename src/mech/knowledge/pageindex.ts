@@ -199,7 +199,8 @@ export async function search(
   const opened: string[] = [];
 
   for (let level = 0; level < depth && frontier.length; level++) {
-    const menu = frontier
+    const candidates = frontier;
+    const menu = candidates
       .map((id) => `${id} — ${tree[id]?.summary || (tree[id]?.kind === "dir" ? "(directory)" : "(file)")}`)
       .join("\n");
     const answer = await ask(
@@ -210,7 +211,7 @@ export async function search(
     const picked = answer
       .split("\n")
       .map((l) => l.trim().replace(/^[-*\d.\s]+/, ""))
-      .filter((l) => frontier.includes(l))
+      .filter((l) => candidates.includes(l))
       .slice(0, width);
     // The model declining is an answer: nothing here is relevant, and handing back
     // the frontier anyway would turn "no" into a top-k guess, which is the failure
@@ -346,16 +347,16 @@ export function readCodex(out: string): { text: string; usage?: AskUsage } {
   return { text, ...(usage ? { usage } : {}) };
 }
 
-const ClaudeReply = z
-  .object({ result: z.string().optional(), is_error: z.boolean().optional(), usage: UsageSchema.optional() })
-  .passthrough();
-const CodexReply = z
-  .object({
-    type: z.string().optional(),
-    item: z.object({ type: z.string().optional(), text: z.string().optional() }).optional(),
-    usage: z.record(z.string(), z.number()).optional(),
-  })
-  .passthrough();
+const ClaudeReply = z.looseObject({
+  result: z.string().optional(),
+  is_error: z.boolean().optional(),
+  usage: UsageSchema.optional(),
+});
+const CodexReply = z.looseObject({
+  type: z.string().optional(),
+  item: z.object({ type: z.string().optional(), text: z.string().optional() }).optional(),
+  usage: z.record(z.string(), z.number()).optional(),
+});
 
 /**
  * Charge an index call to the project's `indexer`.

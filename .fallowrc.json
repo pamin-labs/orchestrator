@@ -10,6 +10,12 @@
   "rules": {
     "private-type-leaks": "error",
     "boundary-violation": "error",
+    "unused-dev-dependencies": "error",
+    "unused-optional-dependencies": "error",
+    "test-only-dependencies": "error",
+    "dev-dependencies-in-production": "error",
+    "stale-suppressions": "error",
+    "require-suppression-reason": "error",
     "security-client-server-leak": "warn",
     "security-sink": "warn"
   },

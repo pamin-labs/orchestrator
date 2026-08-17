@@ -1,5 +1,5 @@
 import type { DB } from "../../db.ts";
-import { type CostReport } from "../../contracts/cost.ts";
+import type { CostReport } from "../../contracts/cost.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
 

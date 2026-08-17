@@ -81,7 +81,7 @@ export function trimItem(l: JsonMap): JsonMap {
   return { ...l, item: out };
 }
 
-const Counter = z.number().finite().nonnegative();
+const Counter = z.number().nonnegative();
 const UsageSchema = z
   .object({
     input_tokens: Counter.optional(),

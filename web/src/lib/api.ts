@@ -400,7 +400,7 @@ export function useOrch() {
     es.onmessage = (m) => {
       let f: ReturnType<typeof WireSchema.safeParse>;
       try {
-        f = WireSchema.safeParse(JSON.parse(m.data));
+        f = WireSchema.safeParse(JSON.parse(String(m.data)));
       } catch {
         return;
       }

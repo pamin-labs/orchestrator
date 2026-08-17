@@ -214,6 +214,7 @@ function Body({ text }: { text: string }) {
       </div>
       {long && (
         <button
+          type="button"
           onClick={() => setOpen((v) => !v)}
           className="mt-0.5 cursor-pointer font-mono text-[0.6875rem] text-ink-3 hover:text-accent"
         >

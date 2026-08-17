@@ -138,6 +138,7 @@ function Browse({
           if (!pick) {
             return (
               <button
+                type="button"
                 key={x.path}
                 onClick={() => {
                   if (!onRow(x, isDir) && isDir) void load(x.path);
@@ -154,6 +155,7 @@ function Browse({
             <div key={x.path} className={cn(row, "hover:bg-sunk")}>
               {isDir ? (
                 <button
+                  type="button"
                   aria-label={`进入 ${x.name}`}
                   onClick={() => void load(x.path)}
                   className="cursor-pointer font-mono text-[0.75rem] text-ink-3 hover:text-accent"
@@ -163,7 +165,7 @@ function Browse({
               ) : (
                 glyph
               )}
-              <button onClick={() => onRow(x, isDir)} className="cursor-pointer truncate text-left">
+              <button type="button" onClick={() => onRow(x, isDir)} className="cursor-pointer truncate text-left">
                 {x.name}
               </button>
               <span className="text-[0.75rem] text-ink-3">{meta}</span>

@@ -46,8 +46,7 @@ function harness(files: Record<string, string>) {
 const config = (db: DB) => projectConfig(db, 1);
 const storedDetection = (db: DB) =>
   z
-    .object({ detected: z.boolean(), gates: z.array(z.string()) })
-    .passthrough()
+    .looseObject({ detected: z.boolean(), gates: z.array(z.string()) })
     .parse(JSON.parse(db.query<{ config_json: string }, []>("SELECT config_json FROM project").get()!.config_json));
 const resources = (db: DB) =>
   db

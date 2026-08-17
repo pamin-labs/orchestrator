@@ -438,7 +438,6 @@ function consume(l: Line, acc: Acc, h: TurnHandlers): void {
         if (m.contextWindow) r.contextWindow = m.contextWindow;
       }
       r.filesTouched = [...acc.files];
-      return;
     }
   }
 }

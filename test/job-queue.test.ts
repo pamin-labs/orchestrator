@@ -33,7 +33,9 @@ function idAt(ids: readonly number[], index: number): number {
 function gate() {
   let release!: () => void;
   const started: Job[] = [];
-  const p = new Promise<void>((r) => (release = r));
+  const p = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   return {
     started,
     release,

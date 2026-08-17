@@ -36,7 +36,7 @@ import { clip, errText } from "../mech/util/text.ts";
 import { assemble, buildStable, type Delta, needsRotation } from "../prompt/assemble.ts";
 import { AgentTurnPayloadSchema, type Executor, type Job } from "../scheduler.ts";
 import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../states.ts";
-import { type TurnResult } from "./claude.ts";
+import type { TurnResult } from "./claude.ts";
 import { clampEffort, type Provider, providerFor } from "./providers.ts";
 import { track, untrack } from "./running.ts";
 import { requestContext } from "../http/request-context.ts";
@@ -102,7 +102,7 @@ export function makeExecutor(deps: ExecDeps): Executor {
       case "notify":
         // notify / digest land in M3. Doing nothing is correct for
         // now; failing would poison the queue.
-        return;
+        break;
     }
   };
 }

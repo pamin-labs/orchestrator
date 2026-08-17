@@ -746,7 +746,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       // "The Engineer could not rebase this branch onto main" eight times, all eight
       // false, and its Architect burned a turn refuting each one. A turn that ended
       // `done` is a stall — that is the branch below, and it was always the right one.
-      const payload = jsonOr(j.payload_json, z.object({ conflict: z.boolean().optional() }).passthrough(), {});
+      const payload = jsonOr(j.payload_json, z.looseObject({ conflict: z.boolean().optional() }), {});
       if (payload.conflict === true && j.state === "failed") {
         ctx.sched.enqueue("agent_turn", {
           grp_id: j.grp_id,

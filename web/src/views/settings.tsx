@@ -664,6 +664,7 @@ function Item({
   const Icon = n.icon;
   return (
     <button
+      type="button"
       onClick={go}
       aria-current={on}
       className={cn(

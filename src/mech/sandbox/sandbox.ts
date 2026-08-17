@@ -660,7 +660,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         credentials: credentials.map((c) => ({ name: c.name, source: { type: "inline" as const, value: c.value } })),
         bindings: credentials.map((c) => ({ name: c.name, match: matchFor(c), auth: authFor(c) })),
       })
-      .catch((e) => {
+      .catch((e: unknown) => {
         // Said here, because nothing else can say it. This used to claim
         // preflight would report it: preflight runs at boot, and this is a call
         // against a container that did not exist then — it never had a chance.
@@ -685,7 +685,7 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   // A container this fresh has no clone and nothing installed. The server wires
   // the flow callback so this low-level module does not import its own caller.
   if ("grp" in scope && ctx.restoreWorkspace) {
-    await ctx.restoreWorkspace(scope.grp).catch((e) => {
+    await ctx.restoreWorkspace(scope.grp).catch((e: unknown) => {
       ctx.bus.emit({
         grpId: scope.grp,
         author: "orchestrator",
@@ -1255,7 +1255,7 @@ async function* realLines(
     .then((e) => {
       code = e.exitCode ?? -1;
     })
-    .catch((e) => {
+    .catch((e: unknown) => {
       stderr += String(e);
     })
     .finally(() => {

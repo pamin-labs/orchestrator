@@ -1,4 +1,4 @@
-import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { K } from "../lib/utils";
 
 /**
@@ -106,13 +106,14 @@ export function SplitDonut({ rows }: { rows: { label: string; tokens: number }[]
   const list = rows.filter((r) => r.tokens).sort((a, b) => b.tokens - a.tokens);
   if (!list.length) return null;
   const sum = list.reduce((n, r) => n + r.tokens, 0);
+  const data = list.map((row, index) => ({ ...row, fill: RAMP[index % RAMP.length] }));
   return (
     <div className="flex items-center gap-3">
       <div className="h-[4.5rem] w-[4.5rem] shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={list}
+              data={data}
               dataKey="tokens"
               nameKey="label"
               innerRadius="60%"
@@ -120,11 +121,7 @@ export function SplitDonut({ rows }: { rows: { label: string; tokens: number }[]
               paddingAngle={list.length > 1 ? 2 : 0}
               stroke="none"
               isAnimationActive={false}
-            >
-              {list.map((r, i) => (
-                <Cell key={r.label} {...(RAMP[i % RAMP.length] ? { fill: RAMP[i % RAMP.length] } : {})} />
-              ))}
-            </Pie>
+            />
             <Tooltip
               wrapperClassName="!outline-none"
               contentStyle={{ all: "unset" }}

@@ -361,6 +361,7 @@ function Branch({ dir, depth, here, go }: { dir: Dir; depth: number; here: numbe
       ))}
       {dir.files.map((f) => (
         <button
+          type="button"
           key={f.i}
           onClick={() => go(f.i)}
           style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}

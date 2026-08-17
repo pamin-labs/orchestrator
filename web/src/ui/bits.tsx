@@ -113,11 +113,8 @@ export function Clamp({ lines = 2, children }: { lines?: number; children: React
     <>
       <div
         ref={box}
-        style={
-          open
-            ? undefined
-            : { display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden" }
-        }
+        className={open ? undefined : "overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical]"}
+        style={open ? undefined : { WebkitLineClamp: lines }}
       >
         {children}
       </div>

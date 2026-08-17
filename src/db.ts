@@ -718,8 +718,8 @@ export function slugRepoPaths(db: DB): void {
 /** Open (or create) the database and bring it up to the latest migration. */
 export function open(path = "data/orchestrator.sqlite"): DB {
   const db = new Database(path, { create: true });
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA foreign_keys = ON");
+  db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA foreign_keys = ON");
   migrate(db);
   // Whatever was stored before this process started still has to be masked out
   // of everything it prints. Registered once, here, because every path into the
@@ -747,7 +747,7 @@ export function migrationMentioning(needle: string): number {
 
 /** Apply any migrations the database has not seen yet. Idempotent. */
 export function migrate(db: DB): void {
-  db.exec("CREATE TABLE IF NOT EXISTS migration (n INTEGER PRIMARY KEY, at INTEGER NOT NULL)");
+  db.run("CREATE TABLE IF NOT EXISTS migration (n INTEGER PRIMARY KEY, at INTEGER NOT NULL)");
   const applied = new Set(
     db
       .query<{ n: number }, []>("SELECT n FROM migration")
@@ -759,7 +759,7 @@ export function migrate(db: DB): void {
     const n = i + 1;
     if (applied.has(n)) continue;
     db.transaction(() => {
-      if (typeof step === "string") db.exec(step);
+      if (typeof step === "string") db.run(step);
       else step(db);
       stamp.run(n, Date.now());
     })();

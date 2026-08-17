@@ -694,6 +694,7 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
   if (g.budget_tokens == null) {
     return (
       <button
+        type="button"
         className="cursor-pointer font-mono text-[0.6875rem] text-ink-3 underline decoration-dotted hover:text-ink"
         onClick={async () => {
           const v = await ask({
@@ -833,6 +834,7 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
   if (!open) {
     return (
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className="mt-2 flex w-full cursor-pointer items-center gap-2 rounded-md border border-rule
                    bg-paper px-3 py-2 text-left text-[0.8125rem] text-ink-3 transition-colors hover:border-ink-3"

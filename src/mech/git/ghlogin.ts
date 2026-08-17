@@ -76,7 +76,7 @@ const DeviceFlowBody = z.object({
   error_description: z.string().optional(),
   device_code: z.string().optional(),
   user_code: z.string().optional(),
-  verification_uri: z.string().url().optional(),
+  verification_uri: z.url().optional(),
   interval: Seconds.optional(),
   expires_in: Seconds.optional(),
   access_token: z.string().optional(),

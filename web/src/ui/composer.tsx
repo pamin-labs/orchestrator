@@ -53,7 +53,10 @@ async function walk(items: DataTransferItemList): Promise<Picked[]> {
         }, fail);
         return;
       }
-      if (!isDirectoryEntry(e)) return done();
+      if (!isDirectoryEntry(e)) {
+        done();
+        return;
+      }
       const reader = e.createReader();
       // readEntries hands back at most a hundred at a time and signals the end
       // with an empty batch.
@@ -455,6 +458,7 @@ export function Composer({
           <div className="max-h-56 overflow-y-auto">
             {matches.map((sk) => (
               <button
+                type="button"
                 key={sk.path}
                 onClick={() => insertSkill(sk)}
                 className="flex w-full cursor-pointer items-baseline gap-2 px-2 py-1.5 text-left hover:bg-sunk"
@@ -493,6 +497,7 @@ export function Composer({
                 <span className="font-mono text-[0.625rem] text-ink-3">{Math.round(f.size / 1024)}k</span>
               )}
               <button
+                type="button"
                 aria-label={`移除 ${f.name}`}
                 className="cursor-pointer text-ink-3 hover:text-bad"
                 onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}

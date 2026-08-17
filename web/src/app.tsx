@@ -112,6 +112,7 @@ function Crumb({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         "cursor-pointer truncate font-display text-[1rem] font-semibold transition-colors hover:text-ink",
@@ -363,6 +364,7 @@ export function App() {
       <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)]">
         <header className="z-10 flex h-14 items-center gap-5 border-b border-rule bg-rail px-6">
           <button
+            type="button"
             className="cursor-pointer font-display text-[1.0625rem] font-semibold"
             onClick={() => go({ view: "home", p: null, g: null })}
           >
@@ -402,6 +404,7 @@ export function App() {
             <span className="flex min-w-0 gap-4 overflow-x-auto border-l border-rule pl-5">
               {VIEWS.map(([k, zh]) => (
                 <button
+                  type="button"
                   key={k}
                   // Every tab clears the drill-in, 需求 included: keeping `g` there
                   // made the tab reopen the requirement the boss was trying to leave.
@@ -453,6 +456,7 @@ export function App() {
             {!home && (
               <Tip label={`${side ? "收起事件流" : "展开事件流：谁跟谁说了什么，按时间倒序"} ⌘B`}>
                 <button
+                  type="button"
                   onClick={() => setSide((v) => !v)}
                   aria-label="事件流"
                   className={cn(
@@ -470,6 +474,7 @@ export function App() {
             from here. It opens over the work rather than replacing it. */}
             <Tip label="设置：账号、环境、技能、主题，以及这个项目的闸门和沙盒 ⌘S">
               <button
+                type="button"
                 onClick={() => go({ view: "github" })}
                 aria-label="设置"
                 className={cn(

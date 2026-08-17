@@ -16,7 +16,10 @@ function blockedFetch(onStart: (signal: AbortSignal) => void): GithubFetcher {
     if (!signal) throw new Error("GitHub request has no cancellation signal");
     onStart(signal);
     return await new Promise<Response>((_resolve, reject) => {
-      if (signal.aborted) return reject(signal.reason);
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
       signal.addEventListener("abort", () => reject(signal.reason), { once: true });
     });
   };

@@ -30,7 +30,7 @@ const SafeId = z
   .string()
   .regex(/^[A-Za-z0-9_-]+$/)
   .max(128);
-const ReplyId = z.object({ id: SafeId }).passthrough();
+const ReplyId = z.looseObject({ id: SafeId });
 const Envelope = z.object({
   // This becomes part of the response filename, so accept only one safe path segment.
   id: SafeId,
@@ -145,7 +145,7 @@ export function normalise(base: string, path: string): string | null {
 function reply(sb: MailboxSandbox, id: string, answer: ProtocolResponse): Promise<void> {
   return writeInto(sb, [
     { path: `${MAILBOX_DIR}/res/${id}.json`, data: JSON.stringify(answer), mode: FILE_MODE },
-  ]).catch((e) => {
+  ]).catch((e: unknown) => {
     consola.warn(`mailbox: could not answer ${id}, the agent waits out its turn clock: ${errText(e)}`);
   });
 }

@@ -13,7 +13,7 @@ const WorkflowSchema = z.object({
       if: z.string().optional(),
       needs: z.union([z.string(), z.array(z.string())]).optional(),
       permissions: StringMap.optional(),
-      strategy: z.object({ matrix: JsonMap.optional() }).passthrough().optional(),
+      strategy: z.looseObject({ matrix: JsonMap.optional() }).optional(),
       steps: z.array(
         z.object({
           name: z.string().optional(),

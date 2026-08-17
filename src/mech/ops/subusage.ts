@@ -3,7 +3,6 @@ import { join } from "node:path";
 import type { DB } from "../../db.ts";
 import type { RateLimitInfo } from "../../runtime/claude.ts";
 import type { Ctx } from "../../ctx.ts";
-import type { Json } from "../../contracts/json.ts";
 import { CODEX_HOME, decoy, loadAuth, subscriptionAccount } from "../sandbox/auth.ts";
 import { execIn, UTIL } from "../sandbox/sandbox.ts";
 import { shq } from "../util/shq.ts";
@@ -65,7 +64,7 @@ const BACKOFF_MS = 45 * 60_000;
 
 /** Only the two windows are consumed; the response has a dozen more fields. */
 const SubscriptionWindow = z.object({
-  utilization: z.number().finite().nonnegative().optional(),
+  utilization: z.number().nonnegative().optional(),
   resets_at: z.string().nullable().optional(),
 });
 const UsageResponse = z.object({
@@ -74,10 +73,10 @@ const UsageResponse = z.object({
 });
 
 const CodexWindowSchema = z.object({
-  used_percent: z.number().finite().nonnegative().max(100).optional(),
-  window_minutes: z.number().finite().positive().optional(),
-  resets_at: z.number().finite().nonnegative().optional(),
-  resets_in_seconds: z.number().finite().nonnegative().optional(),
+  used_percent: z.number().nonnegative().max(100).optional(),
+  window_minutes: z.number().positive().optional(),
+  resets_at: z.number().nonnegative().optional(),
+  resets_in_seconds: z.number().nonnegative().optional(),
 });
 const CodexWindowsSchema = z.object({
   primary: CodexWindowSchema.nullable().optional(),
@@ -93,7 +92,7 @@ const secs = (iso?: string | null): number => {
   return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
 };
 
-export function toRateLimit(value: Json): RateLimitInfo | null {
+export function toRateLimit(value: unknown): RateLimitInfo | null {
   const parsed = UsageResponse.safeParse(value);
   if (!parsed.success) return null;
   const u = parsed.data;

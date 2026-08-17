@@ -26,7 +26,7 @@ export const buttonStyles = cva(
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonStyles>;
 
 export function Button({ className, variant, size, ...rest }: ButtonProps) {
-  return <button className={cn(buttonStyles({ variant, size }), className)} {...rest} />;
+  return <button type="button" className={cn(buttonStyles({ variant, size }), className)} {...rest} />;
 }
 
 export function LinkButton({ className, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
