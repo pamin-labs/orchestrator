@@ -149,6 +149,24 @@ M7 — executable engineering governance and versioned protocol.
   a gate, forcing the source to carry a duplicate expression to satisfy it.
 - In-memory test databases restore a serialized schema instead of replaying
   forty migrations, which is most of a run: 10.75 s to 7.0 s.
+- The source root is empty. Six files that sat above every subsystem moved into
+  the one they belong to, and with them went the last Fallow zone that named a
+  file instead of a directory — a boundary written as a list is a boundary that
+  drifts on the next root file somebody adds. A guard now asserts every zone
+  pattern is a directory.
+- `test/` was one flat directory of 128 files; it now mirrors the source zones,
+  with `support` for harness code and `governance` for the suites whose subject
+  is the repository. The stress runner excluded non-replayable suites by naming
+  two files, which would have silently replayed the third; it excludes the
+  `live/` and `integration/` directories instead.
+- A file in `src/contracts` was read by exactly one zone. That directory is
+  reachable from everywhere by design, which makes it the one place a misplaced
+  type draws no boundary error, so the guard is now explicit: every shared
+  contract must be imported from at least two zones.
+- `orch --claim=value` produced a flag literally named `claim=value` and lost
+  the text. Commands that read a missing flag fall back to standard input, so
+  the command hung on a terminal with nothing on screen. Splitting a command
+  line is not this project's logic; `node:util.parseArgs` owns it.
 
 ## Blockers and deviations
 
