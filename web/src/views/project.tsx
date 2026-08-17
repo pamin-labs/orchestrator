@@ -7,6 +7,19 @@ import { Segment, Segments, Toggle, Toggles } from "../ui/segment";
 import { Combobox } from "../ui/combobox";
 import { cn } from "../lib/utils";
 import { api, readApi } from "../lib/api";
+import {
+  arrowStep,
+  cacheDirsFrom,
+  domainHost,
+  domainKey,
+  gateRows,
+  gateTemplate,
+  imageOptions,
+  imageSource,
+  moveGate,
+  sandboxRows,
+  sandboxSet,
+} from "../features/project/model";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 import { StoredProjectConfigSchema } from "../../../src/contracts/config.ts";
@@ -56,15 +69,11 @@ const GATE_ROW = "grid grid-cols-[1.25rem_1.5rem_7rem_minmax(0,1fr)] items-basel
 export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch) => void }) {
   const [drag, setDrag] = useState<string | null>(null);
   const gates = d.config.gates ?? [];
-  const on = gates.filter((g) => d.resources.some((r) => r.name === g));
-  const off = d.resources.filter((r) => !on.includes(r.name));
-  const tpl = (name: string) => d.resources.find((r) => r.name === name)?.template ?? "";
+  const { on, off } = gateRows(gates, d.resources);
 
   const move = (from: number, to: number) => {
-    if (from < 0 || to < 0 || from === to) return;
-    const next = [...on];
-    next.splice(to, 0, next.splice(from, 1)[0]!);
-    patch({ gates: next });
+    const next = moveGate(on, from, to);
+    if (next) patch({ gates: next });
   };
 
   return (
@@ -100,9 +109,10 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
                   setDrag(null);
                 }}
                 onKeyDown={(e) => {
-                  if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+                  const step = arrowStep(e.altKey, e.key);
+                  if (step === null) return;
                   e.preventDefault();
-                  move(i, i + (e.key === "ArrowUp" ? -1 : 1));
+                  move(i, i + step);
                 }}
               >
                 {/* The handle drags, not the row: the row is the on/off switch, and
@@ -120,7 +130,7 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
                     narrow, and the header already says what the column is. */}
                 <Meta>{i + 1}</Meta>
                 <span className="truncate text-[0.8125rem]">{name}</span>
-                <Meta className="min-w-0 truncate">{tpl(name)}</Meta>
+                <Meta className="min-w-0 truncate">{gateTemplate(d.resources, name)}</Meta>
               </Toggle>
             ))}
             {off.length > 0 && (
@@ -155,13 +165,9 @@ export function Gates({ d, patch }: { d: ProjectConfig; patch: (b: ProjectPatch)
  * is a wall of frames that says nothing about what goes in them.
  */
 export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; patch: (b: ProjectPatch) => void }) {
-  const sandbox = d.config.sandbox ?? {};
-  const set = <K extends keyof SandboxPatch>(k: K, v: SandboxPatch[K]) => {
-    const next: SandboxPatch = { ...sandbox };
-    if (v === undefined) delete next[k];
-    else next[k] = v;
-    patch({ sandbox: next });
-  };
+  const now = sandboxRows(d.baseBranch, d.branches, d.config.install, d.config.sandbox);
+  const set = <K extends keyof SandboxPatch>(k: K, v: SandboxPatch[K]) =>
+    patch({ sandbox: sandboxSet(now.sandbox, k, v) });
 
   return (
     <>
@@ -174,7 +180,7 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
             the remote's HEAD says, which is re-checked when the remote renames it. */}
         <Row
           label="基线分支"
-          value={d.baseBranch ?? ""}
+          value={now.baseBranch}
           placeholder={`${d.baseBranchNow}（远端说的）`}
           width="max-w-[14rem]"
           busy={busy}
@@ -183,19 +189,19 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
              a test nobody should have to sit. Still a box, not a Select: a
              branch that does not exist yet is a legitimate answer, and a login
              that cannot list them must not take the field away. */
-          options={d.branches ?? []}
+          options={now.branches}
         />
         <Row
           label="装依赖"
-          value={d.config.install ?? ""}
+          value={now.install}
           placeholder="留空由 bootstrap 读仓库判断"
           busy={busy}
           onSave={(v) => patch({ install: v || null })}
         />
-        <ImageRow value={sandbox.image ?? ""} busy={busy} onSave={(v) => set("image", v || undefined)} />
+        <ImageRow value={now.image} busy={busy} onSave={(v) => set("image", v || undefined)} />
         <Row
           label="CPU"
-          value={sandbox.cpu ?? ""}
+          value={now.cpu}
           placeholder="宿主核数的 1/4"
           width="max-w-[9rem]"
           busy={busy}
@@ -203,39 +209,19 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
         />
         <Row
           label="内存"
-          value={sandbox.memory ?? ""}
+          value={now.memory}
           placeholder="8Gi"
           width="max-w-[9rem]"
           busy={busy}
           onSave={(v) => set("memory", v || undefined)}
         />
-        <DomainsRow
-          value={sandbox.denyDomains ?? []}
-          busy={busy}
-          onSave={(v) => set("denyDomains", v.length ? v : undefined)}
-        />
+        <DomainsRow value={now.denyDomains} busy={busy} onSave={(v) => set("denyDomains", v.length ? v : undefined)} />
         <Row
           label="共享缓存"
-          value={Object.entries(sandbox.cacheDirs ?? {})
-            .map(([k, v]) => `${k}:${v}`)
-            .join(" ")}
+          value={now.cacheDirs}
           placeholder="/root/.bun/install/cache:/var/tmp/orch-cache"
           busy={busy}
-          onSave={(v) =>
-            set(
-              "cacheDirs",
-              Object.fromEntries(
-                v
-                  .split(/\s+/)
-                  .filter(Boolean)
-                  .map((pair): [string, string] => {
-                    const i = pair.lastIndexOf(":");
-                    return i > 0 ? [pair.slice(0, i), pair.slice(i + 1)] : [pair, ""];
-                  })
-                  .filter(([, host]) => host),
-              ),
-            )
-          }
+          onSave={(v) => set("cacheDirs", cacheDirsFrom(v))}
         />
       </FieldGroup>
     </>
@@ -260,17 +246,8 @@ export function Sandbox({ d, busy, patch }: { d: ProjectConfig; busy: boolean; p
 function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; onSave: (v: string[]) => void }) {
   const [draft, setDraft] = useState("");
 
-  // Whatever is pasted, reduced to the thing the sidecar matches on. A URL, a
-  // trailing slash, a port, capitals — all of them are somebody meaning a host.
-  const host = (raw: string) =>
-    raw
-      .trim()
-      .toLowerCase()
-      .replace(/^[a-z]+:\/\//, "")
-      .replace(/[/?#].*$/, "")
-      .replace(/:\d+$/, "");
   const add = () => {
-    const h = host(draft);
+    const h = domainHost(draft);
     setDraft("");
     if (h && !value.includes(h)) onSave([...value, h]);
   };
@@ -313,11 +290,12 @@ function DomainsRow({ value, busy, onSave }: { value: string[]; busy: boolean; o
           disabled={busy}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={add}
+          // Backspace on an empty box takes the last chip: without it the only
+          // way to undo a typo is to aim at a 10px ×.
           onKeyDown={(e) => {
-            if (e.key === "Enter") return add();
-            // The one thing a chip list has to get right: backspace on an empty
-            // box takes the last chip, or the only way to undo a typo is to aim.
-            if (e.key === "Backspace" && !draft && value.length) onSave(value.slice(0, -1));
+            const act = domainKey(e.key, draft, value.length);
+            if (act === "add") return add();
+            if (act === "drop") onSave(value.slice(0, -1));
           }}
         />
       </FieldContent>
@@ -360,6 +338,14 @@ export const ImageChoicesSchema = z
  * Empty lists say which kind of empty they are. "Nothing published yet" and
  * "could not reach ghcr.io" send a reader to different places.
  */
+/**
+ * What an empty box means, once we know what "empty" is allowed to fall back to.
+ *
+ * Before the lists land there is no default to name, and a box promising one is
+ * a box that has not asked yet.
+ */
+const imageHint = (loaded: boolean, own: string | undefined) => (loaded ? (own ?? "跟这台机器的默认") : "读取中…");
+
 export function ImageRow({
   value,
   busy,
@@ -375,14 +361,13 @@ export function ImageRow({
    *  default row falls back to the yaml a fresh install ships with. */
   placeholder?: string;
 }) {
-  const [src, setSrc] = useState<"remote" | "local">(value && !value.startsWith("ghcr.io/") ? "local" : "remote");
+  const [src, setSrc] = useState(imageSource(value));
   const [c, setC] = useState<ImageChoices | null>(null);
   useEffect(() => {
     void readApi(api.sandbox.images.$get(), ImageChoicesSchema).then(setC);
   }, []);
 
-  const options = (src === "remote" ? c?.published : c?.local) ?? [];
-  const note = src === "remote" ? c?.note.published : c?.note.local;
+  const { options, note } = imageOptions(src, c);
   return (
     <Field aria-labelledby="cfg-image">
       <FieldTitle id="cfg-image">{label}</FieldTitle>
@@ -404,7 +389,7 @@ export function ImageRow({
             // filtered image list telling you there is no matching branch is one
             // word away from reading as a broken page.
             empty="没有匹配的镜像"
-            placeholder={c ? (placeholder ?? "跟这台机器的默认") : "读取中…"}
+            placeholder={imageHint(c !== null, placeholder)}
             disabled={busy}
             width="max-w-[22rem]"
             onCommit={onSave}

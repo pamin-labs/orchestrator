@@ -6,6 +6,7 @@ import { Badge } from "../ui/badge";
 import { Menu, MenuItem } from "../ui/menu";
 import { api, mutate, readJson } from "../lib/api";
 import { cn } from "../lib/utils";
+import { browseListing, browseRow, repoRow, type Entry } from "../features/picker/model";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 
@@ -16,7 +17,6 @@ const EntrySchema = z.object({
   taken: z.boolean().optional(),
   size: z.number().optional(),
 });
-type Entry = z.infer<typeof EntrySchema>;
 const DirEntrySchema = EntrySchema.omit({ size: true }).required({ repo: true, taken: true });
 const FileEntrySchema = EntrySchema.omit({ repo: true, taken: true }).required({ size: true });
 const DirsSchema: z.ZodType<InferResponseType<typeof api.dirs.$get, 200>> = z.object({
@@ -28,26 +28,6 @@ const DirsSchema: z.ZodType<InferResponseType<typeof api.dirs.$get, 200>> = z.ob
 });
 type Dirs = z.infer<typeof DirsSchema>;
 
-function browseListing(dirs: Dirs | null): { parts: string[]; rows: [Entry, boolean][] } {
-  return {
-    parts: (dirs?.path ?? "").split("/").filter(Boolean),
-    rows: [
-      ...(dirs?.dirs ?? []).map((entry) => [entry, true] as [Entry, boolean]),
-      ...(dirs?.files ?? []).map((entry) => [entry, false] as [Entry, boolean]),
-    ],
-  };
-}
-
-function entryMeta(entry: Entry, selected: boolean, pick: boolean): string {
-  const choices: [boolean, string][] = [
-    [selected, "已选"],
-    [!!entry.taken, "已添加"],
-    [!!entry.repo && !pick, "git 仓库"],
-    [entry.size != null, `${Math.max(1, Math.round((entry.size ?? 0) / 1024))}k`],
-  ];
-  return choices.find(([matches]) => matches)?.[1] ?? "";
-}
-
 interface BrowseRowProps {
   entry: Entry;
   isDir: boolean;
@@ -57,7 +37,18 @@ interface BrowseRowProps {
   load: (path: string) => void;
 }
 
-function PickBrowseRow(props: BrowseRowProps & { row: string; glyph: React.ReactNode; meta: string }) {
+/** Handle, name, right edge. Fixed, so the names line up down the listing. */
+const BROWSE_ROW =
+  "grid w-full grid-cols-[1.125rem_minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-1.5 text-left text-[0.8125rem] transition-colors";
+
+type RowProps = BrowseRowProps & { row: string; glyph: React.ReactNode; meta: string };
+
+function Glyph({ mark, accent }: { mark: string; accent: boolean }) {
+  return <span className={cn("font-mono text-[0.75rem]", accent ? "text-accent" : "text-ink-3")}>{mark}</span>;
+}
+
+/** Picking attachments: the arrow walks in, the name toggles the tick. */
+function PickBrowseRow(props: RowProps) {
   return (
     <div className={cn(props.row, "hover:bg-sunk")}>
       {props.isDir ? (
@@ -84,32 +75,60 @@ function PickBrowseRow(props: BrowseRowProps & { row: string; glyph: React.React
   );
 }
 
-function BrowseRow(props: BrowseRowProps) {
-  const meta = entryMeta(props.entry, props.selected, props.pick);
-  const row = cn(
-    "grid w-full grid-cols-[1.125rem_minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-1.5 text-left text-[0.8125rem] transition-colors",
-    props.entry.taken && "text-ink-3",
-    props.selected && "bg-accent-soft",
-  );
-  const repo = !!props.entry.repo && !props.pick;
-  const glyph = (
-    <span className={cn("font-mono text-[0.75rem]", repo ? "text-accent" : "text-ink-3")}>
-      {repo ? "◆" : props.isDir ? "▸" : "·"}
-    </span>
-  );
-  if (props.pick) return <PickBrowseRow {...props} row={row} glyph={glyph} meta={meta} />;
+/** Walking for a project: the whole row is one button, and it goes in. */
+function WalkBrowseRow(props: RowProps) {
   return (
     <button
       type="button"
       onClick={() => {
         if (!props.onRow(props.entry, props.isDir) && props.isDir) props.load(props.entry.path);
       }}
-      className={cn(row, "cursor-pointer hover:bg-sunk")}
+      className={cn(props.row, "cursor-pointer hover:bg-sunk")}
     >
-      {glyph}
+      {props.glyph}
       <span className={cn("truncate", props.entry.repo && "font-medium")}>{props.entry.name}</span>
-      <span className="text-[0.75rem] text-ink-3">{meta}</span>
+      <span className="text-[0.75rem] text-ink-3">{props.meta}</span>
     </button>
+  );
+}
+
+function BrowseRow(props: BrowseRowProps) {
+  const marks = browseRow(props.entry, props.isDir, props.pick, props.selected);
+  const row = {
+    ...props,
+    row: cn(BROWSE_ROW, props.entry.taken && "text-ink-3", props.selected && "bg-accent-soft"),
+    glyph: <Glyph mark={marks.glyph} accent={marks.repo} />,
+    meta: marks.meta,
+  };
+  return props.pick ? <PickBrowseRow {...row} /> : <WalkBrowseRow {...row} />;
+}
+
+/** The listing itself: the read that failed, the directory with nothing in it, or the rows. */
+function BrowseRows(props: {
+  here: Dirs | null;
+  rows: [Entry, boolean][];
+  err: string;
+  pick: boolean;
+  chosen: (path: string) => boolean;
+  onRow: (e: Entry, isDir: boolean) => boolean;
+  load: (path: string) => void;
+}) {
+  return (
+    <div className="max-h-[46vh] overflow-y-auto">
+      {props.err && <div className="p-3.5 text-[0.75rem] text-bad">{props.err}</div>}
+      {props.here && !props.rows.length && <div className="p-3.5 text-[0.75rem] text-ink-3">空目录</div>}
+      {props.rows.map(([entry, isDir]) => (
+        <BrowseRow
+          key={entry.path}
+          entry={entry}
+          isDir={isDir}
+          pick={props.pick}
+          selected={props.chosen(entry.path)}
+          onRow={props.onRow}
+          load={props.load}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -128,7 +147,7 @@ function Browse({
   pick?: boolean;
   footer: (here: Dirs | null) => React.ReactNode;
   onRow: (e: Entry, isDir: boolean) => boolean;
-  chosen?: (path: string) => boolean;
+  chosen: (path: string) => boolean;
 }) {
   const [d, setD] = useState<Dirs | null>(null);
   const [err, setErr] = useState("");
@@ -172,21 +191,15 @@ function Browse({
           </span>
         ))}
       </div>
-      <div className="max-h-[46vh] overflow-y-auto">
-        {err && <div className="p-3.5 text-[0.75rem] text-bad">{err}</div>}
-        {d && !rows.length && <div className="p-3.5 text-[0.75rem] text-ink-3">空目录</div>}
-        {rows.map(([entry, isDir]) => (
-          <BrowseRow
-            key={entry.path}
-            entry={entry}
-            isDir={isDir}
-            pick={!!pick}
-            selected={chosen ? chosen(entry.path) : false}
-            onRow={onRow}
-            load={(path) => void load(path)}
-          />
-        ))}
-      </div>
+      <BrowseRows
+        here={d}
+        rows={rows}
+        err={err}
+        pick={!!pick}
+        chosen={chosen}
+        onRow={onRow}
+        load={(path) => void load(path)}
+      />
       <div className="flex flex-wrap items-center gap-2 border-t border-rule p-3">{footer(d)}</div>
     </>
   );
@@ -240,12 +253,6 @@ const ProjectCreatedSchema: z.ZodType<InferResponseType<typeof api.projects.$pos
 
 let lastInstallation: number | null = null;
 let cached: RepoList | null = null;
-
-const days = (t: number) => {
-  if (!t) return "";
-  const d = Math.round((Date.now() - t) / 86_400_000);
-  return d < 1 ? "今天" : d < 30 ? `${d} 天前` : `${Math.round(d / 30)} 个月前`;
-};
 
 type Repo = RepoList["repos"][number];
 
@@ -349,7 +356,29 @@ function RepoStates(props: {
   );
 }
 
+/**
+ * The right edge of a repository row: what it is now, and what pressing it does.
+ *
+ * The action hides until the row is the one under the cursor, so the list reads
+ * as ages rather than as thirty offers. A row already being added has neither —
+ * it says 添加中… and stops offering to be pressed again.
+ */
+function RepoEdge({ marks }: { marks: ReturnType<typeof repoRow> }) {
+  if (marks.adding) return <span className="whitespace-nowrap text-[0.75rem] text-ink-3">{marks.meta}</span>;
+  return (
+    <>
+      <span className="whitespace-nowrap text-[0.75rem] text-ink-3 group-data-[selected=true]:hidden">
+        {marks.meta}
+      </span>
+      <span className="hidden whitespace-nowrap font-mono text-[0.6875rem] text-accent group-data-[selected=true]:inline">
+        {marks.action}
+      </span>
+    </>
+  );
+}
+
 function RepoItem({ repo, busy, select }: { repo: Repo; busy: string; select: (repo: Repo) => void }) {
+  const marks = repoRow(repo, busy);
   return (
     <Command.Item
       value={repo.fullName}
@@ -361,22 +390,10 @@ function RepoItem({ repo, busy, select }: { repo: Repo; busy: string; select: (r
       )}
     >
       <span className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate font-medium">{repo.fullName.split("/")[1] ?? repo.fullName}</span>
+        <span className="truncate font-medium">{marks.name}</span>
         {repo.private && <Badge>私有</Badge>}
       </span>
-      <span
-        className={cn(
-          "whitespace-nowrap text-[0.75rem] text-ink-3",
-          busy !== repo.fullName && "group-data-[selected=true]:hidden",
-        )}
-      >
-        {busy === repo.fullName ? "添加中…" : repo.taken ? "已添加" : days(repo.pushedAt)}
-      </span>
-      {busy !== repo.fullName && (
-        <span className="hidden whitespace-nowrap font-mono text-[0.6875rem] text-accent group-data-[selected=true]:inline">
-          {repo.taken ? `去 ${repo.taken.name} →` : `添加 · ${repo.defaultBranch}`}
-        </span>
-      )}
+      <RepoEdge marks={marks} />
     </Command.Item>
   );
 }

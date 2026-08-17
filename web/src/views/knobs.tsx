@@ -15,6 +15,24 @@ import {
   splitDuration,
 } from "../lib/units";
 import { allModels, cheapest, modelsByRuntime, type ModelSources } from "../lib/models";
+import {
+  badCell,
+  durationScale,
+  invalidFlag,
+  labelledBy,
+  mateValue,
+  notifyState,
+  NO_COMPLAINT,
+  rec,
+  rowChanged,
+  runtimeSwitch,
+  selfNamed,
+  TABLES,
+  textOf,
+  type Complaint,
+  type NotifyState,
+  type PairKind,
+} from "../features/knobs/model";
 import { Combobox } from "../ui/combobox";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "../ui/field";
 import { Head, Input, Meta, Textarea } from "../ui/bits";
@@ -267,18 +285,11 @@ const COPY: Record<string, { zh: string; why?: string; ph?: string }> = {
   },
 };
 
-/** Rows whose value is a table rather than a line: the block sits under nothing. */
-const TABLES = new Set([
-  "difficultyModel",
-  "sliceBudgetTokens",
-  "contextWindow",
-  "leaseSlots",
-  "sandbox.cacheDirs",
-  "sandbox.denyDomains",
-]);
-
-/** Rows with no single control for a `<label>` to point at. They name themselves. */
-const SELF_NAMED = new Set([...TABLES, "autoAcceptTiers", "indexModel.runtime"]);
+/** The two rows whose value is a map, and what an unnamed key box suggests. */
+const PAIRS: Record<string, { kind: PairKind; keyPh: string }> = {
+  leaseSlots: { kind: "int", keyPh: "闸门名" },
+  "sandbox.cacheDirs": { kind: "text", keyPh: "挂载点" },
+};
 
 /**
  * Two settings the page shows as one row, because they are one decision.
@@ -362,8 +373,8 @@ export function Knobs({ section }: { section: KnobSection }) {
         <FieldGroup>
           {section === "notify" && <Permission />}
           {rows.map((k) => {
-            const mate = knobs.find((x) => x.path === PAIRED[k.path]);
-            return <Row key={k.path} knob={k} {...(mate ? { mate } : {})} src={src} onWrite={write} />;
+            const mate = knobs.find((x) => x.path === PAIRED[k.path]) ?? null;
+            return <Row key={k.path} knob={k} mate={mate} src={src} onWrite={write} />;
           })}
         </FieldGroup>
       )}
@@ -376,7 +387,7 @@ const copyFor = (k: Knob) => COPY[k.path] ?? { zh: k.path, why: undefined, ph: u
 
 function KnobLabel({ knob, id }: { knob: Knob; id: string }) {
   const copy = copyFor(knob);
-  const title = SELF_NAMED.has(knob.path) || knob.type === "boolean";
+  const title = selfNamed(knob.path, knob.type);
   return (
     <div className="flex min-w-0 items-baseline gap-1.5">
       {title ? <FieldTitle id={id}>{copy.zh}</FieldTitle> : <FieldLabel htmlFor={id}>{copy.zh}</FieldLabel>}
@@ -406,46 +417,24 @@ async function saveKnob(target: Knob, value: Json, onWrite: Write): Promise<stri
   return result.ok ? null : result.text;
 }
 
-function resetKnobs(knob: Knob, mate: Knob | undefined, write: (target: Knob, value: Json) => void) {
+function resetKnobs(knob: Knob, mate: Knob | null, write: (target: Knob, value: Json) => void) {
   write(knob, knob.default);
   if (mate) write(mate, mate.default);
 }
 
-function Row({ knob, mate, src, onWrite }: { knob: Knob; mate?: Knob; src: ModelSources; onWrite: Write }) {
+function Row({ knob, mate, src, onWrite }: { knob: Knob; mate: Knob | null; src: ModelSources; onWrite: Write }) {
   // What is wrong, and which box it is wrong in. A table row can hold six boxes
   // and "要一个数量" under all of them says nothing about which.
-  const [bad, setBad] = useState<{ why: string; at: string } | null>(null);
+  const [bad, setBad] = useState<Complaint>(NO_COMPLAINT);
   const id = `knob-${knob.path.replace(/\W/g, "-")}`;
 
   const put = async (target: Knob, value: Json) => {
     const why = await saveKnob(target, value, onWrite);
-    setBad(why ? { why, at: "" } : null);
+    setBad(why ? { why, at: "" } : NO_COMPLAINT);
   };
-  const write = (value: Json) => void put(knob, value);
-  const refuse = (why: string, at = "") => setBad({ why, at });
-  const clear = () => setBad(null);
-  // One row, so one 已改 — a paired row is changed if either half is.
-  const changed = [knob, mate].some((item) => item?.overridden);
-
-  const value = (
-    <Value
-      id={id}
-      knob={knob}
-      {...(mate ? { mate } : {})}
-      src={src}
-      {...(bad ? { bad: bad.at } : {})}
-      onWrite={write}
-      {...(mate ? { onWriteMate: (v: Json) => void put(mate, v) } : {})}
-      onRefuse={refuse}
-      onClear={clear}
-    />
-  );
 
   return (
-    <Field
-      data-invalid={bad ? "true" : undefined}
-      {...(SELF_NAMED.has(knob.path) || knob.type === "boolean" ? { "aria-labelledby": id } : {})}
-    >
+    <Field data-invalid={invalidFlag(bad)} aria-labelledby={labelledBy(knob.path, knob.type, id)}>
       {/* The `?` is a sibling of the label, not a child of it: inside a
           `<label htmlFor>` every click on it would also focus the field it
           explains, which is a control that moves the cursor somewhere else. */}
@@ -455,14 +444,24 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate?: Knob; src: Model
           data-block={TABLES.has(knob.path)}
           className="flex w-full items-center gap-2 data-[block=true]:items-start"
         >
-          {value}
+          <Value
+            id={id}
+            knob={knob}
+            mate={mate}
+            src={src}
+            bad={badCell(bad)}
+            onWrite={(v) => void put(knob, v)}
+            onWriteMate={(v) => void put(mate ?? knob, v)}
+            onRefuse={(why, at) => setBad({ why, at })}
+            onClear={() => setBad(NO_COMPLAINT)}
+          />
           {/* Neutral, not the accent: the accent means "waiting on you" and this
               is only "not the shipped value". */}
-          {changed && (
+          {rowChanged(knob, mate) && (
             <ResetOverride onReset={() => resetKnobs(knob, mate, (target, next) => void put(target, next))} />
           )}
         </div>
-        {bad && <span className="text-[0.6875rem] leading-snug text-accent">{bad.why}</span>}
+        {bad.why && <span className="text-[0.6875rem] leading-snug text-accent">{bad.why}</span>}
       </FieldContent>
     </Field>
   );
@@ -471,15 +470,15 @@ function Row({ knob, mate, src, onWrite }: { knob: Knob; mate?: Knob; src: Model
 interface Editor {
   id: string;
   knob: Knob;
-  /** The second half of a `PAIRED` row, when there is one. */
-  mate?: Knob;
+  /** The second half of a `PAIRED` row, null when the row is single. */
+  mate: Knob | null;
   /** Every model this config names, so a picker can offer them. */
   src: ModelSources;
-  /** Which cell in this row holds the bad value, `""` for the row itself. */
-  bad?: string;
+  /** Which cell holds the bad value, `""` for the row itself, null for none. */
+  bad: string | null;
   onWrite: (value: Json) => void;
-  onWriteMate?: (value: Json) => void;
-  onRefuse: (why: string, at?: string) => void;
+  onWriteMate: (value: Json) => void;
+  onRefuse: (why: string, at: string) => void;
   /** Nothing changed, so nothing this row said about the last attempt still holds. */
   onClear: () => void;
 }
@@ -495,10 +494,10 @@ function modelValue({ knob, mate, src, onWrite, onWriteMate }: Editor) {
       return (
         <IndexModel
           runtime={ConfigSchema.shape.indexModel.shape.runtime.parse(knob.value)}
-          model={ConfigSchema.shape.indexModel.shape.model.catch("").parse(mate?.value)}
+          model={ConfigSchema.shape.indexModel.shape.model.catch("").parse(mateValue(mate))}
           src={src}
           onRuntime={onWrite}
-          onModel={onWriteMate ?? onWrite}
+          onModel={onWriteMate}
         />
       );
     default:
@@ -506,41 +505,35 @@ function modelValue({ knob, mate, src, onWrite, onWriteMate }: Editor) {
   }
 }
 
+/** The key box's own placeholder, or what the kind of map suggests instead. */
+const keyPh = (knob: Knob, fallback: string) => copyFor(knob).ph ?? fallback;
+
 function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
-  const ph = copyFor(knob).ph;
+  // Both map editors are the same control; only the key box and what a value has
+  // to parse as differ, so they are one branch rather than two near-identical ones.
+  const pairs = PAIRS[knob.path];
+  if (pairs) {
+    return (
+      <Pairs
+        map={rec(knob.value)}
+        kind={pairs.kind}
+        keyPh={keyPh(knob, pairs.keyPh)}
+        bad={bad}
+        onWrite={onWrite}
+        onRefuse={onRefuse}
+        onClear={onClear}
+      />
+    );
+  }
   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only map knobs
   switch (knob.path) {
     case "contextWindow":
       return <Windows map={ConfigSchema.shape.contextWindow.parse(knob.value)} src={src} onWrite={onWrite} />;
-    case "leaseSlots":
-      return (
-        <Pairs
-          map={rec(knob.value)}
-          kind="int"
-          keyPh="闸门名"
-          {...(bad !== undefined ? { bad } : {})}
-          onWrite={onWrite}
-          onRefuse={onRefuse}
-          onClear={onClear}
-        />
-      );
-    case "sandbox.cacheDirs":
-      return (
-        <Pairs
-          map={rec(knob.value)}
-          kind="text"
-          keyPh={ph ?? "挂载点"}
-          {...(bad !== undefined ? { bad } : {})}
-          onWrite={onWrite}
-          onRefuse={onRefuse}
-          onClear={onClear}
-        />
-      );
     case "sandbox.denyDomains":
       return (
         <Lines
           list={ConfigSchema.shape.sandbox.shape.denyDomains.parse(knob.value)}
-          {...(ph !== undefined ? { ph } : {})}
+          ph={copyFor(knob).ph}
           onWrite={onWrite}
         />
       );
@@ -597,84 +590,90 @@ function Value(props: Editor) {
   return modelValue(props) ?? mapValue(props) ?? choiceValue(props) ?? scalarValue(props);
 }
 
-function scalarValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
-  const ph = copyFor(knob).ph;
-  const v = knob.value;
+/**
+ * A number and its unit, for the four shapes a stored number can have.
+ *
+ * A duration or a count is a number and a unit, so it gets two controls. The
+ * text parser below still handles the rest — and still accepts `3h` typed into
+ * the digits box's sibling — but nobody has to spell anything.
+ */
+function numberValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
+  const shape = KNOB_SHAPE[knob.path];
+  const now = Number(knob.value);
+  const scale = durationScale(shape);
 
-  if (knob.type === "boolean") {
-    // Named by the row's own title rather than by an id of its own — a `<label
-    // htmlFor>` and a `FieldTitle` cannot both hold the same id, and the switch
-    // is the thing that needs the name.
-    return <Switch aria-labelledby={id} checked={Boolean(v)} onCheckedChange={onWrite} />;
-  }
-
-  if (knob.type === "number") {
-    const shape = KNOB_SHAPE[knob.path];
-    const now = Number(v);
-    // A duration or a count is a number and a unit, so it gets two controls. The
-    // text parser below still handles the rest — and still accepts `3h` typed
-    // into the digits box's sibling — but nobody has to spell anything.
-    if (shape === "ms" || shape === "seconds") {
-      const ms = shape === "seconds" ? now * 1000 : now;
-      const { n, unit } = splitDuration(ms);
-      return (
-        <Amount
-          n={n}
-          unit={unit}
-          units={DURATION_UNITS}
-          label={copyFor(knob).zh}
-          invalid={bad === ""}
-          onCommit={(next, u) => onWrite(shape === "seconds" ? Math.round(msOf(next, u) / 1000) : msOf(next, u))}
-        />
-      );
-    }
-    if (shape === "count") {
-      return <CountAmount value={now} label={copyFor(knob).zh} invalid={bad === ""} onWrite={onWrite} />;
-    }
-    // Stored as a fraction of one and read as a percentage, which is the row
-    // where a typo is quietest: `6` typed over `60%` is a legal fraction and
-    // means every turn rotates its session. Digits plus a fixed suffix leaves no
-    // way to type the number in the other scale by accident.
-    if (shape === "percent") {
-      return (
-        <Amount
-          n={Math.round(now * 1000) / 10}
-          unit="%"
-          units={PERCENT}
-          label={copyFor(knob).zh}
-          invalid={bad === ""}
-          onCommit={(pct) => {
-            if (pct <= 0 || pct > 100) return onRefuse(WANTS.percent);
-            // Divided, not multiplied: 600 / 1000 is the same double as 0.6.
-            onWrite(Math.round(pct * 10) / 1000);
-          }}
-        />
-      );
-    }
+  if (scale) {
+    const { n, unit } = splitDuration(now * scale);
     return (
-      <Box
-        id={id}
-        value={showNumber(now, shape)}
+      <Amount
+        n={n}
+        unit={unit}
+        units={DURATION_UNITS}
+        label={copyFor(knob).zh}
         invalid={bad === ""}
-        className="w-[9rem] flex-none"
-        onUnchanged={onClear}
-        onCommit={(raw) => {
-          const n = readNumber(raw, now, shape);
-          if (n === null) return onRefuse(shape ? WANTS[shape] : "要一个数字");
-          onWrite(n);
+        onCommit={(next, u) => onWrite(Math.round(msOf(next, u) / scale))}
+      />
+    );
+  }
+  if (shape === "count") {
+    return <CountAmount value={now} label={copyFor(knob).zh} invalid={bad === ""} onWrite={onWrite} />;
+  }
+  // Stored as a fraction of one and read as a percentage, which is the row
+  // where a typo is quietest: `6` typed over `60%` is a legal fraction and
+  // means every turn rotates its session. Digits plus a fixed suffix leaves no
+  // way to type the number in the other scale by accident.
+  if (shape === "percent") {
+    return (
+      <Amount
+        n={Math.round(now * 1000) / 10}
+        unit="%"
+        units={PERCENT}
+        label={copyFor(knob).zh}
+        invalid={bad === ""}
+        onCommit={(pct) => {
+          if (pct <= 0 || pct > 100) return onRefuse(WANTS.percent, "");
+          // Divided, not multiplied: 600 / 1000 is the same double as 0.6.
+          onWrite(Math.round(pct * 10) / 1000);
         }}
       />
     );
   }
-
   return (
-    <Box id={id} value={textOf(v)} placeholder={ph} invalid={bad === ""} onUnchanged={onClear} onCommit={onWrite} />
+    <Box
+      id={id}
+      value={showNumber(now, shape)}
+      invalid={bad === ""}
+      className="w-[9rem] flex-none"
+      onUnchanged={onClear}
+      onCommit={(raw) => {
+        const n = readNumber(raw, now, shape);
+        if (n === null) return onRefuse(shape ? WANTS[shape] : "要一个数字", "");
+        onWrite(n);
+      }}
+    />
   );
 }
 
-const rec = (v: Json): Record<string, Json> => (v && !Array.isArray(v) && typeof v === "object" ? v : {});
-const textOf = (v: Json): string =>
-  v === null ? "" : typeof v === "string" ? v : typeof v === "object" ? (JSON.stringify(v) ?? "") : String(v);
+function scalarValue(editor: Editor) {
+  const { id, knob, bad, onWrite, onClear } = editor;
+  // Named by the row's own title rather than by an id of its own — a `<label
+  // htmlFor>` and a `FieldTitle` cannot both hold the same id, and the switch
+  // is the thing that needs the name.
+  if (knob.type === "boolean") {
+    return <Switch aria-labelledby={id} checked={Boolean(knob.value)} onCheckedChange={onWrite} />;
+  }
+  if (knob.type === "number") return numberValue(editor);
+  return (
+    <Box
+      id={id}
+      value={textOf(knob.value)}
+      placeholder={copyFor(knob).ph}
+      invalid={bad === ""}
+      onUnchanged={onClear}
+      onCommit={onWrite}
+    />
+  );
+}
 
 const PERCENT = ["%"] as const;
 
@@ -952,11 +951,11 @@ function Pairs({
   onClear,
 }: {
   map: Record<string, Json>;
-  kind: "int" | "text";
+  kind: PairKind;
   keyPh: string;
-  bad?: string;
+  bad: string | null;
   onWrite: (v: Json) => void;
-  onRefuse: (why: string, at?: string) => void;
+  onRefuse: (why: string, at: string) => void;
   onClear: () => void;
 }) {
   const entries = Object.entries(map);
@@ -1021,7 +1020,7 @@ function Pairs({
 }
 
 /** A list of one-per-line strings. Nothing here is ordered, so nothing sorts it. */
-function Lines({ list, ph, onWrite }: { list: string[]; ph?: string; onWrite: (v: Json) => void }) {
+function Lines({ list, ph, onWrite }: { list: string[]; ph: string | undefined; onWrite: (v: Json) => void }) {
   const text = list.join("\n");
   return (
     <Textarea
@@ -1208,10 +1207,10 @@ function IndexModel({
       <Segments
         value={runtime}
         onValueChange={(next) => {
-          if (!next || next === runtime) return;
-          onRuntime(next);
-          const cheap = cheapest(src, next);
-          if (cheap && cheap !== model) onModel(cheap);
+          const change = runtimeSwitch(next, runtime, cheapest(src, next), model);
+          if (!change) return;
+          onRuntime(change.runtime);
+          if (change.model) onModel(change.model);
         }}
       >
         {runtimes.map((r) => (
@@ -1232,19 +1231,25 @@ function IndexModel({
  * notifications before it has said anything worth being notified about is the
  * page everyone clicks 拒绝 on, and that decision is sticky.
  */
+/** What each answer means, and where the reader has to go to change it. */
+const NOTIFY_SAID: Record<NotifyState, string> = {
+  unsupported: "这个浏览器不支持",
+  granted: "已开。面板在后台也会弹，浏览器整个关掉才收不到——那时重新打开会补上。",
+  denied: "被浏览器拒了。要开的话在地址栏左边的站点设置里改，然后刷新。",
+  // The only state with anything left to press.
+  ask: "",
+};
+
 function Permission() {
   const supported = typeof Notification !== "undefined";
   const [state, setState] = useState(supported ? Notification.permission : "denied");
+  const said = NOTIFY_SAID[notifyState(supported, state)];
   return (
     <Field aria-labelledby="notify-perm">
       <FieldTitle id="notify-perm">桌面通知</FieldTitle>
       <FieldContent>
-        {!supported ? (
-          <Meta>这个浏览器不支持</Meta>
-        ) : state === "granted" ? (
-          <Meta>已开。面板在后台也会弹，浏览器整个关掉才收不到——那时重新打开会补上。</Meta>
-        ) : state === "denied" ? (
-          <Meta>被浏览器拒了。要开的话在地址栏左边的站点设置里改，然后刷新。</Meta>
+        {said ? (
+          <Meta>{said}</Meta>
         ) : (
           <Button size="sm" onClick={() => void Notification.requestPermission().then(setState)}>
             允许通知
