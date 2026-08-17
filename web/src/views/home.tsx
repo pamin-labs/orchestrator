@@ -1,9 +1,9 @@
-import { Button } from "../ui/button";
-import { H2, Meta } from "../ui/bits";
-import { cardStyles } from "../ui/card";
+import { homeRows, projectRow } from "../features/home/model";
 import type { State } from "../lib/api";
-import { countWaiting, pending, projectState } from "../lib/select";
-import { cn, K } from "../lib/utils";
+import { cn } from "../lib/utils";
+import { H2, Meta } from "../ui/bits";
+import { Button } from "../ui/button";
+import { cardStyles } from "../ui/card";
 import { Queue } from "./queue";
 
 /**
@@ -33,7 +33,6 @@ export function Home({
   onAdd: () => void;
   refresh: () => void;
 }) {
-  const rows = [...st.projects].sort((a, b) => countWaiting(st, b.id) - countWaiting(st, a.id));
   // 都处理完了 reports on work that got processed. With no requirement anywhere
   // there is none, and a green line claiming otherwise is the first thing a fresh
   // install reads.
@@ -44,22 +43,8 @@ export function Home({
       <div className="max-w-[44rem]">
         <H2 className={cn(anyWork && "mt-9")}>项目</H2>
         <div className="flex flex-col gap-2.5">
-          {rows.map((p) => {
-            const w = pending(st, p.id);
-            const n = countWaiting(st, p.id);
-            const gs = st.groups.filter((g) => g.project_id === p.id);
-            const live = gs.filter((g) => ["RUNNING", "PLANNING"].includes(g.status));
-            const tokens = gs.reduce((x, g) => x + (g.spent_tokens || 0), 0);
-            const state = projectState(st, p.id);
-            const bits = [
-              w.cards.length && `${w.cards.length} 张卡待批`,
-              w.slices.length && `${w.slices.length} 片待查收`,
-              w.merges.length && `${w.merges.length} 个待合入`,
-              w.asks.length && `${w.asks.length} 个提问`,
-            ].filter(Boolean);
-            // A zero is not a fact worth the right edge. 0 个需求 next to 空着 is the
-            // same absence twice, and 0 tokens is what every project starts at.
-            const meta = [gs.length && `${gs.length} 个需求`, tokens && `${K(tokens)} tokens`].filter(Boolean);
+          {homeRows(st).map((p) => {
+            const { n, state, bits, live, meta } = projectRow(st, p.id);
             return (
               <div
                 key={p.id}
@@ -94,9 +79,7 @@ export function Home({
                     !state.fresh && <div className="mt-1 text-[0.75rem] text-ink-3">{state.zh}</div>
                   )}
                   {live.length > 0 && (
-                    <div className="mt-1.5 truncate text-[0.75rem] text-ink-2">
-                      在跑：{live.map((g) => g.name).join("、")}
-                    </div>
+                    <div className="mt-1.5 truncate text-[0.75rem] text-ink-2">在跑：{live.join("、")}</div>
                   )}
                 </div>
                 {state.fresh ? (
