@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import parseDiff from "parse-diff";
-import { diffWordsWithSpace } from "diff";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Button } from "./button";
 import { Meta } from "./bits";
 import { Tip } from "./tooltip";
+import { type Cell, markSpans, type SideName, sideTone, type Tone } from "../features/diff/model";
 import { cn } from "../lib/utils";
 
 /**
@@ -50,6 +50,9 @@ interface Dir {
 
 const emptyDir = (name: string): Dir => ({ name, dirs: new Map(), files: [] });
 
+/** A rename shows its new path; a deletion falls back to the one it had. */
+const nameOf = (f: parseDiff.File) => (f.to && f.to !== "/dev/null" ? f.to : (f.from ?? "?"));
+
 /**
  * The rail as a folder tree, the way a diff is normally read.
  *
@@ -58,7 +61,7 @@ const emptyDir = (name: string): Dir => ({ name, dirs: new Map(), files: [] });
  * folders carry no choice, and a column this narrow cannot spend indentation on
  * rows that say nothing.
  */
-function buildTree(files: parseDiff.File[], nameOf: (f: parseDiff.File) => string): Dir {
+function buildTree(files: parseDiff.File[]): Dir {
   const root = emptyDir("");
   files.forEach((f, i) => {
     const parts = nameOf(f).split("/");
@@ -93,14 +96,9 @@ function flatten(d: Dir): number[] {
   return [...[...d.dirs.values()].flatMap(flatten), ...d.files.map((f) => f.i)];
 }
 
-const _base = (f: parseDiff.File) => {
-  const n = f.to && f.to !== "/dev/null" ? f.to : (f.from ?? "?");
-  return n.slice(n.lastIndexOf("/") + 1);
-};
-
 export type Row = {
-  left?: { n: number; text: string; changed?: boolean };
-  right?: { n: number; text: string; changed?: boolean };
+  left?: Cell;
+  right?: Cell;
   /** Hunk boundary, rendered as a rule rather than a `@@` line. */
   gap?: string;
 };
@@ -155,21 +153,13 @@ export function rowsOf(chunk: parseDiff.Chunk): Row[] {
 }
 
 /** The changed spans of a paired line. Whitespace is kept: indentation is meaning. */
-function marks(a: string, b: string, side: "left" | "right") {
-  const parts = diffWordsWithSpace(a, b);
-  const want = side === "left" ? "removed" : "added";
-  let offset = 0;
-  return parts
-    .filter((p) => (want === "removed" ? !p.added : !p.removed))
-    .map((p) => {
-      const key = `${offset}:${p.value}`;
-      offset += p.value.length;
-      return (
-        <span key={key} className={cn(p[want] && (side === "left" ? "bg-bad-mark" : "bg-ok-mark"))}>
-          {p.value}
-        </span>
-      );
-    });
+function marks(text: string, other: string, side: SideName) {
+  const mark = side === "left" ? "bg-bad-mark" : "bg-ok-mark";
+  return markSpans(text, other, side).map((span) => (
+    <span key={span.key} className={cn(span.marked && mark)}>
+      {span.text}
+    </span>
+  ));
 }
 
 /** A hunk boundary reads as its context line, or as an ellipsis when there is none. */
@@ -235,7 +225,7 @@ function DiffFile({
   head: (element: HTMLDivElement | null) => void;
   onExpand: () => void;
 }) {
-  const name = file.to && file.to !== "/dev/null" ? file.to : (file.from ?? "?");
+  const name = nameOf(file);
   const rows = file.chunks.flatMap((chunk): Row[] => [{ gap: chunk.content }, ...rowsOf(chunk)]);
   const shown = expanded ? rows : rows.slice(0, 400);
   return (
@@ -276,13 +266,12 @@ function DiffFile({
 
 export function DiffView({ diff, truncated }: { diff: string; truncated?: boolean }) {
   const files = useMemo(() => parseDiff(diff), [diff]);
-  const nameOf = (f: parseDiff.File) => (f.to && f.to !== "/dev/null" ? f.to : (f.from ?? "?"));
   const [here, setHere] = useState(0);
   const [open, setOpen] = useState<Set<number>>(new Set());
   const pane = useRef<HTMLDivElement>(null);
   const heads = useRef<(HTMLDivElement | null)[]>([]);
 
-  const tree = useMemo(() => buildTree(files, nameOf), [files]);
+  const tree = useMemo(() => buildTree(files), [files]);
   const order = useMemo(() => flatten(tree), [tree]);
 
   // Not scrollIntoView: it scrolls every scrollable ancestor, so clicking a file
@@ -418,26 +407,12 @@ function Gutter({ n, tone, split }: { n?: number; tone?: "ok" | "bad"; split?: b
   );
 }
 
-function Side({
-  cell,
-  other,
-  side,
-}: {
-  cell?: { n: number; text: string; changed?: boolean };
-  other?: { n: number; text: string };
-  side: "left" | "right";
-}) {
-  const tone = !cell ? "empty" : !other ? side : cell.changed ? side : "same";
+const WASH: Record<Tone, string> = { empty: "bg-sunk", left: "bg-bad-soft", right: "bg-ok-soft", same: "" };
+
+function Side({ cell, other, side }: { cell?: Cell; other?: Cell; side: SideName }) {
   return (
-    <td
-      className={cn(
-        "whitespace-pre-wrap break-words px-2 align-top",
-        tone === "empty" && "bg-sunk",
-        tone === "left" && "bg-bad-soft",
-        tone === "right" && "bg-ok-soft",
-      )}
-    >
-      {cell ? (cell.changed && other ? marks(cell.text, other.text, side) : cell.text || " ") : ""}
+    <td className={cn("whitespace-pre-wrap break-words px-2 align-top", WASH[sideTone(side, cell, other)])}>
+      {cell && (cell.changed && other ? marks(cell.text, other.text, side) : cell.text || " ")}
     </td>
   );
 }
