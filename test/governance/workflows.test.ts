@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
-const workflowNames = ["ci", "codeql", "security", "nightly", "release"] as const;
+const workflowNames = ["ci", "codeql", "security", "nightly", "release", "pr-report"] as const;
 const StringMap = z.record(z.string(), z.string());
 const JsonMap = z.record(z.string(), z.json());
 const WorkflowSchema = z.object({
@@ -85,6 +85,7 @@ describe("workflow governance", () => {
       "quality-oxlint",
       "quality-fallow",
       "test-main",
+      "test-coverage",
       "build-web",
       "dco",
       "pr-plan",
@@ -102,6 +103,83 @@ describe("workflow governance", () => {
     expect(fallow).toContain("--format github-annotations");
     expect(fallow).toContain("--format github-summary");
     expect(fallow).toContain('exit "$audit_status"');
+  });
+
+  test("CI only uploads the report evidence a privileged second stage consumes", async () => {
+    const ci = await load("ci");
+    const ciText = await source("ci");
+    const uploads = Object.values(ci.jobs).flatMap((job) =>
+      job.steps.filter((step) => step.uses?.startsWith("actions/upload-artifact@")),
+    );
+
+    const uploadNames = uploads.map((step) => step.with?.name).filter((name) => typeof name === "string");
+    expect(uploadNames.toSorted((a, b) => a.localeCompare(b))).toEqual([
+      "report-budget",
+      "report-coverage",
+      "report-fallow",
+      "report-tests",
+    ]);
+    // A red job still has to hand its evidence over, or the comment reports nothing
+    // exactly when the reader needs it most.
+    for (const upload of uploads) expect(upload.if).toBe("always()");
+    expect(ciText).toContain("--reporter=junit");
+    expect(ciText).toContain("bun run test:coverage");
+    expect(ciText).toContain('bun run perf:budget | tee "$RUNNER_TEMP/report/budget.txt"');
+    // `workflow_run` carries no pull-request number, so every artifact carries one.
+    expect(ciText.match(/report\/pr-number\.txt/g)).toHaveLength(uploads.length);
+    expect(ciText).not.toMatch(/sticky-pull-request-comment|codecov/);
+  });
+
+  test("the report stage comments with the permissions a fork pull request cannot hold", async () => {
+    const report = await load("pr-report");
+    const reportText = await source("pr-report");
+    const job = report.jobs["pr-report"]!;
+
+    expect(reportText).toContain("workflows: [ci]");
+    expect(reportText).toContain("types: [completed]");
+    expect(job.if).toBe("github.event.workflow_run.event == 'pull_request'");
+    expect(report.permissions).toEqual({ contents: "read" });
+    expect(job.permissions).toEqual({ "pull-requests": "write", actions: "read", "id-token": "write" });
+
+    const download = job.steps.find((step) => step.uses?.startsWith("actions/download-artifact@"))!;
+    expect(download.with?.["run-id"]).toBe("${{ github.event.workflow_run.id }}");
+    expect(download.with?.pattern).toBe("report-*");
+
+    const codecov = job.steps.filter((step) => step.uses?.startsWith("codecov/codecov-action@"));
+    expect(codecov).toHaveLength(2);
+    for (const step of codecov) {
+      expect(step.with?.use_oidc).toBe(true);
+      expect(step.with?.override_commit).toBe("${{ github.event.workflow_run.head_sha }}");
+      expect(step.with?.override_pr).toBe("${{ steps.pr.outputs.number }}");
+    }
+    expect(codecov.map((step) => step.with?.report_type)).toEqual([undefined, "test_results"]);
+    expect(reportText).not.toContain("CODECOV_TOKEN");
+
+    // One sticky comment updated per commit, and coverage numbers left to Codecov's.
+    const sticky = job.steps.find((step) => step.uses?.startsWith("marocchino/sticky-pull-request-comment@"))!;
+    expect(sticky.with?.header).toBe("pr-report");
+    expect(sticky.with?.number).toBe("${{ steps.pr.outputs.number }}");
+    expect(reportText).toContain("cancel-in-progress: true");
+    expect(reportText).not.toMatch(/Statements\s*:|coverage percent|Lines\s*:/);
+  });
+
+  test("only changed lines can fail the coverage gate", async () => {
+    const codecov = z
+      .object({
+        coverage: z.object({
+          status: z.object({
+            patch: z.object({ default: z.looseObject({ target: z.string(), informational: z.boolean().optional() }) }),
+            project: z.object({ default: z.looseObject({ informational: z.boolean() }) }),
+          }),
+        }),
+        ignore: z.array(z.string()),
+      })
+      .parse(Bun.YAML.parse(await Bun.file("codecov.yml").text()));
+
+    expect(codecov.coverage.status.patch.default.informational ?? false).toBe(false);
+    expect(codecov.coverage.status.patch.default.target).toMatch(/^\d+%$/);
+    expect(codecov.coverage.status.project.default.informational).toBe(true);
+    expect(codecov.ignore).toContain("test/**");
   });
 
   test("security tools have one owner each", async () => {
@@ -186,6 +264,7 @@ describe("workflow governance", () => {
       "quality-oxlint",
       "quality-fallow",
       "test-main",
+      "test-coverage",
       "build-web",
       "dco",
       "pr-plan",

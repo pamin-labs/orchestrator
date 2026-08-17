@@ -1,0 +1,23 @@
+# docs/standards/testing.md: a coverage percentage is not a goal. The gate asks
+# "was the code you changed tested", so `patch` is the only status that can fail
+# and `project` reports the global number without ever blocking a merge.
+coverage:
+  status:
+    patch:
+      default:
+        target: 65%
+        threshold: 0%
+        informational: false
+    project:
+      default:
+        informational: true
+
+comment:
+  layout: reach, diff, flags, files
+  require_changes: true
+
+ignore:
+  - test/**
+  - web/dist/**
+  - coverage/**
+  - dist/**
