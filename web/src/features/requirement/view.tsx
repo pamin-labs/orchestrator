@@ -10,6 +10,7 @@ import { Bar } from "../../ui/table";
 import { Tip } from "../../ui/tooltip";
 import { ask, type AskSpec } from "../../ui/confirm";
 import { Composer, ComposerDialog, type Draft } from "../composer/view";
+import { Telemetry } from "../telemetry/view";
 import {
   AnswerDraftSchema,
   api,
@@ -182,6 +183,11 @@ export function Requirement({
             {/* No count: a container is one or none, and a badge reading 1 next
                 to 工作区 says nothing the tab does not already. */}
             <Tab value="work">工作区</Tab>
+            {/* No count either, and for a stronger reason than 工作区's: the number
+                of spans a requirement has produced is not a quantity anybody is
+                waiting on, and a badge reading 1,482 beside 耗时 would be the
+                loudest number on the tab strip while meaning the least. */}
+            <Tab value="time">耗时</Tab>
           </TabList>
 
           <TabPanel value="slice" className="flex min-h-0 flex-1 flex-col">
@@ -212,6 +218,16 @@ export function Requirement({
               and neither of them pinned. */}
           <TabPanel value="work" className="flex min-h-0 flex-1 flex-col">
             <Workspace frames={frames} grpId={g.id} />
+          </TabPanel>
+
+          {/* No trend for one requirement: a handful of turns is too few points
+              for a shape, and two points drawn as a line invite a reading of a
+              trajectory that is not in the data. The stage list and the
+              waterfall are what answer "where did the wall clock go". */}
+          <TabPanel value="time" className="flex min-h-0 flex-1 flex-col">
+            <Pane>
+              <Telemetry scope={{ kind: "group", id: g.id }} empty="这个需求还没跑过任何活。" />
+            </Pane>
           </TabPanel>
         </Tabs>
       )}

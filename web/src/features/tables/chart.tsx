@@ -1,5 +1,6 @@
 import { Area, AreaChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { K } from "../../shared/format";
+import { AXIS, CHART_CARD, ChartTooltip } from "../../ui/chart";
 
 /**
  * The two charts 成本 earns, and nothing else.
@@ -14,11 +15,6 @@ import { K } from "../../shared/format";
  * theme switch with no JS. The accent is never used: docs/design/ui.md reserves it for
  * "needs you", and a chart that borrows it teaches the eye to ignore it.
  */
-
-const AXIS = { stroke: "var(--color-ink-3)", fontSize: 10, fontFamily: "var(--font-mono)" };
-
-const CARD =
-  "rounded-md border border-rule bg-paper px-2 py-1 font-mono text-[0.6875rem] text-ink shadow-[0_6px_20px_var(--shade)]";
 
 /** Hourly burn, stacked by which subscription paid for it. */
 export function BurnChart({ data }: { data: { hour: string; claude: number; codex: number }[] }) {
@@ -41,23 +37,7 @@ export function BurnChart({ data }: { data: { hour: string; claude: number; code
             tickFormatter={(v: string) => v.slice(-2)}
           />
           <YAxis {...AXIS} tickLine={false} axisLine={false} width={34} tickFormatter={(v: number) => K(v)} />
-          <Tooltip
-            cursor={{ stroke: "var(--color-rule)" }}
-            wrapperClassName="!outline-none"
-            contentStyle={{ all: "unset" }}
-            content={({ active, payload, label }) =>
-              active && payload?.length ? (
-                <div className={CARD}>
-                  <div className="text-ink-3">{label}</div>
-                  {payload.map((s) => (
-                    <div key={s.name}>
-                      {s.name} {K(Number(s.value))}
-                    </div>
-                  ))}
-                </div>
-              ) : null
-            }
-          />
+          <ChartTooltip format={K} />
           {/* Two flat fills, no gradient: the question is which is larger, and a
               fade to transparent makes the bottom band look like it is ending. */}
           <Area
@@ -127,7 +107,7 @@ export function SplitDonut({ rows }: { rows: { label: string; tokens: number }[]
               contentStyle={{ all: "unset" }}
               content={({ active, payload }) =>
                 active && payload?.length ? (
-                  <div className={CARD}>
+                  <div className={CHART_CARD}>
                     {payload[0]!.name} {K(Number(payload[0]!.value))} · {pct(Number(payload[0]!.value), sum)}
                   </div>
                 ) : null

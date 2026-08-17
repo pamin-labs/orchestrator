@@ -36,8 +36,20 @@ const render = (state = emptyState(), tab: string | null = null) => {
 const shown = (r: ReturnType<typeof render>, text: string) =>
   expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
 
-test("progress explains an empty project instead of rendering an empty board", () => {
-  shown(render(), "这个项目还没有需求");
+test("an empty project still teaches the interface, and still has its tabs", () => {
+  // This used to return one sentence in place of the whole view. The sentence
+  // was right and the early return was not: it also removed the tab strip, and
+  // 耗时 does not depend on a requirement existing — a project's spans include
+  // every HTTP route and container operation that named it. On the machine this
+  // was found on, that was 289 rows of real timing on a project with zero
+  // requirements, and nothing could reach them.
+  //
+  // The onboarding line survives, from `emptyOf("live")` inside the bucket that
+  // is actually empty, which is where PRODUCT.md wants it: the empty screen
+  // still teaches the interface.
+  const view = render();
+  shown(view, "右上角 ＋ 新需求");
+  expect(view.getAllByRole("tab").map((tab) => tab.textContent)).toContain("耗时");
 });
 
 test("progress exposes live work, slice evidence and the concurrency limit", () => {

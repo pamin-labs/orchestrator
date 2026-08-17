@@ -1,0 +1,1068 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import { select } from "d3-selection";
+import flamegraph, { type FlameFrame, type FlameGraph } from "d3-flame-graph";
+import { Area, AreaChart, Brush, ResponsiveContainer, XAxis, YAxis } from "recharts";
+// `Report` and not `Telemetry`: the component exported at the foot of this file
+// is called `Telemetry`, and a type import of the same name shadows it, so the
+// one place that renders the component could not see it.
+import { readTelemetry, type Telemetry as Report, type TelemetryScope } from "../../shared/api";
+import { duration } from "../../shared/format";
+import { Head } from "../../ui/bits";
+import { AXIS, ChartTooltip } from "../../ui/chart";
+import { cn } from "../../ui/cn";
+import { Segment, Segments } from "../../ui/segment";
+import { ChevronRight } from "lucide-react";
+import { Tip } from "../../ui/tooltip";
+import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../requirement/accordion";
+import {
+  flameDepth,
+  type TimeWindow,
+  zoomAt,
+  groupByKind,
+  humanName,
+  isRenamed,
+  P50_LABEL,
+  P95_LABEL,
+  type FlameNode,
+  flameTree,
+  hasSpans,
+  splitStages,
+  trendLabel,
+} from "./model";
+
+/**
+ * 耗时 — where a scope's wall clock went.
+ *
+ * Three surfaces read this and they are the same component with a different
+ * scope, because they are the same question asked about different work. A
+ * requirement asks it about itself, a project asks it across its requirements,
+ * and the host asks it about the work that belongs to no project.
+ *
+ * Two libraries, and the split between them is the split between the questions.
+ * The waterfall and the trend are `recharts`, already bundled for 成本, so they
+ * cost nothing new: a Gantt is a stacked bar with a transparent first segment.
+ * The flamegraph is `d3-flame-graph`, 22KB, which is the one thing here that is
+ * genuinely somebody else's algorithm — partitioning a hierarchy into frames and
+ * zooming into one. `@grafana/flamegraph` was measured at 6.16MB and a second
+ * React instance for the same picture, and is not here.
+ *
+ * Both render SVG, deliberately. A canvas flamegraph is a single node with an
+ * image in it, and every render state below — empty, one trace, deep nesting, a
+ * failed span — would have to be checked by eye forever.
+ *
+ * The accent appears once in this feature and nowhere else: on a frame the
+ * reader searched for by name. `ui.md` reserves it for "needs you", and a frame
+ * somebody just asked for is the nearest a timing view comes to that. Failure is
+ * `bad`, the same vocabulary a failed gate uses.
+ *
+ * The flamegraph is the one place on this page with more than one hue, and it
+ * earns them: a frame's colour is the only thing saying "this is the same
+ * function you saw two levels up", which is why `setColorMapper` replaces the
+ * library's palette rather than removing colour from it. There is no orange —
+ * the classic flamegraph ramp is exactly the category reflex `ui.md` refuses —
+ * and no hue that `ui.md` has already given a job to.
+ */
+
+/** One menu surface, because the stage rows and the waterfall both raise one. */
+const MENU =
+  "z-50 min-w-44 rounded-lg border border-rule bg-paper p-1 text-[0.8125rem] text-ink shadow-[0_10px_30px_var(--shade)]";
+
+/**
+ * How a row looks, given two independent states.
+ *
+ * Three appearances, not two. `hover:bg-rail` after `bg-accent-soft` is a later
+ * rule on the same property, so a selected row lost its selection the moment the
+ * pointer crossed it — the hover was painting over the state rather than on top
+ * of it. Selected and hovered are orthogonal, so the selected row gets its own
+ * hover shade and the two never collide.
+ */
+const rowTone = (selected: boolean) => (selected ? "bg-accent-soft hover:bg-accent-soft/60" : "hover:bg-rail");
+
+/** A name is a literal in the flamegraph's search, and `.` and `/` are not. */
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The four columns, in one place because three rows have to agree on them.
+ *
+ * `auto` on the three numeric tracks rather than fixed rem widths. They were
+ * 3.5rem/3.5rem/3rem, sized for the widest duration anybody imagined, and in the
+ * right-hand column of a split that left the name column too narrow to hold a
+ * name — every one of 巡检…, 代码…, 容器…, 接口…, prefl…, 合并… was an ellipsis,
+ * so the column saying *what* was the one column that could not be read while
+ * three numeric ones sat at full width. `auto` gives each number exactly what it
+ * needs and hands the rest to `minmax(0,1fr)`.
+ *
+ * `跑了几次` stays a column rather than moving to a tooltip: it is the cheapest
+ * of the three to render and the one that proves a brushed window took effect.
+ */
+const COLS = "grid-cols-[minmax(0,1fr)_auto_auto_auto]";
+
+/** A number column that stays comparable down the page. */
+const NUM = "text-right font-mono text-[0.6875rem] tabular-nums";
+
+/**
+ * One stage: how long, how often, and how bad the tail is.
+ *
+ * p95 beside p50 rather than an average, because the average of a stage that is
+ * usually 200ms and occasionally 90 seconds is a number that describes neither
+ * and hides the one worth acting on. The bar is p50-ordered by the server's
+ * total, so the eye lands on the expensive stage first and the two percentiles
+ * say whether it is expensive because it is slow or because it runs constantly.
+ */
+function Stages({
+  stages,
+  picked,
+  onPick,
+  onExclude,
+}: {
+  stages: Report["stages"];
+  picked: readonly string[];
+  onPick: (names: readonly string[]) => void;
+  onExclude: (name: string) => void;
+}) {
+  const [showRest, setShowRest] = useState(false);
+  return (
+    <StageTable
+      stages={stages}
+      picked={picked}
+      showRest={showRest}
+      onShowRest={setShowRest}
+      onPick={onPick}
+      onExclude={onExclude}
+    />
+  );
+}
+
+function StageTable({
+  stages,
+  picked,
+  showRest,
+  onShowRest,
+  onPick,
+  onExclude,
+}: {
+  stages: Report["stages"];
+  picked: readonly string[];
+  showRest: boolean;
+  onShowRest: (open: boolean) => void;
+  onPick: (names: readonly string[]) => void;
+  onExclude: (name: string) => void;
+}) {
+  // Shut by default: the reader opens the group that looks expensive.
+  const [openKind, setOpenKind] = useState("");
+  // The stages below the distribution's own largest gap are the absence of an
+  // answer rather than an answer, and `ui.md` gives absence a sentence rather
+  // than equal billing.
+  const { slow, fast, ceiling } = splitStages(stages);
+  return (
+    <div>
+      <div className={cn("grid gap-x-3 border-b border-rule pb-1 text-[0.6875rem] text-ink-3", COLS)}>
+        {/* Not p50 and p95. Those are the names of the statistics; these are what
+            the reader wanted to know, and nobody has to have read a percentile
+            to use them. */}
+        <div>在做什么</div>
+        {/* 一半的情况 / 最慢的那几次 said the right thing in a sentence and the
+            wrong thing in a 3.5rem column head. These fit, and the exact
+            statistic is one hover away for anyone who wants it. */}
+        <Tip label={P50_LABEL}>
+          <div className="text-right underline decoration-dotted underline-offset-2">一般要多久</div>
+        </Tip>
+        <Tip label={P95_LABEL}>
+          <div className="text-right underline decoration-dotted underline-offset-2">最慢时</div>
+        </Tip>
+        <div className="text-right">跑了几次</div>
+      </div>
+      {/* Grouped by kind and shut by default, inside a box that does not grow.
+          A flat column put 24 watchdog rules, six routes and four container
+          operations in one list sorted only by time, with unrelated kinds
+          interleaved and names truncated mid-word. Twenty-four rules summing to
+          1.1s is one line; the reader opens the group that looks expensive.
+
+          Grouping comes from the span-name prefix rather than a list, because
+          six new span families landed in one afternoon and a list would have
+          dropped each of them into nothing. Radix owns the expand, the keyboard
+          and the ARIA (CLAUDE.md 硬约束 4). */}
+      <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: PANE_MAX_PX }}>
+        <Accordion value={openKind} onValueChange={setOpenKind}>
+          {groupByKind([...slow, ...(showRest ? fast : [])]).map((group) => (
+            <AccordionItem key={group.key} value={group.key}>
+              <AccordionTrigger
+                className={cn(
+                  "grid items-baseline gap-x-3 py-1.5",
+                  COLS,
+                  // The same treatment its children get. It used to paint a band
+                  // across the duration cell alone, which read as a rendering
+                  // accident beside a child highlighted across its full width.
+                  rowTone(group.rows.length > 0 && group.rows.every((row) => picked.includes(row.name))),
+                )}
+              >
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <ChevronRight
+                    size={11}
+                    strokeWidth={2}
+                    className="shrink-0 self-center text-ink-3 transition-transform duration-150 group-data-[state=open]:rotate-90"
+                  />
+                  <span className="truncate text-[0.8125rem] text-ink">{group.label}</span>
+                  {group.errors > 0 && (
+                    <span className="shrink-0 font-mono text-[0.625rem] text-bad">{group.errors} 失败</span>
+                  )}
+                </span>
+                {/* A shut group still answers "did this cost anything", which is
+                    usually the whole question — and a total worth showing is a
+                    total worth clicking, so it selects the whole kind across the
+                    page the same way a leaf selects one stage. Its own control
+                    rather than the header's, because the header already means
+                    "open me" and one element cannot mean both. */}
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onPick(group.rows.map((row) => row.name));
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onPick(group.rows.map((row) => row.name));
+                  }}
+                  className={cn(NUM, "cursor-pointer text-ink underline decoration-dotted underline-offset-2")}
+                >
+                  {duration(group.totalMs)}
+                </span>
+                <span className={cn(NUM, "text-ink-3")}>{group.count}</span>
+              </AccordionTrigger>
+              <AccordionBody>
+                {/* No bar. There was one under every row, and it was the same mistake the
+          flamegraph made in its own way: a mark drawn before anybody decided
+          what it encoded. It was scaled to total time while the numbers beside
+          it were percentiles, so the longest bar and the largest number were
+          different rows and neither explained the other. The fold above is what
+          the bar was reaching for — "which of these is the big one" — and it
+          answers it by leaving nine rows out rather than by drawing eleven
+          widths. Two or three rows of numbers compare fine on their own. */}
+                {group.rows.map((stage) => (
+                  <ContextMenu.Root key={stage.name}>
+                    <ContextMenu.Trigger asChild>
+                      {/* The row is the control. Clicking selects this stage across the
+                whole page — the table and the trace are one selection, not two
+                widgets near each other — and clicking the selected one clears it.
+                Highlighted rather than filtered: dropping the other rows throws
+                away the comparison that made this one worth picking. */}
+                      <button
+                        type="button"
+                        onClick={() => onPick([stage.name])}
+                        className={cn(
+                          "grid w-full cursor-pointer items-baseline gap-x-3",
+                          COLS,
+                          "border-b border-rule-soft py-1.5 text-left transition-colors",
+                          // Indented from the group's own left edge, which is
+                          // what makes the grouping visible at all: without it a
+                          // child sits exactly where its parent does and the tree
+                          // reads as a flat list with occasional headers.
+                          "pl-5",
+                          rowTone(picked.includes(stage.name)),
+                        )}
+                      >
+                        {/* The name column scrolls sideways inside itself.
+                            Truncation was cutting identifiers mid-word — `GET
+                            /api/v1/san…` names nothing — and widening the column
+                            would take the width from the numbers, which are the
+                            reason the row exists. A local scroll keeps the three
+                            numeric columns fixed and the whole name reachable.
+
+                            `overscroll-x-contain` and not just `overflow-x-auto`:
+                            this sits inside a vertically scrolling pane, so
+                            without it a horizontal drag that reaches the end of
+                            the name chains into scrolling the page. Both axes
+                            have to say "stop here" or neither does.
+
+                            `whitespace-nowrap`, not `truncate` — `truncate` is
+                            `overflow: hidden`, which would win over the scroll. */}
+                        <div className="flex min-w-0 items-baseline gap-2 overflow-x-auto overscroll-x-contain">
+                          {/* The words, with the identifier one hover away. Somebody debugging
+                needs `sandbox.create`; somebody asking where four hours went
+                does not, and the waterfall below still shows it plainly. */}
+                          {isRenamed(stage.name) ? (
+                            <Tip label={stage.name}>
+                              <span className="whitespace-nowrap text-[0.8125rem] text-ink underline decoration-dotted underline-offset-2">
+                                {humanName(stage.name)}
+                              </span>
+                            </Tip>
+                          ) : (
+                            <span className="whitespace-nowrap font-mono text-[0.75rem] text-ink">{stage.name}</span>
+                          )}
+                          {stage.errors > 0 && (
+                            <span className="shrink-0 font-mono text-[0.625rem] text-bad">{stage.errors} 失败</span>
+                          )}
+                        </div>
+                        <div className={cn(NUM, "text-ink")}>{duration(stage.p50)}</div>
+                        <div className={cn(NUM, "text-ink")}>{duration(stage.p95)}</div>
+                        <div className={cn(NUM, "text-ink-3")}>{stage.count}</div>
+                      </button>
+                    </ContextMenu.Trigger>
+                    <ContextMenu.Portal>
+                      <ContextMenu.Content className={MENU}>
+                        <MenuAction onSelect={() => onPick([stage.name])}>只看这一段</MenuAction>
+                        <MenuAction onSelect={() => onExclude(stage.name)}>不看这一段</MenuAction>
+                      </ContextMenu.Content>
+                    </ContextMenu.Portal>
+                  </ContextMenu.Root>
+                ))}
+              </AccordionBody>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </div>
+      {fast.length > 0 && (
+        // The sentence was already the fold; making it the control is what turns
+        // it from a truncation notice into a way in. It still quotes the ceiling
+        // so the reader can see why the rest were not worth a row each, and
+        // folding stays the fix — this is the door for the reader who then wants
+        // to go deeper, which is the order those two belong in.
+        <button
+          type="button"
+          onClick={() => onShowRest(!showRest)}
+          className="cursor-pointer pt-1.5 text-left text-[0.75rem] text-ink-3 transition-colors hover:text-ink"
+        >
+          {/* Under a millisecond the quoted ceiling rounds to "0ms", and "都在
+              0ms 以内" reads as a broken number rather than as a fast stage. */}
+          {showRest
+            ? `收起另外 ${fast.length} 个`
+            : `展开另外 ${fast.length} 个（${ceiling < 1 ? "都不到 1ms" : `都在 ${duration(ceiling)} 以内`}）`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The ceiling every list on this page is held to.
+ *
+ * Roughly twenty rows. Nothing here grows with the data: one tick of the
+ * watchdog is two dozen spans on its own, and a container sized by its row count
+ * walks off the bottom of the viewport and takes the rest of the page with it.
+ * The content keeps its true height *inside* this box and the box scrolls.
+ */
+const PANE_MAX_PX = 380;
+
+/** One row of the right-click menu, on the same tokens the rest of the panel uses. */
+function MenuAction({ onSelect, children }: { onSelect: () => void; children: React.ReactNode }) {
+  return (
+    <ContextMenu.Item
+      onSelect={onSelect}
+      className="cursor-pointer rounded-md px-2 py-1 outline-none data-[highlighted]:bg-rail"
+    >
+      {children}
+    </ContextMenu.Item>
+  );
+}
+
+/**
+ * One flame row, and the type that sits in it.
+ *
+ * 20px against Grafana's 22. The reference is right that a flamegraph wants
+ * compact rows — the whole value of the view is seeing depth at a glance, and
+ * every pixel of row height is a level that fell off the bottom — and this page
+ * is denser than Grafana everywhere else, so matching its number exactly would
+ * make the one chart on the page the loosest thing on it. 20 holds the 0.6875rem
+ * meta size from `ui.md`'s scale with room to sit on its baseline.
+ */
+const CELL_PX = 20;
+
+/**
+ * The hues a frame can take, and the ones it may not.
+ *
+ * `ui.md` gives four hues jobs: 27 is a failed gate, 74 is a warning, 156 is a
+ * passed gate, 285 is "needs you". A frame that landed on any of them would be
+ * making a claim about the run, and the reader would be right to read it that
+ * way. What is left is the cool half of the wheel plus the far violets, and
+ * eight of them spaced far enough apart that two frames side by side are
+ * different colours rather than two samples of one.
+ *
+ * This is the one place in the panel with more than one hue, and it is not
+ * decoration: a flamegraph's frames have no other way to say "this is the same
+ * function you saw two levels up". Grafana varies hue by frame identity for
+ * exactly that reason. The grey ramp this replaces encoded nothing at all — a
+ * chart where every mark is the same colour is a chart carrying one variable,
+ * and this one has two.
+ */
+const FLAME_HUES = [178, 190, 202, 214, 226, 238, 250, 310, 322, 334, 346];
+
+/** How far a frame is pulled toward the page's own ground. Four depths of tint. */
+const FLAME_TINTS = [20, 28, 36, 44];
+
+/**
+ * How much of the chart a frame spans, as a percentage.
+ *
+ * Read off the frame's own laid-out extent rather than divided out of the root's
+ * value, because after a zoom the chart is showing a subtree and `x0`/`x1` are
+ * relative to what is on screen — which is the number the reader wants. A
+ * percentage of the whole tree while looking at one branch would be a different
+ * question's answer.
+ */
+const share = ({ x0, x1 }: FlameFrame): string => `${((x1 - x0) * 100).toFixed(1)}%`;
+
+/**
+ * The colour of one frame, on our tokens.
+ *
+ * `d3-flame-graph`'s default is the hot-orange palette every flamegraph has, and
+ * `docs/design/ui.md` is explicit that the category reflex is the thing to
+ * refuse: this page is warm paper read in daylight beside an editor, and an
+ * orange chart in it would be the one element that belongs to another product.
+ *
+ * So hue comes from the frame's own name and everything else comes from the
+ * page. A fixed mid-lightness colour is mixed toward `--color-paper`, and that
+ * one `color-mix` does three jobs at once:
+ *
+ * It makes the chart theme-aware with no second palette. `--color-paper` is
+ * 0.985 in light and 0.185 in dark, so a frame lands at roughly 0.73 on paper
+ * and 0.49 in the dark — always moving toward the ground the page is already
+ * drawing on. `ui.md` says the dark variant is the same design in dark ink, and
+ * this is what that means for a chart. Fixed OKLCH literals were the previous
+ * version's bug in the other direction: a frame that stayed mid while the page
+ * flipped, with a label on it that went from readable to invisible.
+ *
+ * It drops chroma at both ends for free. `paper` is a near-neutral (chroma
+ * 0.005), so mixing toward it pulls chroma down exactly as lightness approaches
+ * either extreme — which is the rule, and it holds here because the mix does it
+ * rather than because a formula remembered to.
+ *
+ * And it keeps the label legible without either side knowing about the other:
+ * the frame moves toward `paper`, the label is `ink`, and those two are defined
+ * as each other's contrast in both themes.
+ *
+ * A searched frame takes the accent, and that is the one place the accent
+ * appears in this feature: `ui.md` reserves it for "needs you", and a frame the
+ * reader has just asked for by name is as close to that as a timing view gets.
+ */
+const flameColor = ({ data, highlight }: FlameFrame): string => {
+  if (highlight) return "var(--color-accent)";
+  // djb2, not the sum of the character codes. A sum gives `turn.a` and `turn.b`
+  // hashes one apart and therefore neighbouring hues, and the frames a reader
+  // most needs to tell apart are siblings whose names differ in one token.
+  //
+  // 44 combinations for an unbounded set of names, so two frames somewhere in a
+  // deep tree can still land on one colour. That is the same bargain every
+  // flamegraph palette makes, Grafana's included, and it is survivable because
+  // the colour is an aid to following a frame between levels rather than an
+  // identifier. What is checked is the case that would be visible: the sibling
+  // pairs this fleet actually produces all come out distinct.
+  let hash = 5381;
+  for (let i = 0; i < data.name.length; i += 1) hash = ((hash * 33) ^ data.name.charCodeAt(i)) >>> 0;
+  const hue = FLAME_HUES[hash % FLAME_HUES.length];
+  // A second, independent mix rather than another slice of the same hash. Bits
+  // taken from one hash move together with the bits the hue came from, which put
+  // `turn.provider` and `turn.prepare` on the same colour when this was a shift.
+  const tint = FLAME_TINTS[(Math.imul(hash, 2654435761) >>> 0) % FLAME_TINTS.length];
+  return `color-mix(in oklch, oklch(0.62 0.11 ${hue}), var(--color-paper) ${tint}%)`;
+};
+
+/**
+ * `d3-flame-graph`, wrapped in the lifecycle React needs it to have.
+ *
+ * The library is imperative and older than hooks: `flamegraph()` builds a chart
+ * that attaches itself to a container by selection. Everything that can go wrong
+ * with that is a lifecycle mistake, so the shell does three things and they are
+ * the reason it exists.
+ *
+ * It creates the chart once, keyed on nothing, and calls `destroy()` in the
+ * effect's cleanup. A cleanup that only clears `innerHTML` leaves the chart's d3
+ * transitions and its resize handling alive against a detached node, which is
+ * the leak this library is known for.
+ *
+ * It re-renders on new data through `update()` rather than by rebuilding, so the
+ * reader's zoom and search survive a refresh.
+ *
+ * And it re-creates rather than updates when the *shape* options change, because
+ * `selfValue` is read when frames are laid out and toggling it on a live chart
+ * leaves the old widths in place.
+ */
+function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked: readonly string[] }) {
+  const host = useRef<HTMLDivElement>(null);
+  const details = useRef<HTMLDivElement>(null);
+  const chart = useRef<FlameGraph | null>(null);
+  const [width, setWidth] = useState(0);
+  // The frame the reader clicked into, so the way back out can name it. Held
+  // here rather than in the block above, because the control that uses it sits
+  // on the chart and only this component knows when a click zoomed.
+  const [zoomed, setZoomed] = useState<string | null>(null);
+
+  // The library takes a width in pixels and does not observe its container, so
+  // the container is observed here. `ResizeObserver` rather than a window
+  // listener: this pane is inside a resizable split, and the window never
+  // changes size when the reader drags it.
+  //
+  // Measured once directly as well as observed, because `ResizeObserver` fires
+  // asynchronously — waiting only for it leaves the chart unbuilt through the
+  // first paint, which is a visible blank on every open.
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    const measure = () => setWidth(el.getBoundingClientRect().width || el.offsetWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = host.current;
+    if (!el || width === 0) return;
+    const graph = flamegraph()
+      .width(width)
+      .cellHeight(CELL_PX)
+      // Frames under a pixel are not drawn. This is what keeps a deep tree from
+      // costing a node per invisible sliver, and it is the library's own answer
+      // rather than a cap we impose on depth.
+      .minFrameSize(1)
+      .selfValue(self)
+      .sort(true)
+      .transitionDuration(0)
+      .setColorMapper(flameColor)
+      // `frame.value` and not `frame.data.value`: the first is what the frame
+      // was laid out by and follows the 自身 / 含下游 toggle, the second is
+      // always self time. Reading the wrong one gives a hover that contradicts
+      // the width the reader is hovering over.
+      // The words in the frame, the identifier after them. This is an aggregate
+      // view, so it speaks the reader's language first — but a flamegraph is also
+      // where somebody debugging looks, and the detail line is wide enough to
+      // carry both rather than making them choose.
+      .setLabelHandler((frame) =>
+        [
+          humanName(frame.data.name),
+          ...(isRenamed(frame.data.name) ? [frame.data.name] : []),
+          duration(frame.value),
+          share(frame),
+        ].join(" · "),
+      )
+      .setDetailsElement(details.current)
+      // The library's own status line, silenced. It wrote `search: 0 of
+      // 11271164.521939998 total samples ( 0.000%)` into the same element the
+      // hover detail uses: English, fifteen decimal places, and "samples" for
+      // something this page calls 耗时. The accent on the matching frames is the
+      // feedback; a sentence restating it in another language is not.
+      .setSearchHandler(() => {})
+      // Clicking a frame already zoomed into it before this runs; the library
+      // does that itself. All this adds is somebody remembering, so the reader
+      // has a way back that says where they are.
+      .onClick((frame) => setZoomed(frame.parent === null ? null : frame.data.name));
+    select(el).datum(tree).call(graph);
+    chart.current = graph;
+    return () => {
+      graph.destroy();
+      chart.current = null;
+    };
+  }, [width, self, tree]);
+
+  // A separate effect so a selection highlights frames instead of rebuilding the
+  // chart under the reader's cursor.
+  //
+  // `search` takes one string and matches it against frame names, so a selection
+  // covering several names is handed a regular expression alternation of them.
+  // It used to be handed the reader's *search term*, and after that term grew to
+  // match kind labels as well, selecting 巡检规则 sent the library a Chinese
+  // label its frames have never carried: `search: 0 of 11271164.5 total samples`.
+  // Names in, names out.
+  useEffect(() => {
+    chart.current?.search(picked.length > 0 ? picked.map(escapeRegExp).join("|") : "");
+  }, [picked]);
+
+  // The whole of this chart's appearance, because none of the library's own
+  // arrives. `d3-flame-graph` self-imports `d3-flamegraph.css`, which the
+  // bundler emits as `web/dist/main.css` — and `web/index.html` loads only
+  // `app.css`, so those rules never apply. That is the outcome we want (they are
+  // `#eee` strokes, `Verdana`, a black tooltip and the hot-orange palette, none
+  // of which belong on warm paper) but it means every rule below is load-bearing
+  // rather than a tweak on top of a working default.
+  //
+  // The label is an HTML `div` inside a `foreignObject`, not SVG text, so it is
+  // reached by class and not by element. Untouched it inherits the page's `ink`
+  // on top of an `ink`-coloured frame, which is the colour on itself.
+  return (
+    <div className="mt-2">
+      {/* One line, fixed height, holding whichever of two things is true: where
+          the reader has zoomed to, or what they are pointing at. The library
+          owns the second — it writes into this node on hover and clears it on
+          mouseout — so nothing else may be rendered inside it, and the height is
+          set here rather than earned from content that is absent half the time. */}
+      <div className="flex h-5 items-center gap-2">
+        {zoomed !== null && (
+          <button
+            type="button"
+            onClick={() => {
+              chart.current?.resetZoom();
+              setZoomed(null);
+            }}
+            className={cn(
+              "shrink-0 cursor-pointer rounded-md bg-sunk px-1.5 py-0.5 font-mono text-[0.625rem] text-ink-2",
+              "transition-colors hover:text-ink",
+            )}
+          >
+            ← 回到全部
+          </button>
+        )}
+        {zoomed !== null && <span className="shrink-0 text-[0.6875rem] text-ink-3">看的是 {humanName(zoomed)}</span>}
+        <div ref={details} className="min-w-0 truncate font-mono text-[0.6875rem] text-ink-2" />
+      </div>
+      <div
+        ref={host}
+        className={cn(
+          "[&_.d3-flame-graph-label]:truncate [&_.d3-flame-graph-label]:px-1",
+          "[&_.d3-flame-graph-label]:font-mono [&_.d3-flame-graph-label]:text-[0.6875rem]",
+          // 20px, which is `CELL_PX`. Written out rather than interpolated:
+          // Tailwind reads these class names out of the source at build time, so
+          // a template literal produces a class that exists in the DOM and in no
+          // stylesheet. `CELL_PX` moving means this line moves with it.
+          "[&_.d3-flame-graph-label]:leading-[20px] [&_.d3-flame-graph-label]:text-ink",
+          // A hairline between frames, in the surface colour, so stacked frames
+          // read as separate without a border around each.
+          "[&_rect]:stroke-paper [&_rect]:[stroke-width:0.5]",
+          // The hover affordance. A flamegraph whose frames do not respond to the
+          // pointer reads as a picture, and this one is a control: every frame is
+          // a click that zooms. `ink` on the outline rather than a fill change,
+          // so the frame's own colour still says which function it is.
+          "[&_.frame]:cursor-pointer",
+          "[&_.frame:hover_rect]:stroke-ink [&_.frame:hover_rect]:[stroke-width:1.5]",
+          // The library fades a zoomed frame's ancestors rather than removing
+          // them, and its own `.fade` rule is in the stylesheet nothing loads.
+          "[&_.fade]:opacity-40",
+        )}
+      />
+    </div>
+  );
+}
+
+/**
+ * The flamegraph block: what the scope's time is actually spent in.
+ *
+ * Self time is the default. Total time is what the tree already says by nesting,
+ * and the question a flamegraph is opened to answer — "which frame is the one
+ * burning the wall clock" — is the self-time reading.
+ *
+ * **Thirty levels of nesting**: a flamegraph never overflows sideways. Each
+ * level partitions its parent's width, so the chart is always exactly its
+ * container wide however deep the tree is; what grows is height, at
+ * `CELL_PX` per level, and the block scrolls inside its pane. Frames too narrow
+ * to see are dropped by `minFrameSize`, so depth costs rows rather than nodes.
+ * The server bounds the tree at 64 levels regardless, since that walk is the one
+ * that would not terminate on a cycle.
+ */
+function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: readonly string[] }) {
+  const [self, setSelf] = useState(true);
+  const tree = useMemo(() => flameTree(folded), [folded]);
+  const depth = flameDepth(tree);
+
+  if (folded.length === 0) return null;
+  return (
+    <section>
+      <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {/* Named for the question it answers, not for the chart it is. The
+            waterfall below answers a different one — this is every run in the
+            scope stacked together, that is one run in order — and two charts of
+            the same spans need the difference said, not inferred. */}
+        {/* No second clause. It read 「所有运行叠在一起，点一格钻进去」, which is
+            two sentences of interface explanation stapled to a heading — a
+            tutorial, where `ui.md`'s register is a statement about the thing
+            (「白干的单位」「去合并 PR」). The frames are clickable and look it;
+            a sentence saying so is the panel apologising for its own affordance. */}
+        <h3 className="text-[0.75rem] text-ink-3">时间花在哪</h3>
+        <Segments value={self ? "self" : "total"} onValueChange={(next) => setSelf(next === "self")}>
+          {/* Not two skins on one chart: 自身 makes a frame as wide as the time
+              it spent itself, 含下游 as wide as everything it called. A parent
+              that only waits is full width under one and a sliver under the
+              other, and that difference is the reason to have the toggle. */}
+          <Segment value="self">自身</Segment>
+          <Segment value="total">含下游</Segment>
+        </Segments>
+        <span className="grow" />
+      </div>
+      <div
+        className="overflow-y-auto overscroll-contain"
+        style={{ minHeight: Math.min(depth * CELL_PX + 8, PANE_MAX_PX), maxHeight: PANE_MAX_PX }}
+      >
+        <Flame tree={tree} self={self} picked={picked} />
+      </div>
+    </section>
+  );
+}
+
+/**
+ * p50 and p95 over the window, one point per bucket.
+ *
+ * Two lines and not one: a p50 that holds flat while the p95 climbs is the shape
+ * of a fleet that is fine most of the time and occasionally is not, and it is
+ * the only shape here worth interrupting somebody for. One averaged line hides
+ * exactly that.
+ *
+ * A sample is one trace, so this asks "how long did a unit of work take" rather
+ * than "how long was the average span", which would move whenever the shape of
+ * the tracing changed and nothing about the system did.
+ */
+function Trend({
+  trend,
+  windowMs,
+  window,
+  limit,
+  onWindow,
+}: {
+  trend: Report["trend"];
+  windowMs: number;
+  /** What the page is currently showing, so a zoom starts from it. */
+  window: TimeWindow;
+  /** How far the data goes; a zoom cannot leave it. */
+  limit: TimeWindow;
+  /** Drag and wheel write the same thing, and every block reads it. */
+  onWindow: (next: TimeWindow | null) => void;
+}) {
+  // Inside the chart's own box, at the chart's own height, and not as a line
+  // above everything. It sat at the top of the section reading like the whole
+  // view's empty state, stacked on a stage table that had data in it — one
+  // chart having nothing yet said as "nothing here yet". A slot the size of the
+  // thing that is missing says which thing is missing, and `sunk` is already
+  // this page's surface for what a machine produced.
+  if (trend.length < 2) {
+    return (
+      <div className="grid h-[7.5rem] place-items-center rounded-md bg-sunk text-[0.75rem] text-ink-3">
+        还不够两个时段的数据。
+      </div>
+    );
+  }
+  const data = trend.map((point) => ({ ...point, label: trendLabel(point.at, windowMs) }));
+  return (
+    <div
+      className="h-[7.5rem] touch-none"
+      onWheel={(event) => {
+        // `preventDefault` only over the chart, so the page still scrolls
+        // everywhere else. `touch-none` is the same rule for a trackpad: without
+        // it the browser claims the gesture before React sees it.
+        event.preventDefault();
+        const box = event.currentTarget.getBoundingClientRect();
+        if (box.width === 0) return;
+        const at = (event.clientX - box.left) / box.width;
+        // A wheel event with no usable coordinate cannot be anchored, and
+        // anchoring on a guess would move the frame the reader is pointing at —
+        // which is the whole thing this is for. Better to do nothing.
+        if (!Number.isFinite(at)) return;
+        // Up zooms in. 1.2 per notch is roughly what a profiler feels like;
+        // faster and one flick crosses the whole range.
+        onWindow(zoomAt(window, at, event.deltaY < 0 ? 1 / 1.2 : 1.2, limit));
+      }}
+    >
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <XAxis
+            dataKey="label"
+            {...AXIS}
+            tickLine={false}
+            axisLine={false}
+            interval="preserveStartEnd"
+            minTickGap={28}
+          />
+          <YAxis {...AXIS} tickLine={false} axisLine={false} width={40} tickFormatter={(v: number) => duration(v)} />
+          <ChartTooltip format={duration} />
+          <Area type="monotone" dataKey="p50" name={P50_LABEL} stroke="var(--color-ink-3)" fill="var(--color-sunk)" />
+          <Area type="monotone" dataKey="p95" name={P95_LABEL} stroke="var(--color-warn)" fill="transparent" />
+          {/* Drag to pick a stretch of time, and the whole page re-reads for it.
+              A dropdown of preset windows would be the other way to do this and
+              it answers a different question — the reader is looking at a bump
+              on this line and wants everything else scoped to the bump, not to
+              「最近 6 小时」. `onChange` gives indices into the buckets, so the
+              window is the distance from the chosen bucket to now. */}
+          <Brush
+            dataKey="label"
+            height={16}
+            travellerWidth={8}
+            stroke="var(--color-rule)"
+            fill="var(--color-sunk)"
+            onChange={(next) => {
+              // Both handles, so the reader can take the middle. It used to send
+              // only the start, because the window was a duration ending at
+              // `now` — dragging around 01:30–02:00 came back as "the last
+              // thirty minutes", which is what "缩放不起作用" was describing.
+              const a = data[Number(next?.startIndex ?? 0)]?.at;
+              const b = data[Number(next?.endIndex ?? data.length - 1)]?.at;
+              onWindow(a !== undefined && b !== undefined && b > a ? { from: a, to: b } : null);
+            }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/**
+ * The read, and the trace opened on top of it.
+ *
+ * Two requests rather than one: opening a trace re-asks with `trace=`, and the
+ * aggregate is held from the previous answer so the stage list does not blink
+ * out and back while the reader moves between traces. A failed second read
+ * leaves the first standing — `readTelemetry` has already put the reason in a
+ * toast, and blanking a correct stage list because a trace aged out would be the
+ * page punishing the reader for clicking.
+ */
+function useTelemetry(scope: TelemetryScope, windowMs: number | undefined, chosen: TimeWindow | null) {
+  const [report, setReport] = useState<Report | null>(null);
+  const [loading, setLoading] = useState(true);
+  // The scope is taken apart into the two primitives it is made of, and put back
+  // together inside the effect. Every caller passes an object literal, so a
+  // dependency on the object itself is a new identity on each of their renders
+  // and this would re-read on all of them — and the alternative, suppressing the
+  // dependency check, is the same bug with the warning turned off.
+  const kind = scope.kind;
+  const id = scope.kind === "system" ? 0 : scope.id;
+  // The window taken apart the same way and for the same reason: `chosen` is a
+  // fresh object on every wheel notch, and depending on the object would re-read
+  // on each one even when the two numbers had not moved.
+  const from = chosen?.from ?? null;
+  const to = chosen?.to ?? null;
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    const target: TelemetryScope = kind === "system" ? { kind: "system" } : { kind, id };
+    void readTelemetry(target, windowMs, from !== null && to !== null ? { from, to } : null).then((answer) => {
+      // The reader moved on — a different scope, or a different trace — before
+      // this landed. Writing it now would show them the previous question's
+      // answer under the current question's heading.
+      if (!live) return;
+      setLoading(false);
+      if (answer) setReport(answer);
+    });
+    return () => {
+      live = false;
+    };
+  }, [kind, id, windowMs, from, to]);
+
+  return { report, loading };
+}
+
+/**
+ * 耗时, for one scope.
+ *
+ * Two views of the same spans, and they answer different questions rather than
+ * being two skins on one. The **flamegraph** is the aggregate: every run in the
+ * scope folded together, so it says where the time goes. The **waterfall** is
+ * one trace: what happened, in what order, and what was waiting on what. A
+ * project asks the first question and a single requirement usually asks the
+ * second, but both are on every surface, because "this project is slow" and
+ * "this run was slow" are asked from the same page ten seconds apart.
+ *
+ * The heading is the caller's: the same block is a tab panel in two places and a
+ * section of a longer page in the third, and a heading inside a tab repeats the
+ * tab's own label.
+ */
+export function Telemetry({
+  scope,
+  windowMs,
+  trend: showTrend = false,
+  empty = "还没有跑过任何活。",
+}: {
+  scope: TelemetryScope;
+  windowMs?: number;
+  /** The project view wants the shape over time; a single requirement has too few points for one. */
+  trend?: boolean;
+  empty?: string;
+}) {
+  /**
+   * What the reader has selected, as the set of span names it covers.
+   *
+   * A set of names rather than a search string, and that is the fix for the
+   * flamegraph never lighting up. The selection used to be the text somebody
+   * typed, and `spanMatches` was widened so that clicking 巡检规则 would mark
+   * every `watchdog.*` row — but the flamegraph's frames carry raw span names,
+   * so it was handed a kind label that matched none of them and reported
+   * `search: 0 of 11271164.5 total samples`. Resolving the selection to names
+   * *here*, once, means both surfaces are asked the same question in the same
+   * vocabulary.
+   *
+   * It highlights, it does not filter: the rows around a selection are what
+   * made it worth selecting.
+   */
+  const [picked, setPicked] = useState<readonly string[]>([]);
+  /** Names the reader has said they do not want to see. Right-click, 不看这一段. */
+  const [excluded, setExcluded] = useState<readonly string[]>([]);
+  /** The window a drag on the trend asked for, in place of the caller's default. */
+  /**
+   * The stretch of time the page is showing, when the reader has chosen one.
+   *
+   * `null` means "the caller's default window", which is what a fresh page
+   * shows. It was a duration in milliseconds and could only ever shorten from
+   * `now`; both the brush and the wheel write a real range into it now, and
+   * every block reads it through the one query.
+   */
+  const [chosen, setChosen] = useState<TimeWindow | null>(null);
+  const { report, loading } = useTelemetry(scope, windowMs, chosen);
+
+  if (!report) {
+    return <div className="py-4 text-[0.75rem] text-ink-3">{loading ? "读取中…" : empty}</div>;
+  }
+  if (!hasSpans(report.stages, report.traces)) {
+    return <div className="py-4 text-[0.75rem] text-ink-3">{empty}</div>;
+  }
+
+  const shown = report.stages.filter((stage) => !excluded.includes(stage.name));
+  const exclude = (name: string) => setExcluded((names) => (names.includes(name) ? names : [...names, name]));
+  /** Selecting what is already selected clears it; that is the only way back. */
+  const pick = (names: readonly string[]) =>
+    setPicked((current) => (current.length === names.length && names.every((n) => current.includes(n)) ? [] : names));
+
+  return (
+    // Two charts and two tables. Everything that stood between them — the
+    // heading, the answer sentence, the run picker, the search box and the
+    // single-run waterfall — is deleted, and the deletion is the point: each of
+    // them restated something the four blocks below already show. The sentence
+    // was the clearest case, being a correct summary of a table sitting two
+    // inches under it.
+    //
+    // Time on the left, tables on the right, and the brush on the trend scopes
+    // all four: `dragged` feeds the one query every block reads, so narrowing
+    // the window changes what the tables count rather than only what the chart
+    // draws.
+    <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="flex min-w-0 flex-col gap-y-6">
+        {showTrend && report.trend.length >= 2 && (
+          <section className="flex flex-col gap-y-2">
+            <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">一次从头到尾要多久</h3>
+            <Trend
+              trend={report.trend}
+              windowMs={report.windowMs}
+              window={chosen ?? report.window}
+              limit={report.window}
+              onWindow={setChosen}
+            />
+            {chosen !== null && (
+              <button
+                type="button"
+                onClick={() => setChosen(null)}
+                className="cursor-pointer self-start text-[0.75rem] text-ink-3 transition-colors hover:text-ink"
+              >
+                ← 回到整段时间
+              </button>
+            )}
+          </section>
+        )}
+
+        <FlameBlock folded={report.flame} picked={picked} />
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-y-6">
+        <section className="flex flex-col gap-y-2">
+          <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">每一段花了多久</h3>
+          <Stages stages={shown} picked={picked} onPick={pick} onExclude={exclude} />
+          {excluded.length > 0 && (
+            <Excluded
+              names={excluded}
+              onClear={() => setExcluded([])}
+              onRestore={(n) => setExcluded((a) => a.filter((x) => x !== n))}
+            />
+          )}
+        </section>
+        <Slices slices={report.slices} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A requirement's time, split by the slice that spent it.
+ *
+ * The axis a boss reading a requirement already has in their head — slice 1
+ * sailed through, slice 3 has burned an hour — and the one thing the stage table
+ * cannot say, because stages answer *what* the time went on rather than *which
+ * piece of the work*.
+ *
+ * Bars here and nowhere else on this page, for the one reason a bar is ever
+ * worth drawing: these are shares of a whole. The slices partition the
+ * requirement's spans, so a width really is a proportion of one total, which is
+ * exactly what the stage table's bar could not claim and why that one was cut.
+ */
+function Slices({ slices }: { slices: Report["slices"] }) {
+  if (slices.length < 2) return null;
+  const total = slices.reduce((sum, row) => sum + row.totalMs, 0) || 1;
+  return (
+    <section className="flex flex-col gap-y-2">
+      <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">时间花在哪个切片</h3>
+      <div className="flex flex-col gap-y-1.5">
+        {slices.map((row) => (
+          <div key={row.sliceId ?? "none"} className="grid grid-cols-[6rem_minmax(0,1fr)_4rem] items-center gap-x-3">
+            {/* NULL is a row, not a filter: planning turns, the draft card and
+                the roster belong to no slice, and leaving them out would make
+                these add up to less than the requirement with nothing on screen
+                explaining the gap. */}
+            <span className="truncate text-[0.75rem] text-ink-2">
+              {row.sliceId === null ? "没归到切片" : `切片 ${row.sliceId}`}
+            </span>
+            <div className="h-1.5 rounded-full bg-sunk">
+              <div
+                className={cn("h-full rounded-full", row.errors > 0 ? "bg-bad" : "bg-ink-3")}
+                style={{ width: `${(row.totalMs / total) * 100}%` }}
+              />
+            </div>
+            <span className={cn(NUM, "text-ink")}>{duration(row.totalMs)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+/**
+ * What the reader has hidden, and the way back.
+ *
+ * An exclusion nobody can see is a page quietly lying about its own totals, so
+ * it is stated wherever it is in force, with each name its own way out.
+ */
+function Excluded({
+  names,
+  onClear,
+  onRestore,
+}: {
+  names: readonly string[];
+  onClear: () => void;
+  onRestore: (name: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.75rem] text-ink-3">
+      <span>不看：</span>
+      {names.map((name) => (
+        <button
+          key={name}
+          type="button"
+          onClick={() => onRestore(name)}
+          className="cursor-pointer rounded-md bg-sunk px-1.5 py-0.5 transition-colors hover:text-ink"
+        >
+          {humanName(name)} ×
+        </button>
+      ))}
+      <button type="button" onClick={onClear} className="cursor-pointer underline transition-colors hover:text-ink">
+        全部恢复
+      </button>
+    </div>
+  );
+}
+
+/** The host's own scope, hoisted so the effect below is not re-run by a new object each render. */
+const HOST: TelemetryScope = { kind: "system" };
+
+/**
+ * 系统耗时, as a page of its own.
+ *
+ * It was a shut accordion at the bottom of the landing page, under the queue and
+ * the requirement tracks — a section about the panel's own wall clock, on the
+ * page that answers 谁在等我. Nothing about it belonged there: it is not waiting
+ * on the boss, it is not a requirement, and it is the thing you go looking for
+ * once, on the day the panel feels slow. `ui.md` puts exactly that in 设置 — the
+ * one surface nobody is ever *in*, that you come to, fix something, and leave.
+ *
+ * The window is the endpoint's own default day. A week is the project view's
+ * question ("is this project getting slower"); the host's is "is it slow now".
+ */
+export function SystemTiming() {
+  return (
+    <>
+      <Head title="系统耗时" note="这台机器上所有活动的耗时，最近一天" />
+      <Telemetry scope={HOST} trend empty="还没有记下任何系统活动。" />
+    </>
+  );
+}

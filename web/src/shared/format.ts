@@ -27,6 +27,24 @@ export const clock = (ms: number) => {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
+/**
+ * How long something took, in the coarsest unit that does not lose the point.
+ *
+ * Span durations cover six orders of magnitude on this page — a cached prompt
+ * assembly is under a millisecond, a cold sandbox is minutes — so one unit
+ * cannot serve them. The tiers are chosen so a number never reads as a
+ * different quantity than it is: below a second stays in milliseconds because
+ * "0.0s" is not a duration, and above a minute splits into `m` and `s` because
+ * "192.4s" makes the reader do the division that the panel exists to save them.
+ */
+export const duration = (ms: number) => {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const minutes = Math.floor(ms / 60_000);
+  return `${minutes}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, "0")}s`;
+};
+
 /** How long something has been waiting, in the coarsest unit that still says it. */
 export const waited = (ms: number) => {
   const m = Math.round((Date.now() - ms) / 60000);

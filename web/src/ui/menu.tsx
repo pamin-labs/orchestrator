@@ -27,8 +27,16 @@ export function Menu({ label, children }: { label: string; children: React.React
           // inside a dialog rendered behind it, which reads as a dead control:
           // the trigger responds and nothing appears. A popover is always above
           // the surface that opened it.
-          className="fade-in z-[80] min-w-[16rem] overflow-hidden rounded-lg border border-rule bg-paper
-                     p-1 shadow-[0_10px_30px_var(--shade)]"
+          // Bounded and scrollable, here rather than at a call site. Radix
+          // measures the space between the trigger and the viewport edge and
+          // publishes it as this variable; without a max-height a menu with
+          // twenty items runs off the bottom of the screen with no way to reach
+          // the rest. Every caller of this component has that hazard, so the
+          // guard belongs on the component. `overflow-y-auto` and not
+          // `overflow-hidden`, which is what silently clipped them.
+          className="fade-in z-[80] max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[16rem]
+                     overflow-y-auto overscroll-contain rounded-lg border border-rule bg-paper p-1
+                     shadow-[0_10px_30px_var(--shade)]"
         >
           {children}
         </M.Content>

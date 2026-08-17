@@ -246,7 +246,7 @@ export type ReadScope = { kind: "group"; id: number } | { kind: "project"; id: n
  * `group` leads with `grp_id`, which is the first column of `span_scope`, so it
  * is an index range scan. `project` has no index of its own and leans on the
  * window bound through `span_age`; that is a deliberate omission rather than an
- * oversight — see `windowStart` below.
+ * oversight — see `Window` below.
  */
 function scopeSql(scope: ReadScope): { where: string; params: number[] } {
   if (scope.kind === "system") return { where: "project_id IS NULL AND grp_id IS NULL", params: [] };
@@ -294,16 +294,41 @@ const percentiles = (column: string) => `
   MAX(CASE WHEN rn = ${rank(95)} THEN ${column} END) AS p95`;
 
 /**
- * How far back a read looks, defaulting to everything retention kept.
+ * Which stretch of time a read covers: two instants, not a duration.
  *
- * The window is not decoration on these queries, it is what makes the
- * project-scoped ones affordable: `span_age` is an index on `started_at` alone,
- * so a bounded window is a range scan that the `project_id` filter then narrows,
- * where an unbounded one is a scan of the table. The table is capped at 200k
- * rows by `trimSpans`, so even the worst case is bounded — but the common case,
- * a panel asking about the last day, touches a fraction of it.
+ * It was `(windowMs, now)` — a length backwards from the present — and that
+ * shape could not express the one thing a brush is for. Dragging the handles
+ * around 01:30–02:00 could only be reported as "the last thirty minutes",
+ * because the end was pinned to `now` and only the start could move. From the
+ * outside that reads as the zoom being broken rather than as the query being
+ * unable to say what was asked.
+ *
+ * The window is still what makes these affordable: `span_age` indexes
+ * `started_at` alone, so a bounded range is a scan the scope filter then
+ * narrows. Two bounds narrow it more than one did.
  */
-const windowStart = (now: number, windowMs: number) => now - Math.min(windowMs, SPAN_MAX_AGE_MS);
+export interface TimeWindow {
+  from: number;
+  to: number;
+}
+
+/** The default: everything retention kept, ending now. */
+export const recentWindow = (windowMs = SPAN_MAX_AGE_MS, now = Date.now()): TimeWindow => ({
+  from: now - Math.min(windowMs, SPAN_MAX_AGE_MS),
+  to: now,
+});
+
+/**
+ * Bounded to retention, measured against the window's own end rather than the
+ * wall clock.
+ *
+ * `Math.max(from, Date.now() - SPAN_MAX_AGE_MS)` was the obvious version and it
+ * was wrong for every caller with an injected clock: a test asking about a fixed
+ * instant in the past had its start pulled forward to a week before *today*,
+ * which is after its own end, and every query returned nothing. The bound is a
+ * property of the window, so it is computed from the window.
+ */
+const clamp = (w: TimeWindow): TimeWindow => ({ from: Math.max(w.from, w.to - SPAN_MAX_AGE_MS), to: w.to });
 
 /** One stage — a span name — and what it cost across the scope. */
 export interface StageStat {
@@ -327,7 +352,8 @@ export interface StageStat {
  * more than the wall clock and a percentage of it would be a lie. It orders the
  * list; the percentiles are what answer "is this slow".
  */
-export function stageStats(db: DB, scope: ReadScope, windowMs = SPAN_MAX_AGE_MS, now = Date.now()): StageStat[] {
+export function stageStats(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): StageStat[] {
+  const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
   return db
     .query<{ name: string; count: number; total_ms: number; p50: number; p95: number; errors: number }, number[]>(
@@ -335,13 +361,13 @@ export function stageStats(db: DB, scope: ReadScope, windowMs = SPAN_MAX_AGE_MS,
          SELECT name, duration_ms, status,
                 ROW_NUMBER() OVER (PARTITION BY name ORDER BY duration_ms) AS rn,
                 COUNT(*)     OVER (PARTITION BY name)                      AS n
-         FROM span WHERE started_at >= ? AND ${where}
+         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
        )
        SELECT name, MAX(n) AS count, SUM(duration_ms) AS total_ms, ${percentiles("duration_ms")},
               SUM(status = 'error') AS errors
        FROM ranked GROUP BY name ORDER BY total_ms DESC`,
     )
-    .all(windowStart(now, windowMs), ...params)
+    .all(bounds.from, bounds.to, ...params)
     .map((row) => ({
       name: row.name,
       count: row.count,
@@ -381,16 +407,17 @@ export interface SliceCost {
  * requirements and share only their sequence numbers, so the same query at that
  * scope would add up slice 1 of everything.
  */
-export function sliceCosts(db: DB, grpId: number, windowMs = SPAN_MAX_AGE_MS, now = Date.now()): SliceCost[] {
+export function sliceCosts(db: DB, grpId: number, window: TimeWindow = recentWindow()): SliceCost[] {
+  const bounds = clamp(window);
   return db
-    .query<{ slice_id: number | null; total_ms: number; count: number; errors: number }, [number, number]>(
+    .query<{ slice_id: number | null; total_ms: number; count: number; errors: number }, [number, number, number]>(
       `SELECT slice_id, SUM(duration_ms) AS total_ms, COUNT(*) AS count, SUM(status = 'error') AS errors
        FROM span
-       WHERE started_at >= ? AND grp_id = ?
+       WHERE started_at >= ? AND started_at < ? AND grp_id = ?
        GROUP BY slice_id
        ORDER BY slice_id IS NULL, slice_id`,
     )
-    .all(windowStart(now, windowMs), grpId)
+    .all(bounds.from, bounds.to, grpId)
     .map((row) => ({ sliceId: row.slice_id, totalMs: row.total_ms, count: row.count, errors: row.errors }));
 }
 
@@ -417,13 +444,8 @@ export interface TraceSummary {
  * after `started_at` so two spans opened in the same millisecond do not make the
  * label flap between reads.
  */
-export function traceList(
-  db: DB,
-  scope: ReadScope,
-  limit = 20,
-  windowMs = SPAN_MAX_AGE_MS,
-  now = Date.now(),
-): TraceSummary[] {
+export function traceList(db: DB, scope: ReadScope, limit = 20, window: TimeWindow = recentWindow()): TraceSummary[] {
+  const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
   return db
     .query<{ trace_id: string; name: string; started_at: number; duration_ms: number; failed: number }, number[]>(
@@ -434,12 +456,12 @@ export function traceList(
                 MAX(started_at + duration_ms) OVER p - MIN(started_at) OVER p      AS duration_ms,
                 MAX(status = 'error')         OVER p                              AS failed,
                 ROW_NUMBER()      OVER w                                          AS rn
-         FROM span WHERE started_at >= ? AND ${where}
+         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
          WINDOW p AS (PARTITION BY trace_id),
                 w AS (PARTITION BY trace_id ORDER BY started_at, span_id)
        ) WHERE rn = 1 ORDER BY started_at DESC LIMIT ?`,
     )
-    .all(windowStart(now, windowMs), ...params, limit)
+    .all(bounds.from, bounds.to, ...params, limit)
     .map((row) => ({
       traceId: row.trace_id,
       name: row.name,
@@ -520,14 +542,15 @@ const MAX_STACK_DEPTH = 64;
  * missing from one side were project-scoped rows the system scope excludes by
  * design. The measurement was wrong; the speed is the whole of the reason.
  */
-export function foldedStacks(db: DB, scope: ReadScope, windowMs = SPAN_MAX_AGE_MS, now = Date.now()): FoldedStack[] {
+export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): FoldedStack[] {
+  const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
   const rows = db
     .query<FoldRow, number[]>(
       `SELECT trace_id, span_id, parent_span_id, name, duration_ms
-         FROM span WHERE started_at >= ? AND ${where}`,
+         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}`,
     )
-    .all(windowStart(now, windowMs), ...params);
+    .all(bounds.from, bounds.to, ...params);
 
   const byId = new Map(rows.map((row) => [spanKey(row.trace_id, row.span_id), row]));
   const paths = new Map<string, string>();
@@ -620,16 +643,16 @@ export function trend(
   db: DB,
   scope: ReadScope,
   bucketMs = 60 * 60 * 1_000,
-  windowMs = SPAN_MAX_AGE_MS,
-  now = Date.now(),
+  window: TimeWindow = recentWindow(),
 ): TrendPoint[] {
+  const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
   return db
     .query<{ at: number; count: number; p50: number; p95: number }, number[]>(
       `WITH per_trace AS (
          SELECT MIN(started_at) AS started_at,
                 MAX(started_at + duration_ms) - MIN(started_at) AS wall
-         FROM span WHERE started_at >= ? AND ${where}
+         FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
          GROUP BY trace_id
        ),
        bucketed AS (
@@ -641,7 +664,7 @@ export function trend(
        SELECT bucket * ? AS at, MAX(n) AS count, ${percentiles("wall")}
        FROM bucketed GROUP BY bucket ORDER BY at`,
     )
-    .all(windowStart(now, windowMs), ...params, bucketMs, bucketMs, bucketMs, bucketMs)
+    .all(bounds.from, bounds.to, ...params, bucketMs, bucketMs, bucketMs, bucketMs)
     .map((row) => ({ at: row.at, count: row.count, p50: row.p50, p95: row.p95 }));
 }
 

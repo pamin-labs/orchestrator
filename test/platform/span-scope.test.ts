@@ -6,6 +6,7 @@ import {
   type SpanRow,
   type ReadScope,
   sliceCosts,
+  recentWindow,
   stageStats,
   traceList,
   trend,
@@ -71,7 +72,7 @@ test("a p95 is the p95, and a p50 is the p50", () => {
     })),
   );
 
-  const [stage] = stageStats(db, { kind: "group", id: 3 }, 600_000, NOW);
+  const [stage] = stageStats(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW));
   expect(stage?.name).toBe("turn.provider");
   expect(stage?.count).toBe(99);
   expect(stage?.p50).toBe(50);
@@ -83,7 +84,7 @@ test("one sample is its own p50 and p95 rather than a null", () => {
   const db = openMemory();
   write(db, [{ name: "sandbox.create", durationMs: 4200, attributes: inProject }]);
 
-  const [stage] = stageStats(db, { kind: "group", id: 3 }, 600_000, NOW);
+  const [stage] = stageStats(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW));
   expect(stage?.p50).toBe(4200);
   expect(stage?.p95).toBe(4200);
 });
@@ -106,12 +107,12 @@ test("a project's spans include the ones that only name its group", () => {
     { name: "GET /api/v1/state", durationMs: 5, attributes: { "project.id": 1 } },
   ]);
 
-  const mine = stageStats(db, { kind: "project", id: 1 }, 600_000, NOW);
+  const mine = stageStats(db, { kind: "project", id: 1 }, recentWindow(600_000, NOW));
   expect(mine.map((s) => s.name).toSorted()).toEqual(["GET /api/v1/state", "turn.provider"]);
   expect(mine.find((s) => s.name === "turn.provider")?.totalMs).toBe(800);
 
   // The other project's group is still somebody else's time.
-  const theirs = stageStats(db, { kind: "project", id: 2 }, 600_000, NOW);
+  const theirs = stageStats(db, { kind: "project", id: 2 }, recentWindow(600_000, NOW));
   expect(theirs.map((s) => s.name)).toEqual(["turn.provider"]);
   expect(theirs[0]?.totalMs).toBe(100);
 });
@@ -122,7 +123,7 @@ test("a group with no project row does not fall into some other project", () => 
   // A span naming a group that no longer exists — retention outlives a delete,
   // which is why the scope columns are deliberately not foreign keys.
   write(db, [{ name: "turn", durationMs: 40, attributes: { "grp.id": 999 } }]);
-  expect(stageStats(db, { kind: "project", id: 1 }, 600_000, NOW)).toEqual([]);
+  expect(stageStats(db, { kind: "project", id: 1 }, recentWindow(600_000, NOW))).toEqual([]);
 });
 
 test("a scope filter excludes another project's spans", () => {
@@ -132,12 +133,12 @@ test("a scope filter excludes another project's spans", () => {
     { name: "turn", durationMs: 900, attributes: otherProject },
   ]);
 
-  const mine = stageStats(db, { kind: "project", id: 7 }, 600_000, NOW);
+  const mine = stageStats(db, { kind: "project", id: 7 }, recentWindow(600_000, NOW));
   expect(mine).toHaveLength(1);
   expect(mine[0]?.count).toBe(1);
   expect(mine[0]?.totalMs).toBe(100);
 
-  const theirs = stageStats(db, { kind: "project", id: 8 }, 600_000, NOW);
+  const theirs = stageStats(db, { kind: "project", id: 8 }, recentWindow(600_000, NOW));
   expect(theirs[0]?.totalMs).toBe(900);
 });
 
@@ -148,10 +149,10 @@ test("a group scope excludes a sibling group inside the same project", () => {
     { name: "turn", durationMs: 900, attributes: { "project.id": 7, "grp.id": 5 } },
   ]);
 
-  expect(stageStats(db, { kind: "group", id: 3 }, 600_000, NOW)[0]?.totalMs).toBe(100);
-  expect(stageStats(db, { kind: "group", id: 5 }, 600_000, NOW)[0]?.totalMs).toBe(900);
+  expect(stageStats(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW))[0]?.totalMs).toBe(100);
+  expect(stageStats(db, { kind: "group", id: 5 }, recentWindow(600_000, NOW))[0]?.totalMs).toBe(900);
   // The project sees both, which is the point of having the two scopes.
-  expect(stageStats(db, { kind: "project", id: 7 }, 600_000, NOW)[0]?.count).toBe(2);
+  expect(stageStats(db, { kind: "project", id: 7 }, recentWindow(600_000, NOW))[0]?.count).toBe(2);
 });
 
 test("a span with no scope is counted in the system view and nowhere else", () => {
@@ -161,14 +162,14 @@ test("a span with no scope is counted in the system view and nowhere else", () =
     { name: "turn", durationMs: 900, attributes: inProject },
   ]);
 
-  const system = stageStats(db, { kind: "system" }, 600_000, NOW);
+  const system = stageStats(db, { kind: "system" }, recentWindow(600_000, NOW));
   expect(system).toHaveLength(1);
   expect(system[0]?.name).toBe("scheduler.tick");
 
   // And the converse: the scoped span is absent from the system view, so the
   // three scopes partition the table rather than overlapping.
-  expect(stageStats(db, { kind: "project", id: 7 }, 600_000, NOW).map((s) => s.name)).toEqual(["turn"]);
-  expect(stageStats(db, { kind: "group", id: 3 }, 600_000, NOW).map((s) => s.name)).toEqual(["turn"]);
+  expect(stageStats(db, { kind: "project", id: 7 }, recentWindow(600_000, NOW)).map((s) => s.name)).toEqual(["turn"]);
+  expect(stageStats(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW)).map((s) => s.name)).toEqual(["turn"]);
 });
 
 test("a span carrying a group but no project is system work in neither view", () => {
@@ -178,8 +179,8 @@ test("a span carrying a group but no project is system work in neither view", ()
   // alone would have got wrong.
   write(db, [{ name: "job.reconcile", durationMs: 5, attributes: { "grp.id": 3 } }]);
 
-  expect(stageStats(db, { kind: "system" }, 600_000, NOW)).toHaveLength(0);
-  expect(stageStats(db, { kind: "group", id: 3 }, 600_000, NOW)[0]?.name).toBe("job.reconcile");
+  expect(stageStats(db, { kind: "system" }, recentWindow(600_000, NOW))).toHaveLength(0);
+  expect(stageStats(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW))[0]?.name).toBe("job.reconcile");
 });
 
 test("errors are counted per stage without being dropped from the timing", () => {
@@ -189,7 +190,7 @@ test("errors are counted per stage without being dropped from the timing", () =>
     { name: "turn.provider", durationMs: 30, status: "error", attributes: inProject },
   ]);
 
-  const [stage] = stageStats(db, { kind: "group", id: 3 }, 600_000, NOW);
+  const [stage] = stageStats(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW));
   expect(stage?.errors).toBe(1);
   expect(stage?.count).toBe(2);
   // A failed call still consumed its wall clock, and a timing view that hid it
@@ -204,8 +205,12 @@ test("the window excludes what is older than it", () => {
     { name: "turn", durationMs: 10, startedAt: NOW - 3 * 60 * 60 * 1_000, attributes: inProject },
   ]);
 
-  expect(stageStats(db, { kind: "group", id: 3 }, 60_000, NOW)[0]?.count).toBe(1);
-  expect(stageStats(db, { kind: "group", id: 3 }, 24 * 60 * 60 * 1_000, NOW)[0]?.count).toBe(2);
+  expect(stageStats(db, { kind: "group", id: 3 }, recentWindow(60_000, NOW))[0]?.count).toBe(1);
+  // And the other end is a bound too, which is what a brush needs: a window
+  // ending before a span started excludes it, where a duration-from-now could
+  // only ever move the start.
+  expect(stageStats(db, { kind: "group", id: 3 }, { from: NOW - 60_000, to: NOW - 40_000 })).toEqual([]);
+  expect(stageStats(db, { kind: "group", id: 3 }, recentWindow(24 * 60 * 60 * 1_000, NOW))[0]?.count).toBe(2);
 });
 
 test("stages are ordered by what they cost, so the expensive one reads first", () => {
@@ -216,7 +221,7 @@ test("stages are ordered by what they cost, so the expensive one reads first", (
     { name: "turn.checkpoint", durationMs: 50, attributes: inProject },
   ]);
 
-  expect(stageStats(db, { kind: "group", id: 3 }, 600_000, NOW).map((s) => s.name)).toEqual([
+  expect(stageStats(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW)).map((s) => s.name)).toEqual([
     "turn.provider",
     "turn.checkpoint",
     "turn.prepare",
@@ -249,7 +254,7 @@ test("a trace's span is measured across the scope, not taken from a root", () =>
     }),
   ]);
 
-  const [trace] = traceList(db, { kind: "group", id: 3 }, 20, 600_000, NOW);
+  const [trace] = traceList(db, { kind: "group", id: 3 }, 20, recentWindow(600_000, NOW));
   expect(trace?.traceId).toBe(traceId(900));
   // Earliest start to latest end: 8s, not the 14s the two durations sum to.
   expect(trace?.durationMs).toBe(8_000);
@@ -266,7 +271,7 @@ test("a trace is failed when any span in it failed", () => {
     span({ traceId: traceId(910), spanId: spanId(912), name: "turn.provider", status: "error", attributes: inProject }),
   ]);
 
-  expect(traceList(db, { kind: "group", id: 3 }, 20, 600_000, NOW)[0]?.failed).toBe(true);
+  expect(traceList(db, { kind: "group", id: 3 }, 20, recentWindow(600_000, NOW))[0]?.failed).toBe(true);
 });
 
 test("traces come back newest first and no more than the limit", () => {
@@ -283,7 +288,7 @@ test("traces come back newest first and no more than the limit", () => {
     ),
   );
 
-  const traces = traceList(db, { kind: "group", id: 3 }, 3, 600_000, NOW);
+  const traces = traceList(db, { kind: "group", id: 3 }, 3, recentWindow(600_000, NOW));
   expect(traces).toHaveLength(3);
   expect(traces.map((t) => t.startedAt)).toEqual([NOW - 46_000, NOW - 47_000, NOW - 48_000]);
 });
@@ -311,7 +316,7 @@ test("the trend buckets by time and takes percentiles of whole traces", () => {
     );
   }
 
-  const points = trend(db, { kind: "group", id: 3 }, hour, 6 * hour, NOW);
+  const points = trend(db, { kind: "group", id: 3 }, hour, recentWindow(6 * hour, NOW));
   expect(points).toHaveLength(2);
   expect(points.map((p) => p.count)).toEqual([10, 10]);
   // Ascending in time: the older, faster bucket first.
@@ -327,9 +332,9 @@ test("the trend buckets by time and takes percentiles of whole traces", () => {
 test("a scope with nothing in it reports nothing rather than failing", () => {
   const db = openMemory();
   const empty: ReadScope = { kind: "project", id: 404 };
-  expect(stageStats(db, empty, 600_000, NOW)).toEqual([]);
-  expect(traceList(db, empty, 20, 600_000, NOW)).toEqual([]);
-  expect(trend(db, empty, 60_000, 600_000, NOW)).toEqual([]);
+  expect(stageStats(db, empty, recentWindow(600_000, NOW))).toEqual([]);
+  expect(traceList(db, empty, 20, recentWindow(600_000, NOW))).toEqual([]);
+  expect(trend(db, empty, 60_000, recentWindow(600_000, NOW))).toEqual([]);
 });
 
 // ── folded stacks, the flamegraph's data ───────────────────────────────────
@@ -362,7 +367,7 @@ test("call paths are summed across every trace in the scope", () => {
     ]);
   }
 
-  expect(foldedStacks(db, { kind: "group", id: 3 }, 600_000, NOW)).toEqual([
+  expect(foldedStacks(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW))).toEqual([
     { path: "turn", totalMs: 200, count: 2 },
     { path: "turn;turn.provider", totalMs: 160, count: 2 },
   ]);
@@ -392,7 +397,7 @@ test("a root is a span whose parent is outside the scope, not one with no parent
     }),
   ]);
 
-  expect(foldedStacks(db, { kind: "group", id: 3 }, 600_000, NOW).map((row) => row.path)).toEqual([
+  expect(foldedStacks(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW)).map((row) => row.path)).toEqual([
     "turn",
     "turn;turn.provider",
   ]);
@@ -409,7 +414,7 @@ test("span ids are only unique within a trace, and the walk respects that", () =
     ]);
   }
 
-  const paths = foldedStacks(db, { kind: "group", id: 3 }, 600_000, NOW).map((row) => row.path);
+  const paths = foldedStacks(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW)).map((row) => row.path);
   expect(paths.toSorted()).toEqual(["root530", "root530;leaf", "root531", "root531;leaf"]);
 });
 
@@ -435,7 +440,7 @@ test("the scope filter applies to the walk, not only to its roots", () => {
 
   // One trace, two projects. A flamegraph that walked out of its scope would
   // put somebody else's time under this project's heading.
-  expect(foldedStacks(db, { kind: "group", id: 3 }, 600_000, NOW).map((row) => row.path)).toEqual([
+  expect(foldedStacks(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW)).map((row) => row.path)).toEqual([
     "turn",
     "turn;mine",
   ]);
@@ -456,7 +461,7 @@ test("a cycle in the parent ids terminates, and still counts what it cost", () =
   // reach these two.
   db.run("UPDATE span SET parent_span_id = ? WHERE span_id = ?", [spanId(553), spanId(552)]);
 
-  const rows = foldedStacks(db, { kind: "group", id: 3 }, 600_000, NOW);
+  const rows = foldedStacks(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW));
 
   // Three properties, and not an exact path: where a cycle "starts" is arbitrary
   // — there is no root to walk down from — so any ancestry this reports is a
@@ -498,7 +503,7 @@ test("a deep trace is walked, and the path names every level of it", () => {
     ),
   );
 
-  const rows = foldedStacks(db, { kind: "group", id: 3 }, 600_000, NOW);
+  const rows = foldedStacks(db, { kind: "group", id: 3 }, recentWindow(600_000, NOW));
   expect(rows).toHaveLength(30);
   const deepest = rows.map((row) => row.path).toSorted((a, b) => b.length - a.length)[0];
   expect(deepest?.split(";")).toHaveLength(30);
@@ -506,7 +511,7 @@ test("a deep trace is walked, and the path names every level of it", () => {
 });
 
 test("a scope with nothing in it folds to nothing", () => {
-  expect(foldedStacks(openMemory(), { kind: "system" }, 600_000, NOW)).toEqual([]);
+  expect(foldedStacks(openMemory(), { kind: "system" }, recentWindow(600_000, NOW))).toEqual([]);
 });
 
 // ── a requirement, split by slice ──────────────────────────────────────────
@@ -523,7 +528,7 @@ test("a requirement's time is split by the slice that spent it", () => {
     { name: "turn.provider", durationMs: 400, attributes: { "grp.id": 9, "slice.id": 1 } },
   ]);
 
-  expect(sliceCosts(db, 3, 600_000, NOW)).toEqual([
+  expect(sliceCosts(db, 3, recentWindow(600_000, NOW))).toEqual([
     { sliceId: 1, totalMs: 1_000, count: 2, errors: 0 },
     { sliceId: 2, totalMs: 5_000, count: 1, errors: 1 },
     // Unsliced work is a row and it sorts last. Dropping it would make the parts
@@ -533,5 +538,5 @@ test("a requirement's time is split by the slice that spent it", () => {
 });
 
 test("a requirement that has run nothing splits into nothing", () => {
-  expect(sliceCosts(openMemory(), 3, 600_000, NOW)).toEqual([]);
+  expect(sliceCosts(openMemory(), 3, recentWindow(600_000, NOW))).toEqual([]);
 });

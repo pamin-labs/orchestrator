@@ -375,9 +375,10 @@ test("the dock and the tab counts follow what the requirement holds", () => {
   const { st, g } = running();
   st.slices.push(slice({ id: 1, seq: 1 }), slice({ id: 2, seq: 2, status: "running", awaiting_at: null }));
   const tabs = render(st, g, "slice");
-  // Four tabs, in order, with 切片 the one that is open — none of which a
-  // substring of the markup could distinguish from a heading.
-  expect(tabs.getAllByRole("tab").map((t) => t.textContent)).toEqual(["切片2", "问题0", "记录", "工作区"]);
+  // Five tabs, in order, with 切片 the one that is open — none of which a
+  // substring of the markup could distinguish from a heading. 耗时 carries no
+  // count on purpose: a span total is not a quantity anybody is waiting on.
+  expect(tabs.getAllByRole("tab").map((t) => t.textContent)).toEqual(["切片2", "问题0", "记录", "工作区", "耗时"]);
   expect(tabs.getByRole("tab", { selected: true }).textContent).toBe("切片2");
   // At rest the dock is one line that says where the words go.
   tabs.getByRole("button", { name: "跟这个组说话… ⌘Enter 发给 PM" });

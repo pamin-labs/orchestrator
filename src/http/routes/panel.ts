@@ -93,6 +93,7 @@ import {
 } from "../../api/panel/sandbox.ts";
 import { CostQuery, getCost, getState } from "../../api/panel/snapshot.ts";
 import { OtlpTraceBody, postTraces } from "../../api/panel/traces.ts";
+import { getTelemetry, TelemetryQuery } from "../../api/panel/telemetry.ts";
 import { getStream, StreamQuery } from "../../api/panel/stream.ts";
 import { formBody, jsonBody, pathParams, queryParams } from "../validate.ts";
 import type { ErrorResponses } from "../respond.ts";
@@ -197,8 +198,32 @@ export function panelRoutes(ctx: Ctx) {
   app.post("/traces", ...jsonBody(OtlpTraceBody), (c) =>
     postTraces(ctx, c.req.raw, c.req.param(), c.req.valid("json")),
   );
+
+  // Out of the chain for the same reason, and it costs more here than it does
+  // above: `/traces` is called by a tracing SDK, so losing RPC types lost the
+  // browser nothing, while this one *is* a panel read and the browser is its
+  // only caller. Adding it to the chain reproduces the TS7056 above exactly —
+  // the panel router is at the ceiling, and `/telemetry` is the "one more route"
+  // that comment predicted.
+  //
+  // The contract is kept a different way rather than given up: `TelemetryReport`
+  // is re-exported below, the browser imports it type-only — which the `web`
+  // boundary permits from `public-rpc` — and pins its response schema to it, so
+  // a field that changes shape here still fails the build there. What is lost is
+  // the path and query being checked, which is why `readTelemetry` builds both
+  // in one place.
+  //
+  // The real remedy is Hono's own: split this router into sub-apps composed with
+  // `.route()`, so no single inferred type is forty routes wide. That is a
+  // restructure of this file rather than a route registration, and it wants its
+  // own change.
+  app.get("/telemetry", queryParams(TelemetryQuery), (c) =>
+    getTelemetry(ctx, c.req.raw, c.req.param(), c.req.valid("query")),
+  );
   return app;
 }
+
+export type { TelemetryReport } from "../../api/panel/telemetry.ts";
 
 export type ApiType = ApplyGlobalResponse<
   ReturnType<typeof panelRoutes>,

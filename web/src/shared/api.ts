@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import type { Json } from "../../../src/contracts/json.ts";
 import { hc, type InferResponseType } from "hono/client";
-import type { ApiType } from "../../../src/http/routes/panel.ts";
+import type { ApiType, TelemetryReport } from "../../../src/http/routes/panel.ts";
 import { displayJson, readJsonResponse, TextResponseSchema } from "../../../src/contracts/protocol.ts";
 
 /**
@@ -78,6 +78,114 @@ export const EvidenceSchema: z.ZodType<InferResponseType<(typeof api.slices)[":i
     gates: z.array(z.object({ name: z.string(), path: z.string(), size: z.number() })),
   });
 export type Evidence = z.infer<typeof EvidenceSchema>;
+
+/**
+ * Where a scope's wall clock went — the one read that is not on the RPC client.
+ *
+ * `/telemetry` is registered outside the chain that produces `ApiType`, because
+ * one more route in that inferred type is what tips `hc<ApiType>` over the
+ * length TypeScript will serialise; `src/http/routes/panel.ts` says so at the
+ * registration. So the URL and the query are built here by hand, in one place,
+ * rather than in each of the three views that read it.
+ *
+ * The response contract survives that: `TelemetryReport` is imported type-only
+ * from the route module — which is what the `web` boundary allows from
+ * `public-rpc` — and the schema below is annotated with it, so a field the
+ * server renames stops compiling here rather than parsing to `undefined` at
+ * runtime. Zod still parses the bytes, for the same reason it does everywhere
+ * else: a compile-time contract cannot validate what an older server sent.
+ */
+const StageStatSchema = z.object({
+  name: z.string(),
+  count: z.number(),
+  totalMs: z.number(),
+  p50: z.number(),
+  p95: z.number(),
+  errors: z.number(),
+});
+
+export const TelemetryReportSchema: z.ZodType<TelemetryReport> = z.object({
+  scope: z.enum(["group", "project", "system"]),
+  windowMs: z.number(),
+  window: z.object({ from: z.number(), to: z.number() }),
+  stages: z.array(StageStatSchema),
+  traces: z.array(
+    z.object({
+      traceId: z.string(),
+      name: z.string(),
+      startedAt: z.number(),
+      durationMs: z.number(),
+      failed: z.boolean(),
+    }),
+  ),
+  trend: z.array(z.object({ at: z.number(), count: z.number(), p50: z.number(), p95: z.number() })),
+  flame: z.array(z.object({ path: z.string(), totalMs: z.number(), count: z.number() })),
+  slices: z.array(
+    z.object({
+      sliceId: z.number().nullable(),
+      totalMs: z.number(),
+      count: z.number(),
+      errors: z.number(),
+    }),
+  ),
+  trace: z
+    .object({
+      traceId: z.string(),
+      spans: z.array(
+        z.object({
+          spanId: z.string(),
+          parentSpanId: z.string().nullable(),
+          name: z.string(),
+          startedAt: z.number(),
+          durationMs: z.number(),
+          status: z.enum(["unset", "ok", "error"]),
+        }),
+      ),
+    })
+    .nullable(),
+});
+
+export type Telemetry = TelemetryReport;
+export type Stage = TelemetryReport["stages"][number];
+export type TraceRow = TelemetryReport["traces"][number];
+export type Folded = TelemetryReport["flame"][number];
+
+/** Which work to report on: one requirement, one project, or the host itself. */
+export type TelemetryScope = { kind: "group" | "project"; id: number } | { kind: "system" };
+
+/**
+ * The query string, built once.
+ *
+ * `system` deliberately sends no `id` — the server refuses a scope that carries
+ * both, so a caller that passed one anyway would get a 400 rather than quietly
+ * having it ignored.
+ */
+function telemetryQuery(
+  scope: TelemetryScope,
+  windowMs?: number,
+  chosen?: { from: number; to: number } | null,
+): string {
+  const query = new URLSearchParams({ scope: scope.kind });
+  if (scope.kind !== "system") query.set("id", String(scope.id));
+  if (windowMs) query.set("windowMs", String(windowMs));
+  // An explicit range wins over the duration, and the server says so too. This
+  // is what lets a brush select the middle rather than only shorten from now.
+  if (chosen) {
+    query.set("from", String(Math.round(chosen.from)));
+    query.set("to", String(Math.round(chosen.to)));
+  }
+  return query.toString();
+}
+
+export function readTelemetry(
+  scope: TelemetryScope,
+  windowMs?: number,
+  chosen?: { from: number; to: number } | null,
+): Promise<Telemetry | null> {
+  const url = `/api/v1/telemetry?${telemetryQuery(scope, windowMs, chosen)}`;
+  // fallow-ignore-next-line security-sink -- a relative same-origin path built from an enum and two numbers; there is no destination here for a caller to choose.
+  return readApi(fetch(url, { headers: requestHeaders(url) }), TelemetryReportSchema);
+}
 
 const EMPTY: State = {
   // Assume wired until told otherwise: a mark on the header before the first

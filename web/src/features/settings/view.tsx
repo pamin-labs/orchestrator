@@ -1,7 +1,9 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { SystemTiming } from "../telemetry/view";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Activity,
   Bell,
   Box,
   Coins,
@@ -74,6 +76,7 @@ export const SectionSchema = z.enum([
   "github",
   "host",
   "server",
+  "timing",
   "skills",
   "sched",
   "models",
@@ -105,6 +108,12 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   { key: "github", zh: "GitHub", icon: GitBranch },
   { key: "host", zh: "环境", icon: MonitorCog },
   { key: "server", zh: "沙盒服务器", icon: Server },
+  // Not a setting, and it sits here anyway. It was an accordion at the foot of
+  // the landing page, which is the page for what waits on the boss — and how
+  // long `GET /state` took never waits on anybody. This dialog is where you come
+  // to look at the machine and then leave, which is exactly the visit this pane
+  // gets: once, on the day the panel feels slow.
+  { key: "timing", zh: "系统耗时", icon: Activity },
   // This machine's skills, not this project's: the same staged directory is
   // mounted into every group of every project.
   { key: "skills", zh: "技能", icon: Sparkles },
@@ -409,6 +418,11 @@ function SettingsPanes({
     );
 
   const panes: Record<Section, React.ReactNode> = {
+    // A pane like every one of its neighbours. It navigated away for a while —
+    // the rail entry closed the dialog and pushed `#v=systime` — and that was the
+    // one thing in this list that behaved differently from the twelve around it,
+    // for no reason the reader could see.
+    timing: <SystemTiming />,
     cred: (
       <CredPane
         rows={rows}
