@@ -26,7 +26,7 @@
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { start } from "../src/server.ts";
+import { start } from "../src/composition/server.ts";
 
 interface Step {
   api?: string;

@@ -5,8 +5,8 @@ import { snapshot } from "../src/api/panel/snapshot.ts";
 import { reconcile } from "../src/mech/flow/reconcile.ts";
 import { runWatchdog } from "../src/mech/ops/watchdog.ts";
 import { assemble, type StablePrompt } from "../src/prompt/assemble.ts";
-import { Scheduler } from "../src/scheduler.ts";
-import type { Ctx } from "../src/ctx.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
+import type { Ctx } from "../src/mech/ctx.ts";
 
 async function budget(name: string, limitMs: number, work: () => void | Promise<void>): Promise<void> {
   const started = performance.now();
