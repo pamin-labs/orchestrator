@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import { loadAuth } from "../src/mech/sandbox/auth.ts";
 import { REFRESH_HOME } from "../src/mech/sandbox/chatgpt.ts";
-import { startCodexDeviceLogin } from "../src/mech/sandbox/login.ts";
+import { startClaudeLogin, startCodexDeviceLogin } from "../src/mech/sandbox/login.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { testContext } from "./test-context.ts";
 
@@ -70,4 +70,21 @@ test("a second click gets the first login, not a second code", async () => {
   const b = startCodexDeviceLogin(ctx);
   expect(b).toBe(a);
   await a.done;
+});
+
+test("Claude's own setup flow supplies the URL and stores its printed token", async () => {
+  const { ctx, db } = harness(
+    "Open https://console.anthropic.com/oauth/code\nPaste code here if prompted >\nsk-ant-oat01-token_value",
+  );
+  const run = startClaudeLogin(ctx);
+  expect(await run.done).toEqual({ ok: true, detail: "stored" });
+  expect(run.url).toBe("https://console.anthropic.com/oauth/code");
+  expect(loadAuth(db, "claude")).toMatchObject({ mode: "oauth_token", secret: "sk-ant-oat01-token_value" });
+});
+
+test("Claude names a rejected or expired pasted code instead of claiming success", async () => {
+  const { ctx } = harness("Open https://console.anthropic.com/oauth/code\nPaste code here if prompted >");
+  const done = await startClaudeLogin(ctx).done;
+  expect(done.ok).toBe(false);
+  expect(done.detail).toContain("wrong or expired");
 });

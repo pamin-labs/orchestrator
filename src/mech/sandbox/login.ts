@@ -43,6 +43,19 @@ export interface LoginRun {
   cancel: () => void;
 }
 
+type LineStream = ReturnType<typeof execLines>;
+
+async function consumeLogin(ctx: Ctx, stream: LineStream, onLine: (line: string) => void) {
+  for (;;) {
+    const step = await stream.next();
+    if (step.done) return step.value;
+    const plain = clean(step.value).trim();
+    if (!plain) continue;
+    ctx.bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
+    onLine(plain);
+  }
+}
+
 /**
  * `T5M2-76TFM`. Probed against codex-cli **0.147.0** in `orch/agent:1`.
  *
@@ -58,6 +71,30 @@ export const DEVICE_CODE_TTL_MS = 15 * 60_000;
 
 /** One at a time: a second click would print a second code and invalidate the first. */
 let deviceLogin: LoginRun | null = null;
+
+async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
+  const stream = execLines(ctx, UTIL, "codex login --device-auth", {
+    env: { CODEX_HOME: REFRESH_HOME },
+    timeoutMs: DEVICE_CODE_TTL_MS + 60_000,
+    signal,
+  });
+  const result = await consumeLogin(ctx, stream, (line) => {
+    run.url ??= line.match(URL_RE)?.[0] ?? null;
+    run.code ??= line.match(DEVICE_CODE_RE)?.[0] ?? null;
+  });
+  if (result.code !== 0)
+    return { ok: false, detail: `codex login exited ${result.code}: ${result.err.trim().slice(-300)}` };
+  if (!run.code)
+    return {
+      ok: false,
+      detail: "could not read a device code from codex's output — check `codex login --device-auth` in the image",
+    };
+  const secret = (await getFile(ctx, UTIL, `${REFRESH_HOME}/auth.json`)) ?? "";
+  if (!secret.trim()) return { ok: false, detail: "codex login finished but produced no credential" };
+  saveAuth(ctx.db, { runtime: "codex", mode: "chatgpt", secret: secret.trim() });
+  ctx.sched.tick();
+  return { ok: true, detail: "stored" };
+}
 
 /**
  * Log in to a ChatGPT account from the utility container.
@@ -85,43 +122,9 @@ export function startCodexDeviceLogin(ctx: Ctx): LoginRun {
   };
   deviceLogin = run;
 
-  run.done = (async () => {
-    try {
-      const stream = execLines(ctx, UTIL, "codex login --device-auth", {
-        env: { CODEX_HOME: REFRESH_HOME },
-        timeoutMs: DEVICE_CODE_TTL_MS + 60_000,
-        signal: abort.signal,
-      });
-      for (;;) {
-        const step = await stream.next();
-        if (step.done) {
-          if (step.value.code !== 0) {
-            return { ok: false, detail: `codex login exited ${step.value.code}: ${step.value.err.trim().slice(-300)}` };
-          }
-          break;
-        }
-        const plain = clean(step.value).trim();
-        if (!plain) continue;
-        ctx.bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
-        run.url ??= plain.match(URL_RE)?.[0] ?? null;
-        run.code ??= plain.match(DEVICE_CODE_RE)?.[0] ?? null;
-      }
-      if (!run.code) {
-        // Said rather than waited out: this is what a changed CLI looks like.
-        return {
-          ok: false,
-          detail: "could not read a device code from codex's output — check `codex login --device-auth` in the image",
-        };
-      }
-      const secret = (await getFile(ctx, UTIL, `${REFRESH_HOME}/auth.json`)) ?? "";
-      if (!secret.trim()) return { ok: false, detail: "codex login finished but produced no credential" };
-      saveAuth(ctx.db, { runtime: "codex", mode: "chatgpt", secret: secret.trim() });
-      ctx.sched.tick(); // whatever was held for a missing credential can go now
-      return { ok: true, detail: "stored" };
-    } finally {
-      deviceLogin = null;
-    }
-  })();
+  run.done = finishCodexLogin(ctx, run, abort.signal).finally(() => {
+    deviceLogin = null;
+  });
 
   return run;
 }
@@ -218,6 +221,34 @@ const PASTE_RE = /paste code/i;
  */
 let claudeLogin: (LoginRun & { submit: (code: string) => Promise<void> }) | null = null;
 
+async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
+  await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);
+  await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
+  const stream = execLines(ctx, UTIL, `ORCH_PTY_IN=${CODE_FILE} python3 ${PTY_PATH} claude setup-token`, {
+    timeoutMs: PASTE_TTL_MS + 60_000,
+    signal,
+  });
+  let token: string | null = null;
+  let sawPrompt = false;
+  const result = await consumeLogin(ctx, stream, (line) => {
+    run.url ??= line.match(URL_RE)?.[0] ?? null;
+    token ??= line.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
+    sawPrompt ||= PASTE_RE.test(line);
+  });
+  if (!token && result.code !== 0)
+    return { ok: false, detail: `claude setup-token exited ${result.code}: ${result.err.trim().slice(-300)}` };
+  if (!token)
+    return {
+      ok: false,
+      detail: sawPrompt
+        ? "claude setup-token asked for the code and never printed a token — the code may have been wrong or expired"
+        : "claude setup-token printed no token — run it under a pty in the image and see what changed",
+    };
+  saveAuth(ctx.db, { runtime: "claude", mode: "oauth_token", secret: token });
+  ctx.sched.tick();
+  return { ok: true, detail: "stored" };
+}
+
 export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) => Promise<void> } {
   if (claudeLogin) return claudeLogin;
   const abort = new AbortController();
@@ -235,54 +266,9 @@ export function startClaudeLogin(ctx: Ctx): LoginRun & { submit: (code: string) 
   };
   claudeLogin = run;
 
-  run.done = (async () => {
-    try {
-      await putFile(ctx, UTIL, PTY_PATH, PTY_RUNNER);
-      // The runner opens this before the CLI starts. Truncated, so a code from
-      // an abandoned attempt is not fed to this one.
-      await execIn(ctx, UTIL, `: > ${CODE_FILE}`);
-      const stream = execLines(ctx, UTIL, `ORCH_PTY_IN=${CODE_FILE} python3 ${PTY_PATH} claude setup-token`, {
-        timeoutMs: PASTE_TTL_MS + 60_000,
-        signal: abort.signal,
-      });
-      let token: string | null = null;
-      let sawPrompt = false;
-      for (;;) {
-        const step = await stream.next();
-        if (step.done) {
-          if (!token && step.value.code !== 0) {
-            return {
-              ok: false,
-              detail: `claude setup-token exited ${step.value.code}: ${step.value.err.trim().slice(-300)}`,
-            };
-          }
-          break;
-        }
-        const plain = clean(step.value).trim();
-        if (!plain) continue;
-        ctx.bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
-        run.url ??= plain.match(URL_RE)?.[0] ?? null;
-        token ??= plain.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
-        sawPrompt ||= PASTE_RE.test(plain);
-      }
-      if (!token) {
-        // Said, not waited out. A CLI that stopped printing its URL and a CLI
-        // that stopped accepting a pasted code fail identically from here, and
-        // both are silent — which is what this whole function exists to stop.
-        return {
-          ok: false,
-          detail: sawPrompt
-            ? "claude setup-token asked for the code and never printed a token — the code may have been wrong or expired"
-            : "claude setup-token printed no token — run it under a pty in the image and see what changed",
-        };
-      }
-      saveAuth(ctx.db, { runtime: "claude", mode: "oauth_token", secret: token });
-      ctx.sched.tick(); // whatever was held for a missing credential can go now
-      return { ok: true, detail: "stored" };
-    } finally {
-      claudeLogin = null;
-    }
-  })();
+  run.done = finishClaudeLogin(ctx, run, abort.signal).finally(() => {
+    claudeLogin = null;
+  });
 
   return run;
 }
