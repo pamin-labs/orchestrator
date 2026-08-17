@@ -1,9 +1,36 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { cleanup, render as mount, restoreFetch, stubFetch } from "../support/render.tsx";
 import { emptyState, type PanelFrame } from "../../web/src/lib/api.ts";
 import { Timeline } from "../../web/src/views/timeline.tsx";
 import { Workspace } from "../../web/src/views/workspace.tsx";
+
+/**
+ * testing-library's own `afterEach(cleanup)` is registered when its module is
+ * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
+ * belongs to whichever file imported it first, and every later file kept the
+ * previous one's nodes in `document.body`. Each file registers its own.
+ */
+afterEach(() => {
+  cleanup();
+  restoreFetch();
+});
+
+/** The workspace reads its own tail on mount, against a relative path Bun's own
+ *  `fetch` cannot resolve. Left in flight: what these tests assert is the frames
+ *  they were handed, not the read. */
+beforeEach(() => stubFetch());
+
+/** One view at a time: both halves of each test share the page. */
+const render = (node: ReturnType<typeof createElement>) => {
+  cleanup();
+  return mount(node);
+};
+
+const shown = (r: ReturnType<typeof render>, text: string) =>
+  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
+const gone = (r: ReturnType<typeof render>, text: string) =>
+  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
 
 const frame = (id: string, text: string, grpId: number | null, projectId = 1): PanelFrame => ({
   id,
@@ -29,9 +56,9 @@ test("timeline renders an empty state and filters to the selected requirement", 
     pr_number: null,
     approved_at: null,
   });
-  expect(renderToStaticMarkup(createElement(Timeline, { st, frames: [], grpId: 1, projectId: 1 }))).toContain("无事件");
+  shown(render(createElement(Timeline, { st, frames: [], grpId: 1, projectId: 1 })), "无事件");
 
-  const html = renderToStaticMarkup(
+  const filtered = render(
     createElement(Timeline, {
       st,
       frames: [frame("e1", "selected", 1), frame("e2", "other", 2), frame("e3", "standing", null)],
@@ -39,14 +66,14 @@ test("timeline renders an empty state and filters to the selected requirement", 
       projectId: 1,
     }),
   );
-  expect(html).toContain("Release");
-  expect(html).toContain("selected");
-  expect(html).toContain("standing");
-  expect(html).not.toContain("other");
+  shown(filtered, "Release");
+  shown(filtered, "selected");
+  shown(filtered, "standing");
+  gone(filtered, "other");
 });
 
 test("workspace renders its empty state plus live path and diff output", () => {
-  expect(renderToStaticMarkup(createElement(Workspace, { frames: [], grpId: 1 }))).toContain("容器还没说话");
+  shown(render(createElement(Workspace, { frames: [], grpId: 1 })), "容器还没说话");
   const lines = ["$ pwd", "/workspace", "$ git diff", "+changed"].map(
     (text, index): PanelFrame => ({
       id: `e${index}`,
@@ -59,9 +86,9 @@ test("workspace renders its empty state plus live path and diff output", () => {
       text,
     }),
   );
-  const html = renderToStaticMarkup(createElement(Workspace, { frames: lines, grpId: 1 }));
-  expect(html).toContain("$ pwd");
-  expect(html).toContain("/workspace");
-  expect(html).toContain("$ git diff");
-  expect(html).toContain("+changed");
+  const live = render(createElement(Workspace, { frames: lines, grpId: 1 }));
+  shown(live, "$ pwd");
+  shown(live, "/workspace");
+  shown(live, "$ git diff");
+  shown(live, "+changed");
 });

@@ -1,3 +1,4 @@
+import { afterEach } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 /**
@@ -30,6 +31,9 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
  * previous version read `globalThis.fetch` after registration, so the value it
  * saved to "restore" was happy-dom's own.
  */
+/** Bun's `fetch`, for a test that has replaced it and wants it back. */
+export const nativeFetch = globalThis.fetch;
+
 const native = new Map(
   Object.getOwnPropertyNames(globalThis).map((name) => [name, Reflect.get(globalThis, name) as unknown]),
 );
@@ -56,5 +60,19 @@ for (const [name, value] of native) {
   Reflect.set(globalThis, name, value);
 }
 
-/** Bun's `fetch`, for a test that has replaced it and wants it back. */
-export const nativeFetch = native.get("fetch") as typeof fetch;
+/**
+ * Unmount between tests, once, for every file.
+ *
+ * testing-library registers its own `afterEach(cleanup)` when its module is
+ * evaluated, and `bun test` scopes lifecycle hooks to the file that registered
+ * them — so that hook belongs to whichever test file imported it first, and
+ * every later file inherits the previous one's nodes in `document.body`. The
+ * symptom is "Found multiple elements", and the second symptom is that failures
+ * print an ever-larger document.
+ *
+ * Registering it here, from the preload, is the same reason the document itself
+ * is here: a preload's hooks apply to every file, so this is one line instead of
+ * fourteen `afterEach` calls nobody can forget in the fifteenth.
+ */
+const { cleanup } = await import("@testing-library/react");
+afterEach(cleanup);

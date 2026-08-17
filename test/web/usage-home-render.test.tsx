@@ -1,11 +1,19 @@
-import { expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, expect, test } from "bun:test";
+import { cleanup, render as mount } from "../support/render.tsx";
 import { projectRow } from "../../web/src/features/home/model.ts";
 import { ringArc, ringTip, ringView, staleMark, until } from "../../web/src/features/usage/model.ts";
 import { emptyState, type State } from "../../web/src/lib/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { UsageBar } from "../../web/src/ui/usage.tsx";
 import { Home } from "../../web/src/views/home.tsx";
+
+/**
+ * testing-library's own `afterEach(cleanup)` is registered when its module is
+ * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
+ * belongs to whichever file imported it first, and every later file kept the
+ * previous one's nodes in `document.body`. Each file registers its own.
+ */
+afterEach(cleanup);
 
 /**
  * The two surfaces the boss reads before deciding what to start: which project
@@ -38,38 +46,46 @@ const group = (id: number, projectId: number, over: Partial<State["groups"][numb
   ...over,
 });
 
-const home = (st: State) =>
-  renderToStaticMarkup(
+const home = (st: State) => {
+  cleanup();
+  return mount(
     <TipRoot>
       <Home st={st} onEnter={() => {}} onOpen={() => {}} onNew={() => {}} onAdd={() => {}} refresh={() => {}} />
     </TipRoot>,
   );
+};
+
+/** These sit inside longer lines, so the match is a substring of the rendered text. */
+const shown = (r: ReturnType<typeof home>, text: string) =>
+  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
+const gone = (r: ReturnType<typeof home>, text: string) =>
+  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
 
 test("a project row prints only the counts that are facts", () => {
   const st = emptyState();
   st.projects.push(project(1, "alpha"));
   st.groups.push(group(1, 1, { spent_tokens: 1200 }), group(2, 1, { status: "RUNNING", name: "在跑的" }));
-  const html = home(st);
+  const page = home(st);
 
   // 2 需求 and 1.2k tokens are the row's right edge, and both exist here.
-  expect(html).toContain("2 个需求");
-  expect(html).toContain("1.2k tokens");
+  shown(page, "2 个需求");
+  shown(page, "1.2k tokens");
   // A running requirement names itself, so the boss knows what is spending.
-  expect(html).toContain("在跑：在跑的");
-  expect(html).toContain("1 个在跑");
+  shown(page, "在跑：在跑的");
+  shown(page, "1 个在跑");
 });
 
 test("a project with nothing spent prints neither a zero count nor a zero spend", () => {
   const st = emptyState();
   st.projects.push(project(1, "alpha"));
-  const html = home(st);
+  const page = home(st);
 
   // 0 个需求 next to 空着 is the same absence twice.
-  expect(html).not.toContain("0 个需求");
-  expect(html).not.toContain("0 tokens");
+  gone(page, "0 个需求");
+  gone(page, "0 tokens");
   // A project nothing was ever asked of carries its own action instead of a state.
-  expect(html).toContain("＋ 新需求");
-  expect(html).not.toContain("空着");
+  expect(page.getByRole("button", { name: "＋ 新需求" })).toBeTruthy();
+  gone(page, "空着");
 });
 
 test("waiting work replaces the project's state line and lists what is waiting", () => {
@@ -91,13 +107,13 @@ test("waiting work replaces the project's state line and lists what is waiting",
     asker: "dev",
     asker_project: 1,
   });
-  const html = home(st);
+  const page = home(st);
 
-  expect(html).toContain("1 张卡待批");
-  expect(html).toContain("1 个提问");
+  shown(page, "1 张卡待批");
+  shown(page, "1 个提问");
   // The counts that are zero stay off the line entirely.
-  expect(html).not.toContain("片待查收");
-  expect(html).not.toContain("个待合入");
+  gone(page, "片待查收");
+  gone(page, "个待合入");
 });
 
 test("the project wanting the boss most is read first", () => {
@@ -105,45 +121,53 @@ test("the project wanting the boss most is read first", () => {
   st.projects.push(project(1, "quiet"), project(2, "loud"));
   st.groups.push(group(1, 2, { status: "DRAFT" }));
   st.draftCards.push({ grpId: 1, body: "目标: 做完它", at: 1000, unknownPaths: null });
-  const html = home(st);
+  const page = home(st);
 
-  expect(html.indexOf("pamin-labs/loud")).toBeLessThan(html.indexOf("pamin-labs/quiet"));
+  // Document order, not string offsets: the row that wants something comes first.
+  const repos = page.getAllByText(/pamin-labs\//).map((el) => el.textContent);
+  expect(repos).toEqual(["pamin-labs/loud", "pamin-labs/quiet"]);
 });
 
-const usage = (rows: State["usage"]) =>
-  renderToStaticMarkup(
+const usage = (rows: State["usage"]) => {
+  cleanup();
+  return mount(
     <TipRoot>
       <UsageBar usage={rows} />
     </TipRoot>,
   );
+};
 
 test("a window past the warning line is the only thing on the bar in warn tone", () => {
-  const html = usage([{ runtime: "claude", at: Date.now(), fiveHourPercent: 81, weeklyPercent: 79 }]);
+  const bar = usage([{ runtime: "claude", at: Date.now(), fiveHourPercent: 81, weeklyPercent: 79 }]);
   // 81 is over, 79 is not, so exactly one of the two labels carries the warning.
-  expect(html.match(/font-semibold text-warn/g)).toHaveLength(1);
-  expect(html).toContain("5h");
-  expect(html).toContain("周");
+  // The warning is a colour on that label, so it is counted on the labels.
+  expect(bar.container.querySelectorAll(".text-warn").length).toBe(1);
+  expect(bar.getByText("5h").className).toContain("text-warn");
+  expect(bar.getByText("周").className).not.toContain("text-warn");
 });
 
 test("a window the plan does not have holds its column open and says nothing", () => {
-  const html = usage([{ runtime: "claude", at: Date.now(), fiveHourPercent: 42 }]);
+  const bar = usage([{ runtime: "claude", at: Date.now(), fiveHourPercent: 42 }]);
   // The weekly cell is present but empty: an empty ring plus a dash would claim
   // the read failed, when the truth is the window does not exist on that plan.
-  expect(html).toContain("aria-hidden");
-  expect(html).not.toContain("周");
-  expect(html).not.toContain("?");
+  expect(bar.getByText("5h")).toBeTruthy();
+  expect(bar.queryAllByText("周")).toHaveLength(0);
+  expect(bar.queryAllByText("?")).toHaveLength(0);
+  // Present, and hidden from a screen reader rather than announced as an empty
+  // cell: the grid still needs its third column.
+  expect(bar.container.querySelectorAll("[aria-hidden]").length).toBe(1);
 });
 
 test("a failed read stays quiet until it is old enough to be wrong", () => {
   const fresh = usage([{ runtime: "codex", at: Date.now(), error: "unreachable" }]);
-  expect(fresh).not.toContain("?");
+  expect(fresh.queryAllByText("?")).toHaveLength(0);
 
   const old = usage([{ runtime: "codex", at: Date.now() - 2 * 60 * 60_000, error: "unreachable" }]);
-  expect(old).toContain("?");
+  expect(old.getAllByText("?").length).toBeGreaterThan(0);
 });
 
 test("an account with no window and no failure gets no bar at all", () => {
-  expect(usage([{ runtime: "claude", at: Date.now() }])).toBe("");
+  expect(usage([{ runtime: "claude", at: Date.now() }]).container.innerHTML).toBe("");
 });
 
 test("the tooltip carries the digits the ring cannot, and the reason when there are none", () => {

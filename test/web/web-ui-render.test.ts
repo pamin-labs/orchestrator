@@ -1,10 +1,18 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { cleanup, render } from "../support/render.tsx";
 import { emptyState } from "../../web/src/lib/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { UsageBar } from "../../web/src/ui/usage.tsx";
 import { Home } from "../../web/src/views/home.tsx";
+
+/**
+ * testing-library's own `afterEach(cleanup)` is registered when its module is
+ * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
+ * belongs to whichever file imported it first, and every later file kept the
+ * previous one's nodes in `document.body`. Each file registers its own.
+ */
+afterEach(cleanup);
 
 test("Home renders a fresh project as an actionable row", () => {
   const state = emptyState();
@@ -15,7 +23,7 @@ test("Home renders a fresh project as an actionable row", () => {
     remote: "https://github.com/pamin-labs/orchestrator",
     base_branch: "main",
   });
-  const html = renderToStaticMarkup(
+  const { getByRole, getByText } = render(
     createElement(Home, {
       st: state,
       onEnter: () => {},
@@ -25,13 +33,14 @@ test("Home renders a fresh project as an actionable row", () => {
       refresh: () => {},
     }),
   );
-  expect(html).toContain("orchestrator");
-  expect(html).toContain("＋ 新需求");
-  expect(html).toContain("pamin-labs/orchestrator");
+  expect(getByText("orchestrator")).toBeTruthy();
+  expect(getByText("pamin-labs/orchestrator")).toBeTruthy();
+  // Actionable means a control, not a line of text that reads like one.
+  expect(getByRole("button", { name: "＋ 新需求" })).toBeTruthy();
 });
 
 test("Usage renders known, hot and stale subscription windows", () => {
-  const html = renderToStaticMarkup(
+  const { getAllByText, getByText } = render(
     createElement(
       TipRoot,
       null,
@@ -43,8 +52,10 @@ test("Usage renders known, hot and stale subscription windows", () => {
       }),
     ),
   );
-  expect(html).toContain("claude");
-  expect(html).toContain("codex");
-  expect(html).toContain("5h");
-  expect(html).toContain("?");
+  expect(getByText("claude")).toBeTruthy();
+  expect(getByText("codex")).toBeTruthy();
+  // 81% is over the line, so its label is the one wearing the warning.
+  expect(getByText("5h").className).toContain("text-warn");
+  // The account that could not be read says so on both of its windows.
+  expect(getAllByText("?")).toHaveLength(2);
 });

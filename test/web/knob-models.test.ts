@@ -1,6 +1,6 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { cleanup, render, restoreFetch, stubFetch } from "../support/render.tsx";
 import { Knobs } from "../../web/src/views/knobs";
 import { allModels, cheapest, modelsByRuntime } from "../../web/src/lib/models";
 import { COUNT_UNITS, countOf, splitCount } from "../../web/src/lib/units";
@@ -22,8 +22,21 @@ const src = {
   indexModel: DEFAULTS.indexModel,
 };
 
+/**
+ * testing-library's own `afterEach(cleanup)` is registered when its module is
+ * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
+ * belongs to whichever file imported it first, and every later file kept the
+ * previous one's nodes in `document.body`. Each file registers its own.
+ */
+afterEach(() => {
+  cleanup();
+  restoreFetch();
+});
+
 test("the knob editor has a renderable loading state", () => {
-  expect(renderToStaticMarkup(createElement(Knobs, { section: "models" }))).toContain("读取中");
+  // The read is left in flight, which is the state the editor comes up in.
+  stubFetch();
+  expect(render(createElement(Knobs, { section: "models" })).getByText(/读取中/)).toBeTruthy();
 });
 
 test("every runtime is offered its own models and nobody else's", () => {

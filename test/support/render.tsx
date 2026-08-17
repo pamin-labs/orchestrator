@@ -22,7 +22,7 @@ import { nativeFetch } from "./dom.ts";
  * Assert a count, an accessible name, or a property: `queryAllByRole(…)` with
  * `toHaveLength(0)`, `input.disabled`, `element.textContent`.
  */
-export { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+export { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 
 /**
  * The network these panes see while a test looks at them.

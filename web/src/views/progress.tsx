@@ -207,6 +207,7 @@ function RowFlags({ st, group, facts }: { st: State; group: Group; facts: RowFac
             className="cursor-pointer underline decoration-dotted underline-offset-2"
             onClick={(event) => {
               event.stopPropagation();
+              // fallow-ignore-next-line security-sink -- `url` is `prUrl`, which returns either null or a literal `https://github.com/` prefix followed by two `[\w.-]+` segments it matched out of the remote; the stored remote cannot contribute a scheme or a host.
               window.open(url, "_blank", "noopener");
             }}
           >

@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { cleanup, render as mount, restoreFetch, stubFetch, valueOf } from "../support/render.tsx";
 import { emptyState, type Group, type PanelFrame, type Slice, type State } from "../../web/src/lib/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { Requirement } from "../../web/src/views/requirement.tsx";
@@ -43,12 +43,42 @@ const frame = (over: Partial<PanelFrame> & { id: string }): PanelFrame => ({
   ...over,
 });
 
-const render = (state: State, current: Group, tab: string | null = null, frames: PanelFrame[] = []) =>
-  renderToStaticMarkup(
+/**
+ * One requirement pane, replacing whatever the last call put on the page.
+ *
+ * These tests walk a requirement through its states by rendering it again with
+ * a changed store, and every render shares one `document.body` — so without the
+ * `cleanup` the "this is not shown" half of each test would be reading the
+ * previous pane.
+ */
+const render = (state: State, current: Group, tab: string | null = null, frames: PanelFrame[] = []) => {
+  cleanup();
+  return mount(
     <TipRoot>
       <Requirement st={state} g={current} frames={frames} refresh={() => {}} open tab={tab} />
     </TipRoot>,
   );
+};
+
+/** Anything this pane fetches — the evidence diff — stays in flight. */
+beforeEach(() => stubFetch());
+/**
+ * testing-library's own `afterEach(cleanup)` is registered when its module is
+ * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
+ * belongs to whichever file imported it first, and every later file kept the
+ * previous one's nodes in `document.body`. Each file registers its own.
+ */
+afterEach(() => {
+  cleanup();
+  restoreFetch();
+});
+
+/** Most of these sentences sit inside a longer line, so the match is a substring —
+ *  of rendered text, which is what a reader has, rather than of the markup. */
+const shown = (r: ReturnType<typeof render>, text: string) =>
+  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
+const gone = (r: ReturnType<typeof render>, text: string) =>
+  expect(r.queryAllByText(text, { exact: false })).toHaveLength(0);
 
 /** A group with one running slice, which is what most of these states hang off. */
 function running(over: Partial<Group> = {}) {
@@ -62,18 +92,19 @@ test("Requirement renders missing, draft, slice review and blocking-question sta
   const draft = emptyState();
   const draftGroup = group("DRAFT");
   draft.groups.push(draftGroup);
-  expect(render(draft, draftGroup)).toContain("Dispatcher 正在写计划卡");
+  shown(render(draft, draftGroup), "Dispatcher 正在写计划卡");
   draft.draftCards.push({ grpId: 7, body: "## Plan\nShip the slice", at: 1 });
   const filed = render(draft, draftGroup);
-  expect(filed).toContain("计划卡");
-  expect(filed).toContain("批准开工");
+  // The card is an editable box that names itself, not a heading over one.
+  expect(valueOf(filed.getByLabelText("计划卡"))).toContain("Ship the slice");
+  expect(filed.getByRole("button", { name: "批准开工" })).toBeTruthy();
 
   const { st: active, g: activeGroup } = running();
-  expect(render(active, activeGroup, "slice")).toContain("正在拆解");
+  shown(render(active, activeGroup, "slice"), "正在拆解");
   active.slices.push(slice());
   const review = render(active, activeGroup, "slice");
-  expect(review).toContain("Implement review");
-  expect(review).toContain("待你查收");
+  shown(review, "Implement review");
+  shown(review, "待你查收");
 
   active.escalations.push({
     id: 21,
@@ -90,35 +121,36 @@ test("Requirement renders missing, draft, slice review and blocking-question sta
     asker_project: 1,
   });
   const question = render(active, activeGroup, "ask");
-  expect(question).toContain("Which compatibility behavior should remain?");
-  expect(question).toContain("全组停着");
+  shown(question, "Which compatibility behavior should remain?");
+  shown(question, "全组停着");
 });
 
 test("the header shows the control that fits the group's state", () => {
   const live = running();
   const head = render(live.st, live.g, "slice");
-  expect(head).toContain("ship it");
-  expect(head).toContain("feature/ship");
-  expect(head).toContain("在跑");
-  expect(head).toContain("暂停");
-  expect(head).toContain("更多");
+  shown(head, "ship it");
+  shown(head, "feature/ship");
+  shown(head, "在跑");
+  // The controls are buttons, named — 暂停 as text could have been a caption.
+  expect(head.getByRole("button", { name: "暂停" })).toBeTruthy();
+  expect(head.getByRole("button", { name: "更多" })).toBeTruthy();
 
   const paused = running({ status: "PAUSED", pr_number: 4 });
   const stopped = render(paused.st, paused.g, "slice");
-  expect(stopped).toContain("已暂停");
-  expect(stopped).toContain("继续");
+  shown(stopped, "已暂停");
+  expect(stopped.getByRole("button", { name: "继续" })).toBeTruthy();
   // A closed PR needs a way to file a second one; a branch that was force-pushed
   // cannot be reopened on GitHub at all.
-  expect(stopped).toContain("开新 PR");
+  expect(stopped.getByRole("button", { name: "开新 PR" })).toBeTruthy();
 
   const parked = running({ status: "PARKED" });
   const asleep = render(parked.st, parked.g, "slice");
-  expect(asleep).toContain("已封存");
-  expect(asleep).toContain("唤醒");
-  expect(asleep).not.toContain("暂停");
+  shown(asleep, "已封存");
+  expect(asleep.getByRole("button", { name: "唤醒" })).toBeTruthy();
+  expect(asleep.queryAllByRole("button", { name: "暂停" })).toHaveLength(0);
 
   const open = running({ status: "PR_OPEN", pr_number: 9 });
-  expect(render(open.st, open.g, "slice")).toContain("排队中");
+  shown(render(open.st, open.g, "slice"), "排队中");
 
   const queued = running({ status: "PR_OPEN", pr_number: 9 });
   queued.st.projects.push({
@@ -130,22 +162,23 @@ test("the header shows the control that fits the group's state", () => {
   });
   queued.st.mergeQueue.push({ projectId: 1, grpId: 7, name: "ship it", branch: "feature/ship", seq: 1, place: null });
   const merging = render(queued.st, queued.g, "slice");
-  expect(merging).toContain("去合并 PR");
-  expect(merging).toContain("https://github.com/acme/orchestrator/pull/9");
-  expect(merging).not.toContain("排队中");
+  // A link, not a button: it leaves the panel, and it goes to that PR.
+  const link = merging.getByRole("link", { name: /去合并 PR/ });
+  expect(link.getAttribute("href")).toBe("https://github.com/acme/orchestrator/pull/9");
+  gone(merging, "排队中");
 });
 
 test("a group that has spent its budget gets the wall instead of a working 继续", () => {
   const { st, g } = running({ status: "PAUSED", budget_tokens: 1000, spent_tokens: 1000 });
   const wall = render(st, g, "slice");
-  expect(wall).toContain("预算用尽，全组挂起");
-  expect(wall).toContain("翻倍到");
-  expect(wall).toContain("取消上限");
+  shown(wall, "预算用尽，全组挂起");
+  expect(wall.getByRole("button", { name: /翻倍到/ })).toBeTruthy();
+  expect(wall.getByRole("button", { name: "取消上限" })).toBeTruthy();
   // 继续 would be a button that changes nothing: the scheduler refuses to admit it.
-  expect(wall).not.toContain(">继续<");
+  expect(wall.queryAllByRole("button", { name: "继续" })).toHaveLength(0);
 
   const capped = running({ budget_tokens: null });
-  expect(render(capped.st, capped.g, "slice")).toContain("无预算上限");
+  shown(render(capped.st, capped.g, "slice"), "无预算上限");
 });
 
 test("the rebuild pane reports both steps while it runs and stays up when it fails", () => {
@@ -156,20 +189,20 @@ test("the rebuild pane reports both steps while it runs and stays up when it fai
     frame({ id: "e3", text: "resolved 400 packages", at: 3_000 }),
   ];
   const live = render(st, g, "slice", started);
-  expect(live).toContain("克隆");
-  expect(live).toContain("装依赖");
-  expect(live).toContain("bun install --frozen-lockfile");
-  expect(live).toContain("resolved 400 packages");
-  expect(live).toContain("收起");
+  shown(live, "克隆");
+  shown(live, "装依赖");
+  shown(live, "bun install --frozen-lockfile");
+  shown(live, "resolved 400 packages");
+  expect(live.getByRole("button", { name: "收起" })).toBeTruthy();
 
   const broken = render(st, g, "slice", [...started, frame({ id: "e4", cls: "state", text: "装失败了", at: 4_000 })]);
-  expect(broken).toContain("装失败了");
-  expect(broken).toContain("交给 bootstrap 重试");
+  shown(broken, "装失败了");
+  shown(broken, "交给 bootstrap 重试");
 
   const done = render(st, g, "slice", [...started, frame({ id: "e5", cls: "state", text: "装好了", at: 4_000 })]);
-  expect(done).not.toContain("装依赖");
+  gone(done, "装依赖");
   // Nothing at all before a rebuild has been asked for.
-  expect(render(st, g, "slice")).not.toContain("克隆");
+  gone(render(st, g, "slice"), "克隆");
 });
 
 test("each slice row says where it is in its own words", () => {
@@ -193,24 +226,24 @@ test("each slice row says where it is in its own words", () => {
     slice_id: 3,
   });
   const rows = render(st, g, "slice");
-  expect(rows).toContain("等前序切片");
-  expect(rows).toContain("已退回，等它修");
-  expect(rows).toContain("engineer ▸ 跑测试 ");
+  shown(rows, "等前序切片");
+  shown(rows, "已退回，等它修");
+  shown(rows, "engineer ▸ 跑测试");
   // Gate names come from the shared stop list, and 查收 is the boss's own column.
-  expect(rows).toContain("自评");
-  expect(rows).toContain("对账");
-  expect(rows).toContain("测试");
-  expect(rows).toContain("查收");
-  expect(rows).toContain("S4");
+  shown(rows, "自评");
+  shown(rows, "对账");
+  shown(rows, "测试");
+  shown(rows, "查收");
+  shown(rows, "S4");
 
   st.slices[2]!.status = "awaiting_boss";
   st.slices[2]!.awaiting_at = null;
-  expect(render(st, g, "slice")).toContain("待你查收");
+  shown(render(st, g, "slice"), "待你查收");
 
   // A slice with no agent on it falls back to what it promised.
   st.agents.length = 0;
   st.slices[2]!.status = "running";
-  expect(render(st, g, "slice")).toContain("Visible behavior is preserved");
+  shown(render(st, g, "slice"), "Visible behavior is preserved");
 });
 
 test("the open slice shows its tasks over the evidence the verdict answers", () => {
@@ -221,19 +254,19 @@ test("the open slice shows its tasks over the evidence the verdict answers", () 
     { id: 2, grp_id: 7, slice_id: 3, title: "Render it", status: "pending" },
   );
   const waiting = render(st, g, "slice");
-  expect(waiting).toContain("Write the model");
-  expect(waiting).toContain("Render it");
+  shown(waiting, "Write the model");
+  shown(waiting, "Render it");
   // The two verdict buttons are handed to the evidence panel, which is still
   // fetching the diff they are a verdict on.
-  expect(waiting).toContain("读改动…");
+  shown(waiting, "读改动…");
 
   // Nothing has produced anything yet: every row stays shut rather than opening
   // an empty panel in front of the boss.
   st.slices[0]!.status = "pending";
   st.slices[0]!.awaiting_at = null;
   const shut = render(st, g, "slice");
-  expect(shut).toContain("等前序切片");
-  expect(shut).not.toContain("Write the model");
+  shown(shut, "等前序切片");
+  gone(shut, "Write the model");
 });
 
 test("the draft card carries every objection raised against it", () => {
@@ -244,20 +277,20 @@ test("the draft card carries every objection raised against it", () => {
   st.draftCards.push({ grpId: 7, body: "目标: ship it", at: 1, unknownPaths: '["web/src/gone.tsx"]' });
   st.lateObjections.push({ grpId: 7, author: "architect", body: "The boundary is wrong" });
   const card = render(st, g);
-  expect(card).toContain("Split the settings view");
-  expect(card).toContain("architect 后补反对");
-  expect(card).toContain("The boundary is wrong");
-  expect(card).toContain("卡里这些路径仓库里没有");
-  expect(card).toContain("web/src/gone.tsx");
-  expect(card).toContain("批准开工");
-  expect(card).toContain("退回重拆");
+  shown(card, "Split the settings view");
+  shown(card, "architect 后补反对");
+  shown(card, "The boundary is wrong");
+  shown(card, "卡里这些路径仓库里没有");
+  shown(card, "web/src/gone.tsx");
+  expect(card.getByRole("button", { name: "批准开工" })).toBeTruthy();
+  expect(card.getByRole("button", { name: "退回重拆" })).toBeTruthy();
 
   st.dropProposals.push({ grpId: 7, body: "Already done in #12\nsee the merged PR" });
   const drop = render(st, g);
-  expect(drop).toContain("规划岗建议作废");
-  expect(drop).toContain("Already done in #12");
-  expect(drop).toContain("确认作废");
-  expect(drop).toContain("不，接着做");
+  shown(drop, "规划岗建议作废");
+  shown(drop, "Already done in #12");
+  expect(drop.getByRole("button", { name: "确认作废" })).toBeTruthy();
+  expect(drop.getByRole("button", { name: "不，接着做" })).toBeTruthy();
 });
 
 test("an approved draft says what is holding it instead of asking to approve again", () => {
@@ -266,19 +299,19 @@ test("an approved draft says what is holding it instead of asking to approve aga
   st.groups.push(g);
   st.draftCards.push({ grpId: 7, body: "目标: ship it", at: 1 });
   const held = render(st, g);
-  expect(held).toContain("已批·等边界");
-  expect(held).toContain("已批准，边界挡着");
-  expect(held).toContain("等 Architect 切边界");
-  expect(held).not.toContain("批准开工");
+  shown(held, "已批·等边界");
+  shown(held, "已批准，边界挡着");
+  shown(held, "等 Architect 切边界");
+  expect(held.queryAllByRole("button", { name: "批准开工" })).toHaveLength(0);
 
   st.approvedBlocked.push({ grpId: 7, reason: "settings.tsx is owned by 组 3" });
-  expect(render(st, g)).toContain("settings.tsx is owned by 组 3");
+  shown(render(st, g), "settings.tsx is owned by 组 3");
 });
 
 test("the question lanes separate what is yours from what the chain is holding", () => {
   const { st, g } = running();
   st.slices.push(slice());
-  expect(render(st, g, "ask")).toContain("没有开着的问题");
+  shown(render(st, g, "ask"), "没有开着的问题");
 
   st.escalations.push({
     id: 30,
@@ -295,10 +328,10 @@ test("the question lanes separate what is yours from what the chain is holding",
     asker_project: 1,
   });
   const held = render(st, g, "ask");
-  expect(held).toContain("别人在处理 1");
-  expect(held).toContain("Architect 处理中");
-  expect(held).toContain("git ls-tree -r main --name-only");
-  expect(held).not.toContain("待你决策");
+  shown(held, "别人在处理 1");
+  shown(held, "Architect 处理中");
+  shown(held, "git ls-tree -r main --name-only");
+  gone(held, "待你决策");
 
   st.answered.push({
     id: 31,
@@ -309,7 +342,7 @@ test("the question lanes separate what is yours from what the chain is holding",
     ref_note_id: null,
   });
   const delegated = render(st, g, "ask");
-  expect(delegated).toContain("替你答过 1");
+  shown(delegated, "替你答过 1");
 
   // With one on the boss, that lane is the default and the others stay counted.
   st.escalations.push({
@@ -327,24 +360,25 @@ test("the question lanes separate what is yours from what the chain is holding",
     asker_project: 1,
   });
   const mine = render(st, g, "ask");
-  expect(mine).toContain("待你决策 1");
-  expect(mine).toContain("别人在处理 1");
-  expect(mine).toContain("替你答过 1");
-  expect(mine).toContain("Accept the smaller scope?");
-  expect(mine).toContain("让 AI 拟一份");
-  expect(mine).toContain("转 Architect");
-  expect(mine).toContain("开成需求");
+  shown(mine, "待你决策 1");
+  shown(mine, "别人在处理 1");
+  shown(mine, "替你答过 1");
+  shown(mine, "Accept the smaller scope?");
+  expect(mine.getByRole("button", { name: /让 AI 拟一份/ })).toBeTruthy();
+  expect(mine.getByRole("button", { name: /转 Architect/ })).toBeTruthy();
+  expect(mine.getByRole("button", { name: /开成需求/ })).toBeTruthy();
   // The pinned dock is gone while a decision carries its own answer box.
-  expect(mine).not.toContain("跟这个组说话…");
+  expect(mine.queryAllByRole("button", { name: /跟这个组说话…/ })).toHaveLength(0);
 });
 
 test("the dock and the tab counts follow what the requirement holds", () => {
   const { st, g } = running();
   st.slices.push(slice({ id: 1, seq: 1 }), slice({ id: 2, seq: 2, status: "running", awaiting_at: null }));
   const tabs = render(st, g, "slice");
-  expect(tabs).toContain("切片");
-  expect(tabs).toContain("记录");
-  expect(tabs).toContain("工作区");
-  expect(tabs).toContain("问题");
-  expect(tabs).toContain("跟这个组说话…");
+  // Four tabs, in order, with 切片 the one that is open — none of which a
+  // substring of the markup could distinguish from a heading.
+  expect(tabs.getAllByRole("tab").map((t) => t.textContent)).toEqual(["切片2", "问题0", "记录", "工作区"]);
+  expect(tabs.getByRole("tab", { selected: true }).textContent).toBe("切片2");
+  // At rest the dock is one line that says where the words go.
+  expect(tabs.getByRole("button", { name: "跟这个组说话… ⌘Enter 发给 PM" })).toBeTruthy();
 });

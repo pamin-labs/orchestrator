@@ -55,6 +55,7 @@ export function requestHeaders(input: Parameters<typeof fetch>[0], init?: Parame
 
 const browserFetch: typeof fetch = Object.assign(
   (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+    // fallow-ignore-next-line security-sink -- the only caller is the hono client below, bound to the relative base `/api/v1`, so every request this wrapper sees is same-origin by construction; it adds headers and chooses no destination.
     fetch(input, { ...init, headers: requestHeaders(input, init) }),
   { preconnect: fetch.preconnect },
 );

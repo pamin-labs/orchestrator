@@ -1,6 +1,6 @@
-import { expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
-import { AttachmentTiles, Composer, SkillMenu } from "../../web/src/ui/composer.tsx";
+import { afterEach, expect, test } from "bun:test";
+import { cleanup, isDisabled, render, restoreFetch, stubFetch, valueOf, waitFor } from "../support/render.tsx";
+import { AttachmentTiles, Composer, forgetSkills, SkillMenu } from "../../web/src/ui/composer.tsx";
 import {
   appendLine,
   attachmentLabel,
@@ -29,58 +29,103 @@ const files: Attached[] = [
   { name: "src", path: "/a/src", type: "inode/directory", size: 0, label: "目录1" },
 ];
 
-test("an empty composer offers attach, paste and a disabled send", () => {
-  const html = renderToStaticMarkup(<Composer placeholder="说点什么" submit="发送" onSubmit={() => true} />);
-  expect(html).toContain("说点什么");
-  expect(html).toContain("附件");
-  expect(html).toContain("粘贴");
-  expect(html).toContain("发送");
-  expect(html).toContain('disabled=""');
+/**
+ * testing-library's own `afterEach(cleanup)` is registered when its module is
+ * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
+ * belongs to whichever file imported it first, and every later file kept the
+ * previous one's nodes in `document.body`. Each file registers its own.
+ */
+afterEach(() => {
+  cleanup();
+  restoreFetch();
+  // The list is cached at module scope for the life of the page, and every file
+  // in this process shares that page.
+  forgetSkills();
+});
+
+test("an empty composer offers attach, paste and a send that refuses to send nothing", () => {
+  stubFetch();
+  const { getByPlaceholderText, getByRole } = render(
+    <Composer placeholder="说点什么" submit="发送" onSubmit={() => true} />,
+  );
+  expect(getByPlaceholderText("说点什么")).toBeTruthy();
+  expect(getByRole("button", { name: "附件" })).toBeTruthy();
+  expect(getByRole("button", { name: "粘贴" })).toBeTruthy();
+  // The disabled one is the send, named: `disabled=""` anywhere in the markup
+  // was equally satisfied by a disabled 附件.
+  expect(isDisabled(getByRole("button", { name: "发送" }))).toBe(true);
 });
 
 test("seed text arrives in the box and enables the primary action", () => {
-  const html = renderToStaticMarkup(<Composer initial="这里不对" submit="发送" onSubmit={() => true} />);
-  expect(html).toContain("这里不对");
-  expect(html).not.toContain('disabled=""');
+  stubFetch();
+  const { getByRole } = render(<Composer initial="这里不对" submit="发送" onSubmit={() => true} />);
+  expect(valueOf(getByRole("textbox"))).toBe("这里不对");
+  expect(isDisabled(getByRole("button", { name: "发送" }))).toBe(false);
 });
 
-test("a composer with no submit label and no handler renders no primary action", () => {
-  const html = renderToStaticMarkup(<Composer placeholder="说点什么" />);
-  expect(html).not.toContain("发送");
-  // The 插技能 button only appears once a project's skills have loaded.
-  expect(html).not.toContain("插技能");
+test("a composer with no submit label and no handler renders no primary action", async () => {
+  // Skills present and loaded, so the missing 插技能 is about this composer having
+  // no project rather than about the read not having landed.
+  stubFetch({ "/skills": { skills } });
+  // A project id no other test uses. `forgetSkills` empties the resolved cache
+  // but not the in-flight one, so a project whose read another file left hanging
+  // hands this composer that same never-settling promise.
+  const { getByRole, queryAllByRole } = render(<Composer placeholder="说点什么" projectId={8801} />);
+  await waitFor(() => getByRole("button", { name: /插技能/ }));
+  expect(queryAllByRole("button", { name: "发送" })).toHaveLength(0);
+});
+
+test("the 插技能 button waits for the skills read rather than appearing empty", async () => {
+  stubFetch({ "/skills": { skills: [] } });
+  const { getByRole, queryAllByRole } = render(<Composer placeholder="说点什么" projectId={8802} submit="发送" />);
+  // A project whose skills read came back empty has nothing to insert, so the
+  // button never arrives — but the two beside it are up immediately.
+  expect(getByRole("button", { name: "附件" })).toBeTruthy();
+  await waitFor(() => expect(queryAllByRole("button", { name: /插技能/ })).toHaveLength(0));
 });
 
 test("the skill picker names each skill, its scope, and whether it is ticked on", () => {
-  const html = renderToStaticMarkup(<SkillMenu matches={skills} onPick={() => {}} />);
-  expect(html).toContain("选中的技能，正文随这一个 turn 发给 agent，只花这一次钱");
-  expect(html).toContain("commit");
-  expect(html).toContain("项目");
-  expect(html).toContain("写提交信息");
-  expect(html).toContain("review");
-  expect(html).toContain("全局");
-  expect(html).toContain("未启用");
-  expect(html).toContain("Tab");
-  expect(html).toContain(">2<");
+  const { getByRole, getByText } = render(<SkillMenu matches={skills} onPick={() => {}} />);
+  expect(getByText("选中的技能，正文随这一个 turn 发给 agent，只花这一次钱")).toBeTruthy();
+  // Each row is a button, so each row is reachable by keyboard and nameable.
+  const commit = getByRole("button", { name: /commit/ });
+  expect(commit.textContent).toContain("项目");
+  expect(commit.textContent).toContain("写提交信息");
+  expect(commit.textContent).toContain("Tab");
+  // Ticked on, so nothing warns about it.
+  expect(commit.textContent).not.toContain("未启用");
+  const review = getByRole("button", { name: /review/ });
+  expect(review.textContent).toContain("全局");
+  expect(review.textContent).toContain("未启用");
+  // The count, so a skill sorting seventh is known to exist.
+  expect(getByText("2")).toBeTruthy();
 });
 
 test("a picker with nothing to offer renders nothing at all", () => {
-  expect(renderToStaticMarkup(<SkillMenu matches={[]} onPick={() => {}} />)).toBe("");
-  expect(renderToStaticMarkup(<AttachmentTiles files={[]} onRemove={() => {}} />)).toBe("");
+  expect(render(<SkillMenu matches={[]} onPick={() => {}} />).container.innerHTML).toBe("");
+  expect(render(<AttachmentTiles files={[]} onRemove={() => {}} />).container.innerHTML).toBe("");
 });
 
 test("each attachment tile carries the marker the text refers to it by", () => {
-  const html = renderToStaticMarkup(<AttachmentTiles files={files} onRemove={() => {}} />);
-  expect(html).toContain("[图1]");
-  expect(html).toContain("blob:preview");
-  expect(html).toContain("[附件1]");
-  expect(html).toContain("MD");
-  expect(html).toContain("3k");
-  expect(html).toContain("[目录1]");
-  expect(html).toContain("DIR");
-  expect(html).toContain("移除 shot.png");
+  const { container, getByRole, getByText, queryAllByText } = render(
+    <AttachmentTiles files={files} onRemove={() => {}} />,
+  );
+  expect(getByText("[图1]")).toBeTruthy();
+  // An image tile previews the image; the other two wear a badge for their kind.
+  // Queried by hand because the thumbnail carries `alt=""` and so is not in the
+  // accessibility tree at all — see the note in the report.
+  expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:preview");
+  expect(getByText("[附件1]")).toBeTruthy();
+  expect(getByText("MD")).toBeTruthy();
+  expect(getByText("3k")).toBeTruthy();
+  expect(getByText("[目录1]")).toBeTruthy();
+  expect(getByText("DIR")).toBeTruthy();
+  // Every tile has its own way off, named after the file it removes.
+  expect(getByRole("button", { name: "移除 shot.png" })).toBeTruthy();
+  expect(getByRole("button", { name: "移除 notes.md" })).toBeTruthy();
+  expect(getByRole("button", { name: "移除 src" })).toBeTruthy();
   // A directory has no meaningful byte count, so it is not given one.
-  expect(html).not.toContain("0k");
+  expect(queryAllByText("0k")).toHaveLength(0);
 });
 
 test("a slash opens the picker only at the start of a word, and only with skills to offer", () => {

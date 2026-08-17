@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, expect, test } from "bun:test";
+import { cleanup, isDisabled, render, restoreFetch, stubFetch, valueOf } from "../support/render.tsx";
 import { Gates, ImageRow, Sandbox, type ProjectConfig } from "../../web/src/views/project.tsx";
 import { FirstProject } from "../../web/src/views/picker.tsx";
 import {
@@ -59,32 +59,56 @@ const config = (over: Partial<ProjectConfig> = {}): ProjectConfig => ({
 
 // ---------------------------------------------------------------- gates
 
+/**
+ * testing-library's own `afterEach(cleanup)` is registered when its module is
+ * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
+ * belongs to whichever file imported it first, and every later file kept the
+ * previous one's nodes in `document.body`. Each file registers its own.
+ */
+afterEach(() => {
+  cleanup();
+  restoreFetch();
+});
+
 test("the gates that run are listed in run order, numbered, above the ones that do not", () => {
-  const html = renderToStaticMarkup(<Gates d={config()} patch={() => {}} />);
+  const { getAllByRole, getByText } = render(<Gates d={config()} patch={() => {}} />);
   // The stored order is the run order. Rendering the catalogue's alphabetical
   // order while numbering each row by its position read 2, 1 down the page.
-  expect(html.indexOf("bun test")).toBeLessThan(html.indexOf("bun run lint"));
+  // Each row is a toggle that says out loud whether its gate is on, which is
+  // what a reader has to know and what no substring of the markup could tell.
+  const on = getAllByRole("button", { pressed: true });
+  expect(on.map((row) => row.textContent)).toEqual(["1testbun test", "2lintbun run lint"]);
   // Every running gate carries its position and its command, so the header's
   // three columns are three facts rather than one name repeated.
-  expect(html).toContain("顺序");
-  expect(html).toContain("名字");
-  expect(html).toContain("命令");
-  // A detected command nobody turned on sits under its own heading, unnumbered.
-  expect(html).toContain("关掉的");
-  expect(html).toContain("点一下加到最后一道");
-  expect(html).toContain("bun run typecheck");
-  expect(html).toContain("从上往下跑，拖着改顺序");
+  expect(getByText("顺序")).toBeTruthy();
+  expect(getByText("名字")).toBeTruthy();
+  expect(getByText("命令")).toBeTruthy();
+  // A detected command nobody turned on sits under its own heading, unnumbered,
+  // and is offered as an unpressed toggle rather than as text.
+  expect(getByText("关掉的")).toBeTruthy();
+  expect(getByText("点一下加到最后一道")).toBeTruthy();
+  const off = getAllByRole("button", { pressed: false });
+  expect(off.map((row) => row.textContent)).toEqual(["typecheckbun run typecheck"]);
+  expect(getByText("从上往下跑，拖着改顺序")).toBeTruthy();
 });
 
 test("a project with no gates on is told what that costs, and one with no commands is told why", () => {
-  const none = renderToStaticMarkup(<Gates d={config({ config: {} })} patch={() => {}} />);
-  expect(none).toContain("一道都没开，LLM 审阅底下就没有地板。");
+  const none = render(<Gates d={config({ config: {} })} patch={() => {}} />);
+  expect(none.getByText("一道都没开，LLM 审阅底下就没有地板。")).toBeTruthy();
+  // Every detected command is still offered, all of them off.
+  expect(none.queryAllByRole("button", { pressed: true })).toHaveLength(0);
+  expect(none.getAllByRole("button", { pressed: false })).toHaveLength(3);
+  // Both renders share one `document.body`, so the first pane leaves before the
+  // second arrives — otherwise the "not there" half below reads the first one.
+  none.unmount();
+
   // Nothing was detected at all: a different sentence, because it is fixed in a
   // different place — there is nothing to switch on.
-  const bare = renderToStaticMarkup(<Gates d={config({ config: {}, resources: [] })} patch={() => {}} />);
-  expect(bare).toContain("没探到可跑的命令。");
-  expect(bare).not.toContain("一道都没开");
-  expect(bare).not.toContain("关掉的");
+  const bare = render(<Gates d={config({ config: {}, resources: [] })} patch={() => {}} />);
+  expect(bare.getByText("没探到可跑的命令。")).toBeTruthy();
+  expect(bare.queryAllByText(/一道都没开/)).toHaveLength(0);
+  expect(bare.queryAllByText("关掉的")).toHaveLength(0);
+  expect(bare.queryAllByRole("button")).toHaveLength(0);
 });
 
 test("a stored gate the repository no longer has drops off both lists", () => {
@@ -129,21 +153,32 @@ test("only Alt plus an up or down arrow moves a gate", () => {
 // -------------------------------------------------------------- sandbox
 
 test("the sandbox pane shows every unset override as an empty box with the default named", () => {
-  const html = renderToStaticMarkup(<Sandbox d={config()} busy={false} patch={() => {}} />);
-  expect(html).toContain("沙盒");
-  expect(html).toContain("灰字是默认值");
+  stubFetch();
+  const { getByLabelText, getByPlaceholderText, getByText } = render(
+    <Sandbox d={config()} busy={false} patch={() => {}} />,
+  );
+  expect(getByText("沙盒")).toBeTruthy();
+  expect(getByText("灰字是默认值")).toBeTruthy();
   // The inherited value is the placeholder, never the value: a box pre-filled
   // with the default saves that default as this project's own the first time it
   // loses focus, and the project stops following the machine.
-  expect(html).toContain("main（远端说的）");
-  expect(html).toContain("留空由 bootstrap 读仓库判断");
-  expect(html).toContain("宿主核数的 1/4");
-  expect(html).toContain("8Gi");
-  expect(html).toContain("留空 = 出站不拦（README 那节）");
-  expect(html).toContain("/root/.bun/install/cache:/var/tmp/orch-cache");
+  expect(getByPlaceholderText("main（远端说的）")).toBeTruthy();
+  // Queried by their label, so the pane is asserted to name its boxes at all.
+  for (const [label, hint] of [
+    ["装依赖", "留空由 bootstrap 读仓库判断"],
+    ["CPU", "宿主核数的 1/4"],
+    ["内存", "8Gi"],
+    ["共享缓存", "/root/.bun/install/cache:/var/tmp/orch-cache"],
+  ] as const) {
+    const box = getByLabelText(label);
+    expect(valueOf(box)).toBe("");
+    expect(box.getAttribute("placeholder")).toBe(hint);
+  }
+  expect(getByPlaceholderText("留空 = 出站不拦（README 那节）")).toBeTruthy();
 });
 
 test("stored sandbox overrides reach their controls as values, and blocked domains as chips", () => {
+  stubFetch();
   const d = config({
     baseBranch: "release",
     config: {
@@ -151,19 +186,32 @@ test("stored sandbox overrides reach their controls as values, and blocked domai
       sandbox: { cpu: "6", memory: "16Gi", denyDomains: ["api.openai.com"], cacheDirs: { "/root/.bun": "/var/c" } },
     },
   });
-  const html = renderToStaticMarkup(<Sandbox d={d} busy={false} patch={() => {}} />);
-  expect(html).toContain("release");
-  expect(html).toContain("bun install --frozen-lockfile");
-  expect(html).toContain('value="6"');
-  expect(html).toContain('value="16Gi"');
-  // One chip per domain, each with a way off. A space-separated string cannot
-  // say that one entry of it is wrong.
-  expect(html).toContain("api.openai.com");
-  expect(html).toContain("不再禁止 api.openai.com");
+  const { getByDisplayValue, getByLabelText, getByPlaceholderText, getByRole, getByText } = render(
+    <Sandbox d={d} busy={false} patch={() => {}} />,
+  );
+  expect(getByDisplayValue("release")).toBeTruthy();
+  expect(valueOf(getByLabelText("装依赖"))).toBe("bun install --frozen-lockfile");
+  expect(valueOf(getByLabelText("CPU"))).toBe("6");
+  expect(valueOf(getByLabelText("内存"))).toBe("16Gi");
+  // One chip per domain, each with a way off, named after the domain it drops.
+  // A space-separated string cannot say that one entry of it is wrong.
+  expect(getByText("api.openai.com")).toBeTruthy();
+  expect(getByRole("button", { name: "不再禁止 api.openai.com" })).toBeTruthy();
   // The map is one line of mount:host pairs, which is what the box takes back.
-  expect(html).toContain("/root/.bun:/var/c");
+  expect(valueOf(getByLabelText("共享缓存"))).toBe("/root/.bun:/var/c");
   // With a domain already listed the box asks for another, not for the first.
-  expect(html).toContain("再加一个");
+  expect(getByPlaceholderText("再加一个")).toBeTruthy();
+});
+
+test("every sandbox box refuses input while a save is in flight", () => {
+  // `busy` reaches each control as `disabled`, which is the only thing stopping
+  // a second edit from racing the save that is already running. A server render
+  // could see `disabled=""` somewhere in the markup and nothing about where.
+  stubFetch();
+  const { getByLabelText } = render(<Sandbox d={config()} busy patch={() => {}} />);
+  for (const label of ["装依赖", "CPU", "内存", "共享缓存"]) {
+    expect(isDisabled(getByLabelText(label))).toBe(true);
+  }
 });
 
 test("an override that is cleared leaves the patch rather than being sent as undefined", () => {
@@ -229,14 +277,19 @@ test("Enter commits a domain and Backspace on an empty box takes the last chip",
 // ---------------------------------------------------------------- image
 
 test("the image row offers both sources and says it is still reading them", () => {
-  const html = renderToStaticMarkup(<ImageRow value="" busy={false} onSave={() => {}} />);
-  expect(html).toContain("镜像");
-  expect(html).toContain("远程");
-  expect(html).toContain("本地");
+  stubFetch();
+  const { getByPlaceholderText, getByRole, queryAllByPlaceholderText } = render(
+    <ImageRow value="" busy={false} onSave={() => {}} />,
+  );
+  expect(getByRole("group", { name: "镜像" })).toBeTruthy();
+  // Two segments, exactly one of them lit — which is the fact the row is for,
+  // and is `aria-pressed`, not a class.
+  expect(getByRole("radio", { name: "远程", checked: true })).toBeTruthy();
+  expect(getByRole("radio", { name: "本地", checked: false })).toBeTruthy();
   // Before the lists land there is no default to name, and a box promising one
   // is a box that has not asked yet.
-  expect(html).toContain("读取中…");
-  expect(html).not.toContain("跟这台机器的默认");
+  expect(getByPlaceholderText("读取中…")).toBeTruthy();
+  expect(queryAllByPlaceholderText(/跟这台机器的默认/)).toHaveLength(0);
 });
 
 test("a bare tag is a local build and a registry name is a published one", () => {
@@ -265,10 +318,14 @@ test("each source shows its own names and its own kind of empty", () => {
 // --------------------------------------------------------------- picker
 
 test("the first-project card names the action and shows rows before any repository lands", () => {
-  const html = renderToStaticMarkup(<FirstProject onAdded={() => {}} onSettings={() => {}} />);
-  expect(html).toContain("添加第一个项目");
-  expect(html).toContain("点一行就添加");
-  expect(html).toContain("筛一下，或者直接打名字");
+  // Left in flight on purpose: this is the state the card comes up in, and the
+  // module-level repository cache would otherwise carry a landed list into
+  // whichever file runs next.
+  stubFetch();
+  const { getByRole, getByText } = render(<FirstProject onAdded={() => {}} onSettings={() => {}} />);
+  expect(getByRole("heading", { name: "添加第一个项目" })).toBeTruthy();
+  expect(getByText("点一行就添加")).toBeTruthy();
+  expect(getByRole("combobox", { name: /筛一下|选择仓库/ })).toBeTruthy();
 });
 
 test("a directory listing puts directories above files and turns its path into crumbs", () => {

@@ -1,6 +1,6 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { cleanup, render as mount, restoreFetch, stubFetch } from "../support/render.tsx";
 import type { Evidence } from "../../web/src/lib/api.ts";
 import { EvidencePanel } from "../../web/src/views/evidence.tsx";
 
@@ -20,20 +20,39 @@ const evidence = (patch: Partial<Evidence> = {}): Evidence => ({
   ...patch,
 });
 
-const render = (initialEvidence?: Evidence) =>
-  renderToStaticMarkup(createElement(EvidencePanel, { sliceId: 1, ...(initialEvidence ? { initialEvidence } : {}) }));
+/** One panel at a time; they all share the page. The read stays in flight, so a
+ *  panel handed no evidence stays in the state it comes up in. */
+const render = (initialEvidence?: Evidence) => {
+  cleanup();
+  return mount(createElement(EvidencePanel, { sliceId: 1, ...(initialEvidence ? { initialEvidence } : {}) }));
+};
+
+const shown = (r: ReturnType<typeof render>, text: string) =>
+  expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
+
+beforeEach(() => stubFetch());
+/**
+ * testing-library's own `afterEach(cleanup)` is registered when its module is
+ * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
+ * belongs to whichever file imported it first, and every later file kept the
+ * previous one's nodes in `document.body`. Each file registers its own.
+ */
+afterEach(() => {
+  cleanup();
+  restoreFetch();
+});
 
 test("evidence exposes loading, empty, verdict and gate states", () => {
-  expect(render()).toContain("读改动");
-  expect(render(evidence({ diff: "", stat: "", verdicts: [], gates: [] }))).toContain("还没有判词");
+  shown(render(), "读改动");
+  shown(render(evidence({ diff: "", stat: "", verdicts: [], gates: [] })), "还没有判词");
 
   const failed = render(evidence({ verdicts: [{ author: "qa", body: "FAIL: smoke broke", at: 1 }] }));
-  expect(failed).toContain("verdicts 1");
-  expect(failed).toContain("没过");
-  expect(failed).toContain("smoke broke");
+  shown(failed, "verdicts 1");
+  shown(failed, "没过");
+  shown(failed, "smoke broke");
 
   const gated = render(evidence({ gates: [{ name: "typecheck", path: "gate.log", size: 12 }] }));
-  expect(gated).toContain("typecheck");
-  expect(gated).toContain("1 个文件");
-  expect(gated).toContain("+2 −1");
+  shown(gated, "typecheck");
+  shown(gated, "1 个文件");
+  shown(gated, "+2 −1");
 });
