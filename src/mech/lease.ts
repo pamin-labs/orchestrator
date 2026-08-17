@@ -111,26 +111,29 @@ export function tokenize(template: string): string[] {
   let quote: '"' | "'" | null = null;
   let has = false;
   for (const ch of template) {
-    if (quote) {
-      if (ch === quote) quote = null;
-      else cur += ch;
+    if (ch === quote) {
+      quote = null;
       continue;
     }
-    if (ch === '"' || ch === "'") {
+    if (!quote && (ch === '"' || ch === "'")) {
       quote = ch;
       has = true;
       continue;
     }
-    if (/\s/.test(ch)) {
-      if (has || cur) out.push(cur);
+    if (!quote && /\s/.test(ch)) {
+      appendToken(out, cur, has);
       cur = "";
       has = false;
       continue;
     }
     cur += ch;
   }
-  if (has || cur) out.push(cur);
+  appendToken(out, cur, has);
   return out;
+}
+
+function appendToken(tokens: string[], value: string, quoted: boolean): void {
+  if (quoted || value) tokens.push(value);
 }
 
 const PLACEHOLDER = /\{(\w+)\}/g;
@@ -288,25 +291,9 @@ const MAX_ERROR_LINES = 40;
 export function digestOutput(exitCode: number, output: string, errorRegex?: string, logPath?: string): LeaseDigest {
   const lines = output.split("\n").map((l) => l.trimEnd());
   while (lines.length && lines.at(-1) === "") lines.pop();
-
   const tail = lines.slice(-TAIL_LINES);
   const truncated = lines.length > tail.length;
-
-  let errorLines: string[] = [];
-  if (errorRegex) {
-    const re = new RegExp(errorRegex);
-    const seen = new Set<string>();
-    for (const l of lines) {
-      if (!re.test(l)) continue;
-      const key = l.trim();
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        errorLines.push(key);
-      }
-      if (errorLines.length >= MAX_ERROR_LINES) break;
-    }
-  }
-
+  const errorLines = extractErrorLines(lines, errorRegex);
   const parts = [`exit ${exitCode}`];
   if (errorLines.length) parts.push(`\n## errors (${errorLines.length})\n${errorLines.join("\n")}`);
   parts.push(`\n## tail (${tail.length}${truncated ? ` of ${lines.length}` : ""} lines)\n${tail.join("\n")}`);
@@ -316,6 +303,17 @@ export function digestOutput(exitCode: number, output: string, errorRegex?: stri
   if (truncated && logPath) parts.push(`\nfull log: orch lease log <id> --grep TEXT`);
 
   return { exitCode, errorLines, tail, truncated, text: parts.join("\n") };
+}
+
+function extractErrorLines(lines: string[], pattern?: string): string[] {
+  if (!pattern) return [];
+  const regex = new RegExp(pattern);
+  const errors = new Set<string>();
+  for (const line of lines) {
+    if (regex.test(line) && line.trim()) errors.add(line.trim());
+    if (errors.size >= MAX_ERROR_LINES) break;
+  }
+  return [...errors];
 }
 
 export interface RunOutcome {
