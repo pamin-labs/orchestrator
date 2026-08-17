@@ -216,8 +216,22 @@ interface PreparedTurn {
  * not answer the question that motivates the table — which *stage* of which
  * group's turns is the slow one.
  */
-function turnScope(job: Job<"agent_turn">): SpanScope {
-  return { grpId: job.grp_id, sliceId: job.slice_id };
+function turnScope(deps: ExecDeps, job: Job<"agent_turn">): SpanScope {
+  // The project is looked up rather than left NULL, which is what it was on
+  // every turn span ever written: `scopeAttributes` only emits `project.id` when
+  // it is given one, so the panel's project scope matched nothing at all. The
+  // read path derives it through `grp` for the rows already stored, and does not
+  // need this — but a span exported over OTLP reaches a collector that has never
+  // heard of our `grp` table, and there the column is the only thing that says
+  // which project the work belonged to.
+  //
+  // One primary-key lookup against a turn that takes seconds.
+  const projectId =
+    job.grp_id === null
+      ? null
+      : (deps.ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.grp_id)
+          ?.project_id ?? null);
+  return { grpId: job.grp_id, sliceId: job.slice_id, projectId };
 }
 
 /**
@@ -232,7 +246,7 @@ function turnScope(job: Job<"agent_turn">): SpanScope {
 async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<void> {
   return activeTracer().startActiveSpan(
     "turn",
-    { attributes: { "job.kind": job.kind, ...scopeAttributes(turnScope(job)) } },
+    { attributes: { "job.kind": job.kind, ...scopeAttributes(turnScope(deps, job)) } },
     async (span) => {
       try {
         const turn = await prepareTurn(deps, job);
@@ -253,7 +267,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<voi
 async function prepareTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<PreparedTurn> {
   return activeTracer().startActiveSpan(
     "turn.prepare",
-    { attributes: scopeAttributes(turnScope(job)) },
+    { attributes: scopeAttributes(turnScope(deps, job)) },
     async (span) => {
       try {
         return await buildPreparedTurn(deps, job);
@@ -317,7 +331,7 @@ function rotationReason(agent: AgentRow, cfg: Config, stable: StablePrompt, expl
 async function checkpointTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<string | null> {
   return activeTracer().startActiveSpan(
     "turn.checkpoint",
-    { attributes: scopeAttributes(turnScope(job)) },
+    { attributes: scopeAttributes(turnScope(deps, job)) },
     async (span) => {
       try {
         return await takeCheckpoint(deps, job, turn);
@@ -373,7 +387,12 @@ function markAgentRunning(ctx: Ctx, turn: PreparedTurn): void {
 async function invokeTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<TurnResult> {
   return activeTracer().startActiveSpan(
     "turn.provider",
-    { attributes: { "agent.runtime": turn.agent.runtime ?? turn.role.runtime, ...scopeAttributes(turnScope(job)) } },
+    {
+      attributes: {
+        "agent.runtime": turn.agent.runtime ?? turn.role.runtime,
+        ...scopeAttributes(turnScope(deps, job)),
+      },
+    },
     async (span) => {
       try {
         const result = await callProvider(deps, job, turn);

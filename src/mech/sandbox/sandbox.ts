@@ -1579,7 +1579,10 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
   // The command itself is never an attribute — it carries repository paths and
   // file names, which `docs/standards/observability.md` forbids on labels — so
   // the scope is what identifies it.
-  const attributes = sandboxScope(scope, "project" in scope ? scope.project : null);
+  // The group's project, not just the group: a span whose `project_id` is NULL
+  // is invisible to the panel's project scope, which is the defect `turnScope`
+  // had. One primary-key lookup against a round trip measured at ~1s.
+  const attributes = sandboxScope(scope, projectOf(ctx, scope));
   return activeTracer().startActiveSpan("sandbox.exec", { attributes }, async (span) => {
     try {
       const out = await driver(ctx).exec(ctx, scope, cmd, opts);
@@ -1597,6 +1600,16 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
       span.end();
     }
   });
+}
+
+/** Which project a scope belongs to, so a span can be filtered by one. */
+function projectOf(ctx: Ctx, scope: Scope): number | null {
+  if ("project" in scope) return scope.project;
+  if (!("grp" in scope)) return null;
+  return (
+    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(scope.grp)
+      ?.project_id ?? null
+  );
 }
 
 /** `sh`'s "found it, could not run it". The lease guard already speaks it. */

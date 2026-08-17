@@ -99,6 +99,12 @@ test("a turn's stages are stored as one nested trace under the job that ran them
 
   // Every stage is aggregable on its own, not just the turn as a whole.
   for (const span of spans) expect(span.grpId).toBe(1);
+  // And by project, which was NULL on every turn span ever written: the panel's
+  // project scope filtered on a column nothing set. The read path derives it
+  // through `grp` for rows already stored; a span leaving over OTLP reaches a
+  // collector that has never heard of that table, so the column carries it too.
+  expect(spans.filter((s) => s.projectId !== 1).map((s) => s.name)).toEqual([]);
+  expect(spans.length).toBeGreaterThan(4);
   expect(turn.attributes["agent.role"]).toBe("engineer");
   expect(byName(spans, "turn.provider").durationMs).toBeGreaterThanOrEqual(0);
 });

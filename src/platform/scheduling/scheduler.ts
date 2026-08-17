@@ -598,9 +598,20 @@ export class Scheduler {
       agentId: job.agent_id,
       signal: lifecycle.signal,
     };
-    // The job's own scope, which the row already carries. A job with neither is
-    // system work — the watchdog, a digest — and NULL is the right answer there.
-    const scope = { grpId: job.grp_id, sliceId: job.slice_id };
+    // The job's own scope. A job with no group is system work — the watchdog, a
+    // digest — and NULL is the right answer there. A job that has one belongs to
+    // that group's project, and the column is looked up rather than left NULL:
+    // the panel's project scope filters on it, and a span exported over OTLP
+    // reaches a collector that has never heard of our `grp` table.
+    const scope = {
+      grpId: job.grp_id,
+      sliceId: job.slice_id,
+      projectId:
+        job.grp_id === null
+          ? null
+          : (this.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.grp_id)
+              ?.project_id ?? null),
+    };
     // `withActiveSpan` is what makes the executor's spans children of this one.
     // Without it they would each come out a root and the trace would be a pile
     // of unrelated spans rather than a breakdown of where the job's time went.
