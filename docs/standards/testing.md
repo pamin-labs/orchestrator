@@ -40,12 +40,28 @@ must be removed.
 
 ## Property tests
 
-fast-check covers algebraic or stateful invariants: transitions/repairs, queue
-ordering and idempotency, draft/slice parsing, lease arguments, path
-normalization, claim/reconcile, validated round-trips, config merge, migration,
-and bounded retry/concurrency models. PR runs use 100 cases. Nightly uses 1,000
-plus randomized order/rerun 10. Preserve the reported seed and path so failures
-are exactly replayable.
+Use fast-check where generated inputs explore an invariant better than an
+enumerated regression. Current properties cover mailbox path normalization,
+ownership boundaries, claim/reconcile suffixes, idempotent JSON writes, and
+context-window clamping; state, queue, and migration behavior remains in the
+stronger deterministic transaction/invariant suites until a generative model
+adds a distinct failure surface. PR runs use 100 cases. Nightly uses 1,000 plus
+randomized order/rerun 10.
+
+Replay fast-check with both values printed by the failure:
+
+```bash
+FC_SEED=<seed> FC_PATH=<path> bun test test/properties.test.ts
+```
+
+Replay Bun's randomized stress order with its printed seed:
+
+```bash
+BUN_TEST_SEED=<seed> bun run test:stress
+```
+
+`FC_PATH` without its matching `FC_SEED`, or a non-integer Bun seed, fails fast
+instead of pretending to replay a different run.
 
 `test:stress` repeats replay-safe unit, property, and model suites. Stateful HTTP
 and live OpenSandbox integration run once in main CI; randomizing their shared
