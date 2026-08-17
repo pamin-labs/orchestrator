@@ -1,7 +1,9 @@
 # Enforcement matrix
 
 Each mechanical risk has one primary owner. A second tool may consume the same
-file but must not reproduce the same verdict.
+file but must not reproduce the same verdict. Replacements follow the
+[`dependency standard`](dependencies.md) and require migration evidence rather
+than a period with two authorities.
 
 | Concern | Primary owner | Required evidence | Deliberately absent |
 |---|---|---|---|

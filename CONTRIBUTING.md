@@ -43,14 +43,16 @@ coherent change as a contract.
 
 ## Engineering rules
 
-- Do not add ESLint, dependency-cruiser, Semgrep, Snyk, Jest, or Vitest. The
-  [enforcement matrix](docs/standards/enforcement-matrix.md) assigns one owner to
-  each risk.
+- Do not add a second enforcement owner beside the tools in the
+  [enforcement matrix](docs/standards/enforcement-matrix.md). A replacement
+  needs an ADR and migration evidence.
 - New stored states update `src/states.ts`, the invariant table, and an
   executable repair/driver test.
 - New UI behavior uses shadcn/Radix primitives when one exists.
-- Parsers, validators, matchers, and infrastructure reuse the platform or an
-  installed dependency before adding a handwritten substitute.
+- Product logic belongs here; commodity fixtures, mocks, retries, parsers,
+  polling, serialization, metrics, and benchmark machinery follow the
+  [dependency standard](docs/standards/dependencies.md). A mature library that
+  materially deletes project-owned code is preferable to another local wheel.
 - Expected failures have stable codes; external I/O has cancellation, timeout,
   and safe contextual errors.
 - English is used for code, comments, errors, branches, commits, and pull

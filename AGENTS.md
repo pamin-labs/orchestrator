@@ -59,8 +59,10 @@ bun run check
 ```
 
 Use targeted tests while iterating, then the complete gates before a commit.
-Do not add ESLint, dependency-cruiser, Semgrep, Snyk, Jest, or Vitest: the
-enforcement matrix assigns those responsibilities to existing tools.
+Do not run overlapping enforcement owners. Replacing TypeScript, Oxlint,
+Fallow, Bun test, CodeQL, or another owner requires an ADR and migration
+evidence; adding a second tool beside it is forbidden. Dependency selection is
+defined in `docs/standards/dependencies.md`.
 
 ## Required plan for non-trivial work
 
@@ -105,8 +107,11 @@ or run the full suite unless they own integration.
 ## Coding and testing rules
 
 - English for code, comments, errors, branches, commits, and pull requests.
-- Prefer deletion, standard library, platform features, and existing
-  dependencies over new abstractions or packages.
+- Own product logic and reuse commodity capabilities. Prefer deletion, existing
+  code, standard library, platform features, installed dependencies, then a
+  well-maintained library before writing infrastructure the project must own.
+- A new dependency must delete its replaced implementation in the same coherent
+  change and document maintenance, security, licence, cost, and rollback.
 - Validate `unknown` data at trust boundaries; avoid `any` and unsafe type
   assertions.
 - Test observable behavior and failure paths. Keep incident regression tests;

@@ -38,6 +38,9 @@ M7 — executable engineering governance and versioned protocol.
 - The engineering constitution is split across architecture, standards,
   operations, and ADR documents; PR plans carry the required change-radius,
   failure, security, compatibility, test, and rollback evidence.
+- Dependency governance now prefers maintained commodity libraries when they
+  remove project-owned infrastructure, while forbidding two simultaneous owners
+  for the same enforcement or runtime responsibility.
 - TypeScript project references, type-aware Oxlint, and a directory-owned Fallow
   DAG have non-overlapping ownership. `entry` contains only undiscovered scripts,
   and the default new-only audit needs no health baseline. Fallow reports zero

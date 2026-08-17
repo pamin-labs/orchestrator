@@ -12,6 +12,7 @@ point; it links here instead of repeating rules.
   [`dependency rules`](architecture/dependency-rules.md), and
   [`data flow`](architecture/data-flow.md)
 - Standards: [`enforcement matrix`](standards/enforcement-matrix.md),
+  [`dependencies`](standards/dependencies.md),
   [`TypeScript`](standards/typescript.md), [`API`](standards/api-design.md),
   [`errors`](standards/error-handling.md),
   [`async/concurrency`](standards/async-concurrency.md),

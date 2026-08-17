@@ -25,8 +25,10 @@ fixtures that recreate production architecture.
 
 Bun is the only test runner. Use `bun:test` spies/mocks and table tests,
 `mkdtemp` for temporary repositories, `:memory:` SQLite, and the injected clock.
-Do not add Jest, Vitest, fake timers, MSW, Faker, or Fishery without an ADR that
-shows a missing capability.
+Before writing fixture, mock, timer, HTTP interception, or generated-data
+infrastructure, apply the [`dependency standard`](dependencies.md). A mature
+library may replace the current owner when it materially deletes project code;
+running a second test runner or overlapping helper stack beside it is forbidden.
 
 Use local concurrency only for tests proven not to mutate process environment or
 global registries. Environment-mutating tests restore values and remain serial.
