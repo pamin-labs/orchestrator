@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { ClipboardPaste, Paperclip, SquareSlash, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 import { Button } from "./button";
 import { Textarea } from "./bits";
@@ -11,21 +11,31 @@ import { FilePicker } from "../views/picker";
 import { z } from "zod";
 import { api, readApi, readJson } from "../lib/api";
 import type { InferResponseType } from "hono/client";
+import {
+  appendLine,
+  asPicked,
+  attachmentMarks,
+  boxHeight,
+  keyAction,
+  labelAttachments,
+  matchSkills,
+  pastedName,
+  replaceSlash,
+  SavedAttachmentSchema,
+  SkillSchema,
+  slashAt,
+  tileBadge,
+  toDraft,
+  type Attached,
+  type Draft,
+  type Picked,
+  type SavedAttachment,
+  type Skill,
+  type Slash,
+} from "../features/composer/model";
 
-const AttachedSchema = z.object({
-  name: z.string(),
-  path: z.string(),
-  type: z.string(),
-  size: z.number(),
-  url: z.string().optional(),
-  label: z.string(),
-});
-type Attached = z.infer<typeof AttachedSchema>;
-/** A file and where it sat inside whatever was dropped. */
-interface Picked {
-  file: File;
-  rel: string;
-}
+export { SkillSchema };
+export type { Draft, Skill };
 
 const isFileEntry = (entry: FileSystemEntry): entry is FileSystemFileEntry => entry.isFile;
 const isDirectoryEntry = (entry: FileSystemEntry): entry is FileSystemDirectoryEntry => entry.isDirectory;
@@ -70,20 +80,7 @@ async function walk(items: DataTransferItemList): Promise<Picked[]> {
   await Promise.all(roots.map((r) => one(r, "")));
   return out;
 }
-export const SkillSchema = z.object({
-  name: z.string(),
-  path: z.string(),
-  description: z.string(),
-  scope: z.enum(["project", "user"]),
-  on: z.boolean(),
-});
-export type Skill = z.infer<typeof SkillSchema>;
-const DraftAttachmentSchema = AttachedSchema.pick({ name: true, path: true, type: true, label: true });
-const DraftSchema = z.object({ text: z.string(), attachments: z.array(DraftAttachmentSchema) });
-export type Draft = z.infer<typeof DraftSchema>;
 
-const SavedAttachmentSchema = AttachedSchema.omit({ label: true, url: true });
-type SavedAttachment = z.infer<typeof SavedAttachmentSchema>;
 const AttachmentsSchema: z.ZodType<
   InferResponseType<typeof api.attach.$post, 200> & InferResponseType<typeof api.attach.local.$post, 200>
 > = z.object({ files: z.array(SavedAttachmentSchema) });
@@ -92,18 +89,6 @@ const SkillsResponseSchema: z.ZodType<InferResponseType<typeof api.skills.$get, 
   skills: z.array(SkillSchema),
 });
 
-/**
- * Everything the boss types, typed the same way.
- *
- * There were four of these: the idea dialog with attachments and paste, a bare
- * textarea for talking to the group, and two one-line inputs for "why I am sending
- * this back". A screenshot is exactly as useful attached to "这里不对" as to a new
- * idea, and the reasons the boss gives are the highest-value text in the system —
- * they become blackboard facts the whole group reasons from. One component, so
- * every one of them gets files, paste, ⌘Enter and the same failure messages.
- *
- * Files are uploaded on drop and referenced by path; contents never enter a prompt.
- */
 /**
  * The skill list, fetched once per project for the life of the page.
  *
@@ -144,6 +129,208 @@ function loadSkills(projectId?: number): Promise<Skill[]> {
   return SKILLS_IN_FLIGHT.get(key) ?? fetchSkills(key, projectId);
 }
 
+const clipboardImage = async (it: ClipboardItem, n: number): Promise<File | null> => {
+  const mime = it.types.find((t) => t.startsWith("image/"));
+  return mime ? new File([await it.getType(mime)], pastedName(n, mime), { type: mime }) : null;
+};
+
+const clipboardText = async (it: ClipboardItem): Promise<string> =>
+  it.types.includes("text/plain") ? (await (await it.getType("text/plain")).text()).trim() : "";
+
+/**
+ * One clipboard read, split into what joins the message and what gets attached.
+ *
+ * An item carrying both an image and its alt text is an image: the picture is the
+ * thing the boss copied, and the text beside it is the browser being helpful.
+ */
+async function readClipboard(): Promise<{ images: File[]; lines: string[]; empty: boolean }> {
+  const items = await navigator.clipboard.read();
+  const images: File[] = [];
+  const lines: string[] = [];
+  for (const it of items) {
+    const image = await clipboardImage(it, images.length + 1);
+    if (image) {
+      images.push(image);
+      continue;
+    }
+    const line = await clipboardText(it);
+    if (line) lines.push(line);
+  }
+  return { images, lines, empty: !items.length };
+}
+
+/** Where the boss ticks a skill on, for the offer that says it is not ticked yet. */
+function gotoSkills() {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  hash.set("v", "skills");
+  location.hash = hash.toString();
+}
+
+/**
+ * The skills a `/` can reach, offered as they are typed at.
+ *
+ * It used to render the first six and stop — with no count and no scrollbar, a
+ * skill that sorted seventh did not exist as far as the boss could tell, and
+ * typing more of its name was the only way to find out otherwise.
+ */
+export function SkillMenu({ matches, onPick }: { matches: Skill[]; onPick: (sk: Skill) => void }) {
+  if (!matches.length) return null;
+  return (
+    <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
+      <div className="flex items-baseline gap-2 border-b border-rule-soft px-2 py-1 text-[0.6875rem] text-ink-3">
+        <span className="min-w-0 grow">选中的技能，正文随这一个 turn 发给 agent，只花这一次钱</span>
+        <span className="shrink-0 font-mono">{matches.length}</span>
+      </div>
+      <div className="max-h-56 overflow-y-auto">
+        {matches.map((sk) => (
+          <button
+            type="button"
+            key={sk.path}
+            onClick={() => onPick(sk)}
+            className="flex w-full cursor-pointer items-baseline gap-2 px-2 py-1.5 text-left hover:bg-sunk"
+          >
+            <span className="font-mono text-[0.75rem] text-ink">{sk.name}</span>
+            {/* Where it came from matters: a project skill is versioned with the
+                code, a user one is the boss's own and shadowed by the project's. */}
+            <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">
+              {sk.scope === "project" ? "项目" : "全局"}
+            </span>
+            {/* Still offerable — the text is injected either way — but the agent
+                cannot reach for this one by itself until it is ticked. */}
+            {!sk.on && <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">未启用</span>}
+            <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{sk.description}</span>
+            <span className="shrink-0 font-mono text-[0.625rem] text-ink-3">Tab</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** What is attached, each tile carrying the marker the text refers to it by. */
+export function AttachmentTiles({ files, onRemove }: { files: Attached[]; onRemove: (i: number) => void }) {
+  if (!files.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2 px-2 pb-2">
+      {files.map((f, i) => (
+        <div key={f.path} className="flex items-center gap-2 rounded-md border border-rule bg-paper px-2 py-1.5">
+          {f.url ? (
+            <img src={f.url} alt="" className="size-9 rounded object-cover" />
+          ) : (
+            <span className="grid size-9 place-items-center rounded bg-sunk font-mono text-[0.5625rem] text-ink-3">
+              {tileBadge(f)}
+            </span>
+          )}
+          <span className="font-mono text-[0.6875rem] text-ink-2">[{f.label}]</span>
+          <span className="max-w-40 truncate text-[0.75rem]">{f.name}</span>
+          {f.type !== "inode/directory" && (
+            <span className="font-mono text-[0.625rem] text-ink-3">{Math.round(f.size / 1024)}k</span>
+          )}
+          <button
+            type="button"
+            aria-label={`移除 ${f.name}`}
+            className="cursor-pointer text-ink-3 hover:text-bad"
+            onClick={() => onRemove(i)}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The height the text actually needs, measured from the element rather than
+ * counted from the text: a wrapped line is a line, and counting `\n` gets that
+ * wrong on exactly the long answers this box exists for.
+ */
+function useAutoGrow(box: RefObject<HTMLTextAreaElement | null>, text: string, rows: number) {
+  const [h, setH] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "0px";
+    setH(Math.max(el.scrollHeight, rows * 22));
+    el.style.height = "";
+  }, [box, text, rows]);
+  return h;
+}
+
+/**
+ * `/` offers the skills the orchestrator can hand an agent.
+ *
+ * Not slash commands: agents run with `--disable-slash-commands` (the catalogue is
+ * ~46k cached tokens of prefix on every turn) and without the boss's user-level
+ * setup (~195k on a trivial turn). Instead the orchestrator reads the SKILL.md
+ * itself, on the host, and appends its text to that one turn — so a `~/.claude`
+ * skill reaches an agent that cannot see the file, and a skill used once is paid
+ * for once.
+ *
+ * The first read is the module cache, synchronously, so a composer that remounts
+ * (every 填进输入框 does) starts with the list it had. Without it the 插技能 button
+ * popped in a beat after the other two on every open — the fetch is fast, but
+ * "fast" is exactly the timing that reads as a flicker.
+ */
+function useSkills(projectId?: number) {
+  const [skills, setSkills] = useState<Skill[] | null>(cachedSkills(projectId));
+  useEffect(() => {
+    if (skills) return;
+    void loadSkills(projectId).then(setSkills);
+  }, [projectId, skills]);
+  return skills;
+}
+
+/**
+ * A button, like the two beside it.
+ *
+ * It was a 0.625rem mono hint sitting on the same row as two 0.75rem buttons with
+ * icons — three controls, three shapes, and the only one that did nothing when
+ * clicked was the one that named a keystroke nobody had been told about.
+ */
+function SkillButton({ skills, onClick }: { skills: Skill[] | null; onClick: () => void }) {
+  if (!skills?.length) return null;
+  return (
+    <Button variant="quiet" size="sm" onClick={onClick}>
+      <SquareSlash size={12} strokeWidth={1.75} /> 插技能
+    </Button>
+  );
+}
+
+/** The primary action, for the composers that have one rather than only custom ones. */
+function Send({
+  label,
+  enabled,
+  busy,
+  empty,
+  onClick,
+}: {
+  label: string | undefined;
+  enabled: boolean;
+  busy: boolean;
+  empty: boolean;
+  onClick: () => void;
+}) {
+  if (!label || !enabled) return null;
+  return (
+    <Button variant="go" size="sm" disabled={busy || empty} onClick={onClick}>
+      {busy ? "…" : label}
+    </Button>
+  );
+}
+
+/**
+ * Everything the boss types, typed the same way.
+ *
+ * There were four of these: the idea dialog with attachments and paste, a bare
+ * textarea for talking to the group, and two one-line inputs for "why I am sending
+ * this back". A screenshot is exactly as useful attached to "这里不对" as to a new
+ * idea, and the reasons the boss gives are the highest-value text in the system —
+ * they become blackboard facts the whole group reasons from. One component, so
+ * every one of them gets files, paste, ⌘Enter and the same failure messages.
+ *
+ * Files are uploaded on drop and referenced by path; contents never enter a prompt.
+ */
 export function Composer({
   placeholder,
   rows = 3,
@@ -152,7 +339,7 @@ export function Composer({
   actions,
   className,
   projectId,
-  initial,
+  initial = "",
 }: {
   placeholder?: string;
   rows?: number;
@@ -169,126 +356,74 @@ export function Composer({
    *  not a controlled value; the box belongs to whoever is typing in it. */
   initial?: string;
 }) {
-  const [text, setText] = useState(initial ?? "");
+  const [text, setText] = useState(initial);
   const [files, setFiles] = useState<Attached[]>([]);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
-  // Read from the module cache synchronously, so a composer that remounts (every
-  // 填进输入框 does) starts with the list it had. Without it the 插技能 button
-  // popped in a beat after the other two on every open — the fetch is fast, but
-  // "fast" is exactly the timing that reads as a flicker.
-  const [skills, setSkills] = useState<Skill[] | null>(cachedSkills(projectId));
-  const [slash, setSlash] = useState<{ from: number; q: string } | null>(null);
+  const [slash, setSlash] = useState<Slash | null>(null);
   const [picking, setPicking] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
-  // Measured from the element rather than counted from the text: a wrapped line
-  // is a line, and counting `\n` gets that wrong on exactly the long answers
-  // this box exists for.
-  const [h, setH] = useState(0);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    el.style.height = "0px";
-    setH(Math.max(el.scrollHeight, rows * 22));
-    el.style.height = "";
-  }, [text, rows]);
+  const skills = useSkills(projectId);
+  const h = useAutoGrow(box, text, rows);
 
-  /**
-   * `/` offers the skills the orchestrator can hand an agent.
-   *
-   * Not slash commands: agents run with `--disable-slash-commands` (the catalogue is
-   * ~46k cached tokens of prefix on every turn) and without the boss's user-level
-   * setup (~195k on a trivial turn). Instead the orchestrator reads the SKILL.md
-   * itself, on the host, and appends its text to that one turn — so a `~/.claude`
-   * skill reaches an agent that cannot see the file, and a skill used once is paid
-   * for once.
-   */
-  useEffect(() => {
-    if (skills) return;
-    void loadSkills(projectId).then(setSkills);
-  }, [projectId, skills]);
+  const caret = () => box.current?.selectionStart ?? text.length;
+  const putCaret = (at: number) =>
+    requestAnimationFrame(() => {
+      box.current?.focus();
+      box.current?.setSelectionRange(at, at);
+    });
 
-  const onType = (v: string, caret: number) => {
+  const onType = (v: string, at: number) => {
     setText(v);
-    // A slash only opens the picker at the start of a word.
-    const upto = v.slice(0, caret);
-    const m = /(?:^|\s)\/([\w.:-]*)$/.exec(upto);
-    setSlash(m && (skills?.length ?? 0) > 0 ? { from: caret - m[1]!.length - 1, q: m[1]!.toLowerCase() } : null);
+    setSlash(slashAt(v, at, skills));
   };
 
-  /** Drop the `/query` that opened the picker, leaving the rest of the sentence. */
-  const dropSlash = () => {
+  /** Close the picker, putting `insert` where the `/query` that opened it was. */
+  const takeSlash = (insert: string) => {
     if (!slash) return;
-    setText(text.slice(0, slash.from) + text.slice(slash.from + slash.q.length + 1));
+    setText(replaceSlash(text, slash, insert));
     setSlash(null);
     box.current?.focus();
   };
 
   const insertSkill = async (sk: Skill) => {
     if (!slash) return;
-    // An unticked skill is not in the sandbox mount. Naming it here still works —
-    // the text is injected into this one turn — but the agent cannot reach for it
-    // on its own afterwards, and that difference is invisible from the picker.
-    if (!sk.on) {
-      const go = await ask({
-        title: `${sk.name} 没启用`,
-        body: "没勾选的技能不在沙盒里，agent 自己找不到它。去设置里勾上，还是取消这次插入？",
-        yes: "去设置",
-      });
-      dropSlash();
-      if (!go) return;
-      const h = new URLSearchParams(location.hash.slice(1));
-      h.set("v", "skills");
-      location.hash = h.toString();
-      return;
-    }
     // `/name`, not the path. The path was a file on this machine; a turn runs in a
     // container where the boss's skills are mounted somewhere else entirely, and
     // `/name` is what both CLIs resolve wherever the skill actually sits.
-    const next = `${text.slice(0, slash.from)}/${sk.name} `;
-    setText(next + text.slice(slash.from + slash.q.length + 1));
-    setSlash(null);
-    box.current?.focus();
+    if (sk.on) return takeSlash(`/${sk.name} `);
+    // An unticked skill is not in the sandbox mount. Naming it here still works —
+    // the text is injected into this one turn — but the agent cannot reach for it
+    // on its own afterwards, and that difference is invisible from the picker.
+    const go = await ask({
+      title: `${sk.name} 没启用`,
+      body: "没勾选的技能不在沙盒里，agent 自己找不到它。去设置里勾上，还是取消这次插入？",
+      yes: "去设置",
+    });
+    takeSlash("");
+    if (go) gotoSkills();
   };
-  const matches = (skills ?? []).filter(
-    (sk) => !slash?.q || sk.name.toLowerCase().includes(slash.q) || sk.path.toLowerCase().includes(slash.q),
-  );
+  const matches = matchSkills(skills, slash);
 
   const clear = () => {
     setText("");
     setFiles([]);
   };
-  const draft: Draft = {
-    text: text.trim(),
-    attachments: files.map(({ name, path, type, label }) => ({ name, path, type, label })),
-  };
+  const draft = toDraft(text, files);
 
-  /**
-   * A name for each file, written into the text where it was added.
-   *
-   * Two screenshots and a sentence saying "这里不对" leaves the agent guessing which
-   * one 这里 is — and the agent cannot ask cheaply, because asking costs the boss a
-   * turn in 待办. So every attachment gets 图N / 附件N, the marker goes in at the
-   * caret, and the same marker labels the path in the assembled prompt. The text
-   * can then say 按 [图2] 改, and both ends mean the same file.
-   */
-  const label = (f: { type: string }, taken: string[]) => {
-    const kind = f.type === "inode/directory" ? "目录" : f.type.startsWith("image/") ? "图" : "附件";
-    const n = taken.filter((l) => l.startsWith(kind)).length + 1;
-    return `${kind}${n}`;
+  /** Drop the markers in where the caret was. */
+  const mark = (marks: string) => {
+    const at = caret();
+    setText(`${text.slice(0, at)}${marks}${text.slice(at)}`);
+    putCaret(at + marks.length);
   };
 
   const addFiles = (saved: SavedAttachment[], previews: Array<string | undefined> = []) => {
     // Label before the state update: the updater has not run when the text
     // markers are assembled, so doing it there produced `[undefined]`.
-    const taken = files.map((file) => file.label);
-    const marked = saved.map((file, index) => {
-      const next = label(file, taken);
-      taken.push(next);
-      return { ...file, label: next, url: previews[index] };
-    });
+    const marked = labelAttachments(saved, files, previews);
     setFiles((prev) => [...prev, ...marked]);
-    mark(marked.map((file) => `[${file.label}]`).join(""));
+    mark(attachmentMarks(marked));
   };
 
   /**
@@ -308,19 +443,8 @@ export function Composer({
     addFiles(result.data.files);
   };
 
-  /** Drop the markers in where the caret was. */
-  const mark = (marks: string) => {
-    const box2 = box.current;
-    const at = box2 ? (box2.selectionStart ?? text.length) : text.length;
-    setText(`${text.slice(0, at)}${marks}${text.slice(at)}`);
-    requestAnimationFrame(() => {
-      box2?.focus();
-      box2?.setSelectionRange(at + marks.length, at + marks.length);
-    });
-  };
-
   const upload = async (list: FileList | File[] | Picked[]) => {
-    const picked: Picked[] = [...list].map((f) => (f instanceof File ? { file: f, rel: f.name } : f));
+    const picked = asPicked(list);
     if (!picked.length) return;
     setBusy(true);
     // A folder copied in Finder arrives as an unreadable zero-byte entry and the
@@ -331,10 +455,7 @@ export function Composer({
       // Relative paths travel beside files so the server can rebuild a folder as
       // one attachment. Hono RPC owns the multipart encoding and route contract.
       r = await api.attach.$post({
-        form: {
-          file: picked.map(({ file }) => file),
-          rel: picked.map(({ rel }) => rel),
-        },
+        form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) },
       });
     } catch {
       setBusy(false);
@@ -361,20 +482,10 @@ export function Composer({
    */
   const pasteClipboard = async () => {
     try {
-      const items = await navigator.clipboard.read();
-      const grabbed: File[] = [];
-      for (const it of items) {
-        const img = it.types.find((t) => t.startsWith("image/"));
-        if (img) {
-          const blob = await it.getType(img);
-          grabbed.push(new File([blob], `pasted-${grabbed.length + 1}.${img.split("/")[1] ?? "png"}`, { type: img }));
-        } else if (it.types.includes("text/plain")) {
-          const t = (await (await it.getType("text/plain")).text()).trim();
-          if (t) setText((prev) => (prev ? `${prev}\n${t}` : t));
-        }
-      }
-      if (grabbed.length) await upload(grabbed);
-      else if (!items.length) toast.error("剪贴板是空的");
+      const { images, lines, empty } = await readClipboard();
+      setText((prev) => lines.reduce(appendLine, prev));
+      if (images.length) await upload(images);
+      else if (empty) toast.error("剪贴板是空的");
     } catch {
       // Safari and a denied permission both land here.
       toast.error("浏览器不让直接读剪贴板。点进输入框按 ⌘V，图片也认。", { duration: 8000 });
@@ -387,6 +498,13 @@ export function Composer({
     const ok = await onSubmit(draft);
     setBusy(false);
     if (ok) clear();
+  };
+
+  /** Type the slash for them, so the picker opens the one way it already does. */
+  const openSkills = () => {
+    const at = caret();
+    onType(`${text.slice(0, at)}/${text.slice(at)}`, at + 1);
+    putCaret(at + 1);
   };
 
   return (
@@ -426,88 +544,24 @@ export function Composer({
         // 36rem, not 18: an answer to a watchdog escalation quotes three verdicts
         // and runs past twenty lines, and a box that stops growing at half of that
         // is a window you write a page through.
-        style={{ height: h ? `${h}px` : undefined, maxHeight: "36rem" }}
+        style={{ height: boxHeight(h), maxHeight: "36rem" }}
         className="resize-none overflow-y-auto rounded-b-none border-0 font-sans text-[0.875rem] focus:ring-0"
         placeholder={placeholder}
         value={text}
         onChange={(e) => onType(e.target.value, e.target.selectionStart ?? e.target.value.length)}
         onKeyDown={(e) => {
-          if (slash && (e.key === "Escape" || e.key === "Tab")) {
-            e.preventDefault();
-            if (e.key === "Tab" && matches[0]) void insertSkill(matches[0]);
-            else setSlash(null);
-            return;
-          }
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            void send();
-          }
+          const act = keyAction(e, slash !== null, matches.length > 0);
+          if (!act) return;
+          e.preventDefault();
+          if (act === "send") void send();
+          else if (act === "skill") void insertSkill(matches[0]!);
+          else setSlash(null);
         }}
       />
 
-      {slash && matches.length > 0 && (
-        <div className="mx-2 mb-1 overflow-hidden rounded-md border border-rule bg-paper shadow-[0_6px_20px_var(--shade)]">
-          <div className="flex items-baseline gap-2 border-b border-rule-soft px-2 py-1 text-[0.6875rem] text-ink-3">
-            <span className="min-w-0 grow">选中的技能，正文随这一个 turn 发给 agent，只花这一次钱</span>
-            <span className="shrink-0 font-mono">{matches.length}</span>
-          </div>
-          {/* Scrolls, capped by height. It used to render the first six and stop —
-              with no count and no scrollbar, a skill that sorted seventh did not
-              exist as far as the boss could tell, and typing more of its name was
-              the only way to find out otherwise. */}
-          <div className="max-h-56 overflow-y-auto">
-            {matches.map((sk) => (
-              <button
-                type="button"
-                key={sk.path}
-                onClick={() => insertSkill(sk)}
-                className="flex w-full cursor-pointer items-baseline gap-2 px-2 py-1.5 text-left hover:bg-sunk"
-              >
-                <span className="font-mono text-[0.75rem] text-ink">{sk.name}</span>
-                {/* Where it came from matters: a project skill is versioned with the
-                  code, a user one is the boss's own and shadowed by the project's. */}
-                <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">
-                  {sk.scope === "project" ? "项目" : "全局"}
-                </span>
-                {/* Still offerable — the text is injected either way — but the agent
-                  cannot reach for this one by itself until it is ticked. */}
-                {!sk.on && <span className="shrink-0 font-mono text-[0.5625rem] text-ink-3">未启用</span>}
-                <span className="min-w-0 flex-1 truncate text-[0.6875rem] text-ink-3">{sk.description}</span>
-                <span className="shrink-0 font-mono text-[0.625rem] text-ink-3">Tab</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <SkillMenu matches={matches} onPick={(sk) => void insertSkill(sk)} />
 
-      {files.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-2 pb-2">
-          {files.map((f, i) => (
-            <div key={f.path} className="flex items-center gap-2 rounded-md border border-rule bg-paper px-2 py-1.5">
-              {f.url ? (
-                <img src={f.url} alt="" className="size-9 rounded object-cover" />
-              ) : (
-                <span className="grid size-9 place-items-center rounded bg-sunk font-mono text-[0.5625rem] text-ink-3">
-                  {f.type === "inode/directory" ? "DIR" : (f.name.split(".").pop() ?? "file").slice(0, 4).toUpperCase()}
-                </span>
-              )}
-              <span className="font-mono text-[0.6875rem] text-ink-2">[{f.label}]</span>
-              <span className="max-w-40 truncate text-[0.75rem]">{f.name}</span>
-              {f.type !== "inode/directory" && (
-                <span className="font-mono text-[0.625rem] text-ink-3">{Math.round(f.size / 1024)}k</span>
-              )}
-              <button
-                type="button"
-                aria-label={`移除 ${f.name}`}
-                className="cursor-pointer text-ink-3 hover:text-bad"
-                onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <AttachmentTiles files={files} onRemove={(i) => setFiles((p) => p.filter((_, j) => j !== i))} />
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-rule-soft px-2 py-1.5">
         <FilePicker open={picking} onOpenChange={setPicking} onPick={fromDisk} />
@@ -517,36 +571,10 @@ export function Composer({
         <Button variant="quiet" size="sm" onClick={pasteClipboard}>
           <ClipboardPaste size={12} strokeWidth={1.75} /> 粘贴
         </Button>
-        {/* A button, like the two beside it. It was a 0.625rem mono hint sitting on
-            the same row as two 0.75rem buttons with icons — three controls, three
-            shapes, and the only one that did nothing when clicked was the one that
-            named a keystroke nobody had been told about. */}
-        {(skills?.length ?? 0) > 0 && (
-          <Button
-            variant="quiet"
-            size="sm"
-            onClick={() => {
-              const box2 = box.current;
-              const at = box2?.selectionStart ?? text.length;
-              // Typing the slash for them, so the picker opens the same way it does
-              // when they type it themselves — one code path, not two.
-              onType(`${text.slice(0, at)}/${text.slice(at)}`, at + 1);
-              requestAnimationFrame(() => {
-                box2?.focus();
-                box2?.setSelectionRange(at + 1, at + 1);
-              });
-            }}
-          >
-            <SquareSlash size={12} strokeWidth={1.75} /> 插技能
-          </Button>
-        )}
+        <SkillButton skills={skills} onClick={openSkills} />
         <span className="grow" />
         {actions?.({ ...draft, busy, clear })}
-        {submit && onSubmit && (
-          <Button variant="go" size="sm" disabled={busy || !draft.text} onClick={send}>
-            {busy ? "…" : submit}
-          </Button>
-        )}
+        <Send label={submit} enabled={Boolean(onSubmit)} busy={busy} empty={!draft.text} onClick={send} />
       </div>
     </div>
   );
