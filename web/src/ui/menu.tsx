@@ -49,20 +49,38 @@ export function MenuItem({
   children,
   hint,
   danger,
+  disabled,
   onSelect,
 }: {
   children: React.ReactNode;
-  /** What it does, in one line. A menu of verbs with no consequences stated is a trap. */
-  hint?: string;
-  danger?: boolean;
+  /**
+   * What it does, in one line. A menu of verbs with no consequences stated is a trap.
+   *
+   * `| undefined` spelled out, and the same on `disabled` below, because
+   * `exactOptionalPropertyTypes` distinguishes "absent" from "present and
+   * undefined" — and a caller computing a hint per item has the second.
+   */
+  hint?: string | undefined;
+  danger?: boolean | undefined;
+  /**
+   * Offered but not takeable, with `hint` saying why.
+   *
+   * Radix owns what that means — no pointer, no keyboard, `aria-disabled` — and
+   * the reason it is a state rather than an omission is that a choice which
+   * silently disappears reads as a bug in the menu. Shown-and-explained is the
+   * only form of "you cannot do this here" a reader can act on.
+   */
+  disabled?: boolean | undefined;
   onSelect: () => void;
 }) {
   return (
     <M.Item
       onSelect={onSelect}
+      disabled={disabled ?? false}
       className={cn(
         "cursor-pointer rounded-md px-2 py-1.5 text-[0.8125rem] outline-none",
         "data-[highlighted]:bg-sunk",
+        "data-[disabled]:cursor-default data-[disabled]:text-ink-3",
         danger ? "text-bad" : "text-ink",
       )}
     >

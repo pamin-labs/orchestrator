@@ -7,6 +7,7 @@ import {
   humanName,
   isRenamed,
   draggedWindow,
+  bucketFits,
   bucketFor,
   fillBuckets,
   groupByKind,
@@ -116,8 +117,19 @@ test("a scope has something to draw when it has either stages or traces", () => 
 
 test("the trend axis reads as hours inside two days and as dates beyond", () => {
   const day = 24 * 60 * 60 * 1_000;
-  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), day)).toBe("09:00");
-  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), 7 * day)).toBe("8/17");
+  const hour = 60 * 60 * 1_000;
+  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), day, hour)).toBe("09:00");
+  expect(trendLabel(new Date(2026, 7, 17, 9, 0).getTime(), 7 * day, 6 * hour)).toBe("8/17");
+});
+
+test("a bucket finer than an hour puts its minutes on the axis", () => {
+  const day = 24 * 60 * 60 * 1_000;
+  const at = new Date(2026, 7, 17, 2, 45).getTime();
+  // The bug this pins: the minutes were the literal `:00`, so four consecutive
+  // quarter-hour points all read `02:00` and the axis claimed one instant four
+  // times. The window is unchanged between these two — only the bucket moves.
+  expect(trendLabel(at, day, 15 * 60_000)).toBe("02:45");
+  expect(trendLabel(at, day, 60 * 60_000)).toBe("02:00");
 });
 
 test("a duration is printed in the coarsest unit that keeps its meaning", () => {
@@ -488,6 +500,34 @@ test("every bucket in the window gets a point, and the empty ones are gaps", () 
   expect(filled).toHaveLength(5);
   expect(filled.map((p) => p.p50)).toEqual([null, null, 10, null, null]);
   expect(filled.map((p) => p.count)).toEqual([0, 0, 3, 0, 0]);
+});
+
+test("a pinned bucket fills the recent end of the window, not its beginning", () => {
+  const m = 60_000;
+  const day = 24 * 60 * m;
+  const now = 1_000 * day;
+  // The reported bug: pinning a fine bucket on a day-wide window drew nothing.
+  // The fill was capped at eighty points counted *forward* from `window.from`,
+  // so a day at one-minute buckets showed the first eighty minutes of
+  // twenty-four hours — a stretch with no rows on a fleet started this morning,
+  // and therefore a blank chart with the picker looking dead.
+  const points = [{ at: now - 3 * m, count: 1, p50: 10, p95: 20 }];
+  const filled = fillBuckets(points, { from: now - day, to: now }, m);
+  expect(filled).toHaveLength(day / m + 1);
+  expect(filled.at(-1)!.at).toBe(Math.floor(now / m) * m);
+  expect(filled.filter((p) => p.p50 !== null)).toHaveLength(1);
+});
+
+test("a width that cannot be drawn across the window is refused where it is offered", () => {
+  const m = 60_000;
+  const day = 24 * 60 * m;
+  // A day at one minute is 1,440 points — dense, and deliberately allowed: one
+  // `<path>` per series costs nothing, and a reader who pins it asked for it.
+  expect(bucketFits(day, m)).toBe(true);
+  // A week at one minute is 10,080, which is where the picker says no and
+  // quotes the number rather than accepting the choice and drawing a fraction.
+  expect(bucketFits(7 * day, m)).toBe(false);
+  expect(bucketFits(7 * day, 15 * m)).toBe(true);
 });
 
 // ── the wheel ──────────────────────────────────────────────────────────────

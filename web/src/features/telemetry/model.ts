@@ -511,6 +511,29 @@ export const bucketFor = (windowMs: number): number =>
   BUCKETS.find((b) => windowMs / b <= MAX_BUCKETS) ?? BUCKETS.at(-1)!;
 
 /**
+ * How many points the trend will draw before it stops being a chart.
+ *
+ * Far above `MAX_BUCKETS`, and the two are not the same number for a reason.
+ * `MAX_BUCKETS` is a *taste* limit — how many ticks read comfortably — and it
+ * governs the bucket nobody chose. This is a *render* limit: one `<path>` per
+ * series, so a day at one-minute buckets is 1,440 line segments and costs
+ * nothing worth measuring. A reader who pins a fine bucket has asked for the
+ * dense chart on purpose, and answering with the comfortable one would be
+ * overruling them.
+ */
+const MAX_POINTS = 1_500;
+
+/**
+ * Whether a bucket can actually be drawn across a window.
+ *
+ * The picker asks this before offering a width, which is the whole fix for
+ * 「选其他的单位渲染不出东西」. There is no honest way to *draw* 1,440 points
+ * when only 81 fit, so the choice is refused where it is made rather than
+ * accepted and then quietly truncated somewhere the reader cannot see.
+ */
+export const bucketFits = (windowMs: number, bucketMs: number): boolean => windowMs / bucketMs <= MAX_POINTS;
+
+/**
  * The trend as a dense series, with a point for every bucket in the window.
  *
  * The server only returns buckets that had traces in them, and a line drawn
@@ -527,11 +550,23 @@ export function fillBuckets(
   const byBucket = new Map(points.map((p) => [Math.floor(p.at / bucketMs), p]));
   const first = Math.floor(window.from / bucketMs);
   const last = Math.floor(window.to / bucketMs);
-  // Bounded by the same rule that bounds the bucket: a window wide enough to
-  // need more than this has already been given a wider bucket.
-  const span = Math.min(last - first, MAX_BUCKETS * 2);
+  // The ceiling, and which end it is taken from — the second half of that is
+  // where this was wrong. It was capped at `MAX_BUCKETS * 2` counted *forward*
+  // from `window.from`, on the stated assumption that a window needing more had
+  // already been given a wider bucket. True while the bucket is derived; false
+  // the moment the reader pins one, which is the only reason the picker exists.
+  // Pinning a minute on a day therefore drew the first eighty minutes of
+  // twenty-four hours — a stretch that on a fleet started this morning has no
+  // rows in it at all, so the chart went blank and the control looked broken.
+  //
+  // `MAX_POINTS` is high enough that the picker's own guard is what stops this
+  // being reached; the clamp is kept as a floor under a caller who does not ask.
+  // It takes the *last* buckets, because a window's recent end is the half
+  // somebody is looking at.
+  const span = Math.min(last - first, MAX_POINTS);
+  const start = last - span;
   return Array.from({ length: span + 1 }, (_, i) => {
-    const bucket = first + i;
+    const bucket = start + i;
     const hit = byBucket.get(bucket);
     return {
       at: bucket * bucketMs,
@@ -553,16 +588,25 @@ export const hasSpans = (stages: readonly Stage[], traces: readonly TraceRow[]):
   stages.length > 0 || traces.length > 0;
 
 /**
- * A trend point's label: the hour, or the day once the window is wider than one.
+ * A trend point's label: the day, the hour, or the minute.
  *
  * The bucket carries no unit of its own — it is the epoch millisecond the bucket
- * opens at — so the axis has to be told which of the two it is showing, and it
- * is told by the window rather than by guessing from the spacing of the points.
- * A quiet fleet produces gaps, and spacing read off gaps would relabel the axis
- * because nothing happened for two hours.
+ * opens at — so the axis has to be told what it is showing, and it is told
+ * rather than left to guess from the spacing of the points. A quiet fleet
+ * produces gaps, and spacing read off gaps would relabel the axis because
+ * nothing happened for two hours.
+ *
+ * Two inputs and not one, because they answer different halves of the format.
+ * The **window** decides whether a clock is worth printing at all: past two days
+ * the reader is looking at a shape across dates. The **bucket** decides the
+ * precision, and that is the half this was missing — the minutes were hardcoded
+ * to `:00`, so pinning a fifteen-minute bucket labelled four consecutive points
+ * `02:00` and the axis claimed the same instant four times.
  */
-export const trendLabel = (at: number, windowMs: number): string => {
+export const trendLabel = (at: number, windowMs: number, bucketMs: number): string => {
   const when = new Date(at);
   if (windowMs > 48 * 60 * 60 * 1_000) return `${when.getMonth() + 1}/${when.getDate()}`;
-  return `${String(when.getHours()).padStart(2, "0")}:00`;
+  const hour = String(when.getHours()).padStart(2, "0");
+  if (bucketMs >= 3_600_000) return `${hour}:00`;
+  return `${hour}:${String(when.getMinutes()).padStart(2, "0")}`;
 };

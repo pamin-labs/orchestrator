@@ -407,12 +407,41 @@ test("the bucket follows the window, and can be pinned", async () => {
   // Derived from the window rather than fixed: the fixed hour is what emptied
   // the chart once the reader zoomed past it.
   expect(String(asked.at(-1))).toContain(`bucketMs=${hour}`);
-  expect(view.getAllByRole("radio", { name: "跟随" })).toHaveLength(1);
+  // The trigger names the width in force and says it was nobody's choice. A
+  // control showing a derived value silently is indistinguishable from one
+  // showing a value the reader picked.
+  const trigger = view.getByRole("button", { name: /每格 1 小时（跟随）/ });
 
   // And overridable, because the derived value is a guess about what somebody
   // wants to see.
-  fireEvent.click(view.getByRole("radio", { name: "5 分钟" }));
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+  fireEvent.click(await view.findByRole("menuitem", { name: "5 分钟" }));
   await waitFor(() => expect(String(asked.at(-1))).toContain("bucketMs=300000"));
+});
+
+test("a width that cannot be drawn across the window is offered and refused", async () => {
+  const hour = 3_600_000;
+  serve(
+    report({
+      stages: [stage("stage.only")],
+      traces: [trace("a".repeat(32), { name: "t" })],
+      trend: Array.from({ length: 4 }, (_, i) => ({ at: T0 - (3 - i) * hour, count: 4, p50: 10, p95: 20 })),
+    }),
+  );
+  // A month, where a one-minute bucket is 43,200 points. The old picker took
+  // that choice and drew the first eighty minutes of it, which is a blank chart
+  // and a control that looks dead. Refusing at the menu is the fix, and the
+  // count is the reason — an absence the reader cannot see is not an answer.
+  const view = show(<Telemetry scope={{ kind: "project", id: 7 }} windowMs={30 * 24 * hour} trend />);
+  await waitFor(() => expect(view.getAllByText("每次运行的耗时")).toHaveLength(1));
+
+  fireEvent.pointerDown(view.getByRole("button", { name: /每格/ }), { button: 0, ctrlKey: false });
+  const fine = await view.findByRole("menuitem", { name: /^1 分钟/ });
+  expect(fine.getAttribute("aria-disabled")).toBe("true");
+  expect(fine.textContent).toContain("画不下");
+  // And a width that does fit is takeable, so this is a limit rather than a
+  // menu that refuses everything.
+  expect(view.getByRole("menuitem", { name: "6 小时" }).getAttribute("aria-disabled")).not.toBe("true");
 });
 
 test("scrolling the trend zooms it, and re-reads every block", async () => {
@@ -438,7 +467,9 @@ test("scrolling the trend zooms it, and re-reads every block", async () => {
 
   // A wheel over the chart, not a drag: the gesture the user asked for and the
   // one recharts' `Brush` does not provide.
-  const chart = view.getByText("每次运行的耗时").parentElement?.querySelector("div.touch-none");
+  // `closest("section")` and not `parentElement`: the heading shares a flex row
+  // with the bucket picker now, so its parent is that row rather than the block.
+  const chart = view.getByText("每次运行的耗时").closest("section")?.querySelector("div.touch-none");
   // A real `WheelEvent`, not `fireEvent.wheel`'s init object: happy-dom drops
   // `clientX` from the synthetic one, and without a coordinate there is nothing
   // to anchor the zoom on.

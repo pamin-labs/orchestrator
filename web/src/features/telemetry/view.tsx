@@ -15,9 +15,11 @@ import { Segment, Segments } from "../../ui/segment";
 import { ChevronRight } from "lucide-react";
 import { Tip } from "../../ui/tooltip";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../requirement/accordion";
+import { Menu, MenuItem } from "../../ui/menu";
 import {
   fillBuckets,
   BUCKETS,
+  bucketFits,
   bucketFor,
   flameDepth,
   type TimeWindow,
@@ -118,7 +120,7 @@ const COLS = "grid-cols-[minmax(0,1fr)_auto_auto_auto]";
  * chart beside a 380px table beside a flamegraph as tall as its tree — so
  * nothing lined up across the two columns.
  */
-function Block({ title, children }: { title?: string; children: React.ReactNode }) {
+function Block({ title, aside, children }: { title?: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="flex min-w-0 flex-col gap-y-2">
       {/* Optional, because a block whose content says what it is does not need a
@@ -126,12 +128,38 @@ function Block({ title, children }: { title?: string; children: React.ReactNode 
           directly above columns of names and durations, which is the same fact
           twice — and deleting it was faster than finding better words for it. */}
       {title !== undefined && (
-        <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">{title}</h3>
+        // The heading's rule doubles as the block's control shelf. A setting
+        // that governs a chart belongs above it, where it is read before the
+        // picture rather than discovered under it — and the rule already draws
+        // the line those two things sit on, so nothing new is added to carry it.
+        <div className="flex min-w-0 items-baseline justify-between gap-x-3 border-b border-rule pb-1">
+          <h3 className="min-w-0 truncate text-[0.8125rem] font-medium text-ink">{title}</h3>
+          {aside}
+        </div>
       )}
       {children}
     </section>
   );
 }
+
+/**
+ * What sits between a chart's own box and the plot inside it.
+ *
+ * The flamegraph has none: its host element *is* the drawing, so a pointer
+ * two-thirds across the box is two-thirds across the data. `recharts` is not
+ * like that — it reserves the y axis on the left and the chart margin on the
+ * right, and the plot is what is left over. Reading the pointer against the box
+ * on that one therefore anchored every zoom about 40px to the left of where the
+ * reader was pointing, which is 11% of a half-width column: the trend drifted
+ * under the cursor while the flamegraph stayed put, and that difference between
+ * two charts on the same page is what got reported.
+ */
+interface PlotInset {
+  left: number;
+  right: number;
+}
+
+const NO_INSET: PlotInset = { left: 0, right: 0 };
 
 /**
  * What one wheel event does to a window, for both charts.
@@ -150,20 +178,39 @@ function wheelWindow(
   window: TimeWindow,
   limit: TimeWindow,
   minSpan: number,
+  inset: PlotInset = NO_INSET,
 ): TimeWindow | null {
   const box = event.currentTarget.getBoundingClientRect();
-  if (box.width === 0) return null;
+  const plot = box.width - inset.left - inset.right;
+  if (plot <= 0) return null;
   // Whichever axis the gesture is mostly on. A trackpad swipe is never purely
   // one, and treating a mostly-horizontal one as a zoom is what made a pan
   // jitter the scale.
   if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
     const px = wheelPixels(event.deltaX, event.deltaMode);
-    return panBy(window, (px / box.width) * (window.to - window.from), limit);
+    return panBy(window, (px / plot) * (window.to - window.from), limit);
   }
-  const at = (event.clientX - box.left) / box.width;
+  const at = (event.clientX - box.left - inset.left) / plot;
   if (!Number.isFinite(at)) return null;
-  return zoomAt(window, at, wheelScale(event.deltaY, event.deltaMode, event.ctrlKey), limit, minSpan);
+  // Clamped, because the axis labels and the margin are inside the element that
+  // catches the wheel: a scroll over the `22.0s` gutter is a real gesture at a
+  // negative fraction, and anchoring there would zoom about a point off-screen.
+  // The edge is what the reader means when they point at the edge.
+  const anchor = Math.min(Math.max(at, 0), 1);
+  return zoomAt(window, anchor, wheelScale(event.deltaY, event.deltaMode, event.ctrlKey), limit, minSpan);
 }
+
+/**
+ * The trend's own gutters, in one place so the wheel and the chart cannot drift.
+ *
+ * Both numbers are handed to `recharts` below *and* subtracted when a wheel
+ * event is turned into a fraction of the data. Written twice they would agree
+ * until somebody widened the axis to fit a longer duration and left the zoom
+ * anchoring 8px off, which is the kind of wrongness nobody files a bug about.
+ */
+const Y_AXIS_PX = 40;
+const CHART_MARGIN = { top: 4, right: 4, bottom: 0, left: 0 } as const;
+const TREND_INSET = { left: Y_AXIS_PX + CHART_MARGIN.left, right: CHART_MARGIN.right };
 
 /** The endpoint's own default window, so the first bucket is derived from the same number. */
 const DAY_MS = 24 * 3_600_000;
@@ -176,30 +223,50 @@ const bucketLabel = (ms: number) => (ms < 3_600_000 ? `${ms / 60_000} 分钟` : 
  *
  * It follows the window by default and says so, because a control showing a
  * value nobody chose is indistinguishable from one showing a value they did.
- * 跟随 puts it back.
+ * 跟随窗口 puts it back.
+ *
+ * A menu rather than the segmented strip it was. Seven segments — 跟随 plus six
+ * widths — do not fit the half-width column this sits in, so every label broke
+ * mid-word into two lines (`1 分` over `钟`) and the strip took three rows under
+ * the chart. A strip is the right shape for two or three choices that are worth
+ * seeing at once; six units of time are a list, and a list belongs behind one
+ * click with the current one named on the trigger.
+ *
+ * A width that cannot be drawn across the window is **offered and refused, with
+ * the count**, rather than hidden. It is the question the reader is asking — how
+ * fine can I go — and the answer is a number, not an absence.
  */
 function BucketPicker({
   value,
   pinned,
+  windowMs,
   onPick,
 }: {
   value: number;
   pinned: boolean;
+  /** How wide the chart's window is, which is what decides whether a width fits. */
+  windowMs: number;
   onPick: (ms: number | null) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.75rem] text-ink-3">
-      <span>每格</span>
-      <Segments value={pinned ? String(value) : "auto"} onValueChange={(v) => onPick(v === "auto" ? null : Number(v))}>
-        <Segment value="auto">跟随</Segment>
-        {BUCKETS.map((ms) => (
-          <Segment key={ms} value={String(ms)}>
+    <Menu label={`每格 ${bucketLabel(value)}${pinned ? "" : "（跟随）"}`}>
+      <MenuItem hint="窗口一变就跟着变，够画又不挤" onSelect={() => onPick(null)}>
+        跟随窗口
+      </MenuItem>
+      {BUCKETS.map((ms) => {
+        const fits = bucketFits(windowMs, ms);
+        return (
+          <MenuItem
+            key={ms}
+            disabled={!fits}
+            hint={fits ? undefined : `这段时间要 ${Math.round(windowMs / ms).toLocaleString()} 格，画不下`}
+            onSelect={() => onPick(ms)}
+          >
             {bucketLabel(ms)}
-          </Segment>
-        ))}
-      </Segments>
-      {!pinned && <span className="font-mono">{bucketLabel(value)}</span>}
-    </div>
+          </MenuItem>
+        );
+      })}
+    </Menu>
   );
 }
 
@@ -269,10 +336,15 @@ function StageTable({
         {/* Not p50 and p95. Those are the names of the statistics; these are what
             the reader wanted to know, and nobody has to have read a percentile
             to use them. */}
-        {/* No head over the names. A column of `开一个新环境` and `连 GitHub`
-            does not need to be told it holds names, and 在做什么 was a question
-            asked of values that answer it on sight. */}
-        <div />
+        {/* This was left empty on the argument that a column of `开一个新环境`
+            and `连 GitHub` does not need to be told it holds names. True about
+            the *values*, wrong about the *row*: three labelled cells beside one
+            blank one do not read as "this column is self-evident", they read as
+            a header that failed to render — and the blank sat at the left edge
+            where a header row starts, so it was the first thing the eye hit.
+            A head is not only a definition; it is what makes a header row look
+            like one. */}
+        <div>在做什么</div>
         {/* Nouns, and the shortest ones that still separate the two durations:
             what it usually costs against what it costs on a bad day. The exact
             statistic stays one hover away for anybody who wants it. */}
@@ -958,7 +1030,7 @@ function Trend({
   // same fact, and a line joined across the gap says they are.
   const data = fillBuckets(trend, window, bucketMs).map((point) => ({
     ...point,
-    label: trendLabel(point.at, windowMs),
+    label: trendLabel(point.at, windowMs, bucketMs),
   }));
   return (
     <div
@@ -971,7 +1043,7 @@ function Trend({
       onWheel={(event) => {
         // A minute is the floor the endpoint already enforces, so zooming below
         // it would ask for buckets the server will not produce.
-        const next = wheelWindow(event, window, limit, 60_000);
+        const next = wheelWindow(event, window, limit, 60_000, TREND_INSET);
         if (!next) return;
         // `preventDefault` only over the chart, so the page still scrolls
         // everywhere else. `touch-none` is the same rule for a trackpad: without
@@ -981,7 +1053,7 @@ function Trend({
       }}
     >
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <AreaChart data={data} margin={CHART_MARGIN}>
           <XAxis
             dataKey="label"
             {...AXIS}
@@ -990,7 +1062,13 @@ function Trend({
             interval="preserveStartEnd"
             minTickGap={28}
           />
-          <YAxis {...AXIS} tickLine={false} axisLine={false} width={40} tickFormatter={(v: number) => duration(v)} />
+          <YAxis
+            {...AXIS}
+            tickLine={false}
+            axisLine={false}
+            width={Y_AXIS_PX}
+            tickFormatter={(v: number) => duration(v)}
+          />
           <ChartTooltip format={duration} />
           <Area type="monotone" dataKey="p50" name={P50_LABEL} stroke="var(--color-ink-3)" fill="var(--color-sunk)" />
           <Area type="monotone" dataKey="p95" name={P95_LABEL} stroke="var(--color-warn)" fill="transparent" />
@@ -1171,7 +1249,17 @@ export function Telemetry({
     <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-y-6">
         {showTrend && report.trend.length >= 2 && (
-          <Block title="每次运行的耗时">
+          <Block
+            title="每次运行的耗时"
+            aside={
+              <BucketPicker
+                value={bucketMs}
+                pinned={pinnedBucket !== null}
+                windowMs={shownWindow.to - shownWindow.from}
+                onPick={setPinnedBucket}
+              />
+            }
+          >
             <Trend
               trend={report.trend}
               windowMs={report.windowMs}
@@ -1180,7 +1268,6 @@ export function Telemetry({
               limit={report.window}
               onWindow={setChosen}
             />
-            <BucketPicker value={bucketMs} pinned={pinnedBucket !== null} onPick={setPinnedBucket} />
             {chosen !== null && (
               <button
                 type="button"
