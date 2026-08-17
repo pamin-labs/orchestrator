@@ -13,10 +13,10 @@ M7 — executable engineering governance and versioned protocol.
 - Branch: `refactor/api-split-and-settings`
 - SHA: the commit containing this entry
 - TypeScript, Oxlint, Biome, and Fallow audit: pass, the audit clean across all
-  397 changed files
-- Tests: 1101 pass, 6 environment skips, 0 fail
-- Coverage, measured for the first time: 74.9% of statements, 65.0% of branches,
-  67.0% of functions
+  424 changed files
+- Tests: 1124 pass, 6 environment skips, 0 fail
+- Coverage: 76.31% of statements, 67.25% of branches, 69.31% of functions,
+  78.97% of lines
 - Fallow complexity: **zero** functions over threshold across 5,226 analysed,
   against real coverage rather than the export-reference estimate
 - Test time is not recorded as a target. The same suite measures differently per
@@ -167,6 +167,39 @@ M7 — executable engineering governance and versioned protocol.
   the text. Commands that read a missing flag fall back to standard input, so
   the command hung on a terminal with nothing on screen. Splitting a command
   line is not this project's logic; `node:util.parseArgs` owns it.
+- The CLI then moved to `commander`, which refuses an unknown flag instead of
+  accepting it: `--clam` now answers "Did you mean --claim?" rather than leaving
+  `--claim` unset. Production code is roughly break-even in lines — the help text
+  moved from a template that described the flags from a distance into
+  declarations attached to each flag, where it cannot drift.
+- Tracing and metrics are the OpenTelemetry SDK's. The hand-written OTLP body,
+  in-flight ceiling, drop counter, label escaping and Prometheus renderer are
+  gone. `PrometheusExporter` is deliberately unused — it opens a port on every
+  interface and would walk around the loopback gate ADR 012 puts on `/metrics`.
+  The 512-series cardinality ceiling survived as an SDK view. Neither provider is
+  the `@opentelemetry/api` global: composition installs one, tests install their
+  own.
+- Twenty-one functions across flow, git, knowledge and the escalation chain took
+  the whole mechanism context to read one table. They take `db: DB` now. Five
+  candidates were checked and correctly left taking `Ctx`.
+- The delivery card had a grammar only this repository could read. Cards are
+  Markdown, parsed to an mdast AST by `remark`; the overlap, split, criteria and
+  filler rules are unchanged and no longer split lines themselves. Cards already
+  stored parse through a marked legacy path. The twelve-line cap was recounted
+  over content rather than lines, since headings and a table header carry none.
+- `codecov.yml` and `.github/dependabot.yml` were read by services and validated
+  by nobody; both fail silently, which removes a gate without a word. ajv checks
+  them against vendored SchemaStore schemas. The `@schemastore/*` npm packages
+  were the obvious answer and ship TypeScript types only.
+- Every pull request now gets one sticky comment with its test pass rate, failing
+  test names, Fallow findings and size budgets, and Codecov reports changed-line
+  coverage as the only failing coverage status. `ci` keeps zero write permissions
+  and uploads artifacts; a `workflow_run` job does the writing, because a fork
+  pull request can never be granted `pull-requests: write`.
+- A pull request link was built with a pattern whose name capture matched
+  slashes, so a crafted project remote pointed the panel's merge badge at a
+  different repository. Fixed at the shared assembler, where the sibling
+  `repoHref` already had the check.
 
 ## Blockers and deviations
 
