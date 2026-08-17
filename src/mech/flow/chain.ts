@@ -136,24 +136,32 @@ export function route(deps: ChainDeps, escId: number): string {
 }
 
 /** A responder for this level: in-group for PM, standing for the rest. */
+function groupResponder(ctx: Ctx, grpId: number | null): number | null {
+  return (
+    ctx.db
+      .query<{ id: number }, [number | null]>(
+        "SELECT id FROM agent WHERE grp_id IS ? AND role = 'pm' AND state != 'retired'",
+      )
+      .get(grpId)?.id ?? null
+  );
+}
+
+function standingResponder(ctx: Ctx, role: string): number | null {
+  return (
+    ctx.db
+      .query<{ id: number }, [string]>("SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'")
+      .get(role)?.id ?? null
+  );
+}
+
 function findResponder(ctx: Ctx, grpId: number | null, role: string): number | null {
-  if (role === "pm") {
-    return (
-      ctx.db
-        .query<{ id: number }, [number | null]>(
-          "SELECT id FROM agent WHERE grp_id IS ? AND role = 'pm' AND state != 'retired'",
-        )
-        .get(grpId)?.id ?? null
-    );
-  }
-  const standing = ctx.db
-    .query<{ id: number }, [string]>("SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'")
-    .get(role)?.id;
-  if (standing) return standing;
+  if (role === "pm") return groupResponder(ctx, grpId);
+  const assigned = standingResponder(ctx, role);
+  if (assigned) return assigned;
   // A configured-but-not-yet-hired standing role is a level that exists; skipping
   // it would send the question to the boss for no reason.
-  if ((ctx.knownRoles?.() ?? []).includes(role)) return ctx.hire?.(null, role) ?? null;
-  return null;
+  if (!(ctx.knownRoles?.() ?? []).includes(role)) return null;
+  return ctx.hire?.(null, role) ?? null;
 }
 
 export interface AnswerInput {
@@ -174,29 +182,33 @@ function responderError(esc: EscRow, by: EscalationOpenState, actorGrpId?: numbe
   return by !== "boss" && esc.chain_state !== by ? `this question is waiting on ${esc.chain_state}, not ${by}` : null;
 }
 
+function citationError(ctx: Ctx, input: AnswerInput): string | null {
+  if (input.by !== "cos") return null;
+  if (!input.refNoteId) return "a stand-in answer must cite the decision it rests on (--ref <note_id>)";
+  const note = ctx.db.query<{ kind: string }, [number]>("SELECT kind FROM note WHERE id = ?").get(input.refNoteId);
+  if (!note) return `no note ${input.refNoteId}`;
+  if (note.kind === "decision" || note.kind === "fact") return null;
+  return `note ${input.refNoteId} is a ${note.kind}, not a decision`;
+}
+
+function answerError(ctx: Ctx, esc: EscRow, input: AnswerInput): string | null {
+  if (esc.chain_state === "answered") return "already answered";
+  const responder = responderError(esc, input.by, input.actorGrpId);
+  if (responder) return responder;
+  const citation = citationError(ctx, input);
+  if (citation) return citation;
+  return input.by !== "boss" && isReserved(esc.question)
+    ? "this one is reserved for the boss whatever the precedent"
+    : null;
+}
+
 /** A level answers. Resolves whoever is blocked on `orch ask-boss`. */
 export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok: false; error: string } {
   const { ctx } = deps;
   const esc = load(ctx, input.escId);
   if (!esc) return { ok: false, error: `no escalation ${input.escId}` };
-  if (esc.chain_state === "answered") return { ok: false, error: "already answered" };
-  const refused = responderError(esc, input.by, input.actorGrpId);
+  const refused = answerError(ctx, esc, input);
   if (refused) return { ok: false, error: refused };
-
-  if (input.by === "cos") {
-    // The CoS speaks for the boss only where the boss has already spoken.
-    if (!input.refNoteId) {
-      return { ok: false, error: "a stand-in answer must cite the decision it rests on (--ref <note_id>)" };
-    }
-    const note = ctx.db.query<{ kind: string }, [number]>("SELECT kind FROM note WHERE id = ?").get(input.refNoteId);
-    if (!note) return { ok: false, error: `no note ${input.refNoteId}` };
-    if (note.kind !== "decision" && note.kind !== "fact") {
-      return { ok: false, error: `note ${input.refNoteId} is a ${note.kind}, not a decision` };
-    }
-  }
-  if (input.by !== "boss" && isReserved(esc.question)) {
-    return { ok: false, error: "this one is reserved for the boss whatever the precedent" };
-  }
 
   ctx.db.run(
     `UPDATE escalation SET answer = ?, answered_by = ?, ref_note_id = ?, chain_state = 'answered',
