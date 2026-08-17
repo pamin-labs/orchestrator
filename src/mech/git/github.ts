@@ -182,6 +182,224 @@ export function clearEscalation(db: DB, slug: string): void {
   );
 }
 
+type CacheEntry = { etag: string; data: Json };
+type GithubState = {
+  db: DB;
+  fetchFn: GithubFetcher;
+  lang: string | undefined;
+  cache: Map<string, CacheEntry>;
+  remaining: number | null;
+};
+type RequestInput<T> = {
+  method: string;
+  path: string;
+  schema: z.ZodType<T>;
+  body: Json | undefined;
+  callerSignal: AbortSignal | undefined;
+};
+
+function failure(method: string, path: string, bucket: Bucket, status: number, message: string): GhFail {
+  return {
+    ok: false,
+    bucket,
+    status,
+    message,
+    operation: `${method} GitHub API`,
+    target: path,
+    retryable: bucket === "transient",
+    correlationId: currentRequestId(),
+  };
+}
+
+function requestHeaders(token: string, hit: CacheEntry | undefined, hasBody: boolean): Record<string, string> {
+  return {
+    accept: "application/vnd.github+json",
+    authorization: `Bearer ${token}`,
+    "x-github-api-version": "2022-11-28",
+    "user-agent": "orchestrator",
+    ...(hit ? { "if-none-match": hit.etag } : {}),
+    ...(hasBody ? { "content-type": "application/json" } : {}),
+  };
+}
+
+async function fetchAttempt(
+  fetchFn: GithubFetcher,
+  url: string,
+  init: Parameters<GithubFetcher>[1],
+  callerSignal: AbortSignal | undefined,
+  last: boolean,
+): Promise<{ response: Response | undefined; error: unknown; done: boolean }> {
+  try {
+    const response = await fetchFn(url, init);
+    return { response, error: undefined, done: ![429, 500, 502, 503, 504].includes(response.status) || last };
+  } catch (error) {
+    if (callerSignal?.aborted) throw callerSignal.reason;
+    return { response: undefined, error, done: !!init.signal?.aborted || last };
+  }
+}
+
+async function retryDelay(
+  attempt: number,
+  signal: AbortSignal | undefined,
+  callerSignal?: AbortSignal,
+): Promise<unknown> {
+  recordRetry("github");
+  try {
+    await sleep(50 * 2 ** attempt + Math.floor(Math.random() * 25), signal);
+    return undefined;
+  } catch (error) {
+    if (callerSignal?.aborted) throw callerSignal.reason;
+    return error;
+  }
+}
+
+async function send(
+  fetchFn: GithubFetcher,
+  url: string,
+  init: Parameters<GithubFetcher>[1],
+  attempts: number,
+  callerSignal?: AbortSignal,
+): Promise<{ response: Response | undefined; error: unknown }> {
+  let response: Response | undefined;
+  let error: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const result = await fetchAttempt(fetchFn, url, init, callerSignal, attempt === attempts - 1);
+    if (result.response) response = result.response;
+    if (result.error) error = result.error;
+    if (result.done) break;
+    const delayError = await retryDelay(attempt, init.signal, callerSignal);
+    if (delayError) {
+      error = delayError;
+      break;
+    }
+  }
+  if (callerSignal?.aborted) throw callerSignal.reason;
+  return { response, error };
+}
+
+async function responseText(response: Response, callerSignal?: AbortSignal): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    if (callerSignal?.aborted) throw callerSignal.reason;
+    return "";
+  }
+}
+
+function observeResponse(state: GithubState, path: string, response: Response): void {
+  const left = response.headers.get("x-ratelimit-remaining");
+  if (left !== null) state.remaining = Number(left);
+  const slug = slugInPath(path);
+  if (!slug) return;
+  if (!response.ok && response.status !== 304) return;
+  if (clearRepositoryHold(slug)) clearEscalation(state.db, slug);
+}
+
+function cachedResult<T>(input: RequestInput<T>, response: Response, hit: CacheEntry | undefined): GhResult<T> | null {
+  if (response.status !== 304 || !hit) return null;
+  const cached = input.schema.safeParse(hit.data);
+  return cached.success
+    ? { ok: true, status: 304, data: cached.data }
+    : failure(input.method, input.path, "transient", 304, `GitHub cached invalid JSON for ${input.path}`);
+}
+
+function httpFailure(state: GithubState, input: RequestInput<unknown>, response: Response, text: string): GhFail {
+  const bucket = classify(response.status, text);
+  const why =
+    response.status === 404 ? unreachable(input.path) : `GitHub ${response.status} on ${input.path}: ${message(text)}`;
+  const slug = slugInPath(input.path);
+  if (bucket === "boss" && slug) holdRepo(state.db, state.lang, slug, why, Date.now());
+  return failure(input.method, input.path, bucket, response.status, why);
+}
+
+type Decoded<T> = GhFail | (GhOk<T> & { raw: Json });
+
+function decoded<T>(input: RequestInput<T>, response: Response, text: string): Decoded<T> {
+  let data: Json;
+  try {
+    data = JsonValue.parse(text ? JSON.parse(text) : null);
+  } catch {
+    return failure(
+      input.method,
+      input.path,
+      "transient",
+      response.status,
+      `GitHub sent ${input.path} as something that is not JSON`,
+    );
+  }
+  const parsed = input.schema.safeParse(data);
+  return parsed.success
+    ? { ok: true, status: response.status, data: parsed.data, raw: data }
+    : failure(input.method, input.path, "transient", response.status, `GitHub sent invalid JSON for ${input.path}`);
+}
+
+function storeCache(
+  state: GithubState,
+  input: RequestInput<unknown>,
+  response: Response,
+  key: string,
+  data: Json,
+): void {
+  const etag = response.headers.get("etag");
+  if (input.method !== "GET" || !etag) return;
+  // ponytail: unbounded otherwise — every `since=` cursor is its own URL.
+  // Entries are small and a restart clears it; a real LRU when it matters.
+  if (state.cache.size > 500) state.cache.clear();
+  state.cache.set(key, { etag, data });
+}
+
+async function finish<T>(
+  state: GithubState,
+  input: RequestInput<T>,
+  response: Response,
+  key: string,
+  hit: CacheEntry | undefined,
+): Promise<GhResult<T>> {
+  observeResponse(state, input.path, response);
+  const cached = cachedResult(input, response, hit);
+  if (cached) return cached;
+  const text = await responseText(response, input.callerSignal);
+  if (!response.ok) return httpFailure(state, input, response, text);
+  const value = decoded(input, response, text);
+  if (!value.ok) return value;
+  storeCache(state, input, response, key, value.raw);
+  return { ok: true, status: value.status, data: value.data };
+}
+
+function prepareRequest(
+  state: GithubState,
+  input: RequestInput<unknown>,
+  token: string,
+  signal: AbortSignal,
+): { url: string; key: string; hit: CacheEntry | undefined; init: Parameters<GithubFetcher>[1]; attempts: number } {
+  const url = input.path.startsWith("http") ? input.path : API + input.path;
+  const key = `${token}\0${url}`;
+  const hit = input.method === "GET" ? state.cache.get(key) : undefined;
+  if (input.method === "GET") recordCache("github-etag", !!hit, state.cache.size);
+  const init: Parameters<GithubFetcher>[1] = {
+    method: input.method,
+    headers: requestHeaders(token, hit, input.body !== undefined),
+    signal,
+  };
+  if (input.body !== undefined) init.body = JSON.stringify(input.body);
+  return { url, key, hit, init, attempts: input.method === "GET" ? 3 : 1 };
+}
+
+async function requestGithub<T>(state: GithubState, input: RequestInput<T>): Promise<GhResult<T>> {
+  const callerSignal = input.callerSignal ?? requestContext.getStore()?.signal;
+  const activeSignal = callerSignal
+    ? AbortSignal.any([callerSignal, AbortSignal.timeout(TIMEOUT_MS)])
+    : AbortSignal.timeout(TIMEOUT_MS);
+  if (callerSignal?.aborted) throw callerSignal.reason;
+
+  const token = loadAuth(state.db, "github")?.secret;
+  if (!token) return failure(input.method, input.path, "boss", 0, "no GitHub credential: connect GitHub in settings");
+  const prepared = prepareRequest(state, input, token, activeSignal);
+  const sent = await send(state.fetchFn, prepared.url, prepared.init, prepared.attempts, callerSignal);
+  if (!sent.response) return failure(input.method, input.path, "transient", 0, String(sent.error).slice(0, 200));
+  return finish(state, { ...input, callerSignal }, sent.response, prepared.key, prepared.hit);
+}
+
 export function makeGithub(
   db: DB,
   fetchFn: GithubFetcher = fetch,
@@ -196,11 +414,10 @@ export function makeGithub(
    * 5000/hour re-reading answers it already has. Keyed by the token because a
    * rotated login must not reuse the previous one's cached bodies.
    */
-  const cache = new Map<string, { etag: string; data: Json }>();
-  let remaining: number | null = null;
+  const state: GithubState = { db, fetchFn, lang, cache: new Map(), remaining: null };
 
   return {
-    remaining: () => remaining,
+    remaining: () => state.remaining,
 
     async request<T>(
       method: string,
@@ -209,125 +426,7 @@ export function makeGithub(
       body?: Json,
       signal?: AbortSignal,
     ): Promise<GhResult<T>> {
-      const callerSignal = signal ?? requestContext.getStore()?.signal;
-      const activeSignal = callerSignal
-        ? AbortSignal.any([callerSignal, AbortSignal.timeout(TIMEOUT_MS)])
-        : AbortSignal.timeout(TIMEOUT_MS);
-      // Cancellation is control flow owned by the caller, not a transient
-      // GitHub failure. Keep the original reason object so HTTP disconnects and
-      // scheduler job cancellation remain distinguishable at their boundary.
-      if (callerSignal?.aborted) throw callerSignal.reason;
-      const fail = (bucket: Bucket, status: number, message: string): GhFail => ({
-        ok: false,
-        bucket,
-        status,
-        message,
-        operation: `${method} GitHub API`,
-        target: path,
-        retryable: bucket === "transient",
-        correlationId: currentRequestId(),
-      });
-      const token = loadAuth(db, "github")?.secret;
-      if (!token) {
-        return fail("boss", 0, "no GitHub credential: connect GitHub in settings");
-      }
-      const url = path.startsWith("http") ? path : API + path;
-      const key = `${token}\0${url}`;
-      const hit = method === "GET" ? cache.get(key) : undefined;
-      if (method === "GET") recordCache("github-etag", !!hit, cache.size);
-
-      const headers: Record<string, string> = {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${token}`,
-        "x-github-api-version": "2022-11-28",
-        "user-agent": "orchestrator",
-      };
-      if (hit) headers["if-none-match"] = hit.etag;
-      if (body !== undefined) headers["content-type"] = "application/json";
-
-      let res: Response | undefined;
-      let thrown: unknown;
-      const attempts = method === "GET" ? 3 : 1;
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-          res = await fetchFn(url, {
-            method,
-            headers,
-            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-            signal: activeSignal,
-          });
-          if (![429, 500, 502, 503, 504].includes(res.status) || attempt === attempts - 1) break;
-        } catch (error) {
-          thrown = error;
-          if (callerSignal?.aborted) throw callerSignal.reason;
-          if (activeSignal.aborted || attempt === attempts - 1) break;
-        }
-        recordRetry("github");
-        const jitter = Math.floor(Math.random() * 25);
-        try {
-          await sleep(50 * 2 ** attempt + jitter, activeSignal);
-        } catch (error) {
-          if (callerSignal?.aborted) throw callerSignal.reason;
-          thrown = error;
-          break;
-        }
-      }
-      if (callerSignal?.aborted) throw callerSignal.reason;
-      if (!res) {
-        return fail("transient", 0, String(thrown).slice(0, 200));
-      }
-
-      const left = res.headers.get("x-ratelimit-remaining");
-      if (left !== null) remaining = Number(left);
-
-      const slug = slugInPath(path);
-      // Reaching it again is the only proof that matters, and it is free. A 304
-      // counts: GitHub answered it, which is the whole question.
-      if (slug && (res.ok || res.status === 304) && clearRepositoryHold(slug)) clearEscalation(db, slug);
-
-      if (res.status === 304 && hit) {
-        const cached = schema.safeParse(hit.data);
-        if (cached.success) return { ok: true, status: 304, data: cached.data };
-        return fail("transient", 304, `GitHub cached invalid JSON for ${path}`);
-      }
-
-      let text: string;
-      try {
-        text = await res.text();
-      } catch {
-        if (callerSignal?.aborted) throw callerSignal.reason;
-        text = "";
-      }
-      if (!res.ok) {
-        const bucket = classify(res.status, text);
-        const why = res.status === 404 ? unreachable(path) : `GitHub ${res.status} on ${path}: ${message(text)}`;
-        // Only `boss` holds. A 502 or a secondary rate limit is `transient` and
-        // backoff is what it is for — holding a project for a blip would stop a
-        // fleet over something that fixes itself in seconds.
-        if (bucket === "boss" && slug) holdRepo(db, lang, slug, why, Date.now());
-        return fail(bucket, res.status, why);
-      }
-
-      let data: Json;
-      try {
-        data = JsonValue.parse(text ? JSON.parse(text) : null);
-      } catch {
-        return fail("transient", res.status, `GitHub sent ${path} as something that is not JSON`);
-      }
-
-      const parsed = schema.safeParse(data);
-      if (!parsed.success) {
-        return fail("transient", res.status, `GitHub sent invalid JSON for ${path}`);
-      }
-
-      const etag = res.headers.get("etag");
-      if (method === "GET" && etag) {
-        // ponytail: unbounded otherwise — every `since=` cursor is its own URL.
-        // Entries are small and a restart clears it; a real LRU when it matters.
-        if (cache.size > 500) cache.clear();
-        cache.set(key, { etag, data });
-      }
-      return { ok: true, status: res.status, data: parsed.data };
+      return requestGithub(state, { method, path, schema, body, callerSignal: signal });
     },
   };
 }

@@ -79,6 +79,9 @@ M7 — executable engineering governance and versioned protocol.
 - Queue selection, ranking, filtering, and keyboard policy now live in a tested
   feature model; the queue view and its helpers have no remaining Fallow
   complexity/CRAP findings.
+- GitHub request retries, cancellation, ETag handling, response decoding, and
+  repository-hold policy are separate verified steps; the former cyclomatic-50
+  request function has no remaining Fallow finding.
 - Release archives carry a version-reporting bundled CLI, Linux/Windows x64 use
   Bun baseline targets, required archive contents are verified, and interrupted
   publication documents its immutable resume points instead of claiming no
@@ -96,7 +99,7 @@ M7 — executable engineering governance and versioned protocol.
 ## Blockers and deviations
 
 - Fallow's default new-only audit is green. `bun run audit:all` remains red on
-  75 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
+  74 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
   threshold increase, or inline suppression.
 - The first full Fallow security inventory surfaces 40 verification candidates
   (17 SQL, 13 SSRF, eight dynamic-regex, one redirect, and one secret-shaped
