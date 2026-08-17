@@ -69,6 +69,9 @@ M7 — executable engineering governance and versioned protocol.
   text/shell/running helpers, and observability context/redaction now live under
   `src/platform/**`; a narrow build-info zone exposes only the shared package
   version to executable entry points.
+- CLI argument/command dispatch and Claude stream event parsing now have narrow
+  owners under `src/orch/commands` and `src/runtime/providers`; the former giant
+  switches no longer produce Fallow complexity findings.
 - Release archives carry a version-reporting bundled CLI, Linux/Windows x64 use
   Bun baseline targets, required archive contents are verified, and interrupted
   publication documents its immutable resume points instead of claiming no

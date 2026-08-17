@@ -152,6 +152,52 @@ test("a turn with no result line is a failure, not a silent success", async () =
   }
 });
 
+test("stream events keep status, text, thinking and optional quota fields", async () => {
+  const runner = fakeRunner([
+    { type: "system", subtype: "status", status: "requesting" },
+    {
+      type: "rate_limit_event",
+      rate_limit_info: {
+        status: "allowed",
+        rateLimitType: "five_hour",
+        resetsAt: 100,
+        overageStatus: "allowed",
+        isUsingOverage: false,
+        fiveHourPercent: 12,
+        weeklyPercent: 34,
+        weeklyResetsAt: 200,
+      },
+    },
+    { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hello" } } },
+    {
+      type: "stream_event",
+      event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "checking" } },
+    },
+    { type: "result", is_error: false, terminal_reason: "completed", usage: {} },
+  ]);
+  const seen = { status: [] as string[], text: [] as string[], thinking: [] as string[] };
+  const result = await runTurn(
+    { stable, prompt: "x", cwd: "/tmp", resumeSessionId: "s", runner },
+    {
+      onStatus: (value) => seen.status.push(value),
+      onText: (value) => seen.text.push(value),
+      onThinking: (value) => seen.thinking.push(value),
+    },
+  );
+
+  expect(seen).toEqual({ status: ["requesting"], text: ["hello"], thinking: ["checking"] });
+  expect(result.rateLimit).toEqual({
+    status: "allowed",
+    rateLimitType: "five_hour",
+    resetsAt: 100,
+    overageStatus: "allowed",
+    isUsingOverage: false,
+    fiveHourPercent: 12,
+    weeklyPercent: 34,
+    weeklyResetsAt: 200,
+  });
+});
+
 test("JSON-shaped malformed stream frames are ignored", async () => {
   const runner = fakeRunner([
     null,

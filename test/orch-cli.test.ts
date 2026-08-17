@@ -1,7 +1,40 @@
 import { expect, test } from "bun:test";
-import { kvArgs, parseArgs } from "../src/orch/cli.ts";
+import { kvArgs, parseArgs } from "../src/orch/commands/args.ts";
+import { main } from "../src/orch/cli.ts";
+import { VERSION } from "../src/platform/process/version.ts";
 import { Id } from "../src/contracts/fields.ts";
 import { MailBody } from "../src/api/orch/messaging.ts";
+
+async function captureMain(argv: string[]) {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const log = console.log;
+  const error = console.error;
+  console.log = (...values) => stdout.push(values.join(" "));
+  console.error = (...values) => stderr.push(values.join(" "));
+  try {
+    return { code: await main(argv), stdout, stderr };
+  } finally {
+    console.log = log;
+    console.error = error;
+  }
+}
+
+test("version and usage retain their public output and exit codes", async () => {
+  expect(await captureMain(["--version"])).toEqual({ code: 0, stdout: [VERSION], stderr: [] });
+
+  const help = await captureMain([]);
+  expect(help.code).toBe(2);
+  expect(help.stdout[0]).toStartWith("orch <command>");
+  expect(help.stderr).toEqual([]);
+});
+
+test("an unknown command is a usage error on stderr", async () => {
+  const result = await captureMain(["not-a-command"]);
+  expect(result.code).toBe(2);
+  expect(result.stdout).toEqual([]);
+  expect(result.stderr[0]).toStartWith("unknown command not-a-command");
+});
 
 test("flags, positionals and pass-through are kept separate", () => {
   const p = parseArgs(["mail", "qa", "--intent", "request", "please", "verify"]);
