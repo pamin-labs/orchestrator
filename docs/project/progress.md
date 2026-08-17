@@ -268,12 +268,41 @@ M7 — executable engineering governance and versioned protocol.
   files land; repository files cannot enable all of them.
 - No compatibility aliases will be kept for the pre-release unversioned API.
 
+## Rollback records
+
+- **`main` branch ruleset**, snapshotted before and after the Phase G4 change:
+  `docs/operations/snapshots/ruleset-main-20892179.json` is the live state as of
+  this entry. It requires **14** status checks — `quality-format`,
+  `quality-types`, `quality-oxlint`, `quality-fallow`, `test-main`,
+  `test-coverage`, `build-web`, `dco`, `pr-plan`, `security-codeql`,
+  `security-fallow`, `security-dependencies`, `security-container`,
+  `workflow-static` — with `require_code_owner_review` on, plus deletion and
+  non-fast-forward protection.
+
+  All fourteen were verified against `.github/workflows/*.yml` as real job
+  names, which is the check that matters: the bug this replaced required a
+  status named `check` that no workflow defined, so every pull request waited
+  forever on a report that could never come while the fourteen jobs that do run
+  were required by nothing.
+
+  To roll back: `gh api --method PUT repos/pamin-labs/orchestrator/rulesets/20892179
+  --input docs/operations/snapshots/ruleset-main-20892179.json`. Worth knowing
+  before it is needed, because a bad ruleset blocks everybody's merges at once.
+
 ## Next executable items
 
 1. Turn on secret scanning and push protection. Both are repository settings, so
    no file can enable them. Push protection is the one that matters most on a
    public repository: secret scanning tells you a credential leaked, push
    protection stops the push that would have leaked it.
+
+   Where: Settings → Code security, or
+   `gh api -X PATCH repos/pamin-labs/orchestrator -F security_and_analysis[secret_scanning][status]=enabled`
+   and the same for `secret_scanning_push_protection`. Expect two new things
+   afterwards: a scanning alert surface under Security, and a push that contains
+   a recognised credential pattern being refused at the remote with the rule
+   named — which is the behaviour worth confirming once deliberately, on a
+   throwaway branch with a fake key, rather than discovering under pressure.
 2. When the database moves to Drizzle, move `test/support/factories.ts` to
    Fishery's documented `onCreate` + async `create()` with the database passed as
    a transient parameter, and drop the project-owned `insert`. It is written
@@ -282,10 +311,41 @@ M7 — executable engineering governance and versioned protocol.
    423 call sites across 59 files, it is the same edit whether it happens now or
    at the switch, and it buys nothing until the driver is async. `no-floating-promises`
    is already an error, so a forgotten `await` fails lint rather than shipping.
-3. Run the six environment-gated OpenSandbox integration tests against the
-   supported sandbox server and retain their logs.
-4. Run the release workflow in dry-run mode on GitHub-hosted Linux to exercise
-   multi-platform images, Trivy, SBOM, and provenance tooling.
+3. Run the six environment-gated OpenSandbox integration tests. They are the six
+   `live(...)` cases in `test/live/sandbox-live.test.ts` at lines 95, 143, 181,
+   229, 273 and 351:
+   - a sandbox is a boundary: it gets a checkout, runs its gates, and cannot
+     touch this machine
+   - an agent reaches the orchestrator through the mailbox, with no route to
+     this machine
+   - the utility container takes a commit out of a group and into its mirror
+   - a credential bound to one path is not injected on another
+   - every skill reaches both CLIs, and the ones the boss ticked stay read-only
+   - one line out of a container is still one line by the time it is read
+
+   The skip lifts on its own: `serverUp()` at `:55` probes `cfg.sandbox.server`
+   over HTTP with `cfg.sandbox.apiKey`, and `:88` picks `test` or `test.skip`
+   from the answer. So the requirement is an opensandbox-server the settings
+   page can already reach, plus `ORCH_SANDBOX_API_KEY` matching it — there is no
+   flag to set and nothing to edit. `bun test test/live/` prints the reason on
+   the skip path, naming the address it tried.
+
+   Done when `bun test` reports 0 skips rather than 6. Keep the run's output:
+   these are the only tests that exercise the boundary against a real container,
+   so the log is the evidence that the boundary held, not a formality.
+4. Run the release workflow in dry-run mode on GitHub-hosted Linux. The entry is
+   the `dry_run` input at `.github/workflows/release.yml:10`, so it is a manual
+   dispatch with that box ticked. What only a hosted run can exercise: the
+   multi-platform image build on x64 **and** arm64, Trivy against the built
+   image, SBOM generation, and provenance attestation — none of which a local
+   run reaches.
+
+   The thing to re-verify rather than assume is that a dry run writes nothing
+   external. `release.yml` gates the tag push, the GitHub release, the registry
+   tag and the `latest` alias on `!inputs.dry_run` (lines 279, 294, 305, 357,
+   473, 496, 539). Read the completed run's log for those six steps and confirm
+   each was skipped; a dry run that published anything is the one failure mode
+   that cannot be undone.
 5. Monitor the first merged CI and nightly stress runs; replay any property
    failure from its reported seed and path. Add `codecov/patch` to the ruleset's
    required checks once a pull request has actually reported it — requiring a

@@ -1,0 +1,61 @@
+{
+  "id": 20892179,
+  "name": "main",
+  "target": "branch",
+  "source_type": "Repository",
+  "source": "pamin-labs/orchestrator",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "exclude": [], "include": ["~DEFAULT_BRANCH"] } },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": true,
+        "required_reviewers": [],
+        "require_code_owner_review": true,
+        "dismissal_restriction": { "enabled": false, "allowed_actors": [] },
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true,
+        "allowed_merge_methods": ["merge"]
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          { "context": "quality-format" },
+          { "context": "quality-types" },
+          { "context": "quality-oxlint" },
+          { "context": "quality-fallow" },
+          { "context": "test-main" },
+          { "context": "test-coverage" },
+          { "context": "build-web" },
+          { "context": "dco" },
+          { "context": "pr-plan" },
+          { "context": "security-codeql" },
+          { "context": "security-fallow" },
+          { "context": "security-dependencies" },
+          { "context": "security-container" },
+          { "context": "workflow-static" }
+        ]
+      }
+    }
+  ],
+  "node_id": "RRS_lACqUmVwb3NpdG9yec5PbRBRzgE-yhM",
+  "created_at": "2026-08-16T03:53:22.900+10:00",
+  "updated_at": "2026-08-17T22:39:33.418+10:00",
+  "bypass_actors": [
+    { "actor_id": null, "actor_type": "OrganizationAdmin", "bypass_mode": "always" },
+    { "actor_id": 4602234, "actor_type": "Integration", "bypass_mode": "always" }
+  ],
+  "current_user_can_bypass": "always",
+  "_links": {
+    "self": { "href": "https://api.github.com/repos/pamin-labs/orchestrator/rulesets/20892179" },
+    "html": { "href": "https://github.com/pamin-labs/orchestrator/rules/20892179" }
+  }
+}
