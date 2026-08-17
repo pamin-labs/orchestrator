@@ -81,6 +81,21 @@ jobs:
           ./node_modules/.bin/fallow report --from "$RUNNER_TEMP/report/fallow-audit.json" --format github-annotations
           ./node_modules/.bin/fallow report --from "$RUNNER_TEMP/report/fallow-audit.json" --format github-summary >> "$GITHUB_STEP_SUMMARY"
           exit "$audit_status"
+      # Reported, never gated. The count moves whenever a file is added, so a
+      # threshold on it would be a coverage percentage by another name — and the
+      # standard already refuses those. What is worth seeing on every pull
+      # request is a module that no test reaches at all, which a percentage
+      # cannot say. Dispositions live in docs/operations/coverage-gaps.md.
+      - name: report coverage gaps
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          {
+            echo '### Coverage gaps'
+            echo '```'
+            bun run health:gaps 2>&1 | tail -40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:

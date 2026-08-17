@@ -27,7 +27,8 @@ point; it links here instead of repeating rules.
   [`CI`](operations/ci.md), [`release`](operations/release.md),
   [`observability`](operations/observability.md),
   [`rollback`](operations/rollback.md), and
-  [`security candidates`](operations/security-candidates.md)
+  [`security candidates`](operations/security-candidates.md),
+  [`coverage gaps`](operations/coverage-gaps.md)
 - UI language: [`design/ui.md`](design/ui.md)
 - Accepted and superseded decisions: [`adr/`](adr/)
 

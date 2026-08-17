@@ -26,6 +26,7 @@
     "audit:all": "fallow audit --gate all",
     "audit:crap": "bun run test:coverage && fallow audit --gate all --coverage coverage/coverage-final.json",
     "guard": "fallow guard",
+    "health:gaps": "fallow health --coverage-gaps",
     "audit:fix": "fallow fix --yes --no-create-config --format compact",
     "validate": "bun run format:check && bun run typecheck && bun run lint && bun run build:web && bun run perf:budget && bun run test",
     "test:stress": "bun run scripts/stress-tests.ts",
