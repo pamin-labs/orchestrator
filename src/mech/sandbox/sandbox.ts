@@ -544,68 +544,56 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   }
 }
 
-async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
-  const { sandboxId, projectId } = owner(ctx, scope);
-
-  if (sandboxId) {
-    const cached = live.get(sandboxId);
-    if (cached) return cached;
-    try {
-      const sb = await Sandbox.connect({ connectionConfig: connection(ctx), sandboxId });
-      live.set(sandboxId, sb);
-      return sb;
-    } catch {
-      // Expired or killed. Fall through and make a new one rather than wedging
-      // the owner on a sandbox id that will never answer again.
-      remember(ctx, scope, null);
-    }
+async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Promise<Sandbox | null> {
+  if (!sandboxId) return null;
+  const cached = live.get(sandboxId);
+  if (cached) return cached;
+  try {
+    const sandbox = await Sandbox.connect({ connectionConfig: connection(ctx), sandboxId });
+    live.set(sandboxId, sandbox);
+    return sandbox;
+  } catch {
+    remember(ctx, scope, null);
+    return null;
   }
+}
 
-  const spec = specFor(ctx, projectId);
-  const cacheVolumes = Object.entries(spec.cacheDirs).map(([mountPath, hostPath], i) => ({
-    name: `cache-${i}`,
+function cacheVolumes(spec: SandboxSpec): Volume[] {
+  return Object.entries(spec.cacheDirs).map(([mountPath, hostPath], index) => ({
+    name: `cache-${index}`,
     host: { path: hostPathForDaemon(hostPath) },
     mountPath,
   }));
-  const make = (volumes: Volume[]) =>
-    Sandbox.create({
-      connectionConfig: connection(ctx),
-      image: spec.image,
-      timeoutSeconds: spec.ttlSeconds,
-      resource: { cpu: spec.cpu, memory: spec.memory },
-      // Required for credential injection; without it the tokens would have to be
-      // real inside the sandbox, and the failure mode is a 401 rather than an
-      // obvious "vault off". Preflight asserts the server side of this.
-      credentialProxy: { enabled: true },
-      networkPolicy: {
-        defaultAction: "allow",
-        egress: spec.denyDomains.map((target) => ({ action: "deny" as const, target })),
-      },
-      volumes,
-      // `grp-1`, not `grp:1`: metadata values must be alphanumeric plus `-_.`, and
-      // a colon is a 400 at creation — which fails the group, not the label.
-      metadata: { owner: isUtil(scope) ? "util" : `${holder(scope).table}-${holder(scope).id}` },
-    });
+}
 
-  // The boss's own skills, staged into one dereferenced directory on the host
-  // (`stageSkills`) and mounted where each CLI looks for them, so the agent finds
-  // and invokes a skill by itself instead of waiting to be handed one. Read-only:
-  // what the boss ticks is the whole contract, and a group editing the set every
-  // other group mounts is not part of it.
-  // Not the utility container: nothing in there reads a skill, because nothing
-  // in there is an agent.
-  const skills = isUtil(scope) ? [] : skillMounts(ctx);
-  let sb: Sandbox;
-  let skillsMounted = skills.length > 0;
+function createSandbox(ctx: Ctx, scope: Scope, spec: SandboxSpec, volumes: Volume[]) {
+  const ownerName = isUtil(scope) ? "util" : `${holder(scope).table}-${holder(scope).id}`;
+  return Sandbox.create({
+    connectionConfig: connection(ctx),
+    image: spec.image,
+    timeoutSeconds: spec.ttlSeconds,
+    resource: { cpu: spec.cpu, memory: spec.memory },
+    credentialProxy: { enabled: true },
+    networkPolicy: {
+      defaultAction: "allow",
+      egress: spec.denyDomains.map((target) => ({ action: "deny" as const, target })),
+    },
+    volumes,
+    metadata: { owner: ownerName },
+  });
+}
+
+async function createMountedSandbox(
+  ctx: Ctx,
+  scope: Scope,
+  spec: SandboxSpec,
+  cached: Volume[],
+  skills: Volume[],
+): Promise<{ sandbox: Sandbox; skillsMounted: boolean }> {
   try {
-    sb = await make([...cacheVolumes, ...skills]);
-  } catch (e) {
-    // The server mounts host paths only from its own `allowed_host_paths`, and a
-    // path missing from it fails creation outright — which would take every
-    // group down for a feature no group needs to run. So: one retry without the
-    // skills, said out loud with the exact path to allow. Not a silent fallback
-    // (005) — the fleet keeps working and the boss is told what is switched off.
-    if (!skills.length || !isPathNotAllowed(e)) throw e;
+    return { sandbox: await createSandbox(ctx, scope, spec, [...cached, ...skills]), skillsMounted: skills.length > 0 };
+  } catch (error) {
+    if (!skills.length || !isPathNotAllowed(error)) throw error;
     ctx.bus?.emit({
       grpId: "grp" in scope ? scope.grp : null,
       author: "orchestrator",
@@ -615,9 +603,77 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
         `技能没挂进沙盒：opensandbox-server 的 allowed_host_paths 不含 ${skills[0]!.host?.path}。` +
         `加上它再重开这个组的容器；在那之前 agent 只能用你在输入框里点名的技能。`,
     });
-    skillsMounted = false;
-    sb = await make(cacheVolumes);
+    return { sandbox: await createSandbox(ctx, scope, spec, cached), skillsMounted: false };
   }
+}
+
+async function writeLoginFiles(ctx: Ctx, sandbox: Sandbox): Promise<void> {
+  const files = filesFor(ctx.db);
+  if (!Object.keys(files).length) return;
+  await sandbox.files.createDirectories([{ path: CODEX_HOME }]).catch(() => {});
+  await writeInto(
+    sandbox,
+    Object.entries(files).map(([path, data]) => ({ path, data, mode: 600 })),
+  ).catch(() => {});
+}
+
+async function installVaultCredentials(
+  ctx: Ctx,
+  scope: Scope,
+  sandbox: Sandbox,
+  projectId: number | null,
+): Promise<void> {
+  const { credentials } = await vaultBindings(ctx.db, codexHomeIO(ctx), {
+    repo: isUtil(scope) ? null : remoteOf(ctx, projectId),
+  });
+  if (!credentials.length) return;
+  await sandbox.credentialVault
+    .create({
+      credentials: credentials.map((credential) => ({
+        name: credential.name,
+        source: { type: "inline" as const, value: credential.value },
+      })),
+      bindings: credentials.map((credential) => ({
+        name: credential.name,
+        match: matchFor(credential),
+        auth: authFor(credential),
+      })),
+    })
+    .catch((error: unknown) => {
+      ctx.bus?.emit({
+        grpId: "grp" in scope ? scope.grp : null,
+        author: "orchestrator",
+        kind: "state_change",
+        severity: "blocker",
+        body:
+          `这个容器的凭据没绑上，里面的假值会原样发出去 —— 接下来每次模型调用都会 401，` +
+          `而那不是 token 的问题，重新登录也没用。原因：${errText(error, 400)}`,
+      });
+    });
+}
+
+async function restoreGroupWorkspace(ctx: Ctx, scope: Scope): Promise<void> {
+  if (!("grp" in scope) || !ctx.restoreWorkspace) return;
+  await ctx.restoreWorkspace(scope.grp).catch((error: unknown) => {
+    ctx.bus.emit({
+      grpId: scope.grp,
+      author: "orchestrator",
+      kind: "state_change",
+      severity: "warn",
+      body: `沙盒重建了，但工作区没装回去：${errText(error)}`,
+    });
+  });
+}
+
+async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
+  const { sandboxId, projectId } = owner(ctx, scope);
+  const existing = await reconnect(ctx, scope, sandboxId);
+  if (existing) return existing;
+
+  const spec = specFor(ctx, projectId);
+  const skills = isUtil(scope) ? [] : skillMounts(ctx);
+  const created = await createMountedSandbox(ctx, scope, spec, cacheVolumes(spec), skills);
+  const sb = created.sandbox;
   live.set(sb.id, sb);
   remember(ctx, scope, sb.id);
   // The utility container gets no mailbox and no `orch`: nothing in it is an
@@ -628,73 +684,13 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   // only when a mount was actually accepted — the fallback above has already
   // said its piece, and "mounted but empty" would be a false description of a
   // container that was built without the mount at all.
-  if (skillsMounted) {
+  if (created.skillsMounted) {
     await checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {});
   }
-  // Remembered before this line, so the restore below re-enters here and finds
-  // the sandbox it is restoring into rather than building a second one.
-  // A credential the CLI can only read from a file. See `filesFor` for why codex
-  // is the exception to everything else here.
-  const files = filesFor(ctx.db);
-  if (Object.keys(files).length) {
-    await sb.files.createDirectories([{ path: CODEX_HOME }]).catch(() => {});
-    await writeInto(
-      sb,
-      Object.entries(files).map(([path, data]) => ({ path, data, mode: 600 })),
-    ).catch(() => {});
-  }
-  // The real tokens go to the sidecar, never inside. Bound at creation because
-  // `resume` rebuilds the sidecar with an empty vault, and a sandbox with no
-  // vault answers 401 rather than saying the vault is missing.
-  //
-  // `repo` is what makes a group container's GitHub binding read-only: with it,
-  // the token is injected on the two paths a fetch uses and on nothing else, so
-  // `git push` inside a group leaves with the decoy and GitHub refuses it. The
-  // utility container passes nothing and keeps the whole token.
-  const { credentials } = await vaultBindings(ctx.db, codexHomeIO(ctx), {
-    repo: isUtil(scope) ? null : remoteOf(ctx, projectId),
-  });
-  if (credentials.length) {
-    await sb.credentialVault
-      .create({
-        credentials: credentials.map((c) => ({ name: c.name, source: { type: "inline" as const, value: c.value } })),
-        bindings: credentials.map((c) => ({ name: c.name, match: matchFor(c), auth: authFor(c) })),
-      })
-      .catch((e: unknown) => {
-        // Said here, because nothing else can say it. This used to claim
-        // preflight would report it: preflight runs at boot, and this is a call
-        // against a container that did not exist then — it never had a chance.
-        //
-        // What follows from a silent miss is deterministic and points at the
-        // wrong person. No bindings means the decoys stay decoys, every model
-        // call 401s, `isAuthFailure` matches, and `handleAuthFailure` pauses the
-        // group telling the boss to re-mint a token — so they replace a
-        // credential that was never the problem and the new one fails the same
-        // way. The group staying alive is right; not naming it is not.
-        ctx.bus?.emit({
-          grpId: "grp" in scope ? scope.grp : null,
-          author: "orchestrator",
-          kind: "state_change",
-          severity: "blocker",
-          body:
-            `这个容器的凭据没绑上，里面的假值会原样发出去 —— 接下来每次模型调用都会 401，` +
-            `而那不是 token 的问题，重新登录也没用。原因：${errText(e, 400)}`,
-        });
-      });
-  }
-  // A container this fresh has no clone and nothing installed. The server wires
-  // the flow callback so this low-level module does not import its own caller.
-  if ("grp" in scope && ctx.restoreWorkspace) {
-    await ctx.restoreWorkspace(scope.grp).catch((e: unknown) => {
-      ctx.bus.emit({
-        grpId: scope.grp,
-        author: "orchestrator",
-        kind: "state_change",
-        severity: "warn",
-        body: `沙盒重建了，但工作区没装回去：${errText(e)}`,
-      });
-    });
-  }
+  await writeLoginFiles(ctx, sb);
+  await installVaultCredentials(ctx, scope, sb, projectId);
+  // Remembered before restore so re-entry finds this sandbox instead of building another.
+  await restoreGroupWorkspace(ctx, scope);
   return sb;
 }
 
