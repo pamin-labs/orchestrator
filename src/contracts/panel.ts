@@ -139,19 +139,6 @@ export const Answered = z.object({
 
 export const GroupNote = z.object({ grpId: z.number(), body: z.string() });
 export const GroupSaid = z.object({ grpId: z.number(), author: z.string(), body: z.string() });
-export const ClaudeLoginFlowSchema = z.object({ url: z.string(), expiresAt: z.number() });
-export const CodexLoginFlowSchema = ClaudeLoginFlowSchema.extend({ code: z.string() });
-const PanelNoteSchema = z.object({
-  id: z.number(),
-  grpId: z.number().nullable(),
-  kind: z.string(),
-  body: z.string(),
-  at: z.number(),
-  exportPath: z.string().nullable(),
-  frontmatter: z.string().nullable(),
-  group: z.string().nullable(),
-});
-export const NotesResponseSchema = z.object({ notes: z.array(PanelNoteSchema) });
 const Blocked = z.object({ grpId: z.number(), reason: z.string() });
 const QueueEntry = z.object({
   projectId: z.number(),
@@ -224,7 +211,4 @@ export type DraftCard = z.infer<typeof DraftCard>;
 export type Answered = z.infer<typeof Answered>;
 export type GroupNote = z.infer<typeof GroupNote>;
 export type GroupSaid = z.infer<typeof GroupSaid>;
-export type ClaudeLoginFlow = z.infer<typeof ClaudeLoginFlowSchema>;
-export type CodexLoginFlow = z.infer<typeof CodexLoginFlowSchema>;
-export type PanelNote = z.infer<typeof PanelNoteSchema>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;

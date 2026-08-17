@@ -8,10 +8,7 @@ import { Segment, Segments } from "../../ui/segment";
 import { Switch } from "../../ui/switch";
 import { Tip } from "../../ui/tooltip";
 import { type AuthRow, DeviceCode, type Mode, ModeSchema } from "./auth";
-import {
-  ClaudeLoginFlowSchema as ClaudeLoginSchema,
-  CodexLoginFlowSchema as CodexLoginSchema,
-} from "../../../../src/contracts/panel";
+import { ClaudeLoginFlowSchema as ClaudeLoginSchema, CodexLoginFlowSchema as CodexLoginSchema } from "../../../../src/contracts/login-flow";
 
 export interface Runtime {
   key: "claude" | "codex";

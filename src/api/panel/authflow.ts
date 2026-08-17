@@ -36,7 +36,7 @@ import {
 } from "../../mech/sandbox/login.ts";
 import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { errText } from "../../platform/process/text.ts";
-import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/panel.ts";
+import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/login-flow.ts";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
 

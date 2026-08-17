@@ -10,7 +10,7 @@ import {
 } from "../support/render.tsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import type { PanelNote } from "../../src/contracts/panel.ts";
+import type { PanelNote } from "../../src/contracts/notes.ts";
 import { searchSkills, skillTally } from "../../web/src/features/skills/model.ts";
 import { Combobox, committed } from "../../web/src/ui/combobox.tsx";
 import { switchRow } from "../../web/src/features/navigation/switcher.tsx";

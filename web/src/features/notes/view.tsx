@@ -11,7 +11,7 @@ import { cn } from "../../ui/cn";
 import { WithAttachments } from "../../ui/attachments";
 import { z } from "zod";
 import { jsonOr } from "../../../../src/contracts/json.ts";
-import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/contracts/panel";
+import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/contracts/notes";
 
 /**
  * The blackboard's static half.

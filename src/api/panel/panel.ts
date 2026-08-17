@@ -15,7 +15,7 @@ import type { Handler } from "../../http/handler.ts";
 import { bad, json } from "../../http/respond.ts";
 import { expandHome } from "./attach.ts";
 import { errText } from "../../platform/process/text.ts";
-import type { PanelNote } from "../../contracts/panel.ts";
+import type { PanelNote } from "../../contracts/notes.ts";
 
 /**
  * Three read-mostly panels: the blackboard, the skill tick boxes, and the
