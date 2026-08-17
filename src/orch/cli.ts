@@ -6,7 +6,6 @@ import { type Json, JsonValue, jsonOr } from "../contracts/json.ts";
 import { displayJson, ProtocolResponse, readJsonResponse } from "../contracts/protocol.ts";
 import type { OrchType } from "../http/routes/orch.ts";
 import { VERSION } from "../platform/process/version.ts";
-import { parseArgs } from "./commands/args.ts";
 import { dispatchCommand } from "./commands/dispatch.ts";
 
 const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
@@ -145,7 +144,7 @@ async function readStdin(): Promise<string> {
 export async function main(argv: string[]): Promise<number> {
   const execution = await dispatchCommand({
     orch,
-    parsed: parseArgs(argv),
+    argv,
     version: VERSION,
     send,
     readStdin,
