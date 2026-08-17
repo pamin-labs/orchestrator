@@ -50,24 +50,36 @@ async function published(): Promise<{ tags: string[]; note?: string }> {
       headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(6000),
     });
-    if (res.status === 401 || res.status === 403 || res.status === 404) {
-      // The package has never been published, or is private. Both look the same
-      // from here, and both mean "nothing to choose yet" rather than "broken".
-      return { tags: [], note: "还没发布过镜像 —— 先跑一次 release，或者用本地构建的" };
-    }
-    if (!res.ok) return { tags: [], note: `registry 答 HTTP ${res.status}` };
-    const tags = z.object({ tags: z.array(z.string()).default([]) }).parse(await res.json()).tags;
-    // `latest` first, then the rest newest-looking first. Not a semver sort:
-    // whatever a release tags is the release's business, and inventing an order
-    // it did not ask for is how a "newest" ends up pointing at the wrong one.
-    return {
-      tags: [...tags].sort((a, b) =>
-        a === "latest" ? -1 : b === "latest" ? 1 : b.localeCompare(a, undefined, { numeric: true }),
-      ),
-    };
+    return tagsFrom(res.status, await res.json().catch(() => null));
   } catch (e) {
     return { tags: [], note: `连不上 ghcr.io：${errText(e, 80)}` };
   }
+}
+
+/**
+ * What one `tags/list` answer means, as the list plus the kind of empty it is.
+ *
+ * Three empties, and they send a reader to three different places. Collapsing
+ * them into one blank list is the failure mode this project keeps paying for:
+ * "never released" wants a release run, "registry down" wants waiting, and a
+ * malformed body wants neither.
+ */
+export function tagsFrom(status: number, body: unknown): { tags: string[]; note?: string } {
+  if (status === 401 || status === 403 || status === 404) {
+    // The package has never been published, or is private. Both look the same
+    // from here, and both mean "nothing to choose yet" rather than "broken".
+    return { tags: [], note: "还没发布过镜像 —— 先跑一次 release，或者用本地构建的" };
+  }
+  const parsed = z.object({ tags: z.array(z.string()).default([]) }).safeParse(body);
+  if (status < 200 || status >= 300 || !parsed.success) return { tags: [], note: `registry 答 HTTP ${status}` };
+  // `latest` first, then the rest newest-looking first. Not a semver sort:
+  // whatever a release tags is the release's business, and inventing an order
+  // it did not ask for is how a "newest" ends up pointing at the wrong one.
+  return {
+    tags: [...parsed.data.tags].sort((a, b) =>
+      a === "latest" ? -1 : b === "latest" ? 1 : b.localeCompare(a, undefined, { numeric: true }),
+    ),
+  };
 }
 
 /**

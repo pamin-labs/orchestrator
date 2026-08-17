@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
-import { preflight } from "../src/mech/ops/preflight.ts";
+import { credentialVerdict, modelProbe, preflight } from "../src/mech/ops/preflight.ts";
 
 test("a ChatGPT login is called out when it is old, not when the host lacks codex", async () => {
   // This used to check `probe("codex")`. Since 007 step 7 the renewal runs real
@@ -78,4 +78,62 @@ test("docker installed but not started is not 'running'", async () => {
   // different places: a download, or one click.
   expect(docker.detail).toContain("没启动");
   expect(docker.fix).toContain("启动");
+});
+
+/**
+ * The credential self-check, split from the call that makes it.
+ *
+ * Both halves have their own way of being wrong and neither is visible from the
+ * panel: the wrong header 401s exactly like the wrong key, and reading any
+ * non-2xx as "your token is bad" sends the boss to re-paste a credential that
+ * was fine while a gateway was down.
+ */
+
+test("claude's two credential kinds travel in their own headers", () => {
+  // An hour was spent once on a message saying a key was not accepted when the
+  // key was never presented — the same class of bug, one module over.
+  const key = modelProbe("claude", { runtime: "claude", mode: "api_key", secret: "sk-ant-x" });
+  expect(key.headers["x-api-key"]).toBe("sk-ant-x");
+  expect(key.headers.Authorization).toBeUndefined();
+  expect(key.headers["anthropic-version"]).toBe("2023-06-01");
+
+  const oauth = modelProbe("claude", { runtime: "claude", mode: "oauth_token", secret: "sk-ant-oat01-x" });
+  expect(oauth.headers.Authorization).toBe("Bearer sk-ant-oat01-x");
+  expect(oauth.headers["x-api-key"]).toBeUndefined();
+  // The version header is required whichever way the credential travels.
+  expect(oauth.headers["anthropic-version"]).toBe("2023-06-01");
+});
+
+test("each runtime asks its own provider unless a gateway is configured", () => {
+  expect(modelProbe("claude", { runtime: "claude", mode: "api_key", secret: "k" }).url).toBe(
+    "https://api.anthropic.com/v1/models?limit=1",
+  );
+  expect(modelProbe("codex", { runtime: "codex", mode: "api_key", secret: "k" }).url).toBe(
+    "https://api.openai.com/v1/models?limit=1",
+  );
+  // Hand-edited yaml, so a trailing slash is normal — and `https://gw//v1/models`
+  // is a 404 on some proxies, which would then read as a broken credential.
+  expect(
+    modelProbe("codex", { runtime: "codex", mode: "api_key", secret: "k", baseUrl: "https://gw.example.com/" }).url,
+  ).toBe("https://gw.example.com/v1/models?limit=1");
+  // codex over a gateway still carries Bearer; only claude's api_key mode differs.
+  expect(
+    modelProbe("codex", { runtime: "codex", mode: "api_key", secret: "k", baseUrl: "https://gw/" }).headers
+      .Authorization,
+  ).toBe("Bearer k");
+});
+
+test("only 401 and 403 are read as the credential being refused", () => {
+  expect(credentialVerdict(200)).toEqual({ ok: true, detail: "能用" });
+  expect(credentialVerdict(401).ok).toBe(false);
+  expect(credentialVerdict(403).ok).toBe(false);
+
+  // Everything else is unverified, not refused. A 500 or a 429 from a gateway
+  // says nothing about the token, and calling it bad costs the boss a re-paste
+  // and leaves the real outage unreported.
+  for (const status of [429, 500, 502, 404]) {
+    const v = credentialVerdict(status);
+    expect(v.ok).toBe(true);
+    expect(v.detail).toContain(String(status));
+  }
 });

@@ -13,15 +13,19 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  cacheProjectSkills,
   frontmatterDescription,
   pathInSandbox,
+  projectSkills,
+  projectSkillsPending,
   referencedSkills,
   setSkillOff,
   skillsOff,
   stageSkills,
   type SkillRef,
 } from "../src/mech/skills.ts";
-import { openMemory, rewriteSkillPaths } from "../src/platform/persistence/database.ts";
+import { openMemory, rewriteSkillPaths, type DB } from "../src/platform/persistence/database.ts";
+import { testContext } from "./test-context.ts";
 
 /**
  * The staging directory the sandbox mounts.
@@ -205,4 +209,67 @@ test("a skill whose name is not a regex is still matched by its name", () => {
   expect(referencedSkills("走 /c++ 这条", all).map((s) => s.name)).toEqual(["c++"]);
   expect(referencedSkills("走 /axb 这条", all)).toEqual([]);
   expect(referencedSkills("走 /a.b 这条", all).map((s) => s.name)).toEqual(["a.b"]);
+});
+
+/**
+ * A repository's own skills exist before anything can list them.
+ *
+ * The code lives only in a container now, so between "project created" and
+ * "first group cloned it" there is nothing on this machine to count. That window
+ * used to be reported as *unreachable*, which is a different thing and sends the
+ * boss to check a path that was never going to be there.
+ */
+function pendingCtx(projectId: number, repoPath: string) {
+  const db = openMemory();
+  const ctx = testContext({ db });
+  return { db, ctx, repoPath, projectId };
+}
+
+const said = (db: DB): string[] =>
+  db
+    .query<{ body: string }, []>("SELECT body FROM event WHERE kind = 'state_change'")
+    .all()
+    .map((r) => r.body);
+
+test("a repo whose skills have not been listed yet is explained once, not every poll", () => {
+  const t = pendingCtx(101, "me/x");
+
+  projectSkillsPending(t.ctx, t.projectId, t.repoPath);
+  projectSkillsPending(t.ctx, t.projectId, t.repoPath);
+
+  const bodies = said(t.db);
+  expect(bodies.length).toBe(1);
+  // Says the directories it looks in, so a boss who keeps skills elsewhere finds
+  // out here rather than by them never appearing.
+  expect(bodies[0]).toContain(".claude/skills");
+  expect(bodies[0]).toContain(".agents/skills");
+});
+
+test("a local checkout has nothing to wait for and is not reported", () => {
+  // `repo_path` still holds a host directory for older projects, and those are
+  // scanned directly — there is no container the listing has to arrive from.
+  const t = pendingCtx(102, "/Users/me/code/x");
+
+  projectSkillsPending(t.ctx, t.projectId, t.repoPath);
+
+  expect(said(t.db)).toEqual([]);
+});
+
+test("a project with no remote recorded says nothing at all", () => {
+  const t = pendingCtx(103, "me/x");
+
+  projectSkillsPending(t.ctx, 103, null);
+  projectSkillsPending(t.ctx, 103, "");
+
+  expect(said(t.db)).toEqual([]);
+});
+
+test("once the listing has arrived the pending note is not emitted", () => {
+  const t = pendingCtx(104, "me/x");
+  cacheProjectSkills(t.db, t.projectId, "ORCHSKILL .claude/skills/deploy/SKILL.md ZA==");
+  expect(projectSkills(t.db, t.projectId).length).toBe(1);
+
+  projectSkillsPending(t.ctx, t.projectId, t.repoPath);
+
+  expect(said(t.db)).toEqual([]);
 });

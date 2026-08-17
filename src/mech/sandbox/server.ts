@@ -188,19 +188,7 @@ export function setIn(toml: string, section: string, key: string, line: string):
  * docker` renders one from the packaged example, so the parts we do not care
  * about stay correct without anyone tracking them.
  *
- * Three values are then patched in, and only three — the ones that have to agree
- * with *us*:
- *
- *   api_key             or the server we just started refuses every call we make
- *   allowed_host_paths  the silent one: a path missing from it does not fail,
- *                       it mounts an empty directory, and the only symptom is
- *                       every agent having no skills
- *   egress image        v1.1.4 403s every scoped package fetch while a
- *                       credential is bound (005), and the example may ship it
- *
- * Regex rather than a TOML parser, like `keyInConfig` and `allowedHostPaths`
- * above: three known keys, one line each, and a dependency for that is a
- * dependency for that.
+ * `patchConfig` below is what agrees the few values that have to agree with us.
  *
  * Created once. A user who edits it keeps their edits.
  */
@@ -223,25 +211,49 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
   // sibling cache directory added later should not need this file edited again.
   const allowed = [...new Set([dirname(skills), "/var/tmp/orch-cache"])];
 
-  let toml = readFileSync(path, "utf8");
-  for (const [section, k, line] of [
-    ["server", "host", `host = "${host}"`],
-    ["server", "port", `port = ${Number(port) || 8080}`],
-    ["server", "api_key", `api_key = "${key}"`],
-    ["storage", "allowed_host_paths", `allowed_host_paths = [${allowed.map((p) => `"${p}"`).join(", ")}]`],
-    ["egress", "image", `image = "opensandbox/egress:v1.1.6"`],
-    ["egress", "mode", `mode = "dns+nft"`],
-  ] as const) {
-    toml = setIn(toml, section, k, line);
-  }
-
   writeFileSync(
     path,
     `# api_key / host / port / allowed_host_paths / egress set by orchestrator.\n` +
-      `# Everything else is opensandbox-server's own example. Yours to edit — only written if absent.\n${toml}`,
+      `# Everything else is opensandbox-server's own example. Yours to edit — only written if absent.\n` +
+      patchConfig(readFileSync(path, "utf8"), { host, port, key, allowed }),
     { mode: 0o600 },
   );
   return path;
+}
+
+/**
+ * The values in a generated config that have to agree with *us*, and no others.
+ *
+ *   host / port         or we start a server on an address we are not asking
+ *   api_key             or the server we just started refuses every call we make
+ *   allowed_host_paths  the silent one: a path missing from it does not fail,
+ *                       it mounts an empty directory, and the only symptom is
+ *                       every agent having no skills
+ *   egress image        v1.1.4 403s every scoped package fetch while a
+ *                       credential is bound (005), and the example may ship it
+ *   egress mode         the example's `direct` does not route through it at all
+ *
+ * Regex rather than a TOML parser, like `keyInConfig` and `allowedHostPaths`
+ * above: six known keys, one line each, and a dependency for that is a
+ * dependency for that. `setIn` is section-aware for the reason written on it —
+ * `mode` appears in two sections and a file-wide match takes the wrong one.
+ */
+export function patchConfig(
+  toml: string,
+  at: { host?: string | undefined; port?: string | undefined; key: string; allowed: string[] },
+): string {
+  let out = toml;
+  for (const [section, k, line] of [
+    ["server", "host", `host = "${at.host}"`],
+    ["server", "port", `port = ${Number(at.port) || 8080}`],
+    ["server", "api_key", `api_key = "${at.key}"`],
+    ["storage", "allowed_host_paths", `allowed_host_paths = [${at.allowed.map((p) => `"${p}"`).join(", ")}]`],
+    ["egress", "image", `image = "opensandbox/egress:v1.1.6"`],
+    ["egress", "mode", `mode = "dns+nft"`],
+  ] as const) {
+    out = setIn(out, section, k, line);
+  }
+  return out;
 }
 
 /**
@@ -280,36 +292,36 @@ export function serverLogTail(ctx: Ctx, lines = 12): string {
  * a process that is already gone before saying "cannot connect" — which is true,
  * and is not the reason.
  */
-async function waitUp(
+export async function waitUp(
   ctx: Ctx,
   proc: { exited: Promise<number> },
   server: string,
   key: string,
   ms = 45_000,
+  io: { probe: typeof probe; sleep: (ms: number) => Promise<void> } = { probe, sleep: Bun.sleep },
 ): Promise<{ ok: boolean; why: string }> {
   let dead: number | null = null;
   void proc.exited.then((code) => (dead = code));
   const until = Date.now() + ms;
   let last = "还没应答";
   while (Date.now() < until) {
-    const r = await probe(server, key);
+    const r = await io.probe(server, key);
     if (r.kind === "ok") return { ok: true, why: "" };
     last = say(r, server);
-    if (dead !== null) {
-      // Its own words, not ours. "Unable to connect" is what we observed; the
-      // log is what happened, and without it this reports the symptom of a
-      // process that died of something specific it already printed.
-      const tail = serverLogTail(ctx);
-      return {
-        ok: false,
-        why: `它自己退了（exit ${String(dead)}）${tail ? `：\n${tail}` : "，而且什么都没打印"}`,
-      };
-    }
-    await Bun.sleep(400);
+    // Its own words, not ours. "Unable to connect" is what we observed; the log
+    // is what happened, and without it this reports the symptom of a process
+    // that died of something specific it already printed.
+    if (dead !== null) return { ok: false, why: exited(dead, serverLogTail(ctx)) };
+    await io.sleep(400);
   }
-  const tail = serverLogTail(ctx);
-  return { ok: false, why: `等了 ${Math.round(ms / 1000)} 秒还是 ${last}${tail ? `。它打印的是：\n${tail}` : ""}` };
+  return { ok: false, why: timedOut(ms, last, serverLogTail(ctx)) };
 }
+
+const exited = (code: number, tail: string): string =>
+  `它自己退了（exit ${String(code)}）${tail ? `：\n${tail}` : "，而且什么都没打印"}`;
+
+const timedOut = (ms: number, last: string, tail: string): string =>
+  `等了 ${Math.round(ms / 1000)} 秒还是 ${last}${tail ? `。它打印的是：\n${tail}` : ""}`;
 
 /**
  * What is there, without changing anything.
@@ -356,21 +368,8 @@ export async function inspectServer(ctx: Ctx): Promise<ServerState> {
  */
 export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   const server = serverAddr(ctx);
-  const seen = await inspectServer(ctx);
-  // Anything other than "nothing is there" is somebody's, or ours already.
-  // Spawning into a taken address binds nothing, dies, and leaves the probe
-  // talking to whatever was already listening — which is what made the first
-  // failure unreadable.
-  if (seen.kind !== "down") return seen;
-  if (!Bun.which("uvx")) return seen;
-  // Only ever start one for an address on this machine. Pointed at a Tailscale
-  // peer or a cloud box, "nothing answers" means that host is down — spawning a
-  // local server would bind a port nobody is asking about and report success.
-  const { authority } = splitAddr(server);
-  const host = authority.replace(/:\d+$/, "").toLowerCase();
-  if (!(host === "localhost" || host.startsWith("127.") || host === "::1" || host === "[::1]")) {
-    return { kind: "down", why: `${server} 不应答 —— 那不是本机地址，起不了，得去那台机器上看。` };
-  }
+  const plan = startPlan(await inspectServer(ctx), server, !!Bun.which("uvx"));
+  if (plan.kind !== "start") return plan;
 
   const startKey = ourKey(ctx);
   let config: string;
@@ -379,6 +378,33 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
   } catch (e) {
     return { kind: "down", why: `写不出配置：${errText(e, 200)}` };
   }
+  return startServer(ctx, server, startKey, config);
+}
+
+/**
+ * Whether we are allowed to start one, given what is already there.
+ *
+ * Every "no" here is a different sentence, and each of them was a real report
+ * once. Kept separate from the spawn so the policy can be read — and checked —
+ * without a process being created to read it.
+ */
+export function startPlan(seen: ServerState, server: string, haveUvx: boolean): ServerState | { kind: "start" } {
+  // Anything other than "nothing is there" is somebody's, or ours already.
+  // Spawning into a taken address binds nothing, dies, and leaves the probe
+  // talking to whatever was already listening — which is what made the first
+  // failure unreadable.
+  if (seen.kind !== "down") return seen;
+  if (!haveUvx) return seen;
+  // Only ever start one for an address on this machine. Pointed at a Tailscale
+  // peer or a cloud box, "nothing answers" means that host is down — spawning a
+  // local server would bind a port nobody is asking about and report success.
+  const host = splitAddr(server).authority.replace(/:\d+$/, "").toLowerCase();
+  if (host === "localhost" || host.startsWith("127.") || host === "::1" || host === "[::1]") return { kind: "start" };
+  return { kind: "down", why: `${server} 不应答 —— 那不是本机地址，起不了，得去那台机器上看。` };
+}
+
+/** Spawn one and wait for it, remembering that it is ours. */
+async function startServer(ctx: Ctx, server: string, key: string, config: string): Promise<ServerState> {
   const argv = ["uvx", "opensandbox-server", "--config", config];
   try {
     // Its output goes to a file, not to /dev/null. Discarding it was the reason
@@ -391,7 +417,7 @@ export async function ensureServer(ctx: Ctx): Promise<ServerState> {
     p.unref();
     put(ctx, PID_KEY, String(p.pid));
     put(ctx, ARGV_KEY, JSON.stringify(argv));
-    const up = await waitUp(ctx, p, server, startKey);
+    const up = await waitUp(ctx, p, server, key);
     if (!up.ok) return { kind: "down", why: up.why, log };
     return { kind: "started", pid: String(p.pid), config };
   } catch (e) {

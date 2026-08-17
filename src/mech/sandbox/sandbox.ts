@@ -353,6 +353,19 @@ export async function restartServer(
   }
 }
 
+/**
+ * `lsof -Fn` prints one tagged field per line; `n` is the name we asked for.
+ *
+ * Tagged rather than columnar precisely so this is a `startsWith` and not a
+ * split: a cwd may contain spaces, and every column-counting parse of `lsof`
+ * truncates the first path that does.
+ */
+export const lsofCwd = (out: string): string | null =>
+  out
+    .split("\n")
+    .find((l) => l.startsWith("n"))
+    ?.slice(1) ?? null;
+
 function processCwd(pid: string): string | null {
   try {
     const link = `/proc/${pid}/cwd`;
@@ -361,13 +374,7 @@ function processCwd(pid: string): string | null {
     // Not Linux, or not permitted.
   }
   try {
-    const out = Bun.spawnSync(["lsof", "-a", "-d", "cwd", "-p", pid, "-Fn"], { stdout: "pipe" }).stdout.toString();
-    return (
-      out
-        .split("\n")
-        .find((l) => l.startsWith("n"))
-        ?.slice(1) ?? null
-    );
+    return lsofCwd(Bun.spawnSync(["lsof", "-a", "-d", "cwd", "-p", pid, "-Fn"], { stdout: "pipe" }).stdout.toString());
   } catch {
     return null;
   }
@@ -748,6 +755,11 @@ export const WORK = "/work";
 /** Host paths already checked this process; every sandbox mounts the same one. */
 const mountChecked = new Set<string>();
 
+/** Only what the check reads, so it can be driven without a container. */
+export interface Counter {
+  commands: { run(cmd: string): Promise<{ logs?: { stdout?: { text: string }[] } }> };
+}
+
 /**
  * Did the skills mount actually bring the skills.
  *
@@ -766,7 +778,7 @@ const mountChecked = new Set<string>();
  * One `ls` per host path per process, and only when the host directory has
  * something in it: a boss who has ticked no skills gets no noise.
  */
-async function checkSkillsMount(ctx: Ctx, sb: Sandbox, hostPath: string, at: string): Promise<void> {
+export async function checkSkillsMount(ctx: Ctx, sb: Counter, hostPath: string, at: string): Promise<void> {
   if (mountChecked.has(hostPath)) return;
   mountChecked.add(hostPath);
   let onHost = 0;
@@ -777,8 +789,13 @@ async function checkSkillsMount(ctx: Ctx, sb: Sandbox, hostPath: string, at: str
   }
   if (!onHost) return;
   const e = await sb.commands.run(`ls ${shq(at)} | wc -l`).catch(() => null);
+  // A container that could not answer is not a container with an empty mount.
+  // `Number("")` is 0, so folding the two together raised this blocker — naming
+  // a mount problem, with a fix about `allowed_host_paths` — every time the exec
+  // itself failed, which on the create path is the likelier of the two.
+  if (!e) return;
   const inside = Number(
-    (e?.logs?.stdout ?? [])
+    (e.logs?.stdout ?? [])
       .map((m) => m.text)
       .join("")
       .trim(),
@@ -1194,6 +1211,54 @@ export function lineSplitter(): { push: (chunk: string) => string[]; rest: () =>
 }
 
 /**
+ * Callbacks on one side, an async generator on the other, one promise between.
+ *
+ * The SDK delivers output by calling a handler; the turn adapters consume it by
+ * iterating. Something has to bridge those, and the bridge is where a stream
+ * quietly stops being one — so it is separate, and checked.
+ *
+ * `Promise.withResolvers()` is the platform's answer to the thing this used to
+ * be: a nullable `let` that the executor of a `new Promise` reached out and
+ * assigned, cleared again after every await, and that every producer had to
+ * remember to null-check before calling.
+ */
+export function lineQueue(): {
+  push(lines: string[]): void;
+  end(): void;
+  drain(): AsyncGenerator<string, void, void>;
+} {
+  const queue: string[] = [];
+  let gate = Promise.withResolvers<void>();
+  let done = false;
+  return {
+    push(lines) {
+      queue.push(...lines);
+      gate.resolve();
+    },
+    end() {
+      done = true;
+      gate.resolve();
+    },
+    async *drain() {
+      for (;;) {
+        if (queue.length) {
+          yield queue.shift()!;
+          continue;
+        }
+        // Everything already pushed is delivered before the end is honoured: a
+        // command that prints its last line and exits in the same tick would
+        // otherwise lose that line.
+        if (done) return;
+        await gate.promise;
+        // Re-arm *after* the await, so a line pushed while the consumer was busy
+        // has already resolved the gate it is about to wait on — no lost wakeup.
+        gate = Promise.withResolvers<void>();
+      }
+    },
+  };
+}
+
+/**
  * Run a command and hand back its stdout a line at a time.
  *
  * Both agent CLIs emit NDJSON on stdout and the adapters parse it as it
@@ -1208,14 +1273,7 @@ async function* realLines(
   opts: ExecOpts = {},
 ): AsyncGenerator<string, { code: number; err: string }, void> {
   const sb = await ensureSandbox(ctx, scope);
-  const queue: string[] = [];
-  // Callbacks on one side, an async generator on the other, and one promise as
-  // the gate between them. `Promise.withResolvers()` is the platform's answer to
-  // the thing this used to be: a nullable `let` that the executor of a
-  // `new Promise` reached out and assigned, cleared again after every await, and
-  // that every producer had to remember to null-check before calling.
-  let gate = Promise.withResolvers<void>();
-  let done = false;
+  const q = lineQueue();
   const split = lineSplitter();
   const errSplit = lineSplitter();
   let stderr = "";
@@ -1235,10 +1293,7 @@ async function* realLines(
         // the end, as a single run-on line. For an NDJSON turn that is every
         // object of the turn concatenated into one unparseable string — the
         // stream stops being a stream and the live timeline goes quiet.
-        onStdout: (m) => {
-          queue.push(...split.push(`${oneLine(m)}\n`));
-          gate.resolve();
-        },
+        onStdout: (m) => q.push(split.push(`${oneLine(m)}\n`)),
         onStderr: (m) => {
           stderr += `${oneLine(m)}\n`;
           // git writes progress with `\r`, not `\n`, so a clone is one very long
@@ -1254,19 +1309,9 @@ async function* realLines(
     .catch((e: unknown) => {
       stderr += String(e);
     })
-    .finally(() => {
-      done = true;
-      gate.resolve();
-    });
+    .finally(() => q.end());
 
-  while (true) {
-    while (queue.length) yield queue.shift()!;
-    if (done) break;
-    await gate.promise;
-    // Re-arm *after* the await, so a line pushed while the consumer was busy
-    // has already resolved the gate it is about to wait on — no lost wakeup.
-    gate = Promise.withResolvers<void>();
-  }
+  yield* q.drain();
   await finished;
   const tail = split.rest();
   if (tail) yield tail;

@@ -185,7 +185,7 @@ export function gzipTurnLog(path: string): boolean {
  * refresh nudge's own rollouts. The 110 MB grows in the sandboxes, and
  * `sweepSandboxSessions` below is what reaches it.
  */
-function sweepCodexSessions(home: string, now: number): number {
+export function sweepCodexSessions(home: string, now: number): number {
   const root = join(home, "sessions");
   if (!existsSync(root)) return 0;
   let dropped = 0;
@@ -318,6 +318,23 @@ function liveScopes(ctx: Ctx): Scope[] {
     out.push({ project: p.id });
   }
   return out;
+}
+
+/**
+ * The newest codex rollout anywhere in the fleet, for the quota read.
+ *
+ * The fleet's own rollouts live in the sandboxes now; the host copy is only as
+ * fresh as the last weekly refresh nudge. Any one live sandbox will do — the
+ * quota is the account's, not the container's — so this takes the first that
+ * answers and stops. A container that has gone away is skipped rather than
+ * failing the read: this is a header number, and nothing may depend on it.
+ */
+export async function newestRollout(ctx: Ctx): Promise<string | null> {
+  for (const s of liveScopes(ctx)) {
+    const r = await execIn(ctx, s, NEWEST_ROLLOUT).catch(() => null);
+    if (r?.code === 0 && r.out.trim()) return r.out;
+  }
+  return null;
 }
 
 /**
@@ -710,16 +727,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // slice was rejected for a red test that had nothing to do with its change.
   // Two slices lost to it, on two different requirements.
   await step("7d3", findings, async () => {
-    await (deps.pollUsage ?? pollUsage)(ctx, cfg.dataDir, now(), async () => {
-      // The fleet's own rollouts live in the sandboxes now; the host copy is only
-      // as fresh as the last weekly refresh nudge. Any one live sandbox will do —
-      // the quota is the account's, not the container's.
-      for (const s of liveScopes(ctx)) {
-        const r = await execIn(ctx, s, NEWEST_ROLLOUT).catch(() => null);
-        if (r?.code === 0 && r.out.trim()) return r.out;
-      }
-      return null;
-    });
+    await (deps.pollUsage ?? pollUsage)(ctx, cfg.dataDir, now(), () => newestRollout(ctx));
   });
 
   // 7e. Keep the shared repo map current.

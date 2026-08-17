@@ -154,23 +154,49 @@ async function githubAccepted(auth: RuntimeAuth): Promise<{ ok: boolean; detail:
   }
 }
 
-async function modelAccepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+/**
+ * Where to ask, and how to present the credential while asking.
+ *
+ * An OAuth token travels as `Authorization: Bearer`; an API key as `x-api-key`.
+ * Sending the wrong one is indistinguishable from having the wrong key — 401
+ * either way — so a check built on the wrong header reports "not accepted"
+ * about a credential that was never presented.
+ *
+ * A gateway's own address wins over both defaults, trailing slashes trimmed: the
+ * yaml is hand-edited and `https://gw/` produces `https://gw//v1/models`, which
+ * some proxies 404.
+ */
+export function modelProbe(runtime: string, auth: RuntimeAuth): { url: string; headers: Record<string, string> } {
   const base =
     auth.baseUrl?.replace(/\/+$/, "") ??
     (runtime === "claude" ? "https://api.anthropic.com" : "https://api.openai.com");
   const headers: Record<string, string> =
     runtime === "claude"
-      ? auth.mode === "api_key"
-        ? { "x-api-key": auth.secret, "anthropic-version": "2023-06-01" }
-        : { Authorization: `Bearer ${auth.secret}`, "anthropic-version": "2023-06-01" }
+      ? {
+          ...(auth.mode === "api_key" ? { "x-api-key": auth.secret } : { Authorization: `Bearer ${auth.secret}` }),
+          "anthropic-version": "2023-06-01",
+        }
       : { Authorization: `Bearer ${auth.secret}` };
+  return { url: `${base}/v1/models?limit=1`, headers };
+}
+
+/**
+ * What the answer says about the credential, and only about the credential.
+ *
+ * A gateway that answers something else is not a credential problem, and saying
+ * it is would send the boss to re-paste a token that was fine. Only 401 and 403
+ * are the token; everything else is reported as unverified, which is what it is.
+ */
+export function credentialVerdict(status: number): { ok: boolean; detail: string } {
+  if (status >= 200 && status < 300) return { ok: true, detail: "能用" };
+  if (status === 401 || status === 403) return { ok: false, detail: "对面不认这个凭据" };
+  return { ok: true, detail: `没验成（HTTP ${status}）` };
+}
+
+async function modelAccepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+  const { url, headers } = modelProbe(runtime, auth);
   try {
-    const r = await fetch(`${base}/v1/models?limit=1`, { headers, signal: AbortSignal.timeout(6000) });
-    if (r.ok) return { ok: true, detail: "能用" };
-    if (r.status === 401 || r.status === 403) return { ok: false, detail: "对面不认这个凭据" };
-    // A gateway that answers something else is not a credential problem, and
-    // saying it is would send the boss to re-paste a token that was fine.
-    return { ok: true, detail: `没验成（HTTP ${r.status}）` };
+    return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(6000) })).status);
   } catch {
     return { ok: true, detail: "连不上，没验" };
   }
