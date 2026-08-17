@@ -35,12 +35,38 @@ export interface Hit {
   score: number;
 }
 
-/** Words worth scoring: CJK runs are split per character, Latin by token. */
+/**
+ * Words worth scoring, in whatever language the writing is in.
+ *
+ * This was two regexes: one for Latin tokens and one that split Han, Hiragana
+ * and Katakana **per character**. Measured against eight scripts, it returned
+ * zero terms for Korean, Russian, Thai, Arabic and Greek — the corpus was
+ * simply invisible to search in those languages, silently — and it turned
+ * サンドボックス into twelve single characters. That is a defect for a project
+ * about to be read and written by people who do not all type Latin.
+ *
+ * `Intl.Segmenter` is ICU's word breaker, built into the runtime, and it
+ * segments every one of those. No locale is passed on purpose: the corpus mixes
+ * languages inside a single note, and ICU's default breaking handles the mix
+ * better than any one locale tag would.
+ *
+ * `isWordLike` drops the spaces and punctuation between segments. A one-letter
+ * Latin token carries no signal and is dropped as before; a one-character Han
+ * token is often a whole word and is kept, which is why the length rule looks
+ * at the script rather than at the count alone.
+ */
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "word" });
+const SINGLE_LETTER = /^[\p{Script=Latin}\p{N}_]$/u;
+
 export function terms(text: string): string[] {
-  const lower = text.toLowerCase();
-  const latin = lower.match(/[\p{Script=Latin}\p{N}_][\p{Script=Latin}\p{N}_.-]{1,}/gu) ?? [];
-  const cjk = lower.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu) ?? [];
-  return [...latin.filter((w) => w.length > 1 && !STOP.has(w)), ...cjk];
+  const out: string[] = [];
+  for (const { segment, isWordLike } of SEGMENTER.segment(text.toLowerCase())) {
+    if (!isWordLike) continue;
+    if (SINGLE_LETTER.test(segment)) continue;
+    if (STOP.has(segment)) continue;
+    out.push(segment);
+  }
+  return out;
 }
 
 const STOP = new Set([

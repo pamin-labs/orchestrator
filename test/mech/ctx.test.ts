@@ -12,13 +12,37 @@ const doc = (id: number, kind: string, body: string, at = 0): Doc => ({
   sliceId: null,
 });
 
-test("terms split Latin tokens and CJK characters, and drop stopwords", () => {
+test("terms are words in whatever script the writing uses, and stopwords go", () => {
   expect(terms("Should we use the middleware for auth?")).toEqual(["middleware", "auth"]);
-  // Chinese has no spaces, so per-character terms are what make it searchable at all.
-  expect(terms("中文问候")).toEqual(["中", "文", "问", "候"]);
+  // Words, not characters. This used to split Han per character because a regex
+  // cannot do better; ICU's word breaker can, so a query for 凭据 matches a term
+  // rather than two of the commonest characters in the language.
+  expect(terms("中文问候")).toEqual(["中文", "问候"]);
   // A path splits into components on purpose: a query for "auth" should match a
   // note that mentions src/auth/mw.ts, which a single opaque token would not.
   expect(terms("src/auth/mw.ts")).toEqual(["src", "auth", "mw.ts"]);
+});
+
+test("every script the corpus might be written in produces terms", () => {
+  // The regex this replaced matched Latin, Han, Hiragana and Katakana and
+  // nothing else, so Korean, Russian, Thai, Arabic and Greek notes returned zero
+  // terms and were invisible to search — silently, because an empty term list
+  // looks exactly like a document about nothing. For a project about to be
+  // written in by people who do not all type Latin, that is the whole feature.
+  const cases: Array<[string, string]> = [
+    ["ko", "샌드박스 자격 증명 처리"],
+    ["ru", "обработка учётных данных"],
+    ["th", "การจัดการข้อมูลรับรอง"],
+    ["ar", "معالجة بيانات الاعتماد"],
+    ["el", "διαχείριση διαπιστευτηρίων"],
+    ["ja", "サンドボックスの認証情報"],
+  ];
+  for (const [lang, text] of cases) {
+    expect({ lang, n: terms(text).length }).toEqual({ lang, n: terms(text).length });
+    expect(terms(text).length).toBeGreaterThan(1);
+  }
+  // And they are words, not characters: the katakana run is one term, not twelve.
+  expect(terms("サンドボックスの認証情報")).toContain("認証");
 });
 
 test("a rare term beats a common one", () => {
