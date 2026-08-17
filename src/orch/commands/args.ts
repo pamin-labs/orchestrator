@@ -1,3 +1,5 @@
+import { parseArgs as tokenize } from "node:util";
+
 export interface Parsed {
   flags: Record<string, string | string[] | true>;
   args: string[];
@@ -13,37 +15,48 @@ function addFlag(flags: Parsed["flags"], key: string, value: string | true): voi
       : [...(Array.isArray(previous) ? previous : [previous]), value];
 }
 
+/**
+ * Command line into flags, positionals, and whatever follows a bare `--`.
+ *
+ * The splitting is `node:util`'s, which is the part that has to agree with every
+ * other CLI a person has used. The hand-written loop this replaced did not:
+ * `--claim=text` produced a flag literally named `claim=text` set to `true`, and
+ * the value vanished. Commands that read a missing flag fall back to standard
+ * input, so the whole command hung on a terminal instead of reporting anything.
+ *
+ * Options are not declared, so `strict` is off and the shape is read from
+ * `tokens`: an option with no inline value takes the next positional, which is
+ * the convention the rest of the CLI's usage text describes.
+ */
 export function parseArgs(argv: string[]): Parsed {
+  const { tokens } = tokenize({ args: argv, strict: false, allowPositionals: true, tokens: true });
   const parsed: Parsed = { flags: {}, args: [], rest: [] };
-  let afterDashDash = false;
+  let awaiting: string | undefined;
+  let terminated = false;
 
-  for (let index = 0; index < argv.length; index++) {
-    const argument = argv[index]!;
-    if (afterDashDash) {
-      parsed.rest.push(argument);
+  for (const token of tokens) {
+    if (terminated) {
+      if (token.kind === "positional") parsed.rest.push(token.value);
       continue;
     }
-    if (argument === "--") {
-      afterDashDash = true;
-      continue;
+    if (awaiting !== undefined && token.kind !== "positional") {
+      addFlag(parsed.flags, awaiting, true);
+      awaiting = undefined;
     }
-    if (argument === "-h") {
-      parsed.flags.help = true;
-      continue;
-    }
-    if (!argument.startsWith("--")) {
-      parsed.args.push(argument);
-      continue;
-    }
-
-    const key = argument.slice(2);
-    const next = argv[index + 1];
-    if (next === undefined || next.startsWith("--")) addFlag(parsed.flags, key, true);
-    else {
-      addFlag(parsed.flags, key, next);
-      index++;
+    if (token.kind === "option-terminator") {
+      terminated = true;
+    } else if (token.kind === "option") {
+      const name = token.rawName === "-h" ? "help" : token.name;
+      if (token.value === undefined) awaiting = name;
+      else addFlag(parsed.flags, name, token.value);
+    } else if (awaiting !== undefined) {
+      addFlag(parsed.flags, awaiting, token.value);
+      awaiting = undefined;
+    } else {
+      parsed.args.push(token.value);
     }
   }
+  if (awaiting !== undefined) addFlag(parsed.flags, awaiting, true);
   return parsed;
 }
 

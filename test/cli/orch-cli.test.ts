@@ -63,6 +63,20 @@ test("valueless flags become true", () => {
   expect(parseArgs(["x", "--a", "--b", "1"]).flags).toEqual({ a: true, b: "1" });
 });
 
+test("--flag=value is the same flag as --flag value", () => {
+  // It was not. The hand-written splitter took everything after `--` as the
+  // name, so `--claim=done` produced a flag named `claim=done` set to `true` and
+  // the text was gone. `task done` reads a missing `--claim` from standard
+  // input, so on a terminal the command hung with nothing on screen.
+  expect(parseArgs(["task", "done", "--claim=fixed the parser"]).flags.claim).toBe("fixed the parser");
+  expect(parseArgs(["x", "--a=1", "--a=2"]).flags.a).toEqual(["1", "2"]);
+  expect(parseArgs(["x", "--empty="]).flags.empty).toBe("");
+  // An inline value ends the flag, so the next word is a positional and not
+  // swallowed as its value.
+  const p = parseArgs(["mail", "--intent=request", "qa"]);
+  expect(p.args).toEqual(["mail", "qa"]);
+});
+
 test("repeated flags accumulate instead of overwriting", () => {
   const p = parseArgs(["journal", "add", "--file", "a.ts", "--file", "b.ts"]);
   expect(p.flags.file).toEqual(["a.ts", "b.ts"]);
