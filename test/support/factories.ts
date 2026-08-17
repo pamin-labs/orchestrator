@@ -52,6 +52,11 @@ function table<T extends Record<string, Cell | undefined>, S = T & { id: number 
   generator: (opts: { sequence: number }) => T,
   parents: Parents = {},
 ): TableFactory<T, S> {
+  // `new` rather than Fishery's `define`. `define` is the documented entry point
+  // for a Factory subclass, but its five type parameters assume the subclass
+  // widens `Factory<T, I, C, P>`; this one narrows `C` to the stored row while
+  // extending `Factory<T>`, and the call does not type-check. The constructor is
+  // public and the generic is written out here, so nothing is lost but the sugar.
   const factory = new TableFactory<T, S>(generator);
   factory.table = name;
   factory.parents = parents;

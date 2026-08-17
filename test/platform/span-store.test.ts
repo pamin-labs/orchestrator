@@ -130,11 +130,21 @@ async function droppedTotal(db: DB): Promise<number> {
 }
 
 function insert(db: DB, spanId: string, startedAt: number): void {
-  db.run(
-    `INSERT INTO span (trace_id, span_id, name, kind, started_at, duration_ms, status, attributes_json)
-     VALUES ('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ?, 'x', 'internal', ?, 1, 'ok', '{}')`,
-    [spanId, startedAt],
-  );
+  // Through the production writer, which already owns this table's column list.
+  // One trace, so the rows are siblings rather than unrelated spans.
+  writeSpans(db, [
+    {
+      traceId: "a".repeat(32),
+      spanId,
+      parentSpanId: null,
+      name: "x",
+      kind: "internal",
+      startedAt,
+      durationMs: 1,
+      status: "ok",
+      attributes: {},
+    },
+  ]);
 }
 
 const remaining = (db: DB): string[] =>

@@ -13,16 +13,20 @@ import {
 import { head, joinQueue, landed, position, queue } from "../../src/mech/flow/mergequeue.ts";
 import { reconcileOwnership } from "../../src/application/executor.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 function seed(groups: Array<{ name: string; owns: string[]; status?: string }>): DB {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  const ins = db.prepare(
-    "INSERT INTO grp (project_id, name, status, owns_json, branch, created_at) VALUES (1, ?, ?, ?, ?, 0)",
-  );
+  const p = fx.project.insert(db, { name: "p" });
   for (const g of groups) {
-    ins.run(g.name, g.status ?? "RUNNING", JSON.stringify(g.owns), `orch/${g.name}`);
+    fx.grp.insert(db, {
+      project_id: p.id,
+      name: g.name,
+      status: g.status ?? "RUNNING",
+      owns_json: JSON.stringify(g.owns),
+      branch: `orch/${g.name}`,
+    });
   }
   return db;
 }

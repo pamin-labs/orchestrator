@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import * as fx from "../support/factories.ts";
 import {
   ACTIVE_JOB_STATES,
   DISPATCHABLE_GRP_STATES,
@@ -59,8 +60,7 @@ test("canonical states and semantic subsets are unique and aligned", () => {
 
 test("state subsets cross the SQL boundary as data, not syntax", () => {
   const db = openMemory();
-  db.run("INSERT INTO job (kind, payload_json, state, enqueued_at) VALUES ('notify', '{}', 'pending', 0)");
-  db.run("INSERT INTO job (kind, payload_json, state, enqueued_at) VALUES ('notify', '{}', 'done', 0)");
+  for (const state of ["pending", "done"]) fx.job.insert(db, { kind: "notify", state });
 
   const count = (param: string) =>
     db

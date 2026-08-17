@@ -8,17 +8,16 @@ import { postDraftDecision } from "../../src/api/panel/group.ts";
 import { newGroup } from "../../src/mech/flow/newgroup.ts";
 import { dropGroup } from "../../src/mech/flow/start.ts";
 import { acceptSlice, handToQa } from "../../src/mech/flow/review.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 const request = new Request("http://x/orch/v1/test", { method: "POST" });
 
 function seedGroup(status = "RUNNING") {
   const ctx = testContext();
-  ctx.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  ctx.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', ?, 0)", [status]);
-  ctx.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 'tok', 0)",
-  );
+  const p = fx.project.insert(ctx.db, { name: "p" });
+  const g = fx.grp.insert(ctx.db, { project_id: p.id, name: "g1", status });
+  fx.agent.insert(ctx.db, { project_id: p.id, grp_id: g.id, token: "tok" });
   const caller: Caller = { id: 1, grp_id: 1, project_id: 1, role: "engineer" };
   return { ctx, caller };
 }
@@ -41,7 +40,7 @@ async function failureOf(run: Promise<unknown>): Promise<string> {
 
 test("new group creation rolls back the group, channel, and note when its event fails", () => {
   const ctx = testContext();
-  ctx.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  fx.project.insert(ctx.db, { name: "p" });
   failInsert(ctx, "event");
 
   expect(() => newGroup(ctx, { projectId: 1, name: "g1", idea: "build it" })).toThrow("event failure");
@@ -72,10 +71,14 @@ test("a rolled-back event never reaches subscribers, even when its seq is reused
 
 test("dropping a group is one transaction", () => {
   const { ctx } = seedGroup("RUNNING");
-  ctx.db.run("INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (1, 1, 'group', 0)");
-  ctx.db.run(
-    "INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at) VALUES (1, 'blocker', 'q', 'q', 'decision', 'boss', 0)",
-  );
+  fx.channel.insert(ctx.db, { project_id: 1, grp_id: 1 });
+  fx.escalation.insert(ctx.db, {
+    grp_id: 1,
+    severity: "blocker",
+    brief: "q",
+    kind: "decision",
+    chain_state: "boss",
+  });
   ctx.sched.enqueue("agent_turn", { grp_id: 1 });
   ctx.db.run("CREATE TRIGGER fail_channel BEFORE UPDATE ON channel BEGIN SELECT RAISE(ABORT, 'channel failure'); END");
 
@@ -91,9 +94,14 @@ test("dropping a group is one transaction", () => {
 
 test("escalation-to-requirement rolls back the new group, driver, answer, and fanout", async () => {
   const { ctx } = seedGroup("PAUSED");
-  ctx.db.run(
-    "INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at) VALUES (1, 'blocker', 'fix config', 'fix', 'env', 'boss', 0)",
-  );
+  fx.escalation.insert(ctx.db, {
+    grp_id: 1,
+    severity: "blocker",
+    question: "fix config",
+    brief: "fix",
+    kind: "env",
+    chain_state: "boss",
+  });
   const frames: Array<{ type: string }> = [];
   ctx.bus.subscribe((frame) => frames.push(frame));
   failInsert(ctx, "job");
@@ -153,7 +161,7 @@ test("filing a draft rolls back its note, state, and queue cancellation when its
 
 test("requesting a lease rolls back the lease and waiting state when its job fails", async () => {
   const { ctx, caller } = seedGroup();
-  ctx.db.run("INSERT INTO resource (name, template, arg_schema_json) VALUES ('build', 'true', '{}')");
+  fx.resource.insert(ctx.db, { name: "build" });
   failInsert(ctx, "job");
 
   expect(await failureOf(postLease(ctx, request, caller, {}, { resource: "build", args: {} }))).toContain(
@@ -165,10 +173,8 @@ test("requesting a lease rolls back the lease and waiting state when its job fai
 
 test("finishing a task rolls back the task, events, self gate, and slice when its driver job fails", async () => {
   const { ctx, caller } = seedGroup();
-  ctx.db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES (1, 1, 'S1', 'tests pass', 'running', 0)",
-  );
-  ctx.db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (1, 1, 'task', 0)");
+  fx.slice.insert(ctx.db, { grp_id: 1, seq: 1, title: "S1", accept_spec: "tests pass", status: "running" });
+  fx.task.insert(ctx.db, { grp_id: 1, slice_id: 1, title: "task" });
   failInsert(ctx, "job");
 
   expect(
@@ -198,9 +204,7 @@ test("finishing a task rolls back the task, events, self gate, and slice when it
 
 test("review transitions do not expose a new state without its driver job", () => {
   const { ctx } = seedGroup();
-  ctx.db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES (1, 1, 'S1', 'tests pass', 'gate', 0)",
-  );
+  fx.slice.insert(ctx.db, { grp_id: 1, seq: 1, title: "S1", accept_spec: "tests pass", status: "gate" });
   failInsert(ctx, "job");
 
   expect(() => handToQa({ ctx, cfg: ctx.config }, 1)).toThrow("job failure");
@@ -209,11 +213,8 @@ test("review transitions do not expose a new state without its driver job", () =
 
 test("accepting a slice rolls back acceptance and handoff when the next job fails", () => {
   const { ctx } = seedGroup();
-  ctx.db.run(
-    `INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES
-     (1, 1, 'S1', 'one', 'awaiting_boss', 0),
-     (1, 2, 'S2', 'two', 'pending', 0)`,
-  );
+  fx.slice.insert(ctx.db, { grp_id: 1, seq: 1, title: "S1", accept_spec: "one", status: "awaiting_boss" });
+  fx.slice.insert(ctx.db, { grp_id: 1, seq: 2, title: "S2", accept_spec: "two", status: "pending" });
   failInsert(ctx, "job");
 
   expect(() => acceptSlice(ctx, 1, "boss")).toThrow("job failure");

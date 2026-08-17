@@ -10,6 +10,7 @@ import {
   TASK_STATES,
 } from "../../src/contracts/states.ts";
 import { INVARIANT_TABLES, runInvariants, uncovered } from "../../src/mech/ops/invariants.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -63,12 +64,12 @@ test("every repair-bearing table is in the production runner", () => {
 
 test("the project repair executes through the production registry", () => {
   const ctx = testContext();
-  ctx.db.run(
-    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'git@github.com:me/x.git', 0)",
-  );
-  ctx.db.run(
-    "INSERT INTO escalation (severity, question, chain_state, created_at) VALUES ('blocker', 'GitHub me/x: unavailable', 'boss', 0)",
-  );
+  fx.project.insert(ctx.db, { name: "p", remote: "git@github.com:me/x.git" });
+  fx.escalation.insert(ctx.db, {
+    severity: "blocker",
+    question: "GitHub me/x: unavailable",
+    chain_state: "boss",
+  });
 
   runInvariants(ctx);
 
