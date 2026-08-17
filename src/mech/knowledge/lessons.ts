@@ -1,6 +1,6 @@
 import type { Ctx } from "../../ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
-import { say } from "../../lang.ts";
+import { say } from "../../platform/text/lang.ts";
 
 /**
  * The boss's repeated complaints become a project rule.

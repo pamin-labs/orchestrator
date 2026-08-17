@@ -1,6 +1,6 @@
 import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
-import { say } from "../../lang.ts";
+import { say } from "../../platform/text/lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";
 import { raise } from "../flow/escalate.ts";
 import { jsonOr } from "../../contracts/json.ts";

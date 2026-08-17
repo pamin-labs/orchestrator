@@ -8,7 +8,7 @@ import type { Ctx } from "../ctx.ts";
 function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
-import { say } from "../lang.ts";
+import { say } from "../platform/text/lang.ts";
 import { raise } from "../mech/flow/escalate.ts";
 import { hold } from "../mech/flow/intercept.ts";
 import { outsideOwns, parseOwns } from "../mech/flow/ownership.ts";

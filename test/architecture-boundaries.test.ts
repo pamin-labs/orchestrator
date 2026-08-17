@@ -27,7 +27,7 @@ test("Fallow adds only undiscovered entry points and classifies directories by p
     "public-rpc": ["src/http/routes/**"],
     "shared-contracts": ["src/contracts/**"],
     "build-info": ["src/platform/process/version.ts"],
-    platform: ["src/platform/**", "src/lang.ts", "src/observability.ts", "src/scheduler.ts"],
+    platform: ["src/platform/**", "src/observability.ts", "src/scheduler.ts"],
     "http-edge": ["src/http/**"],
     "runtime-adapters": ["src/runtime/**"],
     mechanisms: ["src/ctx.ts", "src/mech/**"],

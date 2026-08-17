@@ -4,7 +4,7 @@ import type { Ctx } from "../../ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
-import { say } from "../../lang.ts";
+import { say } from "../../platform/text/lang.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { CLAIMING_SQL, canStart, claimsShared, overlaps, parseOwns, sharedFor } from "../../mech/flow/ownership.ts";

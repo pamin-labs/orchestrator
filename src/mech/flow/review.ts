@@ -1,6 +1,6 @@
 import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
-import { say } from "../../lang.ts";
+import { say } from "../../platform/text/lang.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { runGates, recordGate, gateState } from "../gate.ts";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";

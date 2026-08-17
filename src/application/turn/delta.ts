@@ -1,5 +1,5 @@
 import type { Ctx } from "../../ctx.ts";
-import { say } from "../../lang.ts";
+import { say } from "../../platform/text/lang.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";
 import { listSkills, projectSkills, readSkillIn } from "../../mech/skills.ts";

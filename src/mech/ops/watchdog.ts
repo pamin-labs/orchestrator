@@ -2,7 +2,7 @@ import { jsonOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
-import { say, type SayKey } from "../../lang.ts";
+import { say, type SayKey } from "../../platform/text/lang.ts";
 import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
 import { sweepApproved } from "../flow/start.ts";
 import { raise } from "../flow/escalate.ts";

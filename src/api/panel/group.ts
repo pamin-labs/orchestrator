@@ -14,7 +14,7 @@ import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
-import { say } from "../../lang.ts";
+import { say } from "../../platform/text/lang.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { GrpState } from "../../contracts/states.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";

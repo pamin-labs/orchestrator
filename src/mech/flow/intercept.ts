@@ -3,7 +3,7 @@ import { rebaseOntoBase, rollbackTo } from "../git/worktree.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
-import { say } from "../../lang.ts";
+import { say } from "../../platform/text/lang.ts";
 
 /**
  * Three levels of getting in the way, all of them operations on the job queue.

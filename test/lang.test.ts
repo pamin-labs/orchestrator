@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { SAY_KEYS, say } from "../src/lang.ts";
+import { SAY_KEYS, say } from "../src/platform/text/lang.ts";
 
 /**
  * The two tables and the keys callers may name.
