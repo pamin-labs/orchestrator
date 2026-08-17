@@ -1,12 +1,15 @@
 import { memo } from "react";
 import { groupedRows, type PanelFrame, type State } from "../lib/api";
-import { cn, clock } from "../lib/utils";
+import { clock, cn } from "../lib/utils";
 
-/** One event row. Memoized so a new frame arriving only mounts its own row —
- *  every other row keeps the same `f` reference and the same booleans, so
- *  React bails out before touching their DOM. Without this, Timeline's
- *  re-render on every SSE message would re-run every row's JSX, and
- *  DevTools' Highlight Updates would flag the whole list on each frame. */
+const FRAME_TONE: Record<PanelFrame["cls"], string> = {
+  say: "text-ink",
+  state: "text-ok",
+  ask: "text-warn",
+  tool: "font-mono text-[0.6875rem] text-ink-3",
+  partial: "font-mono text-[0.6875rem] text-ink-3",
+};
+
 const TimelineRow = memo(function TimelineRow({
   f,
   showHeader,
@@ -25,39 +28,32 @@ const TimelineRow = memo(function TimelineRow({
     >
       <span className="pt-px font-mono text-[0.625rem] text-ink-3">{showHeader ? clock(f.at) : ""}</span>
       <div className="min-w-0">
-        {showHeader && (
-          <>
-            <span className={cn("font-semibold", f.author === "boss" && "text-accent")}>{f.author}</span>
-            {f.target && <span className="text-ink-3"> → {f.target}</span>}
-            {f.intent && f.intent !== "inform" && (
-              <span className="ml-1 font-mono text-[0.5625rem] uppercase tracking-[0.06em] text-ink-3">{f.intent}</span>
-            )}{" "}
-          </>
-        )}
-        <span
-          className={cn(
-            "break-words",
-            f.cls === "say" && "text-ink",
-            f.cls === "state" && "text-ok",
-            f.cls === "ask" && "text-warn",
-            (f.cls === "tool" || f.cls === "partial") && "font-mono text-[0.6875rem] text-ink-3",
-          )}
-        >
-          {f.text}
-        </span>
+        <FrameHeader frame={f} show={showHeader} />
+        <span className={cn("break-words", FRAME_TONE[f.cls])}>{f.text}</span>
       </div>
     </div>
   );
 });
 
-/**
- * A timeline, not a log.
- *
- * What gets read here is who said what to whom; tool calls and state changes are
- * context around that, so agent-to-agent talk is the only kind with full ink.
- * Scope follows the selection: a requirement when one is open, else the project.
- * A feed that ignores where the boss is looking is a wall of unrelated lines.
- */
+function FrameHeader({ frame, show }: { frame: PanelFrame; show: boolean }) {
+  if (!show) return null;
+  return (
+    <>
+      <span className={cn("font-semibold", frame.author === "boss" && "text-accent")}>{frame.author}</span>
+      <Target value={frame.target} />
+      <Intent value={frame.intent} />{" "}
+    </>
+  );
+}
+
+const Target = ({ value }: { value: string | null | undefined }) =>
+  value ? <span className="text-ink-3"> → {value}</span> : null;
+
+function Intent({ value }: { value: string | null | undefined }) {
+  if (!value || value === "inform") return null;
+  return <span className="ml-1 font-mono text-[0.5625rem] uppercase tracking-[0.06em] text-ink-3">{value}</span>;
+}
+
 export function Timeline({
   st,
   frames,
