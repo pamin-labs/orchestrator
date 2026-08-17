@@ -1013,12 +1013,16 @@ export function splitAddr(addr: string): { protocol: "http" | "https"; authority
 export function remoteInClear(addr: string): boolean {
   const { protocol, authority } = splitAddr(addr);
   if (protocol === "https") return false;
-  const host = authority.replace(/:\d+$/, "").toLowerCase();
+  // The platform's parser, not a `:\d+$` strip: it lowercases, removes the port,
+  // and keeps an IPv6 literal inside its brackets. Stripping by hand turned
+  // `[::1]:8080` into `[::1` and reported loopback as an exposure. An authority
+  // it cannot parse is one we cannot vouch for.
+  const host = URL.parse(`http://${authority}`)?.hostname;
+  if (!host) return true;
   if (host === "localhost" || host.endsWith(".localhost")) return false;
-  if (host.startsWith("127.") || host === "::1" || host === "[::1]") return false;
+  if (host.startsWith("127.") || host === "[::1]") return false;
   if (host.endsWith(".ts.net")) return false;
-  const cg = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.exec(host);
-  return !cg;
+  return !/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host);
 }
 
 /**

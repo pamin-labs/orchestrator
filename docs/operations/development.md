@@ -42,6 +42,12 @@ bun run audit
 git diff --check
 ```
 
+`bun run audit` scores CRAP as if nothing were covered, because it has no
+coverage map to read. A complexity finding it reports is therefore a question,
+not a verdict: `bun run audit:crap` measures coverage first and scores against
+it. A function can sit at CRAP 90 estimated and zero findings exact — check
+before refactoring around one.
+
 Then run Fallow Review and independent architecture/API, security, test-quality,
 and performance review for affected dimensions. Review the final diff, update
 `docs/project/progress.md` once for the verified unit, and create a small commit.

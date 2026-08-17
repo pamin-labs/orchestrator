@@ -23,6 +23,7 @@
     "format:check": "biome format .",
     "audit": "fallow audit",
     "audit:all": "fallow audit --gate all",
+    "audit:crap": "bun run test:coverage && fallow audit --gate all --coverage coverage/coverage-final.json",
     "guard": "fallow guard",
     "audit:fix": "fallow fix --yes --no-create-config --format compact",
     "validate": "bun run format:check && bun run typecheck && bun run lint && bun run build:web && bun run perf:budget && bun run test",

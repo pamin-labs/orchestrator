@@ -164,8 +164,14 @@ test("the sandbox server may live on another machine, and says when that is in t
   // whole reason plain HTTP to a peer is not a mistake.
   for (const ok of [
     "127.0.0.1:8080",
+    "127.1.2.3:8080",
+    "[::1]:8080",
     "localhost:8080",
+    "dev.localhost:8080",
+    "LOCALHOST:8080",
+    "100.64.0.1:8080",
     "100.101.102.103:8080",
+    "100.127.255.254:8080",
     "box.tail1234.ts.net:8080",
     "https://sb.example.com:8080",
   ]) {
@@ -175,7 +181,18 @@ test("the sandbox server may live on another machine, and says when that is in t
   // Not safe, and reported rather than blocked: it may be a private VLAN this
   // side cannot see, and refusing outright would be deciding something we do not
   // know. 100.128.x is deliberately outside the CGNAT range Tailscale uses.
-  for (const bad of ["sb.example.com:8080", "http://203.0.113.10:8080", "100.128.0.1:8080"]) {
+  for (const bad of [
+    "sb.example.com:8080",
+    "http://203.0.113.10:8080",
+    "100.63.255.255:8080",
+    "100.128.0.1:8080",
+    "10.0.0.1:8080",
+    "notlocalhost:8080",
+    "ts.net.evil.com:8080",
+    // A bare IPv6 literal is not a valid authority — it cannot be told from a
+    // host with a port — so it is unparseable rather than loopback.
+    "::1",
+  ]) {
     expect({ addr: bad, inClear: remoteInClear(bad) }).toEqual({ addr: bad, inClear: true });
   }
 });
