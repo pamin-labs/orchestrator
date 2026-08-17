@@ -11,22 +11,18 @@ import { gateState, gatesFor, recordGate, runGates, type RunGatesOptions } from 
 import { projectConfig } from "../../src/mech/util/rows.ts";
 import { digestOutput } from "../../src/mech/lease.ts";
 import type { Json } from "../../src/contracts/json.ts";
+import * as fx from "../support/factories.ts";
 
 function seed(gates: Json | undefined): DB {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p', '/tmp/p', ?, 0)", [
-    JSON.stringify({ gates }),
-  ]);
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 1, 'S1', 'tests pass', 0)");
+  const p = fx.project.insert(db, { name: "p", config_json: JSON.stringify({ gates }) });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "S1", accept_spec: "tests pass" });
   return db;
 }
 
 function resource(db: DB, name: string, errorRegex = "^(error|FAIL)") {
-  db.run("INSERT INTO resource (name, template, arg_schema_json, error_regex) VALUES (?, 'true', '{}', ?)", [
-    name,
-    errorRegex,
-  ]);
+  fx.resource.insert(db, { name, error_regex: errorRegex });
 }
 
 /** Fake runner so the tests do not depend on any real toolchain. */
@@ -141,9 +137,7 @@ test("a project whose config lost a brace runs on defaults, not on nothing", () 
   // agents, so a broken value must cost this project its overrides and not its
   // gates, its excludes, its shared paths and its sandbox all at once.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p','/tmp/p',?,0)", [
-    '{"gates":["test"',
-  ]);
+  fx.project.insert(db, { name: "p", config_json: '{"gates":["test"' });
   expect(projectConfig(db, 1)).toEqual({});
   expect(gatesFor(db, 1)).toEqual([]);
 

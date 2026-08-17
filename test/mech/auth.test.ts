@@ -21,6 +21,7 @@ import {
 } from "../../src/mech/sandbox/auth.ts";
 import { accessToken, isStale, parseAuth, REFRESH_HOME, renew } from "../../src/mech/sandbox/chatgpt.ts";
 import { DEVICE_CODE_TTL_MS } from "../../src/mech/sandbox/login.ts";
+import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -373,9 +374,9 @@ test("runtime and mode are one contract at the route and database boundaries", a
   expect(cleared.status).toBe(200);
   expect(loadAuth(db, "codex")).toBeNull();
 
-  db.run(
-    "INSERT INTO runtime_auth (runtime, mode, secret, updated_at) VALUES ('github', 'chatgpt', 'dead', 1), ('claude', 'chatgpt', 'dead', 1)",
-  );
+  for (const runtime of ["github", "claude"]) {
+    fx.runtimeAuth.insert(db, { runtime, mode: "chatgpt", secret: "dead", updated_at: 1 });
+  }
   expect(loadAuth(db, "github")).toBeNull();
   expect(loadAuth(db, "claude")).toBeNull();
   expect(listAuth(db)).toEqual([]);

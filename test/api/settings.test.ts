@@ -15,6 +15,7 @@ import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
+import * as fx from "../support/factories.ts";
 
 const SettingsResponse = z.object({
   settings: z.array(
@@ -101,8 +102,8 @@ test("stored settings are layered over the file at boot, and stale keys are igno
   // A key from a version that had it, and one whose type changed since. Both
   // have to be skipped rather than thrown on: a settings row must never be able
   // to stop the server from starting.
-  db.run("INSERT INTO setting (k, v) VALUES ('cfg.goneAway', '1')");
-  db.run("INSERT INTO setting (k, v) VALUES ('cfg.maxGroups', '\"twelve\"')");
+  fx.setting.insert(db, { k: "cfg.goneAway", v: "1" });
+  fx.setting.insert(db, { k: "cfg.maxGroups", v: '"twelve"' });
 
   const fresh = applyOverrides(db, loadConfig("config/does-not-exist.yaml"));
   expect(fresh.autoAdvance).toBe(false);
@@ -157,8 +158,8 @@ test("the two settings that predate the settings table land on it", () => {
   const db = openMemory();
   // What migration 039 finds on an existing install: the panel's own image and
   // address rows, each written by a reader and a writer of its own.
-  db.run("INSERT INTO setting (k, v) VALUES ('sandbox_image', 'orch/agent:1')");
-  db.run("INSERT INTO setting (k, v) VALUES ('sandbox_server_addr', '10.0.0.4:8080')");
+  fx.setting.insert(db, { k: "sandbox_image", v: "orch/agent:1" });
+  fx.setting.insert(db, { k: "sandbox_server_addr", v: "10.0.0.4:8080" });
   // `openMemory` has already run every migration, so rewind the stamp for this
   // one and let the runner do it again — the point is what the SQL does to rows
   // that are already there, which a fresh database can never show.

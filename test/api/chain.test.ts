@@ -11,6 +11,7 @@ import type { Ctx } from "../../src/mech/ctx.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
+import * as fx from "../support/factories.ts";
 
 function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: boolean } = {}) {
   const db: DB = openMemory();
@@ -28,34 +29,22 @@ function harness(opts: { withArchitect?: boolean; withCos?: boolean; withPm?: bo
     config: _cfg,
     notifyBoss: (id) => void notified.push(id),
   };
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 'tok-eng', 0)",
-  );
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, token: "tok-eng" });
   if (opts.withPm !== false) {
-    db.run(
-      "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'pm', 'm', 'tok-pm', 0)",
-    );
+    fx.agent.insert(db, { project_id: p.id, grp_id: g.id, role: "pm", token: "tok-pm" });
   }
   if (opts.withArchitect) {
-    db.run(
-      "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
-    );
+    fx.agent.insert(db, { project_id: p.id, role: "architect", token: "tok-arch" });
   }
   if (opts.withCos) {
-    db.run(
-      "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'cos', 'm', 'tok-cos', 0)",
-    );
+    fx.agent.insert(db, { project_id: p.id, role: "cos", token: "tok-cos" });
   }
 
+  // `created_at` is now, not 0: the chain's timers are read against the clock.
   const ask = (question: string, severity = "advisory") =>
-    db
-      .query<{ id: number }, [string, string]>(
-        `INSERT INTO escalation (grp_id, agent_id, severity, question, chain_state, created_at)
-         VALUES (1, 1, ?, ?, 'pm', unixepoch() * 1000) RETURNING id`,
-      )
-      .get(severity, question)!.id;
+    fx.escalation.insert(db, { grp_id: 1, agent_id: 1, severity, question, created_at: Date.now() }).id;
 
   const app = makeApp(ctx);
   const post = (path: string, body?: Json, token?: string) =>
@@ -161,11 +150,11 @@ test("the CoS may only answer from a recorded decision", () => {
   expect(bare.ok).toBe(false);
   if (!bare.ok) expect(bare.error).toContain("cite the decision");
 
-  h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'journal', 'zh', 'unrelated', 0)");
+  fx.note.insert(h.db, { grp_id: 1, kind: "journal", body: "unrelated" });
   const wrongKind = answer(h.deps, { escId: id, by: "cos", answer: "keep it", refNoteId: 1 });
   expect(wrongKind.ok).toBe(false);
 
-  h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'decision', 'zh', '老 client 必须继续可用', 0)");
+  fx.note.insert(h.db, { grp_id: 1, kind: "decision", body: "老 client 必须继续可用" });
   const ok = answer(h.deps, { escId: id, by: "cos", answer: "keep it", refNoteId: 2 });
   expect(ok.ok).toBe(true);
   expect(
@@ -178,7 +167,7 @@ test("no stand-in may answer a reserved question, precedent or not", () => {
   const h = harness({ withCos: true });
   const id = h.ask("should we pay for more quota?");
   h.db.run("UPDATE escalation SET chain_state = 'cos' WHERE id = ?", [id]);
-  h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'decision', 'zh', '以前批过一次', 0)");
+  fx.note.insert(h.db, { grp_id: 1, kind: "decision", body: "以前批过一次" });
   const r = answer(h.deps, { escId: id, by: "cos", answer: "yes, we did before", refNoteId: 1 });
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.error).toContain("reserved for the boss");
@@ -190,7 +179,7 @@ test("revoking a stand-in's answer reopens it and rolls the checkout back", asyn
   const h = harness({ withCos: true });
   const id = h.ask("keep the legacy path?");
   h.db.run("UPDATE escalation SET checkpoint_sha = 'deadbeef', chain_state = 'cos' WHERE id = ?", [id]);
-  h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'decision', 'zh', 'x', 0)");
+  fx.note.insert(h.db, { grp_id: 1, kind: "decision", body: "x" });
   answer(h.deps, { escId: id, by: "cos", answer: "keep it", refNoteId: 1 });
   h.sched.enqueue("agent_turn", { grp_id: 1 });
 
@@ -275,8 +264,7 @@ test("triage records the boss's words verbatim on the blackboard, once", () => {
   // Without a bossFact here the test takes the fallback branch and proves nothing.
   const deps = {
     ...h.deps,
-    bossFact: (g: number | null, body: string) =>
-      void h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', 'zh', ?, 0)", [g, body]),
+    bossFact: (g: number | null, body: string) => void fx.note.insert(h.db, { grp_id: g, body }),
   };
   triage(deps, 1, "patch", "错误提示太含糊");
   const notes = h.db.query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'fact'").all();
@@ -313,10 +301,8 @@ test("an answer-chain token cannot answer another level or group's question", as
   expect((await h.post("/orch/v1/answer", { escalation_id: id, answer: "guess" }, "tok-eng")).status).toBe(422);
   expect((await h.post("/orch/v1/answer", { escalation_id: id, answer: "skip" }, "tok-arch")).status).toBe(422);
 
-  h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g2', 'RUNNING', 0)");
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 2, 'pm', 'm', 'tok-pm-2', 0)",
-  );
+  fx.runningGrp.insert(h.db, { project_id: 1, name: "g2" });
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 2, role: "pm", token: "tok-pm-2" });
   expect((await h.post("/orch/v1/answer", { escalation_id: id, abstain: true }, "tok-pm-2")).status).toBe(422);
   expect(
     h.db.query<{ chain_state: string }, [number]>("SELECT chain_state FROM escalation WHERE id = ?").get(id)!
@@ -351,11 +337,7 @@ test("mailing a role that has no agent yet hires one instead of doing nothing", 
   h.ctx.knownRoles = () => ["pm", "architect", "cos", "engineer"];
   h.ctx.hire = (grpId, role) => {
     hired.push(role);
-    return h.db
-      .query<{ id: number }, [string]>(
-        "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, ?, 'm', hex(randomblob(8)), 0) RETURNING id",
-      )
-      .get(role)!.id;
+    return fx.agent.insert(h.db, { project_id: 1, role, token: crypto.randomUUID() }).id;
   };
 
   const r = await h.post(
@@ -383,12 +365,7 @@ test("mailing a role that does not exist says so, and lists what does", async ()
 test("an unhired standing level is a level, not a reason to bother the boss", () => {
   const h = harness({ withPm: false });
   h.ctx.knownRoles = () => ["architect", "cos"];
-  h.ctx.hire = (_g, role) =>
-    h.db
-      .query<{ id: number }, [string]>(
-        "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, ?, 'm', hex(randomblob(8)), 0) RETURNING id",
-      )
-      .get(role)!.id;
+  h.ctx.hire = (_g, role) => fx.agent.insert(h.db, { project_id: 1, role, token: crypto.randomUUID() }).id;
   const id = h.ask("where should the seam go?");
   expect(route(h.deps, id)).toBe("architect");
   expect(h.notified).toEqual([]);
@@ -402,12 +379,8 @@ test("a reply reaches the existing holder of a role instead of hiring a second o
     hires++;
     return 99;
   };
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-disp', 0)",
-  );
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "dispatcher", token: "tok-disp" });
+  fx.agent.insert(h.db, { project_id: 1, role: "architect", token: "tok-arch" });
 
   // The Architect has no group, so a role lookup scoped to its own group would
   // find nothing and hire — which is how one project paid for two opus Dispatchers.
@@ -423,12 +396,8 @@ test("a reply reaches the existing holder of a role instead of hiring a second o
 test("a standing agent's mail is filed under the recipient's group, not nowhere", async () => {
   const h = harness();
   h.ctx.knownRoles = () => ["pm", "dispatcher", "architect"];
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-disp', 0)",
-  );
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "dispatcher", token: "tok-disp" });
+  fx.agent.insert(h.db, { project_id: 1, role: "architect", token: "tok-arch" });
 
   await h.post(
     "/orch/v1/mail",
@@ -450,9 +419,7 @@ test("a standing agent's mail is filed under the recipient's group, not nowhere"
 test("an empty mail body is refused instead of waking someone with nothing to read", async () => {
   const h = harness();
   h.ctx.knownRoles = () => ["architect"];
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 'tok-e', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, token: "tok-e" });
   // What a real run produced: the Dispatcher invented `--wait`, the parser took
   // it as a flag, and the mail went out with no message at all.
   const r = await h.post("/orch/v1/mail", { target: "architect", intent: "ask", body: "" }, "tok-e");
@@ -466,9 +433,7 @@ test("an empty mail body is refused instead of waking someone with nothing to re
 test("the boss can hand a question to the Architect instead of answering it", async () => {
   const h = harness();
   h.ctx.knownRoles = () => ["pm", "architect", "cos"];
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'architect', 'm', 'tok-arch', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, role: "architect", token: "tok-arch" });
   const id = h.ask("用哪个校验库？");
   const r = await h.post(`/api/v1/escalations/${id}/delegate`, { to: "architect" });
   expect(r.status).toBe(200);
@@ -496,12 +461,12 @@ test("a stopped group's question goes straight to the boss", () => {
   // only symptom was a group that had stopped for no stated reason.
   const h = harness();
   h.db.run("UPDATE grp SET status = 'PAUSED' WHERE id = 1");
-  const id = h.db
-    .query<{ id: number }, []>(
-      `INSERT INTO escalation (grp_id, severity, question, created_at)
-       VALUES (1, 'blocker', 'S1 failed the gate 3 times', unixepoch() * 1000) RETURNING id`,
-    )
-    .get()!.id;
+  const id = fx.escalation.insert(h.db, {
+    grp_id: 1,
+    severity: "blocker",
+    question: "S1 failed the gate 3 times",
+    created_at: Date.now(),
+  }).id;
   expect(route(h.deps, id)).toBe("boss");
   expect(
     h.db.query<{ chain_state: string }, [number]>("SELECT chain_state FROM escalation WHERE id = ?").get(id)!

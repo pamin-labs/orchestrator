@@ -1,14 +1,16 @@
 import { expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 const LAST_SEQ = 1_101;
 
 function harness() {
   const ctx = testContext();
-  const insert = ctx.db.prepare("INSERT INTO event (author, kind, body, at) VALUES ('boss', 'say', ?, ?)");
   ctx.db.transaction(() => {
-    for (let seq = 1; seq <= LAST_SEQ; seq++) insert.run(`event ${seq}`, seq);
+    for (let seq = 1; seq <= LAST_SEQ; seq++) {
+      fx.event.insert(ctx.db, { author: "boss", body: `event ${seq}`, at: seq });
+    }
   })();
   return makeApp(ctx);
 }

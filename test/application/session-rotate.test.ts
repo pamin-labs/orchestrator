@@ -12,6 +12,7 @@ import { makeExecutor, type ExecDeps } from "../../src/application/executor.ts";
 import type { TurnResult } from "../../src/runtime/claude.ts";
 import type { TurnSpec } from "../../src/runtime/claude.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 
 // A big cacheRead per turn, small input/cacheCreate — the pattern that made
@@ -57,8 +58,8 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   };
   exec = makeExecutor(deps);
 
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  const p = fx.project.insert(db, { name: "p" });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
   return { db, ctx, sched, deps, specs, app: makeApp(ctx) };
 }
 

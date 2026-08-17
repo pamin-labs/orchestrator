@@ -11,6 +11,7 @@ import { testContext } from "../support/test-context.ts";
 import { makeGithub } from "../../src/mech/git/github.ts";
 import type { Feedback } from "../../src/mech/git/prwatch.ts";
 import { Notifier } from "../../src/mech/ops/notify.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * Four decisions the server makes on a timer, none of which used to be reachable
@@ -19,13 +20,11 @@ import { Notifier } from "../../src/mech/ops/notify.ts";
  */
 
 function project(db: ReturnType<typeof openMemory>, name = "p"): number {
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES (?, '/tmp/p', 0)", [name]);
-  return db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()!.id;
+  return fx.project.insert(db, { name }).id;
 }
 
 function group(db: ReturnType<typeof openMemory>, projectId: number, name = "g"): number {
-  db.run("INSERT INTO grp (project_id, name, created_at) VALUES (?, ?, 0)", [projectId, name]);
-  return db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()!.id;
+  return fx.grp.insert(db, { project_id: projectId, name }).id;
 }
 
 /** A real notifier whose delivery goes nowhere, so nothing here pushes to the boss. */
@@ -157,9 +156,7 @@ test("the heartbeat queues one watchdog, not one per tick", () => {
 
   // A second pending watchdog would only re-examine the same groups, and the
   // queue is not where that should pile up.
-  ctx.db.run(
-    "INSERT INTO job (kind, state, payload_json, priority, enqueued_at) VALUES ('watchdog', 'pending', '{}', 0, 0)",
-  );
+  fx.job.insert(ctx.db, { kind: "watchdog", state: "pending" });
   heartbeat(deps);
   expect(enqueued).toEqual(["watchdog"]);
 });

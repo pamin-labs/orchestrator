@@ -20,6 +20,7 @@ import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { WORK } from "../../src/mech/sandbox/sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
+import * as fx from "../support/factories.ts";
 import { z } from "zod";
 
 const GateResults = z.record(z.string(), z.string());
@@ -112,25 +113,25 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
   ctx.reviewVerdict = makeReviewVerdict(deps);
   ctx.auditVerdict = makeAuditVerdict(deps);
 
-  db.run("INSERT INTO project (name, repo_path, config_json, created_at) VALUES ('p', ?, ?, 0)", [
-    repo,
-    JSON.stringify({ gates: opts.gates ?? ["test"] }),
-  ]);
-  db.run("INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'RUNNING', ?, 0)", [
-    wt.branch,
-  ]);
+  const p = fx.project.insert(db, {
+    name: "p",
+    repo_path: repo,
+    config_json: JSON.stringify({ gates: opts.gates ?? ["test"] }),
+  });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1", branch: wt.branch });
   // 'running' is what startNextSlice sets: a task whose slice has not started
   // cannot be completed, so the fixture has to reflect a started slice.
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 1, 'S1', 'a.txt says two', 'trivial', 'running', 0)",
-  );
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 'tok-eng', 0)",
-  );
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'qa', 'm', 'tok-qa', 0)",
-  );
-  db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (1, 1, 'edit a.txt', 0)");
+  const s = fx.slice.insert(db, {
+    grp_id: g.id,
+    seq: 1,
+    title: "S1",
+    accept_spec: "a.txt says two",
+    difficulty: "trivial",
+    status: "running",
+  });
+  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, token: "tok-eng" });
+  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, role: "qa", token: "tok-qa" });
+  fx.task.insert(db, { grp_id: g.id, slice_id: s.id, title: "edit a.txt" });
 
   const app = makeApp(ctx);
   const post = (path: string, body?: Json, token?: string) =>
@@ -292,7 +293,7 @@ test("only reviewers may file verdicts, and only for their own group", async () 
 
 test("a slice with open tasks does not enter review", async () => {
   const h = await harness();
-  h.db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (1, 1, 'second task', 0)");
+  fx.task.insert(h.db, { grp_id: 1, slice_id: 1, title: "second task" });
   await doneClaim(h.post, { files: ["a.txt"] });
   await h.sched.drain();
   // Reviewing half a slice spends judgement on work that is about to change.
@@ -301,7 +302,7 @@ test("a slice with open tasks does not enter review", async () => {
 
 test("accepting the last slice starts PR review; accepting an earlier one does not", async () => {
   const h = await harness();
-  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
+  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2" });
 
   await h.post("/api/v1/slices/1/accept");
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
@@ -327,9 +328,7 @@ test("a group with no retro cannot wind up — the PM is sent back to write one"
 test("with a retro and a green branch gate, the Auditor is called in", async () => {
   const h = await harness();
   h.gate(0);
-  h.db.run(
-    "INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'retro', 'zh', 'S1 返工一次，验收标准写模糊了', 0)",
-  );
+  fx.note.insert(h.db, { grp_id: 1, kind: "retro", body: "S1 返工一次，验收标准写模糊了" });
   await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
 
@@ -339,12 +338,8 @@ test("with a retro and a green branch gate, the Auditor is called in", async () 
 
 test("an auditor may not audit its own group", async () => {
   const h = await harness();
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'auditor', 'm', 'tok-in', 0)",
-  );
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'tok-out', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "auditor", token: "tok-in" });
+  fx.agent.insert(h.db, { project_id: 1, role: "auditor", token: "tok-out" });
   // Sharing the group's context means reviewing your own reasoning.
   expect((await h.post("/orch/v1/audit", { group_id: 1, verdict: "pass" }, "tok-in")).status).toBe(422);
   expect((await h.post("/orch/v1/audit", { group_id: 1, verdict: "pass" }, "tok-out")).status).toBe(200);
@@ -352,9 +347,7 @@ test("an auditor may not audit its own group", async () => {
 
 test("a failed audit reopens the group and sends the PM back", async () => {
   const h = await harness();
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, NULL, 'auditor', 'm', 'tok-aud', 0)",
-  );
+  fx.agent.insert(h.db, { project_id: 1, role: "auditor", token: "tok-aud" });
   h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1");
   await h.post("/orch/v1/audit", { group_id: 1, verdict: "fail", note: "S2's promise is not in the diff" }, "tok-aud");
   await h.sched.drain();
@@ -365,8 +358,8 @@ test("a failed audit reopens the group and sends the PM back", async () => {
 
 test("accepting a slice starts the next one, and only one runs at a time", async () => {
   const h = await harness();
-  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
-  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 3, 'S3', 'x', 0)");
+  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2" });
+  fx.slice.insert(h.db, { grp_id: 1, seq: 3, title: "S3" });
 
   const { startNextSlice } = await import("../../src/mech/flow/review.ts");
   // S1 is already running in the fixture, so nothing new may start: a second
@@ -387,25 +380,21 @@ test("accepting a slice starts the next one, and only one runs at a time", async
 
 test("a slice waits for the one it depends on", async () => {
   const h = await harness();
-  h.db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, depends_on, created_at) VALUES (1, 2, 'S2', 'x', 1, 0)",
-  );
+  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2", depends_on: 1 });
   const { startNextSlice } = await import("../../src/mech/flow/review.ts");
   h.db.run("UPDATE slice SET status = 'accepted' WHERE id = 1");
   expect(startNextSlice(h.ctx, 1)).toBe(2);
 
   const h2 = await harness();
-  h2.db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, depends_on, created_at) VALUES (1, 2, 'S2', 'x', 1, 0)",
-  );
+  fx.slice.insert(h2.db, { grp_id: 1, seq: 2, title: "S2", depends_on: 1 });
   h2.db.run("UPDATE slice SET status = 'rejected' WHERE id = 1");
   expect(startNextSlice(h2.ctx, 1)).toBeNull();
 });
 
 test("a task on a slice that has not started cannot be listed or completed", async () => {
   const h = await harness();
-  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
-  h.db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (1, 2, 'later work', 0)");
+  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2" });
+  fx.task.insert(h.db, { grp_id: 1, slice_id: 2, title: "later work" });
   const list = await (
     await h.app(new Request("http://x/orch/v1/task", { headers: { "x-orch-token": "tok-eng" } }))
   ).text();
@@ -433,7 +422,7 @@ test("a task on a slice that has not started cannot be listed or completed", asy
 test("the Auditor is hired outside the group it audits, and told how to read the branch", async () => {
   const h = await harness();
   h.gate(0);
-  h.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (1, 'retro', 'zh', 'S1 返工一次', 0)");
+  fx.note.insert(h.db, { grp_id: 1, kind: "retro", body: "S1 返工一次" });
   await h.post("/api/v1/slices/1/accept");
   await h.sched.drain();
 
@@ -503,7 +492,7 @@ test("writing the retro resumes PR-level review instead of dead-ending", async (
 
 test("a retro written mid-flight does not trigger PR review", async () => {
   const h = await harness();
-  h.db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 2, 'S2', 'x', 0)");
+  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2" });
   await h.post("/orch/v1/journal", { kind: "retro", body: "早写的 retro" }, "tok-eng");
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(0);
 });
@@ -511,9 +500,7 @@ test("a retro written mid-flight does not trigger PR review", async () => {
 test("a trivial slice is accepted automatically once all three gates pass", async () => {
   const h = await harness();
   h.ctx.config.autoAcceptTiers = ["trivial"];
-  h.db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 2, 'S2', 'b', 'normal', 'pending', 0)",
-  );
+  fx.slice.insert(h.db, { grp_id: 1, seq: 2, title: "S2", accept_spec: "b", status: "pending" });
 
   handToBoss({ ctx: h.ctx }, 1);
 

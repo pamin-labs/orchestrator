@@ -24,6 +24,7 @@ import {
   WORK,
 } from "../../src/mech/sandbox/sandbox.ts";
 import { cacheProjectSkills } from "../../src/mech/skills.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -71,8 +72,8 @@ async function serverUp(): Promise<boolean> {
 
 function ctx(port = cfg.port) {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'live', 'RUNNING', 0)");
+  const p = fx.project.insert(db, { name: "p" });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "live" });
   return testContext({
     db,
     sandbox: REAL,

@@ -8,6 +8,7 @@ import * as S from "../../src/contracts/panel.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * The panel payload is what the SQL actually produced.
@@ -36,20 +37,25 @@ test("every row the panel is sent matches the shape it is declared as", () => {
 
   // One of everything the payload can carry, so no list is empty — an empty
   // array parses against any element schema and would make this vacuous.
-  db.run("INSERT INTO project (name, repo_path, remote, base_branch, created_at) VALUES ('p','o/p','g','main',0)");
-  db.run(
-    "INSERT INTO grp (project_id, name, status, branch, budget_tokens, created_at) VALUES (1,'g1','RUNNING','orch/g1',100,0)",
-  );
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1,'g2','DISSOLVED',0)");
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1,1,'S1','x','normal','gate',0)",
-  );
-  db.run("INSERT INTO task (grp_id, slice_id, title, status, created_at) VALUES (1,1,'t','pending',0)");
-  db.run("INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1,1,'engineer','m','idle',0)");
-  db.run("INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (1,1,'group',0)");
-  db.run(
-    "INSERT INTO escalation (grp_id, severity, question, brief, kind, chain_state, created_at) VALUES (1,'blocker','q','b','spec','boss',0)",
-  );
+  const p = fx.project.insert(db, { name: "p", repo_path: "o/p", remote: "g", base_branch: "main" });
+  const g = fx.runningGrp.insert(db, {
+    project_id: p.id,
+    name: "g1",
+    branch: "orch/g1",
+    budget_tokens: 100,
+  });
+  fx.grp.insert(db, { project_id: p.id, name: "g2", status: "DISSOLVED" });
+  const first = fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "S1", status: "gate" });
+  fx.task.insert(db, { grp_id: g.id, slice_id: first.id, title: "t", status: "pending" });
+  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, state: "idle" });
+  fx.channel.insert(db, { project_id: p.id, grp_id: g.id });
+  fx.escalation.insert(db, {
+    grp_id: g.id,
+    severity: "blocker",
+    brief: "b",
+    kind: "spec",
+    chain_state: "boss",
+  });
 
   const s = snapshot(ctx);
   const Snapshot = z.object({

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { restoreWorkspace } from "../../src/mech/flow/start.ts";
+import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -35,11 +36,12 @@ function harness(opts: { install?: string | null; installFails?: boolean } = {})
   // The remote is a column, not something read back out of a host checkout: the
   // host stopped being a git participant at 007 step 5, and a rebuilt container
   // gets its branch off the remote rather than out of a bundle the host kept.
-  db.run(
-    "INSERT INTO project (name, repo_path, remote, config_json, created_at) VALUES ('p', '/tmp/p', 'https://github.com/me/x.git', ?, 0)",
-    [JSON.stringify(opts.install === undefined ? {} : { install: opts.install })],
-  );
-  db.run("INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'RUNNING', 'orch/g1', 0)");
+  const p = fx.project.insert(db, {
+    name: "p",
+    remote: "https://github.com/me/x.git",
+    config_json: JSON.stringify(opts.install === undefined ? {} : { install: opts.install }),
+  });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "g1", branch: "orch/g1" });
   return { ctx, sandbox, queued, db };
 }
 

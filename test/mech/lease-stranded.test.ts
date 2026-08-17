@@ -9,6 +9,7 @@ import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../../src/plat
 import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../../src/mech/sandbox/sandbox.ts";
 import { makeExecutor } from "../../src/application/executor.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * A gate whose container cannot be opened must fail, not disappear.
@@ -45,9 +46,9 @@ function stranded() {
     config: cfg,
   } satisfies Ctx;
   exec = makeExecutor({ ctx, cfg, roles: new Map() });
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'o/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run("INSERT INTO resource (name, template, arg_schema_json) VALUES ('test', 'true', '{}')");
+  const p = fx.project.insert(db, { name: "p", repo_path: "o/p" });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  fx.resource.insert(db, { name: "test" });
   return { db, ctx, sched };
 }
 
@@ -69,18 +70,8 @@ test("a lease whose container is gone finishes as failed and releases the agent"
   // The terminal state this exists to prevent: the lease row stuck at `running`
   // forever with an agent that never receives a durable follow-up.
   const { db, sched } = stranded();
-  const agent = db
-    .query<{ id: number }, []>(
-      `INSERT INTO agent (project_id, grp_id, role, model, state, created_at)
-       VALUES (1, 1, 'engineer', 'm', 'waiting_lease', 0) RETURNING id`,
-    )
-    .get()!;
-  const lease = db
-    .query<{ id: number }, []>(
-      `INSERT INTO lease (resource, grp_id, agent_id, args_json, state, enqueued_at)
-       VALUES ('test', 1, ${agent.id}, '{}', 'queued', 0) RETURNING id`,
-    )
-    .get()!;
+  const agent = fx.agent.insert(db, { project_id: 1, grp_id: 1, state: "waiting_lease" });
+  const lease = fx.lease.insert(db, { resource: "test", grp_id: 1, agent_id: agent.id, state: "queued" });
 
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   await sched.drain();

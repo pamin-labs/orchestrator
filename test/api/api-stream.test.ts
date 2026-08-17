@@ -7,6 +7,7 @@ import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { flushPending } from "../../src/api/panel/stream.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * Replay from a cursor, and the buffer that keeps a reconnect from seeing double.
@@ -61,8 +62,8 @@ test("the stream replays from the cursor the browser last saw", async () => {
     waiters: new Map(),
     config: loadConfig(),
   };
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'o/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  const p = fx.project.insert(db, { name: "p", repo_path: "o/p" });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
   for (const body of ["first", "second", "third"]) {
     ctx.bus.emit({ grpId: 1, author: "orchestrator", kind: "note", body });
   }

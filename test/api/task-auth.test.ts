@@ -1,23 +1,17 @@
 import { expect, test } from "bun:test";
 import { postTaskClaim, postTaskDone } from "../../src/api/orch/tasks.ts";
 import type { Caller } from "../../src/http/agent-auth.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 const request = new Request("http://x/orch/v1/task", { method: "POST" });
 
 function twoGroups() {
   const ctx = testContext();
-  ctx.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  ctx.db.run(
-    `INSERT INTO grp (project_id, name, status, created_at) VALUES
-       (1, 'caller', 'RUNNING', 0),
-       (1, 'other', 'RUNNING', 0)`,
-  );
-  ctx.db.run(
-    `INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES
-       (1, 1, 'engineer', 'm', 'caller-token', 0)`,
-  );
-  ctx.db.run("INSERT INTO task (grp_id, title, created_at) VALUES (2, 'private work', 0)");
+  const p = fx.project.insert(ctx.db, { name: "p" });
+  for (const name of ["caller", "other"]) fx.runningGrp.insert(ctx.db, { project_id: p.id, name });
+  fx.agent.insert(ctx.db, { project_id: p.id, grp_id: 1, token: "caller-token" });
+  fx.task.insert(ctx.db, { grp_id: 2, title: "private work" });
   const caller: Caller = { id: 1, grp_id: 1, project_id: 1, role: "engineer" };
   return { ctx, caller };
 }

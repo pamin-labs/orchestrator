@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
@@ -37,11 +38,9 @@ const gh = (answer: (path: string) => Json) =>
 const watchdogDbImage = (() => {
   const db = openMemory();
   seedAuth(db);
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', 't', 0)",
-  );
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, token: "t" });
   const image = db.serialize();
   db.close();
   return image;
@@ -85,7 +84,7 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
 
 test("a turn past its wall clock is killed and reported", async () => {
   const h = harness({ turnTimeoutMs: 1000 });
-  h.db.run("INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 0, 0)");
+  fx.job.insert(h.db, { grp_id: 1, state: "running", started_at: 0 });
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("turn_timeout");
   expect(h.db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("cancelled");
@@ -95,10 +94,12 @@ test("a RUNNING group whose last turn failed is put back once, then handed to th
   // Failure is terminal, so the chain just ends: RUNNING group, empty queue, no
   // error anywhere the boss looks. Six groups sat like this behind one bad path.
   const h = harness();
-  h.db.run(
-    `INSERT INTO job (kind, grp_id, slice_id, payload_json, state, error, enqueued_at)
-     VALUES ('agent_turn', 1, NULL, '{"role":"engineer"}', 'failed', 'Settings file not found', 0)`,
-  );
+  fx.job.insert(h.db, {
+    grp_id: 1,
+    payload_json: '{"role":"engineer"}',
+    state: "failed",
+    error: "Settings file not found",
+  });
   expect((await runWatchdog(h.deps)).map((x) => x.rule)).not.toContain("stalled");
   const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").all();
   expect(back).toHaveLength(1);
@@ -118,10 +119,7 @@ test("a turn that ended cleanly without arranging the next one also counts as st
   // success from every view the boss has.
   const h = harness();
   h.db.run("UPDATE grp SET status = 'PLANNING' WHERE id = 1");
-  h.db.run(
-    `INSERT INTO job (kind, grp_id, payload_json, state, enqueued_at)
-     VALUES ('agent_turn', 1, '{"role":"dispatcher"}', 'done', 0)`,
-  );
+  fx.job.insert(h.db, { grp_id: 1, payload_json: '{"role":"dispatcher"}', state: "done" });
   await runWatchdog(h.deps);
   const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!;
   expect(AgentTurnPayloadSchema.parse(JSON.parse(back.payload_json)).role).toBe("dispatcher");
@@ -132,7 +130,7 @@ test("work queued for a dissolved group is cancelled, not left pending forever",
   // enqueues another, and no status a dissolved group has is dispatchable.
   const h = harness();
   h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
-  h.db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('agent_turn', 1, 'pending', 0)");
+  fx.job.insert(h.db, { grp_id: 1, state: "pending" });
   await runWatchdog(h.deps);
   expect(h.db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("cancelled");
 });
@@ -177,12 +175,11 @@ test("touching several files does not look like circling", async () => {
 
 test("the same lease failing twice on unchanged code blames the environment", async () => {
   const h = harness();
-  h.db.run("INSERT INTO resource (name, template) VALUES ('build', 'true')");
-  const ins = h.db.prepare(
-    "INSERT INTO lease (resource, grp_id, state, head_sha, enqueued_at) VALUES ('build', 1, 'failed', ?, 0)",
-  );
-  ins.run("sha-a");
-  ins.run("sha-a");
+  fx.resource.insert(h.db, { name: "build" });
+  const failedAt = (head_sha: string) =>
+    fx.lease.insert(h.db, { resource: "build", grp_id: 1, state: "failed", head_sha });
+  failedAt("sha-a");
+  failedAt("sha-a");
   const f = await runWatchdog(h.deps);
   const env = f.find((x) => x.rule === "env_suspect")!;
   expect(env).toBeDefined();
@@ -194,12 +191,11 @@ test("the same lease failing twice on unchanged code blames the environment", as
 
 test("two failures at different commits are just two failures", async () => {
   const h = harness();
-  h.db.run("INSERT INTO resource (name, template) VALUES ('build', 'true')");
-  const ins = h.db.prepare(
-    "INSERT INTO lease (resource, grp_id, state, head_sha, enqueued_at) VALUES ('build', 1, 'failed', ?, 0)",
-  );
-  ins.run("sha-a");
-  ins.run("sha-b");
+  fx.resource.insert(h.db, { name: "build" });
+  const failedAt = (head_sha: string) =>
+    fx.lease.insert(h.db, { resource: "build", grp_id: 1, state: "failed", head_sha });
+  failedAt("sha-a");
+  failedAt("sha-b");
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).not.toContain("env_suspect");
 });
@@ -233,7 +229,7 @@ test("a long wait notifies first, then parks and frees the slot", async () => {
 
 test("pause reports how many turns it is waiting on, and settles later", () => {
   const h = harness();
-  h.db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('agent_turn', 1, 'running', 0)");
+  fx.job.insert(h.db, { grp_id: 1, state: "running" });
   expect(pause(h.ctx, 1)).toBe(1);
   // PAUSING, not PAUSED: an in-flight turn cannot be steered, and the status
   // should not claim otherwise.
@@ -483,7 +479,7 @@ test("the group it was waiting on landed, so it starts again by itself", async (
   // and stops the caller. Nothing else in the system knows that one group's merge
   // is another group's green light.
   const h = harness();
-  h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'fixer', 'RUNNING', 0)");
+  fx.runningGrp.insert(h.db, { project_id: 1, name: "fixer" });
   h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = 0, blocked_on = 2 WHERE id = 1");
 
   // Still running: nothing to wake up for, and parking must not touch it either —
@@ -507,10 +503,7 @@ test("a question stranded on a stopped group is lifted to the boss", async () =>
   // where it was. Symptom: a stopped group and a 待办 count of zero.
   const h = harness();
   h.db.run("UPDATE grp SET status = 'PAUSED', paused_at = 999_999 WHERE id = 1");
-  h.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
-     VALUES (1, 'blocker', 'S1 failed the gate 3 times', 'pm', 0)`,
-  );
+  fx.escalation.insert(h.db, { grp_id: 1, severity: "blocker", question: "S1 failed the gate 3 times" });
   await runWatchdog(h.deps);
   expect(h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state).toBe("boss");
 });
@@ -521,10 +514,15 @@ test("a parked group whose question got answered comes back", async () => {
   // the very thing it was waiting for.
   const h = harness();
   h.db.run("UPDATE grp SET status = 'PARKED', paused_at = 100 WHERE id = 1");
-  h.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, answer, answered_by, chain_state, created_at, answered_at)
-     VALUES (1, 'blocker', 'which library?', 'the stdlib one', 'boss', 'answered', 0, 500)`,
-  );
+  fx.escalation.insert(h.db, {
+    grp_id: 1,
+    severity: "blocker",
+    question: "which library?",
+    answer: "the stdlib one",
+    answered_by: "boss",
+    chain_state: "answered",
+    answered_at: 500,
+  });
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("unparked");
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).not.toBe("PARKED");
@@ -547,23 +545,29 @@ test("the three places that wait on the boss each carry a clock", async () => {
   const h = harness();
   const old = 1_000_000 - 5 * 3_600_000;
   h.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = 1");
-  h.db.run("INSERT INTO note (grp_id, kind, lang, body, frontmatter_json, at) VALUES (1, 'fact', 'zh', 'card', ?, ?)", [
-    JSON.stringify({ draft_card: 1 }),
-    old,
-  ]);
-  h.db.run(
-    `INSERT INTO slice (grp_id, seq, title, accept_spec, status, awaiting_at, created_at)
-     VALUES (1, 1, 'S1', 'a', 'awaiting_boss', ?, 0)`,
-    [old],
-  );
-  h.db.run(
-    "INSERT INTO grp (project_id, name, status, merge_seq, merge_seq_at, created_at) VALUES (1, 'q1', 'PR_OPEN', 1, ?, 0)",
-    [old],
-  );
-  h.db.run(
-    "INSERT INTO grp (project_id, name, status, merge_seq, merge_seq_at, created_at) VALUES (1, 'q2', 'PR_OPEN', 2, ?, 0)",
-    [old],
-  );
+  fx.note.insert(h.db, {
+    grp_id: 1,
+    body: "card",
+    frontmatter_json: JSON.stringify({ draft_card: 1 }),
+    at: old,
+  });
+  fx.slice.insert(h.db, {
+    grp_id: 1,
+    seq: 1,
+    title: "S1",
+    accept_spec: "a",
+    status: "awaiting_boss",
+    awaiting_at: old,
+  });
+  for (const merge_seq of [1, 2]) {
+    fx.grp.insert(h.db, {
+      project_id: 1,
+      name: `q${merge_seq}`,
+      status: "PR_OPEN",
+      merge_seq,
+      merge_seq_at: old,
+    });
+  }
 
   const rules = (await runWatchdog(h.deps)).map((x) => x.rule);
   expect(rules).toContain("waiting_card");
@@ -581,10 +585,12 @@ test("a rebase the Engineer could not finish goes to the Architect, not round ag
   // produces code that compiles and points the wrong way, which nothing downstream
   // can catch.
   const h = harness();
-  h.db.run(
-    `INSERT INTO job (kind, grp_id, payload_json, state, error, enqueued_at)
-     VALUES ('agent_turn', 1, '{"role":"engineer","conflict":true}', 'failed', 'could not rebase', 0)`,
-  );
+  fx.job.insert(h.db, {
+    grp_id: 1,
+    payload_json: '{"role":"engineer","conflict":true}',
+    state: "failed",
+    error: "could not rebase",
+  });
   await runWatchdog(h.deps);
   const p = AgentTurnPayloadSchema.parse(
     JSON.parse(
@@ -602,10 +608,7 @@ test("a rebase turn that finished is a stall, not a conflict", () => {
   // a design escalation as soon as the queue went quiet: pm-ai-agent was handed the
   // same false "could not rebase" eight times and its Architect refuted all eight.
   const h = harness();
-  h.db.run(
-    `INSERT INTO job (kind, grp_id, payload_json, state, enqueued_at)
-     VALUES ('agent_turn', 1, '{"role":"engineer","conflict":true}', 'done', 0)`,
-  );
+  fx.job.insert(h.db, { grp_id: 1, payload_json: '{"role":"engineer","conflict":true}', state: "done" });
   return runWatchdog(h.deps).then(() => {
     const queued = h.db
       .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'")
@@ -651,9 +654,7 @@ test("work that is finished but has no PR is sent back through the branch review
   // group with every slice accepted had nobody left to hand it to: no PR, no
   // error, and an Engineer still being woken by rebase nudges so it looked busy.
   const h = harness();
-  h.db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES (1, 1, 's', 'a', 'accepted', 0)",
-  );
+  fx.acceptedSlice.insert(h.db, { grp_id: 1, seq: 1, title: "s", accept_spec: "a" });
   await runWatchdog(h.deps);
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
 
@@ -661,9 +662,7 @@ test("work that is finished but has no PR is sent back through the branch review
   // one group carried three stale advisories, two of them clearance denials nobody
   // was ever going to answer.
   h.db.run("DELETE FROM job");
-  h.db.run(
-    "INSERT INTO escalation (grp_id, severity, question, chain_state, created_at) VALUES (1, 'advisory', 'q', 'architect', 0)",
-  );
+  fx.escalation.insert(h.db, { grp_id: 1, chain_state: "architect" });
   await runWatchdog(h.deps);
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'reconcile'").get()!.c).toBe(1);
 
@@ -691,9 +690,7 @@ test("a pending slice under an idle group is started rather than waited on", asy
   // fires again has nobody to start it, and RUNNING with an empty queue looks
   // exactly like working.
   const h = harness();
-  h.db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES (1, 1, 's', 'a', 'pending', 0)",
-  );
+  fx.slice.insert(h.db, { grp_id: 1, seq: 1, title: "s", accept_spec: "a", status: "pending" });
   await runWatchdog(h.deps);
   expect(h.db.query<{ s: string }, []>("SELECT status AS s FROM slice WHERE grp_id = 1").get()!.s).toBe("running");
   // The harness scheduler dispatches inline, so by now the turn is done and rule 8
@@ -809,10 +806,12 @@ test("a question the work went past is closed rather than left in 待办", async
   // list, asking the boss to unblock a group that was finished.
   const h = harness();
   h.db.run("UPDATE grp SET status = 'PR_OPEN' WHERE id = 1");
-  h.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
-     VALUES (1, 'blocker', 'S1 failed qa 3 times', 'boss', 0)`,
-  );
+  fx.escalation.insert(h.db, {
+    grp_id: 1,
+    severity: "blocker",
+    question: "S1 failed qa 3 times",
+    chain_state: "boss",
+  });
   const f = await runWatchdog(h.deps);
   expect(f.map((x) => x.rule)).toContain("stale_ask");
   expect(h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state).toBe(
@@ -822,10 +821,12 @@ test("a question the work went past is closed rather than left in 待办", async
 
 test("a question on a group that is still working is left alone", async () => {
   const h = harness();
-  h.db.run(
-    `INSERT INTO escalation (grp_id, severity, question, chain_state, created_at)
-     VALUES (1, 'blocker', 'which library?', 'boss', 0)`,
-  );
+  fx.escalation.insert(h.db, {
+    grp_id: 1,
+    severity: "blocker",
+    question: "which library?",
+    chain_state: "boss",
+  });
   await runWatchdog(h.deps);
   expect(h.db.query<{ chain_state: string }, []>("SELECT chain_state FROM escalation").get()!.chain_state).toBe("boss");
 });
@@ -852,10 +853,13 @@ test("a dissolved group's sandbox is killed, so it stops holding two containers"
 
 test("losing the network holds the fleet without pausing a single requirement", async () => {
   const h = harness();
-  h.db.run(
-    "INSERT INTO job (kind, grp_id, agent_id, payload_json, state, started_at, enqueued_at) " +
-      "VALUES ('agent_turn', 1, 1, '{\"role\":\"engineer\"}', 'running', 0, 0)",
-  );
+  fx.job.insert(h.db, {
+    grp_id: 1,
+    agent_id: 1,
+    payload_json: '{"role":"engineer"}',
+    state: "running",
+    started_at: 0,
+  });
   h.db.run("UPDATE agent SET state = 'running' WHERE id = 1");
 
   const f = await runWatchdog({ ...h.deps, probe: async () => ({ online: false, changed: true }) });
@@ -877,7 +881,7 @@ test("an offline tick does not run the rules that need the network", async () =>
   // Every rule below the gate is a restatement of state we recorded ourselves, and
   // none is worth a two-second DNS timeout each. This one would otherwise fire.
   const h = harness({ turnTimeoutMs: 1000 });
-  h.db.run("INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 0, 0)");
+  fx.job.insert(h.db, { grp_id: 1, state: "running", started_at: 0 });
   const f = await runWatchdog({ ...h.deps, probe: async () => ({ online: false, changed: false }) });
   expect(f.map((x) => x.rule)).not.toContain("turn_timeout");
 });
@@ -898,10 +902,7 @@ test("one rule throwing costs that rule, not the twenty-four after it", async ()
   };
   // Rule 8's condition, which is checked *after* 7d3: a RUNNING group whose last
   // turn failed twice and has nothing queued.
-  h.db.run(
-    `INSERT INTO job (kind, grp_id, payload_json, state, error, enqueued_at)
-     VALUES ('agent_turn', 1, '{"role":"engineer"}', 'failed', 'boom', 0)`,
-  );
+  fx.job.insert(h.db, { grp_id: 1, payload_json: '{"role":"engineer"}', state: "failed", error: "boom" });
   const first = await runWatchdog(deps);
   // The rule that threw names itself, so the finding is actionable — "rule 7d3
   // broke" rather than "the watchdog broke".

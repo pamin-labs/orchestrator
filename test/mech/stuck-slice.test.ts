@@ -10,6 +10,7 @@ import { Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts"
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * The deadlock that stopped eight groups at once, from both ends.
@@ -40,28 +41,28 @@ function harness() {
     waiters: new Map(),
     config: cfg,
   };
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    `INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at)
-     VALUES (1, 1, 's1', 'it works', 'running', 0)`,
-  );
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "s1", accept_spec: "it works", status: "running" });
   return { db, ctx, cfg, sched, app: makeApp(ctx), deps: { ctx, cfg, git: async () => ({ code: 0, out: "" }) } };
 }
 
 /** A writer that has already delivered this card once. */
 function delivered(db: DB, opts: { owner: "live" | "retired" } = { owner: "live" }) {
-  db.run(
-    `INSERT INTO agent (project_id, grp_id, role, model, token, state, created_at)
-     VALUES (1, 1, 'engineer', 'm', 'tok-old', ?, 0)`,
-    [opts.owner === "retired" ? "retired" : "idle"],
-  );
-  const agentId = db.query<{ id: number }, []>("SELECT max(id) AS id FROM agent").get()!.id;
-  db.run(
-    `INSERT INTO task (grp_id, slice_id, title, status, owner_agent_id, claim_json, created_at)
-     VALUES (1, 1, 't1', 'done', ?, '{"files":["src/one.ts"],"summary":"did it"}', 0)`,
-    [agentId],
-  );
+  const agentId = fx.agent.insert(db, {
+    project_id: 1,
+    grp_id: 1,
+    token: "tok-old",
+    state: opts.owner === "retired" ? "retired" : "idle",
+  }).id;
+  fx.task.insert(db, {
+    grp_id: 1,
+    slice_id: 1,
+    title: "t1",
+    status: "done",
+    owner_agent_id: agentId,
+    claim_json: '{"files":["src/one.ts"],"summary":"did it"}',
+  });
   return agentId;
 }
 
@@ -104,10 +105,7 @@ test("the writer can claim and close the card it was handed back", async () => {
 
   // The retry is a fresh session, so it is a fresh agent row. Ownership used to be
   // the old row's id, which nothing could ever release.
-  h.db.run(
-    `INSERT INTO agent (project_id, grp_id, role, model, token, created_at)
-     VALUES (1, 1, 'engineer', 'm', 'tok-new', 0)`,
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, token: "tok-new" });
 
   expect(await (await post(h.app, "/orch/v1/task/claim", { task_id: 1 }, "tok-new")).json()).toEqual({ message: "ok" });
   const done = await post(
@@ -130,10 +128,7 @@ test("a card whose owner retired is not locked away from the group", async () =>
   // (its slice still has an open task), so the endpoints have to answer for it.
   delivered(h.db, { owner: "retired" });
   h.db.run("UPDATE task SET status = 'in_progress' WHERE id = 1");
-  h.db.run(
-    `INSERT INTO agent (project_id, grp_id, role, model, token, created_at)
-     VALUES (1, 1, 'engineer', 'm', 'tok-new', 0)`,
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, token: "tok-new" });
 
   const done = await post(
     h.app,

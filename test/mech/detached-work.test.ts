@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { acceptSlice } from "../../src/mech/flow/review.ts";
+import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -32,11 +33,9 @@ test("detached work whose record is gone does not surface against an unrelated c
       // the one that writes — is the path under test.
       sandbox: fakeSandbox((cmd) => (cmd.includes("push") ? { code: 1, out: "denied" } : {})),
     });
-    db.run(
-      "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'https://github.com/me/x.git', 0)",
-    );
-    db.run("INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'RUNNING', 'orch/g1', 0)");
-    db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES (1, 1, 's', 'a', 'qa', 0)");
+    const p = fx.project.insert(db, { name: "p", remote: "https://github.com/me/x.git" });
+    const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1", branch: "orch/g1" });
+    fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "s", accept_spec: "a", status: "qa" });
 
     acceptSlice(ctx, 1, "boss");
     // The record goes away while the detached work is still in flight.

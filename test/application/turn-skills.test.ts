@@ -7,6 +7,7 @@ import { applySkills } from "../../src/application/turn/delta.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 import type { Delta } from "../../src/prompt/assemble.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * Which skill text a turn is given, and — more to the point — what happens when
@@ -38,8 +39,8 @@ async function run(repo: string, wanted: string[], inContainer: Record<string, s
   const sandbox = fakeSandbox();
   for (const [path, body] of Object.entries(inContainer)) sandbox.files.set(path, body);
   const ctx = testContext({ sandbox });
-  ctx.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', ?, 0)", [repo]);
-  ctx.db.run("INSERT INTO grp (project_id, name, created_at) VALUES (1, 'g', 0)");
+  const p = fx.project.insert(ctx.db, { name: "p", repo_path: repo });
+  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
   const delta: Delta = {};
   await applySkills(ctx, agent, turnJob(wanted), { grp: 1 }, delta);
   return delta;
@@ -83,8 +84,8 @@ test("a skill whose file cannot be read says so instead of arriving blank", asyn
     // section would read as "this skill has no instructions".
     sandbox: fakeSandbox(() => ({ code: 1, err: "no such container" })),
   });
-  ctx.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', ?, 0)", [repo]);
-  ctx.db.run("INSERT INTO grp (project_id, name, created_at) VALUES (1, 'g', 0)");
+  const p = fx.project.insert(ctx.db, { name: "p", repo_path: repo });
+  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
   const delta: Delta = {};
 
   await applySkills(ctx, agent, turnJob(["commit"]), { grp: 1 }, delta);

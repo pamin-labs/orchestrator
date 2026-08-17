@@ -22,6 +22,7 @@ import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
+import * as fx from "../support/factories.ts";
 
 function harness(
   handle: (cmd: string) => { code?: number; out?: string; err?: string } = () => ({}),
@@ -48,10 +49,8 @@ function harness(
   // The remote is what `owner/repo` is derived from, and since 007 step 5 it is
   // also what the clone and the push use — one answer, not two columns that can
   // disagree.
-  db.run(
-    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'git@github.com:me/x.git', 0)",
-  );
-  db.run("INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'PR_OPEN', 'orch/g1', 0)");
+  const p = fx.project.insert(db, { name: "p", remote: "git@github.com:me/x.git" });
+  fx.grp.insert(db, { project_id: p.id, name: "g1", status: "PR_OPEN", branch: "orch/g1" });
   return { db, ctx, sandbox };
 }
 
@@ -130,17 +129,21 @@ test("refreshing an existing PR reports GitHub rejection", async () => {
 
 test("the PR body is built from the record, not from a sentence", () => {
   const h = harness();
-  h.db.run(
-    "INSERT INTO event (grp_id, author, kind, body, at, seq) VALUES (1, 'boss', 'boss_say', 'the timeline flickers', 0, 1)",
-  );
-  h.db.run(
-    `INSERT INTO slice (grp_id, seq, title, accept_spec, gates_json, status, created_at)
-     VALUES (1, 1, 'stable keys', 'no row remounts', '{"self":"pass","gate":"pass","qa":"fail"}', 'accepted', 0)`,
-  );
-  h.db.run(
-    "INSERT INTO note (grp_id, kind, body, export_path, at) VALUES (1, 'decision', 'key was at+index', 'docs/journal/g1/003.md', 0)",
-  );
-  h.db.run("INSERT INTO note (grp_id, kind, body, at) VALUES (1, 'retro', 'memo alone was not enough', 0)");
+  fx.event.insert(h.db, { grp_id: 1, author: "boss", kind: "boss_say", body: "the timeline flickers", seq: 1 });
+  fx.acceptedSlice.insert(h.db, {
+    grp_id: 1,
+    seq: 1,
+    title: "stable keys",
+    accept_spec: "no row remounts",
+    gates_json: '{"self":"pass","gate":"pass","qa":"fail"}',
+  });
+  fx.note.insert(h.db, {
+    grp_id: 1,
+    kind: "decision",
+    body: "key was at+index",
+    export_path: "docs/journal/g1/003.md",
+  });
+  fx.note.insert(h.db, { grp_id: 1, kind: "retro", body: "memo alone was not enough" });
 
   const body = prBody(h.ctx.db, 1);
   expect(body).toContain("the timeline flickers");
@@ -411,11 +414,10 @@ test("feedback reopens the group and hands it to the PM", () => {
 test("the lessons list is capped where it is written", async () => {
   const h = harness();
   const app = makeApp(h.ctx);
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'librarian', 'm', 'tok-lib', 0)",
-  );
-  const ins = h.db.prepare("INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'lesson', 'zh', ?, ?)");
-  for (let i = 0; i < LESSON_CAP; i++) ins.run(`lesson ${i}`, i);
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, role: "librarian", token: "tok-lib" });
+  for (let i = 0; i < LESSON_CAP; i++) {
+    fx.note.insert(h.db, { project_id: 1, kind: "lesson", body: `lesson ${i}`, at: i });
+  }
 
   const r = await app(
     new Request("http://x/orch/v1/journal", {
@@ -439,9 +441,10 @@ test("the lessons list is capped where it is written", async () => {
 
 test("eviction leaves other note kinds alone", () => {
   const h = harness();
-  h.db.run("INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'retro', 'zh', 'keep me', 0)");
-  const ins = h.db.prepare("INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'lesson', 'zh', ?, ?)");
-  for (let i = 0; i < LESSON_CAP + 5; i++) ins.run(`l${i}`, i);
+  fx.note.insert(h.db, { project_id: 1, kind: "retro", body: "keep me" });
+  for (let i = 0; i < LESSON_CAP + 5; i++) {
+    fx.note.insert(h.db, { project_id: 1, kind: "lesson", body: `l${i}`, at: i });
+  }
 
   expect(evictOldestLessons(h.ctx.db, 1)).toBe(5);
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'retro'").get()!.c).toBe(1);
@@ -449,10 +452,8 @@ test("eviction leaves other note kinds alone", () => {
 
 test("landing archives the group without deleting its history", () => {
   const h = harness();
-  h.db.run("INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (1, 1, 'group', 0)");
-  h.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, session_id, token, created_at) VALUES (1, 1, 'engineer', 'm', 'live', 'tok-x', 0)",
-  );
+  fx.channel.insert(h.db, { project_id: 1, grp_id: 1 });
+  fx.agent.insert(h.db, { project_id: 1, grp_id: 1, session_id: "live", token: "tok-x" });
   h.ctx.bus.emit({ grpId: 1, author: "engineer", kind: "say", body: "why we did it this way" });
 
   landed(h.db, 1);

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { ensureCheckout } from "../../src/mech/git/checkout.ts";
+import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -29,17 +30,17 @@ function harness(opts: { project?: boolean; grp?: boolean; remote?: boolean; mod
   const ctx = testContext({ db, sandbox });
 
   if (opts.project !== false) {
-    db.run(
-      "INSERT INTO project (name, repo_path, remote, config_json, created_at) VALUES ('p', '/tmp/p', ?, '{}', 0)",
-      [opts.remote === false ? null : "https://github.com/me/x.git"],
-    );
+    fx.project.insert(db, {
+      name: "p",
+      remote: opts.remote === false ? null : "https://github.com/me/x.git",
+    });
   } else {
     // A group whose project is gone. The foreign key is what normally stops
     // this; it does not stop a project deleted out from under a live group.
     db.run("PRAGMA foreign_keys = OFF");
   }
   if (opts.grp !== false) {
-    db.run("INSERT INTO grp (project_id, name, status, branch, created_at) VALUES (1, 'g1', 'RUNNING', 'orch/g1', 0)");
+    fx.runningGrp.insert(db, { project_id: 1, name: "g1", branch: "orch/g1" });
   }
   const said = () => db.query<{ body: string }, []>("SELECT body FROM event WHERE severity = 'blocker'").all();
   return { ctx, sandbox, said };

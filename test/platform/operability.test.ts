@@ -5,6 +5,7 @@ import { openMemory } from "../../src/platform/persistence/database.ts";
 import { runtimeStatus } from "../../src/platform/observability/metrics.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { refreshRuntimeReadiness, shutdownRuntime } from "../../src/composition/server.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 test("health, cached readiness, metrics, and correlation describe the running process", async () => {
@@ -85,9 +86,9 @@ test("unexpected failures keep details in logs and return a stable generic body"
 test("a quiesced scheduler drains only work already in flight", async () => {
   const db = openMemory();
   try {
-    db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('quiesce', 'acme/quiesce', 0)");
-    db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'workers', 'RUNNING', 0)");
-    db.run("INSERT INTO runtime_auth (runtime, mode, secret, updated_at) VALUES ('claude', 'api_key', 'test', 0)");
+    const p = fx.project.insert(db, { name: "quiesce", repo_path: "acme/quiesce" });
+    fx.runningGrp.insert(db, { project_id: p.id, name: "workers" });
+    fx.runtimeAuth.insert(db, { mode: "api_key", secret: "test" });
     let entered!: () => void;
     let release!: () => void;
     const started = new Promise<void>((resolve) => {

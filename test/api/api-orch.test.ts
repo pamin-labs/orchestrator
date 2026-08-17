@@ -8,6 +8,7 @@ import { openMemory } from "../../src/platform/persistence/database.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { saveTree, type Tree } from "../../src/mech/knowledge/pageindex.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 
 /**
@@ -32,19 +33,16 @@ function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: s
     config: loadConfig(),
     publishBranch: (grpId) => void published.push(grpId),
   };
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'o/p', 0)");
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('q', 'o/q', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (2, 'g2', 'RUNNING', 0)");
+  const p = fx.project.insert(db, { name: "p", repo_path: "o/p" });
+  const q = fx.project.insert(db, { name: "q", repo_path: "o/q" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  fx.runningGrp.insert(db, { project_id: q.id, name: "g2" });
   for (const [role, token] of [
     ["scribe", "tok-scribe"],
     ["bootstrap", "tok-boot"],
     ["engineer", "tok-eng"],
   ] as const) {
-    db.run("INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, ?, 'm', ?, 0)", [
-      role,
-      token,
-    ]);
+    fx.agent.insert(db, { project_id: p.id, grp_id: g.id, role, token });
   }
   const app = makeApp(ctx);
   const post = (path: string, body: Json, token: string) =>
@@ -191,9 +189,7 @@ const indexed = (): Tree => ({
 });
 
 function withIndex(h: ReturnType<typeof harness>, ask: (prompt: string) => Promise<string>) {
-  h.db.run(
-    "INSERT INTO note (id, project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 1, 'decision', 'zh', 'we settled on zod', 0)",
-  );
+  fx.note.insert(h.db, { id: 1, project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
   saveTree(h.db, 1, indexed());
   h.ctx.askIn = () => ask;
 }

@@ -16,6 +16,7 @@ import {
   sliceDiffBase,
   squashWip,
 } from "../../src/mech/git/worktree.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -284,7 +285,7 @@ test("a renamed default branch is picked up rather than breaking every clone", a
   // caught — a default branch renamed on the remote leaves every clone, rebase
   // and diff resolving against a ref that is not there.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'acme/p', 0)");
+  fx.project.insert(db, { name: "p", repo_path: "acme/p" });
   let branch = "main";
   const gh: Github = {
     remaining: () => null,
@@ -329,9 +330,7 @@ test("a repository renamed or moved to another org is followed, not left pointin
   // said anything — but a POST to open a pull request does not survive a
   // redirect, and the old path only works until somebody claims the freed name.
   const db = openMemory();
-  db.run(
-    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', 'Old-Org/p', 'https://github.com/Old-Org/p.git', 0)",
-  );
+  fx.project.insert(db, { name: "p", repo_path: "Old-Org/p", remote: "https://github.com/Old-Org/p.git" });
   const gh: Github = {
     remaining: () => null,
     request: async (_method, _path, schema) => ({

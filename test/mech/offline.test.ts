@@ -6,6 +6,7 @@ import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { isOnline, PROBE_EVERY_MS, probe, resetNet } from "../../src/mech/sandbox/net.ts";
 import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../../src/mech/sandbox/sandbox.ts";
 import { type Job, resumeReclaimed, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { z } from "zod";
 
@@ -22,11 +23,9 @@ import { z } from "zod";
 
 function seed(): { db: DB; ctx: Ctx; sched: Scheduler; ran: Job[]; online: { v: boolean } } {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, runtime, token, created_at) VALUES (1, 1, 'engineer', 'm', 'claude', 'tok', 0)",
-  );
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, runtime: "claude", token: "tok" });
   saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: "sk-ant-oat01-x" });
   const online = { v: true };
   const ran: Job[] = [];

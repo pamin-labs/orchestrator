@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { dropSlices, openMemory, SLICE_REFS, type DB } from "../../src/platform/persistence/database.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * Re-approving a DRAFT rewrites the plan, so the old slices go — and four tables
@@ -8,25 +9,15 @@ import { dropSlices, openMemory, SLICE_REFS, type DB } from "../../src/platform/
  * the row, and the boss's only move was to click again.
  */
 function seed(db: DB): number {
-  db.run("INSERT INTO project (id, name, repo_path, created_at) VALUES (1, 'p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (id, project_id, name, status, created_at) VALUES (7, 1, 'g', 'DRAFT', 0)");
-  const s = db
-    .query<{ id: number }, []>(
-      `INSERT INTO slice (grp_id, seq, title, accept_spec, created_at)
-       VALUES (7, 1, 't', 'a', 0) RETURNING id`,
-    )
-    .get()!;
-  const s2 = db
-    .query<{ id: number }, [number]>(
-      `INSERT INTO slice (grp_id, seq, title, accept_spec, depends_on, created_at)
-       VALUES (7, 2, 't2', 'a2', ?, 0) RETURNING id`,
-    )
-    .get(s.id)!;
-  db.run("INSERT INTO task (grp_id, slice_id, title, created_at) VALUES (7, ?, 'task', 0)", [s.id]);
-  db.run("INSERT INTO job (kind, grp_id, slice_id, enqueued_at) VALUES ('gate', 7, ?, 0)", [s.id]);
-  db.run("INSERT INTO note (grp_id, slice_id, kind, body, at) VALUES (7, ?, 'journal', 'x', 0)", [s.id]);
+  const p = fx.project.insert(db, { id: 1, name: "p" });
+  const g = fx.grp.insert(db, { id: 7, project_id: p.id, name: "g" });
+  const s = fx.slice.insert(db, { grp_id: g.id, seq: 1, title: "t", accept_spec: "a" });
+  const s2 = fx.slice.insert(db, { grp_id: g.id, seq: 2, title: "t2", accept_spec: "a2", depends_on: s.id });
+  fx.task.insert(db, { grp_id: g.id, slice_id: s.id, title: "task" });
+  fx.job.insert(db, { kind: "gate", grp_id: g.id, slice_id: s.id });
+  fx.note.insert(db, { grp_id: g.id, slice_id: s.id, kind: "journal", body: "x" });
   void s2;
-  return 7;
+  return g.id;
 }
 
 test("dropping a group's slices clears every reference to them first", () => {

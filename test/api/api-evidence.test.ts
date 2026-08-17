@@ -11,6 +11,7 @@ import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { z } from "zod";
+import * as fx from "../support/factories.ts";
 
 /**
  * The two panels the boss reads before pressing a button.
@@ -45,21 +46,28 @@ function harness(opts: { handle?: (cmd: string) => { code?: number; out?: string
     waiters: new Map(),
     config: { ...loadConfig(), dataDir, ...(opts.language ? { language: opts.language } : {}) },
   };
-  db.run(
-    "INSERT INTO project (name, repo_path, config_json, base_branch, created_at) VALUES ('p', 'o/p', ?, 'main', 0)",
-    [JSON.stringify({ gates: ["typecheck", "test"] })],
-  );
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'ship-the-thing', 'RUNNING', 0)");
+  const p = fx.project.insert(db, {
+    name: "p",
+    repo_path: "o/p",
+    config_json: JSON.stringify({ gates: ["typecheck", "test"] }),
+    base_branch: "main",
+  });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "ship-the-thing" });
   const app = makeApp(ctx);
   const get = (path: string) => app(new Request(`http://x${path}`));
   return { db, ctx, app, get, dataDir };
 }
 
 const slice = (db: ReturnType<typeof harness>["db"], baseSha: string | null) =>
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, base_sha, created_at) VALUES (1, 3, 'S3 rename the flag', 'the flag is gone', 'trivial', 'qa', ?, 0)",
-    [baseSha],
-  );
+  fx.slice.insert(db, {
+    grp_id: 1,
+    seq: 3,
+    title: "S3 rename the flag",
+    accept_spec: "the flag is gone",
+    difficulty: "trivial",
+    status: "qa",
+    base_sha: baseSha,
+  });
 
 /** A checkout whose base is `base_sha` and whose diff is one hunk. */
 const normalGit = (diff: string) => (cmd: string) => {
@@ -157,14 +165,15 @@ test("a slice whose base was rebased away is diffed against the fork, not the st
 // ---------------------------------------------------- escalations/:id/draft
 
 function question(h: ReturnType<typeof harness>, opts: { grp: boolean; answered?: boolean }) {
-  h.db.run("INSERT INTO agent (project_id, grp_id, role, model, created_at) VALUES (1, ?, 'engineer', 'm', 0)", [
-    opts.grp ? 1 : null,
-  ]);
-  h.db.run(
-    `INSERT INTO escalation (grp_id, agent_id, severity, question, chain_state, answer, created_at)
-     VALUES (?, 1, 'blocker', 'which validation library should S3 use?', 'boss', ?, 0)`,
-    [opts.grp ? 1 : null, opts.answered ? "already said" : null],
-  );
+  fx.agent.insert(h.db, { project_id: 1, grp_id: opts.grp ? 1 : null });
+  fx.escalation.insert(h.db, {
+    grp_id: opts.grp ? 1 : null,
+    agent_id: 1,
+    severity: "blocker",
+    question: "which validation library should S3 use?",
+    chain_state: "boss",
+    answer: opts.answered ? "already said" : null,
+  });
 }
 
 test("no cheap model configured means no draft, and no error either", async () => {
@@ -192,15 +201,15 @@ test("a question that is already answered is never redrafted", async () => {
 test("the draft prompt carries the requirement, the asker, the slices and the blackboard", async () => {
   const h = harness();
   question(h, { grp: true });
-  h.db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 3, 'rename the flag', 'x', 'trivial', 'qa', 0)",
-  );
-  h.db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'decision', 'zh', 'we settled on zod', 0)",
-  );
-  h.db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, NULL, 'lesson', 'zh', 'a project-wide lesson', 0)",
-  );
+  fx.slice.insert(h.db, {
+    grp_id: 1,
+    seq: 3,
+    title: "rename the flag",
+    difficulty: "trivial",
+    status: "qa",
+  });
+  fx.note.insert(h.db, { project_id: 1, grp_id: 1, kind: "decision", body: "we settled on zod" });
+  fx.note.insert(h.db, { project_id: 1, kind: "lesson", body: "a project-wide lesson" });
   let prompt = "";
   h.ctx.askIn = () => async (p) => {
     prompt = p;

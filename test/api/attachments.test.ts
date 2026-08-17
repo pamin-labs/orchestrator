@@ -12,6 +12,7 @@ import { openMemory } from "../../src/platform/persistence/database.ts";
 import { loadConfig, loadRoles } from "../../src/platform/config/load.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { ATTACH_DIR, stageAttachments, type ExecDeps } from "../../src/application/executor.ts";
+import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 
 /**
@@ -29,8 +30,8 @@ function harness() {
   const dir = mkdtempSync(join(tmpdir(), "orch-attach-"));
   mkdirSync(join(dir, "attachments"), { recursive: true });
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  const p = fx.project.insert(db, { name: "p" });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
   const sandbox = fakeSandbox();
   const cfg = { ...loadConfig(), dataDir: dir };
   const ctx: Ctx = {

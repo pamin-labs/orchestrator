@@ -9,6 +9,7 @@ import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { loadAuth } from "../../src/mech/sandbox/auth.ts";
 import type { DeviceFlowFetcher } from "../../src/mech/git/ghlogin.ts";
 import { finishGithubLogin, githubDeviceLogin } from "../../src/api/panel/authflow.ts";
+import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 
 /**
@@ -174,11 +175,14 @@ test("the device flow mints once, reuses a live code, and never returns the one 
 
 test("a poll that lands stores the token, kills the sandboxes and says so without the token", async () => {
   const h = harness();
-  h.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'o/p', 0)");
-  h.db.run("INSERT INTO grp (project_id, name, status, sandbox_id, created_at) VALUES (1, 'g1', 'PAUSED', 'sb-1', 0)");
-  h.db.run(
-    "INSERT INTO escalation (grp_id, severity, question, chain_state, created_at) VALUES (1, 'blocker', 'github 的凭据没配', 'boss', 0)",
-  );
+  const p = fx.project.insert(h.db, { name: "p", repo_path: "o/p" });
+  const g = fx.grp.insert(h.db, { project_id: p.id, name: "g1", status: "PAUSED", sandbox_id: "sb-1" });
+  fx.escalation.insert(h.db, {
+    grp_id: g.id,
+    severity: "blocker",
+    question: "github 的凭据没配",
+    chain_state: "boss",
+  });
 
   await finishGithubLogin(
     h.ctx,

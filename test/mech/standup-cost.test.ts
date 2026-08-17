@@ -2,28 +2,25 @@ import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { runStandup, STALL_MS } from "../../src/mech/flow/standup.ts";
 import { costReport, recentCacheRatio } from "../../src/mech/ops/cost.ts";
+import * as fx from "../support/factories.ts";
 
 const NOW = 10_000_000;
 
 function seed(): DB {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  fx.project.insert(db, { name: "p" });
   return db;
 }
 
 const grp = (db: DB, name: string, owns: string[], status = "RUNNING") =>
-  db
-    .query<{ id: number }, [string, string, string]>(
-      "INSERT INTO grp (project_id, name, status, owns_json, created_at) VALUES (1, ?, ?, ?, 0) RETURNING id",
-    )
-    .get(name, status, JSON.stringify(owns))!.id;
+  fx.grp.insert(db, { project_id: 1, name, status, owns_json: JSON.stringify(owns) }).id;
 
 test("boundaries widened after starting are caught", () => {
   const db = seed();
   const a = grp(db, "auth", ["src/auth/**"]);
   const b = grp(db, "authz", ["src/auth/mw.ts"]);
-  db.run("INSERT INTO event (grp_id, author, kind, at) VALUES (?, 'x', 'say', ?)", [a, NOW]);
-  db.run("INSERT INTO event (grp_id, author, kind, at) VALUES (?, 'x', 'say', ?)", [b, NOW]);
+  fx.event.insert(db, { grp_id: a, at: NOW });
+  fx.event.insert(db, { grp_id: b, at: NOW });
 
   const items = runStandup(db, NOW);
   const dup = items.find((i) => i.kind === "duplicate_effort")!;
@@ -36,11 +33,9 @@ test("boundaries widened after starting are caught", () => {
 
 test("groups in different projects are not duplicates", () => {
   const db = seed();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('q', '/tmp/q', 0)");
+  const q = fx.project.insert(db, { name: "q", repo_path: "/tmp/q" });
   grp(db, "a", ["src/**"]);
-  db.run("INSERT INTO grp (project_id, name, status, owns_json, created_at) VALUES (2, 'b', 'RUNNING', ?, 0)", [
-    JSON.stringify(["src/**"]),
-  ]);
+  fx.runningGrp.insert(db, { project_id: q.id, name: "b", owns_json: JSON.stringify(["src/**"]) });
   expect(runStandup(db, NOW).some((i) => i.kind === "duplicate_effort")).toBe(false);
 });
 
@@ -49,13 +44,10 @@ test("silence is the problem, waiting is not", () => {
   const quiet = grp(db, "quiet", ["src/a/**"]);
   const blocked = grp(db, "blocked", ["src/b/**"]);
   const old = NOW - STALL_MS - 60_000;
-  db.run("INSERT INTO event (grp_id, author, kind, at) VALUES (?, 'x', 'say', ?)", [quiet, old]);
-  db.run("INSERT INTO event (grp_id, author, kind, at) VALUES (?, 'x', 'say', ?)", [blocked, old]);
+  fx.event.insert(db, { grp_id: quiet, at: old });
+  fx.event.insert(db, { grp_id: blocked, at: old });
   // A group waiting on an answer is fine: somebody knows about it.
-  db.run(
-    "INSERT INTO escalation (grp_id, severity, question, chain_state, created_at) VALUES (?, 'blocker', 'q', 'boss', 0)",
-    [blocked],
-  );
+  fx.escalation.insert(db, { grp_id: blocked, severity: "blocker", chain_state: "boss" });
 
   const stalled = runStandup(db, NOW).filter((i) => i.kind === "stalled");
   expect(stalled.length).toBe(1);
@@ -66,10 +58,10 @@ test("a gate failing across several groups is a project problem", () => {
   const db = seed();
   const a = grp(db, "a", ["src/a/**"]);
   const b = grp(db, "b", ["src/b/**"]);
-  db.run("INSERT INTO resource (name, template) VALUES ('test', 'true')");
-  const ins = db.prepare("INSERT INTO lease (resource, grp_id, state, enqueued_at) VALUES ('test', ?, 'failed', 0)");
-  ins.run(a);
-  ins.run(b);
+  fx.resource.insert(db, { name: "test" });
+  const failed = (grp_id: number) => fx.lease.insert(db, { resource: "test", grp_id, state: "failed" });
+  failed(a);
+  failed(b);
   const item = runStandup(db, NOW).find((i) => i.kind === "repeat_failure")!;
   expect(item.body).toContain("likely the project");
 });
@@ -78,24 +70,24 @@ test("a gate that has since gone green stops being reported", () => {
   const db = seed();
   const a = grp(db, "a", ["src/a/**"]);
   const b = grp(db, "b", ["src/b/**"]);
-  db.run("INSERT INTO resource (name, template) VALUES ('test', 'true')");
-  const ins = db.prepare("INSERT INTO lease (resource, grp_id, state, enqueued_at) VALUES ('test', ?, ?, 0)");
-  ins.run(a, "failed");
-  ins.run(b, "failed");
+  fx.resource.insert(db, { name: "test" });
+  const lease = (grp_id: number, state: string) => fx.lease.insert(db, { resource: "test", grp_id, state });
+  lease(a, "failed");
+  lease(b, "failed");
   // Both fixed it. Counting every failed row ever recorded left this on the
   // boss's notification forever, with nothing that could clear it.
-  ins.run(a, "done");
-  ins.run(b, "done");
+  lease(a, "done");
+  lease(b, "done");
   expect(runStandup(db, NOW).some((i) => i.kind === "repeat_failure")).toBe(false);
 });
 
 test("one group failing its own gate is not a standup item", () => {
   const db = seed();
   const a = grp(db, "a", ["src/a/**"]);
-  db.run("INSERT INTO resource (name, template) VALUES ('test', 'true')");
-  const ins = db.prepare("INSERT INTO lease (resource, grp_id, state, enqueued_at) VALUES ('test', ?, 'failed', 0)");
-  ins.run(a);
-  ins.run(a);
+  fx.resource.insert(db, { name: "test" });
+  const failed = (grp_id: number) => fx.lease.insert(db, { resource: "test", grp_id, state: "failed" });
+  failed(a);
+  failed(a);
   expect(runStandup(db, NOW).some((i) => i.kind === "repeat_failure")).toBe(false);
 });
 
@@ -103,19 +95,11 @@ test("one group failing its own gate is not a standup item", () => {
 
 test("cost is attributed four ways, because they answer different questions", () => {
   const db = seed();
-  db.run("INSERT INTO grp (project_id, name, status, spent_tokens, created_at) VALUES (1, 'g1', 'RUNNING', 5000, 0)");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, total_tokens, created_at) VALUES (1, 1, 'engineer', 'm', 4000, 0)",
-  );
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, runtime, total_tokens, created_at) VALUES (1, 1, 'qa', 'm', 'codex', 1000, 0)",
-  );
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, spent_tokens, created_at) VALUES (1, 1, 'S1', 'x', 'trivial', 1000, 0)",
-  );
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, spent_tokens, created_at) VALUES (1, 2, 'S2', 'x', 'hard', 4000, 0)",
-  );
+  fx.runningGrp.insert(db, { project_id: 1, name: "g1", spent_tokens: 5000 });
+  fx.agent.insert(db, { project_id: 1, grp_id: 1, total_tokens: 4000 });
+  fx.agent.insert(db, { project_id: 1, grp_id: 1, role: "qa", runtime: "codex", total_tokens: 1000 });
+  fx.slice.insert(db, { grp_id: 1, seq: 1, title: "S1", difficulty: "trivial", spent_tokens: 1000 });
+  fx.slice.insert(db, { grp_id: 1, seq: 2, title: "S2", difficulty: "hard", spent_tokens: 4000 });
 
   const r = costReport(db, 1);
   expect(r.total.tokens).toBe(5000);
@@ -147,12 +131,60 @@ test("cost is attributed four ways, because they answer different questions", ()
   expect(JSON.stringify(r)).not.toContain("usd");
 });
 
+test("asking for one project's cost leaves the other project out of every axis", () => {
+  // Each axis carries the filter itself now — `?1 IS NULL OR project_id = ?1`,
+  // bound rather than pasted in. byDifficulty is the one that has been wrong
+  // before: it joins through `grp` for the project, so it is the axis where the
+  // filter is easiest to drop, and difficulty is the knob the panel exists to
+  // inform. Omitting the id has to keep meaning "every project".
+  const db = seed();
+  fx.project.insert(db, { name: "q", repo_path: "/tmp/q" });
+  const group = (project_id: number, name: string, spent_tokens: number) =>
+    fx.runningGrp.insert(db, { project_id, name, spent_tokens });
+  group(1, "mine", 5000);
+  group(2, "theirs", 900);
+  const worker = (project_id: number, grp_id: number, role: string, runtime: string, total_tokens: number) =>
+    fx.agent.insert(db, { project_id, grp_id, role, runtime, total_tokens });
+  worker(1, 1, "engineer", "claude", 5000);
+  worker(2, 2, "auditor", "codex", 900);
+  const unit = (grp_id: number, difficulty: string, spent_tokens: number) =>
+    fx.slice.insert(db, { grp_id, seq: 1, title: "S", difficulty, spent_tokens });
+  unit(1, "hard", 5000);
+  unit(2, "trivial", 900);
+
+  const mine = costReport(db, 1);
+  expect(mine.total.tokens).toBe(5000);
+  expect(mine.byGroup.map((g) => g.label)).toEqual(["mine"]);
+  expect(mine.agents.map((a) => a.role)).toEqual(["engineer"]);
+  expect(mine.byRole.map((r) => r.label)).toEqual(["engineer"]);
+  expect(mine.byRuntime.map((r) => r.label)).toEqual(["claude"]);
+  expect(mine.byDifficulty.map((d) => [d.label, d.tokens])).toEqual([["hard", 5000]]);
+
+  const everything = costReport(db);
+  expect(everything.total.tokens).toBe(5900);
+  expect(everything.byGroup.map((g) => g.label)).toEqual(["mine", "theirs"]);
+  expect(everything.byDifficulty.map((d) => d.label).sort()).toEqual(["hard", "trivial"]);
+});
+
+test("a delivered requirement is counted for its own project only", () => {
+  const db = seed();
+  fx.project.insert(db, { name: "q", repo_path: "/tmp/q" });
+  const dissolved = (project_id: number, name: string, spent_tokens: number) =>
+    fx.grp.insert(db, { project_id, name, status: "DISSOLVED", spent_tokens });
+  dissolved(1, "mine", 400);
+  dissolved(2, "theirs", 700);
+
+  expect(costReport(db, 1).delivered).toEqual({ count: 1, tokens: 400 });
+  expect(costReport(db).delivered).toEqual({ count: 2, tokens: 1100 });
+});
+
 test("cache ratio is averaged from recorded turns, and absent before any run", () => {
   const db = seed();
   expect(recentCacheRatio(db)).toBeNull();
-  const ins = db.prepare("INSERT INTO event (author, kind, meta_json, at) VALUES ('e', 'tool_summary', ?, 0)");
-  ins.run(JSON.stringify({ cacheRatio: 0.9 }));
-  ins.run(JSON.stringify({ cacheRatio: 0.7 }));
+  const summary = (cacheRatio: number) =>
+    fx.event.insert(db, { author: "e", kind: "tool_summary", meta_json: JSON.stringify({ cacheRatio }) });
+  summary(0.9);
+  summary(0.7);
   // A sudden drop here is the only visible sign that prompt assembly broke: the
   // agents still work and the tests still pass, each turn just costs 3-5x.
   expect(recentCacheRatio(db)).toBeCloseTo(0.8);

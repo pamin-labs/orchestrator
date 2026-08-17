@@ -4,6 +4,7 @@ import { openMemory, type DB } from "../../src/platform/persistence/database.ts"
 import { detectProject } from "../../src/mech/flow/start.ts";
 import { gatesFor } from "../../src/mech/gate.ts";
 import { projectConfig } from "../../src/mech/util/rows.ts";
+import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { testContext } from "../support/test-context.ts";
@@ -34,12 +35,13 @@ function harness(files: Record<string, string>) {
     }),
   });
 
-  db.run(
-    `INSERT INTO project (name, repo_path, remote, config_json, created_at)
-     VALUES ('p', 'acme/p', 'https://github.com/acme/p.git', '{"gates":[]}', 0)`,
-  );
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g2', 'RUNNING', 0)");
+  const p = fx.project.insert(db, {
+    name: "p",
+    repo_path: "acme/p",
+    remote: "https://github.com/acme/p.git",
+    config_json: '{"gates":[]}',
+  });
+  for (const name of ["g1", "g2"]) fx.runningGrp.insert(db, { project_id: p.id, name });
   return { db, ctx, asked };
 }
 

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { migrate, openMemory } from "../../src/platform/persistence/database.ts";
+import * as fx from "../support/factories.ts";
 
 test("migrate creates the four first-class tables plus support tables", () => {
   const db = openMemory();
@@ -32,20 +33,18 @@ test("migrate is idempotent", () => {
 
 test("agent tokens are unique, and NULL is not a duplicate", () => {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  const ins = db.prepare(
-    "INSERT INTO agent (project_id, role, model, token, created_at) VALUES (1, 'engineer', 'sonnet', ?, 0)",
-  );
-  ins.run("tok-a");
-  expect(() => ins.run("tok-a")).toThrow();
+  fx.project.insert(db, { name: "p" });
+  const hire = (token: string | null) => fx.agent.insert(db, { project_id: 1, model: "sonnet", token });
+  hire("tok-a");
+  expect(() => hire("tok-a")).toThrow();
   // Retired agents keep their row with a cleared token; several may coexist.
-  ins.run(null);
-  ins.run(null);
+  hire(null);
+  hire(null);
 });
 
 test("foreign keys are enforced", () => {
   const db = openMemory();
-  expect(() => db.run("INSERT INTO grp (project_id, name, created_at) VALUES (999, 'x', 0)")).toThrow();
+  expect(() => fx.grp.insert(db, { project_id: 999, name: "x" })).toThrow();
 });
 
 test("two in-memory databases do not share rows", () => {
@@ -54,24 +53,23 @@ test("two in-memory databases do not share rows", () => {
   // process-wide, so the thing worth guarding is that it stays a template: a row
   // written by one test's database must not be visible to the next one's.
   const first = openMemory();
-  first.run("INSERT INTO event (author, kind, body, at) VALUES ('engineer', 'say', 'leak', 0)");
+  fx.event.insert(first, { author: "engineer", body: "leak" });
   const second = openMemory();
   expect(second.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()!.c).toBe(0);
 });
 
 test("event.seq is monotonic — the timeline never reorders", () => {
   const db = openMemory();
-  const ins = db.prepare("INSERT INTO event (author, kind, body, at) VALUES (?, ?, ?, ?)");
-  for (const b of ["a", "b", "c"]) ins.run("engineer", "say", b, Date.now());
+  for (const body of ["a", "b", "c"]) fx.event.insert(db, { author: "engineer", body, at: Date.now() });
   const seqs = db.query<{ seq: number }, []>("SELECT seq FROM event ORDER BY seq").all();
   expect(seqs.map((r) => r.seq)).toEqual([1, 2, 3]);
 });
 
 test("slice seq is unique per group", () => {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, created_at) VALUES (1, 'g', 0)");
-  const ins = db.prepare("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (?, ?, ?, ?, 0)");
-  ins.run(1, 1, "S1", "tests pass");
-  expect(() => ins.run(1, 1, "dup", "x")).toThrow();
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.grp.insert(db, { project_id: p.id, name: "g" });
+  const cut = (title: string, accept_spec: string) => fx.slice.insert(db, { grp_id: g.id, seq: 1, title, accept_spec });
+  cut("S1", "tests pass");
+  expect(() => cut("dup", "x")).toThrow();
 });

@@ -75,6 +75,19 @@ test("labelled image paths still reach codex as -i flags", () => {
   expect(imagePaths(prompt)).toEqual(["/data/a.png"]);
 });
 
+test("asking twice for the same prompt's images answers the same twice", () => {
+  // The pattern is compiled once at module load and shared by every call. A `/g`
+  // regex carries `lastIndex`, so a shared one that leaked it would answer the
+  // first caller and hand the second an empty list — every turn after the first
+  // in a process losing its `-i` flags, with nothing failing out loud.
+  const prompt = withAttachments("改", [
+    { name: "a.png", path: "/data/a.png", type: "image/png" },
+    { name: "b.png", path: "/data/b.png", type: "image/png" },
+  ]);
+  expect(imagePaths(prompt)).toEqual(["/data/a.png", "/data/b.png"]);
+  expect(imagePaths(prompt)).toEqual(["/data/a.png", "/data/b.png"]);
+});
+
 test("an upload too big to hold is refused before it is held", async () => {
   // `postAttach`'s 25MB check runs after `req.formData()` has already parsed the
   // whole body into memory, so it never bounded the request — and a dropped

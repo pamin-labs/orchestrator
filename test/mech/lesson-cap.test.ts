@@ -8,6 +8,7 @@ import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * docs/project/plan.md §7: the lesson list is injected into every later group's prompt, so an
@@ -25,11 +26,9 @@ function harness() {
     waiters: new Map(),
     config: loadConfig(),
   };
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'librarian', 'haiku', 'tok-lib', 0)",
-  );
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  fx.agent.insert(db, { project_id: p.id, grp_id: g.id, role: "librarian", model: "haiku", token: "tok-lib" });
   return { db, ctx, app: makeApp(ctx) };
 }
 
@@ -68,8 +67,8 @@ test("the 21st lesson evicts the oldest, and only within its own project", async
 
   // A second project's lessons are its own. The prompt injection is per project, so
   // sharing the cap across projects would let a busy one silently empty a quiet one.
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('other', '/tmp/o', 0)");
-  db.run("INSERT INTO note (project_id, kind, lang, body, at) VALUES (2, 'lesson', '中文', 'other project', 0)");
+  const other = fx.project.insert(db, { name: "other", repo_path: "/tmp/o" });
+  fx.note.insert(db, { project_id: other.id, kind: "lesson", lang: "中文", body: "other project" });
   evictOldestLessons(ctx.db, 1);
   expect(
     db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'lesson' AND project_id = 2").get()!.c,
@@ -83,9 +82,9 @@ test("the reader and the evictor agree on the set and the cap", () => {
   // clause is false for any real project — and LESSON_CAP, which three other
   // files import and the reader did not. Change the cap and the prompt kept 20.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p','/tmp/p',0)");
+  fx.project.insert(db, { name: "p" });
   const add = (project: number | null, body: string, at: number) =>
-    db.run("INSERT INTO note (project_id, kind, lang, body, at) VALUES (?, 'lesson', 'zh', ?, ?)", [project, body, at]);
+    fx.note.insert(db, { project_id: project, kind: "lesson", body, at });
 
   add(null, "global-old", 1);
   add(1, "mine", 2);

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DROP_AFTER_MS, newestRollout, sweepCodexSessions } from "../../src/mech/ops/watchdog.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 
@@ -66,8 +67,8 @@ test("a home with no sessions directory sweeps nothing rather than throwing", ()
 
 function fleet(handle: (cmd: string) => { code?: number; out?: string }) {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at, sandbox_id) VALUES ('p', 'me/x', 0, 'sb-p')");
-  db.run("INSERT INTO grp (name, project_id, status, sandbox_id, created_at) VALUES ('g', 1, 'RUNNING', 'sb-g', 0)");
+  const p = fx.project.insert(db, { name: "p", repo_path: "me/x", sandbox_id: "sb-p" });
+  fx.runningGrp.insert(db, { name: "g", project_id: p.id, sandbox_id: "sb-g" });
   const sandbox = fakeSandbox((cmd) => handle(cmd));
   return { db, ctx: testContext({ db, sandbox }), sandbox };
 }
@@ -103,8 +104,8 @@ test("a sandbox that answers empty is not mistaken for an answer", async () => {
 
 test("a fleet with nothing running asks nothing and reports nothing", async () => {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'me/x', 0)");
-  db.run("INSERT INTO grp (name, project_id, status, created_at) VALUES ('g', 1, 'RUNNING', 0)");
+  const p = fx.project.insert(db, { name: "p", repo_path: "me/x" });
+  fx.runningGrp.insert(db, { name: "g", project_id: p.id });
   const sandbox = fakeSandbox();
 
   expect(await newestRollout(testContext({ db, sandbox }))).toBeNull();
@@ -115,8 +116,8 @@ test("a dissolved group's sandbox row is not reached into", async () => {
   // `DISSOLVED` and `PARKED` still carry a `sandbox_id` until the reaper gets to
   // them, and exec'ing into one costs a full container timeout on every tick.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'me/x', 0)");
-  db.run("INSERT INTO grp (name, project_id, status, sandbox_id, created_at) VALUES ('g', 1, 'DISSOLVED', 'sb-g', 0)");
+  const p = fx.project.insert(db, { name: "p", repo_path: "me/x" });
+  fx.grp.insert(db, { name: "g", project_id: p.id, status: "DISSOLVED", sandbox_id: "sb-g" });
   const sandbox = fakeSandbox(() => ({ code: 0, out: "rollout" }));
 
   expect(await newestRollout(testContext({ db, sandbox }))).toBeNull();

@@ -7,6 +7,7 @@ import { openMemory } from "../../src/platform/persistence/database.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { POLL_EVERY_MS, pollClaudeUsage, pollUsage, rateLimitsIn, toRateLimit } from "../../src/mech/ops/subusage.ts";
+import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { z } from "zod";
@@ -60,7 +61,7 @@ test("a fresh row is left alone until the poll interval is up", async () => {
   const db = openMemory();
   seedAuth(db);
   const now = 1_000_000_000;
-  db.run("INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', '{}', ?)", [now]);
+  fx.usageSnapshot.insert(db, { at: now });
   // No network call, so this also proves the interval is checked before the fetch:
   // the watchdog ticks every 30s and this endpoint is not ours to hammer.
   expect(await pollClaudeUsage(ctx(db), now + POLL_EVERY_MS - 1)).toBe(false);
@@ -82,7 +83,7 @@ test("a failed poll still costs the interval, so a bad endpoint is not hammered"
 test("a failed poll keeps the last good reading rather than blanking the header", () => {
   const db = openMemory();
   const good = JSON.stringify(toRateLimit(RESPONSE));
-  db.run("INSERT INTO usage_snapshot (runtime, json, at) VALUES ('claude', ?, 1)", [good]);
+  fx.usageSnapshot.insert(db, { json: good, at: 1 });
   // The window did not move because we could not ask; showing nothing would read
   // as "no data" when what we have is data from four minutes ago.
   db.run(

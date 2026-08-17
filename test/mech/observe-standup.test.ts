@@ -4,6 +4,7 @@ import { maskValue } from "../../src/platform/observability/redaction.ts";
 import { requestContext } from "../../src/platform/observability/request-context.ts";
 import { publishStandupItem } from "../../src/application/executor.ts";
 import { REEMIT_MS } from "../../src/mech/ops/watchdog.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 const at = new Date("2026-08-17T09:00:00.000Z");
@@ -60,8 +61,8 @@ test("a line outside any request is still valid JSON with a level and a timestam
 
 test("the same standup line is not re-emitted within the re-emit window", () => {
   const ctx = testContext();
-  ctx.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  ctx.db.run("INSERT INTO grp (project_id, name, created_at) VALUES (1, 'g', 0)");
+  const p = fx.project.insert(ctx.db, { name: "p" });
+  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
   const item = { kind: "stalled", body: "两个需求卡在同一个文件上", grpIds: [1] };
 
   publishStandupItem(ctx, item);
@@ -75,8 +76,8 @@ test("the same standup line is not re-emitted within the re-emit window", () => 
 
 test("a standup line returns once the window has passed", () => {
   const ctx = testContext();
-  ctx.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  ctx.db.run("INSERT INTO grp (project_id, name, created_at) VALUES (1, 'g', 0)");
+  const p = fx.project.insert(ctx.db, { name: "p" });
+  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
   const item = { kind: "stalled", body: "还是那两个需求", grpIds: [1] };
 
   publishStandupItem(ctx, item);
@@ -89,8 +90,8 @@ test("a standup line returns once the window has passed", () => {
 
 test("a standup finding reaches the watchdog channel with the group it is about", () => {
   const ctx = testContext();
-  ctx.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  ctx.db.run("INSERT INTO grp (project_id, name, created_at) VALUES (1, 'g', 0)");
+  const p = fx.project.insert(ctx.db, { name: "p" });
+  fx.grp.insert(ctx.db, { project_id: p.id, name: "g" });
   const seen: Array<{ rule: string; severity: string; grpId: number | null }> = [];
   ctx.onFinding = (rule, severity, _body, grpId) => seen.push({ rule, severity, grpId });
 

@@ -6,6 +6,7 @@ import { start, type Started } from "../../src/composition/server.ts";
 import { SnapshotSchema } from "../../src/contracts/panel.ts";
 import { z } from "zod";
 import type { Json } from "../../src/contracts/json.ts";
+import * as fx from "../support/factories.ts";
 
 const PackageJson = z.object({ scripts: z.record(z.string(), z.string()) });
 
@@ -100,13 +101,13 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     // reaches the network fails on a train. What it stands in for — the repo list
     // and `POST /api/v1/projects` — is covered against an injected client in
     // test/ghlogin.test.ts. Everything after this line is still real HTTP.
-    const p = srv.ctx.db
-      .query<{ id: number }, []>(
-        `INSERT INTO project (name, repo_path, remote, config_json, base_branch, created_at)
-       VALUES ('demo', 'example/demo', 'https://github.com/example/demo.git', '{"gates":[]}', 'main', 0)
-       RETURNING id`,
-      )
-      .get()!;
+    const p = fx.project.insert(srv.ctx.db, {
+      name: "demo",
+      repo_path: "example/demo",
+      remote: "https://github.com/example/demo.git",
+      config_json: '{"gates":[]}',
+      base_branch: "main",
+    });
     expect(p.id).toBeGreaterThan(0);
 
     const idea = z

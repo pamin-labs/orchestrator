@@ -11,6 +11,7 @@ import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Scope } from "../../src/mech/sandbox/sandbox.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
+import * as fx from "../support/factories.ts";
 import { z } from "zod";
 
 /**
@@ -51,64 +52,35 @@ function harness(dataDir?: string) {
     config: { ...loadConfig(), ...(dataDir ? { dataDir } : {}) },
   };
 
-  db.run(
-    `INSERT INTO project (name, repo_path, remote, created_at) VALUES
-       ('doomed', 'acme/doomed', 'https://github.com/acme/doomed.git', 0),
-       ('keeper', 'acme/keeper', 'https://github.com/acme/keeper.git', 0)`,
-  );
+  for (const name of ["doomed", "keeper"]) {
+    fx.project.insert(db, {
+      name,
+      repo_path: `acme/${name}`,
+      remote: `https://github.com/acme/${name}.git`,
+    });
+  }
   return { db, ctx, app: makeApp(ctx), killed, rowsWhenKilled, asked, commands: base.commands };
 }
 
 /** A project with one of everything hanging off it. */
 function populate(db: DB, projectId: number, tag: string): number {
-  const grp = db
-    .query<{ id: number }, [number, string]>(
-      "INSERT INTO grp (project_id, name, status, created_at) VALUES (?, ?, 'RUNNING', 0) RETURNING id",
-    )
-    .get(projectId, `g-${tag}`)!.id;
-  db.run("UPDATE grp SET sandbox_id = ? WHERE id = ?", [`sb-${tag}`, grp]);
-  const slice = db
-    .query<{ id: number }, [number]>(
-      "INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (?, 1, 's', 'a', 0) RETURNING id",
-    )
-    .get(grp)!.id;
-  const agent = db
-    .query<{ id: number }, [number, number]>(
-      `INSERT INTO agent (project_id, grp_id, role, model, token, created_at)
-       VALUES (?1, ?2, 'engineer', 'sonnet', 'tok-' || ?2, 0) RETURNING id`,
-    )
-    .get(projectId, grp)!.id;
-  const channel = db
-    .query<{ id: number }, [number, number]>(
-      "INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (?, ?, 'group', 0) RETURNING id",
-    )
-    .get(projectId, grp)!.id;
-  db.run("INSERT INTO member (channel_id, agent_id) VALUES (?, ?)", [channel, agent]);
-  db.run("INSERT INTO cursor (channel_id, agent_id, last_seq) VALUES (?, ?, 0)", [channel, agent]);
-  db.run("INSERT INTO task (grp_id, slice_id, title, status, created_at) VALUES (?, ?, 't', 'pending', 0)", [
-    grp,
-    slice,
-  ]);
-  db.run("INSERT INTO note (project_id, grp_id, slice_id, kind, body, at) VALUES (?, ?, ?, 'fact', 'n', 0)", [
-    projectId,
-    grp,
-    slice,
-  ]);
-  db.run("INSERT INTO event (grp_id, channel_id, author, kind, body, at) VALUES (?, ?, 'boss', 'say', 'e', 0)", [
-    grp,
-    channel,
-  ]);
-  db.run("INSERT INTO escalation (grp_id, agent_id, question, chain_state, created_at) VALUES (?, ?, 'q', 'boss', 0)", [
-    grp,
-    agent,
-  ]);
-  db.run(
-    "INSERT INTO job (kind, state, grp_id, slice_id, agent_id, priority, enqueued_at) VALUES ('agent_turn', 'pending', ?, ?, ?, 5, 0)",
-    [grp, slice, agent],
-  );
-  db.run("INSERT INTO job (kind, state, grp_id, priority, enqueued_at) VALUES ('agent_turn', 'running', ?, 5, 0)", [
-    grp,
-  ]);
+  const grp = fx.runningGrp.insert(db, { project_id: projectId, name: `g-${tag}`, sandbox_id: `sb-${tag}` }).id;
+  const slice = fx.slice.insert(db, { grp_id: grp, seq: 1, title: "s", accept_spec: "a" }).id;
+  const agent = fx.agent.insert(db, {
+    project_id: projectId,
+    grp_id: grp,
+    model: "sonnet",
+    token: `tok-${grp}`,
+  }).id;
+  const channel = fx.channel.insert(db, { project_id: projectId, grp_id: grp }).id;
+  fx.member.insert(db, { channel_id: channel, agent_id: agent });
+  fx.cursor.insert(db, { channel_id: channel, agent_id: agent, last_seq: 0 });
+  fx.task.insert(db, { grp_id: grp, slice_id: slice, title: "t", status: "pending" });
+  fx.note.insert(db, { project_id: projectId, grp_id: grp, slice_id: slice });
+  fx.event.insert(db, { grp_id: grp, channel_id: channel, author: "boss", body: "e" });
+  fx.escalation.insert(db, { grp_id: grp, agent_id: agent, chain_state: "boss" });
+  fx.job.insert(db, { state: "pending", grp_id: grp, slice_id: slice, agent_id: agent, priority: 5 });
+  fx.job.insert(db, { state: "running", grp_id: grp, priority: 5 });
   return grp;
 }
 
@@ -204,10 +176,11 @@ test("attachments of the removed project go, and files it never named stay", asy
 
   const h = harness(dataDir);
   const grp = populate(h.db, 1, "doomed");
-  h.db.run("INSERT INTO note (project_id, grp_id, kind, body, at) VALUES (1, ?, 'fact', ?, 0)", [
-    grp,
-    `看这个\n\n附件（路径如下）：\n- [图1] ${mine} (image)\n- ${outside}`,
-  ]);
+  fx.note.insert(h.db, {
+    project_id: 1,
+    grp_id: grp,
+    body: `看这个\n\n附件（路径如下）：\n- [图1] ${mine} (image)\n- ${outside}`,
+  });
 
   await del(h.app, "/api/v1/projects/1");
 

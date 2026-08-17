@@ -18,6 +18,7 @@ import {
   type Ask,
 } from "../../src/mech/knowledge/pageindex.ts";
 import { costReport } from "../../src/mech/ops/cost.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { z } from "zod";
 
@@ -106,7 +107,7 @@ test("a navigator that finds nothing relevant says so instead of guessing", asyn
 
 test("the tree survives a round trip through the note it lives in", async () => {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  fx.project.insert(db, { name: "p" });
   const { tree } = await summarise(skeleton(FILES), dirRead(repo()), async () => "s");
   saveTree(db, 1, tree);
   saveTree(db, 1, tree);
@@ -116,11 +117,9 @@ test("the tree survives a round trip through the note it lives in", async () => 
 
 test("journals and retros are leaves in the same tree as the code", async () => {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO note (grp_id, kind, body, at) VALUES (1, 'retro', 'the flicker was the key, not the diffing', 0)",
-  );
+  fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: 1, name: "g1" });
+  fx.note.insert(db, { grp_id: g.id, kind: "retro", body: "the flicker was the key, not the diffing" });
 
   const notes = noteLeaves(db, 1);
   expect(notes.ids).toEqual(["notes/grp-1/retro/1"]);
@@ -145,7 +144,7 @@ test("what the index spends shows up in the cost report", async () => {
   // `indexer` row rather than to the Librarian, whose turns carry a full cached
   // prefix and a session — mixing the two makes "librarian took 4M" unusable.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  fx.project.insert(db, { name: "p" });
   const ctx = testContext({ db });
   const spec = { runtime: "codex", model: "gpt-5.6-luna" };
 
@@ -167,7 +166,7 @@ test("a call that reported no usage is not charged", () => {
   // Missing numbers must never fail the index, and a zero row would be a lie in
   // the report rather than an absence.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  fx.project.insert(db, { name: "p" });
   const ctx = testContext({ db });
   chargeIndex(
     ctx,

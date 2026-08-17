@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { query, rank, terms, DEFAULT_BUDGET, type Doc } from "../../src/mech/knowledge/ctx.ts";
+import * as fx from "../support/factories.ts";
 
 const doc = (id: number, kind: string, body: string, at = 0): Doc => ({
   id,
@@ -66,14 +67,19 @@ test("no query terms and no documents both return nothing rather than everything
 
 function seeded(): DB {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at) VALUES (1, 1, 'zh support', 'greet(\"x\",\"zh\") returns 你好 x', 'running', 0)",
-  );
-  const ins = db.prepare("INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, ?, 'zh', ?, ?)");
-  ins.run("decision", "lang 参数用 lang?: string + map 回退，不用字面量联合", 100);
-  ins.run("journal", "无关的日常记录", 200);
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  fx.slice.insert(db, {
+    grp_id: g.id,
+    seq: 1,
+    title: "zh support",
+    accept_spec: 'greet("x","zh") returns 你好 x',
+    status: "running",
+  });
+  const note = (kind: string, body: string, at: number) =>
+    fx.note.insert(db, { project_id: p.id, grp_id: g.id, kind, body, at });
+  note("decision", "lang 参数用 lang?: string + map 回退，不用字面量联合", 100);
+  note("journal", "无关的日常记录", 200);
   return db;
 }
 
@@ -93,10 +99,15 @@ test("a matching decision is retrieved and labelled", () => {
 
 test("the budget is a hard cap, not a suggestion", () => {
   const db = seeded();
-  const ins = db.prepare(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'journal', 'zh', ?, ?)",
-  );
-  for (let i = 0; i < 200; i++) ins.run(`middleware token check note ${i} ` + "x".repeat(500), i);
+  for (let i = 0; i < 200; i++) {
+    fx.note.insert(db, {
+      project_id: 1,
+      grp_id: 1,
+      kind: "journal",
+      body: `middleware token check note ${i} ` + "x".repeat(500),
+      at: i,
+    });
+  }
 
   const out = query({ db, grpId: 1, projectId: 1, question: "middleware token check" });
   // An unbounded answer costs more than the file the agent was about to read,
@@ -109,10 +120,15 @@ test("the budget is a hard cap, not a suggestion", () => {
 
 test("when the budget truncates, it says how many matches were dropped", () => {
   const db = seeded();
-  const ins = db.prepare(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (1, 1, 'journal', 'zh', ?, ?)",
-  );
-  for (let i = 0; i < 30; i++) ins.run(`middleware token note ${i} ` + "x".repeat(400), i);
+  for (let i = 0; i < 30; i++) {
+    fx.note.insert(db, {
+      project_id: 1,
+      grp_id: 1,
+      kind: "journal",
+      body: `middleware token note ${i} ` + "x".repeat(400),
+      at: i,
+    });
+  }
   const out = query({ db, grpId: 1, projectId: 1, question: "middleware token", budget: 2000 });
   // Silent truncation reads as "that is everything there is", which is worse than
   // a smaller answer that admits what it left out.
@@ -121,9 +137,14 @@ test("when the budget truncates, it says how many matches were dropped", () => {
 
 test("an export path is shown so the agent can go read the file itself", () => {
   const db = seeded();
-  db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, export_path, at) VALUES (1, 1, 'retro', 'zh', 'S1 返工一次，验收标准写模糊了', 'docs/journal/g1/003-retro.md', 300)",
-  );
+  fx.note.insert(db, {
+    project_id: 1,
+    grp_id: 1,
+    kind: "retro",
+    body: "S1 返工一次，验收标准写模糊了",
+    export_path: "docs/journal/g1/003-retro.md",
+    at: 300,
+  });
   const out = query({ db, grpId: 1, projectId: 1, question: "返工 验收标准" });
   expect(out).toContain("docs/journal/g1/003-retro.md");
 });
@@ -135,12 +156,12 @@ test("the index's own rows are not answers to a question", () => {
   // they scored ×1.0, and one hit handed the agent a whole serialised tree that
   // ate the entire character budget.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  const p = fx.project.insert(db, { name: "p" });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
   const tree = JSON.stringify({ "src/auth.ts": { summary: "auth auth auth token token" } });
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (1, 'pageindex', ?, 9)", [tree]);
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (1, 'map', 'src/\n  auth.ts — token', 9)");
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (1, 'decision', 'token 校验放在中间件', 8)");
+  fx.note.insert(db, { project_id: p.id, kind: "pageindex", body: tree, at: 9 });
+  fx.note.insert(db, { project_id: p.id, kind: "map", body: "src/\n  auth.ts — token", at: 9 });
+  fx.note.insert(db, { project_id: p.id, kind: "decision", body: "token 校验放在中间件", at: 8 });
 
   const out = query({ db, grpId: 1, projectId: 1, question: "token", budget: 4000 });
   expect(out).toContain("token 校验放在中间件");

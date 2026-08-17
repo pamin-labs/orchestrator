@@ -25,6 +25,7 @@ import {
   type SkillRef,
 } from "../../src/mech/skills.ts";
 import { openMemory, rewriteSkillPaths, type DB } from "../../src/platform/persistence/database.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -159,13 +160,12 @@ test("old messages stop pointing at a machine the agent cannot see", () => {
   // The stored bodies are re-injected into later turns, so a path that resolved
   // on the host is an instruction to read a file that is not there.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'fact', 'zh', ?, 0)", [
-    "按 .claude/skills/impeccable/SKILL.md 来做，再看 .agents/skills/ponytail/SKILL.md",
-  ]);
-  db.run("INSERT INTO event (author, kind, body, at) VALUES ('boss', 'boss_say', ?, 0)", [
-    "用 .claude/skills/tdd/SKILL.md",
-  ]);
+  const p = fx.project.insert(db, { name: "p" });
+  fx.note.insert(db, {
+    project_id: p.id,
+    body: "按 .claude/skills/impeccable/SKILL.md 来做，再看 .agents/skills/ponytail/SKILL.md",
+  });
+  fx.event.insert(db, { author: "boss", kind: "boss_say", body: "用 .claude/skills/tdd/SKILL.md" });
   rewriteSkillPaths(db);
   expect(db.query<{ body: string }, []>("SELECT body FROM note").get()!.body).toBe(
     "按 /impeccable 来做，再看 /ponytail",

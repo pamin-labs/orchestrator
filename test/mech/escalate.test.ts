@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { raise } from "../../src/mech/flow/escalate.ts";
+import * as fx from "../support/factories.ts";
 
 interface Row {
   grp_id: number | null;
@@ -21,11 +22,9 @@ const rows = (db: DB): Row[] =>
 
 function seeded(): DB {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (id, project_id, name, status, created_at) VALUES (1, 1, 'g1', 'RUNNING', 0)");
-  db.run("INSERT INTO grp (id, project_id, name, status, created_at) VALUES (2, 1, 'g2', 'RUNNING', 0)");
-  db.run("INSERT INTO grp (id, project_id, name, status, created_at) VALUES (7, 1, 'g7', 'RUNNING', 0)");
-  db.run("INSERT INTO agent (id, project_id, grp_id, role, model, created_at) VALUES (9, 1, 7, 'engineer', 'm', 0)");
+  const p = fx.project.insert(db, { name: "p" });
+  for (const id of [1, 2, 7]) fx.runningGrp.insert(db, { id, project_id: p.id, name: `g${id}` });
+  fx.agent.insert(db, { id: 9, project_id: p.id, grp_id: 7 });
   return db;
 }
 

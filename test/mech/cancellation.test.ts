@@ -9,6 +9,7 @@ import { makeGithub, type GithubFetcher } from "../../src/mech/git/github.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { abortJob } from "../../src/platform/process/running-turns.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
+import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 
 function blockedFetch(onStart: (signal: AbortSignal) => void): GithubFetcher {
@@ -30,10 +31,13 @@ function seededDb() {
   const db = openMemory();
   seedAuth(db);
   saveAuth(db, { runtime: "github", mode: "api_key", secret: "ghp_test" });
-  db.run(
-    "INSERT INTO project (name, repo_path, remote, base_branch, created_at) VALUES ('p', 'me/p', 'https://github.com/me/p.git', 'main', 0)",
-  );
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  const p = fx.project.insert(db, {
+    name: "p",
+    repo_path: "me/p",
+    remote: "https://github.com/me/p.git",
+    base_branch: "main",
+  });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
   return db;
 }
 

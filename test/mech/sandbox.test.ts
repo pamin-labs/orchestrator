@@ -20,6 +20,7 @@ import { join, relative } from "node:path";
 import { httpsRemote } from "../../src/mech/git/checkout.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -34,7 +35,7 @@ import { testContext } from "../support/test-context.ts";
 
 function ctx(config: Partial<NonNullable<Ctx["config"]>> = {}): Ctx {
   const db = open(":memory:");
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  fx.project.insert(db, { name: "p" });
   const ctx = testContext({ db });
   ctx.config = { ...ctx.config, ...config };
   return ctx;
@@ -225,7 +226,7 @@ test("the inventory survives the trip back out of the container", () => {
   // The container is the only thing that can see a repository's skills, so the
   // listing the settings page and `/name` need has to travel as text on stdout.
   const db = open(":memory:");
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'o/r', 0)");
+  fx.project.insert(db, { name: "p", repo_path: "o/r" });
   const head = Buffer.from("---\nname: tidy\ndescription: |\n  keeps it neat\n---\nbody").toString("base64");
   const out = `some git noise\n${SKILL_LINE} .agents/skills/tidy/SKILL.md ${head}\nmore noise\nyes\n`;
 
@@ -301,7 +302,7 @@ test("a machine's default image is what a new project runs on, and it is not the
   // that nobody is asked. It lived only in `config/default.yaml`, which is
   // committed, so anybody self-hosting lost their edit on the next pull.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'me/x', 0)");
+  fx.project.insert(db, { name: "p", repo_path: "me/x" });
   const cfg = loadConfig("config/does-not-exist.yaml");
   cfg.sandbox.image = "ghcr.io/pamin-labs/orch-agent:latest";
   const ctx = testContext({ db, config: cfg });

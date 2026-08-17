@@ -10,20 +10,16 @@ import {
 } from "../../src/platform/scheduling/scheduler.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { z } from "zod";
+import * as fx from "../support/factories.ts";
 
 const LeaseJobPayload = z.object({ lease_id: z.number() });
 
 function seed(db: DB, groups: number, status = "RUNNING"): number[] {
   seedAuth(db);
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
+  const p = fx.project.insert(db, { name: "p" });
   const ids: number[] = [];
   for (let i = 1; i <= groups; i++) {
-    const r = db
-      .query<{ id: number }, [string, string]>(
-        "INSERT INTO grp (project_id, name, status, created_at) VALUES (1, ?, ?, 0) RETURNING id",
-      )
-      .get(`g${i}`, status)!;
-    ids.push(r.id);
+    ids.push(fx.grp.insert(db, { project_id: p.id, name: `g${i}`, status }).id);
   }
   return ids;
 }
@@ -200,7 +196,7 @@ test("maxGroups caps how many groups run at once", async () => {
 test("leases use their own pool and do not consume group slots", async () => {
   const db = openMemory();
   const ids = seed(db, 3);
-  db.run("INSERT INTO resource (name, template) VALUES ('build', 'echo build')");
+  fx.resource.insert(db, { name: "build", template: "echo build" });
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 3, leaseSlots: 1 });
   for (const id of ids) s.enqueue("agent_turn", { grp_id: id });
@@ -219,14 +215,9 @@ test("leases use their own pool and do not consume group slots", async () => {
 test("a tagged resource draws from its own pool, so one browser cannot stall every gate", async () => {
   const db = openMemory();
   const ids = seed(db, 3);
-  db.run("INSERT INTO resource (name, template, tags_json) VALUES ('browser', 'echo b', '[\"browser\"]')");
-  db.run("INSERT INTO resource (name, template) VALUES ('typecheck', 'echo t')");
-  const mk = (resource: string, grp: number) =>
-    db
-      .query<{ id: number }, [string, number]>(
-        "INSERT INTO lease (resource, grp_id, enqueued_at) VALUES (?, ?, 0) RETURNING id",
-      )
-      .get(resource, grp)!.id;
+  fx.resource.insert(db, { name: "browser", template: "echo b", tags_json: '["browser"]' });
+  fx.resource.insert(db, { name: "typecheck", template: "echo t" });
+  const mk = (resource: string, grp: number) => fx.lease.insert(db, { resource, grp_id: grp }).id;
 
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 3, leaseSlots: { default: 2, browser: 1 } });
@@ -246,12 +237,8 @@ test("a tagged resource draws from its own pool, so one browser cannot stall eve
 test("legacy resource tags with the wrong JSON shape fall back to the default pool", async () => {
   const db = openMemory();
   const grp = idAt(seed(db, 1), 0);
-  db.run(`INSERT INTO resource (name, template, tags_json) VALUES ('build', 'echo build', '"repo"')`);
-  const lease = db
-    .query<{ id: number }, [number]>(
-      "INSERT INTO lease (resource, grp_id, enqueued_at) VALUES ('build', ?, 0) RETURNING id",
-    )
-    .get(grp)!;
+  fx.resource.insert(db, { name: "build", template: "echo build", tags_json: '"repo"' });
+  const lease = fx.lease.insert(db, { resource: "build", grp_id: grp });
   const ran: Job[] = [];
   const scheduler = new Scheduler(db, async (job) => void ran.push(job));
 
@@ -300,12 +287,14 @@ test("exhausted slice budget blocks dispatch before the group budget does", asyn
   const db = openMemory();
   const [g] = seed(db, 1);
   const g1 = g!;
-  const sl = db
-    .query<{ id: number }, []>(
-      `INSERT INTO slice (grp_id, seq, title, accept_spec, budget_tokens, spent_tokens, created_at)
-       VALUES (1, 1, 'S1', 'tests pass', 1000, 1000, 0) RETURNING id`,
-    )
-    .get()!;
+  const sl = fx.slice.insert(db, {
+    grp_id: 1,
+    seq: 1,
+    title: "S1",
+    accept_spec: "tests pass",
+    budget_tokens: 1000,
+    spent_tokens: 1000,
+  });
   const ran: Job[] = [];
   const s = new Scheduler(db, async (j) => void ran.push(j));
   s.enqueue("agent_turn", { grp_id: g1, slice_id: sl.id });
@@ -411,14 +400,7 @@ test("a standing agent's turn takes a slot like anyone else's", async () => {
 
 /** Two standing agents, no group between them. Returns their ids. */
 function standing(db: DB, ...roles: string[]): number[] {
-  return roles.map(
-    (role) =>
-      db
-        .query<{ id: number }, [string]>(
-          "INSERT INTO agent (project_id, role, model, state, created_at) VALUES (1, ?, 'm', 'idle', 0) RETURNING id",
-        )
-        .get(role)!.id,
-  );
+  return roles.map((role) => fx.agent.insert(db, { project_id: 1, role, state: "idle" }).id);
 }
 
 test("two standing agents run at once — they share nothing", async () => {
@@ -488,15 +470,11 @@ test("maxGroups 0 means nothing runs at all", async () => {
 test("a turn left running by a dead server is reclaimed, not left holding the slot", async () => {
   const db = openMemory();
   seed(db, 1);
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1, 1, 'qa', 'm', 'running', 0)",
-  );
+  fx.agent.insert(db, { project_id: 1, grp_id: 1, role: "qa", state: "running" });
   // Started just now, so what identifies the orphan is that nothing is reading
   // the turn, rather than the age check.
-  db.run("INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', ?, 0)", [
-    Date.now(),
-  ]);
-  db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('reconcile', 1, 'pending', 0)");
+  fx.job.insert(db, { grp_id: 1, state: "running", started_at: Date.now() });
+  fx.job.insert(db, { kind: "reconcile", grp_id: 1, state: "pending" });
 
   const { reclaimOrphans } = await import("../../src/platform/scheduling/scheduler.ts");
   // Nobody is holding this turn's stream: the previous server exited mid-turn.
@@ -516,10 +494,7 @@ test("a turn left running by a dead server is reclaimed, not left holding the sl
 test("a live process is left alone", () => {
   const db = openMemory();
   seed(db, 1);
-  db.run(
-    "INSERT INTO job (kind, grp_id, state, pid, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 4242, ?, 0)",
-    [Date.now()],
-  );
+  fx.job.insert(db, { grp_id: 1, state: "running", pid: 4242, started_at: Date.now() });
   expect(reclaimOrphans(db, { alive: () => true })).toHaveLength(0);
   expect(db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("running");
 });
@@ -527,10 +502,8 @@ test("a live process is left alone", () => {
 test("a job with no pid, or one running impossibly long, is also an orphan", () => {
   const db = openMemory();
   seed(db, 1);
-  db.run("INSERT INTO job (kind, grp_id, state, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 0, 0)");
-  db.run(
-    "INSERT INTO job (kind, grp_id, state, pid, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 1, 0, 0)",
-  );
+  fx.job.insert(db, { grp_id: 1, state: "running", started_at: 0 });
+  fx.job.insert(db, { grp_id: 1, state: "running", pid: 1, started_at: 0 });
   // Never recorded a pid, and still "running" long past any turn's limit.
   expect(reclaimOrphans(db, { alive: () => true, maxAgeMs: 1000, now: () => 10_000_000 })).toHaveLength(2);
 });
@@ -538,16 +511,17 @@ test("a job with no pid, or one running impossibly long, is also an orphan", () 
 test("a restart resumes the turn it interrupted, but only once", async () => {
   const db = openMemory();
   seed(db, 1);
-  db.run(
-    `INSERT INTO slice (grp_id, seq, title, accept_spec, status, created_at)
-     VALUES (1, 1, 't', 'a', 'running', 0)`,
-  );
-  db.run(
-    `INSERT INTO job (kind, grp_id, slice_id, payload_json, state, pid, started_at, enqueued_at)
-     VALUES ('agent_turn', 1, 1, '{"role":"engineer"}', 'running', 89992, 0, 0)`,
-  );
+  fx.slice.insert(db, { grp_id: 1, seq: 1, title: "t", accept_spec: "a", status: "running" });
+  fx.job.insert(db, {
+    grp_id: 1,
+    slice_id: 1,
+    payload_json: '{"role":"engineer"}',
+    state: "running",
+    pid: 89992,
+    started_at: 0,
+  });
   // The timer re-adds these itself; resuming them would just double them up.
-  db.run("INSERT INTO job (kind, state, pid, started_at, enqueued_at) VALUES ('watchdog', 'running', 89992, 0, 0)");
+  fx.job.insert(db, { kind: "watchdog", state: "running", pid: 89992, started_at: 0 });
 
   const { reclaimOrphans, resumeReclaimed } = await import("../../src/platform/scheduling/scheduler.ts");
   const sched = new Scheduler(db, async () => {});
@@ -583,21 +557,27 @@ test("two gates of one repo do not run at once, but two repos still do", async (
   const db = openMemory();
   const { release, exec } = gate();
   const sched = new Scheduler(db, exec);
-  db.run("INSERT INTO project (id, name, repo_path, created_at) VALUES (1,'a','/a',0), (2,'b','/b',0)");
-  db.run(
-    `INSERT INTO grp (id, project_id, name, status, created_at)
-     VALUES (1,1,'g1','RUNNING',0), (2,1,'g1b','RUNNING',0), (3,2,'g2','RUNNING',0)`,
-  );
-  db.run(
-    `INSERT INTO resource (name, template, concurrency, tags_json) VALUES
-       ('build','x',1,'["repo"]'), ('typecheck','y',1,'["repo"]')`,
-  );
+  for (const [id, name] of [
+    [1, "a"],
+    [2, "b"],
+  ] as const) {
+    fx.project.insert(db, { id, name, repo_path: `/${name}` });
+  }
+  for (const [id, project_id, name] of [
+    [1, 1, "g1"],
+    [2, 1, "g1b"],
+    [3, 2, "g2"],
+  ] as const) {
+    fx.runningGrp.insert(db, { id, project_id, name });
+  }
+  for (const [name, template] of [
+    ["build", "x"],
+    ["typecheck", "y"],
+  ] as const) {
+    fx.resource.insert(db, { name, template, concurrency: 1, tags_json: '["repo"]' });
+  }
   const lease = (id: number, resource: string, grp: number) => {
-    db.run("INSERT INTO lease (id, resource, grp_id, state, enqueued_at) VALUES (?,?,?,'queued',0)", [
-      id,
-      resource,
-      grp,
-    ]);
+    fx.lease.insert(db, { id, resource, grp_id: grp, state: "queued" });
     sched.enqueue("lease", { grp_id: grp, payload: { lease_id: id } });
   };
   // Concurrency is per resource, so build and typecheck ran side by side — and

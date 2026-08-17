@@ -7,6 +7,7 @@ import type { Ctx } from "../../src/mech/ctx.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
+import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { testContext } from "../support/test-context.ts";
 import { z } from "zod";
@@ -426,7 +427,7 @@ test("a repository already added names its project, so the row is a route and no
           },
     ),
   );
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('工地', 'acme/site', 0)");
+  fx.project.insert(db, { name: "工地", repo_path: "acme/site" });
 
   const b = GithubReposResponse.parse(await (await get(app, "/api/v1/github/repos")).json());
   const by = Object.fromEntries(b.repos.map((repo) => [repo.fullName, repo.taken]));
@@ -444,12 +445,13 @@ test("the migration turns a host path into owner/name, and says nothing when the
   // databases of every age — a value already in its destination shape is left
   // alone rather than mangled a second time.
   const db = openMemory();
-  db.run(
-    `INSERT INTO project (name, repo_path, remote, created_at) VALUES
-       ('ssh', '/Users/jason/code/orchestrator', 'git@github.com:JasonXuDeveloper/orchestrator.git', 0),
-       ('https', '/tmp/site', 'https://github.com/acme/site.git', 0),
-       ('already', 'acme/done', 'https://github.com/acme/done.git', 0)`,
-  );
+  for (const [name, repo_path, remote] of [
+    ["ssh", "/Users/jason/code/orchestrator", "git@github.com:JasonXuDeveloper/orchestrator.git"],
+    ["https", "/tmp/site", "https://github.com/acme/site.git"],
+    ["already", "acme/done", "https://github.com/acme/done.git"],
+  ] as const) {
+    fx.project.insert(db, { name, repo_path, remote });
+  }
   slugRepoPaths(db);
   const paths = db
     .query<{ name: string; repo_path: string }, []>("SELECT name, repo_path FROM project ORDER BY name")
@@ -474,13 +476,14 @@ test("a project that cannot be converted keeps its data and produces exactly one
   // invented from a directory name would point the fleet at somebody else's
   // repository, and dropping the row deletes a project the boss chose.
   const db = openMemory();
-  db.run(
-    `INSERT INTO project (name, repo_path, remote, created_at) VALUES
-       ('none', '/Users/jason/code/a', NULL, 0),
-       ('empty', '/Users/jason/code/b', '', 0),
-       ('gitlab', '/Users/jason/code/c', 'git@gitlab.com:me/c.git', 0),
-       ('fine', '/Users/jason/code/d', 'https://github.com/acme/d.git', 0)`,
-  );
+  for (const [name, repo_path, remote] of [
+    ["none", "/Users/jason/code/a", null],
+    ["empty", "/Users/jason/code/b", ""],
+    ["gitlab", "/Users/jason/code/c", "git@gitlab.com:me/c.git"],
+    ["fine", "/Users/jason/code/d", "https://github.com/acme/d.git"],
+  ] as const) {
+    fx.project.insert(db, { name, repo_path, remote });
+  }
   slugRepoPaths(db);
 
   // Converted what converts; left the rest exactly as they were.

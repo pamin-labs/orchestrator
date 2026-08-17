@@ -14,6 +14,7 @@ import {
   recoverIdempotency,
 } from "../../src/http/idempotency/store.ts";
 import { jsonBody, queryParams } from "../../src/http/validate.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 const jsonHeaders = { "content-type": "application/json" };
@@ -145,12 +146,11 @@ test("unknown outcomes require an explicit reconciled result and never execute a
   try {
     const body = JSON.stringify({ value: 1 });
     const hash = new Bun.CryptoHasher("sha256").update(body).digest("hex");
-    db.run(
-      `INSERT INTO idempotency_request
-         (caller, route, key, payload_hash, state, created_at, updated_at)
-       VALUES ('boss', '/write', 'stale', ?, 'in_progress', 0, ?)`,
-      [hash, Date.now() - 11 * 60 * 1_000],
-    );
+    fx.idempotencyRequest.insert(db, {
+      key: "stale",
+      payload_hash: hash,
+      updated_at: Date.now() - 11 * 60 * 1_000,
+    });
 
     const staleApp = new Hono();
     let staleWrites = 0;
@@ -270,18 +270,15 @@ test("the panel resolves an agent caller while the agent can only inspect its ow
   const ctx = testContext();
   const token = "tok-idempotency-agent";
   const caller = idempotencyCaller(new Request("http://x", { headers: { "x-orch-token": token } }));
-  ctx.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  ctx.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g', 'RUNNING', 0)");
-  ctx.db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'engineer', 'm', ?, 0)",
-    [token],
-  );
-  ctx.db.run(
-    `INSERT INTO idempotency_request
-       (caller, route, key, payload_hash, state, created_at, updated_at)
-     VALUES (?, '/orch/v1/status', 'agent-unknown', 'hash', 'failed', 0, 0)`,
-    [caller],
-  );
+  const p = fx.project.insert(ctx.db, { name: "p" });
+  const g = fx.runningGrp.insert(ctx.db, { project_id: p.id, name: "g" });
+  fx.agent.insert(ctx.db, { project_id: p.id, grp_id: g.id, token });
+  fx.idempotencyRequest.insert(ctx.db, {
+    caller,
+    route: "/orch/v1/status",
+    key: "agent-unknown",
+    state: "failed",
+  });
   const app = makeApp(ctx);
   const identity = new URLSearchParams({ caller, route: "/orch/v1/status", key: "agent-unknown" });
   const ownIdentity = new URLSearchParams({ route: "/orch/v1/status", key: "agent-unknown" });
@@ -397,7 +394,7 @@ test("migration 041 upgrades N-1 atomically and is replay-safe", () => {
   const db = openMemory();
   try {
     const migration = migrationMentioning("idempotency_request");
-    db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('kept', 'acme/kept', 0)");
+    fx.project.insert(db, { name: "kept", repo_path: "acme/kept" });
     db.run("DELETE FROM migration WHERE n = ?", [migration]);
     db.run("DROP INDEX idempotency_request_age");
     db.run("DROP TABLE idempotency_request");

@@ -3,6 +3,7 @@ import { openMemory } from "../../src/platform/persistence/database.ts";
 import { makeGithub } from "../../src/mech/git/github.ts";
 import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { listBranches } from "../../src/mech/git/checkout.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 /**
@@ -16,7 +17,7 @@ import { testContext } from "../support/test-context.ts";
 
 function project(repoPath: string, answer: () => Response) {
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', ?, 0)", [repoPath]);
+  fx.project.insert(db, { name: "p", repo_path: repoPath });
   saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
   const asked: string[] = [];
   const ctx = testContext({
@@ -70,7 +71,7 @@ test("with no GitHub client at all the picker is empty rather than throwing", as
   // `ctx.gh` is optional, and the settings page renders before anything is
   // connected. An exception here takes the whole panel down.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', 'me/x', 0)");
+  fx.project.insert(db, { name: "p", repo_path: "me/x" });
 
   expect(await listBranches(testContext({ db }), 1)).toEqual([]);
 });

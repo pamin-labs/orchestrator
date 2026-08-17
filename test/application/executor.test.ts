@@ -12,6 +12,7 @@ import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../
 import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { abortJob } from "../../src/platform/process/running-turns.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 
 function ok(over: Partial<TurnResult> = {}): TurnResult {
@@ -56,8 +57,8 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   };
   exec = makeExecutor(deps);
 
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
+  const p = fx.project.insert(db, { name: "p" });
+  fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
   return { db, ctx, sched, deps, specs, sandbox, app: makeApp(ctx) };
 }
 
@@ -90,9 +91,7 @@ test("a turn hires the role's agent on first use, with a token", async () => {
 
 test("the slice's difficulty picks the model — the boss's cost knob", async () => {
   const { db, sched, specs } = harness(async () => ok());
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at) VALUES (1, 1, 'S1', 'x', 'trivial', 0)",
-  );
+  fx.slice.insert(db, { grp_id: 1, seq: 1, title: "S1", difficulty: "trivial" });
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 1, payload: { role: "engineer" } });
   await sched.drain();
   // The tier, not the family: the Engineer runs on codex, so the knob moves it
@@ -103,9 +102,7 @@ test("the slice's difficulty picks the model — the boss's cost knob", async ()
   const table = cfg.difficultyModel[eng.runtime ?? "claude"]!;
   expect(specs[0]!.stable.model).toBe(table.trivial!);
 
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at) VALUES (1, 2, 'S2', 'x', 'hard', 0)",
-  );
+  fx.slice.insert(db, { grp_id: 1, seq: 2, title: "S2", difficulty: "hard" });
   db.run("DELETE FROM agent");
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 2, payload: { role: "engineer" } });
   await sched.drain();
@@ -115,9 +112,7 @@ test("the slice's difficulty picks the model — the boss's cost knob", async ()
 
 test("the dispatcher ignores difficulty and always takes the strong tier", async () => {
   const { db, sched, specs } = harness(async () => ok());
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at) VALUES (1, 1, 'S1', 'x', 'trivial', 0)",
-  );
+  fx.slice.insert(db, { grp_id: 1, seq: 1, title: "S1", difficulty: "trivial" });
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 1, payload: { role: "dispatcher" } });
   await sched.drain();
   expect(specs[0]!.stable.model).toContain("opus");
@@ -146,7 +141,7 @@ test("a changed stable half rotates the session rather than paying full price", 
 
   // A new lesson changes the stable half. Mutating it in place would invalidate
   // the cached prefix on every remaining turn of the session.
-  db.run("INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'lesson', 'zh', 'always run gate first', 0)");
+  fx.note.insert(db, { project_id: 1, kind: "lesson", body: "always run gate first" });
   sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   await sched.drain();
 
@@ -160,9 +155,7 @@ test("a changed stable half rotates the session rather than paying full price", 
 
 test("the delta is the prompt and never leaks into the stable half", async () => {
   const { db, sched, specs } = harness(async () => ok());
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, created_at) VALUES (1, 1, 'move token check', 'mw tests pass', 'normal', 0)",
-  );
+  fx.slice.insert(db, { grp_id: 1, seq: 1, title: "move token check", accept_spec: "mw tests pass" });
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 1, payload: { role: "engineer" } });
   await sched.drain();
 
@@ -172,7 +165,7 @@ test("the delta is the prompt and never leaks into the stable half", async () =>
 
 test("cost lands on the agent, the slice and the group", async () => {
   const { db, sched } = harness(async () => ok());
-  db.run("INSERT INTO slice (grp_id, seq, title, accept_spec, created_at) VALUES (1, 1, 'S1', 'x', 0)");
+  fx.slice.insert(db, { grp_id: 1, seq: 1, title: "S1" });
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 1, payload: { role: "engineer" } });
   await sched.drain();
 
@@ -233,7 +226,7 @@ test("a failed turn is recorded as failed, not silently swallowed", async () => 
 
 test("unread channel messages are injected once, then the cursor advances", async () => {
   const { db, ctx, sched, specs } = harness(async () => ok());
-  db.run("INSERT INTO channel (project_id, grp_id, kind, created_at) VALUES (1, 1, 'group', 0)");
+  fx.channel.insert(db, { project_id: 1, grp_id: 1 });
   ctx.bus.emit({
     channelId: 1,
     grpId: 1,
@@ -257,16 +250,8 @@ test("a lease runs its template and durably wakes the waiting agent", async () =
   const { db, ctx, sched, sandbox } = harness(async () => ok());
   const agent = hire(harnessDeps(ctx), 1, "engineer");
   db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [agent.id]);
-  db.run(
-    `INSERT INTO resource (name, template, arg_schema_json, error_regex)
-     VALUES ('echo', 'echo hello-lease', '{}', '^error')`,
-  );
-  const lease = db
-    .query<{ id: number }, []>(
-      `INSERT INTO lease (resource, grp_id, agent_id, args_json, enqueued_at)
-       VALUES ('echo', 1, ${agent.id}, '{}', 0) RETURNING id`,
-    )
-    .get()!;
+  fx.resource.insert(db, { name: "echo", template: "echo hello-lease", error_regex: "^error" });
+  const lease = fx.lease.insert(db, { resource: "echo", grp_id: 1, agent_id: agent.id });
 
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   await sched.drain();
@@ -285,13 +270,8 @@ test("finishLease rollback never fans a result whose wake job was not committed"
   const { db, ctx, sched } = harness(async () => ok());
   const agent = hire(harnessDeps(ctx), 1, "engineer");
   db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [agent.id]);
-  db.run("INSERT INTO resource (name, template, arg_schema_json) VALUES ('echo', 'echo ok', '{}')");
-  const lease = db
-    .query<{ id: number }, []>(
-      `INSERT INTO lease (resource, grp_id, agent_id, args_json, enqueued_at)
-       VALUES ('echo', 1, ${agent.id}, '{}', 0) RETURNING id`,
-    )
-    .get()!;
+  fx.resource.insert(db, { name: "echo", template: "echo ok" });
+  const lease = fx.lease.insert(db, { resource: "echo", grp_id: 1, agent_id: agent.id });
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   db.run(
     `CREATE TRIGGER fail_lease_wake BEFORE INSERT ON job WHEN NEW.kind = 'agent_turn'
@@ -316,17 +296,18 @@ test("a lease whose args stopped validating fails instead of running", async () 
   const { db, ctx, sched } = harness(async () => ok());
   const agent = hire(harnessDeps(ctx), 1, "engineer");
   db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [agent.id]);
-  db.run(
-    `INSERT INTO resource (name, template, arg_schema_json)
-     VALUES ('build', 'make {target}', '{"target":{"type":"enum","values":["debug"]}}')`,
-  );
+  fx.resource.insert(db, {
+    name: "build",
+    template: "make {target}",
+    arg_schema_json: '{"target":{"type":"enum","values":["debug"]}}',
+  });
   // Queued when the enum still allowed it; the template changed underneath.
-  const lease = db
-    .query<{ id: number }, []>(
-      `INSERT INTO lease (resource, grp_id, agent_id, args_json, enqueued_at)
-       VALUES ('build', 1, ${agent.id}, '{"target":"release"}', 0) RETURNING id`,
-    )
-    .get()!;
+  const lease = fx.lease.insert(db, {
+    resource: "build",
+    grp_id: 1,
+    agent_id: agent.id,
+    args_json: '{"target":"release"}',
+  });
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   await sched.drain();
 
@@ -338,16 +319,17 @@ test("persisted lease arguments must be a flat object of supported scalars", asy
   const { db, ctx, sched } = harness(async () => ok());
   const agent = hire(harnessDeps(ctx), 1, "engineer");
   db.run("UPDATE agent SET state = 'waiting_lease' WHERE id = ?", [agent.id]);
-  db.run(
-    `INSERT INTO resource (name, template, arg_schema_json)
-     VALUES ('build', 'make {target}', '{"target":{"type":"enum","values":["release"]}}')`,
-  );
-  const lease = db
-    .query<{ id: number }, []>(
-      `INSERT INTO lease (resource, grp_id, agent_id, args_json, enqueued_at)
-       VALUES ('build', 1, ${agent.id}, '{"target":{"nested":"release"}}', 0) RETURNING id`,
-    )
-    .get()!;
+  fx.resource.insert(db, {
+    name: "build",
+    template: "make {target}",
+    arg_schema_json: '{"target":{"type":"enum","values":["release"]}}',
+  });
+  const lease = fx.lease.insert(db, {
+    resource: "build",
+    grp_id: 1,
+    agent_id: agent.id,
+    args_json: '{"target":{"nested":"release"}}',
+  });
   sched.enqueue("lease", { grp_id: 1, payload: { lease_id: lease.id } });
   await sched.drain();
 
@@ -359,12 +341,8 @@ test("persisted lease arguments must be a flat object of supported scalars", asy
 
 test("cancelling a running lease aborts its sandbox command", async () => {
   const { db, ctx, sched, sandbox } = harness(async () => ok());
-  db.run("INSERT INTO resource (name, template, arg_schema_json) VALUES ('slow', 'sleep 30', '{}')");
-  const lease = db
-    .query<{ id: number }, []>(
-      "INSERT INTO lease (resource, grp_id, args_json, enqueued_at) VALUES ('slow', 1, '{}', 0) RETURNING id",
-    )
-    .get()!;
+  fx.resource.insert(db, { name: "slow", template: "sleep 30" });
+  const lease = fx.lease.insert(db, { resource: "slow", grp_id: 1 });
   const started = Promise.withResolvers<void>();
   let resourceSignal: AbortSignal | undefined;
   ctx.sandbox = {
@@ -488,9 +466,14 @@ test("a mailed message travels with the job, not via the channel cursor", async 
 
 test("QA is handed the slice id and the exact command to file its verdict", async () => {
   const { db, sched, specs } = harness(async () => ok());
-  db.run(
-    "INSERT INTO slice (grp_id, seq, title, accept_spec, difficulty, status, created_at) VALUES (1, 1, 'S1', 'greet zh works', 'trivial', 'qa', 0)",
-  );
+  fx.slice.insert(db, {
+    grp_id: 1,
+    seq: 1,
+    title: "S1",
+    accept_spec: "greet zh works",
+    difficulty: "trivial",
+    status: "qa",
+  });
   sched.enqueue("agent_turn", { grp_id: 1, slice_id: 1, payload: { role: "qa", review: 1 } });
   await sched.drain();
 
@@ -552,7 +535,7 @@ test("the keys that are rendered do not trigger the warning", async () => {
 
 test("the Architect is told which requirement belongs to which group", async () => {
   const { db, sched, specs } = harness(async () => ok());
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g2', 'PLANNING', 0)");
+  fx.grp.insert(db, { project_id: 1, name: "g2", status: "PLANNING" });
   sched.enqueue("agent_turn", {
     grp_id: 1,
     payload: {

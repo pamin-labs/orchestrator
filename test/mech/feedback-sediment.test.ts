@@ -6,6 +6,7 @@ import { bossFact } from "../../src/api/panel/attach.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { AgentTurnPayloadSchema, Scheduler, type Job } from "../../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 
@@ -26,10 +27,8 @@ function harness() {
     waiters: new Map(),
     config: { ...loadConfig(), feedbackSedimentThreshold: 3 },
   };
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  for (const n of ["g1", "g2", "g3"]) {
-    db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, ?, 'RUNNING', 0)", [n]);
-  }
+  const p = fx.project.insert(db, { name: "p" });
+  for (const name of ["g1", "g2", "g3"]) fx.runningGrp.insert(db, { project_id: p.id, name });
   return { db, ctx, ran };
 }
 
@@ -69,8 +68,8 @@ test("the third time it becomes a project rule, and does not fire again on the s
 
 test("a project's complaints are its own", () => {
   const h = harness();
-  h.db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('other', '/tmp/o', 0)");
-  h.db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (2, 'x', 'RUNNING', 0)");
+  const other = fx.project.insert(h.db, { name: "other", repo_path: "/tmp/o" });
+  fx.runningGrp.insert(h.db, { project_id: other.id, name: "x" });
   bossFact(h.ctx, 1, "测试写得太浅，边界用例没有");
   bossFact(h.ctx, 2, "测试太浅了，边界都没覆盖");
   bossFact(h.ctx, 4, "测试太浅，边界没覆盖"); // other project

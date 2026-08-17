@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { credentialChanged } from "../../src/api/panel/authflow.ts";
 import { release } from "../../src/mech/flow/intercept.ts";
+import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 
 /** Every `.ts` under `src/`. */
@@ -53,13 +54,9 @@ test("signing in restarts what the credential stopped, and nothing else", async 
   // nothing would clear afterwards, because watchdog rule 6 only scans rows it
   // still finds PAUSED.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p','/tmp/p',0)");
+  fx.project.insert(db, { name: "p" });
   const mk = (name: string, reason: string) =>
-    db.run(
-      `INSERT INTO grp (project_id, name, status, paused_at, pause_reason, created_at)
-       VALUES (1, ?, 'PAUSED', 1, ?, 0)`,
-      [name, reason],
-    );
+    fx.grp.insert(db, { project_id: 1, name, status: "PAUSED", paused_at: 1, pause_reason: reason });
   mk("boss-paused", "boss");
   mk("burnt", "budget");
   mk("throttled", "ratelimit");
@@ -85,7 +82,7 @@ test("signing in restarts what the credential stopped, and nothing else", async 
 test("signing in answers only the literal runtime's escalation", async () => {
   const db = openMemory();
   for (const question of ["a_b 的凭据不好使了", "axb 的凭据不好使了"]) {
-    db.run("INSERT INTO escalation (question, chain_state, created_at) VALUES (?, 'boss', 0)", [question]);
+    fx.escalation.insert(db, { question, chain_state: "boss" });
   }
   const ctx = testContext({ db });
 
@@ -127,13 +124,17 @@ test("a resume clears what the stop was about, and leaves PARKED alone", () => {
   // two cleared neither — so a group could come back RUNNING still carrying the
   // reason it stopped, and watchdog rule 6 only scans rows it still finds PAUSED.
   const db = openMemory();
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p','/tmp/p',0)");
-  db.run(
-    `INSERT INTO grp (project_id, name, status, paused_at, pause_reason, rl_resets_at, blocked_on, created_at)
-     VALUES (1, 'g', 'PAUSED', 1, 'ratelimit', 999, NULL, 0)`,
-  );
+  fx.project.insert(db, { name: "p" });
+  fx.grp.insert(db, {
+    project_id: 1,
+    name: "g",
+    status: "PAUSED",
+    paused_at: 1,
+    pause_reason: "ratelimit",
+    rl_resets_at: 999,
+  });
   // `blocked_on` is a foreign key, so the group it waits on has to exist.
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'other', 'RUNNING', 0)");
+  fx.runningGrp.insert(db, { project_id: 1, name: "other" });
   db.run("UPDATE grp SET blocked_on = 2 WHERE id = 1");
   const ctx = testContext({ db });
 

@@ -6,6 +6,7 @@ import { saveAuth } from "../../src/mech/sandbox/auth.ts";
 import { makeGithub, type GithubFetcher } from "../../src/mech/git/github.ts";
 import { repoHeld, resetRepoHolds, REPO_HOLD_MS } from "../../src/mech/git/repository.ts";
 import type { Json } from "../../src/contracts/json.ts";
+import * as fx from "../support/factories.ts";
 
 /**
  * The fifth admission gate: GitHub stopped accepting us.
@@ -20,20 +21,13 @@ function seed(): { db: DB; sched: Scheduler; ran: Job[] } {
   const db = openMemory();
   saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: "sk-ant-oat01-x" });
   saveAuth(db, { runtime: "github", mode: "api_key", secret: "ghp_one" });
-  db.run(
-    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('p', '/tmp/p', 'git@github.com:me/x.git', 0)",
-  );
+  fx.project.insert(db, { name: "p", remote: "git@github.com:me/x.git" });
   // A second project, on a different repository, whose credential is fine.
-  db.run(
-    "INSERT INTO project (name, repo_path, remote, created_at) VALUES ('q', '/tmp/q', 'git@github.com:me/y.git', 0)",
-  );
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (2, 'g2', 'RUNNING', 0)");
+  fx.project.insert(db, { name: "q", repo_path: "/tmp/q", remote: "git@github.com:me/y.git" });
+  fx.runningGrp.insert(db, { project_id: 1, name: "g1" });
+  fx.runningGrp.insert(db, { project_id: 2, name: "g2" });
   for (const g of [1, 2]) {
-    db.run(
-      "INSERT INTO agent (project_id, grp_id, role, model, runtime, token, created_at) VALUES (?, ?, 'engineer', 'm', 'claude', ?, 0)",
-      [g, g, `tok-${g}`],
-    );
+    fx.agent.insert(db, { project_id: g, grp_id: g, runtime: "claude", token: `tok-${g}` });
   }
   const ran: Job[] = [];
   const sched = new Scheduler(db, async (j) => void ran.push(j), {

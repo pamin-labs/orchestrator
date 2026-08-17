@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { interrupt } from "../../src/mech/flow/intercept.ts";
+import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { testContext } from "../support/test-context.ts";
@@ -20,16 +21,10 @@ function harness(checkpoint: string) {
   seedAuth(db);
   const sandbox = fakeSandbox();
   const ctx = testContext({ db, sandbox });
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'running', 0)",
-  );
-  db.run(
-    `INSERT INTO job (kind, grp_id, agent_id, state, checkpoint_sha, pid, enqueued_at, started_at)
-     VALUES ('agent_turn', 1, 1, 'running', ?, NULL, 0, 0)`,
-    [checkpoint],
-  );
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  const a = fx.agent.insert(db, { project_id: p.id, grp_id: g.id, model: "sonnet", state: "running" });
+  fx.job.insert(db, { grp_id: g.id, agent_id: a.id, state: "running", checkpoint_sha: checkpoint, started_at: 0 });
   return { db, ctx, sandbox };
 }
 
@@ -55,16 +50,10 @@ test("a rollback that fails says so instead of reporting a clean tree", async ()
   // only interrupted leaves a dirty tree the boss believes is clean.
   const sandbox = fakeSandbox((cmd) => (cmd.includes("'reset'") ? { code: 1, out: "fatal: bad object" } : {}));
   const ctx = testContext({ db, sandbox });
-  db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('p', '/tmp/p', 0)");
-  db.run("INSERT INTO grp (project_id, name, status, created_at) VALUES (1, 'g1', 'RUNNING', 0)");
-  db.run(
-    "INSERT INTO agent (project_id, grp_id, role, model, state, created_at) VALUES (1, 1, 'engineer', 'sonnet', 'running', 0)",
-  );
-  db.run(
-    `INSERT INTO job (kind, grp_id, agent_id, state, checkpoint_sha, pid, enqueued_at, started_at)
-     VALUES ('agent_turn', 1, 1, 'running', ?, NULL, 0, 0)`,
-    [SHA],
-  );
+  const p = fx.project.insert(db, { name: "p" });
+  const g = fx.runningGrp.insert(db, { project_id: p.id, name: "g1" });
+  const a = fx.agent.insert(db, { project_id: p.id, grp_id: g.id, model: "sonnet", state: "running" });
+  fx.job.insert(db, { grp_id: g.id, agent_id: a.id, state: "running", checkpoint_sha: SHA, started_at: 0 });
 
   const out = await interrupt(ctx, 1, "rollback");
   expect(out.rolledBackTo).toBeUndefined();
