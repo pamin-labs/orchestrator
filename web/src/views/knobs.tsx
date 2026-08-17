@@ -24,7 +24,7 @@ import { Switch } from "../ui/switch";
 import { Help, Tip } from "../ui/tooltip";
 import { z } from "zod";
 import type { Json } from "../../../src/contracts/json";
-import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../src/config-schema";
+import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../src/contracts/config";
 import type { InferResponseType } from "hono/client";
 
 /**

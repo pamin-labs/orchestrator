@@ -15,7 +15,7 @@ import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
 import { sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
-import type { SliceState } from "../../states.ts";
+import type { SliceState } from "../../contracts/states.ts";
 import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from "../../contracts/fields.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { bossFact } from "../panel/attach.ts";

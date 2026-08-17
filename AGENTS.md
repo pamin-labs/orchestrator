@@ -31,7 +31,7 @@ file. Record an architectural exception or changed decision in a new ADR.
 8. `orch lease` accepts only registered resources plus schema-validated data.
    It returns after enqueue; a single durable follow-up turn carries the result.
    Agents never poll or resubmit a queued lease.
-9. `src/states.ts` is the lifecycle vocabulary; every stored state has a driver,
+9. `src/contracts/states.ts` is the lifecycle vocabulary; every stored state has a driver,
    terminal declaration, or idempotent repair in the invariant table.
 10. Expected failures use stable error codes. External I/O has timeout,
     cancellation, contextual error propagation, and an explicit failure path.

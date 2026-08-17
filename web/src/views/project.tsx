@@ -9,7 +9,7 @@ import { cn } from "../lib/utils";
 import { api, readApi } from "../lib/api";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
-import { StoredProjectConfigSchema } from "../../../src/config-schema.ts";
+import { StoredProjectConfigSchema } from "../../../src/contracts/config.ts";
 
 const projectConfigPost = api.project[":id"].config.$post;
 export type ProjectPatch = NonNullable<Parameters<typeof projectConfigPost>[0]>["json"];

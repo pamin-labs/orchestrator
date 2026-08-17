@@ -26,7 +26,7 @@ import {
   type UtilState,
   ACTIVE_JOB_STATES,
   stateParam,
-} from "../../states.ts";
+} from "../../contracts/states.ts";
 
 /**
  * One row per state, and the row has to say who pushes it.
@@ -40,7 +40,7 @@ import {
  *
  * Writing them as a table derived from the state machine turns "we found another
  * one" into "the table has an empty cell". `test/invariants.test.ts` asserts every
- * state in `states.ts` has a row, so adding a state fails the build until someone
+ * state in `contracts/states.ts` has a row, so adding a state fails the build until someone
  * fills it in. That is the whole point of this file; the repairs themselves are
  * two lines each.
  *

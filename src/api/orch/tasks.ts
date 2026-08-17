@@ -14,7 +14,7 @@ import {
 } from "../../mech/flow/reconcile.ts";
 import { recordGate } from "../../mech/gate.ts";
 import { validateSelfReview } from "../../mech/util/validate.ts";
-import type { SliceState, TaskState } from "../../states.ts";
+import type { SliceState, TaskState } from "../../contracts/states.ts";
 
 /**
  * The task card and the two verbs that move it.

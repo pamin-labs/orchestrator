@@ -4,7 +4,7 @@ import { GroupRef } from "../../contracts/fields.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
 import { mayAct, resolveGroup } from "./access.ts";
-import type { GrpState } from "../../states.ts";
+import type { GrpState } from "../../contracts/states.ts";
 
 /**
  * The Scribe's PR message: title and body, checked before anything is pushed.

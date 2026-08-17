@@ -1,6 +1,6 @@
 import { defu } from "defu";
 import { z } from "zod";
-import { ConfigSchema } from "./config-schema.ts";
+import { ConfigSchema } from "./contracts/config.ts";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";

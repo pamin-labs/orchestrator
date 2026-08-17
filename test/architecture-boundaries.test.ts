@@ -20,6 +20,7 @@ test("Fallow adds only undiscovered entry points and classifies directories by p
 
   expect(config.entry).toEqual(["scripts/browse.ts", "scripts/make-github-app.ts"]);
   expect(zone("public-rpc")?.patterns).toEqual(["src/http/routes/**"]);
+  expect(zone("shared-contracts")?.patterns).toEqual(["src/contracts/**"]);
   expect(zone("http-edge")?.patterns).toEqual(["src/http/**"]);
   expect(zone("runtime-adapters")?.patterns).toEqual(["src/runtime/**"]);
   expect(zone("mechanisms")?.patterns).toEqual(["src/ctx.ts", "src/mech/**"]);

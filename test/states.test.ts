@@ -19,7 +19,7 @@ import {
   SLICE_STATES,
   stateParam,
   UTIL_STATES,
-} from "../src/states.ts";
+} from "../src/contracts/states.ts";
 
 const unique = (values: readonly string[]): boolean => new Set(values).size === values.length;
 const inside = <T>(subset: readonly T[], all: readonly T[]): boolean => {
@@ -78,7 +78,7 @@ test("shared state policies are not restated by consumers", () => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith(".ts") && path !== join("src", "states.ts")) files.push(path);
+      else if (entry.name.endsWith(".ts") && path !== join("src", "contracts", "states.ts")) files.push(path);
     }
   };
   walk("src");

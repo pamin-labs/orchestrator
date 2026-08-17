@@ -7,7 +7,7 @@ import {
   type GrpState,
   type LeaseState,
   type SliceState,
-} from "../../states.ts";
+} from "../../contracts/states.ts";
 
 /**
  * Retrieval for `orch ctx query`.

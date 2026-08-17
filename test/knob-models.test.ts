@@ -5,7 +5,7 @@ import { Knobs } from "../web/src/views/knobs";
 import { allModels, cheapest, modelsByRuntime } from "../web/src/lib/models";
 import { COUNT_UNITS, countOf, splitCount } from "../web/src/lib/units";
 import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../src/config.ts";
-import { ConfigSchema } from "../src/config-schema.ts";
+import { ConfigSchema } from "../src/contracts/config.ts";
 
 /**
  * The model pickers offer what this config already names.

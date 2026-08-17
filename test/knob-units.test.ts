@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { settablePaths, defaultFor } from "../src/settings.ts";
-import { isSettingPath } from "../src/config-schema.ts";
+import { isSettingPath } from "../src/contracts/config.ts";
 import {
   KNOB_SHAPE,
   fmtCount,

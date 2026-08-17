@@ -38,7 +38,7 @@ import {
   ESCALATION_TERMINAL_STATES,
   stateParam,
   type GrpState,
-} from "../../states.ts";
+} from "../../contracts/states.ts";
 
 /**
  * Six rules, all deterministic, all cheap. No LLM is consulted.

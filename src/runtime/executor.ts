@@ -35,7 +35,7 @@ import { jsonOr } from "../contracts/json.ts";
 import { clip, errText } from "../mech/util/text.ts";
 import { assemble, buildStable, type Delta, needsRotation } from "../prompt/assemble.ts";
 import { AgentTurnPayloadSchema, type Executor, type Job } from "../scheduler.ts";
-import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../states.ts";
+import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../contracts/states.ts";
 import type { TurnResult } from "./claude.ts";
 import { clampEffort, type Provider, providerFor } from "./providers.ts";
 import { track, untrack } from "./running.ts";

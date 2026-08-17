@@ -38,7 +38,7 @@ format-valid decoys.
   is backpressure, not an invitation to spawn unbounded work.
 - Mailbox replay retains the original idempotency key. Repeated delivery returns
   the stored result rather than repeating the effect.
-- `src/states.ts` is the lifecycle vocabulary. The invariant table declares who
+- `src/contracts/states.ts` is the lifecycle vocabulary. The invariant table declares who
   drives each non-terminal state and tests exercise the repairs, not only their
   registration.
 

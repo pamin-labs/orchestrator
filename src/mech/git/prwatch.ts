@@ -12,7 +12,7 @@ import { parseRepo } from "../../contracts/repository.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
-import type { GrpState } from "../../states.ts";
+import type { GrpState } from "../../contracts/states.ts";
 
 const GateResults = z.record(z.string(), z.string());
 const PullNumber = z.object({ number: z.number().int().positive() });

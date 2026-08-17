@@ -11,7 +11,7 @@ import {
   type EscalationOpenState,
   type EscalationState,
   type GrpState,
-} from "../../states.ts";
+} from "../../contracts/states.ts";
 
 /**
  * The answer chain: PM -> Architect -> CoS -> the boss.

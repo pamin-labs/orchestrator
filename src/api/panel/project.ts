@@ -1,7 +1,7 @@
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { SandboxOverrideSchema, StoredProjectConfigSchema } from "../../config-schema.ts";
+import { SandboxOverrideSchema, StoredProjectConfigSchema } from "../../contracts/config.ts";
 import { JsonObject, JsonValue, jsonOr } from "../../contracts/json.ts";
 import { runInstall } from "../../mech/flow/start.ts";
 import { GateName } from "../../mech/gate.ts";
@@ -15,7 +15,7 @@ import { projectConfig } from "../../mech/util/rows.ts";
 import { errText } from "../../mech/util/text.ts";
 import type { Result } from "../../mech/util/validate.ts";
 import { abortJob } from "../../runtime/running.ts";
-import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
+import { ACTIVE_JOB_STATES, stateParam } from "../../contracts/states.ts";
 import { IdParams } from "../../contracts/fields.ts";
 import type { AgentHandler, Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";

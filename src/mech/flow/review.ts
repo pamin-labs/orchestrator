@@ -10,7 +10,7 @@ import { pushBranch, sandboxGit } from "../git/checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
 import { hold } from "./intercept.ts";
 import { raise } from "./escalate.ts";
-import type { SliceState } from "../../states.ts";
+import type { SliceState } from "../../contracts/states.ts";
 import { z } from "zod";
 
 /**

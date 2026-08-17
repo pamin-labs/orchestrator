@@ -1,5 +1,5 @@
 import type { DB } from "../../db.ts";
-import { StoredProjectConfigSchema, type StoredProjectConfig } from "../../config-schema.ts";
+import { StoredProjectConfigSchema, type StoredProjectConfig } from "../../contracts/config.ts";
 import { jsonOr } from "../../contracts/json.ts";
 
 /**

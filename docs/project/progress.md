@@ -25,7 +25,7 @@ M7 — executable engineering governance and versioned protocol.
 - Group sandboxes, file mailbox transport, and credential vault boundaries are
   implemented and covered by live tests when OpenSandbox is available.
 - GitHub is the project source; host Git is not part of runtime operation.
-- `src/states.ts` and executable invariants cover stored lifecycle states.
+- `src/contracts/states.ts` and executable invariants cover stored lifecycle states.
 - Existing full quality chain is green at the baseline SHA.
 - Governance work has landed on `refactor/api-split-and-settings`; the former
   `codex/engineering-governance` worktree is historical and is not the active

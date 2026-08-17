@@ -1,4 +1,4 @@
-import { keysUnder, schemaAt } from "../../config-schema.ts";
+import { keysUnder, schemaAt } from "../../contracts/config.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { DEFAULTS_FOR_CHECK, type Config } from "../../config.ts";
 import type { RoleDef } from "../../config.ts";

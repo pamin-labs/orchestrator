@@ -21,7 +21,7 @@ import { head, position } from "../../mech/flow/mergequeue.ts";
 import type { Handler } from "../../http/handler.ts";
 import { json } from "../../http/respond.ts";
 import type { Ctx } from "../../ctx.ts";
-import { ESCALATION_TERMINAL_STATES, stateParam } from "../../states.ts";
+import { ESCALATION_TERMINAL_STATES, stateParam } from "../../contracts/states.ts";
 import { z } from "zod";
 
 /**

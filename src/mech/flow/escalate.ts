@@ -1,5 +1,5 @@
 import type { DB } from "../../db.ts";
-import { ESCALATION_TERMINAL_STATES, stateParam, type EscalationOpenState } from "../../states.ts";
+import { ESCALATION_TERMINAL_STATES, stateParam, type EscalationOpenState } from "../../contracts/states.ts";
 
 /** A state a newly filed question may enter. The other two are terminal. */
 type FilingState = EscalationOpenState;

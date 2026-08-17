@@ -16,7 +16,7 @@ import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
 import { say } from "../../lang.ts";
 import type { Ctx } from "../../ctx.ts";
-import type { GrpState } from "../../states.ts";
+import type { GrpState } from "../../contracts/states.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 
 /** What the boss first asked for, for this group. */

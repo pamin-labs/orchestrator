@@ -2,12 +2,12 @@ import { z } from "zod";
 import type { DB } from "./db.ts";
 import { jsonOr } from "./contracts/json.ts";
 import { isRunning, track, untrack } from "./runtime/running.ts";
-import { type GrpState, isDispatchableGrpState, type JobState } from "./states.ts";
+import { type GrpState, isDispatchableGrpState, type JobState } from "./contracts/states.ts";
 import { requestContext } from "./http/request-context.ts";
 import { observeJob, startChildTrace } from "./observability.ts";
 import { errText } from "./mech/util/text.ts";
 
-export type { JobState } from "./states.ts";
+export type { JobState } from "./contracts/states.ts";
 
 const JobKindSchema = z.enum(["agent_turn", "lease", "watchdog", "digest", "notify", "gate", "reconcile"]);
 export type JobKind = z.infer<typeof JobKindSchema>;

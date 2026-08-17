@@ -10,7 +10,7 @@ import {
   type SettingPath,
   type SettingValue,
   type SettingWrite,
-} from "./config-schema.ts";
+} from "./contracts/config.ts";
 import { JsonObject, JsonValue, type Json } from "./contracts/json.ts";
 
 /**

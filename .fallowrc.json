@@ -24,7 +24,7 @@
     "zones": [
       {
         "name": "shared-contracts",
-        "patterns": ["src/contracts/**", "src/config-schema.ts", "src/states.ts"]
+        "patterns": ["src/contracts/**"]
       },
       { "name": "web", "patterns": ["web/**"] },
       { "name": "public-rpc", "patterns": ["src/http/routes/**"] },

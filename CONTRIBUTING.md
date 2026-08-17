@@ -46,7 +46,7 @@ coherent change as a contract.
 - Do not add a second enforcement owner beside the tools in the
   [enforcement matrix](docs/standards/enforcement-matrix.md). A replacement
   needs an ADR and migration evidence.
-- New stored states update `src/states.ts`, the invariant table, and an
+- New stored states update `src/contracts/states.ts`, the invariant table, and an
   executable repair/driver test.
 - New UI behavior uses shadcn/Radix primitives when one exists.
 - Product logic belongs here; commodity fixtures, mocks, retries, parsers,

@@ -2,7 +2,7 @@ import { currentFor, defaultFor, overrides, putSetting, settablePaths } from "..
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
-import { ConfigSchema, SettingWriteSchema, type SettingPath, type SettingValue } from "../../config-schema.ts";
+import { ConfigSchema, SettingWriteSchema, type SettingPath, type SettingValue } from "../../contracts/config.ts";
 import type { Config } from "../../config.ts";
 import type { Json } from "../../contracts/json.ts";
 

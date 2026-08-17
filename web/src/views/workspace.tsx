@@ -6,7 +6,7 @@ import { api, groupAction, readApi, type PanelFrame } from "../lib/api";
 import { clock, cn } from "../lib/utils";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
-import { GRP_STATES } from "../../../src/states.ts";
+import { GRP_STATES } from "../../../src/contracts/states.ts";
 
 /**
  * What this group's container is, and what it is saying right now.

@@ -13,7 +13,7 @@ import {
   modelFor,
   withAbsoluteDataDir,
 } from "../src/config.ts";
-import { ConfigSchema } from "../src/config-schema.ts";
+import { ConfigSchema } from "../src/contracts/config.ts";
 import { routeSource } from "./route-source.ts";
 
 test("the shipped roles all parse and declare what the runtime needs", () => {

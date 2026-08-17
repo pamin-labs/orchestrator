@@ -14,7 +14,7 @@ import { baseBranch, baseRefFor, sandboxGit, treeFiles } from "../../mech/git/ch
 import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
 import { shq } from "../../mech/util/shq.ts";
 import { validateDraftCard } from "../../mech/util/validate.ts";
-import type { GrpState } from "../../states.ts";
+import type { GrpState } from "../../contracts/states.ts";
 import { GroupRef } from "../../contracts/fields.ts";
 import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";

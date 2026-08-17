@@ -1,6 +1,6 @@
 import type { DB } from "../../db.ts";
 import { projectConfig } from "../util/rows.ts";
-import { GRP_STATES } from "../../states.ts";
+import { GRP_STATES } from "../../contracts/states.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { z } from "zod";
 

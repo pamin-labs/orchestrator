@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../../ctx.ts";
 import { ROOT } from "../../config.ts";
-import type { SandboxSpec } from "../../config-schema.ts";
+import type { SandboxSpec } from "../../contracts/config.ts";
 import type { ResourceExec } from "../lease.ts";
 import { requestContext } from "../../http/request-context.ts";
 import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";

@@ -23,7 +23,7 @@ import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";
-import type { GrpState } from "../../states.ts";
+import type { GrpState } from "../../contracts/states.ts";
 
 /**
  * What this machine can and cannot do, and the sidecar that decides it.
