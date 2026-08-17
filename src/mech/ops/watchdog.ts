@@ -32,6 +32,7 @@ import { HEAD_CHARS } from "../knowledge/pageindex.ts";
 import { resumeReclaimed, type Job } from "../../platform/scheduling/scheduler.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 import { probe } from "../sandbox/net.ts";
+import { activeTracer } from "../../platform/observability/traces.ts";
 import { z } from "zod";
 import {
   ACTIVE_JOB_STATES,
@@ -433,9 +434,26 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
  * dedups it for `REEMIT_MS`: a rule that throws every tick reports twice an hour
  * rather than 120 times.
  */
+/**
+ * One rule, its own span, and its failure kept off the other twenty-three.
+ *
+ * The span is here rather than at each rule because this is the one place every
+ * rule passes through — twenty-four call sites otherwise, and the twenty-fifth
+ * would not have one. It is also the answer to a question the panel could not
+ * previously answer: the tick reported a p50 of 50s as a single number, and
+ * "which rule" was a guess. A rule that reaches into a container or asks GitHub
+ * costs a round trip; one that reads a table costs nothing; and only the spans
+ * say which is which.
+ */
 async function step(rule: string, findings: Finding[], run: () => Promise<void>): Promise<void> {
   try {
-    await run();
+    await activeTracer().startActiveSpan(`watchdog.${rule}`, async (span) => {
+      try {
+        await run();
+      } finally {
+        span.end();
+      }
+    });
   } catch (e) {
     findings.push({
       rule: `rule_broke:${rule}`,

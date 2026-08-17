@@ -150,3 +150,23 @@ test("an HTTP request is scoped by the id its own route names", async () => {
   expect(health.slice_id).toBeNull();
   expect(health.grp_id).toBeNull();
 });
+
+test("a watchdog tick is stored rule by rule, not as one opaque number", async () => {
+  // The tick reported a p50 of 50s against a 30s interval and the panel could
+  // not say which of twenty-four rules spent it. A rule that reaches into a
+  // container or asks GitHub costs a round trip; one that reads a table costs
+  // nothing; and a single span for the whole tick cannot tell them apart.
+  const { db, sched, provider } = harness(ok);
+
+  sched.enqueue("watchdog", {});
+  await sched.drain();
+  await provider.forceFlush();
+
+  const spans = soleTrace(db);
+  const rules = spans.map((s) => s.name).filter((n) => n.startsWith("watchdog."));
+  expect(rules.length).toBeGreaterThan(1);
+
+  // Every rule hangs off the job, so "which rule" is a query rather than a guess.
+  const job = byName(spans, "job watchdog");
+  for (const rule of rules) expect(byName(spans, rule).parentSpanId).toBe(job.spanId);
+});

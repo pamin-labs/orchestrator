@@ -42,6 +42,7 @@ import { hold } from "../mech/flow/intercept.ts";
 import { raise } from "../mech/flow/escalate.ts";
 import { restoreWorkspace } from "../mech/flow/start.ts";
 import { closeTelemetry, runtimeStatus, type RuntimeStatus } from "../platform/observability/metrics.ts";
+import { ACTIVE_JOB_STATES, stateParam } from "../contracts/states.ts";
 import { configureTracing } from "../platform/observability/otel.ts";
 import { trimSpans } from "../platform/observability/span-store.ts";
 import { configureStructuredLogging } from "../platform/observability/logging.ts";
@@ -172,11 +173,21 @@ export interface HeartbeatDeps {
  * process and waiting thirty seconds per branch.
  */
 export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }: HeartbeatDeps): void {
-  // The watchdog is an ordinary job. One pending is enough: a second would only
+  // The watchdog is an ordinary job. One in flight is enough: a second would only
   // re-examine the same groups, and the queue is not where it should pile up.
+  //
+  // `pending` **or** `running`. Counting only pending was wrong the moment a tick
+  // took longer than the interval that drives it, which telemetry measured at a
+  // p50 of 50s against a 30s tick: at t=30 the first is running rather than
+  // pending, so a second was enqueued, and the queue never emptied again. Two
+  // watchdogs at once is worse than a slow one — the rules keep module state
+  // (the server argv last seen, the sweep clock, which projects were warned)
+  // that a second run would race.
   const queued = db
-    .query<{ c: number }, []>("SELECT count(*) AS c FROM job WHERE kind = 'watchdog' AND state = 'pending'")
-    .get()!.c;
+    .query<{ c: number }, [string]>(
+      "SELECT count(*) AS c FROM job WHERE kind = 'watchdog' AND state IN (SELECT value FROM json_each(?))",
+    )
+    .get(stateParam(ACTIVE_JOB_STATES))!.c;
   if (queued === 0) sched.enqueue("watchdog", {});
   sched.tick();
 
