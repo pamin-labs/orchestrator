@@ -57,6 +57,13 @@ export interface WatchdogDeps {
   pollUsage?: typeof pollUsage;
   /** Whether this machine can reach the providers. Injected for the same reason. */
   probe?: typeof probe;
+  /**
+   * Is the sandbox server up. The only subprocess on the tick, and the most
+   * expensive thing in it: `ps -Ao` measured at 30.6ms a call, which a CPU
+   * profile of sixty ticks attributed 92% of all samples to. Injected for the
+   * same reason as the two above.
+   */
+  runningServer?: typeof runningServer;
 }
 
 export interface Finding {
@@ -1134,7 +1141,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // - a hard cap. On reaching it this stops and escalates, because N failed
   //   restarts is evidence that restarting is not the answer.
   await step("19", findings, async () => {
-    const server = runningServer();
+    const server = (deps.runningServer ?? runningServer)();
     if (server?.argv.length) {
       seenServerArgv = server.argv;
       serverRestarts = 0;

@@ -78,6 +78,10 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     now: () => 1_000_000,
     pollUsage: async () => {},
     probe: async () => ({ online: true, changed: false }),
+    // `ps -Ao` on every tick, 30ms a call, and nothing here asserts on the
+    // server rules. Measured: 92% of a sixty-tick CPU profile, and this file
+    // ticks the watchdog forty-eight times.
+    runningServer: () => null,
   };
   return { db, ctx, sched, cfg, deps };
 }
