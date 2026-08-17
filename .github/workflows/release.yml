@@ -133,6 +133,7 @@ jobs:
             cp dist/orch-cli.ts "dist/$root/src/orch/cli.ts"
             cp package.json README.md LICENSE "dist/$root/"
             test "$(stat -c %s "dist/$root/$exe")" -le $((150 * 1024 * 1024)) || { echo "::error::$target binary exceeds 150 MiB"; exit 1; }
+            # shellcheck disable=SC2016 # `${process.env.ROOT}` is a JavaScript template literal read by `bun -e`, not a shell expansion. The single quotes are what keep the shell out of it, which is the point: the value reaches the script through the environment, so it is never a word the shell has to parse.
             TARGET="$target" BUN_TARGET="$bun_target" ROOT="$root" bun -e 'await Bun.write(`dist/${process.env.ROOT}/release-manifest.json`, JSON.stringify({version:process.env.RELEASE_VERSION,source_sha:process.env.SOURCE_SHA,target:process.env.TARGET,bun_target:process.env.BUN_TARGET},null,2)+"\n")'
             case "$target" in windows-*) (cd dist && zip -qr "orch-server-$target.zip" "$root") ;; *) tar -C dist -czf "dist/orch-server-$target.tar.gz" "$root" ;; esac
             rm -rf "dist/$root"
@@ -161,6 +162,7 @@ jobs:
             for path in "${required[@]}"; do test -e "$root/$path" || { echo "::error::$target archive is missing $path"; exit 1; }; done
             test -d "$root/roles" || { echo "::error::$target archive is missing roles"; exit 1; }
             test "$(bun "$root/src/orch/cli.ts" --version)" = "$RELEASE_VERSION"
+            # shellcheck disable=SC2016 # Same as above: a JavaScript template literal inside `bun -e`, with the path arriving through `ROOT` in the environment.
             ROOT="$root" bun -e 'const p=await Bun.file(`${process.env.ROOT}/package.json`).json();if(p.version!==process.env.RELEASE_VERSION)process.exit(1)'
             TARGET="$target" BUN_TARGET="$bun_target" MANIFEST="$root/release-manifest.json" bun -e 'const m=await Bun.file(process.env.MANIFEST).json();if(m.version!==process.env.RELEASE_VERSION||m.source_sha!==process.env.SOURCE_SHA||m.target!==process.env.TARGET||m.bun_target!==process.env.BUN_TARGET)process.exit(1)'
           done
@@ -477,6 +479,7 @@ jobs:
           set -euo pipefail
           (
             cd dist
+            # shellcheck disable=SC2094 # The pipeline does not read the file it writes: `! -name SHA256SUMS` is exactly the guard SC2094 is looking for, and it is why the checksum file can be regenerated in place without listing itself.
             find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 \
               | sort -z \
               | xargs -0 sha256sum > SHA256SUMS
