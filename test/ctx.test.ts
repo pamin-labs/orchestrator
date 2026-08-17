@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { query, rank, terms, DEFAULT_BUDGET, type Doc } from "../src/mech/knowledge/ctx.ts";
 
 const doc = (id: number, kind: string, body: string, at = 0): Doc => ({

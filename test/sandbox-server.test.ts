@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { allowedHostPaths, coveredBy, restartServer } from "../src/mech/sandbox/sandbox.ts";
 import { preflight } from "../src/mech/ops/preflight.ts";
 import { serverAction, serverBackoffMs, SERVER_RESTART_CAP } from "../src/mech/ops/watchdog.ts";

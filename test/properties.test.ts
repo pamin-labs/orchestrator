@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Hono } from "hono";
 import fc from "fast-check";
 import { loadConfig, contextWindowFor, MAX_CONTEXT, MIN_CONTEXT } from "../src/platform/config/load.ts";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { outsideOwns } from "../src/mech/flow/ownership.ts";
 import { reconcile } from "../src/mech/flow/reconcile.ts";
 import { normalise } from "../src/mech/sandbox/mailbox.ts";

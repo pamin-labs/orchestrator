@@ -2,7 +2,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks";
 import { consola, type ConsolaReporter } from "consola";
 import { requestContext } from "./platform/observability/request-context.ts";
 import { scrub } from "./platform/observability/redaction.ts";
-import type { DB } from "./db.ts";
+import type { DB } from "./platform/persistence/database.ts";
 
 export interface RuntimeStatus {
   accepting: boolean;

@@ -1,4 +1,4 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { parseRepo } from "../../contracts/repository.ts";
 
 const holds = new Map<string, number>();

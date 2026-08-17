@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { migrate, migrationMentioning, openMemory } from "../src/db.ts";
+import { migrate, migrationMentioning, openMemory } from "../src/platform/persistence/database.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import {
   applyOverrides,
@@ -9,7 +9,7 @@ import {
   refuse,
   settablePaths,
 } from "../src/platform/config/settings.ts";
-import { Bus } from "../src/bus.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";

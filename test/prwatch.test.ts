@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { Bus } from "../src/bus.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import {
   checkPrMessage,
   commitMessage,

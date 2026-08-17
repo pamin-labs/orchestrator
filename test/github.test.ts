@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
 import type { Json } from "../src/contracts/json.ts";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { classify, makeGithub, type GithubFetcher } from "../src/mech/git/github.ts";
 import { parseRepo } from "../src/contracts/repository.ts";

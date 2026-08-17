@@ -1,5 +1,5 @@
 import { errText } from "../../platform/process/text.ts";
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { putSetting } from "../../platform/config/settings.ts";
 import { hasRegistry, PUBLISHED_REPO } from "./sandbox.ts";

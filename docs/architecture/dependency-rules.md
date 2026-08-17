@@ -33,9 +33,9 @@ Fallow cycle or zone rules in Oxlint.
     type-only edges. A new back-edge fails `test/architecture-boundaries.test.ts`.
 
 `src/platform/**` is directory-owned by the platform zone. Configuration,
-observability, and process primitives belong there without another file-specific
-Fallow pattern; the remaining root platform leaves retain explicit ownership
-until they move.
+persistence, observability, and process primitives belong there without another
+file-specific Fallow pattern; the remaining root platform leaves retain
+explicit ownership until they move.
 
 Run a touched-area guard before editing and the repository audit after:
 

@@ -1,4 +1,4 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { z } from "zod";
 import { say } from "../../lang.ts";
 import { loadAuth } from "../sandbox/auth.ts";

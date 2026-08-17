@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { Bus } from "../src/bus.ts";
-import { openMemory } from "../src/db.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { forgetSecrets, scrub } from "../src/platform/observability/redaction.ts";
 

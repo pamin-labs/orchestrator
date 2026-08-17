@@ -1,4 +1,4 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { probeHosts } from "./auth.ts";
 
 /**

@@ -33,14 +33,7 @@
       { "name": "build-info", "patterns": ["src/platform/process/version.ts"] },
       {
         "name": "platform",
-        "patterns": [
-          "src/platform/**",
-          "src/bus.ts",
-          "src/db.ts",
-          "src/lang.ts",
-          "src/observability.ts",
-          "src/scheduler.ts"
-        ]
+        "patterns": ["src/platform/**", "src/lang.ts", "src/observability.ts", "src/scheduler.ts"]
       },
       { "name": "http-edge", "patterns": ["src/http/**"] },
       { "name": "api", "patterns": ["src/api/**"] },

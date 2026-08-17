@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import {
   canStart,
   CLAIMING,
@@ -211,10 +211,10 @@ test("after-the-fact ownership catches a write outside the boundary", () => {
     "src/auth/mw.ts", // owned, deep
     "docs/auth.md", // owned, exact
     "web/dist/app.js", // build output: the gate writes it for every group
-    "src/db.ts", // NOT owned — a sibling one level in
+    "src/platform/persistence/database.ts", // NOT owned — outside the claimed tree
     "package.json", // NOT owned — shared, and being shared is not permission
   ];
-  expect(outsideOwns(changed, owns)).toEqual(["src/db.ts", "package.json"]);
+  expect(outsideOwns(changed, owns)).toEqual(["src/platform/persistence/database.ts", "package.json"]);
 
   // `src/*` is one level, `src/**` is any depth.
   expect(outsideOwns(["src/a/b.ts"], ["src/*"])).toEqual(["src/a/b.ts"]);

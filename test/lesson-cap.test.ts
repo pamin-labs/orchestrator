@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { Bus } from "../src/bus.ts";
-import { openMemory } from "../src/db.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { evictOldestLessons, LESSON_CAP, lessonsFor } from "../src/mech/knowledge/lessons.ts";

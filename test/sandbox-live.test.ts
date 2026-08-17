@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { makeApp } from "../src/api.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { createCheckout, keepBranch, sandboxGit, utilGit } from "../src/mech/git/checkout.ts";

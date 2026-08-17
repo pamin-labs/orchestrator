@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { summarise, skeleton } from "../src/mech/knowledge/pageindex.ts";
 import { hostClaudeHome, hostCodexHome } from "../src/mech/sandbox/auth.ts";
 import { REFRESH_HOME, seedHome } from "../src/mech/sandbox/chatgpt.ts";

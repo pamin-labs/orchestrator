@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { readOnlyGitPaths, saveAuth, vaultFor } from "../src/mech/sandbox/auth.ts";
 import { UTIL, isUtil, utilSandbox } from "../src/mech/sandbox/sandbox.ts";
 

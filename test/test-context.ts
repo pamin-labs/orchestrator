@@ -1,7 +1,7 @@
-import { Bus } from "../src/bus.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import type { Ctx } from "../src/ctx.ts";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { Scheduler } from "../src/scheduler.ts";
 
 export function testContext(overrides: Partial<Ctx> = {}): Ctx {

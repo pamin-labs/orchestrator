@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { Bus } from "../src/bus.ts";
-import { openMemory, type DB } from "../src/db.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { requestContext } from "../src/platform/observability/request-context.ts";
 import { AgentTurnPayloadSchema, reclaimOrphans, Scheduler, type Job } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";

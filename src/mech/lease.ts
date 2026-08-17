@@ -1,7 +1,7 @@
 import { resolve as resolvePath, relative, isAbsolute } from "node:path";
 import { z } from "zod";
 import type { Invalid, Result } from "./util/validate.ts";
-import type { DB } from "../db.ts";
+import type { DB } from "../platform/persistence/database.ts";
 import { jsonOr } from "../contracts/json.ts";
 
 /**

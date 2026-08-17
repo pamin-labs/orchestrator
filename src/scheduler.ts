@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { DB } from "./db.ts";
+import type { DB } from "./platform/persistence/database.ts";
 import { jsonOr } from "./contracts/json.ts";
 import { isRunning, track, untrack } from "./platform/process/running-turns.ts";
 import { type GrpState, isDispatchableGrpState, type JobState } from "./contracts/states.ts";

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Ctx } from "../src/ctx.ts";
-import { type DB, openMemory } from "../src/db.ts";
+import { type DB, openMemory } from "../src/platform/persistence/database.ts";
 import { holdForOffline } from "../src/mech/ops/watchdog.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { isOnline, PROBE_EVERY_MS, probe, resetNet } from "../src/mech/sandbox/net.ts";

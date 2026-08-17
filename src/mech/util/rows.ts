@@ -1,4 +1,4 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { StoredProjectConfigSchema, type StoredProjectConfig } from "../../contracts/config.ts";
 import { jsonOr } from "../../contracts/json.ts";
 

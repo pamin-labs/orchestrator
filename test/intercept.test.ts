@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { interrupt } from "../src/mech/flow/intercept.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";

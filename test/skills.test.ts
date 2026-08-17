@@ -21,7 +21,7 @@ import {
   stageSkills,
   type SkillRef,
 } from "../src/mech/skills.ts";
-import { openMemory, rewriteSkillPaths } from "../src/db.ts";
+import { openMemory, rewriteSkillPaths } from "../src/platform/persistence/database.ts";
 
 /**
  * The staging directory the sandbox mounts.

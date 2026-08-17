@@ -1,5 +1,5 @@
 import type { Ctx } from "../../ctx.ts";
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import type { Json } from "../../contracts/json.ts";
 import { z } from "zod";
 /**

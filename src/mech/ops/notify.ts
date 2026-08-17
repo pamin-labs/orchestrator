@@ -7,7 +7,7 @@
  */
 
 import { scrub } from "../../platform/observability/redaction.ts";
-import type { Bus } from "../../bus.ts";
+import type { Bus } from "../../platform/persistence/event-bus.ts";
 
 export type Tier = "immediate" | "batched";
 

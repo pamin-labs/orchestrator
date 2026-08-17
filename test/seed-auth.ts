@@ -1,4 +1,4 @@
-import type { DB } from "../src/db.ts";
+import type { DB } from "../src/platform/persistence/database.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 
 /**

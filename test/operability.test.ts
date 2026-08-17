@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { makeApp } from "../src/api.ts";
 import { ErrorResponseSchema } from "../src/contracts/protocol.ts";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { runtimeStatus } from "../src/observability.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { refreshRuntimeReadiness, shutdownRuntime } from "../src/server.ts";

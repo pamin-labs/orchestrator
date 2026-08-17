@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { makeApp } from "../src/api.ts";
 import { IdempotencyRecoveryBody, IdempotencyStatusQuery } from "../src/contracts/idempotency.ts";
-import { type DB, migrate, migrationMentioning, openMemory } from "../src/db.ts";
+import { type DB, migrate, migrationMentioning, openMemory } from "../src/platform/persistence/database.ts";
 import {
   idempotency,
   idempotencyCaller,

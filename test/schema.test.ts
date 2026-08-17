@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { migrate, openMemory } from "../src/db.ts";
+import { migrate, openMemory } from "../src/platform/persistence/database.ts";
 
 test("migrate creates the four first-class tables plus support tables", () => {
   const db = openMemory();

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { Bus } from "../src/bus.ts";
-import { openMemory } from "../src/db.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { OVERLAP_FLOOR, sameComplaint, sediment, terms } from "../src/mech/knowledge/lessons.ts";
 import { bossFact } from "../src/api/panel/attach.ts";
 import type { Ctx } from "../src/ctx.ts";

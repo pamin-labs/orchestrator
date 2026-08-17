@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { loadAuth } from "../src/mech/sandbox/auth.ts";
 import { REFRESH_HOME } from "../src/mech/sandbox/chatgpt.ts";
 import { startCodexDeviceLogin } from "../src/mech/sandbox/login.ts";

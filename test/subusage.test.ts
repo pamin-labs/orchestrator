@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 
-import { Bus } from "../src/bus.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import type { Ctx } from "../src/ctx.ts";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { POLL_EVERY_MS, pollClaudeUsage, pollUsage, rateLimitsIn, toRateLimit } from "../src/mech/ops/subusage.ts";

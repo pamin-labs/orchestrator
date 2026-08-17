@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { dropSlices, openMemory, SLICE_REFS, type DB } from "../src/db.ts";
+import { dropSlices, openMemory, SLICE_REFS, type DB } from "../src/platform/persistence/database.ts";
 
 /**
  * Re-approving a DRAFT rewrites the plan, so the old slices go — and four tables

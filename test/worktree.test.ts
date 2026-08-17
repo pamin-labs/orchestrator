@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, existsSync, mkdirSync, readFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { baseBranch, LINK_AGENTS_MD } from "../src/mech/git/checkout.ts";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import type { Github } from "../src/mech/git/github.ts";
 import {
   baseRef,

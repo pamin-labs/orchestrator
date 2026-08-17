@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statS
 import { hostClaudeHome, hostCodexHome } from "./sandbox/auth.ts";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { DB } from "../db.ts";
+import type { DB } from "../platform/persistence/database.ts";
 import { jsonOr } from "../contracts/json.ts";
 import { z } from "zod";
 

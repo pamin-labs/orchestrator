@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { detectProject } from "../src/mech/flow/start.ts";
 import { gatesFor } from "../src/mech/gate.ts";
 import { projectConfig } from "../src/mech/util/rows.ts";

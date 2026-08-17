@@ -1,4 +1,4 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { projectConfig } from "../util/rows.ts";
 import { GRP_STATES } from "../../contracts/states.ts";
 import { jsonOr } from "../../contracts/json.ts";

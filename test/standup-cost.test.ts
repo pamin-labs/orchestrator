@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { runStandup, STALL_MS } from "../src/mech/flow/standup.ts";
 import { costReport, recentCacheRatio } from "../src/mech/ops/cost.ts";
 

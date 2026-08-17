@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { open, openMemory } from "../src/db.ts";
+import { open, openMemory } from "../src/platform/persistence/database.ts";
 import {
   allowedImage,
   hostPathForDaemon,

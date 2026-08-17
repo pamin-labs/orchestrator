@@ -1,4 +1,4 @@
-import { dropSlices } from "../../db.ts";
+import { dropSlices } from "../../platform/persistence/database.ts";
 import { interrupt, park, pause, resume, unpark } from "../../mech/flow/intercept.ts";
 import { dropGroup, startGroup, sweepApproved } from "../../mech/flow/start.ts";
 import { openPr, prBody, prTitle } from "../../mech/git/prwatch.ts";

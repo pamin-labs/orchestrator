@@ -1,4 +1,4 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { loadMap, mapFor } from "./repomap.ts";
 import {
   ESCALATION_TERMINAL_STATES,

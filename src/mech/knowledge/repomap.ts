@@ -1,5 +1,5 @@
 import { projectConfig, saveSingletonNote, singletonNote } from "../util/rows.ts";
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 
 /**
  * One index of the repo, shared by every group.

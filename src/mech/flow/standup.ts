@@ -1,4 +1,4 @@
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { overlaps, parseOwns } from "./ownership.ts";
 import { ESCALATION_TERMINAL_STATES, stateParam } from "../../contracts/states.ts";
 

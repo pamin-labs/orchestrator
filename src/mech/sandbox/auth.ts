@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { trailers } from "../git/ghlogin.ts";
 import { forgetHolds } from "../git/repository.ts";
 import { maskValue } from "../../platform/observability/redaction.ts";

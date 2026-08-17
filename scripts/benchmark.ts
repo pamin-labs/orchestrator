@@ -1,6 +1,6 @@
-import { Bus } from "../src/bus.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { snapshot } from "../src/api/panel/snapshot.ts";
 import { reconcile } from "../src/mech/flow/reconcile.ts";
 import { runWatchdog } from "../src/mech/ops/watchdog.ts";

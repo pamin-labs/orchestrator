@@ -1,5 +1,5 @@
 import type { Ctx } from "../../ctx.ts";
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../lang.ts";
 
 /**

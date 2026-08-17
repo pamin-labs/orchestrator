@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { raise } from "../src/mech/flow/escalate.ts";
 
 interface Row {
@@ -132,14 +132,14 @@ test("dedupe prefixes are literal data, not LIKE patterns", () => {
 
 test("runtime escalation rows can only be filed through raise", () => {
   // Defaults and the meaning of "open" only stay unified if a new caller cannot
-  // quietly copy the INSERT again. `db.ts` is the one exception: it files a data
-  // repair while the database itself is opening, below the runtime flow layer.
+  // quietly copy the INSERT again. The persistence owner is the one exception:
+  // it files a data repair while the database itself is opening, below runtime.
   const insert = /INSERT\s+INTO\s+escalation\b/gi;
   const offenders: string[] = [];
   for (const source of sources()) {
     const matches = [...source.text.matchAll(insert)];
     if (source.path === "mech/flow/escalate.ts") continue;
-    if (source.path === "db.ts") {
+    if (source.path === "platform/persistence/database.ts") {
       for (const match of matches) {
         const before = source.text.slice(Math.max(0, match.index - 180), match.index);
         if (!before.includes("Escalation INSERT exception:")) offenders.push(source.path);

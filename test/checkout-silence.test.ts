@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { ensureCheckout } from "../src/mech/git/checkout.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { testContext } from "./test-context.ts";

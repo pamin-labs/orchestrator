@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
-import { maskValue } from "./platform/observability/redaction.ts";
-import { parseRepo } from "./contracts/repository.ts";
+import { maskValue } from "../observability/redaction.ts";
+import { parseRepo } from "../../contracts/repository.ts";
 
 /**
  * Single source of truth for the schema. See docs/project/plan.md §3.

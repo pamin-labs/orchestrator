@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import type { DB } from "../../db.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "../sandbox/auth.ts";
 import {
   allowedHostPaths,

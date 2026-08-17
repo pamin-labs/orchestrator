@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { Bus } from "../src/bus.ts";
+import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { sendBack } from "../src/mech/flow/review.ts";
 import { makeApp } from "../src/api.ts";

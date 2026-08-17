@@ -6,7 +6,7 @@ const noExec: ResourceExec = async () => ({ code: 0, out: "" });
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openMemory, type DB } from "../src/db.ts";
+import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { gateState, gatesFor, recordGate, runGates, type RunGatesOptions } from "../src/mech/gate.ts";
 import { projectConfig } from "../src/mech/util/rows.ts";
 import { digestOutput } from "../src/mech/lease.ts";

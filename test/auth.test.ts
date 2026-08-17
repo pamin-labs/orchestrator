@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { makeApp } from "../src/api.ts";
-import { openMemory } from "../src/db.ts";
+import { openMemory } from "../src/platform/persistence/database.ts";
 import type { Json } from "../src/contracts/json.ts";
 import { setTrailers } from "../src/mech/git/ghlogin.ts";
 import { newEnough, preflight, report } from "../src/mech/ops/preflight.ts";
