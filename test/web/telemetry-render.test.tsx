@@ -281,6 +281,62 @@ test("the self-time toggle offers both readings", async () => {
   await waitFor(() => expect(frames(view).length).toBeGreaterThanOrEqual(4));
 });
 
+test("a chart is neither a control nor a paragraph", async () => {
+  const hour = 3_600_000;
+  serve(
+    report({
+      stages: [stage("stage.only")],
+      traces: [trace("a".repeat(32), { name: "t" })],
+      flame: [{ path: "a", totalMs: 9_000, count: 1 }],
+      trend: Array.from({ length: 3 }, (_, i) => ({ at: T0 - (2 - i) * hour, count: 4, p50: 10, p95: 20 })),
+    }),
+  );
+  const view = show(<Telemetry scope={{ kind: "project", id: 7 }} trend />);
+  await waitFor(() => expect(view.getAllByText("每次运行的耗时")).toHaveLength(1));
+
+  // Clicking one drew the browser's focus ring and selected the SVG as text,
+  // because `ResponsiveContainer` renders a focusable wrapper. Scoped to these
+  // two surfaces: a real control still gets its ring.
+  const trend = view.container.querySelector("div.touch-none");
+  expect(trend?.getAttribute("class")).toContain("select-none");
+  expect(trend?.getAttribute("tabindex")).toBe("-1");
+
+  await waitFor(() => expect(view.container.querySelectorAll("svg.d3-flame-graph")).toHaveLength(1));
+  const flame = view.container.querySelector("svg.d3-flame-graph")?.parentElement;
+  expect(flame?.getAttribute("class")).toContain("select-none");
+});
+
+test("scrolling the flamegraph zooms its width, anchored where the pointer is", async () => {
+  serve(
+    report({
+      stages: [stage("stage.only")],
+      traces: [trace("a".repeat(32), { name: "t" })],
+      flame: [
+        { path: "a", totalMs: 9_000, count: 1 },
+        { path: "a;b", totalMs: 8_000, count: 1 },
+      ],
+    }),
+  );
+  const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
+  await waitFor(() => expect(view.container.querySelectorAll("svg.d3-flame-graph")).toHaveLength(1));
+
+  const svg = () => view.container.querySelector("svg.d3-flame-graph");
+  const before = Number(svg()?.getAttribute("width") ?? 0);
+  expect(before).toBeGreaterThan(0);
+
+  // A plain wheel, no modifier: Chrome's profiler default and the binding the
+  // user described. The horizontal axis is folded time, so zooming it means the
+  // chart is drawn wider and a narrower slice of it is on screen.
+  const port = view.container.querySelector("div.overflow-hidden");
+  port!.dispatchEvent(
+    Object.assign(new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true }), { clientX: 450 }),
+  );
+
+  await waitFor(() => expect(Number(svg()?.getAttribute("width") ?? 0)).toBeGreaterThan(before));
+  // And a way back, which the node-zoom breadcrumb shares.
+  expect(view.getAllByRole("button", { name: /回到全部/ })).toHaveLength(1);
+});
+
 test("scrolling the trend zooms it, and re-reads every block", async () => {
   const hour = 3_600_000;
   serve(
@@ -299,12 +355,12 @@ test("scrolling the trend zooms it, and re-reads every block", async () => {
   }, seen);
 
   const view = show(<Telemetry scope={{ kind: "project", id: 7 }} trend />);
-  await waitFor(() => expect(view.getAllByText("一次从头到尾要多久")).toHaveLength(1));
+  await waitFor(() => expect(view.getAllByText("每次运行的耗时")).toHaveLength(1));
   const before = asked.length;
 
   // A wheel over the chart, not a drag: the gesture the user asked for and the
   // one recharts' `Brush` does not provide.
-  const chart = view.getByText("一次从头到尾要多久").parentElement?.querySelector("div.touch-none");
+  const chart = view.getByText("每次运行的耗时").parentElement?.querySelector("div.touch-none");
   // A real `WheelEvent`, not `fireEvent.wheel`'s init object: happy-dom drops
   // `clientX` from the synthetic one, and without a coordinate there is nothing
   // to anchor the zoom on.
@@ -366,7 +422,7 @@ test("a trend with one bucket renders no section at all, not an empty one", asyn
   // empty, it is a section that does not exist yet — so neither the heading nor
   // the placeholder appears, and the stage table keeps the top of the page.
   await waitFor(() => expect(view.getAllByText("stage")).toHaveLength(1));
-  expect(view.queryAllByText("端到端耗时")).toHaveLength(0);
+  expect(view.queryAllByText("每次运行的耗时")).toHaveLength(0);
   expect(view.queryAllByText("还不够两个时段的数据。")).toHaveLength(0);
 });
 
@@ -389,8 +445,8 @@ test("the table says what a stage is, not what the code calls it", async () => {
   expect(view.queryAllByText("sandbox.create")).toHaveLength(0);
 
   // And the column headers are not statistics vocabulary either.
-  expect(view.getAllByText("一般要多久")).toHaveLength(1);
-  expect(view.getAllByText("最慢时")).toHaveLength(1);
+  expect(view.getAllByText("一般")).toHaveLength(1);
+  expect(view.getAllByText("最慢")).toHaveLength(1);
   expect(view.queryAllByText("p50")).toHaveLength(0);
   expect(view.queryAllByText("p95")).toHaveLength(0);
 });
@@ -471,7 +527,7 @@ test("a requirement shows which slice ate the time", async () => {
   );
   const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
 
-  await waitFor(() => expect(view.getAllByText("时间花在哪个切片")).toHaveLength(1));
+  await waitFor(() => expect(view.getAllByText("各切片耗时")).toHaveLength(1));
   expect(view.getAllByText("切片 1")).toHaveLength(1);
   expect(view.getAllByText("切片 3")).toHaveLength(1);
   // Unsliced work is a row of its own, so the parts add up to the requirement.
@@ -487,7 +543,7 @@ test("a scope with no slice split draws no slice block", async () => {
   const view = show(<Telemetry scope={{ kind: "project", id: 7 }} trend />);
 
   await waitFor(() => expect(view.getAllByText("stage")).toHaveLength(1));
-  expect(view.queryAllByText("时间花在哪个切片")).toHaveLength(0);
+  expect(view.queryAllByText("各切片耗时")).toHaveLength(0);
 });
 
 test("selected and hovered are two states, so three appearances between them", async () => {

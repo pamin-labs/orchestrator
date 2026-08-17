@@ -416,3 +416,18 @@ test("it cannot zoom in below what the clock resolves", () => {
   const tiny = zoomAt({ from: 500_000, to: 502_000 }, 0.5, 0.001, LIMIT);
   expect(tiny.to - tiny.from).toBe(1_000);
 });
+
+test("the zoom floor is the caller's unit, not milliseconds", () => {
+  // The flamegraph's axis is a fraction of the total width, so its floor is a
+  // fraction too. One constant would have meant a second copy of this function
+  // for the sake of a unit.
+  const whole = { from: 0, to: 1 };
+  const deep = zoomAt({ from: 0.4, to: 0.6 }, 0.5, 0.001, whole, 0.002);
+  expect(deep.to - deep.from).toBeCloseTo(0.002, 6);
+  // And the anchoring rule is the same one, on the same function.
+  expect(deep.from + 0.5 * (deep.to - deep.from)).toBeCloseTo(0.5, 6);
+});
+
+test("a fractional zoom cannot leave the whole width", () => {
+  expect(zoomAt({ from: 0, to: 0.5 }, 0, 10, { from: 0, to: 1 }, 0.002)).toEqual({ from: 0, to: 1 });
+});

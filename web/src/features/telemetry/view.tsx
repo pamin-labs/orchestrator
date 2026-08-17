@@ -93,10 +93,38 @@ const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\
  * three numeric ones sat at full width. `auto` gives each number exactly what it
  * needs and hands the rest to `minmax(0,1fr)`.
  *
- * `跑了几次` stays a column rather than moving to a tooltip: it is the cheapest
+ * `次数` stays a column rather than moving to a tooltip: it is the cheapest
  * of the three to render and the one that proves a brushed window took effect.
  */
 const COLS = "grid-cols-[minmax(0,1fr)_auto_auto_auto]";
+
+/**
+ * One block: a heading, a rule under it, and the thing itself.
+ *
+ * Four sections were writing the same `<h3>` four times and drifting — one at
+ * `text-ink-3` and `0.75rem` where the others were `font-medium` at `0.8125rem`,
+ * and the flamegraph's had no rule at all. Different weights on things of equal
+ * rank is what "not visually consistent" was: the eye reads the difference as
+ * meaning something.
+ *
+ * The height is here too. The blocks were sized by their contents — a 7.5rem
+ * chart beside a 380px table beside a flamegraph as tall as its tree — so
+ * nothing lined up across the two columns.
+ */
+function Block({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col gap-y-2">
+      {/* Optional, because a block whose content says what it is does not need a
+          sentence introducing it. The stage table's heading read 每一段花了多久
+          directly above columns of names and durations, which is the same fact
+          twice — and deleting it was faster than finding better words for it. */}
+      {title !== undefined && (
+        <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">{title}</h3>
+      )}
+      {children}
+    </section>
+  );
+}
 
 /** A number column that stays comparable down the page. */
 const NUM = "text-right font-mono text-[0.6875rem] tabular-nums";
@@ -161,17 +189,20 @@ function StageTable({
         {/* Not p50 and p95. Those are the names of the statistics; these are what
             the reader wanted to know, and nobody has to have read a percentile
             to use them. */}
-        <div>在做什么</div>
-        {/* 一半的情况 / 最慢的那几次 said the right thing in a sentence and the
-            wrong thing in a 3.5rem column head. These fit, and the exact
-            statistic is one hover away for anyone who wants it. */}
+        {/* No head over the names. A column of `开一个新环境` and `连 GitHub`
+            does not need to be told it holds names, and 在做什么 was a question
+            asked of values that answer it on sight. */}
+        <div />
+        {/* Nouns, and the shortest ones that still separate the two durations:
+            what it usually costs against what it costs on a bad day. The exact
+            statistic stays one hover away for anybody who wants it. */}
         <Tip label={P50_LABEL}>
-          <div className="text-right underline decoration-dotted underline-offset-2">一般要多久</div>
+          <div className="text-right underline decoration-dotted underline-offset-2">一般</div>
         </Tip>
         <Tip label={P95_LABEL}>
-          <div className="text-right underline decoration-dotted underline-offset-2">最慢时</div>
+          <div className="text-right underline decoration-dotted underline-offset-2">最慢</div>
         </Tip>
-        <div className="text-right">跑了几次</div>
+        <div className="text-right">次数</div>
       </div>
       {/* Grouped by kind and shut by default, inside a box that does not grow.
           A flat column put 24 watchdog rules, six routes and four container
@@ -488,6 +519,23 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
   // here rather than in the block above, because the control that uses it sits
   // on the chart and only this component knows when a click zoomed.
   const [zoomed, setZoomed] = useState<string | null>(null);
+  /**
+   * Which slice of the whole width is on screen, as fractions of it.
+   *
+   * A flamegraph's horizontal axis *is* the zoomable one — it is folded time,
+   * and zooming means showing a narrower slice across the full pane. Chrome's
+   * profiler does this on a plain wheel and anchors at the cursor, which is the
+   * binding being copied; speedscope puts it behind a modifier and Grafana has
+   * no wheel binding at all, so neither is the reference.
+   *
+   * Held here rather than pushed into the library because `d3-flame-graph` zooms
+   * to a *node* (`zoomTo`), not to a range. Rendering the chart wider than its
+   * container and sliding it is the same picture and needs no API the library
+   * does not have — and it keeps the labels laid out at the zoomed width, which
+   * a CSS `scaleX` would have stretched instead.
+   */
+  const [view, setView] = useState<TimeWindow>({ from: 0, to: 1 });
+  const zoom = view.to - view.from;
 
   // The library takes a width in pixels and does not observe its container, so
   // the container is observed here. `ResizeObserver` rather than a window
@@ -569,6 +617,14 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
     chart.current?.search(picked.length > 0 ? picked.map(escapeRegExp).join("|") : "");
   }, [picked]);
 
+  // Re-lay-out at the zoomed width rather than rebuilding: `update` reuses the
+  // existing nodes, so nothing re-enters and the library's un-configurable
+  // 250ms enter transition never fires. Rebuilding on every wheel notch would
+  // animate continuously.
+  useEffect(() => {
+    if (width > 0) chart.current?.width(width / zoom).update();
+  }, [width, zoom]);
+
   // The whole of this chart's appearance, because none of the library's own
   // arrives. `d3-flame-graph` self-imports `d3-flamegraph.css`, which the
   // bundler emits as `web/dist/main.css` — and `web/index.html` loads only
@@ -588,12 +644,13 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
           mouseout — so nothing else may be rendered inside it, and the height is
           set here rather than earned from content that is absent half the time. */}
       <div className="flex h-5 items-center gap-2">
-        {zoomed !== null && (
+        {(zoomed !== null || zoom < 1) && (
           <button
             type="button"
             onClick={() => {
               chart.current?.resetZoom();
               setZoomed(null);
+              setView({ from: 0, to: 1 });
             }}
             className={cn(
               "shrink-0 cursor-pointer rounded-md bg-sunk px-1.5 py-0.5 font-mono text-[0.625rem] text-ink-2",
@@ -604,32 +661,61 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
           </button>
         )}
         {zoomed !== null && <span className="shrink-0 text-[0.6875rem] text-ink-3">看的是 {humanName(zoomed)}</span>}
+        {zoomed === null && zoom < 1 && (
+          <span className="shrink-0 text-[0.6875rem] text-ink-3">放大到 {(1 / zoom).toFixed(0)}×</span>
+        )}
         <div ref={details} className="min-w-0 truncate font-mono text-[0.6875rem] text-ink-2" />
       </div>
+      {/* The viewport. The chart inside it is rendered `1/zoom` times wider and
+          slid left, which is what "show a narrower slice across the full pane"
+          means for an axis that is folded time rather than a clock. */}
       <div
-        ref={host}
-        className={cn(
-          "[&_.d3-flame-graph-label]:truncate [&_.d3-flame-graph-label]:px-1",
-          "[&_.d3-flame-graph-label]:font-mono [&_.d3-flame-graph-label]:text-[0.6875rem]",
-          // 20px, which is `CELL_PX`. Written out rather than interpolated:
-          // Tailwind reads these class names out of the source at build time, so
-          // a template literal produces a class that exists in the DOM and in no
-          // stylesheet. `CELL_PX` moving means this line moves with it.
-          "[&_.d3-flame-graph-label]:leading-[20px] [&_.d3-flame-graph-label]:text-ink",
-          // A hairline between frames, in the surface colour, so stacked frames
-          // read as separate without a border around each.
-          "[&_rect]:stroke-paper [&_rect]:[stroke-width:0.5]",
-          // The hover affordance. A flamegraph whose frames do not respond to the
-          // pointer reads as a picture, and this one is a control: every frame is
-          // a click that zooms. `ink` on the outline rather than a fill change,
-          // so the frame's own colour still says which function it is.
-          "[&_.frame]:cursor-pointer",
-          "[&_.frame:hover_rect]:stroke-ink [&_.frame:hover_rect]:[stroke-width:1.5]",
-          // The library fades a zoomed frame's ancestors rather than removing
-          // them, and its own `.fade` rule is in the stylesheet nothing loads.
-          "[&_.fade]:opacity-40",
-        )}
-      />
+        className="overflow-hidden"
+        onWheel={(event) => {
+          const box = event.currentTarget.getBoundingClientRect();
+          if (box.width === 0) return;
+          const at = (event.clientX - box.left) / box.width;
+          if (!Number.isFinite(at)) return;
+          event.preventDefault();
+          // Plain wheel, no modifier: Chrome's profiler default, and the one the
+          // user described. A modifier variant exists there only because it has a
+          // vertical axis to fight over; this pane has one axis worth scaling.
+          //
+          // 0.002 of the whole width is the floor — five hundred times in, past
+          // which a frame is thinner than its own border.
+          setView((current) => zoomAt(current, at, event.deltaY < 0 ? 1 / 1.2 : 1.2, { from: 0, to: 1 }, 0.002));
+        }}
+      >
+        <div style={{ transform: `translateX(${-view.from * 100}%)`, width: `${100 / zoom}%` }}>
+          <div
+            ref={host}
+            className={cn(
+              // Same rule as the trend: a chart is neither a control nor a
+              // paragraph, so it takes no focus ring and no text selection.
+              "select-none",
+              "[&_.d3-flame-graph-label]:truncate [&_.d3-flame-graph-label]:px-1",
+              "[&_.d3-flame-graph-label]:font-mono [&_.d3-flame-graph-label]:text-[0.6875rem]",
+              // 20px, which is `CELL_PX`. Written out rather than interpolated:
+              // Tailwind reads these class names out of the source at build time, so
+              // a template literal produces a class that exists in the DOM and in no
+              // stylesheet. `CELL_PX` moving means this line moves with it.
+              "[&_.d3-flame-graph-label]:leading-[20px] [&_.d3-flame-graph-label]:text-ink",
+              // A hairline between frames, in the surface colour, so stacked frames
+              // read as separate without a border around each.
+              "[&_rect]:stroke-paper [&_rect]:[stroke-width:0.5]",
+              // The hover affordance. A flamegraph whose frames do not respond to the
+              // pointer reads as a picture, and this one is a control: every frame is
+              // a click that zooms. `ink` on the outline rather than a fill change,
+              // so the frame's own colour still says which function it is.
+              "[&_.frame]:cursor-pointer",
+              "[&_.frame:hover_rect]:stroke-ink [&_.frame:hover_rect]:[stroke-width:1.5]",
+              // The library fades a zoomed frame's ancestors rather than removing
+              // them, and its own `.fade` rule is in the stylesheet nothing loads.
+              "[&_.fade]:opacity-40",
+            )}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -667,7 +753,7 @@ function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: reado
             tutorial, where `ui.md`'s register is a statement about the thing
             (「白干的单位」「去合并 PR」). The frames are clickable and look it;
             a sentence saying so is the panel apologising for its own affordance. */}
-        <h3 className="text-[0.75rem] text-ink-3">时间花在哪</h3>
+        <h3 className="text-[0.8125rem] font-medium text-ink">耗时分布</h3>
         <Segments value={self ? "self" : "total"} onValueChange={(next) => setSelf(next === "self")}>
           {/* Not two skins on one chart: 自身 makes a frame as wide as the time
               it spent itself, 含下游 as wide as everything it called. A parent
@@ -732,7 +818,12 @@ function Trend({
   const data = trend.map((point) => ({ ...point, label: trendLabel(point.at, windowMs) }));
   return (
     <div
-      className="h-[7.5rem] touch-none"
+      // Not a control and not a paragraph. Clicking a chart drew the browser's
+      // focus ring and selected the SVG as text, because `ResponsiveContainer`
+      // renders a focusable wrapper. Scoped here rather than turning focus rings
+      // off anywhere else — a real control still needs one.
+      tabIndex={-1}
+      className="h-[7.5rem] touch-none select-none outline-none [&_*]:outline-none"
       onWheel={(event) => {
         // `preventDefault` only over the chart, so the page still scrolls
         // everywhere else. `touch-none` is the same rule for a trackpad: without
@@ -920,11 +1011,10 @@ export function Telemetry({
     // all four: `dragged` feeds the one query every block reads, so narrowing
     // the window changes what the tables count rather than only what the chart
     // draws.
-    <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+    <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-y-6">
         {showTrend && report.trend.length >= 2 && (
-          <section className="flex flex-col gap-y-2">
-            <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">一次从头到尾要多久</h3>
+          <Block title="每次运行的耗时">
             <Trend
               trend={report.trend}
               windowMs={report.windowMs}
@@ -941,15 +1031,14 @@ export function Telemetry({
                 ← 回到整段时间
               </button>
             )}
-          </section>
+          </Block>
         )}
 
         <FlameBlock folded={report.flame} picked={picked} />
       </div>
 
       <div className="flex min-w-0 flex-col gap-y-6">
-        <section className="flex flex-col gap-y-2">
-          <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">每一段花了多久</h3>
+        <Block>
           <Stages stages={shown} picked={picked} onPick={pick} onExclude={exclude} />
           {excluded.length > 0 && (
             <Excluded
@@ -958,7 +1047,7 @@ export function Telemetry({
               onRestore={(n) => setExcluded((a) => a.filter((x) => x !== n))}
             />
           )}
-        </section>
+        </Block>
         <Slices slices={report.slices} />
       </div>
     </div>
@@ -983,7 +1072,7 @@ function Slices({ slices }: { slices: Report["slices"] }) {
   const total = slices.reduce((sum, row) => sum + row.totalMs, 0) || 1;
   return (
     <section className="flex flex-col gap-y-2">
-      <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">时间花在哪个切片</h3>
+      <h3 className="border-b border-rule pb-1 text-[0.8125rem] font-medium text-ink">各切片耗时</h3>
       <div className="flex flex-col gap-y-1.5">
         {slices.map((row) => (
           <div key={row.sliceId ?? "none"} className="grid grid-cols-[6rem_minmax(0,1fr)_4rem] items-center gap-x-3">

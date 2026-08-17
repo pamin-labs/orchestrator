@@ -385,10 +385,24 @@ const MIN_SPAN_MS = 1_000;
  * rows outside it, and it cannot zoom in below a second, because a window
  * narrower than the clock resolves is a window showing nothing.
  */
-export function zoomAt(window: TimeWindow, at: number, k: number, limit: TimeWindow): TimeWindow {
+export function zoomAt(
+  window: TimeWindow,
+  at: number,
+  k: number,
+  limit: TimeWindow,
+  /**
+   * The narrowest range worth showing, in the caller's own units.
+   *
+   * A millisecond default for the trend, whose axis is time. The flamegraph's
+   * axis is a fraction of the total width, so it passes its own floor — one
+   * constant here would have meant a second copy of this function for the sake
+   * of a unit.
+   */
+  minSpan = MIN_SPAN_MS,
+): TimeWindow {
   const span = window.to - window.from;
   const anchored = window.from + at * span;
-  const next = Math.min(Math.max(span * k, MIN_SPAN_MS), limit.to - limit.from);
+  const next = Math.min(Math.max(span * k, minSpan), limit.to - limit.from);
   // Anchor first, then slide back inside the limit if the anchor pushed an edge
   // out — sliding keeps the width the reader asked for, where clamping each edge
   // independently would silently shrink it.
