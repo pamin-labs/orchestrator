@@ -11,7 +11,9 @@ limits with hidden queues.
   reconciliation, serialization, and representative database query counts.
 - Observe event-loop delay, subprocess/HTTP duration, queue depth, memory
   retention, and cache hit/size behavior.
-- Record built web bundle, compiled binary, archive, and container image sizes.
+- Record compiled binary, archive, and container image sizes. The web bundle is
+  measured when a change is likely to move it, but is not budgeted: see
+  [ADR 019](../adr/019-no-web-bundle-budget.md).
 
 PR gates should reject only a statistically meaningful regression beyond a
 documented budget. Keep raw samples and compare the same runtime, fixture, warmup,

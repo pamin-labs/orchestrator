@@ -45,7 +45,7 @@ Dependabot proposes dependency and action updates for ordinary review.
 Actionlint runs its attested release binary after verifying the pinned checksum;
 zizmor runs at an exact version through the pinned uv setup action. Statistical
 microbenchmarks and randomized stress run nightly. Pull requests retain only
-deterministic bundle and artifact budgets.
+deterministic artifact budgets.
 
 ## Pull request report
 
@@ -76,7 +76,7 @@ triggering run was not a pull request or produced no artifacts.
 (`use_oidc: true`, no `CODECOV_TOKEN`), then maintains one sticky comment
 keyed on the `pr-report` header, updated in place for each new commit. That
 comment carries test pass/fail/skip counts, duration, failing test names, Fallow
-finding counts by category, and the bundle size budgets. It deliberately carries
+finding counts by category, and the release archive budget. It deliberately carries
 no coverage number: Codecov's own comment owns that, and two comments answering
 the same question is worse than one. Artifact bytes are fork-controlled, so
 nothing from them is executed and backticks are stripped before rendering.
