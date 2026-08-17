@@ -29,7 +29,7 @@
       { "name": "web", "patterns": ["web/**"] },
       { "name": "public-rpc", "patterns": ["src/http/routes/**"] },
       { "name": "composition", "patterns": ["src/api.ts", "src/server.ts"] },
-      { "name": "application", "patterns": ["src/runtime/executor.ts"] },
+      { "name": "application", "patterns": ["src/application/**", "src/runtime/executor.ts"] },
       { "name": "build-info", "patterns": ["src/platform/process/version.ts"] },
       {
         "name": "platform",

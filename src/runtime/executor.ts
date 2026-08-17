@@ -28,14 +28,13 @@ import { lessonsFor } from "../mech/knowledge/lessons.ts";
 import { LeaseArgsSchema, loadResource, type ResourceDef, resolveLease, runResource } from "../mech/lease.ts";
 import { gzipTurnLog, REEMIT_MS, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
 import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
-import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
-import { listSkills, projectSkills, readSkillIn } from "../mech/skills.ts";
+import { MAILBOX_DIR, putBytes, resourceExec, runnerFor, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
 import { projectOfAgent } from "../mech/util/rows.ts";
 import { jsonOr } from "../contracts/json.ts";
 import { clip, errText } from "../platform/process/text.ts";
-import { assemble, buildStable, type Delta, needsRotation } from "../prompt/assemble.ts";
+import { assemble, buildStable, type Delta, needsRotation, type StablePrompt } from "../prompt/assemble.ts";
 import { AgentTurnPayloadSchema, type Executor, type Job } from "../scheduler.ts";
-import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../contracts/states.ts";
+import { buildTurnDelta } from "../application/turn/delta.ts";
 import type { TurnResult } from "./claude.ts";
 import { clampEffort, type Provider, providerFor } from "./providers.ts";
 import { track, untrack } from "../platform/process/running-turns.ts";
@@ -109,25 +108,30 @@ export function makeExecutor(deps: ExecDeps): Executor {
 
 /** Find or hire the agent this job belongs to. */
 function resolveAgent(deps: ExecDeps, job: Job<"agent_turn">): AgentRow {
-  const { ctx } = deps;
-  if (job.agent_id) {
-    const a = ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(job.agent_id);
-    if (a) return a;
-  }
+  const assigned = assignedAgent(deps.ctx, job.agent_id);
+  if (assigned) return assigned;
   const roleName = job.payload.role ?? "engineer";
-  const existing = ctx.db
+  const existing = deps.ctx.db
     .query<AgentRow, [number | null, string]>(
       `${SELECT_AGENT_BASE} WHERE grp_id IS ? AND role = ? AND state != 'retired'`,
     )
     .get(job.grp_id, roleName);
   if (existing) return existing;
-  let payloadProject = job.payload.project_id ?? null;
-  if (!payloadProject && job.payload.audit) {
-    payloadProject =
-      ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.payload.audit)
-        ?.project_id ?? null;
-  }
-  return hire(deps, job.grp_id, roleName, job.slice_id, payloadProject);
+  return hire(deps, job.grp_id, roleName, job.slice_id, payloadProjectId(deps.ctx, job));
+}
+
+function assignedAgent(ctx: Ctx, agentId: number | null): AgentRow | null {
+  if (!agentId) return null;
+  return ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(agentId) ?? null;
+}
+
+function payloadProjectId(ctx: Ctx, job: Job<"agent_turn">): number | null {
+  if (job.payload.project_id) return job.payload.project_id;
+  if (!job.payload.audit) return null;
+  return (
+    ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(job.payload.audit)
+      ?.project_id ?? null
+  );
 }
 
 const SELECT_AGENT_BASE = `SELECT id, grp_id, project_id, role, model, runtime, session_id, session_tokens, cwd, token, stable_hash, context_window FROM agent`;
@@ -181,280 +185,246 @@ export function hire(
   return ctx.db.query<AgentRow, [number]>(SELECT_AGENT).get(row.id)!;
 }
 
+interface TurnGroup {
+  id: number;
+  name: string;
+  project_id: number;
+  branch: string | null;
+  owns_json: string;
+}
+
+interface PreparedTurn {
+  agent: AgentRow;
+  role: RoleDef;
+  group: TurnGroup | null;
+  scope: Scope;
+  stable: StablePrompt;
+  delta: Delta;
+  rotate: boolean;
+  why: RotateReason | null;
+  sessionId: string;
+}
+
 async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<void> {
-  const { ctx, cfg, roles } = deps;
+  const turn = await prepareTurn(deps, job);
+  const before = await checkpointTurn(deps, job, turn);
+  const result = await invokeTurn(deps, job, turn);
+  await finishTurn(deps, job, turn, before, result);
+}
+
+async function prepareTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<PreparedTurn> {
   const agent = resolveAgent(deps, job);
-  const role = roles.get(agent.role);
+  const role = deps.roles.get(agent.role);
   if (!role) throw new Error(`no role definition for ${agent.role}`);
-
-  const grp = job.grp_id
-    ? ctx.db
-        .query<{ id: number; name: string; project_id: number; branch: string | null; owns_json: string }, [number]>(
-          "SELECT id, name, project_id, branch, owns_json FROM grp WHERE id = ?",
-        )
-        .get(job.grp_id)
-    : null;
-  const project = grp
-    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(grp.project_id)
-    : null;
-
-  const standingRepo = agent.grp_id
-    ? null
-    : (ctx.db
-        .query<{ repo_path: string }, [number | null]>("SELECT repo_path FROM project WHERE id = ?")
-        .get(projectOfAgent(ctx.db, agent.id))?.repo_path ?? null);
-  // Always the sandbox's own checkout. There is no host path a turn can run in
-  // any more, which is the point: nothing an agent does touches this machine.
-  const cwd = WORK;
+  const group = turnGroup(deps.ctx, job.grp_id);
   const scope: Scope = job.grp_id ? { grp: job.grp_id } : { project: agent.project_id ?? 0 };
-  const stable = buildStableFor(deps, agent, role, grp, project?.repo_path ?? standingRepo ?? cwd, job);
-
-  // A changed stable half means the cached prefix is dead. Rotating is cheaper
-  // than paying full price for every remaining turn of this session.
-  //
-  // Which of the four fired is recorded rather than collapsed into a boolean.
-  // Sampling this repo's own turn logs, 10 of 13 claude jobs opened on a cold
-  // prefix — a new session, ~17k of cache creation before the first token — and
-  // nothing in the database could say which trigger did it. A cost panel that
-  // shows the rate without the reason can only prompt a guess, and the fix for
-  // each of the four is different.
-  const why: RotateReason | null = needsRotation(agent.stable_hash ?? null, stable)
-    ? "hash"
-    : overTokenBudget(agent, cfg)
-      ? "budget"
-      : job.payload.rotate === true
-        ? "explicit"
-        : !agent.session_id
-          ? "new"
-          : null;
+  const stable = buildStableFor(deps, agent, role, group, turnRepoPath(deps.ctx, agent, group), job);
+  const why = rotationReason(agent, deps.cfg, stable, job.payload.rotate === true);
   const rotate = why !== null && why !== "new";
-
   const sessionId = rotate || !agent.session_id ? crypto.randomUUID() : agent.session_id;
-  const delta = await buildDeltaFor(deps, agent, job, rotate, scope);
+  const delta = await buildTurnDelta(deps, agent, job, rotate, scope);
+  return { agent, role, group, scope, stable, delta, rotate, why, sessionId };
+}
 
-  // A turn cannot run in an empty checkout, and an empty one is the normal state
-  // after a sandbox is replaced — or for any group that predates this design and
-  // has a branch but never had a clone. Idempotent, so this is one cheap exec.
-  if (job.grp_id) {
-    try {
-      await ensureCheckout(ctx, job.grp_id);
-    } catch (e) {
-      throw new Error(`could not prepare the group's checkout: ${errText(e)}`, { cause: e });
-    }
+function turnGroup(ctx: Ctx, groupId: number | null): TurnGroup | null {
+  if (!groupId) return null;
+  return (
+    ctx.db
+      .query<TurnGroup, [number]>("SELECT id, name, project_id, branch, owns_json FROM grp WHERE id = ?")
+      .get(groupId) ?? null
+  );
+}
+
+function turnRepoPath(ctx: Ctx, agent: AgentRow, group: TurnGroup | null): string {
+  if (!group && agent.grp_id) return WORK;
+  const projectId = group?.project_id ?? projectOfAgent(ctx.db, agent.id);
+  return (
+    ctx.db.query<{ repo_path: string }, [number | null]>("SELECT repo_path FROM project WHERE id = ?").get(projectId)
+      ?.repo_path ?? WORK
+  );
+}
+
+function rotationReason(agent: AgentRow, cfg: Config, stable: StablePrompt, explicit: boolean): RotateReason | null {
+  if (needsRotation(agent.stable_hash ?? null, stable)) return "hash";
+  if (overTokenBudget(agent, cfg)) return "budget";
+  if (explicit) return "explicit";
+  if (!agent.session_id) return "new";
+  return null;
+}
+
+async function checkpointTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<string | null> {
+  if (!job.grp_id) {
+    markAgentRunning(deps.ctx, turn);
+    return null;
   }
+  try {
+    await ensureCheckout(deps.ctx, job.grp_id);
+  } catch (error) {
+    throw new Error(`could not prepare the group's checkout: ${errText(error)}`, { cause: error });
+  }
+  const before = await checkpoint(
+    sandboxGit(deps.ctx, turn.scope),
+    WORK,
+    WORK,
+    checkpointLabel(deps.ctx, job),
+    gitTrailers(deps.ctx),
+  );
+  if (before) recordCheckpoint(deps.ctx, job, before);
+  markAgentRunning(deps.ctx, turn);
+  return before;
+}
 
-  // Checkpoint first: intercept L3's rollback and "undo a stand-in's answer"
-  // both need a consistent state that exists before the turn starts.
-  //
-  // The label says which slice and what the writer had claimed it was doing.
-  // `wip: engineer turn` eight times is a branch log that says nothing — and
-  // these survive into review whenever squashWip declines (an agent that wrote
-  // one real commit keeps all of them). A checkpoint is still a checkpoint, so
-  // it stays marked `wip`, but the rest of the line is the work.
-  const before = job.grp_id
-    ? await checkpoint(sandboxGit(ctx, scope), WORK, WORK, checkpointLabel(ctx, job), gitTrailers(ctx))
-    : null;
-
-  // Reconcile compares against what changed *in this slice*, so the baseline is
-  // whatever HEAD was when the slice's first turn began.
-  if (job.slice_id && before) {
+function recordCheckpoint(ctx: Ctx, job: Job<"agent_turn">, before: string): void {
+  if (job.slice_id) {
     ctx.db.run("UPDATE slice SET base_sha = coalesce(base_sha, ?) WHERE id = ?", [before, job.slice_id]);
   }
-  // Recorded on the job so intercept L3 can roll back to exactly the state this
-  // turn started from, even after the process is gone.
-  if (before) ctx.db.run("UPDATE job SET checkpoint_sha = ? WHERE id = ?", [before, job.id]);
+  ctx.db.run("UPDATE job SET checkpoint_sha = ? WHERE id = ?", [before, job.id]);
+}
 
+function markAgentRunning(ctx: Ctx, turn: PreparedTurn): void {
   ctx.db.run(
-    rotate
+    turn.rotate
       ? "UPDATE agent SET state = 'running', session_id = ?, session_tokens = 0 WHERE id = ?"
       : "UPDATE agent SET state = 'running', session_id = ? WHERE id = ?",
-    [sessionId, agent.id],
+    [turn.sessionId, turn.agent.id],
   );
+}
 
+async function invokeTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<TurnResult> {
+  const { ctx, cfg } = deps;
   const logDir = join(cfg.dataDir, "turns");
   mkdirSync(logDir, { recursive: true });
-
-  // Which CLI runs a role is configuration, not a fork in the orchestrator.
-  // An empty prompt is rejected outright by `claude -p`, and an agent woken with
-  // nothing to read is a bug upstream — but crashing the turn hides it, so say
-  // what happened instead.
-  const prompt = await stageAttachments(
-    deps,
-    scope,
-    assemble(stable, delta).prompt.trim() ||
-      "You were woken with nothing new to read. Check `orch task list` and " +
-        "`orch ctx query` for your current situation, and if there is genuinely " +
-        "nothing to do, say so in one line and stop.",
-    job.grp_id,
-  );
-
-  // The agent's runtime, not the role's. `agent.model` was resolved against the
-  // provider this agent was hired on and is frozen there; reading the CLI from the
-  // role instead means an agent hired before its role was re-pointed runs the new
-  // CLI with the old CLI's model id. Observed live: `codex exec -m claude-sonnet-5`
-  // starting every turn with "Model metadata for claude-sonnet-5 not found".
-  const provider = providerFor(agent.runtime ?? role.runtime);
-  const run: Provider["run"] = deps.runTurn ?? provider.run;
   const logPath = join(logDir, `${job.id}.jsonl`);
+  const prompt = await turnPrompt(deps, job, turn);
+  const provider = providerFor(turn.agent.runtime ?? turn.role.runtime);
+  const run: Provider["run"] = deps.runTurn ?? provider.run;
   let result: TurnResult;
   let stopTurn: (() => void) | undefined;
   try {
     result = await run(
-      {
-        stable,
-        prompt,
-        cwd,
-        ...(rotate || !agent.session_id ? { newSessionId: sessionId } : { resumeSessionId: sessionId }),
-        maxTurns: role.maxTurns ?? cfg.maxTurnsPerJob,
-        timeoutMs: cfg.turnTimeoutMs,
-        images: imagePaths(prompt),
-        logPath,
-        // Every turn runs inside a sandbox: the group's, or the project's when
-        // the role is a standing one with no group. Nothing runs on the host.
-        runner: runnerFor(ctx, scope),
-        env: {
-          // The mailbox, not a URL: the sandbox has no route to this machine on
-          // any platform we can rely on, and the files API has one everywhere.
-          ORCH_MAILBOX: MAILBOX_DIR,
-          ORCH_MAILBOX_TIMEOUT_MS: String(cfg.turnTimeoutMs),
-          ORCH_TOKEN: agent.token ?? "",
-          ORCH_GRP_ID: String(job.grp_id ?? ""),
-          // Format-plausible fakes. The real values are in the egress sidecar
-          // and get swapped in on the way out; nothing in here is worth stealing.
-          ...vaultFor(ctx.db).env,
-          // codex reads its login from a file, so it has to be told where.
-          CODEX_HOME,
-        },
-      },
-      {
-        onText: (t) =>
-          ctx.bus.live({
-            grpId: job.grp_id,
-            projectId: agent.project_id ?? null,
-            agentId: agent.id,
-            role: agent.role,
-            kind: "text",
-            body: t,
-          }),
-        onThinking: (t) =>
-          ctx.bus.live({
-            grpId: job.grp_id,
-            projectId: agent.project_id ?? null,
-            agentId: agent.id,
-            role: agent.role,
-            kind: "thinking",
-            body: t,
-          }),
-        onTool: (t) => {
-          // A name with no detail is the streaming placeholder; overwriting a good
-          // line with "Bash" makes the desk wall less informative, not more.
-          if (t.detail === t.name) return;
-          ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [t.detail, agent.id]);
-          ctx.bus.live({
-            grpId: job.grp_id,
-            projectId: agent.project_id ?? null,
-            agentId: agent.id,
-            role: agent.role,
-            kind: "tool",
-            body: t.detail,
-          });
-        },
-        onStatus: (s) =>
-          ctx.bus.live({
-            grpId: job.grp_id,
-            projectId: agent.project_id ?? null,
-            agentId: agent.id,
-            role: agent.role,
-            kind: "status",
-            body: s,
-          }),
-        onAbort: (stop) => {
-          stopTurn = stop;
-          track(job.id, stop);
-        },
-      },
+      turnSpec(ctx, cfg, job, turn, prompt, logPath),
+      turnEvents(ctx, job, turn.agent, (stop) => {
+        stopTurn = stop;
+        track(job.id, stop);
+      }),
     );
   } finally {
     if (stopTurn) untrack(job.id, stopTurn);
-    ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ? AND state = 'running'", [agent.id]);
-    // Compress now rather than a day later. Nothing reads these while they are
-    // warm — every consumer is a human debugging afterwards — and 24h of raw
-    // NDJSON was most of the 59 MB this directory had grown to.
+    ctx.db.run("UPDATE agent SET state = 'idle' WHERE id = ? AND state = 'running'", [turn.agent.id]);
     gzipTurnLog(logPath);
   }
+  return result;
+}
 
-  // The id the runtime actually used, which is not always the one we minted.
-  //
-  // claude takes `--session-id <uuid>` and honours it, so minting one and storing
-  // it is correct there. codex does not: `codex exec` starts a thread of its own
-  // and reports it as `thread.started.thread_id`, and `codex exec resume` wants
-  // THAT id. We stored the minted one, so every codex agent's second turn ran
-  // `resume <our-uuid>` and died with `no rollout found for thread id …` — thirty
-  // agents in this database, none of them holding a codex thread id. It reads as
-  // an environment fault (a missing file, a lost session) rather than as a turn
-  // that was never resumable, which is why it survived: the group looks healthy,
-  // the engineer is on the roster, and the error is inside a rejection body.
-  if (result.sessionId && result.sessionId !== sessionId) {
-    ctx.db.run("UPDATE agent SET session_id = ? WHERE id = ?", [result.sessionId, agent.id]);
-  }
+async function turnPrompt(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<string> {
+  const prompt =
+    assemble(turn.stable, turn.delta).prompt.trim() ||
+    "You were woken with nothing new to read. Check `orch task list` and " +
+      "`orch ctx query` for your current situation, and if there is genuinely " +
+      "nothing to do, say so in one line and stop.";
+  return stageAttachments(deps, turn.scope, prompt, job.grp_id);
+}
 
-  // The group's commits, out of a container that can be replaced, every turn. A
-  // sandbox is disposable and this is what makes that true: one that dies costs
-  // the turn in flight and nothing else. Keeping them only at PR time would mean
-  // losing everything since the last one.
-  //
-  // Where they land changed and how often did not (007 step 5): the receiver is
-  // the utility container's bare mirror rather than a checkout on this host.
-  // This is not a push — `pushBranch` puts the branch on the remote, and that
-  // happens at slice boundaries, not thirty times a slice.
-  if (job.grp_id && grp?.branch) {
-    const kept = await keepBranch(ctx, job.grp_id);
-    if (!kept.ok && kept.reason && !/empty bundle/i.test(kept.reason)) {
-      ctx.bus.emit({
-        grpId: job.grp_id,
-        author: "orchestrator",
-        kind: "state_change",
-        body: `could not take ${grp.branch} out of the sandbox: ${kept.reason}`,
-      });
-    }
-  }
+function turnSpec(ctx: Ctx, cfg: Config, job: Job<"agent_turn">, turn: PreparedTurn, prompt: string, logPath: string) {
+  return {
+    stable: turn.stable,
+    prompt,
+    cwd: WORK,
+    ...(turn.rotate || !turn.agent.session_id ? { newSessionId: turn.sessionId } : { resumeSessionId: turn.sessionId }),
+    maxTurns: turn.role.maxTurns ?? cfg.maxTurnsPerJob,
+    timeoutMs: cfg.turnTimeoutMs,
+    images: imagePaths(prompt),
+    logPath,
+    runner: runnerFor(ctx, turn.scope),
+    env: {
+      ORCH_MAILBOX: MAILBOX_DIR,
+      ORCH_MAILBOX_TIMEOUT_MS: String(cfg.turnTimeoutMs),
+      ORCH_TOKEN: turn.agent.token ?? "",
+      ORCH_GRP_ID: String(job.grp_id ?? ""),
+      ...vaultFor(ctx.db).env,
+      CODEX_HOME,
+    },
+  };
+}
 
-  recordCost(deps, agent, job, result, stable.hash, why);
-  recordProgress(deps, agent, job, result);
-  await narrate(deps, agent, job, before, result);
-  handleRateLimit(deps, agent, job, result);
-  handleAuthFailure(deps, agent, job, result);
-  recordSubscriptionUsage(deps, provider.name, result);
-  // Always, for every provider. The container is the write boundary and it knows
-  // nothing about which files this group owns, so the reconcile runs after the
-  // fact — it is not a codex workaround any more, it is the mechanism.
-  await reconcileOwnership(deps, agent, job, grp);
-
-  // A session whose transcript is gone on disk.
-  //
-  // Both CLIs resume by id and both fail the whole turn when the file behind it
-  // is missing — codex with `thread/resume: no rollout found for thread id …`,
-  // claude with `No conversation found with session ID`. `session_id` still
-  // points at it, and rotation only fires on a changed prefix, a token budget or
-  // an explicit flag, so every turn after that resumes the same dead id and dies
-  // the same way. Live: composer-file-picker failed eight turns in a row and
-  // looked healthy the whole time — an agent on the roster, no error anywhere
-  // except inside a rejection body nobody parses.
-  //
-  // Clearing the id is the whole repair: the next turn starts a session. It
-  // costs one uncached prefix, which is what a lost transcript costs.
-  if (!result.ok && LOST_SESSION.test(result.text)) {
-    ctx.db.run("UPDATE agent SET session_id = NULL, stable_hash = NULL WHERE id = ?", [agent.id]);
-    ctx.bus.emit({
+function turnEvents(ctx: Ctx, job: Job<"agent_turn">, agent: AgentRow, onAbort: (stop: () => void) => void) {
+  const live = (kind: "text" | "thinking" | "status", body: string): void =>
+    ctx.bus.live({
       grpId: job.grp_id,
-      author: "orchestrator",
-      kind: "state_change",
-      body: `${agent.role} 的会话记录没了，下一轮从新会话开始`,
-      meta: { agent_id: agent.id, lost_session: sessionId },
+      projectId: agent.project_id ?? null,
+      agentId: agent.id,
+      role: agent.role,
+      kind,
+      body,
     });
-  }
+  return {
+    onText: (text: string) => live("text", text),
+    onThinking: (text: string) => live("thinking", text),
+    onTool: (tool: { name: string; detail: string }) => {
+      if (tool.detail === tool.name) return;
+      ctx.db.run("UPDATE agent SET activity = ? WHERE id = ?", [tool.detail, agent.id]);
+      ctx.bus.live({
+        grpId: job.grp_id,
+        projectId: agent.project_id ?? null,
+        agentId: agent.id,
+        role: agent.role,
+        kind: "tool",
+        body: tool.detail,
+      });
+    },
+    onStatus: (status: string) => live("status", status),
+    onAbort,
+  };
+}
 
+async function finishTurn(
+  deps: ExecDeps,
+  job: Job<"agent_turn">,
+  turn: PreparedTurn,
+  before: string | null,
+  result: TurnResult,
+): Promise<void> {
+  recordRuntimeSession(deps.ctx, turn, result);
+  await preserveTurnBranch(deps.ctx, job, turn.group);
+  recordCost(deps, turn.agent, job, result, turn.stable.hash, turn.why);
+  recordProgress(deps, turn.agent, job, result);
+  await narrate(deps, turn.agent, job, before, result);
+  handleRateLimit(deps, turn.agent, job, result);
+  handleAuthFailure(deps, turn.agent, job, result);
+  recordSubscriptionUsage(deps, providerFor(turn.agent.runtime ?? turn.role.runtime).name, result);
+  await reconcileOwnership(deps, turn.agent, job, turn.group);
+  repairLostSession(deps.ctx, job, turn, result);
   if (!result.ok) throw new Error(`turn failed (${result.terminalReason}): ${clip(result.text)}`);
+}
+
+function recordRuntimeSession(ctx: Ctx, turn: PreparedTurn, result: TurnResult): void {
+  if (result.sessionId && result.sessionId !== turn.sessionId) {
+    ctx.db.run("UPDATE agent SET session_id = ? WHERE id = ?", [result.sessionId, turn.agent.id]);
+  }
+}
+
+async function preserveTurnBranch(ctx: Ctx, job: Job<"agent_turn">, group: TurnGroup | null): Promise<void> {
+  if (!job.grp_id || !group?.branch) return;
+  const kept = await keepBranch(ctx, job.grp_id);
+  if (kept.ok || !kept.reason || /empty bundle/i.test(kept.reason)) return;
+  ctx.bus.emit({
+    grpId: job.grp_id,
+    author: "orchestrator",
+    kind: "state_change",
+    body: `could not take ${group.branch} out of the sandbox: ${kept.reason}`,
+  });
+}
+
+function repairLostSession(ctx: Ctx, job: Job<"agent_turn">, turn: PreparedTurn, result: TurnResult): void {
+  if (result.ok || !LOST_SESSION.test(result.text)) return;
+  ctx.db.run("UPDATE agent SET session_id = NULL, stable_hash = NULL WHERE id = ?", [turn.agent.id]);
+  ctx.bus.emit({
+    grpId: job.grp_id,
+    author: "orchestrator",
+    kind: "state_change",
+    body: `${turn.agent.role} 的会话记录没了，下一轮从新会话开始`,
+    meta: { agent_id: turn.agent.id, lost_session: turn.sessionId },
+  });
 }
 
 /** Both CLIs, both spellings. */
@@ -481,20 +451,17 @@ function checkpointLabel(ctx: Ctx, job: Job<"agent_turn">): string {
     )
     .get(job.grp_id!);
   const role = jsonOr(prev?.payload_json, AgentTurnPayloadSchema, {}).role ?? "agent";
-  const sliceId = prev?.slice_id ?? null;
-  const seq = sliceId
-    ? ctx.db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(sliceId)?.seq
-    : undefined;
+  if (!prev?.slice_id) return `${role} turn`;
+  const sliceId = prev.slice_id;
+  const seq = ctx.db.query<{ seq: number }, [number]>("SELECT seq FROM slice WHERE id = ?").get(sliceId)?.seq;
   // The task that turn had claimed. Not "not done": by the time this runs it
   // usually is done, which is what left every checkpoint labelled with the next
   // task instead of the one in the commit.
-  const task = sliceId
-    ? ctx.db
-        .query<{ title: string }, [number]>(
-          "SELECT title FROM task WHERE slice_id = ? ORDER BY (status = 'done') DESC, id DESC LIMIT 1",
-        )
-        .get(sliceId)?.title
-    : undefined;
+  const task = ctx.db
+    .query<{ title: string }, [number]>(
+      "SELECT title FROM task WHERE slice_id = ? ORDER BY (status = 'done') DESC, id DESC LIMIT 1",
+    )
+    .get(sliceId)?.title;
   const head = seq ? `S${seq}: ${role}` : `${role} turn`;
   return task ? `${head} — ${task.slice(0, 60)}` : head;
 }
@@ -539,288 +506,6 @@ function buildStableFor(
     allowedTools: role.allowedTools ?? ["Bash", "Read", "Grep", "Glob"],
     addDirs: [WORK],
   });
-}
-
-/**
- * What this turn is told, and nothing more.
- *
- * Everything here is appended to the newest user message. Never merge any of it
- * into the stable half — that is the 3-5x mistake.
- */
-async function buildDeltaFor(
-  deps: ExecDeps,
-  agent: AgentRow,
-  job: Job<"agent_turn">,
-  rotated: boolean,
-  scope: Scope,
-): Promise<Delta> {
-  const { ctx } = deps;
-  const payload = job.payload;
-  const delta: Delta = {};
-
-  if (payload.escalation) {
-    const esc = ctx.db
-      .query<{ id: number; question: string; severity: string; agent_id: number | null }, [number]>(
-        "SELECT id, question, severity, agent_id FROM escalation WHERE id = ?",
-      )
-      .get(payload.escalation);
-    if (esc) {
-      const asker =
-        esc.agent_id !== null
-          ? (ctx.db.query<{ role: string }, [number]>("SELECT role FROM agent WHERE id = ?").get(esc.agent_id)?.role ??
-            "someone")
-          : "someone";
-      delta.card =
-        `${asker} is blocked and asked (severity ${esc.severity}):\n${esc.question}\n\n` +
-        `Answer it with \`orch answer ${esc.id} --answer "…"\`, or pass it up with ` +
-        `\`orch answer ${esc.id} --abstain --why "…"\`. Abstaining is the right move if you are ` +
-        `not sure — a guess becomes a premise the whole group then reasons from.`;
-    }
-  }
-  if (payload.mail) {
-    const m = payload.mail;
-    const grpNote = m.from_group ? ` (group ${m.from_group})` : "";
-    delta.card =
-      `${m.from}${grpNote} sent you a "${m.intent}":\n${m.body}\n\n` +
-      (m.intent === "ask"
-        ? "Reply with `orch mail " +
-          String(m.from) +
-          ' --intent inform "…"`. If it needs a decision above your level, pass it up.'
-        : "");
-  }
-  if (payload.boundary !== undefined) {
-    const groups = Array.isArray(payload.boundary)
-      ? payload.boundary
-      : [{ id: payload.boundary, name: String(payload.boundary), idea: undefined }];
-    delta.card =
-      `This project now has more than one live group, so every one of them needs a path ` +
-      `boundary before work is planned inside it. Cut all of them now — each group's own ` +
-      `requirement is quoted so you can tell them apart:\n\n` +
-      groups
-        .map(
-          (g) =>
-            `${g.name} (group ${g.id}) wants: ${g.idea || "(no requirement recorded)"}\n` +
-            `  orch owns ${g.id} --path "<glob>" --path "<glob>"`,
-        )
-        .join("\n\n") +
-      `\n\nGive each group the paths ITS OWN requirement needs — a group told to add a new ` +
-      `file needs a directory or a glob, not a list of files that already exist. Overlapping ` +
-      `groups cannot run in parallel, so make them disjoint. Shared files (manifests, ` +
-      `lockfiles, schemas, CI config) belong to no group — leave them out.`;
-  }
-  if (payload.audit) {
-    const gid = payload.audit;
-    delta.card =
-      `Audit group ${payload.audit_group ?? gid} (group_id ${gid}) before the boss merges it.\n` +
-      (payload.audit_branch
-        ? `Its branch is ${payload.audit_branch}; you are in the main checkout, so read it with ` +
-          `\`git diff main...${payload.audit_branch}\` and \`git log main..${payload.audit_branch}\`.\n`
-        : "") +
-      `Coverage against the DRAFT card, architectural consistency, and whether the journals ` +
-      `describe what the diff does. Do NOT re-check what the gate covered.\n\n` +
-      `File your verdict with exactly:\n` +
-      `  orch audit ${gid} --verdict pass|fail --note "what is missing or inconsistent"`;
-  }
-  if (payload.scribe) {
-    const gid = payload.scribe;
-    // The base is named rather than left to the agent to work out: it is
-    // `origin/main` on most repositories and something else on the ones where
-    // guessing it produces a diff of the whole history.
-    const base = ctx.db
-      .query<{ base_branch: string | null }, [number]>(
-        "SELECT p.base_branch FROM grp g JOIN project p ON p.id = g.project_id WHERE g.id = ?",
-      )
-      .get(gid)?.base_branch;
-    const ref = `origin/${base ?? "main"}`;
-    delta.card =
-      `This branch passed its audit and is about to be published. Write what it says in a log.\n\n` +
-      `Read it first — you are in the group's own checkout:\n` +
-      `  git diff ${ref}...HEAD\n` +
-      `  git log --format='%s' ${ref}..HEAD\n` +
-      `Then \`orch ctx query\` for the card it was meant to deliver.\n\n` +
-      `File it with exactly this, the body on stdin:\n` +
-      `  orch pr ${gid} --title "<type(scope): subject>" -\n\n` +
-      `Nothing is published until that lands, and it is refused with a reason if the ` +
-      `subject has no type prefix, runs past 72 characters, ends in a full stop, or ` +
-      `either half is not English. A refusal is not the end of your turn — fix it and send it again.`;
-  }
-  if (payload.digest) {
-    const d = payload.digest;
-    const rows = ctx.db
-      .query<{ seq: number; author: string; body: string }, [number, number, number]>(
-        `SELECT seq, author, body FROM event
-         WHERE channel_id = ? AND seq > ? AND seq <= ? AND kind IN ('say','boss_say','note','escalation')
-         ORDER BY seq LIMIT 400`,
-      )
-      .all(d.channel_id, d.from, d.to);
-    delta.card =
-      `Compress this channel backlog so nobody has to read it again. ${rows.length} events, ` +
-      `seq ${d.from}..${d.to}.\n\n` +
-      `File ONE note: \`orch journal add --kind journal -\`, at most 6 lines, covering what was ` +
-      `decided, what is still open, and anything a later turn must not re-litigate. Names and ` +
-      `file paths verbatim; drop the pleasantries.\n\n` +
-      rows
-        .map((r) => `[${r.seq}] ${r.author}: ${r.body}`)
-        .join("\n")
-        .slice(0, 20_000);
-  }
-  if (payload.sediment) {
-    delta.card =
-      `The boss has said the same thing ${payload.sediment.length} times now, to different groups. ` +
-      `A fact attached to one group is invisible to the next, so this has to become a project rule.\n\n` +
-      payload.sediment.map((t, i) => `${i + 1}. ${t}`).join("\n") +
-      `\n\nWrite ONE rule with \`orch journal add --kind lesson -\` — at most 6 lines, phrased as an ` +
-      `instruction a later group can follow without knowing this history ("QA 必须…", not "老板不满意…"). ` +
-      `If these are not actually the same complaint, say so with \`orch mail cos --intent note\` and write nothing.`;
-  }
-  if (payload.idea) delta.card = `The boss wants: ${payload.idea}`;
-  if (payload.respec) delta.rejection = `The boss sent the DRAFT back: ${payload.respec}`;
-  if (payload.rejection) delta.rejection = payload.rejection;
-
-  if (job.slice_id) {
-    const s = ctx.db
-      .query<{ seq: number; title: string; accept_spec: string; difficulty: string }, [number]>(
-        "SELECT seq, title, accept_spec, difficulty FROM slice WHERE id = ?",
-      )
-      .get(job.slice_id);
-    if (s) {
-      // The id, not just the sequence number: the verbs take the id, and giving an
-      // agent an identifier it cannot use is the same mistake twice.
-      delta.card =
-        `Slice S${s.seq} (slice_id ${job.slice_id}) [${s.difficulty}]: ${s.title}\n` +
-        `Accepted when: ${s.accept_spec}`;
-      if (agent.role === "qa") {
-        delta.card +=
-          `\n\nFile your verdict with exactly:\n` +
-          `  orch review ${job.slice_id} --verdict pass|fail --note "one line per criterion"`;
-      }
-    }
-  } else if (job.grp_id && !payload.idea) {
-    const slices = ctx.db
-      .query<{ seq: number; title: string; status: SliceState; difficulty: string }, [number]>(
-        "SELECT seq, title, status, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
-      )
-      .all(job.grp_id);
-    if (slices.length) {
-      delta.card = slices.map((s) => `S${s.seq} [${s.difficulty}] ${s.title} — ${s.status}`).join("\n");
-    }
-  }
-
-  if (rotated) {
-    const handoff = ctx.db
-      .query<{ body: string }, [number | null]>(
-        "SELECT body FROM note WHERE grp_id IS ? AND kind = 'handoff' ORDER BY at DESC LIMIT 1",
-      )
-      .get(job.grp_id);
-    delta.handoff =
-      (handoff?.body ? `${handoff.body}\n\n` : "") +
-      "This is a fresh session. Use `orch ctx query` for anything you are missing " +
-      "rather than assuming you remember it.";
-  }
-
-  const unread = readUnread(ctx, agent, job.grp_id, deps.cfg);
-  // Skill text, read off the host for this turn only. The names travelled on the
-  // payload; the bodies are not stored anywhere, so editing a SKILL.md takes effect
-  // on the next turn that asks for it.
-  const wanted = payload.skills ?? [];
-  if (wanted.length) {
-    const row = ctx.db
-      .query<{ repo_path: string; project_id: number }, [number | null]>(
-        "SELECT p.repo_path, p.id AS project_id FROM project p JOIN grp g ON g.project_id = p.id WHERE g.id = ?",
-      )
-      .get(job.grp_id ?? null);
-    const projectId = row?.project_id ?? agent.project_id ?? null;
-    const all = listSkills(row?.repo_path, projectSkills(ctx.db, projectId));
-    const found = wanted.map((n) => all.find((s) => s.name === n)).filter((s): s is NonNullable<typeof s> => !!s);
-    // A project skill's file exists only in this scope's container, so the read
-    // goes back through the files API rather than at this machine's filesystem.
-    if (found.length) {
-      delta.skills = (await Promise.all(found.map((s) => readSkillIn((path) => getFile(ctx, scope, path), s)))).join(
-        "\n\n",
-      );
-    }
-  }
-
-  if (unread) delta.unread = unread;
-
-  return delta;
-}
-
-/** Channel delta since this agent's cursor, then advance it. */
-/**
- * Unread channel events, and what to do when there are too many.
- *
- * The cursor only ever advances to the last row actually handed over, so a backlog is
- * not lost — but it drains 30 per turn, and an agent that comes back to 200 events
- * spends six turns reading history at full price. docs/project/plan.md §7 puts the Librarian here:
- * past the threshold it compresses the run into one note, and the compression itself
- * is an event so the boss can see what was compressed.
- */
-function readUnread(ctx: Ctx, agent: AgentRow, grpId: number | null, cfg?: Config): string | null {
-  if (!grpId) return null;
-  const ch = ctx.db.query<{ id: number }, [number]>("SELECT id FROM channel WHERE grp_id = ? LIMIT 1").get(grpId);
-  if (!ch) return null;
-
-  const cur =
-    ctx.db
-      .query<{ last_seq: number }, [number, number]>(
-        "SELECT last_seq FROM cursor WHERE agent_id = ? AND channel_id = ?",
-      )
-      .get(agent.id, ch.id)?.last_seq ?? 0;
-
-  const limit = cfg?.unreadDigestThreshold ?? 30;
-  const rows = ctx.db
-    .query<{ seq: number; author: string; intent: string | null; body: string }, [number, number, number]>(
-      `SELECT seq, author, intent, body FROM event
-       WHERE channel_id = ? AND seq > ? AND kind IN ('say', 'boss_say', 'note', 'escalation')
-       ORDER BY seq LIMIT ?`,
-    )
-    .all(ch.id, cur, limit);
-  if (rows.length === 0) return null;
-
-  // A full page means there is probably more behind it. Hand this page over, and put
-  // the Librarian on the rest — once: a queued digest already covers the backlog.
-  let tail = "";
-  if (rows.length >= limit) {
-    const behind = ctx.db
-      .query<{ c: number; hi: number }, [number, number]>(
-        `SELECT count(*) AS c, max(seq) AS hi FROM event
-         WHERE channel_id = ? AND seq > ? AND kind IN ('say', 'boss_say', 'note', 'escalation')`,
-      )
-      .get(ch.id, rows.at(-1)!.seq)!;
-    if (behind.c > 0) {
-      const queued = ctx.db
-        .query<{ c: number }, [string, number]>(
-          `SELECT count(*) AS c FROM job WHERE kind = 'agent_turn'
-           AND state IN (SELECT value FROM json_each(?))
-           AND json_extract(payload_json, '$.digest.channel_id') = ?`,
-        )
-        .get(stateParam(ACTIVE_JOB_STATES), ch.id)!.c;
-      if (queued === 0) {
-        ctx.sched.enqueue("agent_turn", {
-          grp_id: grpId,
-          priority: 2,
-          payload: { role: "librarian", digest: { channel_id: ch.id, from: rows.at(-1)!.seq, to: behind.hi } },
-        });
-      }
-      tail = `\n\n(${behind.c} 条更早的还没读，Librarian 正在压成一条摘要，别自己去翻)`;
-      ctx.bus.emit({
-        grpId,
-        author: "orchestrator",
-        kind: "state_change",
-        body: say(ctx.config.language, "unread.digest", { n: behind.c }),
-        meta: { channel_id: ch.id, behind: behind.c },
-      });
-    }
-  }
-
-  const last = rows.at(-1)!.seq;
-  ctx.db.run(
-    `INSERT INTO cursor (agent_id, channel_id, last_seq) VALUES (?, ?, ?)
-     ON CONFLICT (agent_id, channel_id) DO UPDATE SET last_seq = excluded.last_seq`,
-    [agent.id, ch.id, last],
-  );
-  return rows.map((r) => `${r.author}${r.intent ? ` (${r.intent})` : ""}: ${r.body}`).join("\n") + tail;
 }
 
 /** Where a staged attachment lands inside the container. */
@@ -1186,27 +871,31 @@ async function runGateJob(deps: ExecDeps, job: Job<"gate">): Promise<void> {
  */
 async function runWatchdogJob(deps: ExecDeps): Promise<void> {
   const findings = await runWatchdog({ ctx: deps.ctx, cfg: deps.cfg });
-  for (const f of findings) deps.ctx.onFinding?.(f.rule, f.severity, f.body, f.grpId);
+  for (const finding of findings) publishWatchdogFinding(deps.ctx, finding);
+  for (const item of runStandup(deps.ctx.db)) publishStandupItem(deps.ctx, item);
+}
 
-  // The standup rides along: same deterministic pass, and it sees across groups
-  // in a way no single group's agents can.
-  for (const item of runStandup(deps.ctx.db)) {
-    // Same body, every thirty seconds, forever: the watchdog's own findings are
-    // filtered against the event log before they are emitted and the standup's
-    // never were, so the feed filled with three lines repeating.
-    const seen = deps.ctx.db
-      .query<{ at: number }, [string]>(`SELECT max(at) AS at FROM event WHERE author = 'standup' AND body = ?`)
-      .get(item.body);
-    if (seen?.at && Date.now() - seen.at < REEMIT_MS) continue;
-    deps.ctx.bus.emit({
-      grpId: item.grpIds[0] ?? null,
-      author: "standup",
-      kind: "state_change",
-      body: item.body,
-      meta: { kind: item.kind, groups: item.grpIds },
-    });
-    deps.ctx.onFinding?.(item.kind, "advisory", item.body, item.grpIds[0] ?? null);
-  }
+function publishWatchdogFinding(
+  ctx: Ctx,
+  finding: { rule: string; severity: string; body: string; grpId: number | null },
+): void {
+  ctx.onFinding?.(finding.rule, finding.severity, finding.body, finding.grpId);
+}
+
+function publishStandupItem(ctx: Ctx, item: { kind: string; body: string; grpIds: number[] }): void {
+  const seen = ctx.db
+    .query<{ at: number }, [string]>(`SELECT max(at) AS at FROM event WHERE author = 'standup' AND body = ?`)
+    .get(item.body);
+  if (seen?.at && Date.now() - seen.at < REEMIT_MS) return;
+  const groupId = item.grpIds[0] ?? null;
+  ctx.bus.emit({
+    grpId: groupId,
+    author: "standup",
+    kind: "state_change",
+    body: item.body,
+    meta: { kind: item.kind, groups: item.grpIds },
+  });
+  ctx.onFinding?.(item.kind, "advisory", item.body, groupId);
 }
 
 /** Called by the server when the Auditor files a PR-level verdict. */

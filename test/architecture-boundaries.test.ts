@@ -72,6 +72,7 @@ test("constrained production zones form one explicit dependency DAG", async () =
     ].sort(),
   );
   expect(config.boundaries.zones.find(({ name }) => name === "application")?.patterns).toEqual([
+    "src/application/**",
     "src/runtime/executor.ts",
   ]);
   expect(config.boundaries.zones.find(({ name }) => name === "prompt")?.patterns).toEqual(["src/prompt/**"]);
