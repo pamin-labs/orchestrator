@@ -333,6 +333,17 @@ test("scrolling the flamegraph zooms its width, anchored where the pointer is", 
   );
 
   await waitFor(() => expect(Number(svg()?.getAttribute("width") ?? 0)).toBeGreaterThan(before));
+
+  // The ratio, not just growth. "It grew" is also satisfied by a runaway, and
+  // there was one: the chart was measured *inside* the wrapper it had already
+  // scaled, so the width came out as viewport ÷ zoom² and each render resized
+  // what the observer was watching. The minimap's own window is the zoom, so
+  // the two have to agree — svg width × zoom = the viewport.
+  const pct = Number.parseFloat(
+    (await view.findByRole("slider")).firstElementChild?.getAttribute("style")?.match(/width:\s*([\d.]+)%/)?.[1] ?? "",
+  );
+  expect(Number(svg()?.getAttribute("width") ?? 0) * (pct / 100)).toBeCloseTo(SIZE.width, 0);
+
   // And a way back, which the node-zoom breadcrumb shares.
   expect(view.getAllByRole("button", { name: /回到全部/ })).toHaveLength(1);
 });

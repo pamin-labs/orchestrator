@@ -24,7 +24,7 @@ import {
   panBy,
   panTo,
   wheelPixels,
-  wheelZoom,
+  wheelScale,
   zoomAt,
   groupByKind,
   humanName,
@@ -162,7 +162,7 @@ function wheelWindow(
   }
   const at = (event.clientX - box.left) / box.width;
   if (!Number.isFinite(at)) return null;
-  return zoomAt(window, at, wheelZoom(wheelPixels(event.deltaY, event.deltaMode)), limit, minSpan);
+  return zoomAt(window, at, wheelScale(event.deltaY, event.deltaMode, event.ctrlKey), limit, minSpan);
 }
 
 /** The endpoint's own default window, so the first bucket is derived from the same number. */
@@ -590,8 +590,29 @@ const flameColor = ({ data, highlight }: FlameFrame): string => {
  * `selfValue` is read when frames are laid out and toggling it on a live chart
  * leaves the old widths in place.
  */
-function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked: readonly string[] }) {
+/**
+ * The chart's whole lifecycle, apart from the markup around it.
+ *
+ * Extracted because this is the part that is easy to get wrong and it had been,
+ * twice: once by clearing the container instead of calling `destroy`, and once
+ * by measuring the element the zoom had already scaled. Four effects that only
+ * ever talk to a library instance, sitting in the same function as a minimap and
+ * a breadcrumb, is a component where neither half can be read on its own.
+ */
+function useFlameChart({
+  tree,
+  self,
+  picked,
+  zoom,
+}: {
+  tree: FlameNode;
+  self: boolean;
+  picked: readonly string[];
+  zoom: number;
+}) {
   const host = useRef<HTMLDivElement>(null);
+  /** The unscaled box. What the chart's width is derived from. */
+  const port = useRef<HTMLDivElement>(null);
   const details = useRef<HTMLDivElement>(null);
   const chart = useRef<FlameGraph | null>(null);
   const [width, setWidth] = useState(0);
@@ -599,30 +620,6 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
   // here rather than in the block above, because the control that uses it sits
   // on the chart and only this component knows when a click zoomed.
   const [zoomed, setZoomed] = useState<string | null>(null);
-  /**
-   * Which slice of the whole width is on screen, as fractions of it.
-   *
-   * A flamegraph's horizontal axis *is* the zoomable one — it is folded time,
-   * and zooming means showing a narrower slice across the full pane. Chrome's
-   * profiler does this on a plain wheel and anchors at the cursor, which is the
-   * binding being copied; speedscope puts it behind a modifier and Grafana has
-   * no wheel binding at all, so neither is the reference.
-   *
-   * Held here rather than pushed into the library because `d3-flame-graph` zooms
-   * to a *node* (`zoomTo`), not to a range. Rendering the chart wider than its
-   * container and sliding it is the same picture and needs no API the library
-   * does not have — and it keeps the labels laid out at the zoomed width, which
-   * a CSS `scaleX` would have stretched instead.
-   */
-  const [view, setView] = useState<TimeWindow>({ from: 0, to: 1 });
-  const zoom = view.to - view.from;
-  /** Centre the window where the pointer is, in fractions of the whole width. */
-  const panFrom = (event: React.PointerEvent<HTMLDivElement>) => {
-    const box = event.currentTarget.getBoundingClientRect();
-    if (box.width === 0) return;
-    const at = (event.clientX - box.left) / box.width;
-    if (Number.isFinite(at)) setView((current) => panTo(current, at, { from: 0, to: 1 }));
-  };
 
   // The library takes a width in pixels and does not observe its container, so
   // the container is observed here. `ResizeObserver` rather than a window
@@ -632,8 +629,16 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
   // Measured once directly as well as observed, because `ResizeObserver` fires
   // asynchronously — waiting only for it leaves the chart unbuilt through the
   // first paint, which is a visible blank on every open.
+  // The viewport, not the chart inside it. `host` sits within a wrapper sized
+  // `100/zoom` percent, so measuring `host` measures viewport ÷ zoom — which was
+  // then divided by zoom a second time, giving viewport ÷ zoom². And because the
+  // observer watched the scaled element, setting the width resized what was
+  // being measured: a feedback loop that left the frames occupying a fraction of
+  // a wrapper several times too wide, with the minimap disagreeing with the
+  // screen. Measuring the unscaled parent makes the quantity independent of
+  // `zoom`, so the loop cannot close.
   useEffect(() => {
-    const el = host.current;
+    const el = port.current;
     if (!el) return;
     const measure = () => setWidth(el.getBoundingClientRect().width || el.offsetWidth);
     measure();
@@ -723,6 +728,21 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
   // The label is an HTML `div` inside a `foreignObject`, not SVG text, so it is
   // reached by class and not by element. Untouched it inherits the page's `ink`
   // on top of an `ink`-coloured frame, which is the colour on itself.
+  return { host, port, details, chart, width, zoomed, setZoomed };
+}
+
+function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked: readonly string[] }) {
+  const [view, setView] = useState<TimeWindow>({ from: 0, to: 1 });
+  const zoom = view.to - view.from;
+  /** Centre the window where the pointer is, in fractions of the whole width. */
+  const panFrom = (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    if (box.width === 0) return;
+    const at = (event.clientX - box.left) / box.width;
+    if (Number.isFinite(at)) setView((current) => panTo(current, at, WHOLE));
+  };
+  const { host, port, details, chart, zoomed, setZoomed } = useFlameChart({ tree, self, picked, zoom });
+
   return (
     <div className="mt-2">
       {/* One line, fixed height, holding whichever of two things is true: where
@@ -790,6 +810,7 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
           slid left, which is what "show a narrower slice across the full pane"
           means for an axis that is folded time rather than a clock. */}
       <div
+        ref={port}
         className="overflow-hidden"
         onWheel={(event) => {
           // 0.002 of the whole width is the floor — five hundred times in, past

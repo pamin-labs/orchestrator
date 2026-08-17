@@ -12,7 +12,7 @@
  * unit tests rather than screenshots.
  */
 
-import type { Folded, Stage, TraceRow } from "../../shared/api";
+import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
 
 /**
  * One frame of the flamegraph: a name, what it cost, and what it called.
@@ -443,12 +443,37 @@ export const wheelPixels = (delta: number, deltaMode: number): number => {
 };
 
 /**
- * The scale one wheel event asks for, compounding per pixel.
+ * The scale one wheel event asks for, from `d3-zoom`'s own normalisation.
  *
- * Per pixel rather than per event, so a trackpad's fifty small deltas and a
- * mouse's three large ones cover the same ground. Up (negative delta) zooms in.
+ * Three lines lifted from `d3-zoom`'s `wheelDelta`, not the package: it is not
+ * installed, `d3-flame-graph` brings seventeen d3 subpackages and not that one,
+ * and its last publish is 2022 — and what we would use of it is these three
+ * lines, since the drag-pan, scale extents and transition interpolation are all
+ * things this does not need and `zoomAt` already clamps.
+ *
+ * Each factor earns its place:
+ *
+ * `deltaMode` is not optional. Firefox reports a wheel tick as `deltaY: ±1` in
+ * *lines*; Chrome and Safari report hundreds of *pixels*. A constant tuned on
+ * one is wrong on the other by two orders of magnitude.
+ *
+ * The exponential is what makes one constant serve both devices, and it has to,
+ * because **there is no device detection to be had** — a trackpad and a mouse
+ * produce identical events. A Chrome mouse click at `deltaY: 100` becomes a 13%
+ * step; a trackpad's `deltaY: 3` becomes 0.4%. Same formula, no branch.
+ *
+ * `ctrlKey` is the pinch: browsers set it on a trackpad pinch, the one gesture
+ * distinguishable from a two-finger scroll, and ×10 is what makes it feel like
+ * one.
+ *
+ * Returned as a *span* multiplier, which is the inverse of d3's scale — `zoomAt`
+ * takes "how much wider does the window get", so scrolling up returns less
+ * than 1.
  */
-export const wheelZoom = (px: number): number => 1.0015 ** px;
+export function wheelScale(deltaY: number, deltaMode: number, ctrlKey: boolean): number {
+  const delta = -deltaY * (deltaMode === 1 ? 0.05 : deltaMode ? 1 : 0.002) * (ctrlKey ? 10 : 1);
+  return 2 ** -delta;
+}
 
 /**
  * Slide the window by a distance in its own units, clamped by sliding.
@@ -495,7 +520,7 @@ export const bucketFor = (windowMs: number): number =>
  * here" and is what recharts leaves alone by default.
  */
 export function fillBuckets(
-  points: readonly TrendPoint[],
+  points: readonly Trend[],
   window: TimeWindow,
   bucketMs: number,
 ): { at: number; count: number; p50: number | null; p95: number | null }[] {
@@ -515,14 +540,6 @@ export function fillBuckets(
       p95: hit?.p95 ?? null,
     };
   });
-}
-
-/** One trend point as the server sends it. */
-interface TrendPoint {
-  at: number;
-  count: number;
-  p50: number;
-  p95: number;
 }
 
 /**

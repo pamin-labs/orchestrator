@@ -12,7 +12,7 @@ import {
   groupByKind,
   panBy,
   wheelPixels,
-  wheelZoom,
+  wheelScale,
   panTo,
   zoomAt,
   spanKind,
@@ -501,13 +501,26 @@ test("a wheel event is normalised to pixels whatever unit it arrived in", () => 
   expect(wheelPixels(-9999, 0)).toBe(-120);
 });
 
-test("zoom compounds per pixel, so a trackpad and a mouse cover the same ground", () => {
-  // Fifty small deltas and one large one of the same total distance agree.
-  const burst = Array.from({ length: 50 }, () => wheelZoom(2)).reduce((a, b) => a * b, 1);
-  expect(burst).toBeCloseTo(wheelZoom(100), 6);
-  // Up zooms in.
-  expect(wheelZoom(-100)).toBeLessThan(1);
-  expect(wheelZoom(100)).toBeGreaterThan(1);
+test("one formula serves both devices, because nothing can tell them apart", () => {
+  // A browser gives no way to distinguish a trackpad from a mouse; they emit
+  // identical events. The exponential is what makes one constant work for both.
+  const mouse = wheelScale(-100, 0, false); // Chrome mouse click
+  const pad = wheelScale(-3, 0, false); // trackpad increment
+  expect(1 / mouse).toBeCloseTo(2 ** 0.2, 6); // ~13% a click
+  expect(1 / pad).toBeCloseTo(2 ** 0.006, 6); // ~0.4% an increment
+  // Up zooms in — the span multiplier is below one.
+  expect(mouse).toBeLessThan(1);
+  expect(wheelScale(100, 0, false)).toBeGreaterThan(1);
+});
+
+test("a line-mode wheel is not two orders of magnitude off a pixel-mode one", () => {
+  // Firefox reports a tick as `deltaY: ±1` in lines where Chrome reports
+  // hundreds of pixels. Without `deltaMode` one of the two is unusable.
+  expect(wheelScale(-1, 1, false)).toBeCloseTo(wheelScale(-25, 0, false), 6);
+});
+
+test("a pinch is ten times a scroll, which is the one gesture that is knowable", () => {
+  expect(1 / wheelScale(-100, 0, true)).toBeCloseTo((1 / wheelScale(-100, 0, false)) ** 10, 6);
 });
 
 test("panning by a distance keeps the width and clamps by sliding", () => {

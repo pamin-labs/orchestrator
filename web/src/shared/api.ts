@@ -149,6 +149,7 @@ export type Telemetry = TelemetryReport;
 export type Stage = TelemetryReport["stages"][number];
 export type TraceRow = TelemetryReport["traces"][number];
 export type Folded = TelemetryReport["flame"][number];
+export type Trend = TelemetryReport["trend"][number];
 
 /** Which work to report on: one requirement, one project, or the host itself. */
 export type TelemetryScope = { kind: "group" | "project"; id: number } | { kind: "system" };
