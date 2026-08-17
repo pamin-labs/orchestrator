@@ -142,7 +142,7 @@ test("the PR body is built from the record, not from a sentence", () => {
   );
   h.db.run("INSERT INTO note (grp_id, kind, body, at) VALUES (1, 'retro', 'memo alone was not enough', 0)");
 
-  const body = prBody(h.ctx, 1);
+  const body = prBody(h.ctx.db, 1);
   expect(body).toContain("the timeline flickers");
   expect(body).toContain("**S1 stable keys**");
   expect(body).toContain("no row remounts");
@@ -443,7 +443,7 @@ test("eviction leaves other note kinds alone", () => {
   const ins = h.db.prepare("INSERT INTO note (project_id, kind, lang, body, at) VALUES (1, 'lesson', 'zh', ?, ?)");
   for (let i = 0; i < LESSON_CAP + 5; i++) ins.run(`l${i}`, i);
 
-  expect(evictOldestLessons(h.ctx, 1)).toBe(5);
+  expect(evictOldestLessons(h.ctx.db, 1)).toBe(5);
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'retro'").get()!.c).toBe(1);
 });
 
@@ -548,7 +548,7 @@ test("every pull request says what opened it", () => {
   // One line, at the bottom, no badge — the body above it is already the
   // evidence, and docs/design/ui.md's rule holds here too: say it once.
   const h = harness();
-  const body = prBody(h.ctx, 1);
+  const body = prBody(h.ctx.db, 1);
   expect(body).toContain("https://github.com/pamin-labs/orchestrator");
   expect(body.split("\n").filter((l) => l.includes("orchestrator]("))).toHaveLength(1);
 });
@@ -582,15 +582,15 @@ test("the commit gets the Scribe's message and the pull request gets the record"
     "One `if` guards the sandbox boundary and it compared the raw path.",
   ]);
 
-  expect(prTitle(h.ctx, 1)).toStartWith("fix(mailbox):");
-  const commit = commitMessage(h.ctx, 1, prTitle(h.ctx, 1));
+  expect(prTitle(h.ctx.db, 1)).toStartWith("fix(mailbox):");
+  const commit = commitMessage(h.ctx.db, 1, prTitle(h.ctx.db, 1));
   expect(commit).toContain("One `if` guards");
   expect(commit).not.toContain("Opened by");
   expect(commit).not.toContain("##");
 
   // The pull request keeps both, the Scribe's part first: it is the only section
   // written by something that read the diff.
-  const body = prBody(h.ctx, 1);
+  const body = prBody(h.ctx.db, 1);
   expect(body).toStartWith("One `if` guards");
   expect(body).toContain("Opened by");
 });
@@ -601,6 +601,6 @@ test("with no Scribe message the branch is still publishable", () => {
   // a title" may not be a reason to hold it. `orch:` is now the mark of that,
   // not the normal case it used to be for every PR this project opened.
   const h = harness();
-  expect(prTitle(h.ctx, 1)).toBe("orch: g1");
-  expect(commitMessage(h.ctx, 1, "orch: g1")).toBe("orch: g1");
+  expect(prTitle(h.ctx.db, 1)).toBe("orch: g1");
+  expect(commitMessage(h.ctx.db, 1, "orch: g1")).toBe("orch: g1");
 });

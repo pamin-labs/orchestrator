@@ -434,8 +434,12 @@ export function setTrailers(db: DB, next: Partial<TrailerPrefs>): TrailerPrefs {
 
 /** The stored settings, in the shape the commit helpers take. One converter, so
  *  the bot identity cannot drift between the fallback author and the trailer. */
-export function gitTrailers(ctx: Ctx): { signoff: boolean; coauthor: boolean; bot: { name: string; email: string } } {
-  return { ...trailers(ctx.db), bot: { ...BOT } };
+export function gitTrailers(db: DB | undefined): {
+  signoff: boolean;
+  coauthor: boolean;
+  bot: { name: string; email: string };
+} {
+  return { ...trailers(db), bot: { ...BOT } };
 }
 
 /** Cleared when the GitHub credential changes, or it outlives the account. */

@@ -70,7 +70,7 @@ test("the 21st lesson evicts the oldest, and only within its own project", async
   // sharing the cap across projects would let a busy one silently empty a quiet one.
   db.run("INSERT INTO project (name, repo_path, created_at) VALUES ('other', '/tmp/o', 0)");
   db.run("INSERT INTO note (project_id, kind, lang, body, at) VALUES (2, 'lesson', '中文', 'other project', 0)");
-  evictOldestLessons(ctx, 1);
+  evictOldestLessons(ctx.db, 1);
   expect(
     db.query<{ c: number }, []>("SELECT count(*) AS c FROM note WHERE kind = 'lesson' AND project_id = 2").get()!.c,
   ).toBe(1);

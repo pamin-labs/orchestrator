@@ -189,9 +189,9 @@ export function lessonsFor(db: DB, projectId: number | null): string[] {
 }
 
 /** Keep the newest LESSON_CAP lessons in each project/global scope. */
-export function evictOldestLessons(ctx: Ctx, projectId: number | null): number {
+export function evictOldestLessons(db: DB, projectId: number | null): number {
   const scope = "kind = 'lesson' AND (project_id IS ? OR (? IS NULL AND project_id IS NULL))";
-  return ctx.db.run(
+  return db.run(
     `DELETE FROM note WHERE ${scope}
        AND id NOT IN (SELECT id FROM note WHERE ${scope} ${NEWEST} LIMIT ?)`,
     [projectId, projectId, projectId, projectId, LESSON_CAP],

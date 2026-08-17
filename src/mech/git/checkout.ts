@@ -1,6 +1,7 @@
 import { errText, tail } from "../../platform/process/text.ts";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { execIn, execLines, getBytes, putBytes, SKILL_SYNC, UTIL, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { cacheProjectSkills } from "../skills.ts";
@@ -182,10 +183,8 @@ export function httpsRemote(url: string): string {
  * checkout's `origin` and `project.remote` come from different places, so a
  * group could clone one repository while its PR opened on another.
  */
-export function remoteFor(ctx: Ctx, projectId: number): string | null {
-  const row = ctx.db
-    .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
-    .get(projectId);
+export function remoteFor(db: DB, projectId: number): string | null {
+  const row = db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId);
   return row?.remote ? httpsRemote(row.remote) : null;
 }
 
@@ -594,21 +593,21 @@ export async function keepBranch(ctx: Ctx, grpId: number): Promise<{ ok: boolean
 }
 
 function branchRemote(
-  ctx: Ctx,
+  db: DB,
   grpId: number,
 ): { ok: true; branch: string; projectId: number; remote: string } | { ok: false; reason: string } {
-  const grp = ctx.db
+  const grp = db
     .query<{ branch: string | null; project_id: number }, [number]>("SELECT branch, project_id FROM grp WHERE id = ?")
     .get(grpId);
   if (!grp?.branch) return { ok: false, reason: "group has no branch" };
-  const remote = remoteFor(ctx, grp.project_id);
+  const remote = remoteFor(db, grp.project_id);
   return remote
     ? { ok: true, branch: grp.branch, projectId: grp.project_id, remote }
     : { ok: false, reason: "project has no remote" };
 }
 
 async function keep(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
-  const found = branchRemote(ctx, grpId);
+  const found = branchRemote(ctx.db, grpId);
   if (!found.ok) return found;
   const { branch, remote, projectId } = found;
   const base = await baseRefFor(ctx, projectId);
@@ -673,7 +672,7 @@ async function push(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: st
   // may still be unpushed from an earlier turn, so this carries on.
   if (!kept.ok && !/empty bundle/i.test(kept.reason ?? "")) return kept;
 
-  const found = branchRemote(ctx, grpId);
+  const found = branchRemote(ctx.db, grpId);
   if (!found.ok) return found;
   const mirror = await ensureMirror(ctx, found.remote);
 
@@ -732,7 +731,7 @@ export async function ensureCheckout(ctx: Ctx, grpId: number): Promise<void> {
     .query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?")
     .get(grp.project_id);
   if (!project) return report(`项目不在了（project ${grp.project_id} 查不到）`);
-  const remote = remoteFor(ctx, grp.project_id);
+  const remote = remoteFor(ctx.db, grp.project_id);
   if (!remote) return report(`project ${grp.project_id} 没记下 remote，无从 clone`);
   await createCheckout(
     ctx,

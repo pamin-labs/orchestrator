@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { ROOT } from "../../platform/config/load.ts";
 import { gitTrailers } from "./ghlogin.ts";
 import type { Ctx } from "../../mech/ctx.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../platform/text/lang.ts";
 import { squashWip } from "./worktree.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
@@ -38,8 +39,8 @@ const PackageVersion = z.object({ version: z.string() });
  * the schema changes to hold `owner/repo` directly, this function is the only
  * thing that changes — everything below already speaks `owner/repo`.
  */
-function repoSlug(ctx: Ctx, projectId: number): string | null {
-  const p = ctx.db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId);
+function repoSlug(db: DB, projectId: number): string | null {
+  const p = db.query<{ remote: string | null }, [number]>("SELECT remote FROM project WHERE id = ?").get(projectId);
   return p?.remote ? parseRepo(p.remote) : null;
 }
 
@@ -60,7 +61,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
     )
     .get(grpId);
   if (!grp?.branch) return { error: "group has no branch" };
-  const slug = repoSlug(ctx, grp.project_id);
+  const slug = repoSlug(ctx.db, grp.project_id);
   if (!slug) return { error: "project has no GitHub remote: a PR has nowhere to go" };
 
   if (grp.pr_number) {
@@ -83,7 +84,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   // string, so `git log` in the merged repository carried `## Slices (3, all
   // accepted)`, a gate table and `Opened by orchestrator` — a description
   // written for a review page, pasted into the one place that outlives it.
-  const sq = await squashWip(sandbox, WORK, WORK, commitMessage(ctx, grpId, input.title), gitTrailers(ctx));
+  const sq = await squashWip(sandbox, WORK, WORK, commitMessage(ctx.db, grpId, input.title), gitTrailers(ctx.db));
   ctx.bus.emit({
     grpId,
     author: "orchestrator",
@@ -213,25 +214,25 @@ export function checkPrMessage(title: string, body: string): string | null {
  * With no body it stays one line, which is the right shape for a commit nobody
  * described — better than pasting the pull request's headings into a log.
  */
-export function commitMessage(ctx: Ctx, grpId: number, title: string): string {
-  const summary = ctx.db
+export function commitMessage(db: DB, grpId: number, title: string): string {
+  const summary = db
     .query<{ pr_summary: string | null }, [number]>("SELECT pr_summary FROM grp WHERE id = ?")
     .get(grpId)?.pr_summary;
   return summary?.trim() ? `${title}\n\n${summary.trim()}` : title;
 }
 
-export function prTitle(ctx: Ctx, grpId: number): string {
-  const g = ctx.db
+export function prTitle(db: DB, grpId: number): string {
+  const g = db
     .query<{ name: string; pr_title: string | null }, [number]>("SELECT name, pr_title FROM grp WHERE id = ?")
     .get(grpId);
   return g?.pr_title?.trim() || `orch: ${g?.name ?? "changes"}`;
 }
 
-export function prBody(ctx: Ctx, grpId: number): string {
+export function prBody(db: DB, grpId: number): string {
   // One row shape per call and always the same bindings, so only the first type
   // argument is worth writing. It used to take `unknown[]` and cast twice to get
   // there, which threw away what `db.query` already declares.
-  const q = <T>(sql: string, ...p: SQLQueryBindings[]): T[] => ctx.db.query<T, SQLQueryBindings[]>(sql).all(...p);
+  const q = <T>(sql: string, ...p: SQLQueryBindings[]): T[] => db.query<T, SQLQueryBindings[]>(sql).all(...p);
   const out: string[] = [];
 
   // The Scribe's, and first, because it is the only part written by something
@@ -443,7 +444,7 @@ async function loadPollDetails(
 }
 
 function changedFeedback(
-  ctx: Ctx,
+  db: DB,
   group: WatchedGroup,
   prNumber: number,
   details: PollDetails,
@@ -458,7 +459,7 @@ function changedFeedback(
   if (comments.length === 0 && !checksChanged) return null;
 
   const newest = comments.reduce((value, comment) => Math.max(value, comment.at), group.pr_seen_at);
-  ctx.db.run("UPDATE grp SET pr_seen_at = ?, pr_checks_sig = ? WHERE id = ?", [newest, signature, group.id]);
+  db.run("UPDATE grp SET pr_seen_at = ?, pr_checks_sig = ? WHERE id = ?", [newest, signature, group.id]);
   return {
     grpId: group.id,
     prNumber,
@@ -498,7 +499,7 @@ async function pollPr(ctx: Ctx, gh: Github, group: WatchedGroup): Promise<Feedba
     new Date(Math.max(0, group.pr_seen_at)).toISOString(),
   );
   if (!details) return null;
-  return changedFeedback(ctx, group, prNumber, details, parsed.mergeable, parsed.mergeable_state);
+  return changedFeedback(ctx.db, group, prNumber, details, parsed.mergeable, parsed.mergeable_state);
 }
 
 export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {

@@ -134,7 +134,7 @@ export async function restoreWorkspace(ctx: Ctx, grpId: number): Promise<void> {
   // No branch means the group has not started; `startGroup` owns that path and
   // is in the middle of it.
   if (!grp?.branch) return;
-  const remote = remoteFor(ctx, grp.project_id);
+  const remote = remoteFor(ctx.db, grp.project_id);
   if (!remote) return;
 
   ctx.bus.emit({
@@ -286,7 +286,7 @@ export async function startGroup(ctx: Ctx, grpId: number): Promise<string | null
   if (grp && !grp.branch) {
     {
       try {
-        const remote = remoteFor(ctx, grp.project_id);
+        const remote = remoteFor(ctx.db, grp.project_id);
         if (!remote) return "project has no remote recorded; a group clones from it";
         const branch = `orch/${grp.name}`;
         const base = await baseRefFor(ctx, grp.project_id);

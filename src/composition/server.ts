@@ -560,8 +560,8 @@ export function start(overrides: Partial<Config> = {}): Started {
       ctx,
       gh,
       grpId,
-      title: prTitle(ctx, grpId),
-      body: prBody(ctx, grpId),
+      title: prTitle(ctx.db, grpId),
+      body: prBody(ctx.db, grpId),
     })
       .then((r) => {
         if ("error" in r) {

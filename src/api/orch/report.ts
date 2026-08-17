@@ -125,7 +125,7 @@ export const postJournal = (async (ctx, _req, a, _p, b) => {
   );
   // The lessons list is capped where it is written, not where it is read: an
   // ever-growing list becomes the very context cost it exists to prevent.
-  if (v.kind === "lesson") evictOldestLessons(ctx, grp?.project_id ?? null);
+  if (v.kind === "lesson") evictOldestLessons(ctx.db, grp?.project_id ?? null);
 
   // A retro is what PR-level review was waiting for. Without this the flow
   // dead-ends: the PM writes the retro nobody asked for again, and the branch sits

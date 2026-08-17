@@ -267,7 +267,7 @@ async function checkpointTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: Prep
     WORK,
     WORK,
     checkpointLabel(deps.ctx, job),
-    gitTrailers(deps.ctx),
+    gitTrailers(deps.ctx.db),
   );
   if (before) recordCheckpoint(deps.ctx, job, before);
   markAgentRunning(deps.ctx, turn);

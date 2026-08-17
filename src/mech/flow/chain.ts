@@ -192,11 +192,11 @@ function citationError(db: DB, input: AnswerInput): string | null {
   return `note ${input.refNoteId} is a ${note.kind}, not a decision`;
 }
 
-function answerError(ctx: Ctx, esc: EscRow, input: AnswerInput): string | null {
+function answerError(db: DB, esc: EscRow, input: AnswerInput): string | null {
   if (esc.chain_state === "answered") return "already answered";
   const responder = responderError(esc, input.by, input.actorGrpId);
   if (responder) return responder;
-  const citation = citationError(ctx.db, input);
+  const citation = citationError(db, input);
   if (citation) return citation;
   return input.by !== "boss" && isReserved(esc.question)
     ? "this one is reserved for the boss whatever the precedent"
@@ -208,7 +208,7 @@ export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok
   const { ctx } = deps;
   const esc = load(ctx.db, input.escId);
   if (!esc) return { ok: false, error: `no escalation ${input.escId}` };
-  const refused = answerError(ctx, esc, input);
+  const refused = answerError(ctx.db, esc, input);
   if (refused) return { ok: false, error: refused };
 
   ctx.db.run(
