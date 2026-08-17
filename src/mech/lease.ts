@@ -1,6 +1,8 @@
 import { resolve as resolvePath, relative, isAbsolute } from "node:path";
 import { z } from "zod";
 import type { Invalid, Result } from "./util/validate.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { activeTracer } from "../platform/observability/traces.ts";
 import type { DB } from "../platform/persistence/database.ts";
 import { jsonOr } from "../contracts/json.ts";
 
@@ -349,6 +351,34 @@ export type ResourceExec = (
 ) => Promise<{ code: number; out: string }>;
 
 export async function runResource(
+  def: ResourceDef,
+  args: LeaseArgs,
+  opts: {
+    exec: ResourceExec;
+    cwd?: string;
+    logPath?: string;
+    timeoutMs?: number;
+  },
+): Promise<RunOutcome | Invalid> {
+  // A lease slot is what a hang costs, and the timeout below is stated in
+  // minutes because that is the scale — yet nothing timed it. Slots are global
+  // and few, so one wedged build stops every group from gating, and the panel
+  // had no row saying which resource was holding one.
+  return activeTracer().startActiveSpan("lease.run", { attributes: { "lease.resource": def.name } }, async (span) => {
+    try {
+      const outcome = await runResourceInner(def, args, opts);
+      if ("ok" in outcome) span.setStatus({ code: SpanStatusCode.ERROR, message: outcome.error });
+      else if (outcome.exitCode !== 0) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: `exit ${outcome.exitCode}` });
+      }
+      return outcome;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function runResourceInner(
   def: ResourceDef,
   args: LeaseArgs,
   opts: {

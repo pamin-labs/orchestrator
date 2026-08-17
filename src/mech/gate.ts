@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { activeTracer } from "../platform/observability/traces.ts";
 import { mkdirSync } from "node:fs";
 import { z } from "zod";
 import type { DB } from "../platform/persistence/database.ts";
@@ -68,6 +69,19 @@ export interface RunGatesOptions {
  * noise, and the agent only needs the first real reason.
  */
 export async function runGates(opts: RunGatesOptions): Promise<GateOutcome> {
+  // The gates run one after another, each bounded by the lease timeout, and the
+  // whole sequence is what a slice waits on. `lease.run` times each one; this is
+  // the parent that says whether "gating is slow" is one gate or all of them.
+  return activeTracer().startActiveSpan("gate.run", async (span) => {
+    try {
+      return await runGatesInner(opts);
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function runGatesInner(opts: RunGatesOptions): Promise<GateOutcome> {
   const names = gatesFor(opts.db, opts.projectId);
   const run = opts.run ?? runResource;
   const results: GateResult[] = [];

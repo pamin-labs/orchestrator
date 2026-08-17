@@ -6,6 +6,8 @@ import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { claudeUsage, promptPath, UsageSchema, type Usage } from "../../runtime/claude.ts";
 import { codexUsage } from "../../runtime/codex.ts";
 import { shq } from "../../platform/process/shell.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { activeTracer } from "../../platform/observability/traces.ts";
 import { z } from "zod";
 
 /**
@@ -284,16 +286,32 @@ export function modelAsk(
       // nothing, and this was the reason the index was invisible in every cost
       // total while being the most frequent model call there is.
       ["claude", "-p", "--output-format", "json", "--model", spec.model];
-  return async (prompt) => {
-    const file = promptPath();
-    await putFile(ctx, scope, file, prompt);
-    const cmd = `${argv.map(shq).join(" ")} < ${file}; rc=$?; rm -f ${file}; exit $rc`;
-    const r = await execIn(ctx, scope, cmd, { cwd: WORK, timeoutMs }).catch(() => null);
-    if (!r || r.code !== 0) return "";
-    const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
-    if (usage) onUsage?.(usage);
-    return text;
-  };
+  return async (prompt) =>
+    // The same sentence the `onUsage` comment above makes, about the other half
+    // of the bill: this is the most frequent model call in the system and it
+    // appeared in no report. `onUsage` fixed the money; this fixes the clock.
+    // Up to twelve of these per project on every heartbeat, each a full model
+    // round trip inside a container, and the panel had no row for any of them.
+    activeTracer().startActiveSpan("index.ask", { attributes: { "model.name": spec.model } }, async (span) => {
+      try {
+        const file = promptPath();
+        await putFile(ctx, scope, file, prompt);
+        const cmd = `${argv.map(shq).join(" ")} < ${file}; rc=$?; rm -f ${file}; exit $rc`;
+        const r = await execIn(ctx, scope, cmd, { cwd: WORK, timeoutMs }).catch(() => null);
+        if (!r || r.code !== 0) {
+          // The empty string is both a legitimate answer and the failure value,
+          // and `summarise` counts it as `failed` without being able to tell
+          // which. The span can tell, so it says.
+          span.setStatus({ code: SpanStatusCode.ERROR, message: r ? `exit ${r.code}` : "exec threw" });
+          return "";
+        }
+        const { text, usage } = codex ? readCodex(r.out) : readClaude(r.out);
+        if (usage) onUsage?.(usage);
+        return text;
+      } finally {
+        span.end();
+      }
+    });
 }
 
 /** `claude -p --output-format json`: one object, with the answer and the bill. */

@@ -1,4 +1,5 @@
 import type { SQLQueryBindings } from "bun:sqlite";
+import { activeTracer } from "../../platform/observability/traces.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "../../platform/config/load.ts";
@@ -504,6 +505,19 @@ async function pollPr(ctx: Ctx, gh: Github, group: WatchedGroup): Promise<Feedba
 }
 
 export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
+  // Every heartbeat, serially over every group with an open pull request, and
+  // five GitHub requests per group. `github.request` times the leaves; this says
+  // whether the cost is one slow route or the number of groups.
+  return activeTracer().startActiveSpan("pr.poll", async (span) => {
+    try {
+      return await pollPrsInner(ctx, gh);
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function pollPrsInner(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   const groups = ctx.db
     .query<WatchedGroup, []>(
       `SELECT g.id, g.status, g.pr_number, g.pr_seen_at, g.pr_checks_sig, p.remote

@@ -586,15 +586,30 @@ export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
 async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Promise<Sandbox | null> {
   if (!sandboxId) return null;
   const cached = live.get(sandboxId);
+  // Deliberately above the span: a cached handle is not a round trip, and a span
+  // that fires on the hit would bury the one that fires on the miss.
   if (cached) return cached;
-  try {
-    const sandbox = await Sandbox.connect({ connectionConfig: connection(ctx), sandboxId });
-    live.set(sandboxId, sandbox);
-    return sandbox;
-  } catch {
-    remember(ctx, scope, null);
-    return null;
-  }
+  return activeTracer().startActiveSpan(
+    "sandbox.reconnect",
+    { attributes: sandboxScope(scope, "project" in scope ? scope.project : null) },
+    async (span) => {
+      try {
+        const sandbox = await Sandbox.connect({ connectionConfig: connection(ctx), sandboxId });
+        live.set(sandboxId, sandbox);
+        return sandbox;
+      } catch (e) {
+        // A reconnect that burns its timeout and fails falls through to a fresh
+        // `sandbox.create`, whose span measures 34s at p50 — so until this one
+        // existed the cost of the failed attempt was charged to the creation it
+        // caused, and nothing said a reconnect had been tried at all.
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+        remember(ctx, scope, null);
+        return null;
+      } finally {
+        span.end();
+      }
+    },
+  );
 }
 
 function cacheVolumes(spec: SandboxSpec): Volume[] {
