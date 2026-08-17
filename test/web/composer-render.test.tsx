@@ -8,7 +8,7 @@ import {
   boxHeight,
   keyAction,
   labelAttachments,
-  matchSkills,
+  skillsForSlash,
   pastedName,
   replaceSlash,
   slashAt,
@@ -137,11 +137,11 @@ test("a slash opens the picker only at the start of a word, and only with skills
 });
 
 test("a closed picker matches nothing; an open one matches name or path", () => {
-  expect(matchSkills(skills, null)).toEqual([]);
-  expect(matchSkills(skills, { from: 0, q: "" })).toHaveLength(2);
-  expect(matchSkills(skills, { from: 0, q: "commit" })?.[0]?.name).toBe("commit");
-  expect(matchSkills(skills, { from: 0, q: "/u/" })?.[0]?.name).toBe("review");
-  expect(matchSkills(skills, { from: 0, q: "zzz" })).toEqual([]);
+  expect(skillsForSlash(skills, null)).toEqual([]);
+  expect(skillsForSlash(skills, { from: 0, q: "" })).toHaveLength(2);
+  expect(skillsForSlash(skills, { from: 0, q: "commit" })?.[0]?.name).toBe("commit");
+  expect(skillsForSlash(skills, { from: 0, q: "/u/" })?.[0]?.name).toBe("review");
+  expect(skillsForSlash(skills, { from: 0, q: "zzz" })).toEqual([]);
 });
 
 test("taking a skill replaces the query that opened the picker, leaving the sentence", () => {

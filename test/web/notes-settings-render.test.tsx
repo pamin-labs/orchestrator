@@ -11,7 +11,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { PanelNote } from "../../src/contracts/panel.ts";
-import { matchSkills, skillTally } from "../../web/src/features/skills/model.ts";
+import { searchSkills, skillTally } from "../../web/src/features/skills/model.ts";
 import { Combobox, committed } from "../../web/src/ui/combobox.tsx";
 import { switchRow } from "../../web/src/features/navigation/switcher.tsx";
 import { isThemeHotkey, ThemeChoice } from "../../web/src/ui/theme.tsx";
@@ -288,11 +288,11 @@ test("the token estimate counts the repository's skills too, and only the ticked
 
 test("a skill is found by what it does, not only by what it is called", () => {
   const rows = [skill("deploy"), skill("commit", { description: "写 conventional commit 消息" })];
-  expect(matchSkills(rows, "conventional").map((r) => r.name)).toEqual(["commit"]);
-  expect(matchSkills(rows, "DEPLOY").map((r) => r.name)).toEqual(["deploy"]);
+  expect(searchSkills(rows, "conventional").map((r) => r.name)).toEqual(["commit"]);
+  expect(searchSkills(rows, "DEPLOY").map((r) => r.name)).toEqual(["deploy"]);
   // An empty box is not a filter that matches nothing.
-  expect(matchSkills(rows, "   ")).toHaveLength(2);
-  expect(matchSkills(rows, "没有这个")).toHaveLength(0);
+  expect(searchSkills(rows, "   ")).toHaveLength(2);
+  expect(searchSkills(rows, "没有这个")).toHaveLength(0);
 });
 
 test("the base-branch field is a text box that already carries its value", async () => {

@@ -18,7 +18,7 @@ import {
   boxHeight,
   keyAction,
   labelAttachments,
-  matchSkills,
+  skillsForSlash,
   pastedName,
   replaceSlash,
   SavedAttachmentSchema,
@@ -404,7 +404,7 @@ export function Composer({
     takeSlash("");
     if (go) gotoSkills();
   };
-  const matches = matchSkills(skills, slash);
+  const matches = skillsForSlash(skills, slash);
 
   const clear = () => {
     setText("");

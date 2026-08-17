@@ -3,7 +3,7 @@ import { Head, Input, Meta } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { api, mutate, readApi } from "../../shared/api";
-import { matchSkills, skillTally } from "./model";
+import { searchSkills, skillTally } from "./model";
 import { forgetSkills } from "../composer/view";
 import { cn } from "../../ui/cn";
 import { z } from "zod";
@@ -41,7 +41,7 @@ export function Skills({ projectId }: { projectId: number | null }) {
   }, [load]);
 
   const tally = useMemo(() => skillTally(rows ?? []), [rows]);
-  const shown = useMemo(() => matchSkills(rows ?? [], q), [rows, q]);
+  const shown = useMemo(() => searchSkills(rows ?? [], q), [rows, q]);
 
   const toggle = async (r: Row) => {
     setBusy(r.name);

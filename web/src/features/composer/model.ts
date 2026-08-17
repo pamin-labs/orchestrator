@@ -67,8 +67,17 @@ export function slashAt(value: string, caret: number, skills: Skill[] | null): S
 export const replaceSlash = (text: string, slash: Slash, insert: string): string =>
   text.slice(0, slash.from) + insert + text.slice(slash.from + slash.q.length + 1);
 
-/** What a closed picker offers is nothing, so the caller never asks twice. */
-export const matchSkills = (skills: Skill[] | null, slash: Slash | null): Skill[] =>
+/**
+ * What a closed picker offers is nothing, so the caller never asks twice.
+ *
+ * Named for the slash rather than for skills, because the settings search box
+ * has its own `searchSkills` over the same rows and the two are not
+ * interchangeable: this one takes the parsed `/` token and answers empty when
+ * the picker is closed, the other takes free text and answers everything when
+ * the box is empty. Both were called `matchSkills`, which is a barrel re-export
+ * away from resolving to the wrong one.
+ */
+export const skillsForSlash = (skills: Skill[] | null, slash: Slash | null): Skill[] =>
   slash === null
     ? []
     : (skills ?? []).filter(

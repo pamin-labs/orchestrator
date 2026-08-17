@@ -23,7 +23,7 @@ export function skillTally(rows: Skill[]) {
 }
 
 /** Name or description: what a skill is for is how it is looked for. */
-export function matchSkills(rows: Skill[], q: string): Skill[] {
+export function searchSkills(rows: Skill[], q: string): Skill[] {
   const needle = q.trim().toLowerCase();
   if (!needle) return rows;
   return rows.filter((r) => r.name.toLowerCase().includes(needle) || r.description.toLowerCase().includes(needle));
