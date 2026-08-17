@@ -425,6 +425,107 @@ export function panTo(window: TimeWindow, centre: number, limit: TimeWindow): Ti
 }
 
 /**
+ * One wheel event in pixels, whatever unit it arrived in.
+ *
+ * `deltaMode` is 0 for pixels, 1 for lines and 2 for pages, and a factor tuned
+ * for one is wrong by an order of magnitude for the others. The clamp is for the
+ * gesture rather than the unit: a trackpad emits a burst of small deltas where a
+ * mouse emits a few large ones, and one violent flick should not cross the whole
+ * range — which is what "too sensitive" was.
+ */
+const LINE_PX = 16;
+const PAGE_PX = 800;
+const MAX_PX = 120;
+
+export const wheelPixels = (delta: number, deltaMode: number): number => {
+  const px = deltaMode === 1 ? delta * LINE_PX : deltaMode === 2 ? delta * PAGE_PX : delta;
+  return Math.max(-MAX_PX, Math.min(MAX_PX, px));
+};
+
+/**
+ * The scale one wheel event asks for, compounding per pixel.
+ *
+ * Per pixel rather than per event, so a trackpad's fifty small deltas and a
+ * mouse's three large ones cover the same ground. Up (negative delta) zooms in.
+ */
+export const wheelZoom = (px: number): number => 1.0015 ** px;
+
+/**
+ * Slide the window by a distance in its own units, clamped by sliding.
+ *
+ * A horizontal wheel — the two-finger swipe a trackpad makes — pans rather than
+ * zooms, which is what speedscope and Chrome's Modern mode both do. It did
+ * nothing here before, or worse, was read as a zoom.
+ */
+export function panBy(window: TimeWindow, delta: number, limit: TimeWindow): TimeWindow {
+  const span = window.to - window.from;
+  const from = Math.min(Math.max(window.from + delta, limit.from), limit.to - span);
+  return { from, to: from + span };
+}
+
+/**
+ * The bucket widths a reader recognises, smallest first.
+ *
+ * Human units, not an arbitrary quotient of the window. A tick reading 02:14:37
+ * is worse than one reading 02:15 even when the first is more precise, because
+ * nobody reads a chart to five significant figures of clock.
+ */
+export const BUCKETS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000, 3_600_000, 6 * 3_600_000] as const;
+
+/** Above this the ticks crowd; the smallest bucket that stays under it wins. */
+const MAX_BUCKETS = 40;
+
+/**
+ * How wide a bucket should be for a given window.
+ *
+ * It was a fixed hour, and it did not follow the zoom — so zooming past an hour
+ * left one bucket, and a line needs two points to exist. The chart vanished
+ * exactly when the reader had zoomed in far enough to care.
+ */
+export const bucketFor = (windowMs: number): number =>
+  BUCKETS.find((b) => windowMs / b <= MAX_BUCKETS) ?? BUCKETS.at(-1)!;
+
+/**
+ * The trend as a dense series, with a point for every bucket in the window.
+ *
+ * The server only returns buckets that had traces in them, and a line drawn
+ * through that smooths straight over the gaps — so a quiet ten minutes and ten
+ * minutes with no data draw identically, and only one of them means the fleet
+ * was idle. `null` renders as a break, which is the honest mark for "nothing
+ * here" and is what recharts leaves alone by default.
+ */
+export function fillBuckets(
+  points: readonly TrendPoint[],
+  window: TimeWindow,
+  bucketMs: number,
+): { at: number; count: number; p50: number | null; p95: number | null }[] {
+  const byBucket = new Map(points.map((p) => [Math.floor(p.at / bucketMs), p]));
+  const first = Math.floor(window.from / bucketMs);
+  const last = Math.floor(window.to / bucketMs);
+  // Bounded by the same rule that bounds the bucket: a window wide enough to
+  // need more than this has already been given a wider bucket.
+  const span = Math.min(last - first, MAX_BUCKETS * 2);
+  return Array.from({ length: span + 1 }, (_, i) => {
+    const bucket = first + i;
+    const hit = byBucket.get(bucket);
+    return {
+      at: bucket * bucketMs,
+      count: hit?.count ?? 0,
+      p50: hit?.p50 ?? null,
+      p95: hit?.p95 ?? null,
+    };
+  });
+}
+
+/** One trend point as the server sends it. */
+interface TrendPoint {
+  at: number;
+  count: number;
+  p50: number;
+  p95: number;
+}
+
+/**
  * Whether there is anything to draw.
  *
  * Separate from "the request failed", which the toast already said. A scope with

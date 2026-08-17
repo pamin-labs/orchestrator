@@ -16,9 +16,15 @@ import { ChevronRight } from "lucide-react";
 import { Tip } from "../../ui/tooltip";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../requirement/accordion";
 import {
+  fillBuckets,
+  BUCKETS,
+  bucketFor,
   flameDepth,
   type TimeWindow,
+  panBy,
   panTo,
+  wheelPixels,
+  wheelZoom,
   zoomAt,
   groupByKind,
   humanName,
@@ -126,6 +132,79 @@ function Block({ title, children }: { title?: string; children: React.ReactNode 
     </section>
   );
 }
+
+/**
+ * What one wheel event does to a window, for both charts.
+ *
+ * Vertical zooms at the pointer, horizontal pans — the split speedscope and
+ * Chrome's Modern mode both use, and the one a trackpad's two-finger swipe
+ * expects. It used to read every wheel as a zoom at a fixed 1.2 per event, which
+ * on a trackpad is fifty events per gesture and three orders of magnitude in a
+ * flick: "太灵敏" was an accurate description of multiplying by 1.2 fifty times.
+ *
+ * Returns `null` when the event carries nothing usable, so a caller can leave
+ * the window alone rather than anchor a zoom on a guess.
+ */
+function wheelWindow(
+  event: React.WheelEvent<HTMLDivElement>,
+  window: TimeWindow,
+  limit: TimeWindow,
+  minSpan: number,
+): TimeWindow | null {
+  const box = event.currentTarget.getBoundingClientRect();
+  if (box.width === 0) return null;
+  // Whichever axis the gesture is mostly on. A trackpad swipe is never purely
+  // one, and treating a mostly-horizontal one as a zoom is what made a pan
+  // jitter the scale.
+  if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+    const px = wheelPixels(event.deltaX, event.deltaMode);
+    return panBy(window, (px / box.width) * (window.to - window.from), limit);
+  }
+  const at = (event.clientX - box.left) / box.width;
+  if (!Number.isFinite(at)) return null;
+  return zoomAt(window, at, wheelZoom(wheelPixels(event.deltaY, event.deltaMode)), limit, minSpan);
+}
+
+/** The endpoint's own default window, so the first bucket is derived from the same number. */
+const DAY_MS = 24 * 3_600_000;
+
+/** How wide a bucket reads, in the units the picker offers. */
+const bucketLabel = (ms: number) => (ms < 3_600_000 ? `${ms / 60_000} 分钟` : `${ms / 3_600_000} 小时`);
+
+/**
+ * Which bucket width the trend is using, and a way to choose another.
+ *
+ * It follows the window by default and says so, because a control showing a
+ * value nobody chose is indistinguishable from one showing a value they did.
+ * 跟随 puts it back.
+ */
+function BucketPicker({
+  value,
+  pinned,
+  onPick,
+}: {
+  value: number;
+  pinned: boolean;
+  onPick: (ms: number | null) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.75rem] text-ink-3">
+      <span>每格</span>
+      <Segments value={pinned ? String(value) : "auto"} onValueChange={(v) => onPick(v === "auto" ? null : Number(v))}>
+        <Segment value="auto">跟随</Segment>
+        {BUCKETS.map((ms) => (
+          <Segment key={ms} value={String(ms)}>
+            {bucketLabel(ms)}
+          </Segment>
+        ))}
+      </Segments>
+      {!pinned && <span className="font-mono">{bucketLabel(value)}</span>}
+    </div>
+  );
+}
+
+/** The flamegraph's axis is a fraction of its own width, so its limit is all of it. */
+const WHOLE: TimeWindow = { from: 0, to: 1 };
 
 /** A number column that stays comparable down the page. */
 const NUM = "text-right font-mono text-[0.6875rem] tabular-nums";
@@ -713,18 +792,12 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
       <div
         className="overflow-hidden"
         onWheel={(event) => {
-          const box = event.currentTarget.getBoundingClientRect();
-          if (box.width === 0) return;
-          const at = (event.clientX - box.left) / box.width;
-          if (!Number.isFinite(at)) return;
-          event.preventDefault();
-          // Plain wheel, no modifier: Chrome's profiler default, and the one the
-          // user described. A modifier variant exists there only because it has a
-          // vertical axis to fight over; this pane has one axis worth scaling.
-          //
           // 0.002 of the whole width is the floor — five hundred times in, past
           // which a frame is thinner than its own border.
-          setView((current) => zoomAt(current, at, event.deltaY < 0 ? 1 / 1.2 : 1.2, { from: 0, to: 1 }, 0.002));
+          const next = wheelWindow(event, view, WHOLE, 0.002);
+          if (!next) return;
+          event.preventDefault();
+          setView(next);
         }}
       >
         <div style={{ transform: `translateX(${-view.from * 100}%)`, width: `${100 / zoom}%` }}>
@@ -832,10 +905,13 @@ function Trend({
   windowMs,
   window,
   limit,
+  bucketMs,
   onWindow,
 }: {
   trend: Report["trend"];
   windowMs: number;
+  /** How wide one point is, so the gaps can be filled at the same spacing. */
+  bucketMs: number;
   /** What the page is currently showing, so a zoom starts from it. */
   window: TimeWindow;
   /** How far the data goes; a zoom cannot leave it. */
@@ -856,7 +932,13 @@ function Trend({
       </div>
     );
   }
-  const data = trend.map((point) => ({ ...point, label: trendLabel(point.at, windowMs) }));
+  // Dense, so an empty bucket in the middle draws as a break rather than being
+  // smoothed over. A quiet ten minutes and ten minutes with no data are not the
+  // same fact, and a line joined across the gap says they are.
+  const data = fillBuckets(trend, window, bucketMs).map((point) => ({
+    ...point,
+    label: trendLabel(point.at, windowMs),
+  }));
   return (
     <div
       // Not a control and not a paragraph. Clicking a chart drew the browser's
@@ -866,20 +948,15 @@ function Trend({
       tabIndex={-1}
       className="h-[7.5rem] touch-none select-none outline-none [&_*]:outline-none"
       onWheel={(event) => {
+        // A minute is the floor the endpoint already enforces, so zooming below
+        // it would ask for buckets the server will not produce.
+        const next = wheelWindow(event, window, limit, 60_000);
+        if (!next) return;
         // `preventDefault` only over the chart, so the page still scrolls
         // everywhere else. `touch-none` is the same rule for a trackpad: without
         // it the browser claims the gesture before React sees it.
         event.preventDefault();
-        const box = event.currentTarget.getBoundingClientRect();
-        if (box.width === 0) return;
-        const at = (event.clientX - box.left) / box.width;
-        // A wheel event with no usable coordinate cannot be anchored, and
-        // anchoring on a guess would move the frame the reader is pointing at —
-        // which is the whole thing this is for. Better to do nothing.
-        if (!Number.isFinite(at)) return;
-        // Up zooms in. 1.2 per notch is roughly what a profiler feels like;
-        // faster and one flick crosses the whole range.
-        onWindow(zoomAt(window, at, event.deltaY < 0 ? 1 / 1.2 : 1.2, limit));
+        onWindow(next);
       }}
     >
       <ResponsiveContainer width="100%" height="100%">
@@ -934,7 +1011,12 @@ function Trend({
  * toast, and blanking a correct stage list because a trace aged out would be the
  * page punishing the reader for clicking.
  */
-function useTelemetry(scope: TelemetryScope, windowMs: number | undefined, chosen: TimeWindow | null) {
+function useTelemetry(
+  scope: TelemetryScope,
+  windowMs: number | undefined,
+  chosen: TimeWindow | null,
+  bucketMs: number,
+) {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   // The scope is taken apart into the two primitives it is made of, and put back
@@ -954,18 +1036,20 @@ function useTelemetry(scope: TelemetryScope, windowMs: number | undefined, chose
     let live = true;
     setLoading(true);
     const target: TelemetryScope = kind === "system" ? { kind: "system" } : { kind, id };
-    void readTelemetry(target, windowMs, from !== null && to !== null ? { from, to } : null).then((answer) => {
-      // The reader moved on — a different scope, or a different trace — before
-      // this landed. Writing it now would show them the previous question's
-      // answer under the current question's heading.
-      if (!live) return;
-      setLoading(false);
-      if (answer) setReport(answer);
-    });
+    void readTelemetry(target, windowMs, from !== null && to !== null ? { from, to } : null, bucketMs).then(
+      (answer) => {
+        // The reader moved on — a different scope, or a different trace — before
+        // this landed. Writing it now would show them the previous question's
+        // answer under the current question's heading.
+        if (!live) return;
+        setLoading(false);
+        if (answer) setReport(answer);
+      },
+    );
     return () => {
       live = false;
     };
-  }, [kind, id, windowMs, from, to]);
+  }, [kind, id, windowMs, from, to, bucketMs]);
 
   return { report, loading };
 }
@@ -1025,7 +1109,18 @@ export function Telemetry({
    * every block reads it through the one query.
    */
   const [chosen, setChosen] = useState<TimeWindow | null>(null);
-  const { report, loading } = useTelemetry(scope, windowMs, chosen);
+  /**
+   * A bucket width the reader pinned, or `null` to follow the window.
+   *
+   * Following is the default because the fixed hour was the bug: zoom past an
+   * hour and there was one bucket, and a line needs two points. Pinning exists
+   * because the derived value is a guess about what somebody wants to see, and
+   * a guess should be overridable rather than argued with.
+   */
+  const [pinnedBucket, setPinnedBucket] = useState<number | null>(null);
+  const shownWindow = chosen ?? { from: Date.now() - (windowMs ?? DAY_MS), to: Date.now() };
+  const bucketMs = pinnedBucket ?? bucketFor(shownWindow.to - shownWindow.from);
+  const { report, loading } = useTelemetry(scope, windowMs, chosen, bucketMs);
 
   if (!report) {
     return <div className="py-4 text-[0.75rem] text-ink-3">{loading ? "读取中…" : empty}</div>;
@@ -1059,10 +1154,12 @@ export function Telemetry({
             <Trend
               trend={report.trend}
               windowMs={report.windowMs}
+              bucketMs={bucketMs}
               window={chosen ?? report.window}
               limit={report.window}
               onWindow={setChosen}
             />
+            <BucketPicker value={bucketMs} pinned={pinnedBucket !== null} onPick={setPinnedBucket} />
             {chosen !== null && (
               <button
                 type="button"

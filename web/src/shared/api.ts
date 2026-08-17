@@ -164,6 +164,7 @@ function telemetryQuery(
   scope: TelemetryScope,
   windowMs?: number,
   chosen?: { from: number; to: number } | null,
+  bucketMs?: number,
 ): string {
   const query = new URLSearchParams({ scope: scope.kind });
   if (scope.kind !== "system") query.set("id", String(scope.id));
@@ -174,6 +175,10 @@ function telemetryQuery(
     query.set("from", String(Math.round(chosen.from)));
     query.set("to", String(Math.round(chosen.to)));
   }
+  // Sent every time rather than only when pinned: the derived value follows the
+  // window, so the server would otherwise keep its fixed hour while the reader
+  // zoomed past it — which is the bug that emptied the chart.
+  if (bucketMs) query.set("bucketMs", String(Math.round(bucketMs)));
   return query.toString();
 }
 
@@ -181,8 +186,9 @@ export function readTelemetry(
   scope: TelemetryScope,
   windowMs?: number,
   chosen?: { from: number; to: number } | null,
+  bucketMs?: number,
 ): Promise<Telemetry | null> {
-  const url = `/api/v1/telemetry?${telemetryQuery(scope, windowMs, chosen)}`;
+  const url = `/api/v1/telemetry?${telemetryQuery(scope, windowMs, chosen, bucketMs)}`;
   // fallow-ignore-next-line security-sink -- a relative same-origin path built from an enum and two numbers; there is no destination here for a caller to choose.
   return readApi(fetch(url, { headers: requestHeaders(url) }), TelemetryReportSchema);
 }

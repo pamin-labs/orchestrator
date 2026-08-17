@@ -374,6 +374,36 @@ test("the minimap appears only once zoomed, and says where you are", async () =>
   expect(width).toBeGreaterThan(0);
 });
 
+test("the bucket follows the window, and can be pinned", async () => {
+  const hour = 3_600_000;
+  serve(
+    report({
+      stages: [stage("stage.only")],
+      traces: [trace("a".repeat(32), { name: "t" })],
+      trend: Array.from({ length: 4 }, (_, i) => ({ at: T0 - (3 - i) * hour, count: 4, p50: 10, p95: 20 })),
+    }),
+  );
+  const asked: string[] = [];
+  const seen = globalThis.fetch;
+  globalThis.fetch = Object.assign((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    asked.push(input instanceof Request ? input.url : String(input));
+    return seen(input, init);
+  }, seen);
+
+  const view = show(<Telemetry scope={{ kind: "project", id: 7 }} windowMs={24 * hour} trend />);
+  await waitFor(() => expect(view.getAllByText("每次运行的耗时")).toHaveLength(1));
+
+  // Derived from the window rather than fixed: the fixed hour is what emptied
+  // the chart once the reader zoomed past it.
+  expect(String(asked.at(-1))).toContain(`bucketMs=${hour}`);
+  expect(view.getAllByRole("radio", { name: "跟随" })).toHaveLength(1);
+
+  // And overridable, because the derived value is a guess about what somebody
+  // wants to see.
+  fireEvent.click(view.getByRole("radio", { name: "5 分钟" }));
+  await waitFor(() => expect(String(asked.at(-1))).toContain("bucketMs=300000"));
+});
+
 test("scrolling the trend zooms it, and re-reads every block", async () => {
   const hour = 3_600_000;
   serve(

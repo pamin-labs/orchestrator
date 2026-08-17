@@ -7,7 +7,12 @@ import {
   humanName,
   isRenamed,
   draggedWindow,
+  bucketFor,
+  fillBuckets,
   groupByKind,
+  panBy,
+  wheelPixels,
+  wheelZoom,
   panTo,
   zoomAt,
   spanKind,
@@ -449,4 +454,65 @@ test("panning to an edge slides rather than shrinking", () => {
   const right = panTo({ from: 0.4, to: 0.6 }, 1, { from: 0, to: 1 });
   expect(right.to).toBeCloseTo(1, 6);
   expect(right.to - right.from).toBeCloseTo(0.2, 6);
+});
+
+// ── the bucket follows the window ──────────────────────────────────────────
+
+test("the bucket narrows as the window does, so a line always has points", () => {
+  // The defect: a fixed hour meant zooming past an hour left one bucket, and a
+  // line needs two points. The chart vanished exactly when the reader had zoomed
+  // in far enough to care.
+  const hour = 3_600_000;
+  // Each is the smallest human unit that keeps the count under forty, so the
+  // point count stays in the teens-to-thirties at every zoom level.
+  expect(bucketFor(24 * hour)).toBe(hour); // 24 points
+  expect(bucketFor(6 * hour)).toBe(15 * 60_000); // 24 points
+  expect(bucketFor(hour)).toBe(5 * 60_000); // 12 points
+  expect(bucketFor(15 * 60_000)).toBe(60_000); // 15 points
+  // And the case that broke: a fixed hour gave this window one bucket.
+  expect(bucketFor(30 * 60_000)).toBe(60_000); // 30 points
+});
+
+test("no window is given a bucket below a minute", () => {
+  // The endpoint refuses one, and below a minute the buckets are noise rather
+  // than resolution.
+  expect(bucketFor(1_000)).toBe(60_000);
+  expect(bucketFor(0)).toBe(60_000);
+});
+
+test("every bucket in the window gets a point, and the empty ones are gaps", () => {
+  const m = 60_000;
+  const filled = fillBuckets([{ at: 2 * m, count: 3, p50: 10, p95: 20 }], { from: 0, to: 4 * m }, m);
+  // A quiet minute and a minute with no data are not the same fact; `null`
+  // renders as a break where a missing point would be smoothed straight over.
+  expect(filled).toHaveLength(5);
+  expect(filled.map((p) => p.p50)).toEqual([null, null, 10, null, null]);
+  expect(filled.map((p) => p.count)).toEqual([0, 0, 3, 0, 0]);
+});
+
+// ── the wheel ──────────────────────────────────────────────────────────────
+
+test("a wheel event is normalised to pixels whatever unit it arrived in", () => {
+  expect(wheelPixels(3, 0)).toBe(3);
+  expect(wheelPixels(3, 1)).toBe(48);
+  // Clamped, because one violent flick should not cross the whole range — which
+  // is what "太灵敏" was describing.
+  expect(wheelPixels(3, 2)).toBe(120);
+  expect(wheelPixels(-9999, 0)).toBe(-120);
+});
+
+test("zoom compounds per pixel, so a trackpad and a mouse cover the same ground", () => {
+  // Fifty small deltas and one large one of the same total distance agree.
+  const burst = Array.from({ length: 50 }, () => wheelZoom(2)).reduce((a, b) => a * b, 1);
+  expect(burst).toBeCloseTo(wheelZoom(100), 6);
+  // Up zooms in.
+  expect(wheelZoom(-100)).toBeLessThan(1);
+  expect(wheelZoom(100)).toBeGreaterThan(1);
+});
+
+test("panning by a distance keeps the width and clamps by sliding", () => {
+  expect(panBy({ from: 0.2, to: 0.4 }, 0.1, { from: 0, to: 1 })).toEqual({ from: 0.30000000000000004, to: 0.5 });
+  const stuck = panBy({ from: 0.8, to: 1 }, 0.5, { from: 0, to: 1 });
+  expect(stuck.to).toBeCloseTo(1, 6);
+  expect(stuck.to - stuck.from).toBeCloseTo(0.2, 6);
 });
