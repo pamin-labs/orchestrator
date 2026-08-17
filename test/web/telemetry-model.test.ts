@@ -8,6 +8,7 @@ import {
   isRenamed,
   draggedWindow,
   groupByKind,
+  panTo,
   zoomAt,
   spanKind,
   splitStages,
@@ -430,4 +431,22 @@ test("the zoom floor is the caller's unit, not milliseconds", () => {
 
 test("a fractional zoom cannot leave the whole width", () => {
   expect(zoomAt({ from: 0, to: 0.5 }, 0, 10, { from: 0, to: 1 }, 0.002)).toEqual({ from: 0, to: 1 });
+});
+
+// ── panning ────────────────────────────────────────────────────────────────
+
+test("panning centres the window without changing its width", () => {
+  const moved = panTo({ from: 0.2, to: 0.4 }, 0.6, { from: 0, to: 1 });
+  expect(moved).toEqual({ from: 0.5, to: 0.7 });
+});
+
+test("panning to an edge slides rather than shrinking", () => {
+  // The same rule `zoomAt` follows: the width the reader chose survives, even
+  // when the centre they asked for is unreachable.
+  const left = panTo({ from: 0.4, to: 0.6 }, 0, { from: 0, to: 1 });
+  expect(left.from).toBeCloseTo(0, 6);
+  expect(left.to - left.from).toBeCloseTo(0.2, 6);
+  const right = panTo({ from: 0.4, to: 0.6 }, 1, { from: 0, to: 1 });
+  expect(right.to).toBeCloseTo(1, 6);
+  expect(right.to - right.from).toBeCloseTo(0.2, 6);
 });

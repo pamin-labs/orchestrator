@@ -337,6 +337,43 @@ test("scrolling the flamegraph zooms its width, anchored where the pointer is", 
   expect(view.getAllByRole("button", { name: /回到全部/ })).toHaveLength(1);
 });
 
+test("the minimap appears only once zoomed, and says where you are", async () => {
+  serve(
+    report({
+      stages: [stage("stage.only")],
+      traces: [trace("a".repeat(32), { name: "t" })],
+      flame: [
+        { path: "a", totalMs: 9_000, count: 1 },
+        { path: "a;b", totalMs: 8_000, count: 1 },
+      ],
+    }),
+  );
+  const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
+  await waitFor(() => expect(view.container.querySelectorAll("svg.d3-flame-graph")).toHaveLength(1));
+
+  // No control until there is state to undo — Grafana's restraint, and the same
+  // rule the reset button already follows.
+  expect(view.queryAllByRole("slider")).toHaveLength(0);
+
+  view.container
+    .querySelector("div.overflow-hidden")!
+    .dispatchEvent(
+      Object.assign(new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true }), { clientX: 450 }),
+    );
+
+  // A zoomed flamegraph cannot otherwise say where in the profile you landed.
+  const strip = await view.findByRole("slider");
+  expect(strip.getAttribute("aria-label")).toBe("看的是哪一段");
+  // Narrower than the whole strip, which is the fact it exists to show. Read off
+  // the attribute rather than through a cast: the assertion is a number either
+  // way, and a cast on a DOM node is the thing the lint rule is there to stop.
+  const width = Number.parseFloat(
+    strip.firstElementChild?.getAttribute("style")?.match(/width:\s*([\d.]+)%/)?.[1] ?? "",
+  );
+  expect(width).toBeLessThan(100);
+  expect(width).toBeGreaterThan(0);
+});
+
 test("scrolling the trend zooms it, and re-reads every block", async () => {
   const hour = 3_600_000;
   serve(

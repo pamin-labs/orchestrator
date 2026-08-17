@@ -18,6 +18,7 @@ import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../re
 import {
   flameDepth,
   type TimeWindow,
+  panTo,
   zoomAt,
   groupByKind,
   humanName,
@@ -536,6 +537,13 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
    */
   const [view, setView] = useState<TimeWindow>({ from: 0, to: 1 });
   const zoom = view.to - view.from;
+  /** Centre the window where the pointer is, in fractions of the whole width. */
+  const panFrom = (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    if (box.width === 0) return;
+    const at = (event.clientX - box.left) / box.width;
+    if (Number.isFinite(at)) setView((current) => panTo(current, at, { from: 0, to: 1 }));
+  };
 
   // The library takes a width in pixels and does not observe its container, so
   // the container is observed here. `ResizeObserver` rather than a window
@@ -666,6 +674,39 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
         )}
         <div ref={details} className="min-w-0 truncate font-mono text-[0.6875rem] text-ink-2" />
       </div>
+      {/* Where you are, once you are no longer looking at all of it.
+          speedscope's minimap, at the smallest size that answers the question:
+          a strip of the whole width with the current view drawn on it. A zoomed
+          flamegraph otherwise cannot say where in the profile you have landed,
+          and this doubles as the pan control — drag it and the window follows.
+
+          Only once there is something to be lost. Grafana's restraint, and the
+          same rule the reset button follows: no control on screen until there is
+          state to undo. */}
+      {zoom < 1 && (
+        <div
+          role="slider"
+          tabIndex={0}
+          aria-label="看的是哪一段"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(view.from * 100)}
+          className="mb-1 h-2 cursor-ew-resize rounded-sm bg-sunk"
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            panFrom(event);
+          }}
+          onPointerMove={(event) => {
+            if (event.buttons === 1) panFrom(event);
+          }}
+        >
+          <div
+            className="h-full rounded-sm bg-ink-3"
+            style={{ marginLeft: `${view.from * 100}%`, width: `${zoom * 100}%` }}
+          />
+        </div>
+      )}
+
       {/* The viewport. The chart inside it is rendered `1/zoom` times wider and
           slid left, which is what "show a narrower slice across the full pane"
           means for an axis that is folded time rather than a clock. */}

@@ -412,6 +412,19 @@ export function zoomAt(
 }
 
 /**
+ * Slide the window so it is centred on a point, without changing its width.
+ *
+ * The minimap's whole job. Clamped by sliding rather than by clamping each edge,
+ * for the same reason `zoomAt` does: keeping the width the reader chose matters
+ * more than honouring a centre they cannot reach at the ends of the range.
+ */
+export function panTo(window: TimeWindow, centre: number, limit: TimeWindow): TimeWindow {
+  const span = window.to - window.from;
+  const from = Math.min(Math.max(centre - span / 2, limit.from), limit.to - span);
+  return { from, to: from + span };
+}
+
+/**
  * Whether there is anything to draw.
  *
  * Separate from "the request failed", which the toast already said. A scope with
