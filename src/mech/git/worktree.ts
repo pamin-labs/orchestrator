@@ -98,27 +98,33 @@ async function abortStaleRebase(git: GitRunner, repoPath: string, worktree: stri
  * main/master exists on the remote, then locally. `HEAD` last, for a repository
  * with no branches yet.
  */
+async function existingBase(git: GitRunner, repoPath: string, prefix = ""): Promise<string | null> {
+  for (const branch of ["main", "master"]) {
+    const found = await git(repoPath, ["rev-parse", "--verify", "--quiet", `${prefix}${branch}`]);
+    if (found.code === 0) return branch;
+  }
+  return null;
+}
+
+async function originBase(git: GitRunner, repoPath: string): Promise<string | null> {
+  const head = await git(repoPath, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
+  const local = head.code === 0 ? head.out.trim().replace("refs/remotes/origin/", "") : "";
+  if (local) return local;
+  // `origin/HEAD` is not set in every clone, and a rename on the remote does not
+  // update it. Ask the remote itself before guessing.
+  const remote = await git(repoPath, ["ls-remote", "--symref", "origin", "HEAD"]);
+  const named = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(remote.out)?.[1];
+  if (remote.code === 0 && named) return named;
+  return existingBase(git, repoPath, "origin/");
+}
+
 export async function detectBaseBranch(git: GitRunner, repoPath: string): Promise<string> {
-  const hasOrigin = await git(repoPath, ["remote"]);
-  if (hasOrigin.code === 0 && hasOrigin.out.includes("origin")) {
-    const head = await git(repoPath, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
-    const local = head.code === 0 ? head.out.trim().replace("refs/remotes/origin/", "") : "";
-    if (local) return local;
-    // `origin/HEAD` is not set in every clone, and a rename on the remote does not
-    // update it. Ask the remote itself before guessing.
-    const remote = await git(repoPath, ["ls-remote", "--symref", "origin", "HEAD"]);
-    const named = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(remote.out)?.[1];
-    if (remote.code === 0 && named) return named;
-    for (const b of ["main", "master"]) {
-      const ok = await git(repoPath, ["rev-parse", "--verify", "--quiet", `origin/${b}`]);
-      if (ok.code === 0) return b;
-    }
+  const remotes = await git(repoPath, ["remote"]);
+  if (remotes.code === 0 && remotes.out.includes("origin")) {
+    const remote = await originBase(git, repoPath);
+    if (remote) return remote;
   }
-  for (const b of ["main", "master"]) {
-    const ok = await git(repoPath, ["rev-parse", "--verify", "--quiet", b]);
-    if (ok.code === 0) return b;
-  }
-  return "HEAD";
+  return (await existingBase(git, repoPath)) ?? "HEAD";
 }
 
 /**
