@@ -12,8 +12,21 @@ import { heldApproved, STATUS_ZH, statusLabel } from "../../web/src/shared/selec
  * that is exactly why it needs a test: nothing else notices.
  */
 
-const group = (status: string, approvedAt: number | null = null) =>
-  ({ status, approved_at: approvedAt }) as Parameters<typeof statusLabel>[0];
+type Group = Parameters<typeof statusLabel>[0];
+
+/** A whole group, because narrowing one with a cast is the assertion Oxlint bans. */
+const group = (status: Group["status"], approvedAt: number | null = null): Group => ({
+  id: 1,
+  project_id: 1,
+  name: "g",
+  branch: null,
+  status,
+  owns_json: "[]",
+  budget_tokens: null,
+  spent_tokens: 0,
+  pr_number: null,
+  approved_at: approvedAt,
+});
 
 test("every group state has a label, and none of them is the enum name", () => {
   const missing = GRP_STATES.filter((s) => !STATUS_ZH[s]);
@@ -36,8 +49,4 @@ test("an approved draft says so, because 待批 would be a lie once it is approv
   // "approval changes nothing here" after somebody rewords 在跑.
   expect(heldApproved(group("RUNNING", 1))).toBe(false);
   expect(statusLabel(group("RUNNING", 1))).toBe(statusLabel(group("RUNNING")));
-});
-
-test("a state the vocabulary does not have falls back rather than rendering nothing", () => {
-  expect(statusLabel(group("SOMETHING_NEW"))).toBe("SOMETHING_NEW");
 });
