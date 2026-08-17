@@ -566,10 +566,10 @@ export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = rece
    * a path repeating the ring sixty-four times, which is worse than useless.
    *
    * The old query dropped cycles entirely, and that was recorded as a decision.
-   * It is not one this keeps: the same mechanism that made them vanish is what
-   * silently dropped 374 real rows, and a span that exists and cost time belongs
-   * on the graph. Being unable to say what it hung off is not a reason to say it
-   * never happened.
+   * It is not one this keeps: a span that happened and cost time belongs on the
+   * graph, and being unable to say what it hung off is not a reason to say it
+   * never happened. Every span in the scope is counted exactly once, which is
+   * the property the test asserts and which dropping them would break.
    */
   const pathOf = (row: FoldRow, depth: number): string => {
     const id = spanKey(row.trace_id, row.span_id);
