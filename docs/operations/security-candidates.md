@@ -55,6 +55,10 @@ because there is nothing left to annotate.
 | ssrf | `scripts/browse.ts:101` | false positive | origin is the throwaway local server this script just started; the step file contributes a path | scripts |
 | ssrf | `scripts/make-github-app.ts:102` | **fixed** | `code` arrives on a listening socket; now shape-checked at the socket, so it is one path segment | scripts |
 | hardcoded-secret | `src/contracts/config.ts:219` | false positive | the `SETTING_DENIALS` refusal text for `sandbox.apiKey`, not a key; nothing is stored or sent | contracts |
+| sql-injection | `src/platform/observability/span-store.ts:372` | false positive | `where` is one of `scopeSql`'s three source literals; `percentiles("duration_ms")` is a module template over a literal column name; bounds and scope ids bound | platform |
+| sql-injection | `src/platform/observability/span-store.ts:465` | false positive | same `where`; bounds, scope ids and `limit` bound | platform |
+| sql-injection | `src/platform/observability/span-store.ts:564` | false positive | same `where`, nothing else interpolated — this is the flat read the fold walks in JS | platform |
+| sql-injection | `src/platform/observability/span-store.ts:667` | false positive | same `where` plus `percentiles("wall")`; bounds and the four `bucketMs` bound | platform |
 | ssrf | `web/src/shared/api.ts:59` | false positive | wraps the hono client bound to the relative base `/api/v1`; same-origin by construction | web |
 | open-redirect | `web/src/features/progress/view.tsx:211` | false positive | `prUrl` returns null or a literal `https://github.com/` prefix plus two `[\w.-]+` segments | web |
 
@@ -71,6 +75,19 @@ Not touched here, and still undispositioned:
 | sql-injection | `src/api/orch/planning.ts:345` |
 | ssrf | `src/api/panel/authflow.ts:131` |
 | ssrf | `src/orch/cli.ts:87` |
+
+## The four the span store adds, and why they are one decision
+
+Every read in `platform/observability/span-store.ts` filters by scope, and the
+scope filter is the only interpolation any of them carries. `scopeSql` returns
+one of three fixed strings — `project_id IS NULL AND grp_id IS NULL`,
+`grp_id = ?`, or the project pair — chosen by `scope.kind` and never assembled
+from a value, with the ids returned alongside as `params` for `.all(...)`.
+
+So the four rows are the same disposition four times, and the honest way to hold
+them that way is at the shared helper rather than at each call. It is not
+inlined into a single string because the three scopes need different numbers of
+bound parameters, which is the one thing a constant cannot express.
 
 ## The three that were worth changing anyway
 

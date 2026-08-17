@@ -368,6 +368,7 @@ export interface StageStat {
 export function stageStats(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): StageStat[] {
   const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
+  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds. `percentiles("duration_ms")` is a module template over a column name written here as a literal.
   return db
     .query<{ name: string; count: number; total_ms: number; p50: number; p95: number; errors: number }, number[]>(
       `WITH ranked AS (
@@ -460,6 +461,7 @@ export interface TraceSummary {
 export function traceList(db: DB, scope: ReadScope, limit = 20, window: TimeWindow = recentWindow()): TraceSummary[] {
   const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
+  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds and `limit`.
   return db
     .query<{ trace_id: string; name: string; started_at: number; duration_ms: number; failed: number }, number[]>(
       `SELECT trace_id, name, started_at, duration_ms, failed FROM (
@@ -558,6 +560,7 @@ const MAX_STACK_DEPTH = 64;
 export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): FoldedStack[] {
   const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
+  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the two window bounds. This is the flat read the fold walks in JS; nothing else is interpolated.
   const rows = db
     .query<FoldRow, number[]>(
       `SELECT trace_id, span_id, parent_span_id, name, duration_ms
@@ -660,6 +663,7 @@ export function trend(
 ): TrendPoint[] {
   const bounds = clamp(window);
   const { where, params } = scopeSql(scope);
+  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` a few lines above, chosen by `scope.kind` and never assembled from a value. Every number travels in `params` and is bound through `?`, as are the window bounds and the four `bucketMs`. `percentiles("wall")` is the same module template over a literal column name.
   return db
     .query<{ at: number; count: number; p50: number; p95: number }, number[]>(
       `WITH per_trace AS (
