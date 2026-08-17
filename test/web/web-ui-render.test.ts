@@ -33,10 +33,10 @@ test("Home renders a fresh project as an actionable row", () => {
       refresh: () => {},
     }),
   );
-  expect(getByText("orchestrator")).toBeTruthy();
-  expect(getByText("pamin-labs/orchestrator")).toBeTruthy();
+  getByText("orchestrator");
+  getByText("pamin-labs/orchestrator");
   // Actionable means a control, not a line of text that reads like one.
-  expect(getByRole("button", { name: "＋ 新需求" })).toBeTruthy();
+  getByRole("button", { name: "＋ 新需求" });
 });
 
 test("Usage renders known, hot and stale subscription windows", () => {
@@ -52,8 +52,8 @@ test("Usage renders known, hot and stale subscription windows", () => {
       }),
     ),
   );
-  expect(getByText("claude")).toBeTruthy();
-  expect(getByText("codex")).toBeTruthy();
+  getByText("claude");
+  getByText("codex");
   // 81% is over the line, so its label is the one wearing the warning.
   expect(getByText("5h").className).toContain("text-warn");
   // The account that could not be read says so on both of its windows.

@@ -36,7 +36,7 @@ afterEach(() => {
 test("the knob editor has a renderable loading state", () => {
   // The read is left in flight, which is the state the editor comes up in.
   stubFetch();
-  expect(render(createElement(Knobs, { section: "models" })).getByText(/读取中/)).toBeTruthy();
+  render(createElement(Knobs, { section: "models" })).getByText(/读取中/);
 });
 
 test("every runtime is offered its own models and nobody else's", () => {

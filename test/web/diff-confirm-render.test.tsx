@@ -56,7 +56,7 @@ test("a deletion tints only its own side and leaves the other a hole", () => {
 test("a diff of nothing renders nothing, and a truncated one says so", () => {
   expect(render(<DiffView diff="" />).container.innerHTML).toBe("");
   const cut = render(<DiffView diff={unified("@@ -1 +1 @@\n-a\n+b\n")} truncated />);
-  expect(cut.getByText(/改动超过 400k 字符/)).toBeTruthy();
+  cut.getByText(/改动超过 400k 字符/);
 });
 
 test("a cell earns a wash only for the side that changed", () => {
@@ -94,18 +94,18 @@ test("a plain confirmation shows both ways out and defaults to the safe wording"
   // A dialog, announced as one, named by its own title — none of which a server
   // render could show, because Radix mounts the whole card through a portal.
   const dialog = getByRole("dialog");
-  expect(getByRole("heading", { name: "确定要作废吗" })).toBeTruthy();
+  getByRole("heading", { name: "确定要作废吗" });
   expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
   expect(dialog.getAttribute("aria-describedby")).toBeTruthy();
-  expect(getByText("作废之后不能撤销")).toBeTruthy();
+  getByText("作废之后不能撤销");
   // Cancel is always present: the dialog is never a one-button dead end.
-  expect(getByRole("button", { name: "取消" })).toBeTruthy();
-  expect(getByRole("button", { name: "确定" })).toBeTruthy();
+  getByRole("button", { name: "取消" });
+  getByRole("button", { name: "确定" });
 });
 
 test("a destructive confirmation still asks, and says what it will do", () => {
   const { getAllByRole, getByRole } = card({ title: "删除项目", yes: "删除", danger: true });
-  expect(getByRole("heading", { name: "删除项目" })).toBeTruthy();
+  getByRole("heading", { name: "删除项目" });
   // Danger is carried by the confirm button, not by removing a step: cancel is
   // still there, still first, and only the button after it wears the danger skin.
   const buttons = getAllByRole("button").filter((b) => ["取消", "删除"].includes(b.textContent ?? ""));

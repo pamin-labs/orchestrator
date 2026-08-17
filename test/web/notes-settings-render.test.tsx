@@ -60,21 +60,21 @@ const note = (over: Partial<PanelNote> = {}): PanelNote => ({
 
 test("a blackboard with no read behind it says so, and an empty one says why", () => {
   const reading = render(<NotesBoard notes={null} />);
-  expect(reading.getByText("读记录…")).toBeTruthy();
+  reading.getByText("读记录…");
   reading.unmount();
 
   const empty = render(<NotesBoard notes={[]} />);
-  expect(empty.getByText(/还没有记录/)).toBeTruthy();
-  expect(empty.getByText(/retro 归纳成教训注入后续组/)).toBeTruthy();
+  empty.getByText(/还没有记录/);
+  empty.getByText(/retro 归纳成教训注入后续组/);
 });
 
 test("inside one requirement the kinds are badges on a single list, not tabs", () => {
   const { getByText, queryAllByRole } = render(
     <NotesBoard compact notes={[note({ kind: "journal" }), note({ id: 2, kind: "retro", body: "这组的复盘" })]} />,
   );
-  expect(getByText("日志")).toBeTruthy();
-  expect(getByText("复盘")).toBeTruthy();
-  expect(getByText("这组的复盘")).toBeTruthy();
+  getByText("日志");
+  getByText("复盘");
+  getByText("这组的复盘");
   // A compact list has no tab strip: four tabs with one row each is worse than none.
   expect(queryAllByRole("tablist")).toHaveLength(0);
 });
@@ -89,7 +89,7 @@ test("the board tabs only the kinds that exist, and counts each one", () => {
       ]}
     />,
   );
-  expect(getByRole("tablist")).toBeTruthy();
+  getByRole("tablist");
   // Two tabs, each carrying its own count — and the one that is open says so,
   // which no string of markup could.
   expect(getAllByRole("tab").map((t) => t.textContent)).toEqual(["日志2", "教训1"]);
@@ -112,12 +112,12 @@ test("a note's deterministic anchors are rendered beside the prose they check", 
       ]}
     />,
   );
-  expect(getByText(/闸门 过/)).toBeTruthy();
-  expect(getByText("src/mech/notes.ts")).toBeTruthy();
-  expect(getByText("web/src/views/notes.tsx")).toBeTruthy();
+  getByText(/闸门 过/);
+  getByText("src/mech/notes.ts");
+  getByText("web/src/views/notes.tsx");
   // The export path is a hover, not sixty characters of header.
-  expect(getByText("md")).toBeTruthy();
-  expect(getByText("把导出路径挪走")).toBeTruthy();
+  getByText("md");
+  getByText("把导出路径挪走");
 });
 
 test("a failed gate is named in the boss's words, an unknown one in the server's", () => {
@@ -130,7 +130,7 @@ test("a failed gate is named in the boss's words, an unknown one in the server's
 
   // A verdict this panel has no word for is passed through rather than swallowed.
   const other = render(<NotesBoard compact notes={[note({ frontmatter: JSON.stringify({ gate: "skipped" }) })]} />);
-  expect(other.getByText(/闸门 skipped/)).toBeTruthy();
+  other.getByText(/闸门 skipped/);
 });
 
 test("a note with nothing to check against renders no anchor row at all", () => {
@@ -145,13 +145,13 @@ test("a long note is clamped until the reader opens it; a short one is never cla
   const body = "一".repeat(400);
   const long = render(<NotesBoard compact notes={[note({ body })]} />);
   const clamped = () => long.container.querySelectorAll(".line-clamp-4").length;
-  expect(long.getByText(body)).toBeTruthy();
+  long.getByText(body);
   expect(clamped()).toBe(1);
   // Pressing it is now something a test can do: the clamp comes off and the
   // control turns into its own way back.
   fireEvent.click(long.getByRole("button", { name: "展开" }));
   expect(clamped()).toBe(0);
-  expect(long.getByRole("button", { name: "收起" })).toBeTruthy();
+  long.getByRole("button", { name: "收起" });
   long.unmount();
 
   const short = render(<NotesBoard compact notes={[note({ body: "两行\n就两行" })]} />);
@@ -162,11 +162,11 @@ test("a list longer than the page says how much is left rather than dropping it"
   const many = Array.from({ length: 15 }, (_, i) => note({ id: i + 1, body: `第 ${i + 1} 条` }));
   const { getByRole, getByText, queryAllByText } = render(<NotesBoard notes={many} />);
   const more = getByRole("button", { name: "还有 3 条（共 15）" });
-  expect(getByText("第 12 条")).toBeTruthy();
+  getByText("第 12 条");
   expect(queryAllByText("第 13 条")).toHaveLength(0);
   // And the rest is one press away rather than gone.
   fireEvent.click(more);
-  expect(getByText("第 15 条")).toBeTruthy();
+  getByText("第 15 条");
 });
 
 test("a section only a project has falls back to an account pane when there is no project", () => {
@@ -191,8 +191,8 @@ test("the sandbox server pane comes up reading rather than claiming a state", ()
       </TipRoot>
     </QueryClientProvider>,
   );
-  expect(getByText("沙盒服务器")).toBeTruthy();
-  expect(getByText(/开容器的那个服务/)).toBeTruthy();
+  getByText("沙盒服务器");
+  getByText(/开容器的那个服务/);
   expect(getAllByText("读取中…").length).toBeGreaterThan(0);
 });
 
@@ -201,14 +201,14 @@ test("an account with nothing stored says so and offers both ways to fill it", (
   const { getAllByText, getByPlaceholderText, getByText } = render(
     <CredPane rows={[]} onSaved={() => {}} onWaitForLogin={() => {}} />,
   );
-  expect(getByText("模型账号")).toBeTruthy();
-  expect(getByText(/真令牌不进沙盒/)).toBeTruthy();
+  getByText("模型账号");
+  getByText(/真令牌不进沙盒/);
   // Both runtimes, both unconfigured, each with its own way in.
-  expect(getByText("Claude")).toBeTruthy();
-  expect(getByText("Codex")).toBeTruthy();
+  getByText("Claude");
+  getByText("Codex");
   expect(getAllByText("没配")).toHaveLength(2);
   expect(getAllByText(/登录/).length).toBeGreaterThan(0);
-  expect(getByPlaceholderText("粘贴进来，存下之后看不到")).toBeTruthy();
+  getByPlaceholderText("粘贴进来，存下之后看不到");
   expect(getAllByText(/API 地址/).length).toBeGreaterThan(0);
 });
 
@@ -222,12 +222,12 @@ test("a stored credential shows its tail and stops re-explaining how to get one"
       onWaitForLogin={() => {}}
     />,
   );
-  expect(getByPlaceholderText("已存 …7f21，粘新的就换掉")).toBeTruthy();
-  expect(getByText("清掉")).toBeTruthy();
+  getByPlaceholderText("已存 …7f21，粘新的就换掉");
+  getByText("清掉");
   // Instructions for a decision already made are gone for the configured row.
   expect(queryAllByText(/容器里跑 claude setup-token/)).toHaveLength(0);
   // Codex is still unconfigured, so its instructions stay.
-  expect(getByText(/在容器里登录，本机不用装 codex/)).toBeTruthy();
+  getByText(/在容器里登录，本机不用装 codex/);
   // Only Claude's CLI has a commit trailer to switch.
   expect(getAllByText(/Co-author/)).toHaveLength(1);
 });
@@ -245,10 +245,10 @@ test("a login in flight disables the button that started it", () => {
 test("the skills pane says nothing about counts until the read lands", () => {
   stubFetch();
   const { getByPlaceholderText, getByRole, getByText, queryAllByText } = render(<Skills projectId={1} />);
-  expect(getByText("技能")).toBeTruthy();
-  expect(getByText("读取中…")).toBeTruthy();
-  expect(getByRole("button", { name: "重新扫描" })).toBeTruthy();
-  expect(getByPlaceholderText("搜技能")).toBeTruthy();
+  getByText("技能");
+  getByText("读取中…");
+  getByRole("button", { name: "重新扫描" });
+  getByPlaceholderText("搜技能");
   // No "0/0 个进沙盒" before anything is known.
   expect(queryAllByText(/进沙盒/)).toHaveLength(0);
 });

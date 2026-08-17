@@ -80,21 +80,21 @@ test("the gates that run are listed in run order, numbered, above the ones that 
   expect(on.map((row) => row.textContent)).toEqual(["1testbun test", "2lintbun run lint"]);
   // Every running gate carries its position and its command, so the header's
   // three columns are three facts rather than one name repeated.
-  expect(getByText("顺序")).toBeTruthy();
-  expect(getByText("名字")).toBeTruthy();
-  expect(getByText("命令")).toBeTruthy();
+  getByText("顺序");
+  getByText("名字");
+  getByText("命令");
   // A detected command nobody turned on sits under its own heading, unnumbered,
   // and is offered as an unpressed toggle rather than as text.
-  expect(getByText("关掉的")).toBeTruthy();
-  expect(getByText("点一下加到最后一道")).toBeTruthy();
+  getByText("关掉的");
+  getByText("点一下加到最后一道");
   const off = getAllByRole("button", { pressed: false });
   expect(off.map((row) => row.textContent)).toEqual(["typecheckbun run typecheck"]);
-  expect(getByText("从上往下跑，拖着改顺序")).toBeTruthy();
+  getByText("从上往下跑，拖着改顺序");
 });
 
 test("a project with no gates on is told what that costs, and one with no commands is told why", () => {
   const none = render(<Gates d={config({ config: {} })} patch={() => {}} />);
-  expect(none.getByText("一道都没开，LLM 审阅底下就没有地板。")).toBeTruthy();
+  none.getByText("一道都没开，LLM 审阅底下就没有地板。");
   // Every detected command is still offered, all of them off.
   expect(none.queryAllByRole("button", { pressed: true })).toHaveLength(0);
   expect(none.getAllByRole("button", { pressed: false })).toHaveLength(3);
@@ -105,7 +105,7 @@ test("a project with no gates on is told what that costs, and one with no comman
   // Nothing was detected at all: a different sentence, because it is fixed in a
   // different place — there is nothing to switch on.
   const bare = render(<Gates d={config({ config: {}, resources: [] })} patch={() => {}} />);
-  expect(bare.getByText("没探到可跑的命令。")).toBeTruthy();
+  bare.getByText("没探到可跑的命令。");
   expect(bare.queryAllByText(/一道都没开/)).toHaveLength(0);
   expect(bare.queryAllByText("关掉的")).toHaveLength(0);
   expect(bare.queryAllByRole("button")).toHaveLength(0);
@@ -157,12 +157,12 @@ test("the sandbox pane shows every unset override as an empty box with the defau
   const { getByLabelText, getByPlaceholderText, getByText } = render(
     <Sandbox d={config()} busy={false} patch={() => {}} />,
   );
-  expect(getByText("沙盒")).toBeTruthy();
-  expect(getByText("灰字是默认值")).toBeTruthy();
+  getByText("沙盒");
+  getByText("灰字是默认值");
   // The inherited value is the placeholder, never the value: a box pre-filled
   // with the default saves that default as this project's own the first time it
   // loses focus, and the project stops following the machine.
-  expect(getByPlaceholderText("main（远端说的）")).toBeTruthy();
+  getByPlaceholderText("main（远端说的）");
   // Queried by their label, so the pane is asserted to name its boxes at all.
   for (const [label, hint] of [
     ["装依赖", "留空由 bootstrap 读仓库判断"],
@@ -174,7 +174,7 @@ test("the sandbox pane shows every unset override as an empty box with the defau
     expect(valueOf(box)).toBe("");
     expect(box.getAttribute("placeholder")).toBe(hint);
   }
-  expect(getByPlaceholderText("留空 = 出站不拦（README 那节）")).toBeTruthy();
+  getByPlaceholderText("留空 = 出站不拦（README 那节）");
 });
 
 test("stored sandbox overrides reach their controls as values, and blocked domains as chips", () => {
@@ -189,18 +189,18 @@ test("stored sandbox overrides reach their controls as values, and blocked domai
   const { getByDisplayValue, getByLabelText, getByPlaceholderText, getByRole, getByText } = render(
     <Sandbox d={d} busy={false} patch={() => {}} />,
   );
-  expect(getByDisplayValue("release")).toBeTruthy();
+  getByDisplayValue("release");
   expect(valueOf(getByLabelText("装依赖"))).toBe("bun install --frozen-lockfile");
   expect(valueOf(getByLabelText("CPU"))).toBe("6");
   expect(valueOf(getByLabelText("内存"))).toBe("16Gi");
   // One chip per domain, each with a way off, named after the domain it drops.
   // A space-separated string cannot say that one entry of it is wrong.
-  expect(getByText("api.openai.com")).toBeTruthy();
-  expect(getByRole("button", { name: "不再禁止 api.openai.com" })).toBeTruthy();
+  getByText("api.openai.com");
+  getByRole("button", { name: "不再禁止 api.openai.com" });
   // The map is one line of mount:host pairs, which is what the box takes back.
   expect(valueOf(getByLabelText("共享缓存"))).toBe("/root/.bun:/var/c");
   // With a domain already listed the box asks for another, not for the first.
-  expect(getByPlaceholderText("再加一个")).toBeTruthy();
+  getByPlaceholderText("再加一个");
 });
 
 test("every sandbox box refuses input while a save is in flight", () => {
@@ -281,14 +281,14 @@ test("the image row offers both sources and says it is still reading them", () =
   const { getByPlaceholderText, getByRole, queryAllByPlaceholderText } = render(
     <ImageRow value="" busy={false} onSave={() => {}} />,
   );
-  expect(getByRole("group", { name: "镜像" })).toBeTruthy();
+  getByRole("group", { name: "镜像" });
   // Two segments, exactly one of them lit — which is the fact the row is for,
   // and is `aria-pressed`, not a class.
-  expect(getByRole("radio", { name: "远程", checked: true })).toBeTruthy();
-  expect(getByRole("radio", { name: "本地", checked: false })).toBeTruthy();
+  getByRole("radio", { name: "远程", checked: true });
+  getByRole("radio", { name: "本地", checked: false });
   // Before the lists land there is no default to name, and a box promising one
   // is a box that has not asked yet.
-  expect(getByPlaceholderText("读取中…")).toBeTruthy();
+  getByPlaceholderText("读取中…");
   expect(queryAllByPlaceholderText(/跟这台机器的默认/)).toHaveLength(0);
 });
 
@@ -323,9 +323,9 @@ test("the first-project card names the action and shows rows before any reposito
   // whichever file runs next.
   stubFetch();
   const { getByRole, getByText } = render(<FirstProject onAdded={() => {}} onSettings={() => {}} />);
-  expect(getByRole("heading", { name: "添加第一个项目" })).toBeTruthy();
-  expect(getByText("点一行就添加")).toBeTruthy();
-  expect(getByRole("combobox", { name: /筛一下|选择仓库/ })).toBeTruthy();
+  getByRole("heading", { name: "添加第一个项目" });
+  getByText("点一行就添加");
+  getByRole("combobox", { name: /筛一下|选择仓库/ });
 });
 
 test("a directory listing puts directories above files and turns its path into crumbs", () => {

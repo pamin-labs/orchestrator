@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, test } from "bun:test";
 import { createElement } from "react";
 import { cleanup, render, restoreFetch, stubFetch } from "../support/render.tsx";
 import { Notes } from "../../web/src/views/notes.tsx";
@@ -17,5 +17,5 @@ afterEach(() => {
 test("notes have a renderable loading state", () => {
   // The read is left in flight, which is what the pane comes up in front of.
   stubFetch();
-  expect(render(createElement(Notes, { projectId: 1 })).getByText(/读记录/)).toBeTruthy();
+  render(createElement(Notes, { projectId: 1 })).getByText(/读记录/);
 });

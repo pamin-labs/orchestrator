@@ -41,10 +41,10 @@ test("the first-project card names itself and offers no repository until one has
   );
 
   // The card's own name, as a heading rather than as text that happens to match.
-  expect(getByRole("heading", { name: "添加第一个项目" })).toBeTruthy();
-  expect(getByText("点一行就添加")).toBeTruthy();
+  getByRole("heading", { name: "添加第一个项目" });
+  getByText("点一行就添加");
   // The filter is offered before the list is, so a fast typist is not blocked.
-  expect(getByRole("combobox", { name: /筛一下|选择仓库/ })).toBeTruthy();
+  getByRole("combobox", { name: /筛一下|选择仓库/ });
   // Still reading: no row to press, and none of the three sentences that would
   // explain an empty list. The placeholder rows carry neither, which is the
   // finding below rather than something to assert on.
@@ -76,9 +76,9 @@ test("each repository lands as its own pressable row, marked with what pressing 
   expect(alpha.textContent).not.toContain("私有");
   // Already a project: the row goes somewhere instead of adding again.
   expect(getByRole("option", { name: /gamma/ }).textContent).toContain("已添加");
-  expect(getByText("3 个仓库，最近动过的在前")).toBeTruthy();
+  getByText("3 个仓库，最近动过的在前");
   // The account whose repositories these are is named once, at the top.
-  expect(getByText("pamin-labs")).toBeTruthy();
+  getByText("pamin-labs");
 });
 
 test("the picker dialog is present through its portal only while it is open", async () => {
@@ -97,6 +97,6 @@ test("the picker dialog is present through its portal only while it is open", as
   // Radix names the dialog from its title; a dialog with no accessible name is
   // one a screen reader announces as nothing.
   expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
-  expect(getByRole("heading", { name: "选择仓库" })).toBeTruthy();
-  expect(getByRole("button", { name: "取消" })).toBeTruthy();
+  getByRole("heading", { name: "选择仓库" });
+  getByRole("button", { name: "取消" });
 });

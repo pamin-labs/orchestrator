@@ -97,7 +97,7 @@ test("Requirement renders missing, draft, slice review and blocking-question sta
   const filed = render(draft, draftGroup);
   // The card is an editable box that names itself, not a heading over one.
   expect(valueOf(filed.getByLabelText("计划卡"))).toContain("Ship the slice");
-  expect(filed.getByRole("button", { name: "批准开工" })).toBeTruthy();
+  filed.getByRole("button", { name: "批准开工" });
 
   const { st: active, g: activeGroup } = running();
   shown(render(active, activeGroup, "slice"), "正在拆解");
@@ -132,21 +132,21 @@ test("the header shows the control that fits the group's state", () => {
   shown(head, "feature/ship");
   shown(head, "在跑");
   // The controls are buttons, named — 暂停 as text could have been a caption.
-  expect(head.getByRole("button", { name: "暂停" })).toBeTruthy();
-  expect(head.getByRole("button", { name: "更多" })).toBeTruthy();
+  head.getByRole("button", { name: "暂停" });
+  head.getByRole("button", { name: "更多" });
 
   const paused = running({ status: "PAUSED", pr_number: 4 });
   const stopped = render(paused.st, paused.g, "slice");
   shown(stopped, "已暂停");
-  expect(stopped.getByRole("button", { name: "继续" })).toBeTruthy();
+  stopped.getByRole("button", { name: "继续" });
   // A closed PR needs a way to file a second one; a branch that was force-pushed
   // cannot be reopened on GitHub at all.
-  expect(stopped.getByRole("button", { name: "开新 PR" })).toBeTruthy();
+  stopped.getByRole("button", { name: "开新 PR" });
 
   const parked = running({ status: "PARKED" });
   const asleep = render(parked.st, parked.g, "slice");
   shown(asleep, "已封存");
-  expect(asleep.getByRole("button", { name: "唤醒" })).toBeTruthy();
+  asleep.getByRole("button", { name: "唤醒" });
   expect(asleep.queryAllByRole("button", { name: "暂停" })).toHaveLength(0);
 
   const open = running({ status: "PR_OPEN", pr_number: 9 });
@@ -172,8 +172,8 @@ test("a group that has spent its budget gets the wall instead of a working 继�
   const { st, g } = running({ status: "PAUSED", budget_tokens: 1000, spent_tokens: 1000 });
   const wall = render(st, g, "slice");
   shown(wall, "预算用尽，全组挂起");
-  expect(wall.getByRole("button", { name: /翻倍到/ })).toBeTruthy();
-  expect(wall.getByRole("button", { name: "取消上限" })).toBeTruthy();
+  wall.getByRole("button", { name: /翻倍到/ });
+  wall.getByRole("button", { name: "取消上限" });
   // 继续 would be a button that changes nothing: the scheduler refuses to admit it.
   expect(wall.queryAllByRole("button", { name: "继续" })).toHaveLength(0);
 
@@ -193,7 +193,7 @@ test("the rebuild pane reports both steps while it runs and stays up when it fai
   shown(live, "装依赖");
   shown(live, "bun install --frozen-lockfile");
   shown(live, "resolved 400 packages");
-  expect(live.getByRole("button", { name: "收起" })).toBeTruthy();
+  live.getByRole("button", { name: "收起" });
 
   const broken = render(st, g, "slice", [...started, frame({ id: "e4", cls: "state", text: "装失败了", at: 4_000 })]);
   shown(broken, "装失败了");
@@ -282,15 +282,15 @@ test("the draft card carries every objection raised against it", () => {
   shown(card, "The boundary is wrong");
   shown(card, "卡里这些路径仓库里没有");
   shown(card, "web/src/gone.tsx");
-  expect(card.getByRole("button", { name: "批准开工" })).toBeTruthy();
-  expect(card.getByRole("button", { name: "退回重拆" })).toBeTruthy();
+  card.getByRole("button", { name: "批准开工" });
+  card.getByRole("button", { name: "退回重拆" });
 
   st.dropProposals.push({ grpId: 7, body: "Already done in #12\nsee the merged PR" });
   const drop = render(st, g);
   shown(drop, "规划岗建议作废");
   shown(drop, "Already done in #12");
-  expect(drop.getByRole("button", { name: "确认作废" })).toBeTruthy();
-  expect(drop.getByRole("button", { name: "不，接着做" })).toBeTruthy();
+  drop.getByRole("button", { name: "确认作废" });
+  drop.getByRole("button", { name: "不，接着做" });
 });
 
 test("an approved draft says what is holding it instead of asking to approve again", () => {
@@ -364,9 +364,9 @@ test("the question lanes separate what is yours from what the chain is holding",
   shown(mine, "别人在处理 1");
   shown(mine, "替你答过 1");
   shown(mine, "Accept the smaller scope?");
-  expect(mine.getByRole("button", { name: /让 AI 拟一份/ })).toBeTruthy();
-  expect(mine.getByRole("button", { name: /转 Architect/ })).toBeTruthy();
-  expect(mine.getByRole("button", { name: /开成需求/ })).toBeTruthy();
+  mine.getByRole("button", { name: /让 AI 拟一份/ });
+  mine.getByRole("button", { name: /转 Architect/ });
+  mine.getByRole("button", { name: /开成需求/ });
   // The pinned dock is gone while a decision carries its own answer box.
   expect(mine.queryAllByRole("button", { name: /跟这个组说话…/ })).toHaveLength(0);
 });
@@ -380,5 +380,5 @@ test("the dock and the tab counts follow what the requirement holds", () => {
   expect(tabs.getAllByRole("tab").map((t) => t.textContent)).toEqual(["切片2", "问题0", "记录", "工作区"]);
   expect(tabs.getByRole("tab", { selected: true }).textContent).toBe("切片2");
   // At rest the dock is one line that says where the words go.
-  expect(tabs.getByRole("button", { name: "跟这个组说话… ⌘Enter 发给 PM" })).toBeTruthy();
+  tabs.getByRole("button", { name: "跟这个组说话… ⌘Enter 发给 PM" });
 });

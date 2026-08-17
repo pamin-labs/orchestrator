@@ -84,7 +84,7 @@ test("a project with nothing spent prints neither a zero count nor a zero spend"
   gone(page, "0 个需求");
   gone(page, "0 tokens");
   // A project nothing was ever asked of carries its own action instead of a state.
-  expect(page.getByRole("button", { name: "＋ 新需求" })).toBeTruthy();
+  page.getByRole("button", { name: "＋ 新需求" });
   gone(page, "空着");
 });
 
@@ -150,7 +150,7 @@ test("a window the plan does not have holds its column open and says nothing", (
   const bar = usage([{ runtime: "claude", at: Date.now(), fiveHourPercent: 42 }]);
   // The weekly cell is present but empty: an empty ring plus a dash would claim
   // the read failed, when the truth is the window does not exist on that plan.
-  expect(bar.getByText("5h")).toBeTruthy();
+  bar.getByText("5h");
   expect(bar.queryAllByText("周")).toHaveLength(0);
   expect(bar.queryAllByText("?")).toHaveLength(0);
   // Present, and hidden from a screen reader rather than announced as an empty

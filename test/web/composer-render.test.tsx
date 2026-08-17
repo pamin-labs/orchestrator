@@ -48,9 +48,9 @@ test("an empty composer offers attach, paste and a send that refuses to send not
   const { getByPlaceholderText, getByRole } = render(
     <Composer placeholder="说点什么" submit="发送" onSubmit={() => true} />,
   );
-  expect(getByPlaceholderText("说点什么")).toBeTruthy();
-  expect(getByRole("button", { name: "附件" })).toBeTruthy();
-  expect(getByRole("button", { name: "粘贴" })).toBeTruthy();
+  getByPlaceholderText("说点什么");
+  getByRole("button", { name: "附件" });
+  getByRole("button", { name: "粘贴" });
   // The disabled one is the send, named: `disabled=""` anywhere in the markup
   // was equally satisfied by a disabled 附件.
   expect(isDisabled(getByRole("button", { name: "发送" }))).toBe(true);
@@ -80,13 +80,13 @@ test("the 插技能 button waits for the skills read rather than appearing empty
   const { getByRole, queryAllByRole } = render(<Composer placeholder="说点什么" projectId={8802} submit="发送" />);
   // A project whose skills read came back empty has nothing to insert, so the
   // button never arrives — but the two beside it are up immediately.
-  expect(getByRole("button", { name: "附件" })).toBeTruthy();
+  getByRole("button", { name: "附件" });
   await waitFor(() => expect(queryAllByRole("button", { name: /插技能/ })).toHaveLength(0));
 });
 
 test("the skill picker names each skill, its scope, and whether it is ticked on", () => {
   const { getByRole, getByText } = render(<SkillMenu matches={skills} onPick={() => {}} />);
-  expect(getByText("选中的技能，正文随这一个 turn 发给 agent，只花这一次钱")).toBeTruthy();
+  getByText("选中的技能，正文随这一个 turn 发给 agent，只花这一次钱");
   // Each row is a button, so each row is reachable by keyboard and nameable.
   const commit = getByRole("button", { name: /commit/ });
   expect(commit.textContent).toContain("项目");
@@ -98,7 +98,7 @@ test("the skill picker names each skill, its scope, and whether it is ticked on"
   expect(review.textContent).toContain("全局");
   expect(review.textContent).toContain("未启用");
   // The count, so a skill sorting seventh is known to exist.
-  expect(getByText("2")).toBeTruthy();
+  getByText("2");
 });
 
 test("a picker with nothing to offer renders nothing at all", () => {
@@ -110,20 +110,20 @@ test("each attachment tile carries the marker the text refers to it by", () => {
   const { container, getByRole, getByText, queryAllByText } = render(
     <AttachmentTiles files={files} onRemove={() => {}} />,
   );
-  expect(getByText("[图1]")).toBeTruthy();
+  getByText("[图1]");
   // An image tile previews the image; the other two wear a badge for their kind.
   // Queried by hand because the thumbnail carries `alt=""` and so is not in the
   // accessibility tree at all — see the note in the report.
   expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:preview");
-  expect(getByText("[附件1]")).toBeTruthy();
-  expect(getByText("MD")).toBeTruthy();
-  expect(getByText("3k")).toBeTruthy();
-  expect(getByText("[目录1]")).toBeTruthy();
-  expect(getByText("DIR")).toBeTruthy();
+  getByText("[附件1]");
+  getByText("MD");
+  getByText("3k");
+  getByText("[目录1]");
+  getByText("DIR");
   // Every tile has its own way off, named after the file it removes.
-  expect(getByRole("button", { name: "移除 shot.png" })).toBeTruthy();
-  expect(getByRole("button", { name: "移除 notes.md" })).toBeTruthy();
-  expect(getByRole("button", { name: "移除 src" })).toBeTruthy();
+  getByRole("button", { name: "移除 shot.png" });
+  getByRole("button", { name: "移除 notes.md" });
+  getByRole("button", { name: "移除 src" });
   // A directory has no meaningful byte count, so it is not given one.
   expect(queryAllByText("0k")).toHaveLength(0);
 });
