@@ -1,4 +1,5 @@
 import type { Ctx } from "../../mech/ctx.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import { rollbackTo } from "../git/worktree.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
@@ -67,9 +68,9 @@ interface EscRow {
   chain_state: EscalationState;
 }
 
-function load(ctx: Ctx, id: number): EscRow | null {
+function load(db: DB, id: number): EscRow | null {
   return (
-    ctx.db
+    db
       .query<EscRow, [number]>(
         "SELECT id, grp_id, agent_id, severity, question, chain_state FROM escalation WHERE id = ?",
       )
@@ -85,7 +86,7 @@ function load(ctx: Ctx, id: number): EscRow | null {
  */
 export function route(deps: ChainDeps, escId: number): string {
   const { ctx } = deps;
-  const esc = load(ctx, escId);
+  const esc = load(ctx.db, escId);
   if (!esc || isTerminalEscalationState(esc.chain_state)) return "closed";
 
   // A stopped group can answer nothing: every level below the boss replies by
@@ -136,9 +137,9 @@ export function route(deps: ChainDeps, escId: number): string {
 }
 
 /** A responder for this level: in-group for PM, standing for the rest. */
-function groupResponder(ctx: Ctx, grpId: number | null): number | null {
+function groupResponder(db: DB, grpId: number | null): number | null {
   return (
-    ctx.db
+    db
       .query<{ id: number }, [number | null]>(
         "SELECT id FROM agent WHERE grp_id IS ? AND role = 'pm' AND state != 'retired'",
       )
@@ -146,17 +147,17 @@ function groupResponder(ctx: Ctx, grpId: number | null): number | null {
   );
 }
 
-function standingResponder(ctx: Ctx, role: string): number | null {
+function standingResponder(db: DB, role: string): number | null {
   return (
-    ctx.db
+    db
       .query<{ id: number }, [string]>("SELECT id FROM agent WHERE grp_id IS NULL AND role = ? AND state != 'retired'")
       .get(role)?.id ?? null
   );
 }
 
 function findResponder(ctx: Ctx, grpId: number | null, role: string): number | null {
-  if (role === "pm") return groupResponder(ctx, grpId);
-  const assigned = standingResponder(ctx, role);
+  if (role === "pm") return groupResponder(ctx.db, grpId);
+  const assigned = standingResponder(ctx.db, role);
   if (assigned) return assigned;
   // A configured-but-not-yet-hired standing role is a level that exists; skipping
   // it would send the question to the boss for no reason.
@@ -182,10 +183,10 @@ function responderError(esc: EscRow, by: EscalationOpenState, actorGrpId?: numbe
   return by !== "boss" && esc.chain_state !== by ? `this question is waiting on ${esc.chain_state}, not ${by}` : null;
 }
 
-function citationError(ctx: Ctx, input: AnswerInput): string | null {
+function citationError(db: DB, input: AnswerInput): string | null {
   if (input.by !== "cos") return null;
   if (!input.refNoteId) return "a stand-in answer must cite the decision it rests on (--ref <note_id>)";
-  const note = ctx.db.query<{ kind: string }, [number]>("SELECT kind FROM note WHERE id = ?").get(input.refNoteId);
+  const note = db.query<{ kind: string }, [number]>("SELECT kind FROM note WHERE id = ?").get(input.refNoteId);
   if (!note) return `no note ${input.refNoteId}`;
   if (note.kind === "decision" || note.kind === "fact") return null;
   return `note ${input.refNoteId} is a ${note.kind}, not a decision`;
@@ -195,7 +196,7 @@ function answerError(ctx: Ctx, esc: EscRow, input: AnswerInput): string | null {
   if (esc.chain_state === "answered") return "already answered";
   const responder = responderError(esc, input.by, input.actorGrpId);
   if (responder) return responder;
-  const citation = citationError(ctx, input);
+  const citation = citationError(ctx.db, input);
   if (citation) return citation;
   return input.by !== "boss" && isReserved(esc.question)
     ? "this one is reserved for the boss whatever the precedent"
@@ -205,7 +206,7 @@ function answerError(ctx: Ctx, esc: EscRow, input: AnswerInput): string | null {
 /** A level answers. Resolves whoever is blocked on `orch ask-boss`. */
 export function answer(deps: ChainDeps, input: AnswerInput): { ok: true } | { ok: false; error: string } {
   const { ctx } = deps;
-  const esc = load(ctx, input.escId);
+  const esc = load(ctx.db, input.escId);
   if (!esc) return { ok: false, error: `no escalation ${input.escId}` };
   const refused = answerError(ctx, esc, input);
   if (refused) return { ok: false, error: refused };
@@ -243,7 +244,7 @@ export function abstain(
   actorGrpId?: number | null,
 ): { ok: true } | { ok: false; error: string } {
   const { ctx } = deps;
-  const esc = load(ctx, escId);
+  const esc = load(ctx.db, escId);
   if (!esc) return { ok: false, error: `no escalation ${escId}` };
   const refused = responderError(esc, by, actorGrpId);
   if (refused) return { ok: false, error: refused };

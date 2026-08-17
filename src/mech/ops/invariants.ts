@@ -221,7 +221,7 @@ const SLICE_INVARIANTS = rows<SliceState>(
              AND NOT EXISTS (SELECT 1 FROM task t WHERE t.slice_id = s.id AND t.status != 'done')`,
         )
         .all()) {
-        reopenTasks(ctx, s.id);
+        reopenTasks(ctx.db, s.id);
       }
 
       // The other half of the same deadlock: the card is claimed, but by an agent

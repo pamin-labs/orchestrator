@@ -1,4 +1,5 @@
 import type { Ctx } from "../../mech/ctx.ts";
+import type { DB } from "../../platform/persistence/database.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { say } from "../../platform/text/lang.ts";
 import { jsonOr } from "../../contracts/json.ts";
@@ -39,9 +40,9 @@ interface SliceRow {
   retries: number;
 }
 
-function loadSlice(ctx: Ctx, sliceId: number): SliceRow | null {
+function loadSlice(db: DB, sliceId: number): SliceRow | null {
   return (
-    ctx.db
+    db
       .query<SliceRow, [number]>(
         "SELECT id, grp_id, seq, title, accept_spec, difficulty, base_sha, retries FROM slice WHERE id = ?",
       )
@@ -60,7 +61,7 @@ export async function runDeterministicReview(
   sliceId: number,
 ): Promise<{ pass: boolean; feedback: string }> {
   const { ctx, cfg } = deps;
-  const slice = loadSlice(ctx, sliceId);
+  const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return { pass: false, feedback: "slice disappeared" };
 
   const grp = ctx.db
@@ -173,10 +174,8 @@ export async function runDeterministicReview(
  * put on the branch — which is what `getTasks` shows the writer so it checks
  * before rewriting.
  */
-export function reopenTasks(ctx: Ctx, sliceId: number): void {
-  ctx.db.run("UPDATE task SET status = 'pending', owner_agent_id = NULL WHERE slice_id = ? AND status = 'done'", [
-    sliceId,
-  ]);
+export function reopenTasks(db: DB, sliceId: number): void {
+  db.run("UPDATE task SET status = 'pending', owner_agent_id = NULL WHERE slice_id = ? AND status = 'done'", [sliceId]);
 }
 
 /**
@@ -188,13 +187,13 @@ export function reopenTasks(ctx: Ctx, sliceId: number): void {
  */
 export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, from: string): void {
   const { ctx, cfg } = deps;
-  const slice = loadSlice(ctx, sliceId);
+  const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return;
 
   const shouldTick = ctx.db.transaction(() => {
     const retries = slice.retries + 1;
     ctx.db.run("UPDATE slice SET retries = ?, status = 'running' WHERE id = ?", [retries, sliceId]);
-    reopenTasks(ctx, sliceId);
+    reopenTasks(ctx.db, sliceId);
 
     if (retries > cfg.gateRetries) {
       // Looping forever is worse than interrupting the boss. Two failed attempts
@@ -245,7 +244,7 @@ export function sendBack(deps: ReviewDeps, sliceId: number, feedback: string, fr
 /** Deterministic half passed: hand the slice to QA. */
 export function handToQa(deps: ReviewDeps, sliceId: number): void {
   const { ctx } = deps;
-  const slice = loadSlice(ctx, sliceId);
+  const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return;
   ctx.db.transaction(() => {
     ctx.db.run("UPDATE slice SET status = 'qa' WHERE id = ?", [sliceId]);
@@ -261,7 +260,7 @@ export function handToQa(deps: ReviewDeps, sliceId: number): void {
 /** QA passed: the slice is the boss's to accept. */
 export function handToBoss(deps: Pick<ReviewDeps, "ctx">, sliceId: number): void {
   const { ctx } = deps;
-  const slice = loadSlice(ctx, sliceId);
+  const slice = loadSlice(ctx.db, sliceId);
   if (!slice) return;
   ctx.db.transaction(() => {
     recordGate(ctx.db, sliceId, "qa", "pass");
@@ -338,7 +337,7 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
     if (!slice) return null;
 
     ctx.db.run("UPDATE slice SET status = 'accepted' WHERE id = ?", [sliceId]);
-    carryOver(ctx, sliceId, slice.grp_id);
+    carryOver(ctx.db, sliceId, slice.grp_id);
     queueNextSlice(ctx, slice.grp_id);
 
     // The last acceptance starts PR-level review. Nothing an agent does can trigger
@@ -410,9 +409,9 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
  * "summarise for the next slice" would be a model call producing what a SELECT
  * already knows, and would be forgotten on the turn it mattered.
  */
-function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
+function carryOver(db: DB, sliceId: number, grpId: number): void {
   const files = new Set<string>();
-  for (const e of ctx.db
+  for (const e of db
     .query<{ meta_json: string }, [number]>(
       "SELECT meta_json FROM event WHERE kind = 'commit' AND json_extract(meta_json, '$.slice_id') = ?",
     )
@@ -421,13 +420,13 @@ function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
       files.add(f);
     }
   }
-  const decisions = ctx.db
+  const decisions = db
     .query<{ body: string }, [number]>(
       "SELECT body FROM note WHERE slice_id = ? AND kind IN ('decision','journal') ORDER BY id",
     )
     .all(sliceId)
     .map((n) => n.body.split("\n")[0]!.slice(0, 160));
-  const sl = ctx.db
+  const sl = db
     .query<{ seq: number; title: string; gates_json: string }, [number]>(
       "SELECT seq, title, gates_json FROM slice WHERE id = ?",
     )
@@ -440,7 +439,7 @@ function carryOver(ctx: Ctx, sliceId: number, grpId: number): void {
     `Gates: ${sl.gates_json}\n` +
     (decisions.length ? `What it settled:\n${decisions.map((d) => `- ${d}`).join("\n")}` : "");
 
-  ctx.db.run("INSERT INTO note (grp_id, slice_id, kind, body, at) VALUES (?, ?, 'handoff', ?, unixepoch() * 1000)", [
+  db.run("INSERT INTO note (grp_id, slice_id, kind, body, at) VALUES (?, ?, 'handoff', ?, unixepoch() * 1000)", [
     grpId,
     sliceId,
     body,
