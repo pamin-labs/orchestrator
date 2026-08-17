@@ -20,7 +20,7 @@ Tests and maintainer scripts are peripheral entry points: they receive coverage
 zones but no dependency rule. Application orchestration, provider adapters,
 prompt construction, and platform primitives are distinct production zones,
 and the constrained allow graph is a DAG. In
-particular, `src/runtime/executor.ts` is application policy rather than a
+particular, `src/application/executor.ts` is application policy rather than a
 provider adapter; pure text and shell-quoting helpers are platform primitives.
 
 **Consequence**: no ESLint or dependency-cruiser is introduced. A production

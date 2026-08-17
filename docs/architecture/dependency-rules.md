@@ -16,7 +16,7 @@ Fallow cycle or zone rules in Oxlint.
    `src/http`, or `web`.
 5. Runtime adapters cannot import mechanisms, application orchestration, panel,
    web, or route policy. `src/application/**` and the remaining
-   `src/runtime/executor.ts` composition leaf belong to the application zone,
+   `src/application/executor.ts` composition leaf belong to the application zone,
    not the adapter zone.
 6. Prompt construction outside `src/prompt/assemble.ts` is forbidden.
 7. Production dependencies must be declared in `dependencies`; test/build-only

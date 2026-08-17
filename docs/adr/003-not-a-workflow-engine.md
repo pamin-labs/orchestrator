@@ -37,7 +37,7 @@ that away and gives back nothing this system needs.
 delta lands at the end of the newest user message, or the prompt cache is
 destroyed and every turn costs 3-5x with no functional symptom. Framework prompt
 assembly is exactly where that invariant dies quietly. `src/prompt/assemble.ts`
-owns it and `test/cache-position.test.ts` guards it.
+owns it and `test/application/cache-position.test.ts` guards it.
 
 ## What people actually reach for those tools to get, and where it already lives
 

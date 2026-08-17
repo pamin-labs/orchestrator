@@ -413,8 +413,8 @@ ride a redirect into an unlisted path.
 
 Which is upstream's own suggested git shape, measured rather than inferred:
 `/owner/repo.git*` would re-admit `/owner/repo.git/git-receive-pack`.
-`test/util-container.test.ts` asserts no generated path ends in `*`, and
-`test/sandbox-live.test.ts` holds the on-list/off-list pair against a real
+`test/mech/util-container.test.ts` asserts no generated path ends in `*`, and
+`test/live/sandbox-live.test.ts` holds the on-list/off-list pair against a real
 container so a future SDK or server version cannot take it away quietly.
 
 Not measured: the same trials against the `v1.1.6` tag specifically. These ran

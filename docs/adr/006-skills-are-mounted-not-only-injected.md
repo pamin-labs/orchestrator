@@ -88,4 +88,4 @@ so they are visible whatever this page says.
   which path to allow — every group failing to start is a worse outcome than a
   feature none of them needs to run.
 - codex reading `$CODEX_HOME/skills` is a directory convention, not something its
-  docs state. `test/sandbox-live.test.ts` is what decides whether that half holds.
+  docs state. `test/live/sandbox-live.test.ts` is what decides whether that half holds.

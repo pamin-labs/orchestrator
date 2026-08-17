@@ -2,7 +2,7 @@
 
 The web page. React and Tailwind v4 built into `web/dist`, shadcn/Radix for
 behaviour only, nothing fetched at runtime — the fonts are the ones already on
-the machine and `test/smoke.test.ts` fails if a remote origin appears in the
+the machine and `test/integration/smoke.test.ts` fails if a remote origin appears in the
 served HTML.
 
 ## The scene that decides everything

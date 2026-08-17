@@ -9,11 +9,11 @@
 | HTTP edge | Remaining `src/http/**` | Middleware, validation adapter, response shape | Platform and shared contracts |
 | Composition | `src/composition/**` | HTTP/server wiring and process lifecycle | Public RPC, API, application, mechanisms, adapters, platform |
 | API | `src/api/**` | Panel and agent protocol operations | Mechanisms, platform, shared contracts |
-| Application | `src/application/**`, `src/runtime/executor.ts` | Turn orchestration and policy coordination | Mechanisms, prompt, runtime adapters, platform |
+| Application | `src/application/**`, `src/application/executor.ts` | Turn orchestration and policy coordination | Mechanisms, prompt, runtime adapters, platform |
 | Build info | `src/platform/process/version.ts` | Package/release identity shared by executable entry points | No runtime policy |
-| Mechanisms | `src/mech/**` except platform primitives, plus `src/ctx.ts` | Scheduling, state transitions, Git/sandbox operations, injected mechanism context | Runtime adapters and platform primitives |
+| Mechanisms | `src/mech/**` except platform primitives, plus `src/mech/ctx.ts` | Scheduling, state transitions, Git/sandbox operations, injected mechanism context | Runtime adapters and platform primitives |
 | Runtime adapters | Provider files in `src/runtime/**` | Provider subprocess protocol | Platform, shared contracts, type-only prompt shape |
-| Platform | `src/platform/**` plus the root scheduler, language, and observability leaves | Process-wide configuration, persistence, observability, and process primitives | Shared contracts |
+| Platform | `src/platform/**` | Process-wide configuration, persistence, observability, and process primitives | Shared contracts |
 | Prompt | `src/prompt/**` | Cache-safe prompt assembly | Shared data only |
 | CLI | `src/orch/**` | Agent-facing client transport | Shared runtime schemas plus type-only public Orch RPC |
 | Scripts | `scripts/**` | Maintainer-only development, benchmark, and setup entry points | Unrestricted; never shipped as production runtime |
@@ -33,7 +33,7 @@ runtime adapters -> provider CLI subprocesses
 
 `src/mech/git` and `src/mech/sandbox` remain external-effect mechanisms until
 there is measured value in another package. `src/application/**` and
-`src/runtime/executor.ts` are application orchestration; classifying them as adapters would create the false
+`src/application/executor.ts` are application orchestration; classifying them as adapters would create the false
 mechanism-to-runtime-to-mechanism cycle. Do not create an interface for a single
 implementation.
 

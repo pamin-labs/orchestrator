@@ -136,7 +136,7 @@ This repo's own workload inside a sandbox (`oven/bun:1`, tarball uploaded):
 |---|---|---|---|
 | `bun install --frozen-lockfile` | 5.5s | 6.6s | — |
 | `tsc --noEmit` | 7.6s | **3.2s** | 2.07s |
-| `bun test test/lease-args.test.ts` | 1.5s | 1.4s | — |
+| `bun test test/mech/lease-args.test.ts` | 1.5s | 1.4s | — |
 
 The 3.7x gap at the default was the one-CPU limit, not virtualization. There is
 no bind mount anywhere in this — the checkout lives on the container's own
@@ -171,7 +171,7 @@ overlay fs, which is why the usual macOS Docker filesystem penalty never appears
 
 - **A whole requirement has not been driven through a real container yet.** The
   image, the mailbox, the checkout and the credential vault each have; the loop
-  end to end has not (`test/sandbox-live.test.ts` covers the container, and skips
+  end to end has not (`test/live/sandbox-live.test.ts` covers the container, and skips
   when no server is running).
 
 ## Ceiling
