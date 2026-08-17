@@ -5,7 +5,7 @@ import { isRunning, track, untrack } from "../../platform/process/running-turns.
 import { type GrpState, isDispatchableGrpState, type JobState } from "../../contracts/states.ts";
 import { requestContext } from "../../platform/observability/request-context.ts";
 import { observeJob } from "../../platform/observability/metrics.ts";
-import { startChildTrace } from "../../platform/observability/traces.ts";
+import { startChildTrace, withActiveSpan } from "../../platform/observability/traces.ts";
 import { errText } from "../../platform/process/text.ts";
 
 export type { JobState } from "../../contracts/states.ts";
@@ -598,14 +598,20 @@ export class Scheduler {
       agentId: job.agent_id,
       signal: lifecycle.signal,
     };
+    // The job's own scope, which the row already carries. A job with neither is
+    // system work — the watchdog, a digest — and NULL is the right answer there.
+    const scope = { grpId: job.grp_id, sliceId: job.slice_id };
+    // `withActiveSpan` is what makes the executor's spans children of this one.
+    // Without it they would each come out a root and the trace would be a pile
+    // of unrelated spans rather than a breakdown of where the job's time went.
     const p = requestContext
-      .run(context, () => this.exec({ ...job, state: "running" }))
+      .run(context, () => withActiveSpan(trace, () => this.exec({ ...job, state: "running" })))
       .then(() => {
-        observeJob(job.kind, true, trace);
+        observeJob(job.kind, true, trace, scope);
         this.settle(job.id, "done");
       })
       .catch((error: unknown) => {
-        observeJob(job.kind, false, trace);
+        observeJob(job.kind, false, trace, scope);
         this.settle(job.id, "failed", errText(error));
       })
       // `settle` writes to the database, so the handler above can throw as well —

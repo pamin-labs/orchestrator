@@ -8,9 +8,16 @@
 
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import { BatchSpanProcessor, NodeTracerProvider, type SpanExporter } from "@opentelemetry/sdk-trace-node";
+import {
+  BatchSpanProcessor,
+  NodeTracerProvider,
+  type SpanExporter,
+  type SpanProcessor,
+} from "@opentelemetry/sdk-trace-node";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import type { DB } from "../persistence/database.ts";
 import { recordDroppedSpans } from "./metrics.ts";
+import { SqliteSpanExporter } from "./span-store.ts";
 import { installTracerProvider } from "./traces.ts";
 
 /**
@@ -53,18 +60,28 @@ function counting(inner: SpanExporter): SpanExporter {
 }
 
 /**
- * Install the exporting provider, or leave the non-exporting default in place.
+ * Install the provider this process traces through.
  *
- * No endpoint means no exporter is ever constructed, so nothing is queued and
- * nothing is sent. Spans still carry real ids either way, because the default
- * provider generates them; they simply go nowhere.
+ * Both destinations are batched through the same `BatchSpanProcessor` and the
+ * same bounds, because the reason for them is the same in both cases: export is
+ * a side channel, and the work being traced must not wait on it or slow down
+ * with it. SQLite is faster than an HTTP collector, which changes how often the
+ * queue fills, not whether `onEnd` should be writing to a file at all.
+ *
+ * The SQLite one is unconditional: the panel is the one consumer that is always
+ * present, and a boss asking where a requirement's time went has no collector to
+ * ask. The OTLP one is added beside it only when an endpoint is configured, so
+ * with no endpoint nothing is sent and no socket is opened.
  */
-export function configureTracing(): void {
-  if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return;
+export function configureTracing(db: DB): void {
+  const spanProcessors: SpanProcessor[] = [new BatchSpanProcessor(new SqliteSpanExporter(db), QUEUE)];
+  if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    spanProcessors.push(new BatchSpanProcessor(counting(new OTLPTraceExporter()), QUEUE));
+  }
   installTracerProvider(
     new NodeTracerProvider({
       resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: "orchestrator" }),
-      spanProcessors: [new BatchSpanProcessor(counting(new OTLPTraceExporter()), QUEUE)],
+      spanProcessors,
     }),
   );
 }

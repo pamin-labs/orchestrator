@@ -12,7 +12,13 @@ import { requestContext, requestId } from "../platform/observability/request-con
 import { scrub } from "../platform/observability/redaction.ts";
 import { errText } from "../platform/process/text.ts";
 import { idempotency, JSON_BODY_LIMIT } from "../http/idempotency/store.ts";
-import { observeHttp, prometheus, runtimeStatus, type RuntimeStatus } from "../platform/observability/metrics.ts";
+import {
+  observeHttp,
+  prometheus,
+  runtimeStatus,
+  type RuntimeStatus,
+  type SpanScope,
+} from "../platform/observability/metrics.ts";
 import { startTrace, traceparent } from "../platform/observability/traces.ts";
 
 export type { ApiType } from "../http/routes/panel.ts";
@@ -55,6 +61,24 @@ function elsewhere(site: string | undefined, origin: string | undefined, url: st
   }
 }
 
+/**
+ * The scope a request names in its own path, and nothing beyond it.
+ *
+ * Read off the matched route rather than the raw path, so `/api/v1/groups/7/pause`
+ * is scoped by the `7` Hono already parsed and an unmatched path is scoped by
+ * nothing. No database lookup: a slice route knows its slice and not its group,
+ * and resolving one here would put a query on every request to fill a column
+ * that is allowed to be NULL.
+ */
+function routeScope(route: string, params: Record<string, string>): SpanScope {
+  const id = Number(params["id"]);
+  if (!Number.isInteger(id) || id <= 0) return {};
+  if (route.startsWith("/api/v1/groups/")) return { grpId: id };
+  if (route.startsWith("/api/v1/slices/")) return { sliceId: id };
+  if (route.startsWith("/api/v1/project")) return { projectId: id };
+  return {};
+}
+
 export function makeApp(ctx: Ctx, runtime: RuntimeStatus = runtimeStatus()): (req: Request) => Promise<Response> {
   const app = new Hono();
 
@@ -76,7 +100,7 @@ export function makeApp(ctx: Ctx, runtime: RuntimeStatus = runtimeStatus()): (re
         c.header("X-Request-ID", id);
         c.header("traceparent", traceparent(trace));
         const route = matchedRoutes(c).findLast(({ path: matched }) => !matched.includes("*"))?.path ?? "unmatched";
-        observeHttp(c.req.method, route, c.res.status, trace);
+        observeHttp(c.req.method, route, c.res.status, trace, routeScope(route, c.req.param()));
       },
     );
   });

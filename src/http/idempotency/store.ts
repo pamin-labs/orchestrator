@@ -38,6 +38,16 @@ const MUTATION = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const RECOVERY_DELAY_MS = 5 * 60 * 1_000;
 const RECOVER_PATH = "/api/v1/idempotency/recover";
+/**
+ * Span ingest, which is idempotent in the table rather than in this record.
+ *
+ * `span` is keyed on `(trace_id, span_id)` and written with `INSERT OR IGNORE`,
+ * so the same export arriving twice writes the same rows and there is no second
+ * side effect for a record to protect. Requiring a key here would only break the
+ * caller: an OTLP client sends no `Idempotency-Key` and cannot be made to send a
+ * fresh one per batch, so every export would be rejected with 400.
+ */
+const TRACES_PATH = "/api/v1/traces";
 export const JSON_BODY_LIMIT = 1024 * 1024;
 
 function sha256(value: string | ArrayBuffer): string {
@@ -301,7 +311,7 @@ async function mutation(db: DB, c: Context, next: Next, clean: (now: number) => 
 async function dispatch(db: DB, c: Context, next: Next, clean: (now: number) => void): Promise<Response | void> {
   // Recovery records the externally reconciled outcome. It must not create a
   // second idempotency record whose own crash would require recursive recovery.
-  if (c.req.method === "POST" && c.req.path === RECOVER_PATH) return await next();
+  if (c.req.method === "POST" && (c.req.path === RECOVER_PATH || c.req.path === TRACES_PATH)) return await next();
   return MUTATION.has(c.req.method) ? await mutation(db, c, next, clean) : await next();
 }
 

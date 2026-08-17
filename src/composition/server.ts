@@ -43,6 +43,7 @@ import { raise } from "../mech/flow/escalate.ts";
 import { restoreWorkspace } from "../mech/flow/start.ts";
 import { closeTelemetry, runtimeStatus, type RuntimeStatus } from "../platform/observability/metrics.ts";
 import { configureTracing } from "../platform/observability/otel.ts";
+import { trimSpans } from "../platform/observability/span-store.ts";
 import { configureStructuredLogging } from "../platform/observability/logging.ts";
 import { VERSION } from "../platform/process/version.ts";
 
@@ -178,6 +179,11 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
     .get()!.c;
   if (queued === 0) sched.enqueue("watchdog", {});
   sched.tick();
+
+  // Span retention, on the tick rather than on the span. A trace arriving is not
+  // a reason to run housekeeping, and this is already the process's periodic
+  // driver — a timer of its own would be a second thing to arm and shut down.
+  trimSpans(db);
 
   // Everything waiting on the boss, as one message. The CoS is meant to do this
   // in its own words; this is the backstop for when it does not run at all.
@@ -617,9 +623,10 @@ export function start(overrides: Partial<Config> = {}): Started {
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
   ctx.auditVerdict = makeAuditVerdict(execDeps);
 
-  // Composition installs the span exporter, so no platform module opens a socket
-  // as an import side effect. Without a configured endpoint this does nothing.
-  configureTracing();
+  // Composition installs the span processors, so no platform module opens a
+  // socket or takes a database handle as an import side effect. Without a
+  // configured endpoint only the SQLite processor is registered.
+  configureTracing(db);
   const runtime = runtimeStatus(false);
   const app = makeApp(ctx, runtime);
   const webDir = join(ROOT, "web");

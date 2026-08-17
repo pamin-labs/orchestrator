@@ -8,7 +8,9 @@ import {
   keyInConfig,
   remoteInClear,
   SANDBOX_API_KEY_HEADER,
+  sandboxScope,
   splitAddr,
+  UTIL,
 } from "../../src/mech/sandbox/sandbox.ts";
 
 /**
@@ -176,4 +178,14 @@ test("the sandbox server may live on another machine, and says when that is in t
   for (const bad of ["sb.example.com:8080", "http://203.0.113.10:8080", "100.128.0.1:8080"]) {
     expect({ addr: bad, inClear: remoteInClear(bad) }).toEqual({ addr: bad, inClear: true });
   }
+});
+
+test("a sandbox span is scoped to what owns the container, and the utility one to nothing", () => {
+  // `sandbox.create` and `sandbox.init` are the two stages a boss most often
+  // loses minutes to, so their rows have to be aggregable by group. The utility
+  // container holds the real credentials and belongs to no project: NULL is the
+  // answer there, not project zero.
+  expect(sandboxScope({ grp: 4 }, 9)).toEqual({ "grp.id": 4, "project.id": 9 });
+  expect(sandboxScope({ project: 9 }, 9)).toEqual({ "project.id": 9 });
+  expect(sandboxScope(UTIL, null)).toEqual({});
 });

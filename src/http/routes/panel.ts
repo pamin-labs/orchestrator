@@ -92,6 +92,7 @@ import {
   SandboxQuery,
 } from "../../api/panel/sandbox.ts";
 import { CostQuery, getCost, getState } from "../../api/panel/snapshot.ts";
+import { OtlpTraceBody, postTraces } from "../../api/panel/traces.ts";
 import { getStream, StreamQuery } from "../../api/panel/stream.ts";
 import { formBody, jsonBody, pathParams, queryParams } from "../validate.ts";
 import type { ErrorResponses } from "../respond.ts";
@@ -99,7 +100,7 @@ import { operatorIdempotencyStatus, recoverIdempotency } from "../idempotency/st
 
 /** Explicit panel routes keep Hono's request and response types visible to RPC. */
 export function panelRoutes(ctx: Ctx) {
-  return new Hono()
+  const app = new Hono()
     .get("/idempotency/status", queryParams(IdempotencyStatusQuery), (c) =>
       operatorIdempotencyStatus(ctx.db, c.req.valid("query")),
     )
@@ -183,6 +184,20 @@ export function panelRoutes(ctx: Ctx) {
       postDelegate(ctx, c.req.raw, c.req.valid("param"), c.req.valid("json")),
     )
     .get("/escalations/:id/draft", pathParams(IdParams), (c) => getAnswerDraft(ctx, c.req.raw, c.req.valid("param")));
+
+  // An OTLP client appends `/v1/traces` to its configured endpoint, so this is
+  // where `OTEL_EXPORTER_OTLP_ENDPOINT=http://host/api` delivers. See
+  // `api/panel/traces.ts` for why the path is on this root and not its own.
+  //
+  // Registered as a statement rather than another link in the chain above, so it
+  // stays out of `ApiType`. Nothing in the browser calls it — the caller is a
+  // tracing SDK — and one more route in the inferred RPC type is what tips
+  // `hc<ApiType>` over TS7056, the point where the compiler refuses to serialize
+  // the type at all. The route is registered either way; only the type is not.
+  app.post("/traces", ...jsonBody(OtlpTraceBody), (c) =>
+    postTraces(ctx, c.req.raw, c.req.param(), c.req.valid("json")),
+  );
+  return app;
 }
 
 export type ApiType = ApplyGlobalResponse<

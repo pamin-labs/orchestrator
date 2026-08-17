@@ -1,4 +1,5 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import type { Attributes } from "@opentelemetry/api";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { AggregationType, MeterProvider, MetricReader, type ViewOptions } from "@opentelemetry/sdk-metrics";
@@ -153,7 +154,34 @@ function routeLabel(path: string): string {
   return path.replace(/\/\d+(?=\/|$)/g, "/:id");
 }
 
-export function observeHttp(method: string, path: string, status: number, trace: Trace): void {
+/**
+ * What a span is about, when it is about anything.
+ *
+ * Every field is optional and stays optional: a `/healthz` request, the
+ * retention trim and the watchdog belong to no project, and the `span` table's
+ * scope columns are nullable for exactly that reason. An absent id is written as
+ * NULL rather than guessed — a wrong one aggregates somebody else's time into a
+ * group.
+ *
+ * Kept out of metric labels deliberately. These are unbounded identifiers, and
+ * `docs/standards/data.md` puts them out of bounds for a label set; the span is
+ * where an unbounded dimension belongs.
+ */
+export interface SpanScope {
+  projectId?: number | null;
+  grpId?: number | null;
+  sliceId?: number | null;
+}
+
+export function scopeAttributes(scope: SpanScope): Attributes {
+  return {
+    ...(scope.projectId ? { "project.id": scope.projectId } : {}),
+    ...(scope.grpId ? { "grp.id": scope.grpId } : {}),
+    ...(scope.sliceId ? { "slice.id": scope.sliceId } : {}),
+  };
+}
+
+export function observeHttp(method: string, path: string, status: number, trace: Trace, scope: SpanScope = {}): void {
   const seconds = Number(process.hrtime.bigint() - trace.started) / 1e9;
   const route = routeLabel(path);
   const attributes = { method, route, status: String(status) };
@@ -163,11 +191,16 @@ export function observeHttp(method: string, path: string, status: number, trace:
     "http.request.method": method,
     "http.route": route,
     "http.response.status_code": status,
+    ...scopeAttributes(scope),
   });
 }
 
-export function observeJob(kind: string, ok: boolean, trace: Trace): void {
-  endSpan(trace, `job ${kind}`, !ok, { "job.kind": kind, "job.status": ok ? "done" : "failed" });
+export function observeJob(kind: string, ok: boolean, trace: Trace, scope: SpanScope = {}): void {
+  endSpan(trace, `job ${kind}`, !ok, {
+    "job.kind": kind,
+    "job.status": ok ? "done" : "failed",
+    ...scopeAttributes(scope),
+  });
 }
 
 export function recordRetry(owner: string): void {

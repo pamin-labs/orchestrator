@@ -13,6 +13,7 @@
  */
 
 import {
+  context as contextApi,
   ROOT_CONTEXT,
   SpanKind,
   SpanStatusCode,
@@ -21,8 +22,26 @@ import {
   type Attributes,
   type Context,
   type Span,
+  type Tracer,
 } from "@opentelemetry/api";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { NodeTracerProvider, type BasicTracerProvider } from "@opentelemetry/sdk-trace-node";
+
+/**
+ * Without this, nothing nests.
+ *
+ * `startActiveSpan` parents a span to whatever is active in the *ambient*
+ * context, and the API's default context manager is a no-op that returns
+ * `ROOT_CONTEXT` every time — so every span the executor opens would come out a
+ * root of its own and a trace would be a pile of unrelated spans. Measured
+ * before this line existed: a child opened inside `startActiveSpan` reported no
+ * parent at all.
+ *
+ * It is an `AsyncLocalStorage`, not a registry that reaches the network, and
+ * `requestContext` in this same directory already keeps one. Installed at import
+ * because a span opened before composition ran must still nest correctly.
+ */
+contextApi.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
 
 export interface Trace {
   traceId: string;
@@ -49,6 +68,30 @@ let tracer = provider.getTracer("orchestrator");
 export function installTracerProvider(next: BasicTracerProvider): void {
   provider = next;
   tracer = next.getTracer("orchestrator");
+}
+
+/**
+ * The tracer of whichever provider is installed right now.
+ *
+ * A function rather than the binding, because the provider is swapped at boot
+ * and again by every shutdown — a module-level import of `tracer` would capture
+ * a dead one. Callers use it to open their own spans with `startActiveSpan`
+ * directly; there is nothing here that wraps it.
+ */
+export function activeTracer(): Tracer {
+  return tracer;
+}
+
+/**
+ * Run `fn` with `trace`'s span as the active parent.
+ *
+ * The bridge between a span this module handed out and the ambient context that
+ * `startActiveSpan` reads. Without it a job's span exists but nothing opened
+ * inside the job attaches to it, because the job span was started explicitly
+ * rather than made active.
+ */
+export function withActiveSpan<T>(trace: Trace, fn: () => T): T {
+  return contextApi.with(traceApi.setSpan(contextApi.active(), trace.span), fn);
 }
 
 /**

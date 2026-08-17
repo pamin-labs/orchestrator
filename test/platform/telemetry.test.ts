@@ -167,6 +167,9 @@ test("the configured ceiling collapses excess request series instead of growing"
   }
 });
 
+/** The `orchestrator_telemetry_dropped_total` series, or -1 if it is missing. */
+const dropped = (text: string): number => Number(/^orchestrator_telemetry_dropped_total (\d+)$/m.exec(text)?.[1] ?? -1);
+
 test("a scrape reports job state, retries and telemetry loss under the orchestrator names", async () => {
   const ctx = testContext();
   try {
@@ -177,7 +180,13 @@ test("a scrape reports job state, retries and telemetry loss under the orchestra
     expect(text).toContain("orchestrator_http_requests_total");
     expect(text).toContain("orchestrator_event_loop_delay_seconds");
     expect(text).toContain('orchestrator_jobs{state="pending"} 1');
-    expect(text).toContain("orchestrator_telemetry_dropped_total 0");
+    // The counter is process-wide and one Bun process runs every test file, so
+    // another file may legitimately have recorded a drop before this one ran.
+    // The wiring is proved by the series existing, being a number, and holding
+    // still across a scrape where nothing was dropped — not by a literal zero,
+    // which only passed while no test in the suite ever exercised a loss.
+    expect(dropped(text)).toBeGreaterThanOrEqual(0);
+    expect(dropped(await prometheus(ctx.db))).toBe(dropped(text));
     // The serializer's own scope and resource series would change the label set
     // of every series a dashboard already queries.
     expect(text).not.toContain("otel_scope_name");

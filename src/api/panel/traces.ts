@@ -1,0 +1,143 @@
+/**
+ * OTLP/HTTP trace ingest, on the panel's own protocol root.
+ *
+ * `POST /api/v1/traces` is not a spelling choice. An OTLP client appends
+ * `/v1/traces` to whatever endpoint it is configured with, so
+ * `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:7777/api` lands exactly here —
+ * and a bare `/v1/traces` would land nowhere useful: `isApplicationPath` in
+ * `composition/server.ts` recognises only `/healthz`, `/readyz`, `/api/v1/*` and
+ * `/orch/v1/*`, so it would fall through to the static file branch and 404. The
+ * shutdown gate, the CSRF rule and the JSON body limit are all mounted on those
+ * two prefixes too, which is the difference between this route and an
+ * unauthenticated POST with no size limit.
+ *
+ * Trust boundary: whatever `/api/v1/*` already is. The server binds `127.0.0.1`
+ * by default and cross-site browser writes are refused; there is no agent token
+ * here because an agent cannot reach this process directly at all — sandboxed
+ * turns go through the file mailbox. A second, different rule on one route
+ * inside the panel root would be the inconsistency, not the protection.
+ *
+ * Size: the shared `JSON_BODY_LIMIT` of 1MiB, inherited and not raised. An OTLP
+ * batch is at most 512 spans, so that is about 2KiB a span; a client that trips
+ * it gets a 413 and should send smaller batches.
+ */
+
+import { z } from "zod";
+import type { Handler } from "../../http/handler.ts";
+import { json } from "../../http/respond.ts";
+import { type SpanRow, writeSpans } from "../../platform/observability/span-store.ts";
+
+const TraceId = z.string().regex(/^[0-9a-f]{32}$/i);
+const SpanId = z.string().regex(/^[0-9a-f]{16}$/i);
+/** Protobuf-JSON writes an absent `parentSpanId` as either omitted or empty. */
+const OptionalSpanId = z.union([SpanId, z.literal("")]).optional();
+/** `fixed64` crosses as a decimal string; a small enough one may cross as a number. */
+const UnixNano = z.union([z.string().regex(/^\d+$/), z.number().nonnegative()]);
+
+/**
+ * One OTLP `AnyValue`, kept as the scalar it is.
+ *
+ * Only the four scalar cases are unwrapped. Arrays and nested key-value lists
+ * are stored as the JSON they arrived as rather than flattened, because an
+ * attribute we cannot name a column for is evidence, not a query key.
+ */
+const AnyValue = z.looseObject({
+  stringValue: z.string().optional(),
+  boolValue: z.boolean().optional(),
+  intValue: z.union([z.string().regex(/^-?\d+$/), z.number()]).optional(),
+  doubleValue: z.number().optional(),
+});
+
+const KeyValue = z.object({ key: z.string(), value: AnyValue.optional() });
+
+const OtlpSpan = z.object({
+  traceId: TraceId,
+  spanId: SpanId,
+  parentSpanId: OptionalSpanId,
+  name: z.string(),
+  // Offset by one against the API enum: the proto reserves 0 for "unspecified".
+  kind: z.number().int().min(0).max(5).optional(),
+  startTimeUnixNano: UnixNano,
+  endTimeUnixNano: UnixNano,
+  attributes: z.array(KeyValue).optional(),
+  status: z.object({ code: z.number().int().min(0).max(2).optional() }).optional(),
+});
+
+/**
+ * The envelope, matching `ExportTraceServiceRequest`.
+ *
+ * `@opentelemetry/otlp-transformer` publishes no decoder — its `ISerializer`
+ * only serializes a request and deserializes a *response* — so the boundary is
+ * validated the way every other boundary in this project is, with Zod. The test
+ * builds its payload with that package's `JsonTraceSerializer`, so the shape
+ * this accepts is the shape the library actually emits rather than one read off
+ * a specification.
+ */
+export const OtlpTraceBody = z.object({
+  resourceSpans: z
+    .array(
+      z.looseObject({
+        scopeSpans: z.array(z.looseObject({ spans: z.array(OtlpSpan).optional() })).optional(),
+      }),
+    )
+    .optional(),
+});
+
+type OtlpTrace = z.infer<typeof OtlpTraceBody>;
+type OtlpSpanValue = z.infer<typeof OtlpSpan>;
+type AnyValueValue = z.infer<typeof AnyValue>;
+
+function scalar(value: AnyValueValue | undefined): unknown {
+  if (!value) return null;
+  if (value.stringValue !== undefined) return value.stringValue;
+  if (value.boolValue !== undefined) return value.boolValue;
+  if (value.doubleValue !== undefined) return value.doubleValue;
+  if (value.intValue !== undefined) return typeof value.intValue === "string" ? Number(value.intValue) : value.intValue;
+  return value;
+}
+
+function attributes(pairs: OtlpSpanValue["attributes"]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const pair of pairs ?? []) out[pair.key] = scalar(pair.value);
+  return out;
+}
+
+const KIND_NAMES = ["internal", "internal", "server", "client", "producer", "consumer"] as const;
+
+/** Nanoseconds since the epoch, as a number of milliseconds. */
+const millis = (nanos: string | number): number => Number(BigInt(nanos) / 1_000n) / 1_000;
+
+function toRow(span: OtlpSpanValue): SpanRow {
+  const started = millis(span.startTimeUnixNano);
+  return {
+    traceId: span.traceId.toLowerCase(),
+    spanId: span.spanId.toLowerCase(),
+    parentSpanId: span.parentSpanId ? span.parentSpanId.toLowerCase() : null,
+    name: span.name,
+    kind: KIND_NAMES[span.kind ?? 0] ?? "internal",
+    startedAt: Math.round(started),
+    durationMs: Math.max(0, millis(span.endTimeUnixNano) - started),
+    status: span.status?.code === 1 ? "ok" : span.status?.code === 2 ? "error" : "unset",
+    attributes: attributes(span.attributes),
+  };
+}
+
+function otlpSpanRows(body: OtlpTrace): SpanRow[] {
+  return (body.resourceSpans ?? []).flatMap((resource) =>
+    (resource.scopeSpans ?? []).flatMap((scope) => (scope.spans ?? []).map(toRow)),
+  );
+}
+
+/**
+ * Accept an export.
+ *
+ * The response body is an empty `ExportTraceServiceResponse`, which is what the
+ * protocol defines for a full success — a `partialSuccess` field would have to
+ * name spans that were rejected, and validation rejects the whole batch or none
+ * of it. Ingest is idempotent on `(trace_id, span_id)`, so a client retrying a
+ * request whose response it never saw writes the same rows.
+ */
+export const postTraces = (async (ctx, _req, _params, body) => {
+  writeSpans(ctx.db, otlpSpanRows(body));
+  return json({});
+}) satisfies Handler<OtlpTrace>;

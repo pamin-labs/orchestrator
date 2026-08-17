@@ -656,6 +656,46 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   CREATE INDEX job_correlation ON job (correlation_id);
   CREATE INDEX event_correlation ON event (correlation_id, seq);
   `,
+
+  // 043 — spans land here, so the panel has a trace to read without a collector.
+  //
+  // 042 put `trace_id` on jobs and events, which is enough to correlate rows that
+  // already existed but says nothing about where the wall clock went: durations
+  // lived only in the SDK's export queue, and with no `OTEL_EXPORTER_OTLP_ENDPOINT`
+  // that queue was never even constructed.
+  //
+  // The three scope columns are nullable because a system span belongs to no
+  // project — `/healthz`, the watchdog tick, the retention trim itself. They are
+  // deliberately not foreign keys: a span is an observation of something that
+  // happened, not a reference to something that still exists, and a group deleted
+  // next week must not take last week's timing with it or fail to delete because
+  // of it. Retention, not referential integrity, is what bounds this table.
+  //
+  // Two indexes for the two reads. The primary key leads with `trace_id`, so
+  // fetching a whole trace is a range scan over one contiguous run of rows.
+  // `span_scope` leads with the group and then the slice, so aggregating a
+  // requirement's time over a window uses the same index as aggregating a
+  // group's. `span_age` is the retention scan's own, since neither of the others
+  // can serve an unscoped time bound.
+  `
+  CREATE TABLE span (
+    trace_id        TEXT    NOT NULL,
+    span_id         TEXT    NOT NULL,
+    parent_span_id  TEXT,
+    name            TEXT    NOT NULL,
+    kind            TEXT    NOT NULL,
+    started_at      INTEGER NOT NULL,
+    duration_ms     REAL    NOT NULL,
+    status          TEXT    NOT NULL,
+    attributes_json TEXT    NOT NULL DEFAULT '{}',
+    project_id      INTEGER,
+    grp_id          INTEGER,
+    slice_id        INTEGER,
+    PRIMARY KEY (trace_id, span_id)
+  );
+  CREATE INDEX span_scope ON span (grp_id, slice_id, started_at);
+  CREATE INDEX span_age ON span (started_at);
+  `,
 ];
 
 export type DB = Database;

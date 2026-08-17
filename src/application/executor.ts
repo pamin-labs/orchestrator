@@ -27,6 +27,9 @@ import { changedSince, checkpoint, porcelainPaths, STATUS_Z } from "../mech/git/
 import { lessonsFor } from "../mech/knowledge/lessons.ts";
 import { LeaseArgsSchema, loadResource, type ResourceDef, resolveLease, runResource } from "../mech/lease.ts";
 import { gzipTurnLog, REEMIT_MS, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { scopeAttributes, type SpanScope } from "../platform/observability/metrics.ts";
+import { activeTracer } from "../platform/observability/traces.ts";
 import { CODEX_HOME, isAuthFailure, vaultFor } from "../mech/sandbox/auth.ts";
 import { MAILBOX_DIR, putBytes, resourceExec, runnerFor, type Scope, WORK } from "../mech/sandbox/sandbox.ts";
 import { projectOfAgent } from "../mech/util/rows.ts";
@@ -111,6 +114,7 @@ function resolveAgent(deps: ExecDeps, job: Job<"agent_turn">): AgentRow {
   const assigned = assignedAgent(deps.ctx, job.agent_id);
   if (assigned) return assigned;
   const roleName = job.payload.role ?? "engineer";
+  // fallow-ignore-next-line security-sink -- `SELECT_AGENT_BASE` is a module-level column-list literal; the group id and the role name are bound through the `?` placeholders.
   const existing = deps.ctx.db
     .query<AgentRow, [number | null, string]>(
       `${SELECT_AGENT_BASE} WHERE grp_id IS ? AND role = ? AND state != 'retired'`,
@@ -205,14 +209,65 @@ interface PreparedTurn {
   sessionId: string;
 }
 
+/**
+ * The scope every span in a turn carries, so a stage is aggregable on its own.
+ *
+ * Putting it only on the outer span would mean the panel could total a turn but
+ * not answer the question that motivates the table — which *stage* of which
+ * group's turns is the slow one.
+ */
+function turnScope(job: Job<"agent_turn">): SpanScope {
+  return { grpId: job.grp_id, sliceId: job.slice_id };
+}
+
+/**
+ * Where a turn's wall clock goes, as four spans rather than one number.
+ *
+ * The stages are the ones that actually take time and can each be slow for a
+ * different reason: assembling the prompt, taking the checkpoint (which is the
+ * first thing to touch the group's sandbox, so a cold container is paid here),
+ * the provider call, and settling the result. A turn that took nine minutes is
+ * not actionable; nine minutes of which eight were the provider is.
+ */
 async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<void> {
-  const turn = await prepareTurn(deps, job);
-  const before = await checkpointTurn(deps, job, turn);
-  const result = await invokeTurn(deps, job, turn);
-  await finishTurn(deps, job, turn, before, result);
+  return activeTracer().startActiveSpan(
+    "turn",
+    { attributes: { "job.kind": job.kind, ...scopeAttributes(turnScope(job)) } },
+    async (span) => {
+      try {
+        const turn = await prepareTurn(deps, job);
+        span.setAttributes({ "agent.role": turn.agent.role, "agent.runtime": turn.agent.runtime ?? turn.role.runtime });
+        const before = await checkpointTurn(deps, job, turn);
+        const result = await invokeTurn(deps, job, turn);
+        await finishTurn(deps, job, turn, before, result);
+      } catch (error) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
 }
 
 async function prepareTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<PreparedTurn> {
+  return activeTracer().startActiveSpan(
+    "turn.prepare",
+    { attributes: scopeAttributes(turnScope(job)) },
+    async (span) => {
+      try {
+        return await buildPreparedTurn(deps, job);
+      } catch (error) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
+async function buildPreparedTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<PreparedTurn> {
   const agent = resolveAgent(deps, job);
   const role = deps.roles.get(agent.role);
   if (!role) throw new Error(`no role definition for ${agent.role}`);
@@ -252,7 +307,31 @@ function rotationReason(agent: AgentRow, cfg: Config, stable: StablePrompt, expl
   return null;
 }
 
+/**
+ * The checkpoint, and the first thing in a turn to reach the group's sandbox.
+ *
+ * A cold container is created and provisioned underneath this call, so on a
+ * group's first turn this span is where that cost shows up. A dedicated span
+ * inside `ensureSandbox` would separate the two, and needs `src/mech/sandbox/`.
+ */
 async function checkpointTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<string | null> {
+  return activeTracer().startActiveSpan(
+    "turn.checkpoint",
+    { attributes: scopeAttributes(turnScope(job)) },
+    async (span) => {
+      try {
+        return await takeCheckpoint(deps, job, turn);
+      } catch (error) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
+async function takeCheckpoint(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<string | null> {
   if (!job.grp_id) {
     markAgentRunning(deps.ctx, turn);
     return null;
@@ -290,7 +369,25 @@ function markAgentRunning(ctx: Ctx, turn: PreparedTurn): void {
   );
 }
 
+/** The provider call itself — usually most of a turn, and the one worth isolating. */
 async function invokeTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<TurnResult> {
+  return activeTracer().startActiveSpan(
+    "turn.provider",
+    { attributes: { "agent.runtime": turn.agent.runtime ?? turn.role.runtime, ...scopeAttributes(turnScope(job)) } },
+    async (span) => {
+      try {
+        return await callProvider(deps, job, turn);
+      } catch (error) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
+async function callProvider(deps: ExecDeps, job: Job<"agent_turn">, turn: PreparedTurn): Promise<TurnResult> {
   const { ctx, cfg } = deps;
   const logDir = join(cfg.dataDir, "turns");
   mkdirSync(logDir, { recursive: true });

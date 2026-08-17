@@ -7,7 +7,10 @@ import type { Ctx } from "../../mech/ctx.ts";
 import { ROOT } from "../../platform/config/load.ts";
 import type { SandboxSpec } from "../../contracts/config.ts";
 import type { ResourceExec } from "../lease.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { scopeAttributes } from "../../platform/observability/metrics.ts";
 import { requestContext } from "../../platform/observability/request-context.ts";
+import { activeTracer } from "../../platform/observability/traces.ts";
 import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../../platform/process/shell.ts";
@@ -59,6 +62,7 @@ const live = new Map<string, Sandbox>();
 /** The one namespace this project publishes to. One home, so the allowlist and
  *  the panel's version list can never disagree about what "ours" means. */
 export const PUBLISHED_REPO = "pamin-labs/orch-agent";
+// fallow-ignore-next-line security-sink -- `PUBLISHED_REPO` is the module constant one line above; the image reference being checked is the `test` argument, never the pattern.
 const PUBLISHED = new RegExp(`^ghcr\\.io/${PUBLISHED_REPO.split("/")[0]}/`, "i");
 
 /**
@@ -672,32 +676,80 @@ async function restoreGroupWorkspace(ctx: Ctx, scope: Scope): Promise<void> {
   });
 }
 
+/**
+ * What a sandbox span is about.
+ *
+ * A group's container is scoped to the group and its project; a project-scoped
+ * one names only the project; the utility container belongs to neither and
+ * writes NULL to all three columns rather than being filed under something.
+ */
+export function sandboxScope(scope: Scope, projectId: number | null) {
+  return scopeAttributes({ grpId: "grp" in scope ? scope.grp : null, projectId });
+}
+
+/**
+ * Two spans, because these are two different four-minute problems.
+ *
+ * Building the container is the image, the daemon and the mounts; initialising
+ * it is provisioning, credentials and restoring the workspace. Folded together
+ * — or worse, folded into the checkpoint that happens to call this first — the
+ * boss sees "the checkpoint took four minutes" and learns nothing. Split, the
+ * answer is either "we spent four minutes building a container" or "we spent
+ * four minutes filling one", which point at different fixes.
+ *
+ * Neither span opens on the warm path: a reconnect built nothing and filled
+ * nothing, and a zero-duration span every turn would bury the cold ones.
+ */
 async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   const { sandboxId, projectId } = owner(ctx, scope);
   const existing = await reconnect(ctx, scope, sandboxId);
   if (existing) return existing;
 
+  const attributes = sandboxScope(scope, projectId);
   const spec = specFor(ctx, projectId);
   const skills = isUtil(scope) ? [] : skillMounts(ctx);
-  const created = await createMountedSandbox(ctx, scope, spec, cacheVolumes(spec), skills);
+  const created = await activeTracer().startActiveSpan(
+    "sandbox.create",
+    { attributes: { ...attributes, "sandbox.image": spec.image } },
+    async (span) => {
+      try {
+        return await createMountedSandbox(ctx, scope, spec, cacheVolumes(spec), skills);
+      } catch (error) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
   const sb = created.sandbox;
   live.set(sb.id, sb);
   remember(ctx, scope, sb.id);
-  // The utility container gets no mailbox and no `orch`: nothing in it is an
-  // agent, so the one interface an agent is allowed would be surface with no
-  // user — in the container that holds the real tokens.
-  if (!isUtil(scope)) await provision(sb);
-  // Mounted is not the same as readable. Once per host path per process, and
-  // only when a mount was actually accepted — the fallback above has already
-  // said its piece, and "mounted but empty" would be a false description of a
-  // container that was built without the mount at all.
-  if (created.skillsMounted) {
-    await checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {});
-  }
-  await writeLoginFiles(ctx, sb);
-  await installVaultCredentials(ctx, scope, sb, projectId);
-  // Remembered before restore so re-entry finds this sandbox instead of building another.
-  await restoreGroupWorkspace(ctx, scope);
+
+  await activeTracer().startActiveSpan("sandbox.init", { attributes }, async (span) => {
+    try {
+      // The utility container gets no mailbox and no `orch`: nothing in it is an
+      // agent, so the one interface an agent is allowed would be surface with no
+      // user — in the container that holds the real tokens.
+      if (!isUtil(scope)) await provision(sb);
+      // Mounted is not the same as readable. Once per host path per process, and
+      // only when a mount was actually accepted — the fallback above has already
+      // said its piece, and "mounted but empty" would be a false description of a
+      // container that was built without the mount at all.
+      if (created.skillsMounted) {
+        await checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {});
+      }
+      await writeLoginFiles(ctx, sb);
+      await installVaultCredentials(ctx, scope, sb, projectId);
+      // Remembered before restore so re-entry finds this sandbox instead of building another.
+      await restoreGroupWorkspace(ctx, scope);
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
   return sb;
 }
 
