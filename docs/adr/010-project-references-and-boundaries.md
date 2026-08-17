@@ -16,12 +16,16 @@ The generated client surface is exactly `src/http/routes/panel.ts` and
 `src/http/routes/orch.ts`, classified as `public-rpc`. Web and CLI may import
 those files only as types. Runtime schemas shared by the Orch CLI and handlers
 live inward in `src/contracts`; the CLI cannot import `src/api` or `src/mech`.
-Maintainer scripts use purpose-specific zones instead of a scripts-to-all escape
-hatch. Application orchestration, provider adapters, prompt construction, and
-platform primitives are distinct zones, and the allow graph is a DAG. In
+Tests and maintainer scripts are peripheral entry points: they receive coverage
+zones but no dependency rule. Application orchestration, provider adapters,
+prompt construction, and platform primitives are distinct production zones,
+and the constrained allow graph is a DAG. In
 particular, `src/runtime/executor.ts` is application policy rather than a
 provider adapter; pure text and shell-quoting helpers are platform primitives.
 
 **Consequence**: no ESLint or dependency-cruiser is introduced. A production
 file must match a Fallow zone, and cross-zone imports use declared public files.
 Compiler diagnostics are not repeated through Oxlint's experimental type-check.
+Fallow auto-discovers package and framework entry points; `entry` contains only
+additional scripts it cannot discover. The default new-only audit owns change
+attribution, so no health baseline is checked in.

@@ -17,7 +17,7 @@
     "lint": "oxlint src web/src test",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "audit": "fallow audit --gate new-only",
+    "audit": "fallow audit",
     "audit:all": "fallow audit --gate all",
     "guard": "fallow guard",
     "audit:fix": "fallow fix --yes --no-create-config --format compact",

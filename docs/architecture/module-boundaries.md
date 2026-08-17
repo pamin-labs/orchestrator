@@ -5,7 +5,7 @@
 | Zone | Paths | Owns | May depend on |
 |---|---|---|---|
 | Web | `web/src/**` | Browser views and interaction | Browser libraries and shared public RPC contracts |
-| Public RPC | `src/http/routes/panel.ts`, `src/http/routes/orch.ts` | Typed Hono route surface consumed by generated clients | HTTP edge, API handlers, shared contracts |
+| Public RPC | `src/http/routes/**` | Typed Hono route surface consumed by generated clients | HTTP edge, API handlers, shared contracts |
 | HTTP edge | Remaining `src/http/**` | Middleware, validation adapter, response shape | Platform and shared contracts |
 | Composition | `src/api.ts`, `src/server.ts` | HTTP/server wiring and process lifecycle | Public RPC, API, application, mechanisms, adapters, platform |
 | API | `src/api/**` | Panel and agent protocol operations | Mechanisms, platform, shared contracts |
@@ -15,9 +15,7 @@
 | Platform | Scheduler, DB, bus, settings, observability, `runtime/running.ts`, scrub/text/shell helpers | Process-wide primitives | Shared contracts |
 | Prompt | `src/prompt/**` | Cache-safe prompt assembly | Shared data only |
 | CLI | `src/orch/**` | Agent-facing client transport | Shared runtime schemas plus type-only public Orch RPC |
-| Server script | `scripts/browse.ts` | Local server browser harness | HTTP entrypoint only |
-| Benchmark script | `scripts/benchmark.ts` | Measured hot-path harnesses | Named API/mechanism/runtime targets only |
-| Tooling scripts | Other `scripts/*.ts` | Standalone release/setup checks | Standard library only |
+| Scripts | `scripts/**` | Maintainer-only development, benchmark, and setup entry points | Unrestricted; never shipped as production runtime |
 | Tests | `test/**` | Observable behavior and regression evidence | Public modules; explicit test harnesses may reach internals |
 
 The intended control direction is:
@@ -45,13 +43,17 @@ implementation.
 - The `orch` CLI consumes runtime validation schemas from `src/contracts` and
   the type-only Orch client contract from the route layer. It never imports API
   handlers, mechanisms, or scheduler policy.
-- Fallow classifies the two route files as `public-rpc`; that is the complete
-  public type surface. Neither `src/api/**` nor generic `src/http/**` is public.
+- Fallow classifies `src/http/routes/**` as `public-rpc`; new typed route files
+  join that public type surface without a config edit. Neither `src/api/**` nor
+  generic `src/http/**` is public.
 - Cross-zone deep imports are denied unless the Fallow configuration names the
   file as a public boundary.
-- A new production file must match exactly one Fallow zone. Unclassified code is
-  a failed boundary check, not a miscellaneous zone.
+- Specific exceptions precede directory zones because Fallow uses first-match
+  ownership. New files under `src/http`, `src/runtime`, and `src/mech` inherit
+  their directory zone automatically. A new production file outside an owned
+  directory must be moved into one or deliberately classified.
 
-Boundary exceptions require an ADR. Tests may use narrow internal harnesses when
-the alternative is starting a server, container, or Git repository for behavior
-that does not depend on that integration.
+Boundary exceptions require an ADR. Tests and maintainer scripts have coverage
+zones but no dependency rule: Fallow's documented no-rule behavior leaves these
+peripheral entry points unrestricted without pretending they are production
+layers.

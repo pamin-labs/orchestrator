@@ -26,11 +26,11 @@ Fallow cycle or zone rules in Oxlint.
    zone.
 10. Cross-zone imports use named public files. Barrels must not expand the public
    API accidentally.
-11. Each maintainer script has a purpose-specific zone. No catch-all scripts rule
-    grants access to every production layer.
+11. Tests and maintainer scripts have coverage zones but no dependency rule;
+    they may assemble internal harnesses without adding fake production edges.
 12. Every production file has boundary coverage.
-13. Zone rules form a directed acyclic graph, including type-only edges. A new
-    back-edge fails `test/architecture-boundaries.test.ts`.
+13. Constrained production zone rules form a directed acyclic graph, including
+    type-only edges. A new back-edge fails `test/architecture-boundaries.test.ts`.
 
 Run a touched-area guard before editing and the repository audit after:
 
@@ -43,3 +43,10 @@ Fallow also owns dead code, duplicate exports, private type leaks, public
 signature coupling, complexity, and change-risk findings. Deterministic findings
 must be zero. Complexity is a non-regression signal: refactor a hotspot when the
 change makes it worse or when measurement identifies it as a failure source.
+`fallow audit` already gates newly introduced findings against the comparison
+base. Do not add a health baseline when the repository has no accepted debt to
+suppress.
+
+Tailwind v4 is a build-only dependency imported from CSS. Fallow's documented
+CSS-framework exception is therefore the single `ignoreDependencies` entry; it
+is not an ignored source import or a production runtime dependency.

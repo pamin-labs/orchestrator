@@ -37,9 +37,10 @@ M7 — executable engineering governance and versioned protocol.
 - The engineering constitution is split across architecture, standards,
   operations, and ADR documents; PR plans carry the required change-radius,
   failure, security, compatibility, test, and rollback evidence.
-- TypeScript project references, type-aware Oxlint, and a 16-zone Fallow DAG
-  have non-overlapping ownership. Fallow reports zero deterministic dead-code,
-  complexity, duplication, boundary, cycle, coverage, or private-leak findings.
+- TypeScript project references, type-aware Oxlint, and a directory-owned Fallow
+  DAG have non-overlapping ownership. `entry` contains only undiscovered scripts,
+  and the default new-only audit needs no health baseline. Fallow reports zero
+  dead-code, duplication, boundary, cycle, coverage, or private-leak findings.
 - `/api/v1/*` and `/orch/v1/*` are the only protocol surfaces. Typed client
   contracts include middleware errors and durable idempotency discovery,
   inspection, and operator recovery without re-running an unknown side effect.
@@ -49,19 +50,23 @@ M7 — executable engineering governance and versioned protocol.
 - CI is read-only and separates type, lint, architecture, tests, security,
   workflow, ownership, and PR-plan gates. Releases bind a verified `main` SHA to
   immutable binaries/images, checksums, SBOMs, provenance, and an atomic tag.
-- Final `bun run check`: 825 pass, 6 environment skips, 0 fail in 8.96 seconds.
+- Full suite: 827 pass, 6 environment skips, 0 fail in 9.73 seconds.
   Final three-run median is 8.94 seconds, 35.40% faster than the 13.84-second
   baseline. Nightly stress passed 8,170 tests twice with seeds `272027580` and
   `1349770149`.
-- Clean TypeScript build, performance budgets, Fallow audit, and graph-pinned
-  Fallow Review all pass; the review accepted four anchored decisions with no
-  rejected or stale judgments.
+- Clean TypeScript build, hard Oxlint gate, formatting, web build, performance
+  budgets, and graph-pinned Fallow Review pass; the review accepted four anchored
+  decisions with no rejected or stale judgments.
 - Architecture/API, security/reliability, and test/performance reviewers report
   no reproducible P0 or P1 findings. Actionlint and zizmor report no workflow
   findings after the final release-order fix.
 
 ## Blockers and deviations
 
+- Fallow's default new-only audit still reports 11 complexity findings relative
+  to `origin/main`. They are not hidden by a saved baseline or inline suppression;
+  `bun run audit` remains red until those functions are simplified or covered by
+  exact coverage data.
 - Live OpenSandbox tests remain environment-gated and are skipped without a
   running sandbox server.
 - Repository settings such as branch protection, secret scanning, push
