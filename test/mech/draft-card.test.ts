@@ -92,28 +92,46 @@ test("12 content lines is the limit; 13 are rejected — the card blocks the bos
   if (!r.ok) expect(r.error).toContain("max 12");
 });
 
-test("a missing section is named, not silently defaulted", () => {
-  const r = validateDraftCard(good.replace("## 不做\n不动 legacy client 的鉴权协议\n\n", ""));
-  expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("不做");
-});
+/**
+ * Every way a well-formed card can still be refused. These cases differ only in
+ * the edit made to `good` and the reason the boss is shown, so they are one rule
+ * with a table rather than eight bodies of the same four lines.
+ *
+ * The reason is asserted, never just the refusal: `ok === false` alone passes
+ * when the card is rejected for something else entirely, and two of these cases
+ * used to assert exactly that.
+ */
+const rejections: [name: string, from: string, to: string, reason: string][] = [
+  ["a missing section", "## 不做\n不动 legacy client 的鉴权协议\n\n", "", "missing sections: 不做"],
+  [
+    "a slice without a difficulty, which picks the model",
+    "| token 校验挪到 middleware | normal |",
+    "| token 校验挪到 middleware |  |",
+    "difficulty",
+  ],
+  // The rejected value is echoed back, or the writer cannot see which row it meant.
+  ["an unknown difficulty", "| trivial |", "| easy |", "easy"],
+  ["a slice with no acceptance method", "| normal | mw.test.ts 绿 |", "| normal |  |", "how it is accepted"],
+  ["the wrong acceptance-criteria count", "\n- 单请求只查 DB 一次（加断言）", "", "2-3 executable criteria"],
+  ["an empty 反对 — Architect must object or write 无", "## 反对\n无", "## 反对", "反对 is empty"],
+  [
+    "two slices accepted by the same thing",
+    "| legacy header 兼容 | trivial | 老 client 的 e2e 用例绿 |",
+    "| legacy header 兼容 | trivial | mw.test.ts 绿 |",
+    "one deliverable",
+  ],
+  [
+    "nested acceptance criteria, where one slice finishes the other",
+    "| 补 middleware 单测 | normal | 覆盖 401/403 两条路径 |",
+    "| 再加一点 | normal | mw.test.ts 绿并且覆盖 401 |",
+    "nested acceptance",
+  ],
+];
 
-test("a slice without a difficulty is rejected — it picks the model", () => {
-  const r = validateDraftCard(
-    good.replace("| token 校验挪到 middleware | normal |", "| token 校验挪到 middleware |  |"),
-  );
+test.each(rejections)("%s is rejected, and the error names what to fix", (_name, from, to, reason) => {
+  const r = validateDraftCard(good.replace(from, to));
   expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("difficulty");
-});
-
-test("an unknown difficulty is rejected", () => {
-  const r = validateDraftCard(good.replace("| trivial |", "| easy |"));
-  expect(r.ok).toBe(false);
-});
-
-test("a slice with no acceptance method is rejected", () => {
-  const r = validateDraftCard(good.replace("| normal | mw.test.ts 绿 |", "| normal |  |"));
-  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toContain(reason);
 });
 
 test("more than five slices is rejected", () => {
@@ -148,43 +166,11 @@ y
   if (!r.ok) expect(r.error).toContain("1-5");
 });
 
-test("wrong acceptance-criteria count is rejected", () => {
-  const r = validateDraftCard(good.replace("\n- 单请求只查 DB 一次（加断言）", ""));
-  expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("2-3");
-});
-
-test("an empty 反对 is rejected — Architect must object or write 无", () => {
-  const r = validateDraftCard(good.replace("## 反对\n无", "## 反对"));
-  expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("反对");
-});
-
 test("heading depth and a trailing colon do not change the card", () => {
   // Markdown readers treat `#`/`###` the same way a human does, and an agent
   // that types `## 目标：` out of habit wrote a valid card.
   const loose = good.replace(/^## /gm, "### ").replace("### 目标", "# 目标：");
   expect(validateDraftCard(loose)).toEqual(validateDraftCard(good));
-});
-
-test("two slices accepted by the same thing are one deliverable", () => {
-  const dup = good.replace(
-    "| legacy header 兼容 | trivial | 老 client 的 e2e 用例绿 |",
-    "| legacy header 兼容 | trivial | mw.test.ts 绿 |",
-  );
-  const r = validateDraftCard(dup);
-  expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("one deliverable");
-});
-
-test("nested acceptance criteria mean one slice finishes the other", () => {
-  const nested = good.replace(
-    "| 补 middleware 单测 | normal | 覆盖 401/403 两条路径 |",
-    "| 再加一点 | normal | mw.test.ts 绿并且覆盖 401 |",
-  );
-  const r = validateDraftCard(nested);
-  expect(r.ok).toBe(false);
-  if (!r.ok) expect(r.error).toContain("nested acceptance");
 });
 
 test("a tests-only slice is refused — tests belong with their change", () => {
