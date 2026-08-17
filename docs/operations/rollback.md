@@ -28,5 +28,14 @@ Mark the release with a prominent warning, stop `latest` from pointing at the
 bad digest by publishing a new fixed version, and document affected versions and
 operator action in release notes/security advisory as appropriate.
 
+## Interrupted publication
+
+An interrupted run may leave source-SHA staging images, immutable version image
+tags/digests, attestations, or a `v<version>` tag without a GitHub release. Do
+not delete or retag them to make a rerun pass. Confirm they resolve to the same
+source and digests, then rerun the same version; the workflow accepts identical
+state and rejects divergence. If only `latest` failed after the release was
+created, rerun that failed job rather than dispatching a new release.
+
 After recovery, add a regression gate for the failed property and record the
 verified cause in an ADR only if it changes an architectural decision.

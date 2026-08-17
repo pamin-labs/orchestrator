@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { errText } from "../src/mech/util/text.ts";
+import { errText } from "../src/platform/process/text.ts";
 
 test("a caught value that is not an Error still comes back as a string, and bounded", () => {
   // What ten `catch (e: any)` sites wrote by hand instead: `e?.message ?? e`.

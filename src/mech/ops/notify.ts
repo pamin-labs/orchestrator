@@ -6,7 +6,7 @@
  * notification is decorative.
  */
 
-import { scrub } from "../util/scrub.ts";
+import { scrub } from "../../platform/observability/redaction.ts";
 import type { Bus } from "../../bus.ts";
 
 export type Tier = "immediate" | "batched";

@@ -30,19 +30,16 @@
       { "name": "public-rpc", "patterns": ["src/http/routes/**"] },
       { "name": "composition", "patterns": ["src/api.ts", "src/server.ts"] },
       { "name": "application", "patterns": ["src/runtime/executor.ts"] },
+      { "name": "build-info", "patterns": ["src/platform/process/version.ts"] },
       {
         "name": "platform",
         "patterns": [
-          "src/runtime/running.ts",
-          "src/mech/util/text.ts",
-          "src/mech/util/shq.ts",
-          "src/mech/util/scrub.ts",
+          "src/platform/**",
           "src/bus.ts",
           "src/config.ts",
           "src/db.ts",
           "src/lang.ts",
           "src/observability.ts",
-          "src/http/request-context.ts",
           "src/scheduler.ts",
           "src/settings.ts"
         ]
@@ -81,6 +78,7 @@
           "mechanisms",
           "runtime-adapters",
           "prompt",
+          "build-info",
           "platform",
           "shared-contracts"
         ]
@@ -99,9 +97,10 @@
         "allowTypeOnly": ["prompt"]
       },
       { "from": "prompt", "allow": ["prompt", "shared-contracts"] },
+      { "from": "build-info", "allow": ["build-info"] },
       { "from": "platform", "allow": ["platform", "shared-contracts"] },
       { "from": "shared-contracts", "allow": ["shared-contracts"] },
-      { "from": "cli", "allow": ["cli", "shared-contracts"], "allowTypeOnly": ["public-rpc"] }
+      { "from": "cli", "allow": ["cli", "build-info", "shared-contracts"], "allowTypeOnly": ["public-rpc"] }
     ],
     "coverage": { "requireAllFiles": true, "allowUnmatched": [] },
     "calls": {

@@ -1,4 +1,4 @@
-import { errText } from "./mech/util/text.ts";
+import { errText } from "./platform/process/text.ts";
 import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { makeApp } from "./api.ts";
@@ -35,12 +35,13 @@ import {
 import { indexable, indexExcludes } from "./mech/knowledge/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
 import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
-import { abortAll } from "./runtime/running.ts";
+import { abortAll } from "./platform/process/running-turns.ts";
 import { isOnline } from "./mech/sandbox/net.ts";
 import { hold } from "./mech/flow/intercept.ts";
 import { raise } from "./mech/flow/escalate.ts";
 import { restoreWorkspace } from "./mech/flow/start.ts";
 import { closeTelemetry, configureStructuredLogging, runtimeStatus, type RuntimeStatus } from "./observability.ts";
+import { VERSION } from "./platform/process/version.ts";
 
 /**
  * Wires the pieces together and serves them.
@@ -775,6 +776,10 @@ function reportConfig(cfg: Config): void {
 }
 
 if (import.meta.main) {
+  if (process.argv.length === 3 && process.argv[2] === "--version") {
+    console.log(VERSION);
+    process.exit(0);
+  }
   configureStructuredLogging();
   reportConfig(loadConfig());
   const { ctx, url, shutdown } = start();

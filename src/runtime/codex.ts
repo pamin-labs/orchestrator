@@ -1,9 +1,9 @@
-import { clip } from "../mech/util/text.ts";
+import { clip } from "../platform/process/text.ts";
 import { JsonObject, JsonValue, jsonOr } from "../contracts/json.ts";
 import type { TurnHandlers, TurnResult, TurnSpec, ToolSummary, Usage } from "./claude.ts";
 import { promptPath, summarizeTool } from "./claude.ts";
 import { runLineStream } from "./line-stream.ts";
-import { shq } from "../mech/util/shq.ts";
+import { shq } from "../platform/process/shell.ts";
 import { z } from "zod";
 
 /**

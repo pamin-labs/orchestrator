@@ -5,11 +5,11 @@ import { canStart } from "./ownership.ts";
 import { startNextSlice } from "./review.ts";
 import { execIn, execLines, WORK } from "../sandbox/sandbox.ts";
 import { detectGates, detectInstall, detectShared, READS, type Root } from "../util/detect.ts";
-import { shq } from "../util/shq.ts";
+import { shq } from "../../platform/process/shell.ts";
 import { baseRefFor } from "../git/checkout.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { projectConfig } from "../util/rows.ts";
-import { errText } from "../util/text.ts";
+import { errText } from "../../platform/process/text.ts";
 import { raise } from "./escalate.ts";
 
 /** `project.config_json.install`, or null. */

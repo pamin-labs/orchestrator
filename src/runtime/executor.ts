@@ -32,14 +32,14 @@ import { getFile, MAILBOX_DIR, putBytes, resourceExec, runnerFor, type Scope, WO
 import { listSkills, projectSkills, readSkillIn } from "../mech/skills.ts";
 import { projectOfAgent } from "../mech/util/rows.ts";
 import { jsonOr } from "../contracts/json.ts";
-import { clip, errText } from "../mech/util/text.ts";
+import { clip, errText } from "../platform/process/text.ts";
 import { assemble, buildStable, type Delta, needsRotation } from "../prompt/assemble.ts";
 import { AgentTurnPayloadSchema, type Executor, type Job } from "../scheduler.ts";
 import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../contracts/states.ts";
 import type { TurnResult } from "./claude.ts";
 import { clampEffort, type Provider, providerFor } from "./providers.ts";
-import { track, untrack } from "./running.ts";
-import { requestContext } from "../http/request-context.ts";
+import { track, untrack } from "../platform/process/running-turns.ts";
+import { requestContext } from "../platform/observability/request-context.ts";
 
 /**
  * Turns a queued `job` into work that actually happens.

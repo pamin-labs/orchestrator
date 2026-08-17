@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { maskValue } from "./mech/util/scrub.ts";
+import { maskValue } from "./platform/observability/redaction.ts";
 import { parseRepo } from "./contracts/repository.ts";
 
 /**

@@ -1,8 +1,8 @@
 import type { StablePrompt } from "../prompt/assemble.ts";
 import { z } from "zod";
 import { JsonObject, JsonValue, jsonOr, type Json } from "../contracts/json.ts";
-import { shq } from "../mech/util/shq.ts";
-import { clip } from "../mech/util/text.ts";
+import { shq } from "../platform/process/shell.ts";
+import { clip } from "../platform/process/text.ts";
 import { runLineStream } from "./line-stream.ts";
 
 /**

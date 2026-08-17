@@ -1,7 +1,7 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { consola, type ConsolaReporter } from "consola";
-import { scrub } from "./mech/util/scrub.ts";
-import { requestContext } from "./http/request-context.ts";
+import { requestContext } from "./platform/observability/request-context.ts";
+import { scrub } from "./platform/observability/redaction.ts";
 import type { DB } from "./db.ts";
 
 export interface RuntimeStatus {

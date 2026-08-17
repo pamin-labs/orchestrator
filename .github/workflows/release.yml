@@ -34,12 +34,12 @@ jobs:
     outputs:
       source-sha: ${{ steps.source.outputs.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - name: select immutable main source
@@ -69,7 +69,6 @@ jobs:
             echo "::notice::resuming the unpublished v$RELEASE_VERSION release at $sha"
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-      - run: bun install --frozen-lockfile
       - run: bun run check
       - run: git diff --exit-code
       - name: require successful source checks
@@ -105,14 +104,13 @@ jobs:
     needs: checks
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.checks.outputs.source-sha }}
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - run: bun install --frozen-lockfile
       - run: bun run build:web
       - name: compile five platform archives
         env:
@@ -120,21 +118,26 @@ jobs:
           SOURCE_SHA: ${{ needs.checks.outputs.source-sha }}
         run: |
           set -euo pipefail
+          bun build --minify --target=bun --define "__ORCH_VERSION__=\"$RELEASE_VERSION\"" src/orch/cli.ts --outfile dist/orch-cli.ts
           for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
-            root="orch-server-$RELEASE_VERSION-$target"; exe=orch-server
-            case "$target" in windows-*) exe=orch-server.exe ;; esac
+            root="orch-server-$RELEASE_VERSION-$target"; exe=orch-server; bun_target="bun-$target"
+            case "$target" in
+              linux-x64) bun_target=bun-linux-x64-baseline ;;
+              windows-x64) exe=orch-server.exe; bun_target=bun-windows-x64-baseline ;;
+            esac
             mkdir -p "dist/$root/web" "dist/$root/src/orch"
-            bun build --compile --minify --target="bun-$target" src/server.ts --outfile "dist/$root/$exe"
+            bun build --compile --minify --target="$bun_target" --define "__ORCH_VERSION__=\"$RELEASE_VERSION\"" src/server.ts --outfile "dist/$root/$exe"
             cp -R roles config "dist/$root/"
             cp -R web/dist "dist/$root/web/dist"
             cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$root/web/"
-            cp src/orch/cli.ts "dist/$root/src/orch/"
+            cp dist/orch-cli.ts "dist/$root/src/orch/cli.ts"
             cp package.json README.md LICENSE "dist/$root/"
             test "$(stat -c %s "dist/$root/$exe")" -le $((150 * 1024 * 1024)) || { echo "::error::$target binary exceeds 150 MiB"; exit 1; }
-            TARGET="$target" ROOT="$root" bun -e 'await Bun.write(`dist/${process.env.ROOT}/release-manifest.json`, JSON.stringify({version:process.env.RELEASE_VERSION,source_sha:process.env.SOURCE_SHA,target:process.env.TARGET},null,2)+"\n")'
+            TARGET="$target" BUN_TARGET="$bun_target" ROOT="$root" bun -e 'await Bun.write(`dist/${process.env.ROOT}/release-manifest.json`, JSON.stringify({version:process.env.RELEASE_VERSION,source_sha:process.env.SOURCE_SHA,target:process.env.TARGET,bun_target:process.env.BUN_TARGET},null,2)+"\n")'
             case "$target" in windows-*) (cd dist && zip -qr "orch-server-$target.zip" "$root") ;; *) tar -C dist -czf "dist/orch-server-$target.tar.gz" "$root" ;; esac
             rm -rf "dist/$root"
           done
+          rm dist/orch-cli.ts
       - name: verify archives, version, source, and target manifests
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -145,7 +148,21 @@ jobs:
           for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do tar -xzf "dist/orch-server-$target.tar.gz" -C "$verify"; done
           unzip -q dist/orch-server-windows-x64.zip -d "$verify"
           for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
-            TARGET="$target" MANIFEST="$verify/orch-server-$RELEASE_VERSION-$target/release-manifest.json" bun -e 'const m=await Bun.file(process.env.MANIFEST).json();if(m.version!==process.env.RELEASE_VERSION||m.source_sha!==process.env.SOURCE_SHA||m.target!==process.env.TARGET)process.exit(1)'
+            root="$verify/orch-server-$RELEASE_VERSION-$target"; exe=orch-server; bun_target="bun-$target"
+            case "$target" in
+              linux-x64) bun_target=bun-linux-x64-baseline ;;
+              windows-x64) exe=orch-server.exe; bun_target=bun-windows-x64-baseline ;;
+            esac
+            required=(
+              "$exe" package.json README.md LICENSE release-manifest.json
+              src/orch/cli.ts config/default.yaml web/index.html web/icon.png
+              web/favicon-32.png web/apple-touch-icon.png web/dist/main.js web/dist/app.css
+            )
+            for path in "${required[@]}"; do test -e "$root/$path" || { echo "::error::$target archive is missing $path"; exit 1; }; done
+            test -d "$root/roles" || { echo "::error::$target archive is missing roles"; exit 1; }
+            test "$(bun "$root/src/orch/cli.ts" --version)" = "$RELEASE_VERSION"
+            ROOT="$root" bun -e 'const p=await Bun.file(`${process.env.ROOT}/package.json`).json();if(p.version!==process.env.RELEASE_VERSION)process.exit(1)'
+            TARGET="$target" BUN_TARGET="$bun_target" MANIFEST="$root/release-manifest.json" bun -e 'const m=await Bun.file(process.env.MANIFEST).json();if(m.version!==process.env.RELEASE_VERSION||m.source_sha!==process.env.SOURCE_SHA||m.target!==process.env.TARGET||m.bun_target!==process.env.BUN_TARGET)process.exit(1)'
           done
       - name: start the native Linux archive
         env:
@@ -155,6 +172,7 @@ jobs:
           smoke=$(mktemp -d); trap 'test -z "${pid:-}" || kill "$pid" 2>/dev/null || true; rm -rf "$smoke"' EXIT
           tar -xzf dist/orch-server-linux-x64.tar.gz -C "$smoke"
           root="$smoke/orch-server-$RELEASE_VERSION-linux-x64"
+          test "$("$root/orch-server" --version)" = "$RELEASE_VERSION"
           ORCH_DATA_DIR="$smoke/data" ORCH_PORT=18080 "$root/orch-server" >"$smoke/server.log" 2>&1 & pid=$!
           for _ in $(seq 1 30); do
             curl --fail --silent http://127.0.0.1:18080/healthz >/dev/null && exit 0
@@ -163,7 +181,7 @@ jobs:
           done
           cat "$smoke/server.log"; exit 1
       - run: bun run perf:budget
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-binaries
           path: |
@@ -178,15 +196,15 @@ jobs:
     needs: checks
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.checks.outputs.source-sha }}
           persist-credentials: false
-      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', scan-type: fs, scan-ref: ., format: spdx-json, output: orchestrator-source.spdx.json, exit-code: '0' }
-      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', scan-type: fs, scan-ref: ., format: cyclonedx, output: orchestrator-source.cdx.json, exit-code: '0' }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with: { name: source-sboms, path: 'orchestrator-source.*.json', if-no-files-found: error, retention-days: 1 }
 
   image-build:
@@ -197,7 +215,7 @@ jobs:
       fail-fast: true
       matrix: { platform: [amd64, arm64] }
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with: { ref: '${{ needs.checks.outputs.source-sha }}', persist-credentials: false }
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - id: image
@@ -235,14 +253,14 @@ jobs:
             '{source_sha:$source_sha,platform:$platform,image_digest:$image_digest,image_id:$image_id}' \
             > "image-manifest-$PLATFORM.json"
       - name: scan verified image
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orch-agent:verify-${{ matrix.platform }}
           trivy-config: trivy.yaml
           format: table
       - name: create verified image SPDX SBOM
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orch-agent:verify-${{ matrix.platform }}
@@ -250,7 +268,7 @@ jobs:
           output: orchestrator-agent-${{ matrix.platform }}.spdx.json
           exit-code: '0'
       - name: create verified image CycloneDX SBOM
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orch-agent:verify-${{ matrix.platform }}
@@ -262,7 +280,7 @@ jobs:
         env:
           PLATFORM: ${{ matrix.platform }}
         run: docker save "orch-agent:verify-$PLATFORM" | gzip -1 > "orch-agent-$PLATFORM.docker.tar.gz"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: image-evidence-${{ matrix.platform }}
           path: |
@@ -272,7 +290,7 @@ jobs:
             orchestrator-agent-${{ matrix.platform }}.cdx.json
           if-no-files-found: error
           retention-days: 1
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: ${{ !inputs.dry_run }}
         with:
           name: image-archive-${{ matrix.platform }}
@@ -293,9 +311,9 @@ jobs:
       fail-fast: true
       matrix: { platform: [amd64, arm64] }
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { name: 'image-archive-${{ matrix.platform }}', path: image }
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { name: 'image-evidence-${{ matrix.platform }}', path: image }
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -330,7 +348,7 @@ jobs:
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::staged image has no immutable digest"; exit 1; }
           mkdir -p /tmp/digests
           touch "/tmp/digests/$PLATFORM-${digest#sha256:}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with: { name: 'image-digest-${{ matrix.platform }}', path: '/tmp/digests/*', if-no-files-found: error, retention-days: 1 }
 
   manifest:
@@ -347,7 +365,7 @@ jobs:
       id-token: write # Request the OIDC identity used to sign registry attestations.
       attestations: write # Publish provenance and SBOM attestations for the image digest.
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { path: /tmp/digests, pattern: 'image-digest-*', merge-multiple: true }
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -419,17 +437,17 @@ jobs:
             --arg digest "$digest" \
             '{source_sha:$source_sha,image:$image,digest:$digest,platforms:["linux/amd64","linux/arm64"]}' \
             > "$GITHUB_WORKSPACE/registry-image-manifest.json"
-      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', trivy-config: trivy.yaml, format: table }
-      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', format: spdx-json, output: registry-image.spdx.json, exit-code: '0' }
-      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with: { version: '${{ env.TRIVY_VERSION }}', image-ref: '${{ env.REGISTRY }}/orch-agent:${{ inputs.version }}', format: cyclonedx, output: registry-image.cdx.json, exit-code: '0' }
-      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', push-to-registry: true }
-      - uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3
+      - uses: actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f # v3
         with: { subject-name: '${{ env.REGISTRY }}/orch-agent', subject-digest: '${{ steps.manifest.outputs.digest }}', sbom-path: registry-image.spdx.json, push-to-registry: true }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: registry-image-evidence
           path: |
@@ -445,13 +463,13 @@ jobs:
     if: ${{ always() && needs.checks.result == 'success' && needs.binaries.result == 'success' && needs.source-sbom.result == 'success' && needs.image-build.result == 'success' && (inputs.dry_run || (needs.image-push.result == 'success' && needs.manifest.result == 'success')) }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { name: release-binaries, path: dist }
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { name: source-sboms, path: dist }
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { path: dist, pattern: 'image-evidence-*', merge-multiple: true }
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         if: ${{ !inputs.dry_run }}
         with: { name: registry-image-evidence, path: dist }
       - name: checksum every release artifact
@@ -464,7 +482,7 @@ jobs:
               | xargs -0 sha256sum > SHA256SUMS
             sha256sum --check SHA256SUMS
           )
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-evidence
           path: dist/*
@@ -482,12 +500,12 @@ jobs:
       id-token: write # Request the OIDC identity used to sign artifact attestations.
       attestations: write # Attest every file attached to the GitHub release.
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { name: release-evidence, path: dist }
       - name: verify checksums
         working-directory: dist
         run: sha256sum --check SHA256SUMS
-      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
           subject-path: dist/*
       - name: atomically bind release tag to verified source

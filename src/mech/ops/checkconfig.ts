@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { DEFAULTS_FOR_CHECK, type Config } from "../../config.ts";
 import type { RoleDef } from "../../config.ts";
 import { JsonObject, type Json } from "../../contracts/json.ts";
-import { errText } from "../util/text.ts";
+import { errText } from "../../platform/process/text.ts";
 import type { z } from "zod";
 
 /**

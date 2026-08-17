@@ -5,7 +5,7 @@ import type { Ctx } from "../../ctx.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { claudeUsage, promptPath, UsageSchema, type Usage } from "../../runtime/claude.ts";
 import { codexUsage } from "../../runtime/codex.ts";
-import { shq } from "../util/shq.ts";
+import { shq } from "../../platform/process/shell.ts";
 import { z } from "zod";
 
 /**

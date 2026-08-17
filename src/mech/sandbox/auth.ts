@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { DB } from "../../db.ts";
 import { trailers } from "../git/ghlogin.ts";
 import { forgetHolds } from "../git/repository.ts";
-import { maskValue } from "../util/scrub.ts";
+import { maskValue } from "../../platform/observability/redaction.ts";
 import { accessToken, type CodexHomeIO, decoyAuth, isStale, parseAuth, renew, seedHome } from "./chatgpt.ts";
 import type { Credential } from "./sandbox.ts";
 

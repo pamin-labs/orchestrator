@@ -32,6 +32,10 @@ Fallow cycle or zone rules in Oxlint.
 13. Constrained production zone rules form a directed acyclic graph, including
     type-only edges. A new back-edge fails `test/architecture-boundaries.test.ts`.
 
+`src/platform/**` is directory-owned by the platform zone. New observability or
+process primitives belong there without another file-specific Fallow pattern;
+the remaining root platform leaves retain explicit ownership until they move.
+
 Run a touched-area guard before editing and the repository audit after:
 
 ```bash

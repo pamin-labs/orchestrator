@@ -10,9 +10,10 @@
 | Composition | `src/api.ts`, `src/server.ts` | HTTP/server wiring and process lifecycle | Public RPC, API, application, mechanisms, adapters, platform |
 | API | `src/api/**` | Panel and agent protocol operations | Mechanisms, platform, shared contracts |
 | Application | `src/runtime/executor.ts` | Turn orchestration and policy coordination | Mechanisms, prompt, runtime adapters, platform |
+| Build info | `src/platform/process/version.ts` | Package/release identity shared by executable entry points | No runtime policy |
 | Mechanisms | `src/mech/**` except platform primitives, plus `src/ctx.ts` | Scheduling, state transitions, Git/sandbox operations, injected mechanism context | Runtime adapters and platform primitives |
 | Runtime adapters | Provider files in `src/runtime/**` | Provider subprocess protocol | Platform, shared contracts, type-only prompt shape |
-| Platform | Scheduler, DB, bus, settings, observability, `runtime/running.ts`, scrub/text/shell helpers | Process-wide primitives | Shared contracts |
+| Platform | `src/platform/**` plus the root scheduler, DB, bus, config, settings, language, and observability leaves | Process-wide observability and process primitives | Shared contracts |
 | Prompt | `src/prompt/**` | Cache-safe prompt assembly | Shared data only |
 | CLI | `src/orch/**` | Agent-facing client transport | Shared runtime schemas plus type-only public Orch RPC |
 | Scripts | `scripts/**` | Maintainer-only development, benchmark, and setup entry points | Unrestricted; never shipped as production runtime |
@@ -23,7 +24,7 @@ The intended control direction is:
 ```text
 web/src --type-only--> public panel RPC route
 src/orch --type-only--> public Orch RPC route
-src/orch -> src/contracts
+src/orch -> src/contracts | build info
 composition -> public RPC -> API -> mechanisms -> runtime adapters
 application -> mechanisms | prompt | runtime adapters
 HTTP edge | platform | prompt -> shared contracts
@@ -49,9 +50,11 @@ implementation.
 - Cross-zone deep imports are denied unless the Fallow configuration names the
   file as a public boundary.
 - Specific exceptions precede directory zones because Fallow uses first-match
-  ownership. New files under `src/http`, `src/runtime`, and `src/mech` inherit
-  their directory zone automatically. A new production file outside an owned
-  directory must be moved into one or deliberately classified.
+  ownership. New files under `src/platform`, `src/http`, `src/runtime`, and
+  `src/mech` inherit their directory zone automatically. The remaining root
+  platform leaves stay explicitly classified until their owning subsystems
+  move; a new production file outside an owned directory must be moved into one
+  or deliberately classified.
 
 Boundary exceptions require an ADR. Tests and maintainer scripts have coverage
 zones but no dependency rule: Fallow's documented no-rule behavior leaves these

@@ -2,7 +2,7 @@ import type { TypedResponse } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Json } from "../contracts/json.ts";
 import type { ErrorResponse } from "../contracts/protocol.ts";
-import { currentRequestId } from "./request-context.ts";
+import { currentRequestId } from "../platform/observability/request-context.ts";
 
 export type JsonResponse<T, S extends ContentfulStatusCode = 200> = Response & TypedResponse<T, S, "json">;
 export type ErrorResponses<S extends ContentfulStatusCode> = { [Status in S]: { json: ErrorResponse } };

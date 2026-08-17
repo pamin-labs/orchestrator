@@ -1,8 +1,8 @@
 import type { DB } from "./db.ts";
 import { EventInputSchema, type EventInput, type Frame, type LiveFrame, type StoredEvent } from "./contracts/events.ts";
 import { jsonOr, JsonValue } from "./contracts/json.ts";
-import { scrub } from "./mech/util/scrub.ts";
-import { requestContext } from "./http/request-context.ts";
+import { requestContext } from "./platform/observability/request-context.ts";
+import { scrub } from "./platform/observability/redaction.ts";
 
 /**
  * Append-only event log plus fan-out.

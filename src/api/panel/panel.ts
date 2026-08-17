@@ -14,7 +14,7 @@ import { z } from "zod";
 import type { Handler } from "../../http/handler.ts";
 import { bad, json } from "../../http/respond.ts";
 import { expandHome } from "./attach.ts";
-import { errText } from "../../mech/util/text.ts";
+import { errText } from "../../platform/process/text.ts";
 import type { PanelNote } from "../../contracts/panel.ts";
 
 /**

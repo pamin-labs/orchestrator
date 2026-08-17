@@ -7,7 +7,7 @@ import { jsonOr } from "../../contracts/json.ts";
 import { clearRepositoryHold, holdRepository } from "./repository.ts";
 import type { Json } from "../../contracts/json.ts";
 import { recordCache, recordRetry } from "../../observability.ts";
-import { currentRequestId, requestContext } from "../../http/request-context.ts";
+import { currentRequestId, requestContext } from "../../platform/observability/request-context.ts";
 
 /**
  * GitHub, as eight endpoints of ordinary JSON.

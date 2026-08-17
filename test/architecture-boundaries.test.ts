@@ -15,21 +15,38 @@ const loadConfig = async () => FallowConfig.parse(await Bun.file(".fallowrc.json
 
 test("Fallow adds only undiscovered entry points and classifies directories by purpose", async () => {
   const config = await loadConfig();
-  const zone = (name: string) => config.boundaries.zones.find((candidate) => candidate.name === name);
-  const rule = (name: string) => config.boundaries.rules.find((candidate) => candidate.from === name);
+  const zones = Object.fromEntries(config.boundaries.zones.map(({ name, patterns }) => [name, patterns]));
+  const rules = Object.fromEntries(config.boundaries.rules.map((rule) => [rule.from, rule]));
 
   expect(config.entry).toEqual(["scripts/browse.ts", "scripts/make-github-app.ts"]);
-  expect(zone("public-rpc")?.patterns).toEqual(["src/http/routes/**"]);
-  expect(zone("shared-contracts")?.patterns).toEqual(["src/contracts/**"]);
-  expect(zone("http-edge")?.patterns).toEqual(["src/http/**"]);
-  expect(zone("runtime-adapters")?.patterns).toEqual(["src/runtime/**"]);
-  expect(zone("mechanisms")?.patterns).toEqual(["src/ctx.ts", "src/mech/**"]);
-  expect(zone("tests")?.patterns).toEqual(["test/**"]);
-  expect(zone("scripts")?.patterns).toEqual(["scripts/**"]);
-  expect(rule("web")).toEqual({ from: "web", allow: ["web", "shared-contracts"], allowTypeOnly: ["public-rpc"] });
-  expect(rule("cli")).toEqual({ from: "cli", allow: ["cli", "shared-contracts"], allowTypeOnly: ["public-rpc"] });
-  expect(rule("tests")).toBeUndefined();
-  expect(rule("scripts")).toBeUndefined();
+  expect(zones).toMatchObject({
+    "public-rpc": ["src/http/routes/**"],
+    "shared-contracts": ["src/contracts/**"],
+    "build-info": ["src/platform/process/version.ts"],
+    platform: [
+      "src/platform/**",
+      "src/bus.ts",
+      "src/config.ts",
+      "src/db.ts",
+      "src/lang.ts",
+      "src/observability.ts",
+      "src/scheduler.ts",
+      "src/settings.ts",
+    ],
+    "http-edge": ["src/http/**"],
+    "runtime-adapters": ["src/runtime/**"],
+    mechanisms: ["src/ctx.ts", "src/mech/**"],
+    tests: ["test/**"],
+    scripts: ["scripts/**"],
+  });
+  expect(rules.web).toEqual({ from: "web", allow: ["web", "shared-contracts"], allowTypeOnly: ["public-rpc"] });
+  expect(rules.cli).toEqual({
+    from: "cli",
+    allow: ["cli", "build-info", "shared-contracts"],
+    allowTypeOnly: ["public-rpc"],
+  });
+  expect(rules.tests).toBeUndefined();
+  expect(rules.scripts).toBeUndefined();
 
   const cli = await Bun.file("src/orch/cli.ts").text();
   expect(cli).not.toMatch(/from ["']\.\.\/(?:api|mech)\//);
@@ -46,6 +63,7 @@ test("constrained production zones form one explicit dependency DAG", async () =
     [
       "api",
       "application",
+      "build-info",
       "cli",
       "composition",
       "http-edge",

@@ -12,7 +12,7 @@ import { extractClaimedFiles } from "../../mech/flow/reconcile.ts";
 import { sweepApproved } from "../../mech/flow/start.ts";
 import { baseBranch, baseRefFor, sandboxGit, treeFiles } from "../../mech/git/checkout.ts";
 import { execIn, WORK } from "../../mech/sandbox/sandbox.ts";
-import { shq } from "../../mech/util/shq.ts";
+import { shq } from "../../platform/process/shell.ts";
 import { validateDraftCard } from "../../mech/util/validate.ts";
 import type { GrpState } from "../../contracts/states.ts";
 import { GroupRef } from "../../contracts/fields.ts";

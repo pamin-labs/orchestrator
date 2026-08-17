@@ -1,5 +1,5 @@
 import { jsonOr } from "../../contracts/json.ts";
-import { errText } from "../util/text.ts";
+import { errText } from "../../platform/process/text.ts";
 import { consola } from "consola";
 import { z } from "zod";
 import type { Ctx } from "../../ctx.ts";

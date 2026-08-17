@@ -1,4 +1,4 @@
-import { errText } from "../util/text.ts";
+import { errText } from "../../platform/process/text.ts";
 import type { DB } from "../../db.ts";
 import type { Config } from "../../config.ts";
 import { putSetting } from "../../settings.ts";

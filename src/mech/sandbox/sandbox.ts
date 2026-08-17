@@ -1,4 +1,4 @@
-import { errText } from "../util/text.ts";
+import { errText } from "../../platform/process/text.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
@@ -7,10 +7,10 @@ import type { Ctx } from "../../ctx.ts";
 import { ROOT } from "../../config.ts";
 import type { SandboxSpec } from "../../contracts/config.ts";
 import type { ResourceExec } from "../lease.ts";
-import { requestContext } from "../../http/request-context.ts";
+import { requestContext } from "../../platform/observability/request-context.ts";
 import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
-import { shq } from "../util/shq.ts";
+import { shq } from "../../platform/process/shell.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
 import { projectConfig } from "../util/rows.ts";
 

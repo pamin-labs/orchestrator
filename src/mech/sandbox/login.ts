@@ -2,7 +2,7 @@ import type { Ctx } from "../../ctx.ts";
 import { saveAuth } from "./auth.ts";
 import { REFRESH_HOME } from "./chatgpt.ts";
 import { execIn, execLines, getFile, putFile, UTIL } from "./sandbox.ts";
-import { shq } from "../util/shq.ts";
+import { shq } from "../../platform/process/shell.ts";
 
 /**
  * Logging in without leaving the panel.

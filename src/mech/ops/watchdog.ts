@@ -1,5 +1,5 @@
 import { jsonOr } from "../../contracts/json.ts";
-import { errText, hours, minutes } from "../util/text.ts";
+import { errText, hours, minutes } from "../../platform/process/text.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { Config } from "../../config.ts";
 import { say, type SayKey } from "../../lang.ts";
@@ -29,7 +29,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync 
 import { buildMap, indexExcludes, renderMap, saveMap } from "../knowledge/repomap.ts";
 import { HEAD_CHARS } from "../knowledge/pageindex.ts";
 import { resumeReclaimed, type Job } from "../../scheduler.ts";
-import { abortJob } from "../../runtime/running.ts";
+import { abortJob } from "../../platform/process/running-turns.ts";
 import { probe } from "../sandbox/net.ts";
 import { z } from "zod";
 import {

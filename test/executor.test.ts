@@ -10,7 +10,7 @@ import { openMemory, type DB } from "../src/db.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../src/runtime/executor.ts";
 import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/scheduler.ts";
-import { abortJob } from "../src/runtime/running.ts";
+import { abortJob } from "../src/platform/process/running-turns.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 

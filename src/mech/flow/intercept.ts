@@ -2,7 +2,7 @@ import type { Ctx } from "../../ctx.ts";
 import { rebaseOntoBase, rollbackTo } from "../git/worktree.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
-import { abortJob } from "../../runtime/running.ts";
+import { abortJob } from "../../platform/process/running-turns.ts";
 import { say } from "../../lang.ts";
 
 /**

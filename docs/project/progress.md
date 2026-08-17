@@ -65,6 +65,13 @@ M7 — executable engineering governance and versioned protocol.
   composite owns pinned Bun plus frozen install, Fallow renders one audit as
   fork-safe annotations and summary, and actionlint verifies its release
   checksum and attestation before execution.
+- Process text/shell/running helpers and observability context/redaction now
+  live under `src/platform/**`; a narrow build-info zone exposes only the shared
+  package version to executable entry points.
+- Release archives carry a version-reporting bundled CLI, Linux/Windows x64 use
+  Bun baseline targets, required archive contents are verified, and interrupted
+  publication documents its immutable resume points instead of claiming no
+  external state can remain.
 - Full suite reached 831 pass and 0 fail. Six OpenSandbox tests are gated on a
   live server; nine HTTP smoke cases also skip only in restricted environments
   that cannot bind loopback. Normal CI must run the HTTP smoke suite.

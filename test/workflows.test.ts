@@ -268,6 +268,23 @@ describe("workflow governance", () => {
       expect(release).toContain(target);
     }
     expect(release).toContain("release-manifest.json");
+    expect(release).toContain("bun-linux-x64-baseline");
+    expect(release).toContain("bun-windows-x64-baseline");
+    expect(release.match(/__ORCH_VERSION__/g)).toHaveLength(2);
+    expect(release).toContain('bun "$root/src/orch/cli.ts" --version');
+    expect(release).toContain('"$root/orch-server" --version');
+    for (const path of [
+      "package.json",
+      "README.md",
+      "LICENSE",
+      "src/orch/cli.ts",
+      "config/default.yaml",
+      "web/dist/main.js",
+      "web/dist/app.css",
+    ]) {
+      expect(release).toContain(path);
+    }
+    expect(release).toContain("m.bun_target!==process.env.BUN_TARGET");
     expect(release).toContain("/healthz");
     expect(release).toContain("binary exceeds 150 MiB");
     expect(release).toContain("bun run perf:budget");
@@ -281,6 +298,22 @@ describe("workflow governance", () => {
     expect(release).toContain("actions/attest-build-provenance@");
     expect(release).toContain("actions/attest-sbom@");
     expect(workflow.jobs.publish?.needs).toEqual(["checks", "release-evidence", "manifest"]);
+  });
+
+  test("release uses the supported immutable action revisions", async () => {
+    const release = await source("release");
+    for (const action of [
+      "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+      "aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8",
+      "actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661",
+      "actions/attest-sbom@51e74621a501c89df81fc1391c5a8f4cfc9fab2f",
+    ]) {
+      expect(release).toContain(action);
+    }
+    expect(release.match(/\.\/\.github\/actions\/setup-bun/g)).toHaveLength(2);
+    expect(release).not.toContain("oven-sh/setup-bun@");
   });
 
   test("latest advances only after the immutable GitHub release exists", async () => {

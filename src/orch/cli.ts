@@ -19,6 +19,7 @@ import { JsonValue, jsonOr, type Json } from "../contracts/json.ts";
 import { ChangedFilesClaimSchema, MailIntent, SplitRequirements } from "../contracts/orch.ts";
 import { displayJson, ProtocolResponse, readJsonResponse } from "../contracts/protocol.ts";
 import type { OrchType } from "../http/routes/orch.ts";
+import { VERSION } from "../platform/process/version.ts";
 import { hc } from "hono/client";
 const URL_BASE = process.env.ORCH_URL ?? "http://127.0.0.1:47821";
 const TOKEN = process.env.ORCH_TOKEN ?? "";
@@ -214,6 +215,7 @@ async function stdin(): Promise<string> {
 
 const USAGE = `orch <command>
 
+  --version
   ctx query <question>
   setup --cmd "<install command>" | --none        # bootstrap only, first turn
   ask-boss [--severity blocker|advisory] [--kind env|spec|boundary|design|other]
@@ -241,6 +243,11 @@ const USAGE = `orch <command>
 export async function main(argv: string[]): Promise<number> {
   const { flags, args } = parseArgs(argv);
   const [cmd, sub] = args;
+
+  if (flags.version === true && args.length === 0) {
+    console.log(VERSION);
+    return 0;
+  }
 
   if (!cmd || flags.help) {
     console.log(USAGE);

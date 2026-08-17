@@ -6,7 +6,7 @@ import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";
 import { evictOldestLessons } from "../../mech/knowledge/lessons.ts";
 import { execIn, putFile, WORK } from "../../mech/sandbox/sandbox.ts";
-import { shq } from "../../mech/util/shq.ts";
+import { shq } from "../../platform/process/shell.ts";
 import type { JournalKind } from "../../mech/util/validate.ts";
 import { validateJournal } from "../../mech/util/validate.ts";
 import { Id, Prose } from "../../contracts/fields.ts";

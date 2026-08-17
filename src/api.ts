@@ -8,9 +8,9 @@ import { orchRoutes } from "./http/routes/orch.ts";
 import { panelRoutes } from "./http/routes/panel.ts";
 import { consola } from "consola";
 import { failure } from "./http/respond.ts";
-import { errText } from "./mech/util/text.ts";
-import { scrub } from "./mech/util/scrub.ts";
-import { requestContext, requestId } from "./http/request-context.ts";
+import { requestContext, requestId } from "./platform/observability/request-context.ts";
+import { scrub } from "./platform/observability/redaction.ts";
+import { errText } from "./platform/process/text.ts";
 import { idempotency, JSON_BODY_LIMIT } from "./http/idempotency.ts";
 import {
   observeHttp,
