@@ -113,17 +113,13 @@ export function decoy(runtime: string, mode: AuthMode): string {
   return `sk-${"A".repeat(48)}`;
 }
 
-/**
- * Is this the shape the provider will accept?
- *
- * Checked here because the alternative is finding out hours later, in a
- * container, as a 401 that reads like an expired subscription. A login URL
- * pasted into the token box is the one that actually happened: it saved, it
- * looked configured, and every turn after it failed.
- *
- * Prefixes only. Length and character set drift; the prefix is what each
- * provider stamps on the thing so it can be told apart from everything else.
- */
+const CREDENTIAL_PREFIX: Readonly<Record<string, readonly [string, string]>> = {
+  "claude:oauth_token": ["sk-ant-oat01-", "订阅 token 是 sk-ant-oat01- 开头的"],
+  "claude:api_key": ["sk-ant-", "Anthropic 的 API key 是 sk-ant- 开头的"],
+  "codex:api_key": ["sk-", "OpenAI 的 API key 是 sk- 开头的"],
+};
+
+/** Reject provider-impossible shapes early; prefixes are stable while lengths drift. */
 export function wrongShape({ runtime, mode, secret }: RuntimeAuth): string | null {
   const v = secret.trim();
   if (!v) return "空的";
@@ -133,12 +129,8 @@ export function wrongShape({ runtime, mode, secret }: RuntimeAuth): string | nul
     if (!parsed) return "要的是 ~/.codex/auth.json 的完整内容，那是一段 JSON";
     return parsed.tokens?.refresh_token ? null : "auth.json 里没有 tokens.refresh_token，续不了期";
   }
-  if (runtime === "claude") {
-    if (mode === "oauth_token" && !v.startsWith("sk-ant-oat01-")) return "订阅 token 是 sk-ant-oat01- 开头的";
-    if (mode === "api_key" && !v.startsWith("sk-ant-")) return "Anthropic 的 API key 是 sk-ant- 开头的";
-  }
-  if (runtime === "codex" && mode === "api_key" && !v.startsWith("sk-")) return "OpenAI 的 API key 是 sk- 开头的";
-  return null;
+  const expected = CREDENTIAL_PREFIX[`${runtime}:${mode}`];
+  return expected && !v.startsWith(expected[0]) ? expected[1] : null;
 }
 
 export function saveAuth(db: DB, a: RuntimeAuth): void {
@@ -467,14 +459,7 @@ function chatgptHint(secret: string): string {
 }
 
 export interface VaultOpts {
-  /**
-   * The one repository this container may read, as its remote URL.
-   *
-   * Given, the GitHub credential is bound to that repository's fetch paths and
-   * nothing else. Absent (the utility container, and every caller that only
-   * wants the environment) it keeps the whole token — which is right there and
-   * wrong in a container that runs an agent.
-   */
+  /** Restrict GitHub injection to one repository's read paths. */
   repo?: string | null;
 }
 
@@ -485,39 +470,49 @@ export function vaultFor(db: DB, opts: VaultOpts = {}): { credentials: Credentia
   for (const runtime of Object.keys(BINDINGS)) {
     const a = loadAuth(db, runtime);
     if (!a) continue;
-    // Its credential is a file, not a header; nothing to bind and nothing to fake.
-    // Handled as a file plus an injected header; see filesFor and vaultBindings.
-    if (a.mode === "chatgpt") continue;
-    const b = BINDINGS[runtime]!;
-    // git speaks Basic, not Bearer: the whole header value is built here and set
-    // verbatim, because a bearer binding would send a scheme GitHub does not use
-    // for the git endpoints. The token is the password; the username is ignored.
-    const basic = runtime === "github" ? `Basic ${btoa(`${GIT_USER}:${a.secret}`)}` : null;
-    if (basic) maskValue(basic);
-    const paths = runtime === "github" && opts.repo ? readOnlyGitPaths(opts.repo) : null;
-    const header = basic ? "Authorization" : a.mode === "api_key" && runtime === "claude" ? "x-api-key" : b.header;
-    credentials.push({
-      name: runtime,
-      value: basic ?? a.secret,
-      hosts: a.baseUrl ? [...b.hosts, new URL(a.baseUrl).hostname] : b.hosts,
-      ...(header ? { header } : {}),
-      ...(paths ? { paths } : {}),
-    });
-    if (runtime === "github") {
-      // The decoy git will actually send is a stored credential file, not an env
-      // var — see `gitFilesFor`.
-      continue;
-    }
-    if (runtime === "claude") {
-      if (a.mode === "oauth_token") env.CLAUDE_CODE_OAUTH_TOKEN = decoy(runtime, a.mode);
-      else env.ANTHROPIC_API_KEY = decoy(runtime, a.mode);
-      if (a.baseUrl) env.ANTHROPIC_BASE_URL = a.baseUrl;
-    } else {
-      env.OPENAI_API_KEY = decoy(runtime, a.mode);
-      if (a.baseUrl) env.OPENAI_BASE_URL = a.baseUrl;
-    }
+    const credential = vaultCredential(a, opts);
+    if (credential) credentials.push(credential);
+    addDecoyEnv(env, a);
   }
   return { credentials, env };
+}
+
+function vaultCredential(a: RuntimeAuth, opts: VaultOpts): Credential | null {
+  if (a.mode === "chatgpt") return null;
+  const binding = BINDINGS[a.runtime]!;
+  const basic = a.runtime === "github" ? `Basic ${btoa(`${GIT_USER}:${a.secret}`)}` : null;
+  if (basic) maskValue(basic);
+  const header = credentialHeader(a, basic, binding.header);
+  const paths = credentialPaths(a, opts);
+  return {
+    name: a.runtime,
+    value: basic ?? a.secret,
+    hosts: a.baseUrl ? [...binding.hosts, new URL(a.baseUrl).hostname] : binding.hosts,
+    ...(header ? { header } : {}),
+    ...(paths ? { paths } : {}),
+  };
+}
+
+function credentialHeader(a: RuntimeAuth, basic: string | null, fallback?: string): string | undefined {
+  if (basic) return "Authorization";
+  if (a.runtime === "claude" && a.mode === "api_key") return "x-api-key";
+  return fallback;
+}
+
+function credentialPaths(a: RuntimeAuth, opts: VaultOpts): string[] | null {
+  if (a.runtime !== "github" || !opts.repo) return null;
+  return readOnlyGitPaths(opts.repo);
+}
+
+function addDecoyEnv(env: Record<string, string>, a: RuntimeAuth): void {
+  if (a.runtime === "github" || a.runtime === SANDBOX_KEY || a.mode === "chatgpt") return;
+  if (a.runtime === "claude") {
+    env[a.mode === "oauth_token" ? "CLAUDE_CODE_OAUTH_TOKEN" : "ANTHROPIC_API_KEY"] = decoy(a.runtime, a.mode);
+    if (a.baseUrl) env.ANTHROPIC_BASE_URL = a.baseUrl;
+    return;
+  }
+  env.OPENAI_API_KEY = decoy(a.runtime, a.mode);
+  if (a.baseUrl) env.OPENAI_BASE_URL = a.baseUrl;
 }
 
 /**
