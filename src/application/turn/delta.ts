@@ -203,7 +203,20 @@ function applyHandoff(ctx: Ctx, groupId: number | null, rotated: boolean, delta:
     "This is a fresh session. Use `orch ctx query` for anything you are missing rather than assuming you remember it.";
 }
 
-async function applySkills(ctx: Ctx, agent: TurnAgent, job: TurnJob, scope: Scope, delta: Delta): Promise<void> {
+/**
+ * The skill text a turn is given.
+ *
+ * Takes the two fields it reads rather than the whole job: the names travel on
+ * the payload and the bodies are read from inside the container at turn time, so
+ * a test of this has no business constructing a scheduler row.
+ */
+export async function applySkills(
+  ctx: Ctx,
+  agent: TurnAgent,
+  job: { grp_id: number | null; payload: { skills?: string[] | undefined } },
+  scope: Scope,
+  delta: Delta,
+): Promise<void> {
   const wanted = job.payload.skills ?? [];
   if (!wanted.length) return;
   const row = ctx.db

@@ -882,7 +882,7 @@ function publishWatchdogFinding(
   ctx.onFinding?.(finding.rule, finding.severity, finding.body, finding.grpId);
 }
 
-function publishStandupItem(ctx: Ctx, item: { kind: string; body: string; grpIds: number[] }): void {
+export function publishStandupItem(ctx: Ctx, item: { kind: string; body: string; grpIds: number[] }): void {
   const seen = ctx.db
     .query<{ at: number }, [string]>(`SELECT max(at) AS at FROM event WHERE author = 'standup' AND body = ?`)
     .get(item.body);
