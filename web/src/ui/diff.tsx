@@ -172,29 +172,52 @@ function marks(a: string, b: string, side: "left" | "right") {
     });
 }
 
+/** A hunk boundary reads as its context line, or as an ellipsis when there is none. */
+export function gapLabel(gap: string): string {
+  return gap.replace(/^@@[^@]*@@\s*/, "") || "…";
+}
+
+/** The changed-or-orphaned tone a gutter earns on its own side. */
+function gutterTone(row: Row, side: "left" | "right"): "bad" | "ok" | undefined {
+  const cell = side === "left" ? row.left : row.right;
+  const other = side === "left" ? row.right : row.left;
+  return cell && (!other || cell.changed) ? (side === "left" ? "bad" : "ok") : undefined;
+}
+
+export function gutterProps(row: Row, side: "left" | "right"): { n?: number; tone?: "bad" | "ok" } {
+  const cell = side === "left" ? row.left : row.right;
+  const tone = gutterTone(row, side);
+  return { ...(cell ? { n: cell.n } : {}), ...(tone ? { tone } : {}) };
+}
+
+export function sideProps(
+  row: Row,
+  side: "left" | "right",
+): {
+  cell?: NonNullable<Row["left"]>;
+  other?: NonNullable<Row["left"]>;
+} {
+  const cell = side === "left" ? row.left : row.right;
+  const other = side === "left" ? row.right : row.left;
+  return { ...(cell ? { cell } : {}), ...(other ? { other } : {}) };
+}
+
 function DiffRow({ row }: { row: Row }) {
   if (row.gap !== undefined) {
     return (
       <tr>
         <td colSpan={4} className="border-y border-rule-soft bg-sunk px-3.5 py-0.5 text-ink-3">
-          {row.gap.replace(/^@@[^@]*@@\s*/, "") || "…"}
+          {gapLabel(row.gap)}
         </td>
       </tr>
     );
   }
   return (
     <tr>
-      <Gutter
-        {...(row.left ? { n: row.left.n } : {})}
-        {...(row.left && (!row.right || row.left.changed) ? { tone: "bad" satisfies "bad" } : {})}
-      />
-      <Side {...(row.left ? { cell: row.left } : {})} {...(row.right ? { other: row.right } : {})} side="left" />
-      <Gutter
-        {...(row.right ? { n: row.right.n } : {})}
-        {...(row.right && (!row.left || row.right.changed) ? { tone: "ok" satisfies "ok" } : {})}
-        split
-      />
-      <Side {...(row.right ? { cell: row.right } : {})} {...(row.left ? { other: row.left } : {})} side="right" />
+      <Gutter {...gutterProps(row, "left")} />
+      <Side {...sideProps(row, "left")} side="left" />
+      <Gutter {...gutterProps(row, "right")} split />
+      <Side {...sideProps(row, "right")} side="right" />
     </tr>
   );
 }

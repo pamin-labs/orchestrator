@@ -11,12 +11,12 @@ M7 — executable engineering governance and versioned protocol.
 ## Baseline
 
 - Branch: `refactor/api-split-and-settings`
-- SHA: `179f0c4655daa6e71fad696500da82e581b7f931`
-- Baseline `bun run check`: pass
-- Baseline tests: 772 pass, 6 skip, 0 fail across 88 files
-- Baseline test time: 13.84 seconds
-- Baseline Fallow: 7 unused type exports, 8 private type leaks, 1 unused class
-  member, 3 production imports from dev dependencies, no duplication finding
+- SHA: the commit containing this entry
+- TypeScript, Oxlint, Biome, and default changed-code Fallow audit: pass
+- Tests: 831 pass, 15 environment skips, 0 fail across 98 files
+- Local test time: 7.64 seconds in the restricted agent environment
+- Fallow: no introduced dead code, boundary, cycle, or duplication finding;
+  `audit:all` still reports 88 inherited complexity/CRAP findings
 
 ## Verified complete
 
@@ -27,8 +27,9 @@ M7 — executable engineering governance and versioned protocol.
 - GitHub is the project source; host Git is not part of runtime operation.
 - `src/states.ts` and executable invariants cover stored lifecycle states.
 - Existing full quality chain is green at the baseline SHA.
-- Governance work is isolated in `codex/engineering-governance` under a separate
-  worktree.
+- Governance work has landed on `refactor/api-split-and-settings`; the former
+  `codex/engineering-governance` worktree is historical and is not the active
+  implementation path.
 - Project plan and progress responsibilities moved under `docs/project/` and
   were reduced to active product state; TypeScript and 772 tests remain green.
 - `AGENTS.md` is now the real engineering entrypoint, `CLAUDE.md` is its
@@ -50,10 +51,9 @@ M7 — executable engineering governance and versioned protocol.
 - CI is read-only and separates type, lint, architecture, tests, security,
   workflow, ownership, and PR-plan gates. Releases bind a verified `main` SHA to
   immutable binaries/images, checksums, SBOMs, provenance, and an atomic tag.
-- Full suite: 827 pass, 6 environment skips, 0 fail in 9.73 seconds.
-  Final three-run median is 8.94 seconds, 35.40% faster than the 13.84-second
-  baseline. Nightly stress passed 8,170 tests twice with seeds `272027580` and
-  `1349770149`.
+- Full suite reached 831 pass and 0 fail. Six OpenSandbox tests are gated on a
+  live server; nine HTTP smoke cases also skip only in restricted environments
+  that cannot bind loopback. Normal CI must run the HTTP smoke suite.
 - Clean TypeScript build, hard Oxlint gate, formatting, web build, performance
   budgets, and graph-pinned Fallow Review pass; the review accepted four anchored
   decisions with no rejected or stale judgments.
@@ -63,10 +63,9 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Blockers and deviations
 
-- Fallow's default new-only audit still reports 11 complexity findings relative
-  to `origin/main`. They are not hidden by a saved baseline or inline suppression;
-  `bun run audit` remains red until those functions are simplified or covered by
-  exact coverage data.
+- Fallow's default new-only audit is green. `bun run audit:all` remains red on
+  88 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
+  threshold increase, or inline suppression.
 - Live OpenSandbox tests remain environment-gated and are skipped without a
   running sandbox server.
 - Repository settings such as branch protection, secret scanning, push

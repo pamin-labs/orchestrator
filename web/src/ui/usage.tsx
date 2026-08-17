@@ -67,26 +67,24 @@ export function UsageBar({ usage }: { usage: Usage[] }) {
   );
 }
 
+/** One window's ring inputs: its reading and its reset, each only when it exists. */
+export function windowRing(u: Usage, w: "five" | "week"): { v?: number; at?: number } {
+  const v = w === "five" ? u.fiveHourPercent : u.weeklyPercent;
+  const at = w === "five" ? u.resetsAt : u.weeklyResetsAt;
+  return { ...(v !== undefined ? { v } : {}), ...(at !== undefined ? { at } : {}) };
+}
+
 function UsageRow({ usage }: { usage: Usage }) {
+  const shared = {
+    read: usage.at,
+    stale: staleMark(usage),
+    ...(usage.error !== undefined ? { why: usage.error } : {}),
+  };
   return (
     <Fragment>
       <span className="truncate text-right text-ink-3">{usage.runtime}</span>
-      <Ring
-        label="5h"
-        {...(usage.fiveHourPercent !== undefined ? { v: usage.fiveHourPercent } : {})}
-        {...(usage.resetsAt !== undefined ? { at: usage.resetsAt } : {})}
-        read={usage.at}
-        stale={staleMark(usage)}
-        {...(usage.error !== undefined ? { why: usage.error } : {})}
-      />
-      <Ring
-        label="周"
-        {...(usage.weeklyPercent !== undefined ? { v: usage.weeklyPercent } : {})}
-        {...(usage.weeklyResetsAt !== undefined ? { at: usage.weeklyResetsAt } : {})}
-        read={usage.at}
-        stale={staleMark(usage)}
-        {...(usage.error !== undefined ? { why: usage.error } : {})}
-      />
+      <Ring label="5h" {...windowRing(usage, "five")} {...shared} />
+      <Ring label="周" {...windowRing(usage, "week")} {...shared} />
     </Fragment>
   );
 }

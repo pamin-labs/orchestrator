@@ -42,7 +42,11 @@ const PreflightResponseSchema: z.ZodType<InferResponseType<typeof api.preflight.
   checks: z.array(HostCheckSchema),
 });
 type Signin = { runtime: string; since: number; until: number };
-const EMPTY_AUTH = { runtimes: [] as AuthRow[], trailers: undefined };
+type AuthResponse = z.infer<typeof AuthResponseSchema>;
+const EMPTY_AUTH: AuthResponse = {
+  runtimes: [],
+  trailers: { signoff: false, coauthor: false, claudeCoauthor: false },
+};
 const EMPTY_PREFLIGHT = { checks: [] as HostCheck[] };
 
 /**
@@ -213,15 +217,6 @@ function SettingsContent({
   onRemoved: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  /**
-   * The login in flight: which account, what its row said before it started, and
-   * when to give up asking.
-   *
-   * `since` is what ends it. A login that has landed is a row with a newer
-   * `updatedAt` than the one we started from — the panel polled on a timer alone
-   * before, so the credential arrived, the row updated, and both buttons stayed
-   * "等你在浏览器里批准…" for the rest of the five minutes.
-   */
   const [signin, setSignin] = useState<Signin | null>(null);
 
   const queries = useQueryClient();
@@ -230,22 +225,79 @@ function SettingsContent({
   // them is safe here — this fires when a human clicks 保存, not on a timer.
   const load = () => void queries.invalidateQueries();
 
-  /**
-   * Three reads, three keys, and the project is *in* one of them.
-   *
-   * This was one `load()` closing over `projectId`, fired from an effect on
-   * `[open, projectId]` with nothing to say which call a reply belonged to. Two
-   * quick project switches and the slower reply won: this dialog rendered one
-   * project's 闸门 and another's base branch, with no error anywhere. `lib/api.ts`
-   * had already been bitten by exactly this and grown a `lastProject` ref to
-   * remember the scope by hand. A key does not have to remember — a reply for
-   * project 3 cannot be written into project 7's entry, so the bug has no shape.
-   *
-   * `refetchInterval` on the credential read is the login poll. A CLI login lands
-   * in another window and stores the credential the moment it exits; the only
-   * missing piece is the panel noticing, and two seconds is well inside the time
-   * it takes to click through an OAuth screen.
-   */
+  const { authData, rows, prefs, checks, proj } = useSettingsData(open, projectId, signin);
+  useSigninEnd(authData, signin, setSignin);
+
+  const patch = async (body: ProjectPatch) => {
+    setBusy(true);
+    await mutate(api.project[":id"].config.$post({ param: { id: String(projectId) }, json: body }));
+    setBusy(false);
+    void queries.invalidateQueries({ queryKey: ["project", projectId] });
+  };
+
+  const items = NAV.filter((n) => !n.project || projectId !== null);
+
+  return (
+    <>
+      {/* The scope is the grouping, not a sentence on each page explaining
+          which of the two it is. */}
+      <SettingsNavigation
+        items={items}
+        section={section}
+        rows={rows}
+        checks={checks}
+        projectId={projectId}
+        {...(projectName !== undefined ? { projectName } : {})}
+        project={proj}
+        onSection={onSection}
+      />
+
+      {/* The label column is set once, here, rather than per pane. Three panes
+          had picked three widths, so switching between them moved every value
+          sideways — and a width chosen inside a pane is a width the next pane
+          cannot know about. 5rem holds the longest label in the dialog
+          (基线分支, API 密钥). */}
+      <div className="flex min-h-0 flex-col px-6 pt-4 pb-5 [--label:5rem]">
+        <SettingsPanes
+          open={open}
+          section={section}
+          rows={rows}
+          {...(prefs !== undefined ? { prefs } : {})}
+          signin={signin}
+          checks={checks}
+          proj={proj}
+          projectId={projectId}
+          {...(projectName !== undefined ? { projectName } : {})}
+          groupCount={groupCount}
+          busy={busy}
+          patch={patch}
+          onSaved={load}
+          onWaitForLogin={(runtime, since) => setSignin({ runtime, since, until: Date.now() + 300_000 })}
+          onOpenChange={onOpenChange}
+          onRemoved={onRemoved}
+        />
+      </div>
+    </>
+  );
+}
+
+/**
+ * Three reads, three keys, and the project is *in* one of them.
+ *
+ * This was one `load()` closing over `projectId`, fired from an effect on
+ * `[open, projectId]` with nothing to say which call a reply belonged to. Two
+ * quick project switches and the slower reply won: this dialog rendered one
+ * project's 闸门 and another's base branch, with no error anywhere. `lib/api.ts`
+ * had already been bitten by exactly this and grown a `lastProject` ref to
+ * remember the scope by hand. A key does not have to remember — a reply for
+ * project 3 cannot be written into project 7's entry, so the bug has no shape.
+ *
+ * `refetchInterval` on the credential read is the login poll. A CLI login lands
+ * in another window and stores the credential the moment it exits; the only
+ * missing piece is the panel noticing, and two seconds is well inside the time
+ * it takes to click through an OAuth screen.
+ */
+function useSettingsData(open: boolean, projectId: number | null, signin: Signin | null) {
   const { data: authData = EMPTY_AUTH } = useQuery({
     queryKey: ["auth"],
     queryFn: async () => (await readApi(api.auth.$get(), AuthResponseSchema)) ?? EMPTY_AUTH,
@@ -263,40 +315,72 @@ function SettingsContent({
     enabled: open && projectId !== null,
   });
   const { runtimes: rows, trailers: prefs } = authData;
-  const { checks } = preflightData;
+  return { authData, rows, prefs, checks: preflightData.checks, proj };
+}
 
-  /** It landed. Stop asking, and give the button back. */
+/**
+ * Ends a login in flight, on either outcome.
+ *
+ * Landed: a login that has arrived is a row with a newer `updatedAt` than the
+ * one we started from — the panel polled on a timer alone before, so the
+ * credential arrived, the row updated, and both buttons stayed
+ * "等你在浏览器里批准…" for the rest of the five minutes.
+ *
+ * Timed out: on its own clock rather than folded into the landed check, because
+ * that one only runs when the answer *changes* — and a login that never
+ * completes is precisely the case where the answer never changes.
+ */
+function useSigninEnd(authData: AuthResponse, signin: Signin | null, setSignin: (s: Signin | null) => void) {
   useEffect(() => {
     if (!signin) return;
     const row = authData.runtimes.find((r) => r.runtime === signin.runtime);
-    if (row && row.updatedAt > signin.since) setSignin(null);
-    // `auth.data`, not `rows`: TanStack hands back the same object while the
+    // `authData`, not `rows`: TanStack hands back the same object while the
     // answer is unchanged, and `rows` is a fresh array on every render.
-  }, [authData, signin]);
-
-  /**
-   * It did not land, and the window is long gone.
-   *
-   * On its own clock rather than folded into the check above, because that one
-   * only runs when the answer *changes* — and a login that never completes is
-   * precisely the case where the answer never changes. The button would have
-   * stayed "等你在浏览器里批准…" for the rest of the session.
-   */
+    if (row && row.updatedAt > signin.since) setSignin(null);
+  }, [authData, signin, setSignin]);
   useEffect(() => {
     if (!signin) return;
     const t = setTimeout(() => setSignin(null), Math.max(0, signin.until - Date.now()));
     return () => clearTimeout(t);
-  }, [signin]);
+  }, [signin, setSignin]);
+}
 
-  const patch = async (body: ProjectPatch) => {
-    setBusy(true);
-    await mutate(api.project[":id"].config.$post({ param: { id: String(projectId) }, json: body }));
-    setBusy(false);
-    void queries.invalidateQueries({ queryKey: ["project", projectId] });
-  };
-
-  const items = NAV.filter((n) => !n.project || projectId !== null);
-
+/** The right-hand pane for the current section. One record, not a switch. */
+function SettingsPanes({
+  open,
+  section,
+  rows,
+  prefs,
+  signin,
+  checks,
+  proj,
+  projectId,
+  projectName,
+  groupCount,
+  busy,
+  patch,
+  onSaved,
+  onWaitForLogin,
+  onOpenChange,
+  onRemoved,
+}: {
+  open: boolean;
+  section: Section;
+  rows: AuthRow[];
+  prefs?: z.infer<typeof AuthResponseSchema>["trailers"];
+  signin: Signin | null;
+  checks: HostCheck[];
+  proj: z.infer<typeof ProjectConfigSchema> | null;
+  projectId: number | null;
+  projectName?: string;
+  groupCount: number;
+  busy: boolean;
+  patch: (body: ProjectPatch) => Promise<void>;
+  onSaved: () => void;
+  onWaitForLogin: (runtime: string, since: number) => void;
+  onOpenChange: (open: boolean) => void;
+  onRemoved: () => void;
+}) {
   const projectPane = (projectSection: ProjectSection) =>
     proj && projectId !== null ? (
       <ProjectPane
@@ -322,13 +406,13 @@ function SettingsContent({
         rows={rows}
         {...(prefs !== undefined ? { prefs } : {})}
         {...(signin ? { waiting: signin.runtime } : {})}
-        onSaved={load}
-        onWaitForLogin={(runtime, since) => setSignin({ runtime, since, until: Date.now() + 300_000 })}
+        onSaved={onSaved}
+        onWaitForLogin={onWaitForLogin}
       />
     ),
     github: <GithubSettings open={open} section={section} />,
     host: <EnvPane checks={checks.filter((c) => !isCredential(c))} />,
-    server: <SandboxServerSettings open={open} section={section} rows={rows} checks={checks} onSaved={load} />,
+    server: <SandboxServerSettings open={open} section={section} rows={rows} checks={checks} onSaved={onSaved} />,
     skills: <Skills projectId={projectId} />,
     sched: <Knobs section="sched" />,
     models: <Knobs section="models" />,
@@ -340,32 +424,7 @@ function SettingsContent({
     sandbox: projectPane("sandbox"),
     remove: projectPane("remove"),
   };
-
-  return (
-    <>
-      {/* The scope is the grouping, not a sentence on each page explaining
-          which of the two it is. */}
-      <SettingsNavigation
-        items={items}
-        section={section}
-        rows={rows}
-        checks={checks}
-        projectId={projectId}
-        {...(projectName !== undefined ? { projectName } : {})}
-        project={proj}
-        onSection={onSection}
-      />
-
-      {/* The label column is set once, here, rather than per pane. Three panes
-          had picked three widths, so switching between them moved every value
-          sideways — and a width chosen inside a pane is a width the next pane
-          cannot know about. 5rem holds the longest label in the dialog
-          (基线分支, API 密钥). */}
-      <div className="flex min-h-0 flex-col px-6 pt-4 pb-5 [--label:5rem]">
-        <Pane>{panes[section]}</Pane>
-      </div>
-    </>
-  );
+  return <Pane>{panes[section]}</Pane>;
 }
 
 /**
@@ -446,15 +505,15 @@ function Preferences() {
   );
 }
 
-function needsCredentials(rows: AuthRow[]) {
+export function needsCredentials(rows: AuthRow[]) {
   return RUNTIMES.some((runtime) => !rows.some((row) => row.runtime === runtime.key));
 }
 
-function needsHostAttention(checks: HostCheck[]) {
+export function needsHostAttention(checks: HostCheck[]) {
   return checks.some((check) => !isCredential(check) && !check.ok);
 }
 
-function needsGates(project: z.infer<typeof ProjectConfigSchema> | null) {
+export function needsGates(project: { config: { gates?: unknown[] | undefined } } | null) {
   if (!project) return false;
   return !(project.config.gates ?? []).length;
 }

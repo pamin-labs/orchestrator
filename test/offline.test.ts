@@ -117,7 +117,12 @@ test("a reclaim re-queues lease, gate and reconcile work, never the free kinds",
   // `resumed` stamped — and with its own payload, or a lease would lose its target.
   const h = seed();
   const base = { id: 1, grp_id: 1, agent_id: 1, slice_id: null, priority: 0, state: "cancelled" as const };
-  const lease: Job = { ...base, kind: "lease", payload_json: JSON.stringify({ lease_id: 7 }), payload: { lease_id: 7 } };
+  const lease: Job = {
+    ...base,
+    kind: "lease",
+    payload_json: JSON.stringify({ lease_id: 7 }),
+    payload: { lease_id: 7 },
+  };
   const gate: Job = { ...base, kind: "gate", payload_json: "{}", payload: {} };
   const reconcile: Job = { ...base, kind: "reconcile", payload_json: "{}", payload: {} };
   const watchdog: Job = { ...base, kind: "watchdog", payload_json: "{}", payload: {} };
@@ -126,7 +131,9 @@ test("a reclaim re-queues lease, gate and reconcile work, never the free kinds",
   expect(resumeReclaimed(h.sched, [watchdog])).toBe(0);
 
   const requeued = h.db
-    .query<{ kind: string; payload_json: string }, []>("SELECT kind, payload_json FROM job WHERE state = 'pending' ORDER BY id")
+    .query<{ kind: string; payload_json: string }, []>(
+      "SELECT kind, payload_json FROM job WHERE state = 'pending' ORDER BY id",
+    )
     .all();
   expect(requeued.map((r) => r.kind)).toEqual(["lease", "gate", "reconcile"]);
   const ResumedPayload = z.object({ resumed: z.literal(true), lease_id: z.number().optional() });
