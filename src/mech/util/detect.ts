@@ -61,6 +61,33 @@ const hasFile = (repo: Root, name: string) => repo.names.includes(name);
 
 const globExists = (repo: Root, re: RegExp) => repo.names.some((f) => re.test(f));
 
+function scriptGate(
+  present: string | undefined,
+  name: string,
+  runner: "bun" | "npm",
+  command: string,
+  errorRegex: string,
+): DetectedGate | null {
+  if (!present) return null;
+  return { name, template: runner === "bun" ? `bun ${command}` : `npm ${command}`, errorRegex };
+}
+
+function typecheckGate(repo: Root, scripts: Record<string, string>): DetectedGate | null {
+  if (!scripts.typecheck && !scripts.tsc && !hasFile(repo, "tsconfig.json")) return null;
+  return { name: "typecheck", template: "node_modules/.bin/tsc --noEmit", errorRegex: "error TS" };
+}
+
+function packageGates(repo: Root): DetectedGate[] {
+  const scripts: Record<string, string> = readJson(repo, "package.json")?.scripts ?? {};
+  const runner = hasFile(repo, "bun.lock") || hasFile(repo, "bun.lockb") ? "bun" : "npm";
+  return [
+    scriptGate(scripts["build:web"], "build", runner, "run build:web", "(error|ERROR|failed)"),
+    scriptGate(scripts.test, "test", runner, "test", "^(error|FAIL|✗|\\s+at )"),
+    typecheckGate(repo, scripts),
+    scriptGate(scripts.lint, "lint", runner, "run lint", "(error|warning)"),
+  ].filter((gate): gate is DetectedGate => gate !== null);
+}
+
 /** Rule order matters: the first marker that matches wins. */
 const RULES: Rule[] = [
   {
@@ -79,51 +106,7 @@ const RULES: Rule[] = [
             : hasFile(repo, "yarn.lock")
               ? "yarn install --frozen-lockfile"
               : null,
-    gates: (repo) => {
-      const pkg = readJson(repo, "package.json") ?? {};
-      const scripts: Record<string, string> = pkg.scripts ?? {};
-      // Prefer bun when the repo already commits a bun lockfile; the runner is
-      // whatever the project actually uses, not whatever we like.
-      const runner = hasFile(repo, "bun.lock") || hasFile(repo, "bun.lockb") ? "bun" : "npm";
-      const out: DetectedGate[] = [];
-      // First, and before the tests: a suite that serves a built bundle otherwise
-      // tests whichever bundle happened to be lying there. In a worktree that was
-      // the main checkout's, so a group's own UI change was invisible to its own
-      // gate — and on the boss's machine a deleted button survived a rebuild.
-      if (scripts["build:web"]) {
-        out.push({
-          name: "build",
-          template: runner === "bun" ? "bun run build:web" : "npm run build:web",
-          errorRegex: "(error|ERROR|failed)",
-        });
-      }
-      if (scripts.test) {
-        out.push({
-          name: "test",
-          template: runner === "bun" ? "bun test" : "npm test",
-          errorRegex: "^(error|FAIL|✗|\\s+at )",
-        });
-      }
-      if (scripts.typecheck || scripts.tsc || hasFile(repo, "tsconfig.json")) {
-        out.push({
-          name: "typecheck",
-          // The local binary, not `bunx`/`npx`. Those re-resolve and install on
-          // every call, and every worktree shares one node_modules by symlink —
-          // two gates at once raced on it and one came back `Failed to link
-          // jiti: EEXIST`, which the group read as its own build being broken.
-          template: "node_modules/.bin/tsc --noEmit",
-          errorRegex: "error TS",
-        });
-      }
-      if (scripts.lint) {
-        out.push({
-          name: "lint",
-          template: runner === "bun" ? "bun run lint" : "npm run lint",
-          errorRegex: "(error|warning)",
-        });
-      }
-      return out;
-    },
+    gates: packageGates,
   },
   {
     marker: (repo) => hasFile(repo, "Cargo.toml"),
