@@ -1,4 +1,4 @@
-import type { PanelFrame } from "./api";
+import type { PanelFrame } from "../../shared/api";
 
 /**
  * What a sandbox rebuild looks like from the frame buffer.

@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Meta, Pane } from "../ui/bits";
-import { Badge } from "../ui/badge";
-import { Tip } from "../ui/tooltip";
-import { Button } from "../ui/button";
-import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
-import { api, readApi } from "../lib/api";
-import { usePaged } from "../lib/page";
-import { clock, cn } from "../lib/utils";
-import { WithAttachments } from "../ui/attachments";
+import { Meta, Pane } from "../../ui/bits";
+import { Badge } from "../../ui/badge";
+import { Tip } from "../../ui/tooltip";
+import { Button } from "../../ui/button";
+import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
+import { api, readApi } from "../../shared/api";
+import { usePaged } from "../../shared/page";
+import { clock } from "../../shared/format";
+import { cn } from "../../ui/cn";
+import { WithAttachments } from "../../ui/attachments";
 import { z } from "zod";
-import { jsonOr } from "../../../src/contracts/json.ts";
-import { NotesResponseSchema, type PanelNote as Note } from "../../../src/contracts/panel";
+import { jsonOr } from "../../../../src/contracts/json.ts";
+import { NotesResponseSchema, type PanelNote as Note } from "../../../../src/contracts/panel";
 
 /**
  * The blackboard's static half.

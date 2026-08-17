@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, isDisabled, render, restoreFetch, stubFetch, valueOf } from "../support/render.tsx";
-import { Gates, ImageRow, Sandbox, type ProjectConfig } from "../../web/src/views/project.tsx";
-import { FirstProject } from "../../web/src/views/picker.tsx";
+import { Gates, ImageRow, Sandbox, type ProjectConfig } from "../../web/src/features/project/view.tsx";
+import { FirstProject } from "../../web/src/features/picker/view.tsx";
 import {
   arrowStep,
   cacheDirsFrom,

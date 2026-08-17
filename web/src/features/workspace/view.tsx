@@ -1,12 +1,13 @@
 import type { InferResponseType } from "hono/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
-import { GRP_STATES } from "../../../src/contracts/states.ts";
-import { api, groupAction, type PanelFrame, readApi } from "../lib/api";
-import { clock, cn } from "../lib/utils";
-import { Empty, Meta } from "../ui/bits";
-import { Button } from "../ui/button";
-import { ask } from "../ui/confirm";
+import { GRP_STATES } from "../../../../src/contracts/states.ts";
+import { api, groupAction, type PanelFrame, readApi } from "../../shared/api";
+import { clock } from "../../shared/format";
+import { cn } from "../../ui/cn";
+import { Empty, Meta } from "../../ui/bits";
+import { Button } from "../../ui/button";
+import { ask } from "../../ui/confirm";
 
 /**
  * What this group's container is, and what it is saying right now.

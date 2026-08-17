@@ -3,15 +3,15 @@ import { Check, CircleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { api, mutate } from "../../lib/api";
-import { cn } from "../../lib/utils";
+import { api, mutate } from "../../shared/api";
+import { cn } from "../../ui/cn";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
 import { Field, FieldContent, FieldGroup, FieldLabel, InputGroup } from "../../ui/field";
 import { Tip } from "../../ui/tooltip";
-import { ImageRow } from "../project";
-import type { AuthRow, HostCheck } from "./shared";
+import { ImageRow } from "../project/view";
+import type { AuthRow, HostCheck } from "./auth";
 
 /** Can this machine build a sandbox at all. Four facts, one line each. */
 export function EnvPane({ checks }: { checks: HostCheck[] }) {

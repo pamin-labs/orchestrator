@@ -3,9 +3,9 @@ import { z } from "zod";
 import { Agent } from "../../src/contracts/panel.ts";
 import { makeApp, UPLOAD_LIMIT } from "../../src/composition/api.ts";
 import { imagePaths, withAttachments } from "../../src/mech/util/attachment-text.ts";
-import { activityOf } from "../../web/src/lib/activity.ts";
-import { splitAttachments } from "../../web/src/lib/attach.ts";
-import { repoHref } from "../../web/src/lib/utils.ts";
+import { activityOf } from "../../web/src/shared/activity.ts";
+import { splitAttachments } from "../../web/src/ui/attach.ts";
+import { repoHref } from "../../web/src/shared/github.ts";
 import { testContext } from "../support/test-context.ts";
 import { tempDir } from "../support/temp.ts";
 

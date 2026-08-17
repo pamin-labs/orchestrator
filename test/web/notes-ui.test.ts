@@ -1,7 +1,7 @@
 import { afterEach, test } from "bun:test";
 import { createElement } from "react";
 import { cleanup, render, restoreFetch, stubFetch } from "../support/render.tsx";
-import { Notes } from "../../web/src/views/notes.tsx";
+import { Notes } from "../../web/src/features/notes/view.tsx";
 
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is

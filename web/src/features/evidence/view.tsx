@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { api, type Evidence, EvidenceSchema, GateLogResponseSchema, readApi } from "../lib/api";
-import { cn, nl } from "../lib/utils";
-import { Meta } from "../ui/bits";
-import { Button } from "../ui/button";
-import { DiffView } from "../ui/diff";
-import { Segment, Segments } from "../ui/segment";
-import { Tip } from "../ui/tooltip";
+import { api, type Evidence, EvidenceSchema, GateLogResponseSchema, readApi } from "../../shared/api";
+import { nl } from "../../shared/prose";
+import { cn } from "../../ui/cn";
+import { Meta } from "../../ui/bits";
+import { Button } from "../../ui/button";
+import { DiffView } from "../diff/view";
+import { Segment, Segments } from "../../ui/segment";
+import { Tip } from "../../ui/tooltip";
 
 const PAD = "px-4";
 const failed = (verdict: { body: string }) => /\bfail\b/i.test(verdict.body);

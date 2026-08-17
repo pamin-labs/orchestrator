@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { K } from "../../web/src/lib/utils.ts";
+import { K } from "../../web/src/shared/format.ts";
 
 test("a token count never prints in a unit that does not exist", () => {
   // The tiers were hand-written and the tier was picked before the rounding, so

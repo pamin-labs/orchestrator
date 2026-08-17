@@ -2,10 +2,10 @@ import { afterEach, expect, test } from "bun:test";
 import { cleanup, render as mount } from "../support/render.tsx";
 import { projectRow } from "../../web/src/features/home/model.ts";
 import { ringArc, ringTip, ringView, staleMark, until } from "../../web/src/features/usage/model.ts";
-import { emptyState, type State } from "../../web/src/lib/api.ts";
+import { emptyState, type State } from "../../web/src/shared/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
-import { UsageBar } from "../../web/src/ui/usage.tsx";
-import { Home } from "../../web/src/views/home.tsx";
+import { UsageBar } from "../../web/src/features/usage/view.tsx";
+import { Home } from "../../web/src/features/home/view.tsx";
 
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is

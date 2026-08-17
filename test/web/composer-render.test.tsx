@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, isDisabled, render, restoreFetch, stubFetch, valueOf, waitFor } from "../support/render.tsx";
-import { AttachmentTiles, Composer, forgetSkills, SkillMenu } from "../../web/src/ui/composer.tsx";
+import { AttachmentTiles, Composer, forgetSkills, SkillMenu } from "../../web/src/features/composer/view.tsx";
 import {
   appendLine,
   attachmentLabel,

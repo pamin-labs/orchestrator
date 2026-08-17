@@ -17,20 +17,21 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { H2, Head, Meta, Pane } from "../ui/bits";
-import { Field, FieldContent, FieldGroup, FieldTitle } from "../ui/field";
-import { Tip } from "../ui/tooltip";
-import { api, mutate, readApi } from "../lib/api";
-import { Knobs } from "./knobs";
-import { cn, repoHref } from "../lib/utils";
-import { ThemeChoice } from "../ui/theme";
-import { ImageChoicesSchema, ProjectConfigSchema, type ProjectPatch } from "./project";
-import { Skills } from "./skills";
-import { CredPane, RUNTIMES } from "./settings/credentials";
-import { EnvPane, ServerInfoSchema, ServerPane } from "./settings/environment";
-import { GithubPane, GhStatusSchema } from "./settings/github";
-import { ProjectPane, type ProjectSection } from "./settings/project";
-import { AuthRowSchema, HostCheckSchema, type AuthRow, type HostCheck } from "./settings/shared";
+import { H2, Head, Meta, Pane } from "../../ui/bits";
+import { Field, FieldContent, FieldGroup, FieldTitle } from "../../ui/field";
+import { Tip } from "../../ui/tooltip";
+import { api, mutate, readApi } from "../../shared/api";
+import { Knobs } from "../knobs/view";
+import { repoHref } from "../../shared/github";
+import { cn } from "../../ui/cn";
+import { ThemeChoice } from "../../ui/theme";
+import { ImageChoicesSchema, ProjectConfigSchema, type ProjectPatch } from "../project/view";
+import { Skills } from "../skills/view";
+import { CredPane, RUNTIMES } from "./credentials";
+import { EnvPane, ServerInfoSchema, ServerPane } from "./environment";
+import { GithubPane, GhStatusSchema } from "./github";
+import { ProjectPane, type ProjectSection } from "./project";
+import { AuthRowSchema, HostCheckSchema, type AuthRow, type HostCheck } from "./auth";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 
@@ -294,7 +295,7 @@ function SettingsContent({
  * This was one `load()` closing over `projectId`, fired from an effect on
  * `[open, projectId]` with nothing to say which call a reply belonged to. Two
  * quick project switches and the slower reply won: this dialog rendered one
- * project's 闸门 and another's base branch, with no error anywhere. `lib/api.ts`
+ * project's 闸门 and another's base branch, with no error anywhere. `shared/api.ts`
  * had already been bitten by exactly this and grown a `lastProject` ref to
  * remember the scope by hand. A key does not have to remember — a reply for
  * project 3 cannot be written into project 7's entry, so the bug has no shape.

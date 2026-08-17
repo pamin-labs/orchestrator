@@ -1,5 +1,5 @@
 import * as A from "@radix-ui/react-accordion";
-import { cn } from "../lib/utils";
+import { cn } from "../../ui/cn";
 
 /**
  * One row open at a time, the rest one line each.

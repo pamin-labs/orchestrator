@@ -1,5 +1,5 @@
 import * as S from "@radix-ui/react-switch";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * On or off, applied the moment it moves.

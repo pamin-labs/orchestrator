@@ -2,26 +2,26 @@ import { PanelRight, SlidersHorizontal } from "lucide-react";
 import { type Dispatch, type ReactNode, type SetStateAction, useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
-import { countWaiting, STATUS_ZH } from "./lib/select";
-import { useOrch } from "./lib/api";
-import { cn } from "./lib/utils";
-import { Boundary } from "./ui/boundary";
-import { Button } from "./ui/button";
-import { Card, CardBody, CardTitle } from "./ui/card";
-import { AskHost } from "./ui/confirm";
-import { Switcher } from "./ui/switcher";
-import { Tip, TipRoot } from "./ui/tooltip";
-import { UsageBar } from "./ui/usage";
-import { Home } from "./views/home";
-import { NewRequirement } from "./views/newreq";
-import { Notes } from "./views/notes";
-import { FirstProject, Picker } from "./views/picker";
-import { Progress } from "./views/progress";
-import { Queue } from "./views/queue";
-import { Requirement } from "./views/requirement";
-import { SettingsDialog } from "./views/settings";
-import { CostView, Desk, Owns } from "./views/tables";
-import { Timeline } from "./views/timeline";
+import { countWaiting, STATUS_ZH } from "../shared/select";
+import { useOrch } from "../shared/api";
+import { cn } from "../ui/cn";
+import { Boundary } from "./boundary";
+import { Button } from "../ui/button";
+import { Card, CardBody, CardTitle } from "../ui/card";
+import { AskHost } from "../ui/confirm";
+import { Switcher } from "../features/navigation/switcher";
+import { Tip, TipRoot } from "../ui/tooltip";
+import { UsageBar } from "../features/usage/view";
+import { Home } from "../features/home/view";
+import { NewRequirement } from "../features/requirement/newreq";
+import { Notes } from "../features/notes/view";
+import { FirstProject, Picker } from "../features/picker/view";
+import { Progress } from "../features/progress/view";
+import { Queue } from "../features/queue/view";
+import { Requirement } from "../features/requirement/view";
+import { SettingsDialog } from "../features/settings/view";
+import { CostView, Desk, Owns } from "../features/tables/view";
+import { Timeline } from "../features/timeline/view";
 import {
   backgroundView,
   bodyClass,
@@ -57,7 +57,7 @@ import {
   viewActive,
   viewClass,
   waitingProject,
-} from "./features/navigation/model";
+} from "../features/navigation/model";
 
 type UiKey = "adding" | "pickProject" | "pickReq" | "picking" | "side";
 

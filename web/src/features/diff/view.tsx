@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import parseDiff from "parse-diff";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { Button } from "./button";
-import { Meta } from "./bits";
-import { Tip } from "./tooltip";
-import { type Cell, markSpans, type SideName, sideTone, type Tone } from "../features/diff/model";
-import { cn } from "../lib/utils";
+import { Button } from "../../ui/button";
+import { Meta } from "../../ui/bits";
+import { Tip } from "../../ui/tooltip";
+import { type Cell, markSpans, type SideName, sideTone, type Tone } from "./model";
+import { cn } from "../../ui/cn";
 
 /**
  * The diff, as the one thing the boss actually reads before accepting.

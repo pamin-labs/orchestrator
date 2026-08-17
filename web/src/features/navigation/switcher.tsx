@@ -1,5 +1,5 @@
 import { Command } from "cmdk";
-import { cn } from "../lib/utils";
+import { cn } from "../../ui/cn";
 
 /**
  * Command palette for switching between things of one kind.

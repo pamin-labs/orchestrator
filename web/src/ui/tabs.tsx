@@ -1,5 +1,5 @@
 import * as T from "@radix-ui/react-tabs";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * shadcn's tabs, on our tokens.

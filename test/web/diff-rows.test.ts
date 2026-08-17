@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import parseDiff from "parse-diff";
-import { rowsOf, gapLabel, gutterProps, sideProps } from "../../web/src/ui/diff.tsx";
+import { rowsOf, gapLabel, gutterProps, sideProps } from "../../web/src/features/diff/view.tsx";
 
 /**
  * The side-by-side viewer is what the boss reads before accepting a slice, so a

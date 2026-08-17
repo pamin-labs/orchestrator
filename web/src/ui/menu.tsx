@@ -1,7 +1,7 @@
 import * as M from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import { buttonStyles } from "./button";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * shadcn's dropdown menu, on our tokens.

@@ -1,4 +1,4 @@
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * shadcn's Field family, on our tokens.

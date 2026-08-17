@@ -1,5 +1,5 @@
 import * as TG from "@radix-ui/react-toggle-group";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * One of several, chosen — where a tab strip would be the second one on the page.

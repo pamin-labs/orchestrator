@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Head } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
-import { api, mutate } from "../../lib/api";
-import { Gates, Sandbox, type ProjectConfig, type ProjectPatch } from "../project";
+import { api, mutate } from "../../shared/api";
+import { Gates, Sandbox, type ProjectConfig, type ProjectPatch } from "../project/view";
 
 export type ProjectSection = "gates" | "sandbox" | "remove";
 

@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, mutate } from "../../lib/api";
-import { clock } from "../../lib/utils";
+import { api, mutate } from "../../shared/api";
+import { clock } from "../../shared/format";
 import { Head, Input, Meta, Textarea } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../../ui/field";
 import { Segment, Segments } from "../../ui/segment";
 import { Switch } from "../../ui/switch";
 import { Tip } from "../../ui/tooltip";
-import { type AuthRow, DeviceCode, type Mode, ModeSchema } from "./shared";
+import { type AuthRow, DeviceCode, type Mode, ModeSchema } from "./auth";
 import {
   ClaudeLoginFlowSchema as ClaudeLoginSchema,
   CodexLoginFlowSchema as CodexLoginSchema,

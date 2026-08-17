@@ -1,4 +1,4 @@
-import type { Usage } from "../../lib/api";
+import type { Usage } from "../../shared/api";
 
 const WARN_AT = 80;
 

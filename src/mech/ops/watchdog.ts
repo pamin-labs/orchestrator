@@ -147,6 +147,25 @@ export function serverAction(
   return restarts >= SERVER_RESTART_CAP ? "give_up" : "restart";
 }
 
+/**
+ * Is the sandbox server there, and remember how to restart it if it is.
+ *
+ * The steady state — up, and seen before — is one `kill(pid, 0)` and no
+ * subprocess. `ps` runs only when that says the pid is gone, which is also the
+ * only moment its argv is worth re-reading, since restarting is the next thing
+ * this rule would do with it. A reused pid reads as alive; that is the
+ * conservative side, because the alternative is restarting a server that is in
+ * fact running.
+ */
+function serverPresent(deps: WatchdogDeps): boolean {
+  if (seenServerPid !== null && pidAlive(seenServerPid)) return true;
+  const server = (deps.runningServer ?? runningServer)();
+  if (!server?.argv.length) return !!server;
+  seenServerArgv = server.argv;
+  seenServerPid = server.pid;
+  return true;
+}
+
 /** 30s, 2min, 8min. A server that needs three tries needs a person. */
 export const serverBackoffMs = (attempt: number): number => 30_000 * 4 ** (attempt - 1);
 
@@ -1145,19 +1164,9 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // - a hard cap. On reaching it this stops and escalates, because N failed
   //   restarts is evidence that restarting is not the answer.
   await step("19", findings, async () => {
-    // The steady state — server up, seen before — is one `kill(pid, 0)` and no
-    // subprocess. `ps` runs only when that says the pid is gone, which is also
-    // the only time its argv is worth re-reading. A pid that has been reused
-    // reads as alive here; the pairing is deliberate, since the next thing this
-    // rule would do is restart a server that is in fact running.
-    const stillThere = seenServerPid !== null && pidAlive(seenServerPid);
-    const server = stillThere ? null : (deps.runningServer ?? runningServer)();
-    if (server?.argv.length) {
-      seenServerArgv = server.argv;
-      seenServerPid = server.pid;
-    }
-    if (stillThere || server) serverRestarts = 0;
-    switch (serverAction(stillThere || !!server, seenServerArgv, serverRestarts, now(), nextServerTry)) {
+    const present = serverPresent(deps);
+    if (present) serverRestarts = 0;
+    switch (serverAction(present, seenServerArgv, serverRestarts, now(), nextServerTry)) {
       case "give_up":
         nextServerTry = now() + REEMIT_MS;
         findings.push({

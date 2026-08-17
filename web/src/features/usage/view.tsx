@@ -1,8 +1,8 @@
 import { Fragment } from "react";
-import { R, type RingInput, ringView, staleMark } from "../features/usage/model";
-import type { Usage } from "../lib/api";
-import { cn } from "../lib/utils";
-import { Tip } from "./tooltip";
+import { R, type RingInput, ringView, staleMark } from "./model";
+import type { Usage } from "../../shared/api";
+import { cn } from "../../ui/cn";
+import { Tip } from "../../ui/tooltip";
 
 /**
  * How much of each subscription is left, in the header.

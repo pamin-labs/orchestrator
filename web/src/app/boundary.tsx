@@ -1,6 +1,6 @@
 import { Component, type ReactNode } from "react";
-import { Button } from "./button";
-import { Card, CardBody, CardTitle } from "./card";
+import { Button } from "../ui/button";
+import { Card, CardBody, CardTitle } from "../ui/card";
 
 /**
  * One view throwing must not leave a dead page.

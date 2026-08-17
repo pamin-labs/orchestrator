@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { needsCredentials, needsGates, needsHostAttention } from "../../web/src/views/settings.tsx";
-import { RUNTIMES } from "../../web/src/views/settings/credentials.tsx";
-import type { AuthRow, HostCheck } from "../../web/src/views/settings/shared.tsx";
+import { needsCredentials, needsGates, needsHostAttention } from "../../web/src/features/settings/view.tsx";
+import { RUNTIMES } from "../../web/src/features/settings/credentials.tsx";
+import type { AuthRow, HostCheck } from "../../web/src/features/settings/auth.tsx";
 
 /**
  * The rail's dots are the only thing that tells the boss a setting is waiting on

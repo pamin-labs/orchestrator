@@ -48,8 +48,8 @@ because there is nothing left to annotate.
 | ssrf | `scripts/browse.ts:101` | false positive | origin is the throwaway local server this script just started; the step file contributes a path | scripts |
 | ssrf | `scripts/make-github-app.ts:102` | **fixed** | `code` arrives on a listening socket; now shape-checked at the socket, so it is one path segment | scripts |
 | hardcoded-secret | `src/contracts/config.ts:219` | false positive | the `SETTING_DENIALS` refusal text for `sandbox.apiKey`, not a key; nothing is stored or sent | contracts |
-| ssrf | `web/src/lib/api.ts:59` | false positive | wraps the hono client bound to the relative base `/api/v1`; same-origin by construction | web |
-| open-redirect | `web/src/views/progress.tsx:211` | false positive | `prUrl` returns null or a literal `https://github.com/` prefix plus two `[\w.-]+` segments | web |
+| ssrf | `web/src/shared/api.ts:59` | false positive | wraps the hono client bound to the relative base `/api/v1`; same-origin by construction | web |
+| open-redirect | `web/src/features/progress/view.tsx:211` | false positive | `prUrl` returns null or a literal `https://github.com/` prefix plus two `[\w.-]+` segments | web |
 
 ## Owned by a later pass
 

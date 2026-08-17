@@ -5,8 +5,8 @@ import { Button, LinkButton } from "../../ui/button";
 import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "../../ui/field";
 import { Switch } from "../../ui/switch";
 import { Tip } from "../../ui/tooltip";
-import { api, mutate } from "../../lib/api";
-import { DeviceCode } from "./shared";
+import { api, mutate } from "../../shared/api";
+import { DeviceCode } from "./auth";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 

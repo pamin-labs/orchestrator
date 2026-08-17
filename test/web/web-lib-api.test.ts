@@ -7,7 +7,7 @@ import {
   readWire,
   requestHeaders,
   type Wire,
-} from "../../web/src/lib/api.ts";
+} from "../../web/src/shared/api.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
 

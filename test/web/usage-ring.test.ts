@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { Usage } from "../../web/src/lib/api.ts";
-import { windowRing } from "../../web/src/ui/usage.tsx";
+import type { Usage } from "../../web/src/shared/api.ts";
+import { windowRing } from "../../web/src/features/usage/view.tsx";
 
 /**
  * The header rings are the fleet's fuel gauge: a window shown without its

@@ -1,15 +1,15 @@
 import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { Button, LinkButton } from "../ui/button";
-import { Menu, MenuItem } from "../ui/menu";
-import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
-import { Clamp, H2, Meta, Textarea, Typing, Working, Pane } from "../ui/bits";
-import { Badge } from "../ui/badge";
-import { Card, CardBody, CardTitle } from "../ui/card";
-import { Bar } from "../ui/table";
-import { Tip } from "../ui/tooltip";
-import { ask, type AskSpec } from "../ui/confirm";
-import { Composer, ComposerDialog, type Draft } from "../ui/composer";
+import { Button, LinkButton } from "../../ui/button";
+import { Menu, MenuItem } from "../../ui/menu";
+import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
+import { Clamp, H2, Meta, Textarea, Typing, Working, Pane } from "../../ui/bits";
+import { Badge } from "../../ui/badge";
+import { Card, CardBody, CardTitle } from "../../ui/card";
+import { Bar } from "../../ui/table";
+import { Tip } from "../../ui/tooltip";
+import { ask, type AskSpec } from "../../ui/confirm";
+import { Composer, ComposerDialog, type Draft } from "../composer/view";
 import {
   AnswerDraftSchema,
   api,
@@ -22,17 +22,19 @@ import {
   type Group,
   type Slice,
   type State,
-} from "../lib/api";
-import { asksOf, gates, mineOf, prUrl, statusLabel, WHERE_ZH } from "../lib/select";
-import { cn, K, nl, waited } from "../lib/utils";
-import { WithAttachments } from "../ui/attachments";
+} from "../../shared/api";
+import { asksOf, gates, mineOf, prUrl, statusLabel, WHERE_ZH } from "../../shared/select";
+import { K, waited } from "../../shared/format";
+import { nl } from "../../shared/prose";
+import { cn } from "../../ui/cn";
+import { WithAttachments } from "../../ui/attachments";
 import { useEffect, useRef, useState } from "react";
-import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
-import { Segment, Segments } from "../ui/segment";
-import { Workspace } from "./workspace";
-import { EvidencePanel } from "./evidence";
-import { Notes } from "./notes";
-import { bootstrapOf } from "../lib/bootstrap";
+import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "./accordion";
+import { Segment, Segments } from "../../ui/segment";
+import { Workspace } from "../workspace/view";
+import { EvidencePanel } from "../evidence/view";
+import { Notes } from "../notes/view";
+import { bootstrapOf } from "./bootstrap";
 import {
   activeTab,
   answeredFor,
@@ -79,7 +81,7 @@ import {
   tickStops,
   tickTextClass,
   type StepState,
-} from "../features/requirement/model";
+} from "./model";
 
 /**
  * Confirm, then act, then refresh — the shape every consequential control here has.

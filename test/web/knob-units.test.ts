@@ -12,7 +12,7 @@ import {
   readNumber,
   showNumber,
   splitDuration,
-} from "../../web/src/lib/units.ts";
+} from "../../web/src/features/knobs/units.ts";
 
 /**
  * The settings page shows `20 分钟` and posts 1200000.

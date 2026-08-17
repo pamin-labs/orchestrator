@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { cleanup, render as mount, restoreFetch, stubFetch, valueOf } from "../support/render.tsx";
-import { emptyState, type Group, type PanelFrame, type Slice, type State } from "../../web/src/lib/api.ts";
+import { emptyState, type Group, type PanelFrame, type Slice, type State } from "../../web/src/shared/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
-import { Requirement } from "../../web/src/views/requirement.tsx";
+import { Requirement } from "../../web/src/features/requirement/view.tsx";
 
 const group = (status: Group["status"], over: Partial<Group> = {}): Group => ({
   id: 7,

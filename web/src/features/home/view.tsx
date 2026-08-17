@@ -1,10 +1,10 @@
-import { homeRows, projectRow } from "../features/home/model";
-import type { State } from "../lib/api";
-import { cn } from "../lib/utils";
-import { H2, Meta } from "../ui/bits";
-import { Button } from "../ui/button";
-import { cardStyles } from "../ui/card";
-import { Queue } from "./queue";
+import { homeRows, projectRow } from "./model";
+import type { State } from "../../shared/api";
+import { cn } from "../../ui/cn";
+import { H2, Meta } from "../../ui/bits";
+import { Button } from "../../ui/button";
+import { cardStyles } from "../../ui/card";
+import { Queue } from "../queue/view";
 
 /**
  * Every project at once, plus what wants the boss across all of them.

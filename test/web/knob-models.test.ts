@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { createElement } from "react";
 import { cleanup, render, restoreFetch, stubFetch } from "../support/render.tsx";
-import { Knobs } from "../../web/src/views/knobs";
-import { allModels, cheapest, modelsByRuntime } from "../../web/src/lib/models";
-import { COUNT_UNITS, countOf, splitCount } from "../../web/src/lib/units";
+import { Knobs } from "../../web/src/features/knobs/view";
+import { allModels, cheapest, modelsByRuntime } from "../../web/src/features/knobs/models";
+import { COUNT_UNITS, countOf, splitCount } from "../../web/src/features/knobs/units";
 import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../src/platform/config/load.ts";
 import { ConfigSchema } from "../../src/contracts/config.ts";
 

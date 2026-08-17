@@ -1,5 +1,5 @@
 import { Area, AreaChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { K } from "../lib/utils";
+import { K } from "../../shared/format";
 
 /**
  * The two charts 成本 earns, and nothing else.

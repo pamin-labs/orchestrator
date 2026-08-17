@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * One button shape for the whole panel. `go` is the primary action on a row,

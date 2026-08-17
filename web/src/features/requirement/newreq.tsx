@@ -1,5 +1,5 @@
-import { ComposerDialog } from "../ui/composer";
-import { api, mutate } from "../lib/api";
+import { ComposerDialog } from "../composer/view";
+import { api, mutate } from "../../shared/api";
 
 /**
  * Dropping an idea.

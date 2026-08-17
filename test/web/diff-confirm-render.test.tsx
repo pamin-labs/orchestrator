@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { cleanup, render, valueOf } from "../support/render.tsx";
 import * as Dialog from "@radix-ui/react-dialog";
 import { markSpans, sideTone } from "../../web/src/features/diff/model.ts";
-import { DiffView } from "../../web/src/ui/diff.tsx";
+import { DiffView } from "../../web/src/features/diff/view.tsx";
 import { AskCard } from "../../web/src/ui/confirm.tsx";
 
 /**

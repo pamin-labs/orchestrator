@@ -1,4 +1,4 @@
-import type { Skill } from "../../ui/composer";
+import type { Skill } from "../composer/view";
 
 /** Rough, and said as rough. ~4 characters a token is close enough to steer by. */
 const cost = (rows: Skill[]) => rows.reduce((n, r) => n + r.name.length + r.description.length + 20, 0) / 4;

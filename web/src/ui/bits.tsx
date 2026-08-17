@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "./button";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * Section label.

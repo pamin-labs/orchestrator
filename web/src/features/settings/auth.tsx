@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import { Button, LinkButton } from "../../ui/button";
 import { z } from "zod";
-import { api } from "../../lib/api";
+import { api } from "../../shared/api";
 import type { InferResponseType } from "hono/client";
 
 export const ModeSchema = z.enum(["oauth_token", "api_key", "chatgpt"]);

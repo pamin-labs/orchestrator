@@ -2,7 +2,7 @@ import * as P from "@radix-ui/react-popover";
 import { Command } from "cmdk";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * One control for a value that comes from a list.

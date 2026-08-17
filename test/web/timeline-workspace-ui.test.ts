@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createElement } from "react";
 import { cleanup, render as mount, restoreFetch, stubFetch } from "../support/render.tsx";
-import { emptyState, type PanelFrame } from "../../web/src/lib/api.ts";
-import { Timeline } from "../../web/src/views/timeline.tsx";
-import { Workspace } from "../../web/src/views/workspace.tsx";
+import { emptyState, type PanelFrame } from "../../web/src/shared/api.ts";
+import { Timeline } from "../../web/src/features/timeline/view.tsx";
+import { Workspace } from "../../web/src/features/workspace/view.tsx";
 
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is

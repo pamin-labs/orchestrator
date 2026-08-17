@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
 import { displayJson, readJsonResponse } from "../../src/contracts/protocol.ts";
-import { readJson } from "../../web/src/lib/api.ts";
+import { readJson } from "../../web/src/shared/api.ts";
 
 test("malformed response bytes cannot become valid JSON null", async () => {
   expect(await readJsonResponse(new Response("not json"))).toEqual({ ok: false });

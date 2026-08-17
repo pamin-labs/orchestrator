@@ -1,12 +1,12 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import { useCallback, useEffect, useState } from "react";
-import { Button, LinkButton } from "../ui/button";
-import { Badge } from "../ui/badge";
-import { Menu, MenuItem } from "../ui/menu";
-import { api, mutate, readJson } from "../lib/api";
-import { cn } from "../lib/utils";
-import { browseListing, browseRow, repoRow, type Entry } from "../features/picker/model";
+import { Button, LinkButton } from "../../ui/button";
+import { Badge } from "../../ui/badge";
+import { Menu, MenuItem } from "../../ui/menu";
+import { api, mutate, readJson } from "../../shared/api";
+import { cn } from "../../ui/cn";
+import { browseListing, browseRow, repoRow, type Entry } from "./model";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
 

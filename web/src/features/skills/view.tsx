@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Head, Input, Meta } from "../ui/bits";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { api, mutate, readApi } from "../lib/api";
-import { matchSkills, skillTally } from "../features/skills/model";
-import { forgetSkills } from "../ui/composer";
-import { cn } from "../lib/utils";
+import { Head, Input, Meta } from "../../ui/bits";
+import { Badge } from "../../ui/badge";
+import { Button } from "../../ui/button";
+import { api, mutate, readApi } from "../../shared/api";
+import { matchSkills, skillTally } from "./model";
+import { forgetSkills } from "../composer/view";
+import { cn } from "../../ui/cn";
 import { z } from "zod";
-import { SkillSchema, type Skill as Row } from "../ui/composer";
+import { SkillSchema, type Skill as Row } from "../composer/view";
 
 /**
  * Which of the boss's skills the agents can see.

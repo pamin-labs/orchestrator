@@ -1,5 +1,5 @@
 import type { Json } from "../../../../src/contracts/json";
-import type { Shape } from "../../lib/units";
+import type { Shape } from "./units";
 
 /**
  * What a settings row works out before it draws a control.

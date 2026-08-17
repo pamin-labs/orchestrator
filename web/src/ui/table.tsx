@@ -1,4 +1,4 @@
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /** A share-of-total bar. The cost view had this inline three times. */
 export function Bar({ frac, tone, className }: { frac: number; tone?: "ink" | "warn" | "bad"; className?: string }) {

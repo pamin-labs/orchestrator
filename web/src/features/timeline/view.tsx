@@ -1,6 +1,7 @@
 import { memo } from "react";
-import { groupedRows, type PanelFrame, type State } from "../lib/api";
-import { clock, cn } from "../lib/utils";
+import { groupedRows, type PanelFrame, type State } from "../../shared/api";
+import { clock } from "../../shared/format";
+import { cn } from "../../ui/cn";
 
 const FRAME_TONE: Record<PanelFrame["cls"], string> = {
   say: "text-ink",

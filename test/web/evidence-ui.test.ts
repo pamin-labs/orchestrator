@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createElement } from "react";
 import { cleanup, render as mount, restoreFetch, stubFetch } from "../support/render.tsx";
-import type { Evidence } from "../../web/src/lib/api.ts";
-import { EvidencePanel } from "../../web/src/views/evidence.tsx";
+import type { Evidence } from "../../web/src/shared/api.ts";
+import { EvidencePanel } from "../../web/src/features/evidence/view.tsx";
 
 const evidence = (patch: Partial<Evidence> = {}): Evidence => ({
   grp_id: 1,

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
-import { api, mutate, readApi } from "../lib/api";
-import { cn } from "../lib/utils";
+import { api, mutate, readApi } from "../../shared/api";
+import { cn } from "../../ui/cn";
 import {
   COUNT_UNITS,
   DURATION_UNITS,
@@ -13,8 +13,8 @@ import {
   showNumber,
   splitCount,
   splitDuration,
-} from "../lib/units";
-import { allModels, cheapest, modelsByRuntime, type ModelSources } from "../lib/models";
+} from "./units";
+import { allModels, cheapest, modelsByRuntime, type ModelSources } from "./models";
 import {
   badCell,
   durationScale,
@@ -32,17 +32,17 @@ import {
   type Complaint,
   type NotifyState,
   type PairKind,
-} from "../features/knobs/model";
-import { Combobox } from "../ui/combobox";
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "../ui/field";
-import { Head, Input, Meta, Textarea } from "../ui/bits";
-import { Button } from "../ui/button";
-import { Segment, Segments, Toggles } from "../ui/segment";
-import { Switch } from "../ui/switch";
-import { Help, Tip } from "../ui/tooltip";
+} from "./model";
+import { Combobox } from "../../ui/combobox";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle } from "../../ui/field";
+import { Head, Input, Meta, Textarea } from "../../ui/bits";
+import { Button } from "../../ui/button";
+import { Segment, Segments, Toggles } from "../../ui/segment";
+import { Switch } from "../../ui/switch";
+import { Help, Tip } from "../../ui/tooltip";
 import { z } from "zod";
-import type { Json } from "../../../src/contracts/json";
-import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../src/contracts/config";
+import type { Json } from "../../../../src/contracts/json";
+import { ConfigSchema, SettingWriteSchema, type SettingWrite } from "../../../../src/contracts/config";
 import type { InferResponseType } from "hono/client";
 
 /**
@@ -60,7 +60,7 @@ import type { InferResponseType } from "hono/client";
  * Three things this page owes the reader, and did not:
  *
  * - **A value in the unit it means.** `1200000` is twenty minutes and
- *   `10800000` is three hours, and told apart by counting zeros. `lib/units.ts`
+ *   `10800000` is three hours, and told apart by counting zeros. `units.ts`
  *   does the conversion and `test/knob-units.test.ts` holds it to being exact.
  * - **A shape for the value it holds.** Six of these are tables — runtime by
  *   difficulty, model by window, mount by host path — and a table crammed into

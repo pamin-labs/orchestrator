@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, render, restoreFetch, stubFetch, waitFor } from "../support/render.tsx";
-import { FirstProject, Picker } from "../../web/src/views/picker.tsx";
+import { FirstProject, Picker } from "../../web/src/features/picker/view.tsx";
 
 /**
  * The two ways a project gets added: the card the panel shows when there are no

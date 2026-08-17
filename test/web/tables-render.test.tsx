@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { cleanup, render as mount } from "../support/render.tsx";
-import { emptyState } from "../../web/src/lib/api.ts";
+import { emptyState } from "../../web/src/shared/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
-import { CostView, Desk, Owns } from "../../web/src/views/tables.tsx";
+import { CostView, Desk, Owns } from "../../web/src/features/tables/view.tsx";
 
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is

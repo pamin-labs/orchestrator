@@ -1,7 +1,7 @@
-import type { Escalation, Group, Slice, State } from "../../lib/api";
-import { byRequirement, groupName, rank, REASONS, type Reason } from "../../lib/rank";
-import { pending, prUrl } from "../../lib/select";
-import { brief } from "../../lib/utils";
+import type { Escalation, Group, Slice, State } from "../../shared/api";
+import { byRequirement, groupName, rank, REASONS, type Reason } from "./rank";
+import { pending, prUrl } from "../../shared/select";
+import { brief } from "../../shared/prose";
 
 export interface QueueItem {
   key: string;

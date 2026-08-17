@@ -11,7 +11,7 @@
     "trace:down": "docker compose -f docker/otel-compose.yml down",
     "dev:trace": "OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 bun run dev",
     "orch": "bun run src/orch/cli.ts",
-    "build:web": "bun build web/src/main.tsx --outdir web/dist --minify --target browser && tailwindcss -i web/style.css -o web/dist/app.css --minify",
+    "build:web": "bun build web/src/app/main.tsx --outdir web/dist --minify --target browser && tailwindcss -i web/style.css -o web/dist/app.css --minify",
     "perf:budget": "bun run scripts/performance-budget.ts",
     "perf:bench": "bun run scripts/benchmark.ts",
     "test": "bun test --parallel",

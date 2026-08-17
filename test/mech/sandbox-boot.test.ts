@@ -5,6 +5,7 @@ import { setIn } from "../../src/mech/sandbox/server.ts";
 import {
   isServerLine,
   keyInConfig,
+  pidAlive,
   remoteInClear,
   SANDBOX_API_KEY_HEADER,
   sandboxScope,
@@ -205,4 +206,21 @@ test("a sandbox span is scoped to what owns the container, and the utility one t
   expect(sandboxScope({ grp: 4 }, 9)).toEqual({ "grp.id": 4, "project.id": 9 });
   expect(sandboxScope({ project: 9 }, 9)).toEqual({ "project.id": 9 });
   expect(sandboxScope(UTIL, null)).toEqual({});
+});
+
+test("a pid is alive when it exists, whoever owns it", () => {
+  // `ps` is 30.6ms and this is 253ns, so the watchdog's steady state asks this
+  // and forks only when the answer is no. What it must never do is answer "gone"
+  // for a process that is there — that is the input to a decision whose failure
+  // mode is restarting a server that is already running.
+  expect(pidAlive(String(process.pid))).toBe(true);
+  // init exists and is not ours: `kill` fails with EPERM, which is a yes.
+  expect(pidAlive("1")).toBe(true);
+  // Above any pid this machine will hand out.
+  expect(pidAlive("999999")).toBe(false);
+  // Not a pid at all. `process.kill` throws on these too, and a throw must not
+  // be read as "alive" the way EPERM is.
+  for (const junk of ["nope", "-1", "0", "", "1.5", "1e9"]) {
+    expect({ junk, alive: pidAlive(junk) }).toEqual({ junk, alive: false });
+  }
 });

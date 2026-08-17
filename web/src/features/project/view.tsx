@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { GripVertical, X } from "lucide-react";
-import { Head, Input, Meta } from "../ui/bits";
-import { Button } from "../ui/button";
-import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../ui/field";
-import { Segment, Segments, Toggle, Toggles } from "../ui/segment";
-import { Combobox } from "../ui/combobox";
-import { cn } from "../lib/utils";
-import { api, readApi } from "../lib/api";
+import { Head, Input, Meta } from "../../ui/bits";
+import { Button } from "../../ui/button";
+import { Field, FieldContent, FieldGroup, FieldLabel, FieldTitle, InputGroup } from "../../ui/field";
+import { Segment, Segments, Toggle, Toggles } from "../../ui/segment";
+import { Combobox } from "../../ui/combobox";
+import { cn } from "../../ui/cn";
+import { api, readApi } from "../../shared/api";
 import {
   arrowStep,
   cacheDirsFrom,
@@ -19,10 +19,10 @@ import {
   moveGate,
   sandboxRows,
   sandboxSet,
-} from "../features/project/model";
+} from "./model";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
-import { StoredProjectConfigSchema } from "../../../src/contracts/config.ts";
+import { StoredProjectConfigSchema } from "../../../../src/contracts/config.ts";
 
 const projectConfigPost = api.project[":id"].config.$post;
 export type ProjectPatch = NonNullable<Parameters<typeof projectConfigPost>[0]>["json"];

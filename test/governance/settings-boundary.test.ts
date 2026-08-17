@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 test("credential UI owns the login flows while the settings shell owns polling", () => {
-  const shell = read("../../web/src/views/settings.tsx");
-  const pane = read("../../web/src/views/settings/credentials.tsx");
+  const shell = read("../../web/src/features/settings/view.tsx");
+  const pane = read("../../web/src/features/settings/credentials.tsx");
 
   // Login completion is a dialog concern: it coordinates the query cache and the
   // five-minute deadline across panes. The account component only starts a flow.
@@ -28,8 +28,8 @@ test("credential UI owns the login flows while the settings shell owns polling",
 });
 
 test("GitHub controls own their flow while the settings shell owns polling", () => {
-  const shell = read("../../web/src/views/settings.tsx");
-  const pane = read("../../web/src/views/settings/github.tsx");
+  const shell = read("../../web/src/features/settings/view.tsx");
+  const pane = read("../../web/src/features/settings/github.tsx");
 
   // The shell keeps the query mounted only for this section and coordinates the
   // device-flow timer. The pane starts actions and asks for one cache refresh.
@@ -52,8 +52,8 @@ test("GitHub controls own their flow while the settings shell owns polling", () 
 });
 
 test("environment controls own actions while the settings shell owns server queries", () => {
-  const shell = read("../../web/src/views/settings.tsx");
-  const pane = read("../../web/src/views/settings/environment.tsx");
+  const shell = read("../../web/src/features/settings/view.tsx");
+  const pane = read("../../web/src/features/settings/environment.tsx");
 
   for (const key of ["sandbox-server", "sandbox-images"]) {
     expect(shell).toContain(`queryKey: ["${key}"]`);
@@ -89,8 +89,8 @@ test("environment controls own actions while the settings shell owns server quer
 });
 
 test("project controls own panes while the settings shell owns project scope", () => {
-  const shell = read("../../web/src/views/settings.tsx");
-  const pane = read("../../web/src/views/settings/project.tsx");
+  const shell = read("../../web/src/features/settings/view.tsx");
+  const pane = read("../../web/src/features/settings/project.tsx");
 
   expect(shell).toContain('queryKey: ["project", projectId, "config"]');
   expect(shell).toContain('api.project[":id"].config.$post');

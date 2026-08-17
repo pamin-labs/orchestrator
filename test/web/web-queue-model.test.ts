@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { foldQueueItems, queueClusters, type QueueItem } from "../../web/src/features/queue/model.ts";
-import { replyKeyAction } from "../../web/src/views/queue.tsx";
+import { replyKeyAction } from "../../web/src/features/queue/view.tsx";
 
 const item = (key: string, grpId: number | null, points: number, about = "other", hard = false): QueueItem => ({
   key,

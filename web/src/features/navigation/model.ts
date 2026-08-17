@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { State } from "../../lib/api";
-import { SectionSchema, type Section } from "../../views/settings";
+import type { State } from "../../shared/api";
+import { SectionSchema, type Section } from "../settings/view";
 
 const ViewSchema = z.enum([
   "home",

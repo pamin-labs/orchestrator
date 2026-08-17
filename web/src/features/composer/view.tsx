@@ -2,14 +2,14 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { ClipboardPaste, Paperclip, SquareSlash, X } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
-import { Button } from "./button";
-import { Textarea } from "./bits";
-import { Card, CardHeader, CardTitle } from "./card";
-import { ask } from "./confirm";
-import { cn } from "../lib/utils";
-import { FilePicker } from "../views/picker";
+import { Button } from "../../ui/button";
+import { Textarea } from "../../ui/bits";
+import { Card, CardHeader, CardTitle } from "../../ui/card";
+import { ask } from "../../ui/confirm";
+import { cn } from "../../ui/cn";
+import { FilePicker } from "../picker/view";
 import { z } from "zod";
-import { api, readApi, readJson } from "../lib/api";
+import { api, readApi, readJson } from "../../shared/api";
 import type { InferResponseType } from "hono/client";
 import {
   appendLine,
@@ -32,7 +32,7 @@ import {
   type SavedAttachment,
   type Skill,
   type Slash,
-} from "../features/composer/model";
+} from "./model";
 
 export { SkillSchema };
 export type { Draft, Skill };

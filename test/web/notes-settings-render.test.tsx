@@ -13,14 +13,14 @@ import type { ReactNode } from "react";
 import type { PanelNote } from "../../src/contracts/panel.ts";
 import { matchSkills, skillTally } from "../../web/src/features/skills/model.ts";
 import { Combobox, committed } from "../../web/src/ui/combobox.tsx";
-import { switchRow } from "../../web/src/ui/switcher.tsx";
+import { switchRow } from "../../web/src/features/navigation/switcher.tsx";
 import { isThemeHotkey, ThemeChoice } from "../../web/src/ui/theme.tsx";
-import type { Skill } from "../../web/src/ui/composer.tsx";
+import type { Skill } from "../../web/src/features/composer/view.tsx";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
-import { NotesBoard } from "../../web/src/views/notes.tsx";
-import { SandboxServerSettings, visibleSection } from "../../web/src/views/settings.tsx";
-import { CredPane } from "../../web/src/views/settings/credentials.tsx";
-import { Skills } from "../../web/src/views/skills.tsx";
+import { NotesBoard } from "../../web/src/features/notes/view.tsx";
+import { SandboxServerSettings, visibleSection } from "../../web/src/features/settings/view.tsx";
+import { CredPane } from "../../web/src/features/settings/credentials.tsx";
+import { Skills } from "../../web/src/features/skills/view.tsx";
 
 /**
  * The panes the boss configures, and the blackboard they read memory from.

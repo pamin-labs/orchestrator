@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { prUrl } from "../../web/src/lib/select";
-import { repoHref } from "../../web/src/lib/utils";
+import { prUrl } from "../../web/src/shared/select";
+import { repoHref } from "../../web/src/shared/github";
 import type { Group, Project, Snapshot } from "../../src/contracts/panel.ts";
 
 const state = (remote: string): Snapshot => ({

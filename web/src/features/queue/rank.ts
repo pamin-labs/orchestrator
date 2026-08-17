@@ -1,5 +1,5 @@
-import type { State } from "./api";
-import { K } from "./utils";
+import type { State } from "../../shared/api";
+import { K } from "../../shared/format";
 
 /**
  * Why one thing on the boss's list outranks another.

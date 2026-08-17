@@ -1,6 +1,6 @@
-import type { State } from "../../lib/api";
-import { countWaiting, pending, projectState } from "../../lib/select";
-import { K } from "../../lib/utils";
+import type { State } from "../../shared/api";
+import { countWaiting, pending, projectState } from "../../shared/select";
+import { K } from "../../shared/format";
 
 const LIVE = new Set(["RUNNING", "PLANNING"]);
 

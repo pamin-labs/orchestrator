@@ -1,17 +1,18 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { Empty, Meta, Pane } from "../ui/bits";
-import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
-import { Bar } from "../ui/table";
-import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
-import { Tip } from "../ui/tooltip";
-import { BurnChart, SplitDonut } from "../ui/chart";
-import type { Agent, AgentCost, Cost, PanelFrame, Slice, State } from "../lib/api";
-import { owns } from "../lib/select";
-import { cn, K } from "../lib/utils";
-import { activityOf } from "../lib/activity";
+import { Empty, Meta, Pane } from "../../ui/bits";
+import { Button } from "../../ui/button";
+import { Badge } from "../../ui/badge";
+import { Bar } from "../../ui/table";
+import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
+import { Tip } from "../../ui/tooltip";
+import { BurnChart, SplitDonut } from "./chart";
+import type { Agent, AgentCost, Cost, PanelFrame, Slice, State } from "../../shared/api";
+import { owns } from "../../shared/select";
+import { K } from "../../shared/format";
+import { cn } from "../../ui/cn";
+import { activityOf } from "../../shared/activity";
 
 /**
  * Per docs/project/plan.md §8: current slice, turn count, the live last line, model, spend.

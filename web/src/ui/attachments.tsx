@@ -2,8 +2,9 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Tip } from "./tooltip";
-import { splitAttachments, type Attached } from "../lib/attach";
-import { cn, nl } from "../lib/utils";
+import { splitAttachments, type Attached } from "./attach";
+import { nl } from "../shared/prose";
+import { cn } from "./cn";
 
 /**
  * A message, and the files that came with it.

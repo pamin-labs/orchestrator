@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { jsonOr } from "../../../../src/contracts/json.ts";
-import type { Agent, Escalation, Group, Slice, State } from "../../lib/api";
-import { activityOf } from "../../lib/activity";
-import { gates, heldApproved, STOPS } from "../../lib/select";
-import { waited } from "../../lib/utils";
+import type { Agent, Escalation, Group, Slice, State } from "../../shared/api";
+import { activityOf } from "../../shared/activity";
+import { gates, heldApproved, STOPS } from "../../shared/select";
+import { waited } from "../../shared/format";
 
 /**
  * What the requirement page decides, with no JSX around it.

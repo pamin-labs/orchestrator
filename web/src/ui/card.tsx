@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "../lib/utils";
+import { cn } from "./cn";
 
 /**
  * A bordered surface, in the three tones this panel has.

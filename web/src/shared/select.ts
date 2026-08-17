@@ -1,4 +1,5 @@
 import type { Escalation, Group, Slice, State } from "./api";
+import { githubRepo } from "./github";
 import { z } from "zod";
 import { jsonOr } from "../../../src/contracts/json.ts";
 
@@ -124,21 +125,6 @@ export function prUrl(st: State, g: Group) {
 }
 
 const projectRemote = (st: State, projectId: number) => st.projects.find((p) => p.id === projectId)?.remote ?? "";
-
-/**
- * `owner/name` from a remote, or nothing.
- *
- * The name segment used to be `(.+?)`, which matches slashes, so a remote of
- * `github.com/o/n/../../x` produced the repository `o/n/../../x` and the link
- * built from it left the repository it claimed to point at. `repoHref` in
- * `lib/utils.ts` already checked both segments against this shape and says why
- * in its own comment; this is the same check at the other place a GitHub URL is
- * assembled from stored text.
- */
-const githubRepo = (remote: string) => {
-  const match = /github\.com[:/]+([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(remote);
-  return match ? `${match[1]}/${match[2]}` : null;
-};
 
 /**
  * This group's open questions. Answered ones are history, not a decision.

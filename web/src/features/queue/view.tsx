@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { Button, LinkButton } from "../ui/button";
-import { Tip } from "../ui/tooltip";
-import { Meta } from "../ui/bits";
-import { AnswerDraftSchema, api, mutate, readApi } from "../lib/api";
-import { usePaged } from "../lib/page";
-import type { State } from "../lib/api";
-import { groupName } from "../lib/rank";
-import { KIND_ZH } from "../lib/select";
-import { cn, K } from "../lib/utils";
-import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type QueueItem } from "../features/queue/model";
+import { Button, LinkButton } from "../../ui/button";
+import { Tip } from "../../ui/tooltip";
+import { Meta } from "../../ui/bits";
+import { AnswerDraftSchema, api, mutate, readApi } from "../../shared/api";
+import { usePaged } from "../../shared/page";
+import type { State } from "../../shared/api";
+import { groupName } from "./rank";
+import { KIND_ZH } from "../../shared/select";
+import { K } from "../../shared/format";
+import { cn } from "../../ui/cn";
+import { foldQueueItems, queueClusters, queueItems, type QueueCluster, type QueueItem } from "./model";
 
 /**
  * Everything waiting on the boss, ordered by what ignoring it costs.

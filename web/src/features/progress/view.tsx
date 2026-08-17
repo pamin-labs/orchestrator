@@ -1,13 +1,14 @@
-import { Meta, Pane } from "../ui/bits";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Tab, TabList, TabPanel, Tabs } from "../ui/tabs";
-import { Tip } from "../ui/tooltip";
-import { prUrl } from "../lib/select";
-import type { Archived, Group, Slice, State } from "../lib/api";
-import { usePaged } from "../lib/page";
-import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../lib/select";
-import { cn, K } from "../lib/utils";
+import { Meta, Pane } from "../../ui/bits";
+import { Badge } from "../../ui/badge";
+import { Button } from "../../ui/button";
+import { Tab, TabList, TabPanel, Tabs } from "../../ui/tabs";
+import { Tip } from "../../ui/tooltip";
+import { prUrl } from "../../shared/select";
+import type { Archived, Group, Slice, State } from "../../shared/api";
+import { usePaged } from "../../shared/page";
+import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../../shared/select";
+import { K } from "../../shared/format";
+import { cn } from "../../ui/cn";
 
 /** Requirements are state-filtered, paged, and counted on their tabs. */
 
