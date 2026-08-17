@@ -105,75 +105,63 @@ export async function summarise(
   opts: { maxCalls?: number; previous?: Tree } = {},
 ): Promise<{ tree: Tree; calls: number; failed: number }> {
   const prev = opts.previous ?? {};
-  let calls = 0;
-  let failed = 0;
-  const budget = opts.maxCalls ?? 40;
+  const state = { calls: 0, failed: 0, budget: opts.maxCalls ?? 40 };
 
   const files = Object.values(tree).filter((n) => n.kind === "file");
-  for (const n of files) {
-    const head = read(n.id)?.slice(0, HEAD_CHARS);
+  for (const node of files) {
+    const head = read(node.id)?.slice(0, HEAD_CHARS);
     if (!head) continue;
-    const sig = sigOf(head);
-    const old = prev[n.id];
-    if (old && old.sig === sig) {
-      n.sig = sig;
-      n.summary = old.summary;
-      continue;
-    }
-    if (calls >= budget) continue; // Next tick takes the rest; a partial tree still works.
-    calls++;
-    const summary = oneLine(
-      await ask(
-        (n.id.startsWith(NOTE_PREFIX)
-          ? `One line, under 20 words: what does this note establish? Name the decision or fact, not the format.\n\n`
-          : `One line, under 20 words: what is ${n.id} for? Name the thing it owns, not its language.\n\n`) +
-          `----\n${head}\n----`,
-      ),
-    );
-    // The signature is written only on an answer.
-    //
-    // It used to be stamped before the call and kept whatever came back, `""`
-    // included, so that a broken model would not be retried every thirty seconds
-    // forever. That traded a retry loop for something worse: on a machine where
-    // the ask could not work at all, every node got an empty summary *and* a
-    // signature, the next tick matched it, and the index was permanently empty
-    // while reporting itself built. Cost is bounded by `maxCalls` per tick
-    // already; nothing needs a failure cached as if it were a success.
-    if (!summary) {
-      failed++;
-      continue;
-    }
-    n.sig = sig;
-    n.summary = summary;
+    await summariseNode(node, head, filePrompt(node.id, head), prev, ask, state);
   }
 
-  // The root is never shown in a menu — search starts from its children — so a
-  // summary of "the whole repo" would be a model call nobody reads.
   const dirs = Object.values(tree)
     .filter((n) => n.kind === "dir" && n.id !== "/")
     .sort((a, b) => b.id.split("/").length - a.id.split("/").length);
-  for (const d of dirs) {
-    const kids = d.children.map((c) => `${c}: ${tree[c]?.summary ?? ""}`).join("\n");
-    const sig = sigOf(kids);
-    const old = prev[d.id];
-    if (old && old.sig === sig) {
-      d.sig = sig;
-      d.summary = old.summary;
-      continue;
-    }
-    if (calls >= budget) continue;
-    calls++;
-    const summary = oneLine(
-      await ask(`One line, under 20 words: what does ${d.id} hold, as a whole?\n\n${kids.slice(0, 4000)}`),
+  for (const node of dirs) {
+    const children = node.children.map((id) => `${id}: ${tree[id]?.summary ?? ""}`).join("\n");
+    await summariseNode(
+      node,
+      children,
+      `One line, under 20 words: what does ${node.id} hold, as a whole?\n\n${children.slice(0, 4000)}`,
+      prev,
+      ask,
+      state,
     );
-    if (!summary) {
-      failed++;
-      continue;
-    }
-    d.sig = sig;
-    d.summary = summary;
   }
-  return { tree, calls, failed };
+  return { tree, calls: state.calls, failed: state.failed };
+}
+
+function filePrompt(id: string, head: string): string {
+  const instruction = id.startsWith(NOTE_PREFIX)
+    ? "One line, under 20 words: what does this note establish? Name the decision or fact, not the format."
+    : `One line, under 20 words: what is ${id} for? Name the thing it owns, not its language.`;
+  return `${instruction}\n\n----\n${head}\n----`;
+}
+
+async function summariseNode(
+  node: Node,
+  content: string,
+  prompt: string,
+  previous: Tree,
+  ask: Ask,
+  state: { calls: number; failed: number; budget: number },
+): Promise<void> {
+  const sig = sigOf(content);
+  const old = previous[node.id];
+  if (old?.sig === sig) {
+    node.sig = sig;
+    node.summary = old.summary;
+    return;
+  }
+  if (state.calls >= state.budget) return;
+  state.calls++;
+  const summary = oneLine(await ask(prompt));
+  if (!summary) {
+    state.failed++;
+    return;
+  }
+  node.sig = sig;
+  node.summary = summary;
 }
 
 const oneLine = (s: string) => s.trim().split("\n").findLast(Boolean)?.slice(0, 160) ?? "";
@@ -200,36 +188,47 @@ export async function search(
 
   for (let level = 0; level < depth && frontier.length; level++) {
     const candidates = frontier;
-    const menu = candidates
-      .map((id) => `${id} — ${tree[id]?.summary || (tree[id]?.kind === "dir" ? "(directory)" : "(file)")}`)
-      .join("\n");
+    const menu = candidates.map((id) => menuLine(tree, id)).join("\n");
     const answer = await ask(
       `Question: ${question}\n\n` +
         `Which of these are worth opening to answer it? Reply with at most ${width} ids, one per line, ` +
         `nothing else. Reply NONE if none of them are relevant.\n\n${menu}`,
     );
-    const picked = answer
-      .split("\n")
-      .map((l) => l.trim().replace(/^[-*\d.\s]+/, ""))
-      .filter((l) => candidates.includes(l))
-      .slice(0, width);
+    const picked = pickedIds(answer, candidates, width);
     // The model declining is an answer: nothing here is relevant, and handing back
     // the frontier anyway would turn "no" into a top-k guess, which is the failure
     // mode this method exists to avoid.
     if (picked.length === 0) return opened;
 
-    const next: string[] = [];
-    for (const id of picked) {
-      const n = tree[id];
-      if (!n) continue;
-      if (n.kind === "file") opened.push(id);
-      else next.push(...n.children);
-    }
-    frontier = next;
+    frontier = openNodes(tree, picked, opened);
   }
   // Ran out of depth with directories still open: where to look is still an answer.
   if (opened.length === 0) return frontier.slice(0, width);
   return opened;
+}
+
+function menuLine(tree: Tree, id: string): string {
+  const node = tree[id];
+  return `${id} — ${node?.summary || (node?.kind === "dir" ? "(directory)" : "(file)")}`;
+}
+
+function pickedIds(answer: string, candidates: string[], width: number): string[] {
+  return answer
+    .split("\n")
+    .map((line) => line.trim().replace(/^[-*\d.\s]+/, ""))
+    .filter((line) => candidates.includes(line))
+    .slice(0, width);
+}
+
+function openNodes(tree: Tree, picked: string[], opened: string[]): string[] {
+  const next: string[] = [];
+  for (const id of picked) {
+    const node = tree[id];
+    if (!node) continue;
+    if (node.kind === "file") opened.push(id);
+    else next.push(...node.children);
+  }
+  return next;
 }
 
 export function render(tree: Tree, ids: string[]): string {
