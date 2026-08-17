@@ -463,9 +463,7 @@ export function sessionFor(turn: {
   sessionId: string;
   agent: { session_id?: string | null };
 }): { newSessionId: string } | { resumeSessionId: string } {
-  return turn.rotate || !turn.agent.session_id
-    ? { newSessionId: turn.sessionId }
-    : { resumeSessionId: turn.sessionId };
+  return turn.rotate || !turn.agent.session_id ? { newSessionId: turn.sessionId } : { resumeSessionId: turn.sessionId };
 }
 
 function turnSpec(ctx: Ctx, cfg: Config, job: Job<"agent_turn">, turn: PreparedTurn, prompt: string, logPath: string) {

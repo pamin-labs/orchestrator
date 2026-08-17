@@ -1,4 +1,5 @@
 import { existsSync, readdirSync } from "node:fs";
+import { activeTracer } from "../../platform/observability/traces.ts";
 import { resolve } from "node:path";
 import type { DB } from "../../platform/persistence/database.ts";
 import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "../sandbox/auth.ts";
@@ -473,6 +474,23 @@ function codexRefresherCheck(db: DB): Check | null {
 }
 
 export async function preflight(input: PreflightInput): Promise<Check[]> {
+  // Timed because of what is inside it, not because it is slow on paper: three
+  // network probes with 3–6s timeouts, and three `spawnSync` calls to the docker
+  // daemon that **block the event loop** for their duration. A blocked loop does
+  // not show up as a slow span of its own — it shows up as every other span
+  // being slow, which is the hardest shape to diagnose from a panel. The HTTP
+  // route was already timed; this covers the readiness ticker, which is the path
+  // that runs when nobody is looking.
+  return activeTracer().startActiveSpan("preflight.check", async (span) => {
+    try {
+      return await preflightInner(input);
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function preflightInner(input: PreflightInput): Promise<Check[]> {
   const out: Check[] = [];
   // Injectable so a test can assert both deployments without a container.
   const contained = input.contained ?? inContainer();

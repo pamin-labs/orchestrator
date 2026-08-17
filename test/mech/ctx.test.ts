@@ -62,8 +62,7 @@ function indexed(rows: Array<{ kind: string; body: string; at?: number }>) {
       row.at ?? 0,
     ]);
   }
-  const hits = (question: string, now = 0) =>
-    makeNoteIndex(db).search(question, { grpId: null, projectId: p.id }, now);
+  const hits = (question: string, now = 0) => makeNoteIndex(db).search(question, { grpId: null, projectId: p.id }, now);
   return { db, hits };
 }
 
