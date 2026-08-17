@@ -86,7 +86,9 @@ export function makeApp(ctx: Ctx, runtime: RuntimeStatus = runtimeStatus()): (re
     const ready = runtime.accepting && runtime.ready && runtime.checks.every((check) => check.ok);
     return c.json({ status: ready ? "ready" : "not_ready", checks: runtime.checks }, ready ? 200 : 503);
   });
-  app.get("/metrics", (c) => c.text(prometheus(ctx.db), 200, { "content-type": "text/plain; version=0.0.4" }));
+  app.get("/metrics", async (c) =>
+    c.text(await prometheus(ctx.db), 200, { "content-type": "text/plain; version=0.0.4" }),
+  );
 
   app.use("*", async (c, next) => {
     if (

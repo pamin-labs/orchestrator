@@ -1,6 +1,11 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { AggregationType, MeterProvider, MetricReader, type ViewOptions } from "@opentelemetry/sdk-metrics";
+import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { JOB_STATES } from "../../contracts/states.ts";
 import type { DB } from "../persistence/database.ts";
-import { droppedSpans, exportSpan, type Trace } from "./traces.ts";
+import { endSpan, shutdownTracing, type Trace } from "./traces.ts";
 
 /**
  * What this process counts about itself, rendered for Prometheus.
@@ -10,24 +15,126 @@ import { droppedSpans, exportSpan, type Trace } from "./traces.ts";
  * collector being down. What they share is the observation call — an HTTP
  * request produces both a counter and a span — so `observeHttp` sits here and
  * hands the span off.
+ *
+ * `/metrics` is loopback-only (ADR 012, gated in `composition/server.ts`), so
+ * this module renders text for that existing route and never listens anywhere.
+ * `PrometheusExporter` is deliberately not used: it starts its own server on
+ * every interface and would walk around that gate.
  */
-
-const requests = new Map<string, { count: number; seconds: number }>();
-const retries = new Map<string, number>();
-const caches = new Map<string, { hits: number; misses: number; size: number }>();
 
 /**
  * A ceiling on distinct label combinations.
  *
- * Route labels come from request paths, so an unmatched path is attacker-chosen
- * input to a map that is never cleared. Past the ceiling everything collapses
- * into one `overflow` series: the metric stops being precise rather than the
- * process running out of memory.
+ * Route labels derive from request paths, so an unmatched path is attacker-chosen
+ * input to state that is never cleared. Past the ceiling the SDK collapses
+ * everything into one `otel_metric_overflow` series: the metric stops being
+ * precise rather than the process running out of memory.
  */
-const MAX_REQUEST_SERIES = 512;
+export const MAX_REQUEST_SERIES = 512;
+
+const HTTP_DURATION = "orchestrator_http_request_duration_seconds";
+
+/**
+ * Exported so the ceiling can be proven against the real configuration.
+ *
+ * The instruments below are process-wide, so a test that filled 512 series to
+ * watch them collapse would push every other series in the suite into overflow
+ * with them. Building a throwaway provider from this same array proves the
+ * limit without spending the running process's budget.
+ */
+export const metricViews: ViewOptions[] = [
+  { instrumentName: "orchestrator_http_requests_total", aggregationCardinalityLimit: MAX_REQUEST_SERIES },
+  {
+    instrumentName: HTTP_DURATION,
+    aggregationCardinalityLimit: MAX_REQUEST_SERIES,
+    aggregation: {
+      type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+      options: { boundaries: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10] },
+    },
+  },
+];
+
+/** Pull-only. `/metrics` calls `collect()`; nothing is pushed and no port is opened. */
+class PullReader extends MetricReader {
+  protected override async onForceFlush(): Promise<void> {}
+  protected override async onShutdown(): Promise<void> {}
+}
+
+const reader = new PullReader();
+
+const meterProvider = new MeterProvider({
+  resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: "orchestrator" }),
+  readers: [reader],
+  views: metricViews,
+});
+
+const meter = meterProvider.getMeter("orchestrator");
+
+const httpRequests = meter.createCounter("orchestrator_http_requests_total", {
+  description: "Completed HTTP requests.",
+});
+const httpDuration = meter.createHistogram(HTTP_DURATION, {
+  description: "Time to complete an HTTP request.",
+  unit: "s",
+});
+const retries = meter.createCounter("orchestrator_retries_total", { description: "Retried operations by owner." });
+const cacheRequests = meter.createCounter("orchestrator_cache_requests_total", {
+  description: "Cache lookups by owner and result.",
+});
+const cacheEntries = meter.createGauge("orchestrator_cache_entries", { description: "Entries held by owner." });
+const droppedTelemetry = meter.createCounter("orchestrator_telemetry_dropped_total", {
+  description: "Spans the exporter failed to deliver.",
+});
+// Seeded so the series exists at zero. A counter that only appears after the
+// first loss reads as "no data" on the dashboard that is watching for loss.
+droppedTelemetry.add(0);
 
 const loop = monitorEventLoopDelay({ resolution: 20 });
 loop.enable();
+
+meter
+  .createObservableGauge("orchestrator_event_loop_delay_seconds", {
+    description: "Event loop delay observed by the process.",
+    unit: "s",
+  })
+  .addCallback((result) => {
+    result.observe(Number.isFinite(loop.mean) ? loop.mean / 1e9 : 0, { stat: "mean" });
+    result.observe(loop.max / 1e9, { stat: "max" });
+  });
+
+meter
+  .createObservableGauge("process_resident_memory_bytes", { description: "Resident set size.", unit: "By" })
+  .addCallback((result) => result.observe(process.memoryUsage().rss));
+
+meter
+  .createObservableGauge("process_heap_bytes", { description: "Heap in use and reserved.", unit: "By" })
+  .addCallback((result) => {
+    const memory = process.memoryUsage();
+    result.observe(memory.heapUsed, { kind: "used" });
+    result.observe(memory.heapTotal, { kind: "total" });
+  });
+
+/**
+ * The database this scrape reads job counts from.
+ *
+ * Job state lives in SQLite, not in a counter here, so it is queried at
+ * collection time. `prometheus()` sets this immediately before `collect()` runs
+ * the callback synchronously, and clears it after, so no handle outlives a scrape.
+ */
+let scrapeDb: DB | undefined;
+
+meter.createObservableGauge("orchestrator_jobs", { description: "Jobs by lifecycle state." }).addCallback((result) => {
+  if (!scrapeDb) return;
+  const rows = scrapeDb
+    .query<{ state: string; count: number }, []>("SELECT state, count(*) AS count FROM job GROUP BY state")
+    .all();
+  const counts = new Map(rows.map((row) => [row.state, row.count]));
+  // Every state is observed, including the empty ones. A gauge keeps its last
+  // value for an attribute set nobody reported this cycle, so reporting only the
+  // states that have rows would leave a drained queue showing its old depth
+  // forever — the reading an operator is most likely to act on.
+  for (const state of JOB_STATES) result.observe(counts.get(state) ?? 0, { state });
+});
 
 export interface RuntimeStatus {
   accepting: boolean;
@@ -46,92 +153,67 @@ function routeLabel(path: string): string {
   return path.replace(/\/\d+(?=\/|$)/g, "/:id");
 }
 
-function label(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n");
-}
-
 export function observeHttp(method: string, path: string, status: number, trace: Trace): void {
   const seconds = Number(process.hrtime.bigint() - trace.started) / 1e9;
   const route = routeLabel(path);
-  const candidate = `${method}\0${route}\0${status}`;
-  const key =
-    requests.has(candidate) || requests.size < MAX_REQUEST_SERIES ? candidate : `${method}\0overflow\0${status}`;
-  const current = requests.get(key) ?? { count: 0, seconds: 0 };
-  current.count += 1;
-  current.seconds += seconds;
-  requests.set(key, current);
-  exportSpan(`${method} ${route}`, 2, status >= 500, seconds, trace, [
-    { key: "http.request.method", value: { stringValue: method } },
-    { key: "http.route", value: { stringValue: route } },
-    { key: "http.response.status_code", value: { intValue: status } },
-  ]);
+  const attributes = { method, route, status: String(status) };
+  httpRequests.add(1, attributes);
+  httpDuration.record(seconds, attributes);
+  endSpan(trace, `${method} ${route}`, status >= 500, {
+    "http.request.method": method,
+    "http.route": route,
+    "http.response.status_code": status,
+  });
 }
 
 export function observeJob(kind: string, ok: boolean, trace: Trace): void {
-  const seconds = Number(process.hrtime.bigint() - trace.started) / 1e9;
-  exportSpan(`job ${kind}`, 1, !ok, seconds, trace, [
-    { key: "job.kind", value: { stringValue: kind } },
-    { key: "job.status", value: { stringValue: ok ? "done" : "failed" } },
-  ]);
+  endSpan(trace, `job ${kind}`, !ok, { "job.kind": kind, "job.status": ok ? "done" : "failed" });
 }
 
 export function recordRetry(owner: string): void {
-  retries.set(owner, (retries.get(owner) ?? 0) + 1);
+  retries.add(1, { owner });
 }
 
 export function recordCache(owner: string, hit: boolean, size: number): void {
-  const cache = caches.get(owner) ?? { hits: 0, misses: 0, size: 0 };
-  if (hit) cache.hits += 1;
-  else cache.misses += 1;
-  cache.size = size;
-  caches.set(owner, cache);
+  cacheRequests.add(1, { owner, result: hit ? "hit" : "miss" });
+  cacheEntries.record(size, { owner });
 }
 
-export function prometheus(db?: DB): string {
-  const lines = [
-    "# HELP orchestrator_http_requests_total Completed HTTP requests.",
-    "# TYPE orchestrator_http_requests_total counter",
-  ];
-  for (const [key, value] of [...requests].sort(([a], [b]) => a.localeCompare(b))) {
-    const [method, route, status] = key.split("\0");
-    const labels = `method="${label(method!)}",route="${label(route!)}",status="${label(status!)}"`;
-    lines.push(`orchestrator_http_requests_total{${labels}} ${value.count}`);
-    lines.push(`orchestrator_http_request_duration_seconds_sum{${labels}} ${value.seconds}`);
-    lines.push(`orchestrator_http_request_duration_seconds_count{${labels}} ${value.count}`);
-  }
-  lines.push("# HELP orchestrator_event_loop_delay_seconds Event loop delay observed by the process.");
-  lines.push("# TYPE orchestrator_event_loop_delay_seconds gauge");
-  lines.push(`orchestrator_event_loop_delay_seconds{stat="mean"} ${Number.isFinite(loop.mean) ? loop.mean / 1e9 : 0}`);
-  lines.push(`orchestrator_event_loop_delay_seconds{stat="max"} ${loop.max / 1e9}`);
-  const memory = process.memoryUsage();
-  lines.push("# TYPE process_resident_memory_bytes gauge");
-  lines.push(`process_resident_memory_bytes ${memory.rss}`);
-  lines.push("# TYPE process_heap_bytes gauge");
-  lines.push(`process_heap_bytes{kind="used"} ${memory.heapUsed}`);
-  lines.push(`process_heap_bytes{kind="total"} ${memory.heapTotal}`);
-  lines.push("# TYPE orchestrator_telemetry_dropped_total counter");
-  lines.push(`orchestrator_telemetry_dropped_total ${droppedSpans()}`);
-  for (const [owner, count] of retries) {
-    lines.push(`orchestrator_retries_total{owner="${label(owner)}"} ${count}`);
-  }
-  for (const [owner, cache] of caches) {
-    lines.push(`orchestrator_cache_requests_total{owner="${label(owner)}",result="hit"} ${cache.hits}`);
-    lines.push(`orchestrator_cache_requests_total{owner="${label(owner)}",result="miss"} ${cache.misses}`);
-    lines.push(`orchestrator_cache_entries{owner="${label(owner)}"} ${cache.size}`);
-  }
-  if (db) {
-    const jobs = db
-      .query<{ state: string; count: number }, []>("SELECT state, count(*) AS count FROM job GROUP BY state")
-      .all();
-    for (const job of jobs) {
-      lines.push(`orchestrator_jobs{state="${label(job.state)}"} ${job.count}`);
-    }
-  }
-  lines.push("");
-  return lines.join("\n");
+/** Spans that left the queue but never landed. Counted so the loss is visible. */
+export function recordDroppedSpans(count: number): void {
+  droppedTelemetry.add(count);
 }
 
-/** Stops the event-loop sampler, which otherwise keeps the process alive. */
+/**
+ * The Prometheus text for one scrape.
+ *
+ * `target_info` and the `otel_scope_*` labels the serializer adds by default are
+ * suppressed: they carry no information a single-service process needs and would
+ * change every existing series' label set.
+ */
+export async function prometheus(db: DB): Promise<string> {
+  scrapeDb = db;
+  try {
+    const collected = await reader.collect();
+    return new PrometheusSerializer(undefined, false, undefined, true, true).serialize(collected.resourceMetrics);
+  } finally {
+    scrapeDb = undefined;
+  }
+}
+
+/**
+ * Stops the event-loop sampler, which otherwise keeps the process alive, and
+ * gives the span processor a last chance to flush.
+ *
+ * The meter provider is deliberately never shut down. It is pull-only: no
+ * timer, no connection, no buffered data, so shutting it down releases nothing
+ * and only makes the reader permanently dead. Since this is called by the
+ * server's shutdown path *and* by any test that drives a real shutdown, and one
+ * Bun process runs every test file, a shut-down reader turns every later
+ * `/metrics` scrape into "MetricReader is shutdown". Shutdown here is
+ * recoverable by construction rather than a one-way door.
+ */
 export function closeTelemetry(): void {
   loop.disable();
+  void shutdownTracing().catch(() => {});
 }

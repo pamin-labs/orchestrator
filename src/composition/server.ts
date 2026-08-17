@@ -42,6 +42,7 @@ import { hold } from "../mech/flow/intercept.ts";
 import { raise } from "../mech/flow/escalate.ts";
 import { restoreWorkspace } from "../mech/flow/start.ts";
 import { closeTelemetry, runtimeStatus, type RuntimeStatus } from "../platform/observability/metrics.ts";
+import { configureTracing } from "../platform/observability/otel.ts";
 import { configureStructuredLogging } from "../platform/observability/logging.ts";
 import { VERSION } from "../platform/process/version.ts";
 
@@ -616,6 +617,9 @@ export function start(overrides: Partial<Config> = {}): Started {
   ctx.reviewVerdict = makeReviewVerdict(execDeps);
   ctx.auditVerdict = makeAuditVerdict(execDeps);
 
+  // Composition installs the span exporter, so no platform module opens a socket
+  // as an import side effect. Without a configured endpoint this does nothing.
+  configureTracing();
   const runtime = runtimeStatus(false);
   const app = makeApp(ctx, runtime);
   const webDir = join(ROOT, "web");

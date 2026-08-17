@@ -1,113 +1,116 @@
 /**
- * W3C trace context, and the OTLP span that carries it off the machine.
+ * W3C trace context, and the OpenTelemetry span that carries it off the machine.
  *
- * Separated from metrics because they answer different questions and fail
- * differently: a metric is a number this process holds, a span is a record
- * shipped to something that may not be listening. The exporter is deliberately
- * lossy — see `MAX_ACTIVE_EXPORTS`.
+ * The SDK owns id generation, batching, retry and export; this module owns only
+ * the shape the rest of the process passes around. A `Trace` is what goes into
+ * `requestContext` for structured logging and into the `job` table's
+ * `trace_id`/`parent_span_id`, so a job's span rejoins the trace of the request
+ * that enqueued it.
+ *
+ * The provider is deliberately not the global one from `@opentelemetry/api`.
+ * Composition installs an exporting provider at boot; tests install their own
+ * with an `InMemorySpanExporter`. Nothing here reaches for a process registry.
  */
 
-const MAX_ACTIVE_EXPORTS = 8;
-let activeExports = 0;
-let droppedExports = 0;
+import {
+  ROOT_CONTEXT,
+  SpanKind,
+  SpanStatusCode,
+  TraceFlags,
+  trace as traceApi,
+  type Attributes,
+  type Context,
+  type Span,
+} from "@opentelemetry/api";
+import { NodeTracerProvider, type BasicTracerProvider } from "@opentelemetry/sdk-trace-node";
 
 export interface Trace {
   traceId: string;
   spanId: string;
-  parentSpanId?: string;
   started: bigint;
-  startedUnixNano: bigint;
+  span: Span;
 }
 
-const newId = (length: number) => crypto.randomUUID().replaceAll("-", "").slice(0, length);
-const startedNow = () => ({ started: process.hrtime.bigint(), startedUnixNano: BigInt(Date.now()) * 1_000_000n });
+const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/i;
+const TRACE_ID = /^[0-9a-f]{32}$/i;
+const SPAN_ID = /^[0-9a-f]{16}$/i;
 
-export function startTrace(traceparent?: string): Trace {
-  const incoming = traceparent?.match(/^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/i);
-  return {
-    traceId: incoming?.[1]?.toLowerCase() ?? newId(32),
-    spanId: newId(16),
-    ...(incoming?.[2] ? { parentSpanId: incoming[2].toLowerCase() } : {}),
-    ...startedNow(),
-  };
+/**
+ * The provider spans come from.
+ *
+ * A provider with no span processors still generates real ids and still parents
+ * correctly; it just never ships anything. That is the right default: trace and
+ * span ids reach logs and job rows whether or not a collector is configured, and
+ * `bun test` performs no network I/O because no exporter was ever installed.
+ */
+let provider: BasicTracerProvider = new NodeTracerProvider();
+let tracer = provider.getTracer("orchestrator");
+
+export function installTracerProvider(next: BasicTracerProvider): void {
+  provider = next;
+  tracer = next.getTracer("orchestrator");
+}
+
+/**
+ * Flushes and stops whatever provider is installed, and leaves a working one
+ * behind.
+ *
+ * The replacement is installed first, so there is never a window where the
+ * installed provider is dead. A shutdown that left one there would be a one-way
+ * door for the whole process: this is called by the server's shutdown path and
+ * by any test that drives it, and one Bun process runs every test file.
+ */
+export function shutdownTracing(): Promise<void> {
+  const closing = provider;
+  installTracerProvider(new NodeTracerProvider());
+  return closing.shutdown();
+}
+
+/**
+ * A context naming a span this process never saw — an upstream caller's, or the
+ * one recorded on a job row by the request that enqueued it. Ill-formed ids
+ * start a fresh trace instead of poisoning one.
+ */
+function remoteParent(traceId?: string | null, spanId?: string | null): Context {
+  if (!traceId || !spanId || !TRACE_ID.test(traceId) || !SPAN_ID.test(spanId)) return ROOT_CONTEXT;
+  return traceApi.setSpanContext(ROOT_CONTEXT, {
+    traceId: traceId.toLowerCase(),
+    spanId: spanId.toLowerCase(),
+    traceFlags: TraceFlags.SAMPLED,
+    isRemote: true,
+  });
+}
+
+function begin(kind: SpanKind, parent: Context): Trace {
+  // Named on `endSpan`, once the matched route or job kind is known. Kind is not
+  // mutable after start, so it is decided by which of the two entry points ran.
+  const span = tracer.startSpan("pending", { kind }, parent);
+  const { traceId, spanId } = span.spanContext();
+  return { traceId, spanId, started: process.hrtime.bigint(), span };
+}
+
+export function startTrace(traceparentHeader?: string): Trace {
+  const incoming = traceparentHeader?.match(TRACEPARENT);
+  return begin(SpanKind.SERVER, remoteParent(incoming?.[1], incoming?.[2]));
 }
 
 export function startChildTrace(traceId?: string | null, parentSpanId?: string | null): Trace {
-  return {
-    traceId: traceId ?? newId(32),
-    spanId: newId(16),
-    ...(parentSpanId ? { parentSpanId } : {}),
-    ...startedNow(),
-  };
+  return begin(SpanKind.INTERNAL, remoteParent(traceId, parentSpanId));
 }
 
 export function traceparent(trace: Trace): string {
   return `00-${trace.traceId}-${trace.spanId}-01`;
 }
 
-/** How many spans were dropped rather than queued. Reported as a metric. */
-export const droppedSpans = (): number => droppedExports;
-
-export type SpanAttribute = { key: string; value: { stringValue: string } | { intValue: number } };
-
 /**
- * Ship one span, or drop it.
+ * Name the span, record what happened, and hand it to the SDK.
  *
- * There is no queue and no retry on purpose. The exporter is a side channel: if
- * the collector is slow or gone, the work being traced must not slow down or
- * fail with it, so beyond `MAX_ACTIVE_EXPORTS` in flight the span is counted and
- * discarded. The count is itself a metric, so the loss is visible rather than
- * silent.
+ * Export never blocks the work being traced: the processor queues in memory and
+ * flushes on its own timer, and drops rather than grows once its queue is full.
  */
-export function exportSpan(
-  name: string,
-  kind: number,
-  failed: boolean,
-  seconds: number,
-  trace: Trace,
-  attributes: SpanAttribute[],
-): void {
-  const base = process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.replace(/\/+$/, "");
-  if (!base) return;
-  if (activeExports >= MAX_ACTIVE_EXPORTS) {
-    droppedExports += 1;
-    return;
-  }
-  const ended = trace.startedUnixNano + BigInt(Math.round(seconds * 1e9));
-  const body = {
-    resourceSpans: [
-      {
-        resource: { attributes: [{ key: "service.name", value: { stringValue: "orchestrator" } }] },
-        scopeSpans: [
-          {
-            scope: { name: "orchestrator.http" },
-            spans: [
-              {
-                traceId: trace.traceId,
-                spanId: trace.spanId,
-                ...(trace.parentSpanId ? { parentSpanId: trace.parentSpanId } : {}),
-                name,
-                kind,
-                startTimeUnixNano: trace.startedUnixNano.toString(),
-                endTimeUnixNano: ended.toString(),
-                attributes,
-                status: { code: failed ? 2 : 1 },
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  };
-  activeExports += 1;
-  void fetch(`${base}/v1/traces`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(3_000),
-  })
-    .catch(() => {})
-    .finally(() => {
-      activeExports -= 1;
-    });
+export function endSpan(trace: Trace, name: string, failed: boolean, attributes: Attributes): void {
+  trace.span.updateName(name);
+  trace.span.setAttributes(attributes);
+  trace.span.setStatus({ code: failed ? SpanStatusCode.ERROR : SpanStatusCode.OK });
+  trace.span.end();
 }
