@@ -1,4 +1,4 @@
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import type { Frame, StoredEvent } from "../../contracts/events.ts";
 import type { SSEStreamingApi } from "hono/streaming";
 import { z } from "zod";

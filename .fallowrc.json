@@ -39,7 +39,7 @@
       { "name": "api", "patterns": ["src/api/**"] },
       { "name": "prompt", "patterns": ["src/prompt/**"] },
       { "name": "runtime-adapters", "patterns": ["src/runtime/**"] },
-      { "name": "mechanisms", "patterns": ["src/ctx.ts", "src/mech/**"] },
+      { "name": "mechanisms", "patterns": ["src/mech/**"] },
       { "name": "cli", "patterns": ["src/orch/**"] },
       { "name": "tests", "patterns": ["test/**"] },
       { "name": "scripts", "patterns": ["scripts/**"] }

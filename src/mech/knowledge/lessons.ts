@@ -1,4 +1,4 @@
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../platform/text/lang.ts";
 

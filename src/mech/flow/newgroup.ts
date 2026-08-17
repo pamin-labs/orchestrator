@@ -1,4 +1,4 @@
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 
 /**
  * Starting a requirement: the five writes that have to happen together.

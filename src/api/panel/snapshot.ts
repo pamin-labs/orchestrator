@@ -20,7 +20,7 @@ import { poolSizes } from "../../platform/scheduling/scheduler.ts";
 import { head, position } from "../../mech/flow/mergequeue.ts";
 import type { Handler } from "../../http/handler.ts";
 import { json } from "../../http/respond.ts";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { ESCALATION_TERMINAL_STATES, stateParam } from "../../contracts/states.ts";
 import { z } from "zod";
 

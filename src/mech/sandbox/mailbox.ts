@@ -2,7 +2,7 @@ import { jsonOr } from "../../contracts/json.ts";
 import { errText } from "../../platform/process/text.ts";
 import { consola } from "consola";
 import { z } from "zod";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { JsonValue } from "../../contracts/json.ts";
 import { ProtocolResponse, readJsonResponse } from "../../contracts/protocol.ts";
 import { FILE_MODE, liveSandboxes, MAILBOX_DIR, writeInto } from "./sandbox.ts";

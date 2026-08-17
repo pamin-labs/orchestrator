@@ -1,7 +1,7 @@
 import { jsonOr } from "../../contracts/json.ts";
 import { saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { execIn, putFile, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { claudeUsage, promptPath, UsageSchema, type Usage } from "../../runtime/claude.ts";
 import { codexUsage } from "../../runtime/codex.ts";

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
 import { makeApp } from "../src/api.ts";
-import type { Ctx } from "../src/ctx.ts";
+import type { Ctx } from "../src/mech/ctx.ts";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";

@@ -5,7 +5,7 @@ import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { sendBack } from "../src/mech/flow/review.ts";
 import { makeApp } from "../src/api.ts";
-import type { Ctx } from "../src/ctx.ts";
+import type { Ctx } from "../src/mech/ctx.ts";
 import { Scheduler, type Job } from "../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";

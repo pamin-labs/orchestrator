@@ -18,7 +18,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { httpsRemote } from "../src/mech/git/checkout.ts";
-import type { Ctx } from "../src/ctx.ts";
+import type { Ctx } from "../src/mech/ctx.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { testContext } from "./test-context.ts";
 

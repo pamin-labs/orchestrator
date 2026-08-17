@@ -1,4 +1,4 @@
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 
 /**
  * The last few hundred lines a group's container printed, in memory.

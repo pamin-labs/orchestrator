@@ -15,7 +15,7 @@ import {
 import { utilGit } from "../src/mech/git/checkout.ts";
 import type { GhResult, Github } from "../src/mech/git/github.ts";
 import { makeApp } from "../src/api.ts";
-import type { Ctx } from "../src/ctx.ts";
+import type { Ctx } from "../src/mech/ctx.ts";
 import { evictOldestLessons, LESSON_CAP } from "../src/mech/knowledge/lessons.ts";
 import { landed } from "../src/mech/flow/mergequeue.ts";
 import { AgentTurnPayloadSchema, Scheduler } from "../src/platform/scheduling/scheduler.ts";

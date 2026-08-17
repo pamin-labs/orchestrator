@@ -8,7 +8,7 @@ import { AgentTurnPayloadSchema, Scheduler, type Job } from "../src/platform/sch
 import { makeApp } from "../src/api.ts";
 import { askKind, brief } from "../src/api/orch/escalation.ts";
 import { landGroup } from "../src/api/panel/group.ts";
-import type { Ctx } from "../src/ctx.ts";
+import type { Ctx } from "../src/mech/ctx.ts";
 import { listSkills } from "../src/mech/skills.ts";
 import { landed } from "../src/mech/flow/mergequeue.ts";
 import { sweepApproved } from "../src/mech/flow/start.ts";

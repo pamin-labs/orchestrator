@@ -15,7 +15,7 @@ import { bad, json, message } from "../../http/respond.ts";
 import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
 import { say } from "../../platform/text/lang.ts";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import type { GrpState } from "../../contracts/states.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
 

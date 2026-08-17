@@ -6,7 +6,7 @@ import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { makeApp } from "../src/api.ts";
-import type { Ctx } from "../src/ctx.ts";
+import type { Ctx } from "../src/mech/ctx.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Scope } from "../src/mech/sandbox/sandbox.ts";

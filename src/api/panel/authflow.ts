@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { release } from "../../mech/flow/intercept.ts";
 import {
   APP_SLUG,

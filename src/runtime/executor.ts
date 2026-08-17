@@ -3,7 +3,7 @@ import { basename, join, resolve } from "node:path";
 import { imagePaths } from "../mech/util/attachment-text.ts";
 import type { Config, RoleDef } from "../platform/config/load.ts";
 import { contextWindowFor, DEFAULT_PROVIDER, modelFor } from "../platform/config/load.ts";
-import type { Ctx } from "../ctx.ts";
+import type { Ctx } from "../mech/ctx.ts";
 
 function mintToken(): string {
   return crypto.randomUUID().replaceAll("-", "");

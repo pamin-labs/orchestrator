@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { acceptSlice } from "../../mech/flow/review.ts";
 import { criteriaIn, validateSelfReview } from "../../mech/util/validate.ts";
 import { sliceDiffBase } from "../../mech/git/worktree.ts";

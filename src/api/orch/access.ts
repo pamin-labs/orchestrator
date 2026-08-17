@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { GroupRef } from "../../contracts/fields.ts";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 
 /** Authorize an agent against its group, or its project for standing roles. */

@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, message } from "../../http/respond.ts";

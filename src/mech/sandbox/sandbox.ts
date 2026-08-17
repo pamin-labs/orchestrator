@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { cpus, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { ROOT } from "../../platform/config/load.ts";
 import type { SandboxSpec } from "../../contracts/config.ts";
 import type { ResourceExec } from "../lease.ts";

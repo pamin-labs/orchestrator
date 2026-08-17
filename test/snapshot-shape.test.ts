@@ -5,7 +5,7 @@ import { openMemory } from "../src/platform/persistence/database.ts";
 import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { snapshot } from "../src/api/panel/snapshot.ts";
 import * as S from "../src/contracts/panel.ts";
-import type { Ctx } from "../src/ctx.ts";
+import type { Ctx } from "../src/mech/ctx.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 

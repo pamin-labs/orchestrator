@@ -1,4 +1,4 @@
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { say } from "../../platform/text/lang.ts";
 import { createCheckout, remoteFor } from "../git/checkout.ts";
 import { canStart } from "./ownership.ts";

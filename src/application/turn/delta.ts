@@ -1,4 +1,4 @@
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { say } from "../../platform/text/lang.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";

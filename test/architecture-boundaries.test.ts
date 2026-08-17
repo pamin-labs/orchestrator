@@ -30,7 +30,7 @@ test("Fallow adds only undiscovered entry points and classifies directories by p
     platform: ["src/platform/**"],
     "http-edge": ["src/http/**"],
     "runtime-adapters": ["src/runtime/**"],
-    mechanisms: ["src/ctx.ts", "src/mech/**"],
+    mechanisms: ["src/mech/**"],
     tests: ["test/**"],
     scripts: ["scripts/**"],
   });

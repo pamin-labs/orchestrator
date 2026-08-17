@@ -1,4 +1,4 @@
-import type { Ctx } from "../ctx.ts";
+import type { Ctx } from "../mech/ctx.ts";
 
 /** Who is calling, resolved from the `x-orch-token` an agent was issued. */
 export interface Caller {

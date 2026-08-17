@@ -1,7 +1,7 @@
-import type { DB } from "./platform/persistence/database.ts";
-import type { Bus } from "./platform/persistence/event-bus.ts";
-import type { Scheduler } from "./platform/scheduling/scheduler.ts";
-import type { Config } from "./platform/config/load.ts";
+import type { DB } from "../platform/persistence/database.ts";
+import type { Bus } from "../platform/persistence/event-bus.ts";
+import type { Scheduler } from "../platform/scheduling/scheduler.ts";
+import type { Config } from "../platform/config/load.ts";
 
 /**
  * The handle everything below the HTTP layer is given.
@@ -22,9 +22,9 @@ export interface Ctx {
   /** Resolves a blocking `ask-boss` call. */
   waiters: Map<string, (value: string) => void>;
   /** Where turns, gates and leases run. Absent in unit tests that need no container. */
-  sandbox?: import("./mech/sandbox/sandbox.ts").SandboxDriver;
+  sandbox?: import("./sandbox/sandbox.ts").SandboxDriver;
   /** Talks to GitHub's REST API. Absent in unit tests that need no GitHub. */
-  gh?: import("./mech/git/github.ts").Github;
+  gh?: import("./git/github.ts").Github;
   /**
    * One cheap model call, for PageIndex navigation. Absent in unit tests.
    *
@@ -33,7 +33,7 @@ export interface Ctx {
    * own CLI login — a second credential path nothing in the settings page could
    * see, whose failure mode was a permanently empty index that looked built.
    */
-  askIn?: (scope: import("./mech/sandbox/sandbox.ts").Scope) => import("./mech/knowledge/pageindex.ts").Ask;
+  askIn?: (scope: import("./sandbox/sandbox.ts").Scope) => import("./knowledge/pageindex.ts").Ask;
   /** Wired by the server: advances the review pipeline on a QA verdict. */
   reviewVerdict?: (sliceId: number, pass: boolean, note: string) => void;
   /** Wired by the server: the Auditor's PR-level verdict. */

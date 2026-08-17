@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SplitRequirements } from "../../contracts/orch.ts";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
 import type { AgentHandler } from "../../http/handler.ts";
 import { bad, json, message } from "../../http/respond.ts";

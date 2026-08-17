@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { ApplyGlobalResponse } from "hono/client";
 import { streamSSE } from "hono/streaming";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { IdParams } from "../../contracts/fields.ts";
 import { IdempotencyRecoveryBody, IdempotencyStatusQuery } from "../../contracts/idempotency.ts";
 import {

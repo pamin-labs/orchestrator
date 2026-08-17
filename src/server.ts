@@ -3,7 +3,7 @@ import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs
 import { join } from "node:path";
 import { makeApp } from "./api.ts";
 import { landGroup } from "./api/panel/group.ts";
-import type { Ctx } from "./ctx.ts";
+import type { Ctx } from "./mech/ctx.ts";
 import { joinQueue } from "./mech/flow/mergequeue.ts";
 import { Bus } from "./platform/persistence/event-bus.ts";
 import { consola } from "consola";

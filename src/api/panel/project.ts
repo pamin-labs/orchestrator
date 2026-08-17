@@ -1,7 +1,7 @@
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { SandboxOverrideSchema, StoredProjectConfigSchema } from "../../contracts/config.ts";
 import { JsonObject, JsonValue, jsonOr } from "../../contracts/json.ts";
 import { runInstall } from "../../mech/flow/start.ts";

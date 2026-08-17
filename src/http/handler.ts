@@ -1,4 +1,4 @@
-import type { Ctx } from "../ctx.ts";
+import type { Ctx } from "../mech/ctx.ts";
 import type { Caller } from "./agent-auth.ts";
 
 /**

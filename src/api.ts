@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
 import { matchedRoutes } from "hono/route";
-import type { Ctx } from "./ctx.ts";
+import type { Ctx } from "./mech/ctx.ts";
 import { orchRoutes } from "./http/routes/orch.ts";
 import { panelRoutes } from "./http/routes/panel.ts";
 import { consola } from "consola";

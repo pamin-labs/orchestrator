@@ -2,7 +2,7 @@ import { errText } from "../../platform/process/text.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
 import { putSetting } from "../../platform/config/settings.ts";
 import {

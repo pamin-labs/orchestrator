@@ -1,6 +1,6 @@
 import { errText, tail } from "../../platform/process/text.ts";
 import { z } from "zod";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { execIn, execLines, getBytes, putBytes, SKILL_SYNC, UTIL, WORK, type Scope } from "../sandbox/sandbox.ts";
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { cacheProjectSkills } from "../skills.ts";

@@ -7,7 +7,7 @@ import { SayBody } from "../src/api/orch/messaging.ts";
 import { TriageBody } from "../src/api/orch/escalation.ts";
 import { AgentTurnPayloadSchema, Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { makeApp } from "../src/api.ts";
-import type { Ctx } from "../src/ctx.ts";
+import type { Ctx } from "../src/mech/ctx.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Json } from "../src/contracts/json.ts";

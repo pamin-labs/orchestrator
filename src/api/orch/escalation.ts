@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import {
   abstain,
   CHAIN,

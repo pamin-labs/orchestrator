@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import { TRIAGE, triage } from "../../mech/flow/chain.ts";
 import { projectSkills, skillNames } from "../../mech/skills.ts";
 import { projectOfAgent } from "../../mech/util/rows.ts";

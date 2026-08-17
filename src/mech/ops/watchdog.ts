@@ -1,6 +1,6 @@
 import { jsonOr } from "../../contracts/json.ts";
 import { errText, hours, minutes } from "../../platform/process/text.ts";
-import type { Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../mech/ctx.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { say, type SayKey } from "../../platform/text/lang.ts";
 import { hold, interrupt, park, release, unpark } from "../flow/intercept.ts";
