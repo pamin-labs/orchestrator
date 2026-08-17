@@ -39,7 +39,11 @@ test("task done names the id source and the claim shape it wants", async () => {
 });
 
 test("task done refuses to close a task with no account of what changed", async () => {
-  const empty = await usage(["task", "done", "7", "--claim", ""]);
+  // Whitespace rather than an empty string, deliberately: an empty `--claim` is
+  // falsy, so the CLI decides the claim must be arriving on stdin and waits for
+  // it. Under `bun test` at a terminal that wait is the whole five-second
+  // timeout, and the test was passing only where stdin happened to be closed.
+  const empty = await usage(["task", "done", "7", "--claim", "   "]);
   expect(empty.code).toBe(2);
   expect(empty.message).toContain("--already-done");
 });
