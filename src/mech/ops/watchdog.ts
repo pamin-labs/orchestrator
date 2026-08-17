@@ -12,6 +12,7 @@ import { NEWEST_ROLLOUT, pollUsage } from "./subusage.ts";
 import { CODEX_HOME } from "../sandbox/auth.ts";
 import {
   execIn,
+  EXEC_FANOUT,
   killSandbox,
   renewSandbox,
   pidAlive,
@@ -36,6 +37,7 @@ import { activeTracer } from "../../platform/observability/traces.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
 import { Cron } from "croner";
+import pMap from "p-map";
 import { z } from "zod";
 import {
   ACTIVE_JOB_STATES,
@@ -835,10 +837,12 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   // rather than a module-level `lastSweep` this body checked itself. Same
   // cadence, but it survives a restart and cannot be shared with a second tick.
   await step({ id: "7d2b", name: "container_sessions_swept", every: HOURLY }, async () => {
-    await Promise.allSettled(
-      liveScopes(ctx).map((s) =>
-        execIn(ctx, s, `find ${CODEX_HOME}/sessions -type f -mtime +7 -delete 2>/dev/null || true`),
-      ),
+    await pMap(
+      liveScopes(ctx),
+      (s) => execIn(ctx, s, `find ${CODEX_HOME}/sessions -type f -mtime +7 -delete 2>/dev/null || true`),
+      // `stopOnError: false` is what `allSettled` meant here: one container that
+      // refuses must not cancel the sweep of the other nine.
+      { concurrency: EXEC_FANOUT, stopOnError: false },
     );
   });
 

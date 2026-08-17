@@ -89,14 +89,11 @@ export function byRequirement<T extends { grpId: number | null; points: number }
   return { clustered: clustered.sort((a, b) => b.points - a.points), loose };
 }
 
+/** `Map.groupBy` cannot drop a key, and an item belonging to no requirement is
+ *  not a group of one — so the null bucket is skipped on the way out. */
 function groupByRequirement<T extends { grpId: number | null }>(items: T[]) {
   const groups = new Map<number, T[]>();
-  for (const item of items) {
-    if (item.grpId == null) continue;
-    const list = groups.get(item.grpId) ?? [];
-    list.push(item);
-    groups.set(item.grpId, list);
-  }
+  for (const [id, list] of Map.groupBy(items, (item) => item.grpId)) if (id !== null) groups.set(id, list);
   return groups;
 }
 

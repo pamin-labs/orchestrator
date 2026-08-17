@@ -9,6 +9,7 @@ import { readSetting, writeSetting } from "../../platform/persistence/database.t
 import type { SandboxSpec } from "../../contracts/config.ts";
 import type { ResourceExec } from "../lease.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
+import pMap from "p-map";
 import { scopeAttributes } from "../../platform/observability/metrics.ts";
 import { requestContext } from "../../platform/observability/request-context.ts";
 import { activeTracer } from "../../platform/observability/traces.ts";
@@ -1114,7 +1115,7 @@ async function provision(sb: Sandbox): Promise<void> {
 
 /** Re-link every live container's skills. What a tick of the skills list does. */
 export async function relinkSkills(): Promise<void> {
-  await Promise.all([...live.values()].map((sb) => sb.commands.run(SKILL_SYNC).catch(() => {})));
+  await pMap(live.values(), (sb) => sb.commands.run(SKILL_SYNC).catch(() => {}), { concurrency: EXEC_FANOUT });
 }
 
 /**
@@ -1600,6 +1601,24 @@ export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpt
 
 /** `sh`'s "found it, could not run it". The lease guard already speaks it. */
 export const EXEC_UNAVAILABLE = 126;
+
+/**
+ * How many containers may be reached at once when something fans out over them.
+ *
+ * Four, derived rather than picked: `cfg.sandbox.cpu` left empty means a quarter
+ * of the host's cores, and that cap is **per container**. Every exec in a fan-out
+ * targets a different container, so N of them never contend inside one cap —
+ * they contend on the host, where N caps sum. Ten groups, the shipped default,
+ * is 2.5 hosts' worth of CPU asked for at once, and `maxGroups` can be raised
+ * from the panel while the server runs. Four is one host's worth.
+ *
+ * The throughput this costs is small and measured against the two callers: the
+ * skill relink is a settings click and the session sweep is hourly against a
+ * seven-day window. Both are round-trip overhead rather than work, and the sweep
+ * is disk-bound on a host with one disk queue, so ten at once was never ten
+ * times faster than four.
+ */
+export const EXEC_FANOUT = 4;
 export const execLines = (ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts) =>
   driver(ctx).lines(ctx, scope, cmd, opts);
 export const putFile = (ctx: Ctx, scope: Scope, path: string, data: string) => driver(ctx).put(ctx, scope, path, data);

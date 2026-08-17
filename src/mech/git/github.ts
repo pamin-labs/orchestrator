@@ -1,5 +1,6 @@
 import type { DB } from "../../platform/persistence/database.ts";
 import { Octokit } from "@octokit/core";
+import QuickLRU from "quick-lru";
 import { retry } from "@octokit/plugin-retry";
 import { throttling } from "@octokit/plugin-throttling";
 import { z } from "zod";
@@ -42,6 +43,13 @@ import { currentRequestId, requestContext } from "../../platform/observability/r
 
 const API = "https://api.github.com";
 const TIMEOUT_MS = 15_000;
+/**
+ * ETags kept, before the least recently used is dropped.
+ *
+ * No `maxAge`: a stale ETag costs one conditional request and never a wrong
+ * answer, so time is the wrong axis to evict on. Entries are a URL and a hash.
+ */
+const CACHE_ENTRIES = 500;
 /**
  * Two retries, so three attempts, and reads only.
  *
@@ -238,7 +246,7 @@ type GithubState = {
   kit: InstanceType<typeof GithubKit>;
   notes: Notes;
   lang: string | undefined;
-  cache: Map<string, CacheEntry>;
+  cache: QuickLRU<string, CacheEntry>;
   remaining: number | null;
 };
 type RequestInput<T> = {
@@ -427,9 +435,13 @@ function decoded<T>(input: RequestInput<T>, answer: Answer): Decoded<T> {
 function storeCache(state: GithubState, input: RequestInput<unknown>, answer: Answer, key: string, data: Json): void {
   const etag = header(answer, "etag");
   if (input.method !== "GET" || !etag) return;
-  // ponytail: unbounded otherwise — every `since=` cursor is its own URL.
-  // Entries are small and a restart clears it; a real LRU when it matters.
-  if (state.cache.size > 500) state.cache.clear();
+  // The eviction is `QuickLRU`'s, and the reason is the cache's own purpose. The
+  // rule here used to be `clear()` on overflow, which throws the hot entries out
+  // with the cold ones: every `since=` cursor is a distinct URL and single-use,
+  // while a pull request's URL is re-read on every tick, so the moment the cursor
+  // traffic tipped the count every open PR the poller was serving from a 304
+  // went back to paying full price against the budget this cache exists to
+  // protect. An LRU can tell the two apart; a size check cannot.
   state.cache.set(key, { etag, data });
 }
 
@@ -620,8 +632,11 @@ export function makeGithub(
        * `state.write.key(state.id)`, and a `Bottleneck.Group` mints a separate
        * limiter per key — so the id is what isolates, not who owns the group.
        * Passing our own groups would only change the pacing numbers, and would
-       * mean declaring `bottleneck` directly, which has had no release since
-       * 2019 and so fails `docs/standards/dependencies.md`.
+       * mean declaring `bottleneck` directly, whose last release is 2023-02-22
+       * and so fails the maintenance rule in `docs/standards/dependencies.md`.
+       * (The date here said 2019 until it was checked against npm. The
+       * conclusion held; a wrong date in the reason is how a decision gets
+       * reopened by someone who checks.)
        */
       id: crypto.randomUUID(),
       // Never wait in band. The plugin's own answer to a rate limit is to sleep
@@ -635,7 +650,7 @@ export function makeGithub(
       onSecondaryRateLimit: (retryAfter, options) => noteRetryAfter(notes, options, retryAfter),
     },
   });
-  const state: GithubState = { db, kit, notes, lang, cache: new Map(), remaining: null };
+  const state: GithubState = { db, kit, notes, lang, cache: new QuickLRU({ maxSize: CACHE_ENTRIES }), remaining: null };
 
   return {
     remaining: () => state.remaining,
