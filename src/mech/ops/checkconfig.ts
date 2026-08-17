@@ -39,6 +39,27 @@ const nearest = (key: string, legal: string[]): string | null => {
   return legal.find((c) => c.toLowerCase().includes(k) || k.includes(c.toLowerCase())) ?? null;
 };
 
+function unknownKey(at: string, key: string, legal: string[]): Finding {
+  const near = nearest(key, legal);
+  return {
+    level: "warn",
+    key: at ? `${at}.${key}` : key,
+    says: near ? `没这个键，是不是 ${at ? `${at}.` : ""}${near}` : "没这个键，被忽略了",
+  };
+}
+
+function nestedBlock(value: Json, key: string): JsonMap | null {
+  return isMap(value) && keysUnder(key).length ? value : null;
+}
+
+function invalidValue(schema: ReturnType<typeof schemaAt>, value: Json, key: string): Finding | null {
+  if (!schema) return null;
+  const result = schema.safeParse(value);
+  return result.success
+    ? null
+    : { level: "fatal", key, says: result.error.issues.map(({ message }) => message).join("；") };
+}
+
 /**
  * Check the yaml against `ConfigSchema`, key by key.
  *
@@ -59,12 +80,7 @@ function walk(parsed: JsonMap, at: string, out: Finding[]): void {
     const key = at ? `${at}.${k}` : k;
     const schema = schemaAt(key);
     if (!schema) {
-      const near = nearest(k, siblings);
-      out.push({
-        level: "warn",
-        key,
-        says: near ? `没这个键，是不是 ${at ? `${at}.` : ""}${near}` : "没这个键，被忽略了",
-      });
+      out.push(unknownKey(at, k, siblings));
       continue;
     }
     if (v === null || v === undefined) {
@@ -73,12 +89,13 @@ function walk(parsed: JsonMap, at: string, out: Finding[]): void {
     }
     // A block the schema enumerates is walked so its own keys get the same
     // treatment. A record is a leaf: its keys are model ids and mount points.
-    if (isMap(v) && keysUnder(key).length) {
-      walk(v, key, out);
+    const nested = nestedBlock(v, key);
+    if (nested) {
+      walk(nested, key, out);
       continue;
     }
-    const r = schema.safeParse(v);
-    if (!r.success) out.push({ level: "fatal", key, says: r.error.issues.map((i) => i.message).join("；") });
+    const invalid = invalidValue(schema, v, key);
+    if (invalid) out.push(invalid);
   }
 }
 
