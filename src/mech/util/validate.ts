@@ -5,6 +5,10 @@
  * validator that returns an error and makes the agent rewrite is not. Every
  * length and shape rule in docs/project/plan.md lives here.
  */
+import type { Nodes, Root, RootContent, Table } from "mdast";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 import { z } from "zod";
 
 export interface Invalid {
@@ -16,6 +20,12 @@ export type Result<T> = ({ ok: true } & T) | Invalid;
 const invalid = (error: string): Invalid => ({ ok: false, error });
 
 const JOURNAL_MAX_LINES = 6;
+/**
+ * Content lines, not physical ones: section paragraphs, list items, and slice
+ * rows. Headings and the table header are structure and carry nothing, so they
+ * do not count. Twelve is the same budget the line-per-field card had — six
+ * sections, one line each, plus six lines of detail to spend where it matters.
+ */
 const DRAFT_MAX_LINES = 12;
 
 const JOURNAL_KINDS = ["fact", "decision", "journal", "retro", "handoff", "risk", "onboarding", "lesson"] as const;
@@ -91,7 +101,119 @@ export interface DraftOk {
 
 const DRAFT_FIELDS = ["目标", "不做", "验收", "切片", "风险", "反对"] as const;
 
-function draftSections(lines: string[]): Map<string, string[]> {
+/**
+ * A card, structured, whichever grammar it arrived in.
+ *
+ * `sections` holds one entry per content line, so the rules below never learn
+ * which parser produced them. `slices` is deferred because a malformed slice
+ * must be reported after the missing-section and count checks, not before.
+ */
+interface CardParts {
+  sections: Map<string, string[]>;
+  /** Content lines: what the 12-line cap is a cap on. */
+  count: number;
+  slices: () => Result<{ slices: DraftSlice[] }>;
+}
+
+const markdown = unified().use(remarkParse).use(remarkGfm);
+
+/** Every string a node carries, in order. Emphasis and code markers are structure. */
+function textOf(node: Nodes): string {
+  if ("value" in node && typeof node.value === "string") return node.value;
+  if ("children" in node) return node.children.map(textOf).join("");
+  return "";
+}
+
+/** The DRAFT field this heading names, or null if it names something else. */
+function headingField(node: Nodes): string | null {
+  const name = textOf(node)
+    .trim()
+    .replace(/[:：]\s*$/, "");
+  return (DRAFT_FIELDS as readonly string[]).includes(name) ? name : null;
+}
+
+/** Which section is this node in: the nodes under each field heading, in order. */
+function bySection(root: Root): Map<string, RootContent[]> {
+  const sections = new Map<string, RootContent[]>();
+  let current: RootContent[] | null = null;
+  for (const node of root.children) {
+    if (node.type !== "heading") {
+      current?.push(node);
+      continue;
+    }
+    const field = headingField(node);
+    if (field === null) {
+      current = null;
+      continue;
+    }
+    current = sections.get(field) ?? [];
+    sections.set(field, current);
+  }
+  return sections;
+}
+
+/** Slice rows, cells intact. The header row labels the columns; it is not a slice. */
+function tableRows(node: Table): string[][] {
+  return node.children.slice(1).map((row) => row.children.map((cell) => textOf(cell).trim()));
+}
+
+/**
+ * What does this node contain: one entry per content line.
+ *
+ * A soft-wrapped paragraph is still two lines to a reader, so it is two here —
+ * otherwise the cap is escapable by not pressing enter.
+ */
+function contentLines(node: RootContent): string[] {
+  if (node.type === "table") return tableRows(node).map((cells) => cells.join(" | "));
+  const texts = node.type === "list" ? node.children.map(textOf) : [textOf(node)];
+  return texts.flatMap((text) => text.split("\n").map((line) => line.trim())).filter(Boolean);
+}
+
+/**
+ * Markdown, parsed as Markdown.
+ *
+ * Headings name the sections, list items and paragraphs are their content, and
+ * 切片 is a GFM table because three fields per slice is a shape every Markdown
+ * reader already understands. Returns null when the text has no headings at
+ * all, which is the one signal that it predates this format.
+ */
+function draftMarkdown(text: string): CardParts | null {
+  const root = markdown.parse(text);
+  if (!root.children.some((n) => n.type === "heading")) return null;
+
+  const grouped = bySection(root);
+  const sections = new Map([...grouped].map(([field, nodes]) => [field, nodes.flatMap(contentLines)]));
+  const count = [...sections.values()].reduce((n, lines) => n + lines.length, 0);
+  const rows = grouped.get("切片")?.flatMap((n) => (n.type === "table" ? tableRows(n) : [])) ?? [];
+
+  return { sections, count, slices: () => tableSlices(rows) };
+}
+
+function tableSlices(rows: string[][]): Result<{ slices: DraftSlice[] }> {
+  const slices: DraftSlice[] = [];
+  for (const row of rows) {
+    const title = row[0]?.trim() ?? "";
+    const difficulty = DifficultySchema.safeParse(row[1]?.trim().toLowerCase());
+    const accept = row[2]?.trim() ?? "";
+    if (!title || !accept || !difficulty.success)
+      return invalid(
+        `slice row ${JSON.stringify(row.join(" | "))} must be "| title | trivial|normal|hard | ` +
+          `how it is accepted |". The difficulty column picks the model, so it is not optional.`,
+      );
+    slices.push({ title, difficulty: difficulty.data, accept });
+  }
+  return { ok: true, slices };
+}
+
+/**
+ * LEGACY — cards written before Markdown, still in `note.body`.
+ *
+ * Reached only when a card has no headings at all. Nothing emits this shape any
+ * more; it exists so stored cards approved months ago still parse. Remove in
+ * 0.2.0, once no `note` row with `draft_card` predates the Markdown format.
+ */
+function draftLegacy(text: string): CardParts {
+  const lines = nonEmptyLines(text);
   const sections = new Map<string, string[]>();
   let current: string | null = null;
   for (const line of lines) {
@@ -106,19 +228,23 @@ function draftSections(lines: string[]): Map<string, string[]> {
       sections.get(current)!.push(line.replace(/^\s*[-•]\s*/, "").trim());
     }
   }
-  return sections;
+  return { sections, count: lines.length, slices: () => legacySlices(sections.get("切片") ?? []) };
 }
 
-function draftSlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
+/** LEGACY, with `draftLegacy`: "title [difficulty] — how it is accepted". */
+function legacySlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
   const slices: DraftSlice[] = [];
   for (const raw of rawSlices) {
-    const parsed = parseSlice(raw);
-    if (!parsed)
+    const m = /^(.*?)\[(\w+)\]\s*(?:[—–-]+\s*)?(.*)$/.exec(raw);
+    const title = m?.[1]?.trim();
+    const difficulty = DifficultySchema.safeParse(m?.[2]?.toLowerCase());
+    const accept = m?.[3]?.trim();
+    if (!title || !accept || !difficulty.success)
       return invalid(
         `slice ${JSON.stringify(raw)} must read "title [trivial|normal|hard] — how it is ` +
           `accepted". The difficulty tag picks the model, so it is not optional.`,
       );
-    slices.push(parsed);
+    slices.push({ title, difficulty: difficulty.data, accept });
   }
   return { ok: true, slices };
 }
@@ -128,27 +254,28 @@ function draftSlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
  * Rejecting a long card and making the Dispatcher rewrite is cheaper than
  * training the boss to skim.
  *
- * Expected shape (see docs/project/plan.md §7):
- *   目标 : one line
- *   不做 : one line
- *   验收 : 2-3 executable lines
- *   切片 : 3-5 lines of "title [difficulty] — how it is accepted"
- *   风险 : <=2 lines
- *   反对 : Architect's objection, <=2 lines, or 无
+ * Expected shape:
+ *   ## 目标      one line
+ *   ## 不做      one line
+ *   ## 验收      2-3 executable list items
+ *   ## 切片      a table of | 切片 | 难度 | 验收 |, 1-5 body rows
+ *   ## 风险      <=2 list items
+ *   ## 反对      Architect's objection, <=2 lines, or 无
  */
 export function validateDraftCard(text: string): Result<DraftOk> {
-  const lines = nonEmptyLines(text);
-  if (lines.length > DRAFT_MAX_LINES) {
+  const card = draftMarkdown(text) ?? draftLegacy(text);
+  if (card.count > DRAFT_MAX_LINES) {
     return {
       ok: false,
       error:
-        `card is ${lines.length} lines, max ${DRAFT_MAX_LINES}. This card blocks the boss; ` +
-        `it must be readable in 20 seconds. Cut detail, not sections — implementation ` +
-        `detail does not belong on the card.`,
+        `card is ${card.count} content lines, max ${DRAFT_MAX_LINES} — counting section ` +
+        `paragraphs, list items, and slice rows, not headings or the table header. This card ` +
+        `blocks the boss; it must be readable in 20 seconds. Cut detail, not sections — ` +
+        `implementation detail does not belong on the card.`,
     };
   }
 
-  const sections = draftSections(lines);
+  const sections = card.sections;
 
   const missing = DRAFT_FIELDS.filter((f) => !sections.has(f));
   if (missing.length) {
@@ -171,7 +298,7 @@ export function validateDraftCard(text: string): Result<DraftOk> {
   if (rawSlices.length < 1 || rawSlices.length > 5) {
     return { ok: false, error: `切片 needs 1-5 slices (got ${rawSlices.length})` };
   }
-  const parsedSlices = draftSlices(rawSlices);
+  const parsedSlices = card.slices();
   if (!parsedSlices.ok) return parsedSlices;
   const slices = parsedSlices.slices;
 
@@ -195,7 +322,7 @@ export function validateDraftCard(text: string): Result<DraftOk> {
     slices,
     risk,
     objection: one("反对"),
-    lines: lines.length,
+    lines: card.count,
   };
 }
 
@@ -253,16 +380,6 @@ function checkSplit(slices: DraftSlice[]): string | null {
 /** "the suite passes" and friends: true of every slice, so never evidence of overlap. */
 const GENERIC_GATE =
   /^(bun|npm|pnpm|yarn|cargo|go|pytest|dotnet|make)?(test|tests|check|build|lint|typecheck)?(全绿|绿|通过|pass|passes|passing|ok|green|全部通过)?$/i;
-
-function parseSlice(raw: string): DraftSlice | null {
-  const m = /^(.*?)\[(\w+)\]\s*(?:[—–-]+\s*)?(.*)$/.exec(raw);
-  if (!m) return null;
-  const title = m[1]!.trim();
-  const difficulty = DifficultySchema.safeParse(m[2]!.toLowerCase());
-  const accept = m[3]!.trim();
-  if (!title || !accept || !difficulty.success) return null;
-  return { title, difficulty: difficulty.data, accept };
-}
 
 /**
  * Self-review that says nothing is not self-review. It must reference the

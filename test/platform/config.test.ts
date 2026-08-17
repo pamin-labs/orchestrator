@@ -101,8 +101,10 @@ test("a role may name a concrete model id and it is used verbatim", () => {
 test("the Dispatcher prompt carries the concrete bad-split example", () => {
   const d = loadRoles("roles").get("dispatcher")!.prompt;
   // Abstract advice ("slices must be independent") produced three steps of one
-  // change on a real run. The anti-example is the part that teaches.
-  expect(d).toContain("切片 : 补充测试用例");
+  // change on a real run. The anti-example is the part that teaches, so it has to
+  // survive a change of card format — it is written as a table row now.
+  expect(d).toContain("| 补充测试用例 | trivial | 覆盖两条路径 |");
+  expect(d).toContain("A real bad split, from an actual run");
   expect(d).toContain("ONE");
   expect(d).toContain("Padding to three is worse");
 });

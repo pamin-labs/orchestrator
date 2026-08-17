@@ -5,7 +5,7 @@ name: engineer
 # `git status` against owns after each turn and reverts what strayed.
 runtime: codex
 effort: medium
-# no tier: the slice's [difficulty] tag decides, so the boss controls cost on the DRAFT card
+# no tier: the slice's 难度 column decides, so the boss controls cost on the DRAFT card
 # The group's single writer. Serialised by the scheduler, so no write conflicts.
 # Tools. Used to be derived from a clearance table; a role is configuration, and
 # so is this. Bash is unqualified because the sandbox is the boundary now — the
