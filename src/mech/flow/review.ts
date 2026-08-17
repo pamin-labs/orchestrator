@@ -1,4 +1,5 @@
 import type { Ctx } from "../../mech/ctx.ts";
+import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Config } from "../../platform/config/load.ts";
 import { say } from "../../platform/text/lang.ts";
@@ -439,11 +440,7 @@ function carryOver(db: DB, sliceId: number, grpId: number): void {
     `Gates: ${sl.gates_json}\n` +
     (decisions.length ? `What it settled:\n${decisions.map((d) => `- ${d}`).join("\n")}` : "");
 
-  db.run("INSERT INTO note (grp_id, slice_id, kind, body, at) VALUES (?, ?, 'handoff', ?, unixepoch() * 1000)", [
-    grpId,
-    sliceId,
-    body,
-  ]);
+  addNote(db, { grpId, sliceId, kind: "handoff", body });
 }
 
 /**

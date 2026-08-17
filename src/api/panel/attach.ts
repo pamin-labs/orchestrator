@@ -1,4 +1,5 @@
 import { basename, dirname, join, resolve } from "node:path";
+import { addNote } from "../../mech/util/rows.ts";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cp, mkdir, writeFile } from "node:fs/promises";
@@ -209,9 +210,6 @@ export function bossFact(ctx: Ctx, grpId: number | null, body: string): void {
     ? (ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(grpId)
         ?.project_id ?? null)
     : null;
-  ctx.db.run(
-    "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-    [projectId, grpId, ctx.config.language, body],
-  );
+  addNote(ctx.db, { projectId, grpId, kind: "fact", lang: ctx.config.language, body });
   sediment(ctx, projectId, ctx.config.feedbackSedimentThreshold);
 }

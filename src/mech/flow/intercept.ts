@@ -1,4 +1,5 @@
 import type { Ctx } from "../../mech/ctx.ts";
+import { addNote } from "../util/rows.ts";
 import { rebaseOntoBase, rollbackTo } from "../git/worktree.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
@@ -236,14 +237,12 @@ export async function interrupt(
     }
   } else if (killed > 0) {
     // Tell the next turn, or it will be confused by its own leftovers.
-    ctx.db.run(
-      `INSERT INTO note (grp_id, kind, lang, body, at)
-       VALUES (?, 'fact', 'zh', ?, unixepoch() * 1000)`,
-      [
-        grpId,
-        "上一个 turn 被强制打断，worktree 里可能有未完成的改动。先 `git diff` 看一眼再继续，不要假设它是完整的。",
-      ],
-    );
+    addNote(ctx.db, {
+      grpId,
+      kind: "fact",
+      lang: "zh",
+      body: "上一个 turn 被强制打断，worktree 里可能有未完成的改动。先 `git diff` 看一眼再继续，不要假设它是完整的。",
+    });
   }
 
   ctx.bus.emit({

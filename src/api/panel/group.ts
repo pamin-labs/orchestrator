@@ -1,4 +1,5 @@
 import { dropSlices } from "../../platform/persistence/database.ts";
+import { addNote } from "../../mech/util/rows.ts";
 import { interrupt, park, pause, resume, unpark } from "../../mech/flow/intercept.ts";
 import { dropGroup, startGroup, sweepApproved } from "../../mech/flow/start.ts";
 import { openPr, prBody, prTitle } from "../../mech/git/prwatch.ts";
@@ -121,10 +122,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
     // boss said to a plan that no longer exists.
     const why = withAttachments(b.reason ?? "respec", b.attachments);
     ctx.db.transaction(() => {
-      ctx.db.run(
-        "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-        [projectId, grpId, ctx.config.language, fact],
-      );
+      addNote(ctx.db, { projectId, grpId, kind: "fact", lang: ctx.config.language, body: fact });
       ctx.db.run("UPDATE grp SET status = 'PLANNING', approved_at = NULL WHERE id = ? AND status = 'DRAFT'", [grpId]);
       ctx.bus.emit({ grpId, author: "boss", kind: "boss_say", intent: "request", body: why });
       ctx.sched.enqueue("agent_turn", { grp_id: grpId, payload: { role: "dispatcher", respec: why } });

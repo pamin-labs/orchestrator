@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { addNote } from "../../mech/util/rows.ts";
 import { SplitRequirements } from "../../contracts/orch.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
@@ -89,17 +90,17 @@ export const postDraft = (async (ctx, _req, a, _p, b) => {
   }
 
   ctx.db.transaction(() => {
-    ctx.db.run(
-      `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
-       VALUES (?, ?, 'fact', ?, ?, ?, unixepoch() * 1000)`,
-      [
-        grp.project_id,
-        grpId,
-        ctx.config.language,
-        b.card,
-        JSON.stringify({ draft_card: true, ...(missingPaths.length ? { unknownPaths: missingPaths } : {}) }),
-      ],
-    );
+    addNote(ctx.db, {
+      projectId: grp.project_id,
+      grpId,
+      kind: "fact",
+      lang: ctx.config.language,
+      body: b.card,
+      frontmatterJson: JSON.stringify({
+        draft_card: true,
+        ...(missingPaths.length ? { unknownPaths: missingPaths } : {}),
+      }),
+    });
     ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ?", [grpId]);
     // Planning is over, so anything still queued for this group is moot — and DRAFT
     // is not dispatchable, so it would otherwise sit pending forever and then fire
@@ -290,11 +291,18 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
   if (evidence instanceof Response) return evidence;
 
   ctx.db.transaction(() => {
-    ctx.db.run(
-      `INSERT INTO note (project_id, grp_id, kind, lang, body, frontmatter_json, at)
-       VALUES ((SELECT project_id FROM grp WHERE id = ?), ?, 'decision', ?, ?, ?, unixepoch() * 1000)`,
-      [gid, gid, ctx.config.language, `${why}\n\n证据：${evidence}`, JSON.stringify({ drop_proposal: 1 })],
-    );
+    // The project came from a subquery here and is looked up instead: `addNote`
+    // takes a value, and a caller that already has the group id can find it.
+    addNote(ctx.db, {
+      projectId:
+        ctx.db.query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?").get(gid)
+          ?.project_id ?? null,
+      grpId: gid,
+      kind: "decision",
+      lang: ctx.config.language,
+      body: `${why}\n\n证据：${evidence}`,
+      frontmatterJson: JSON.stringify({ drop_proposal: 1 }),
+    });
     // DRAFT, so the group stops being dispatchable and the boss is asked. Left in
     // PLANNING the Dispatcher would be woken again and re-propose the same thing.
     ctx.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = ? AND status = 'PLANNING'", [gid]);

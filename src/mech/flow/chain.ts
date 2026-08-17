@@ -1,4 +1,5 @@
 import type { Ctx } from "../../mech/ctx.ts";
+import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { rollbackTo } from "../git/worktree.ts";
 import { sandboxGit } from "../git/checkout.ts";
@@ -344,11 +345,7 @@ export function triage(deps: ChainDeps, grpId: number, as: Triage, note: string,
   const body = `boss (${as}): ${note}`;
   if (deps.bossFact) deps.bossFact(grpId, body);
   else {
-    ctx.db.run("INSERT INTO note (grp_id, kind, lang, body, at) VALUES (?, 'fact', ?, ?, unixepoch() * 1000)", [
-      grpId,
-      ctx.config.language,
-      body,
-    ]);
+    addNote(ctx.db, { grpId, kind: "fact", lang: ctx.config.language, body });
   }
   ctx.bus.emit({
     grpId,

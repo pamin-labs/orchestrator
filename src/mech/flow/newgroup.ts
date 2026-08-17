@@ -1,4 +1,5 @@
 import type { Ctx } from "../../mech/ctx.ts";
+import { addNote } from "../util/rows.ts";
 
 /**
  * Starting a requirement: the five writes that have to happen together.
@@ -60,10 +61,13 @@ export function newGroup(ctx: Ctx, g: NewGroup): { id: number; channelId: number
     // read alongside the ask — attachment paths, which group this was split out of
     // — and the timeline carries the ask itself. Collapsing them puts file paths
     // and provenance into the line the boss reads back as "what I asked for".
-    ctx.db.run(
-      "INSERT INTO note (project_id, grp_id, kind, lang, body, at) VALUES (?, ?, 'fact', ?, ?, unixepoch() * 1000)",
-      [g.projectId, grp.id, ctx.config.language, g.note ?? g.idea],
-    );
+    addNote(ctx.db, {
+      projectId: g.projectId,
+      grpId: grp.id,
+      kind: "fact",
+      lang: ctx.config.language,
+      body: g.note ?? g.idea,
+    });
     ctx.bus.emit({
       grpId: grp.id,
       channelId: ch.id,

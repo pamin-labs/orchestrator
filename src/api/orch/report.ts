@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { addNote } from "../../mech/util/rows.ts";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Caller } from "../../http/agent-auth.ts";
@@ -108,21 +109,16 @@ export const postJournal = (async (ctx, _req, a, _p, b) => {
   // can grep them; the rest stay on the blackboard only.
   const exportPath = await exportJournal(ctx, a, grp, v.kind, v.body, frontmatter);
 
-  ctx.db.run(
-    `INSERT INTO note (project_id, grp_id, slice_id, kind, lang, body, frontmatter_json, export_path, at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      grp?.project_id ?? null,
-      a.grp_id,
-      b.slice_id ?? null,
-      v.kind,
-      ctx.config.language,
-      v.body,
-      JSON.stringify(frontmatter),
-      exportPath,
-      Date.now(),
-    ],
-  );
+  addNote(ctx.db, {
+    projectId: grp?.project_id ?? null,
+    grpId: a.grp_id,
+    sliceId: b.slice_id ?? null,
+    kind: v.kind,
+    lang: ctx.config.language,
+    body: v.body,
+    frontmatterJson: JSON.stringify(frontmatter),
+    exportPath,
+  });
   // The lessons list is capped where it is written, not where it is read: an
   // ever-growing list becomes the very context cost it exists to prevent.
   if (v.kind === "lesson") evictOldestLessons(ctx.db, grp?.project_id ?? null);

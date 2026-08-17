@@ -56,6 +56,57 @@ export const projectOfAgent = (db: DB, agentId: number | null | undefined): numb
  * not bump the row's `at`, or every consumer that watches "when did this last
  * move" sees movement on every tick.
  */
+/**
+ * The one place a note is written.
+ *
+ * Ten call sites spelled this `INSERT` out by hand in six different column
+ * combinations, which is the same shape the `setting` table was in before it got
+ * a writer: nothing wrong with any one of them, and a change to how notes are
+ * stored is a change in ten places. It also meant every reader had to know which
+ * of the nine columns a given writer bothered to fill.
+ *
+ * `at` defaults to now. Only the report path passes one, and it passes the same
+ * clock — stated as a parameter rather than left as an inconsistency between
+ * `Date.now()` here and `unixepoch() * 1000` there.
+ */
+export interface NewNote {
+  kind: string;
+  body: string;
+  projectId?: number | null;
+  grpId?: number | null;
+  sliceId?: number | null;
+  lang?: string | null;
+  /** Already serialised: callers build their own shape and `JSON.stringify` it. */
+  frontmatterJson?: string;
+  exportPath?: string | null;
+  at?: number;
+}
+
+/** `note.lang`'s schema default, stated here because a bound NULL cannot use it. */
+const DEFAULT_NOTE_LANG = "zh";
+
+export function addNote(db: DB, note: NewNote): void {
+  db.run(
+    `INSERT INTO note (project_id, grp_id, slice_id, kind, lang, body, frontmatter_json, export_path, at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      note.projectId ?? null,
+      note.grpId ?? null,
+      note.sliceId ?? null,
+      note.kind,
+      // The two columns carrying a schema default are spelled out rather than
+      // bound as NULL: `lang` and `frontmatter_json` are both `NOT NULL DEFAULT`,
+      // and a bound NULL overrides a default rather than falling back to it —
+      // which is a constraint failure, not the empty value the caller meant.
+      note.lang ?? DEFAULT_NOTE_LANG,
+      note.body,
+      note.frontmatterJson ?? "{}",
+      note.exportPath ?? null,
+      note.at ?? Date.now(),
+    ],
+  );
+}
+
 export function saveSingletonNote(db: DB, projectId: number, kind: string, body: string): boolean {
   const prev = db
     .query<{ id: number; body: string }, [number, string]>(
@@ -64,7 +115,7 @@ export function saveSingletonNote(db: DB, projectId: number, kind: string, body:
     .get(projectId, kind);
   if (prev?.body === body) return false;
   if (prev) db.run("DELETE FROM note WHERE id = ?", [prev.id]);
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, ?, ?, unixepoch() * 1000)", [projectId, kind, body]);
+  addNote(db, { projectId, kind, body });
   return true;
 }
 
