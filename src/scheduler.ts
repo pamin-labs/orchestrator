@@ -202,6 +202,20 @@ export function poolSizes(slots: number | Record<string, number> | undefined): R
  */
 const PLANNING_ROLES = new Set(["dispatcher", "architect", "cos", "librarian"]);
 
+function groupStateAdmits(status: GrpState, job: Job): boolean {
+  if (isDispatchableGrpState(status)) return true;
+  return (
+    status === "DRAFT" &&
+    job.kind === "agent_turn" &&
+    job.payload.role !== undefined &&
+    PLANNING_ROLES.has(job.payload.role)
+  );
+}
+
+function hasBudget(row: { budget_tokens: number | null; spent_tokens: number }): boolean {
+  return row.budget_tokens === null || row.spent_tokens < row.budget_tokens;
+}
+
 /** Housekeeping kinds: not attributed to a group's writer slot. */
 const FREE_KINDS = new Set<JobKind>(["watchdog", "notify", "digest"]);
 
@@ -352,50 +366,67 @@ export class Scheduler {
     // Standing agents (Architect, CoS, Librarian) have no group, but their turns
     // cost the same money and CPU as anyone's — so they take a slot too. Letting
     // them bypass the pool was how a "no slots" configuration still spawned agents.
-    const busyGroups = new Set<number>();
-    const taken: Record<string, number> = {};
-    for (const j of this.runningJobs()) {
-      if (j.kind === "lease") for (const p of this.poolsOf(j)) taken[p] = (taken[p] ?? 0) + 1;
-      else if (!FREE_KINDS.has(j.kind)) busyGroups.add(slotOf(j));
-    }
+    const { busyGroups, taken } = this.capacity();
 
     const out: Job[] = [];
     for (const job of pending) {
-      if (job.kind === "lease") {
-        // Every pool the resource is tagged with has to have room: a lease that
-        // is both `browser` and `heavy` waits for whichever is tighter.
-        const want = this.poolsOf(job);
-        const pools = this.pools();
-        if (want.some((p) => (taken[p] ?? 0) >= (pools[p] ?? pools[DEFAULT_POOL]!))) continue;
-        for (const p of want) taken[p] = (taken[p] ?? 0) + 1;
-        out.push(job);
-        continue;
-      }
-      if (FREE_KINDS.has(job.kind)) {
-        out.push(job);
-        continue;
-      }
-      const slot = slotOf(job);
-      if (busyGroups.has(slot)) continue;
-      if (busyGroups.size >= this.maxGroups()) continue;
-      // Only a group-scoped job has a status and a budget to check.
-      if (job.grp_id !== null && !this.admits(job)) continue;
-      // Offline is the third gate of the same shape as the two below, and for the
-      // same reason: a turn that cannot possibly work should not be started. It
-      // costs nothing to wait — a held job has no process behind it — and it
-      // lifts by itself when the probe says the network is back, so the boss is
-      // not left with a fleet to restart by hand.
-      if (job.kind === "agent_turn" && !this.online()) continue;
-      // Every turn opens a container, so a fleet with no docker would otherwise
-      // have each group discover that separately and file its own blocker.
-      if (job.kind === "agent_turn" && !this.sandboxReady()) continue;
-      if (job.kind === "agent_turn" && this.providerHeld(job)) continue;
-      if (job.kind === "agent_turn" && this.credentialMissing(job)) continue;
-      if (job.kind === "agent_turn" && this.repoLockedOut(job)) continue;
-      busyGroups.add(slot);
-      out.push(job);
+      if (this.claimCapacity(job, busyGroups, taken)) out.push(job);
     }
     return out;
+  }
+
+  private claimCapacity(job: Job, busyGroups: Set<number>, taken: Record<string, number>): boolean {
+    if (job.kind === "lease") return this.claimLeaseCapacity(job, taken);
+    if (FREE_KINDS.has(job.kind)) return true;
+    return this.claimWriterCapacity(job, busyGroups);
+  }
+
+  private claimWriterCapacity(job: Job, busyGroups: Set<number>): boolean {
+    const slot = slotOf(job);
+    if (!this.writerSlotAvailable(slot, busyGroups)) return false;
+    if (!this.groupAdmitsJob(job) || !this.jobReady(job)) return false;
+    busyGroups.add(slot);
+    return true;
+  }
+
+  private groupAdmitsJob(job: Job): boolean {
+    return job.grp_id === null || this.admits(job);
+  }
+
+  private jobReady(job: Job): boolean {
+    return job.kind !== "agent_turn" || this.agentTurnReady(job);
+  }
+
+  private capacity(): { busyGroups: Set<number>; taken: Record<string, number> } {
+    const busyGroups = new Set<number>();
+    const taken: Record<string, number> = {};
+    for (const job of this.runningJobs()) {
+      if (job.kind === "lease") {
+        for (const pool of this.poolsOf(job)) taken[pool] = (taken[pool] ?? 0) + 1;
+      } else if (!FREE_KINDS.has(job.kind)) {
+        busyGroups.add(slotOf(job));
+      }
+    }
+    return { busyGroups, taken };
+  }
+
+  private claimLeaseCapacity(job: Job<"lease">, taken: Record<string, number>): boolean {
+    // Every pool the resource is tagged with has to have room: a lease that is
+    // both `browser` and `heavy` waits for whichever is tighter.
+    const wanted = this.poolsOf(job);
+    const limits = this.pools();
+    if (wanted.some((pool) => (taken[pool] ?? 0) >= (limits[pool] ?? limits[DEFAULT_POOL]!))) return false;
+    for (const pool of wanted) taken[pool] = (taken[pool] ?? 0) + 1;
+    return true;
+  }
+
+  private writerSlotAvailable(slot: number, busyGroups: Set<number>): boolean {
+    return !busyGroups.has(slot) && busyGroups.size < this.maxGroups();
+  }
+
+  private agentTurnReady(job: Job<"agent_turn">): boolean {
+    if (!this.online() || !this.sandboxReady()) return false;
+    return !this.providerHeld(job) && !this.credentialMissing(job) && !this.repoLockedOut(job);
   }
 
   /**
@@ -520,28 +551,28 @@ export class Scheduler {
 
   /** Admission check: group status is a barrier, budget is a hard stop. */
   private admits(job: Job): boolean {
+    return this.groupAdmits(job) && this.sliceAdmits(job);
+  }
+
+  private groupAdmits(job: Job): boolean {
     const grp = this.db
       .query<{ status: GrpState; budget_tokens: number | null; spent_tokens: number }, [number]>(
         "SELECT status, budget_tokens, spent_tokens FROM grp WHERE id = ?",
       )
       .get(job.grp_id!);
     if (!grp) return false;
-    if (!isDispatchableGrpState(grp.status)) {
-      if (grp.status !== "DRAFT") return false;
-      if (job.kind !== "agent_turn" || !job.payload.role || !PLANNING_ROLES.has(job.payload.role)) return false;
-    }
-    if (grp.budget_tokens !== null && grp.spent_tokens >= grp.budget_tokens) return false;
+    return groupStateAdmits(grp.status, job) && hasBudget(grp);
+  }
 
-    if (job.slice_id !== null) {
-      const s = this.db
-        .query<{ budget_tokens: number | null; spent_tokens: number }, [number]>(
-          "SELECT budget_tokens, spent_tokens FROM slice WHERE id = ?",
-        )
-        .get(job.slice_id);
-      // Budget is per-slice so overspend is caught early, not at group level.
-      if (s && s.budget_tokens !== null && s.spent_tokens >= s.budget_tokens) return false;
-    }
-    return true;
+  private sliceAdmits(job: Job): boolean {
+    if (job.slice_id === null) return true;
+    const slice = this.db
+      .query<{ budget_tokens: number | null; spent_tokens: number }, [number]>(
+        "SELECT budget_tokens, spent_tokens FROM slice WHERE id = ?",
+      )
+      .get(job.slice_id);
+    // Budget is per-slice so overspend is caught early, not at group level.
+    return !slice || hasBudget(slice);
   }
 
   private start(job: Job): void {
