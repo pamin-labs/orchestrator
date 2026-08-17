@@ -258,7 +258,8 @@ export function pidAlive(pid: string): boolean {
     process.kill(n, 0);
     return true;
   } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM";
+    // `EPERM` rather than `ESRCH`: it exists and is somebody else's.
+    return typeof e === "object" && e !== null && "code" in e && e.code === "EPERM";
   }
 }
 
