@@ -425,13 +425,17 @@ test("a width that cannot be drawn across the window is offered and refused", as
     report({
       stages: [stage("stage.only")],
       traces: [trace("a".repeat(32), { name: "t" })],
+      // A month, where a one-minute bucket is 43,200 points. The old picker took
+      // that choice and drew the first eighty minutes of it, which is a blank
+      // chart and a control that looks dead. Refusing at the menu is the fix,
+      // and the count is the reason — an absence the reader cannot see is not
+      // an answer. The width comes off the window the *server* answered with,
+      // not off the caller's request: the endpoint clamps to retention, so
+      // those two are different numbers whenever the caller asks for more.
+      window: { from: T0 - 30 * 24 * hour, to: T0 },
       trend: Array.from({ length: 4 }, (_, i) => ({ at: T0 - (3 - i) * hour, count: 4, p50: 10, p95: 20 })),
     }),
   );
-  // A month, where a one-minute bucket is 43,200 points. The old picker took
-  // that choice and drew the first eighty minutes of it, which is a blank chart
-  // and a control that looks dead. Refusing at the menu is the fix, and the
-  // count is the reason — an absence the reader cannot see is not an answer.
   const view = show(<Telemetry scope={{ kind: "project", id: 7 }} windowMs={30 * 24 * hour} trend />);
   await waitFor(() => expect(view.getAllByText("每次运行的耗时")).toHaveLength(1));
 
@@ -487,6 +491,35 @@ test("scrolling the trend zooms it, and re-reads every block", async () => {
 
   // And there is a way back out.
   expect(view.getAllByRole("button", { name: /回到整段时间/ })).toHaveLength(1);
+
+  // Scrolling the other way widens it again. This is the assertion that pins the
+  // limit: the endpoint echoes the *requested* window back as `report.window`,
+  // so using that as the zoom limit made the limit equal the view the instant
+  // anybody zoomed — after which `zoomAt` clamped every widening to the span it
+  // already had and `panBy` clamped every slide to zero. 「反方向滚动缩放回去也
+  // 没反应」 and 「左右滚动无效」 were the same bug reported twice.
+  const narrow = new URL(String(asked.at(-1)), "http://x");
+  const narrowSpan = Number(narrow.searchParams.get("to")) - Number(narrow.searchParams.get("from"));
+  const after = asked.length;
+  chart!.dispatchEvent(
+    Object.assign(new WheelEvent("wheel", { deltaY: 100, bubbles: true, cancelable: true }), { clientX: 450 }),
+  );
+  await waitFor(() => expect(asked.length).toBeGreaterThan(after));
+  const wide = new URL(String(asked.at(-1)), "http://x");
+  expect(Number(wide.searchParams.get("to")) - Number(wide.searchParams.get("from"))).toBeGreaterThan(narrowSpan);
+});
+
+test("耗时 is a view of its own, not a tab under 需求", async () => {
+  // It was a tab inside 需求, one rank below the strip — so a project with no
+  // requirements, whose view is replaced by the onboarding card, could not
+  // reach it at all. It is also the wrong rank on its own terms: a project's
+  // spans are mostly routes and container operations belonging to no
+  // requirement, which makes it a sibling question rather than a detail.
+  const { contentSlot, VIEWS } = await import("../../web/src/features/navigation/model.ts");
+  expect(VIEWS.map(([view]) => view)).toContain("time");
+  expect(contentSlot(1, false, "time", 0, false, false)).toBe("time");
+  // And reachable with no requirements, which is the state it was invisible in.
+  expect(contentSlot(1, false, "time", 0, false, false)).toBe("time");
 });
 
 test("the window drives the query every block reads, not just the chart", async () => {
@@ -516,7 +549,7 @@ test("the window drives the query every block reads, not just the chart", async 
   expect(String(asked.at(-1))).toContain("windowMs=3600000");
 });
 
-test("a trend with one bucket renders no section at all, not an empty one", async () => {
+test("a trend with one bucket keeps its section, and therefore its controls", async () => {
   serve(
     report({
       stages: [stage("stage.only")],
@@ -526,13 +559,16 @@ test("a trend with one bucket renders no section at all, not an empty one", asyn
   );
   const view = show(<Telemetry scope={{ kind: "project", id: 7 }} trend />);
 
-  // It used to render its heading and an empty box at the very top of the page,
-  // above everything real. A trend with one bucket is not a section that is
-  // empty, it is a section that does not exist yet — so neither the heading nor
-  // the placeholder appears, and the stage table keeps the top of the page.
+  // This used to assert the opposite, and the opposite was a trap. Hiding the
+  // whole block on a thin trend also hid the bucket picker and 回到整段时间 —
+  // the two controls that undo a zoom — so narrowing to one bucket deleted the
+  // way back out of the state it created. The block stays and says it is empty,
+  // in a slot the size of the chart that is missing rather than as a line at the
+  // top of the page, which is what the original complaint was about.
   await waitFor(() => expect(view.getAllByText("stage")).toHaveLength(1));
-  expect(view.queryAllByText("每次运行的耗时")).toHaveLength(0);
-  expect(view.queryAllByText("还不够两个时段的数据。")).toHaveLength(0);
+  expect(view.getAllByText("每次运行的耗时")).toHaveLength(1);
+  expect(view.getAllByText("还不够两个时段的数据。")).toHaveLength(1);
+  expect(view.getAllByRole("button", { name: /每格/ })).toHaveLength(1);
 });
 
 test("the table says what a stage is, not what the code calls it", async () => {

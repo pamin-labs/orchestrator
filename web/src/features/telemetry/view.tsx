@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { select } from "d3-selection";
 import flamegraph, { type FlameFrame, type FlameGraph } from "d3-flame-graph";
-import { Area, AreaChart, Brush, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 // `Report` and not `Telemetry`: the component exported at the foot of this file
 // is called `Telemetry`, and a type import of the same name shadows it, so the
 // one place that renders the component could not see it.
@@ -272,6 +272,73 @@ function BucketPicker({
 
 /** The flamegraph's axis is a fraction of its own width, so its limit is all of it. */
 const WHOLE: TimeWindow = { from: 0, to: 1 };
+
+/**
+ * Where you are, once you are no longer looking at all of it.
+ *
+ * speedscope's minimap at the smallest size that answers the question: a strip
+ * of the whole extent with the current view drawn on it, draggable to pan. Both
+ * charts on this page zoom, so both need one, and they had different answers —
+ * the flamegraph had this and the trend had a `recharts` `Brush`.
+ *
+ * The `Brush` could not work here and the reason is structural rather than a
+ * bug in it. A brush selects a sub-range *of the data it is rendered with*, and
+ * a zoom on this page re-reads the endpoint, so the rendered data is always
+ * exactly the current window — leaving the brush spanning 100% of itself
+ * whatever the reader had zoomed to. 「底下的 bar 没任何用，没有随着滚动同步」
+ * is a precise description of a control whose only possible state is "all of
+ * it". A strip drawn against the *extent* rather than against the rendered rows
+ * is the shape that can say where you are.
+ *
+ * Shown only once there is something to be lost, which is Grafana's restraint
+ * and the same rule the reset button follows: no control on screen until there
+ * is state to undo.
+ */
+function Minimap({
+  view,
+  limit,
+  label,
+  onPan,
+}: {
+  view: TimeWindow;
+  limit: TimeWindow;
+  label: string;
+  onPan: (next: TimeWindow) => void;
+}) {
+  const whole = limit.to - limit.from;
+  const span = view.to - view.from;
+  if (whole <= 0 || span >= whole) return null;
+  /** Centre the window where the pointer is, in the limit's own units. */
+  const panFrom = (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    if (box.width === 0) return;
+    const at = (event.clientX - box.left) / box.width;
+    if (Number.isFinite(at)) onPan(panTo(view, limit.from + at * whole, limit));
+  };
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(((view.from - limit.from) / whole) * 100)}
+      className="h-2 cursor-ew-resize rounded-sm bg-sunk"
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        panFrom(event);
+      }}
+      onPointerMove={(event) => {
+        if (event.buttons === 1) panFrom(event);
+      }}
+    >
+      <div
+        className="h-full rounded-sm bg-ink-3"
+        style={{ marginLeft: `${((view.from - limit.from) / whole) * 100}%`, width: `${(span / whole) * 100}%` }}
+      />
+    </div>
+  );
+}
 
 /** A number column that stays comparable down the page. */
 const NUM = "text-right font-mono text-[0.6875rem] tabular-nums";
@@ -806,13 +873,6 @@ function useFlameChart({
 function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked: readonly string[] }) {
   const [view, setView] = useState<TimeWindow>({ from: 0, to: 1 });
   const zoom = view.to - view.from;
-  /** Centre the window where the pointer is, in fractions of the whole width. */
-  const panFrom = (event: React.PointerEvent<HTMLDivElement>) => {
-    const box = event.currentTarget.getBoundingClientRect();
-    if (box.width === 0) return;
-    const at = (event.clientX - box.left) / box.width;
-    if (Number.isFinite(at)) setView((current) => panTo(current, at, WHOLE));
-  };
   const { host, port, details, chart, zoomed, setZoomed } = useFlameChart({ tree, self, picked, zoom });
 
   return (
@@ -845,38 +905,9 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
         )}
         <div ref={details} className="min-w-0 truncate font-mono text-[0.6875rem] text-ink-2" />
       </div>
-      {/* Where you are, once you are no longer looking at all of it.
-          speedscope's minimap, at the smallest size that answers the question:
-          a strip of the whole width with the current view drawn on it. A zoomed
-          flamegraph otherwise cannot say where in the profile you have landed,
-          and this doubles as the pan control — drag it and the window follows.
-
-          Only once there is something to be lost. Grafana's restraint, and the
-          same rule the reset button follows: no control on screen until there is
-          state to undo. */}
-      {zoom < 1 && (
-        <div
-          role="slider"
-          tabIndex={0}
-          aria-label="看的是哪一段"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(view.from * 100)}
-          className="mb-1 h-2 cursor-ew-resize rounded-sm bg-sunk"
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
-            panFrom(event);
-          }}
-          onPointerMove={(event) => {
-            if (event.buttons === 1) panFrom(event);
-          }}
-        >
-          <div
-            className="h-full rounded-sm bg-ink-3"
-            style={{ marginLeft: `${view.from * 100}%`, width: `${zoom * 100}%` }}
-          />
-        </div>
-      )}
+      <div className="mb-1">
+        <Minimap view={view} limit={WHOLE} label="看的是哪一段" onPan={setView} />
+      </div>
 
       {/* The viewport. The chart inside it is rendered `1/zoom` times wider and
           slid left, which is what "show a narrower slice across the full pane"
@@ -949,18 +980,17 @@ function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: reado
 
   if (folded.length === 0) return null;
   return (
-    <section>
-      <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        {/* Named for the question it answers, not for the chart it is. The
-            waterfall below answers a different one — this is every run in the
-            scope stacked together, that is one run in order — and two charts of
-            the same spans need the difference said, not inferred. */}
-        {/* No second clause. It read 「所有运行叠在一起，点一格钻进去」, which is
-            two sentences of interface explanation stapled to a heading — a
-            tutorial, where `ui.md`'s register is a statement about the thing
-            (「白干的单位」「去合并 PR」). The frames are clickable and look it;
-            a sentence saying so is the panel apologising for its own affordance. */}
-        <h3 className="text-[0.8125rem] font-medium text-ink">耗时分布</h3>
+    // `Block`, like every other section here. This one drew its own heading with
+    // no rule under it while the three around it had one, which is the drift
+    // that comment three hundred lines up was written about and then reproduced.
+    // Its toggle goes in the same shelf the bucket picker uses.
+    <Block
+      // Named for the question it answers, not for the chart it is. The trend
+      // beside it answers a different one — this is every run in the scope
+      // stacked together, that is one number per bucket over time — and two
+      // charts of the same spans need the difference said, not inferred.
+      title="耗时分布"
+      aside={
         <Segments value={self ? "self" : "total"} onValueChange={(next) => setSelf(next === "self")}>
           {/* Not two skins on one chart: 自身 makes a frame as wide as the time
               it spent itself, 含下游 as wide as everything it called. A parent
@@ -969,15 +999,15 @@ function FlameBlock({ folded, picked }: { folded: Report["flame"]; picked: reado
           <Segment value="self">自身</Segment>
           <Segment value="total">含下游</Segment>
         </Segments>
-        <span className="grow" />
-      </div>
+      }
+    >
       <div
         className="overflow-y-auto overscroll-contain"
         style={{ minHeight: Math.min(depth * CELL_PX + 8, PANE_MAX_PX), maxHeight: PANE_MAX_PX }}
       >
         <Flame tree={tree} self={self} picked={picked} />
       </div>
-    </section>
+    </Block>
   );
 }
 
@@ -1072,28 +1102,6 @@ function Trend({
           <ChartTooltip format={duration} />
           <Area type="monotone" dataKey="p50" name={P50_LABEL} stroke="var(--color-ink-3)" fill="var(--color-sunk)" />
           <Area type="monotone" dataKey="p95" name={P95_LABEL} stroke="var(--color-warn)" fill="transparent" />
-          {/* Drag to pick a stretch of time, and the whole page re-reads for it.
-              A dropdown of preset windows would be the other way to do this and
-              it answers a different question — the reader is looking at a bump
-              on this line and wants everything else scoped to the bump, not to
-              「最近 6 小时」. `onChange` gives indices into the buckets, so the
-              window is the distance from the chosen bucket to now. */}
-          <Brush
-            dataKey="label"
-            height={16}
-            travellerWidth={8}
-            stroke="var(--color-rule)"
-            fill="var(--color-sunk)"
-            onChange={(next) => {
-              // Both handles, so the reader can take the middle. It used to send
-              // only the start, because the window was a duration ending at
-              // `now` — dragging around 01:30–02:00 came back as "the last
-              // thirty minutes", which is what "缩放不起作用" was describing.
-              const a = data[Number(next?.startIndex ?? 0)]?.at;
-              const b = data[Number(next?.endIndex ?? data.length - 1)]?.at;
-              onWindow(a !== undefined && b !== undefined && b > a ? { from: a, to: b } : null);
-            }}
-          />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -1118,6 +1126,22 @@ function useTelemetry(
 ) {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
+  /**
+   * How far the data goes, which is a different fact from what is on screen.
+   *
+   * `report.window` is the window that was *asked for* — `telemetry.ts:186`
+   * echoes the query's own `from`/`to` straight back — so using it as the zoom
+   * limit made the limit equal the current view the moment anybody zoomed. From
+   * there `zoomAt` clamped every widening to the span it already had and
+   * `panBy` clamped every slide to zero: scrolling back out did nothing, and a
+   * horizontal swipe did nothing, which is exactly how it was reported. The two
+   * symptoms were one bug wearing two coats.
+   *
+   * Taken from the answer to the read nobody narrowed, so it is the endpoint's
+   * own account of the full stretch rather than a clock arithmetic guess that
+   * would drift a millisecond per render.
+   */
+  const [extent, setExtent] = useState<TimeWindow | null>(null);
   // The scope is taken apart into the two primitives it is made of, and put back
   // together inside the effect. Every caller passes an object literal, so a
   // dependency on the object itself is a new identity on each of their renders
@@ -1142,7 +1166,11 @@ function useTelemetry(
         // answer under the current question's heading.
         if (!live) return;
         setLoading(false);
-        if (answer) setReport(answer);
+        if (!answer) return;
+        setReport(answer);
+        // Only the unnarrowed read knows the whole stretch. A narrowed one
+        // answers about the slice it was asked for.
+        if (from === null) setExtent(answer.window);
       },
     );
     return () => {
@@ -1150,7 +1178,7 @@ function useTelemetry(
     };
   }, [kind, id, windowMs, from, to, bucketMs]);
 
-  return { report, loading };
+  return { report, loading, extent };
 }
 
 /**
@@ -1217,9 +1245,39 @@ export function Telemetry({
    * a guess should be overridable rather than argued with.
    */
   const [pinnedBucket, setPinnedBucket] = useState<number | null>(null);
-  const shownWindow = chosen ?? { from: Date.now() - (windowMs ?? DAY_MS), to: Date.now() };
-  const bucketMs = pinnedBucket ?? bucketFor(shownWindow.to - shownWindow.from);
-  const { report, loading } = useTelemetry(scope, windowMs, chosen, bucketMs);
+  /**
+   * The stretch on screen: what the reader chose, else what the server sent.
+   *
+   * The clock arithmetic is the last resort and not the first, which is the
+   * order that matters. Preferring it would put the charts on "the last N
+   * milliseconds ending at this browser's now" while the limit came from the
+   * endpoint — two windows that agree only if the two clocks do, and disagree
+   * completely on stored data whose newest row is older than N.
+   */
+  // The bucket is derived from what is being *asked for*, not from what came
+  // back — otherwise the read needs the answer to the read. When nothing is
+  // chosen that is the caller's own window, which is the same number the
+  // endpoint derives its window from.
+  const bucketMs = pinnedBucket ?? bucketFor(chosen ? chosen.to - chosen.from : (windowMs ?? DAY_MS));
+  const { report, loading, extent } = useTelemetry(scope, windowMs, chosen, bucketMs);
+  /**
+   * The stretch on screen: what the reader chose, else what the server sent.
+   *
+   * The clock arithmetic is the last resort and not the first, and that order
+   * is the point. Preferring it would put the charts on "the last N
+   * milliseconds ending at this browser's now" while the limit came from the
+   * endpoint — two windows that agree only when the two clocks do, and that
+   * disagree completely on stored data whose newest row is older than N.
+   */
+  const shownWindow = chosen ?? report?.window ?? { from: Date.now() - (windowMs ?? DAY_MS), to: Date.now() };
+  /**
+   * How far a zoom or a pan may reach.
+   *
+   * The endpoint's answer to the unnarrowed read, and never `report.window` —
+   * that is the window the last request *asked for*, so using it here made the
+   * limit follow the view and every clamp in `zoomAt`/`panBy` became a no-op.
+   */
+  const limit = extent ?? report?.window ?? shownWindow;
 
   if (!report) {
     return <div className="py-4 text-[0.75rem] text-ink-3">{loading ? "读取中…" : empty}</div>;
@@ -1248,7 +1306,13 @@ export function Telemetry({
     // draws.
     <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-y-6">
-        {showTrend && report.trend.length >= 2 && (
+        {/* No `trend.length >= 2` here any more. `Trend` already draws its own
+            empty slot at its own height, and gating the whole block on the
+            point count took the picker and the way back out with it — so a zoom
+            that narrowed to one bucket deleted the two controls that could
+            undo it. A chart with nothing in it is a state; a chart with its
+            controls removed is a trap. */}
+        {showTrend && (
           <Block
             title="每次运行的耗时"
             aside={
@@ -1264,10 +1328,16 @@ export function Telemetry({
               trend={report.trend}
               windowMs={report.windowMs}
               bucketMs={bucketMs}
-              window={chosen ?? report.window}
-              limit={report.window}
+              window={shownWindow}
+              limit={limit}
               onWindow={setChosen}
             />
+            {/* The same strip the flamegraph has, against the whole stretch the
+                data covers. It is what the `Brush` could not be: a brush ranges
+                over the rows it is rendered with, and a zoom here re-reads the
+                endpoint, so those rows *are* the window and the brush could only
+                ever span all of itself. */}
+            <Minimap view={shownWindow} limit={limit} label="看的是哪一段" onPan={setChosen} />
             {chosen !== null && (
               <button
                 type="button"
@@ -1284,7 +1354,11 @@ export function Telemetry({
       </div>
 
       <div className="flex min-w-0 flex-col gap-y-6">
-        <Block>
+        {/* Titled like its neighbours. It was the one block on the page with no
+            heading, on the argument that its columns introduce themselves —
+            true of the columns and false of the page, where three titled blocks
+            and one bare table read as a layout that lost a heading. */}
+        <Block title="各环节耗时">
           <Stages stages={shown} picked={picked} onPick={pick} onExclude={exclude} />
           {excluded.length > 0 && (
             <Excluded
