@@ -222,6 +222,34 @@ M7 — executable engineering governance and versioned protocol.
   `undefined` into `null`, `Number(null)` is 0 where `Number(undefined)` is NaN,
   and the watchdog read a never-run rule as one that ran at the epoch; the suite
   caught it and the trap is now asserted at the layer it came from.
+- Retrieval was blind to most of the world and rescanned the corpus to answer.
+  `terms` matched Latin and split Han per character, so Korean, Russian, Thai,
+  Arabic and Greek notes produced zero terms and were invisible to search —
+  silently, because an empty term list reads as a document about nothing. ICU's
+  word breaker is in the runtime and all eight scripts now produce words. Orama
+  took the scoring: 33.4ms a query over four hundred re-tokenised documents
+  became 0.32ms over an index, and the `LIMIT 400` that cost imposed is gone, so
+  notes older than the last four hundred can be found at all.
+- Every turn span said it belonged to no project. `scopeAttributes` only emits
+  `project.id` when given one and `turnScope` never was, so the panel's project
+  scope filtered on a column nothing set and rendered empty on a project that had
+  been running all day. Fixed at both ends: the read path derives it through
+  `grp` for the rows already stored, and three writers now set it for the spans
+  that leave over OTLP, where no collector has heard of our tables.
+- Nothing in the span table had ever carried `status = 'error'` — 1636 rows
+  across sixty-five minutes of real work including failures. Two spans wrapped
+  functions that report failure by returning it, so erroring only in a `catch`
+  could not error at all. The tick's own container round trips, the model call
+  the code had already complained was invisible, the lease, the gate, the PR poll
+  and the reconnect are all timed now, at the funnel rather than at each caller.
+- Two fan-outs had no ceiling and the reasoning that kept them uncapped was
+  backwards: the CPU cap is per container, and every exec in a fan-out targets a
+  different one, so N caps sum against the host rather than contending inside
+  one. Ten groups asked for 2.5 hosts' worth at once.
+- The `note` table had ten writers in six column shapes and the `setting` table
+  had nineteen in three. Both have one now. The note conversion failed first
+  time on a lesson worth keeping: binding NULL to a `NOT NULL DEFAULT` column
+  overrides the default rather than falling back to it.
 
 ## Blockers and deviations
 
