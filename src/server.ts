@@ -211,104 +211,104 @@ function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
  */
 const indexedAt = new Map<number, string>();
 
-/** Projects already told the index cannot be read here. Said once, not per tick. */
+/** Projects already warned about index or model failure; said once, not per tick. */
 const indexWarned = new Set<number>();
-/** And the same for the model behind it being unreachable. Cleared when it works. */
 const indexModelDown = new Set<number>();
 
 async function refreshIndex(ctx: Ctx): Promise<void> {
-  if (!ctx.askIn) return;
-  for (const p of ctx.db.query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project").all()) {
-    if (!p.remote) continue;
-    // The corpus lives in the project's own container now. It is the one reader
-    // that needs file *contents* rather than names, so the utility container's
-    // mirror cannot serve it — that clone is `--filter=blob:none` and every read
-    // would be a network fetch.
-    const scope = { project: p.id } as const;
-    const base = await baseRefFor(ctx, p.id);
-    let heads: Map<string, string>;
-    try {
-      await createCheckout(ctx, scope, {
-        remote: p.remote,
-        branch: base.replace(/^origin\//, ""),
-        base,
-        projectId: p.id,
-      });
-      heads = await treeHeads(ctx, scope, HEAD_CHARS);
-    } catch (e) {
-      // Once per project: silently indexing nothing leaves `orch ctx query`
-      // answering out of a tree that stopped growing, and saying it every tick
-      // is a line in the feed every thirty seconds forever.
-      if (!indexWarned.has(p.id)) {
-        indexWarned.add(p.id);
-        ctx.bus.emit({
-          author: "orchestrator",
-          kind: "state_change",
-          body: `索引刷不了：这个项目的容器起不来（${errText(e)}）。`,
-        });
-      }
-      continue;
-    }
-    indexWarned.delete(p.id);
-    // Nothing to do when the repo has not moved. Without this the tick still
-    // summarised the head of every tracked file to prove nothing changed.
-    const at = heads.size ? Bun.hash([...heads].map(([f, h]) => `${f}${h}`).join("\n")).toString(16) : "";
-    if (at && indexedAt.get(p.id) === at) continue;
-
-    // Read once, not once per file: this is inside a `filter` over every tracked
-    // path, and the excludes do not change while it runs.
-    const excludes = indexExcludes(ctx.db, p.id);
-    const files = [...heads.keys()].filter((f) => indexable(f, excludes));
-    // One tree over both corpora: the repo answers "where is the code" and the
-    // blackboard answers "what did we already decide about it", and an agent
-    // asking either question should not have to know which one it is asking.
-    const notes = noteLeaves(ctx.db, p.id);
-    // In the project's own sandbox, on the credential the boss configured —
-    // never the host's CLI login. That was a second credential path nothing
-    // could see, and its failure wrote an empty summary that the signature cache
-    // then made permanent.
-    const ask = ctx.askIn({ project: p.id });
-    const { tree, calls, failed } = await summarise(
-      skeleton([...files, ...notes.ids]),
-      (id) => (id.startsWith(NOTE_PREFIX) ? notes.read(id) : (heads.get(id) ?? null)),
-      ask,
-      { previous: loadTree(ctx.db, p.id) ?? {}, maxCalls: 12 },
-    );
-    saveTree(ctx.db, p.id, tree);
-    // Only when the budget was not spent: a partial pass has more to do, and
-    // marking it done would leave the tail of the repo unsummarised until the next
-    // commit. A pass that failed is not done either — leaving the sha unrecorded
-    // is what makes the next tick try again instead of declaring an empty tree
-    // finished.
-    if (at && calls < 12 && failed === 0) indexedAt.set(p.id, at);
-    // Every call failing means the model is unreachable, not that the repo is
-    // boring. Said once per pass rather than swallowed: the old behaviour cached
-    // the empty answers and the index stayed empty forever, looking built.
-    // Edge-triggered, like `saidDown` and the mount check: this runs per project
-    // per tick, and `bus.emit` has no dedup — so without the flag a project
-    // whose sandbox will not open puts a blocker in the feed every thirty
-    // seconds forever. `pageindex.ts` swallows an exec failure into `""`, which
-    // `summarise` counts as failed, so it is easy to reach.
-    if (failed > 0 && failed === calls) {
-      if (!indexModelDown.has(p.id)) {
-        indexModelDown.add(p.id);
-        ctx.bus.emit({
-          author: "librarian",
-          kind: "escalation",
-          intent: "inform",
-          severity: "blocker",
-          body: `PageIndex 建不起来：${failed} 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。`,
-        });
-      }
-    } else if (calls > 0) {
-      indexModelDown.delete(p.id);
-      ctx.bus.emit({
-        author: "librarian",
-        kind: "state_change",
-        body: `PageIndex: summarised ${calls - failed} node(s), ${files.length} files indexed`,
-      });
-    }
+  const askIn = ctx.askIn;
+  if (!askIn) return;
+  const projects = ctx.db.query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project").all();
+  for (const project of projects) {
+    if (project.remote) await refreshProjectIndex(ctx, { id: project.id, remote: project.remote }, askIn);
   }
+}
+
+type AskIn = NonNullable<Ctx["askIn"]>;
+type IndexProject = { id: number; remote: string };
+
+async function refreshProjectIndex(ctx: Ctx, project: IndexProject, askIn: AskIn): Promise<void> {
+  const base = await baseRefFor(ctx, project.id);
+  const heads = await indexHeads(ctx, project, base);
+  if (!heads) return;
+  indexWarned.delete(project.id);
+  const at = indexStamp(heads);
+  if (at && indexedAt.get(project.id) === at) return;
+  const result = await buildProjectIndex(ctx, project.id, heads, askIn);
+  recordIndexResult(ctx, project.id, at, result);
+}
+
+async function indexHeads(ctx: Ctx, project: IndexProject, base: string): Promise<Map<string, string> | null> {
+  const scope = { project: project.id } as const;
+  try {
+    await createCheckout(ctx, scope, {
+      remote: project.remote,
+      branch: base.replace(/^origin\//, ""),
+      base,
+      projectId: project.id,
+    });
+    return await treeHeads(ctx, scope, HEAD_CHARS);
+  } catch (error) {
+    warnIndexOnce(ctx, project.id, error);
+    return null;
+  }
+}
+
+function warnIndexOnce(ctx: Ctx, projectId: number, error: unknown): void {
+  if (indexWarned.has(projectId)) return;
+  indexWarned.add(projectId);
+  ctx.bus.emit({
+    author: "orchestrator",
+    kind: "state_change",
+    body: `索引刷不了：这个项目的容器起不来（${errText(error)}）。`,
+  });
+}
+
+function indexStamp(heads: Map<string, string>): string {
+  return heads.size ? Bun.hash([...heads].map(([file, head]) => `${file}${head}`).join("\n")).toString(16) : "";
+}
+
+async function buildProjectIndex(ctx: Ctx, projectId: number, heads: Map<string, string>, askIn: AskIn) {
+  const excludes = indexExcludes(ctx.db, projectId);
+  const files = [...heads.keys()].filter((file) => indexable(file, excludes));
+  const notes = noteLeaves(ctx.db, projectId);
+  const result = await summarise(
+    skeleton([...files, ...notes.ids]),
+    (id) => (id.startsWith(NOTE_PREFIX) ? notes.read(id) : (heads.get(id) ?? null)),
+    askIn({ project: projectId }),
+    { previous: loadTree(ctx.db, projectId) ?? {}, maxCalls: 12 },
+  );
+  saveTree(ctx.db, projectId, result.tree);
+  return { calls: result.calls, failed: result.failed, files: files.length };
+}
+
+function recordIndexResult(
+  ctx: Ctx,
+  projectId: number,
+  at: string,
+  result: { calls: number; failed: number; files: number },
+): void {
+  if (at && result.calls < 12 && result.failed === 0) indexedAt.set(projectId, at);
+  if (result.failed > 0 && result.failed === result.calls) return warnModelDownOnce(ctx, projectId, result.failed);
+  if (!result.calls) return;
+  indexModelDown.delete(projectId);
+  ctx.bus.emit({
+    author: "librarian",
+    kind: "state_change",
+    body: `PageIndex: summarised ${result.calls - result.failed} node(s), ${result.files} files indexed`,
+  });
+}
+
+function warnModelDownOnce(ctx: Ctx, projectId: number, failed: number): void {
+  if (indexModelDown.has(projectId)) return;
+  indexModelDown.add(projectId);
+  ctx.bus.emit({
+    author: "librarian",
+    kind: "escalation",
+    intent: "inform",
+    severity: "blocker",
+    body: `PageIndex 建不起来：${failed} 次调用全部没有返回。去设置页看看索引用的那个账号还能不能用。`,
+  });
 }
 
 export function start(overrides: Partial<Config> = {}): Started {
