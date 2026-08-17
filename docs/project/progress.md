@@ -82,6 +82,12 @@ M7 — executable engineering governance and versioned protocol.
 - GitHub request retries, cancellation, ETag handling, response decoding, and
   repository-hold policy are separate verified steps; the former cyclomatic-50
   request function has no remaining Fallow finding.
+- Turn delta construction now belongs to `src/application/turn`; executor turn
+  lifecycle, delta, unread, checkpoint, resolver, and watchdog paths have no
+  remaining Fallow complexity/CRAP finding with net-negative production LOC.
+- Scheduler capacity claims and group/slice admission are separate policies;
+  preflight checks, escalation answering, and default-branch discovery also have
+  no remaining Fallow finding while preserving their behavior suites.
 - Release archives carry a version-reporting bundled CLI, Linux/Windows x64 use
   Bun baseline targets, required archive contents are verified, and interrupted
   publication documents its immutable resume points instead of claiming no
@@ -99,7 +105,7 @@ M7 — executable engineering governance and versioned protocol.
 ## Blockers and deviations
 
 - Fallow's default new-only audit is green. `bun run audit:all` remains red on
-  74 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
+  61 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
   threshold increase, or inline suppression.
 - The first full Fallow security inventory surfaces 40 verification candidates
   (17 SQL, 13 SSRF, eight dynamic-regex, one redirect, and one secret-shaped
