@@ -1,3 +1,4 @@
+import { Bench } from "tinybench";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory, type DB } from "../src/platform/persistence/database.ts";
@@ -8,27 +9,50 @@ import { assemble, type StablePrompt } from "../src/prompt/assemble.ts";
 import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import type { Ctx } from "../src/mech/ctx.ts";
 
-async function budget(name: string, limitMs: number, work: () => void | Promise<void>): Promise<void> {
-  const started = performance.now();
-  await work();
-  const elapsed = performance.now() - started;
-  console.log(`${name}: ${elapsed.toFixed(2)}ms / ${limitMs}ms`);
-  if (elapsed > limitMs) throw new Error(`${name} exceeded its significant-regression budget`);
-}
+/**
+ * `time` and `iterations` are both *minimums* and a cycle ends once both are
+ * met, which is why stating both needs no per-task tuning: a 140ns prompt
+ * assembly takes millions of samples to fill the clock, and a watchdog tick
+ * reaches sixteen samples long before it.
+ */
+const bench = new Bench({
+  time: 500,
+  iterations: 16,
+  warmupTime: 100,
+  warmupIterations: 4,
+  // A benchmark that throws is a broken benchmark, not a slow one: fail the run
+  // rather than report statistics over the samples that happened to survive.
+  throws: true,
+});
+
+/**
+ * Raised when latency approaches the timer grain, as the sub-microsecond tasks
+ * here do: the mean over millions of samples stays sound but the median and the
+ * percentiles quantise, which is worth saying out loud rather than swallowing.
+ */
+bench.addEventListener("warning", (event) => {
+  console.warn(`warning: ${event.task.name} samples are timer-saturated (${event.reason ?? "unknown"})`);
+});
+
+/**
+ * Budgets are checked against the mean, not a tail percentile.
+ *
+ * These catch a significant regression in work the nightly job repeats, not a
+ * user-facing latency tail: an added query or an added pass over the rows moves
+ * the whole distribution. A tail percentile over a sixteen-sample task is close
+ * to its maximum, so a budget there would be a budget on whichever GC pause the
+ * run happened to catch.
+ *
+ * Each limit is the old whole-batch budget divided by the batch it covered, so
+ * the headroom is unchanged and only the unit moved to one call.
+ */
+const limits = new Map<string, number>();
 
 const db = openMemory();
 const cfg = loadConfig();
 const bus = new Bus(db);
 const scheduler = new Scheduler(db, async () => {}, { maxGroups: 1_000 });
 const ctx: Ctx = { db, bus, sched: scheduler, waiters: new Map(), config: cfg };
-const stable: StablePrompt = {
-  systemAppend: "system",
-  model: "benchmark",
-  tools: [],
-  allowedTools: [],
-  addDirs: [],
-  hash: "stable",
-};
 
 db.run("INSERT INTO project (name, repo_path, base_branch, created_at) VALUES ('bench', 'acme/bench', 'main', 0)");
 db.run("INSERT INTO runtime_auth (runtime, mode, secret, updated_at) VALUES ('claude', 'api_key', 'bench-secret', 0)");
@@ -90,32 +114,78 @@ const fiftyGroupQueries = snapshotQueries();
 console.log(`snapshot query count: 1 group=${oneGroupQueries}, 50 groups=${fiftyGroupQueries}`);
 if (fiftyGroupQueries !== oneGroupQueries) throw new Error("snapshot query count grows with group rows");
 
-await budget("snapshot x200", 200, () => {
-  for (let i = 0; i < 200; i++) snapshot(ctx);
-});
-await budget("prompt assemble x10000", 40, () => {
-  for (let i = 0; i < 10_000; i++) assemble(stable, { card: `slice ${i}`, extra: "delta" });
-});
-await budget("reconcile x10000", 60, () => {
-  for (let i = 0; i < 10_000; i++) {
-    reconcile({ claims: [{ files: ["src/a.ts"], summary: "changed" }], changedFiles: ["src/a.ts", "test/a.test.ts"] });
-  }
-});
-await budget("scheduler x500", 400, async () => {
-  for (let i = 0; i < 500; i++) scheduler.enqueue("agent_turn", { grp_id: (i % 50) + 1 });
-  scheduler.tick();
-  await scheduler.drain();
-});
-await budget("watchdog x20", 1_200, async () => {
-  for (let i = 0; i < 20; i++) {
-    await runWatchdog({
-      ctx,
-      cfg,
-      now: () => 1_000_000,
-      pollUsage: async () => {},
-      probe: async () => ({ online: true, changed: false }),
-    });
-  }
+/**
+ * Inputs, not subjects. `assemble` and `reconcile` neither cache nor mutate
+ * what they are handed, so a constant argument does the same work a fresh one
+ * does — it just no longer builds inside the measured window. The delta used to
+ * be `{ card: \`slice ${i}\` }`, charging prompt assembly for an interpolation.
+ */
+const stable: StablePrompt = {
+  systemAppend: "system",
+  model: "benchmark",
+  tools: [],
+  allowedTools: [],
+  addDirs: [],
+  hash: "stable",
+};
+const delta = { card: "slice 1", extra: "delta" };
+const claim = {
+  claims: [{ files: ["src/a.ts"], summary: "changed" }],
+  changedFiles: ["src/a.ts", "test/a.test.ts"],
+};
+const watchdogDeps = {
+  ctx,
+  cfg,
+  now: () => 1_000_000,
+  pollUsage: async () => {},
+  probe: async () => ({ online: true, changed: false }),
+};
+
+/** Rows present before any task runs. The scheduler cycle is rolled back to this. */
+const seededJobs = db.query<{ id: number }, []>("SELECT COALESCE(MAX(id), 0) AS id FROM job").get()!.id;
+
+limits.set("snapshot", 1);
+bench.add("snapshot", () => snapshot(ctx), { async: false });
+
+limits.set("prompt assemble", 0.004);
+bench.add("prompt assemble", () => assemble(stable, delta), { async: false });
+
+limits.set("reconcile", 0.006);
+bench.add("reconcile", () => reconcile(claim), { async: false });
+
+// One full dispatch cycle. The 500 enqueues are the subject, not a batching
+// trick: this guards dispatch throughput with a loaded queue, which a single
+// enqueue would not show. The cycle leaves its jobs behind and the watchdog
+// adds more, so the hook restores the row count the next cycle starts from.
+limits.set("scheduler cycle x500", 400);
+bench.add(
+  "scheduler cycle x500",
+  async () => {
+    for (let i = 0; i < 500; i++) scheduler.enqueue("agent_turn", { grp_id: (i % 50) + 1 });
+    scheduler.tick();
+    await scheduler.drain();
+  },
+  { async: true, afterEach: () => void db.run("DELETE FROM job WHERE id > ?", [seededJobs]) },
+);
+
+limits.set("watchdog tick", 60);
+bench.add("watchdog tick", async () => void (await runWatchdog(watchdogDeps)), { async: true });
+
+await bench.run();
+
+console.table(bench.table());
+
+const exceeded = bench.tasks.flatMap((task) => {
+  const result = task.result;
+  if (result.state !== "completed") throw new Error(`${task.name} did not complete: ${result.state}`);
+  const limit = limits.get(task.name)!;
+  const mean = result.latency.mean;
+  console.log(`${task.name}: mean ${mean.toPrecision(3)}ms / ${limit}ms budget`);
+  return mean > limit ? [`${task.name} (${mean.toPrecision(3)}ms > ${limit}ms)`] : [];
 });
 
 db.close();
+
+if (exceeded.length > 0) {
+  throw new Error(`mean exceeded the significant-regression budget: ${exceeded.join(", ")}`);
+}
