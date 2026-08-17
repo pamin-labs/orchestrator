@@ -766,9 +766,36 @@ export function migrate(db: DB): void {
   }
 }
 
-/** In-memory database for tests. */
+/**
+ * The migrated schema, serialized once, so an in-memory database is a restore
+ * rather than a replay.
+ *
+ * Held for the life of the process, which is the life of one `bun test` run:
+ * `MIGRATIONS` is a module constant, so a template built from it cannot go
+ * stale while the process lives.
+ */
+let schemaTemplate: Uint8Array | undefined;
+
+/**
+ * In-memory database for tests.
+ *
+ * `open(":memory:")` runs every migration and every `CREATE TABLE` again per
+ * call, and the suite calls this from 49 files. Measured on this machine:
+ * 4.9 ms each, against 0.026 ms to deserialize a snapshot — 190x, and there are
+ * enough calls for that to be most of a test run.
+ *
+ * `migrate()` stays correct against the result: the `migration` table arrives
+ * already stamped, so a caller that migrates again gets a no-op. `PRAGMA
+ * foreign_keys` is per-connection and does not travel in the snapshot, so it is
+ * re-applied here — without it, `test/drop-slices.test.ts` would be asserting
+ * on constraints nothing enforces. The mask registration `open()` performs is
+ * not repeated because a fresh database has no `runtime_auth` rows to mask.
+ */
 export function openMemory(): DB {
-  return open(":memory:");
+  schemaTemplate ??= open(":memory:").serialize();
+  const db = Database.deserialize(schemaTemplate);
+  db.run("PRAGMA foreign_keys = ON");
+  return db;
 }
 
 /**

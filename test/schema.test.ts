@@ -48,6 +48,17 @@ test("foreign keys are enforced", () => {
   expect(() => db.run("INSERT INTO grp (project_id, name, created_at) VALUES (999, 'x', 0)")).toThrow();
 });
 
+test("two in-memory databases do not share rows", () => {
+  // openMemory() restores a snapshot of the migrated schema instead of replaying
+  // every migration, which is most of a test run's time back. The snapshot is
+  // process-wide, so the thing worth guarding is that it stays a template: a row
+  // written by one test's database must not be visible to the next one's.
+  const first = openMemory();
+  first.run("INSERT INTO event (author, kind, body, at) VALUES ('engineer', 'say', 'leak', 0)");
+  const second = openMemory();
+  expect(second.query<{ c: number }, []>("SELECT count(*) AS c FROM event").get()!.c).toBe(0);
+});
+
 test("event.seq is monotonic — the timeline never reorders", () => {
   const db = openMemory();
   const ins = db.prepare("INSERT INTO event (author, kind, body, at) VALUES (?, ?, ?, ?)");
