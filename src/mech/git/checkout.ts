@@ -524,7 +524,15 @@ export async function listTree(
   // slow" resolves to one of those two rather than to the rule.
   return activeTracer().startActiveSpan("git.ls_tree", async (span) => {
     try {
-      return await listTreeInner(ctx, remote, branch);
+      const { files, why, failed } = await listTreeInner(ctx, remote, branch);
+      // `why` is not the failure signal, which is why `failed` is separate: a
+      // repository that really is empty produces a `why` and a command that
+      // worked. `listTreeInner` never throws, so a span that errored only in the
+      // catch below could not error at all — a failed clone and a failed
+      // `ls-tree` both ended green, fifty lines from where `treeHeads` had the
+      // same defect fixed.
+      if (failed !== null) span.setStatus({ code: SpanStatusCode.ERROR, message: failed });
+      return { files, why };
     } catch (e) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
       throw e;
@@ -538,23 +546,31 @@ async function listTreeInner(
   ctx: Ctx,
   remote: string,
   branch: string,
-): Promise<{ files: string[]; why: string | null }> {
+): Promise<{ files: string[]; why: string | null; failed: string | null }> {
   const ref = branch.replace(/^origin\//, "");
   let mirror: string;
   try {
     mirror = await ensureMirror(ctx, remote);
   } catch (e) {
-    return { files: [], why: errText(e) };
+    const why = errText(e);
+    return { files: [], why, failed: why };
   }
   const r = await utilGit(ctx, ["ls-tree", "-r", "--name-only", ref], mirror);
   if (r.code !== 0) {
-    return { files: [], why: `git ls-tree ${ref} exited ${r.code}: ${(r.out || "no output").trim().slice(-300)}` };
+    const why = `git ls-tree ${ref} exited ${r.code}: ${(r.out || "no output").trim().slice(-300)}`;
+    return { files: [], why, failed: why };
   }
   const files = r.out
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  return { files, why: files.length ? null : `${ref} lists no files — an empty repository, or the wrong ref` };
+  // An empty repository is an answer, not a failure: the command ran, the ref
+  // resolved, and there is nothing in it. The caller still wants the sentence.
+  return {
+    files,
+    why: files.length ? null : `${ref} lists no files — an empty repository, or the wrong ref`,
+    failed: null,
+  };
 }
 
 /**

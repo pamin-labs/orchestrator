@@ -376,7 +376,14 @@ async function invokeTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: Prepared
     { attributes: { "agent.runtime": turn.agent.runtime ?? turn.role.runtime, ...scopeAttributes(turnScope(job)) } },
     async (span) => {
       try {
-        return await callProvider(deps, job, turn);
+        const result = await callProvider(deps, job, turn);
+        // A failed turn returns, it does not throw — `claude.ts` sets `ok` false
+        // and `terminalReason` to `no_result` when the provider emitted nothing
+        // at all, which is a turn that broke after spending its whole timeout.
+        // Erroring only in the catch made that indistinguishable from a turn
+        // that worked, in the one surface built to tell them apart.
+        if (!result.ok) span.setStatus({ code: SpanStatusCode.ERROR, message: result.terminalReason });
+        return result;
       } catch (error) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: errText(error) });
         throw error;

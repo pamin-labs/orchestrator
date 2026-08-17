@@ -3,7 +3,7 @@ import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trac
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { SqliteSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
-import { treeHeads } from "../../src/mech/git/checkout.ts";
+import { listTree, treeHeads } from "../../src/mech/git/checkout.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -53,6 +53,44 @@ test("a container that refuses marks the span, and still answers empty", async (
     expect(await treeHeads(t.ctx, { grp: 1 }, 64)).toEqual(new Map());
     await t.provider.forceFlush();
     expect(spans(t.db)).toEqual([{ name: "git.tree_heads", status: "error" }]);
+  } finally {
+    installTracerProvider(new NodeTracerProvider());
+  }
+});
+
+/**
+ * The repo-map rule's dominant cost, and the failure it used to hide.
+ *
+ * `listTree` never throws: an unreachable mirror and a non-zero `ls-tree` both
+ * come back as an empty list with a sentence in `why`. So a span that set
+ * `ERROR` only in its `catch` could not set it at all, and a failed clone
+ * measured the same as a successful read — fifty lines from where `treeHeads`
+ * already had that fixed. `why` is not the signal on its own: an empty
+ * repository produces one too, from a command that worked.
+ */
+
+test("a failed ls-tree marks the span, and an empty repository does not", async () => {
+  const failing = traced((cmd) => (cmd.includes("ls-tree") ? { code: 128, out: "fatal: not a valid object name" } : {}));
+  try {
+    // Only `ls-tree` fails: the `test -d` and the bare clone before it succeed,
+    // so this is the path where the mirror is fine and the read is not.
+    const r = await listTree(failing.ctx, "owner/repo", "main");
+    await failing.provider.forceFlush();
+    expect(r.files).toEqual([]);
+    expect(r.why).toContain("exited 128");
+    expect(spans(failing.db).find((s) => s.name === "git.ls_tree")?.status).toBe("error");
+  } finally {
+    installTracerProvider(new NodeTracerProvider());
+  }
+
+  const empty = traced(() => ({ out: "" }));
+  try {
+    const r = await listTree(empty.ctx, "owner/repo", "main");
+    await empty.provider.forceFlush();
+    // Still a sentence for the caller, because "nothing here" is worth saying.
+    expect(r.why).toContain("lists no files");
+    // But the command ran and the ref resolved, so the span is not a failure.
+    expect(spans(empty.db).find((s) => s.name === "git.ls_tree")?.status).not.toBe("error");
   } finally {
     installTracerProvider(new NodeTracerProvider());
   }

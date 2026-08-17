@@ -114,6 +114,23 @@ test("a failing provider marks its span an error and still fails the job", async
   expect(db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("failed");
 });
 
+test("a turn that fails without throwing marks its span too", async () => {
+  // The case the throwing test above does not reach, and the common one: a
+  // provider that emits no result line sets `ok` false and returns. The span
+  // errored only in its `catch`, so a turn that spent its whole timeout
+  // producing nothing measured exactly like one that worked — in the surface
+  // built to tell them apart. Nothing in the span table carried `status =
+  // 'error'` at all while this and its sibling in `git.ls_tree` were open.
+  const { db, sched, provider } = harness(async () => ({ ...(await ok()), ok: false, terminalReason: "no_result" }));
+
+  sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
+  await sched.drain();
+  await provider.forceFlush();
+
+  const stage = byName(soleTrace(db), "turn.provider");
+  expect(stage.status).toBe("error");
+});
+
 test("system work belongs to no project, and stays NULL rather than being guessed", async () => {
   const { db, sched, provider } = harness(ok);
 
