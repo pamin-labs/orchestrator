@@ -26,6 +26,13 @@ import istanbul from "babel-plugin-istanbul";
 const COVERAGE_DIR = process.env.COVERAGE_DIR ?? "coverage";
 const root = process.cwd();
 
+/**
+ * Imported unconditionally as the first line of `test/setup.ts` — that is the
+ * only position early enough to instrument what the resets there import — so the
+ * switch has to live here rather than at the import site.
+ */
+const enabled = process.env.ORCH_COVERAGE === "1";
+
 /** Source we own. Tests, fixtures and dependencies are not the subject. */
 function isSubject(path: string): boolean {
   if (!path.startsWith(root)) return false;
@@ -33,40 +40,48 @@ function isSubject(path: string): boolean {
   return rest.startsWith("src/") || rest.startsWith("web/src/");
 }
 
-Bun.plugin({
-  name: "istanbul-instrument",
-  setup(build) {
-    build.onLoad({ filter: /\.tsx?$/ }, async (args) => {
-      const loader = args.path.endsWith(".tsx") ? "tsx" : "ts";
-      const source = await Bun.file(args.path).text();
-      // `onLoad` has to hand back a module either way — returning nothing is an
-      // error, not a "leave this one alone", so anything outside the subject is
-      // passed through untouched.
-      if (!isSubject(args.path)) return { contents: source, loader };
-      const result = transformSync(source, {
-        filename: args.path,
-        cwd: root,
-        babelrc: false,
-        configFile: false,
-        sourceType: "module",
-        // Babel has to understand the syntax before it can instrument it, but it
-        // must not compile it — Bun handles that, and a second transpile would
-        // change what the test actually runs.
-        //
-        // `jsx` only for `.tsx`. Enabled for a `.ts` file it reads the generic
-        // arrow `const track = <T>(work: Promise<T>) => …` in src/server.ts as an
-        // unclosed JSX tag, and the file loads uninstrumented with a syntax
-        // error on the way past — coverage silently missing for whatever it
-        // touched.
-        parserOpts: { plugins: loader === "tsx" ? ["typescript", "jsx"] : ["typescript"] },
-        plugins: [[istanbul, { cwd: root, exclude: [] }]],
+/**
+ * Babel has to understand the syntax before it can instrument it, but it must
+ * not compile it — Bun does that, and a second transpile would change what the
+ * test actually runs.
+ *
+ * `jsx` only for `.tsx`. Enabled for a `.ts` file it reads the generic arrow
+ * `const track = <T>(work: Promise<T>) => …` in src/server.ts as an unclosed JSX
+ * tag, and the file then loads uninstrumented with a syntax error on the way
+ * past — coverage silently missing for whatever it touched.
+ */
+function instrument(source: string, path: string, jsx: boolean): string {
+  const result = transformSync(source, {
+    filename: path,
+    cwd: root,
+    babelrc: false,
+    configFile: false,
+    sourceType: "module",
+    parserOpts: { plugins: jsx ? ["typescript", "jsx"] : ["typescript"] },
+    plugins: [[istanbul, { cwd: root, exclude: [] }]],
+  });
+  // A file babel declines to rewrite still has to load, uninstrumented, rather
+  // than disappear from the module graph mid-run.
+  return result?.code ?? source;
+}
+
+if (enabled) {
+  Bun.plugin({
+    name: "istanbul-instrument",
+    setup(build) {
+      build.onLoad({ filter: /\.tsx?$/ }, async (args) => {
+        const jsx = args.path.endsWith(".tsx");
+        const loader = jsx ? "tsx" : "ts";
+        const source = await Bun.file(args.path).text();
+        // `onLoad` has to hand back a module either way — returning nothing is
+        // an error rather than "leave this one alone", so anything outside the
+        // subject is passed through untouched.
+        if (!isSubject(args.path)) return { contents: source, loader };
+        return { contents: instrument(source, args.path, jsx), loader };
       });
-      // A file babel declines to rewrite still has to load, uninstrumented,
-      // rather than disappear from the module graph mid-run.
-      return { contents: result?.code ?? source, loader };
-    });
-  },
-});
+    },
+  });
+}
 
 declare global {
   // Where babel-plugin-istanbul accumulates its counters. Declared rather than

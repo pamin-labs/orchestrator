@@ -12,7 +12,7 @@
     "perf:budget": "bun run scripts/performance-budget.ts",
     "perf:bench": "bun run scripts/benchmark.ts",
     "test": "bun test --max-concurrency 4",
-    "test:coverage": "bun test --max-concurrency 4 --preload ./test/support/coverage.ts && bun run test/support/coverage-report.ts",
+    "test:coverage": "ORCH_COVERAGE=1 bun test --max-concurrency 4 && bun run test/support/coverage-report.ts",
     "typecheck": "tsc -b --pretty false",
     "typecheck:clean": "tsc -b --clean && tsc -b --pretty false",
     "lint": "oxlint src web/src test",

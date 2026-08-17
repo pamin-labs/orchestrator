@@ -3,6 +3,17 @@
 # `data/` — the codex home and the staged skills, both full of other people's
 # `*.test.ts`. Those failed as ours and buried the real result.
 root = "test"
-# Clears the module-scope holds before every test, so no file inherits one from
-# whatever ran before it. See test/setup.ts.
-preload = ["./test/setup.ts"]
+# Order matters. A preload entry is loaded and evaluated before the next one
+# begins, and `test/support/coverage.ts` has to register its loader plugin before
+# anything it should instrument is *loaded* — not merely before it runs, because
+# a module graph is fetched ahead of evaluation. Registering from a later entry,
+# or from an `import` at the top of setup.ts, both left the four holds below and
+# their transitive closure out of the coverage map: fifty-six source files,
+# `src/scheduler.ts` among them, silently reported as estimates.
+#
+# coverage.ts is inert unless ORCH_COVERAGE=1, so the default `bun test` pays
+# only the module load.
+#
+# setup.ts clears the module-scope holds before every test, so no file inherits
+# one from whatever ran before it.
+preload = ["./test/support/coverage.ts", "./test/setup.ts"]
