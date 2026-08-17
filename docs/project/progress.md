@@ -12,11 +12,15 @@ M7 — executable engineering governance and versioned protocol.
 
 - Branch: `refactor/api-split-and-settings`
 - SHA: the commit containing this entry
-- TypeScript, Oxlint, Biome, and default changed-code Fallow audit: pass
-- Tests: 856 pass, 15 environment skips, 0 fail across 108 files
-- Local test time: 7.64 seconds in the restricted agent environment
-- Fallow: no introduced dead code, boundary, cycle, or duplication finding;
-  `audit:all` still reports 75 inherited complexity/CRAP findings
+- TypeScript, Oxlint, Biome, and Fallow audit: pass, the audit clean across all
+  397 changed files
+- Tests: 1101 pass, 6 environment skips, 0 fail
+- Coverage, measured for the first time: 74.9% of statements, 65.0% of branches,
+  67.0% of functions
+- Fallow complexity: **zero** functions over threshold across 5,226 analysed,
+  against real coverage rather than the export-reference estimate
+- Test time is not recorded as a target. The same suite measures differently per
+  machine, and a threshold on it would be a coin flip in CI
 
 ## Verified complete
 
@@ -119,12 +123,40 @@ M7 — executable engineering governance and versioned protocol.
 - Architecture/API, security/reliability, and test/performance reviewers report
   no reproducible P0 or P1 findings. Actionlint and zizmor report no workflow
   findings after the final release-order fix.
+- The dependency standard graded candidates on net deletion alone, which had
+  rejected MSW, tempy, remark and config schema validation — every one of them
+  the correct call for a reason the metric could not express. Adoption now needs
+  any one of net deletion, semantic fidelity, or a capability needed now or
+  plausibly later; declining needs a measurement and a reopen condition. The
+  enforcement matrix was rewritten around whether a capability is ours to build
+  at all, after one of its rows turned out to be a category error that had been
+  quietly steering decisions.
+- Coverage is measured for the first time, by instrumenting at load time with
+  `babel-plugin-istanbul`. Bun's own `--coverage` cannot answer these questions:
+  it has no Istanbul reporter, ignores `NODE_V8_COVERAGE`, and its lcov carries
+  no per-function or branch records — so CRAP had no source data and every score
+  was an estimate. The plugin must be the first preload entry, since a module
+  graph is fetched before it is evaluated.
+- With real coverage the complexity gate went from 11 estimated findings to 73
+  actual ones, 57 of them functions that were simply untested rather than
+  complex. All 73 are cleared — by behaviour tests and separation, with no
+  suppression, no threshold change and no baseline file.
+- Work found while writing those tests, each its own commit: the diff view's
+  right pane word-diffed new against old and rendered the old line on both sides
+  tinted as the addition; the structured log's scrubbing was unverifiable inside
+  a reporter callback; the Claude login spun for fifteen seconds against a CLI
+  that had already exited; and a settings boundary guard pinned one spelling of
+  a gate, forcing the source to carry a duplicate expression to satisfy it.
+- In-memory test databases restore a serialized schema instead of replaying
+  forty migrations, which is most of a run: 10.75 s to 7.0 s.
 
 ## Blockers and deviations
 
-- Fallow's default new-only audit is green. `bun run audit:all` remains red on
-  11 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
-  threshold increase, or inline suppression.
+- The `main` branch ruleset requires a status check named `check`, and no
+  workflow defines a job by that name. It can never report, and meanwhile none
+  of the thirteen quality jobs that do run is required. `require_code_owner_review`
+  is also false although `.github/CODEOWNERS` exists. Repository settings, so it
+  cannot be fixed from a file.
 - The first full Fallow security inventory surfaces 40 verification candidates
   (17 SQL, 13 SSRF, eight dynamic-regex, one redirect, and one secret-shaped
   literal). They are not declared vulnerabilities or suppressed; final security
@@ -138,8 +170,10 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Next executable items
 
-1. Enable the required checks, DCO, secret scanning, push protection, and code
-   owner review in GitHub repository settings.
+1. Replace the `main` ruleset's non-existent `check` context with the thirteen
+   jobs that actually report, and turn on code owner review. Export the ruleset
+   first: this decides whether anyone can merge, so a wrong edit needs a way
+   back. Secret scanning and push protection are the same visit.
 2. Run the six environment-gated OpenSandbox integration tests against the
    supported sandbox server and retain their logs.
 3. Run the release workflow in dry-run mode on GitHub-hosted Linux to exercise
