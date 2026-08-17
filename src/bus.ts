@@ -15,6 +15,9 @@ import { requestContext } from "./http/request-context.ts";
 type EventRow = Omit<StoredEvent, "meta"> & { meta_json: string };
 type ValidatedEventInput = Omit<StoredEvent, "seq" | "at">;
 
+/** An unset optional field is stored as NULL, never as placeholder text. */
+const orNull = <T>(v: T | null | undefined): T | null => v ?? null;
+
 export class Bus {
   private sinks = new Set<(frame: Frame) => void>();
   /**
@@ -97,19 +100,19 @@ export class Bus {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING seq`,
       )
       .get(
-        event.channelId ?? null,
-        event.grpId ?? null,
+        orNull(event.channelId),
+        orNull(event.grpId),
         event.author,
         event.kind,
-        event.intent ?? null,
-        event.severity ?? null,
+        orNull(event.intent),
+        orNull(event.severity),
         event.body ?? "",
-        event.target ?? null,
+        orNull(event.target),
         metaJson,
         at,
-        event.correlationId ?? null,
-        event.traceId ?? null,
-        event.spanId ?? null,
+        orNull(event.correlationId),
+        orNull(event.traceId),
+        orNull(event.spanId),
       )!.seq;
   }
 

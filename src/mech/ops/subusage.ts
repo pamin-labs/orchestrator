@@ -85,6 +85,8 @@ const CodexWindowsSchema = z.object({
 });
 const CodexRolloutLine = z.object({ payload: z.object({ rate_limits: CodexWindowsSchema }).optional() });
 type CodexWindow = z.infer<typeof CodexWindowSchema> | null;
+/** A window with an actual reading attached; windows without one are absent, not zero. */
+type CodexReading = NonNullable<CodexWindow> & { used_percent: number };
 
 const secs = (iso?: string | null): number => {
   const ms = iso ? Date.parse(iso) : NaN;
@@ -311,7 +313,7 @@ export const NEWEST_ROLLOUT =
 /** 299 minutes is the five-hour window, 10079/10080 the week. Anything else is ignored. */
 function fromCodex(...args: [CodexWindow, CodexWindow, number]): RateLimitInfo | null {
   const [a, b, now] = args;
-  const wins = [a, b].filter((w): w is NonNullable<CodexWindow> => !!w && w.used_percent !== undefined);
+  const wins = [a, b].filter((w): w is CodexReading => !!w && w.used_percent !== undefined);
   if (!wins.length) return null;
   const five = wins.find((w) => (w.window_minutes ?? 0) < 600);
   const week = wins.find((w) => (w.window_minutes ?? 0) >= 6000);
@@ -320,8 +322,8 @@ function fromCodex(...args: [CodexWindow, CodexWindow, number]): RateLimitInfo |
     status: "allowed",
     rateLimitType: "five_hour",
     resetsAt: five ? resetAt(five, now) : 0,
-    ...(five?.used_percent === undefined ? {} : { fiveHourPercent: five.used_percent }),
-    ...(week?.used_percent === undefined ? {} : { weeklyPercent: week.used_percent }),
+    ...(five ? { fiveHourPercent: five.used_percent } : {}),
+    ...(week ? { weeklyPercent: week.used_percent } : {}),
     ...(week ? { weeklyResetsAt: resetAt(week, now) } : {}),
   };
 }

@@ -98,6 +98,84 @@ test("HTTP correlation survives the durable queue and becomes the event's parent
   }
 });
 
+test("a job enqueued off-request still carries a trace, and explicit ids win over the request", () => {
+  const db = openMemory();
+  try {
+    const group = seed(db, 1)[0]!;
+    const scheduler = new Scheduler(db, async () => {});
+
+    // No request around the enqueue: the row still gets ids of its own, or a
+    // queued turn is invisible to every trace that follows it.
+    const off = scheduler.enqueue("agent_turn", { grp_id: group });
+    const offRow = db
+      .query<{ correlation_id: string; trace_id: string; parent_span_id: string | null }, [number]>(
+        "SELECT correlation_id, trace_id, parent_span_id FROM job WHERE id = ?",
+      )
+      .get(off)!;
+    expect(offRow.correlation_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(offRow.trace_id).toMatch(/^[0-9a-f]{32}$/);
+    expect(offRow.parent_span_id).toBeNull();
+
+    // Explicit ids beat both the defaults and the ambient request: a resubmitted
+    // job keeps the trace it was born with.
+    const on = requestContext.run(
+      { requestId: "request-correlation", traceId: "a".repeat(32), spanId: "b".repeat(16), method: "POST", path: "/x" },
+      () =>
+        scheduler.enqueue("agent_turn", {
+          grp_id: group,
+          correlationId: "kept",
+          traceId: "c".repeat(32),
+          parentSpanId: "d".repeat(16),
+        }),
+    );
+    expect(
+      db
+        .query<{ correlation_id: string; trace_id: string; parent_span_id: string }, [number]>(
+          "SELECT correlation_id, trace_id, parent_span_id FROM job WHERE id = ?",
+        )
+        .get(on),
+    ).toEqual({ correlation_id: "kept", trace_id: "c".repeat(32), parent_span_id: "d".repeat(16) });
+  } finally {
+    db.close();
+  }
+});
+
+test("an event with only author and kind stores empty, not invented, columns", () => {
+  // Every `?? null` in insert: an emitter that says little must not get the row
+  // padded with placeholders the panel then has to distinguish from real values.
+  const db = openMemory();
+  try {
+    const bus = new Bus(db);
+    bus.emit({ author: "worker", kind: "state_change" });
+    expect(
+      db
+        .query<
+          {
+            channel_id: number | null;
+            grp_id: number | null;
+            intent: string | null;
+            severity: string | null;
+            body: string;
+            target: string | null;
+            correlation_id: string | null;
+          },
+          []
+        >("SELECT channel_id, grp_id, intent, severity, body, target, correlation_id FROM event")
+        .get(),
+    ).toEqual({
+      channel_id: null,
+      grp_id: null,
+      intent: null,
+      severity: null,
+      body: "",
+      target: null,
+      correlation_id: null,
+    });
+  } finally {
+    db.close();
+  }
+});
+
 test("maxGroups caps how many groups run at once", async () => {
   const db = openMemory();
   const ids = seed(db, 5);

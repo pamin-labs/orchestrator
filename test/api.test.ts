@@ -900,6 +900,41 @@ test("a planner may propose dropping already-covered work, but only with evidenc
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).not.toBe("DISSOLVED");
 });
 
+test("a commit is evidence only when it is real and already on the base branch", async () => {
+  // The commit half of the evidence check: a sha is cheap to type, so the server
+  // asks the repo itself — the object must exist, be a commit, and be an ancestor
+  // of the base branch, or "already done" is just a claim.
+  const landed = { code: 0 };
+  const objectType = { out: "commit" };
+  const h = harness((cmd) => {
+    if (cmd.includes("cat-file")) return objectType;
+    if (cmd.includes("merge-base")) return landed;
+    return {};
+  });
+  h.db.run(
+    "INSERT INTO agent (project_id, grp_id, role, model, token, created_at) VALUES (1, 1, 'dispatcher', 'm', 'tok-d', 0)",
+  );
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const drop = (b: Json) => post(h.app, "/orch/v1/drop", b, "tok-d");
+
+  expect((await drop({ group_id: 1, why: "这件事已经合并进主干了", commit: "not-a-sha" })).status).toBe(422);
+  // A sha-shaped string that names something else — a tree, a tag — is not work.
+  objectType.out = "tree";
+  expect((await drop({ group_id: 1, why: "这件事已经合并进主干了", commit: sha })).status).toBe(422);
+  objectType.out = "commit";
+  const ok = await drop({ group_id: 1, why: "这件事已经合并进主干了", commit: sha });
+  expect(ok.status).toBe(200);
+  const st = await state(h.app);
+  const p = st.dropProposals.find((proposal) => proposal.grpId === 1);
+  if (!p) throw new Error("drop proposal missing from snapshot");
+  expect(p.body).toContain("already landed");
+
+  // The same sha, not yet merged: real work, wrong place — still the boss's call,
+  // but the proposal must not file.
+  landed.code = 1;
+  expect((await drop({ group_id: 1, why: "这个提交还没有合进主干", commit: sha })).status).toBe(422);
+});
+
 test("the boundary request quotes each group's own requirement", async () => {
   const { app, db } = harness();
   // The pre-existing group's idea has to be recoverable, or the Architect cannot

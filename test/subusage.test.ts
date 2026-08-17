@@ -156,6 +156,23 @@ test("codex quota comes from its rollout file, not the stream", () => {
   expect(rateLimitsIn("", 0)).toBeNull();
 });
 
+test("codex windows are read by length, and a missing clock falls back to the countdown", () => {
+  const ping = (primary: string) =>
+    '{"type":"event_msg","payload":{"rate_limits":{"limit_id":"codex","limit_name":null,' +
+    `"primary":${primary},"secondary":null,"credits":{"has_credits":false,"balance":"0"}}}}`;
+
+  // A window that is neither the five-hour nor the week says nothing the header can use.
+  expect(rateLimitsIn(ping('{"used_percent":10,"window_minutes":1440,"resets_at":1}'), 0)).toBeNull();
+  // A window without a reading is absent, not zero.
+  expect(rateLimitsIn(ping('{"window_minutes":300,"resets_at":1}'), 0)).toBeNull();
+
+  // No absolute resets_at: the countdown carries it, relative to the poll clock.
+  const now = 1_700_000_000_000;
+  const rl = rateLimitsIn(ping('{"used_percent":42,"window_minutes":300,"resets_in_seconds":600}'), now)!;
+  expect(rl.fiveHourPercent).toBe(42);
+  expect(rl.resetsAt).toBe(1_700_000_000 + 600);
+});
+
 test("codex quota is read from a sandbox first, and the host is only the fallback", async () => {
   // Since 005 `CODEX_HOME` is `/root/.codex` inside a container, so the host's
   // `<dataDir>/codex-home/sessions` holds nothing but the weekly refresh nudge's

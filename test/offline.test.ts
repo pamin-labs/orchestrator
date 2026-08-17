@@ -7,6 +7,7 @@ import { isOnline, PROBE_EVERY_MS, probe, resetNet } from "../src/mech/sandbox/n
 import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../src/mech/sandbox/sandbox.ts";
 import { type Job, resumeReclaimed, Scheduler } from "../src/scheduler.ts";
 import { testContext } from "./test-context.ts";
+import { z } from "zod";
 
 /**
  * The host loses its network.
@@ -108,6 +109,29 @@ test("a turn the network killed does not spend its one retry", () => {
 
   // And the exemption is exactly that error, not any cancellation.
   expect(resumeReclaimed(h.sched, [{ ...already, error: "interrupted (keep)" }])).toBe(0);
+});
+
+test("a reclaim re-queues lease, gate and reconcile work, never the free kinds", () => {
+  // The free kinds re-arm on their own clock; re-queueing one would double every
+  // timer the restart already kept. Everything else picks up where it was, with
+  // `resumed` stamped — and with its own payload, or a lease would lose its target.
+  const h = seed();
+  const base = { id: 1, grp_id: 1, agent_id: 1, slice_id: null, priority: 0, state: "cancelled" as const };
+  const lease: Job = { ...base, kind: "lease", payload_json: JSON.stringify({ lease_id: 7 }), payload: { lease_id: 7 } };
+  const gate: Job = { ...base, kind: "gate", payload_json: "{}", payload: {} };
+  const reconcile: Job = { ...base, kind: "reconcile", payload_json: "{}", payload: {} };
+  const watchdog: Job = { ...base, kind: "watchdog", payload_json: "{}", payload: {} };
+
+  expect(resumeReclaimed(h.sched, [lease, gate, reconcile])).toBe(3);
+  expect(resumeReclaimed(h.sched, [watchdog])).toBe(0);
+
+  const requeued = h.db
+    .query<{ kind: string; payload_json: string }, []>("SELECT kind, payload_json FROM job WHERE state = 'pending' ORDER BY id")
+    .all();
+  expect(requeued.map((r) => r.kind)).toEqual(["lease", "gate", "reconcile"]);
+  const ResumedPayload = z.object({ resumed: z.literal(true), lease_id: z.number().optional() });
+  for (const r of requeued) ResumedPayload.parse(JSON.parse(r.payload_json));
+  expect(ResumedPayload.parse(JSON.parse(requeued[0]!.payload_json)).lease_id).toBe(7);
 });
 
 test("nothing configured yet is not the same as offline", async () => {

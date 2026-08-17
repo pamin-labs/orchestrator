@@ -92,12 +92,16 @@ export type EnqueueFields<K extends JobKind> = {
   parentSpanId?: string | null;
 };
 
+/** First set value wins: the explicit field, then the ambient request, then the fallback. */
+const first = <T>(...vals: readonly (T | null | undefined)[]): T | undefined =>
+  vals.find((v): v is T => v !== null && v !== undefined);
+
 function enqueueTrace<K extends JobKind>(fields: EnqueueFields<K>) {
   const context = requestContext.getStore();
   return {
-    correlationId: fields.correlationId ?? context?.requestId ?? crypto.randomUUID(),
-    traceId: fields.traceId ?? context?.traceId ?? crypto.randomUUID().replaceAll("-", ""),
-    parentSpanId: fields.parentSpanId ?? context?.spanId ?? null,
+    correlationId: first(fields.correlationId, context?.requestId) ?? crypto.randomUUID(),
+    traceId: first(fields.traceId, context?.traceId) ?? crypto.randomUUID().replaceAll("-", ""),
+    parentSpanId: first(fields.parentSpanId, context?.spanId) ?? null,
   };
 }
 
@@ -725,7 +729,10 @@ function resumeJob(sched: Scheduler, j: Job): boolean {
   // stopped after the connection came back.
   const orphaned = /^(orphaned|offline):/.test(j.error ?? "");
   if (j.payload.resumed && !orphaned) return false;
-  const fields = {
+  // Every kind that reaches here resumes with its own payload plus the stamp:
+  // the free kinds were filtered above, and gate/reconcile payloads are
+  // `Resumable` only, so the spread loses nothing.
+  sched.enqueue(j.kind, {
     grp_id: j.grp_id,
     agent_id: j.agent_id,
     slice_id: j.slice_id,
@@ -733,25 +740,8 @@ function resumeJob(sched: Scheduler, j: Job): boolean {
     ...(j.correlation_id === undefined ? {} : { correlationId: j.correlation_id }),
     ...(j.trace_id === undefined ? {} : { traceId: j.trace_id }),
     ...(j.parent_span_id === undefined ? {} : { parentSpanId: j.parent_span_id }),
-  };
-  switch (j.kind) {
-    case "agent_turn":
-      sched.enqueue(j.kind, { ...fields, payload: { ...j.payload, resumed: true } });
-      break;
-    case "lease":
-      sched.enqueue(j.kind, { ...fields, payload: { ...j.payload, resumed: true } });
-      break;
-    case "gate":
-      sched.enqueue(j.kind, { ...fields, payload: { resumed: true } });
-      break;
-    case "reconcile":
-      sched.enqueue(j.kind, { ...fields, payload: { resumed: true } });
-      break;
-    case "digest":
-    case "notify":
-    case "watchdog":
-      return false;
-  }
+    payload: { ...j.payload, resumed: true },
+  });
   return true;
 }
 

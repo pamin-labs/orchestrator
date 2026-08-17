@@ -244,17 +244,15 @@ export const DropBody = z.object({
   duplicate: GroupRef.optional(),
 });
 
-async function dropEvidence(ctx: Ctx, gid: number, body: z.infer<typeof DropBody>): Promise<string | Response> {
-  if (body.duplicate != null) {
-    const duplicateId = resolveGroup(ctx, body.duplicate);
-    if (!duplicateId) return bad(`no group ${body.duplicate}`);
-    if (duplicateId === gid) return bad("a group cannot be a duplicate of itself");
-    const duplicate = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(duplicateId)!;
-    return `duplicate of ${duplicate.name} (grp ${duplicateId})`;
-  }
+function duplicateEvidence(ctx: Ctx, gid: number, ref: z.infer<typeof GroupRef>): string | Response {
+  const duplicateId = resolveGroup(ctx, ref);
+  if (!duplicateId) return bad(`no group ${ref}`);
+  if (duplicateId === gid) return bad("a group cannot be a duplicate of itself");
+  const duplicate = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(duplicateId)!;
+  return `duplicate of ${duplicate.name} (grp ${duplicateId})`;
+}
 
-  if (!body.commit) return bad("give evidence: --duplicate <group> or --commit <sha>");
-  const sha = body.commit.trim();
+async function commitEvidence(ctx: Ctx, gid: number, sha: string): Promise<string | Response> {
   if (!/^[0-9a-f]{7,40}$/i.test(sha)) return bad("--commit takes a sha, 7 to 40 hex characters");
   const git = sandboxGit(ctx, { grp: gid });
   const commit = await git(WORK, ["cat-file", "-t", sha], WORK);
@@ -268,6 +266,12 @@ async function dropEvidence(ctx: Ctx, gid: number, body: z.infer<typeof DropBody
   return merged.code === 0
     ? `already landed in ${sha.slice(0, 8)}`
     : bad(`${sha.slice(0, 8)} is a real commit but is not on ${base} yet`);
+}
+
+async function dropEvidence(ctx: Ctx, gid: number, body: z.infer<typeof DropBody>): Promise<string | Response> {
+  if (body.duplicate != null) return duplicateEvidence(ctx, gid, body.duplicate);
+  if (!body.commit) return bad("give evidence: --duplicate <group> or --commit <sha>");
+  return commitEvidence(ctx, gid, body.commit.trim());
 }
 
 export const postDrop = (async (ctx, _req, a, _p, b) => {
