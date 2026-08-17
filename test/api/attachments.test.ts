@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { z } from "zod";
 import { makeApp } from "../../src/composition/api.ts";
@@ -14,6 +13,7 @@ import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { ATTACH_DIR, stageAttachments, type ExecDeps } from "../../src/application/executor.ts";
 import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * The boss attaches a screenshot and the agent has to be able to open it.
@@ -27,7 +27,7 @@ import { fakeSandbox } from "../support/fake-sandbox.ts";
  */
 
 function harness() {
-  const dir = mkdtempSync(join(tmpdir(), "orch-attach-"));
+  const dir = tempDir("orch-attach-");
   mkdirSync(join(dir, "attachments"), { recursive: true });
   const db = openMemory();
   const p = fx.project.insert(db, { name: "p" });

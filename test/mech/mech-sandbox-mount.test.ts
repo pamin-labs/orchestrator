@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkSkillsMount, lineQueue, lsofCwd, type Counter } from "../../src/mech/sandbox/sandbox.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { testContext } from "../support/test-context.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * The bind mount that succeeds and delivers nothing.
@@ -22,7 +23,7 @@ import { testContext } from "../support/test-context.ts";
 
 /** A distinct staging directory per test: the check runs once per host path. */
 function staged(files: number): string {
-  const dir = mkdtempSync(join(tmpdir(), "orch-mount-"));
+  const dir = tempDir("orch-mount-");
   for (let i = 0; i < files; i++) {
     mkdirSync(join(dir, `skill-${i}`), { recursive: true });
     writeFileSync(join(dir, `skill-${i}`, "SKILL.md"), "---\nname: x\n---\n");

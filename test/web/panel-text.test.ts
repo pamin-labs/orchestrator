@@ -7,6 +7,7 @@ import { activityOf } from "../../web/src/lib/activity.ts";
 import { splitAttachments } from "../../web/src/lib/attach.ts";
 import { repoHref } from "../../web/src/lib/utils.ts";
 import { testContext } from "../support/test-context.ts";
+import { tempDir } from "../support/temp.ts";
 
 const of = (activity: string) =>
   activityOf(
@@ -110,10 +111,9 @@ test("an upload too big to hold is refused before it is held", async () => {
 });
 
 test("a dropped folder becomes one attachment, and cannot escape its directory", async () => {
-  const { mkdtempSync, existsSync } = await import("node:fs");
-  const { tmpdir } = await import("node:os");
+  const { existsSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const dir = mkdtempSync(join(tmpdir(), "attach-"));
+  const dir = tempDir("attach-");
   const form = new FormData();
   form.append("file", new File(["a"], "a.txt"), "a.txt");
   form.append("rel", "spec/a.txt");

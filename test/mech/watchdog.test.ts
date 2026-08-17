@@ -14,8 +14,7 @@ import {
   IDLE_TURN_LIMIT,
   SAME_FILE_LIMIT,
 } from "../../src/mech/ops/watchdog.ts";
-import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AgentTurnPayloadSchema, Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
@@ -24,6 +23,7 @@ import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
+import { tempDir } from "../support/temp.ts";
 
 const NotifyMeta = z.object({ url: z.string() });
 const WebhookBody = z.object({ message: z.string() });
@@ -753,7 +753,7 @@ test("turn logs are compressed after a day and dropped after two weeks", () => {
   // the tail — because a transcript is mostly tool output written verbatim. Worth
   // keeping (every measurement in PROGRESS came out of these), not worth keeping
   // uncompressed.
-  const dir = mkdtempSync(join(tmpdir(), "orch-logs-"));
+  const dir = tempDir("orch-logs-");
   const now = 10 * DROP_AFTER_MS;
   writeFileSync(join(dir, "1.jsonl"), "x".repeat(5000));
   writeFileSync(join(dir, "2.jsonl"), "y".repeat(5000));

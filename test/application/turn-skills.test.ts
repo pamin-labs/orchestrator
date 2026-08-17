@@ -1,13 +1,12 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applySkills } from "../../src/application/turn/delta.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { testContext } from "../support/test-context.ts";
 import type { Delta } from "../../src/prompt/assemble.ts";
 import * as fx from "../support/factories.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * Which skill text a turn is given, and — more to the point — what happens when
@@ -19,7 +18,7 @@ import * as fx from "../support/factories.ts";
  */
 
 function repoWithSkill(name: string, body: string): string {
-  const repo = mkdtempSync(join(tmpdir(), "orch-skills-"));
+  const repo = tempDir("orch-skills-");
   const dir = join(repo, ".claude", "skills", name);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: ${name} does a thing\n---\n\n${body}\n`);

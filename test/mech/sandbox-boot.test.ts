@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setIn } from "../../src/mech/sandbox/server.ts";
 import {
@@ -12,6 +11,7 @@ import {
   splitAddr,
   UTIL,
 } from "../../src/mech/sandbox/sandbox.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * Starting the container server, and the four ways the first attempt lied.
@@ -69,7 +69,7 @@ test("a commented-out key is the key, not a missing one", () => {
   // key at all while we sent one — 401 on every call, reported as "the server
   // does not accept our key", which is exactly backwards.
   const toml = setIn(EXAMPLE, "server", "api_key", `api_key = "orch-abc"`);
-  const f = join(mkdtempSync(join(tmpdir(), "orch-toml-")), "sandbox.toml");
+  const f = join(tempDir("orch-toml-"), "sandbox.toml");
   writeFileSync(f, toml);
   expect(keyInConfig(f)).toBe("orch-abc");
   // Replaced in place, not appended beside the commented one. Counting

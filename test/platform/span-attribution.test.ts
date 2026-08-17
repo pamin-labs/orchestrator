@@ -1,7 +1,4 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { BatchSpanProcessor, NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
@@ -16,6 +13,7 @@ import { installTracerProvider } from "../../src/platform/observability/traces.t
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * The span table is only worth having if the rows can answer "where did this
@@ -32,7 +30,7 @@ function harness(turn: () => Promise<TurnResult>) {
   const provider = new NodeTracerProvider({ spanProcessors: [new BatchSpanProcessor(new SqliteSpanExporter(db))] });
   installTracerProvider(provider);
 
-  const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-spans-")) };
+  const cfg = { ...loadConfig(), dataDir: tempDir("orch-spans-") };
   let exec: Executor;
   const sched = new Scheduler(db, (j) => exec(j));
   const ctx: Ctx = { db, bus: new Bus(db), sched, sandbox: fakeSandbox(), waiters: new Map(), config: cfg };

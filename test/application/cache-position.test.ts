@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listSkills, readSkill, referencedSkills } from "../../src/mech/skills.ts";
 import { assemble, buildDelta, buildStable, needsRotation, type StableParts } from "../../src/prompt/assemble.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * Regression guard for docs/project/plan.md §7 token economics #1.
@@ -127,7 +127,7 @@ test("a skill the boss pointed at lands in the delta, never in the cached prefix
   // the machine the test was written on and nowhere else — so it passed locally
   // for as long as nobody ran it anywhere else, and went red the first time CI
   // existed. A test that depends on the author's disk is a test about the author.
-  const dir = mkdtempSync(join(tmpdir(), "orch-skilltest-"));
+  const dir = tempDir("orch-skilltest-");
   mkdirSync(join(dir, ".claude/skills/tidy"), { recursive: true });
   writeFileSync(
     join(dir, ".claude/skills/tidy/SKILL.md"),

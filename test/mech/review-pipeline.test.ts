@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { testGit } from "../support/git-runner.ts";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
@@ -22,6 +21,7 @@ import { seedAuth } from "../support/seed-auth.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import * as fx from "../support/factories.ts";
 import { z } from "zod";
+import { tempDir } from "../support/temp.ts";
 
 const GateResults = z.record(z.string(), z.string());
 
@@ -43,9 +43,9 @@ function turnOk(): TurnResult {
 /** Real Git is reserved for the four tests whose subject is reconcile itself. */
 async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
   const realGit = opts.realGit ?? false;
-  const wtDir = mkdtempSync(join(tmpdir(), "orch-rp-wt-"));
+  const wtDir = tempDir("orch-rp-wt-");
   const work = realGit ? join(wtDir, "work") : wtDir;
-  const repo = realGit ? mkdtempSync(join(tmpdir(), "orch-rp-repo-")) : work;
+  const repo = realGit ? tempDir("orch-rp-repo-") : work;
   if (realGit) {
     await git(repo, ["init", "-q", "-b", "main"]);
     await git(repo, ["config", "user.email", "t@e.com"]);
@@ -68,7 +68,7 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
 
   seedAuth(db);
   const bus = new Bus(db);
-  const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-rp-data-")), gateRetries: 2 };
+  const cfg = { ...loadConfig(), dataDir: tempDir("orch-rp-data-"), gateRetries: 2 };
   const specs: TurnSpec[] = [];
   let exec: Executor;
   const sched = new Scheduler(db, (j) => exec(j));

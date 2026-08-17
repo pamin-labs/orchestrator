@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
@@ -22,6 +21,7 @@ import { z } from "zod";
 import { JsonValue, type Json } from "../../src/contracts/json.ts";
 import { ErrorResponseSchema } from "../../src/contracts/protocol.ts";
 import type { Github } from "../../src/mech/git/github.ts";
+import { tempDir } from "../support/temp.ts";
 
 const BoundaryPayload = z.object({ boundary: z.array(z.object({ id: z.number() })) });
 const BoundaryIdeasPayload = z.object({ boundary: z.array(z.object({ id: z.number(), idea: z.string() })) });
@@ -125,7 +125,7 @@ test("an over-long journal is rejected with a reason the agent can act on", asyn
 });
 
 test("journal writes a note and exports journal/retro into the checkout", async () => {
-  const _wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const _wt = tempDir("orch-wt-");
   const { app, db, sandbox } = harness();
 
   const r = await post(
@@ -151,7 +151,7 @@ test("journal writes a note and exports journal/retro into the checkout", async 
 });
 
 test("a fact never gets exported to git — only journal/retro/decision do", async () => {
-  const _wt = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const _wt = tempDir("orch-wt-");
   const { app, db } = harness();
   await post(app, "/orch/v1/journal", { kind: "fact", body: "boss prefers iteration" }, "tok-eng");
   const note = db.query<{ export_path: string | null }, []>("SELECT export_path FROM note").get()!;
@@ -960,7 +960,7 @@ test("registering a repo you cannot push to succeeds, and says so at once", asyn
 
 test("the directory list marks git repos and what is already registered", async () => {
   const { app, db } = harness();
-  const root = mkdtempSync(join(tmpdir(), "orch-dirs-"));
+  const root = tempDir("orch-dirs-");
   mkdirSync(join(root, "a-plain"));
   mkdirSync(join(root, "b-repo/.git"), { recursive: true });
   mkdirSync(join(root, "c-taken/.git"), { recursive: true });
@@ -1150,7 +1150,7 @@ test("the blackboard is readable: notes by project, by group, and by kind", asyn
 });
 
 test("skills are found through symlinks, and a block-scalar description is read", () => {
-  const root = mkdtempSync(join(tmpdir(), "orch-skills-"));
+  const root = tempDir("orch-skills-");
   // A real machine's skills are mostly symlinks into plugins or a shared
   // .agents/skills, and a dirent for a symlink does not say "directory" — which hid
   // almost all of them.
@@ -1293,7 +1293,7 @@ test("a live group that owns the path gets it as an addition, not a rival group"
   // A second group for the same file would be refused by canStart anyway, so
   // opening one would only produce a requirement that can never start.
   const h = harness();
-  const repo = mkdtempSync(join(tmpdir(), "orch-blocked2-"));
+  const repo = tempDir("orch-blocked2-");
   writeFileSync(join(repo, "package.json"), "{}");
   h.db.run("UPDATE project SET repo_path = ? WHERE id = 1", [repo]);
   h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
@@ -1353,7 +1353,7 @@ test("two groups cannot end up waiting on each other", async () => {
   // Both PAUSED for a stated reason, and the reason is each other. Nothing
   // downstream would notice: neither will ever dissolve, so neither is ever freed.
   const h = harness();
-  const repo = mkdtempSync(join(tmpdir(), "orch-cycle-"));
+  const repo = tempDir("orch-cycle-");
   writeFileSync(join(repo, "shared.ts"), "");
   h.db.run("UPDATE project SET repo_path = ? WHERE id = 1", [repo]);
   h.db.run("UPDATE grp SET owns_json = ? WHERE id = 1", [JSON.stringify(["src/a/**"])]);
@@ -1471,7 +1471,7 @@ test("an attachment cannot run as the panel", async () => {
   // also the one path around React's escaping, and the uploads are not all the
   // boss's: `attach/local` is reachable by anything holding an agent token.
   const h = harness();
-  const dir = join(mkdtempSync(join(tmpdir(), "orch-attach-")), "attachments");
+  const dir = join(tempDir("orch-attach-"), "attachments");
   h.ctx.config.dataDir = dirname(dir);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "x.svg"), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');

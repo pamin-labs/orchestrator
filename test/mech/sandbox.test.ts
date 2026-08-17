@@ -14,14 +14,14 @@ import {
 import { CODEX_HOME } from "../../src/mech/sandbox/auth.ts";
 import { setDefaultImage } from "../../src/mech/sandbox/images.ts";
 import { cacheProjectSkills, projectSkills } from "../../src/mech/skills.ts";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { httpsRemote } from "../../src/mech/git/checkout.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * The boundary's own checks.
@@ -159,7 +159,7 @@ test("the sandbox key is read from the server's own config, not invented here", 
   // panel cannot restart the server to teach it — so every container request
   // 401s with "Authentication credentials are invalid", which reads as a model
   // problem. The server owns the value; this reads it.
-  const dir = mkdtempSync(join(tmpdir(), "orch-sbkey-"));
+  const dir = tempDir("orch-sbkey-");
   const f = join(dir, "sandbox.toml");
   writeFileSync(f, '[server]\nhost = "127.0.0.1"\napi_key = "spike-local-key"\n');
   expect(keyInConfig(f)).toBe("spike-local-key");
@@ -169,7 +169,7 @@ test("the sandbox key is read from the server's own config, not invented here", 
 test("a commented-out key is not a key", () => {
   // The example config ships that line commented out; taking it would store a
   // value the server is not using and lock the fleet out just as thoroughly.
-  const dir = mkdtempSync(join(tmpdir(), "orch-sbkey-"));
+  const dir = tempDir("orch-sbkey-");
   const f = join(dir, "sandbox.toml");
   writeFileSync(f, '[server]\n# api_key = "example"\napi_key = ""\n');
   expect(keyInConfig(f)).toBeNull();
@@ -186,7 +186,7 @@ test("staged skills mount read-only, on an absolute path, at neither CLI's own p
   // undeliverable: a read-only mount is not a directory anything can add to, so
   // the one attempt at linking them in got EROFS, swallowed, and reported
   // success. `SKILL_SYNC` builds both directories out of symlinks into this.
-  const dir = mkdtempSync(join(tmpdir(), "orch-sk-mount-"));
+  const dir = tempDir("orch-sk-mount-");
   mkdirSync(join(dir, "skills", "alpha"), { recursive: true });
   const mounts = skillMounts(ctx({ skillsDir: relative(process.cwd(), join(dir, "skills")) }));
 

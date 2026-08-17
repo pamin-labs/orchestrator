@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 import {
@@ -15,6 +14,7 @@ import {
 } from "../../src/platform/config/load.ts";
 import { ConfigSchema } from "../../src/contracts/config.ts";
 import { routeSource } from "../support/route-source.ts";
+import { tempDir } from "../support/temp.ts";
 
 test("the shipped roles all parse and declare what the runtime needs", () => {
   const roles = loadRoles("roles");
@@ -49,7 +49,7 @@ test("only the engineer is allowed to be a writer", () => {
 test("adding a role is a file, not a code change", () => {
   // Assert the property, not the current roster: nothing in the loader
   // enumerates known names, so an unfamiliar yaml simply appears.
-  const dir = mkdtempSync(join(tmpdir(), "orch-roles-"));
+  const dir = tempDir("orch-roles-");
   writeFileSync(join(dir, "composer.yaml"), "name: composer\ntier: hard\nprompt: |\n  You write music.\n");
   const roles = loadRoles(dir);
   expect([...roles.keys()]).toEqual(["composer"]);

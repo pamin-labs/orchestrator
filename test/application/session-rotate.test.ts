@@ -1,7 +1,4 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
@@ -14,6 +11,7 @@ import type { TurnSpec } from "../../src/runtime/claude.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { seedAuth } from "../support/seed-auth.ts";
+import { tempDir } from "../support/temp.ts";
 
 // A big cacheRead per turn, small input/cacheCreate — the pattern that made
 // overTokenBudget trip every turn when session_tokens counted all four fields.
@@ -35,7 +33,7 @@ function harness(turn: (spec: TurnSpec) => Promise<TurnResult>) {
   const db = openMemory();
   seedAuth(db);
   const bus = new Bus(db);
-  const cfg = { ...loadConfig(), dataDir: mkdtempSync(join(tmpdir(), "orch-data-")) };
+  const cfg = { ...loadConfig(), dataDir: tempDir("orch-data-") };
   const specs: TurnSpec[] = [];
   let exec: Executor;
   const sched = new Scheduler(db, (j) => exec(j));

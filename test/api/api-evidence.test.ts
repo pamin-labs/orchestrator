@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeApp } from "../../src/composition/api.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
@@ -12,6 +11,7 @@ import { fakeSandbox } from "../support/fake-sandbox.ts";
 import { seedAuth } from "../support/seed-auth.ts";
 import { z } from "zod";
 import * as fx from "../support/factories.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * The two panels the boss reads before pressing a button.
@@ -35,7 +35,7 @@ const Evidence = z.object({
 const Draft = z.object({ text: z.string() });
 
 function harness(opts: { handle?: (cmd: string) => { code?: number; out?: string }; language?: string } = {}) {
-  const dataDir = mkdtempSync(join(tmpdir(), "orch-ev-"));
+  const dataDir = tempDir("orch-ev-");
   const db = openMemory();
   seedAuth(db);
   const ctx: Ctx = {

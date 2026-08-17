@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, existsSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, existsSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DROP_AFTER_MS, newestRollout, sweepCodexSessions } from "../../src/mech/ops/watchdog.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * The two housekeeping steps of the tick that reach outside the database.
@@ -21,7 +21,7 @@ const NOW = 1_700_000_000_000;
 
 /** A `sessions` tree, dated. `age` is how long ago each file was last written. */
 function sessions(files: Record<string, number>): string {
-  const home = mkdtempSync(join(tmpdir(), "orch-codex-"));
+  const home = tempDir("orch-codex-");
   for (const [rel, age] of Object.entries(files)) {
     const path = join(home, "sessions", rel);
     mkdirSync(join(path, ".."), { recursive: true });
@@ -61,7 +61,7 @@ test("a file exactly at the window is kept, not dropped", () => {
 test("a home with no sessions directory sweeps nothing rather than throwing", () => {
   // The host copy only exists once the weekly refresh nudge has run, so on most
   // machines this directory is simply not there.
-  expect(sweepCodexSessions(mkdtempSync(join(tmpdir(), "orch-codex-")), NOW)).toBe(0);
+  expect(sweepCodexSessions(tempDir("orch-codex-"), NOW)).toBe(0);
   expect(sweepCodexSessions("/nonexistent/codex-home", NOW)).toBe(0);
 });
 

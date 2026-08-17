@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { testGit } from "../support/git-runner.ts";
-import { mkdtempSync, writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { baseBranch, LINK_AGENTS_MD } from "../../src/mech/git/checkout.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -18,6 +17,7 @@ import {
 } from "../../src/mech/git/worktree.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * A group's checkout, as a plain clone.
@@ -27,7 +27,7 @@ import { testContext } from "../support/test-context.ts";
  * exactly what makes the two interchangeable.
  */
 async function checkout(origin: string, branch = "orch/g1"): Promise<string> {
-  const dir = mkdtempSync(join(tmpdir(), "orch-wt-"));
+  const dir = tempDir("orch-wt-");
   const work = join(dir, "work");
   await git(dir, ["clone", "-q", origin, work]);
   await git(work, ["config", "user.email", "a@orch.local"], work);
@@ -40,7 +40,7 @@ const git = testGit;
 
 /** A real repo with one commit. Real git, because this plumbing is easy to fake wrong. */
 async function repo(): Promise<string> {
-  const dir = mkdtempSync(join(tmpdir(), "orch-repo-"));
+  const dir = tempDir("orch-repo-");
   await git(dir, ["init", "-q", "-b", "main"]);
   await git(dir, ["config", "user.email", "t@example.com"]);
   await git(dir, ["config", "user.name", "test"]);
@@ -221,20 +221,20 @@ test("a repo with only AGENTS.md gets CLAUDE.md, and the other way round", () =>
   // nothing for every turn. The command itself is what is checked.
   const link = (dir: string) => Bun.spawnSync(["sh", "-c", LINK_AGENTS_MD], { cwd: dir });
 
-  const dir = mkdtempSync(join(tmpdir(), "orch-md-"));
+  const dir = tempDir("orch-md-");
   writeFileSync(join(dir, "AGENTS.md"), "rules\n");
   link(dir);
   // A codex-native repo: a claude turn used to run with no project instructions
   // at all, which looks exactly like a project that has none.
   expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("rules\n");
 
-  const other = mkdtempSync(join(tmpdir(), "orch-md-"));
+  const other = tempDir("orch-md-");
   writeFileSync(join(other, "CLAUDE.md"), "rules\n");
   link(other);
   expect(readFileSync(join(other, "AGENTS.md"), "utf8")).toBe("rules\n");
 
   // A repo shipping both is left alone: it said what it wanted.
-  const both = mkdtempSync(join(tmpdir(), "orch-md-"));
+  const both = tempDir("orch-md-");
   writeFileSync(join(both, "CLAUDE.md"), "for claude\n");
   writeFileSync(join(both, "AGENTS.md"), "for codex\n");
   link(both);
@@ -247,7 +247,7 @@ test.concurrent("the base branch is a bare name, whatever the remote calls it", 
   // ordinary clone they were asking git for `origin/origin/main`.
   const origin = await repo();
   await git(origin, ["branch", "-m", "main", "trunk"]);
-  const dir = mkdtempSync(join(tmpdir(), "orch-base-"));
+  const dir = tempDir("orch-base-");
   const work = join(dir, "work");
   await git(dir, ["clone", "-q", origin, work]);
 
@@ -263,7 +263,7 @@ test.concurrent("with no base branch to rebase onto, the caller is told that and
   // has gone — that is `origin/main` against a repository that has no `origin`
   // at all, so the rebase fails deep inside git with a message about argument
   // parsing. `unpark` then shows the boss that message.
-  const dir = mkdtempSync(join(tmpdir(), "orch-nobase-"));
+  const dir = tempDir("orch-nobase-");
   await git(dir, ["init", "-q", "-b", "solo"]);
   await git(dir, ["config", "user.email", "t@example.com"]);
   await git(dir, ["config", "user.name", "test"]);

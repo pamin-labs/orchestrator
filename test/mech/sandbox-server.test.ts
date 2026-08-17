@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { allowedHostPaths, coveredBy, restartServer } from "../../src/mech/sandbox/sandbox.ts";
@@ -8,6 +7,7 @@ import { preflight } from "../../src/mech/ops/preflight.ts";
 import { serverAction, serverBackoffMs, SERVER_RESTART_CAP } from "../../src/mech/ops/watchdog.ts";
 import { patchConfig, startPlan, waitUp } from "../../src/mech/sandbox/server.ts";
 import { testContext } from "../support/test-context.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * The sandbox server is the one host dependency that runs containers, and it
@@ -21,7 +21,7 @@ import { testContext } from "../support/test-context.ts";
  */
 
 function configWith(line: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "orch-toml-"));
+  const dir = tempDir("orch-toml-");
   const path = join(dir, "sandbox.toml");
   writeFileSync(path, `[server]\napi_key = "k"\n\n[sandbox]\n# Example: allowed_host_paths = ["/nope"]\n${line}\n`);
   return path;
@@ -228,7 +228,7 @@ function waiting(dataDir: string, log?: string) {
 const never = async () => ({ kind: "none", why: "Unable to connect" }) as const;
 
 test("a server that dies on its config is reported with what it printed, not with our probe", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "orch-srv-"));
+  const dir = tempDir("orch-srv-");
   const ctx = waiting(dir, "pydantic_core.ValidationError: 1 validation error for AppConfig\n");
   const slept: number[] = [];
 
@@ -248,7 +248,7 @@ test("a server that dies on its config is reported with what it printed, not wit
 });
 
 test("a process that died silently says that, rather than leaving a blank where the log goes", async () => {
-  const ctx = waiting(mkdtempSync(join(tmpdir(), "orch-srv-")));
+  const ctx = waiting(tempDir("orch-srv-"));
 
   const up = await waitUp(ctx, { exited: Promise.resolve(2) }, HERE, "k", 45_000, {
     probe: never,
@@ -262,7 +262,7 @@ test("a process that died silently says that, rather than leaving a blank where 
 test("a server that never answers gives up at the deadline and says how long it waited", async () => {
   // Bounded, and it must stay bounded: this runs at boot and the settings page
   // waits on it.
-  const ctx = waiting(mkdtempSync(join(tmpdir(), "orch-srv-")), "Address already in use\n");
+  const ctx = waiting(tempDir("orch-srv-"), "Address already in use\n");
   let probes = 0;
 
   const up = await waitUp(ctx, { exited: new Promise<number>(() => {}) }, HERE, "k", 1200, {
@@ -282,7 +282,7 @@ test("a server that never answers gives up at the deadline and says how long it 
 test("a server holding somebody else's key is reported as that, not as unreachable", async () => {
   // The sentence this exists to stop: "起来了但驱动不了：Unable to connect",
   // which describes neither of the two things that were true.
-  const ctx = waiting(mkdtempSync(join(tmpdir(), "orch-srv-")));
+  const ctx = waiting(tempDir("orch-srv-"));
 
   const up = await waitUp(ctx, { exited: Promise.resolve(0) }, HERE, "k", 5000, {
     probe: async () => ({ kind: "auth" }),
@@ -294,7 +294,7 @@ test("a server holding somebody else's key is reported as that, not as unreachab
 });
 
 test("a server that comes up on a later probe is up, and the wait ends there", async () => {
-  const ctx = waiting(mkdtempSync(join(tmpdir(), "orch-srv-")));
+  const ctx = waiting(tempDir("orch-srv-"));
   let n = 0;
 
   const up = await waitUp(ctx, { exited: new Promise<number>(() => {}) }, HERE, "k", 10_000, {

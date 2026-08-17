@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -16,6 +15,7 @@ import {
 import { jsonBody, queryParams } from "../../src/http/validate.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
+import { tempDir } from "../support/temp.ts";
 
 const jsonHeaders = { "content-type": "application/json" };
 const WriteResponse = z.object({ write: z.number() });
@@ -357,7 +357,7 @@ test("the panel resolves an agent caller while the agent can only inspect its ow
 });
 
 test("attachment uploads replay the stored result without writing another file", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "orch-idempotency-attach-"));
+  const dir = tempDir("orch-idempotency-attach-");
   const ctx = testContext();
   ctx.config.dataDir = dir;
   try {

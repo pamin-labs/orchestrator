@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync, rmSync } from "node:fs";
 import { start, type Started } from "../../src/composition/server.ts";
 import { SnapshotSchema } from "../../src/contracts/panel.ts";
 import { z } from "zod";
 import type { Json } from "../../src/contracts/json.ts";
 import * as fx from "../support/factories.ts";
+import { tempDir } from "../support/temp.ts";
 
 const PackageJson = z.object({ scripts: z.record(z.string(), z.string()) });
 
@@ -33,7 +32,7 @@ function canListen(): boolean {
 // Restricted agent sandboxes cannot provide one; CI and normal hosts still run it.
 describe.skipIf(!canListen())("HTTP smoke", () => {
   beforeAll(() => {
-    dataDir = mkdtempSync(join(tmpdir(), "orch-smoke-"));
+    dataDir = tempDir("orch-smoke-");
     // No `git init` here any more: a project is a GitHub repository, not a
     // directory on this machine, so dataDir is only ever the server's own store.
     // maxGroups 0 blocks every group turn, which is how this test exercises the

@@ -3,15 +3,13 @@ import type { ResourceExec } from "../../src/mech/lease.ts";
 
 /** These check ordering and reporting, never a real command. */
 const noExec: ResourceExec = async () => ({ code: 0, out: "" });
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { gateState, gatesFor, recordGate, runGates, type RunGatesOptions } from "../../src/mech/gate.ts";
 import { projectConfig } from "../../src/mech/util/rows.ts";
 import { digestOutput } from "../../src/mech/lease.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import * as fx from "../support/factories.ts";
+import { tempDir } from "../support/temp.ts";
 
 function seed(gates: Json | undefined): DB {
   const db = openMemory();
@@ -36,7 +34,7 @@ const fakeRun = (script: Record<string, { code: number; out: string }>) =>
     };
   }) satisfies NonNullable<RunGatesOptions["run"]>;
 
-const dataDir = () => mkdtempSync(join(tmpdir(), "orch-gate-"));
+const dataDir = () => tempDir("orch-gate-");
 
 test("gates come from project config, not from anything an agent can set", () => {
   expect(gatesFor(seed(["test", "lint"]), 1)).toEqual(["test", "lint"]);

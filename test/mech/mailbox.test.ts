@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, readdirSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { normalise, serve } from "../../src/mech/sandbox/mailbox.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { ProtocolResponse } from "../../src/contracts/protocol.ts";
 import { z } from "zod";
+import { tempDir } from "../support/temp.ts";
 
 const Envelope = z.object({
   id: z.string(),
@@ -29,7 +29,7 @@ const ErrorAnswer = z.object({ status: z.number(), body: z.object({ error: z.str
  */
 
 function mailbox(): string {
-  const dir = mkdtempSync(join(tmpdir(), "orch-mb-"));
+  const dir = tempDir("orch-mb-");
   mkdirSync(join(dir, "req"));
   mkdirSync(join(dir, "res"));
   return dir;

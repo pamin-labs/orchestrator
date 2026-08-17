@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -21,11 +20,12 @@ import { costReport } from "../../src/mech/ops/cost.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { z } from "zod";
+import { tempDir } from "../support/temp.ts";
 
 const UsageMeta = z.object({ runtime: z.string() });
 
 function repo(): string {
-  const d = mkdtempSync(join(tmpdir(), "orch-pi-"));
+  const d = tempDir("orch-pi-");
   mkdirSync(join(d, "src/mech"), { recursive: true });
   writeFileSync(join(d, "src/mech/notify.ts"), "export function push(){} // desktop notifications\n");
   writeFileSync(join(d, "src/mech/gate.ts"), "export function runGates(){} // deterministic checks\n");

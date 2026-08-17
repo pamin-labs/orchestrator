@@ -1,7 +1,4 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -10,6 +7,7 @@ import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../../src/mech/san
 import { makeExecutor } from "../../src/application/executor.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import * as fx from "../support/factories.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * A gate whose container cannot be opened must fail, not disappear.
@@ -30,7 +28,7 @@ function stranded() {
   const base = loadConfig();
   const cfg = {
     ...base,
-    dataDir: mkdtempSync(join(tmpdir(), "orch-lease-")),
+    dataDir: tempDir("orch-lease-"),
     sandbox: { ...base.sandbox, server: "127.0.0.1:9" },
   };
   let exec: Executor;

@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
@@ -13,6 +12,7 @@ import type { Scope } from "../../src/mech/sandbox/sandbox.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import * as fx from "../support/factories.ts";
 import { z } from "zod";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * Removing a project is the one place this codebase deletes rather than
@@ -167,7 +167,7 @@ test("nothing in the removal path writes to GitHub", async () => {
 });
 
 test("attachments of the removed project go, and files it never named stay", async () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "orch-rm-"));
+  const dataDir = tempDir("orch-rm-");
   mkdirSync(join(dataDir, "attachments"), { recursive: true });
   const mine = join(dataDir, "attachments", "1-0-shot.png");
   const other = join(dataDir, "attachments", "9-0-somebody-else.png");

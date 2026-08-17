@@ -1,4 +1,6 @@
-import { beforeEach } from "bun:test";
+import { afterAll, beforeEach } from "bun:test";
+import { rmSync } from "node:fs";
+import { tempRoot } from "./temp.ts";
 import { resetRepoHolds } from "../../src/mech/git/repository.ts";
 import { resetNet } from "../../src/mech/sandbox/net.ts";
 import { resetSandboxHold } from "../../src/mech/sandbox/sandbox.ts";
@@ -29,4 +31,18 @@ beforeEach(() => {
   resetRepoHolds();
   resetNet();
   resetServerRestarts();
+});
+
+/**
+ * Every temporary directory the run made, removed once.
+ *
+ * `afterAll` in a preload is registered against the run rather than each file,
+ * so this fires once when `bun test` is finished — and it fires whether the
+ * suite passed, failed or threw, which is the whole point: the run that leaks is
+ * the failing one, because a test that throws never reaches a cleanup written
+ * after its assertions. `tempDir` puts everything under one parent so this stays
+ * one call rather than a registry that each call site has to remember to join.
+ */
+afterAll(() => {
+  rmSync(tempRoot, { recursive: true, force: true });
 });

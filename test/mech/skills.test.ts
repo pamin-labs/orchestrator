@@ -1,16 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  statSync,
-  symlinkSync,
-  writeFileSync,
-  utimesSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import {
   cacheProjectSkills,
@@ -27,6 +16,7 @@ import {
 import { openMemory, rewriteSkillPaths, type DB } from "../../src/platform/persistence/database.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
+import { tempDir } from "../support/temp.ts";
 
 /**
  * The staging directory the sandbox mounts.
@@ -39,7 +29,7 @@ import { testContext } from "../support/test-context.ts";
  */
 
 function farm(): { home: string; ref: (name: string) => SkillRef } {
-  const home = mkdtempSync(join(tmpdir(), "orch-sk-"));
+  const home = tempDir("orch-sk-");
   mkdirSync(join(home, "real"), { recursive: true });
   mkdirSync(join(home, "skills"), { recursive: true });
   return {
@@ -64,7 +54,7 @@ function farm(): { home: string; ref: (name: string) => SkillRef } {
 
 test("staged skills are dereferenced, not symlinked", () => {
   const f = farm();
-  const data = join(mkdtempSync(join(tmpdir(), "orch-data-")), "skills");
+  const data = join(tempDir("orch-data-"), "skills");
   const { dir, staged, failed } = stageSkills(data, [f.ref("alpha")]);
 
   expect(staged).toEqual(["alpha"]);
@@ -77,7 +67,7 @@ test("staged skills are dereferenced, not symlinked", () => {
 
 test("unticked skills leave, and the directory itself is never replaced", () => {
   const f = farm();
-  const data = join(mkdtempSync(join(tmpdir(), "orch-data-")), "skills");
+  const data = join(tempDir("orch-data-"), "skills");
   const alpha = f.ref("alpha");
   const beta = f.ref("beta");
 
@@ -93,7 +83,7 @@ test("unticked skills leave, and the directory itself is never replaced", () => 
 
 test("an unchanged skill is not copied again", () => {
   const f = farm();
-  const data = join(mkdtempSync(join(tmpdir(), "orch-data-")), "skills");
+  const data = join(tempDir("orch-data-"), "skills");
   const alpha = f.ref("alpha");
 
   stageSkills(data, [alpha]);
@@ -115,7 +105,7 @@ test("an unchanged skill is not copied again", () => {
 
 test("a dangling skill is skipped, not fatal", () => {
   const f = farm();
-  const data = join(mkdtempSync(join(tmpdir(), "orch-data-")), "skills");
+  const data = join(tempDir("orch-data-"), "skills");
   const alpha = f.ref("alpha");
   const gone: SkillRef = { ...alpha, name: "gone", file: join(f.home, "skills", "gone", "SKILL.md") };
 

@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, loadRoles } from "../../src/platform/config/load.ts";
 import { checkConfig, checkRoles } from "../../src/mech/ops/checkconfig.ts";
+import { tempDir } from "../support/temp.ts";
 
 const yaml = (body: string): string => {
-  const f = join(mkdtempSync(join(tmpdir(), "orch-cfg-")), "default.yaml");
+  const f = join(tempDir("orch-cfg-"), "default.yaml");
   writeFileSync(f, body);
   return f;
 };
@@ -53,7 +53,7 @@ test("the committed config passes its own checker", () => {
 });
 
 test("a role's schema rejects invalid enums before they reach a CLI", () => {
-  const dir = mkdtempSync(join(tmpdir(), "orch-roles-"));
+  const dir = tempDir("orch-roles-");
   writeFileSync(join(dir, "engineer.yaml"), "name: engineer\nprompt: x\neffort: highest\n");
   expect(() => loadRoles(dir)).toThrow("engineer.yaml: invalid role");
 
