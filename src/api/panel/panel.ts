@@ -88,13 +88,20 @@ export const getNotes = (async (ctx, _req, _params, query) => {
  * listed — naming one in a requirement injects it into that single turn — which is
  * why the composer offers all of them and asks before using an unticked one.
  */
-export const SkillsQuery = z.object({ project: z.coerce.number().int().positive() });
+/**
+ * Optional, because this section is machine-scope: the staged directory is
+ * mounted into every group of every project, so the list exists before any
+ * project does. A project only adds its own repository's skills on top. This was
+ * the one required `project` in the panel API while every sibling query made it
+ * optional, so opening 技能 with no project selected answered a Zod error.
+ */
+export const SkillsQuery = z.object({ project: z.coerce.number().int().positive().optional() });
 
 export const getSkills = (async (ctx, _req, _params, { project: id }) => {
-  const repo = ctx.db
-    .query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?")
-    .get(id)?.repo_path;
-  projectSkillsPending(ctx, id, repo);
+  const repo = id
+    ? ctx.db.query<{ repo_path: string }, [number]>("SELECT repo_path FROM project WHERE id = ?").get(id)?.repo_path
+    : undefined;
+  if (id !== undefined) projectSkillsPending(ctx, id, repo);
   const off = new Set(skillsOff(ctx.db));
   return json({
     skills: listSkills(repo, projectSkills(ctx.db, id)).map(({ name, rel, description, scope }) => ({

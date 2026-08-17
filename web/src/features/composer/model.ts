@@ -23,6 +23,18 @@ export const SkillSchema = z.object({
 });
 export type Skill = z.infer<typeof SkillSchema>;
 
+/**
+ * Absent, not empty, when there is no project.
+ *
+ * Both callers wrote `String(projectId ?? "")`, which sends `project=`. The
+ * server's `.optional()` only short-circuits on an absent value, so an empty
+ * string still reached `z.coerce.number()`, became 0, and failed `.positive()`:
+ * 技能 is machine-scope, and it answered a Zod error whenever no project was
+ * selected. One builder so a third caller cannot reinvent the empty string.
+ */
+export const skillsQuery = (projectId?: number | null): { project?: string } =>
+  projectId ? { project: String(projectId) } : {};
+
 const DraftAttachmentSchema = AttachedSchema.pick({ name: true, path: true, type: true, label: true });
 const DraftSchema = z.object({ text: z.string(), attachments: z.array(DraftAttachmentSchema) });
 export type Draft = z.infer<typeof DraftSchema>;

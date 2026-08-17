@@ -8,6 +8,7 @@ import { forgetSkills } from "../composer/view";
 import { cn } from "../../ui/cn";
 import { z } from "zod";
 import { SkillSchema, type Skill as Row } from "../composer/view";
+import { skillsQuery } from "../composer/model";
 
 /**
  * Which of the boss's skills the agents can see.
@@ -30,7 +31,7 @@ export function Skills({ projectId }: { projectId: number | null }) {
 
   const load = useCallback(async () => {
     const d = await readApi(
-      api.skills.$get({ query: { project: String(projectId ?? "") } }),
+      api.skills.$get({ query: skillsQuery(projectId) }),
       z.object({ skills: z.array(SkillSchema) }),
     );
     setRows(d?.skills ?? []);

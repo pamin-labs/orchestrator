@@ -23,6 +23,7 @@ import {
   replaceSlash,
   SavedAttachmentSchema,
   SkillSchema,
+  skillsQuery,
   slashAt,
   tileBadge,
   toDraft,
@@ -110,7 +111,7 @@ const cachedSkills = (projectId?: number): Skill[] | null => SKILLS.get(String(p
 export const forgetSkills = () => SKILLS.clear();
 
 function fetchSkills(key: string, projectId?: number): Promise<Skill[]> {
-  const p = readApi(api.skills.$get({ query: { project: String(projectId ?? "") } }), SkillsResponseSchema)
+  const p = readApi(api.skills.$get({ query: skillsQuery(projectId) }), SkillsResponseSchema)
     .then((d) => d?.skills ?? [])
     .catch(() => [])
     .then((list) => {
