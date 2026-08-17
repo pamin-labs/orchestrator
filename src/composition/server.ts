@@ -123,6 +123,17 @@ export async function shutdownRuntime(
  * the one place to name a host binary if one is ever needed again, and the
  * caller already says the right thing when the list is not empty.
  */
+/**
+ * How often the self-check runs, derived from the watchdog's own interval.
+ *
+ * Clamped rather than followed: below five seconds the three `spawnSync` calls
+ * to the docker daemon would block the event loop more often than they told
+ * anyone anything, and above thirty a machine that lost its sandbox server takes
+ * half a minute to say so on a page somebody is looking at.
+ */
+export const readinessPeriodMs = (watchdogIntervalMs: number): number =>
+  Math.min(Math.max(watchdogIntervalMs, 5_000), 30_000);
+
 export function missingBinaries(): string[] {
   return [];
 }
@@ -817,7 +828,22 @@ export function start(overrides: Partial<Config> = {}): Started {
     });
   };
   refreshReadiness();
-  const readinessTick = setInterval(refreshReadiness, Math.min(Math.max(cfg.watchdogIntervalMs, 5_000), 30_000));
+  // Re-armed on a changed setting, the way the watchdog timer above is. The
+  // period is derived from `watchdogIntervalMs`, which the settings page can
+  // change while the server runs — and this one resolved it once at boot, so
+  // changing the interval moved the watchdog and left the self-check on its old
+  // clock until a restart. Two timers reading one setting and only one noticing
+  // is the kind of difference nobody finds by reading.
+  const readinessPeriod = () => readinessPeriodMs(cfg.watchdogIntervalMs);
+  let readinessArmed = readinessPeriod();
+  let readinessTick = setInterval(function beat() {
+    if (readinessPeriod() !== readinessArmed) {
+      clearInterval(readinessTick);
+      readinessArmed = readinessPeriod();
+      readinessTick = setInterval(beat, readinessArmed);
+    }
+    refreshReadiness();
+  }, readinessArmed);
 
   sched.tick();
   let stopped = false;

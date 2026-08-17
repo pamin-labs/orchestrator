@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { makeApp } from "../../src/composition/api.ts";
+import { readinessPeriodMs } from "../../src/composition/server.ts";
 import { ErrorResponseSchema } from "../../src/contracts/protocol.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { runtimeStatus } from "../../src/platform/observability/metrics.ts";
@@ -203,4 +204,28 @@ test("unmatched request paths cannot create unbounded metrics labels", async () 
   } finally {
     ctx.db.close();
   }
+});
+
+/**
+ * The self-check's period, which is not the watchdog's despite being derived
+ * from it.
+ *
+ * The clamp is the policy: below five seconds the three `spawnSync` calls to the
+ * docker daemon block the event loop more often than they report anything, and
+ * above thirty a machine that has lost its sandbox server takes half a minute to
+ * say so on a page somebody is watching.
+ *
+ * The re-arm around it is deliberately not tested here. It is four lines
+ * identical to the watchdog timer's, and reaching it needs a live server and a
+ * manipulated clock — a timing dependency in a suite that already has one flake
+ * being hunted. The part with a decision in it is this function.
+ */
+test("the self-check period follows the watchdog's interval, within bounds", () => {
+  expect(readinessPeriodMs(15_000)).toBe(15_000);
+  // A one-second watchdog does not get a one-second docker probe.
+  expect(readinessPeriodMs(1_000)).toBe(5_000);
+  // Nor does a ten-minute one leave the panel half a minute behind.
+  expect(readinessPeriodMs(600_000)).toBe(30_000);
+  expect(readinessPeriodMs(5_000)).toBe(5_000);
+  expect(readinessPeriodMs(30_000)).toBe(30_000);
 });
