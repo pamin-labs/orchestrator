@@ -28,6 +28,19 @@ const WorkflowSchema = z.object({
 });
 type Workflow = z.infer<typeof WorkflowSchema>;
 
+const CompositeActionSchema = z.object({
+  runs: z.object({
+    using: z.literal("composite"),
+    steps: z.array(
+      z.object({
+        uses: z.string().optional(),
+        run: z.string().optional(),
+        with: JsonMap.optional(),
+      }),
+    ),
+  }),
+});
+
 const source = (name: (typeof workflowNames)[number]) => Bun.file(`.github/workflows/${name}.yml`).text();
 const load = async (name: (typeof workflowNames)[number]) => WorkflowSchema.parse(Bun.YAML.parse(await source(name)));
 
@@ -46,13 +59,22 @@ describe("workflow governance", () => {
       const workflow = await load(name);
       for (const job of Object.values(workflow.jobs)) {
         for (const step of job.steps) {
-          if (step.uses) expect(step.uses, `${name}: ${step.uses}`).toMatch(/^[^@]+@[0-9a-f]{40}$/);
-          if (step.uses?.startsWith("oven-sh/setup-bun@"))
+          if (step.uses?.startsWith("./")) {
+            expect(step.uses, `${name}: ${step.uses}`).toBe("./.github/actions/setup-bun");
             expect(step.with?.["bun-version"]).toBe("${{ env.BUN_VERSION }}");
+          } else if (step.uses) {
+            expect(step.uses, `${name}: ${step.uses}`).toMatch(/^[^@]+@[0-9a-f]{40}$/);
+          }
         }
       }
       expect(await source(name)).not.toMatch(/bun-version:\s*(latest|canary)/);
     }
+
+    const setup = CompositeActionSchema.parse(
+      Bun.YAML.parse(await Bun.file(".github/actions/setup-bun/action.yml").text()),
+    );
+    expect(setup.runs.steps.find((step) => step.uses)?.uses).toMatch(/^oven-sh\/setup-bun@[0-9a-f]{40}$/);
+    expect(setup.runs.steps.find((step) => step.run)?.run).toBe("bun install --frozen-lockfile");
   });
 
   test("CI exposes independent read-only required jobs", async () => {
@@ -69,7 +91,17 @@ describe("workflow governance", () => {
     ]);
     expect(ci.permissions).toEqual({ contents: "read" });
     expect(Object.values(ci.jobs).every((job) => job.permissions === undefined)).toBe(true);
-    expect(await source("ci")).not.toMatch(/audit:fix|format --write|git (add|commit|push)|create-github-app-token/);
+    const ciText = await source("ci");
+    expect(ciText).not.toMatch(/audit:fix|format --write|git (add|commit|push)|create-github-app-token/);
+    expect(ciText).not.toContain("bun run perf:bench");
+
+    const fallow = ci.jobs["quality-fallow"]!.steps.find((step) => step.name === "audit repository structure")?.run;
+    expect(fallow?.match(/bun run audit/g)).toHaveLength(1);
+    expect(fallow).toContain("--format json");
+    expect(fallow).toContain("fallow report --from");
+    expect(fallow).toContain("--format github-annotations");
+    expect(fallow).toContain("--format github-summary");
+    expect(fallow).toContain('exit "$audit_status"');
   });
 
   test("security tools have one owner each", async () => {
@@ -82,8 +114,11 @@ describe("workflow governance", () => {
     expect(securityText).toContain("bun audit");
     expect(securityText).toContain("actions/dependency-review-action@");
     expect(securityText).toContain("aquasecurity/trivy-action@");
-    expect(securityText).toContain("actionlint@v1.7.12");
-    expect(securityText).toContain("zizmor==1.29.0");
+    expect(securityText).toContain("sha256sum --check");
+    expect(securityText).toContain("gh attestation verify");
+    expect(securityText).toContain("./actionlint -color");
+    expect(securityText).toMatch(/uvx --from zizmor==\d+\.\d+\.\d+ zizmor --pedantic/);
+    expect(securityText).not.toMatch(/go install .*actionlint/);
 
     const all = (await Promise.all(workflowNames.map(source))).join("\n");
     expect(all).not.toMatch(/semgrep|snyk|syft/i);

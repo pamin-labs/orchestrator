@@ -21,15 +21,14 @@ jobs:
     name: security-dependencies
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - run: bun install --frozen-lockfile
       - run: bun audit
-      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         if: github.event_name == 'pull_request'
         with:
           fail-on-severity: high
@@ -40,11 +39,11 @@ jobs:
     name: security-container
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: scan repository
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
@@ -52,7 +51,7 @@ jobs:
           trivy-config: trivy.yaml
           format: table
       - name: create filesystem SPDX SBOM
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
@@ -61,7 +60,7 @@ jobs:
           output: trivy-fs.spdx.json
           exit-code: '0'
       - name: create filesystem CycloneDX SBOM
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
@@ -71,14 +70,14 @@ jobs:
           exit-code: '0'
       - run: docker build --tag orchestrator-agent:ci --file docker/agent.Dockerfile .
       - name: scan container
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orchestrator-agent:ci
           trivy-config: trivy.yaml
           format: table
       - name: create container SPDX SBOM
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orchestrator-agent:ci
@@ -86,14 +85,14 @@ jobs:
           output: trivy-image.spdx.json
           exit-code: '0'
       - name: create container CycloneDX SBOM
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: orchestrator-agent:ci
           format: cyclonedx
           output: trivy-image.cdx.json
           exit-code: '0'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: security-sboms
           path: trivy-*.json
@@ -103,17 +102,26 @@ jobs:
   workflow-static:
     name: workflow-static
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      attestations: read # Verify actionlint release provenance.
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with:
-          go-version: '1.25.6'
-          cache: false
-      - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - run: actionlint -color
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - name: verify and run actionlint release
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          gh release download "v$ACTIONLINT_VERSION" --repo rhysd/actionlint --pattern "$archive"
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check -
+          gh attestation verify "$archive" --repo rhysd/actionlint
+          tar -xzf "$archive" actionlint
+          ./actionlint -color
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
         with:
           version: 0.12.2
           enable-cache: false

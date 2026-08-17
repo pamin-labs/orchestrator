@@ -20,10 +20,12 @@ dco
 pr-plan
 ```
 
-Jobs install from the frozen lockfile, use a pinned Bun version, and pin actions
-to immutable commit SHAs. Fork pull requests receive read permissions only and
-no repository secrets. Fallow publishes SARIF/summary without pull-request write
-permission.
+Jobs install from the frozen lockfile, use a pinned Bun version, and pin external
+actions to immutable commit SHAs. The local setup action removes repeated Bun
+installation without hiding checkout or job policy. Fork pull requests receive
+read permissions only and no repository secrets. Fallow analyzes once, preserves
+the audit verdict, and re-renders that JSON as log annotations and the job
+summary without pull-request write permission.
 
 `pr-plan` applies to non-bot pull requests and requires the 12 plan fields from
 the pull-request template. `N/A: reason` is valid; blank fields fail. `dco`
@@ -33,6 +35,11 @@ Security ownership follows the
 [`enforcement matrix`](../standards/enforcement-matrix.md): CodeQL, `bun audit`,
 Dependency Review, Trivy, actionlint, and zizmor each answer a distinct question.
 Dependabot proposes dependency and action updates for ordinary review.
+
+Actionlint runs its attested release binary after verifying the pinned checksum;
+zizmor runs at an exact version through the pinned uv setup action. Statistical
+microbenchmarks and randomized stress run nightly. Pull requests retain only
+deterministic bundle and artifact budgets.
 
 ## Failure handling
 

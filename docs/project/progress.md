@@ -61,6 +61,10 @@ M7 — executable engineering governance and versioned protocol.
 - CI is read-only and separates type, lint, architecture, tests, security,
   workflow, ownership, and PR-plan gates. Releases bind a verified `main` SHA to
   immutable binaries/images, checksums, SBOMs, provenance, and an atomic tag.
+- CI actions now use their current supported majors at immutable SHAs. A local
+  composite owns pinned Bun plus frozen install, Fallow renders one audit as
+  fork-safe annotations and summary, and actionlint verifies its release
+  checksum and attestation before execution.
 - Full suite reached 831 pass and 0 fail. Six OpenSandbox tests are gated on a
   live server; nine HTTP smoke cases also skip only in restricted environments
   that cannot bind loopback. Normal CI must run the HTTP smoke suite.
