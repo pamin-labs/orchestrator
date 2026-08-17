@@ -91,6 +91,9 @@ M7 — executable engineering governance and versioned protocol.
 - App navigation/selection policy now lives in a pure feature model with two
   fewer production lines; authentication vault shaping, DRAFT validation, split
   validation, and config walking also have no remaining Fallow finding.
+- PR polling/error classification, knowledge ranking/query/search, ownership
+  admission/conflict detection, and package gate detection now have focused
+  policies with no remaining Fallow finding and combined net-negative LOC.
 - Release archives carry a version-reporting bundled CLI, Linux/Windows x64 use
   Bun baseline targets, required archive contents are verified, and interrupted
   publication documents its immutable resume points instead of claiming no
@@ -108,7 +111,7 @@ M7 — executable engineering governance and versioned protocol.
 ## Blockers and deviations
 
 - Fallow's default new-only audit is green. `bun run audit:all` remains red on
-  52 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
+  44 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
   threshold increase, or inline suppression.
 - The first full Fallow security inventory surfaces 40 verification candidates
   (17 SQL, 13 SSRF, eight dynamic-regex, one redirect, and one secret-shaped
