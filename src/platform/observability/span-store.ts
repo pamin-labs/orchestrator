@@ -48,20 +48,33 @@ export interface StoredSpan extends SpanRow {
 }
 
 /**
- * Retention, stated rather than left to grow.
+ * Retention, stated rather than left to grow, and sized to what is read.
  *
- * Two bounds because they fail differently. The age bound is the product one: a
- * requirement's timing is interesting while the requirement is open, and no
- * panel view looks further back than the week it ran in. The row bound is the
- * safety one — a retry storm or a hot loop can write a week's spans in an hour,
- * and an age bound alone would let it fill the disk before a single row aged
- * out. 200k rows is roughly 60MB of one laptop's SQLite file.
+ * **A day, because a day is what the panel asks for.** `DEFAULT_WINDOW_MS` is 24
+ * hours and the page says so — 「最近一天」. This kept a week, and the row cap
+ * then cut that to 2.7 days at the measured rate of 3,114 spans an hour, so
+ * three numbers disagreed: the copy said a day, the standard said a week, and a
+ * reader could reach neither. Days two through seven were stored and never read
+ * by anything.
  *
- * Same shape as the idempotency store's own retention (age + count), because it
- * is the same problem: append-only history that nothing else deletes.
+ * A rollup table was designed for this and then discarded, which is worth
+ * recording because the design was sound and the problem was not. Folding
+ * expiring spans into per-hour summaries buys long history cheaply — but only
+ * for a page that wants long history, and this one wants "is something slow
+ * right now". Storing a week to serve a day is what made retention look like it
+ * needed a mechanism.
+ *
+ * The row bound stays and changes meaning. It is not the history length any
+ * more; it is the disaster bound, and it is sized so that it never decides how
+ * far back a reader can see. A day is 75k rows at the measured rate and 750k at
+ * ten times that; a retry storm or a hot loop writing 7.5M rows in a day would
+ * be 1GB of somebody's laptop, and that is the case this stops.
+ *
+ * Same shape as the idempotency store's retention (age + count), because it is
+ * the same problem: append-only history that nothing else deletes.
  */
-export const SPAN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
-const SPAN_MAX_ROWS = 200_000;
+export const SPAN_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
+const SPAN_MAX_ROWS = 1_000_000;
 
 function spanKindName(kind: SpanKind | undefined): string {
   switch (kind) {
