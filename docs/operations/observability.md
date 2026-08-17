@@ -14,6 +14,36 @@ first, then queue depth/leases, current holds, turn/subprocess timing, and the
 last correlated error. A green health endpoint does not mean a group has a
 driver.
 
+## Traces
+
+Spans are produced through the OpenTelemetry SDK and go to two places. The
+panel's own SQLite store always receives them, because the one consumer that is
+always present is the boss asking where a requirement's time went, and that
+question has no collector to ask. An OTLP exporter is added beside it only when
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set; with the variable unset no exporter is
+constructed, nothing is queued, and no socket is opened.
+
+To read a waterfall locally:
+
+```bash
+bun run trace:up      # Jaeger all-in-one, loopback only
+bun run dev:trace     # the server, exporting to it
+# http://127.0.0.1:16686
+bun run trace:down
+```
+
+The endpoint is the bare origin. An OTLP/HTTP client appends `/v1/traces`
+itself, which is also why the server's own receive endpoint is mounted at
+`/api/v1/traces`: pointing an exporter at `http://host/api` lands exactly there,
+and that prefix is the only one carrying the CSRF, body-limit and shutdown
+middleware. Any other collector that speaks OTLP/HTTP — Tempo, SigNoz, an
+OpenTelemetry Collector in front of either — is a change of that one variable.
+
+Export failure is never the traced work's problem: the processor queues in
+memory, flushes on its own timer, and drops rather than grows once full. Dropped
+spans are counted in `orchestrator_telemetry_dropped_total`, so the loss is
+visible rather than silent.
+
 ## Graceful shutdown
 
 1. Set readiness to 503.

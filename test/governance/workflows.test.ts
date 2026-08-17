@@ -441,4 +441,22 @@ describe("workflow governance", () => {
     for (const ecosystem of ["github-actions", "bun", "docker"])
       expect(dependabot).toContain(`package-ecosystem: ${ecosystem}`);
   });
+
+  test("every image this repository names is pinned by digest, not by tag", async () => {
+    // The assertion above pins one file by name, which only holds until somebody
+    // adds a second. A tag is a name its publisher can repoint, so "which image
+    // did we actually run" stops being answerable — including for the local
+    // trace viewer, which receives every span the server emits.
+    const files = [...new Bun.Glob("docker/*").scanSync({ cwd: "." })].toSorted((a, b) => a.localeCompare(b));
+    expect(files.length).toBeGreaterThan(1);
+    const unpinned: string[] = [];
+    for (const path of files) {
+      const text = await Bun.file(path).text();
+      for (const [index, line] of text.split("\n").entries()) {
+        const reference = /^\s*(?:FROM|image:)\s+(\S+)/.exec(line)?.[1];
+        if (reference && !/@sha256:[0-9a-f]{64}$/.test(reference)) unpinned.push(`${path}:${index + 1} ${reference}`);
+      }
+    }
+    expect(unpinned).toEqual([]);
+  });
 });

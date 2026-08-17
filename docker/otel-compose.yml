@@ -1,0 +1,23 @@
+# A trace viewer for local development. Not part of any deployment.
+#
+# `bun run dev:trace` starts the server with OTEL_EXPORTER_OTLP_ENDPOINT pointing
+# here, so spans go to both the panel's own store and this collector. Nothing in
+# the product depends on it being up: the exporter drops rather than blocks, and
+# with the variable unset no exporter is constructed at all.
+services:
+  jaeger:
+    # Jaeger v2: collector, in-memory storage and UI in one binary, with OTLP
+    # enabled by default. The v1 `all-in-one` image is a separate, older line.
+    # Pinned by digest for the same reason `docker/agent.Dockerfile` is — a tag
+    # is a name someone else can repoint.
+    image: jaegertracing/jaeger:2.20.0@sha256:46a886260e04002d8f45e213fc39063fa11a50446048fdaa64786fc0840cb9f8
+    container_name: orchestrator-jaeger
+    ports:
+      # The UI.
+      - "127.0.0.1:16686:16686"
+      # OTLP over HTTP. The client appends /v1/traces to whatever it is given, so
+      # the endpoint it is configured with is the bare origin.
+      - "127.0.0.1:4318:4318"
+    # Loopback-published only, on purpose: this holds every span the server
+    # emits, which is a description of the work being done.
+    restart: unless-stopped
