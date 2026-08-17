@@ -13,6 +13,7 @@ export interface Invalid {
   error: string;
 }
 export type Result<T> = ({ ok: true } & T) | Invalid;
+const invalid = (error: string): Invalid => ({ ok: false, error });
 
 const JOURNAL_MAX_LINES = 6;
 const DRAFT_MAX_LINES = 12;
@@ -90,6 +91,38 @@ export interface DraftOk {
 
 const DRAFT_FIELDS = ["目标", "不做", "验收", "切片", "风险", "反对"] as const;
 
+function draftSections(lines: string[]): Map<string, string[]> {
+  const sections = new Map<string, string[]>();
+  let current: string | null = null;
+  for (const line of lines) {
+    const match = /^\s*([^\s:：]+)\s*[:：]\s*(.*)$/.exec(line);
+    const head = match?.[1];
+    if (head && (DRAFT_FIELDS as readonly string[]).includes(head)) {
+      current = head;
+      if (!sections.has(head)) sections.set(head, []);
+      const rest = match[2]!.trim().replace(/^[-•]\s*/, "");
+      if (rest) sections.get(head)!.push(rest);
+    } else if (current) {
+      sections.get(current)!.push(line.replace(/^\s*[-•]\s*/, "").trim());
+    }
+  }
+  return sections;
+}
+
+function draftSlices(rawSlices: string[]): Result<{ slices: DraftSlice[] }> {
+  const slices: DraftSlice[] = [];
+  for (const raw of rawSlices) {
+    const parsed = parseSlice(raw);
+    if (!parsed)
+      return invalid(
+        `slice ${JSON.stringify(raw)} must read "title [trivial|normal|hard] — how it is ` +
+          `accepted". The difficulty tag picks the model, so it is not optional.`,
+      );
+    slices.push(parsed);
+  }
+  return { ok: true, slices };
+}
+
 /**
  * The DRAFT card blocks the boss, so it must be readable in 20 seconds.
  * Rejecting a long card and making the Dispatcher rewrite is cheaper than
@@ -115,21 +148,7 @@ export function validateDraftCard(text: string): Result<DraftOk> {
     };
   }
 
-  const sections = new Map<string, string[]>();
-  let current: string | null = null;
-  for (const line of lines) {
-    const m = /^\s*([^\s:：]+)\s*[:：]\s*(.*)$/.exec(line);
-    const head = m?.[1];
-    if (head && (DRAFT_FIELDS as readonly string[]).includes(head)) {
-      current = head;
-      // Repeated headers append: 验收 and 切片 are naturally one-per-line.
-      if (!sections.has(head)) sections.set(head, []);
-      const rest = m[2]!.trim().replace(/^[-•]\s*/, "");
-      if (rest) sections.get(head)!.push(rest);
-      continue;
-    }
-    if (current) sections.get(current)!.push(line.replace(/^\s*[-•]\s*/, "").trim());
-  }
+  const sections = draftSections(lines);
 
   const missing = DRAFT_FIELDS.filter((f) => !sections.has(f));
   if (missing.length) {
@@ -152,19 +171,9 @@ export function validateDraftCard(text: string): Result<DraftOk> {
   if (rawSlices.length < 1 || rawSlices.length > 5) {
     return { ok: false, error: `切片 needs 1-5 slices (got ${rawSlices.length})` };
   }
-  const slices: DraftSlice[] = [];
-  for (const raw of rawSlices) {
-    const parsed = parseSlice(raw);
-    if (!parsed) {
-      return {
-        ok: false,
-        error:
-          `slice ${JSON.stringify(raw)} must read "title [trivial|normal|hard] — how it is ` +
-          `accepted". The difficulty tag picks the model, so it is not optional.`,
-      };
-    }
-    slices.push(parsed);
-  }
+  const parsedSlices = draftSlices(rawSlices);
+  if (!parsedSlices.ok) return parsedSlices;
+  const slices = parsedSlices.slices;
 
   const split = checkSplit(slices);
   if (split) return { ok: false, error: split };
@@ -198,37 +207,35 @@ export function validateDraftCard(text: string): Result<DraftOk> {
  * already in the Dispatcher's prompt when a real run produced three steps of one
  * change. These three cases are the ones that can be caught without judgement.
  */
-function checkSplit(slices: DraftSlice[]): string | null {
-  const norm = (s: string) => s.toLowerCase().replace(/[\s\p{P}]+/gu, "");
+function overlapError(a: string, b: string, left: DraftSlice, i: number, j: number): string | null {
+  if (!a || !b) return null;
+  if (a === b)
+    return (
+      `slices ${i + 1} and ${j + 1} are accepted by the same thing ("${left.accept}"), ` +
+      `so they are one deliverable, not two. Merge them.`
+    );
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (short.length < 8 || !long.includes(short) || GENERIC_GATE.test(short)) return null;
+  return (
+    `slice ${i + 1} and slice ${j + 1} have nested acceptance criteria, so one is finished ` +
+    `by finishing the other. Split them by what could ship alone, or merge them.`
+  );
+}
 
+function splitOverlap(slices: DraftSlice[]): string | null {
+  const norm = (value: string) => value.toLowerCase().replace(/[\s\p{P}]+/gu, "");
   for (let i = 0; i < slices.length; i++) {
     for (let j = i + 1; j < slices.length; j++) {
-      const a = norm(slices[i]!.accept);
-      const b = norm(slices[j]!.accept);
-      if (!a || !b) continue;
-      if (a === b) {
-        return (
-          `slices ${i + 1} and ${j + 1} are accepted by the same thing ("${slices[i]!.accept}"), ` +
-          `so they are one deliverable, not two. Merge them.`
-        );
-      }
-      // One acceptance criterion containing the other means finishing the larger
-      // slice finishes the smaller: they cannot be accepted independently.
-      //
-      // Except when the shorter one is a bare gate assertion. Two genuinely
-      // independent slices can both require "bun test 全绿", and refusing that
-      // would block a correct card — a false positive here stops the boss's whole
-      // flow, which is worse than missing an overlap.
-      const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-      if (short.length >= 8 && long.includes(short) && !GENERIC_GATE.test(short)) {
-        return (
-          `slice ${i + 1} and slice ${j + 1} have nested acceptance criteria, so one is finished ` +
-          `by finishing the other. Split them by what could ship alone, or merge them.`
-        );
-      }
+      const error = overlapError(norm(slices[i]!.accept), norm(slices[j]!.accept), slices[i]!, i, j);
+      if (error) return error;
     }
   }
+  return null;
+}
 
+function checkSplit(slices: DraftSlice[]): string | null {
+  const overlap = splitOverlap(slices);
+  if (overlap) return overlap;
   // "Add tests" is never a deliverable on its own: tests belong with the change
   // they test, and a slice of them can only be accepted after another slice is.
   const testOnly =
