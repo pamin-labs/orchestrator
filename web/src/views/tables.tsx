@@ -90,9 +90,26 @@ export function Desk({ st, frames, projectId }: { st: State; frames: PanelFrame[
   );
 }
 
-/** 谁 · 在做什么 · turn · 累计. Four columns, no horizontal scroll, one ruler. */
 const DESK_ROW =
   "grid grid-cols-[11rem_minmax(0,1fr)_2.5rem_4rem] items-baseline gap-x-4 px-3 max-[52rem]:grid-cols-[9rem_minmax(0,1fr)_2.5rem]";
+
+function agentRowModel(agent: Agent, slices: Slice[], tail: Map<number, string>) {
+  const slice = slices.find((candidate) => candidate.id === agent.slice_id);
+  const [verb, detail] = activityOf(agent);
+  const latest = tail.get(agent.id);
+  return {
+    slice,
+    verb,
+    detail,
+    stream: latest && !detail.includes(latest.slice(-40)) ? latest : null,
+    rowClass: agent.state === "running" ? "text-ink" : "text-ink-3 opacity-70",
+    model: agent.model.replace(/^claude-|-\d{8}$/g, ""),
+    activity: agent.activity ?? agent.state,
+    turns: agent.turns || "",
+    tokens: agent.total_tokens ? K(agent.total_tokens) : "",
+    warn: agent.turns >= 15,
+  };
+}
 
 function Desks({
   name,
@@ -149,23 +166,9 @@ function Desks({
       <Collapsible.Content className="fade-in">
         <div className="mb-1 rounded-md bg-sunk/40 py-2">
           {list.map((a) => {
-            const sl = slices.find((s) => s.id === a.slice_id);
-            const [verb, detail] = activityOf(a);
-            // The live tail is the same string as the activity often enough that
-            // printing both made every row look like it stuttered.
-            const t = tail.get(a.id);
-            const stream = t && !detail.includes(t.slice(-40)) ? t : null;
+            const row = agentRowModel(a, slices, tail);
             return (
-              <div
-                key={a.id}
-                className={cn(
-                  DESK_ROW,
-                  "py-1.5",
-                  // Three of forty-five are running and they read exactly like the
-                  // forty-two that are not. The wall's whole job is to say which.
-                  a.state === "running" ? "text-ink" : "text-ink-3 opacity-70",
-                )}
-              >
+              <div key={a.id} className={cn(DESK_ROW, "py-1.5", row.rowClass)}>
                 {/* The session count moved into this label: it does not answer
                     "who is working on what", and a column for it is part of what
                     made this table nine wide. */}
@@ -175,33 +178,33 @@ function Desks({
                     {/* A chip, because which model an agent is on is the second
                         thing looked for here and it was grey text in a grey row. */}
                     <span className="truncate rounded-sm bg-sunk px-1 font-mono text-[0.625rem] text-ink-2">
-                      {a.model.replace(/^claude-|-\d{8}$/g, "")}
+                      {row.model}
                     </span>
                   </span>
                 </Tip>
                 <span className="min-w-0">
                   <span className="flex min-w-0 items-baseline gap-1.5">
-                    {sl && (
-                      <Tip label={sl.accept_spec}>
-                        <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">S{sl.seq}</span>
+                    {row.slice && (
+                      <Tip label={row.slice.accept_spec}>
+                        <span className="shrink-0 font-mono text-[0.6875rem] text-ink-3">S{row.slice.seq}</span>
                       </Tip>
                     )}
-                    {verb && <span className="shrink-0 text-[0.75rem] font-medium text-ink">{verb}</span>}
-                    <Tip label={a.activity ?? a.state}>
-                      <span className="truncate font-mono text-[0.6875rem] text-ink-3">{detail}</span>
+                    {row.verb && <span className="shrink-0 text-[0.75rem] font-medium text-ink">{row.verb}</span>}
+                    <Tip label={row.activity}>
+                      <span className="truncate font-mono text-[0.6875rem] text-ink-3">{row.detail}</span>
                     </Tip>
                   </span>
-                  {stream && (
+                  {row.stream && (
                     <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-ink-3">
-                      {stream.slice(-120)}
+                      {row.stream.slice(-120)}
                     </span>
                   )}
                 </span>
                 {/* A high count on one slice is the visible shape of circling, and
                     the watchdog's own threshold is 5 turns on one file. Blank at
                     zero: a column of em-dashes is a column of nothing. */}
-                <Meta className={cn("text-right", a.turns >= 15 && "text-warn")}>{a.turns || ""}</Meta>
-                <Meta className="text-right max-[52rem]:hidden">{a.total_tokens ? K(a.total_tokens) : ""}</Meta>
+                <Meta className={cn("text-right", row.warn && "text-warn")}>{row.turns}</Meta>
+                <Meta className="text-right max-[52rem]:hidden">{row.tokens}</Meta>
               </div>
             );
           })}
@@ -211,19 +214,45 @@ function Desks({
   );
 }
 
-/**
- * Who may write where, and — the actual question — who collides with whom.
- *
- * The verdict was at the bottom, under a table whose middle column stacked every
- * owned path on its own line, so twelve requirements made a page you scrolled to
- * reach the one sentence that mattered. Now the verdict is the first thing, the
- * paths are chips that wrap, and the status column is gone: it read 在跑 on every
- * row, which is a column that costs width to say nothing.
- */
+type Group = State["groups"][number];
+type Bumps = Map<number, Map<string, string[]>>;
+
+const covers = (a: string, b: string) =>
+  a === b || a.startsWith(b.replace(/\*+$/, "")) || b.startsWith(a.replace(/\*+$/, ""));
+
+function compareOwnership(bumps: Bumps, left: Group, right: Group): void {
+  const leftBumps = bumps.get(left.id);
+  const rightBumps = bumps.get(right.id);
+  if (!leftBumps || !rightBumps) return;
+  for (const a of owns(left)) {
+    for (const b of owns(right)) {
+      if (!covers(a, b)) continue;
+      leftBumps.set(a, [...(leftBumps.get(a) ?? []), right.name]);
+      rightBumps.set(b, [...(rightBumps.get(b) ?? []), left.name]);
+    }
+  }
+}
+
+function ownershipModel(all: Group[]) {
+  const groups = all.filter((group) => owns(group).length);
+  const bare = all.filter((group) => !owns(group).length);
+  const bumps: Bumps = new Map(groups.map((group) => [group.id, new Map()]));
+  for (const [index, group] of groups.entries()) {
+    for (const other of groups.slice(index + 1)) compareOwnership(bumps, group, other);
+  }
+  const hit = groups.filter((group) => (bumps.get(group.id)?.size ?? 0) > 0);
+  return {
+    groups,
+    bare,
+    bumps,
+    hit,
+    rows: [...hit, ...groups.filter((group) => (bumps.get(group.id)?.size ?? 0) === 0), ...bare],
+  };
+}
+
 export function Owns({ st, projectId }: { st: State; projectId: number }) {
   const all = st.groups.filter((g) => g.project_id === projectId);
-  const gs = all.filter((g) => owns(g).length);
-  const bare = all.filter((g) => !owns(g).length);
+  const { groups: gs, bare, bumps, hit, rows } = ownershipModel(all);
   if (!gs.length) {
     return (
       <Empty>
@@ -232,37 +261,6 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
       </Empty>
     );
   }
-
-  /**
-   * The clash, marked on the path that clashes.
-   *
-   * There used to be a list of pairs above the table: `A ↔ B` and the paths they
-   * share, and then the same paths again in each requirement's own row. Reading it
-   * meant holding two names in your head and scrolling to find them — for a page
-   * whose entire question is "who is standing on whose feet". A prefix match, not
-   * equality: `src/mech/**` and `src/mech/gate.ts` do not look alike and are the
-   * same territory.
-   */
-  const bumps = new Map<number, Map<string, string[]>>();
-  const covers = (a: string, b: string) =>
-    a === b || a.startsWith(b.replace(/\*+$/, "")) || b.startsWith(a.replace(/\*+$/, ""));
-  for (const g of gs) bumps.set(g.id, new Map());
-  for (let i = 0; i < gs.length; i++) {
-    for (let j = i + 1; j < gs.length; j++) {
-      const [x, y] = [gs[i]!, gs[j]!];
-      for (const a of owns(x)) {
-        for (const b of owns(y)) {
-          if (!covers(a, b)) continue;
-          bumps.get(x.id)!.set(a, [...(bumps.get(x.id)!.get(a) ?? []), y.name]);
-          bumps.get(y.id)!.set(b, [...(bumps.get(y.id)!.get(b) ?? []), x.name]);
-        }
-      }
-    }
-  }
-  const hit = gs.filter((g) => bumps.get(g.id)!.size);
-  // Colliding requirements first: they are the only rows anyone has to do
-  // something about, and they were sorted in among the ones that are fine.
-  const rows = [...hit, ...gs.filter((g) => !bumps.get(g.id)!.size), ...bare];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -339,45 +337,55 @@ export function Owns({ st, projectId }: { st: State; projectId: number }) {
   );
 }
 
-/**
- * Where the tokens went, in the shape the data actually has.
- *
- * Tokens and nothing else. The dollar figure that used to lead this page was
- * notional — claude's CLI reports what a turn would have cost at API rates, codex
- * reports nothing, and the boss pays neither, because two subscriptions do. Once
- * five of eight roles moved to codex, half the table read "$0.00", which is not a
- * small number: it is a claim that the work was free. What is left on the header
- * for "how much is there" is the quota percentage.
- *
- * The hierarchy is real and the first version flattened it: project, then the
- * requirement, then the people inside it and what each of them was running on.
- * Standing agents are their own block, because attributing an Architect to any one
- * requirement would be made up. 难度 and 账号 stay last and flat: one is a knob,
- * the other is which subscription paid.
- */
+const ROTATION_REASON: Record<string, string> = {
+  hash: "前缀变了",
+  budget: "上下文满了",
+  explicit: "打回重做",
+  new: "新雇的",
+};
+
+function rotationModel(cost: Cost) {
+  const entries = Object.entries(cost.rotations.byReason).sort((left, right) => right[1] - left[1]);
+  const cold = entries.reduce((total, [, count]) => total + count, 0);
+  return {
+    turns: cost.rotations.turns,
+    cold,
+    why: entries.map(([reason, count]) => `${ROTATION_REASON[reason] ?? reason} ${count}`).join(" · "),
+    className: cold * 2 > cost.rotations.turns ? "text-warn" : "text-ink",
+  };
+}
+
+function attributionModel(cost: Cost) {
+  const standing = cost.agents.filter((agent) => agent.grpId == null && agent.tokens);
+  const standingTotal = standing.reduce((total, agent) => total + agent.tokens, 0);
+  const groups = cost.byGroup.filter((group) => group.tokens).sort((left, right) => right.tokens - left.tokens);
+  const sum = groups.reduce((total, group) => total + group.tokens, 0) + standingTotal;
+  return {
+    standing,
+    standingTotal,
+    groups,
+    sum,
+    top: Math.max(1e-9, ...groups.map((group) => group.tokens), standingTotal),
+  };
+}
+
+function costSummary(cost: Cost) {
+  const per = cost.delivered.count ? cost.delivered.tokens / cost.delivered.count : null;
+  return {
+    per: per == null ? "—" : K(per),
+    perNote: per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`,
+    cache: cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`,
+    cacheClass: cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
+  };
+}
+
 export function CostView({ cost }: { cost: Cost | null }) {
   if (!cost?.total?.tokens) {
     return <Empty>还没花 token。批准计划卡之后，这里按需求往下拆到每个 agent。难度标签决定跑哪个模型。</Empty>;
   }
-  const per = cost.delivered?.count ? cost.delivered.tokens / cost.delivered.count : null;
-  // Plain words, not the field names: "前缀变了" is a thing the boss can act on,
-  // `hash` is a thing they would need the source to read.
-  const REASON: Record<string, string> = {
-    hash: "前缀变了",
-    budget: "上下文满了",
-    explicit: "打回重做",
-    new: "新雇的",
-  };
-  const turns = cost.rotations?.turns ?? 0;
-  const byReason = Object.entries(cost.rotations?.byReason ?? {}).sort((a, b) => b[1] - a[1]);
-  const cold = byReason.reduce((n, [, c]) => n + c, 0);
-  const why = byReason.map(([k, c]) => `${REASON[k] ?? k} ${c}`).join(" · ");
-  const agents = cost.agents ?? [];
-  const standing = agents.filter((a) => a.grpId == null && a.tokens);
-  const standingTotal = standing.reduce((n, a) => n + a.tokens, 0);
-  const groups = (cost.byGroup ?? []).filter((g) => g.tokens).sort((a, b) => b.tokens - a.tokens);
-  const top = Math.max(1e-9, ...groups.map((g) => g.tokens), standingTotal);
-  const sum = groups.reduce((n, g) => n + g.tokens, 0) + standingTotal;
+  const { turns, cold, why, className: rotationClass } = rotationModel(cost);
+  const { standing, standingTotal, groups, sum, top } = attributionModel(cost);
+  const summary = costSummary(cost);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -413,7 +421,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
                   tokens={g.tokens}
                   top={top}
                   share={g.tokens / sum}
-                  rows={agents.filter((a) => a.grpId === g.grpId && a.tokens)}
+                  rows={cost.agents.filter((a) => a.grpId === g.grpId && a.tokens)}
                 />
               ))}
               {standing.length > 0 && (
@@ -430,12 +438,12 @@ export function CostView({ cost }: { cost: Cost | null }) {
           </TabPanel>
           <TabPanel value="tier" className="flex min-h-0 flex-1 flex-col">
             <Pane>
-              <Flat rows={cost.byDifficulty ?? []} />
+              <Flat rows={cost.byDifficulty} />
             </Pane>
           </TabPanel>
           <TabPanel value="acct" className="flex min-h-0 flex-1 flex-col">
             <Pane>
-              <Flat rows={cost.byRuntime ?? []} />
+              <Flat rows={cost.byRuntime} />
             </Pane>
           </TabPanel>
         </Tabs>
@@ -453,20 +461,12 @@ export function CostView({ cost }: { cost: Cost | null }) {
               <span className="text-[0.75rem] text-ink-3">tokens · 这个项目累计</span>
             </div>
             <div className="mt-1.5 text-[0.75rem] text-ink-2">
-              每个已交付需求 <b className="font-mono font-semibold text-ink">{per == null ? "—" : K(per)}</b>
-              <span className="text-ink-3">{per == null ? "（合入一个才有）" : `（${cost.delivered.count} 个）`}</span>
+              每个已交付需求 <b className="font-mono font-semibold text-ink">{summary.per}</b>
+              <span className="text-ink-3">{summary.perNote}</span>
             </div>
             <Tip label="掉到 50% 以下＝prompt 组装被改坏，每个 turn 贵 3-5 倍">
               <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
-                cache 命中{" "}
-                <b
-                  className={cn(
-                    "font-mono font-semibold",
-                    cost.cacheRatio == null ? "text-ink-3" : cost.cacheRatio < 0.5 ? "text-warn" : "text-ink",
-                  )}
-                >
-                  {cost.cacheRatio == null ? "还没数据" : `${Math.round(cost.cacheRatio * 100)}%`}
-                </b>
+                cache 命中 <b className={cn("font-mono font-semibold", summary.cacheClass)}>{summary.cache}</b>
               </div>
             </Tip>
             {/* The second half of the same question, over the same sample as the
@@ -481,7 +481,7 @@ export function CostView({ cost }: { cost: Cost | null }) {
               <Tip label={`${turns} 个 turn 里重开了 ${cold} 次：${why}。重开一次，缓存前缀要从头建一遍`}>
                 <div className="mt-0.5 w-fit text-[0.75rem] text-ink-2 underline decoration-dotted">
                   重开会话{" "}
-                  <b className={cn("font-mono font-semibold", cold * 2 > turns ? "text-warn" : "text-ink")}>
+                  <b className={cn("font-mono font-semibold", rotationClass)}>
                     {cold}/{turns}
                   </b>
                 </div>
@@ -489,13 +489,13 @@ export function CostView({ cost }: { cost: Cost | null }) {
             )}
           </div>
           <Rail title="烧得多快" note="近 24 小时，按小时">
-            <BurnChart data={cost.byHour ?? []} />
+            <BurnChart data={cost.byHour} />
           </Rail>
           <Rail title="按账号" note="">
-            <SplitDonut rows={cost.byRuntime ?? []} />
+            <SplitDonut rows={cost.byRuntime} />
           </Rail>
           <Rail title="按难度" note="">
-            <SplitDonut rows={cost.byDifficulty ?? []} />
+            <SplitDonut rows={cost.byDifficulty} />
           </Rail>
         </aside>
       </div>
