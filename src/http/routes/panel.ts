@@ -3,7 +3,7 @@ import type { ApplyGlobalResponse } from "hono/client";
 import { streamSSE } from "hono/streaming";
 import type { Ctx } from "../../mech/ctx.ts";
 import { IdParams } from "../../contracts/fields.ts";
-import { IdempotencyRecoveryBody, IdempotencyStatusQuery } from "../../contracts/idempotency.ts";
+import { IdempotencyRecoveryBody, IdempotencyStatusQuery } from "../idempotency/schema.ts";
 import {
   AuthBody,
   CodeBody,
@@ -95,7 +95,7 @@ import { CostQuery, getCost, getState } from "../../api/panel/snapshot.ts";
 import { getStream, StreamQuery } from "../../api/panel/stream.ts";
 import { formBody, jsonBody, pathParams, queryParams } from "../validate.ts";
 import type { ErrorResponses } from "../respond.ts";
-import { operatorIdempotencyStatus, recoverIdempotency } from "../idempotency.ts";
+import { operatorIdempotencyStatus, recoverIdempotency } from "../idempotency/store.ts";
 
 /** Explicit panel routes keep Hono's request and response types visible to RPC. */
 export function panelRoutes(ctx: Ctx) {

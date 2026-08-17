@@ -6,7 +6,7 @@ import { openMemory } from "../../src/platform/persistence/database.ts";
 import { outsideOwns } from "../../src/mech/flow/ownership.ts";
 import { reconcile } from "../../src/mech/flow/reconcile.ts";
 import { normalise } from "../../src/mech/sandbox/mailbox.ts";
-import { idempotency } from "../../src/http/idempotency.ts";
+import { idempotency } from "../../src/http/idempotency/store.ts";
 import { JsonValue, type Json } from "../../src/contracts/json.ts";
 import { json } from "../../src/http/respond.ts";
 

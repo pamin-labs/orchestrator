@@ -10,11 +10,11 @@ import {
   type IdempotencyStatus,
   type IdempotencyUnresolvedList,
   isIdempotencyRecoveryStatus,
-} from "../contracts/idempotency.ts";
-import { JsonValue, type Json } from "../contracts/json.ts";
-import type { ErrorResponse } from "../contracts/protocol.ts";
-import type { DB } from "../platform/persistence/database.ts";
-import { failure, json, type JsonResponse } from "./respond.ts";
+} from "./schema.ts";
+import { JsonValue, type Json } from "../../contracts/json.ts";
+import type { ErrorResponse } from "../../contracts/protocol.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import { failure, json, type JsonResponse } from "../respond.ts";
 
 type Stored = {
   payload_hash: string;

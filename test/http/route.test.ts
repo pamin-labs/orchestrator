@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { hc, type InferResponseType } from "hono/client";
 import { z } from "zod";
 import type { ApiType } from "../../src/composition/api.ts";
-import type { IdempotencyRecordStatus, IdempotencyUnresolvedList } from "../../src/contracts/idempotency.ts";
+import type { IdempotencyRecordStatus, IdempotencyUnresolvedList } from "../../src/http/idempotency/schema.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { ErrorResponseSchema, type ErrorResponse } from "../../src/contracts/protocol.ts";
 import type { OrchType } from "../../src/http/routes/orch.ts";

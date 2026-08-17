@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 
 const FallowConfig = z.object({
@@ -60,6 +60,35 @@ test("Fallow adds only undiscovered entry points and classifies directories by p
   const cli = await Bun.file("src/orch/cli.ts").text();
   expect(cli).not.toMatch(/from ["']\.\.\/(?:api|mech)\//);
   expect(cli).toContain('import type { OrchType } from "../http/routes/orch.ts"');
+});
+
+test("a shared contract is shared — every file in src/contracts crosses a zone", () => {
+  // `src/contracts` is reachable from everywhere by design, which makes it the
+  // one directory where a misplaced file draws no boundary error. A file only
+  // one zone imports is not a contract: it is that zone's private type filed
+  // where nothing can tell it apart from the wire. `idempotency.ts` sat here
+  // and only `src/http` ever read it.
+  const zoneOf = (path: string) => (path.startsWith("web/") ? "web" : path.split("/")[1]);
+  const sources = [
+    ...new Bun.Glob("src/**/*.ts").scanSync({ cwd: "." }),
+    ...new Bun.Glob("web/src/**/*.{ts,tsx}").scanSync({ cwd: "." }),
+  ];
+  const readers = new Map<string, Set<string>>();
+  for (const path of sources) {
+    const zone = zoneOf(path);
+    if (zone === "contracts") continue;
+    for (const match of readFileSync(path, "utf8").matchAll(/from "[^"]*contracts\/([\w-]+)(?:\.ts)?"/g)) {
+      const file = `${match[1]}.ts`;
+      const set = readers.get(file) ?? new Set<string>();
+      set.add(zone!);
+      readers.set(file, set);
+    }
+  }
+  const single = [...new Bun.Glob("src/contracts/*.ts").scanSync({ cwd: "." })]
+    .map((path) => path.slice("src/contracts/".length))
+    .filter((file) => (readers.get(file)?.size ?? 0) < 2)
+    .toSorted();
+  expect(single).toEqual([]);
 });
 
 test("constrained production zones form one explicit dependency DAG", async () => {

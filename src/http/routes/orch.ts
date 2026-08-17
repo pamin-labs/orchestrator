@@ -4,7 +4,7 @@ import type { Ctx } from "../../mech/ctx.ts";
 import { agentOf, type Caller } from "../agent-auth.ts";
 import { CtxQueryBody, postCtxQuery } from "../../api/orch/ctxquery.ts";
 import { IdParams } from "../../contracts/fields.ts";
-import { OwnIdempotencyStatusQuery } from "../../contracts/idempotency.ts";
+import { OwnIdempotencyStatusQuery } from "../idempotency/schema.ts";
 import {
   AnswerBody,
   AskBossBody,
@@ -35,7 +35,7 @@ import { getTasks, postTaskClaim, postTaskDone, TaskDoneBody, TaskRef } from "..
 import { jsonBody, pathParams, queryParams } from "../validate.ts";
 import { failure, type ErrorResponses } from "../respond.ts";
 import { bodyLimit } from "hono/body-limit";
-import { idempotency, idempotencyCaller, idempotencyStatus, JSON_BODY_LIMIT } from "../idempotency.ts";
+import { idempotency, idempotencyCaller, idempotencyStatus, JSON_BODY_LIMIT } from "../idempotency/store.ts";
 
 /** Explicit authenticated agent routes keep auth and validation ahead of every handler. */
 export function orchRoutes(ctx: Ctx) {

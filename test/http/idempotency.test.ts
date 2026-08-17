@@ -5,14 +5,14 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
 import { makeApp } from "../../src/composition/api.ts";
-import { IdempotencyRecoveryBody, IdempotencyStatusQuery } from "../../src/contracts/idempotency.ts";
+import { IdempotencyRecoveryBody, IdempotencyStatusQuery } from "../../src/http/idempotency/schema.ts";
 import { type DB, migrate, migrationMentioning, openMemory } from "../../src/platform/persistence/database.ts";
 import {
   idempotency,
   idempotencyCaller,
   operatorIdempotencyStatus,
   recoverIdempotency,
-} from "../../src/http/idempotency.ts";
+} from "../../src/http/idempotency/store.ts";
 import { jsonBody, queryParams } from "../../src/http/validate.ts";
 import { testContext } from "../support/test-context.ts";
 
