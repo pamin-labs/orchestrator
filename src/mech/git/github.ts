@@ -6,7 +6,7 @@ import { raise } from "../flow/escalate.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { clearRepositoryHold, holdRepository } from "./repository.ts";
 import type { Json } from "../../contracts/json.ts";
-import { recordCache, recordRetry } from "../../observability.ts";
+import { recordCache, recordRetry } from "../../platform/observability/metrics.ts";
 import { currentRequestId, requestContext } from "../../platform/observability/request-context.ts";
 
 /**

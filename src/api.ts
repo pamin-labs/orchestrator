@@ -12,14 +12,8 @@ import { requestContext, requestId } from "./platform/observability/request-cont
 import { scrub } from "./platform/observability/redaction.ts";
 import { errText } from "./platform/process/text.ts";
 import { idempotency, JSON_BODY_LIMIT } from "./http/idempotency.ts";
-import {
-  observeHttp,
-  prometheus,
-  runtimeStatus,
-  startTrace,
-  traceparent,
-  type RuntimeStatus,
-} from "./observability.ts";
+import { observeHttp, prometheus, runtimeStatus, type RuntimeStatus } from "./platform/observability/metrics.ts";
+import { startTrace, traceparent } from "./platform/observability/traces.ts";
 
 export type { ApiType } from "./http/routes/panel.ts";
 

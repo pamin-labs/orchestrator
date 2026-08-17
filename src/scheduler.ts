@@ -4,7 +4,8 @@ import { jsonOr } from "./contracts/json.ts";
 import { isRunning, track, untrack } from "./platform/process/running-turns.ts";
 import { type GrpState, isDispatchableGrpState, type JobState } from "./contracts/states.ts";
 import { requestContext } from "./platform/observability/request-context.ts";
-import { observeJob, startChildTrace } from "./observability.ts";
+import { observeJob } from "./platform/observability/metrics.ts";
+import { startChildTrace } from "./platform/observability/traces.ts";
 import { errText } from "./platform/process/text.ts";
 
 export type { JobState } from "./contracts/states.ts";

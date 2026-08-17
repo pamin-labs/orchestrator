@@ -41,7 +41,8 @@ import { isOnline } from "./mech/sandbox/net.ts";
 import { hold } from "./mech/flow/intercept.ts";
 import { raise } from "./mech/flow/escalate.ts";
 import { restoreWorkspace } from "./mech/flow/start.ts";
-import { closeTelemetry, configureStructuredLogging, runtimeStatus, type RuntimeStatus } from "./observability.ts";
+import { closeTelemetry, runtimeStatus, type RuntimeStatus } from "./platform/observability/metrics.ts";
+import { configureStructuredLogging } from "./platform/observability/logging.ts";
 import { VERSION } from "./platform/process/version.ts";
 
 /**
