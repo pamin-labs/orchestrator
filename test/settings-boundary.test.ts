@@ -59,7 +59,20 @@ test("environment controls own actions while the settings shell owns server quer
     expect(shell).toContain(`queryKey: ["${key}"]`);
     expect(pane).not.toContain(`queryKey: ["${key}"]`);
   }
-  expect(shell).toContain('enabled: open && section === "server"');
+  // The gate itself, not the line it is written on. Asserting
+  // `enabled: open && section === "server"` pinned one spelling, and the shell
+  // had to keep a duplicate copy of the expression next to the `const` that
+  // already held it — a test dictating shape for no behavioural reason. What
+  // matters is that the gate exists and that every sandbox query carries one,
+  // or the dialog polls the host while closed or showing another section.
+  const GATE = 'open && section === "server"';
+  expect(shell).toContain(`const enabled = ${GATE};`);
+  // Both sandbox queries, each carrying that gate — shorthand or spelled out.
+  // Checking only that an `enabled` key exists would pass `enabled: true`, which
+  // is the exact failure this guards against.
+  const gates = [...shell.matchAll(/queryKey: \["sandbox-[a-z]+"\][\s\S]{0,200}?enabled(,|: ([^,\n]+),)/g)];
+  expect(gates).toHaveLength(2);
+  for (const match of gates) expect(match[2] ?? GATE).toBe(GATE);
   expect(shell).toContain("<EnvPane");
   expect(shell).toContain("<ServerPane");
   expect(pane).not.toContain("useQuery");
