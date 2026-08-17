@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { ConnectionConfig, Sandbox, type Volume } from "@alibaba-group/opensandbox";
 import type { Ctx } from "../../mech/ctx.ts";
 import { ROOT } from "../../platform/config/load.ts";
+import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
 import type { SandboxSpec } from "../../contracts/config.ts";
 import type { ResourceExec } from "../lease.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -459,8 +460,7 @@ const UTIL_ID = "util_sandbox_id";
 const UTIL_AT = "util_sandbox_at";
 
 export function utilSandbox(db: Ctx["db"]): { id: string | null; at: number } {
-  const get = (k: string) => db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(k)?.v ?? null;
-  return { id: get(UTIL_ID), at: Number(get(UTIL_AT) ?? 0) };
+  return { id: readSetting(db, UTIL_ID), at: Number(readSetting(db, UTIL_AT) ?? 0) };
 }
 
 const holder = (s: Scope) =>
@@ -495,12 +495,8 @@ function remember(ctx: Ctx, scope: Scope, id: string | null): void {
   // sandbox older than the newest credential is one nobody has rebound.
   const at = id ? Date.now() : null;
   if (isUtil(scope)) {
-    const put = (k: string, v: string | null) =>
-      v === null
-        ? ctx.db.run("DELETE FROM setting WHERE k = ?", [k])
-        : ctx.db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [k, v]);
-    put(UTIL_ID, id);
-    put(UTIL_AT, at === null ? null : String(at));
+    writeSetting(ctx.db, UTIL_ID, id);
+    writeSetting(ctx.db, UTIL_AT, at === null ? null : String(at));
     return;
   }
   const h = holder(scope);

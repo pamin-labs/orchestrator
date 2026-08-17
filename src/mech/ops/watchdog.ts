@@ -34,6 +34,7 @@ import { abortJob } from "../../platform/process/running-turns.ts";
 import { probe } from "../sandbox/net.ts";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
+import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
 import { Cron } from "croner";
 import { z } from "zod";
 import {
@@ -466,7 +467,13 @@ const RAN_KEY = (rule: string) => `watchdog.ran.${rule}`;
  */
 function due(db: WatchdogDeps["ctx"]["db"], rule: string, cadence: Cadence, now: number): boolean {
   if (cadence === EVERY_TICK) return true;
-  const last = Number(db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(RAN_KEY(rule))?.v);
+  const stored = readSetting(db, RAN_KEY(rule));
+  // Tested before the conversion, because `Number(null)` is 0 while
+  // `Number(undefined)` is NaN: reading the absent row as a number made a rule
+  // that had never run look like one that ran at the epoch, and its first sweep
+  // waited an hour. The absent row has to be checked as absent.
+  if (stored === null) return true;
+  const last = Number(stored);
   if (!Number.isFinite(last)) return true;
   return (cadence.nextRun(new Date(last))?.getTime() ?? Infinity) <= now;
 }
@@ -528,10 +535,7 @@ function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
       // would otherwise never record, so it would retry on every tick and spam
       // the findings it was given a cadence to stay out of.
       if (rule.every !== EVERY_TICK) {
-        db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
-          RAN_KEY(rule.id),
-          String(now()),
-        ]);
+        writeSetting(db, RAN_KEY(rule.id), String(now()));
       }
     }
   };

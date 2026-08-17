@@ -1,4 +1,4 @@
-import type { DB } from "../persistence/database.ts";
+import { writeSetting, type DB } from "../persistence/database.ts";
 import { DEFAULTS_FOR_CHECK as DEFAULTS, type Config } from "./load.ts";
 import {
   ConfigSchema,
@@ -111,17 +111,14 @@ export function putSetting<P extends SettingPath>(
   const parsed = SettingWriteSchema.safeParse({ path, value });
   if (!parsed.success) return `${path}: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`;
   if (parsed.data.value === null) {
-    db.run("DELETE FROM setting WHERE k = ?", [PREFIX + path]);
+    writeSetting(db, PREFIX + path, null);
     // Back to whatever the file said. Re-reading it would mean re-running the
     // env overrides too, so the default comes from the same table the panel
     // shows as "default".
     assign(cfg, path, JsonValue.parse(defaultFor(path)));
     return null;
   }
-  db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
-    PREFIX + path,
-    JSON.stringify(parsed.data.value),
-  ]);
+  writeSetting(db, PREFIX + path, JSON.stringify(parsed.data.value));
   assign(cfg, path, JsonValue.parse(parsed.data.value));
   return null;
 }

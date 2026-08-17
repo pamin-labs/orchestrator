@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statS
 import { hostClaudeHome, hostCodexHome } from "./sandbox/auth.ts";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { DB } from "../platform/persistence/database.ts";
+import { readSetting, writeSetting, type DB } from "../platform/persistence/database.ts";
 import { jsonOr } from "../contracts/json.ts";
 import { z } from "zod";
 
@@ -273,8 +273,7 @@ const PROJECT_KEY = (id: number) => `skills.project.${id}`;
 
 export function projectSkills(db: DB, projectId: number | null | undefined): SkillRef[] {
   if (!projectId) return [];
-  const row = db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(PROJECT_KEY(projectId));
-  return jsonOr(row?.v, z.array(SkillRefSchema), []);
+  return jsonOr(readSetting(db, PROJECT_KEY(projectId)), z.array(SkillRefSchema), []);
 }
 
 /**
@@ -307,16 +306,13 @@ export function cacheProjectSkills(db: DB, projectId: number | null | undefined,
     // the same shape everywhere else.
     out.push({ name, file: `/work/${rel}`, rel, description: frontmatterDescription(head), scope: "project" });
   }
-  db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
-    PROJECT_KEY(projectId),
-    JSON.stringify(out),
-  ]);
+  writeSetting(db, PROJECT_KEY(projectId), JSON.stringify(out));
   return out;
 }
 
 /** A removed project should not leave its skills behind in `setting`. */
 export function forgetProjectSkills(db: DB, projectId: number): void {
-  db.run("DELETE FROM setting WHERE k = ?", [PROJECT_KEY(projectId)]);
+  writeSetting(db, PROJECT_KEY(projectId), null);
 }
 
 const OFF_KEY = "skills.off";
@@ -328,17 +324,13 @@ const OFF_KEY = "skills.off";
  * without anyone going back to tick it.
  */
 export function skillsOff(db: DB): string[] {
-  const row = db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(OFF_KEY);
-  return jsonOr(row?.v, z.array(z.string()), []);
+  return jsonOr(readSetting(db, OFF_KEY), z.array(z.string()), []);
 }
 
 export function setSkillOff(db: DB, name: string, off: boolean): string[] {
   const next = skillsOff(db).filter((n) => n !== name);
   if (off) next.push(name);
-  db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
-    OFF_KEY,
-    JSON.stringify(next),
-  ]);
+  writeSetting(db, OFF_KEY, JSON.stringify(next));
   return next;
 }
 

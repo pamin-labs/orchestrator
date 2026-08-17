@@ -1,5 +1,5 @@
 import type { Ctx } from "../../mech/ctx.ts";
-import type { DB } from "../../platform/persistence/database.ts";
+import { readSetting, writeSetting, type DB } from "../../platform/persistence/database.ts";
 import type { Json } from "../../contracts/json.ts";
 import { z } from "zod";
 /**
@@ -346,8 +346,7 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
   const fallback = { ...BOT };
   // Cached: this runs on every checkout, and the answer changes only when the
   // connected account does. `credentialChanged` clears it.
-  const held = ctx.db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(IDENTITY_KEY)?.v;
-  const cached = jsonOr(held, Identity.nullable(), null);
+  const cached = jsonOr(ctx.db && readSetting(ctx.db, IDENTITY_KEY), Identity.nullable(), null);
   if (cached) return cached;
   const r = await ctx.gh?.request("GET", "/user", User);
   if (!r?.ok || !r.data?.login || !r.data?.id) return fallback;
@@ -355,10 +354,7 @@ export async function commitIdentity(ctx: Ctx): Promise<{ name: string; email: s
     name: r.data.name || r.data.login,
     email: `${r.data.id}+${r.data.login}@users.noreply.github.com`,
   };
-  ctx.db?.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
-    IDENTITY_KEY,
-    JSON.stringify(who),
-  ]);
+  if (ctx.db) writeSetting(ctx.db, IDENTITY_KEY, JSON.stringify(who));
   return who;
 }
 
@@ -414,8 +410,7 @@ export interface Trailers extends Pick<TrailerPrefs, "signoff" | "coauthor"> {
 /** Takes the database, not a `Ctx`: the sandbox writes Claude Code's own
  *  co-author setting from the same row, and it has no `Ctx` to hand. */
 export function trailers(db: DB | undefined): TrailerPrefs {
-  const row = db?.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(TRAILERS_KEY)?.v;
-  const saved = jsonOr(row, TrailerPrefsPatch, {});
+  const saved = jsonOr(db && readSetting(db, TRAILERS_KEY), TrailerPrefsPatch, {});
   return {
     signoff: saved.signoff ?? TRAILER_DEFAULTS.signoff,
     coauthor: saved.coauthor ?? TRAILER_DEFAULTS.coauthor,
@@ -425,10 +420,7 @@ export function trailers(db: DB | undefined): TrailerPrefs {
 
 export function setTrailers(db: DB, next: Partial<TrailerPrefs>): TrailerPrefs {
   const merged = { ...trailers(db), ...next };
-  db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [
-    TRAILERS_KEY,
-    JSON.stringify(merged),
-  ]);
+  writeSetting(db, TRAILERS_KEY, JSON.stringify(merged));
   return merged;
 }
 
@@ -444,4 +436,6 @@ export function gitTrailers(db: DB | undefined): {
 
 /** Cleared when the GitHub credential changes, or it outlives the account. */
 const IDENTITY_KEY = "git_identity";
-export const forgetIdentity = (ctx: Ctx): void => void ctx.db?.run("DELETE FROM setting WHERE k = ?", [IDENTITY_KEY]);
+export const forgetIdentity = (ctx: Ctx): void => {
+  if (ctx.db) writeSetting(ctx.db, IDENTITY_KEY, null);
+};

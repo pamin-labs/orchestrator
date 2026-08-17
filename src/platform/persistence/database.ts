@@ -839,6 +839,33 @@ export function openMemory(): DB {
 }
 
 /**
+ * The `setting` key/value table, read and written in one place.
+ *
+ * Nineteen call sites across six files wrote this SQL out by hand — eight copies
+ * of the same upsert, six of the same lookup, five of the same delete — and two
+ * of them had independently arrived at the same "null means remove it" rule.
+ * Nothing was wrong with any one of them; the cost is that a change to how this
+ * table is written is a change in nineteen places, and a project about to take
+ * contributors offers nineteen examples to copy from instead of one.
+ *
+ * `null` deletes rather than storing "null": the absent value is what every
+ * reader here already tests for, and a row holding the four characters would
+ * read back as present.
+ *
+ * Typed settings — the `cfg.*` paths with validation and defaults — are a
+ * different concern and stay in `platform/config/settings.ts`. This pair is the
+ * raw table underneath it.
+ */
+export function readSetting(db: DB, key: string): string | null {
+  return db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(key)?.v ?? null;
+}
+
+export function writeSetting(db: DB, key: string, value: string | null): void {
+  if (value === null) db.run("DELETE FROM setting WHERE k = ?", [key]);
+  else db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [key, value]);
+}
+
+/**
  * What happens to a row that points at a slice being dropped.
  *
  * Re-approving a DRAFT rewrites the plan, which means the old slices go. They

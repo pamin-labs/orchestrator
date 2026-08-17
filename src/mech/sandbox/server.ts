@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import type { Ctx } from "../../mech/ctx.ts";
 import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
 import { putSetting } from "../../platform/config/settings.ts";
+import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
 import {
   allowedHostPaths,
   coveredBy,
@@ -55,14 +56,6 @@ export type ServerState =
   | { kind: "started"; pid: string; config: string }
   /** Nothing running and we could not start one. */
   | { kind: "down"; why: string; log?: string };
-
-const get = (ctx: Ctx, k: string): string | null =>
-  ctx.db.query<{ v: string }, [string]>("SELECT v FROM setting WHERE k = ?").get(k)?.v ?? null;
-
-const put = (ctx: Ctx, k: string, v: string | null): void => {
-  if (v === null) ctx.db.run("DELETE FROM setting WHERE k = ?", [k]);
-  else ctx.db.run("INSERT INTO setting (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", [k, v]);
-};
 
 /**
  * Four answers, not two.
@@ -341,7 +334,7 @@ export async function inspectServer(ctx: Ctx): Promise<ServerState> {
   if (p.kind === "ok") {
     // Ours only if we recorded this pid. A pid from a previous boot still counts
     // — the process outlives us — but a different one means ours died.
-    const mine = !!live && get(ctx, PID_KEY) === live.pid;
+    const mine = !!live && readSetting(ctx.db, PID_KEY) === live.pid;
     return mine ? { kind: "ours", pid: live.pid } : { kind: "theirs", pid: live?.pid ?? "?" };
   }
   // Answering at all means the address is taken, whether or not `ps` can see by
@@ -417,8 +410,8 @@ async function startServer(ctx: Ctx, server: string, key: string, config: string
     const out = Bun.file(log);
     const p = Bun.spawn(argv, { stdout: out, stderr: out, stdin: "ignore" });
     p.unref();
-    put(ctx, PID_KEY, String(p.pid));
-    put(ctx, ARGV_KEY, JSON.stringify(argv));
+    writeSetting(ctx.db, PID_KEY, String(p.pid));
+    writeSetting(ctx.db, ARGV_KEY, JSON.stringify(argv));
     const up = await waitUp(ctx, p, server, key);
     if (!up.ok) return { kind: "down", why: up.why, log };
     return { kind: "started", pid: String(p.pid), config };
@@ -441,8 +434,8 @@ export function setServerAddr(ctx: Ctx, addr: string): string | null {
 /** The argv we started it with, for the panel's restart button. Ours only. */
 export function ourArgv(ctx: Ctx): string[] | null {
   const live = runningServer();
-  if (!live || get(ctx, PID_KEY) !== live.pid) return null;
-  const argv = jsonOr(get(ctx, ARGV_KEY), z.array(z.string()), []);
+  if (!live || readSetting(ctx.db, PID_KEY) !== live.pid) return null;
+  const argv = jsonOr(readSetting(ctx.db, ARGV_KEY), z.array(z.string()), []);
   return argv.length ? argv : live.argv;
 }
 
