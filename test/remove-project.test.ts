@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { openMemory, type DB } from "../src/platform/persistence/database.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";

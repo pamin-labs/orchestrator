@@ -1,14 +1,14 @@
 import { z } from "zod";
-import type { DB } from "./platform/persistence/database.ts";
-import { jsonOr } from "./contracts/json.ts";
-import { isRunning, track, untrack } from "./platform/process/running-turns.ts";
-import { type GrpState, isDispatchableGrpState, type JobState } from "./contracts/states.ts";
-import { requestContext } from "./platform/observability/request-context.ts";
-import { observeJob } from "./platform/observability/metrics.ts";
-import { startChildTrace } from "./platform/observability/traces.ts";
-import { errText } from "./platform/process/text.ts";
+import type { DB } from "../../platform/persistence/database.ts";
+import { jsonOr } from "../../contracts/json.ts";
+import { isRunning, track, untrack } from "../../platform/process/running-turns.ts";
+import { type GrpState, isDispatchableGrpState, type JobState } from "../../contracts/states.ts";
+import { requestContext } from "../../platform/observability/request-context.ts";
+import { observeJob } from "../../platform/observability/metrics.ts";
+import { startChildTrace } from "../../platform/observability/traces.ts";
+import { errText } from "../../platform/process/text.ts";
 
-export type { JobState } from "./contracts/states.ts";
+export type { JobState } from "../../contracts/states.ts";
 
 const JobKindSchema = z.enum(["agent_turn", "lease", "watchdog", "digest", "notify", "gate", "reconcile"]);
 export type JobKind = z.infer<typeof JobKindSchema>;

@@ -7,7 +7,7 @@ import type { Ctx } from "../src/ctx.ts";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { z } from "zod";

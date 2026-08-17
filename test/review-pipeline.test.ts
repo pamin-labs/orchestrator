@@ -13,7 +13,7 @@ import { TaskClaimSchema } from "../src/mech/flow/reconcile.ts";
 import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { handToBoss } from "../src/mech/flow/review.ts";
 import { checkpoint } from "../src/mech/git/worktree.ts";
-import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/platform/scheduling/scheduler.ts";
 import { makeAuditVerdict, makeExecutor, makeReviewVerdict, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";

@@ -5,7 +5,7 @@ import { makeGithub, type Github } from "../src/mech/git/github.ts";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { testContext } from "./test-context.ts";

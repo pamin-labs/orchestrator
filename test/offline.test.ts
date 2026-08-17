@@ -5,7 +5,7 @@ import { holdForOffline } from "../src/mech/ops/watchdog.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { isOnline, PROBE_EVERY_MS, probe, resetNet } from "../src/mech/sandbox/net.ts";
 import { ensureSandbox, resetSandboxHold, sandboxHeld } from "../src/mech/sandbox/sandbox.ts";
-import { type Job, resumeReclaimed, Scheduler } from "../src/scheduler.ts";
+import { type Job, resumeReclaimed, Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { testContext } from "./test-context.ts";
 import { z } from "zod";
 

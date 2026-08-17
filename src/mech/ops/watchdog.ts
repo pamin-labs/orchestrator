@@ -28,7 +28,7 @@ import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { buildMap, indexExcludes, renderMap, saveMap } from "../knowledge/repomap.ts";
 import { HEAD_CHARS } from "../knowledge/pageindex.ts";
-import { resumeReclaimed, type Job } from "../../scheduler.ts";
+import { resumeReclaimed, type Job } from "../../platform/scheduling/scheduler.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 import { probe } from "../sandbox/net.ts";
 import { z } from "zod";

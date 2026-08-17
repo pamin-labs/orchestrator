@@ -4,7 +4,7 @@ import type { Config } from "../../platform/config/load.ts";
 import { getFile, type Scope } from "../../mech/sandbox/sandbox.ts";
 import { listSkills, projectSkills, readSkillIn } from "../../mech/skills.ts";
 import type { Delta } from "../../prompt/assemble.ts";
-import type { Job } from "../../scheduler.ts";
+import type { Job } from "../../platform/scheduling/scheduler.ts";
 import { ACTIVE_JOB_STATES, type SliceState, stateParam } from "../../contracts/states.ts";
 
 /** Exported because `applySkills` takes one and is called from tests. */

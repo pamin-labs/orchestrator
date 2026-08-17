@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import { z } from "zod";
 import { openMemory, type DB } from "../src/platform/persistence/database.ts";
-import { Scheduler, type Job } from "../src/scheduler.ts";
+import { Scheduler, type Job } from "../src/platform/scheduling/scheduler.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { makeGithub, type GithubFetcher } from "../src/mech/git/github.ts";
 import { repoHeld, resetRepoHolds, REPO_HOLD_MS } from "../src/mech/git/repository.ts";

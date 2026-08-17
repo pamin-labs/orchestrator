@@ -5,7 +5,7 @@ import type { Frame } from "../src/contracts/events.ts";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { flushPending } from "../src/api/panel/stream.ts";
 
 /**

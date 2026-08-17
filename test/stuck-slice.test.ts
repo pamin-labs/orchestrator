@@ -6,7 +6,7 @@ import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { sendBack } from "../src/mech/flow/review.ts";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
-import { Scheduler, type Job } from "../src/scheduler.ts";
+import { Scheduler, type Job } from "../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Json } from "../src/contracts/json.ts";

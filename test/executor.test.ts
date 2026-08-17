@@ -9,7 +9,7 @@ import { loadConfig, loadRoles } from "../src/platform/config/load.ts";
 import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../src/runtime/executor.ts";
-import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/platform/scheduling/scheduler.ts";
 import { abortJob } from "../src/platform/process/running-turns.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";

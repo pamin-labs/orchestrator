@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../src/platform/persistence/database.ts";
-import { AgentTurnPayloadSchema, Scheduler } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { restoreWorkspace } from "../src/mech/flow/start.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { testContext } from "./test-context.ts";

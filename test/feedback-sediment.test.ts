@@ -4,7 +4,7 @@ import { openMemory } from "../src/platform/persistence/database.ts";
 import { OVERLAP_FLOOR, sameComplaint, sediment, terms } from "../src/mech/knowledge/lessons.ts";
 import { bossFact } from "../src/api/panel/attach.ts";
 import type { Ctx } from "../src/ctx.ts";
-import { AgentTurnPayloadSchema, Scheduler, type Job } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler, type Job } from "../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { loadConfig } from "../src/platform/config/load.ts";

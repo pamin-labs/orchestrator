@@ -3,7 +3,7 @@ import { makeApp } from "../src/api.ts";
 import { ErrorResponseSchema } from "../src/contracts/protocol.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import { runtimeStatus } from "../src/platform/observability/metrics.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { refreshRuntimeReadiness, shutdownRuntime } from "../src/server.ts";
 import { testContext } from "./test-context.ts";
 

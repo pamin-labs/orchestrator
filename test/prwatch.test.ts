@@ -18,7 +18,7 @@ import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { evictOldestLessons, LESSON_CAP } from "../src/mech/knowledge/lessons.ts";
 import { landed } from "../src/mech/flow/mergequeue.ts";
-import { AgentTurnPayloadSchema, Scheduler } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Json } from "../src/contracts/json.ts";

@@ -5,7 +5,7 @@ import type { Json } from "../src/contracts/json.ts";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { loadAuth } from "../src/mech/sandbox/auth.ts";
 import type { DeviceFlowFetcher } from "../src/mech/git/ghlogin.ts";
 import { finishGithubLogin, githubDeviceLogin } from "../src/api/panel/authflow.ts";

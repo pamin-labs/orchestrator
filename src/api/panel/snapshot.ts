@@ -16,7 +16,7 @@ import { UsageWindow, type Snapshot } from "../../contracts/panel.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { costReport } from "../../mech/ops/cost.ts";
 import { canStart } from "../../mech/flow/ownership.ts";
-import { poolSizes } from "../../scheduler.ts";
+import { poolSizes } from "../../platform/scheduling/scheduler.ts";
 import { head, position } from "../../mech/flow/mergequeue.ts";
 import type { Handler } from "../../http/handler.ts";
 import { json } from "../../http/respond.ts";

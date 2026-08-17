@@ -5,7 +5,7 @@ import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { abstain, answer, entryPoint, isReserved, revoke, route, triage, TRIAGE } from "../src/mech/flow/chain.ts";
 import { SayBody } from "../src/api/orch/messaging.ts";
 import { TriageBody } from "../src/api/orch/escalation.ts";
-import { AgentTurnPayloadSchema, Scheduler } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";

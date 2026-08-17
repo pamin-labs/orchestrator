@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { snapshot } from "../src/api/panel/snapshot.ts";
 import * as S from "../src/contracts/panel.ts";
 import type { Ctx } from "../src/ctx.ts";

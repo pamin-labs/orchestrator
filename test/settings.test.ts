@@ -10,7 +10,7 @@ import {
   settablePaths,
 } from "../src/platform/config/settings.ts";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import type { Json } from "../src/contracts/json.ts";

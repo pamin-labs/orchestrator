@@ -4,7 +4,7 @@ import { openMemory } from "../src/platform/persistence/database.ts";
 import { makeApp } from "../src/api.ts";
 import type { Ctx } from "../src/ctx.ts";
 import { evictOldestLessons, LESSON_CAP, lessonsFor } from "../src/mech/knowledge/lessons.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { loadConfig } from "../src/platform/config/load.ts";

@@ -1,6 +1,6 @@
 import type { DB } from "./platform/persistence/database.ts";
 import type { Bus } from "./platform/persistence/event-bus.ts";
-import type { Scheduler } from "./scheduler.ts";
+import type { Scheduler } from "./platform/scheduling/scheduler.ts";
 import type { Config } from "./platform/config/load.ts";
 
 /**

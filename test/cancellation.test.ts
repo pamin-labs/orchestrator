@@ -8,7 +8,7 @@ import { openMemory } from "../src/platform/persistence/database.ts";
 import { makeGithub, type GithubFetcher } from "../src/mech/git/github.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { abortJob } from "../src/platform/process/running-turns.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
 
 function blockedFetch(onStart: (signal: AbortSignal) => void): GithubFetcher {

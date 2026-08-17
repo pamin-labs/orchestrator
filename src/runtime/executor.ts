@@ -33,7 +33,7 @@ import { projectOfAgent } from "../mech/util/rows.ts";
 import { jsonOr } from "../contracts/json.ts";
 import { clip, errText } from "../platform/process/text.ts";
 import { assemble, buildStable, type Delta, needsRotation, type StablePrompt } from "../prompt/assemble.ts";
-import { AgentTurnPayloadSchema, type Executor, type Job } from "../scheduler.ts";
+import { AgentTurnPayloadSchema, type Executor, type Job } from "../platform/scheduling/scheduler.ts";
 import { buildTurnDelta } from "../application/turn/delta.ts";
 import type { TurnResult } from "./claude.ts";
 import { clampEffort, type Provider, providerFor } from "./providers.ts";

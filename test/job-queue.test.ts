@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { requestContext } from "../src/platform/observability/request-context.ts";
-import { AgentTurnPayloadSchema, reclaimOrphans, Scheduler, type Job } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, reclaimOrphans, Scheduler, type Job } from "../src/platform/scheduling/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { z } from "zod";
 
@@ -493,7 +493,7 @@ test("a turn left running by a dead server is reclaimed, not left holding the sl
   ]);
   db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('reconcile', 1, 'pending', 0)");
 
-  const { reclaimOrphans } = await import("../src/scheduler.ts");
+  const { reclaimOrphans } = await import("../src/platform/scheduling/scheduler.ts");
   // Nobody is holding this turn's stream: the previous server exited mid-turn.
   expect(reclaimOrphans(db, { alive: () => false })).toHaveLength(1);
 
@@ -544,7 +544,7 @@ test("a restart resumes the turn it interrupted, but only once", async () => {
   // The timer re-adds these itself; resuming them would just double them up.
   db.run("INSERT INTO job (kind, state, pid, started_at, enqueued_at) VALUES ('watchdog', 'running', 89992, 0, 0)");
 
-  const { reclaimOrphans, resumeReclaimed } = await import("../src/scheduler.ts");
+  const { reclaimOrphans, resumeReclaimed } = await import("../src/platform/scheduling/scheduler.ts");
   const sched = new Scheduler(db, async () => {});
   expect(resumeReclaimed(sched, reclaimOrphans(db, { alive: () => false }))).toBe(1);
 

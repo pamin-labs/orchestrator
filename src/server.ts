@@ -35,7 +35,7 @@ import {
 } from "./mech/knowledge/pageindex.ts";
 import { indexable, indexExcludes } from "./mech/knowledge/repomap.ts";
 import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
-import { reclaimOrphans, resumeReclaimed, Scheduler } from "./scheduler.ts";
+import { reclaimOrphans, resumeReclaimed, Scheduler } from "./platform/scheduling/scheduler.ts";
 import { abortAll } from "./platform/process/running-turns.ts";
 import { isOnline } from "./mech/sandbox/net.ts";
 import { hold } from "./mech/flow/intercept.ts";

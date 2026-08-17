@@ -8,7 +8,7 @@ import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { POLL_EVERY_MS, pollClaudeUsage, pollUsage, rateLimitsIn, toRateLimit } from "../src/mech/ops/subusage.ts";
 import { seedAuth } from "./seed-auth.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
 import { z } from "zod";
 
 const StoredUsage = z.object({ fiveHourPercent: z.number().optional(), weeklyPercent: z.number().optional() });
