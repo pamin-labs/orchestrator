@@ -13,7 +13,7 @@ M7 — executable engineering governance and versioned protocol.
 - Branch: `refactor/api-split-and-settings`
 - SHA: the commit containing this entry
 - TypeScript, Oxlint, Biome, and default changed-code Fallow audit: pass
-- Tests: 843 pass, 15 environment skips, 0 fail across 101 files
+- Tests: 846 pass, 15 environment skips, 0 fail across 102 files
 - Local test time: 7.64 seconds in the restricted agent environment
 - Fallow: no introduced dead code, boundary, cycle, or duplication finding;
   `audit:all` still reports 75 inherited complexity/CRAP findings
@@ -94,11 +94,14 @@ M7 — executable engineering governance and versioned protocol.
 - PR polling/error classification, knowledge ranking/query/search, ownership
   admission/conflict detection, and package gate detection now have focused
   policies with no remaining Fallow finding and combined net-negative LOC.
+- Progress has real server-rendered behavior coverage for empty, active,
+  delivered, queue, slice, and concurrency states; Row/Seg policy is simplified,
+  all four findings are gone, and production LOC is net negative.
 - Release archives carry a version-reporting bundled CLI, Linux/Windows x64 use
   Bun baseline targets, required archive contents are verified, and interrupted
   publication documents its immutable resume points instead of claiming no
   external state can remain.
-- Full suite reached 843 pass and 0 fail. Six OpenSandbox tests are gated on a
+- Full suite reached 846 pass and 0 fail. Six OpenSandbox tests are gated on a
   live server; nine HTTP smoke cases also skip only in restricted environments
   that cannot bind loopback. Normal CI must run the HTTP smoke suite.
 - Clean TypeScript build, hard Oxlint gate, formatting, web build, performance
@@ -111,7 +114,7 @@ M7 — executable engineering governance and versioned protocol.
 ## Blockers and deviations
 
 - Fallow's default new-only audit is green. `bun run audit:all` remains red on
-  44 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
+  40 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
   threshold increase, or inline suppression.
 - The first full Fallow security inventory surfaces 40 verification candidates
   (17 SQL, 13 SSRF, eight dynamic-regex, one redirect, and one secret-shaped
