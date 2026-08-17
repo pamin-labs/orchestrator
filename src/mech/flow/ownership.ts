@@ -159,6 +159,49 @@ const WRITING_SQL = sql(WRITING);
 export const CLAIMING = GRP_STATES.filter((s) => s !== "DISSOLVED");
 export const CLAIMING_SQL = sql(CLAIMING);
 
+type OtherOwner = { id: number; name: string; owns_json: string };
+const startOk = (): StartCheck => ({ ok: true, conflicts: [], sharedClaimed: [] });
+
+function undeclaredStart(owns: string[], others: OtherOwner[]): StartCheck | null {
+  if (owns.length > 0) return null;
+  const declared = others.filter((owner) => parseOwns(owner.owns_json).length > 0);
+  if (declared.length === 0) return startOk();
+  return {
+    ok: false,
+    conflicts: [],
+    sharedClaimed: [],
+    reason:
+      `no owned paths declared, and ${declared.map(({ name }) => name).join(", ")} ` +
+      `already hold theirs — the Architect has to cut the boundary before work starts`,
+  };
+}
+
+function sharedStart(db: DB, grpId: number, projectId: number, owns: string[]): StartCheck | null {
+  const granted = parseOwns(
+    db.query<{ shared_grant: string | null }, [number]>("SELECT shared_grant FROM grp WHERE id = ?").get(grpId)
+      ?.shared_grant ?? null,
+  );
+  const shared = sharedFor(db, projectId).filter((path) => !granted.includes(path));
+  const claimed = claimsShared(owns, shared).filter((path) => !granted.includes(path));
+  if (claimed.length === 0) return null;
+  return {
+    ok: false,
+    conflicts: [],
+    sharedClaimed: claimed,
+    reason: `these belong to no group: ${claimed.join(", ")} — changes there go through the boss or the Architect`,
+  };
+}
+
+function ownerConflicts(owns: string[], others: OtherOwner[]): OwnershipConflict[] {
+  return others.flatMap((owner) =>
+    owns.flatMap((mine) =>
+      parseOwns(owner.owns_json).flatMap((theirs) =>
+        overlaps(mine, theirs) ? [{ grpId: owner.id, name: owner.name, mine, theirs }] : [],
+      ),
+    ),
+  );
+}
+
 export function canStart(db: DB, grpId: number): StartCheck {
   const me = db
     .query<{ project_id: number; owns_json: string; name: string }, [number]>(
@@ -168,55 +211,23 @@ export function canStart(db: DB, grpId: number): StartCheck {
   if (!me) return { ok: false, conflicts: [], sharedClaimed: [], reason: "no such group" };
 
   const others = db
-    .query<{ id: number; name: string; owns_json: string }, [number, number]>(
+    .query<OtherOwner, [number, number]>(
       `SELECT id, name, owns_json FROM grp
        WHERE project_id = ? AND id != ? AND status IN ${WRITING_SQL}`,
     )
     .all(me.project_id, grpId);
 
   const owns = parseOwns(me.owns_json);
-  if (owns.length === 0) {
-    // Overlap is the real criterion, and two undeclared sets cannot be shown to
-    // overlap. So this only bites when someone else HAS drawn a boundary: then
-    // starting undeclared would silently claim everything, including their paths.
-    const declared = others.filter((o) => parseOwns(o.owns_json).length > 0);
-    if (declared.length === 0) return { ok: true, conflicts: [], sharedClaimed: [] };
-    return {
-      ok: false,
-      conflicts: [],
-      sharedClaimed: [],
-      reason:
-        `no owned paths declared, and ${declared.map((o) => o.name).join(", ")} ` +
-        `already hold theirs — the Architect has to cut the boundary before work starts`,
-    };
-  }
+  const undeclared = undeclaredStart(owns, others);
+  if (undeclared) return undeclared;
 
   // A path this group was granted by name. Shared files belong to no group, and
   // that stays true for everyone else — but a defect in one has to be fixable by
   // somebody, and the requirement opened for exactly that was refused here forever.
-  const granted = parseOwns(
-    db.query<{ shared_grant: string | null }, [number]>("SELECT shared_grant FROM grp WHERE id = ?").get(grpId)
-      ?.shared_grant ?? null,
-  );
-  const shared = sharedFor(db, me.project_id).filter((s) => !granted.includes(s));
-  const sharedClaimed = claimsShared(owns, shared).filter((o) => !granted.includes(o));
-  if (sharedClaimed.length) {
-    return {
-      ok: false,
-      conflicts: [],
-      sharedClaimed,
-      reason: `these belong to no group: ${sharedClaimed.join(", ")} — changes there go through the boss or the Architect`,
-    };
-  }
+  const shared = sharedStart(db, grpId, me.project_id, owns);
+  if (shared) return shared;
 
-  const conflicts: OwnershipConflict[] = [];
-  for (const o of others) {
-    for (const mine of owns) {
-      for (const theirs of parseOwns(o.owns_json)) {
-        if (overlaps(mine, theirs)) conflicts.push({ grpId: o.id, name: o.name, mine, theirs });
-      }
-    }
-  }
+  const conflicts = ownerConflicts(owns, others);
   if (conflicts.length) {
     const c = conflicts[0]!;
     return {
@@ -226,7 +237,7 @@ export function canStart(db: DB, grpId: number): StartCheck {
       reason: `${c.mine} overlaps ${c.theirs} owned by ${c.name} — wait for it, or ask the Architect for a different split`,
     };
   }
-  return { ok: true, conflicts: [], sharedClaimed: [] };
+  return startOk();
 }
 
 /**
