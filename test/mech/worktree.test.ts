@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { testGit } from "../support/git-runner.ts";
+import { gitFixture, testGit } from "../support/git-runner.ts";
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { baseBranch, LINK_AGENTS_MD } from "../../src/mech/git/checkout.ts";
@@ -19,73 +19,59 @@ import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { tempDir } from "../support/temp.ts";
 
-/**
- * A group's checkout, as a plain clone.
- *
- * It is a clone in a sandbox in production and a clone in a temp dir here, and
- * every helper below takes its git runner rather than assuming one — which is
- * exactly what makes the two interchangeable.
- */
-async function checkout(origin: string, branch = "orch/g1"): Promise<string> {
-  const dir = tempDir("orch-wt-");
-  const work = join(dir, "work");
-  await git(dir, ["clone", "-q", origin, work]);
-  await git(work, ["config", "user.email", "a@orch.local"], work);
-  await git(work, ["config", "user.name", "orch agent"], work);
-  await git(work, ["checkout", "-q", "-b", branch], work);
-  return work;
-}
-
 const git = testGit;
 
-/** A real repo with one commit. Real git, because this plumbing is easy to fake wrong. */
-async function repo(): Promise<string> {
-  const dir = tempDir("orch-repo-");
-  await git(dir, ["init", "-q", "-b", "main"]);
-  await git(dir, ["config", "user.email", "t@example.com"]);
-  await git(dir, ["config", "user.name", "test"]);
-  writeFileSync(join(dir, "a.txt"), "one\n");
-  await git(dir, ["add", "-A"]);
-  await git(dir, ["commit", "-q", "-m", "init"]);
-  return dir;
+/**
+ * A real origin and a real clone of it on `orch/g1` — a group's checkout, as it
+ * is in a sandbox.
+ *
+ * Real git, because this plumbing is easy to fake wrong: every helper below takes
+ * a git runner rather than assuming one, which is what makes the temp directory
+ * here and the container in production interchangeable. What is *not* repeated is
+ * building the same repository fourteen times to get fourteen identical ones —
+ * `gitFixture` builds the pair once for the file and hands out a private copy,
+ * measured at 0.6ms against 112ms of `init`/`config`/`commit`/`clone`.
+ */
+async function checkout(): Promise<{ dir: string; wt: { worktree: string; branch: string } }> {
+  const { origin, work } = await gitFixture("orch-wt-");
+  return { dir: origin, wt: { worktree: work, branch: "orch/g1" } };
 }
 
 test.concurrent("a worktree installs its own dependencies and keeps them out of git", async () => {
-  const dir = await repo();
+  // A built origin, and then a checkout taken from it — the order is the point.
+  const { dir } = await checkout();
   mkdirSync(join(dir, "node_modules"), { recursive: true });
   mkdirSync(join(dir, "web/dist"), { recursive: true });
   writeFileSync(join(dir, "web/dist/main.js"), "built\n");
-  writeFileSync(join(dir, ".gitignore"), "node_modules/\nweb/dist/\n");
-  await git(dir, ["add", "-A"]);
-  await git(dir, ["commit", "-q", "-m", "ignore built things"]);
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
+  const worktree = join(dir, "../built-work");
+  await git(dir, ["clone", "-q", dir, worktree]);
 
   // A group's checkout starts with nothing built in it. It used to start with a
   // `node_modules` symlink to the main checkout, and that one symlink caused the
   // worst class of failure this system has had: every worktree of a repo shared
   // one dependency tree, so two gates installing at once raced on it and the
   // group read `Failed to link jiti: EEXIST` as its own build being broken.
-  expect(existsSync(join(wt.worktree, "node_modules"))).toBe(false);
-  expect(existsSync(join(wt.worktree, "web/dist"))).toBe(false);
+  expect(existsSync(join(worktree, "node_modules"))).toBe(false);
+  expect(existsSync(join(worktree, "web/dist"))).toBe(false);
 
   // Whatever the install writes must stay invisible to git, or the turn
   // checkpoint's `git add -A` commits it and QA rejects a slice over a file the
   // group never touched.
-  mkdirSync(join(wt.worktree, "node_modules"), { recursive: true });
-  writeFileSync(join(wt.worktree, "node_modules/marker"), "x");
-  expect((await git(wt.worktree, ["status", "--porcelain"], wt.worktree)).out).toBe("");
+  mkdirSync(join(worktree, "node_modules"), { recursive: true });
+  writeFileSync(join(worktree, "node_modules/marker"), "x");
+  expect((await git(worktree, ["status", "--porcelain"], worktree)).out).toBe("");
 });
 
 test.concurrent("a repo that has never been built still gets a worktree", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
+  // Nothing has created `node_modules` in this copy of the origin, and nothing
+  // needs to have: the checkout does not depend on a build existing anywhere.
+  const { wt } = await checkout();
   expect(existsSync(join(wt.worktree, "a.txt"))).toBe(true);
   expect(existsSync(join(wt.worktree, "node_modules"))).toBe(false);
 });
 
 test.concurrent("checkpoint commits dirty work and returns a sha to come back to", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
+  const { dir, wt } = await checkout();
 
   const before = await checkpoint(git, dir, wt.worktree, "engineer turn");
   expect(before).toMatch(/^[0-9a-f]{40}$/);
@@ -105,16 +91,14 @@ test.concurrent("checkpoint commits dirty work and returns a sha to come back to
 });
 
 test.concurrent("checkpoint on a clean tree does not create an empty commit", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
+  const { dir, wt } = await checkout();
   const a = await checkpoint(git, dir, wt.worktree, "turn");
   const b = await checkpoint(git, dir, wt.worktree, "turn");
   expect(a).toBe(b);
 });
 
 test.concurrent("rollback discards a turn's work — this is intercept L3", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
+  const { dir, wt } = await checkout();
   const before = (await checkpoint(git, dir, wt.worktree, "turn"))!;
 
   writeFileSync(join(wt.worktree, "half-done.txt"), "abandoned\n");
@@ -130,8 +114,7 @@ test.concurrent("rollback discards a turn's work — this is intercept L3", asyn
 });
 
 test.concurrent("changedSince sees uncommitted work — reconcile runs before any commit", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
+  const { dir, wt } = await checkout();
   const base = (await checkpoint(git, dir, wt.worktree, "start"))!;
 
   // Exactly the state reconcile sees: the turn wrote files and marked the task
@@ -146,8 +129,7 @@ test.concurrent("changedSince sees uncommitted work — reconcile runs before an
 });
 
 test.concurrent("wip checkpoints are squashed into one commit, and the tree survives", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
+  const { dir, wt } = await checkout();
 
   for (const [file, body] of [
     ["b.txt", "one\n"],
@@ -170,8 +152,7 @@ test.concurrent("wip checkpoints are squashed into one commit, and the tree surv
 });
 
 test.concurrent("a real commit message is never squashed away", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
+  const { dir, wt } = await checkout();
 
   writeFileSync(join(wt.worktree, "b.txt"), "one\n");
   await checkpoint(git, dir, wt.worktree, "engineer turn");
@@ -186,8 +167,7 @@ test.concurrent("a real commit message is never squashed away", async () => {
 });
 
 test.concurrent("a rebased branch stops reporting other groups' landed work as this slice's diff", async () => {
-  const dir = await repo();
-  const wt = { worktree: await checkout(dir, "orch/g1"), branch: "orch/g1" };
+  const { dir, wt } = await checkout();
 
   // Where the slice started: the branch tip at the time, which here is main.
   const base = (await git(dir, ["rev-parse", "HEAD"], wt.worktree)).out.trim();
@@ -245,11 +225,12 @@ test.concurrent("the base branch is a bare name, whatever the remote calls it", 
   // The bug: this returned `origin/main` when `origin/HEAD` was set and `main`
   // when it was not, while four callers wrote `origin/${...}` around it. On any
   // ordinary clone they were asking git for `origin/origin/main`.
-  const origin = await repo();
+  const { dir: origin } = await checkout();
   await git(origin, ["branch", "-m", "main", "trunk"]);
-  const dir = tempDir("orch-base-");
-  const work = join(dir, "work");
-  await git(dir, ["clone", "-q", origin, work]);
+  // Cloned after the rename, so `origin/HEAD` is what a real clone of this remote
+  // would have. The fixture's own clone predates it and is not the subject here.
+  const work = join(origin, "../renamed-work");
+  await git(origin, ["clone", "-q", origin, work]);
 
   expect(await detectBaseBranch(git, work)).toBe("trunk");
   // Without origin/HEAD it has to ask the remote rather than guess main.

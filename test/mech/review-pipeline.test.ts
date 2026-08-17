@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { testGit } from "../support/git-runner.ts";
+import { gitFixture, testGit } from "../support/git-runner.ts";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeApp } from "../../src/composition/api.ts";
@@ -43,25 +43,14 @@ function turnOk(): TurnResult {
 /** Real Git is reserved for the four tests whose subject is reconcile itself. */
 async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
   const realGit = opts.realGit ?? false;
-  const wtDir = tempDir("orch-rp-wt-");
-  const work = realGit ? join(wtDir, "work") : wtDir;
-  const repo = realGit ? tempDir("orch-rp-repo-") : work;
-  if (realGit) {
-    await git(repo, ["init", "-q", "-b", "main"]);
-    await git(repo, ["config", "user.email", "t@e.com"]);
-    await git(repo, ["config", "user.name", "t"]);
-    writeFileSync(join(repo, "a.txt"), "one\n");
-    await git(repo, ["add", "-A"]);
-    await git(repo, ["commit", "-q", "-m", "init"]);
-
-    // Reconcile's four integration cases use the same clone shape as a sandbox.
-    await git(wtDir, ["clone", "-q", repo, work]);
-    await git(work, ["config", "user.email", "a@orch.local"], work);
-    await git(work, ["config", "user.name", "orch agent"], work);
-    await git(work, ["checkout", "-q", "-b", "orch/g1"], work);
-  } else {
-    await Bun.write(join(work, "a.txt"), "one\n");
-  }
+  // Reconcile's four integration cases use the same clone shape as a sandbox.
+  // `gitFixture` builds that origin-and-clone pair once for the file and copies
+  // it, so the four do not each replay the same six commands to arrive at the
+  // same repository — measured at 112ms of git per harness against 0.6ms.
+  const fixture = realGit ? await gitFixture("orch-rp-") : null;
+  const work = fixture ? fixture.work : tempDir("orch-rp-wt-");
+  const repo = fixture ? fixture.origin : work;
+  if (!fixture) await Bun.write(join(work, "a.txt"), "one\n");
   const wt = { worktree: work, branch: "orch/g1" };
 
   const db = openMemory();

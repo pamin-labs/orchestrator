@@ -262,10 +262,15 @@ test("a process that died silently says that, rather than leaving a blank where 
 test("a server that never answers gives up at the deadline and says how long it waited", async () => {
   // Bounded, and it must stay bounded: this runs at boot and the settings page
   // waits on it.
+  //
+  // The deadline is real time — `waitUp` closes over `Date.now()`, and only its
+  // `sleep` is injected — so this test costs whatever deadline it is given. 600ms
+  // is the cheapest one that still rounds to the "等了 1 秒" below, and it was
+  // 1200ms: the same two assertions for twice the wall clock.
   const ctx = waiting(tempDir("orch-srv-"), "Address already in use\n");
   let probes = 0;
 
-  const up = await waitUp(ctx, { exited: new Promise<number>(() => {}) }, HERE, "k", 1200, {
+  const up = await waitUp(ctx, { exited: new Promise<number>(() => {}) }, HERE, "k", 600, {
     probe: async () => {
       probes++;
       return { kind: "none", why: "Unable to connect" };
