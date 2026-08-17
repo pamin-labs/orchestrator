@@ -200,6 +200,28 @@ M7 — executable engineering governance and versioned protocol.
   slashes, so a crafted project remote pointed the panel's merge badge at a
   different repository. Fixed at the shared assembler, where the sibling
   `repoHref` already had the check.
+- 技能 is machine-scope and its endpoint was the only `project` query in the
+  panel API without `.optional()`, so opening it with no project selected
+  answered a Zod error and listed nothing. Both halves mattered: `.optional()`
+  short-circuits on an absent value, and the callers were sending `project=`.
+- Watchdog rules declare their own cadence through croner, and the last-run time
+  is a row. One rule had carried a module-level `lastSweep` — process memory, so
+  every restart swept again and two ticks each saw the other's zero. The other
+  twenty-three stay on every tick: their per-rule spans landed a day earlier and
+  the data has not, and guessing cadences is what put the throttle in the rule
+  body. Rules also gained names, because a span reading `watchdog.7d2` split a
+  50-second tick into twenty-four parts that still could not say which.
+- Anything that waits now has to carry a span, stated in `AGENTS.md` and the
+  observability standard rather than left as an example. Two container round
+  trips inside the tick were untimed, and `treeHeads` returned an empty map on a
+  failed container while its span ended green — the caller keeps that benign
+  answer, the span no longer claims it succeeded.
+- The `setting` table had nineteen authors across six files, two of which had
+  independently invented the same "null removes it" rule. One reader and one
+  writer now live beside its schema. The conversion turned an absent key from
+  `undefined` into `null`, `Number(null)` is 0 where `Number(undefined)` is NaN,
+  and the watchdog read a never-run rule as one that ran at the epoch; the suite
+  caught it and the trap is now asserted at the layer it came from.
 
 ## Blockers and deviations
 
