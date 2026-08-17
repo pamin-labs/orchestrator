@@ -22,7 +22,7 @@
 #
 # Deliberately not opensandbox/code-interpreter either — 7GB for a superset
 # nothing here uses (docs/adr/005).
-FROM oven/bun:1.3.5@sha256:e90cdbaf9ccdb3d4bd693aa335c3310a6004286a880f62f79b18f9b1312a8ec3
+FROM oven/bun:1.3.14@sha256:50317d83cd5a5ae1d8b35b3379c69f57ce1a0dbf4def91f0965653d767851834
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates curl nodejs npm \

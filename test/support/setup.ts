@@ -1,6 +1,6 @@
 import { afterAll, beforeEach } from "bun:test";
 import { rmSync } from "node:fs";
-import { tempRoot } from "./temp.ts";
+import { createdRoot } from "./temp.ts";
 import { resetRepoHolds } from "../../src/mech/git/repository.ts";
 import { resetNet } from "../../src/mech/sandbox/net.ts";
 import { resetSandboxHold } from "../../src/mech/sandbox/sandbox.ts";
@@ -44,5 +44,6 @@ beforeEach(() => {
  * one call rather than a registry that each call site has to remember to join.
  */
 afterAll(() => {
-  rmSync(tempRoot, { recursive: true, force: true });
+  const root = createdRoot();
+  if (root) rmSync(root, { recursive: true, force: true });
 });

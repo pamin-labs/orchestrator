@@ -431,8 +431,22 @@ describe("workflow governance", () => {
   });
 
   test("container and update inputs are pinned", async () => {
+    // The risk is drift, not any particular version: the agent container and
+    // the jobs that build and test it have to run the same runtime, and a
+    // literal here pins one of the six places it is written while the other
+    // five move. So the assertion is that they agree, and that the image is
+    // still pinned by digest.
+    const versions = await Promise.all(
+      workflowNames.map(async (name) => /BUN_VERSION:\s*([\d.]+)/.exec(await source(name))?.[1]),
+    );
+    const declared = versions.filter((v) => v !== undefined);
+    expect(declared.length).toBeGreaterThan(0);
+    expect([...new Set(declared)]).toHaveLength(1);
+
     const dockerfile = await Bun.file("docker/agent.Dockerfile").text();
-    expect(dockerfile).toMatch(/^FROM oven\/bun:1\.3\.5@sha256:[0-9a-f]{64}$/m);
+    expect(dockerfile).toMatch(
+      new RegExp(`^FROM oven/bun:${declared[0]!.replaceAll(".", "\\.")}@sha256:[0-9a-f]{64}$`, "m"),
+    );
     expect(dockerfile).toContain("ARG CLAUDE_CODE_VERSION=2.1.233");
     expect(dockerfile).toContain("ARG CODEX_VERSION=0.147.0");
     expect(dockerfile).not.toContain("@latest");
