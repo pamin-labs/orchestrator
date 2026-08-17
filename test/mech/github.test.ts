@@ -210,6 +210,103 @@ test("caller cancellation aborts an active GitHub request without retrying", asy
   }
 });
 
+test("cancelling during a retry backoff costs no further request", async () => {
+  // The backoff belongs to `@octokit/plugin-retry` now, which schedules it on
+  // Bottleneck and knows nothing about an AbortSignal. So the cancellation is
+  // checked at the door of every attempt rather than only around the wait: a
+  // retry that ran anyway would spend a request on an answer nobody is waiting
+  // for, and would report GitHub's failure instead of the caller's cancellation.
+  const d = db();
+  try {
+    const controller = new AbortController();
+    const reason = new Error("caller stopped");
+    let attempts = 0;
+    const result = makeGithub(d, async () => {
+      attempts += 1;
+      // Retryable, so a retry is scheduled — and cancelled before it fires.
+      controller.abort(reason);
+      return json(502, { message: "bad gateway" });
+    }).request("GET", "/user", z.json(), undefined, controller.signal);
+
+    expect(await result.catch((error: unknown) => error)).toBe(reason);
+    expect(attempts).toBe(1);
+  } finally {
+    d.close();
+  }
+});
+
+test("a secondary rate limit hands back GitHub's own wait, and does not sit on it", async () => {
+  // The throttling plugin's own answer to this is to sleep the caller for
+  // `retry-after` seconds — 60 when GitHub names none — and try again, which
+  // inside an agent turn holds a container open doing nothing. We decline the
+  // sleep and keep the number: the scheduler can retry on GitHub's schedule
+  // instead of guessing, which is the whole reason the plugin is installed.
+  const d = db();
+  try {
+    const started = Date.now();
+    const r = await makeGithub(d, async () =>
+      json(403, { message: "You have exceeded a secondary rate limit" }, { "retry-after": "42" }),
+    ).request("GET", "/repos/me/x/pulls/7", z.json());
+
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    expect(r.retryAfter).toBe(42);
+    // Still the answer it always was: waited out, not the boss's problem.
+    expect(r.bucket).toBe("transient");
+    expect(r.status).toBe(403);
+    // Promptly. A retry accepted in band would have parked here for 42 seconds.
+    expect(Date.now() - started).toBeLessThan(1000);
+  } finally {
+    d.close();
+  }
+});
+
+test("a primary rate limit dates the wait from the reset clock", async () => {
+  // No `retry-after` on a primary limit — GitHub gives an epoch to wait until,
+  // and the plugin reads it off `x-ratelimit-reset` once `remaining` hits zero.
+  const d = db();
+  try {
+    const reset = Math.ceil(Date.now() / 1000) + 30;
+    const r = await makeGithub(d, async () =>
+      json(
+        403,
+        { message: "API rate limit exceeded" },
+        { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(reset) },
+      ),
+    ).request("GET", "/repos/me/x/pulls/7", z.json());
+
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    // Give or take the second the test spent getting here.
+    expect(r.retryAfter).toBeGreaterThan(25);
+    expect(r.retryAfter).toBeLessThanOrEqual(32);
+    expect(r.bucket).toBe("transient");
+  } finally {
+    d.close();
+  }
+});
+
+test("a status the retry plugin will not retry is asked exactly once", async () => {
+  // The landmine this guards: a non-zero per-request `retries` bypasses the
+  // plugin's `doNotRetry` list, because Bottleneck reads the count off the
+  // options object without asking whether the status was retryable. Measured,
+  // it retries these three times each — burning the rate limit on answers that
+  // will not change, and holding the repository three times over.
+  for (const status of [404, 401, 422]) {
+    const d = db();
+    try {
+      let attempts = 0;
+      await makeGithub(d, async () => {
+        attempts += 1;
+        return json(status, { message: "no" });
+      }).request("GET", "/repos/me/x", z.json());
+      expect({ status, attempts }).toEqual({ status, attempts: 1 });
+    } finally {
+      d.close();
+    }
+  }
+});
+
 test("no credential is the boss's, and nothing is sent", async () => {
   let called = false;
   const fetchFn: GithubFetcher = async () => {
