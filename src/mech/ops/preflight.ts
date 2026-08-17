@@ -122,37 +122,39 @@ async function accepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boole
  * next to a commit that removed exactly that.
  */
 async function ask(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+  if (auth.mode === "chatgpt") return chatgptAccepted(auth);
+  if (runtime === "github") return githubAccepted(auth);
+  return modelAccepted(runtime, auth);
+}
+
+function chatgptAccepted(auth: RuntimeAuth): { ok: boolean; detail: string } {
   // The refresh token is what matters and it is not ours to test; the access
   // token carries its own expiry, and codex rotates it from the host.
-  if (auth.mode === "chatgpt") {
-    const exp = jwtExpiry(parseAuth(auth.secret)?.tokens?.access_token);
-    if (!exp) return { ok: true, detail: "存着" };
-    const days = Math.round((exp - Date.now()) / 86_400_000);
-    return exp > Date.now()
-      ? { ok: true, detail: days >= 1 ? `还有 ${days} 天` : "快过期了" }
-      : { ok: false, detail: "过期了，重新登录一次" };
+  const exp = jwtExpiry(parseAuth(auth.secret)?.tokens?.access_token);
+  if (!exp) return { ok: true, detail: "存着" };
+  const days = Math.round((exp - Date.now()) / 86_400_000);
+  if (exp <= Date.now()) return { ok: false, detail: "过期了，重新登录一次" };
+  return { ok: true, detail: days >= 1 ? `还有 ${days} 天` : "快过期了" };
+}
+
+async function githubAccepted(auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
+  // GitHub is not a model provider and has no `/v1/models`. A missing credential
+  // otherwise surfaces only when the utility container tries to push a branch.
+  try {
+    const response = await fetch("https://api.github.com/user", {
+      headers: { authorization: `Bearer ${auth.secret}`, "user-agent": "orchestrator" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (response.ok) return { ok: true, detail: "能用" };
+    // GitHub deliberately uses 404 for resources a token cannot see.
+    if ([401, 403, 404].includes(response.status)) return { ok: false, detail: "GitHub 不认这个 token 了" };
+    return { ok: true, detail: `没验成（HTTP ${response.status}）` };
+  } catch {
+    return { ok: true, detail: "连不上，没验" };
   }
-  // GitHub is not a model provider and has no `/v1/models`. It is checked here
-  // anyway, and it is the one credential whose absence is silent everywhere
-  // else: the utility container is what pushes every branch, and it pushes with
-  // this. With no token it builds, mirrors, and is refused at the last step of
-  // every slice — which reads as a git problem rather than as a missing login.
-  if (runtime === "github") {
-    try {
-      const r = await fetch("https://api.github.com/user", {
-        headers: { authorization: `Bearer ${auth.secret}`, "user-agent": "orchestrator" },
-        signal: AbortSignal.timeout(6000),
-      });
-      if (r.ok) return { ok: true, detail: "能用" };
-      // 404 included: GitHub answers it for a token that cannot see something,
-      // deliberately, so it is not evidence of anything being deleted.
-      if (r.status === 401 || r.status === 403 || r.status === 404)
-        return { ok: false, detail: "GitHub 不认这个 token 了" };
-      return { ok: true, detail: `没验成（HTTP ${r.status}）` };
-    } catch {
-      return { ok: true, detail: "连不上，没验" };
-    }
-  }
+}
+
+async function modelAccepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
   const base =
     auth.baseUrl?.replace(/\/+$/, "") ??
     (runtime === "claude" ? "https://api.anthropic.com" : "https://api.openai.com");
@@ -256,19 +258,197 @@ export function newEnough(tag: string, min = [1, 1, 6]): boolean {
   return true;
 }
 
+type Probe = (bin: string, argv?: string[]) => boolean;
+
+const defaultProbe: Probe = (bin, argv = ["--version"]) => {
+  try {
+    return Bun.spawnSync([bin, ...argv], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+  } catch {
+    return false;
+  }
+};
+
+function dockerCheck(docker: boolean, installed: boolean): Check {
+  return {
+    name: "docker",
+    ok: docker,
+    detail: docker ? "running" : installed ? "装了，但没启动（daemon 不理人）" : "not reachable",
+    fix: installed
+      ? "Docker 装了但没跑起来 —— 启动 Docker Desktop（或 colima start），等它变绿再回来。"
+      : "装 Docker（或 Colima / Podman，任何提供 docker socket 的都行）并启动。",
+  };
+}
+
+function hostToolChecks(contained: boolean, probe: Probe): { checks: Check[]; docker: boolean } {
+  if (contained) return { checks: [], docker: false };
+  const docker = probe("docker", ["info"]);
+  const installed = docker || probe("docker");
+  const uvx = probe("uvx");
+  return {
+    docker,
+    checks: [
+      dockerCheck(docker, installed),
+      {
+        name: "uv / python",
+        ok: uvx,
+        detail: uvx ? "uvx available" : "no uvx on PATH",
+        fix: "brew install uv —— opensandbox-server 是个 Python 包，没有它就没东西可启动。",
+      },
+    ],
+  };
+}
+
+function sandboxServerCheck(input: PreflightInput, contained: boolean, server: { ok: boolean; detail: string }): Check {
+  return {
+    name: "opensandbox-server",
+    ok: server.ok,
+    detail: server.detail,
+    fix: contained
+      ? `这个 orchestrator 跑在容器里，起不了沙盒服务器，也不该起 —— 它要的是宿主的 docker。` +
+        `在宿主上跑 uvx opensandbox-server，然后用 ORCH_SANDBOX_SERVER 指过去` +
+        `（Docker Desktop 上是 host.docker.internal:8080，Linux 上用宿主 IP 或 --network host）。`
+      : `uvx opensandbox-server --config ~/.sandbox.toml，监听 ${input.sandbox.server}，[egress] mode 要是 "dns+nft"`,
+  };
+}
+
+function hostEnvironmentCheck(contained: boolean): Check | null {
+  if (!contained) return null;
+  return {
+    name: "宿主环境",
+    ok: true,
+    detail: "docker、uv、egress 镜像都归跑沙盒服务器的那台机器管，这儿看不到",
+    fix: "那台机器上要有：docker、uvx opensandbox-server、docker pull opensandbox/egress:v1.1.6。",
+  };
+}
+
+function sandboxAuthCheck(serverOk: boolean, key: string): Check | null {
+  if (!serverOk || key) return null;
+  return {
+    name: "沙盒服务器鉴权",
+    ok: false,
+    detail: "服务器没开鉴权，本机任何进程都能进容器",
+    fix:
+      `在服务器的 TOML 里写 [server] api_key = "…"，重启，然后设置 → 沙盒服务器 → 「从服务器读」。` +
+      `容器里有仓库、信箱令牌和 CLI 登录。`,
+  };
+}
+
+function egressDetail(good: string[], stale: string[]): string {
+  if (good.length === 0 && stale.length === 0) return "no opensandbox/egress image pulled";
+  if (good.length === 0) return `only ${stale.join(", ")}, which is too old`;
+  if (stale.length > 0) return `${good.join(", ")} (also has ${stale.join(", ")} — check [egress] image)`;
+  return good.join(", ");
+}
+
+function egressCheck(contained: boolean, probe: Probe): Check | null {
+  if (contained) return null;
+  const egress = probe("docker") ? egressImages() : [];
+  const good = egress.filter((tag) => newEnough(tag));
+  const stale = egress.filter((tag) => !newEnough(tag));
+  return {
+    name: "egress sidecar",
+    ok: good.length > 0,
+    detail: egressDetail(good, stale),
+    fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
+  };
+}
+
+function agentImageCheck(image: string, docker: boolean): Check | null {
+  if (hasRegistry(image) || (docker && localImages(image))) return null;
+  return {
+    name: "agent image",
+    ok: false,
+    detail: `${image} 不在本机`,
+    fix: `docker build -f docker/agent.Dockerfile -t ${image} . —— 没有 registry 前缀的镜像只能本地构建。`,
+  };
+}
+
+function skillsMountCheck(input: PreflightInput, contained: boolean): { check: Check; staged: string } {
+  const staged = resolve(input.skillsDir ?? "/var/tmp/orch-cache/skills");
+  const skills = existsSync(staged) ? readdirSync(staged).length : 0;
+  return {
+    staged,
+    check: {
+      name: "skills mount",
+      ok: skills > 0,
+      detail: skills ? `${skills} staged at ${staged}` : "没有勾选的技能",
+      fix: contained
+        ? `${staged} 是这个容器里的路径，而挂载是沙盒服务器的 docker 做的 —— 它按自己看到的路径挂。` +
+          `两边要用同一个绝对路径（-v <宿主路径>:${staged}），并且写进沙盒服务器的 allowed_host_paths。` +
+          `不一致不会报错，只会挂个空目录。`
+        : `沙盒服务器的 allowed_host_paths 要包含 ${staged}，否则每个组开容器都会失败。技能在设置里勾。`,
+    },
+  };
+}
+
+function allowedPathsCheck(input: PreflightInput, staged: string): Check {
+  const allowed = allowedHostPaths();
+  const wanted = [staged, ...Object.values(input.cacheDirs ?? {})].map((path) => hostPathForDaemon(resolve(path)));
+  const missing = allowed ? wanted.filter((path) => !coveredBy(allowed.paths, path)) : [];
+  const detail = !allowed
+    ? "找不到 opensandbox-server 的配置文件，没法核对"
+    : missing.length
+      ? `${allowed.config} 不含 ${missing.join(", ")}`
+      : `${allowed.config} 覆盖了要挂的 ${wanted.length} 个路径`;
+  const fix =
+    allowed && missing.length
+      ? `把这一行写进 ${allowed.config} 的 [sandbox] 段，然后重启 opensandbox-server：\n` +
+        `      allowed_host_paths = [${[...allowed.paths, ...missing].map((path) => `"${path}"`).join(", ")}]`
+      : undefined;
+  return { name: "allowed_host_paths", ok: !allowed || missing.length === 0, detail, ...(fix ? { fix } : {}) };
+}
+
+function credentialFix(runtime: string): string {
+  if (runtime === "claude")
+    return "设置页 → Claude → 登录。在工具容器里跑官方的 claude setup-token，本机不用装；页面给的码贴回输入框就存下了。一年有效。";
+  if (runtime === "github") return "设置页里连一次 GitHub。分支是靠它推上去的 —— 没有它，每个切片都会在最后一步被拒。";
+  return "设置页 → codex → 登录，走官方的设备码流程，本机不用装 codex。也可以直接贴一个 API key。";
+}
+
+function credentialRuntimes(db: DB): string[] {
+  const runtimes = new Set(
+    db
+      .query<{ runtime: string }, []>("SELECT DISTINCT runtime FROM agent WHERE runtime IS NOT NULL")
+      .all()
+      .map(({ runtime }) => runtime),
+  );
+  runtimes.add("claude");
+  runtimes.add("codex");
+  runtimes.add("github");
+  return [...runtimes].sort();
+}
+
+async function credentialCheck(input: PreflightInput, runtime: string): Promise<Check> {
+  const auth = loadAuth(input.db, runtime);
+  const live = auth ? await (input.verify ?? accepted)(runtime, auth) : { ok: false, detail: "没配" };
+  return {
+    name: `credential:${runtime}`,
+    ok: live.ok,
+    detail: auth ? `${auth.mode} · ${live.detail}` : live.detail,
+    fix: credentialFix(runtime),
+  };
+}
+
+function codexRefresherCheck(db: DB): Check | null {
+  const auth = loadAuth(db, "codex");
+  if (auth?.mode !== "chatgpt") return null;
+  const parsed = parseAuth(auth.secret);
+  const stale = !parsed || isStale(parsed);
+  return {
+    name: "codex-refresher",
+    ok: !stale,
+    detail: stale
+      ? "这个 ChatGPT 登录已经旧到该续期了 —— 下一个容器起来时会自动续，续不上就要重新贴 auth.json"
+      : "登录还新，续期在工具容器里跑，本机不需要装 codex",
+    fix: "续期是在工具容器里跑真 codex 做的。如果一直续不上，去设置页重新贴一次 ~/.codex/auth.json，或者换成 API key —— API key 不需要续期。",
+  };
+}
+
 export async function preflight(input: PreflightInput): Promise<Check[]> {
   const out: Check[] = [];
   // Injectable so a test can assert both deployments without a container.
   const contained = input.contained ?? inContainer();
-  const probe =
-    input.probe ??
-    ((bin: string, argv: string[] = ["--version"]) => {
-      try {
-        return Bun.spawnSync([bin, ...argv], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
-      } catch {
-        return false;
-      }
-    });
+  const probe = input.probe ?? defaultProbe;
 
   // `docker info`, not `docker --version`. Measured: with the daemon down —
   // Docker Desktop installed and never launched, the most common first-run state
@@ -279,59 +459,28 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   //
   // Both are asked, because the answers send them to different places: not
   // installed at all is a download, installed but not started is one click.
-  const docker = probe("docker", ["info"]);
-  const installed = docker || probe("docker");
-  if (!contained)
-    out.push({
-      name: "docker",
-      ok: docker,
-      detail: docker ? "running" : installed ? "装了，但没启动（daemon 不理人）" : "not reachable",
-      fix: installed
-        ? "Docker 装了但没跑起来 —— 启动 Docker Desktop（或 colima start），等它变绿再回来。"
-        : "装 Docker（或 Colima / Podman，任何提供 docker socket 的都行）并启动。",
-    });
+  const hostTools = hostToolChecks(contained, probe);
+  const docker = hostTools.docker;
+  out.push(...hostTools.checks);
 
   // Only ever consulted when the server is down, but reported always: the fix
   // for a missing server is `uvx opensandbox-server`, and a machine without uv
   // cannot run that either. Two failures that look identical from the panel.
-  const uvx = probe("uvx");
-  if (!contained)
-    out.push({
-      name: "uv / python",
-      ok: uvx,
-      detail: uvx ? "uvx available" : "no uvx on PATH",
-      fix: "brew install uv —— opensandbox-server 是个 Python 包，没有它就没东西可启动。",
-    });
 
   // The same order `connection()` resolves it in: panel, then environment, then
   // the yaml. Checking a different key than the one the turns use is how a green
   // tick sat next to a fleet that could not open a single container.
   const key = loadAuth(input.db, SANDBOX_KEY)?.secret || input.sandbox.apiKey;
   const server = await reachable(`http://${input.sandbox.server}`, key);
-  out.push({
-    name: "opensandbox-server",
-    ok: server.ok,
-    detail: server.detail,
-    fix: contained
-      ? `这个 orchestrator 跑在容器里，起不了沙盒服务器，也不该起 —— 它要的是宿主的 docker。` +
-        `在宿主上跑 uvx opensandbox-server，然后用 ORCH_SANDBOX_SERVER 指过去` +
-        `（Docker Desktop 上是 host.docker.internal:8080，Linux 上用宿主 IP 或 --network host）。`
-      : `uvx opensandbox-server --config ~/.sandbox.toml，监听 ${input.sandbox.server}，[egress] mode 要是 "dns+nft"`,
-  });
+  out.push(sandboxServerCheck(input, contained, server));
 
   // One row instead of the three above, and only in a container: docker, uv and
   // the sidecar image are facts about the machine running the sandbox server,
   // which is not this one. Said once rather than dropped silently — somebody
   // reading this pane after a `docker run` should learn where those questions
   // went, not wonder whether they are still being asked.
-  if (contained) {
-    out.push({
-      name: "宿主环境",
-      ok: true,
-      detail: "docker、uv、egress 镜像都归跑沙盒服务器的那台机器管，这儿看不到",
-      fix: "那台机器上要有：docker、uvx opensandbox-server、docker pull opensandbox/egress:v1.1.6。",
-    });
-  }
+  const hostEnvironment = hostEnvironmentCheck(contained);
+  if (hostEnvironment) out.push(hostEnvironment);
 
   // Answering without a key is not a configuration detail: this server creates
   // containers and runs commands inside them, and those containers hold the
@@ -341,16 +490,8 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // Only when it is reachable AND we sent no key. A server that refuses us is
   // already reported above, and one on a Tailscale address with no key is the
   // same exposure to everyone on that network.
-  if (server.ok && !key) {
-    out.push({
-      name: "沙盒服务器鉴权",
-      ok: false,
-      detail: "服务器没开鉴权，本机任何进程都能进容器",
-      fix:
-        `在服务器的 TOML 里写 [server] api_key = "…"，重启，然后设置 → 沙盒服务器 → 「从服务器读」。` +
-        `容器里有仓库、信箱令牌和 CLI 登录。`,
-    });
-  }
+  const sandboxAuth = sandboxAuthCheck(server.ok, key);
+  if (sandboxAuth) out.push(sandboxAuth);
 
   // The version the example config ships (v1.1.4) 403s every scoped package
   // fetch while a credential is bound, and the symptom is "this project cannot
@@ -361,23 +502,8 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // which is not ours to read — so this reports what is available rather than
   // what is configured. Having a good one is the part we can check; pointing at
   // it is the part the fix line has to say out loud.
-  const egress = !contained && probe("docker") ? egressImages() : [];
-  const good = egress.filter((t) => newEnough(t));
-  const stale = egress.filter((t) => !newEnough(t));
-  if (!contained)
-    out.push({
-      name: "egress sidecar",
-      ok: good.length > 0,
-      detail:
-        egress.length === 0
-          ? "no opensandbox/egress image pulled"
-          : good.length === 0
-            ? `only ${stale.join(", ")}, which is too old`
-            : stale.length
-              ? `${good.join(", ")} (also has ${stale.join(", ")} — check [egress] image)`
-              : good.join(", "),
-      fix: "docker pull opensandbox/egress:v1.1.6，然后把 [egress] image 指过去。v1.1.4 一绑凭据就 403 掉所有 scoped 包。",
-    });
+  const egress = egressCheck(contained, probe);
+  if (egress) out.push(egress);
 
   // The image every group's container is made from — reported only when it can
   // fail, which is not the usual case any more.
@@ -390,33 +516,16 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // A tag with no registry in front of it has nowhere to be pulled from. That
   // one fails every sandbox with a pull error reading like a network problem,
   // which is why this check exists at all.
-  const image = input.sandbox.image;
-  if (!hasRegistry(image) && !(docker && localImages(image))) {
-    out.push({
-      name: "agent image",
-      ok: false,
-      detail: `${image} 不在本机`,
-      fix: `docker build -f docker/agent.Dockerfile -t ${image} . —— 没有 registry 前缀的镜像只能本地构建。`,
-    });
-  }
+  const agentImage = agentImageCheck(input.sandbox.image, docker);
+  if (agentImage) out.push(agentImage);
 
   // The skills mount, reported the same way as the sidecar image: the server's
   // `allowed_host_paths` is in its own TOML, which is not ours to read, so this
   // says which path has to be in it rather than pretending to have checked. A
   // path that is not allowed fails sandbox creation outright — loudly, but for
   // every group at once, which is a bad way to learn it.
-  const staged = resolve(input.skillsDir ?? "/var/tmp/orch-cache/skills");
-  const skills = existsSync(staged) ? readdirSync(staged).length : 0;
-  out.push({
-    name: "skills mount",
-    ok: skills > 0,
-    detail: skills ? `${skills} staged at ${staged}` : "没有勾选的技能",
-    fix: contained
-      ? `${staged} 是这个容器里的路径，而挂载是沙盒服务器的 docker 做的 —— 它按自己看到的路径挂。` +
-        `两边要用同一个绝对路径（-v <宿主路径>:${staged}），并且写进沙盒服务器的 allowed_host_paths。` +
-        `不一致不会报错，只会挂个空目录。`
-      : `沙盒服务器的 allowed_host_paths 要包含 ${staged}，否则每个组开容器都会失败。技能在设置里勾。`,
-  });
+  const skillsMount = skillsMountCheck(input, contained);
+  out.push(skillsMount.check);
 
   // The line above says which path has to be allowed. This says whether it is.
   //
@@ -428,66 +537,13 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   //
   // The fix is one line in a file we can already find, so this prints that line
   // rather than describing it.
-  const allowed = allowedHostPaths();
-  // As the daemon will read them, not as this process writes them: on Windows
-  // the sandbox server is under WSL and the path it must allow is `/mnt/c/...`,
-  // so comparing the drive-letter form against its config would report a
-  // mismatch that no edit could fix.
-  const wanted = [staged, ...Object.values(input.cacheDirs ?? {})].map((p) => hostPathForDaemon(resolve(p)));
-  const missing = allowed ? wanted.filter((p) => !coveredBy(allowed.paths, p)) : [];
-  out.push({
-    name: "allowed_host_paths",
-    ok: !allowed || missing.length === 0,
-    detail: !allowed
-      ? "找不到 opensandbox-server 的配置文件，没法核对"
-      : missing.length
-        ? `${allowed.config} 不含 ${missing.join(", ")}`
-        : `${allowed.config} 覆盖了要挂的 ${wanted.length} 个路径`,
-    ...(missing.length
-      ? {
-          fix:
-            `把这一行写进 ${allowed!.config} 的 [sandbox] 段，然后重启 opensandbox-server：\n` +
-            `      allowed_host_paths = [${[...allowed!.paths, ...missing].map((p) => `"${p}"`).join(", ")}]`,
-        }
-      : {}),
-  });
+  // Paths are compared as the daemon sees them (for example WSL `/mnt/c/...`).
+  out.push(allowedPathsCheck(input, skillsMount.staged));
 
   // Credentials are per runtime and live in the DB, never in an event or a
   // prompt. Whether one *exists* was the whole check, and existing is not the
   // question anyone is asking — a token that expired last week exists.
-  const runtimes = new Set(
-    input.db
-      .query<{ runtime: string }, []>("SELECT DISTINCT runtime FROM agent WHERE runtime IS NOT NULL")
-      .all()
-      .map((r) => r.runtime),
-  );
-  runtimes.add("claude");
-  runtimes.add("codex");
-  // Not a runtime, and here for the same reason the other two are: without it
-  // nothing reaches the remote and the failure surfaces four steps later.
-  runtimes.add("github");
-  for (const runtime of [...runtimes].sort()) {
-    const auth = loadAuth(input.db, runtime);
-    const live = auth ? await (input.verify ?? accepted)(runtime, auth) : { ok: false, detail: "没配" };
-    out.push({
-      // `credential:` so a caller that shows both this and its own credential
-      // list can drop these rather than printing the same fact twice.
-      name: `credential:${runtime}`,
-      ok: live.ok,
-      detail: auth ? `${auth.mode} · ${live.detail}` : live.detail,
-      // Where, not what. This used to say `claude setup-token` and `codex
-      // login` — instructions to run a CLI on this machine, from before both
-      // logins moved into the utility container. Following them logged the
-      // *host* in and stored nothing, and the check kept saying 没配 with no
-      // hint that the thing just done was the wrong thing.
-      fix:
-        runtime === "claude"
-          ? "设置页 → Claude → 登录。在工具容器里跑官方的 claude setup-token，本机不用装；页面给的码贴回输入框就存下了。一年有效。"
-          : runtime === "github"
-            ? "设置页里连一次 GitHub。分支是靠它推上去的 —— 没有它，每个切片都会在最后一步被拒。"
-            : "设置页 → codex → 登录，走官方的设备码流程，本机不用装 codex。也可以直接贴一个 API key。",
-    });
-  }
+  out.push(...(await Promise.all(credentialRuntimes(input.db).map((runtime) => credentialCheck(input, runtime)))));
 
   // A ChatGPT-account login is the one credential that needs a binary on *this*
   // machine, permanently.
@@ -500,24 +556,8 @@ export async function preflight(input: PreflightInput): Promise<Check[]> {
   // codex turn 401s looking like an expired account. The other three modes need
   // nothing here: a pasted `sk-ant-oat01-` is good for a year and an API key does
   // not expire.
-  const codexAuth = loadAuth(input.db, "codex");
-  if (codexAuth?.mode === "chatgpt") {
-    // No longer "is codex on this machine" — it moved into the utility container
-    // (007 step 7), and codex is in the agent image because turns run it. What
-    // is left to check is the thing that would now go wrong: the login itself
-    // going stale with nothing able to renew it. `isStale` is codex's own eight
-    // days halved, and past that the fleet is running on borrowed time.
-    const parsed = parseAuth(codexAuth.secret);
-    const stale = !parsed || isStale(parsed);
-    out.push({
-      name: "codex-refresher",
-      ok: !stale,
-      detail: stale
-        ? "这个 ChatGPT 登录已经旧到该续期了 —— 下一个容器起来时会自动续，续不上就要重新贴 auth.json"
-        : "登录还新，续期在工具容器里跑，本机不需要装 codex",
-      fix: "续期是在工具容器里跑真 codex 做的。如果一直续不上，去设置页重新贴一次 ~/.codex/auth.json，或者换成 API key —— API key 不需要续期。",
-    });
-  }
+  const codexRefresher = codexRefresherCheck(input.db);
+  if (codexRefresher) out.push(codexRefresher);
 
   return out;
 }
