@@ -18,5 +18,8 @@ leases/            # full lease logs (only digests go in the DB)
 
 # built web bundle
 web/dist/
+
+# coverage map and rendered reports (bun run test:coverage)
+coverage/
 .fallow/
 .cache/tsc/
