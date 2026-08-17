@@ -1,4 +1,6 @@
 import { errText, tail } from "../../platform/process/text.ts";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { activeTracer } from "../../platform/observability/traces.ts";
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
@@ -516,6 +518,27 @@ export async function listTree(
   remote: string,
   branch: string,
 ): Promise<{ files: string[]; why: string | null }> {
+  // Two spans, because they fail and cost differently: the mirror is a network
+  // clone or fetch, `ls-tree` is a local read of what it brought back. The
+  // watchdog calls this once per project per tick, so "the repo-map rule is
+  // slow" resolves to one of those two rather than to the rule.
+  return activeTracer().startActiveSpan("git.ls_tree", async (span) => {
+    try {
+      return await listTreeInner(ctx, remote, branch);
+    } catch (e) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+      throw e;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function listTreeInner(
+  ctx: Ctx,
+  remote: string,
+  branch: string,
+): Promise<{ files: string[]; why: string | null }> {
   const ref = branch.replace(/^origin\//, "");
   let mirror: string;
   try {
@@ -549,6 +572,34 @@ export async function listTree(
  * trips per tick to prove nothing changed.
  */
 export async function treeHeads(ctx: Ctx, scope: Scope, bytes: number): Promise<Map<string, string>> {
+  // One exec, but it reads the head of every tracked file inside a container, so
+  // the cost scales with the repository rather than with the round trip. The
+  // watchdog runs it per project per tick, and this span is what says whether the
+  // index rule is waiting on the corpus or on the network call above it.
+  return activeTracer().startActiveSpan("git.tree_heads", async (span) => {
+    try {
+      const { heads, failed } = await treeHeadsInner(ctx, scope, bytes);
+      // A container that cannot be read is deliberately not an error to the
+      // caller — an unreadable corpus means "nothing changed", which is the safe
+      // product answer. It is still an error on the span: a tick that spent a
+      // round trip failing must not look, in the one surface built to answer
+      // "which stage is slow", exactly like one that succeeded.
+      if (failed !== null) span.setStatus({ code: SpanStatusCode.ERROR, message: failed });
+      return heads;
+    } catch (e) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+      throw e;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+async function treeHeadsInner(
+  ctx: Ctx,
+  scope: Scope,
+  bytes: number,
+): Promise<{ heads: Map<string, string>; failed: string | null }> {
   const marker = "\u0001==";
   const r = await execIn(
     ctx,
@@ -557,13 +608,13 @@ export async function treeHeads(ctx: Ctx, scope: Scope, bytes: number): Promise<
       `printf '%s%s\n' ${shq(marker)} "$f"; head -c ${bytes} -- "$f"; printf '\n'; done`,
   );
   const out = new Map<string, string>();
-  if (r.code !== 0) return out;
+  if (r.code !== 0) return { heads: out, failed: `git ls-files exited ${r.code}: ${tail(r.out || r.err, 300)}` };
   for (const chunk of r.out.split(marker)) {
     const nl = chunk.indexOf("\n");
     if (nl <= 0) continue;
     out.set(chunk.slice(0, nl).trim(), chunk.slice(nl + 1));
   }
-  return out;
+  return { heads: out, failed: null };
 }
 
 /**

@@ -135,6 +135,15 @@ or run the full suite unless they own integration.
   swallowed errors, or retries of non-idempotent work.
 - A bug fix must block the same bug class at its shared entrypoint, type,
   invariant, or source guard.
+- Anything that costs wall-clock time carries a span. New work that waits on a
+  container, a network call, a subprocess, or the filesystem opens one through
+  `activeTracer().startActiveSpan`, names it after what it does rather than a
+  number, and sets `SpanStatusCode.ERROR` before rethrowing. Put the span at the
+  one place every case passes through, not at each caller: the twenty-fifth
+  caller is the one that will not have it. Untimed work is invisible in 系统耗时,
+  and the panel is where "which one is slow" gets asked — a watchdog tick
+  reported 50s against a 30s interval for as long as it was a single span.
+  Details in [`observability`](docs/standards/observability.md).
 
 ## Commits
 
