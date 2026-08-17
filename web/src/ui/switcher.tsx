@@ -25,6 +25,22 @@ export interface SwitchItem {
   rtlMeta?: boolean;
 }
 
+/**
+ * One row's cells, decided before anything is drawn.
+ *
+ * `value` is what cmdk filters on, so the dimmed second line is searchable too —
+ * typing a repository path finds the project it belongs to, which is the reason
+ * a filterable list replaced tabs in the first place.
+ */
+export function switchRow(it: SwitchItem) {
+  return {
+    value: `${it.name} ${it.meta ?? ""}`,
+    meta: it.meta ?? null,
+    dir: it.rtlMeta ? ("rtl" as const) : undefined,
+    badge: it.badge ?? null,
+  };
+}
+
 export function Switcher({
   open,
   onOpenChange,
@@ -60,36 +76,36 @@ export function Switcher({
       />
       <Command.List className="max-h-[50vh] overflow-y-auto p-1.5">
         <Command.Empty className="px-2 py-3 text-[0.75rem] text-ink-3">{empty}</Command.Empty>
-        {items.map((it) => (
-          <Command.Item
-            key={it.id}
-            value={`${it.name} ${it.meta ?? ""}`}
-            onSelect={() => {
-              onPick(it.id);
-              onOpenChange(false);
-            }}
-            className={cn(
-              "flex cursor-pointer items-baseline gap-2 rounded-md px-2 py-1.5 text-[0.8125rem]",
-              "data-[selected=true]:bg-sunk",
-            )}
-          >
-            {/* Every cell states whether it may wrap. Without that the name broke
-                mid-word and the count stacked one character per line. */}
-            <span className="shrink-0 whitespace-nowrap font-display text-[1rem] font-semibold">{it.name}</span>
-            {it.meta && (
-              <span
-                className="min-w-0 grow truncate font-mono text-[0.6875rem] text-ink-3"
-                dir={it.rtlMeta ? "rtl" : undefined}
-              >
-                {it.meta}
-              </span>
-            )}
-            {!it.meta && <span className="grow" />}
-            {it.badge && (
-              <span className="shrink-0 whitespace-nowrap font-mono text-[0.6875rem] text-accent">{it.badge}</span>
-            )}
-          </Command.Item>
-        ))}
+        {items.map((it) => {
+          const row = switchRow(it);
+          return (
+            <Command.Item
+              key={it.id}
+              value={row.value}
+              onSelect={() => {
+                onPick(it.id);
+                onOpenChange(false);
+              }}
+              className={cn(
+                "flex cursor-pointer items-baseline gap-2 rounded-md px-2 py-1.5 text-[0.8125rem]",
+                "data-[selected=true]:bg-sunk",
+              )}
+            >
+              {/* Every cell states whether it may wrap. Without that the name broke
+                  mid-word and the count stacked one character per line. */}
+              <span className="shrink-0 whitespace-nowrap font-display text-[1rem] font-semibold">{it.name}</span>
+              {row.meta && (
+                <span className="min-w-0 grow truncate font-mono text-[0.6875rem] text-ink-3" dir={row.dir}>
+                  {row.meta}
+                </span>
+              )}
+              {!row.meta && <span className="grow" />}
+              {row.badge && (
+                <span className="shrink-0 whitespace-nowrap font-mono text-[0.6875rem] text-accent">{row.badge}</span>
+              )}
+            </Command.Item>
+          );
+        })}
       </Command.List>
     </Command.Dialog>
   );

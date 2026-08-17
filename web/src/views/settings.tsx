@@ -128,6 +128,13 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
 ];
 
 const PROJECT_SECTIONS = new Set<Section>(["gates", "sandbox", "remove"]);
+
+/** Which pane the dialog actually shows. The hash keeps asking for the section
+ *  it was written with, so a link into 闸门 opened with no project selected has
+ *  to land on a pane that exists rather than on an empty right-hand column. */
+export const visibleSection = (section: Section, projectId: number | null): Section =>
+  projectId === null && PROJECT_SECTIONS.has(section) ? "cred" : section;
+
 const NO_SECTION_CHANGE = (_section: Section): void => {};
 const NO_REMOVAL = (): void => {};
 
@@ -160,7 +167,7 @@ export function SettingsDialog({
     setSection(k);
     onSection(k);
   };
-  const here = projectId === null && PROJECT_SECTIONS.has(section) ? "cred" : section;
+  const here = visibleSection(section, projectId);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -444,7 +451,7 @@ function GithubSettings({ open, section }: { open: boolean; section: Section }) 
   return <GithubPane status={status} onRefresh={refresh} />;
 }
 
-function SandboxServerSettings({
+export function SandboxServerSettings({
   open,
   section,
   rows,
@@ -462,7 +469,7 @@ function SandboxServerSettings({
   const { data: server = null } = useQuery({
     queryKey: ["sandbox-server"],
     queryFn: () => readApi(api["sandbox-server"].$get(), ServerInfoSchema),
-    enabled: open && section === "server",
+    enabled,
   });
   const { data: images } = useQuery({
     queryKey: ["sandbox-images"],

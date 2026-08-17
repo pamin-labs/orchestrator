@@ -93,11 +93,36 @@ export function Notes({
     setNotes(null);
     const query = grpId ? { group: String(grpId) } : projectId ? { project: String(projectId) } : {};
     void readApi(api.notes.$get({ query }), NotesResponseSchema).then((r) => {
-      setNotes(r?.notes ?? []);
-      onCountRef.current?.(r?.notes?.length ?? 0);
+      const found = r?.notes ?? [];
+      setNotes(found);
+      onCountRef.current?.(found.length);
     });
   }, [grpId, projectId]);
 
+  return (
+    <NotesBoard
+      notes={notes}
+      {...(compact !== undefined ? { compact } : {})}
+      {...(tab !== undefined ? { tab } : {})}
+      {...(onTab ? { onTab } : {})}
+    />
+  );
+}
+
+/** The blackboard once the read has landed. Split from the fetch above so every
+ *  state it can be in — nothing yet, nothing at all, one requirement's mixed
+ *  list, the full tabbed board — is reachable without a server. */
+export function NotesBoard({
+  notes,
+  compact,
+  tab,
+  onTab,
+}: {
+  notes: Note[] | null;
+  compact?: boolean;
+  tab?: string | null;
+  onTab?: (t: string) => void;
+}) {
   if (!notes) return <Meta>读记录…</Meta>;
   if (!notes.length) {
     return (

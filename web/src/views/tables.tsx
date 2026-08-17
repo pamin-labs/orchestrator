@@ -220,6 +220,9 @@ type Bumps = Map<number, Map<string, string[]>>;
 const covers = (a: string, b: string) =>
   a === b || a.startsWith(b.replace(/\*+$/, "")) || b.startsWith(a.replace(/\*+$/, ""));
 
+const bump = (into: Map<string, string[]>, path: string, name: string) =>
+  into.set(path, [...(into.get(path) ?? []), name]);
+
 function compareOwnership(bumps: Bumps, left: Group, right: Group): void {
   const leftBumps = bumps.get(left.id);
   const rightBumps = bumps.get(right.id);
@@ -227,8 +230,8 @@ function compareOwnership(bumps: Bumps, left: Group, right: Group): void {
   for (const a of owns(left)) {
     for (const b of owns(right)) {
       if (!covers(a, b)) continue;
-      leftBumps.set(a, [...(leftBumps.get(a) ?? []), right.name]);
-      rightBumps.set(b, [...(rightBumps.get(b) ?? []), left.name]);
+      bump(leftBumps, a, right.name);
+      bump(rightBumps, b, left.name);
     }
   }
 }

@@ -49,6 +49,11 @@ function set(p: Pref) {
   window.dispatchEvent(new CustomEvent(CHANGED));
 }
 
+/** ⌘⇧L, or Ctrl⇧L. Read off `key` rather than `code`, so it is the same chord on
+ *  a layout where L is somewhere else. */
+export const isThemeHotkey = (e: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "shiftKey" | "key">): boolean =>
+  (e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l";
+
 /**
  * Apply the stored theme and keep it applied. Called once, at boot.
  *
@@ -61,7 +66,7 @@ export function startTheme(): void {
     if (read() === "system") apply("system");
   });
   window.addEventListener("keydown", (e) => {
-    if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== "l") return;
+    if (!isThemeHotkey(e)) return;
     e.preventDefault();
     set(NEXT[read()]);
   });

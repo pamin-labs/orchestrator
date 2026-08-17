@@ -3,6 +3,7 @@ import { Head, Input, Meta } from "../ui/bits";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { api, mutate, readApi } from "../lib/api";
+import { matchSkills, skillTally } from "../features/skills/model";
 import { forgetSkills } from "../ui/composer";
 import { cn } from "../lib/utils";
 import { z } from "zod";
@@ -22,9 +23,6 @@ import { SkillSchema, type Skill as Row } from "../ui/composer";
  * in, so they are visible whatever this page says.
  */
 
-/** Rough, and said as rough. ~4 characters a token is close enough to steer by. */
-const cost = (rows: Row[]) => rows.reduce((n, r) => n + r.name.length + r.description.length + 20, 0) / 4;
-
 export function Skills({ projectId }: { projectId: number | null }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [q, setQ] = useState("");
@@ -41,28 +39,8 @@ export function Skills({ projectId }: { projectId: number | null }) {
     void load();
   }, [load]);
 
-  // Two different things, counted separately. `restageSkills` builds the mount from
-  // user-scope skills only, so a project skill was inflating a fraction that claims
-  // to say how many got staged. Both kinds do land in the cached prefix — the
-  // ticked ones through the mount, the repository's own through the checkout the
-  // CLI already runs in — so the token estimate counts both.
-  const tally = useMemo(() => {
-    const all = rows ?? [];
-    const user = all.filter((r) => r.scope === "user");
-    return {
-      staged: user.filter((r) => r.on).length,
-      user: user.length,
-      repo: all.length - user.length,
-      k: Math.round(cost(all.filter((r) => r.on)) / 100) / 10,
-    };
-  }, [rows]);
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return rows ?? [];
-    return (rows ?? []).filter(
-      (r) => r.name.toLowerCase().includes(needle) || r.description.toLowerCase().includes(needle),
-    );
-  }, [rows, q]);
+  const tally = useMemo(() => skillTally(rows ?? []), [rows]);
+  const shown = useMemo(() => matchSkills(rows ?? [], q), [rows, q]);
 
   const toggle = async (r: Row) => {
     setBusy(r.name);

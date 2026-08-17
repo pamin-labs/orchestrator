@@ -25,6 +25,25 @@ import { cn } from "../lib/utils";
  * packages are in this tree, and a second primitive library for one control is a
  * dependency that outlives its reason.
  */
+/**
+ * What a typed or clicked value becomes, and whether the caller hears about it.
+ *
+ * Refused rather than saved: see the note above. `options.length` is the whole
+ * condition — an empty list means unverifiable, not invalid — and a value equal
+ * to the stored one is committed to nothing, so reopening the field and pressing
+ * Enter is not a write.
+ */
+export function committed(
+  typed: string,
+  value: string,
+  options: string[],
+  free?: boolean,
+): { draft: string; commit: string | null } {
+  const next = typed.trim();
+  if (!free && options.length && !options.includes(next)) return { draft: value, commit: null };
+  return { draft: next, commit: next === value.trim() ? null : next };
+}
+
 export function Combobox({
   value,
   options,
@@ -64,13 +83,10 @@ export function Combobox({
   const shown = q && q !== value.trim().toLowerCase() ? options.filter((o) => o.toLowerCase().includes(q)) : options;
 
   const commit = (v: string) => {
-    const next = v.trim();
     setOpen(false);
-    // Refused rather than saved: see the note above. `options.length` is the
-    // whole condition — an empty list means unverifiable, not invalid.
-    if (!free && options.length && !options.includes(next)) return setDraft(value);
-    setDraft(next);
-    if (next !== value.trim()) onCommit(next);
+    const next = committed(v, value, options, free);
+    setDraft(next.draft);
+    if (next.commit !== null) onCommit(next.commit);
   };
 
   return (

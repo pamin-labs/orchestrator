@@ -59,3 +59,40 @@ test("Desk, ownership and cost surfaces render observable empty and populated st
   expect(rendered).toContain("按需求");
   expect(rendered).toContain("cache 命中");
 });
+
+const owning = (id: number, name: string, owns: string[]) => ({
+  id,
+  project_id: 1,
+  name,
+  branch: null,
+  status: "PARKED" as const,
+  owns_json: JSON.stringify(owns),
+  budget_tokens: null,
+  spent_tokens: 0,
+  pr_number: null,
+  approved_at: null,
+});
+
+test("two requirements reaching the same files are named as the pair that cannot run together", () => {
+  // A glob and a path under it are the same claim: `src/mech/**` and
+  // `src/mech/notes.ts` are two groups about to write the same file.
+  const st = emptyState();
+  st.groups.push(owning(1, "改闸门", ["src/mech/**"]), owning(2, "改记录", ["src/mech/notes.ts"]));
+  const html = render(<Owns st={st} projectId={1} />);
+
+  expect(html).toContain("2 个需求想改同一批文件，不能一起跑");
+  // Each side names the other, on its own row.
+  expect(html).toContain("压着 改记录");
+  expect(html).toContain("压着 改闸门");
+  expect(html).not.toContain("可以一起跑");
+});
+
+test("requirements with disjoint boundaries are cleared to run at once, and the unbounded are counted", () => {
+  const st = emptyState();
+  st.groups.push(owning(1, "改闸门", ["src/mech/**"]), owning(2, "改面板", ["web/src/**"]), owning(3, "没划", []));
+  const html = render(<Owns st={st} projectId={1} />);
+
+  expect(html).toContain("2 个需求各改各的，可以一起跑");
+  expect(html).toContain("还有 1 个没分");
+  expect(html).not.toContain("压着");
+});

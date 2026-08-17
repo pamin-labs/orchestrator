@@ -38,17 +38,24 @@ export type Usage = State["usage"][number];
 export type Cost = CostReport;
 export type AgentCost = CostReport["agents"][number];
 
-/** What was actually built, for the one decision that cannot be taken back. */
+/**
+ * What every browser request carries: a request id for the log line, and — on
+ * anything that is not a safe method — an idempotency key, for the one decision
+ * that cannot be taken back.
+ */
+export function requestHeaders(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Headers {
+  const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
+  const method = input instanceof Request ? input.method : (init?.method ?? "GET");
+  headers.set("X-Request-ID", crypto.randomUUID());
+  if (!["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) {
+    headers.set("Idempotency-Key", crypto.randomUUID());
+  }
+  return headers;
+}
+
 const browserFetch: typeof fetch = Object.assign(
-  (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-    const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
-    const method = input instanceof Request ? input.method : (init?.method ?? "GET");
-    headers.set("X-Request-ID", crypto.randomUUID());
-    if (!["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) {
-      headers.set("Idempotency-Key", crypto.randomUUID());
-    }
-    return fetch(input, { ...init, headers });
-  },
+  (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+    fetch(input, { ...init, headers: requestHeaders(input, init) }),
   { preconnect: fetch.preconnect },
 );
 
@@ -180,6 +187,18 @@ const WireSchema = FrameSchema.and(z.object({ projectId: z.number().nullable().o
 const NotificationMetaSchema = z.object({ url: z.string().optional(), title: z.string().optional() });
 export type Wire = z.infer<typeof WireSchema>;
 
+/** One SSE payload, or null for anything this panel cannot use — a half-written
+ *  line from a restarting server included. A stream that says something we do
+ *  not understand is not a reason to tear down the timeline. */
+export function readWire(data: unknown): Wire | null {
+  try {
+    const parsed = WireSchema.safeParse(JSON.parse(String(data)));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface PanelFrame {
   /** Stable across renders and SSE reconnects, so the timeline can key on it
    *  instead of array position. Persisted events use their bus seq (`e<seq>`);
@@ -299,23 +318,54 @@ export function groupedRows(shown: PanelFrame[]): { f: PanelFrame; showHeader: b
  * reconnecting page can rebuild its timeline, and without this every reconnect
  * would re-announce the last day of alerts.
  */
-function raise(f: { body: string; at?: number; meta?: { url?: string; title?: string } }) {
-  const fresh = !f.at || Date.now() - f.at < 60_000;
-  if (!fresh) return;
-  if (typeof Notification === "undefined" || Notification.permission !== "granted") {
-    // No permission is not an error: the tab title still carries the count, and
-    // a toast says it while the page is being looked at.
-    toast(f.body);
+export interface Notice {
+  body: string;
+  at?: number | undefined;
+  meta?: z.infer<typeof NotificationMetaSchema> | undefined;
+}
+
+/** The notification a frame asks for, or null when it asks for none. */
+export function notifyFrom(f: Wire): Notice | null {
+  if (f.kind !== "notify") return null;
+  const meta = NotificationMetaSchema.safeParse(f.meta);
+  return { body: f.body ?? "", at: f.at, ...(meta.success ? { meta: meta.data } : {}) };
+}
+
+export type NotifyPlan =
+  | { show: "none" }
+  | { show: "toast"; body: string }
+  | { show: "notify"; title: string; body: string; tag: string; hash: string | null };
+
+/** Whether this one is worth interrupting for, and in which of the two ways. */
+export function notifyPlan(f: Notice, granted: boolean): NotifyPlan {
+  if (f.at && Date.now() - f.at >= 60_000) return { show: "none" };
+  // No permission is not an error: the tab title still carries the count, and
+  // a toast says it while the page is being looked at.
+  if (!granted) return { show: "toast", body: f.body };
+  // The deep link is a hash on this same page, so assigning it navigates
+  // without a reload — the panel the boss is being called back to is already
+  // running, with its stream open.
+  const url = f.meta?.url;
+  return {
+    show: "notify",
+    title: f.meta?.title || "orchestrator",
+    body: f.body,
+    tag: f.body.slice(0, 40),
+    hash: url ? url.slice(url.indexOf("#") + 1) : null,
+  };
+}
+
+function raise(f: Notice) {
+  const plan = notifyPlan(f, typeof Notification !== "undefined" && Notification.permission === "granted");
+  if (plan.show === "none") return;
+  if (plan.show === "toast") {
+    toast(plan.body);
     return;
   }
-  const n = new Notification(f.meta?.title || "orchestrator", { body: f.body, tag: f.body.slice(0, 40) });
+  const n = new Notification(plan.title, { body: plan.body, tag: plan.tag });
   n.onclick = () => {
     window.focus();
-    // The deep link is a hash on this same page, so assigning it navigates
-    // without a reload — the panel the boss is being called back to is already
-    // running, with its stream open.
-    const url = f.meta?.url;
-    if (url) location.hash = url.slice(url.indexOf("#") + 1);
+    if (plan.hash) location.hash = plan.hash;
     n.close();
   };
 }
@@ -401,30 +451,12 @@ export function useOrch() {
     es.onopen = () => setLive("live");
     es.onerror = () => setLive("retry");
     es.onmessage = (m) => {
-      let f: ReturnType<typeof WireSchema.safeParse>;
-      try {
-        f = WireSchema.safeParse(JSON.parse(String(m.data)));
-      } catch {
-        return;
-      }
-      if (!f.success) return;
-      if (f.data.kind === "notify") {
-        const meta = NotificationMetaSchema.safeParse(f.data.meta);
-        return raise({
-          body: f.data.body ?? "",
-          at: f.data.at,
-          ...(meta.success
-            ? {
-                meta: {
-                  ...(meta.data.url !== undefined ? { url: meta.data.url } : {}),
-                  ...(meta.data.title !== undefined ? { title: meta.data.title } : {}),
-                },
-              }
-            : {}),
-        });
-      }
-      setFrames((prev) => appendFrame(prev, f.data, liveSeq));
-      if (["state_change", "escalation", "note"].includes(f.data.kind)) nudge();
+      const f = readWire(m.data);
+      if (!f) return;
+      const notice = notifyFrom(f);
+      if (notice) return raise(notice);
+      setFrames((prev) => appendFrame(prev, f, liveSeq));
+      if (["state_change", "escalation", "note"].includes(f.kind)) nudge();
     };
   }, [nudge]);
 
