@@ -95,6 +95,9 @@ const EMPTY: State = {
   lastSeq: 0,
 };
 
+/** Fresh panel state for behavior tests and isolated consumers. */
+export const emptyState = (): State => structuredClone(EMPTY);
+
 /** GET that surfaces its own failure. Used for the on-demand panels (evidence, logs). */
 export async function readApi<S extends z.ZodType>(request: Promise<Response>, schema: S): Promise<z.output<S> | null> {
   const r = await request;

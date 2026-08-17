@@ -9,18 +9,7 @@ import { usePaged } from "../lib/page";
 import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../lib/select";
 import { cn, K } from "../lib/utils";
 
-/**
- * Every requirement in the project, filtered by whose turn it is.
- *
- * The state is the filter, not a column: "which of these needs me, which are
- * moving, which are stuck, which are done" is the only question this page answers,
- * and a tab carrying the count answers it before the list is read at all.
- *
- * Four stacked sections were the first attempt. They read fine at four
- * requirements and become a scroll hunt at forty — the archive is the longest
- * section and the one nobody wants, so it was permanently in the way. One list at a
- * time, paged, with the count on the control that selects it.
- */
+/** Requirements are state-filtered, paged, and counted on their tabs. */
 
 interface Bucket {
   key: string;
@@ -29,18 +18,7 @@ interface Bucket {
   mine?: boolean;
 }
 
-/**
- * 待办 is the queue itself, not a fourth list of requirements.
- *
- * It used to be both: a pinned card of everything waiting on the boss, and a tab
- * holding the requirements those items came from. Two things labelled 待办 with two
- * different counts, one above the other. The card also sat outside the scroll pane,
- * so a two-paragraph question pushed the list off the bottom of a fixed-height page.
- *
- * Now the queue lives in the tab that names it, inside the same pane everything else
- * scrolls in, and 进行中 holds every requirement that has not been delivered — a
- * DRAFT waiting on approval is still in flight, and its decision is one tab over.
- */
+/** 待办 renders the boss queue; 进行中 owns every undelivered requirement. */
 const BUCKETS: Bucket[] = [
   { key: "mine", zh: "待办", of: [], mine: true },
   { key: "live", zh: "进行中", of: ["RUNNING", "PLANNING", "PAUSING", "DRAFT", "PR_OPEN"] },
@@ -166,13 +144,84 @@ function List({
   );
 }
 
+interface RowFacts {
+  slices: Slice[];
+  doing: State["agents"][number] | undefined;
+  waiting: number;
+  done: number;
+  card: State["draftCards"][number] | undefined;
+  broke: boolean;
+}
+
+function rowFacts(st: State, group: Group): RowFacts {
+  const slices = st.slices.filter((slice) => slice.grp_id === group.id);
+  return {
+    slices,
+    doing: st.agents.find((agent) => agent.grp_id === group.id && agent.state === "running"),
+    waiting: slices.filter((slice) => slice.status === "awaiting_boss").length,
+    done: slices.filter((slice) => slice.status === "accepted").length,
+    card: st.draftCards.find((card) => card.grpId === group.id),
+    broke: group.budget_tokens != null && group.spent_tokens >= group.budget_tokens,
+  };
+}
+
+function rowBody(group: Group, facts: RowFacts): React.ReactNode {
+  if (group.status === "PLANNING")
+    return <span className="text-[0.75rem] text-ink-3">Dispatcher 在深挖，还没有切片</span>;
+  if (heldApproved(group)) return <span className="text-[0.75rem] text-ink-3">已批准，边界让开就自动开工</span>;
+  if (group.status === "DRAFT") {
+    const goal = facts.card
+      ? (facts.card.body.split("\n").find((line) => line.startsWith("目标")) ?? "计划卡待批")
+      : "计划卡还没交";
+    return <span className="block truncate text-[0.75rem] text-ink-2">{goal}</span>;
+  }
+  if (!facts.slices.length) return <span className="text-[0.75rem] text-ink-3">无切片</span>;
+  return (
+    <div className="flex flex-wrap items-stretch gap-1.5">
+      {facts.slices.map((slice) => (
+        <Seg key={slice.id} s={slice} />
+      ))}
+    </div>
+  );
+}
+
+function RunningActivity({ agent }: { agent: RowFacts["doing"] }) {
+  if (!agent) return null;
+  return (
+    <div className="mt-1 truncate font-mono text-[0.6875rem] text-ink-2">
+      {agent.role} ▸ {agent.activity}
+    </div>
+  );
+}
+
+function RowFlags({ st, group, facts }: { st: State; group: Group; facts: RowFacts }) {
+  const url = group.status === "PR_OPEN" ? prUrl(st, group) : null;
+  return (
+    <span className="flex items-center gap-2 whitespace-nowrap">
+      {facts.broke && <Badge tone="mine">预算用尽</Badge>}
+      {facts.waiting > 0 && <Badge tone="mine">{facts.waiting} 片待查收</Badge>}
+      {group.status === "PR_OPEN" &&
+        (url ? (
+          <Badge
+            tone="mine"
+            className="cursor-pointer underline decoration-dotted underline-offset-2"
+            onClick={(event) => {
+              event.stopPropagation();
+              window.open(url, "_blank", "noopener");
+            }}
+          >
+            去合并 PR ↗
+          </Badge>
+        ) : (
+          <Badge tone="mine">PR 待合入</Badge>
+        ))}
+      <Meta>{group.branch ?? ""}</Meta>
+    </span>
+  );
+}
+
 function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => void }) {
-  const slices = st.slices.filter((s) => s.grp_id === g.id);
-  const doing = st.agents.find((a) => a.grp_id === g.id && a.state === "running");
-  const waiting = slices.filter((s) => s.status === "awaiting_boss").length;
-  const done = slices.filter((s) => s.status === "accepted").length;
-  const card = st.draftCards.find((c) => c.grpId === g.id);
-  const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
+  const facts = rowFacts(st, g);
   return (
     <button
       type="button"
@@ -188,63 +237,41 @@ function Row({ st, g, onOpen }: { st: State; g: Group; onOpen: (id: number) => v
       <div className="min-w-0">
         <div className="flex items-baseline gap-2">
           <span className="truncate font-display text-[0.9375rem] font-semibold">{g.name}</span>
-          {doing && <i className="breathe size-1.5 shrink-0 rounded-full bg-ok" />}
+          {facts.doing && <i className="breathe size-1.5 shrink-0 rounded-full bg-ok" />}
         </div>
         <Meta>
           {statusLabel(g)}
-          {slices.length ? ` · 已查收 ${done}/${slices.length}` : ""}
+          {facts.slices.length ? ` · 已查收 ${facts.done}/${facts.slices.length}` : ""}
           {g.spent_tokens ? ` · ${K(g.spent_tokens)} tokens` : ""}
         </Meta>
       </div>
       <div className="min-w-0 max-[60rem]:col-span-full">
-        {g.status === "PLANNING" ? (
-          <span className="text-[0.75rem] text-ink-3">Dispatcher 在深挖，还没有切片</span>
-        ) : heldApproved(g) ? (
-          <span className="text-[0.75rem] text-ink-3">已批准，边界让开就自动开工</span>
-        ) : g.status === "DRAFT" ? (
-          <span className="block truncate text-[0.75rem] text-ink-2">
-            {card ? (card.body.split("\n").find((l) => l.startsWith("目标")) ?? "计划卡待批") : "计划卡还没交"}
-          </span>
-        ) : !slices.length ? (
-          <span className="text-[0.75rem] text-ink-3">无切片</span>
-        ) : (
-          <div className="flex flex-wrap items-stretch gap-1.5">
-            {slices.map((s) => (
-              <Seg key={s.id} s={s} />
-            ))}
-          </div>
-        )}
-        {doing && (
-          <div className="mt-1 truncate font-mono text-[0.6875rem] text-ink-2">
-            {doing.role} ▸ {doing.activity}
-          </div>
-        )}
+        {rowBody(g, facts)}
+        <RunningActivity agent={facts.doing} />
       </div>
-      <span className="flex items-center gap-2 whitespace-nowrap">
-        {broke && <Badge tone="mine">预算用尽</Badge>}
-        {waiting > 0 && <Badge tone="mine">{waiting} 片待查收</Badge>}
-        {/* The row is a button, so this cannot be an <a>. It still has to go to the
-            PR: "PR 待合入" that does not take you to the PR is a label describing
-            work it will not let you do. */}
-        {g.status === "PR_OPEN" &&
-          (prUrl(st, g) ? (
-            <Badge
-              tone="mine"
-              className="cursor-pointer underline decoration-dotted underline-offset-2"
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(prUrl(st, g)!, "_blank", "noopener");
-              }}
-            >
-              去合并 PR ↗
-            </Badge>
-          ) : (
-            <Badge tone="mine">PR 待合入</Badge>
-          ))}
-        <Meta>{g.branch ?? ""}</Meta>
-      </span>
+      <RowFlags st={st} group={g} facts={facts} />
     </button>
   );
+}
+
+function sliceMark(slice: Slice): string {
+  if (slice.status === "awaiting_boss") return "待查收";
+  const marks: Partial<Record<Slice["status"], string>> = { accepted: "✓", rejected: "退回", pending: "等" };
+  return marks[slice.status] ?? "";
+}
+
+function sliceBorder(slice: Slice, failed: boolean): string {
+  if (slice.status === "awaiting_boss") return "border-accent bg-accent-soft";
+  if (slice.status === "accepted") return "border-rule-soft bg-sunk";
+  if (failed || slice.status === "rejected") return "border-bad";
+  if (slice.status === "pending") return "border-rule";
+  return "border-ink-3";
+}
+
+function gateClass(status: string | undefined, active: boolean): string | false {
+  if (status === "pass") return "bg-ok";
+  if (status === "fail") return "bg-bad";
+  return active && "breathe bg-ink-3";
 }
 
 /** One slice: its place in the order, and which gates it has passed. */
@@ -252,32 +279,9 @@ function Seg({ s }: { s: Slice }) {
   const gs = gates(s);
   const waiting = s.status === "awaiting_boss";
   const failed = Object.values(gs).includes("fail");
-  const mark = waiting
-    ? "待查收"
-    : s.status === "accepted"
-      ? "✓"
-      : s.status === "rejected"
-        ? "退回"
-        : s.status === "pending"
-          ? "等"
-          : "";
   return (
     <Tip label={`${s.title} — ${s.accept_spec}`}>
-      <span
-        className={cn(
-          "w-32 shrink-0 rounded-[0.3125rem] border px-1.5 py-1",
-          waiting && "border-accent bg-accent-soft",
-          !waiting && s.status === "accepted" && "border-rule-soft bg-sunk",
-          !waiting && s.status !== "accepted" && (failed || s.status === "rejected") && "border-bad",
-          !waiting &&
-            s.status !== "accepted" &&
-            !failed &&
-            s.status !== "rejected" &&
-            s.status !== "pending" &&
-            "border-ink-3",
-          !waiting && s.status === "pending" && "border-rule",
-        )}
-      >
+      <span className={cn("w-32 shrink-0 rounded-[0.3125rem] border px-1.5 py-1", sliceBorder(s, failed))}>
         <span
           className={cn(
             "flex items-center gap-1 font-mono text-[0.625rem] text-ink-3",
@@ -286,7 +290,7 @@ function Seg({ s }: { s: Slice }) {
         >
           S{s.seq}
           <span className="grow" />
-          {mark}
+          {sliceMark(s)}
         </span>
         <span className="mt-px block truncate text-[0.6875rem] text-ink-2">{s.title}</span>
         {/* The layers review.ts actually records. `self` was drawn here for a while
@@ -296,15 +300,7 @@ function Seg({ s }: { s: Slice }) {
             a model's percentage is a guess, a gate is a fact. */}
         <span className="mt-1 flex gap-1">
           {STOPS.map(([k]) => (
-            <i
-              key={k}
-              className={cn(
-                "tick",
-                gs[k] === "pass" && "bg-ok",
-                gs[k] === "fail" && "bg-bad",
-                gs[k] !== "pass" && gs[k] !== "fail" && s.status === k && "breathe bg-ink-3",
-              )}
-            />
+            <i key={k} className={cn("tick", gateClass(gs[k], s.status === k))} />
           ))}
         </span>
       </span>
