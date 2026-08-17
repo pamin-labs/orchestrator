@@ -357,147 +357,164 @@ const StatusRest = z.object({ context: z.string().optional(), state: z.string().
  * Only a change wakes the PM. Re-reading the same review comment every 30
  * seconds would be a turn each time, which is how a quiet PR becomes expensive.
  */
+interface WatchedGroup {
+  id: number;
+  pr_number: number | null;
+  status: GrpState;
+  pr_seen_at: number;
+  pr_checks_sig: string | null;
+  remote: string | null;
+}
+
+type IssueComment = z.infer<typeof IssueCommentRest>;
+type Review = z.infer<typeof ReviewRest>;
+type Check = z.infer<typeof CheckRest>;
+type Status = z.infer<typeof StatusRest>;
+
+function transitionFeedback(group: WatchedGroup, prNumber: number, state: string): Feedback | null {
+  const base = { grpId: group.id, prNumber, comments: [], failingChecks: [] };
+  if (state === "MERGED") return { ...base, merged: true };
+  if (state === "CLOSED" && group.status === "PR_OPEN") return { ...base, closed: true };
+  if (state === "OPEN" && group.status === "PAUSED") return { ...base, reopened: true };
+  return null;
+}
+
+function newComments(issue: IssueComment[], reviews: Review[], seenAt: number): Feedback["comments"] {
+  return [
+    ...issue.map((comment) => ({ author: comment.user?.login, body: comment.body, at: comment.created_at })),
+    ...reviews.map((review) => ({ author: review.user?.login, body: review.body, at: review.submitted_at })),
+  ]
+    .map((comment) => ({
+      author: comment.author ?? "?",
+      body: String(comment.body ?? "").slice(0, 1000),
+      at: Date.parse(comment.at ?? "") || 0,
+    }))
+    .filter((comment) => comment.body && comment.at > seenAt);
+}
+
+function failedChecks(checks: Check[], statuses: Status[]): string[] {
+  return [
+    ...checks.map((check) => ({ name: check.name, result: check.conclusion })),
+    ...statuses.map((status) => ({ name: status.context, result: status.state })),
+  ]
+    .filter((check) => ["FAILURE", "ERROR", "TIMED_OUT"].includes(String(check.result ?? "").toUpperCase()))
+    .map((check) => String(check.name ?? "check"));
+}
+
+interface PollDetails {
+  issue: IssueComment[];
+  reviews: Review[];
+  checks: Check[];
+  statuses: Status[];
+}
+
+async function loadPollDetails(
+  gh: Github,
+  repo: string,
+  prNumber: number,
+  sha: string,
+  since: string,
+): Promise<PollDetails | null> {
+  const [issue, reviews, runs, statuses] = await Promise.all([
+    gh.request(
+      "GET",
+      `/repos/${repo}/issues/${prNumber}/comments?per_page=100&since=${since}`,
+      z.array(IssueCommentRest),
+    ),
+    gh.request("GET", `/repos/${repo}/pulls/${prNumber}/reviews?per_page=100`, z.array(ReviewRest)),
+    gh.request(
+      "GET",
+      `/repos/${repo}/commits/${sha}/check-runs?per_page=100`,
+      z.object({ check_runs: z.array(CheckRest).optional() }),
+    ),
+    gh.request(
+      "GET",
+      `/repos/${repo}/commits/${sha}/status?per_page=100`,
+      z.object({ statuses: z.array(StatusRest).optional() }),
+    ),
+  ]);
+  if (!issue.ok || !reviews.ok || !runs.ok || !statuses.ok) return null;
+  return {
+    issue: issue.data,
+    reviews: reviews.data,
+    checks: runs.data.check_runs ?? [],
+    statuses: statuses.data.statuses ?? [],
+  };
+}
+
+function changedFeedback(
+  ctx: Ctx,
+  group: WatchedGroup,
+  prNumber: number,
+  details: PollDetails,
+  mergeable: boolean | null | undefined,
+  mergeableState: string | undefined,
+): Feedback | null {
+  const comments = newComments(details.issue, details.reviews, group.pr_seen_at);
+  const failingChecks = failedChecks(details.checks, details.statuses);
+  const conflicting = mergeable === false || mergeableState === "dirty";
+  const signature = [...failingChecks, ...(conflicting ? ["merge conflict"] : [])].sort().join(",");
+  const checksChanged = signature !== (group.pr_checks_sig ?? "");
+  if (comments.length === 0 && !checksChanged) return null;
+
+  const newest = comments.reduce((value, comment) => Math.max(value, comment.at), group.pr_seen_at);
+  ctx.db.run("UPDATE grp SET pr_seen_at = ?, pr_checks_sig = ? WHERE id = ?", [newest, signature, group.id]);
+  return {
+    grpId: group.id,
+    prNumber,
+    comments,
+    failingChecks: checksChanged ? failingChecks : [],
+    conflicting,
+  };
+}
+
+function pollTarget(group: WatchedGroup): { repo: string; prNumber: number } | null {
+  if (!group.remote || !group.pr_number) return null;
+  const repo = parseRepo(group.remote);
+  return repo ? { repo, prNumber: group.pr_number } : null;
+}
+
+function pullState(pull: z.infer<typeof PullRest>): string {
+  return pull.merged ? "MERGED" : String(pull.state ?? "").toUpperCase();
+}
+
+async function pollPr(ctx: Ctx, gh: Github, group: WatchedGroup): Promise<Feedback | null> {
+  const target = pollTarget(group);
+  if (!target) return null;
+  const { repo, prNumber } = target;
+
+  const pull = await gh.request("GET", `/repos/${repo}/pulls/${prNumber}`, PullRest);
+  if (!pull.ok) return null;
+  const parsed = pull.data;
+  const transition = transitionFeedback(group, prNumber, pullState(parsed));
+  if (transition) return transition;
+  if (group.status !== "PR_OPEN") return null;
+
+  const details = await loadPollDetails(
+    gh,
+    repo,
+    prNumber,
+    parsed.head.sha,
+    new Date(Math.max(0, group.pr_seen_at)).toISOString(),
+  );
+  if (!details) return null;
+  return changedFeedback(ctx, group, prNumber, details, parsed.mergeable, parsed.mergeable_state);
+}
+
 export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   const groups = ctx.db
-    .query<
-      {
-        id: number;
-        pr_number: number | null;
-        status: GrpState;
-        pr_seen_at: number;
-        pr_checks_sig: string | null;
-        remote: string | null;
-      },
-      []
-    >(
-      // Every group that has a PR, whatever state it is in now. PAUSED is here for
-      // `closed` below — a group stopped on a closed PR is waiting for it to come
-      // back, and nothing else looks at GitHub. RUNNING is here because a group can
-      // be knocked back out of PR_OPEN (an Auditor send-back, a review comment)
-      // while its PR is still live and still mergeable: grp16's PR merged in that
-      // window, nobody was watching, and it stayed RUNNING for hours hiring turns
-      // for a branch already byte-identical to main. A pr_number is the thing worth
-      // polling on; the status is not.
-      //
-      // The project comes along now: `gh` inferred the repository from a checkout,
-      // so every PR was looked up in whichever project happened to be first. A
-      // request names its repository, so each group's is its own.
+    .query<WatchedGroup, []>(
       `SELECT g.id, g.status, g.pr_number, g.pr_seen_at, g.pr_checks_sig, p.remote
        FROM grp g JOIN project p ON p.id = g.project_id
        WHERE g.status != 'DISSOLVED' AND g.pr_number IS NOT NULL`,
     )
     .all();
-
-  const out: Feedback[] = [];
-  for (const g of groups) {
-    const repo = g.remote ? parseRepo(g.remote) : null;
-    if (!repo) continue;
-    const r = await gh.request("GET", `/repos/${repo}/pulls/${g.pr_number}`, PullRest);
-    // Same as the old non-zero exit: whatever went wrong, nothing is known about
-    // this PR right now, and the next tick asks again.
-    if (!r.ok) continue;
-    const parsed = r.data;
-
-    // `gh` reported one `state` of OPEN/CLOSED/MERGED; REST reports open/closed
-    // plus a separate `merged` flag, and a merged PR is `closed` there.
-    const state = parsed.merged ? "MERGED" : String(parsed.state ?? "").toUpperCase();
-
-    // Closed without merging, and reopened again: both are the boss acting on
-    // GitHub, which is the only place a PR can be closed. Neither used to be
-    // looked at, so a closed PR left its group at PR_OPEN holding the head of a
-    // strictly serial merge queue — everything behind it stopped, permanently,
-    // and the only trace was the PR page nobody was watching.
-    // Merged is news that outranks every comment on the PR, and it is the one
-    // thing the boss should not have to come back and confirm by hand. It also
-    // outranks the group's own status: the branch landed, so the group is finished
-    // whatever it was knocked back to in the meantime. Gating this on PR_OPEN, the
-    // way the two cases below are, is what left grp16 running forever on work that
-    // was already in main.
-    if (state === "MERGED") {
-      out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], merged: true });
-      continue;
-    }
-    if (state === "CLOSED" && g.status === "PR_OPEN") {
-      out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], closed: true });
-      continue;
-    }
-    if (state === "OPEN" && g.status === "PAUSED") {
-      out.push({ grpId: g.id, prNumber: g.pr_number!, comments: [], failingChecks: [], reopened: true });
-      continue;
-    }
-    if (g.status !== "PR_OPEN") continue;
-
-    // `gh pr view --json comments,reviews,statusCheckRollup` was one request;
-    // REST has no equivalent single answer, so it is four — all conditional, so a
-    // quiet PR costs four 304s, which do not count against the rate limit at all.
-    // `since` does the "newer than we have seen" filtering server-side.
-    const since = new Date(Math.max(0, g.pr_seen_at)).toISOString();
-    const [issue, reviews, runs, statuses] = await Promise.all([
-      gh.request(
-        "GET",
-        `/repos/${repo}/issues/${g.pr_number}/comments?per_page=100&since=${since}`,
-        z.array(IssueCommentRest),
-      ),
-      gh.request("GET", `/repos/${repo}/pulls/${g.pr_number}/reviews?per_page=100`, z.array(ReviewRest)),
-      gh.request(
-        "GET",
-        `/repos/${repo}/commits/${parsed.head.sha}/check-runs?per_page=100`,
-        z.object({ check_runs: z.array(CheckRest).optional() }),
-      ),
-      gh.request(
-        "GET",
-        `/repos/${repo}/commits/${parsed.head.sha}/status?per_page=100`,
-        z.object({ statuses: z.array(StatusRest).optional() }),
-      ),
-    ]);
-    // All or nothing, the way one `gh` call was: a failed checks request would
-    // otherwise read as "the checks went green", which is news, and would wake the
-    // group to tell it something untrue.
-    if (!issue.ok || !reviews.ok || !runs.ok || !statuses.ok) continue;
-
-    const comments = [
-      ...issue.data.map((c) => ({ author: c.user?.login, body: c.body, at: c.created_at })),
-      ...reviews.data.map((c) => ({ author: c.user?.login, body: c.body, at: c.submitted_at })),
-    ]
-      .map((c) => ({
-        author: c.author ?? "?",
-        body: String(c.body ?? "").slice(0, 1000),
-        at: Date.parse(c.at ?? "") || 0,
-      }))
-      .filter((c) => c.body && c.at > g.pr_seen_at);
-
-    // `statusCheckRollup` is `gh`'s own merge of two APIs that REST keeps apart:
-    // check runs (Actions and friends) and commit statuses (the older kind). Both
-    // are here, and both are lower-case where `gh` upper-cased them.
-    const failingChecks = [
-      ...(runs.data.check_runs ?? []).map((c) => ({ name: c.name, result: c.conclusion })),
-      ...(statuses.data.statuses ?? []).map((c) => ({ name: c.context, result: c.state })),
-    ]
-      .filter((c) => ["FAILURE", "ERROR", "TIMED_OUT"].includes(String(c.result ?? "").toUpperCase()))
-      .map((c) => String(c.name ?? "check"));
-
-    // A conflict is news exactly like a red check is, and it goes through the same
-    // signature so a stale branch does not wake the group every thirty seconds.
-    //
-    // `mergeable` is null while GitHub works it out in the background — that is
-    // "not known yet", not "conflicting", and treating it as the latter would
-    // send an Engineer to rebase a branch that merges fine.
-    const conflicting = parsed.mergeable === false || parsed.mergeable_state === "dirty";
-    const sig = [...failingChecks, ...(conflicting ? ["merge conflict"] : [])].sort().join(",");
-    const checksChanged = sig !== (g.pr_checks_sig ?? "");
-    if (comments.length === 0 && !checksChanged) continue;
-
-    const newest = comments.reduce((n, c) => Math.max(n, c.at), g.pr_seen_at);
-    ctx.db.run("UPDATE grp SET pr_seen_at = ?, pr_checks_sig = ? WHERE id = ?", [newest, sig, g.id]);
-    out.push({
-      grpId: g.id,
-      prNumber: g.pr_number!,
-      comments,
-      failingChecks: checksChanged ? failingChecks : [],
-      conflicting,
-    });
+  const feedback: Feedback[] = [];
+  for (const group of groups) {
+    const result = await pollPr(ctx, gh, group);
+    if (result) feedback.push(result);
   }
-  return out;
+  return feedback;
 }
 
 /** Hand PR feedback to the PM: replying to a review needs judgement, polling does not. */
@@ -545,38 +562,19 @@ export function dispatchFeedback(ctx: Ctx, f: Feedback): void {
   ctx.sched.tick();
 }
 
-/**
- * Auth is not permission, and the boss should hear so at registration.
- *
- * A read-only token, or a repository you can only fork, gets past every check
- * there is and then fails at `git push` — after a group has done all its work.
- * That is the worst moment to find out and the fix is the boss's to make, so it
- * is asked at the one point the repository first becomes known.
- *
- * A pure function over `permissions`, not a request of its own: registration has
- * already fetched `GET /repos/{owner}/{repo}` for the default branch and clone
- * URL, and that same answer carries this. A second call would ask GitHub a
- * question it just answered.
- *
- * The level is named because that is what makes the message actionable — the old
- * `gh repo view --json viewerPermission` returned exactly this one word, and REST
- * returns the booleans it is derived from, so it is derived back. Null means
- * nothing to say: push access, or a repository that reported no permissions at
- * all, which is not evidence of anything.
- */
+/** Report an authenticated token whose repository role still cannot push. */
+const PERMISSION_LEVELS = [
+  ["admin", "ADMIN"],
+  ["maintain", "MAINTAIN"],
+  ["push", "WRITE"],
+  ["triage", "TRIAGE"],
+  ["pull", "READ"],
+] as const;
+const WRITABLE_LEVELS = new Set(["ADMIN", "MAINTAIN", "WRITE"]);
+
 export function pushBlocked(permissions: Record<string, boolean> | undefined, repo: string): string | null {
-  const p = permissions ?? {};
-  const level = p.admin
-    ? "ADMIN"
-    : p.maintain
-      ? "MAINTAIN"
-      : p.push
-        ? "WRITE"
-        : p.triage
-          ? "TRIAGE"
-          : p.pull
-            ? "READ"
-            : "";
-  if (!level || ["ADMIN", "MAINTAIN", "WRITE"].includes(level)) return null;
-  return `no push access to ${repo} (your permission is ${level}); the branch could not be pushed`;
+  const level = PERMISSION_LEVELS.find(([permission]) => permissions?.[permission])?.[1];
+  return level && !WRITABLE_LEVELS.has(level)
+    ? `no push access to ${repo} (your permission is ${level}); the branch could not be pushed`
+    : null;
 }
