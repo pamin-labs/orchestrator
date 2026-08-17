@@ -240,7 +240,10 @@ describe("workflow governance", () => {
       expect(testIndex, `${jobName} must run its test command`).toBeGreaterThan(buildIndex);
     };
 
-    assertBuildsFirst(ci, "test-main", "bun test --max-concurrency 4");
+    // `bun test`, not its flags. The property is the ordering — a suite that runs
+    // before the bundle exists tests the previous build — and pinning the flag
+    // string meant changing the runner's concurrency broke a guard about order.
+    assertBuildsFirst(ci, "test-main", "bun test");
     assertBuildsFirst(nightly, "test-stress", "bun run test:stress");
   });
 

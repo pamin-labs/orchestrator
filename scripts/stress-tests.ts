@@ -14,6 +14,14 @@ export function stressFiles(): string[] {
     .toSorted();
 }
 
+/**
+ * Serial and randomised, deliberately, where `bun run test` is `--parallel`.
+ *
+ * `--parallel` implies `--isolate`, which gives every file a fresh global — and
+ * cross-file order dependence is exactly what this job exists to find. Running
+ * the stress pass the same way as CI would test the configuration that cannot
+ * have the bug. One shared process, shuffled, ten times over is the harder case.
+ */
 export function stressArgs(env: Readonly<Record<string, string | undefined>>): string[] {
   const rawSeed = env.BUN_TEST_SEED;
   if (rawSeed === undefined) return ["--randomize", "--rerun-each", "10", "--max-concurrency", "4"];
