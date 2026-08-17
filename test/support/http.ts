@@ -45,6 +45,15 @@ export const server = setupServer();
  */
 export function mockHttp(): void {
   beforeAll(() => {
+    // `"error"`, not a custom callback. The string strategy prints a nine-line
+    // block and rejects the request; the block is noise, and a callback that
+    // throws instead looks like the tidy version of the same guarantee.
+    //
+    // It is not. MSW invokes a callback as `strategy(request, { warning, error })`
+    // and ignores what it returns — measured against 2.15: a throw there does not
+    // stop the request, and the fetch *resolves*, which means it left the machine.
+    // Trading a printed block for a suite that can silently reach the network is
+    // the wrong trade, so the block stays.
     server.listen({ onUnhandledRequest: "error" });
   });
   afterEach(() => {
