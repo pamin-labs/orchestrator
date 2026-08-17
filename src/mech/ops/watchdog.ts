@@ -1171,7 +1171,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         });
         break;
       }
-      default:
+      case "none":
         break;
     }
   });

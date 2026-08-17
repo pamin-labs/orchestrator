@@ -164,7 +164,7 @@ export interface TurnSpec {
   runner: TurnRunner;
 }
 
-export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
+function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
   const s = spec.stable;
   const argv = [
     "-p",
@@ -304,7 +304,7 @@ export type Line = z.infer<typeof LineSchema>;
 
 const WRITE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 
-export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult> {
+async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult> {
   // The exec API has no stdin, so the prompt travels as a file. It is the same
   // bytes either way, and the agent can already read everything in its own
   // sandbox.
@@ -328,6 +328,8 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
   }
   return acc.result;
 }
+
+export { buildArgv as buildClaudeArgv, runTurn as runClaudeTurn };
 
 interface Acc {
   result: TurnResult;

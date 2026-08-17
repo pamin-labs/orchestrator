@@ -485,6 +485,7 @@ interface Editor {
 }
 
 function modelValue({ knob, mate, src, onWrite, onWriteMate }: Editor) {
+  // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only model knobs
   switch (knob.path) {
     case "difficultyModel":
       return <ModelTable table={ConfigSchema.shape.difficultyModel.parse(knob.value)} src={src} onWrite={onWrite} />;
@@ -507,6 +508,7 @@ function modelValue({ knob, mate, src, onWrite, onWriteMate }: Editor) {
 
 function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
   const ph = copyFor(knob).ph;
+  // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only map knobs
   switch (knob.path) {
     case "contextWindow":
       return <Windows map={ConfigSchema.shape.contextWindow.parse(knob.value)} src={src} onWrite={onWrite} />;
@@ -548,6 +550,7 @@ function mapValue({ knob, src, bad, onWrite, onRefuse, onClear }: Editor) {
 }
 
 function choiceValue({ knob, onWrite }: Editor) {
+  // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only choice knobs
   switch (knob.path) {
     case "language":
       // Any language, suggested rather than restricted. What this governs is
@@ -583,7 +586,7 @@ function choiceValue({ knob, onWrite }: Editor) {
           ))}
         </Toggles>
       );
-    default:
+    default: // @skip-exhaustive-check: this renderer owns only choice knobs
       return null;
   }
 }
@@ -665,18 +668,13 @@ function scalarValue({ id, knob, bad, onWrite, onRefuse, onClear }: Editor) {
   }
 
   return (
-    <Box
-      id={id}
-      value={String(v ?? "")}
-      placeholder={ph}
-      invalid={bad === ""}
-      onUnchanged={onClear}
-      onCommit={onWrite}
-    />
+    <Box id={id} value={textOf(v)} placeholder={ph} invalid={bad === ""} onUnchanged={onClear} onCommit={onWrite} />
   );
 }
 
 const rec = (v: Json): Record<string, Json> => (v && !Array.isArray(v) && typeof v === "object" ? v : {});
+const textOf = (v: Json): string =>
+  v === null ? "" : typeof v === "string" ? v : typeof v === "object" ? (JSON.stringify(v) ?? "") : String(v);
 
 const PERCENT = ["%"] as const;
 
@@ -807,7 +805,11 @@ function Amount<U extends string>({
           // which is what a toggle group already means. A unit set with no empty
           // member (毫秒/秒/分钟/小时) keeps what it had instead, because there
           // is no such thing as a duration without one.
-          onValueChange={(u) => send(draft, (u || (BARE_OK.has(unit as string) ? "" : unit)) as U)}
+          onValueChange={(u) => {
+            const wanted = u || (BARE_OK.has(unit) ? "" : unit);
+            const selected = units.find((candidate) => candidate === wanted);
+            if (selected !== undefined) send(draft, selected);
+          }}
           aria-label={`${label} 的单位`}
           className="shrink-0"
         >
@@ -958,7 +960,7 @@ function Pairs({
   onClear: () => void;
 }) {
   const entries = Object.entries(map);
-  const show = (v: Json) => String(v ?? "");
+  const show = textOf;
   // A number gets the same 9rem a number gets on every other row of this page;
   // only a path needs the rest of the width.
   const vw = kind === "text" ? "" : "w-[9rem] flex-none";

@@ -17,11 +17,15 @@ import {
 import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Scheduler } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler } from "../src/scheduler.ts";
 import type { Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Json } from "../src/contracts/json.ts";
+import { z } from "zod";
+
+const NotifyMeta = z.object({ url: z.string() });
+const WebhookBody = z.object({ message: z.string() });
 
 /** A GitHub client that answers from a function and records the paths asked. */
 const gh = (answer: (path: string) => Json) =>
@@ -98,7 +102,7 @@ test("a RUNNING group whose last turn failed is put back once, then handed to th
   expect((await runWatchdog(h.deps)).map((x) => x.rule)).not.toContain("stalled");
   const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").all();
   expect(back).toHaveLength(1);
-  expect(JSON.parse(back[0]!.payload_json).role).toBe("engineer");
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(back[0]!.payload_json)).role).toBe("engineer");
 
   // It failed again. A third try is not going to work either — say so instead.
   h.db.run("UPDATE job SET state = 'failed', error = 'same thing' WHERE state = 'pending'");
@@ -120,7 +124,7 @@ test("a turn that ended cleanly without arranging the next one also counts as st
   );
   await runWatchdog(h.deps);
   const back = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!;
-  expect(JSON.parse(back.payload_json).role).toBe("dispatcher");
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(back.payload_json)).role).toBe("dispatcher");
 });
 
 test("work queued for a dissolved group is cancelled, not left pending forever", async () => {
@@ -376,7 +380,6 @@ test("answering clears the reminder", async () => {
 // ------------------------------------------------------- boss batching backstop
 
 test("several things waiting on the boss become one message", () => {
-  const { batchForBoss } = require("../src/mech/ops/notify.ts");
   const n = batchForBoss([
     { id: 1, severity: "advisory", question: "which library?", group: "auth" },
     { id: 2, severity: "advisory", question: "rename the flag?", group: "ui" },
@@ -388,7 +391,6 @@ test("several things waiting on the boss become one message", () => {
 });
 
 test("one blocker in the set makes the whole batch immediate", () => {
-  const { batchForBoss } = require("../src/mech/ops/notify.ts");
   const n = batchForBoss([
     { id: 1, severity: "advisory", question: "a", group: "x" },
     { id: 2, severity: "blocker", question: "b", group: "y" },
@@ -398,7 +400,6 @@ test("one blocker in the set makes the whole batch immediate", () => {
 });
 
 test("the batch key is the set, so a new arrival is news and a repeat is not", () => {
-  const { batchForBoss } = require("../src/mech/ops/notify.ts");
   const two = batchForBoss([
     { id: 1, severity: "advisory", question: "a", group: null },
     { id: 2, severity: "advisory", question: "b", group: null },
@@ -418,7 +419,6 @@ test("the batch key is the set, so a new arrival is news and a repeat is not", (
 });
 
 test("a single item is not dressed up as a batch, and nothing waiting sends nothing", () => {
-  const { batchForBoss } = require("../src/mech/ops/notify.ts");
   expect(batchForBoss([])).toBeNull();
   const one = batchForBoss([{ id: 7, severity: "blocker", question: "which lib?", group: "auth" }])!;
   expect(one.key).toBe("escalation:7");
@@ -586,9 +586,11 @@ test("a rebase the Engineer could not finish goes to the Architect, not round ag
      VALUES ('agent_turn', 1, '{"role":"engineer","conflict":true}', 'failed', 'could not rebase', 0)`,
   );
   await runWatchdog(h.deps);
-  const p = JSON.parse(
-    h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!
-      .payload_json,
+  const p = AgentTurnPayloadSchema.parse(
+    JSON.parse(
+      h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'").get()!
+        .payload_json,
+    ),
   );
   expect(p.role).toBe("architect");
   expect(p.rejection).toContain("could not rebase");
@@ -608,11 +610,11 @@ test("a rebase turn that finished is a stall, not a conflict", () => {
     const queued = h.db
       .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'pending'")
       .all()
-      .map((q) => JSON.parse(q.payload_json));
+      .map((q) => AgentTurnPayloadSchema.parse(JSON.parse(q.payload_json)));
     // The one-shot resume below, which is what an emptied queue always deserved —
     // and not a word to the Architect about a rebase that never failed.
     expect(queued.map((p) => p.role)).toEqual(["engineer"]);
-    expect(queued[0].rejection).toBeUndefined();
+    expect(queued[0]!.rejection).toBeUndefined();
   });
 });
 
@@ -630,9 +632,11 @@ test("main moving under a running group sends it to rebase, once per commit", as
 
   const f = await runWatchdog(deps);
   expect(f.map((x) => x.rule)).toContain("base_moved");
-  const p = JSON.parse(
-    h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job ORDER BY id DESC LIMIT 1").get()!
-      .payload_json,
+  const p = AgentTurnPayloadSchema.parse(
+    JSON.parse(
+      h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job ORDER BY id DESC LIMIT 1").get()!
+        .payload_json,
+    ),
   );
   expect(p.role).toBe("engineer");
   expect(p.rejection).toContain("rebase");
@@ -723,9 +727,10 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
   const job = h.db
     .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn' AND state = 'pending'")
     .get()!;
-  expect(JSON.parse(job.payload_json).rejection).toContain("origin/master moved to abc12345");
-  expect(JSON.parse(job.payload_json).rejection).toContain("git fetch origin master");
-  expect(JSON.parse(job.payload_json).rejection).toContain("git rebase origin/master");
+  const payload = AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json));
+  expect(payload.rejection).toContain("origin/master moved to abc12345");
+  expect(payload.rejection).toContain("git fetch origin master");
+  expect(payload.rejection).toContain("git rebase origin/master");
 });
 
 test("a group already on the base is not nudged", async () => {
@@ -743,7 +748,7 @@ test("a group already on the base is not nudged", async () => {
   const f = await runWatchdog(deps);
   expect(f.map((x) => x.rule)).not.toContain("base_moved");
   const jobs = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE kind = 'agent_turn'").all();
-  expect(jobs.map((j) => JSON.parse(j.payload_json).role)).not.toContain("engineer");
+  expect(jobs.map((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role)).not.toContain("engineer");
 });
 
 test("turn logs are compressed after a day and dropped after two weeks", () => {
@@ -919,7 +924,12 @@ test("delivery is a bus frame the page can raise, plus an optional webhook", asy
   const realFetch = globalThis.fetch;
   globalThis.fetch = Object.assign(
     async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-      posted.push({ url: String(input), body: String(init?.body ?? "") });
+      const url = input instanceof Request ? input.url : input instanceof URL ? input.href : input;
+      const body = init?.body;
+      posted.push({
+        url,
+        body: body === undefined || body === null ? "" : typeof body === "string" ? body : (JSON.stringify(body) ?? ""),
+      });
       return new Response("ok");
     },
     { preconnect: realFetch.preconnect },
@@ -942,10 +952,10 @@ test("delivery is a bus frame the page can raise, plus an optional webhook", asy
       )
       .all();
     expect(f?.body).toBe("谁来定一下基线分支");
-    expect(JSON.parse(f!.meta_json).url).toContain("#g=3");
+    expect(NotifyMeta.parse(JSON.parse(f!.meta_json)).url).toContain("#g=3");
 
     expect(posted).toHaveLength(1);
-    expect(JSON.parse(posted[0]!.body)).toMatchObject({ message: "谁来定一下基线分支" });
+    expect(WebhookBody.parse(JSON.parse(posted[0]!.body)).message).toBe("谁来定一下基线分支");
   } finally {
     globalThis.fetch = realFetch;
   }

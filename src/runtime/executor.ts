@@ -56,7 +56,7 @@ import { requestContext } from "../http/request-context.ts";
  * `explicit` a send-back that asked for a clean head, `new` there was no session
  * to resume. Recorded on the turn event; the first three cost a cached prefix.
  */
-export type RotateReason = "hash" | "budget" | "explicit" | "new";
+type RotateReason = "hash" | "budget" | "explicit" | "new";
 
 export interface ExecDeps {
   ctx: Ctx;
@@ -239,7 +239,7 @@ async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<voi
     try {
       await ensureCheckout(ctx, job.grp_id);
     } catch (e) {
-      throw new Error(`could not prepare the group's checkout: ${errText(e)}`);
+      throw new Error(`could not prepare the group's checkout: ${errText(e)}`, { cause: e });
     }
   }
 

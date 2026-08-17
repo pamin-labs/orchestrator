@@ -140,9 +140,11 @@ const jsonAt = (root: Json, path: SettingPath): Json => {
 // TypeScript widens a schema selected by a generic dotted path to all leaf
 // outputs; each assertion stays on the same line as the path-specific parse.
 export function defaultFor<P extends SettingPath>(path: P): SettingValue<P> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- settingSchema(path) validates the generic path-specific output
   return settingSchema(path).parse(jsonAt(JsonValue.parse(DEFAULTS), path)) as SettingValue<P>;
 }
 
 export function currentFor<P extends SettingPath>(cfg: Config, path: P): SettingValue<P> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- settingSchema(path) validates the generic path-specific output
   return settingSchema(path).parse(jsonAt(JsonValue.parse(cfg), path)) as SettingValue<P>;
 }

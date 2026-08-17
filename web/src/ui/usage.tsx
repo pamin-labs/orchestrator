@@ -60,28 +60,34 @@ export function UsageBar({ usage }: { usage: Usage[] }) {
   // put the card at the far edge of the screen.
   return (
     <span className="grid grid-cols-[auto_auto_auto] items-center gap-x-4 gap-y-0.5 font-mono text-[0.625rem]">
-      {rows.map((u) => (
-        <Fragment key={u.runtime}>
-          <span className="truncate text-right text-ink-3">{u.runtime}</span>
-          <Ring
-            label="5h"
-            {...(u.fiveHourPercent !== undefined ? { v: u.fiveHourPercent } : {})}
-            {...(u.resetsAt !== undefined ? { at: u.resetsAt } : {})}
-            read={u.at}
-            stale={staleMark(u)}
-            {...(u.error !== undefined ? { why: u.error } : {})}
-          />
-          <Ring
-            label="周"
-            {...(u.weeklyPercent !== undefined ? { v: u.weeklyPercent } : {})}
-            {...(u.weeklyResetsAt !== undefined ? { at: u.weeklyResetsAt } : {})}
-            read={u.at}
-            stale={staleMark(u)}
-            {...(u.error !== undefined ? { why: u.error } : {})}
-          />
-        </Fragment>
+      {rows.map((usage) => (
+        <UsageRow key={usage.runtime} usage={usage} />
       ))}
     </span>
+  );
+}
+
+function UsageRow({ usage }: { usage: Usage }) {
+  return (
+    <Fragment>
+      <span className="truncate text-right text-ink-3">{usage.runtime}</span>
+      <Ring
+        label="5h"
+        {...(usage.fiveHourPercent !== undefined ? { v: usage.fiveHourPercent } : {})}
+        {...(usage.resetsAt !== undefined ? { at: usage.resetsAt } : {})}
+        read={usage.at}
+        stale={staleMark(usage)}
+        {...(usage.error !== undefined ? { why: usage.error } : {})}
+      />
+      <Ring
+        label="周"
+        {...(usage.weeklyPercent !== undefined ? { v: usage.weeklyPercent } : {})}
+        {...(usage.weeklyResetsAt !== undefined ? { at: usage.weeklyResetsAt } : {})}
+        read={usage.at}
+        stale={staleMark(usage)}
+        {...(usage.error !== undefined ? { why: usage.error } : {})}
+      />
+    </Fragment>
   );
 }
 

@@ -14,6 +14,7 @@ import { z } from "zod";
 import { bad, json, type Handler } from "../shared.ts";
 import { expandHome } from "./attach.ts";
 import { errText } from "../../mech/util/text.ts";
+import type { PanelNote } from "../../contracts/panel.ts";
 
 /**
  * Three read-mostly panels: the blackboard, the skill tick boxes, and the
@@ -33,17 +34,6 @@ import { errText } from "../../mech/util/text.ts";
  * the panel at all. Agents could `orch ctx query` it; the boss could not read it.
  */
 /** Exactly the columns the SELECT below names. `unknown` said nothing at all. */
-export interface NoteRow {
-  id: number;
-  grpId: number | null;
-  kind: string;
-  body: string;
-  at: number;
-  exportPath: string | null;
-  frontmatter: string | null;
-  group: string | null;
-}
-
 export const NotesQuery = z.object({
   project: z.coerce.number().int().positive().optional(),
   group: z.coerce.number().int().positive().optional(),
@@ -78,7 +68,7 @@ export const getNotes = (async (ctx, _req, _params, query) => {
   where.push("n.kind NOT IN ('pageindex', 'map')");
 
   const rows = ctx.db
-    .query<NoteRow, (string | number)[]>(
+    .query<PanelNote, (string | number)[]>(
       `SELECT n.id, n.grp_id AS grpId, n.kind, n.body, n.at, n.export_path AS exportPath,
               n.frontmatter_json AS frontmatter, g.name AS "group"
        FROM note n LEFT JOIN grp g ON g.id = n.grp_id

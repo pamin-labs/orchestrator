@@ -9,6 +9,9 @@ import { fakeSandbox } from "./fake-sandbox.ts";
 import { POLL_EVERY_MS, pollClaudeUsage, pollUsage, rateLimitsIn, toRateLimit } from "../src/mech/ops/subusage.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { Scheduler } from "../src/scheduler.ts";
+import { z } from "zod";
+
+const StoredUsage = z.object({ fiveHourPercent: z.number().optional(), weeklyPercent: z.number().optional() });
 
 // The real response, trimmed to the two windows this reads. Verbatim shape from
 // GET /api/oauth/usage — a dozen other keys are present and all ignored.
@@ -88,7 +91,7 @@ test("a failed poll keeps the last good reading rather than blanking the header"
   );
   const row = db.query<{ json: string; at: number }, []>("SELECT json, at FROM usage_snapshot").get()!;
   expect(row.at).toBe(2);
-  expect(JSON.parse(row.json).weeklyPercent).toBe(65);
+  expect(StoredUsage.parse(JSON.parse(row.json)).weeklyPercent).toBe(65);
 });
 
 test("only a subscription on the official endpoint gets a usage row", async () => {
@@ -170,7 +173,7 @@ test("codex quota is read from a sandbox first, and the host is only the fallbac
 
   await pollUsage(ctx(db), "/tmp/nonexistent-codex-home", 1_700_000_000_000, async () => rollout);
   const snap = db.query<{ json: string }, []>("SELECT json FROM usage_snapshot WHERE runtime = 'codex'").get()!;
-  expect(JSON.parse(snap.json).fiveHourPercent).toBe(42);
+  expect(StoredUsage.parse(JSON.parse(snap.json)).fiveHourPercent).toBe(42);
 });
 
 test("the usage read carries a decoy, never the stored token", async () => {

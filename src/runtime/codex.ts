@@ -23,7 +23,7 @@ import { z } from "zod";
  * has to tolerate junk lines rather than assume clean JSONL.
  */
 
-export function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
+function buildArgv(spec: Omit<TurnSpec, "runner">): string[] {
   const argv = spec.resumeSessionId ? ["exec", "resume", spec.resumeSessionId, "--json"] : ["exec", "--json"];
   argv.push("--skip-git-repo-check");
   // An empty model means "whatever the account allows": naming one is rejected
@@ -158,7 +158,7 @@ export function codexUsage(u: z.infer<typeof UsageSchema> = {}): Usage {
   };
 }
 
-export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult> {
+async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<TurnResult> {
   // codex has no --append-system-prompt, so the stable half leads the first
   // message of a thread. It must NOT lead the rest: `codex exec resume` replays
   // the thread server-side, so re-sending the role prompt, the contract, the
@@ -202,6 +202,8 @@ export async function runTurn(spec: TurnSpec, h: TurnHandlers = {}): Promise<Tur
   }
   return result;
 }
+
+export { buildArgv as buildCodexArgv, runTurn as runCodexTurn };
 
 function consume(l: Line, result: TurnResult, files: Set<string>, h: TurnHandlers): void {
   if (l.type === "item.completed") {

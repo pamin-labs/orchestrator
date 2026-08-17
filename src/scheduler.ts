@@ -92,6 +92,15 @@ export type EnqueueFields<K extends JobKind> = {
   parentSpanId?: string | null;
 };
 
+function enqueueTrace<K extends JobKind>(fields: EnqueueFields<K>) {
+  const context = requestContext.getStore();
+  return {
+    correlationId: fields.correlationId ?? context?.requestId ?? crypto.randomUUID(),
+    traceId: fields.traceId ?? context?.traceId ?? crypto.randomUUID().replaceAll("-", ""),
+    parentSpanId: fields.parentSpanId ?? context?.spanId ?? null,
+  };
+}
+
 function decodeJob(row: StoredJob): Job {
   const kind = JobKindSchema.parse(row.kind);
   const raw: unknown = JSON.parse(row.payload_json);
@@ -253,9 +262,7 @@ export class Scheduler {
 
   enqueue<K extends JobKind>(kind: K, fields: EnqueueFields<K> = {}): number {
     const payload = JobPayloadSchemas[kind].parse(fields.payload ?? {});
-    const context = requestContext.getStore();
-    const correlationId = fields.correlationId ?? context?.requestId ?? crypto.randomUUID();
-    const traceId = fields.traceId ?? context?.traceId ?? crypto.randomUUID().replaceAll("-", "");
+    const trace = enqueueTrace(fields);
     const row = this.db
       .query<
         { id: number },
@@ -274,9 +281,9 @@ export class Scheduler {
         JSON.stringify(payload),
         fields.priority ?? 0,
         this.now(),
-        correlationId,
-        traceId,
-        fields.parentSpanId ?? context?.spanId ?? null,
+        trace.correlationId,
+        trace.traceId,
+        trace.parentSpanId,
       )!;
     return row.id;
   }
@@ -695,58 +702,64 @@ export function reclaimOrphans(
  * intercept, reached from the other direction. `resumed` is stamped on the payload
  * so a turn that takes the server down with it cannot be resurrected forever.
  */
+function reclaimedJob(row: Job | StoredJob): Job | null {
+  try {
+    return "payload" in row ? row : decodeJob(row);
+  } catch {
+    // Reclaimed rows are already terminal; malformed payloads cannot be replayed.
+    return null;
+  }
+}
+
+function resumeJob(sched: Scheduler, j: Job): boolean {
+  if (FREE_KINDS.has(j.kind)) return false;
+  // `resumed` stops a turn that takes the server down with it from being
+  // resurrected forever — but an orphan died because the *server* went away, not
+  // because of anything it did, and that must not spend its one chance. Six
+  // groups sat stopped after a restart with a fix already in main, each holding a
+  // turn that was only ever killed by the restart itself, and every one of them
+  // needed a human to say "go on then".
+  //
+  // `offline:` is the same argument. The network went away; the turn did
+  // nothing wrong, and spending its one retry on that would leave the group
+  // stopped after the connection came back.
+  const orphaned = /^(orphaned|offline):/.test(j.error ?? "");
+  if (j.payload.resumed && !orphaned) return false;
+  const fields = {
+    grp_id: j.grp_id,
+    agent_id: j.agent_id,
+    slice_id: j.slice_id,
+    priority: j.priority,
+    ...(j.correlation_id === undefined ? {} : { correlationId: j.correlation_id }),
+    ...(j.trace_id === undefined ? {} : { traceId: j.trace_id }),
+    ...(j.parent_span_id === undefined ? {} : { parentSpanId: j.parent_span_id }),
+  };
+  switch (j.kind) {
+    case "agent_turn":
+      sched.enqueue(j.kind, { ...fields, payload: { ...j.payload, resumed: true } });
+      break;
+    case "lease":
+      sched.enqueue(j.kind, { ...fields, payload: { ...j.payload, resumed: true } });
+      break;
+    case "gate":
+      sched.enqueue(j.kind, { ...fields, payload: { resumed: true } });
+      break;
+    case "reconcile":
+      sched.enqueue(j.kind, { ...fields, payload: { resumed: true } });
+      break;
+    case "digest":
+    case "notify":
+    case "watchdog":
+      return false;
+  }
+  return true;
+}
+
 export function resumeReclaimed(sched: Scheduler, jobs: readonly (Job | StoredJob)[]): number {
   let requeued = 0;
   for (const row of jobs) {
-    let j: Job;
-    try {
-      j = "payload" in row ? row : decodeJob(row);
-    } catch {
-      // Reclaimed rows are already terminal; malformed payloads cannot be replayed.
-      continue;
-    }
-    // Housekeeping kinds are re-enqueued by the server's own timer.
-    if (FREE_KINDS.has(j.kind)) continue;
-    // `resumed` stops a turn that takes the server down with it from being
-    // resurrected forever — but an orphan died because the *server* went away, not
-    // because of anything it did, and that must not spend its one chance. Six
-    // groups sat stopped after a restart with a fix already in main, each holding a
-    // turn that was only ever killed by the restart itself, and every one of them
-    // needed a human to say "go on then".
-    //
-    // `offline:` is the same argument. The network went away; the turn did
-    // nothing wrong, and spending its one retry on that would leave the group
-    // stopped after the connection came back.
-    const orphaned = /^(orphaned|offline):/.test(j.error ?? "");
-    if (j.payload.resumed && !orphaned) continue;
-    const fields = {
-      grp_id: j.grp_id,
-      agent_id: j.agent_id,
-      slice_id: j.slice_id,
-      priority: j.priority,
-      ...(j.correlation_id === undefined ? {} : { correlationId: j.correlation_id }),
-      ...(j.trace_id === undefined ? {} : { traceId: j.trace_id }),
-      ...(j.parent_span_id === undefined ? {} : { parentSpanId: j.parent_span_id }),
-    };
-    switch (j.kind) {
-      case "agent_turn":
-        sched.enqueue(j.kind, { ...fields, payload: { ...j.payload, resumed: true } });
-        break;
-      case "lease":
-        sched.enqueue(j.kind, { ...fields, payload: { ...j.payload, resumed: true } });
-        break;
-      case "gate":
-        sched.enqueue(j.kind, { ...fields, payload: { resumed: true } });
-        break;
-      case "reconcile":
-        sched.enqueue(j.kind, { ...fields, payload: { resumed: true } });
-        break;
-      case "digest":
-      case "notify":
-      case "watchdog":
-        continue;
-    }
-    requeued++;
+    const job = reclaimedJob(row);
+    if (job && resumeJob(sched, job)) requeued++;
   }
   return requeued;
 }

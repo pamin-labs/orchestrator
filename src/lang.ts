@@ -145,6 +145,7 @@ const EN = {
 export type SayKey = keyof typeof EN;
 
 /** Every key, for a check that has to walk them. */
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys erases the literal keys that EN owns
 export const SAY_KEYS = Object.keys(EN) as SayKey[];
 
 export function say(lang: string | undefined, key: SayKey, args: Record<string, string | number> = {}): string {

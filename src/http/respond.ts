@@ -10,7 +10,9 @@ export type ErrorResponses<S extends ContentfulStatusCode> = { [Status in S]: { 
 /** JSON responses created outside a Hono context retain Hono's response type. */
 export const json = <T extends object | string | number | boolean | null, S extends ContentfulStatusCode = 200>(
   data: T,
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- generic default preserves the caller's literal Hono status
   status: S = 200 as S,
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Response.json cannot express Hono's compile-time TypedResponse marker
 ): JsonResponse<T, S> => Response.json(data, { status }) as JsonResponse<T, S>;
 
 const ERROR_CODES: Partial<Record<ContentfulStatusCode, string>> = {
@@ -46,8 +48,11 @@ export function failure<S extends ContentfulStatusCode>(
   );
 }
 
-export const message = <S extends ContentfulStatusCode = 200>(message: string, status: S = 200 as S) =>
-  status >= 400 ? failure(message, status) : json({ message }, status);
+export const message = <S extends ContentfulStatusCode = 200>(
+  message: string,
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- generic default preserves the caller's literal Hono status
+  status: S = 200 as S,
+) => (status >= 400 ? failure(message, status) : json({ message }, status));
 
 /** The request was valid JSON but its operation was refused. */
 export const bad = (error: string) => failure(error, 422);

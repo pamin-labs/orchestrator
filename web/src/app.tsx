@@ -174,7 +174,7 @@ export function App() {
   // 成本 says "this project", so it must be fetched for this project. refresh()
   // takes the id; nothing was passing it.
   useEffect(() => {
-    if (sel.p) void refresh(sel.p);
+    if (sel.p) refresh(sel.p);
   }, [refresh, sel.p]);
   // ⌘K switches whatever the boss is standing in. Inside a requirement that is
   // the requirement — offering the project list there means the shortcut does the
@@ -282,7 +282,7 @@ export function App() {
   // has to go and find. Land on it, and let its own empty page say what it now
   // knows and what it does not.
   const added = (p: number) => {
-    void refresh();
+    refresh();
     go({ p, view: "progress", g: null, t: null });
   };
 
@@ -341,7 +341,7 @@ export function App() {
         // pointed at a row that no longer exists.
         onRemoved={() => {
           go({ p: null, g: null, view: "board" });
-          void refresh(null);
+          refresh(null);
         }}
       />
 
@@ -375,7 +375,7 @@ export function App() {
             <span className="flex min-w-0 shrink items-baseline gap-2 text-[0.8125rem]">
               <span className="text-ink-3">/</span>
               <Crumb dim={view === "req"} onClick={() => setPickProject(true)}>
-                {proj!.name}
+                {proj.name}
               </Crumb>
               {view === "req" && openGroup && (
                 <>

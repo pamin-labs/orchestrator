@@ -54,7 +54,6 @@ export function AskHost() {
             {spec?.body && <Dialog.Description className="text-[0.8125rem] text-ink-2">{spec.body}</Dialog.Description>}
             {spec?.field && (
               <Textarea
-                autoFocus
                 rows={3}
                 className="mt-2.5"
                 placeholder={spec.field}

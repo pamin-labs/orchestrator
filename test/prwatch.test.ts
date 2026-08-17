@@ -15,7 +15,8 @@ import {
 import { utilGit } from "../src/mech/git/checkout.ts";
 import type { GhResult, Github } from "../src/mech/git/github.ts";
 import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { landed } from "../src/mech/flow/mergequeue.ts";
+import { AgentTurnPayloadSchema, Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Json } from "../src/contracts/json.ts";
@@ -271,7 +272,9 @@ test("the utility container refuses a verb that is not one of its four", async (
   // The list is the boundary, so reaching past it has to throw rather than
   // return an exit code somebody can ignore.
   const h = harness();
+  // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
   await expect(utilGit(h.ctx, ["checkout", "main"])).rejects.toThrow(/may not run 'git checkout'/);
+  // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
   await expect(utilGit(h.ctx, ["submodule", "update", "--init"])).rejects.toThrow(/may not run/);
 });
 
@@ -398,8 +401,9 @@ test("feedback reopens the group and hands it to the PM", () => {
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp").get()!.status).toBe("RUNNING");
   const job = h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job").get()!;
   // Replying to a review needs judgement; noticing it did not.
-  expect(JSON.parse(job.payload_json).role).toBe("pm");
-  expect(JSON.parse(job.payload_json).rejection).toContain("needs a test");
+  const payload = AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json));
+  expect(payload.role).toBe("pm");
+  expect(payload.rejection).toContain("needs a test");
 });
 
 test("the lessons list is capped where it is written", async () => {
@@ -449,7 +453,6 @@ test("landing archives the group without deleting its history", () => {
   );
   h.ctx.bus.emit({ grpId: 1, author: "engineer", kind: "say", body: "why we did it this way" });
 
-  const { landed } = require("../src/mech/flow/mergequeue.ts");
   landed(h.db, 1);
 
   const a = h.db
@@ -498,9 +501,11 @@ test("a branch that stopped merging wakes the Engineer, not the PM", async () =>
   expect(fs[0]!.conflicting).toBe(true);
 
   dispatchFeedback(h.ctx, fs[0]!);
-  const p = JSON.parse(
-    h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job ORDER BY id DESC LIMIT 1").get()!
-      .payload_json,
+  const p = AgentTurnPayloadSchema.parse(
+    JSON.parse(
+      h.db.query<{ payload_json: string }, []>("SELECT payload_json FROM job ORDER BY id DESC LIMIT 1").get()!
+        .payload_json,
+    ),
   );
   // Reading a review and deciding what to concede is the PM's. `git rebase` is not.
   expect(p.role).toBe("engineer");

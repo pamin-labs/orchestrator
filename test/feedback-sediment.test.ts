@@ -3,7 +3,7 @@ import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
 import { OVERLAP_FLOOR, sameComplaint, sediment, terms } from "../src/mech/knowledge/lessons.ts";
 import { bossFact, type Ctx } from "../src/api.ts";
-import { Scheduler, type Job } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler, type Job } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { loadConfig } from "../src/config.ts";
@@ -43,7 +43,7 @@ test("the same complaint in different words is recognised; unrelated ones are no
 
 test("the third time it becomes a project rule, and does not fire again on the same three", () => {
   const h = harness();
-  const cosTurns = () => h.ran.filter((j) => JSON.parse(j.payload_json).role === "cos");
+  const cosTurns = () => h.ran.filter((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role === "cos");
 
   bossFact(h.ctx, 1, "测试写得太浅，边界用例没有");
   expect(cosTurns().length).toBe(0);
@@ -53,7 +53,7 @@ test("the third time it becomes a project rule, and does not fire again on the s
   bossFact(h.ctx, 3, "又是测试太浅，边界情况呢");
   const turn = cosTurns();
   expect(turn.length).toBe(1);
-  expect(JSON.parse(turn[0]!.payload_json).sediment.length).toBe(3);
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(turn[0]!.payload_json)).sediment).toHaveLength(3);
 
   // The three are marked, so a fourth unrelated fact does not re-fire on them — that
   // is how one complaint would become a rule every single time forever.
@@ -73,6 +73,6 @@ test("a project's complaints are its own", () => {
   bossFact(h.ctx, 1, "测试写得太浅，边界用例没有");
   bossFact(h.ctx, 2, "测试太浅了，边界都没覆盖");
   bossFact(h.ctx, 4, "测试太浅，边界没覆盖"); // other project
-  expect(h.ran.filter((j) => JSON.parse(j.payload_json).role === "cos").length).toBe(0);
+  expect(h.ran.filter((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role === "cos").length).toBe(0);
   expect(sediment(h.ctx, 1, 3)).toBe(0);
 });

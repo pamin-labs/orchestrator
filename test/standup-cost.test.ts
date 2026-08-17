@@ -31,7 +31,7 @@ test("boundaries widened after starting are caught", () => {
   // their glob mid-flight.
   expect(dup).toBeDefined();
   expect(dup.body).toContain("widened");
-  expect(dup.grpIds.sort()).toEqual([a, b].sort());
+  expect(dup.grpIds.sort((left, right) => left - right)).toEqual([a, b].sort((left, right) => left - right));
 });
 
 test("groups in different projects are not duplicates", () => {

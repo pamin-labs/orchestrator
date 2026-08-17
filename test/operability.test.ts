@@ -131,7 +131,10 @@ test("shutdown drains gracefully before closing resources", async () => {
   });
   const done = shutdownRuntime({
     stopIntake: () => (calls.push("stop-intake"), true),
-    drain: () => (calls.push("drain"), draining),
+    drain: () => {
+      calls.push("drain");
+      return draining;
+    },
     gracefulStop: async () => {
       calls.push("graceful-stop");
     },

@@ -1,23 +1,44 @@
 import { describe, expect, test } from "bun:test";
+import { z } from "zod";
 
 const workflowNames = ["ci", "codeql", "security", "nightly", "release"] as const;
-type Workflow = {
-  permissions?: Record<string, string>;
-  jobs: Record<
-    string,
-    {
-      name?: string;
-      if?: string;
-      needs?: string | string[];
-      permissions?: Record<string, string>;
-      strategy?: { matrix?: Record<string, unknown> };
-      steps: Array<{ name?: string; if?: string; uses?: string; run?: string; with?: Record<string, unknown> }>;
-    }
-  >;
-};
+const StringMap = z.record(z.string(), z.string());
+const JsonMap = z.record(z.string(), z.json());
+const WorkflowSchema = z.object({
+  permissions: StringMap.optional(),
+  jobs: z.record(
+    z.string(),
+    z.object({
+      name: z.string().optional(),
+      if: z.string().optional(),
+      needs: z.union([z.string(), z.array(z.string())]).optional(),
+      permissions: StringMap.optional(),
+      strategy: z.object({ matrix: JsonMap.optional() }).passthrough().optional(),
+      steps: z.array(
+        z.object({
+          name: z.string().optional(),
+          if: z.string().optional(),
+          uses: z.string().optional(),
+          run: z.string().optional(),
+          with: JsonMap.optional(),
+        }),
+      ),
+    }),
+  ),
+});
+type Workflow = z.infer<typeof WorkflowSchema>;
 
 const source = (name: (typeof workflowNames)[number]) => Bun.file(`.github/workflows/${name}.yml`).text();
-const load = async (name: (typeof workflowNames)[number]) => Bun.YAML.parse(await source(name)) as Workflow;
+const load = async (name: (typeof workflowNames)[number]) => WorkflowSchema.parse(Bun.YAML.parse(await source(name)));
+
+function expectUnconditionalSteps(workflow: Workflow, jobName: string, names: readonly string[]): void {
+  const steps = workflow.jobs[jobName]!.steps;
+  for (const name of names) expect(steps.find((step) => step.name === name)?.if).toBeUndefined();
+}
+
+function expectDryRunOnlyJobs(workflow: Workflow, names: readonly string[]): void {
+  for (const name of names) expect(workflow.jobs[name]?.if).toBe("${{ !inputs.dry_run }}");
+}
 
 describe("workflow governance", () => {
   test("every action is immutable and Bun is exact", async () => {
@@ -190,20 +211,16 @@ describe("workflow governance", () => {
     expect(build.with?.load).toBe(true);
     expect(build.with?.push).toBe(false);
     expect(build.with?.provenance).toBe("mode=max");
-    for (const name of [
+    expectUnconditionalSteps(workflow, "image-build", [
       "verify image digest and provenance material",
       "scan verified image",
       "create verified image SPDX SBOM",
       "create verified image CycloneDX SBOM",
-    ]) {
-      expect(imageBuild.steps.find((step) => step.name === name)?.if).toBeUndefined();
-    }
+    ]);
     expect(imageBuild.steps.find((step) => step.name === "save verified image for publication")?.if).toBe(
       "${{ !inputs.dry_run }}",
     );
-    for (const job of ["image-push", "manifest", "publish", "promote-latest"]) {
-      expect(workflow.jobs[job]?.if).toBe("${{ !inputs.dry_run }}");
-    }
+    expectDryRunOnlyJobs(workflow, ["image-push", "manifest", "publish", "promote-latest"]);
     expect(release).toContain('has("buildx.build.provenance")');
     expect(release).toContain("docker image inspect --format '{{.Id}}'");
     expect(release).toContain("trivy-config: trivy.yaml");

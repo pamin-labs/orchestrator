@@ -83,15 +83,17 @@ test("shared state policies are not restated by consumers", () => {
   };
   walk("src");
 
-  const policies = [ACTIVE_JOB_STATES, DISPATCHABLE_GRP_STATES, ESCALATION_OPEN_STATES, ESCALATION_TERMINAL_STATES].map(
-    (states) => [...states].sort().join("\0"),
+  const policies = new Set(
+    [ACTIVE_JOB_STATES, DISPATCHABLE_GRP_STATES, ESCALATION_OPEN_STATES, ESCALATION_TERMINAL_STATES].map((states) =>
+      [...states].sort().join("\0"),
+    ),
   );
   const restatements: string[] = [];
   for (const path of files) {
     const source = readFileSync(path, "utf8");
     for (const match of source.matchAll(/\[[\s\S]{0,160}?\]|(?:NOT\s+)?IN\s*\([\s\S]{0,160}?\)/g)) {
       const values = [...match[0].matchAll(/["']([A-Za-z_]+)["']/g)].map((item) => item[1]!);
-      if (policies.includes([...new Set(values)].sort().join("\0"))) restatements.push(path);
+      if (policies.has([...new Set(values)].sort().join("\0"))) restatements.push(path);
     }
   }
 

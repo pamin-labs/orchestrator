@@ -8,16 +8,20 @@ import { Bus } from "../src/bus.ts";
 import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
 import { gateState } from "../src/mech/gate.ts";
+import { TaskClaimSchema } from "../src/mech/flow/reconcile.ts";
 import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { handToBoss } from "../src/mech/flow/review.ts";
 import { checkpoint } from "../src/mech/git/worktree.ts";
-import { Scheduler, type Executor } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/scheduler.ts";
 import { makeAuditVerdict, makeExecutor, makeReviewVerdict, type ExecDeps } from "../src/runtime/executor.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { WORK } from "../src/mech/sandbox/sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Json } from "../src/contracts/json.ts";
+import { z } from "zod";
+
+const GateResults = z.record(z.string(), z.string());
 
 const git = testGit;
 
@@ -474,10 +478,10 @@ test("--already-done is accepted and recorded as such", async () => {
     "tok-eng",
   );
   expect(r.status).toBe(200);
-  const claim = JSON.parse(
-    h.db.query<{ claim_json: string }, []>("SELECT claim_json FROM task WHERE id = 1").get()!.claim_json,
+  const claim = TaskClaimSchema.parse(
+    JSON.parse(h.db.query<{ claim_json: string }, []>("SELECT claim_json FROM task WHERE id = 1").get()!.claim_json),
   );
-  expect(claim.already_done).toBe("S1 covered it");
+  expect("already_done" in claim ? claim.already_done : undefined).toBe("S1 covered it");
 });
 
 test("writing the retro resumes PR-level review instead of dead-ending", async () => {
@@ -583,8 +587,8 @@ test("the task that closes a slice needs a self-review, and vacuous does not cou
   expect(ok.status).toBe(200);
   // Recorded as the gate layer it is, so the panel can draw the first tick and the
   // evidence panel can show what was claimed.
-  const gates = JSON.parse(
-    h.db.query<{ gates_json: string }, []>("SELECT gates_json FROM slice WHERE id = 1").get()!.gates_json,
+  const gates = GateResults.parse(
+    JSON.parse(h.db.query<{ gates_json: string }, []>("SELECT gates_json FROM slice WHERE id = 1").get()!.gates_json),
   );
   expect(gates.self).toBe("pass");
   const filed = h.db
@@ -652,7 +656,7 @@ test("a passed audit hires the Scribe, and nothing is published until it files",
   // In the group's own sandbox, unlike the Auditor: the branch it has to read is
   // checked out there, and summarising a diff is not reviewing one's own work.
   expect(job.grp_id).toBe(1);
-  expect(JSON.parse(job.payload_json).role).toBe("scribe");
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json)).role).toBe("scribe");
 
   // A place in the merge queue all the same. The queue is what the boss sees,
   // and a finished branch that is invisible until an agent writes a sentence is

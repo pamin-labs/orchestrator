@@ -124,7 +124,7 @@ function say(p: Probe, server: string): string {
       return `${server} 上有东西在应答，但不是沙盒服务器（HTTP ${p.status}）—— 换个地址。`;
     case "none":
       return p.why;
-    default:
+    case "ok":
       return "";
   }
 }
@@ -300,7 +300,10 @@ async function waitUp(
       // log is what happened, and without it this reports the symptom of a
       // process that died of something specific it already printed.
       const tail = serverLogTail(ctx);
-      return { ok: false, why: `它自己退了（exit ${dead}）${tail ? `：\n${tail}` : "，而且什么都没打印"}` };
+      return {
+        ok: false,
+        why: `它自己退了（exit ${String(dead)}）${tail ? `：\n${tail}` : "，而且什么都没打印"}`,
+      };
     }
     await Bun.sleep(400);
   }
@@ -325,7 +328,7 @@ export async function inspectServer(ctx: Ctx): Promise<ServerState> {
     // Ours only if we recorded this pid. A pid from a previous boot still counts
     // — the process outlives us — but a different one means ours died.
     const mine = !!live && get(ctx, PID_KEY) === live.pid;
-    return mine ? { kind: "ours", pid: live!.pid } : { kind: "theirs", pid: live?.pid ?? "?" };
+    return mine ? { kind: "ours", pid: live.pid } : { kind: "theirs", pid: live?.pid ?? "?" };
   }
   // Answering at all means the address is taken, whether or not `ps` can see by
   // what. Reported, never restarted.

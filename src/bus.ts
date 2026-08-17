@@ -13,6 +13,7 @@ import { requestContext } from "./http/request-context.ts";
  */
 
 type EventRow = Omit<StoredEvent, "meta"> & { meta_json: string };
+type ValidatedEventInput = Omit<StoredEvent, "seq" | "at">;
 
 export class Bus {
   private sinks = new Set<(frame: Frame) => void>();
@@ -41,6 +42,15 @@ export class Bus {
    * the CLI's output, which is how one got here.
    */
   emit(e: EventInput): StoredEvent {
+    const { event, metaJson } = this.prepare(e);
+    const at = Date.now();
+    const seq = this.insert(event, metaJson, at);
+    const stored: StoredEvent = { ...event, seq, at };
+    this.publish(stored);
+    return stored;
+  }
+
+  private prepare(e: EventInput): { event: ValidatedEventInput; metaJson: string } {
     const body = scrub(e.body ?? "");
     // `meta` too, not just the body. It is written to the same append-only row and
     // read back by the panel and the cost report, and several emitters put whole
@@ -50,14 +60,19 @@ export class Bus {
     // survives it.
     const metaJson = scrub(JSON.stringify(e.meta ?? {}));
     const context = requestContext.getStore();
-    const event = EventInputSchema.parse({
-      ...e,
-      body,
-      meta: jsonOr(metaJson, JsonValue, {}),
-      ...(context ? { correlationId: context.requestId, traceId: context.traceId, spanId: context.spanId } : {}),
-    });
-    const at = Date.now();
-    const row = this.db
+    return {
+      event: EventInputSchema.parse({
+        ...e,
+        body,
+        meta: jsonOr(metaJson, JsonValue, {}),
+        ...(context ? { correlationId: context.requestId, traceId: context.traceId, spanId: context.spanId } : {}),
+      }),
+      metaJson,
+    };
+  }
+
+  private insert(event: ValidatedEventInput, metaJson: string, at: number): number {
+    return this.db
       .query<
         { seq: number },
         [
@@ -95,10 +110,7 @@ export class Bus {
         event.correlationId ?? null,
         event.traceId ?? null,
         event.spanId ?? null,
-      )!;
-    const stored: StoredEvent = { ...event, seq: row.seq, at };
-    this.publish(stored);
-    return stored;
+      )!.seq;
   }
 
   /**

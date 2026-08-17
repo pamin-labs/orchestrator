@@ -244,6 +244,32 @@ export const DropBody = z.object({
   duplicate: GroupRef.optional(),
 });
 
+async function dropEvidence(ctx: Ctx, gid: number, body: z.infer<typeof DropBody>): Promise<string | Response> {
+  if (body.duplicate != null) {
+    const duplicateId = resolveGroup(ctx, body.duplicate);
+    if (!duplicateId) return bad(`no group ${body.duplicate}`);
+    if (duplicateId === gid) return bad("a group cannot be a duplicate of itself");
+    const duplicate = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(duplicateId)!;
+    return `duplicate of ${duplicate.name} (grp ${duplicateId})`;
+  }
+
+  if (!body.commit) return bad("give evidence: --duplicate <group> or --commit <sha>");
+  const sha = body.commit.trim();
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return bad("--commit takes a sha, 7 to 40 hex characters");
+  const git = sandboxGit(ctx, { grp: gid });
+  const commit = await git(WORK, ["cat-file", "-t", sha], WORK);
+  if (commit.code !== 0 || commit.out.trim() !== "commit") return bad(`${sha} is not a commit in this repo`);
+  const projectId = ctx.db
+    .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
+    .get(gid)?.project_id;
+  if (!projectId) return bad("no such group");
+  const base = await baseRefFor(ctx, projectId);
+  const merged = await git(WORK, ["merge-base", "--is-ancestor", sha, base], WORK);
+  return merged.code === 0
+    ? `already landed in ${sha.slice(0, 8)}`
+    : bad(`${sha.slice(0, 8)} is a real commit but is not on ${base} yet`);
+}
+
 export const postDrop = (async (ctx, _req, a, _p, b) => {
   if (!["dispatcher", "pm", "architect"].includes(a.role)) return bad(`${a.role} does not propose dropping work`);
   const gid = actingGroup(ctx, a, b.group_id);
@@ -253,38 +279,8 @@ export const postDrop = (async (ctx, _req, a, _p, b) => {
 
   // Evidence the server can check. A sentence alone is a model's opinion of its
   // own workload, which is exactly what must not be able to close a requirement.
-  let evidence: string;
-  if (b.duplicate != null) {
-    const dup = resolveGroup(ctx, b.duplicate);
-    if (!dup) return bad(`no group ${b.duplicate}`);
-    if (dup === gid) return bad("a group cannot be a duplicate of itself");
-    const d = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(dup)!;
-    evidence = `duplicate of ${d.name} (grp ${dup})`;
-  } else if (b.commit) {
-    const sha = String(b.commit).trim();
-    if (!/^[0-9a-f]{7,40}$/i.test(sha)) return bad("--commit takes a sha, 7 to 40 hex characters");
-    // Checked where the agent read it: its own clone. Against the host checkout
-    // this asked a repository the caller has never seen — a sha that exists only
-    // on the group's branch is not there at all, and the ancestry test below ran
-    // against the boss's local `HEAD`, so the verdict changed with whatever branch
-    // the boss happened to have checked out.
-    const git = sandboxGit(ctx, { grp: gid });
-    const r = await git(WORK, ["cat-file", "-t", sha], WORK);
-    if (r.code !== 0 || r.out.trim() !== "commit") return bad(`${sha} is not a commit in this repo`);
-    // And it has to be on the main line. Any real sha passes cat-file, including
-    // one on an abandoned branch or on the group's own unmerged work — "it is
-    // already done" means done where everyone can see it.
-    const projectId = ctx.db
-      .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
-      .get(gid)?.project_id;
-    if (!projectId) return bad("no such group");
-    const base = await baseRefFor(ctx, projectId);
-    const merged = await git(WORK, ["merge-base", "--is-ancestor", sha, base], WORK);
-    if (merged.code !== 0) return bad(`${sha.slice(0, 8)} is a real commit but is not on ${base} yet`);
-    evidence = `already landed in ${sha.slice(0, 8)}`;
-  } else {
-    return bad("give evidence: --duplicate <group> or --commit <sha>");
-  }
+  const evidence = await dropEvidence(ctx, gid, b);
+  if (evidence instanceof Response) return evidence;
 
   ctx.db.transaction(() => {
     ctx.db.run(

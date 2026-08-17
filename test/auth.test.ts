@@ -27,6 +27,7 @@ import { testContext } from "./test-context.ts";
 const REAL = `sk-ant-oat01-${"R".repeat(80)}`;
 const ClaudeSettings = z.object({ includeCoAuthoredBy: z.boolean() });
 const DeviceLoginResponse = z.object({ code: z.string(), url: z.string(), expiresAt: z.number() });
+const CodexAuthFile = z.object({ tokens: z.object({ id_token: z.string(), access_token: z.string() }) });
 
 test("the real value never leaves the process except into the vault", () => {
   const db = openMemory();
@@ -157,9 +158,10 @@ test("a ChatGPT login is refreshed on the host, and the sandbox only gets a deco
   // and it was passed through untouched next to two carefully faked ones.
   expect(written).not.toContain("REAL-ID-TOKEN");
   // Still shaped like a JWT, or anything that parses it decides the login is bad.
-  expect(JSON.parse(written).tokens.id_token.split(".")).toHaveLength(3);
+  const writtenAuth = CodexAuthFile.parse(JSON.parse(written));
+  expect(writtenAuth.tokens.id_token.split(".")).toHaveLength(3);
   // Shaped like a login, or codex will not start.
-  expect(JSON.parse(written).tokens.access_token.length).toBeGreaterThan(20);
+  expect(writtenAuth.tokens.access_token.length).toBeGreaterThan(20);
   // And told to read the file rather than the OS keychain.
   expect(files[`${CODEX_HOME}/config.toml`]).toContain("file");
 
@@ -181,7 +183,7 @@ test("nothing reads a credential back out of a sandbox", async () => {
   // (the decoy is written; a rotated file is absorbed) with nothing joining them.
   const src = await Bun.file(new URL("../src/runtime/executor.ts", import.meta.url)).text();
   expect(src).not.toContain("absorbCodexHome");
-  expect(src).not.toContain(`${"$"}{CODEX_HOME}/auth.json`);
+  expect(src).not.toContain(`\${CODEX_HOME}/auth.json`);
 });
 
 test("an api key for codex goes to the sidecar like everything else", () => {

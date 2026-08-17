@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
-import { Scheduler, type Job } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler, type Job } from "../src/scheduler.ts";
 import { askKind, brief, landGroup, makeApp, type Ctx } from "../src/api.ts";
 import { listSkills } from "../src/mech/skills.ts";
 import { landed } from "../src/mech/flow/mergequeue.ts";
@@ -13,9 +13,10 @@ import { fakeSandbox } from "./fake-sandbox.ts";
 import { routeCalls } from "./route-source.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { loadConfig } from "../src/config.ts";
-import { SnapshotSchema } from "../src/contracts/panel.ts";
+import { NotesResponseSchema, SnapshotSchema } from "../src/contracts/panel.ts";
 import { z } from "zod";
-import type { Json } from "../src/contracts/json.ts";
+import { JsonValue, type Json } from "../src/contracts/json.ts";
+import { ErrorResponseSchema } from "../src/contracts/protocol.ts";
 import type { Github } from "../src/mech/git/github.ts";
 
 const BoundaryPayload = z.object({ boundary: z.array(z.object({ id: z.number() })) });
@@ -29,11 +30,7 @@ const DirsResponse = z.object({
   dirs: z.array(z.object({ name: z.string(), repo: z.boolean(), taken: z.boolean() })),
   parent: z.string(),
 });
-const NotesResponse = z.object({
-  notes: z.array(
-    z.object({ kind: z.string(), grpId: z.number().nullable(), group: z.string().nullable() }).passthrough(),
-  ),
-});
+const PauseResponse = z.object({ status: z.enum(["PAUSING", "PAUSED"]), waiting: z.number() });
 
 function harness(handle?: (cmd: string, cwd: string) => { code?: number; out?: string; err?: string }) {
   const db: DB = openMemory();
@@ -111,9 +108,9 @@ test("mutating routes replay one result and reject key reuse with another payloa
     );
 
   const first = await send("add one durable feature");
-  const firstBody = await first.json();
+  const firstBody = JsonValue.parse(await first.json());
   const replay = await send("add one durable feature");
-  expect(await replay.json()).toEqual(firstBody);
+  expect(JsonValue.parse(await replay.json())).toEqual(firstBody);
   expect(replay.headers.get("idempotency-replayed")).toBe("true");
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM grp").get()!.n).toBe(2);
 
@@ -296,7 +293,7 @@ test("dropping an idea creates a PLANNING group, a channel, and a dispatcher tur
   const roles = db
     .query<{ payload_json: string }, [number]>("SELECT payload_json FROM job WHERE grp_id = ? ORDER BY priority DESC")
     .all(grp_id)
-    .map((j) => JSON.parse(j.payload_json).role);
+    .map((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role);
   expect(roles).toEqual(["architect", "dispatcher"]);
 });
 
@@ -309,7 +306,7 @@ test("the only group in a project skips the boundary step", async () => {
   const roles = db
     .query<{ payload_json: string }, [number]>("SELECT payload_json FROM job WHERE grp_id = ?")
     .all(grp_id)
-    .map((j) => JSON.parse(j.payload_json).role);
+    .map((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role);
   expect(roles).toEqual(["dispatcher"]);
 });
 
@@ -319,7 +316,10 @@ test("the Dispatcher runs while PLANNING; a filed DRAFT then blocks until approv
   const { grp_id } = GroupIdResponse.parse(await r.json());
   await sched.drain();
   // Both planning turns DO run: without them the boss has nothing to approve.
-  expect(ran.map((j) => JSON.parse(j.payload_json).role)).toEqual(["architect", "dispatcher"]);
+  expect(ran.map((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role)).toEqual([
+    "architect",
+    "dispatcher",
+  ]);
 
   const card = `目标 : x
 不做 : y
@@ -406,13 +406,13 @@ test("sending a DRAFT back records the reason and re-runs the dispatcher", async
   const jobs = db
     .query<{ payload_json: string }, [number]>("SELECT payload_json FROM job WHERE grp_id = ?")
     .all(grp_id);
-  expect(JSON.parse(jobs.at(-1)!.payload_json).respec).toBe("wrong layer");
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(jobs.at(-1)!.payload_json)).respec).toBe("wrong layer");
 });
 
 test("pause is PAUSING only while something is in flight, PAUSED once idle", async () => {
   const { app, db } = harness();
   db.run("INSERT INTO job (kind, grp_id, state, enqueued_at) VALUES ('agent_turn', 1, 'running', 0)");
-  const r = await (await post(app, "/api/v1/groups/1/pause")).json();
+  const r = PauseResponse.parse(await (await post(app, "/api/v1/groups/1/pause")).json());
   // An in-flight turn cannot be steered, so claiming PAUSED would be a lie —
   // and the reply says how many turns it is waiting on.
   expect(r).toEqual({ status: "PAUSING", waiting: 1 });
@@ -420,7 +420,7 @@ test("pause is PAUSING only while something is in flight, PAUSED once idle", asy
 
   db.run("UPDATE job SET state = 'done'");
   db.run("UPDATE grp SET status = 'RUNNING' WHERE id = 1");
-  const idle = await (await post(app, "/api/v1/groups/1/pause")).json();
+  const idle = PauseResponse.parse(await (await post(app, "/api/v1/groups/1/pause")).json());
   expect(idle).toEqual({ status: "PAUSED", waiting: 0 });
 });
 
@@ -477,7 +477,7 @@ test("state snapshot carries everything the three views need", async () => {
   for (const k of ["projects", "groups", "slices", "agents", "tasks", "escalations"] as const) {
     expect(Array.isArray(s[k])).toBe(true);
   }
-  expect(s.agents!.length).toBe(2);
+  expect(s.agents.length).toBe(2);
 });
 
 test("a missing or bogus token is refused everywhere", async () => {
@@ -658,7 +658,7 @@ test("a second group triggers boundaries for every undeclared group, not just th
   const groups = BoundaryPayload.parse(JSON.parse(boundary.payload_json)).boundary;
   // An undeclared group beside a declared one is the same risk the rule exists to
   // prevent, just reached from the other direction.
-  expect(groups.map((g) => g.id).sort()).toEqual([1, grp_id].sort());
+  expect(groups.map((g) => g.id).sort((a, b) => a - b)).toEqual([1, grp_id].sort((a, b) => a - b));
 });
 
 test("a group that already declared its paths is not asked again", async () => {
@@ -733,7 +733,8 @@ test("an approval a boundary blocks is recorded, not thrown away", async () => {
       "SELECT payload_json FROM job WHERE grp_id = ? AND payload_json LIKE '%architect%' ORDER BY id DESC LIMIT 1",
     )
     .get(grp_id)!;
-  expect(JSON.parse(queued.payload_json).boundary.length).toBeGreaterThan(0);
+  const boundary = AgentTurnPayloadSchema.parse(JSON.parse(queued.payload_json)).boundary;
+  expect(Array.isArray(boundary) ? boundary.length : 0).toBeGreaterThan(0);
 });
 
 /** A blocked group B beside a running group A that holds every path. */
@@ -794,7 +795,7 @@ test("the group holding the paths dissolves, and the approved one starts itself"
       "SELECT payload_json, slice_id FROM job WHERE grp_id = ? AND kind = 'agent_turn' ORDER BY id DESC LIMIT 1",
     )
     .get(grpId)!;
-  expect(JSON.parse(turn.payload_json).role).toBe("engineer");
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(turn.payload_json)).role).toBe("engineer");
   expect(turn.slice_id).not.toBeNull();
 });
 
@@ -1097,7 +1098,7 @@ test("the boss can talk to the team, and triage decides what the words mean", as
   expect((await post(app, "/api/v1/say", { group_id: 1, body: "测试写得太浅" })).status).toBe(200);
   const woken = ran.filter((j) => j.kind === "agent_turn");
   expect(woken.length).toBe(1);
-  expect(JSON.parse(woken[0]!.payload_json).mail.from).toBe("boss");
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(woken[0]!.payload_json)).mail?.from).toBe("boss");
 
   // respec is the one that matters: without it dissatisfaction only ever reads as
   // "change one line" and a wrong decomposition is never corrected.
@@ -1120,16 +1121,16 @@ test("the blackboard is readable: notes by project, by group, and by kind", asyn
      VALUES (1, 1, 'decision', '中文', 'card', '{"draft_card":1}', 30)`,
   );
 
-  const all = NotesResponse.parse(await (await get(app, "/api/v1/notes?project=1")).json());
+  const all = NotesResponseSchema.parse(await (await get(app, "/api/v1/notes?project=1")).json());
   expect(all.notes.map((note) => note.kind)).toEqual(["lesson", "journal"]);
   // A project-level lesson has no group, and that is exactly where it matters.
   expect(all.notes.find((note) => note.kind === "lesson")?.grpId).toBe(null);
   expect(all.notes.find((note) => note.kind === "journal")?.group).toBe("g1");
 
-  const one = NotesResponse.parse(await (await get(app, "/api/v1/notes?group=1")).json());
+  const one = NotesResponseSchema.parse(await (await get(app, "/api/v1/notes?group=1")).json());
   expect(one.notes.map((note) => note.kind)).toEqual(["journal"]);
 
-  const kind = NotesResponse.parse(await (await get(app, "/api/v1/notes?project=1&kind=lesson")).json());
+  const kind = NotesResponseSchema.parse(await (await get(app, "/api/v1/notes?project=1&kind=lesson")).json());
   expect(kind.notes.length).toBe(1);
 });
 
@@ -1194,7 +1195,9 @@ test("one box holding several unrelated asks becomes several requirements", asyn
     ["remember-me", "PLANNING"],
     ["csv-export", "PLANNING"],
   ]);
-  const turns = ran.filter((j) => j.kind === "agent_turn" && JSON.parse(j.payload_json).role === "dispatcher");
+  const turns = ran.filter(
+    (j) => j.kind === "agent_turn" && AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role === "dispatcher",
+  );
   expect(turns.map((j) => j.grp_id)).toEqual([2, 3]);
   // Nothing the boss typed is lost: each child points back at the original paragraph.
   const child = db.query<{ body: string }, []>("SELECT body FROM note WHERE grp_id = 2").get()!;
@@ -1289,10 +1292,12 @@ test("a live group that owns the path gets it as an addition, not a rival group"
     "tok-eng",
   );
   expect(z.object({ handedTo: z.string() }).parse(await r.json()).handedTo).toBe("owner");
-  const p = JSON.parse(
-    h.db
-      .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE grp_id = 2 ORDER BY id DESC LIMIT 1")
-      .get()!.payload_json,
+  const p = AgentTurnPayloadSchema.parse(
+    JSON.parse(
+      h.db
+        .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE grp_id = 2 ORDER BY id DESC LIMIT 1")
+        .get()!.payload_json,
+    ),
   );
   expect(p.role).toBe("pm");
   expect(p.rejection).toContain("package.json");
@@ -1569,7 +1574,9 @@ test("path ids are decimal records, not JavaScript number expressions", async ()
     }),
   );
   expect(bad.status).toBe(400);
-  expect(await bad.json()).toMatchObject({ error: expect.stringContaining("id"), code: "validation_failed" });
+  const badBody = ErrorResponseSchema.parse(await bad.json());
+  expect(badBody.error).toContain("id");
+  expect(badBody.code).toBe("validation_failed");
   expect(h.db.query<{ name: string }, []>("SELECT name FROM project WHERE id = 16").get()?.name).toBe("sixteen");
 
   const action = await post(h.app, "/api/v1/groups/0x1/pause");

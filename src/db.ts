@@ -748,14 +748,16 @@ export function migrationMentioning(needle: string): number {
 /** Apply any migrations the database has not seen yet. Idempotent. */
 export function migrate(db: DB): void {
   db.exec("CREATE TABLE IF NOT EXISTS migration (n INTEGER PRIMARY KEY, at INTEGER NOT NULL)");
-  const applied = db
-    .query<{ n: number }, []>("SELECT n FROM migration")
-    .all()
-    .map((r) => r.n);
+  const applied = new Set(
+    db
+      .query<{ n: number }, []>("SELECT n FROM migration")
+      .all()
+      .map((r) => r.n),
+  );
   const stamp = db.prepare("INSERT INTO migration (n, at) VALUES (?, ?)");
   for (const [i, step] of MIGRATIONS.entries()) {
     const n = i + 1;
-    if (applied.includes(n)) continue;
+    if (applied.has(n)) continue;
     db.transaction(() => {
       if (typeof step === "string") db.exec(step);
       else step(db);

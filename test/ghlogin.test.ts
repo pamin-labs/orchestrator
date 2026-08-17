@@ -20,14 +20,14 @@ import {
   listRepos,
   pollForToken,
   startDeviceFlow,
-  type Fetcher,
+  type DeviceFlowFetcher,
 } from "../src/mech/git/ghlogin.ts";
 
 /** A fetcher that answers from a script and records what it was sent. */
-function scripted(answers: Json[]): { fetchFn: Fetcher; sent: Array<{ url: string; body: string }> } {
+function scripted(answers: Json[]): { fetchFn: DeviceFlowFetcher; sent: Array<{ url: string; body: string }> } {
   const sent: Array<{ url: string; body: string }> = [];
   let i = 0;
-  const fetchFn: Fetcher = async (url, init) => {
+  const fetchFn: DeviceFlowFetcher = async (url, init) => {
     sent.push({ url, body: init?.body ?? "" });
     const a = answers[Math.min(i++, answers.length - 1)];
     const status = a && typeof a === "object" && "status" in a && typeof a.status === "number" ? a.status : 200;
@@ -88,6 +88,7 @@ test("the device flow asks for a code, with no secret and no scope", async () =>
 });
 
 test("a JSON response still has to be a device-flow response", async () => {
+  // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
   await expect(startDeviceFlow(scripted([null]).fetchFn)).rejects.toThrow("invalid device-flow response");
 });
 
@@ -131,15 +132,18 @@ test("slow_down widens the interval, which is the whole reason to handle it", as
 
 test("a refused or expired login stops, and says which", async () => {
   const denied = scripted([{ error: "access_denied" }]);
+  // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
   await expect(pollForToken(DEVICE, { fetchFn: denied.fetchFn, sleep: async () => {} })).rejects.toThrow(/拒绝/);
 
   const expired = scripted([{ error: "expired_token" }]);
+  // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
   await expect(pollForToken(DEVICE, { fetchFn: expired.fetchFn, sleep: async () => {} })).rejects.toThrow(/过期/);
 
   // And a code that runs out while nobody is looking is the same message rather
   // than a poll that never returns.
   const forever = scripted([{ error: "authorization_pending" }]);
   let clock = 0;
+  // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
   await expect(
     pollForToken(DEVICE, {
       fetchFn: forever.fetchFn,

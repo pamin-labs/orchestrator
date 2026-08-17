@@ -130,9 +130,9 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
         {!lines.length ? (
           <Empty>容器还没说话。克隆和装依赖会在这里逐行出现。</Empty>
         ) : (
-          lines.map((l, i) => (
+          lines.map((l) => (
             <div
-              key={`${l.at}-${i}`}
+              key={`${l.at}:${l.kind}:${l.text}`}
               className={cn(
                 "whitespace-pre-wrap font-mono text-[0.6875rem] leading-relaxed",
                 l.kind === "cmd" ? "text-ink" : l.kind === "end" ? "text-ink-2" : "text-ink-3",

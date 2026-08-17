@@ -148,19 +148,34 @@ async function viaMailbox(
   return { status: 504, body: { error: `mailbox request timed out after ${MAILBOX_TIMEOUT_MS}ms` } };
 }
 
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function transportMetadata(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) {
+  const method = input instanceof Request ? input.method : (init?.method ?? "GET");
+  const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
+  const requestId = crypto.randomUUID();
+  const idempotencyKey = IDEMPOTENT_METHODS.has(method.toUpperCase()) ? undefined : crypto.randomUUID();
+  headers.set("X-Request-ID", requestId);
+  if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
+  return { method, headers, requestId, idempotencyKey };
+}
+
+function requestPayload(init?: Parameters<typeof fetch>[1]): Json | undefined {
+  return typeof init?.body === "string" ? JsonValue.parse(JSON.parse(init.body)) : undefined;
+}
+
 const transport = Object.assign(
   async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-    const method = input instanceof Request ? input.method : (init?.method ?? "GET");
-    const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
-    const requestId = crypto.randomUUID();
-    const idempotencyKey = ["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase()) ? undefined : crypto.randomUUID();
-    headers.set("X-Request-ID", requestId);
-    if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
+    const { method, headers, requestId, idempotencyKey } = transportMetadata(input, init);
     if (!MAILBOX) return fetch(input, { ...init, headers });
     const url = new URL(input instanceof Request ? input.url : input.toString());
-    const raw = typeof init?.body === "string" ? init.body : undefined;
-    const payload = raw ? JsonValue.parse(JSON.parse(raw)) : undefined;
-    const answer = await viaMailbox(method, `${url.pathname}${url.search}`, payload, requestId, idempotencyKey);
+    const answer = await viaMailbox(
+      method,
+      `${url.pathname}${url.search}`,
+      requestPayload(init),
+      requestId,
+      idempotencyKey,
+    );
     return Response.json(answer.body, { status: answer.status });
   },
   { preconnect: fetch.preconnect },

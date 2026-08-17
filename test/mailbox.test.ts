@@ -4,6 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalise, serve } from "../src/mech/sandbox/mailbox.ts";
 import type { Json } from "../src/contracts/json.ts";
+import { ProtocolResponse } from "../src/contracts/protocol.ts";
+import { z } from "zod";
+
+const Envelope = z.object({
+  id: z.string(),
+  method: z.enum(["GET", "POST"]),
+  path: z.string(),
+  token: z.string(),
+  request_id: z.string(),
+  idempotency_key: z.string().optional(),
+});
+const ErrorAnswer = z.object({ status: z.number(), body: z.object({ error: z.string() }) });
 
 /**
  * The agent's only way out.
@@ -43,7 +55,7 @@ test("a call becomes a request file and blocks until an answer appears", async (
     if (!req) await Bun.sleep(20);
   }
   expect(req).toMatch(/\.json$/);
-  const env = JSON.parse(await Bun.file(join(mb, "req", req)).text());
+  const env = Envelope.parse(JSON.parse(await Bun.file(join(mb, "req", req)).text()));
   expect(env.method).toBe("POST");
   expect(env.path).toBe("/orch/v1/status");
   expect(env.request_id).toMatch(/^[0-9a-f-]{36}$/);
@@ -132,7 +144,7 @@ test("a sandbox cannot reach the boss's routes through the mailbox", async () =>
   await serve(sb, "http://127.0.0.1:1", "/var/orch/req/x.json");
 
   expect(writes).toHaveLength(1);
-  const answer = JSON.parse(writes[0]!.data);
+  const answer = ErrorAnswer.parse(JSON.parse(writes[0]!.data));
   // 403, not silence: a dropped request leaves the agent blocked forever.
   expect(answer.status).toBe(403);
   // 502 would mean it tried the fetch and the (unreachable) port refused it.
@@ -156,7 +168,7 @@ test("the prefix guard cannot be walked out of with dot segments", async () => {
     const { writes, sb } = fakeFiles({ id: "z", method: "POST", path, token: "tok-1" });
     await serve(sb, "http://127.0.0.1:1", "/var/orch/req/z.json");
     expect(writes).toHaveLength(1);
-    const answer = JSON.parse(writes[0]!.data);
+    const answer = ProtocolResponse.parse(JSON.parse(writes[0]!.data));
     // 403 rather than 502: a 502 would mean the fetch was attempted.
     expect({ path, status: answer.status }).toEqual({ path, status: 403 });
   }
@@ -175,7 +187,7 @@ test("an /orch route still goes through", async () => {
   const { writes, sb } = fakeFiles({ id: "y", method: "POST", path: "/orch/v1/status", token: "tok-1" });
   await serve(sb, "http://127.0.0.1:1", "/var/orch/req/y.json");
   // Nothing is listening on port 1, so reaching the fetch at all is the assertion.
-  expect(JSON.parse(writes[0]!.data).status).toBe(502);
+  expect(ProtocolResponse.parse(JSON.parse(writes[0]!.data)).status).toBe(502);
 });
 
 test("a non-200 answer is passed through as a failure, not swallowed", async () => {
@@ -186,7 +198,7 @@ test("a non-200 answer is passed through as a failure, not swallowed", async () 
     req = readdirSync(join(mb, "req"))[0] ?? "";
     if (!req) await Bun.sleep(20);
   }
-  const { id } = JSON.parse(await Bun.file(join(mb, "req", req)).text());
+  const { id } = Envelope.parse(JSON.parse(await Bun.file(join(mb, "req", req)).text()));
   await Bun.write(join(mb, "res", `${id}.json`), JSON.stringify({ status: 422, body: { error: "no such group" } }));
   expect(await proc.exited).not.toBe(0);
 });

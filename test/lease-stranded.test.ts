@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { Scheduler, type Executor } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/scheduler.ts";
 import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../src/mech/sandbox/sandbox.ts";
 import { makeExecutor } from "../src/runtime/executor.ts";
 import type { Ctx } from "../src/api.ts";
@@ -101,12 +101,7 @@ test("a lease whose container is gone finishes as failed and releases the agent"
     )
     .get(agent.id)!;
   expect(wake.state).toBe("pending");
-  expect(JSON.parse(wake.payload_json)).toMatchObject({
-    mail: {
-      from: "runner",
-      from_group: 1,
-      intent: "inform",
-      body: expect.stringContaining("container unavailable"),
-    },
-  });
+  const mail = AgentTurnPayloadSchema.parse(JSON.parse(wake.payload_json)).mail;
+  expect(mail).toMatchObject({ from: "runner", from_group: 1, intent: "inform" });
+  expect(mail?.body).toContain("container unavailable");
 }, 30_000);

@@ -289,7 +289,7 @@ export type RestartOps = {
 
 const restartOps: RestartOps = {
   running: runningServer,
-  kill: process.kill,
+  kill: (pid, signal) => void process.kill(pid, signal),
   sleep: Bun.sleep,
   start: (argv, log) => {
     const out = log ? Bun.file(log) : "ignore";
@@ -930,9 +930,9 @@ export const SANDBOX_API_KEY_HEADER = "OPEN-SANDBOX-API-KEY";
  */
 export function splitAddr(addr: string): { protocol: "http" | "https"; authority: string } {
   const m = /^(https?):\/\/(.+)$/i.exec(addr.trim());
-  return m
-    ? { protocol: m[1]!.toLowerCase() as "http" | "https", authority: m[2]!.replace(/\/+$/, "") }
-    : { protocol: "http", authority: addr.trim() };
+  if (!m) return { protocol: "http", authority: addr.trim() };
+  const protocol = m[1]?.toLowerCase();
+  return { protocol: protocol === "https" ? "https" : "http", authority: m[2]!.replace(/\/+$/, "") };
 }
 
 /**
@@ -1039,7 +1039,7 @@ export async function writeInto(
       await sb.files.writeFiles(files);
     } catch (e) {
       const where = files.map((f) => f.path).join(", ");
-      throw new Error(`could not write ${where} into the container: ${errText(e)}`);
+      throw new Error(`could not write ${where} into the container: ${errText(e)}`, { cause: e });
     }
   }
 }

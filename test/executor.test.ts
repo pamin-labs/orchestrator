@@ -8,7 +8,7 @@ import { loadConfig, loadRoles } from "../src/config.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import type { TurnResult, TurnSpec } from "../src/runtime/claude.ts";
 import { cacheRatio, type ExecDeps, hire, LOST_SESSION, makeExecutor } from "../src/runtime/executor.ts";
-import { Scheduler, type Executor } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/scheduler.ts";
 import { abortJob } from "../src/runtime/running.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
@@ -70,9 +70,9 @@ function expectDurableLeaseWake(db: DB, agentId: number, body: string): void {
     )
     .get(agentId)!;
   expect(wake.agent_id).toBe(agentId);
-  expect(JSON.parse(wake.payload_json)).toMatchObject({
-    mail: { from: "runner", from_group: 1, intent: "inform", body: expect.stringContaining(body) },
-  });
+  const mail = AgentTurnPayloadSchema.parse(JSON.parse(wake.payload_json)).mail;
+  expect(mail).toMatchObject({ from: "runner", from_group: 1, intent: "inform" });
+  expect(mail?.body).toContain(body);
 }
 
 test("a turn hires the role's agent on first use, with a token", async () => {
@@ -434,9 +434,11 @@ test("malformed persisted payloads fail before a turn starts", async () => {
   db.run("UPDATE job SET payload_json = 'null' WHERE id = ?", [first]);
   await sched.drain();
   expect(specs).toHaveLength(0);
-  expect(
-    db.query<{ state: string; error: string }, [number]>("SELECT state, error FROM job WHERE id = ?").get(first),
-  ).toMatchObject({ state: "failed", error: expect.stringContaining("invalid agent_turn payload") });
+  const failed = db
+    .query<{ state: string; error: string }, [number]>("SELECT state, error FROM job WHERE id = ?")
+    .get(first)!;
+  expect(failed.state).toBe("failed");
+  expect(failed.error).toContain("invalid agent_turn payload");
 
   const second = sched.enqueue("agent_turn", { grp_id: 1, payload: { role: "engineer" } });
   db.run("UPDATE job SET payload_json = ? WHERE id = ?", [

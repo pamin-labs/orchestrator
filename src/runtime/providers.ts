@@ -1,7 +1,7 @@
 import { DEFAULT_PROVIDER, type Effort } from "../config.ts";
 import type { TurnHandlers, TurnResult, TurnSpec } from "./claude.ts";
-import { runTurn as runClaude } from "./claude.ts";
-import { runTurn as runCodex } from "./codex.ts";
+import { runClaudeTurn as runClaude } from "./claude.ts";
+import { runCodexTurn as runCodex } from "./codex.ts";
 
 /**
  * The registry of agent CLIs.

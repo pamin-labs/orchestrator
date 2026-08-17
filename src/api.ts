@@ -21,8 +21,8 @@ import {
   type RuntimeStatus,
 } from "./observability.ts";
 
-export type { Caller, Ctx } from "./ctx.ts";
-export { bossFact, imagePaths, withAttachments, type Attachment } from "./api/panel/attach.ts";
+export type { Ctx } from "./ctx.ts";
+export { bossFact, imagePaths, withAttachments } from "./api/panel/attach.ts";
 export { askKind, brief } from "./api/orch/escalation.ts";
 export { landGroup } from "./api/panel/group.ts";
 export { evictOldestLessons, LESSON_CAP } from "./mech/knowledge/lessons.ts";

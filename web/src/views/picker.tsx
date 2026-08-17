@@ -99,7 +99,7 @@ function Browse({
           /
         </Button>
         {parts.map((seg, i) => (
-          <span key={i} className="flex items-center">
+          <span key={parts.slice(0, i + 1).join("/")} className="flex items-center">
             {i > 0 && <span className="text-ink-3">/</span>}
             <Button size="sm" variant="quiet" onClick={() => load("/" + parts.slice(0, i + 1).join("/"))}>
               {seg}

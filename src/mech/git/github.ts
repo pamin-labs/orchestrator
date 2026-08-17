@@ -76,7 +76,7 @@ export interface GhOk<T> {
 export type GhResult<T> = GhOk<T> | GhFail;
 
 /** Only the shape this uses, so a test stub is a `new Response(...)`. */
-export type Fetcher = (
+export type GithubFetcher = (
   url: string,
   init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
 ) => Promise<Response>;
@@ -184,7 +184,7 @@ export function clearEscalation(db: DB, slug: string): void {
 
 export function makeGithub(
   db: DB,
-  fetchFn: Fetcher = fetch,
+  fetchFn: GithubFetcher = fetch,
   /** `output.language`, for the one sentence the boss reads. */
   lang?: string,
 ): Github {

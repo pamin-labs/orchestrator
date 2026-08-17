@@ -2,7 +2,13 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import type { Json } from "../src/contracts/json.ts";
 import { buildStable } from "../src/prompt/assemble.ts";
-import { buildArgv, runTurn, summarizeTool, trimForLog, type TurnRunner } from "../src/runtime/claude.ts";
+import {
+  buildClaudeArgv as buildArgv,
+  runClaudeTurn as runTurn,
+  summarizeTool,
+  trimForLog,
+  type TurnRunner,
+} from "../src/runtime/claude.ts";
 
 const stable = buildStable({
   rolePrompt: "Engineer",

@@ -40,9 +40,13 @@ import { slug } from "../slug.ts";
  * a taxonomy.
  */
 const ASK_KINDS = ["env", "spec", "boundary", "design", "other"] as const;
+export type AskKind = (typeof ASK_KINDS)[number];
+const isAskKind = (value: string): value is AskKind => ASK_KINDS.some((kind) => kind === value);
 
-export const askKind = (given: string | undefined): string =>
-  ASK_KINDS.includes((given ?? "").trim() as (typeof ASK_KINDS)[number]) ? given!.trim() : "other";
+export const askKind = (given: string | undefined): AskKind => {
+  const value = given?.trim() ?? "";
+  return isAskKind(value) ? value : "other";
+};
 
 export function brief(given: string | undefined, question: string): string {
   const raw = (given ?? question.split(/[\n。.!?！？]/)[0] ?? "").trim();

@@ -5,7 +5,7 @@ import { openMemory, type DB } from "../src/db.ts";
 import { abstain, answer, entryPoint, isReserved, revoke, route, triage, TRIAGE } from "../src/mech/flow/chain.ts";
 import { SayBody } from "../src/api/orch/messaging.ts";
 import { TriageBody } from "../src/api/orch/escalation.ts";
-import { Scheduler } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, Scheduler } from "../src/scheduler.ts";
 import { makeApp, type Ctx } from "../src/api.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
@@ -221,7 +221,9 @@ test("patch keeps the work and asks the PM for a correction", () => {
   const h = harness();
   triage(h.deps, 1, "patch", "tests are too shallow");
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("RUNNING");
-  expect(JSON.parse(jobsFor(h.db).at(-1)!.payload_json).rejection).toContain("too shallow");
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(jobsFor(h.db).at(-1)!.payload_json)).rejection).toContain(
+    "too shallow",
+  );
 });
 
 test("respec sends the whole thing back to be re-scoped", () => {
@@ -234,7 +236,9 @@ test("respec sends the whole thing back to be re-scoped", () => {
   // stopped the Dispatcher turn respec exists to run. The group is back to being
   // re-scoped, and a new card is what returns it to DRAFT.
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
-  expect(JSON.parse(jobsFor(h.db).at(-1)!.payload_json).respec).toContain("not what I asked");
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(jobsFor(h.db).at(-1)!.payload_json)).respec).toContain(
+    "not what I asked",
+  );
 });
 
 test("reject dissolves the group so it stops holding its paths", () => {
@@ -257,7 +261,7 @@ test("a patch on a card still waiting for approval rewrites the card", () => {
   h.db.run("UPDATE grp SET status = 'DRAFT' WHERE id = 1");
   triage(h.deps, 1, "patch", "还要支持中文");
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PLANNING");
-  const p = JSON.parse(jobsFor(h.db).at(-1)!.payload_json);
+  const p = AgentTurnPayloadSchema.parse(JSON.parse(jobsFor(h.db).at(-1)!.payload_json));
   expect(p.role).toBe("dispatcher");
   expect(p.rejection).toContain("还要支持中文");
 });
@@ -474,7 +478,7 @@ test("the boss can hand a question to the Architect instead of answering it", as
       "SELECT agent_id, payload_json FROM job WHERE kind = 'agent_turn' ORDER BY id DESC",
     )
     .get()!;
-  expect(JSON.parse(job.payload_json).escalation).toBe(id);
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(job.payload_json)).escalation).toBe(id);
 });
 
 test("delegating to the boss is refused — that is where it already is", async () => {

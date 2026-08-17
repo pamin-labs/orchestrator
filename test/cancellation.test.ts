@@ -4,13 +4,13 @@ import { makeApp, type Ctx } from "../src/api.ts";
 import { Bus } from "../src/bus.ts";
 import { loadConfig } from "../src/config.ts";
 import { openMemory } from "../src/db.ts";
-import { makeGithub, type Fetcher } from "../src/mech/git/github.ts";
+import { makeGithub, type GithubFetcher } from "../src/mech/git/github.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
 import { abortJob } from "../src/runtime/running.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
 
-function blockedFetch(onStart: (signal: AbortSignal) => void): Fetcher {
+function blockedFetch(onStart: (signal: AbortSignal) => void): GithubFetcher {
   return async (_url, init) => {
     const signal = init.signal;
     if (!signal) throw new Error("GitHub request has no cancellation signal");

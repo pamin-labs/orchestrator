@@ -388,7 +388,12 @@ export function ImageRow({
       <FieldTitle id="cfg-image">{label}</FieldTitle>
       <FieldContent className="flex-col items-start gap-1.5">
         <div className="flex w-full items-center gap-2">
-          <Segments value={src} onValueChange={(v) => setSrc(v as "remote" | "local")}>
+          <Segments
+            value={src}
+            onValueChange={(value) => {
+              if (value === "remote" || value === "local") setSrc(value);
+            }}
+          >
             <Segment value="remote">远程</Segment>
             <Segment value="local">本地</Segment>
           </Segments>

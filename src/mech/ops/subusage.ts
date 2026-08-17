@@ -275,7 +275,7 @@ export function rateLimitsIn(text: string, now: number): RateLimitInfo | null {
   const lines = text.split("\n").filter((l) => l.includes('"rate_limits"'));
   // Last reading in the file wins: it grows as the session runs.
   for (let i = lines.length - 1; i >= 0; i--) {
-    const rl = jsonOr(lines[i]!, CodexRolloutLine.nullable(), null)?.payload?.rate_limits;
+    const rl = jsonOr(lines[i], CodexRolloutLine.nullable(), null)?.payload?.rate_limits;
     const out = rl && fromCodex(rl.primary ?? null, rl.secondary ?? null, now);
     if (out) return out;
   }
@@ -313,19 +313,22 @@ function fromCodex(...args: [CodexWindow, CodexWindow, number]): RateLimitInfo |
   const [a, b, now] = args;
   const wins = [a, b].filter((w): w is NonNullable<CodexWindow> => !!w && w.used_percent !== undefined);
   if (!wins.length) return null;
-  const at = (w: NonNullable<CodexWindow>) =>
-    w.resets_at ?? (w.resets_in_seconds ? Math.floor(now / 1000) + w.resets_in_seconds : 0);
   const five = wins.find((w) => (w.window_minutes ?? 0) < 600);
   const week = wins.find((w) => (w.window_minutes ?? 0) >= 6000);
   if (!five && !week) return null;
   return {
     status: "allowed",
     rateLimitType: "five_hour",
-    resetsAt: five ? at(five) : 0,
+    resetsAt: five ? resetAt(five, now) : 0,
     ...(five?.used_percent === undefined ? {} : { fiveHourPercent: five.used_percent }),
     ...(week?.used_percent === undefined ? {} : { weeklyPercent: week.used_percent }),
-    ...(week ? { weeklyResetsAt: at(week) } : {}),
+    ...(week ? { weeklyResetsAt: resetAt(week, now) } : {}),
   };
+}
+
+function resetAt(window: NonNullable<CodexWindow>, now: number): number {
+  if (window.resets_at !== undefined) return window.resets_at;
+  return window.resets_in_seconds ? Math.floor(now / 1000) + window.resets_in_seconds : 0;
 }
 
 /** The `limit` most recently modified files under a directory tree, newest first. */

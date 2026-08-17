@@ -47,7 +47,7 @@ export const CLIENT_ID = "Iv23liUP6a00TszuLZvc";
 export const APP_SLUG = "orchestrator-agentic-app";
 
 /** Only the shape used here, so a test stub is a function rather than a cast. */
-export type Fetcher = (
+export type DeviceFlowFetcher = (
   url: string,
   init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal },
 ) => Promise<{ ok: boolean; status: number; json: () => Promise<Json | undefined> }>;
@@ -83,7 +83,7 @@ const DeviceFlowBody = z.object({
 });
 type DeviceFlowBody = z.infer<typeof DeviceFlowBody>;
 
-async function form(fetchFn: Fetcher, url: string, params: Record<string, string>): Promise<DeviceFlowBody> {
+async function form(fetchFn: DeviceFlowFetcher, url: string, params: Record<string, string>): Promise<DeviceFlowBody> {
   const r = await fetchFn(url, {
     method: "POST",
     // Without this GitHub answers url-encoded and every field reads as undefined.
@@ -98,7 +98,7 @@ async function form(fetchFn: Fetcher, url: string, params: Record<string, string
 }
 
 /** Ask for a code. Returns as soon as there is something to show. */
-export async function startDeviceFlow(fetchFn: Fetcher = fetch): Promise<DeviceCode> {
+export async function startDeviceFlow(fetchFn: DeviceFlowFetcher = fetch): Promise<DeviceCode> {
   const b = await form(fetchFn, DEVICE_CODE_URL, { client_id: CLIENT_ID });
   if (b.error || !b.device_code) throw new Error(b.error_description || b.error || "GitHub 没给出登录码");
   return {
@@ -120,7 +120,7 @@ export async function startDeviceFlow(fetchFn: Fetcher = fetch): Promise<DeviceC
  */
 export async function pollForToken(
   d: DeviceCode,
-  opts: { fetchFn?: Fetcher; sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
+  opts: { fetchFn?: DeviceFlowFetcher; sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
 ): Promise<string> {
   const fetchFn = opts.fetchFn ?? fetch;
   const sleep = opts.sleep ?? Bun.sleep;
@@ -146,7 +146,7 @@ export async function pollForToken(
         throw new Error("登录码过期了，重新点一次「连接 GitHub」");
       case "access_denied":
         throw new Error("在 GitHub 上拒绝了这次授权");
-      default:
+      case undefined:
         throw new Error(b.error_description || b.error || "GitHub 没给出 token");
     }
   }

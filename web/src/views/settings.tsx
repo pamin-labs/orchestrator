@@ -124,16 +124,18 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
 ];
 
 const PROJECT_SECTIONS = new Set<Section>(["gates", "sandbox", "remove"]);
+const NO_SECTION_CHANGE = (_section: Section): void => {};
+const NO_REMOVAL = (): void => {};
 
 export function SettingsDialog({
   open,
   onOpenChange,
   initial,
-  onSection = () => {},
+  onSection = NO_SECTION_CHANGE,
   projectId,
   projectName,
   groupCount,
-  onRemoved = () => {},
+  onRemoved = NO_REMOVAL,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;

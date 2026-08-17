@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Json } from "../src/contracts/json.ts";
 import { openMemory } from "../src/db.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
-import { classify, makeGithub, type Fetcher } from "../src/mech/git/github.ts";
+import { classify, makeGithub, type GithubFetcher } from "../src/mech/git/github.ts";
 import { parseRepo } from "../src/contracts/repository.ts";
 
 /**
@@ -27,7 +27,7 @@ test("a 404 says the login cannot reach it, and never that the repo was deleted"
   // GitHub answers 404 rather than 403 for a private repo a token cannot see, so
   // "deleted", "org revoked access", "removed from the org" and "lost its scope"
   // are the same response. Naming one of them sends the boss to the wrong page.
-  const fetchFn: Fetcher = async () => json(404, { message: "Not Found" });
+  const fetchFn: GithubFetcher = async () => json(404, { message: "Not Found" });
   const r = await makeGithub(db(), fetchFn).request("GET", "/repos/me/gone", z.json());
   expect(r.ok).toBe(false);
   if (r.ok) throw new Error("unreachable");
@@ -47,7 +47,7 @@ test("a 304 costs nothing and hands back the body we already had", async () => {
   // reason for the ETag: pollPrs runs against every open PR every tick.
   const sent: Array<string | undefined> = [];
   let hits = 0;
-  const fetchFn: Fetcher = async (_url, init) => {
+  const fetchFn: GithubFetcher = async (_url, init) => {
     sent.push(init.headers["if-none-match"]);
     hits++;
     return hits === 1
@@ -93,7 +93,7 @@ test("rotating the login invalidates the ETags rather than reusing them", async 
   // one's answers, and must not send its ETag either.
   const sent: Array<string | undefined> = [];
   const d = db("ghp_one");
-  const fetchFn: Fetcher = async (_url, init) => {
+  const fetchFn: GithubFetcher = async (_url, init) => {
     sent.push(init.headers["if-none-match"]);
     const authorization = init.headers.authorization;
     if (!authorization) throw new Error("missing authorization fixture");
@@ -129,7 +129,7 @@ test("the three buckets are the three different answers", () => {
 
 test("a network throw is transient, not a bad credential", async () => {
   let attempts = 0;
-  const fetchFn: Fetcher = async () => {
+  const fetchFn: GithubFetcher = async () => {
     attempts += 1;
     throw new TypeError("fetch failed");
   };
@@ -209,7 +209,7 @@ test("caller cancellation aborts an active GitHub request without retrying", asy
 
 test("no credential is the boss's, and nothing is sent", async () => {
   let called = false;
-  const fetchFn: Fetcher = async () => {
+  const fetchFn: GithubFetcher = async () => {
     called = true;
     return json(200, {});
   };

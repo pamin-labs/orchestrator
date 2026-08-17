@@ -458,7 +458,5 @@ export const postGroupControl = (async (ctx, req, params, b) => {
       const out = await interrupt(ctx, grpId, mode);
       return json(out);
     }
-    default:
-      return bad(`unknown action ${action}`);
   }
 }) satisfies Handler<z.infer<typeof GroupControlBody>, z.infer<typeof GroupAction>>;

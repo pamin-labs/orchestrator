@@ -124,7 +124,7 @@ export function validateDraftCard(text: string): Result<DraftOk> {
       current = head;
       // Repeated headers append: 验收 and 切片 are naturally one-per-line.
       if (!sections.has(head)) sections.set(head, []);
-      const rest = m![2]!.trim().replace(/^[-•]\s*/, "");
+      const rest = m[2]!.trim().replace(/^[-•]\s*/, "");
       if (rest) sections.get(head)!.push(rest);
       continue;
     }

@@ -158,13 +158,97 @@ export function rowsOf(chunk: parseDiff.Chunk): Row[] {
 function marks(a: string, b: string, side: "left" | "right") {
   const parts = diffWordsWithSpace(a, b);
   const want = side === "left" ? "removed" : "added";
+  let offset = 0;
   return parts
     .filter((p) => (want === "removed" ? !p.added : !p.removed))
-    .map((p, i) => (
-      <span key={i} className={cn(p[want] && (side === "left" ? "bg-bad-mark" : "bg-ok-mark"))}>
-        {p.value}
-      </span>
-    ));
+    .map((p) => {
+      const key = `${offset}:${p.value}`;
+      offset += p.value.length;
+      return (
+        <span key={key} className={cn(p[want] && (side === "left" ? "bg-bad-mark" : "bg-ok-mark"))}>
+          {p.value}
+        </span>
+      );
+    });
+}
+
+function DiffRow({ row }: { row: Row }) {
+  if (row.gap !== undefined) {
+    return (
+      <tr>
+        <td colSpan={4} className="border-y border-rule-soft bg-sunk px-3.5 py-0.5 text-ink-3">
+          {row.gap.replace(/^@@[^@]*@@\s*/, "") || "…"}
+        </td>
+      </tr>
+    );
+  }
+  return (
+    <tr>
+      <Gutter
+        {...(row.left ? { n: row.left.n } : {})}
+        {...(row.left && (!row.right || row.left.changed) ? { tone: "bad" satisfies "bad" } : {})}
+      />
+      <Side {...(row.left ? { cell: row.left } : {})} {...(row.right ? { other: row.right } : {})} side="left" />
+      <Gutter
+        {...(row.right ? { n: row.right.n } : {})}
+        {...(row.right && (!row.left || row.right.changed) ? { tone: "ok" satisfies "ok" } : {})}
+        split
+      />
+      <Side {...(row.right ? { cell: row.right } : {})} {...(row.left ? { other: row.left } : {})} side="right" />
+    </tr>
+  );
+}
+
+function DiffFile({
+  file,
+  index,
+  expanded,
+  head,
+  onExpand,
+}: {
+  file: parseDiff.File;
+  index: number;
+  expanded: boolean;
+  head: (element: HTMLDivElement | null) => void;
+  onExpand: () => void;
+}) {
+  const name = file.to && file.to !== "/dev/null" ? file.to : (file.from ?? "?");
+  const rows = file.chunks.flatMap((chunk): Row[] => [{ gap: chunk.content }, ...rowsOf(chunk)]);
+  const shown = expanded ? rows : rows.slice(0, 400);
+  return (
+    <div>
+      <div
+        ref={head}
+        data-i={index}
+        className="mt-2 flex items-baseline gap-2 border-y-2 border-rule bg-sunk px-3.5 py-1.5 first:mt-0"
+      >
+        <span className="font-mono text-[0.6875rem] font-semibold">{name}</span>
+        <span className="font-mono text-[0.625rem]">
+          <span className="text-ok">+{file.additions}</span> <span className="text-bad">−{file.deletions}</span>
+        </span>
+      </div>
+      <table className="w-full table-fixed border-collapse font-mono text-[0.6875rem] leading-[1.55]">
+        <colgroup>
+          <col className="w-10" />
+          <col className="w-[calc(50%-2.5rem)]" />
+          <col className="w-10" />
+          <col />
+        </colgroup>
+        <tbody>
+          {shown.map((row) => (
+            <DiffRow key={row.gap ?? `${row.left?.n ?? ""}:${row.right?.n ?? ""}`} row={row} />
+          ))}
+        </tbody>
+      </table>
+      {rows.length > shown.length && (
+        <div className="border-y border-rule-soft bg-sunk px-3.5 py-1">
+          <Button variant="quiet" size="sm" onClick={onExpand}>
+            还有 {rows.length - shown.length} 行
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function DiffView({ diff, truncated }: { diff: string; truncated?: boolean }) {
@@ -225,85 +309,18 @@ export function DiffView({ diff, truncated }: { diff: string; truncated?: boolea
 
       <Panel className="min-w-0">
         <div ref={pane} className="h-full overflow-auto">
-          {order.map((fi) => {
-            const f = files[fi]!;
-            const name = nameOf(f);
-            const rows = f.chunks.flatMap((c): Row[] => [{ gap: c.content }, ...rowsOf(c)]);
-            // Bounded per file, not per diff: thirty files of four hundred rows each
-            // is a DOM nobody scrolls, and the long file is usually not the one being
-            // reviewed. Opening one is a click, and it stays open.
-            const shown = open.has(fi) ? rows : rows.slice(0, 400);
-            return (
-              <div key={name}>
-                <div
-                  ref={(el) => {
-                    heads.current[fi] = el;
-                  }}
-                  data-i={fi}
-                  className="mt-2 flex items-baseline gap-2 border-y-2 border-rule bg-sunk px-3.5 py-1.5 first:mt-0"
-                >
-                  <span className="font-mono text-[0.6875rem] font-semibold">{name}</span>
-                  <span className="font-mono text-[0.625rem]">
-                    <span className="text-ok">+{f.additions}</span> <span className="text-bad">−{f.deletions}</span>
-                  </span>
-                </div>
-                <table className="w-full table-fixed border-collapse font-mono text-[0.6875rem] leading-[1.55]">
-                  <colgroup>
-                    <col className="w-10" />
-                    <col className="w-[calc(50%-2.5rem)]" />
-                    <col className="w-10" />
-                    <col />
-                  </colgroup>
-                  <tbody>
-                    {shown.map((r, i) =>
-                      r.gap !== undefined ? (
-                        <tr key={i}>
-                          <td colSpan={4} className="border-y border-rule-soft bg-sunk px-3.5 py-0.5 text-ink-3">
-                            {/* The useful half of `@@ -1,7 +1,9 @@` is the context after it. */}
-                            {r.gap.replace(/^@@[^@]*@@\s*/, "") || "…"}
-                          </td>
-                        </tr>
-                      ) : (
-                        <tr key={i}>
-                          <Gutter
-                            {...(r.left ? { n: r.left.n } : {})}
-                            {...(r.left && (!r.right || r.left.changed) ? { tone: "bad" satisfies "bad" } : {})}
-                          />
-                          <Side
-                            {...(r.left ? { cell: r.left } : {})}
-                            {...(r.right ? { other: r.right } : {})}
-                            side="left"
-                          />
-                          <Gutter
-                            {...(r.right ? { n: r.right.n } : {})}
-                            {...(r.right && (!r.left || r.right.changed) ? { tone: "ok" satisfies "ok" } : {})}
-                            split
-                          />
-                          <Side
-                            {...(r.right ? { cell: r.right } : {})}
-                            {...(r.left ? { other: r.left } : {})}
-                            side="right"
-                          />
-                        </tr>
-                      ),
-                    )}
-                  </tbody>
-                </table>
-                {rows.length > shown.length && (
-                  <div className="border-y border-rule-soft bg-sunk px-3.5 py-1">
-                    {/* The project's Button, not a hand-styled one: this is an action,
-                      and every control in the page shares one shape and one set of
-                      focus / hover / disabled states. The rows above are not — they
-                      are a list you navigate, and dressing them as buttons would say
-                      the wrong thing about what they do. */}
-                    <Button variant="quiet" size="sm" onClick={() => setOpen(new Set([...open, fi]))}>
-                      还有 {rows.length - shown.length} 行
-                    </Button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {order.map((index) => (
+            <DiffFile
+              key={nameOf(files[index]!)}
+              file={files[index]!}
+              index={index}
+              expanded={open.has(index)}
+              head={(element) => {
+                heads.current[index] = element;
+              }}
+              onExpand={() => setOpen(new Set([...open, index]))}
+            />
+          ))}
           {truncated && (
             <Meta className="block px-3.5 py-2">改动超过 400k 字符，尾部没取回来，剩下的在沙盒的 checkout 里</Meta>
           )}

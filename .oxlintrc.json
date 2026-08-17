@@ -1,13 +1,13 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "categories": {
-    "correctness": "warn",
-    "suspicious": "warn",
-    "perf": "warn"
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
   },
-  "plugins": ["typescript", "react", "react-hooks", "jsx-a11y", "promise", "unicorn", "oxc"],
+  "plugins": ["typescript", "react", "jsx-a11y", "promise", "unicorn", "oxc"],
   "options": {
-    "denyWarnings": false,
+    "denyWarnings": true,
     "reportUnusedDisableDirectives": "error",
     "typeAware": true,
     "typeCheck": false
@@ -15,36 +15,41 @@
   "rules": {
     "no-unused-vars": ["error", { "args": "none", "varsIgnorePattern": "^_" }],
     "no-control-regex": "off",
+    "no-await-in-loop": "off",
+    "no-shadow": "off",
+    "no-underscore-dangle": "off",
+    "oxc/no-map-spread": "off",
+    "promise/always-return": "off",
+    "typescript/consistent-return": "off",
+    "typescript/no-unnecessary-type-conversion": "off",
+    "typescript/no-unnecessary-type-parameters": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-reverse": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/prefer-add-event-listener": "off",
     "typescript/no-explicit-any": "error",
     "typescript/no-floating-promises": "error",
-    "typescript/no-misused-promises": ["error", { "checksVoidReturn": false }],
+    "typescript/no-misused-promises": ["error", { "checksVoidReturn": { "attributes": false } }],
     "typescript/no-unsafe-assignment": "error",
     "typescript/no-unsafe-call": "error",
     "typescript/no-unsafe-member-access": "error",
     "typescript/no-unsafe-return": "error",
-    "typescript/switch-exhaustiveness-check": ["error", { "considerDefaultExhaustiveForUnions": true }],
-    "react-hooks/rules-of-hooks": "error",
-    "react-hooks/exhaustive-deps": "error",
+    "typescript/switch-exhaustiveness-check": ["error", { "defaultCaseCommentPattern": "@skip-exhaustive-check" }],
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
     "react/react-in-jsx-scope": "off",
+    "react/no-unstable-nested-components": ["error", { "allowAsProps": true }],
     "jsx-a11y/alt-text": "error",
     "jsx-a11y/anchor-is-valid": "error",
     "jsx-a11y/click-events-have-key-events": "error",
     "jsx-a11y/label-has-associated-control": "error",
-    "jsx-a11y/no-static-element-interactions": "error"
+    "jsx-a11y/no-static-element-interactions": "error",
+    "jsx-a11y/prefer-tag-over-role": "off"
   },
   "overrides": [
     {
-      "files": ["test/**"],
-      "rules": {
-        "typescript/no-explicit-any": "warn",
-        "typescript/no-floating-promises": "warn",
-        "typescript/no-misused-promises": ["warn", { "checksVoidReturn": false }],
-        "typescript/no-unsafe-assignment": "warn",
-        "typescript/no-unsafe-call": "warn",
-        "typescript/no-unsafe-member-access": "warn",
-        "typescript/no-unsafe-return": "warn",
-        "typescript/switch-exhaustiveness-check": ["warn", { "considerDefaultExhaustiveForUnions": true }]
-      }
+      "files": ["web/src/ui/button.tsx"],
+      "rules": { "jsx-a11y/anchor-has-content": "off" }
     }
   ],
   "ignorePatterns": ["web/dist", "data", "leases", ".cache"]

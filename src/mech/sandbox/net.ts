@@ -64,12 +64,12 @@ let lastProbe = 0;
  * answering is a network fault.
  */
 /** Only the shape this uses, so a test stub is two lines rather than a cast. */
-export type Fetcher = (url: string, init: { method: string; signal: AbortSignal }) => Promise<Response>;
+export type SandboxFetcher = (url: string, init: { method: string; signal: AbortSignal }) => Promise<Response>;
 
 export async function probe(
   db: DB,
   now: number,
-  fetchFn: Fetcher = fetch,
+  fetchFn: SandboxFetcher = fetch,
 ): Promise<{ online: boolean; changed: boolean }> {
   // Only while it is working. Offline, every tick — the answer that matters then
   // is "is it back", and nothing else on the tick is running anyway.
@@ -86,7 +86,7 @@ export async function probe(
   return { online, changed };
 }
 
-async function reachable(hosts: string[], fetchFn: Fetcher): Promise<boolean> {
+async function reachable(hosts: string[], fetchFn: SandboxFetcher): Promise<boolean> {
   const tries = hosts.map(async (h) => {
     // HEAD, not GET: nothing here wants the body, and some of these endpoints
     // charge for one. A 404 or a 405 is still a reachable host.

@@ -5,13 +5,14 @@ import { z } from "zod";
 import type { ApiType } from "../src/api.ts";
 import type { IdempotencyRecordStatus, IdempotencyUnresolvedList } from "../src/contracts/idempotency.ts";
 import type { Json } from "../src/contracts/json.ts";
-import type { ErrorResponse } from "../src/contracts/protocol.ts";
+import { ErrorResponseSchema, type ErrorResponse } from "../src/contracts/protocol.ts";
 import type { OrchType } from "../src/http/routes/orch.ts";
 import { jsonBody, pathParams } from "../src/http/validate.ts";
 import { routeSource } from "./route-source.ts";
 
 const panel = hc<ApiType>("http://localhost/api/v1");
 const orch = hc<OrchType>("http://localhost/orch/v1");
+const EchoResponse = z.object({ id: z.number(), idType: z.literal("number"), data: z.string() });
 type StateResponse = InferResponseType<typeof panel.state.$get, 200>;
 const rpcResponseIsTyped: StateResponse extends { ready: boolean; lastSeq: number } ? true : never = true;
 
@@ -58,7 +59,7 @@ test("Hono gives handlers the schemas' output values", async () => {
   });
 
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ id: 42, idType: "number", data: "hello" });
+  expect(EchoResponse.parse(await response.json())).toEqual({ id: 42, idType: "number", data: "hello" });
 });
 
 test("schema failures are JSON bad requests", async () => {
@@ -71,11 +72,10 @@ test("schema failures are JSON bad requests", async () => {
 
   expect(response.status).toBe(400);
   expect(response.headers.get("content-type")).toContain("application/json");
-  expect(await response.json()).toMatchObject({
-    error: expect.stringContaining("Too small"),
-    code: "validation_failed",
-    request_id: expect.any(String),
-  });
+  const error = ErrorResponseSchema.parse(await response.json());
+  expect(error.error).toContain("Too small");
+  expect(error.code).toBe("validation_failed");
+  expect(error.request_id).not.toBe("");
 });
 
 test("non-JSON bodies never reach an all-optional JSON schema", async () => {
@@ -93,11 +93,10 @@ test("non-JSON bodies never reach an all-optional JSON schema", async () => {
       body: JSON.stringify({ tokens: 7 }),
     });
     expect(response.status).toBe(415);
-    expect(await response.json()).toMatchObject({
-      error: "Content-Type must be application/json",
-      code: "unsupported_media_type",
-      request_id: expect.any(String),
-    });
+    const error = ErrorResponseSchema.parse(await response.json());
+    expect(error.error).toBe("Content-Type must be application/json");
+    expect(error.code).toBe("unsupported_media_type");
+    expect(error.request_id).not.toBe("");
   }
   expect(calls).toBe(0);
 });

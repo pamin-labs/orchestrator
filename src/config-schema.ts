@@ -256,6 +256,9 @@ export const isSettingPath = (path: string): path is SettingPath => settingSchem
 
 const SettingInput = z.object({ path: z.string().min(1).max(120), value: z.json() });
 
+const settingDenial = (path: string): string | undefined =>
+  Object.entries(SETTING_DENIALS).find(([deniedPath]) => deniedPath === path)?.[1];
+
 /**
  * One path/value write, with both its RPC type and runtime check derived from ConfigSchema.
  *
@@ -263,8 +266,9 @@ const SettingInput = z.object({ path: z.string().min(1).max(120), value: z.json(
  * which Map entry supplied which schema. The transform proves that relationship before
  * producing SettingWrite; every HTTP, database and browser write uses this same schema.
  */
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Zod cannot infer a union assembled from a runtime dotted path
 export const SettingWriteSchema = SettingInput.transform((input, ctx): SettingWrite => {
-  const denied = SETTING_DENIALS[input.path as keyof typeof SETTING_DENIALS];
+  const denied = settingDenial(input.path);
   if (denied) {
     ctx.addIssue({ code: "custom", path: ["path"], message: denied });
     return z.NEVER;
@@ -281,6 +285,7 @@ export const SettingWriteSchema = SettingInput.transform((input, ctx): SettingWr
       return z.NEVER;
     }
   }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the path-selected schema above proves this correlated union at runtime
   return input as SettingWrite;
 }) as z.ZodType<SettingWrite, SettingWrite>;
 

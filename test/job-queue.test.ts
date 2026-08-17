@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory, type DB } from "../src/db.ts";
 import { requestContext } from "../src/http/request-context.ts";
-import { Scheduler, type Job } from "../src/scheduler.ts";
+import { AgentTurnPayloadSchema, reclaimOrphans, Scheduler, type Job } from "../src/scheduler.ts";
 import { seedAuth } from "./seed-auth.ts";
 import { z } from "zod";
 
@@ -145,8 +145,8 @@ test("a tagged resource draws from its own pool, so one browser cannot stall eve
 
   const { started, release, exec } = gate();
   const s = new Scheduler(db, exec, { maxGroups: 3, leaseSlots: { default: 2, browser: 1 } });
-  for (const g of ids) s.enqueue("lease", { grp_id: g, payload: { lease_id: mk("browser", g!) } });
-  for (const g of ids) s.enqueue("lease", { grp_id: g, payload: { lease_id: mk("typecheck", g!) } });
+  for (const g of ids) s.enqueue("lease", { grp_id: g, payload: { lease_id: mk("browser", g) } });
+  for (const g of ids) s.enqueue("lease", { grp_id: g, payload: { lease_id: mk("typecheck", g) } });
   s.tick();
 
   // One browser (its pool is 1) and two typechecks (the default pool is 2). The
@@ -208,7 +208,7 @@ test("DRAFT stops the writers, not the planners", async () => {
 
   s.enqueue("agent_turn", { grp_id: g1, payload: { role: "architect" } });
   await s.drain();
-  expect(ran.map((j) => JSON.parse(j.payload_json).role)).toEqual(["architect"]);
+  expect(ran.map((j) => AgentTurnPayloadSchema.parse(JSON.parse(j.payload_json)).role)).toEqual(["architect"]);
 });
 
 test("exhausted slice budget blocks dispatch before the group budget does", async () => {
@@ -435,7 +435,6 @@ test("a live process is left alone", () => {
     "INSERT INTO job (kind, grp_id, state, pid, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 4242, ?, 0)",
     [Date.now()],
   );
-  const { reclaimOrphans } = require("../src/scheduler.ts");
   expect(reclaimOrphans(db, { alive: () => true })).toHaveLength(0);
   expect(db.query<{ state: string }, []>("SELECT state FROM job").get()!.state).toBe("running");
 });
@@ -447,7 +446,6 @@ test("a job with no pid, or one running impossibly long, is also an orphan", () 
   db.run(
     "INSERT INTO job (kind, grp_id, state, pid, started_at, enqueued_at) VALUES ('agent_turn', 1, 'running', 1, 0, 0)",
   );
-  const { reclaimOrphans } = require("../src/scheduler.ts");
   // Never recorded a pid, and still "running" long past any turn's limit.
   expect(reclaimOrphans(db, { alive: () => true, maxAgeMs: 1000, now: () => 10_000_000 })).toHaveLength(2);
 });
@@ -477,7 +475,7 @@ test("a restart resumes the turn it interrupted, but only once", async () => {
     .all();
   expect(back).toHaveLength(1);
   expect(back[0]!.slice_id).toBe(1);
-  expect(JSON.parse(back[0]!.payload_json).role).toBe("engineer");
+  expect(AgentTurnPayloadSchema.parse(JSON.parse(back[0]!.payload_json)).role).toBe("engineer");
 
   // A second restart still resumes it: the server going away is not this turn's
   // doing, and spending its one chance on that left six groups stopped after a
@@ -498,7 +496,7 @@ test("a restart resumes the turn it interrupted, but only once", async () => {
 
 test("two gates of one repo do not run at once, but two repos still do", async () => {
   const db = openMemory();
-  const { started, release, exec } = gate();
+  const { release, exec } = gate();
   const sched = new Scheduler(db, exec);
   db.run("INSERT INTO project (id, name, repo_path, created_at) VALUES (1,'a','/a',0), (2,'b','/b',0)");
   db.run(
@@ -525,7 +523,6 @@ test("two gates of one repo do not run at once, but two repos still do", async (
   lease(2, "typecheck", 2);
   lease(3, "build", 3);
   sched.tick();
-  await started;
 
   const inflight = db
     .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'running'")

@@ -10,7 +10,7 @@ import { clock, cn } from "../lib/utils";
 import { WithAttachments } from "../ui/attachments";
 import { z } from "zod";
 import { jsonOr } from "../../../src/contracts/json.ts";
-import type { InferResponseType } from "hono/client";
+import { NotesResponseSchema, type PanelNote as Note } from "../../../src/contracts/panel";
 
 /**
  * The blackboard's static half.
@@ -25,21 +25,6 @@ import type { InferResponseType } from "hono/client";
  * the whole body is shown rather than truncated: a 6-line note with a "more" link
  * would be a click to see two extra lines.
  */
-const NoteSchema = z.object({
-  id: z.number(),
-  grpId: z.number().nullable(),
-  kind: z.string(),
-  body: z.string(),
-  at: z.number(),
-  exportPath: z.string().nullable(),
-  frontmatter: z.string().nullable(),
-  group: z.string().nullable(),
-});
-type Note = z.infer<typeof NoteSchema>;
-const NotesResponseSchema: z.ZodType<InferResponseType<typeof api.notes.$get, 200>> = z.object({
-  notes: z.array(NoteSchema),
-});
-
 const KINDS: [string, string][] = [
   ["journal", "日志"],
   ["decision", "决策"],

@@ -421,7 +421,6 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
     <span className="flex items-end gap-1.5">
       <Draft escId={escId} onUse={setText} />
       <textarea
-        autoFocus
         rows={2}
         value={text}
         onChange={(e) => setText(e.target.value)}

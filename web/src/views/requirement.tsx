@@ -950,8 +950,11 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
       {idea && <div className="my-2 border-l border-rule pl-2.5 text-[0.8125rem] text-ink-2">{idea}</div>}
       {/* An objection that arrived after the card was filed. Without this the card
           reads 反对 : 无 and the boss approves a plan somebody already argued with. */}
-      {late.map((o, i) => (
-        <div key={i} className="my-2 break-words whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]">
+      {late.map((o) => (
+        <div
+          key={`${o.author}:${o.body}`}
+          className="my-2 break-words whitespace-pre-wrap rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]"
+        >
           <b className="font-semibold text-warn">{o.author} 后补反对</b> {o.body}
         </div>
       ))}
@@ -1319,7 +1322,7 @@ function Held({ rows }: { rows: Escalation[] }) {
               <WithAttachments body={e.question} className="text-[0.8125rem] text-ink-2" />
             </Clamp>
           </div>
-          <Typing label={`${WHERE_ZH[e.chain_state] ?? e.chain_state}`} />
+          <Typing label={WHERE_ZH[e.chain_state] ?? e.chain_state} />
         </div>
       ))}
     </div>

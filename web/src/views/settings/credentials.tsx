@@ -1,6 +1,4 @@
-import type { InferResponseType } from "hono/client";
 import { useEffect, useState } from "react";
-import { z } from "zod";
 import { api, mutate } from "../../lib/api";
 import { clock } from "../../lib/utils";
 import { Head, Input, Meta, Textarea } from "../../ui/bits";
@@ -10,16 +8,10 @@ import { Segment, Segments } from "../../ui/segment";
 import { Switch } from "../../ui/switch";
 import { Tip } from "../../ui/tooltip";
 import { type AuthRow, DeviceCode, type Mode, ModeSchema } from "./shared";
-
-const ClaudeLoginSchema: z.ZodType<InferResponseType<typeof api.auth.claude.login.$post, 200>> = z.object({
-  url: z.string(),
-  expiresAt: z.number(),
-});
-const CodexLoginSchema: z.ZodType<InferResponseType<typeof api.auth.codex.device.$post, 200>> = z.object({
-  code: z.string(),
-  url: z.string(),
-  expiresAt: z.number(),
-});
+import {
+  ClaudeLoginFlowSchema as ClaudeLoginSchema,
+  CodexLoginFlowSchema as CodexLoginSchema,
+} from "../../../../src/contracts/panel";
 
 export interface Runtime {
   key: "claude" | "codex";
@@ -70,23 +62,46 @@ export function CredPane({
   return (
     <>
       <Head title="模型账号" note="真令牌不进沙盒" />
-      {RUNTIMES.map((r) => {
-        const current = rows.find((x) => x.runtime === r.key);
-        return (
-          <Credential
-            key={r.key}
-            runtime={r}
-            {...(current ? { current } : {})}
-            // Only the account being logged into. One flag for both meant
-            // a claude login also froze codex's button for five minutes.
-            waiting={waiting === r.key}
-            {...(r.key === "claude" ? { claudeCoauthor: prefs?.claudeCoauthor ?? true } : {})}
-            onSaved={onSaved}
-            onWaitForLogin={(since) => onWaitForLogin(r.key, since)}
-          />
-        );
-      })}
+      {RUNTIMES.map((runtime) => (
+        <CredentialRow
+          key={runtime.key}
+          runtime={runtime}
+          rows={rows}
+          {...(prefs !== undefined ? { prefs } : {})}
+          {...(waiting !== undefined ? { waiting } : {})}
+          onSaved={onSaved}
+          onWaitForLogin={onWaitForLogin}
+        />
+      ))}
     </>
+  );
+}
+
+function CredentialRow({
+  runtime,
+  rows,
+  prefs,
+  waiting,
+  onSaved,
+  onWaitForLogin,
+}: {
+  runtime: Runtime;
+  rows: AuthRow[];
+  prefs?: { claudeCoauthor: boolean };
+  waiting?: string;
+  onSaved: () => void;
+  onWaitForLogin: (runtime: string, since: number) => void;
+}) {
+  const current = rows.find((row) => row.runtime === runtime.key);
+  return (
+    <Credential
+      runtime={runtime}
+      {...(current ? { current } : {})}
+      waiting={waiting === runtime.key}
+      {...(runtime.key === "claude" ? { claudeCoauthor: prefs?.claudeCoauthor ?? true } : {})}
+      onSaved={onSaved}
+      onWaitForLogin={(since) => onWaitForLogin(runtime.key, since)}
+    />
   );
 }
 

@@ -19,6 +19,9 @@ import {
 } from "../src/mech/knowledge/pageindex.ts";
 import { costReport } from "../src/mech/ops/cost.ts";
 import { testContext } from "./test-context.ts";
+import { z } from "zod";
+
+const UsageMeta = z.object({ runtime: z.string() });
 
 function repo(): string {
   const d = mkdtempSync(join(tmpdir(), "orch-pi-"));
@@ -157,7 +160,7 @@ test("what the index spends shows up in the cost report", async () => {
   // And the hourly burn chart reads the events, which need the same meta shape a
   // turn emits or the provider split guesses from the model name.
   const ev = db.query<{ meta_json: string }, []>("SELECT meta_json FROM event WHERE author = 'indexer' LIMIT 1").get()!;
-  expect(JSON.parse(ev.meta_json).runtime).toBe("codex");
+  expect(UsageMeta.parse(JSON.parse(ev.meta_json)).runtime).toBe("codex");
 });
 
 test("a call that reported no usage is not charged", () => {

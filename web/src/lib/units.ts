@@ -187,7 +187,7 @@ export function showNumber(value: number, shape?: Shape): string {
       return fmtCount(value);
     case "percent":
       return fmtPercent(value);
-    default:
+    case undefined:
       return String(value);
   }
 }
@@ -210,7 +210,7 @@ export function readNumber(raw: string, current: number, shape?: Shape): number 
       return parseCount(raw);
     case "percent":
       return parsePercent(raw);
-    default: {
+    case undefined: {
       const n = Number(raw);
       return raw !== "" && Number.isFinite(n) ? n : null;
     }

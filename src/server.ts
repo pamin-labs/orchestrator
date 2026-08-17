@@ -130,6 +130,12 @@ export function missingBinaries(): string[] {
  * nothing measurable.
  */
 const NO_CACHE = "no-cache";
+const INDEX_PATHS = new Set(["/", "/index.html"]);
+const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
+function isApplicationPath(path: string): boolean {
+  return path === "/healthz" || path === "/readyz" || path.startsWith("/api/v1/") || path.startsWith("/orch/v1/");
+}
 
 /**
  * The boss closed the PR on GitHub.
@@ -468,7 +474,7 @@ export function start(overrides: Partial<Config> = {}): Started {
     return work;
   };
   const drainBackground = async (): Promise<void> => {
-    while (background.size > 0) await Promise.allSettled([...background]);
+    while (background.size > 0) await Promise.allSettled(background);
   };
 
   const server = Bun.serve({
@@ -480,19 +486,19 @@ export function start(overrides: Partial<Config> = {}): Started {
     idleTimeout: 0, // `ask-boss` holds a request open until the boss answers
     async fetch(req, bunServer) {
       const path = new URL(req.url).pathname;
-      if (path === "/" || path === "/index.html") {
+      if (INDEX_PATHS.has(path)) {
         return new Response(Bun.file(join(webDir, "index.html")), {
           headers: { "content-type": "text/html; charset=utf-8", "cache-control": NO_CACHE },
         });
       }
       if (path === "/metrics") {
         const ip = bunServer.requestIP(req)?.address;
-        if (ip && !["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(ip)) {
+        if (ip && !LOOPBACK_ADDRESSES.has(ip)) {
           return new Response("not found", { status: 404 });
         }
         return app(req);
       }
-      if (path === "/healthz" || path === "/readyz" || path.startsWith("/api/v1/") || path.startsWith("/orch/v1/")) {
+      if (isApplicationPath(path)) {
         return app(req);
       }
 

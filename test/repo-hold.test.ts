@@ -3,7 +3,7 @@ import { z } from "zod";
 import { openMemory, type DB } from "../src/db.ts";
 import { Scheduler, type Job } from "../src/scheduler.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";
-import { makeGithub, type Fetcher } from "../src/mech/git/github.ts";
+import { makeGithub, type GithubFetcher } from "../src/mech/git/github.ts";
 import { repoHeld, resetRepoHolds, REPO_HOLD_MS } from "../src/mech/git/repository.ts";
 import type { Json } from "../src/contracts/json.ts";
 
@@ -44,7 +44,7 @@ function seed(): { db: DB; sched: Scheduler; ran: Job[] } {
 }
 
 const answer =
-  (status: number, body: Json = {}): Fetcher =>
+  (status: number, body: Json = {}): GithubFetcher =>
   async () =>
     new Response(JSON.stringify(body), { status });
 

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { buildStable } from "../src/prompt/assemble.ts";
 import type { TurnRunner } from "../src/runtime/claude.ts";
-import { buildArgv, runTurn, trimItem } from "../src/runtime/codex.ts";
+import { buildCodexArgv as buildArgv, runCodexTurn as runTurn, trimItem } from "../src/runtime/codex.ts";
 import { z } from "zod";
 
 const stable = buildStable({

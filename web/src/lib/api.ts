@@ -407,7 +407,7 @@ export function useOrch() {
       if (!f.success) return;
       if (f.data.kind === "notify") {
         const meta = NotificationMetaSchema.safeParse(f.data.meta);
-        return void raise({
+        return raise({
           body: f.data.body ?? "",
           at: f.data.at,
           ...(meta.success

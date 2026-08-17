@@ -48,8 +48,8 @@ test("switching the index runtime lands on that runtime's cheapest model", () =>
   // worth a large model, so the config already holds this answer.
   for (const runtime of ["claude", "codex"]) {
     const cheap = cheapest(src, runtime);
-    expect(cheap).toBe(DEFAULTS.difficultyModel[runtime]!.trivial!);
-    expect(modelsByRuntime(src)[runtime]).toContain(cheap!);
+    expect(cheap).toBe(DEFAULTS.difficultyModel[runtime]!.trivial);
+    expect(modelsByRuntime(src)[runtime]).toContain(cheap);
   }
   expect(cheapest(src, "nosuch")).toBeUndefined();
 });

@@ -37,13 +37,17 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
     void readApi(api.slices[":id"].evidence.$get({ param: { id: String(sliceId) } }), EvidenceSchema).then((r) => {
       setEv(r);
       // A failed judgement is the reason to look; everything else, the change is.
-      setView(r?.verdicts.some(failed) ? "verdicts" : "diff");
+      setView(r?.verdicts.find(failed) ? "verdicts" : "diff");
     });
   }, [sliceId]);
 
   if (!ev) return <div className={cn(PAD, "py-2 text-[0.75rem] text-ink-3")}>读改动…</div>;
 
-  const summary = ev.stat.split("\n").filter(Boolean).at(-1)?.trim() ?? "";
+  const summary =
+    ev.stat
+      .split("\n")
+      .findLast((line) => line.length > 0)
+      ?.trim() ?? "";
   // `5 files changed, 94 insertions(+), 2 deletions(-)` split in two: the file
   // count stays on the pinned line, the line counts go on the switch below it as
   // `+94 −2`. Printing the whole stat in both places is the same three numbers
@@ -132,8 +136,8 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
 
       {view === "verdicts" ? (
         <div className={cn(PAD, "py-1")}>
-          {ev.verdicts.map((v, i) => (
-            <VerdictRow key={i} author={v.author} body={v.body} />
+          {ev.verdicts.map((v) => (
+            <VerdictRow key={`${v.author}:${v.body}`} author={v.author} body={v.body} />
           ))}
         </div>
       ) : view === "diff" ? (
@@ -153,6 +157,15 @@ export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?:
       )}
     </div>
   );
+}
+
+function keyed(values: string[]): Array<{ key: string; value: string }> {
+  const seen = new Map<string, number>();
+  return values.map((value) => {
+    const occurrence = seen.get(value) ?? 0;
+    seen.set(value, occurrence + 1);
+    return { key: `${value}:${occurrence}`, value };
+  });
 }
 
 /**
@@ -264,9 +277,12 @@ function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
           ? q
             ? "没有匹配的行"
             : "这份日志是空的"
-          : body.map((l, i) => (
-              <div key={i} className={cn(/^\s*\(fail\)/.test(l) && "bg-bad-soft", /error|Error/.test(l) && "text-bad")}>
-                {l || " "}
+          : keyed(body).map(({ key, value }) => (
+              <div
+                key={key}
+                className={cn(/^\s*\(fail\)/.test(value) && "bg-bad-soft", /error|Error/.test(value) && "text-bad")}
+              >
+                {value || " "}
               </div>
             ))}
       </pre>

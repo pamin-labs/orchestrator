@@ -6,7 +6,7 @@ import { z } from "zod";
 import { bad, json, message, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
-export { imagePaths, withAttachments, type Attachment } from "../../mech/util/attachment-text.ts";
+export { imagePaths, withAttachments } from "../../mech/util/attachment-text.ts";
 
 export const AttachmentNameParams = z.object({ name: z.string().min(1) });
 

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../src/db.ts";
@@ -52,7 +53,7 @@ const cfg = loadConfig();
  */
 async function serverUp(): Promise<boolean> {
   try {
-    const m = await SandboxManager.create({
+    const m = SandboxManager.create({
       connectionConfig: new ConnectionConfig({
         domain: cfg.sandbox.server,
         protocol: "http",
@@ -168,7 +169,7 @@ live(
       expect(viaOrch.out).toContain("agent");
     } finally {
       stop();
-      server.stop(true);
+      await server.stop(true);
       await killSandbox(c, scope).catch(() => {});
       await closeAll();
     }
@@ -199,6 +200,7 @@ live(
       expect(bare.code).not.toBe(0);
 
       // The verb allowlist, refusing for real rather than in a unit test.
+      // oxlint-disable-next-line typescript/await-thenable -- Bun's async matcher is awaitable, but Matchers is not declared Thenable
       await expect(utilGit(c, ["checkout", "main"])).rejects.toThrow(/may not run/);
 
       const mirror = `/repos/${remote.replace(/[^\w.-]+/g, "-")}`;
@@ -371,7 +373,8 @@ live(
         if (step.done) break;
         seen.push(step.value);
       }
-      expect(seen.map((l) => JSON.parse(l).i)).toEqual([1, 2, 3]);
+      const StreamLine = z.object({ i: z.number() });
+      expect(seen.map((line) => StreamLine.parse(JSON.parse(line)).i)).toEqual([1, 2, 3]);
     } finally {
       await killSandbox(c, scope).catch(() => {});
       await closeAll();

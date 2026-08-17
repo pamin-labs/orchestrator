@@ -28,6 +28,7 @@ import {
 import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLogin } from "../../mech/sandbox/login.ts";
 import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { errText } from "../../mech/util/text.ts";
+import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/panel.ts";
 import { bad, type Handler, json, message } from "../shared.ts";
 
 /**
@@ -179,11 +180,7 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
  * No completion route: `run.done` writes `runtime_auth` itself, so the
  * credential row the panel already polls **is** the confirmation.
  */
-export interface ClaudeFlow {
-  url: string;
-  expiresAt: number;
-}
-let claudeFlow: ClaudeFlow | null = null;
+let claudeFlow: ClaudeLoginFlow | null = null;
 
 export const postClaudeLogin = (async (ctx) => {
   if (claudeFlow && claudeFlow.expiresAt > Date.now()) return json(claudeFlow);
@@ -301,12 +298,7 @@ export const postGithubLogin = (async (ctx) => {
  * credential row the panel already polls **is** the confirmation, and the
  * progress lines are already on the live feed.
  */
-export interface CodexFlow {
-  code: string;
-  url: string;
-  expiresAt: number;
-}
-let codexFlow: CodexFlow | null = null;
+let codexFlow: CodexLoginFlow | null = null;
 
 export const postCodexDevice = (async (ctx) => {
   if (codexFlow && codexFlow.expiresAt > Date.now()) return json(codexFlow);

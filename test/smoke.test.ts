@@ -21,7 +21,7 @@ let dataDir: string;
 function canListen(): boolean {
   try {
     const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
-    probe.stop(true);
+    void probe.stop(true);
     return true;
   } catch {
     return false;
@@ -172,7 +172,7 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     expect(r.headers.get("content-type")).toContain("text/event-stream");
 
     const reader = r.body!.getReader();
-    const chunk = new TextDecoder().decode((await reader.read()).value!);
+    const chunk = new TextDecoder().decode((await reader.read()).value);
     // Replay from a cursor is what lets a reconnecting browser catch up without
     // keeping any state of its own.
     expect(chunk).toContain("data: ");

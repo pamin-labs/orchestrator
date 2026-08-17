@@ -45,15 +45,12 @@ async function walk(items: DataTransferItemList): Promise<Picked[]> {
     .filter((entry): entry is FileSystemEntry => entry !== null && entry !== undefined);
   const out: Picked[] = [];
   const one = (e: FileSystemEntry, prefix: string): Promise<void> =>
-    new Promise((done) => {
+    new Promise((done, fail) => {
       if (isFileEntry(e)) {
-        e.file(
-          (f) => {
-            out.push({ file: f, rel: prefix + e.name });
-            done();
-          },
-          () => done(),
-        );
+        e.file((f) => {
+          out.push({ file: f, rel: prefix + e.name });
+          done();
+        }, fail);
         return;
       }
       if (!isDirectoryEntry(e)) return done();
@@ -61,14 +58,10 @@ async function walk(items: DataTransferItemList): Promise<Picked[]> {
       // readEntries hands back at most a hundred at a time and signals the end
       // with an empty batch.
       const batch = () =>
-        reader.readEntries(
-          async (list) => {
-            if (!list.length) return done();
-            await Promise.all(list.map((c) => one(c, `${prefix + e.name}/`)));
-            batch();
-          },
-          () => done(),
-        );
+        reader.readEntries((list) => {
+          if (!list.length) return done();
+          void Promise.all(list.map((c) => one(c, `${prefix + e.name}/`))).then(batch, fail);
+        }, fail);
       batch();
     });
   await Promise.all(roots.map((r) => one(r, "")));
@@ -154,7 +147,6 @@ export function Composer({
   submit,
   onSubmit,
   actions,
-  autoFocus,
   className,
   projectId,
   initial,
@@ -169,7 +161,6 @@ export function Composer({
   onSubmit?: (d: Draft) => Promise<boolean> | boolean;
   /** Extra actions that need the current text, e.g. triage. */
   actions?: (d: Draft & { busy: boolean; clear: () => void }) => React.ReactNode;
-  autoFocus?: boolean;
   className?: string;
   /** Seed text. Remount (a changing `key`) to reseed — this is a starting point,
    *  not a controlled value; the box belongs to whoever is typing in it. */
@@ -428,7 +419,6 @@ export function Composer({
           arrives in it is usually three or four lines long. */}
       <Textarea
         ref={box}
-        autoFocus={autoFocus}
         rows={rows}
         // 36rem, not 18: an answer to a watchdog escalation quotes three verdicts
         // and runs past twenty lines, and a box that stops growing at half of that
@@ -596,7 +586,6 @@ export function ComposerDialog({
             </CardHeader>
             <div className="p-3.5">
               <Composer
-                autoFocus
                 {...(projectId !== undefined ? { projectId } : {})}
                 rows={rows}
                 {...(placeholder !== undefined ? { placeholder } : {})}
