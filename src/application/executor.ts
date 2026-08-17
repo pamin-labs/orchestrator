@@ -448,12 +448,32 @@ async function turnPrompt(deps: ExecDeps, job: Job<"agent_turn">, turn: Prepared
   return stageAttachments(deps, turn.scope, prompt, job.grp_id);
 }
 
+/**
+ * Start a session or continue one, which is the one decision in the spec.
+ *
+ * Named and exported because getting it wrong is expensive in both directions
+ * and silent in both: resuming a session the provider has rotated away from
+ * fails the turn, and starting fresh when one was live throws away the cached
+ * prefix that makes a long requirement affordable. It was a ternary inside an
+ * object literal, where the only way to check it was to run a turn and read the
+ * spec back out.
+ */
+export function sessionFor(turn: {
+  rotate: boolean;
+  sessionId: string;
+  agent: { session_id?: string | null };
+}): { newSessionId: string } | { resumeSessionId: string } {
+  return turn.rotate || !turn.agent.session_id
+    ? { newSessionId: turn.sessionId }
+    : { resumeSessionId: turn.sessionId };
+}
+
 function turnSpec(ctx: Ctx, cfg: Config, job: Job<"agent_turn">, turn: PreparedTurn, prompt: string, logPath: string) {
   return {
     stable: turn.stable,
     prompt,
     cwd: WORK,
-    ...(turn.rotate || !turn.agent.session_id ? { newSessionId: turn.sessionId } : { resumeSessionId: turn.sessionId }),
+    ...sessionFor(turn),
     maxTurns: turn.role.maxTurns ?? cfg.maxTurnsPerJob,
     timeoutMs: cfg.turnTimeoutMs,
     images: imagePaths(prompt),

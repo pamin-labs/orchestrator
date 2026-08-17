@@ -5,7 +5,7 @@ import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig, loadRoles } from "../../src/platform/config/load.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
-import { makeExecutor, type ExecDeps } from "../../src/application/executor.ts";
+import { makeExecutor, sessionFor, type ExecDeps } from "../../src/application/executor.ts";
 import type { TurnResult } from "../../src/runtime/claude.ts";
 import type { TurnSpec } from "../../src/runtime/claude.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
@@ -96,4 +96,27 @@ test("rotating a session zeroes session_tokens instead of carrying it forward", 
   // Reset by the rotation, then this turn's own usage is the only thing counted —
   // not 330, which is what carrying the old session's total forward would give.
   expect(db.query<{ t: number }, []>("SELECT session_tokens AS t FROM agent").get()!.t).toBe(110);
+});
+
+/**
+ * The one decision inside the turn spec, checked without running a turn.
+ *
+ * Wrong in either direction and silent in both: resuming a session the provider
+ * has rotated away from fails the turn, and starting a new one while a session
+ * was live throws away the cached prefix that makes a long requirement
+ * affordable. It used to be a ternary inside an object literal, reachable only
+ * by running a turn and reading the spec back out — which is why the whole
+ * assembly showed as untested.
+ */
+test("a turn resumes only when there is a session and nothing asked to rotate", () => {
+  const at = (rotate: boolean, session_id: string | null) =>
+    sessionFor({ rotate, sessionId: "next", agent: { session_id } });
+
+  expect(at(false, "live")).toEqual({ resumeSessionId: "next" });
+  // Rotation is the whole point of rotation: the live session is abandoned.
+  expect(at(true, "live")).toEqual({ newSessionId: "next" });
+  // Nothing to resume. Both spellings of absent, because the column is nullable
+  // and the row is fresh before the first turn.
+  expect(at(false, null)).toEqual({ newSessionId: "next" });
+  expect(at(false, "")).toEqual({ newSessionId: "next" });
 });
