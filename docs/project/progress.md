@@ -203,11 +203,10 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Blockers and deviations
 
-- The `main` branch ruleset requires a status check named `check`, and no
-  workflow defines a job by that name. It can never report, and meanwhile none
-  of the thirteen quality jobs that do run is required. `require_code_owner_review`
-  is also false although `.github/CODEOWNERS` exists. Repository settings, so it
-  cannot be fixed from a file.
+- The `main` branch ruleset required a status check named `check` that no
+  workflow defined, so it could never report while none of the fourteen quality
+  jobs that do run was required. Fixed: the fourteen real job names are required
+  and `require_code_owner_review` is on.
 - The first full Fallow security inventory surfaces 40 verification candidates
   (17 SQL, 13 SSRF, eight dynamic-regex, one redirect, and one secret-shaped
   literal). They are not declared vulnerabilities or suppressed; final security
@@ -221,13 +220,23 @@ M7 — executable engineering governance and versioned protocol.
 
 ## Next executable items
 
-1. Replace the `main` ruleset's non-existent `check` context with the thirteen
-   jobs that actually report, and turn on code owner review. Export the ruleset
-   first: this decides whether anyone can merge, so a wrong edit needs a way
-   back. Secret scanning and push protection are the same visit.
-2. Run the six environment-gated OpenSandbox integration tests against the
+1. Turn on secret scanning and push protection. Both are repository settings, so
+   no file can enable them. Push protection is the one that matters most on a
+   public repository: secret scanning tells you a credential leaked, push
+   protection stops the push that would have leaked it.
+2. When the database moves to Drizzle, move `test/support/factories.ts` to
+   Fishery's documented `onCreate` + async `create()` with the database passed as
+   a transient parameter, and drop the project-owned `insert`. It is written
+   synchronously today because `bun:sqlite` is synchronous, which is a stated
+   deviation rather than an oversight. Deferred deliberately: the conversion is
+   423 call sites across 59 files, it is the same edit whether it happens now or
+   at the switch, and it buys nothing until the driver is async. `no-floating-promises`
+   is already an error, so a forgotten `await` fails lint rather than shipping.
+3. Run the six environment-gated OpenSandbox integration tests against the
    supported sandbox server and retain their logs.
-3. Run the release workflow in dry-run mode on GitHub-hosted Linux to exercise
+4. Run the release workflow in dry-run mode on GitHub-hosted Linux to exercise
    multi-platform images, Trivy, SBOM, and provenance tooling.
-4. Monitor the first merged CI and nightly stress runs; replay any property
-   failure from its reported seed and path.
+5. Monitor the first merged CI and nightly stress runs; replay any property
+   failure from its reported seed and path. Add `codecov/patch` to the ruleset's
+   required checks once a pull request has actually reported it — requiring a
+   check that has never been posted is the bug this list used to describe.
