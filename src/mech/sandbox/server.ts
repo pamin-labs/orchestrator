@@ -89,6 +89,7 @@ type Probe =
 async function probe(server: string, key: string): Promise<Probe> {
   try {
     const { protocol, authority } = splitAddr(server);
+    // fallow-ignore-next-line security-sink -- the destination is `cfg.sandbox.server`, the address the boss set for their own sandbox server, and the key sent with it is the key stored for that same address. No request field reaches it.
     const res = await fetch(`${protocol}://${authority}/v1/sandboxes?page_size=1`, {
       // `OPEN-SANDBOX-API-KEY`, not `Authorization: Bearer` — the server reads
       // that one header and nothing else (`middleware/auth.py`). Sending the
@@ -163,6 +164,7 @@ export function setIn(toml: string, section: string, key: string, line: string):
   if (start < 0) return `${toml.replace(/\n*$/, "")}\n\n[${section}]\n${line}\n`;
 
   const at = /^[ \t]*#?[ \t]*KEY[ \t]*=/.source.replace("KEY", key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  // fallow-ignore-next-line security-sink -- `at` is a source literal whose one placeholder is `key`, already run through a regex-metacharacter escape on the line above; the six callers pass fixed TOML key names.
   const re = new RegExp(at);
   for (let i = start + 1; i < end; i++) {
     if (re.test(lines[i]!)) {

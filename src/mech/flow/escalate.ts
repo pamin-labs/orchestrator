@@ -61,6 +61,7 @@ export function raise(db: DB, ask: EscalationRequest): number | null {
   const terminal = stateParam(ESCALATION_TERMINAL_STATES);
   if (ask.dedupe.scope === "global") {
     return (
+      // fallow-ignore-next-line security-sink -- `COLUMNS`, `VALUES` and `open` are source literals in this module; the question text, the dedupe prefix and the terminal-state JSON are all bound through the `?` placeholders in them.
       db
         .query<{ id: number }, [...Insert, string, string, string]>(
           `INSERT INTO escalation (${COLUMNS})
@@ -71,6 +72,7 @@ export function raise(db: DB, ask: EscalationRequest): number | null {
     );
   }
   return (
+    // fallow-ignore-next-line security-sink -- `COLUMNS`, `VALUES` and `open` are source literals in this module; the question text, the dedupe prefix, the group id and the terminal-state JSON are all bound through the `?` placeholders in them.
     db
       .query<{ id: number }, [...Insert, string, string, string, number]>(
         `INSERT INTO escalation (${COLUMNS})

@@ -61,49 +61,67 @@ const RUNTIME = `coalesce(json_extract(meta_json, '$.runtime'),
 const TOK = `json_extract(meta_json, '$.usage.input') + json_extract(meta_json, '$.usage.output')
            + json_extract(meta_json, '$.usage.cacheRead') + json_extract(meta_json, '$.usage.cacheCreate')`;
 
+/**
+ * "This project, or all of them" as a bound parameter instead of a clause.
+ *
+ * Seven queries here take the same optional filter, and it used to be assembled
+ * as a string per call: two different statement texts per query depending on the
+ * argument, and seven places where a reader had to check what was being pasted
+ * into the SQL. `?1 IS NULL` says the same thing in the statement itself, so
+ * every query below is a constant string prepared once and cached once, and the
+ * id only ever arrives as a parameter.
+ *
+ * Written out at each site rather than pasted in from a constant, because a
+ * constant would put these back to being assembled templates — the thing being
+ * removed. The clause is shorter than the note explaining it.
+ *
+ * The OR costs the planner an index on `project_id`. These are per-project
+ * aggregates on a single boss's database, read when a panel opens.
+ */
+type ProjectArg = [number | null];
+
 export function costReport(db: DB, projectId?: number): CostReport {
-  const where = projectId ? "WHERE project_id = ?" : "";
-  const args = projectId ? [projectId] : [];
+  const of: ProjectArg = [projectId ?? null];
 
   const byGroup = db
-    .query<CostRow & { grpId: number }, number[]>(
+    .query<CostRow & { grpId: number }, ProjectArg>(
       `SELECT id AS grpId, name AS label, spent_tokens AS tokens FROM grp
-       ${where} ORDER BY spent_tokens DESC LIMIT 50`,
+       WHERE (?1 IS NULL OR project_id = ?1) ORDER BY spent_tokens DESC LIMIT 50`,
     )
-    .all(...args);
+    .all(...of);
 
   const agents = db
-    .query<AgentCost, number[]>(
+    .query<AgentCost, ProjectArg>(
       `SELECT id, grp_id AS grpId, role, role AS label, model, runtime, total_tokens AS tokens
-       FROM agent ${where} ORDER BY tokens DESC`,
+       FROM agent WHERE (?1 IS NULL OR project_id = ?1) ORDER BY tokens DESC`,
     )
-    .all(...args);
+    .all(...of);
 
   const byRole = db
-    .query<CostRow, number[]>(
+    .query<CostRow, ProjectArg>(
       `SELECT role AS label, sum(total_tokens) AS tokens FROM agent
-       ${where} GROUP BY role ORDER BY tokens DESC`,
+       WHERE (?1 IS NULL OR project_id = ?1) GROUP BY role ORDER BY tokens DESC`,
     )
-    .all(...args);
+    .all(...of);
 
   // The project filter was missing here, so one project's cost panel showed every
   // project's difficulty mix — and the difficulty tag is the cost knob the whole
   // panel exists to inform.
   const byDifficulty = db
-    .query<CostRow, number[]>(
+    .query<CostRow, ProjectArg>(
       `SELECT s.difficulty AS label, sum(s.spent_tokens) AS tokens
        FROM slice s JOIN grp g ON g.id = s.grp_id
-       ${projectId ? "WHERE g.project_id = ?" : ""}
+       WHERE (?1 IS NULL OR g.project_id = ?1)
        GROUP BY s.difficulty ORDER BY tokens DESC`,
     )
-    .all(...args);
+    .all(...of);
 
   const byRuntime = db
-    .query<CostRow, number[]>(
+    .query<CostRow, ProjectArg>(
       `SELECT runtime AS label, sum(total_tokens) AS tokens FROM agent
-       ${where} GROUP BY runtime ORDER BY tokens DESC`,
+       WHERE (?1 IS NULL OR project_id = ?1) GROUP BY runtime ORDER BY tokens DESC`,
     )
-    .all(...args);
+    .all(...of);
 
   // From the turn events rather than a new table: recordCost already emits one per
   // turn with the usage and the model, and the model prefix is what says which
@@ -121,17 +139,19 @@ export function costReport(db: DB, projectId?: number): CostReport {
     .all();
 
   const total = db
-    .query<CostRow, number[]>(`SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens FROM grp ${where}`)
-    .get(...args)!;
+    .query<CostRow, ProjectArg>(
+      `SELECT 'total' AS label, coalesce(sum(spent_tokens), 0) AS tokens FROM grp WHERE (?1 IS NULL OR project_id = ?1)`,
+    )
+    .get(...of)!;
 
   // What a finished requirement costs is the number to compare against doing it by
   // hand — docs/project/plan.md §13 risk ② turns on exactly this ratio.
   const delivered = db
-    .query<{ count: number; tokens: number }, number[]>(
+    .query<{ count: number; tokens: number }, ProjectArg>(
       `SELECT count(*) AS count, coalesce(sum(spent_tokens), 0) AS tokens FROM grp
-       WHERE status = 'DISSOLVED' ${projectId ? "AND project_id = ?" : ""}`,
+       WHERE status = 'DISSOLVED' AND (?1 IS NULL OR project_id = ?1)`,
     )
-    .get(...args)!;
+    .get(...of)!;
 
   return {
     delivered,

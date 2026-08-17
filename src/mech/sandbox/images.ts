@@ -40,12 +40,14 @@ export interface ImageChoices {
 async function published(): Promise<{ tags: string[]; note?: string }> {
   const repo = PUBLISHED_REPO;
   try {
+    // fallow-ignore-next-line security-sink -- fixed `https://ghcr.io` origin, and `repo` is `PUBLISHED_REPO`, the module constant in `sandbox.ts`. Nothing here is read from a request or from config.
     const auth = await fetch(`https://ghcr.io/token?scope=repository:${repo}:pull`, {
       signal: AbortSignal.timeout(6000),
     });
     const token = z.object({ token: z.string().min(1) }).safeParse(await auth.json()).data?.token;
     if (!token) return { tags: [], note: "拿不到 registry 的读取令牌" };
 
+    // fallow-ignore-next-line security-sink -- fixed `https://ghcr.io` origin, and `repo` is `PUBLISHED_REPO`, the module constant in `sandbox.ts`; the bearer token was minted for that same repository one call above.
     const res = await fetch(`https://ghcr.io/v2/${repo}/tags/list?n=100`, {
       headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(6000),

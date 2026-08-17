@@ -195,6 +195,7 @@ export function referencedSkills(text: string, all: SkillRef[]): SkillRef[] {
     // pattern raw. `c++` is a legal directory and an illegal regex, so one such
     // skill made every message throw on its way to being read; a name with a `.`
     // silently matched the wrong skill and injected it into the turn.
+    // fallow-ignore-next-line security-sink -- `s.name` is a directory name off disk and it goes through `RegExp.escape`, so it can only ever contribute literal characters; the message text is the `test` argument.
     const bySlash = new RegExp(`(?:^|\\s)/${RegExp.escape(s.name)}(?![\\w-])`).test(text);
     if (byPath || bySlash) hit.push(s);
   }

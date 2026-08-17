@@ -90,6 +90,7 @@ export async function serve(sb: MailboxSandbox, base: string, path: string, sign
       ...(env.idempotency_key ? { "idempotency-key": env.idempotency_key } : {}),
     };
     if (env.body !== undefined) headers["content-type"] = "application/json";
+    // fallow-ignore-next-line security-sink -- `url` is the return of `normalise`, which rejects anything whose origin differs from `base` or whose resolved pathname is outside `/orch/v1/`, and returns the resolved string that is sent here. The agent-supplied `env.path` never reaches `fetch` unnormalised.
     const res = await fetch(url, {
       method: env.method,
       headers,

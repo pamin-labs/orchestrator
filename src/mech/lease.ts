@@ -242,6 +242,7 @@ function argSchema(name: string, spec: ArgSpec): z.ZodType<string> {
     case "string": {
       let t = z.string({ error: `${name} must be a string` });
       if (spec.maxLength) t = t.max(spec.maxLength, `${name} is longer than ${spec.maxLength}`);
+      // fallow-ignore-next-line security-sink -- `spec.pattern` comes from `resource.arg_schema_json`, and `flow/start.ts` is the table's only writer: it writes `"{}"` or the one literal browse schema. The agent's argument is the string being tested, never the pattern.
       return t.regex(new RegExp(spec.pattern), `${name} does not match ${spec.pattern}`);
     }
     case "path":
@@ -307,6 +308,7 @@ export function digestOutput(exitCode: number, output: string, errorRegex?: stri
 
 function extractErrorLines(lines: string[], pattern?: string): string[] {
   if (!pattern) return [];
+  // fallow-ignore-next-line security-sink -- `pattern` is `resource.error_regex`, written only by `flow/start.ts` from the source literals in `util/detect.ts`. The build log is the text being scanned, not the pattern.
   const regex = new RegExp(pattern);
   const errors = new Set<string>();
   for (const line of lines) {

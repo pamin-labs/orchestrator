@@ -58,6 +58,7 @@ export interface Check {
  */
 async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; detail: string }> {
   try {
+    // fallow-ignore-next-line security-sink -- the one caller builds `url` from `cfg.sandbox.server`, the address the boss set for their own sandbox server, and the key sent with it is the key stored for that same address.
     const res = await fetch(`${url}/v1/sandboxes`, {
       headers: apiKey ? { [SANDBOX_API_KEY_HEADER]: apiKey } : {},
       signal: AbortSignal.timeout(3000),
@@ -196,6 +197,7 @@ export function credentialVerdict(status: number): { ok: boolean; detail: string
 async function modelAccepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
   const { url, headers } = modelProbe(runtime, auth);
   try {
+    // fallow-ignore-next-line security-sink -- `modelProbe` builds the URL from the provider default or `runtime_auth.base_url`, and the secret it sends is the one stored in that same row; the gateway and the credential are set together by the boss and cannot be substituted for each other.
     return credentialVerdict((await fetch(url, { headers, signal: AbortSignal.timeout(6000) })).status);
   } catch {
     return { ok: true, detail: "连不上，没验" };

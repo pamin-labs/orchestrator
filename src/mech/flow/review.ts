@@ -624,6 +624,7 @@ function queueNextSlice(ctx: Ctx, grpId: number): number | null {
   // A slice sitting on the boss is not occupying the writer. Counting it as busy
   // is correct only when acceptance is what starts the next one.
   const idle = ctx.config.autoAdvance ? "('pending','accepted','awaiting_boss')" : "('pending','accepted')";
+  // fallow-ignore-next-line security-sink -- `idle` is one of the two source literals on the line above, chosen by the `autoAdvance` boolean; `grpId` is bound through the `?`.
   const busy = ctx.db
     .query<{ c: number }, [number]>(`SELECT count(*) AS c FROM slice WHERE grp_id = ? AND status NOT IN ${idle}`)
     .get(grpId)!.c;

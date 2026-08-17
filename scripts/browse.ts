@@ -97,6 +97,7 @@ try {
     const label = `step ${i + 1}`;
     try {
       if (s.api) {
+        // fallow-ignore-next-line security-sink -- the origin is `srv.url`, the throwaway server this script just started on a random local port; `s.api` only ever contributes a path to it.
         const r = await fetch(`${srv.url}${s.api}`, {
           method: "POST",
           headers: { "content-type": "application/json" },

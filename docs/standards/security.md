@@ -37,6 +37,12 @@ and SBOM; actionlint and zizmor own workflow syntax and security. Do not add a
 second scanner for the same class without replacing the first in the
 [`enforcement matrix`](enforcement-matrix.md).
 
+Fallow's candidates are unverified by construction, so each one carries a
+recorded decision and a reason in
+[`../operations/security-candidates.md`](../operations/security-candidates.md).
+A candidate is fixed at the point its value enters the process, or annotated on
+the line with why that sink cannot be driven; nothing stays undispositioned.
+
 Report vulnerabilities through the private process in
 [`../../SECURITY.md`](../../SECURITY.md). GitHub repository settings must enable
 secret scanning and push protection; this cannot be guaranteed by workflow

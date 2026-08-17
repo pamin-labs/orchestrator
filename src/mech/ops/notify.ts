@@ -196,6 +196,7 @@ export function busDeliver(bus: Bus, webhook?: string) {
       // Scrubbed, because this is the one thing here that leaves the machine.
       // Escalation text and watchdog findings do not pass the bus masker on the
       // way in, and a webhook URL is somebody else's server.
+      // fallow-ignore-next-line security-sink -- `webhook` is `cfg.notifyWebhook`, which only the boss's own settings page writes; settings are not reachable from a sandbox (`mailbox.ts` admits `/orch/v1/` only). No credential is attached and the body is scrubbed.
       await fetch(webhook, {
         method: "POST",
         headers: { "content-type": "application/json" },

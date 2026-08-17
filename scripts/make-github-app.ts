@@ -72,8 +72,14 @@ const server = Bun.serve({
   fetch(req) {
     const u = new URL(req.url);
     if (u.pathname === "/done") {
+      // Shape-checked here rather than at the `fetch` below, because this is the
+      // one place a value from the socket enters the process. GitHub's conversion
+      // code is an opaque token; anything with a `/`, a `?` or a `#` in it would
+      // have steered the POST to a different `api.github.com` path, and the answer
+      // to that call is written to disk as an app's private key.
       const code = u.searchParams.get("code");
-      if (!code) return new Response("没有拿到 code，重来一次。", { status: 400, headers: html });
+      if (!code || !/^[\w-]+$/.test(code))
+        return new Response("没有拿到 code，重来一次。", { status: 400, headers: html });
       resolve(code);
       return new Response("<body style='font:15px -apple-system'>好了，回终端看。</body>", { headers: html });
     }
@@ -93,6 +99,7 @@ server.stop();
 
 // The code is single-use and short-lived: this is the only chance to read the
 // private key, so it is written before anything else can fail.
+// fallow-ignore-next-line security-sink -- fixed `https://api.github.com` origin, and `code` was shape-checked against `/^[\w-]+$/` at the socket, so it can only be one path segment.
 const res = await fetch(`https://api.github.com/app-manifests/${code}/conversions`, {
   method: "POST",
   headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },

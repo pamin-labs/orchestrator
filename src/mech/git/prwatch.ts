@@ -180,6 +180,7 @@ function version(): string {
  * away, and it finds out at the end of the only turn it gets.
  */
 const TYPES = ["feat", "fix", "docs", "test", "refactor", "perf", "build", "chore"] as const;
+// fallow-ignore-next-line security-sink -- the only interpolation is `TYPES`, a module-level `as const` tuple of eight literals; no PR title or body reaches the pattern (they are the `test` arguments below).
 const SUBJECT = new RegExp(`^(${TYPES.join("|")})(\\([a-z0-9._/-]+\\))?: \\S`);
 // CJK, kana and hangul. Not a general "is this English" test — it cannot be one
 // — but it catches the thing that actually happens: the panel's language is

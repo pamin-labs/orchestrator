@@ -25,8 +25,9 @@ point; it links here instead of repeating rules.
   [`code review`](standards/code-review.md)
 - Operations: [`development`](operations/development.md),
   [`CI`](operations/ci.md), [`release`](operations/release.md),
-  [`observability`](operations/observability.md), and
-  [`rollback`](operations/rollback.md)
+  [`observability`](operations/observability.md),
+  [`rollback`](operations/rollback.md), and
+  [`security candidates`](operations/security-candidates.md)
 - UI language: [`design/ui.md`](design/ui.md)
 - Accepted and superseded decisions: [`adr/`](adr/)
 

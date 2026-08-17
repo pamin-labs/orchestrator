@@ -215,6 +215,7 @@ const SETTING_DENIALS = {
   host: "where the server listens is a startup argument (config/default.yaml or ORCH_HOST)",
   port: "where the server listens is a startup argument (config/default.yaml or ORCH_PORT)",
   dataDir: "the database this would be stored in is the thing it configures (ORCH_DATA_DIR)",
+  // fallow-ignore-next-line security-sink -- this is the refusal text shown when someone tries to set `sandbox.apiKey` through the settings API, not a key. It is a deny-list entry; no value is stored or sent.
   "sandbox.apiKey": "a secret; it goes in runtime_auth or ORCH_SANDBOX_API_KEY, never in a settings row",
 } as const;
 

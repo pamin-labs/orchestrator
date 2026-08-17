@@ -142,16 +142,19 @@ const RULES: Rule[] = [
     gates: () => [{ name: "test", template: "just test", errorRegex: "(error|FAIL)" }],
   },
   {
-    marker: (repo) => hasMakeTarget(repo, "test"),
+    marker: (repo) => hasMakeTestTarget(repo),
     gates: () => [{ name: "test", template: "make test", errorRegex: "(error|FAIL|Error)" }],
   },
 ];
 
-function hasMakeTarget(repo: Root, target: string): boolean {
+/** `test:` at the start of a line. One target is the only one anything asks about. */
+const MAKE_TEST_TARGET = /^test\s*:/m;
+
+function hasMakeTestTarget(repo: Root): boolean {
   for (const f of ["Makefile", "makefile", "GNUmakefile"]) {
     const body = repo.read(f);
     if (body === null) continue;
-    return new RegExp(`^${target}\\s*:`, "m").test(body);
+    return MAKE_TEST_TARGET.test(body);
   }
   return false;
 }

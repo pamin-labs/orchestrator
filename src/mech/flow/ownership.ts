@@ -210,6 +210,7 @@ export function canStart(db: DB, grpId: number): StartCheck {
     .get(grpId);
   if (!me) return { ok: false, conflicts: [], sharedClaimed: [], reason: "no such group" };
 
+  // fallow-ignore-next-line security-sink -- `WRITING_SQL` is the frozen state-list literal from `contracts/states.ts`; both ids are bound through the `?` placeholders.
   const others = db
     .query<OtherOwner, [number, number]>(
       `SELECT id, name, owns_json FROM grp
