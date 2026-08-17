@@ -8,7 +8,7 @@ import { Badge } from "../ui/badge";
 import { Card, CardBody, CardTitle } from "../ui/card";
 import { Bar } from "../ui/table";
 import { Tip } from "../ui/tooltip";
-import { ask } from "../ui/confirm";
+import { ask, type AskSpec } from "../ui/confirm";
 import { Composer, ComposerDialog, type Draft } from "../ui/composer";
 import {
   AnswerDraftSchema,
@@ -23,9 +23,8 @@ import {
   type Slice,
   type State,
 } from "../lib/api";
-import { STOPS, WHERE_ZH, asksOf, gates, heldApproved, mineOf, prUrl, statusLabel } from "../lib/select";
+import { asksOf, gates, mineOf, prUrl, statusLabel, WHERE_ZH } from "../lib/select";
 import { cn, K, nl, waited } from "../lib/utils";
-import { activityOf } from "../lib/activity";
 import { WithAttachments } from "../ui/attachments";
 import { useEffect, useRef, useState } from "react";
 import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../ui/accordion";
@@ -34,10 +33,67 @@ import { Workspace } from "./workspace";
 import { EvidencePanel } from "./evidence";
 import { Notes } from "./notes";
 import { bootstrapOf } from "../lib/bootstrap";
-import { jsonOr } from "../../../src/contracts/json.ts";
-import { z } from "zod";
+import {
+  activeTab,
+  answeredFor,
+  approveBody,
+  askLanes,
+  askTabLabel,
+  countProps,
+  blockedReason,
+  bootClock,
+  bootCmd,
+  bootSecs,
+  bossFirst,
+  canNewPr,
+  canPark,
+  canResume,
+  cardRows,
+  cloneStep,
+  draftView,
+  firstLine,
+  groupSlices,
+  groupTone,
+  heldAsks,
+  inMergeQueue,
+  installStep,
+  isDraft,
+  isRunning,
+  noQuestions,
+  openAskValue,
+  openSliceValue,
+  overBudget,
+  pickedSlice,
+  prLabel,
+  runningAgents,
+  showDock,
+  showQueued,
+  showTasks,
+  sliceLine,
+  sliceRowClass,
+  tabProps,
+  askLane,
+  shownSlice,
+  tickDotClass,
+  tickState,
+  tickStops,
+  tickTextClass,
+  type StepState,
+} from "../features/requirement/model";
 
-/** One requirement in full: slices, their tasks, who is on it, and what it asks. */
+/**
+ * Confirm, then act, then refresh — the shape every consequential control here has.
+ *
+ * Each of them spelled it out: a `const go`, an early return, the call, the
+ * refresh. Four lines of ceremony per button, and the early return is the one
+ * that gets forgotten.
+ */
+const confirmThen = (spec: AskSpec, run: () => Promise<unknown>, refresh?: () => void) => async () => {
+  if (!(await ask(spec))) return;
+  await run();
+  refresh?.();
+};
+
 /**
  * One requirement, arranged so exactly one thing is the target of action.
  *
@@ -71,49 +127,23 @@ export function Requirement({
   tab?: string | null;
   onTab?: (t: string) => void;
 }) {
-  const slices = st.slices.filter((s) => s.grp_id === g.id);
-  // The ones on the boss first: the rest are reference, and reading order should
-  // not depend on which agent happened to ask first.
-  const asks = asksOf(st, g.id).sort((a, b) => Number(b.chain_state === "boss") - Number(a.chain_state === "boss"));
+  const slices = groupSlices(st, g.id);
+  const asks = bossFirst(asksOf(st, g.id));
   const mine = mineOf(asks);
-  const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
+  const others = heldAsks(asks, mine);
+  const answered = answeredFor(st, g.id);
+  const draft = isDraft(g);
   // `null` = untouched, open the first one waiting on the boss. Radix reports
   // `""` when the open one is shut, which is the state the default would
   // otherwise fall straight back to.
   const [openAsk, setOpenAsk] = useState<string | null>(null);
-  // Which of the three the boss is looking at. `null` = whatever there is, in the
-  // order that matters: a decision first, then what somebody else is holding,
-  // then what was answered for you.
   const [subPick, setSubPick] = useState<string | null>(null);
-
-  // The LAST slice that has actually produced something — work moves down the
-  // list, so the newest one carrying evidence is where it has got to. Two states
-  // are excluded and only two: `pending` has not started, and `running` with no
-  // gate mark yet is a slice that was handed out and has written nothing, so
-  // opening it puts an empty panel in front of the boss.
-  //
-  // `accepted` is NOT excluded. A finished requirement is all accepted slices,
-  // and excluding them left the page blank under a green row — the diff you just
-  // approved is the thing you go back to look at. Nothing worked on at all:
-  // everything stays shut rather than opening something with nothing under it.
-  const worked = slices.findLast(
-    (s) => s.status !== "pending" && (s.status !== "running" || Object.keys(gates(s)).length > 0),
-  );
-  // `null` = nobody has clicked, take the default. `"none"` = the boss shut the
-  // default one; without a distinct value that click falls straight back to the
-  // default and the row will not close.
   const [picked, setPicked] = useState<number | "none" | null>(null);
-  const shown = picked === "none" ? undefined : (slices.find((s) => s.id === picked) ?? worked);
-
-  const draft = g.status === "DRAFT" || g.status === "PLANNING";
-  const active = tab ?? (mine.length ? "ask" : "slice");
-  /** Open questions somebody else in the chain is still holding. */
-  const others = asks.filter((a) => !mine.includes(a));
-  const answered = st.answered.filter((a) => a.grp_id === g.id);
-  const sub = subPick ?? (mine.length ? "mine" : others.length ? "held" : "done");
-  const setSub = (v: string) => v && setSubPick(v);
   // The record is fetched by the panel that shows it, so the tab has to be told.
   const [notes, setNotes] = useState<number | null>(null);
+  const shown = shownSlice(slices, picked);
+  const active = activeTab(tab, mine.length);
+  const sub = askLane(subPick, mine.length, others.length);
 
   return (
     // Four things this page holds, and they were stacked in two columns down one
@@ -126,14 +156,14 @@ export function Requirement({
     <section className="flex min-h-0 flex-1 flex-col">
       <Header st={st} g={g} refresh={refresh} />
       <Bootstrap frames={frames} grpId={g.id} />
-      {broke && <BudgetWall g={g} refresh={refresh} />}
+      {overBudget(g) && <BudgetWall g={g} refresh={refresh} />}
 
       {draft ? (
         <Pane className="mt-4">
           <Draft st={st} g={g} refresh={refresh} />
         </Pane>
       ) : (
-        <Tabs value={active} {...(onTab ? { onValueChange: onTab } : {})} className="mt-3 flex min-h-0 flex-1 flex-col">
+        <Tabs value={active} {...tabProps(onTab)} className="mt-3 flex min-h-0 flex-1 flex-col">
           <TabList>
             <Tab value="slice" count={slices.length}>
               切片
@@ -142,9 +172,9 @@ export function Requirement({
                 the chain is still holding, and counting them under that heading
                 made the badge lie about how much of this was a decision. */}
             <Tab value="ask" count={asks.length} mine={mine.length > 0}>
-              {mine.length ? "待你决策" : "问题"}
+              {askTabLabel(mine.length)}
             </Tab>
-            <Tab value="notes" {...(notes !== null ? { count: notes } : {})}>
+            <Tab value="notes" {...countProps(notes)}>
               记录
             </Tab>
             {/* No count: a container is one or none, and a badge reading 1 next
@@ -153,84 +183,20 @@ export function Requirement({
           </TabList>
 
           <TabPanel value="slice" className="flex min-h-0 flex-1 flex-col">
-            {slices.length ? (
-              /* The evidence opens under the row it belongs to. It used to sit in
-                 a second pane below the whole list, so the diff for S2 was drawn
-                 under S3 and the row it answers was two rows away from the two
-                 buttons that answer it. One accordion: rows and the one open body
-                 in the same scroll, the evidence header pinned inside it so the
-                 verdict buttons stay reachable while you read the diff.
-
-                 The box hugs its rows and is capped at what is left of the screen
-                 — not `flex-1`, which drew an 800px empty frame under three closed
-                 rows. The scroll still lives here once the open slice outgrows
-                 the pane. */
-              <div className="min-h-0 max-h-full overflow-y-auto overflow-x-hidden rounded-lg border border-rule">
-                <Accordion
-                  value={shown ? String(shown.id) : ""}
-                  onValueChange={(v) => setPicked(v ? Number(v) : "none")}
-                >
-                  {slices.map((s) => (
-                    <AccordionItem key={s.id} value={String(s.id)}>
-                      <SliceRow st={st} g={g} s={s} selected={s.id === shown?.id} />
-                      <AccordionBody>
-                        <SliceDetail st={st} s={s} refresh={refresh} />
-                      </AccordionBody>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              </div>
-            ) : (
-              <Pane>
-                <Working>正在拆解</Working>
-              </Pane>
-            )}
+            <SliceList st={st} g={g} slices={slices} shown={shown} onPick={setPicked} refresh={refresh} />
           </TabPanel>
 
-          {/* Three kinds of thing, one at a time, with their counts on the switch.
-              Stacked down one scroll they were invisible: at the top of the page
-              nothing said a question was being held by the Architect or that a
-              stand-in had answered two of them — you found out by scrolling past
-              the box you came to type in. A switch says it in three words without
-              moving anything.
-
-              Not a second tab strip (this page already has one): the same quiet
-              ToggleGroup the evidence panel uses, for the same reason. */}
           <TabPanel value="ask" className="flex min-h-0 flex-1 flex-col gap-2">
-            <Segments value={sub} onValueChange={setSub} className="-ml-2 shrink-0">
-              {mine.length > 0 && <Segment value="mine">待你决策 {mine.length}</Segment>}
-              {others.length > 0 && <Segment value="held">别人在处理 {others.length}</Segment>}
-              {answered.length > 0 && <Segment value="done">替你答过 {answered.length}</Segment>}
-            </Segments>
-
-            {/* One scroll for the pane, not a capped box per section: a long
-                question used to push its own answer box below the box's bottom
-                edge, so the boss saw a question cut mid-sentence and no way to
-                reply to it. */}
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-1">
-              {!asks.length && !answered.length && (
-                <div className="text-[0.8125rem] text-ink-3">没有开着的问题。这一组的人现在不等你。</div>
-              )}
-              {sub === "mine" && mine.length > 0 && (
-                <div className="overflow-hidden rounded-lg border border-accent">
-                  <Accordion value={openAsk ?? String(mine[0]!.id)} onValueChange={setOpenAsk}>
-                    {mine.map((e) => (
-                      <AccordionItem key={e.id} value={String(e.id)}>
-                        <Ask e={e} refresh={refresh} open={String(e.id) === (openAsk ?? String(mine[0]!.id))} />
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
-                </div>
-              )}
-              {sub === "held" && <Held rows={others} />}
-              {/* An answer a stand-in gave for the boss belongs with the questions,
-                  which is where someone goes looking for it. It used to sit in a
-                  roster tab: 这个组的人 listed role, activity, turns and tokens for
-                  every agent in the group — the 工位墙 in miniature, one column
-                  narrower, on a page about a requirement rather than about people.
-                  The tab is gone; this was the only part of it doing work. */}
-              {sub === "done" && <Delegated rows={answered} refresh={refresh} />}
-            </div>
+            <AskLanes
+              sub={sub}
+              onSub={setSubPick}
+              mine={mine}
+              others={others}
+              answered={answered}
+              openAsk={openAsk}
+              onOpenAsk={setOpenAsk}
+              refresh={refresh}
+            />
           </TabPanel>
 
           <TabPanel value="notes" className="flex min-h-0 flex-1 flex-col">
@@ -253,15 +219,134 @@ export function Requirement({
           is read far more often than it is typed into — but it has to stay
           reachable without scrolling, because it is how the boss answers what
           they just read. */}
-      {/* A decision carries its own answer box, and that box is the one that
-          unblocks the agent hanging on it. Two inputs on one screen asks the boss
-          to work out which of them the words go to. */}
-      {open && !draft && !(active === "ask" && mine.length > 0) && <SayDock g={g} refresh={refresh} />}
+      {showDock(open, draft, active, mine.length) && <SayDock g={g} refresh={refresh} />}
     </section>
   );
 }
 
-/** Identity and state on the left, the one useful control on the right, the rest in a menu. */
+/**
+ * The slices, and the evidence for the one that is open.
+ *
+ * The evidence opens under the row it belongs to. It used to sit in a second
+ * pane below the whole list, so the diff for S2 was drawn under S3 and the row
+ * it answers was two rows away from the two buttons that answer it. One
+ * accordion: rows and the one open body in the same scroll, the evidence header
+ * pinned inside it so the verdict buttons stay reachable while you read the diff.
+ *
+ * The box hugs its rows and is capped at what is left of the screen — not
+ * `flex-1`, which drew an 800px empty frame under three closed rows. The scroll
+ * still lives here once the open slice outgrows the pane.
+ */
+function SliceList({
+  st,
+  g,
+  slices,
+  shown,
+  onPick,
+  refresh,
+}: {
+  st: State;
+  g: Group;
+  slices: Slice[];
+  shown: Slice | undefined;
+  onPick: (v: number | "none") => void;
+  refresh: () => void;
+}) {
+  if (!slices.length) {
+    return (
+      <Pane>
+        <Working>正在拆解</Working>
+      </Pane>
+    );
+  }
+  return (
+    <div className="min-h-0 max-h-full overflow-y-auto overflow-x-hidden rounded-lg border border-rule">
+      <Accordion value={openSliceValue(shown)} onValueChange={(v) => onPick(pickedSlice(v))}>
+        {slices.map((s) => (
+          <AccordionItem key={s.id} value={String(s.id)}>
+            <SliceRow st={st} g={g} s={s} selected={s.id === shown?.id} />
+            <AccordionBody>
+              <SliceDetail st={st} s={s} refresh={refresh} />
+            </AccordionBody>
+          </AccordionItem>
+        ))}
+      </Accordion>
+    </div>
+  );
+}
+
+/**
+ * Three kinds of thing, one at a time, with their counts on the switch.
+ *
+ * Stacked down one scroll they were invisible: at the top of the page nothing
+ * said a question was being held by the Architect or that a stand-in had
+ * answered two of them — you found out by scrolling past the box you came to
+ * type in. A switch says it in three words without moving anything.
+ *
+ * Not a second tab strip (this page already has one): the same quiet ToggleGroup
+ * the evidence panel uses, for the same reason.
+ */
+function AskLanes({
+  sub,
+  onSub,
+  mine,
+  others,
+  answered,
+  openAsk,
+  onOpenAsk,
+  refresh,
+}: {
+  sub: string;
+  onSub: (v: string) => void;
+  mine: Escalation[];
+  others: Escalation[];
+  answered: State["answered"];
+  openAsk: string | null;
+  onOpenAsk: (v: string) => void;
+  refresh: () => void;
+}) {
+  const value = openAskValue(openAsk, mine);
+  return (
+    <>
+      <Segments value={sub} onValueChange={(v) => v && onSub(v)} className="-ml-2 shrink-0">
+        {askLanes(mine.length, others.length, answered.length).map(([lane, label]) => (
+          <Segment key={lane} value={lane}>
+            {label}
+          </Segment>
+        ))}
+      </Segments>
+
+      {/* One scroll for the pane, not a capped box per section: a long question
+          used to push its own answer box below the box's bottom edge, so the boss
+          saw a question cut mid-sentence and no way to reply to it. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-1">
+        {noQuestions(mine.length + others.length, answered.length) && (
+          <div className="text-[0.8125rem] text-ink-3">没有开着的问题。这一组的人现在不等你。</div>
+        )}
+        {sub === "mine" && mine.length > 0 && (
+          <div className="overflow-hidden rounded-lg border border-accent">
+            <Accordion value={value} onValueChange={onOpenAsk}>
+              {mine.map((e) => (
+                <AccordionItem key={e.id} value={String(e.id)}>
+                  <Ask e={e} refresh={refresh} open={String(e.id) === value} />
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+        )}
+        {sub === "held" && <Held rows={others} />}
+        {/* An answer a stand-in gave for the boss belongs with the questions,
+            which is where someone goes looking for it. It used to sit in a
+            roster tab: 这个组的人 listed role, activity, turns and tokens for
+            every agent in the group — the 工位墙 in miniature, one column
+            narrower, on a page about a requirement rather than about people.
+            The tab is gone; this was the only part of it doing work. */}
+        {sub === "done" && <Delegated rows={answered} refresh={refresh} />}
+      </div>
+    </>
+  );
+}
+
 /**
  * The sandbox being built back up, while it happens.
  *
@@ -280,8 +365,6 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
   const [shut, setShut] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
-  // The install prints `$ cmd` as its first line and only runs once the clone
-  // has returned, so that one line marks both steps.
   const { running, failed, cmd, lines, since, until } = bootstrapOf(frames, grpId);
 
   useEffect(() => {
@@ -298,21 +381,16 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
   // A failure stays on the page. It is the one outcome the boss might act on,
   // and it used to be the one that made the pane disappear.
   if (!running && !failed) return null;
-  const secs = Math.max(0, Math.round(((until ?? now) - (since || now)) / 1000));
 
   return (
     <div className="mt-3 border-t border-rule pt-2.5">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {/* The same marks the gate tracks use. Progress on this page is which
             step passed, never a bar that fills. */}
-        <Step label="克隆" state={cmd ? "ok" : failed ? "bad" : "run"} />
-        <Step label="装依赖" state={!cmd ? "wait" : failed ? "bad" : until ? "ok" : "run"} />
-        <Meta className="min-w-0 flex-1 truncate">{cmd ?? "把这个组的分支和依赖装回新沙盒"}</Meta>
-        {/* Elapsed, because an install with no clock reads as stuck at minute
-            three. Seconds until it is worth minutes. */}
-        <Meta className={cn(failed && "text-bad")}>
-          {failed ? "装失败了" : secs < 90 ? `${secs}s` : `${Math.floor(secs / 60)}m${secs % 60}s`}
-        </Meta>
+        <Step label="克隆" state={cloneStep(cmd, failed)} />
+        <Step label="装依赖" state={installStep(cmd, failed, until)} />
+        <Meta className="min-w-0 flex-1 truncate">{bootCmd(cmd)}</Meta>
+        <Meta className={cn(failed && "text-bad")}>{bootClock(failed, bootSecs(since, until, now))}</Meta>
         <Button variant="quiet" size="sm" aria-expanded={!shut} onClick={() => setShut((v) => !v)}>
           {shut ? "看日志" : "收起"}
         </Button>
@@ -344,7 +422,7 @@ function Bootstrap({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
 }
 
 /** One step of a rebuild, in the gate track's own marks. */
-function Step({ label, state }: { label: string; state: "wait" | "run" | "ok" | "bad" }) {
+function Step({ label, state }: { label: string; state: StepState }) {
   return (
     <span className="flex shrink-0 items-center gap-1.5">
       <i
@@ -360,24 +438,16 @@ function Step({ label, state }: { label: string; state: "wait" | "run" | "ok" | 
   );
 }
 
+/** Identity and state on the left, the one useful control on the right, the rest in a menu. */
 function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }) {
-  const inQueue = st.mergeQueue.some((m) => m.grpId === g.id);
+  const inQueue = inMergeQueue(st, g.id);
   const url = prUrl(st, g);
-  const broke = g.budget_tokens != null && g.spent_tokens >= g.budget_tokens;
-  const act = async (a: "pause" | "resume" | "park" | "wake") => {
-    await groupAction(g.id, a);
-    refresh();
-  };
-  const running = ["RUNNING", "PAUSING"].includes(g.status);
+  const act = (a: "pause" | "resume" | "wake") => actThen(g, a, refresh);
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule pb-3">
       <span className="font-display text-[1.25rem] font-semibold">{g.name}</span>
-      <Badge
-        tone={heldApproved(g) ? "muted" : g.status === "DRAFT" ? "mine" : g.status === "RUNNING" ? "live" : "muted"}
-      >
-        {statusLabel(g)}
-      </Badge>
+      <Badge tone={groupTone(g)}>{statusLabel(g)}</Badge>
       <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {g.branch && <Meta>{g.branch}</Meta>}
         <Meta>{K(g.spent_tokens)} tokens</Meta>
@@ -388,111 +458,118 @@ function Header({ st, g, refresh }: { st: State; g: Group; refresh: () => void }
         {/* Merging is the one step that stays the boss's hand, on GitHub. Nothing
             here confirms it: `pollPrs` asks GitHub every tick and winds the group
             up by itself. */}
-        {url && <LinkButton href={url}>{inQueue ? "去合并 PR ↗" : "打开 PR ↗"}</LinkButton>}
-        {/* Closed PR: reopening it on GitHub is enough and the watchdog sees it,
-            but a branch that was force-pushed or deleted cannot be reopened at
-            all — so the way out has to exist here too. */}
-        {g.status === "PAUSED" && g.pr_number != null && <NewPr grpId={g.id} refresh={refresh} />}
-        {!inQueue && g.status === "PR_OPEN" && <Badge>排队中</Badge>}
+        {url && <LinkButton href={url}>{prLabel(inQueue)}</LinkButton>}
+        {canNewPr(g) && <NewPr grpId={g.id} refresh={refresh} />}
+        {showQueued(inQueue, g) && <Badge>排队中</Badge>}
         {g.status === "RUNNING" && <Button onClick={() => act("pause")}>暂停</Button>}
-        {["PAUSED", "PAUSING"].includes(g.status) && !broke && <Button onClick={() => act("resume")}>继续</Button>}
+        {canResume(g, overBudget(g)) && <Button onClick={() => act("resume")}>继续</Button>}
         {g.status === "PARKED" && (
           <Button variant="go" onClick={() => act("wake")}>
             唤醒
           </Button>
         )}
-        {/* Interrupt and park are rare and consequential. Sitting in the header at
-            the same weight as 暂停 they read as ordinary, and one of them discards a
-            turn's work. */}
-        <Menu label="更多">
-          {running && (
-            <MenuItem
-              hint="停止当前 turn，改动留着，下一个 turn 会被告知"
-              onSelect={async () => {
-                await groupAction(g.id, "interrupt", { mode: "keep" });
-                refresh();
-              }}
-            >
-              打断，保留改动
-            </MenuItem>
-          )}
-          {running && (
-            <MenuItem
-              danger
-              hint="回到这一轮开始前的 checkpoint，这个 turn 的改动全丢"
-              onSelect={async () => {
-                const go = await ask({
-                  title: "打断并回滚",
-                  body: "丢弃当前 turn 的全部改动，退回到这一轮开始前。",
-                  yes: "打断并回滚",
-                  danger: true,
-                });
-                if (!go) return;
-                await groupAction(g.id, "interrupt", { mode: "rollback" });
-                refresh();
-              }}
-            >
-              打断并回滚
-            </MenuItem>
-          )}
-          {["RUNNING", "PAUSING", "PAUSED"].includes(g.status) && (
-            <MenuItem hint="释放并发槽，沙盒里的代码和 checkpoint 原地不动" onSelect={() => act("park")}>
-              封存
-            </MenuItem>
-          )}
-          <MenuItem
-            hint="容器卡住、少挂了东西、或换过凭据时用。下一个 turn 重新 clone + 装依赖，分支在宿主仓库里不会丢"
-            onSelect={async () => {
-              const go = await ask({
-                title: "重开容器",
-                body: `${g.name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。`,
-                yes: "重开",
-              });
-              if (!go) return;
-              await groupAction(g.id, "rebuild");
-              refresh();
-            }}
-          >
-            重开容器
-          </MenuItem>
-          {/* 退回重拆 sends it back to the Dispatcher, which writes another card for
-              work nobody wants. A requirement that turned out to be a duplicate, or
-              that someone already fixed, needs to leave the board instead. */}
-          <MenuItem
-            danger
-            hint="排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着"
-            onSelect={async () => {
-              const go = await ask({
-                title: "不做了",
-                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录留着，组不会再被拉起。`,
-                yes: "不做了",
-                danger: true,
-              });
-              if (!go) return;
-              await groupAction(g.id, "drop");
-              refresh();
-            }}
-          >
-            不做了
-          </MenuItem>
-        </Menu>
+        <HeaderMenu g={g} refresh={refresh} />
       </span>
     </div>
   );
 }
 
+/**
+ * Interrupt and park are rare and consequential. Sitting in the header at the
+ * same weight as 暂停 they read as ordinary, and one of them discards a turn's
+ * work.
+ */
+function HeaderMenu({ g, refresh }: { g: Group; refresh: () => void }) {
+  const running = isRunning(g);
+  return (
+    <Menu label="更多">
+      {running && (
+        <MenuItem
+          hint="停止当前 turn，改动留着，下一个 turn 会被告知"
+          onSelect={async () => {
+            await groupAction(g.id, "interrupt", { mode: "keep" });
+            refresh();
+          }}
+        >
+          打断，保留改动
+        </MenuItem>
+      )}
+      {running && (
+        <MenuItem
+          danger
+          hint="回到这一轮开始前的 checkpoint，这个 turn 的改动全丢"
+          onSelect={confirmThen(
+            {
+              title: "打断并回滚",
+              body: "丢弃当前 turn 的全部改动，退回到这一轮开始前。",
+              yes: "打断并回滚",
+              danger: true,
+            },
+            () => groupAction(g.id, "interrupt", { mode: "rollback" }),
+            refresh,
+          )}
+        >
+          打断并回滚
+        </MenuItem>
+      )}
+      {canPark(g) && (
+        <MenuItem hint="释放并发槽，沙盒里的代码和 checkpoint 原地不动" onSelect={() => actThen(g, "park", refresh)}>
+          封存
+        </MenuItem>
+      )}
+      <MenuItem
+        hint="容器卡住、少挂了东西、或换过凭据时用。下一个 turn 重新 clone + 装依赖，分支在宿主仓库里不会丢"
+        onSelect={confirmThen(
+          {
+            title: "重开容器",
+            body: `${g.name} 的容器会被扔掉，下一个 turn 重建：重新 clone 分支、重装依赖。没提交的改动会丢。`,
+            yes: "重开",
+          },
+          () => groupAction(g.id, "rebuild"),
+          refresh,
+        )}
+      >
+        重开容器
+      </MenuItem>
+      {/* 退回重拆 sends it back to the Dispatcher, which writes another card for
+          work nobody wants. A requirement that turned out to be a duplicate, or
+          that someone already fixed, needs to leave the board instead. */}
+      <MenuItem
+        danger
+        hint="排队的 turn 全取消，占的路径交还给别的组。代码、分支和记录都留着"
+        onSelect={confirmThen(
+          {
+            title: "不做了",
+            body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录留着，组不会再被拉起。`,
+            yes: "不做了",
+            danger: true,
+          },
+          () => groupAction(g.id, "drop"),
+          refresh,
+        )}
+      >
+        不做了
+      </MenuItem>
+    </Menu>
+  );
+}
+
+/** Fire a group action and pull the snapshot it changed. */
+const actThen = async (g: Group, a: Parameters<typeof groupAction>[1], refresh: () => void) => {
+  await groupAction(g.id, a);
+  refresh();
+};
+
 /** One line per slice: order, title, gates, and who is on it. */
 function SliceRow({ st, g, s, selected }: { st: State; g: Group; s: Slice; selected: boolean }) {
-  const gs = gates(s);
   const waiting = s.status === "awaiting_boss";
-  const on = st.agents.filter((a) => a.grp_id === g.id && a.state === "running");
   return (
     <AccordionTrigger
       className={cn(
         "grid grid-cols-[2rem_minmax(0,1fr)_auto_auto] items-center gap-x-3",
         "px-4 py-2 transition-colors",
         "max-[52rem]:grid-cols-[2rem_minmax(0,1fr)_auto]",
-        waiting ? "bg-accent-soft/60 hover:bg-accent-soft" : selected ? "bg-rail" : "hover:bg-rail/60",
+        sliceRowClass(waiting, selected),
       )}
     >
       <span className="font-mono text-[0.75rem] text-ink-3">S{s.seq}</span>
@@ -501,25 +578,10 @@ function SliceRow({ st, g, s, selected }: { st: State; g: Group; s: Slice; selec
           {s.title} <span className="font-mono text-[0.625rem] text-ink-3">{s.difficulty}</span>
         </span>
         <span className="block truncate font-mono text-[0.6875rem] text-ink-3">
-          {s.status === "pending"
-            ? "等前序切片"
-            : s.status === "rejected"
-              ? "已退回，等它修"
-              : waiting
-                ? s.awaiting_at
-                  ? `待你查收 · ${waited(s.awaiting_at)}`
-                  : "待你查收"
-                : on.length
-                  ? on
-                      .map((a) => {
-                        const [verb, detail] = activityOf(a);
-                        return `${a.role} ▸ ${verb ? `${verb} ` : ""}${detail}`;
-                      })
-                      .join(" · ")
-                  : s.accept_spec}
+          {sliceLine(s, runningAgents(st, g.id))}
         </span>
       </span>
-      <Ticks s={s} gs={gs} />
+      <Ticks s={s} gs={gates(s)} />
       <ChevronRight
         size={13}
         strokeWidth={2}
@@ -531,32 +593,13 @@ function SliceRow({ st, g, s, selected }: { st: State; g: Group; s: Slice; selec
 
 /** Which gates passed. A discrete mark, never a fill: a gate is a fact, a percentage is a guess. */
 function Ticks({ s, gs }: { s: Slice; gs: Record<string, string> }) {
-  const waiting = s.status === "awaiting_boss";
   return (
     <span className="flex items-center gap-1.5">
-      {[...STOPS, ["boss", waiting ? "待查收" : "查收"] as [string, string]].map(([k, zh]) => {
-        const v = k === "boss" ? (waiting ? "wait" : s.status === "accepted" ? "pass" : "") : gs[k];
+      {tickStops(s.status === "awaiting_boss").map(([k, zh]) => {
+        const v = tickState(s, k, gs);
         return (
-          <span
-            key={k}
-            className={cn(
-              "flex items-center gap-1 text-[0.6875rem]",
-              v === "pass" && "text-ok",
-              v === "fail" && "text-bad",
-              v === "wait" && "font-semibold text-accent",
-              !v && "text-ink-3",
-            )}
-          >
-            <span
-              className={cn(
-                "size-2 rounded-full border",
-                v === "pass" && "border-ok bg-ok",
-                v === "fail" && "border-bad bg-bad",
-                v === "wait" && "border-accent bg-accent",
-                !v && s.status === k && "breathe border-ink",
-                !v && s.status !== k && "border-ink-3",
-              )}
-            />
+          <span key={k} className={cn("flex items-center gap-1 text-[0.6875rem]", tickTextClass(v))}>
+            <span className={cn("size-2 rounded-full border", tickDotClass(v, s.status === k))} />
             <b className="whitespace-nowrap font-medium max-[64rem]:hidden">{zh}</b>
           </span>
         );
@@ -568,26 +611,26 @@ function Ticks({ s, gs }: { s: Slice; gs: Record<string, string> }) {
 /** The selected slice, in full: what it promised, what it did, and the two buttons. */
 function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => void }) {
   const tasks = st.tasks.filter((t) => t.slice_id === s.id);
-  const waiting = s.status === "awaiting_boss";
   // A header saying `S2 <title> 验收：<spec>` sat here, directly under the lane row
   // that says S2 and the title, directly above the evidence panel that leads with
   // the acceptance line. Three copies of two facts, stacked. The buttons were the
   // only thing here that was not a repeat, so they moved next to the evidence they
   // are a verdict on.
-  const act = waiting ? (
-    <span className="flex shrink-0 gap-1.5">
-      <Button
-        variant="go"
-        onClick={async () => {
-          await sliceDecision(s.id, "accept");
-          refresh();
-        }}
-      >
-        查收
-      </Button>
-      <RejectSlice sliceId={s.id} refresh={refresh} />
-    </span>
-  ) : null;
+  const act =
+    s.status !== "awaiting_boss" ? null : (
+      <span className="flex shrink-0 gap-1.5">
+        <Button
+          variant="go"
+          onClick={async () => {
+            await sliceDecision(s.id, "accept");
+            refresh();
+          }}
+        >
+          查收
+        </Button>
+        <RejectSlice sliceId={s.id} refresh={refresh} />
+      </span>
+    );
 
   if (s.status === "pending") {
     return (
@@ -598,9 +641,7 @@ function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => v
   }
   return (
     <div className="border-t border-rule-soft">
-      {/* Only when it says something the slice title does not: one task whose title
-          is the slice's own is the same line twice with a tick in front. */}
-      {(tasks.length > 1 || (tasks[0] && tasks[0].title !== s.title)) && (
+      {showTasks(tasks, s) && (
         <ul className="list-none border-b border-rule-soft py-1.5 pl-14 pr-3">
           {tasks.map((t) => (
             <li key={t.id} className="flex gap-2 py-px text-[0.75rem]">
@@ -630,17 +671,18 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
   return (
     <Button
       variant="go"
-      onClick={async () => {
-        const go = await ask({
+      onClick={confirmThen(
+        {
           title: "开一个新 PR",
           body: "能在 GitHub 上重开旧 PR 就不用这个。分支被强推或删过才用：会用当前分支重提一个，回到合入队列。",
           yes: "开新 PR",
-        });
-        if (!go) return;
-        const r = await groupAction(grpId, "newpr");
-        if (!r.ok) await ask({ title: "开不出来", body: r.text, yes: "知道了" });
-        refresh();
-      }}
+        },
+        async () => {
+          const r = await groupAction(grpId, "newpr");
+          if (!r.ok) await ask({ title: "开不出来", body: r.text, yes: "知道了" });
+        },
+        refresh,
+      )}
     >
       开新 PR
     </Button>
@@ -654,19 +696,11 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
  * the correction from them, so this is the same composer as everywhere else and
  * takes a screenshot of what is wrong.
  */
-function RejectSlice({
-  sliceId,
-  refresh,
-  children,
-}: {
-  sliceId: number;
-  refresh: () => void;
-  children?: React.ReactNode;
-}) {
+function RejectSlice({ sliceId, refresh }: { sliceId: number; refresh: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setOpen(true)}>{children ?? "不满意"}</Button>
+      <Button onClick={() => setOpen(true)}>不满意</Button>
       <ComposerDialog
         open={open}
         onOpenChange={setOpen}
@@ -685,12 +719,13 @@ function RejectSlice({
   );
 }
 
+const setBudget = async (g: Group, tokens: number | null, refresh: () => void) => {
+  await groupAction(g.id, "budget", { tokens });
+  refresh();
+};
+
 /** Spend against its cap, and the cap itself, editable. Nothing sets one otherwise. */
 function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
-  const set = async (tokens: number | null) => {
-    await groupAction(g.id, "budget", { tokens });
-    refresh();
-  };
   if (g.budget_tokens == null) {
     return (
       <button
@@ -704,7 +739,7 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
             field: "例如 2000000",
           });
           const n = Number(String(v ?? "").replace(/[^\d]/g, ""));
-          if (n > 0) await set(n);
+          if (n > 0) await setBudget(g, n, refresh);
         }}
       >
         无预算上限
@@ -732,10 +767,6 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
  * suspended it again. Raising the cap is the only thing that moves it.
  */
 function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
-  const set = async (tokens: number | null) => {
-    await groupAction(g.id, "budget", { tokens });
-    refresh();
-  };
   // `budget_tokens` is nullable in the column and the browser used to declare it
   // a `number` — so "no cap set" arrived as null and this computed NaN, which is
   // what the raise-the-budget field would have been pre-filled with.
@@ -748,17 +779,11 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
           已花 {K(g.spent_tokens)} tokens，上限 {K(g.budget_tokens)}。 加上限才动得了，「继续」不生效。
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
-          <Button variant="go" onClick={() => set(doubled)}>
+          <Button variant="go" onClick={() => setBudget(g, doubled, refresh)}>
             翻倍到 {K(doubled)}
           </Button>
-          <Button onClick={() => set(null)}>取消上限</Button>
-          <Button
-            variant="quiet"
-            onClick={async () => {
-              await groupAction(g.id, "park");
-              refresh();
-            }}
-          >
+          <Button onClick={() => setBudget(g, null, refresh)}>取消上限</Button>
+          <Button variant="quiet" onClick={() => actThen(g, "park", refresh)}>
             就停在这里（封存）
           </Button>
         </div>
@@ -792,17 +817,16 @@ function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => 
             <Button
               variant="quiet"
               size="sm"
-              onClick={async () => {
-                const go = await ask({
+              onClick={confirmThen(
+                {
                   title: "撤销并接管",
                   body: "回滚到提问时的 checkpoint，之后的改动作废，由你重新回答。",
                   yes: "撤销并接管",
                   danger: true,
-                });
-                if (!go) return;
-                await mutate(api.escalations[":id"].revoke.$post({ param: { id: String(a.id) } }));
-                refresh();
-              }}
+                },
+                () => mutate(api.escalations[":id"].revoke.$post({ param: { id: String(a.id) } })),
+                refresh,
+              )}
             >
               撤销并接管
             </Button>
@@ -853,6 +877,35 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
 }
 
 /**
+ * One button that confirms before it sends, in the row under the composer.
+ *
+ * 方向错了, 不做了 and 退回重拆 are the same control three times: a tip saying who
+ * receives the sentence, a confirm carrying the weight, and a send that clears
+ * the box only if it went. Each one had written that out.
+ */
+function SendAs({
+  label,
+  tip,
+  spec,
+  disabled,
+  run,
+}: {
+  label: string;
+  tip: string;
+  spec: AskSpec;
+  disabled: boolean;
+  run: () => Promise<unknown>;
+}) {
+  return (
+    <Tip label={tip}>
+      <Button size="sm" disabled={disabled} onClick={confirmThen(spec, run)}>
+        {label}
+      </Button>
+    </Tip>
+  );
+}
+
+/**
  * The boss's own voice, and what it counts as.
  *
  * docs/project/plan.md §7 puts three readings on the same words: patch keeps going, respec
@@ -860,8 +913,7 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
  * every complaint is heard as "change one line", which is exactly how a wrong
  * decomposition survives to the end.
  */
-function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; projectId?: number }) {
-  const draft = g.status === "DRAFT" || g.status === "PLANNING";
+function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; projectId: number }) {
   const send = async (d: Draft, as?: "patch" | "respec" | "reject") => {
     const r = await mutate(
       api.say.$post({
@@ -875,14 +927,14 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
   // Before approval the exits live next to the approve button, where the decision
   // is. A second composer down here asked the boss to type into whichever one they
   // found first, and neither said where the words would go.
-  if (draft) return null;
+  if (isDraft(g)) return null;
 
   return (
     <>
       <H2 className="mt-6">跟这个组说话</H2>
       <Composer
         rows={2}
-        {...(projectId !== undefined ? { projectId } : {})}
+        projectId={projectId}
         placeholder="下一个 turn 开头就会读到。截图直接粘，/ 插技能路径。⌘Enter 发给 PM"
         submit="发给 PM"
         onSubmit={(d) => send(d)}
@@ -898,39 +950,29 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
                 要改一处
               </Button>
             </Tip>
-            <Tip label="整个需求退回 Dispatcher 重新深挖，已写的代码留在分支上">
-              <Button
-                size="sm"
-                disabled={busy || !text}
-                onClick={async () => {
-                  const go = await ask({
-                    title: "退回重新拆解",
-                    body: "这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖。已写的代码留在分支上。",
-                    yes: "退回重拆",
-                  });
-                  if (go && (await send({ text, attachments }, "respec"))) clear();
-                }}
-              >
-                方向错了
-              </Button>
-            </Tip>
-            <Tip label="停止派发，分支保留不合入，仍然要写 retro">
-              <Button
-                size="sm"
-                disabled={busy || !text}
-                onClick={async () => {
-                  const go = await ask({
-                    title: "作废这个需求",
-                    body: "停止派发，分支保留不合入。仍然要求写 retro。",
-                    yes: "作废",
-                    danger: true,
-                  });
-                  if (go && (await send({ text, attachments }, "reject"))) clear();
-                }}
-              >
-                不做了
-              </Button>
-            </Tip>
+            <SendAs
+              label="方向错了"
+              tip="整个需求退回 Dispatcher 重新深挖，已写的代码留在分支上"
+              spec={{
+                title: "退回重新拆解",
+                body: "这句话作为最高优先级 fact，整个需求退回 Dispatcher 重新深挖。已写的代码留在分支上。",
+                yes: "退回重拆",
+              }}
+              disabled={busy || !text}
+              run={async () => (await send({ text, attachments }, "respec")) && clear()}
+            />
+            <SendAs
+              label="不做了"
+              tip="停止派发，分支保留不合入，仍然要写 retro"
+              spec={{
+                title: "作废这个需求",
+                body: "停止派发，分支保留不合入。仍然要求写 retro。",
+                yes: "作废",
+                danger: true,
+              }}
+              disabled={busy || !text}
+              run={async () => (await send({ text, attachments }, "reject")) && clear()}
+            />
           </>
         )}
       />
@@ -939,12 +981,7 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
 }
 
 function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void }) {
-  const filed = st.draftCards.find((c) => c.grpId === g.id)?.body ?? "";
-  const idea = st.ideas.find((i) => i.grpId === g.id)?.body ?? "";
-  const late = st.lateObjections.filter((o) => o.grpId === g.id);
-  const proposal = st.dropProposals.find((p) => p.grpId === g.id);
-  const card0 = st.draftCards.find((c) => c.grpId === g.id);
-  const unknown = jsonOr(card0?.unknownPaths, z.array(z.string()), []);
+  const { filed, idea, late, proposal, unknown } = draftView(st, g.id);
   const [card, setCard] = useState(filed);
 
   return (
@@ -960,11 +997,11 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
           <b className="font-semibold text-warn">{o.author} 后补反对</b> {o.body}
         </div>
       ))}
-      {/* Paths the card names that are not in the repo. A plan that creates a file
-          names it, so this is not an error — but a plan written from memory of the
-          codebase instead of from reading it also names files that were never
-          there, and that is the cheapest visible symptom of a decomposition
-          pointed the wrong way. Reviewing the card is where that gets caught. */}
+      {/* A plan that creates a file names it, so this is not an error — but a plan
+          written from memory of the codebase instead of from reading it also names
+          files that were never there, and that is the cheapest visible symptom of a
+          decomposition pointed the wrong way. Reviewing the card is where that gets
+          caught. */}
       {unknown.length > 0 && (
         <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.75rem]">
           <b className="font-semibold text-warn">卡里这些路径仓库里没有</b>{" "}
@@ -975,44 +1012,7 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
       {/* A planner found this is already covered, and the server checked the
           evidence before this row could exist. Offering it beside the card is the
           point: without it the boss reads a full plan for work nobody needs. */}
-      {proposal && (
-        <div className="my-3 rounded-md border border-warn/40 bg-sunk px-3 py-2.5">
-          <div className="text-[0.8125rem] font-semibold text-warn">规划岗建议作废</div>
-          <div className="my-1 break-words whitespace-pre-wrap text-[0.8125rem]">{proposal.body}</div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Button
-              variant="go"
-              size="sm"
-              onClick={async () => {
-                const go = await ask({
-                  title: "作废这条需求",
-                  body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
-                  yes: "作废",
-                  danger: true,
-                });
-                if (!go) return;
-                await groupAction(g.id, "drop", { why: proposal.body.split("\n")[0] ?? "" });
-                refresh();
-              }}
-            >
-              确认作废
-            </Button>
-            <Button
-              size="sm"
-              onClick={async () => {
-                await mutate(
-                  api.say.$post({
-                    json: { group_id: g.id, body: "不是重复，也不算已经做完了 —— 接着拆。", as: "respec" },
-                  }),
-                );
-                refresh();
-              }}
-            >
-              不，接着做
-            </Button>
-          </div>
-        </div>
-      )}
+      {proposal && <DropProposal g={g} body={proposal.body} refresh={refresh} />}
       {!filed ? (
         // Nothing to approve yet. An empty textarea and an approve button asks the
         // boss to sign off on nothing, which is why this screen read as "我该干嘛".
@@ -1023,30 +1023,21 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
         // 退回重拆 below is still the way out: it withdraws the approval.
         <>
           <div className="my-2 rounded-md bg-sunk px-2.5 py-2 text-[0.8125rem]">
-            <b className="font-semibold text-warn">已批准，边界挡着</b>{" "}
-            {st.approvedBlocked.find((b) => b.grpId === g.id)?.reason ?? "等 Architect 切边界"}
+            <b className="font-semibold text-warn">已批准，边界挡着</b> {blockedReason(st, g.id)}
           </div>
           <Working>让开之后自动开工，不用再点一次</Working>
         </>
       ) : (
         <>
-          <Textarea
-            rows={Math.max(7, filed.split("\n").length + 1)}
-            value={card}
-            onChange={(e) => setCard(e.target.value)}
-            aria-label="计划卡"
-          />
+          <Textarea rows={cardRows(filed)} value={card} onChange={(e) => setCard(e.target.value)} aria-label="计划卡" />
           <div className="mt-3 flex items-baseline gap-3">
             <Button
               variant="go"
               onClick={async () => {
-                // Send the text only when edited: an untouched card is approved as
-                // filed, so "approve" and "edit then approve" stay distinct requests.
-                const edited = card.trim() && card.trim() !== filed.trim();
                 await mutate(
                   api.draft[":id"][":decision"].$post({
                     param: { id: String(g.id), decision: "approve" },
-                    json: edited ? { card: card.trim() } : {},
+                    json: approveBody(card, filed),
                   }),
                 );
                 refresh();
@@ -1060,6 +1051,47 @@ function Draft({ st, g, refresh }: { st: State; g: Group; refresh: () => void })
       )}
       <Exits g={g} refresh={refresh} projectId={g.project_id} />
     </>
+  );
+}
+
+/** A planner's case that this requirement is already covered, and the two answers to it. */
+function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: () => void }) {
+  return (
+    <div className="my-3 rounded-md border border-warn/40 bg-sunk px-3 py-2.5">
+      <div className="text-[0.8125rem] font-semibold text-warn">规划岗建议作废</div>
+      <div className="my-1 break-words whitespace-pre-wrap text-[0.8125rem]">{body}</div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button
+          variant="go"
+          size="sm"
+          onClick={confirmThen(
+            {
+              title: "作废这条需求",
+              body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
+              yes: "作废",
+              danger: true,
+            },
+            () => groupAction(g.id, "drop", { why: firstLine(body) }),
+            refresh,
+          )}
+        >
+          确认作废
+        </Button>
+        <Button
+          size="sm"
+          onClick={async () => {
+            await mutate(
+              api.say.$post({
+                json: { group_id: g.id, body: "不是重复，也不算已经做完了 —— 接着拆。", as: "respec" },
+              }),
+            );
+            refresh();
+          }}
+        >
+          不，接着做
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -1090,44 +1122,35 @@ function Exits({ g, refresh, projectId }: { g: Group; refresh: () => void; proje
         onSubmit={(d) => send(d, "patch")}
         actions={({ text, attachments, busy, clear }) => (
           <>
-            <Tip label="整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact">
-              <Button
-                size="sm"
-                disabled={busy || !text}
-                onClick={async () => {
-                  const go = await ask({
-                    title: "退回重新拆解",
-                    body: "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。",
-                    yes: "退回重拆",
-                  });
-                  if (go && (await send({ text, attachments }, "respec"))) clear();
-                }}
-              >
-                退回重拆
-              </Button>
-            </Tip>
-            <Tip label="排队的 turn 全取消，占的路径交还给别的组">
-              {/* Not a red button. Two filled buttons on one row and the destructive
-                  one outweighs 批准开工, which is the answer this screen usually wants.
-                  The confirm carries the weight instead. */}
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={async () => {
-                  const go = await ask({
-                    title: "不做了",
-                    body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
-                    yes: "不做了",
-                    danger: true,
-                  });
-                  if (!go) return;
-                  await groupAction(g.id, "drop", { why: text });
-                  refresh();
-                }}
-              >
-                不做了
-              </Button>
-            </Tip>
+            <SendAs
+              label="退回重拆"
+              tip="整条需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact"
+              spec={{
+                title: "退回重新拆解",
+                body: "整个需求退回 Dispatcher 重新深挖，这句话作为最高优先级 fact。",
+                yes: "退回重拆",
+              }}
+              disabled={busy || !text}
+              run={async () => (await send({ text, attachments }, "respec")) && clear()}
+            />
+            {/* Not a red button. Two filled buttons on one row and the destructive
+                one outweighs 批准开工, which is the answer this screen usually wants.
+                The confirm carries the weight instead. */}
+            <SendAs
+              label="不做了"
+              tip="排队的 turn 全取消，占的路径交还给别的组"
+              spec={{
+                title: "不做了",
+                body: `${g.name} 会从看板上消失，排队的 turn 全部取消。代码和记录都留着。`,
+                yes: "不做了",
+                danger: true,
+              }}
+              disabled={busy}
+              run={async () => {
+                await groupAction(g.id, "drop", { why: text });
+                refresh();
+              }}
+            />
           </>
         )}
       />
@@ -1195,11 +1218,7 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
             Six lines, then a click. A watchdog escalation quotes three QA verdicts
             verbatim and runs to fifteen — the decision is usually made by line
             three, with the rest there to check the reasoning against. */}
-        <div className="max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2">
-          <Clamp lines={6}>
-            <WithAttachments body={e.question} className="text-[0.8125rem]" />
-          </Clamp>
-        </div>
+        <Asked body={e.question} />
         {draft.busy && <Typing label="AI 在替你想" />}
         {draft.text && (
           // On your side of the exchange, because that is what it is: a reply
@@ -1293,6 +1312,17 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
   );
 }
 
+/** What was asked, on the asker's side of the exchange. */
+function Asked({ body, className, tone }: { body: string; className?: string; tone?: string }) {
+  return (
+    <div className={cn("max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2", className)}>
+      <Clamp lines={6}>
+        <WithAttachments body={body} className={cn("text-[0.8125rem]", tone)} />
+      </Clamp>
+    </div>
+  );
+}
+
 /**
  * Questions somebody else in the chain is still holding.
  *
@@ -1319,11 +1349,7 @@ function Held({ rows }: { rows: Escalation[] }) {
             <span className="text-ink-2">{e.asker ?? "系统"}</span>
             <span>{waited(e.created_at)}</span>
           </div>
-          <div className="mt-1.5 max-w-[46rem] rounded-2xl rounded-tl-sm bg-rail px-3.5 py-2">
-            <Clamp lines={6}>
-              <WithAttachments body={e.question} className="text-[0.8125rem] text-ink-2" />
-            </Clamp>
-          </div>
+          <Asked body={e.question} className="mt-1.5" tone="text-ink-2" />
           <Typing label={WHERE_ZH[e.chain_state] ?? e.chain_state} />
         </div>
       ))}
