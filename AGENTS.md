@@ -69,6 +69,12 @@ findings across thirty files, once as a single finding against a function with
 twelve passing unit tests. The structural findings in plain `audit` — boundaries,
 cycles, dead code, duplication — are unaffected and can be trusted.
 
+**Audit a branch with `--base main`.** The default base is the merge-base with
+the branch's own remote, so once a branch is pushed that base *is* `HEAD` and
+the scan reports `✓ No issues in 0 changed files` — a green tick over nothing
+examined, which is worse than a red one. Both traps have the same shape: a
+command that answers about a scope you did not choose, and answers cheerfully.
+
 Do not run overlapping enforcement owners. Replacing TypeScript, Oxlint,
 Fallow, Bun test, CodeQL, or another owner requires an ADR and migration
 evidence; adding a second tool beside it is forbidden. Dependency selection is
