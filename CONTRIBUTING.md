@@ -51,8 +51,10 @@ coherent change as a contract.
 - New UI behavior uses shadcn/Radix primitives when one exists.
 - Product logic belongs here; commodity fixtures, mocks, retries, parsers,
   polling, serialization, metrics, and benchmark machinery follow the
-  [dependency standard](docs/standards/dependencies.md). A mature library that
-  materially deletes project-owned code is preferable to another local wheel.
+  [dependency standard](docs/standards/dependencies.md). Reach for a popular,
+  maintained library rather than another local wheel — it qualifies if it
+  deletes project-owned code, tests or does the more correct thing, or supplies
+  a capability we need now or plausibly later.
 - Expected failures have stable codes; external I/O has cancellation, timeout,
   and safe contextual errors.
 - English is used for code, comments, errors, branches, commits, and pull

@@ -107,11 +107,15 @@ or run the full suite unless they own integration.
 ## Coding and testing rules
 
 - English for code, comments, errors, branches, commits, and pull requests.
-- Own product logic and reuse commodity capabilities. Prefer deletion, existing
-  code, standard library, platform features, installed dependencies, then a
-  well-maintained library before writing infrastructure the project must own.
+- Own product logic; rent everything else. A capability a popular, maintained
+  library already provides is not written here. Adopt when it deletes
+  project-owned code, tests or does the more correct thing, or supplies a
+  capability we need now or plausibly later. "We could write this ourselves" is
+  not a reason to decline; declining needs measured evidence and a reopen
+  condition. Ignore anything with no release in over a year.
 - A new dependency must delete its replaced implementation in the same coherent
-  change and document maintenance, security, licence, cost, and rollback.
+  change and document maintenance, security, licence, cost, and rollback. It
+  must not become a second owner for a risk in the enforcement matrix.
 - Validate `unknown` data at trust boundaries; avoid `any` and unsafe type
   assertions.
 - Test observable behavior and failure paths. Keep incident regression tests;
