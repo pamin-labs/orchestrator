@@ -1,6 +1,6 @@
 # 010 Project references and dependency boundaries
 
-**Status**: accepted
+**Status**: accepted, zones re-derived after the source and test directory reorganisation
 **Date**: 2026-08-17
 
 One TypeScript program and directory convention allowed server, browser, route,

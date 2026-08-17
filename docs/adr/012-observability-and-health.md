@@ -1,6 +1,6 @@
 # 012 Readiness reflects intake safety
 
-**Status**: accepted
+**Status**: accepted, amended by [014](014-telemetry-is-rented.md)
 **Date**: 2026-08-17
 
 One “healthy” signal cannot distinguish a running event loop from a scheduler

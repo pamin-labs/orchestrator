@@ -39,6 +39,14 @@ and that prefix is the only one carrying the CSRF, body-limit and shutdown
 middleware. Any other collector that speaks OTLP/HTTP — Tempo, SigNoz, an
 OpenTelemetry Collector in front of either — is a change of that one variable.
 
+The server's receive endpoint accepts OTLP/JSON only and answers 415 to
+protobuf. `@opentelemetry/otlp-transformer` publishes a request *serialiser* and
+a response deserialiser, not a request decoder, so the body is validated with
+Zod like every other external input rather than decoded by a library that does
+not offer it. Our own exporter is `@opentelemetry/exporter-trace-otlp-http`,
+which sends JSON; a third-party sender needs
+`OTEL_EXPORTER_OTLP_PROTOCOL=http/json`.
+
 Export failure is never the traced work's problem: the processor queues in
 memory, flushes on its own timer, and drops rather than grows once full. Dropped
 spans are counted in `orchestrator_telemetry_dropped_total`, so the loss is

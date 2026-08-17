@@ -21,6 +21,22 @@ HTTP request IDs enter an `AsyncLocalStorage` context and follow HTTP -> job ->
 turn -> event. Job, group, agent, and correlation identifiers belong in
 structured log fields and spans, never in message strings that must be parsed.
 
+Spans are also stored. A `SpanProcessor` writes each finished span to the `span`
+table so the panel can answer where a requirement's wall-clock time went without
+a collector to ask; an OTLP exporter runs beside it only when one is configured.
+The scope columns (`project_id`, `grp_id`, `slice_id`) are nullable and are
+deliberately not foreign keys: a span is an observation of work, not a reference
+to it, so deleting a group must not either fail or erase last week's timing.
+
+Retention is therefore what bounds the table, and it is two bounds, whichever
+bites first: seven days, and a row cap. Age is the product bound — timing is
+interesting while the requirement is open. The row cap is the safety bound,
+because a retry storm writes a week of spans in an hour and an age bound alone
+would fill the disk before anything aged out. The trim is amortised on the
+writer and gated to at most once a minute, the same shape the idempotency record
+store already uses, so there is no second timer and nothing runs on an idle
+process.
+
 ## Agent transport and credentials
 
 The host owns HTTP/SSE, SQLite, scheduling, and mailbox polling. Each group has
