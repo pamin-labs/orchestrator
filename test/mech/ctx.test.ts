@@ -54,14 +54,7 @@ test("every script the corpus might be written in produces terms", () => {
 function indexed(rows: Array<{ kind: string; body: string; at?: number }>) {
   const db = openMemory();
   const p = fx.project.insert(db, { name: "p" });
-  for (const row of rows) {
-    db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, ?, ?, ?)", [
-      p.id,
-      row.kind,
-      row.body,
-      row.at ?? 0,
-    ]);
-  }
+  for (const row of rows) fx.note.insert(db, { project_id: p.id, kind: row.kind, body: row.body, at: row.at ?? 0 });
   const hits = (question: string, now = 0) => makeNoteIndex(db).search(question, { grpId: null, projectId: p.id }, now);
   return { db, hits };
 }
@@ -131,7 +124,7 @@ test("a note written after the index was built is still found", () => {
   const ask = () => index.search("kestrel", { grpId: null, projectId: p.id }, 0);
   expect(ask()).toEqual([]);
 
-  db.run("INSERT INTO note (project_id, kind, body, at) VALUES (?, 'decision', 'the kestrel decision', 0)", [p.id]);
+  fx.note.insert(db, { project_id: p.id, kind: "decision", body: "the kestrel decision", at: 0 });
   expect(ask()).toHaveLength(1);
 
   // And a rewritten note, which `saveSingletonNote` does, is re-read rather than
