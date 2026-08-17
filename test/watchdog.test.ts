@@ -18,7 +18,7 @@ import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentTurnPayloadSchema, Scheduler } from "../src/scheduler.ts";
-import type { Ctx } from "../src/api.ts";
+import type { Ctx } from "../src/ctx.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";
 import type { Json } from "../src/contracts/json.ts";

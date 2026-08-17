@@ -10,13 +10,25 @@ import { clearSandboxLog } from "../../mech/sandbox/sandboxlog.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, IdParams } from "../../contracts/fields.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
-import { bad, firstIdea, json, message, type Handler } from "../shared.ts";
-import { withAttachments } from "./attach.ts";
+import type { Handler } from "../../http/handler.ts";
+import { bad, json, message } from "../../http/respond.ts";
+import { withAttachments } from "../../mech/util/attachment-text.ts";
 import { slug } from "../slug.ts";
 import { say } from "../../lang.ts";
 import type { Ctx } from "../../ctx.ts";
 import type { GrpState } from "../../states.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
+
+/** What the boss first asked for, for this group. */
+function firstIdea(ctx: Ctx, groupId: number): string {
+  return (
+    ctx.db
+      .query<{ body: string }, [number]>(
+        "SELECT body FROM event WHERE grp_id = ? AND kind = 'boss_say' ORDER BY seq LIMIT 1",
+      )
+      .get(groupId)?.body ?? ""
+  );
+}
 
 /**
  * A requirement, from the sentence the boss typed to the branch coming back.

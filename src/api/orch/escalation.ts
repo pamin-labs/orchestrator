@@ -17,8 +17,11 @@ import { sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
 import type { SliceState } from "../../states.ts";
 import { Attachment as AttachmentSchema, GroupRef, Id, IdParams, Prose } from "../../contracts/fields.ts";
-import { bossFact, withAttachments } from "../panel/attach.ts";
-import { type AgentHandler, bad, type Handler, json, mayAct, message, resolveGroup } from "../shared.ts";
+import { withAttachments } from "../../mech/util/attachment-text.ts";
+import { bossFact } from "../panel/attach.ts";
+import type { AgentHandler, Handler } from "../../http/handler.ts";
+import { bad, json, message } from "../../http/respond.ts";
+import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
 
 /**

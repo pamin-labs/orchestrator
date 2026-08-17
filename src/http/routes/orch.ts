@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { ApplyGlobalResponse } from "hono/client";
-import type { Caller, Ctx } from "../../ctx.ts";
-import { agentOf } from "../../api/shared.ts";
+import type { Ctx } from "../../ctx.ts";
+import { agentOf, type Caller } from "../agent-auth.ts";
 import { CtxQueryBody, postCtxQuery } from "../../api/orch/ctxquery.ts";
 import { IdParams } from "../../contracts/fields.ts";
 import { OwnIdempotencyStatusQuery } from "../../contracts/idempotency.ts";

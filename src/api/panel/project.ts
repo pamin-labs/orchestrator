@@ -17,7 +17,8 @@ import type { Result } from "../../mech/util/validate.ts";
 import { abortJob } from "../../runtime/running.ts";
 import { ACTIVE_JOB_STATES, stateParam } from "../../states.ts";
 import { IdParams } from "../../contracts/fields.ts";
-import { type AgentHandler, bad, type Handler, json, message } from "../shared.ts";
+import type { AgentHandler, Handler } from "../../http/handler.ts";
+import { bad, json, message } from "../../http/respond.ts";
 
 /**
  * A repository this fleet works on: added, configured, and removed.

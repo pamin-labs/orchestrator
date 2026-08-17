@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { Id } from "../../contracts/fields.ts";
 import { jsonOr } from "../../contracts/json.ts";
-import type { Caller, Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../ctx.ts";
+import type { Caller } from "../../http/agent-auth.ts";
+import type { AgentHandler } from "../../http/handler.ts";
+import { bad, message } from "../../http/respond.ts";
 import {
   AlreadyDoneClaimSchema,
   ChangedFilesClaimSchema,
@@ -12,7 +15,6 @@ import {
 import { recordGate } from "../../mech/gate.ts";
 import { validateSelfReview } from "../../mech/util/validate.ts";
 import type { SliceState, TaskState } from "../../states.ts";
-import { type AgentHandler, bad, message } from "../shared.ts";
 
 /**
  * The task card and the two verbs that move it.

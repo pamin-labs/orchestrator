@@ -7,8 +7,11 @@ import { baseRefFor, sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
 import { z } from "zod";
 import { Attachment as AttachmentSchema, GroupRef, Id, IdParams } from "../../contracts/fields.ts";
-import { bad, json, mayAct, resolveGroup, message, type AgentHandler, type Handler } from "../shared.ts";
-import { bossFact, withAttachments } from "../panel/attach.ts";
+import type { AgentHandler, Handler } from "../../http/handler.ts";
+import { bad, json, message } from "../../http/respond.ts";
+import { mayAct, resolveGroup } from "./access.ts";
+import { withAttachments } from "../../mech/util/attachment-text.ts";
+import { bossFact } from "../panel/attach.ts";
 import { GateName, gatesFor } from "../../mech/gate.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 

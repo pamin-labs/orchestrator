@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Caller } from "../src/ctx.ts";
+import type { Caller } from "../src/http/agent-auth.ts";
 import { postLease } from "../src/api/orch/lease.ts";
 import { postDraft } from "../src/api/orch/planning.ts";
 import { postTaskDone } from "../src/api/orch/tasks.ts";

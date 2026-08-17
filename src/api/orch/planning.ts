@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { SplitRequirements } from "../../contracts/orch.ts";
-import type { Caller, Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../ctx.ts";
+import type { Caller } from "../../http/agent-auth.ts";
+import type { AgentHandler } from "../../http/handler.ts";
+import { bad, json, message } from "../../http/respond.ts";
 import { say } from "../../lang.ts";
 import { hold } from "../../mech/flow/intercept.ts";
 import { newGroup } from "../../mech/flow/newgroup.ts";
@@ -13,7 +16,7 @@ import { shq } from "../../mech/util/shq.ts";
 import { validateDraftCard } from "../../mech/util/validate.ts";
 import type { GrpState } from "../../states.ts";
 import { GroupRef } from "../../contracts/fields.ts";
-import { type AgentHandler, bad, json, mayAct, message, resolveGroup } from "../shared.ts";
+import { mayAct, resolveGroup } from "./access.ts";
 import { slug } from "../slug.ts";
 
 function actingGroup(ctx: Ctx, caller: Caller, ref: z.infer<typeof GroupRef> | null | undefined): number | Response {

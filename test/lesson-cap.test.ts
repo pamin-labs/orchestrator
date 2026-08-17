@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { Bus } from "../src/bus.ts";
 import { openMemory } from "../src/db.ts";
-import { evictOldestLessons, LESSON_CAP, makeApp, type Ctx } from "../src/api.ts";
-import { lessonsFor } from "../src/mech/knowledge/lessons.ts";
+import { makeApp } from "../src/api.ts";
+import type { Ctx } from "../src/ctx.ts";
+import { evictOldestLessons, LESSON_CAP, lessonsFor } from "../src/mech/knowledge/lessons.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { seedAuth } from "./seed-auth.ts";

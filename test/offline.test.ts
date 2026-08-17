@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Ctx } from "../src/api.ts";
+import type { Ctx } from "../src/ctx.ts";
 import { type DB, openMemory } from "../src/db.ts";
 import { holdForOffline } from "../src/mech/ops/watchdog.ts";
 import { saveAuth } from "../src/mech/sandbox/auth.ts";

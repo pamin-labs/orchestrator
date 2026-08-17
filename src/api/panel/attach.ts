@@ -3,10 +3,10 @@ import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cp, mkdir, writeFile } from "node:fs/promises";
 import { z } from "zod";
-import { bad, json, message, type Handler } from "../shared.ts";
 import type { Ctx } from "../../ctx.ts";
+import type { Handler } from "../../http/handler.ts";
+import { bad, json, message } from "../../http/respond.ts";
 import { sediment } from "../../mech/knowledge/lessons.ts";
-export { imagePaths, withAttachments } from "../../mech/util/attachment-text.ts";
 
 export const AttachmentNameParams = z.object({ name: z.string().min(1) });
 

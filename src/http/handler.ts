@@ -1,4 +1,5 @@
-import type { Caller, Ctx } from "../ctx.ts";
+import type { Ctx } from "../ctx.ts";
+import type { Caller } from "./agent-auth.ts";
 
 /**
  * What a route handler is, and deliberately not what Hono thinks one is.

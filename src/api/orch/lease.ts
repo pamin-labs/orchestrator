@@ -1,7 +1,8 @@
 import { LeaseArgsSchema, loadResource, resolveLease } from "../../mech/lease.ts";
 import { z } from "zod";
 import { IdParams } from "../../contracts/fields.ts";
-import { bad, message, type AgentHandler } from "../shared.ts";
+import type { AgentHandler } from "../../http/handler.ts";
+import { bad, message } from "../../http/respond.ts";
 
 /**
  * The one way an agent runs something it did not write.

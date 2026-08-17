@@ -8,7 +8,7 @@ import { openMemory } from "../src/db.ts";
 import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/scheduler.ts";
 import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../src/mech/sandbox/sandbox.ts";
 import { makeExecutor } from "../src/runtime/executor.ts";
-import type { Ctx } from "../src/api.ts";
+import type { Ctx } from "../src/ctx.ts";
 
 /**
  * A gate whose container cannot be opened must fail, not disappear.

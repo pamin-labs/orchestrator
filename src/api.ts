@@ -21,11 +21,6 @@ import {
   type RuntimeStatus,
 } from "./observability.ts";
 
-export type { Ctx } from "./ctx.ts";
-export { bossFact, imagePaths, withAttachments } from "./api/panel/attach.ts";
-export { askKind, brief } from "./api/orch/escalation.ts";
-export { landGroup } from "./api/panel/group.ts";
-export { evictOldestLessons, LESSON_CAP } from "./mech/knowledge/lessons.ts";
 export type { ApiType } from "./http/routes/panel.ts";
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);

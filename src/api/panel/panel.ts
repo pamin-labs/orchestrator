@@ -11,7 +11,8 @@ import {
   skillsOff,
 } from "../../mech/skills.ts";
 import { z } from "zod";
-import { bad, json, type Handler } from "../shared.ts";
+import type { Handler } from "../../http/handler.ts";
+import { bad, json } from "../../http/respond.ts";
 import { expandHome } from "./attach.ts";
 import { errText } from "../../mech/util/text.ts";
 import type { PanelNote } from "../../contracts/panel.ts";

@@ -52,6 +52,9 @@ M7 — executable engineering governance and versioned protocol.
 - `/api/v1/*` and `/orch/v1/*` are the only protocol surfaces. Typed client
   contracts include middleware errors and durable idempotency discovery,
   inspection, and operator recovery without re-running an unknown side effect.
+- HTTP composition no longer re-exports unrelated panel, flow, attachment, or
+  lesson policy. Agent identity and group access have explicit owners, and the
+  former `src/api/shared.ts` catch-all has been deleted.
 - Cancellation, durable correlation, transactional state/evidence writes,
   after-commit event fan-out, health/readiness/metrics, and graceful shutdown
   are implemented with focused failure-path tests.

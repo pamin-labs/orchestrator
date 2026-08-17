@@ -5,8 +5,11 @@ import { projectSkills, skillNames } from "../../mech/skills.ts";
 import { projectOfAgent } from "../../mech/util/rows.ts";
 import { Attachment as AttachmentSchema, GroupRef, Id, Prose } from "../../contracts/fields.ts";
 import { MailIntent } from "../../contracts/orch.ts";
-import { bossFact, withAttachments } from "../panel/attach.ts";
-import { type AgentHandler, bad, type Handler, message, resolveGroup } from "../shared.ts";
+import { withAttachments } from "../../mech/util/attachment-text.ts";
+import { bossFact } from "../panel/attach.ts";
+import type { AgentHandler, Handler } from "../../http/handler.ts";
+import { bad, message } from "../../http/respond.ts";
+import { resolveGroup } from "./access.ts";
 
 /**
  * Agent to agent, and boss to anyone.

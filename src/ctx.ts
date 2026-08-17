@@ -79,11 +79,3 @@ export interface Ctx {
    */
   config: Config;
 }
-
-/** Who is calling, resolved from the `x-orch-token` an agent was issued. */
-export interface Caller {
-  id: number;
-  grp_id: number | null;
-  project_id: number | null;
-  role: string;
-}

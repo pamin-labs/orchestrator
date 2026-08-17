@@ -4,7 +4,8 @@ import { loadConfig } from "../src/config.ts";
 import { applyOverrides, defaultFor, overrides, putSetting, refuse, settablePaths } from "../src/settings.ts";
 import { Bus } from "../src/bus.ts";
 import { Scheduler } from "../src/scheduler.ts";
-import { makeApp, type Ctx } from "../src/api.ts";
+import { makeApp } from "../src/api.ts";
+import type { Ctx } from "../src/ctx.ts";
 import type { Json } from "../src/contracts/json.ts";
 import { z } from "zod";
 

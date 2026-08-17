@@ -1,7 +1,8 @@
 import { errText } from "./mech/util/text.ts";
 import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { landGroup, makeApp } from "./api.ts";
+import { makeApp } from "./api.ts";
+import { landGroup } from "./api/panel/group.ts";
 import type { Ctx } from "./ctx.ts";
 import { joinQueue } from "./mech/flow/mergequeue.ts";
 import { Bus } from "./bus.ts";

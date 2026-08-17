@@ -29,7 +29,8 @@ import { DEVICE_CODE_TTL_MS, PASTE_TTL_MS, startClaudeLogin, startCodexDeviceLog
 import { killSandbox, serverKeyOnDisk } from "../../mech/sandbox/sandbox.ts";
 import { errText } from "../../mech/util/text.ts";
 import type { ClaudeLoginFlow, CodexLoginFlow } from "../../contracts/panel.ts";
-import { bad, type Handler, json, message } from "../shared.ts";
+import type { Handler } from "../../http/handler.ts";
+import { bad, json, message } from "../../http/respond.ts";
 
 /**
  * Signing in: to the two model accounts, to GitHub, and to the sandbox server.

@@ -1,10 +1,12 @@
 import { z } from "zod";
-import type { Caller, Ctx } from "../../ctx.ts";
+import type { Ctx } from "../../ctx.ts";
+import type { Caller } from "../../http/agent-auth.ts";
+import type { AgentHandler } from "../../http/handler.ts";
+import { message } from "../../http/respond.ts";
 import { query as ctxQuery } from "../../mech/knowledge/ctx.ts";
 import { loadTree, NOTE_PREFIX, render, search } from "../../mech/knowledge/pageindex.ts";
 import { projectOfAgent } from "../../mech/util/rows.ts";
 import { Id } from "../../contracts/fields.ts";
-import { type AgentHandler, message } from "../shared.ts";
 
 async function pageIndexContext(ctx: Ctx, caller: Caller, projectId: number | null, question: string): Promise<string> {
   const tree = loadTree(ctx.db, projectId);

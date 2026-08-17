@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { postTaskClaim, postTaskDone } from "../src/api/orch/tasks.ts";
-import type { Caller } from "../src/ctx.ts";
+import type { Caller } from "../src/http/agent-auth.ts";
 import { testContext } from "./test-context.ts";
 
 const request = new Request("http://x/orch/v1/task", { method: "POST" });

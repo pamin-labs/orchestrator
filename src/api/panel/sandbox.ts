@@ -21,7 +21,8 @@ import {
 import { resetServerRestarts } from "../../mech/ops/watchdog.ts";
 import { preflight } from "../../mech/ops/preflight.ts";
 import { z } from "zod";
-import { bad, json, message, type Handler } from "../shared.ts";
+import type { Handler } from "../../http/handler.ts";
+import { bad, json, message } from "../../http/respond.ts";
 import type { GrpState } from "../../states.ts";
 
 /**
