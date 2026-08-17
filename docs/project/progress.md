@@ -13,10 +13,10 @@ M7 — executable engineering governance and versioned protocol.
 - Branch: `refactor/api-split-and-settings`
 - SHA: the commit containing this entry
 - TypeScript, Oxlint, Biome, and default changed-code Fallow audit: pass
-- Tests: 831 pass, 15 environment skips, 0 fail across 98 files
+- Tests: 841 pass, 15 environment skips, 0 fail across 100 files
 - Local test time: 7.64 seconds in the restricted agent environment
 - Fallow: no introduced dead code, boundary, cycle, or duplication finding;
-  `audit:all` still reports 88 inherited complexity/CRAP findings
+  `audit:all` still reports 75 inherited complexity/CRAP findings
 
 ## Verified complete
 
@@ -65,6 +65,10 @@ M7 — executable engineering governance and versioned protocol.
   composite owns pinned Bun plus frozen install, Fallow renders one audit as
   fork-safe annotations and summary, and actionlint verifies its release
   checksum and attestation before execution.
+- Fallow security enables its complete official catalogue, including the
+  opt-in hardcoded-secret and secret-to-network categories. Pull requests gate
+  only newly reachable candidates; nightly keeps the full candidate inventory
+  visible for verification without duplicating CodeQL's SAST ownership.
 - Configuration loading/settings, persistence database/event bus, process
   text/shell/running helpers, and observability context/redaction now live under
   `src/platform/**`; a narrow build-info zone exposes only the shared package
@@ -94,6 +98,10 @@ M7 — executable engineering governance and versioned protocol.
 - Fallow's default new-only audit is green. `bun run audit:all` remains red on
   75 inherited complexity/CRAP findings; they are not hidden by a saved baseline,
   threshold increase, or inline suppression.
+- The first full Fallow security inventory surfaces 40 verification candidates
+  (17 SQL, 13 SSRF, eight dynamic-regex, one redirect, and one secret-shaped
+  literal). They are not declared vulnerabilities or suppressed; final security
+  review must disposition the paths while CI blocks newly reachable candidates.
 - Live OpenSandbox tests remain environment-gated and are skipped without a
   running sandbox server.
 - Repository settings such as branch protection, secret scanning, push

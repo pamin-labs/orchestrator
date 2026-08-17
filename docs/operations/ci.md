@@ -13,6 +13,7 @@ quality-fallow
 test-main
 build-web
 security-codeql
+security-fallow
 security-dependencies
 security-container
 workflow-static
@@ -32,8 +33,12 @@ the pull-request template. `N/A: reason` is valid; blank fields fail. `dco`
 requires a matching `Signed-off-by` trailer for each human-authored commit.
 
 Security ownership follows the
-[`enforcement matrix`](../standards/enforcement-matrix.md): CodeQL, `bun audit`,
-Dependency Review, Trivy, actionlint, and zizmor each answer a distinct question.
+[`enforcement matrix`](../standards/enforcement-matrix.md): CodeQL, Fallow
+security, `bun audit`, Dependency Review, Trivy, actionlint, and zizmor each
+answer a distinct question. Fallow scans the complete official candidate
+catalogue, including the two opt-in secret categories. Pull requests fail only
+for a newly reachable candidate; the nightly job inventories the full backlog
+for verification rather than declaring candidates to be vulnerabilities.
 Dependabot proposes dependency and action updates for ordinary review.
 
 Actionlint runs its attested release binary after verifying the pinned checksum;

@@ -17,6 +17,29 @@ env:
   TRIVY_VERSION: v0.74.0
 
 jobs:
+  security-fallow:
+    name: security-fallow
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: scan newly reachable security candidates
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set +e
+          bunx fallow security --changed-since "$BASE_SHA" --gate newly-reachable --surface --format json --quiet --output-file "$RUNNER_TEMP/fallow-security.json"
+          security_status=$?
+          set -e
+          bunx fallow report --from "$RUNNER_TEMP/fallow-security.json" --format github-annotations
+          bunx fallow report --from "$RUNNER_TEMP/fallow-security.json" --format github-summary >> "$GITHUB_STEP_SUMMARY"
+          exit "$security_status"
+
   security-dependencies:
     name: security-dependencies
     runs-on: ubuntu-24.04

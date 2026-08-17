@@ -9,6 +9,7 @@ const FallowConfig = z.object({
       z.object({ from: z.string(), allow: z.array(z.string()), allowTypeOnly: z.array(z.string()).optional() }),
     ),
   }),
+  security: z.object({ categories: z.object({ include: z.array(z.string()) }) }),
 });
 
 const loadConfig = async () => FallowConfig.parse(await Bun.file(".fallowrc.json").json());
@@ -19,6 +20,9 @@ test("Fallow adds only undiscovered entry points and classifies directories by p
   const rules = Object.fromEntries(config.boundaries.rules.map((rule) => [rule.from, rule]));
 
   expect(config.entry).toEqual(["scripts/browse.ts", "scripts/make-github-app.ts"]);
+  expect(config.security.categories.include).toContain("hardcoded-secret");
+  expect(config.security.categories.include).toContain("secret-to-network");
+  expect(new Set(config.security.categories.include).size).toBe(config.security.categories.include.length);
   expect(zones).toMatchObject({
     "public-rpc": ["src/http/routes/**"],
     "shared-contracts": ["src/contracts/**"],

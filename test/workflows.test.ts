@@ -109,8 +109,23 @@ describe("workflow governance", () => {
     expect(codeql.jobs["security-codeql"]).toBeDefined();
 
     const security = await load("security");
-    expect(Object.keys(security.jobs)).toEqual(["security-dependencies", "security-container", "workflow-static"]);
+    expect(Object.keys(security.jobs)).toEqual([
+      "security-fallow",
+      "security-dependencies",
+      "security-container",
+      "workflow-static",
+    ]);
     const securityText = await source("security");
+    const fallow = security.jobs["security-fallow"]!.steps.find(
+      (step) => step.name === "scan newly reachable security candidates",
+    )?.run;
+    expect(fallow?.match(/fallow security/g)).toHaveLength(1);
+    expect(fallow).toContain("--gate newly-reachable");
+    expect(fallow).toContain("--changed-since");
+    expect(fallow).toContain("fallow report --from");
+    expect(fallow).toContain("--format github-annotations");
+    expect(fallow).toContain("--format github-summary");
+    expect(fallow).toContain('exit "$security_status"');
     expect(securityText).toContain("bun audit");
     expect(securityText).toContain("actions/dependency-review-action@");
     expect(securityText).toContain("aquasecurity/trivy-action@");
@@ -130,6 +145,8 @@ describe("workflow governance", () => {
     expect(nightly).toContain("bun run test:stress");
     expect(nightly).toContain("bun run perf:bench");
     expect(nightly).toContain("bun run audit");
+    expect(nightly).toContain("fallow security --surface");
+    expect(nightly).toContain("fallow report --from");
     expect(nightly).toContain("bun audit");
   });
 
@@ -173,6 +190,7 @@ describe("workflow governance", () => {
       "dco",
       "pr-plan",
       "security-codeql",
+      "security-fallow",
       "security-dependencies",
       "security-container",
       "workflow-static",

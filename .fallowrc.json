@@ -103,5 +103,56 @@
       ]
     }
   },
-  "security": {}
+  "security": {
+    "categories": {
+      "include": [
+        "angular-trusted-html",
+        "cleartext-transport",
+        "code-injection",
+        "command-injection",
+        "dangerous-html",
+        "deprecated-cipher",
+        "dom-document-write",
+        "dynamic-module-load",
+        "dynamic-regex",
+        "electron-unsafe-webpreferences",
+        "hardcoded-secret",
+        "header-injection",
+        "insecure-cookie",
+        "insecure-randomness",
+        "insecure-temp-file",
+        "jquery-html",
+        "jwt-alg-none",
+        "jwt-verify-missing-algorithms",
+        "llm-call-injection",
+        "mass-assignment",
+        "mysql-multiple-statements",
+        "nextjs-open-redirect",
+        "nosql-injection",
+        "open-redirect",
+        "path-traversal",
+        "permissive-cors",
+        "postmessage-wildcard-origin",
+        "prototype-pollution",
+        "redos-regex",
+        "resource-amplification",
+        "route-send-file",
+        "secret-pii-log",
+        "secret-to-network",
+        "sql-injection",
+        "ssrf",
+        "ssti",
+        "template-escape-bypass",
+        "tls-validation-disabled",
+        "unsafe-buffer-alloc",
+        "unsafe-deserialization",
+        "weak-crypto",
+        "webview-injection",
+        "world-writable-permission",
+        "xpath-injection",
+        "xxe",
+        "zip-slip"
+      ]
+    }
+  }
 }

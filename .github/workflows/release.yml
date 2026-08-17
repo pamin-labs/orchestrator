@@ -80,7 +80,7 @@ jobs:
           required=(
             quality-format quality-types quality-oxlint quality-fallow
             test-main build-web dco pr-plan
-            security-codeql security-dependencies security-container workflow-static
+            security-codeql security-fallow security-dependencies security-container workflow-static
           )
           runs=$(mktemp)
           gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA/check-runs?per_page=100" > "$runs"

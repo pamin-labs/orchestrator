@@ -46,6 +46,10 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun audit
       - run: bun run audit
+      - name: inventory all security candidates
+        run: |
+          bunx fallow security --surface --format json --quiet --output-file "$RUNNER_TEMP/fallow-security.json"
+          bunx fallow report --from "$RUNNER_TEMP/fallow-security.json" --format github-summary >> "$GITHUB_STEP_SUMMARY"
       - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}

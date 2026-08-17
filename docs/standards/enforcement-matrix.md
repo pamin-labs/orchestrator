@@ -14,7 +14,7 @@ than a period with two authorities.
 | Runtime behavior | Bun test | targeted tests, then `bun test` | Jest, Vitest |
 | Generative state/input invariants | fast-check on Bun test | seed and path on failure | runner adapters, Faker/Fishery |
 | Source data-flow/SAST | CodeQL | `security-codeql` | Semgrep, Snyk Code |
-| Reachable security candidates | Fallow security | Fallow summary/SARIF | ordinary lint as SAST |
+| Reachable security candidates | Fallow security | `security-fallow` newly-reachable gate plus nightly full summary | ordinary lint as SAST |
 | Current lockfile vulnerabilities | `bun audit` | `security-dependencies` | Snyk dependency scan |
 | PR dependency and licence delta | GitHub Dependency Review | PR job summary | duplicate Snyk PR gate |
 | Dependency/action updates | Dependabot | reviewable pull request | handwritten update scripts |
