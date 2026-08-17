@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { z } from "zod";
 
 const FallowConfig = z.object({
@@ -31,9 +32,22 @@ test("Fallow adds only undiscovered entry points and classifies directories by p
     "http-edge": ["src/http/**"],
     "runtime-adapters": ["src/runtime/**"],
     mechanisms: ["src/mech/**"],
+    composition: ["src/composition/**"],
     tests: ["test/**"],
     scripts: ["scripts/**"],
   });
+
+  // Every zone is a directory. Zones used to carry file lists — `src/api.ts`,
+  // `src/ctx.ts`, `src/lang.ts`, `src/observability.ts`, `src/scheduler.ts` —
+  // because those files sat at the source root with nowhere to belong. A list is
+  // a thing to forget: a new root file joins whichever zone somebody remembers
+  // to edit, and `coverage.requireAllFiles` is the only thing that would have
+  // noticed. The one exception is `build-info`, which is a single file on
+  // purpose so executables can read the version without reaching into platform.
+  for (const [name, patterns] of Object.entries(zones)) {
+    if (name === "build-info") continue;
+    for (const pattern of patterns) expect(pattern).toEndWith("/**");
+  }
   expect(rules.web).toEqual({ from: "web", allow: ["web", "shared-contracts"], allowTypeOnly: ["public-rpc"] });
   expect(rules.cli).toEqual({
     from: "cli",
@@ -71,14 +85,14 @@ test("constrained production zones form one explicit dependency DAG", async () =
       "web",
     ].sort(),
   );
-  expect(config.boundaries.zones.find(({ name }) => name === "application")?.patterns).toEqual([
-    "src/application/**",
-    "src/runtime/executor.ts",
-  ]);
+  // The turn executor is application logic, not an adapter: it drives the
+  // provider clients rather than being one. That used to be said by naming
+  // `src/runtime/executor.ts` inside the application zone — a carve-out that
+  // contradicted where the file sat. It sits in `src/application/` now, so the
+  // directory says it and the config does not have to.
+  expect(config.boundaries.zones.find(({ name }) => name === "application")?.patterns).toEqual(["src/application/**"]);
   expect(config.boundaries.zones.find(({ name }) => name === "prompt")?.patterns).toEqual(["src/prompt/**"]);
-  expect(config.boundaries.zones.find(({ name }) => name === "runtime-adapters")?.patterns).not.toContain(
-    "src/runtime/executor.ts",
-  );
+  expect(existsSync("src/runtime/executor.ts")).toBe(false);
   expect(rules.get("runtime-adapters")?.allow).not.toContain("mechanisms");
 
   const visiting = new Set<string>();

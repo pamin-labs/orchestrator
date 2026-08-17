@@ -7,7 +7,7 @@ import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../src/platform/scheduling/scheduler.ts";
 import { execIn, REAL, resourceExec, EXEC_UNAVAILABLE } from "../src/mech/sandbox/sandbox.ts";
-import { makeExecutor } from "../src/runtime/executor.ts";
+import { makeExecutor } from "../src/application/executor.ts";
 import type { Ctx } from "../src/mech/ctx.ts";
 
 /**

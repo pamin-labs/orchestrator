@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
 import { Agent } from "../src/contracts/panel.ts";
-import { makeApp, UPLOAD_LIMIT } from "../src/api.ts";
+import { makeApp, UPLOAD_LIMIT } from "../src/composition/api.ts";
 import { imagePaths, withAttachments } from "../src/mech/util/attachment-text.ts";
 import { activityOf } from "../web/src/lib/activity.ts";
 import { splitAttachments } from "../web/src/lib/attach.ts";

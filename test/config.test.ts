@@ -139,7 +139,7 @@ test("ctxBudgetChars actually reaches the thing it configures", () => {
   // The whole route layer, not one file: `api.ts` was split into `src/api/*` and
   // pinning this to whichever module holds the reader today would put the guard
   // back where the next move breaks it.
-  expect(readFileSync("src/server.ts", "utf8")).toContain("config: cfg,");
+  expect(readFileSync("src/composition/server.ts", "utf8")).toContain("config: cfg,");
   expect(routeSource()).toContain("ctx.config.ctxBudgetChars");
 });
 

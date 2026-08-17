@@ -1,27 +1,27 @@
-import { errText } from "./platform/process/text.ts";
+import { errText } from "../platform/process/text.ts";
 import { existsSync, chmodSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { makeApp } from "./api.ts";
-import { landGroup } from "./api/panel/group.ts";
-import type { Ctx } from "./mech/ctx.ts";
-import { joinQueue } from "./mech/flow/mergequeue.ts";
-import { Bus } from "./platform/persistence/event-bus.ts";
+import { landGroup } from "../api/panel/group.ts";
+import type { Ctx } from "../mech/ctx.ts";
+import { joinQueue } from "../mech/flow/mergequeue.ts";
+import { Bus } from "../platform/persistence/event-bus.ts";
 import { consola } from "consola";
-import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "./platform/config/load.ts";
-import { applyOverrides } from "./platform/config/settings.ts";
-import { changed, checkConfig, checkRoles } from "./mech/ops/checkconfig.ts";
-import { open } from "./platform/persistence/database.ts";
-import { REAL, sandboxHeld, type Scope } from "./mech/sandbox/sandbox.ts";
-import type { DB } from "./platform/persistence/database.ts";
-import { startMailbox } from "./mech/sandbox/mailbox.ts";
-import { baseRefFor, createCheckout, treeHeads } from "./mech/git/checkout.ts";
-import { preflight, report, type Check } from "./mech/ops/preflight.ts";
-import { restageSkills } from "./mech/skills.ts";
-import { ensureServer } from "./mech/sandbox/server.ts";
-import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "./mech/ops/notify.ts";
-import { dispatchFeedback, type Feedback, openPr, pollPrs, prBody, prTitle } from "./mech/git/prwatch.ts";
-import { type Github, makeGithub } from "./mech/git/github.ts";
-import { repoHeld } from "./mech/git/repository.ts";
+import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "../platform/config/load.ts";
+import { applyOverrides } from "../platform/config/settings.ts";
+import { changed, checkConfig, checkRoles } from "../mech/ops/checkconfig.ts";
+import { open } from "../platform/persistence/database.ts";
+import { REAL, sandboxHeld, type Scope } from "../mech/sandbox/sandbox.ts";
+import type { DB } from "../platform/persistence/database.ts";
+import { startMailbox } from "../mech/sandbox/mailbox.ts";
+import { baseRefFor, createCheckout, treeHeads } from "../mech/git/checkout.ts";
+import { preflight, report, type Check } from "../mech/ops/preflight.ts";
+import { restageSkills } from "../mech/skills.ts";
+import { ensureServer } from "../mech/sandbox/server.ts";
+import { batchForBoss, busDeliver, notifiable, Notifier, tierFor, type PendingItem } from "../mech/ops/notify.ts";
+import { dispatchFeedback, type Feedback, openPr, pollPrs, prBody, prTitle } from "../mech/git/prwatch.ts";
+import { type Github, makeGithub } from "../mech/git/github.ts";
+import { repoHeld } from "../mech/git/repository.ts";
 import {
   chargeIndex,
   HEAD_CHARS,
@@ -32,18 +32,18 @@ import {
   skeleton,
   summarise,
   loadTree,
-} from "./mech/knowledge/pageindex.ts";
-import { indexable, indexExcludes } from "./mech/knowledge/repomap.ts";
-import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "./runtime/executor.ts";
-import { reclaimOrphans, resumeReclaimed, Scheduler } from "./platform/scheduling/scheduler.ts";
-import { abortAll } from "./platform/process/running-turns.ts";
-import { isOnline } from "./mech/sandbox/net.ts";
-import { hold } from "./mech/flow/intercept.ts";
-import { raise } from "./mech/flow/escalate.ts";
-import { restoreWorkspace } from "./mech/flow/start.ts";
-import { closeTelemetry, runtimeStatus, type RuntimeStatus } from "./platform/observability/metrics.ts";
-import { configureStructuredLogging } from "./platform/observability/logging.ts";
-import { VERSION } from "./platform/process/version.ts";
+} from "../mech/knowledge/pageindex.ts";
+import { indexable, indexExcludes } from "../mech/knowledge/repomap.ts";
+import { hire, makeAuditVerdict, makeExecutor, makeReviewVerdict } from "../application/executor.ts";
+import { reclaimOrphans, resumeReclaimed, Scheduler } from "../platform/scheduling/scheduler.ts";
+import { abortAll } from "../platform/process/running-turns.ts";
+import { isOnline } from "../mech/sandbox/net.ts";
+import { hold } from "../mech/flow/intercept.ts";
+import { raise } from "../mech/flow/escalate.ts";
+import { restoreWorkspace } from "../mech/flow/start.ts";
+import { closeTelemetry, runtimeStatus, type RuntimeStatus } from "../platform/observability/metrics.ts";
+import { configureStructuredLogging } from "../platform/observability/logging.ts";
+import { VERSION } from "../platform/process/version.ts";
 
 /**
  * Wires the pieces together and serves them.

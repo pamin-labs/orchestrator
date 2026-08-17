@@ -7,7 +7,7 @@ test("package.json is the development version source", async () => {
 });
 
 test.each([
-  ["orch-server", "src/server.ts"],
+  ["orch-server", "src/composition/server.ts"],
   ["orch", "src/orch/cli.ts"],
 ])("%s reports the package version", async (_name, entrypoint) => {
   const child = Bun.spawn([process.execPath, entrypoint, "--version"], {

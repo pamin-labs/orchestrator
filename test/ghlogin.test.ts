@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { openMemory, slugRepoPaths, type DB } from "../src/platform/persistence/database.ts";
 import { listAuth, loadAuth, saveAuth, vaultFor } from "../src/mech/sandbox/auth.ts";
 import { makeGithub, type Github } from "../src/mech/git/github.ts";
-import { makeApp } from "../src/api.ts";
+import { makeApp } from "../src/composition/api.ts";
 import type { Ctx } from "../src/mech/ctx.ts";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { Scheduler } from "../src/platform/scheduling/scheduler.ts";

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Hono } from "hono";
 import { hc, type InferResponseType } from "hono/client";
 import { z } from "zod";
-import type { ApiType } from "../src/api.ts";
+import type { ApiType } from "../src/composition/api.ts";
 import type { IdempotencyRecordStatus, IdempotencyUnresolvedList } from "../src/contracts/idempotency.ts";
 import type { Json } from "../src/contracts/json.ts";
 import { ErrorResponseSchema, type ErrorResponse } from "../src/contracts/protocol.ts";

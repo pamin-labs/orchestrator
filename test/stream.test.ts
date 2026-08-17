@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { makeApp } from "../src/api.ts";
+import { makeApp } from "../src/composition/api.ts";
 import { testContext } from "./test-context.ts";
 
 const LAST_SEQ = 1_101;

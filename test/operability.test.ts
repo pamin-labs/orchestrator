@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
-import { makeApp } from "../src/api.ts";
+import { makeApp } from "../src/composition/api.ts";
 import { ErrorResponseSchema } from "../src/contracts/protocol.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import { runtimeStatus } from "../src/platform/observability/metrics.ts";
 import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
-import { refreshRuntimeReadiness, shutdownRuntime } from "../src/server.ts";
+import { refreshRuntimeReadiness, shutdownRuntime } from "../src/composition/server.ts";
 import { testContext } from "./test-context.ts";
 
 test("health, cached readiness, metrics, and correlation describe the running process", async () => {

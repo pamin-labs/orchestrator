@@ -11,7 +11,7 @@ import {
   staticPrefix,
 } from "../src/mech/flow/ownership.ts";
 import { head, joinQueue, landed, position, queue } from "../src/mech/flow/mergequeue.ts";
-import { reconcileOwnership } from "../src/runtime/executor.ts";
+import { reconcileOwnership } from "../src/application/executor.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 import { testContext } from "./test-context.ts";
 

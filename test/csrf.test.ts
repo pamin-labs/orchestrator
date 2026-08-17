@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { makeApp } from "../src/api.ts";
+import { makeApp } from "../src/composition/api.ts";
 import { testContext } from "./test-context.ts";
 
 /**

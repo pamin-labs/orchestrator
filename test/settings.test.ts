@@ -11,7 +11,7 @@ import {
 } from "../src/platform/config/settings.ts";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
-import { makeApp } from "../src/api.ts";
+import { makeApp } from "../src/composition/api.ts";
 import type { Ctx } from "../src/mech/ctx.ts";
 import type { Json } from "../src/contracts/json.ts";
 import { z } from "zod";

@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
  * one line, and the class of bug is gone rather than guarded against.
  */
 test("ctx.config is the config object, not a copy of the parts someone listed", () => {
-  const src = readFileSync(new URL("../src/server.ts", import.meta.url).pathname, "utf8");
+  const src = readFileSync(new URL("../src/composition/server.ts", import.meta.url).pathname, "utf8");
   expect(src).toContain("config: cfg,");
   // The shape that caused it: a literal listing the fields by hand.
   expect(/\n\s*config: \{\n/.test(src)).toBe(false);

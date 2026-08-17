@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { start, type Started } from "../src/server.ts";
+import { start, type Started } from "../src/composition/server.ts";
 import { SnapshotSchema } from "../src/contracts/panel.ts";
 import { z } from "zod";
 import type { Json } from "../src/contracts/json.ts";

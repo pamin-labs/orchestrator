@@ -7,7 +7,7 @@
 | Web | `web/src/**` | Browser views and interaction | Browser libraries and shared public RPC contracts |
 | Public RPC | `src/http/routes/**` | Typed Hono route surface consumed by generated clients | HTTP edge, API handlers, shared contracts |
 | HTTP edge | Remaining `src/http/**` | Middleware, validation adapter, response shape | Platform and shared contracts |
-| Composition | `src/api.ts`, `src/server.ts` | HTTP/server wiring and process lifecycle | Public RPC, API, application, mechanisms, adapters, platform |
+| Composition | `src/composition/**` | HTTP/server wiring and process lifecycle | Public RPC, API, application, mechanisms, adapters, platform |
 | API | `src/api/**` | Panel and agent protocol operations | Mechanisms, platform, shared contracts |
 | Application | `src/application/**`, `src/runtime/executor.ts` | Turn orchestration and policy coordination | Mechanisms, prompt, runtime adapters, platform |
 | Build info | `src/platform/process/version.ts` | Package/release identity shared by executable entry points | No runtime policy |

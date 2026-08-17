@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { AgentTurnPayloadSchema, Scheduler, type Job } from "../src/platform/scheduling/scheduler.ts";
-import { makeApp } from "../src/api.ts";
+import { makeApp } from "../src/composition/api.ts";
 import { askKind, brief } from "../src/api/orch/escalation.ts";
 import { landGroup } from "../src/api/panel/group.ts";
 import type { Ctx } from "../src/mech/ctx.ts";

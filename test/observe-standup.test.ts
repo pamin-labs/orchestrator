@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { logLine } from "../src/platform/observability/logging.ts";
 import { maskValue } from "../src/platform/observability/redaction.ts";
 import { requestContext } from "../src/platform/observability/request-context.ts";
-import { publishStandupItem } from "../src/runtime/executor.ts";
+import { publishStandupItem } from "../src/application/executor.ts";
 import { REEMIT_MS } from "../src/mech/ops/watchdog.ts";
 import { testContext } from "./test-context.ts";
 

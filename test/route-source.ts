@@ -51,7 +51,7 @@ export function routeSource(): string {
           : [],
     );
   return [
-    readFileSync(new URL("../src/api.ts", import.meta.url).pathname, "utf8"),
+    readFileSync(new URL("../src/composition/api.ts", import.meta.url).pathname, "utf8"),
     ...walk(new URL("../src/api", import.meta.url).pathname),
     ...walk(new URL("../src/http", import.meta.url).pathname),
   ].join("\n");

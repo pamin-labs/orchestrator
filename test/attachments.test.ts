@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { z } from "zod";
-import { makeApp } from "../src/api.ts";
+import { makeApp } from "../src/composition/api.ts";
 import type { Ctx } from "../src/mech/ctx.ts";
 import type { Json } from "../src/contracts/json.ts";
 import { imagePaths } from "../src/mech/util/attachment-text.ts";
@@ -11,7 +11,7 @@ import { Bus } from "../src/platform/persistence/event-bus.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import { loadConfig, loadRoles } from "../src/platform/config/load.ts";
 import { Scheduler } from "../src/platform/scheduling/scheduler.ts";
-import { ATTACH_DIR, stageAttachments, type ExecDeps } from "../src/runtime/executor.ts";
+import { ATTACH_DIR, stageAttachments, type ExecDeps } from "../src/application/executor.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";
 
 /**

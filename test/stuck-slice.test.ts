@@ -4,7 +4,7 @@ import { loadConfig } from "../src/platform/config/load.ts";
 import { openMemory, type DB } from "../src/platform/persistence/database.ts";
 import { runInvariants } from "../src/mech/ops/invariants.ts";
 import { sendBack } from "../src/mech/flow/review.ts";
-import { makeApp } from "../src/api.ts";
+import { makeApp } from "../src/composition/api.ts";
 import type { Ctx } from "../src/mech/ctx.ts";
 import { Scheduler, type Job } from "../src/platform/scheduling/scheduler.ts";
 import { fakeSandbox } from "./fake-sandbox.ts";

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { makeApp } from "../src/api.ts";
+import { makeApp } from "../src/composition/api.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import type { Json } from "../src/contracts/json.ts";
 import { setTrailers } from "../src/mech/git/ghlogin.ts";
@@ -181,7 +181,7 @@ test("nothing reads a credential back out of a sandbox", async () => {
   //
   // Asserted on the source, because the failure was two locally-correct pieces
   // (the decoy is written; a rotated file is absorbed) with nothing joining them.
-  const src = await Bun.file(new URL("../src/runtime/executor.ts", import.meta.url)).text();
+  const src = await Bun.file(new URL("../src/application/executor.ts", import.meta.url)).text();
   expect(src).not.toContain("absorbCodexHome");
   expect(src).not.toContain(`\${CODEX_HOME}/auth.json`);
 });

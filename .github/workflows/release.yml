@@ -126,7 +126,7 @@ jobs:
               windows-x64) exe=orch-server.exe; bun_target=bun-windows-x64-baseline ;;
             esac
             mkdir -p "dist/$root/web" "dist/$root/src/orch"
-            bun build --compile --minify --target="$bun_target" --define "__ORCH_VERSION__=\"$RELEASE_VERSION\"" src/server.ts --outfile "dist/$root/$exe"
+            bun build --compile --minify --target="$bun_target" --define "__ORCH_VERSION__=\"$RELEASE_VERSION\"" src/composition/server.ts --outfile "dist/$root/$exe"
             cp -R roles config "dist/$root/"
             cp -R web/dist "dist/$root/web/dist"
             cp web/index.html web/icon.png web/favicon-32.png web/apple-touch-icon.png "dist/$root/web/"

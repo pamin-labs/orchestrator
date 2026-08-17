@@ -35,8 +35,8 @@ import { clip, errText } from "../platform/process/text.ts";
 import { assemble, buildStable, type Delta, needsRotation, type StablePrompt } from "../prompt/assemble.ts";
 import { AgentTurnPayloadSchema, type Executor, type Job } from "../platform/scheduling/scheduler.ts";
 import { buildTurnDelta } from "../application/turn/delta.ts";
-import type { TurnResult } from "./claude.ts";
-import { clampEffort, type Provider, providerFor } from "./providers.ts";
+import type { TurnResult } from "../runtime/claude.ts";
+import { clampEffort, type Provider, providerFor } from "../runtime/providers.ts";
 import { track, untrack } from "../platform/process/running-turns.ts";
 import { requestContext } from "../platform/observability/request-context.ts";
 

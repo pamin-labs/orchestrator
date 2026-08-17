@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { applyPrOutcome, chargedProject, heartbeat, recordIndexResult, reportRejection } from "../src/server.ts";
+import {
+  applyPrOutcome,
+  chargedProject,
+  heartbeat,
+  recordIndexResult,
+  reportRejection,
+} from "../src/composition/server.ts";
 import { openMemory } from "../src/platform/persistence/database.ts";
 import { testContext } from "./test-context.ts";
 import { makeGithub } from "../src/mech/git/github.ts";
