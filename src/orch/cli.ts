@@ -62,7 +62,13 @@ async function viaMailbox(
 
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-function transportMetadata(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) {
+/**
+ * Exported for the test that pins which methods carry an idempotency key. A
+ * duplicate `Idempotency-Key` on a GET is harmless; a missing one on a POST
+ * means a retried lease can run its side effect twice, and nothing else in the
+ * CLI would notice.
+ */
+export function transportMetadata(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) {
   const method = input instanceof Request ? input.method : (init?.method ?? "GET");
   const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
   const requestId = crypto.randomUUID();
