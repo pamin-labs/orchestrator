@@ -399,47 +399,117 @@ async function step(rule: string, findings: Finding[], run: () => Promise<void>)
   }
 }
 
+type Translate = (key: SayKey, args?: Parameters<typeof say>[2]) => string;
+
+/** Stop network-dependent rules while offline and requeue interrupted turns once. */
+async function networkReady(
+  deps: WatchdogDeps,
+  findings: Finding[],
+  now: () => number,
+  t: Translate,
+): Promise<boolean> {
+  const net = await (deps.probe ?? probe)(deps.ctx.db, now());
+  if (!net.changed) return net.online;
+  const held = net.online ? 0 : holdForOffline(deps.ctx, now());
+  const body = net.online ? t("net.back") : t("net.lost", { n: held });
+  deps.ctx.bus.emit({ author: "orchestrator", kind: "state_change", body });
+  findings.push({
+    rule: net.online ? "network_back" : "network_lost",
+    grpId: null,
+    severity: net.online ? "advisory" : "blocker",
+    body,
+  });
+  if (net.online) deps.ctx.sched.tick();
+  return net.online;
+}
+
+interface BaseGroup {
+  id: number;
+  name: string;
+  repo: string;
+  seen: string | null;
+  project_id: number;
+}
+
+async function nudgeMovedBases(ctx: Ctx, findings: Finding[], now: () => number): Promise<void> {
+  const groups = ctx.db
+    .query<BaseGroup, []>(
+      `SELECT g.id, g.name, p.repo_path AS repo, g.rebase_seen AS seen, g.project_id
+       FROM grp g JOIN project p ON p.id = g.project_id
+       WHERE g.status IN ('RUNNING','PR_OPEN') AND g.sandbox_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM job j WHERE j.grp_id = g.id AND j.state = 'pending'
+                           AND j.kind = 'agent_turn' AND j.payload_json LIKE '%"conflict":true%')`,
+    )
+    .all();
+  for (const group of groups) await nudgeMovedBase(ctx, group, findings, now);
+}
+
+async function nudgeMovedBase(ctx: Ctx, group: BaseGroup, findings: Finding[], now: () => number): Promise<void> {
+  const movement = await remoteBaseMovement(ctx, group);
+  if (!movement) return;
+  const git = sandboxGit(ctx, { grp: group.id });
+  if (!(await knowsCommit(git, movement.sha))) return;
+  if ((await git(WORK, ["merge-base", "--is-ancestor", movement.sha, "HEAD"], WORK)).code === 0) return;
+  ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [movement.sha, now(), group.id]);
+  queueRebase(ctx, group, movement, findings);
+}
+
+async function remoteBaseMovement(ctx: Ctx, group: BaseGroup): Promise<{ baseRef: string; sha: string } | null> {
+  const baseRef = await baseRefFor(ctx, group.project_id);
+  const branch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : baseRef;
+  const head = await ctx.gh?.request(
+    "GET",
+    `/repos/${group.repo}/branches/${branch}`,
+    z.object({ commit: z.object({ sha: z.string().optional() }).optional() }),
+  );
+  const sha = head?.ok ? (head.data?.commit?.sha ?? "") : "";
+  return !sha || sha === group.seen ? null : { baseRef, sha };
+}
+
+type GitIn = ReturnType<typeof sandboxGit>;
+
+async function knowsCommit(git: GitIn, sha: string): Promise<boolean> {
+  if ((await git(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0) return true;
+  if ((await git(WORK, ["fetch", "--quiet", "origin"], WORK)).code !== 0) return false;
+  return (await git(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0;
+}
+
+function queueRebase(
+  ctx: Ctx,
+  group: BaseGroup,
+  movement: { baseRef: string; sha: string },
+  findings: Finding[],
+): void {
+  const { baseRef, sha } = movement;
+  const remoteBranch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : null;
+  const fetchStep = remoteBranch ? `\`git fetch origin ${remoteBranch}\` then ` : "";
+  ctx.sched.enqueue("agent_turn", {
+    grp_id: group.id,
+    priority: 4,
+    payload: {
+      role: "engineer",
+      conflict: true,
+      rejection:
+        `${baseRef} moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
+        `${fetchStep}\`git rebase ${baseRef}\`, then carry on. ` +
+        `If ${baseRef} removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
+        `with \`orch ask-boss\`; that reaches the Architect.`,
+    },
+  });
+  findings.push({
+    rule: "base_moved",
+    grpId: group.id,
+    severity: "advisory",
+    body: `${baseRef} 动到了 ${sha.slice(0, 8)}，${group.name} 的基线落后了，已经让它先 rebase`,
+  });
+}
+
 async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]> {
   const { ctx, cfg } = deps;
-  // These bodies land in the boss's feed and notifications, so they follow
-  // output.language. Feedback aimed at an agent stays English: it lands in a prompt
-  // next to code and gate output.
-  // Typed by `say`'s own key, not `any`. `any` here switched off the one check
-  // that matters for fourteen call sites: `say` falls back to `String(key)` for
-  // a key it does not have, so a typo does not throw and does not log — it puts
-  // the literal `wd.stalledd` in the boss's feed, in place of the sentence that
-  // was supposed to explain why a group stopped.
+  // Boss-facing findings follow output.language; agent feedback stays English.
   const t = (k: SayKey, a?: Parameters<typeof say>[2]) => say(ctx.config.language, k, a);
   const now = deps.now ?? (() => Date.now());
-
-  // 19. The machine's own network, before anything that needs it.
-  //
-  // A laptop closes, a VPN drops. Without this every turn in flight burns its
-  // wall clock retrying, rule 1 interrupts each group into PAUSED, and PAUSED is
-  // a state nothing leaves on its own — so coming back online means a fleet of
-  // paused groups and a park timer filing them away. The gate in the scheduler
-  // does the holding; this decides when it is on and deals with what was already
-  // running.
-  const net = await (deps.probe ?? probe)(ctx.db, now());
-  if (net.changed) {
-    const held = net.online ? 0 : holdForOffline(ctx, now());
-    ctx.bus.emit({
-      author: "orchestrator",
-      kind: "state_change",
-      body: net.online ? t("net.back") : t("net.lost", { n: held }),
-    });
-    findings.push({
-      rule: net.online ? "network_back" : "network_lost",
-      grpId: null,
-      severity: net.online ? "advisory" : "blocker",
-      body: net.online ? t("net.back") : t("net.lost", { n: held }),
-    });
-    if (net.online) ctx.sched.tick();
-  }
-  // Everything below this line either talks to the network or drives work that
-  // does, so an offline tick stops here. The rules are all restatements of state
-  // we recorded ourselves; none of them is worth a two-second DNS timeout each.
-  if (!net.online) return emit(ctx, findings, now);
+  if (!(await networkReady(deps, findings, now, t))) return emit(ctx, findings, now);
 
   // Liveness first: one row per state, each saying who pushes it (invariants.ts).
   // The rules below are the other question — not "is anybody driving this" but
@@ -911,92 +981,8 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 15. The group's base moved while it is still working.
-  //
-  // `landGroup` tells the groups still in the merge queue to rebase, which covers
-  // the case where another group merged. It does not cover the boss pushing to
-  // main directly — and that is the common case, since the boss is a person with a
-  // terminal. Six groups spent a day building on a base fifteen commits stale, and
-  // every one of them would have found out at PR time, one conflict at a time.
-  //
-  // Told once per base: `rebase_seen` records what the group has already been
-  // warned about, so a group that reads the message and keeps working is not
-  // nagged every thirty seconds.
-  //
-  // PR_OPEN counts. Its branch is the one thing that has to merge, and it used to
-  // be excluded — so a stale PR sat in the queue until GitHub called it
-  // CONFLICTING, which is the late half of the same news.
-  await step("15", findings, async () => {
-    for (const g of ctx.db
-      .query<{ id: number; name: string; repo: string; seen: string | null; project_id: number }, []>(
-        `SELECT g.id, g.name, p.repo_path AS repo, g.rebase_seen AS seen, g.project_id
-         FROM grp g JOIN project p ON p.id = g.project_id
-         WHERE g.status IN ('RUNNING','PR_OPEN') AND g.sandbox_id IS NOT NULL
-           -- Coalesce on the nudge that is already queued, not on a clock. Three
-           -- pushes a minute apart were three shas and three rebase turns; a timer
-           -- would fix that by making a group wait to be told, and a group whose PR
-           -- is blocked on a rebase must not wait at all. If the turn is still
-           -- pending it will rebase onto whatever main is when it runs.
-           AND NOT EXISTS (SELECT 1 FROM job j WHERE j.grp_id = g.id AND j.state = 'pending'
-                             AND j.kind = 'agent_turn' AND j.payload_json LIKE '%"conflict":true%')`,
-      )
-      .all()) {
-      // Against the real base, and asked of GitHub rather than of a checkout on
-      // this machine — there is none since 007 step 6. One conditional request per
-      // group per tick, and a repeat is a 304, which does not count against the
-      // rate limit. Main also moves when somebody pushes from another machine,
-      // which is the case a local `rev-parse` could never see.
-      const baseRef = await baseRefFor(ctx, g.project_id);
-      const branch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : baseRef;
-      const head = await ctx.gh?.request(
-        "GET",
-        `/repos/${g.repo}/branches/${branch}`,
-        z.object({ commit: z.object({ sha: z.string().optional() }).optional() }),
-      );
-      const sha = head?.ok ? (head.data?.commit?.sha ?? "") : "";
-      if (!sha || sha === g.seen) continue;
-      // The clone has to know the object before it can be asked about it. It is a
-      // separate `git clone` that never fetched, so `merge-base --is-ancestor`
-      // exited non-zero for "I have never heard of that commit" exactly as it does
-      // for "you are behind it" — the same code, two different facts, and the
-      // rebase nudge could not tell them apart. Fetch first, and then a non-zero
-      // answer means what it says.
-      const gitIn = sandboxGit(ctx, { grp: g.id });
-      const known = await gitIn(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK);
-      if (known.code !== 0) {
-        const fetched = await gitIn(WORK, ["fetch", "--quiet", "origin"], WORK);
-        // Still unknown after a fetch: the clone cannot see this base at all, which
-        // is a checkout problem and not something a rebase turn would fix.
-        if (fetched.code !== 0) continue;
-        if ((await gitIn(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK)).code !== 0) continue;
-      }
-      const merged = await gitIn(WORK, ["merge-base", "--is-ancestor", sha, "HEAD"], WORK);
-      if (merged.code === 0) continue; // already on it
-
-      ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [sha, now(), g.id]);
-      const remoteBranch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : null;
-      const fetchStep = remoteBranch ? `\`git fetch origin ${remoteBranch}\` then ` : "";
-      ctx.sched.enqueue("agent_turn", {
-        grp_id: g.id,
-        priority: 4,
-        payload: {
-          role: "engineer",
-          conflict: true,
-          rejection:
-            `${baseRef} moved to ${sha.slice(0, 8)} and this branch is behind it. Rebase now rather than at PR time — ` +
-            `${fetchStep}\`git rebase ${baseRef}\`, then carry on. ` +
-            `If ${baseRef} removed or reshaped something this slice was built on, STOP and say which premise is gone ` +
-            `with \`orch ask-boss\`; that reaches the Architect.`,
-        },
-      });
-      findings.push({
-        rule: "base_moved",
-        grpId: g.id,
-        severity: "advisory",
-        body: `${baseRef} 动到了 ${sha.slice(0, 8)}，${g.name} 的基线落后了，已经让它先 rebase`,
-      });
-    }
-  });
+  // 15. A live branch is told once per remote base to rebase before PR time.
+  await step("15", findings, () => nudgeMovedBases(ctx, findings, now));
 
   // 14. Parked and forgotten. It will not come back on its own and it will not ask
   // again, so the one thing owed is a reminder that says how long — 唤醒 and 不做了
