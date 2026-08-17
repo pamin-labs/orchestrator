@@ -9,7 +9,6 @@ import { usePaged } from "../../shared/page";
 import { STOPS, countWaiting, gates, heldApproved, statusLabel } from "../../shared/select";
 import { K } from "../../shared/format";
 import { cn } from "../../ui/cn";
-import { Telemetry } from "../telemetry/view";
 
 /** Requirements are state-filtered, paged, and counted on their tabs. */
 
@@ -27,16 +26,6 @@ const BUCKETS: Bucket[] = [
   { key: "held", zh: "停着", of: ["PAUSED", "PARKED"] },
 ];
 const DONE = "done";
-const TIME = "time";
-
-/**
- * A week of timing for a project, against a requirement's default day.
- *
- * Retention keeps seven days and no view looks further back than the week the
- * work ran in, so this is the widest window that exists rather than a number
- * picked for a chart.
- */
-const PROJECT_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
 
 export function Progress({
   st,
@@ -74,11 +63,7 @@ export function Progress({
     : (BUCKETS.slice(1).find((b) => of(b).length)?.key ?? (archived.length ? DONE : "live"));
 
   // No early return for "this project has no requirements". It said, in its own
-  // words, what `emptyOf("live")` already says inside the 进行中 bucket — and it
-  // took the whole tab strip with it, including 耗时, which does not depend on a
-  // requirement existing at all: a project's spans include every HTTP route and
-  // container operation that named it. On this machine that is 289 rows of real
-  // timing, on a project with zero requirements, that nothing could reach.
+  // words, what `emptyOf("live")` already says inside the 进行中 bucket.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Tabs value={tab ?? fallback} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
@@ -96,14 +81,6 @@ export function Progress({
           <Tab value={DONE} count={archived.length}>
             已交付
           </Tab>
-          {/* A tab and not a block above the strip, which is what "a block" would
-              literally have been. This view is one `min-h-0` chain from the shell
-              down to the pane that owns the scrollbar, so a section stacked above
-              the tabs pushes the strip — the thing the boss steers with — off the
-              top as soon as it has content. The requirement view answers the same
-              question from the same component one level down; making the project's
-              copy a different mechanism would be two idioms for one idea. */}
-          <Tab value={TIME}>耗时</Tab>
           <span className="grow" />
           {/* The slot cap is why an approved requirement can sit still: queued, not
             stuck. Without it that difference is invisible. */}
@@ -124,22 +101,6 @@ export function Progress({
         <TabPanel value={DONE} className="flex min-h-0 flex-1 flex-col">
           <Pane>
             <Done rows={archived} />
-          </Pane>
-        </TabPanel>
-
-        {/* A week, where a requirement gets the default day: the question here is
-            whether this project is getting slower, and that is not visible inside
-            one day of one project's turns. It is also what makes the trend worth
-            drawing at all — seven days of hourly buckets is a shape, and a day of
-            them is a handful of points. */}
-        <TabPanel value={TIME} className="flex min-h-0 flex-1 flex-col">
-          <Pane>
-            <Telemetry
-              scope={{ kind: "project", id: projectId }}
-              windowMs={PROJECT_WINDOW_MS}
-              trend
-              empty="这个项目还没跑过任何活。"
-            />
           </Pane>
         </TabPanel>
       </Tabs>

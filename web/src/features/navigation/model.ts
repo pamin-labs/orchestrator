@@ -11,6 +11,7 @@ const ViewSchema = z.enum([
   "owns",
   "cost",
   "notes",
+  "time",
   "settings",
   "config",
   "skills",
@@ -37,6 +38,7 @@ export type ContentSlot =
   | "desk"
   | "notes"
   | "owns"
+  | "time"
   | "cost";
 export type Shortcut = "toggle-side" | "settings" | "project-picker" | "requirement-picker";
 
@@ -55,6 +57,12 @@ export const VIEWS: [View, string][] = [
   ["notes", "记录"],
   ["owns", "所有权"],
   ["cost", "成本"],
+  // Top level, beside the other four. It was a tab inside 需求, one rank down,
+  // which put "where did this project's wall clock go" underneath "which
+  // requirements are running" — but a project's spans are every route and
+  // container operation that named it, most of them belonging to no requirement
+  // at all. It is a sibling question, not a detail of that one.
+  ["time", "耗时"],
 ];
 
 export const choose = <T>(condition: boolean, yes: T, no: T): T => (condition ? yes : no);
@@ -84,7 +92,7 @@ export const sideText = (side: boolean): string => (side ? "收起事件流" : "
 export const sideClass = (side: boolean): string => (side ? "text-ink" : "text-ink-3 hover:text-ink");
 export const settingsClass = (active: boolean): string => (active ? "text-ink" : "text-ink-3 hover:text-ink");
 export const scrollClass = (view: View): string =>
-  ["cost", "owns", "desk", "notes", "progress", "req"].includes(view)
+  ["cost", "owns", "desk", "notes", "progress", "req", "time"].includes(view)
     ? "overflow-hidden pb-4"
     : "overflow-y-auto pb-16";
 export const bodyClass = (side: boolean): string => (side ? "flex max-[64rem]:block" : "block");
@@ -156,7 +164,7 @@ export function contentSlot(
   if (home) return "home";
   if (view === "progress") return groups > 0 || delivered ? "progress" : "empty";
   if (view === "req") return hasGroup ? "req" : "missing";
-  const direct: Partial<Record<View, ContentSlot>> = { desk: "desk", notes: "notes", owns: "owns" };
+  const direct: Partial<Record<View, ContentSlot>> = { desk: "desk", notes: "notes", owns: "owns", time: "time" };
   return direct[view] ?? "cost";
 }
 

@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { countWaiting, STATUS_ZH } from "../shared/select";
 import { useOrch } from "../shared/api";
 import { cn } from "../ui/cn";
+import { Pane } from "../ui/bits";
 import { Boundary } from "./boundary";
 import { Button } from "../ui/button";
 import { Card, CardBody, CardTitle } from "../ui/card";
@@ -21,6 +22,7 @@ import { Queue } from "../features/queue/view";
 import { Requirement } from "../features/requirement/view";
 import { SettingsDialog } from "../features/settings/view";
 import { CostView, Desk, Owns } from "../features/tables/view";
+import { Telemetry } from "../features/telemetry/view";
 import { Timeline } from "../features/timeline/view";
 import {
   backgroundView,
@@ -257,6 +259,18 @@ export function App() {
     desk: () => <Desk st={st} frames={frames} projectId={idOrZero(sel.p)} />,
     notes: () => <Notes projectId={idOrZero(sel.p)} tab={sel.t} onTab={(tab) => go({ t: tab })} />,
     owns: () => <Owns st={st} projectId={idOrZero(sel.p)} />,
+    // No `windowMs`. It asked for a week, on a comment claiming retention kept
+    // seven days — retention is one, and the endpoint caps the parameter at
+    // exactly that, so every project read came back
+    // `Too big: expected number to be <=86400000` and the page said 「这个项目还
+    // 没跑过任何活」 over a table full of rows. Letting the endpoint choose its
+    // own default is also the only version that stays correct when retention
+    // moves, which is the reason the number should not have been here at all.
+    time: () => (
+      <Pane>
+        <Telemetry scope={{ kind: "project", id: idOrZero(sel.p) }} trend empty="这个项目还没跑过任何活。" />
+      </Pane>
+    ),
     cost: () => <CostView cost={cost} />,
   };
 
