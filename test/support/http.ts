@@ -18,23 +18,39 @@ import { setupServer } from "msw/node";
  * offline by construction and one that is offline by everybody remembering.
  * There is no setting to relax here — a test that wants the network wants a
  * handler.
- *
- * The lifecycle is the documented one for `setupServer`
- * (https://mswjs.io/docs/api/setup-server): `listen` once, `resetHandlers`
- * between tests so a `server.use()` cannot leak into the next one, `close` at
- * the end. Registered here at module scope, so importing this file is the whole
- * setup — and deliberately *not* in `test/support/setup.ts`, which is preloaded
- * into every file: interception is global once started, and the suite has
- * integration tests that talk to a real localhost server of their own.
  */
 export const server = setupServer();
 
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: "error" });
-});
-afterEach(() => {
-  server.resetHandlers();
-});
-afterAll(() => {
-  server.close();
-});
+/**
+ * Arm interception for the calling test file: `mockHttp()` at its top level.
+ *
+ * The lifecycle inside is the documented one for `setupServer`
+ * (https://mswjs.io/docs/api/setup-server): `listen` once, `resetHandlers`
+ * between tests so a `server.use()` cannot leak into the next one, `close` at the
+ * end. What is *not* documented is why it is a function here rather than three
+ * hooks at module scope, which is how MSW's own setup file is written.
+ *
+ * Two reasons, and both are Bun's:
+ *
+ * A hook registers against whichever file is being loaded when the call runs. A
+ * module is evaluated once per process, so module-scope hooks in a shared file
+ * would attach to whichever test file imported it first and silently do nothing
+ * for the second — the kind of failure that reads as "MSW does not work here".
+ *
+ * And this cannot live in `test/support/setup.ts` with the other global setup,
+ * because a preload applies to every file: interception is process-wide once
+ * started, and `test/integration` boots a real server on localhost and talks to
+ * it. Arming it per file is what keeps `onUnhandledRequest: "error"` absolute
+ * where it is on, instead of drilling an exemption through it.
+ */
+export function mockHttp(): void {
+  beforeAll(() => {
+    server.listen({ onUnhandledRequest: "error" });
+  });
+  afterEach(() => {
+    server.resetHandlers();
+  });
+  afterAll(() => {
+    server.close();
+  });
+}
