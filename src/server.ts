@@ -150,7 +150,7 @@ export interface HeartbeatDeps {
   ctx: Ctx;
   db: DB;
   /** Only the two calls a tick makes, so a test does not have to build a Scheduler. */
-  sched: { enqueue: (kind: string, payload: Record<string, never>) => unknown; tick: () => unknown };
+  sched: Pick<Scheduler, "enqueue" | "tick">;
   gh: Github;
   url: string;
   notifier: Notifier;

@@ -137,7 +137,7 @@ test("the heartbeat queues one watchdog, not one per tick", () => {
   const deps = {
     ctx,
     db: ctx.db,
-    sched: { enqueue: (kind: string) => enqueued.push(kind), tick: () => {} },
+    sched: { enqueue: (kind: string) => enqueued.push(kind), tick: () => 0 },
     gh: offlineGithub(ctx.db),
     url: "http://x",
     notifier: silent,
@@ -168,7 +168,7 @@ test("the heartbeat starts no network work while the last round is still out", (
   heartbeat({
     ctx,
     db: ctx.db,
-    sched: { enqueue: () => {}, tick: () => {} },
+    sched: { enqueue: () => 0, tick: () => 0 },
     gh: offlineGithub(ctx.db),
     url: "http://x",
     notifier: silent,
