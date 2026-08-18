@@ -337,7 +337,16 @@ export function acceptSlice(ctx: Ctx, sliceId: number, by: string, why?: string)
       .get(sliceId);
     if (!slice) return null;
 
-    ctx.db.run("UPDATE slice SET status = 'accepted' WHERE id = ?", [sliceId]);
+    // Where it is accepted *from* matters. A `pending` slice has never run, so
+    // accepting it writes a carry-over handoff claiming it delivered, advances the
+    // group, and — if it was the last one open — sends a branch that does not
+    // contain it to review. `accepted` is excluded so a second call is not a second
+    // carry-over.
+    const moved = ctx.db.run(
+      "UPDATE slice SET status = 'accepted' WHERE id = ? AND status NOT IN ('pending', 'accepted')",
+      [sliceId],
+    ).changes;
+    if (!moved) return null;
     carryOver(ctx.db, sliceId, slice.grp_id);
     queueNextSlice(ctx, slice.grp_id);
 

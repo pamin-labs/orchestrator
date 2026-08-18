@@ -5,6 +5,7 @@ import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 import { say } from "../../platform/text/lang.ts";
+import { GRP_TERMINAL_STATES } from "../../contracts/states.ts";
 
 /**
  * Three levels of getting in the way, all of them operations on the job queue.
@@ -71,7 +72,14 @@ export interface Hold {
 }
 
 export function hold(ctx: Ctx, grpId: number, h: Hold): void {
-  const sets = [`status = '${h.settled ? "PAUSED" : "PAUSING"}'`, "paused_at = unixepoch() * 1000", "pause_reason = ?"];
+  const sets = [
+    `status = '${h.settled ? "PAUSED" : "PAUSING"}'`,
+    // Where to resume to. `COALESCE` so the PAUSING → PAUSED step does not
+    // overwrite it with `PAUSING`, and so a second hold keeps the original.
+    "paused_from = COALESCE(paused_from, status)",
+    "paused_at = unixepoch() * 1000",
+    "pause_reason = ?",
+  ];
   const args: (string | number)[] = [h.reason];
   if (h.until !== undefined) {
     sets.push("rl_resets_at = ?");
@@ -83,7 +91,17 @@ export function hold(ctx: Ctx, grpId: number, h: Hold): void {
   }
   if (h.leaveQueue) sets.push("merge_seq = NULL, merge_seq_at = NULL");
   args.push(grpId);
-  ctx.db.run(`UPDATE grp SET ${sets.join(", ")} WHERE id = ?${h.from ? ` AND status = '${h.from}'` : ""}`, args);
+  // A dissolved group is over, and nothing may restart it. `dropGroup` leaves the
+  // budget columns alone, so the budget rule kept matching and moved DISSOLVED to
+  // PAUSED — which is in `WRITING`, so the dead group's paths stayed claimed and
+  // the next group that wanted them never started.
+  const terminal = GRP_TERMINAL_STATES.map((state) => `'${state}'`).join(", ");
+  ctx.db.run(
+    `UPDATE grp SET ${sets.join(", ")} WHERE id = ? AND status NOT IN (${terminal})${
+      h.from ? ` AND status = '${h.from}'` : ""
+    }`,
+    args,
+  );
 }
 
 /**
@@ -115,8 +133,8 @@ export function release(
   const where =
     grpId === null ? "pause_reason = ?" : `id = ? AND status IN (${states})${opts.only ? " AND pause_reason = ?" : ""}`;
   ctx.db.run(
-    `UPDATE grp SET status = 'RUNNING', paused_at = NULL, pause_reason = NULL,
-       rl_resets_at = NULL, blocked_on = NULL
+    `UPDATE grp SET status = COALESCE(paused_from, 'RUNNING'), paused_from = NULL,
+       paused_at = NULL, pause_reason = NULL, rl_resets_at = NULL, blocked_on = NULL
      WHERE ${where}`,
     grpId === null ? [opts.only!] : opts.only ? [grpId, opts.only] : [grpId],
   );

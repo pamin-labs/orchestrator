@@ -359,6 +359,10 @@ test("accepting a slice starts the next one, and only one runs at a time", async
   h.db.run("UPDATE slice SET status = 'accepted' WHERE id = 1");
   expect(startNextSlice(h.ctx, 1)).toBe(2);
   h.db.run("UPDATE slice SET status = 'pending' WHERE id = 2");
+  // S1 back to where the boss actually accepts from. It was left `accepted` here,
+  // so this step was re-accepting an already-accepted slice — which `acceptSlice`
+  // now refuses, because a second acceptance is a second carry-over note.
+  h.db.run("UPDATE slice SET status = 'awaiting_boss' WHERE id = 1");
   await h.post("/api/v1/slices/1/accept");
   const running = h.db
     .query<{ seq: number }, []>("SELECT seq FROM slice WHERE status = 'running'")
