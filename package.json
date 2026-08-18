@@ -16,7 +16,7 @@
     "perf:bench": "bun run scripts/benchmark.ts",
     "test": "bun test --parallel",
     "test:changed": "bun test --parallel --changed",
-    "test:coverage": "ORCH_COVERAGE=1 bun test && bun run test/support/coverage-report.ts",
+    "test:coverage": "rm -rf coverage/parts && ORCH_COVERAGE=1 bun test --parallel && bun run test/support/coverage-report.ts",
     "typecheck": "tsc -b --pretty false",
     "typecheck:clean": "tsc -b --clean && tsc -b --pretty false",
     "lint": "oxlint src web/src test",
@@ -33,7 +33,6 @@
     "check": "bun run audit && bun run validate"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.1",
     "@biomejs/biome": "^2.5.8",
     "@happy-dom/global-registrator": "^20.11.2",
     "@opentelemetry/otlp-transformer": "^0.221.0",
@@ -52,7 +51,6 @@
     "@types/react-dom": "^19.2.4",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "babel-plugin-istanbul": "^8.0.0",
     "fallow": "3.17.0",
     "fast-check": "^4.9.0",
     "fishery": "^2.4.0",
@@ -61,6 +59,7 @@
     "istanbul-lib-report": "^3.0.1",
     "istanbul-reports": "^3.2.0",
     "msw": "^2.15.0",
+    "oxc-coverage-instrument": "0.12.0",
     "oxlint": "^1.78.0",
     "oxlint-tsgolint": "^7.0.2001",
     "playwright": "^1.62.1",

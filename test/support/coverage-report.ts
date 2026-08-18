@@ -1,3 +1,4 @@
+import { Glob } from "bun";
 import libCoverage from "istanbul-lib-coverage";
 import libReport from "istanbul-lib-report";
 import reports from "istanbul-reports";
@@ -10,11 +11,6 @@ import reports from "istanbul-reports";
  * would cost more than the instrumentation does.
  */
 const dir = process.env.COVERAGE_DIR ?? "coverage";
-const file = Bun.file(`${dir}/coverage-final.json`);
-if (!(await file.exists())) {
-  console.error(`no coverage map at ${dir}/coverage-final.json — run bun run test:coverage`);
-  process.exit(1);
-}
 
 // Our own dump, but still JSON off disk. `createCoverageMap` reads `.statementMap`
 // and `.s` off every entry and throws somewhere deep if they are missing, so the
@@ -26,12 +22,32 @@ function isCoverageMap(value: unknown): value is libCoverage.CoverageMapData {
   );
 }
 
-const stored: unknown = await file.json();
-if (!isCoverageMap(stored)) {
-  console.error(`${dir}/coverage-final.json is not an Istanbul coverage map`);
+/**
+ * Every worker's shard, added together.
+ *
+ * `bun test --parallel` runs each file in one of several processes and
+ * `globalThis.__coverage__` is per-process, so each shard knows only about the
+ * files its worker loaded. Merging is `istanbul-lib-coverage`'s own job:
+ * `merge` sums the hit counts for a file two shards both touched and keeps the
+ * maps, which is the arithmetic rather than an approximation of it.
+ */
+const map = libCoverage.createCoverageMap({});
+let shards = 0;
+for (const shard of new Glob("*.json").scanSync({ cwd: `${dir}/parts`, absolute: true })) {
+  const stored: unknown = await Bun.file(shard).json();
+  if (!isCoverageMap(stored)) {
+    console.error(`${shard} is not an Istanbul coverage map`);
+    process.exit(1);
+  }
+  map.merge(stored);
+  shards += 1;
+}
+if (shards === 0) {
+  console.error(`no coverage shards under ${dir}/parts — run bun run test:coverage`);
   process.exit(1);
 }
-const map = libCoverage.createCoverageMap(stored);
+// Written before the reports: Fallow reads this file, the reports are for people.
+await Bun.write(`${dir}/coverage-final.json`, JSON.stringify(map.toJSON()));
 const context = libReport.createContext({ dir, coverageMap: map });
 // `lcov` for anything downstream that reads lcov, `html` for a human, and
 // `text-summary` so a CI log carries the number without an artifact download.

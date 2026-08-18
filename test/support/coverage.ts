@@ -1,8 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll } from "bun:test";
-import { transformSync } from "@babel/core";
-import istanbul from "babel-plugin-istanbul";
+import { instrument as oxcInstrument } from "oxc-coverage-instrument";
 
 /**
  * Coverage for `bun test`, by instrumenting the source rather than asking the
@@ -15,9 +14,26 @@ import istanbul from "babel-plugin-istanbul";
  * every CRAP number in the audit is an estimate. `NODE_V8_COVERAGE` is ignored
  * by Bun, which also rules out the c8 / v8-to-istanbul route.
  *
- * Instrumenting at load time sidesteps the runtime entirely: babel rewrites the
- * source, the counters land in `globalThis.__coverage__`, and what comes out is
- * a standard Istanbul coverage map that Fallow reads directly.
+ * Instrumenting at load time sidesteps the runtime entirely: the source is
+ * rewritten before Bun loads it, the counters land in `globalThis.__coverage__`,
+ * and what comes out is a standard Istanbul coverage map that Fallow reads
+ * directly.
+ *
+ * The rewriter is `oxc-coverage-instrument`, not `babel-plugin-istanbul`, and
+ * the reason is what it unlocks rather than the single-process saving. Measured
+ * on this suite: instrumentation costs 3s of CPU single-process either way, but
+ * under `--parallel` — which implies `--isolate`, so every test file
+ * re-instruments what it imports — babel cost **387s of CPU and 71s of wall
+ * clock**, against 5s and 8s for oxc. That is the difference between a coverage
+ * run that can be parallel and one that cannot, and the run being single-process
+ * was most of its cost.
+ *
+ *   babel, single-process:  12.3s
+ *   oxc,   single-process:  11.0s
+ *   oxc,   parallel:         9.2s
+ *
+ * The two agree on the answer: 78.66% statements against 78.63%, 2271 covered
+ * functions against 2269 — the difference is test isolation, not measurement.
  *
  * Loaded only by `bun run test:coverage`. Instrumentation costs real time, and
  * the default `bun test` is kept fast on purpose.
@@ -63,19 +79,8 @@ function isSubject(path: string): boolean {
  * tag, and the file then loads uninstrumented with a syntax error on the way
  * past — coverage silently missing for whatever it touched.
  */
-function instrument(source: string, path: string, jsx: boolean): string {
-  const result = transformSync(source, {
-    filename: path,
-    cwd: root,
-    babelrc: false,
-    configFile: false,
-    sourceType: "module",
-    parserOpts: { plugins: jsx ? ["typescript", "jsx"] : ["typescript"] },
-    plugins: [[istanbul, { cwd: root, exclude: [] }]],
-  });
-  // A file babel declines to rewrite still has to load, uninstrumented, rather
-  // than disappear from the module graph mid-run.
-  return result?.code ?? source;
+function instrument(source: string, path: string, _jsx: boolean): string {
+  return oxcInstrument(source, path).code;
 }
 
 if (enabled) {
@@ -97,7 +102,7 @@ if (enabled) {
 }
 
 declare global {
-  // Where babel-plugin-istanbul accumulates its counters. Declared rather than
+  // Where the instrumented code accumulates its counters. Declared rather than
   // asserted so reading it is a typed access instead of a cast through the
   // global object.
   var __coverage__: Record<string, unknown> | undefined;
@@ -114,6 +119,19 @@ declare global {
 afterAll(() => {
   const raw = globalThis.__coverage__;
   if (!raw) return;
-  mkdirSync(COVERAGE_DIR, { recursive: true });
-  writeFileSync(join(COVERAGE_DIR, "coverage-final.json"), JSON.stringify(raw));
+  // One shard per *file*, merged by the report script.
+  //
+  // Writing `coverage-final.json` directly meant the last writer overwrote the
+  // rest, which is why the coverage run was single-process — and single-process
+  // was most of its cost. Sharding fixes that, but the shard cannot be keyed on
+  // the process: `--parallel` implies `--isolate`, so every test file gets a
+  // fresh global and `__coverage__` starts empty again. Keyed on the pid, ten
+  // workers wrote ten shards holding only whatever each had loaded last, and
+  // the merged total came out at 18% instead of 79%.
+  //
+  // A uuid per shard is the smallest thing that survives both: the pid keeps
+  // the names readable, the uuid keeps them distinct.
+  const parts = join(COVERAGE_DIR, "parts");
+  mkdirSync(parts, { recursive: true });
+  writeFileSync(join(parts, `${process.pid}-${crypto.randomUUID()}.json`), JSON.stringify(raw));
 });

@@ -128,7 +128,6 @@ export const postAuth = (async (ctx, _req, _p, b) => {
  */
 async function sandboxKeyWorks(server: string, key: string): Promise<"ok" | "invalid" | "unknown"> {
   try {
-    // fallow-ignore-next-line security-sink -- `server` is `cfg.sandbox.server`, the address of the boss's own sandbox server, and the key sent with it is the key stored for that same address. Choosing that address is the feature; the panel is loopback-only and no request field reaches this. Same disposition as the probe in `mech/sandbox/server.ts`.
     // Built rather than interpolated. `server` is `host[:port]` by contract
     // (`config.ts` rejects anything else), and `new URL` is what makes that
     // guarantee load-bearing: a path or a query in the value would replace this
