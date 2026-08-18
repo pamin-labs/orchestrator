@@ -3,6 +3,7 @@ import { open, openMemory } from "../../src/platform/persistence/database.ts";
 import {
   allowedImage,
   hostPathForDaemon,
+  addrInConfig,
   keyInConfig,
   lineSplitter,
   skillMounts,
@@ -164,6 +165,28 @@ test("the sandbox key is read from the server's own config, not invented here", 
   writeFileSync(f, '[server]\nhost = "127.0.0.1"\napi_key = "spike-local-key"\n');
   expect(keyInConfig(f)).toBe("spike-local-key");
   expect(keyInConfig(join(dir, "nope.toml"))).toBeNull();
+});
+
+test("the address is read from the same file as the key", () => {
+  // The pairing is the point. A key adopted from a server's own config is bound
+  // to the address in that same file, so no later change to `sandbox.server` —
+  // a settings knob the panel writes at runtime — can send it somewhere else.
+  const dir = tempDir("orch-sbaddr-");
+  const f = join(dir, "sandbox.toml");
+  writeFileSync(f, '[server]\nhost = "10.0.0.4"\nport = 9090\napi_key = "k"\n');
+  expect(addrInConfig(f)).toBe("10.0.0.4:9090");
+
+  // The same commented-out trap as the key: taking those would name an address
+  // the server is not listening on.
+  const g = join(dir, "b.toml");
+  writeFileSync(g, '[server]\n# host = "0.0.0.0"\n# port = 1234\napi_key = "k"\n');
+  expect(addrInConfig(g)).toBe("127.0.0.1:8080");
+  expect(addrInConfig(join(dir, "nope.toml"))).toBe("127.0.0.1:8080");
+
+  // A v6 literal has to come back bracketed or it is not an authority.
+  const h = join(dir, "c.toml");
+  writeFileSync(h, '[server]\nhost = "::1"\nport = 8080\n');
+  expect(addrInConfig(h)).toBe("[::1]:8080");
 });
 
 test("a commented-out key is not a key", () => {

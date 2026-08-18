@@ -176,12 +176,34 @@ function configPaths(home = homedir()): string[] {
   ].filter((p): p is string => !!p);
 }
 
-export function serverKeyOnDisk(home = homedir()): { key: string; path: string } | null {
+export function serverKeyOnDisk(home = homedir()): { key: string; path: string; server: string } | null {
   for (const path of configPaths(home)) {
     const key = keyInConfig(path);
-    if (key) return { key, path };
+    // The address comes out of the same file as the key, so the two cannot be
+    // paired wrongly by anything that happens later. `cfg.sandbox.server` is a
+    // settings knob; this is the server whose file this key was read from.
+    if (key) return { key, path, server: addrInConfig(path) };
   }
   return null;
+}
+
+/**
+ * `host:port` out of one server config, defaulted the way the server defaults.
+ *
+ * Same regex-not-a-parser trade as `keyInConfig`, and the same `^[ \t]*` guard:
+ * the example config ships both lines commented out, and taking a commented
+ * value would name an address the server is not listening on.
+ */
+export function addrInConfig(path: string): string {
+  let text = "";
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
+    return "127.0.0.1:8080";
+  }
+  const host = /^[ \t]*host[ \t]*=[ \t]*"([^"]+)"/m.exec(text)?.[1] ?? "127.0.0.1";
+  const port = /^[ \t]*port[ \t]*=[ \t]*(\d{1,5})/m.exec(text)?.[1] ?? "8080";
+  return `${host.includes(":") ? `[${host}]` : host}:${port}`;
 }
 
 /**

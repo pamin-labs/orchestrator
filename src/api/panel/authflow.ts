@@ -96,7 +96,10 @@ export const postAuth = (async (ctx, _req, _p, b) => {
       return bad(
         "没找到沙盒服务器的配置。它是用 --config 启动的，把那个文件的路径放进 OPENSANDBOX_CONFIG，或者放在 ./sandbox.toml、~/.sandbox.toml。",
       );
-    auth = { runtime: SANDBOX_KEY, mode: "api_key", secret: found.key };
+    // Bound to the address in the file it came out of, not to the settings knob.
+    // This is the pairing that makes the key unable to travel: it is the server
+    // whose own config this is, whatever `sandbox.server` is set to right now.
+    auth = { runtime: SANDBOX_KEY, mode: "api_key", secret: found.key, baseUrl: `http://${found.server}` };
   } else {
     auth = b;
   }
@@ -111,7 +114,14 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   // generating one here and not telling the server made every turn, every gate
   // and every diff 401 — reported as "Authentication credentials are invalid",
   // which reads as a model problem. Refused rather than stored.
-  if (auth.runtime === SANDBOX_KEY) {
+  //
+  // Only a typed one. A key read out of the server's own config **is** the key
+  // that server is running with — asking it to confirm its own file adds no
+  // answer, and the question costs the one thing worth avoiding: a secret read
+  // from a file, put on the wire, to an address chosen by a settings knob. That
+  // is CodeQL's `js/file-access-to-http` on this line, and the way to satisfy it
+  // is not to send the value, which is also the smaller code.
+  if (auth.runtime === SANDBOX_KEY && !("adopt" in b)) {
     const server = ctx.config.sandbox?.server ?? "127.0.0.1:8080";
     const said = await sandboxKeyWorks(server, auth.secret);
     if (said === "invalid") return bad("沙盒服务器不认这个密钥。它自己的配置里写的是哪个，这里就得填哪个。");
