@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { PER_PAGE, pages } from "../../src/mech/git/github.ts";
+import { PER_PAGE, pages } from "../../src/mech/git/paging.ts";
 import type { Github } from "../../src/mech/git/github.ts";
 
 /**

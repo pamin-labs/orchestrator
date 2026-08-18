@@ -23,7 +23,8 @@ import { z } from "zod";
  * decision 007 made against `@octokit/rest` for eight endpoints.
  */
 
-import { pages as paginate, type GhResult, type Github } from "./github.ts";
+import type { GhResult, Github } from "./github.ts";
+import { pages as paginate } from "./paging.ts";
 import { jsonOr } from "../../contracts/json.ts";
 
 const DEVICE_CODE_URL = "https://github.com/login/device/code";

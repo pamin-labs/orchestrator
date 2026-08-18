@@ -47,7 +47,7 @@ export const JournalBody = z.object({
 });
 
 type JournalGroup = { name: string; project_id: number };
-type Frontmatter = {
+export type Frontmatter = {
   group: string | null;
   role: string;
   slice: number | null;
