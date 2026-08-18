@@ -1,0 +1,11 @@
+# CodeQL is the SAST owner for shipped code. It is not the owner for test code:
+# `test/**` is 30k of the repository's 79k lines, none of it deployed and none
+# of it reachable from an untrusted source, so extracting it doubles the
+# database for findings that describe a fixture. GitHub's own troubleshooting
+# guide names excluding test code as the first remedy when analysis is slow.
+#
+# This is not "we do not look here" — Oxlint, the TypeScript project build and
+# Fallow all still read `test/**`. Only the taint analysis skips it.
+name: orchestrator
+paths-ignore:
+  - test/**
