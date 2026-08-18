@@ -32,7 +32,10 @@ demonstrated conflict — and record what would make us look again.
 ## Maintenance
 
 Consider anything popular and maintained. **Do not consider a project with no
-release in over a year.**
+release in over three years.** A year was the earlier line and it was too tight:
+it excluded `stopword`, whose sixty-four word lists are data that does not rot,
+on a fourteen-month gap. Age is evidence about a project, not a verdict on it —
+pair it with what the package actually is.
 
 Judge an ecosystem by its active packages, not by the version date of its
 umbrella package. `unified` and `remark` publish rarely because their core is

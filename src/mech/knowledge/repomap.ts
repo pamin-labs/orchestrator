@@ -1,5 +1,7 @@
 import { projectConfig, saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
+import { symbolsIn } from "./symbols.ts";
+import { terms } from "./terms.ts";
 
 /**
  * One index of the repo, shared by every group.
@@ -20,17 +22,19 @@ import type { DB } from "../../platform/persistence/database.ts";
  * question turns out to need "what does this do" rather than "where is this".
  */
 
-const EXPORTED = /^\s*export\s+(?:default\s+)?(?:async\s+)?(?:function|const|class|type|interface|enum)\s+(\w+)/gm;
+/** How many names a single file contributes to the map. */
+const MAX_SYMBOLS = 12;
 
 /**
  * What belongs in an index of a repository — by exclusion, not by allow-list.
  *
  * Both indexes used to carry their own extension allow-list. This one named
- * eighteen languages while `EXPORTED` above parses JS/TS syntax only, so a Go
- * file entered the map and never got a symbol; PageIndex's named seven and, on
+ * eighteen languages while the symbol regex it fed parsed JS/TS syntax only, so a
+ * Go file entered the map and never got a symbol; PageIndex's named seven and, on
  * this repo, its whole effect was to exclude eight files (a lockfile and seven
  * things an agent would reasonably ask about). Point either at a Go, Python or
- * Rust project and the source is simply invisible.
+ * Rust project and the source was simply invisible — `symbols.ts` is the half of
+ * that this file no longer gets wrong.
  *
  * An allow-list of source extensions cannot be finished — documentation alone is
  * md, txt, mdx, rmd, rst, adoc — while the set of things that are *not* text a
@@ -96,25 +100,31 @@ export interface MapNode {
  * **paths with no symbols** ever since, while still rendering as a map and still
  * being written only when it "changed". A caller now has to say where the text
  * comes from, and one that has none says so by passing nothing.
+ *
+ * Async because parsing is: a tree-sitter grammar is a WebAssembly module and
+ * there is no synchronous way to instantiate one. The cost is one-time and
+ * per-process — 6ms for the runtime, then 0.6ms (Go) to 3.6ms (TypeScript) per
+ * grammar, cached in `symbols.ts` — so a rebuild pays it on the first tick and
+ * never again, rather than once per file as a naive call would.
  */
-export function buildMap(
+export async function buildMap(
   repoPath: string,
   list: (repo: string) => string[],
   exclude: string[] = [],
   read?: (rel: string) => string | undefined,
-): MapNode[] {
+): Promise<MapNode[]> {
   const byDir = new Map<string, MapNode>();
   for (const rel of list(repoPath)) {
-    // Symbols are opportunistic: `EXPORTED` is JS/TS syntax, so a Go file gets a
-    // path and no names. That is still a useful map entry — "where does X live"
-    // is answered by the path — and it is strictly better than the old
-    // allow-list, which claimed thirteen more languages than it could parse.
+    // Symbols are still opportunistic — a language with no grammar gets a path
+    // and no names, which is a useful map entry, because "where does X live" is
+    // answered by the path. What changed is which languages those are: Go,
+    // Python and Rust have left that set.
     if (!indexable(rel, exclude)) continue;
     const cut = rel.lastIndexOf("/");
     const dir = cut < 0 ? "." : rel.slice(0, cut);
     const name = cut < 0 ? rel : rel.slice(cut + 1);
     const src = read?.(rel);
-    const symbols = src ? [...src.matchAll(EXPORTED)].map((m) => m[1]!).slice(0, 12) : [];
+    const symbols = src ? await symbolsIn(rel, src, MAX_SYMBOLS) : [];
     if (!byDir.has(dir)) byDir.set(dir, { dir, files: [] });
     byDir.get(dir)!.files.push({ name, symbols });
   }
@@ -140,7 +150,12 @@ export function renderMap(nodes: MapNode[]): string {
  * the directories that were asked about.
  */
 export function mapFor(nodes: MapNode[], question: string, maxChars: number): string {
-  const words = (question.toLowerCase().match(/[a-z0-9_./-]{3,}/g) ?? []).map((w) => w.replace(/^\.*\/*/, ""));
+  // The tokenizer the note index uses, not a second one. Its own regex made stop
+  // words into query terms — and scoring is substring containment, so `the`
+  // matched `theme.ts` — while dropping everything shorter than three characters,
+  // which is `db`, `mw`, `ui` and `id`. ICU also splits a path into components, so
+  // the leading-`./` trim it used to need is gone.
+  const words = terms(question);
   if (words.length === 0) return "";
   const score = (n: MapNode) => {
     const hay = `${n.dir} ${n.files.map((f) => `${f.name} ${f.symbols.join(" ")}`).join(" ")}`.toLowerCase();

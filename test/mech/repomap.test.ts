@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { buildMap, indexable } from "../../src/mech/knowledge/repomap.ts";
+import { describe, expect, test } from "bun:test";
+import { buildMap, indexable, mapFor } from "../../src/mech/knowledge/repomap.ts";
 
 test("what belongs in an index is decided by exclusion, not by an extension list", () => {
   // Both indexes used to carry their own allow-list. repomap's named eighteen
@@ -41,26 +41,36 @@ test("what belongs in an index is decided by exclusion, not by an extension list
   }
 });
 
-test("a project can correct what detection got wrong", () => {
-  // Same arrangement detect.ts uses for gates: best-effort, written where the
-  // boss can edit it, rather than a guess nobody can override.
-  expect(indexable("docs/legacy/a.md", ["docs/legacy/**"])).toBe(false);
-  expect(indexable("docs/a.md", ["docs/legacy/**"])).toBe(true);
-  expect(indexable("gen/schema.ts", ["gen/*.ts"])).toBe(false);
-  expect(indexable("gen/deep/schema.ts", ["gen/*.ts"])).toBe(true);
-
-  // The correction failed open, and silently. The hand-written glob compiled
-  // `**` to `.*` between the two literal slashes around it, so `**/` demanded a
-  // directory: the exclude matched `src/gen/a.ts` and let `a.ts` and
-  // `docs/a.md` — the files the boss was pointing at — straight into the index,
-  // while the config still read as if they were out.
-  expect(indexable("a.ts", ["**/*.ts"])).toBe(false);
-  expect(indexable("docs/a.md", ["docs/**/*.md"])).toBe(false);
-  expect(indexable("docs/x/a.md", ["docs/**/*.md"])).toBe(false);
-  expect(indexable("docs/a.txt", ["docs/**/*.md"])).toBe(true);
+/**
+ * A project can correct what detection got wrong.
+ *
+ * Same arrangement detect.ts uses for gates: best-effort, written where the boss
+ * can edit it, rather than a guess nobody can override.
+ *
+ * The correction failed open, and silently. The hand-written glob compiled `**`
+ * to `.*` between the two literal slashes around it, so a leading `**` followed
+ * by a slash demanded a directory: the exclude matched `src/gen/a.ts` and let
+ * `a.ts` and `docs/a.md` —
+ * the files the boss was pointing at — straight into the index, while the config
+ * still read as if they were out. A case per glob, so a regression names the
+ * pattern that stopped matching rather than a bare `expected false`.
+ */
+describe("a project can correct what detection got wrong", () => {
+  test.each([
+    ["docs/legacy/a.md", ["docs/legacy/**"], false],
+    ["docs/a.md", ["docs/legacy/**"], true],
+    ["gen/schema.ts", ["gen/*.ts"], false],
+    ["gen/deep/schema.ts", ["gen/*.ts"], true],
+    ["a.ts", ["**/*.ts"], false],
+    ["docs/a.md", ["docs/**/*.md"], false],
+    ["docs/x/a.md", ["docs/**/*.md"], false],
+    ["docs/a.txt", ["docs/**/*.md"], true],
+  ])("%s against %j is indexable: %p", (path, excludes, want) => {
+    expect(indexable(path, excludes)).toBe(want);
+  });
 });
 
-test("the map's symbols come from a reader the caller supplies, not from this machine", () => {
+test("the map's symbols come from a reader the caller supplies, not from this machine", async () => {
   // The bug this exists to stop reappearing: `buildMap` read the file itself,
   // with `readFileSync(join(repoPath, rel))`. Since 007 §2, `repo_path` is
   // `owner/name` — a GitHub coordinate, not a directory — so every read threw,
@@ -68,13 +78,14 @@ test("the map's symbols come from a reader the caller supplies, not from this ma
   // and the map has rendered **paths with no symbols** ever since. It kept
   // saying `repo map refreshed`, and the thing seven groups were rediscovering
   // by grep was quietly back.
-  const files = ["src/a.ts", "src/b.go", "docs/x.md"];
+  const files = ["src/a.ts", "src/b.go", "src/c.py", "docs/x.md"];
   const text: Record<string, string> = {
     "src/a.ts": "export function alpha() {}\nexport const beta = 1;\n",
     "src/b.go": "func Gamma() {}\n",
+    "src/c.py": "import os\n\nclass Delta:\n    def method(self): pass\n\ndef epsilon(): pass\n",
   };
 
-  const withReader = buildMap(
+  const withReader = await buildMap(
     "owner/repo",
     () => files,
     [],
@@ -82,14 +93,37 @@ test("the map's symbols come from a reader the caller supplies, not from this ma
   );
   const a = withReader.find((n) => n.dir === "src")!.files.find((f) => f.name === "a.ts")!;
   expect(a.symbols).toEqual(["alpha", "beta"]);
-  // Opportunistic, not universal: `EXPORTED` is JS/TS syntax, so a Go file gets
-  // a path and no names — which is still an answer to "where does X live".
-  expect(withReader.find((n) => n.dir === "src")!.files.find((f) => f.name === "b.go")!.symbols).toEqual([]);
+  // The two languages the old comment named as invisible, and this is the map
+  // asserting it rather than `symbols.ts` asserting it about itself. Both used to
+  // come back `[]`, because the one regex doing this parsed JS/TS syntax; the
+  // Go and Python rows are what a boss's repository actually looks like, and
+  // they are the reason the whole change exists.
+  const src = withReader.find((n) => n.dir === "src")!;
+  expect(src.files.find((f) => f.name === "b.go")!.symbols).toEqual(["Gamma"]);
+  // `import os` is not a declaration and the class names itself, so its method
+  // does not appear beside it.
+  expect(src.files.find((f) => f.name === "c.py")!.symbols).toEqual(["Delta", "epsilon"]);
 
   // And a caller with no way to read contents gets a paths-only map rather than
   // a silent one. This is the shape the whole system had, and it must be a
   // choice a caller makes rather than an exception it never sees.
-  const pathsOnly = buildMap("owner/repo", () => files);
-  expect(pathsOnly.flatMap((n) => n.files.map((f) => f.name)).sort()).toEqual(["a.ts", "b.go", "x.md"]);
+  const pathsOnly = await buildMap("owner/repo", () => files);
+  expect(pathsOnly.flatMap((n) => n.files.map((f) => f.name)).sort()).toEqual(["a.ts", "b.go", "c.py", "x.md"]);
   expect(pathsOnly.every((n) => n.files.every((f) => f.symbols.length === 0))).toBe(true);
+});
+
+test("the map is searched with the same tokenizer as the notes", async () => {
+  // `mapFor` had its own tokenizer: `/[a-z0-9_./-]{3,}/g`. Two consequences, both
+  // measurable. Stop words became query terms, and scoring is `hay.includes(w)`,
+  // so `the` matched `theme.ts` and ranked it level with a real hit. And anything
+  // under three characters was dropped, so `db`, `mw`, `ui` and `id` could not be
+  // searched for at all.
+  //
+  // It does not make a question with no Latin in it work — the haystack is paths
+  // and exported names, so a Chinese term matches nothing either way. What it
+  // fixes is the ranking of the questions that do.
+  const nodes = await buildMap("owner/repo", () => ["src/db/schema.ts", "web/src/theme.ts"]);
+  const found = mapFor(nodes, "where is the db schema", 4000);
+  expect(found).toContain("src/db");
+  expect(found).not.toContain("theme");
 });

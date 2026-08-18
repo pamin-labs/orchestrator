@@ -500,6 +500,27 @@ function warnModelDownOnce(ctx: Ctx, projectId: number, failed: number): void {
   });
 }
 
+/**
+ * A timer whose period is a setting the boss can change while the server runs.
+ *
+ * `setInterval` captures its period, so the callback checks its own and re-arms.
+ * Written twice before this, and the second copy resolved the period once at
+ * boot — so changing the interval moved the watchdog and left the readiness
+ * check on its old clock until a restart.
+ */
+function reArming(periodOf: () => number, work: () => void): () => void {
+  let armed = periodOf();
+  let timer = setInterval(function beat() {
+    if (periodOf() !== armed) {
+      clearInterval(timer);
+      armed = periodOf();
+      timer = setInterval(beat, armed);
+    }
+    work();
+  }, armed);
+  return () => clearInterval(timer);
+}
+
 export function start(overrides: Partial<Config> = {}): Started {
   // Overrides can put a relative dataDir back; the subprocesses cannot use one.
   const cfg = withAbsoluteDataDir({ ...loadConfig(), ...overrides });
@@ -749,16 +770,11 @@ export function start(overrides: Partial<Config> = {}): Started {
   // The period is a setting, and `setInterval` captures it. Rather than juggle a
   // timer handle from the settings route, the callback notices its own period
   // changed and re-arms — one place, and it cannot be forgotten by a new writer.
-  let armed = cfg.watchdogIntervalMs;
   const inFlight: InFlight = { index: null, poll: null };
-  let tick = setInterval(function beat() {
-    if (cfg.watchdogIntervalMs !== armed) {
-      clearInterval(tick);
-      armed = cfg.watchdogIntervalMs;
-      tick = setInterval(beat, armed);
-    }
-    heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight });
-  }, armed);
+  const stopHeartbeat = reArming(
+    () => cfg.watchdogIntervalMs,
+    () => heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }),
+  );
 
   // The agents' only way out. Nothing in a sandbox can reach this process
   // directly, so their requests arrive as files and are replayed against these
@@ -840,16 +856,7 @@ export function start(overrides: Partial<Config> = {}): Started {
   // changing the interval moved the watchdog and left the self-check on its old
   // clock until a restart. Two timers reading one setting and only one noticing
   // is the kind of difference nobody finds by reading.
-  const readinessPeriod = () => readinessPeriodMs(cfg.watchdogIntervalMs);
-  let readinessArmed = readinessPeriod();
-  let readinessTick = setInterval(function beat() {
-    if (readinessPeriod() !== readinessArmed) {
-      clearInterval(readinessTick);
-      readinessArmed = readinessPeriod();
-      readinessTick = setInterval(beat, readinessArmed);
-    }
-    refreshReadiness();
-  }, readinessArmed);
+  const stopReadiness = reArming(() => readinessPeriodMs(cfg.watchdogIntervalMs), refreshReadiness);
 
   sched.tick();
   let stopped = false;
@@ -859,8 +866,8 @@ export function start(overrides: Partial<Config> = {}): Started {
     runtime.accepting = false;
     runtime.ready = false;
     sched.quiesce();
-    clearInterval(tick);
-    clearInterval(readinessTick);
+    stopHeartbeat();
+    stopReadiness();
     stopMailbox();
     return true;
   };

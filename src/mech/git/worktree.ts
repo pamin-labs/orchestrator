@@ -168,12 +168,23 @@ export const STATUS_Z = ["status", "--porcelain", "-z"];
  * contains " -> " stops being ambiguous.
  */
 export function porcelainPaths(zOut: string): string[] {
+  return porcelainEntries(zOut).map((entry) => entry.path);
+}
+
+/**
+ * The same records with their status code kept.
+ *
+ * `??` is untracked, and the distinction decides which repair command can act on
+ * a path: `git checkout --` is all-or-nothing, so one untracked path in its
+ * pathspec reverts nothing at all.
+ */
+export function porcelainEntries(zOut: string): { xy: string; path: string }[] {
   const fields = zOut.split("\0");
-  const out: string[] = [];
+  const out: { xy: string; path: string }[] = [];
   for (let i = 0; i < fields.length; i++) {
     const f = fields[i]!;
     if (f.length < 4) continue;
-    out.push(f.slice(3));
+    out.push({ xy: f.slice(0, 2), path: f.slice(3) });
     // R and C records are two fields: the name now, then the name before.
     if (f[0] === "R" || f[0] === "C" || f[1] === "R" || f[1] === "C") i++;
   }

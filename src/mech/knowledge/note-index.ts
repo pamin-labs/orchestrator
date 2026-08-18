@@ -1,6 +1,7 @@
 import { create, insertMultiple, search } from "@orama/orama";
 import type { DB } from "../../platform/persistence/database.ts";
-import { terms, type Doc, type Hit, KIND_WEIGHT } from "./ctx.ts";
+import { type Doc, type Hit, KIND_WEIGHT } from "./ctx.ts";
+import { terms } from "./terms.ts";
 
 /**
  * The retrieval index for `orch ctx query`, and why it is a library now.

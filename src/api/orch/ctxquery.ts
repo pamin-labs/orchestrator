@@ -9,26 +9,36 @@ import { loadTree, NOTE_PREFIX, render, search } from "../../mech/knowledge/page
 import { projectOfAgent } from "../../mech/util/rows.ts";
 import { Id } from "../../contracts/fields.ts";
 
-async function pageIndexContext(ctx: Ctx, caller: Caller, projectId: number | null, question: string): Promise<string> {
+/** The tree render, plus the notes it quoted — which must not be quoted twice. */
+async function pageIndexContext(
+  ctx: Ctx,
+  caller: Caller,
+  projectId: number | null,
+  question: string,
+): Promise<{ where: string; notes: number[] }> {
+  const none = { where: "", notes: [] };
   const tree = loadTree(ctx.db, projectId);
-  if (!tree || !ctx.askIn || !projectId) return "";
+  if (!tree || !ctx.askIn || !projectId) return none;
 
   try {
     const scope = caller.grp_id ? { grp: caller.grp_id } : { project: projectId };
     const hits = await search(tree, question, ctx.askIn(scope));
-    if (hits.length === 0) return "";
+    if (hits.length === 0) return none;
 
     let answer = render(tree, hits);
     const noteIds = hits.filter((hit) => hit.startsWith(NOTE_PREFIX)).map((hit) => Number(hit.split("/").pop()));
+    const quoted: number[] = [];
     for (const id of noteIds) {
       const note = ctx.db
         .query<{ kind: string; body: string }, [number]>("SELECT kind, body FROM note WHERE id = ?")
         .get(id);
-      if (note) answer += `\n\n### ${note.kind} #${id}\n${note.body.slice(0, 1200)}`;
+      if (!note) continue;
+      answer += `\n\n### ${note.kind} #${id}\n${note.body.slice(0, 1200)}`;
+      quoted.push(id);
     }
-    return answer;
+    return { where: answer, notes: quoted };
   } catch {
-    return "";
+    return none;
   }
 }
 
@@ -55,7 +65,7 @@ export const postCtxQuery = (async (ctx, _req, a, _p, b) => {
   // that fails, falls through to the lexical map inside ctxQuery.
   // In the caller's own sandbox, not the project's. The walk reads summaries
   // already in the database; the shared index build remains project-scoped.
-  const where = await pageIndexContext(ctx, a, projectId, b.question);
+  const picked = await pageIndexContext(ctx, a, projectId, b.question);
   return message(
     ctxQuery({
       db: ctx.db,
@@ -63,7 +73,8 @@ export const postCtxQuery = (async (ctx, _req, a, _p, b) => {
       grpId: a.grp_id,
       projectId,
       question: b.question,
-      where,
+      where: picked.where,
+      whereNotes: picked.notes,
       // From config, not the module default: `ctxBudgetChars` was a setting that
       // read back as itself and changed nothing, because nobody ever passed it here.
       budget: b.limit ?? ctx.config.ctxBudgetChars,

@@ -88,7 +88,10 @@ export class Notifier {
   private readonly now: () => number;
   private readonly deliver: NonNullable<NotifierOptions["deliver"]>;
 
-  constructor(private opts: NotifierOptions = {}) {
+  private readonly opts: NotifierOptions;
+
+  constructor(opts: NotifierOptions = {}) {
+    this.opts = opts;
     this.batchSize = opts.batchSize ?? 5;
     this.batchMs = opts.batchMs ?? 30 * 60_000;
     this.now = opts.now ?? (() => Date.now());

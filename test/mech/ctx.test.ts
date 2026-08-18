@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
-import { query, terms, DEFAULT_BUDGET } from "../../src/mech/knowledge/ctx.ts";
+import { query, DEFAULT_BUDGET } from "../../src/mech/knowledge/ctx.ts";
+import { terms } from "../../src/mech/knowledge/terms.ts";
 import { makeNoteIndex } from "../../src/mech/knowledge/note-index.ts";
 import * as fx from "../support/factories.ts";
 
@@ -9,7 +10,17 @@ const queryWith = (db: DB, rest: Omit<Parameters<typeof query>[0], "db" | "index
   query({ db, index: makeNoteIndex(db), ...rest });
 
 test("terms are words in whatever script the writing uses, and stopwords go", () => {
-  expect(terms("Should we use the middleware for auth?")).toEqual(["middleware", "auth"]);
+  // `use` survives now. The hand-written list dropped it along with `get`, `set`,
+  // `make` and `need` — content words in a corpus about code — and the rented
+  // English list does not.
+  expect(terms("Should we use the middleware for auth?")).toEqual(["use", "middleware", "auth"]);
+  // Chinese stop words go too, which the hand-written English-only list could not
+  // do. Measured before this: `的` scored 3.77 as a search term against this
+  // corpus, above `sandbox` at 3.13 — the highest-weighted term in the index was
+  // a particle, because BM25 had no reason to think otherwise.
+  const zh = terms("沙盒的容器是怎么做的");
+  expect(zh).not.toContain("的");
+  expect(zh).not.toContain("是");
   // Words, not characters. This used to split Han per character because a regex
   // cannot do better; ICU's word breaker can, so a query for 凭据 matches a term
   // rather than two of the commonest characters in the language.
@@ -236,4 +247,26 @@ test("the index's own rows are not answers to a question", () => {
   expect(out).toContain("token 校验放在中间件");
   expect(out).not.toContain("pageindex");
   expect(out).not.toContain("summary");
+});
+
+test("a note quoted in the where section is not quoted again below it", () => {
+  // `pageIndexContext` spells out the body of every note the model picked, and the
+  // lexical search then finds the same notes — two copies of one note inside one
+  // 16k budget, on the query whose whole point is to be cheaper than grepping.
+  const db = openMemory();
+  const p = fx.project.insert(db, { name: "p" });
+  const body = "the validation library this fleet uses is zod, settled in 2026-03";
+  const note = fx.note.insert(db, { project_id: p.id, kind: "decision", body });
+  const where = `## tree\n\n### decision #${note.id}\n${body}`;
+  const count = (haystack: string) => haystack.split(body).length - 1;
+
+  // Without the list, the same note does arrive twice. That is the defect.
+  expect(count(queryWith(db, { grpId: null, projectId: p.id, question: "validation library", where }))).toBe(2);
+
+  // With it, once.
+  expect(
+    count(
+      queryWith(db, { grpId: null, projectId: p.id, question: "validation library", where, whereNotes: [note.id] }),
+    ),
+  ).toBe(1);
 });

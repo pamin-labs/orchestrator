@@ -35,7 +35,11 @@ export class Bus {
    */
   private pending = new Map<number, StoredEvent>();
 
-  constructor(private db: DB) {}
+  private readonly db: DB;
+
+  constructor(db: DB) {
+    this.db = db;
+  }
 
   subscribe(sink: (frame: Frame) => void): () => void {
     this.sinks.add(sink);

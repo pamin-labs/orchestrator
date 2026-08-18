@@ -36,108 +36,6 @@ export interface Hit {
   score: number;
 }
 
-/**
- * Words worth scoring, in whatever language the writing is in.
- *
- * This was two regexes: one for Latin tokens and one that split Han, Hiragana
- * and Katakana **per character**. Measured against eight scripts, it returned
- * zero terms for Korean, Russian, Thai, Arabic and Greek — the corpus was
- * simply invisible to search in those languages, silently — and it turned
- * サンドボックス into twelve single characters. That is a defect for a project
- * about to be read and written by people who do not all type Latin.
- *
- * `Intl.Segmenter` is ICU's word breaker, built into the runtime, and it
- * segments every one of those. No locale is passed on purpose: the corpus mixes
- * languages inside a single note, and ICU's default breaking handles the mix
- * better than any one locale tag would.
- *
- * `isWordLike` drops the spaces and punctuation between segments. A one-letter
- * Latin token carries no signal and is dropped as before; a one-character Han
- * token is often a whole word and is kept, which is why the length rule looks
- * at the script rather than at the count alone.
- */
-const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "word" });
-const SINGLE_LETTER = /^[\p{Script=Latin}\p{N}_]$/u;
-
-export function terms(text: string): string[] {
-  const out: string[] = [];
-  for (const { segment, isWordLike } of SEGMENTER.segment(text.toLowerCase())) {
-    if (!isWordLike) continue;
-    if (SINGLE_LETTER.test(segment)) continue;
-    if (STOP.has(segment)) continue;
-    out.push(segment);
-  }
-  return out;
-}
-
-const STOP = new Set([
-  "the",
-  "a",
-  "an",
-  "and",
-  "or",
-  "of",
-  "to",
-  "in",
-  "is",
-  "it",
-  "for",
-  "on",
-  "with",
-  "this",
-  "that",
-  "was",
-  "we",
-  "i",
-  "be",
-  "as",
-  "at",
-  "by",
-  "from",
-  "how",
-  "what",
-  "which",
-  "should",
-  "would",
-  "can",
-  "do",
-  "does",
-  "not",
-  "but",
-  "if",
-  "then",
-  // Common verbs carry no information about which note is relevant, and keeping
-  // them while dropping "should" would be an inconsistent list.
-  "use",
-  "used",
-  "using",
-  "need",
-  "needs",
-  "make",
-  "makes",
-  "get",
-  "gets",
-  "set",
-  "sets",
-  "have",
-  "has",
-  "are",
-  "were",
-  "will",
-  "just",
-  "also",
-  "when",
-  "where",
-  "why",
-  "who",
-  "there",
-  "their",
-  "its",
-  "our",
-  "you",
-  "your",
-]);
-
 export const KIND_WEIGHT: Record<string, number> = {
   decision: 1.6, // what was settled, and why — the highest-value thing to recall
   lesson: 1.5,
@@ -169,6 +67,13 @@ export interface QueryOptions {
    * pure, synchronous half — the half every test can run without a model.
    */
   where?: string;
+  /**
+   * Note ids `where` already spells out in full.
+   *
+   * PageIndex quotes the bodies of the notes the model picked; the lexical search
+   * then finds the same notes again, and both copies are charged to one budget.
+   */
+  whereNotes?: readonly number[];
   now?: () => number;
 }
 
@@ -189,7 +94,7 @@ export function query(opts: QueryOptions): string {
   const where = opts.where || mapFor(loadMap(opts.db, opts.projectId ?? null), opts.question, room);
   if (where) output.push(`## Where that lives\n${where.slice(0, room)}`);
   const hits = opts.index.search(opts.question, { grpId: opts.grpId, projectId: opts.projectId }, now);
-  const shown = appendHits(output, hits);
+  const shown = appendHits(output, hits, new Set(opts.whereNotes ?? []));
   return queryResult(output.parts, hits.length, shown);
 }
 
@@ -255,9 +160,10 @@ function groupContext(db: DB, groupId: number): string | null {
   return `## This group right now\nstatus ${group.status}${branch}${pullRequest}\n${gateState}open questions: ${questions}`;
 }
 
-function appendHits(output: { push: (text: string) => boolean }, hits: Hit[]): number {
+function appendHits(output: { push: (text: string) => boolean }, hits: Hit[], already: Set<number>): number {
   let shown = 0;
   for (const hit of hits) {
+    if (already.has(hit.doc.id)) continue;
     const where = hit.doc.exportPath ? ` (${hit.doc.exportPath})` : "";
     if (!output.push(`## ${hit.doc.kind}${where}\n${hit.doc.body}`)) break;
     shown++;
