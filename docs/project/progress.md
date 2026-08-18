@@ -271,7 +271,7 @@ M7 — executable engineering governance and versioned protocol.
 ## Rollback records
 
 - **`main` branch ruleset**, snapshotted before and after the Phase G4 change:
-  `docs/operations/snapshots/ruleset-main-20892179.json` is the live state as of
+  the live state is whatever `gh api repos/pamin-labs/orchestrator/rulesets/20892179` answers as of
   this entry. It requires **14** status checks — `quality-format`,
   `quality-types`, `quality-oxlint`, `quality-fallow`, `test-main`,
   `test-coverage`, `build-web`, `dco`, `pr-plan`, `security-codeql`,
@@ -286,7 +286,7 @@ M7 — executable engineering governance and versioned protocol.
   were required by nothing.
 
   To roll back: `gh api --method PUT repos/pamin-labs/orchestrator/rulesets/20892179
-  --input docs/operations/snapshots/ruleset-main-20892179.json`. Worth knowing
+  --input <(gh api repos/.../rulesets/20892179)` from a copy taken outside the repository. Worth knowing
   before it is needed, because a bad ruleset blocks everybody's merges at once.
 
 ## Next executable items

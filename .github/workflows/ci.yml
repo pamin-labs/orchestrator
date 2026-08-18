@@ -56,6 +56,17 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      # Before anything that can fail. `upload-artifact` runs on `always()` so a
+      # red job still hands its evidence over — but it cannot upload a directory
+      # that a failing step never got to create, and it then reports "no files
+      # found", which is a second, misleading error stacked on the real one.
+      - name: open report directory
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/report"
+          printf '%s' "$PR_NUMBER" > "$RUNNER_TEMP/report/pr-number.txt"
       - name: format
         run: bun run format:check
       - name: types
@@ -65,12 +76,8 @@ jobs:
       - name: web bundle
         run: bun run build:web
       - name: size budgets
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/report"
-          printf '%s' "$PR_NUMBER" > "$RUNNER_TEMP/report/pr-number.txt"
           bun run perf:budget | tee "$RUNNER_TEMP/report/budget.txt"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
