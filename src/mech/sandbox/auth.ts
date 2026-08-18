@@ -164,17 +164,31 @@ export function probeHosts(db: DB): string[] {
   for (const a of db
     .query<{ runtime: string; base_url: string | null }, []>("SELECT runtime, base_url FROM runtime_auth")
     .all()) {
+    // Only runtimes this file actually binds. `runtime_auth` also holds rows that
+    // are not model providers — `sandbox` is the local server, with a `base_url`
+    // of `http://127.0.0.1:8080` — and the `base_url` branch used to run before
+    // this check, so that row put **127.0.0.1** into the list. With no provider
+    // configured it was the *only* entry, and since any one host answering is
+    // enough, "is the internet up" was decided by whether something listens on
+    // localhost:443. Nothing does. Measured: fails in 5ms, every tick, and the
+    // panel says 宿主断网了.
+    const bound = BINDINGS[a.runtime];
+    if (!bound) continue;
     if (a.base_url) {
       try {
-        out.add(new URL(a.base_url).hostname);
+        // The whole origin, not the hostname. Discarding the scheme and port
+        // defeated the reason this is derived rather than configured — a
+        // self-hosted gateway on `http://gw.internal:8443` was probed at
+        // `https://gw.internal:443` and reported unreachable.
+        out.add(new URL(a.base_url).origin);
         continue;
       } catch {}
     }
-    for (const h of BINDINGS[a.runtime]?.hosts ?? []) out.add(h);
+    for (const h of bound.hosts) out.add(`https://${h}`);
   }
   // github is bound for cloning, not for running a turn, and a repo host being
   // unreachable is not a reason to stop every agent.
-  for (const h of BINDINGS.github!.hosts) out.delete(h);
+  for (const h of BINDINGS.github!.hosts) out.delete(`https://${h}`);
   return [...out];
 }
 

@@ -76,21 +76,21 @@ export async function probe(
   if (state.online && now - lastProbe < PROBE_EVERY_MS) return { online: true, changed: false };
   lastProbe = now;
 
-  const hosts = probeHosts(db);
+  const origins = probeHosts(db);
   // Nothing configured yet: there is no wall to detect, and gating every turn on
   // an empty probe would stop a fleet that has not been set up rather than say so.
   // `credentialMissing` in the scheduler is what covers that case.
-  const online = hosts.length === 0 ? true : await reachable(hosts, fetchFn);
+  const online = origins.length === 0 ? true : await reachable(origins, fetchFn);
   const changed = online !== state.online;
   if (changed) state = { online, since: now };
   return { online, changed };
 }
 
-async function reachable(hosts: string[], fetchFn: SandboxFetcher): Promise<boolean> {
-  const tries = hosts.map(async (h) => {
+async function reachable(origins: string[], fetchFn: SandboxFetcher): Promise<boolean> {
+  const tries = origins.map(async (origin) => {
     // HEAD, not GET: nothing here wants the body, and some of these endpoints
     // charge for one. A 404 or a 405 is still a reachable host.
-    await fetchFn(`https://${h}/`, { method: "HEAD", signal: AbortSignal.timeout(TIMEOUT_MS) });
+    await fetchFn(`${origin}/`, { method: "HEAD", signal: AbortSignal.timeout(TIMEOUT_MS) });
     return true;
   });
   const answers = await Promise.allSettled(tries);

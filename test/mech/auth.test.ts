@@ -19,6 +19,7 @@ import {
   sandboxKeyFor,
   SANDBOX_KEY,
   saveAuth,
+  probeHosts,
   vaultFor,
   wrongShape,
 } from "../../src/mech/sandbox/auth.ts";
@@ -551,4 +552,47 @@ test("a key stored before the address travelled with it is bound at startup, onc
   bindSandboxKey(db, "evil.example:8080");
   expect(sandboxKeyFor(db, "evil.example:8080")).toBe("");
   expect(loadAuth(db, SANDBOX_KEY)?.baseUrl).toBe("http://127.0.0.1:8080");
+});
+
+/**
+ * What "the host is offline" is actually asking.
+ *
+ * `runtime_auth` holds more than model providers: `sandbox` is the local server,
+ * with a `base_url` of `http://127.0.0.1:8080`. The `base_url` branch ran before
+ * the check for a bound runtime, so that row put **127.0.0.1** into the probe
+ * list — and with no provider configured it was the only entry. Since any one
+ * host answering is enough, "is the internet up" was decided by whether anything
+ * listens on localhost **443**. Nothing does; it failed in 5ms every tick and the
+ * panel announced 宿主断网了 on a machine that was online.
+ *
+ * The origin, not the hostname, for the reason this list is derived rather than
+ * configured: a self-hosted gateway on `http://gw.internal:8443` was being probed
+ * at `https://gw.internal:443`.
+ */
+describe("the network probe asks the providers, at the addresses they were given", () => {
+  test("a local sandbox server is not a provider and stays out of the list", () => {
+    const db = openMemory();
+    saveAuth(db, { runtime: "sandbox", mode: "api_key", secret: "k", baseUrl: "http://127.0.0.1:8080" });
+    // Empty is the right answer with nothing configured, and `probe` reads it as
+    // online: there is no wall to detect, and `credentialMissing` covers the rest.
+    expect(probeHosts(db)).toEqual([]);
+  });
+
+  test("a provider's own base_url keeps its scheme and port", () => {
+    const db = openMemory();
+    saveAuth(db, { runtime: "claude", mode: "api_key", secret: "k", baseUrl: "http://gw.internal:8443/v1" });
+    expect(probeHosts(db)).toEqual(["http://gw.internal:8443"]);
+  });
+
+  test("a provider with no base_url is probed at its documented hosts", () => {
+    const db = openMemory();
+    saveAuth(db, { runtime: "codex", mode: "chatgpt", secret: "k" });
+    expect(probeHosts(db)).toEqual(["https://api.openai.com", "https://chatgpt.com"]);
+  });
+
+  test("github is bound for cloning, so a repo host being down does not stop every agent", () => {
+    const db = openMemory();
+    saveAuth(db, { runtime: "github", mode: "api_key", secret: "k" });
+    expect(probeHosts(db)).toEqual([]);
+  });
 });
