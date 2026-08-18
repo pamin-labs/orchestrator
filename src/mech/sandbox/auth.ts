@@ -233,6 +233,67 @@ const parseStoredAuth = (row: StoredAuthRow): RuntimeAuth | null => {
   return parsed.success ? parsed.data : null;
 };
 
+/**
+ * The address a stored sandbox key belongs to, as one `host[:port]`.
+ *
+ * `base_url` is a URL because a model gateway's is; the sandbox server's address
+ * is `host[:port]` by contract. Compared as authorities so a row written as
+ * `http://127.0.0.1:8080` matches a configured `127.0.0.1:8080`.
+ */
+const authorityOf = (url: string): string | null => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * The key to send to one sandbox server address, and nothing to send elsewhere.
+ *
+ * Four call sites resolved the stored key with `loadAuth(db, SANDBOX_KEY)?.secret
+ * || cfg.sandbox.apiKey` and sent it to whatever `cfg.sandbox.server` currently
+ * said. Those are two different facts held apart: `sandbox.server` is a settings
+ * knob the panel can rewrite at runtime (`sandbox-server/addr`, and the
+ * `sandbox.server` row itself, which is not in `SETTING_DENIALS`), while the
+ * secret is stored once and reused. So changing the address was enough to make
+ * the next probe hand the stored key to it. `reachable`'s own suppression
+ * asserted the opposite — "the key sent with it is the key stored for that same
+ * address" — which was an assumption, not something the code arranged.
+ *
+ * Compare `modelProbe`: its URL is built from `runtime_auth.base_url`, the same
+ * row the secret is in, so credential and address cannot be substituted for one
+ * another. This gives the sandbox key the same property.
+ *
+ * The config/environment value is not filtered. It is not stored here, it is set
+ * by whoever writes the yaml or the environment, and that is the same person who
+ * sets the address in them — there is no privilege boundary between the two.
+ */
+export function sandboxKeyFor(db: DB, server: string, fromConfig?: string): string {
+  const stored = loadAuth(db, SANDBOX_KEY);
+  const bound = stored?.baseUrl ? authorityOf(stored.baseUrl) : null;
+  if (stored && bound && bound === server.trim()) return stored.secret;
+  // An unbound row is one stored before the address travelled with it. `bindSandboxKey`
+  // fixes that at startup, so reaching here means the address has genuinely moved
+  // since — and a key that may belong to somewhere else is not sent.
+  return fromConfig ?? "";
+}
+
+/**
+ * Give a key stored before this rule the address that was in effect at boot.
+ *
+ * Called once at startup, where the address comes from the configuration as
+ * resolved for the run. The ceiling is worth stating: it binds to whatever the
+ * settings say at that moment, so it cannot tell a legitimate address from one
+ * changed before the last restart. What it does close is the live path — change
+ * the knob, and the next probe hands over the key without anything restarting.
+ */
+export function bindSandboxKey(db: DB, server: string): void {
+  const stored = loadAuth(db, SANDBOX_KEY);
+  if (!stored || stored.baseUrl) return;
+  saveAuth(db, { ...stored, baseUrl: `http://${server.trim()}` });
+}
+
 export function loadAuth(db: DB, runtime: string): RuntimeAuth | null {
   const r = db
     .query<StoredAuthRow, [string]>("SELECT runtime, mode, secret, base_url FROM runtime_auth WHERE runtime = ?")

@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { activeTracer } from "../../platform/observability/traces.ts";
 import { resolve } from "node:path";
 import type { DB } from "../../platform/persistence/database.ts";
-import { loadAuth, SANDBOX_KEY, type RuntimeAuth } from "../sandbox/auth.ts";
+import { loadAuth, sandboxKeyFor, type RuntimeAuth } from "../sandbox/auth.ts";
 import {
   allowedHostPaths,
   coveredBy,
@@ -59,7 +59,7 @@ export interface Check {
  */
 async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; detail: string }> {
   try {
-    // fallow-ignore-next-line security-sink -- the one caller builds `url` from `cfg.sandbox.server`, the address the boss set for their own sandbox server, and the key sent with it is the key stored for that same address.
+    // fallow-ignore-next-line security-sink -- the one caller builds `url` from `cfg.sandbox.server`, the address the boss set for their own sandbox server, and `sandboxKeyFor` is what makes "the key stored for that same address" true rather than assumed: a stored key carries the address it was accepted by, and is withheld when the two disagree.
     const res = await fetch(`${url}/v1/sandboxes`, {
       headers: apiKey ? { [SANDBOX_API_KEY_HEADER]: apiKey } : {},
       signal: AbortSignal.timeout(3000),
@@ -516,7 +516,7 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   // The same order `connection()` resolves it in: panel, then environment, then
   // the yaml. Checking a different key than the one the turns use is how a green
   // tick sat next to a fleet that could not open a single container.
-  const key = loadAuth(input.db, SANDBOX_KEY)?.secret || input.sandbox.apiKey;
+  const key = sandboxKeyFor(input.db, input.sandbox.server, input.sandbox.apiKey);
   const server = await reachable(`http://${input.sandbox.server}`, key);
   out.push(sandboxServerCheck(input, contained, server));
 

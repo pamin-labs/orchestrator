@@ -112,8 +112,12 @@ export const postAuth = (async (ctx, _req, _p, b) => {
   // and every diff 401 — reported as "Authentication credentials are invalid",
   // which reads as a model problem. Refused rather than stored.
   if (auth.runtime === SANDBOX_KEY) {
-    const said = await sandboxKeyWorks(ctx.config.sandbox?.server ?? "127.0.0.1:8080", auth.secret);
+    const server = ctx.config.sandbox?.server ?? "127.0.0.1:8080";
+    const said = await sandboxKeyWorks(server, auth.secret);
     if (said === "invalid") return bad("沙盒服务器不认这个密钥。它自己的配置里写的是哪个，这里就得填哪个。");
+    // Stored with the address it was just accepted by, so moving the address
+    // later cannot make this key follow it. `sandboxKeyFor` is the reader.
+    auth = { ...auth, baseUrl: `http://${server}` };
   }
   saveAuth(ctx.db, auth);
   await credentialChanged(ctx, auth.runtime);

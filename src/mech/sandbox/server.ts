@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { Ctx } from "../../mech/ctx.ts";
-import { loadAuth, SANDBOX_KEY, saveAuth } from "./auth.ts";
+import { loadAuth, sandboxKeyFor, SANDBOX_KEY, saveAuth } from "./auth.ts";
 import { putSetting } from "../../platform/config/settings.ts";
 import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
 import {
@@ -282,7 +282,15 @@ function ourKey(ctx: Ctx): string {
   const held = loadAuth(ctx.db, SANDBOX_KEY)?.secret;
   if (held) return held;
   const made = `orch-${crypto.randomUUID().replaceAll("-", "")}`;
-  saveAuth(ctx.db, { runtime: SANDBOX_KEY, mode: "api_key", secret: made });
+  // Bound to the address of the server this key is being generated *for*.
+  // Stored without it, `sandboxKeyFor` would treat it as belonging nowhere and
+  // the server we just started would be talked to unauthenticated.
+  saveAuth(ctx.db, {
+    runtime: SANDBOX_KEY,
+    mode: "api_key",
+    secret: made,
+    baseUrl: `http://${ctx.config.sandbox.server.trim()}`,
+  });
   return made;
 }
 
@@ -346,7 +354,7 @@ const timedOut = (ms: number, last: string, tail: string): string =>
  */
 export async function inspectServer(ctx: Ctx): Promise<ServerState> {
   const server = serverAddr(ctx);
-  const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || ctx.config.sandbox.apiKey;
+  const key = sandboxKeyFor(ctx.db, ctx.config.sandbox.server, ctx.config.sandbox.apiKey);
   const live = runningServer();
   const p = await probe(server, key);
 

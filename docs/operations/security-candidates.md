@@ -39,7 +39,7 @@ because there is nothing left to annotate.
 | sql-injection | `src/mech/flow/review.ts:628` | false positive | `idle` is one of two literals chosen by the `autoAdvance` boolean | mech |
 | sql-injection | `src/application/executor.ts:115` | false positive | `SELECT_AGENT_BASE` is a module column-list literal; group id and role bound | application |
 | ssrf | `src/mech/ops/notify.ts:200` | false positive | `cfg.notifyWebhook` is boss-only settings, unreachable from a sandbox; no credential, scrubbed body | mech |
-| ssrf | `src/mech/ops/preflight.ts:62` | false positive | destination is `cfg.sandbox.server` and the key sent is the one stored for that address | mech |
+| ssrf | `src/mech/ops/preflight.ts:62` | **fixed** | the reason used to *assert* that the key sent is the one stored for that address; `sandboxKeyFor` now enforces it — a stored key carries the address it was accepted by and is withheld when they disagree | mech |
 | ssrf | `src/mech/ops/preflight.ts:201` | false positive | gateway and secret come from the same `runtime_auth` row; they cannot be substituted for each other | mech |
 | ssrf | `src/mech/sandbox/images.ts:44` | false positive | fixed `ghcr.io` origin, `PUBLISHED_REPO` in the path | mech |
 | sql-injection | `src/platform/persistence/database.ts:709` | false positive | `table` loops a two-element `as const` and `key` is a ternary of two literals, so both interpolations are fixed at compile time | platform |
@@ -51,7 +51,8 @@ because there is nothing left to annotate.
 | ssrf | `src/orch/cli.ts:88` | false positive | the URL is the generated client's, built from `ORCH_URL` or loopback; inside a sandbox `ORCH_MAILBOX` is set and this branch is never taken | orch |
 | ssrf | `src/mech/sandbox/images.ts:51` | false positive | fixed `ghcr.io` origin; token was minted for that same repository | mech |
 | ssrf | `src/mech/sandbox/mailbox.ts:94` | false positive | `normalise` pins the origin and the `/orch/v1/` prefix and returns the string that is sent | mech |
-| ssrf | `src/mech/sandbox/server.ts:93` | false positive | destination is `cfg.sandbox.server`, paired with its own key | mech |
+| ssrf | `src/mech/sandbox/server.ts:93` | **fixed** | same pairing, now through `sandboxKeyFor` rather than by assumption | mech |
+| file-access-to-http (CodeQL) | `src/api/panel/authflow.ts:138` | **fixed at the other end** | CodeQL traces the config file to the probe's host, which is what a configurable server address *is*; the secret this line sends is the caller's own input, so nothing stored leaks here. The flow that mattered was `preflight.ts:519` and `sandbox.ts:431`, where the **stored** key went to whatever `sandbox.server` currently said while that value is a runtime-editable knob — closed by binding the key to its address | api |
 | ssrf | `scripts/browse.ts:101` | false positive | origin is the throwaway local server this script just started; the step file contributes a path | scripts |
 | ssrf | `scripts/make-github-app.ts:102` | **fixed** | `code` arrives on a listening socket; now shape-checked at the socket, so it is one path segment | scripts |
 | http-to-file | `scripts/make-github-app.ts:150` | **fixed** | the App slug went from an `as` assertion straight into a file path; the response is parsed with Zod and the slug constrained to `[a-z0-9-]+`, so it cannot be a path fragment | scripts |

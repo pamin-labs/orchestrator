@@ -14,7 +14,9 @@ import {
   isAuthFailure,
   listAuth,
   loadAuth,
+  bindSandboxKey,
   RuntimeAuthSchema,
+  sandboxKeyFor,
   SANDBOX_KEY,
   saveAuth,
   vaultFor,
@@ -491,4 +493,44 @@ test("in a container, preflight stops answering questions about somebody else's 
   const server = (c: Awaited<ReturnType<typeof preflight>>) => c.find((x) => x.name === "opensandbox-server")!;
   expect(server(host).fix).toContain("uvx opensandbox-server");
   expect(server(inside).fix).toContain("ORCH_SANDBOX_SERVER");
+});
+
+test("the stored sandbox key does not follow the address to a place it was never accepted by", () => {
+  // `sandbox.server` is a settings knob — the panel writes it through
+  // `sandbox-server/addr` and through the `sandbox.server` row, which is not in
+  // `SETTING_DENIALS` — while the key is stored once and reused. Four call
+  // sites resolved the two independently and sent the stored key to whatever
+  // the address currently said, so moving the address was enough to have the
+  // orchestrator hand the key over. The suppression on `reachable` asserted the
+  // opposite; this is what makes the assertion true.
+  const db = openMemory();
+  saveAuth(db, { runtime: SANDBOX_KEY, mode: "api_key", secret: "orch-secret", baseUrl: "http://127.0.0.1:8080" });
+
+  expect(sandboxKeyFor(db, "127.0.0.1:8080")).toBe("orch-secret");
+  // Written as a URL, read as an authority: a trailing slash is not a different server.
+  expect(sandboxKeyFor(db, " 127.0.0.1:8080 ")).toBe("orch-secret");
+  expect(sandboxKeyFor(db, "evil.example:8080")).toBe("");
+  expect(sandboxKeyFor(db, "127.0.0.1:9090")).toBe("");
+
+  // The config/environment value still goes, and is meant to: it is not stored
+  // here, and whoever writes it also writes the address in the same file.
+  expect(sandboxKeyFor(db, "evil.example:8080", "from-env")).toBe("from-env");
+});
+
+test("a key stored before the address travelled with it is bound at startup, once", () => {
+  const db = openMemory();
+  // No `baseUrl` — every row written before this rule existed looks like this,
+  // and refusing to send it would take a working install offline on upgrade.
+  saveAuth(db, { runtime: SANDBOX_KEY, mode: "api_key", secret: "orch-old" });
+  expect(sandboxKeyFor(db, "127.0.0.1:8080")).toBe("");
+
+  bindSandboxKey(db, "127.0.0.1:8080");
+  expect(sandboxKeyFor(db, "127.0.0.1:8080")).toBe("orch-old");
+  expect(sandboxKeyFor(db, "evil.example:8080")).toBe("");
+
+  // Once: a later boot with a moved address must not re-bind a key that already
+  // has one, or the whole guard would reset itself every restart.
+  bindSandboxKey(db, "evil.example:8080");
+  expect(sandboxKeyFor(db, "evil.example:8080")).toBe("");
+  expect(loadAuth(db, SANDBOX_KEY)?.baseUrl).toBe("http://127.0.0.1:8080");
 });

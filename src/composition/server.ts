@@ -6,6 +6,7 @@ import { makeApp } from "./api.ts";
 import { landGroup } from "../api/panel/group.ts";
 import type { Ctx } from "../mech/ctx.ts";
 import { joinQueue } from "../mech/flow/mergequeue.ts";
+import { bindSandboxKey } from "../mech/sandbox/auth.ts";
 import { Bus } from "../platform/persistence/event-bus.ts";
 import { consola } from "consola";
 import { loadConfig, loadRoles, ROOT, withAbsoluteDataDir, type Config } from "../platform/config/load.ts";
@@ -528,6 +529,11 @@ export function start(overrides: Partial<Config> = {}): Started {
   // The panel's settings, over the file's. Before anything reads `cfg`: the
   // scheduler, the watchdog timer and every handler share this one object.
   applyOverrides(db, cfg);
+  // After the overrides, because the address it binds to has to be the one this
+  // run will actually use. A key stored before the address travelled with it is
+  // given the address in effect now; from then on `sandboxKeyFor` refuses to
+  // send it anywhere else.
+  bindSandboxKey(db, cfg.sandbox.server);
 
   const bus = new Bus(db);
   const roles = loadRoles();

@@ -13,7 +13,7 @@ import pMap from "p-map";
 import { scopeAttributes } from "../../platform/observability/metrics.ts";
 import { requestContext } from "../../platform/observability/request-context.ts";
 import { activeTracer } from "../../platform/observability/traces.ts";
-import { CODEX_HOME, filesFor, loadAuth, SANDBOX_KEY, vaultBindings } from "./auth.ts";
+import { CODEX_HOME, filesFor, sandboxKeyFor, vaultBindings } from "./auth.ts";
 import { REFRESH_HOME, type CodexHomeIO } from "./chatgpt.ts";
 import { shq } from "../../platform/process/shell.ts";
 import type { TurnRunner } from "../../runtime/claude.ts";
@@ -424,7 +424,11 @@ function connection(ctx: Ctx): ConnectionConfig {
   // Set from the panel first, then the environment, then the yaml. The yaml is
   // committed, so a key that lives there is a key that leaks; the panel writes
   // it to the same store every other credential uses.
-  const key = loadAuth(ctx.db, SANDBOX_KEY)?.secret || ctx.config.sandbox.apiKey;
+  //
+  // Resolved against the address it is about to be sent to, not on its own: a
+  // stored key travels with the address it was stored for, and `sandbox.server`
+  // is a knob the panel can move underneath it.
+  const key = sandboxKeyFor(ctx.db, authority, ctx.config.sandbox.apiKey);
   return new ConnectionConfig({
     domain: `${host}:${port ?? 8080}`,
     protocol,
