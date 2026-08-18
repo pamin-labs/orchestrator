@@ -534,3 +534,54 @@ export const trendLabel = (at: number, windowMs: number, bucketMs: number): stri
   if (bucketMs >= 3_600_000) return `${hour}:00`;
   return `${hour}:${String(when.getMinutes()).padStart(2, "0")}`;
 };
+
+/**
+ * What one wheel event does to a window, for both charts.
+ *
+ * Vertical zooms at the pointer, horizontal pans — the split speedscope and
+ * Chrome's Modern mode both use, and the one a trackpad's two-finger swipe
+ * expects. Returns `null` when the event carries nothing usable, so a caller can
+ * leave the window alone rather than anchor a zoom on a guess.
+ */
+/**
+ * What sits between a chart's own box and the plot inside it.
+ *
+ * The flamegraph has none: its host element *is* the drawing. `recharts` reserves
+ * the y axis on the left and the chart margin on the right, so reading the pointer
+ * against the box anchors every zoom to the left of where the reader is pointing.
+ */
+export interface PlotInset {
+  left: number;
+  right: number;
+}
+const NO_INSET: PlotInset = { left: 0, right: 0 };
+
+export function wheelWindow(
+  event: WheelEvent,
+  element: HTMLElement,
+  window: TimeWindow,
+  limit: TimeWindow,
+  minSpan: number,
+  inset: PlotInset = NO_INSET,
+): TimeWindow | null {
+  const box = element.getBoundingClientRect();
+  const plot = box.width - inset.left - inset.right;
+  if (plot <= 0) return null;
+  // Whichever axis the gesture is mostly on. A trackpad swipe is never purely
+  // one, and treating a mostly-horizontal one as a zoom is what made a pan
+  // jitter the scale.
+  if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+    const px = wheelPixels(event.deltaX, event.deltaMode);
+    return panBy(window, (px / plot) * (window.to - window.from), limit);
+  }
+  const at = (event.clientX - box.left - inset.left) / plot;
+  if (!Number.isFinite(at)) return null;
+  // Clamped, because the axis labels and the margin are inside the element that
+  // catches the wheel: a scroll over the gutter is a real gesture at a negative
+  // fraction, and the edge is what the reader means by pointing at the edge.
+  const anchor = Math.min(Math.max(at, 0), 1);
+  return zoomAt(window, anchor, wheelScale(event.deltaY, event.deltaMode, event.ctrlKey), limit, minSpan);
+}
+
+/** The flamegraph's axis is a fraction of its own width, so its limit is all of it. */
+export const WHOLE: TimeWindow = { from: 0, to: 1 };
