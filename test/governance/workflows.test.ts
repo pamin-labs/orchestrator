@@ -575,7 +575,13 @@ describe("workflow governance", () => {
  * uses and adding one is a decision, not a default. The list is explicit for the
  * same reason the DOM preload's is.
  */
-const STANDARD_RUNNERS = ["ubuntu-24.04", "ubuntu-22.04", "ubuntu-latest", "ubuntu-24.04-arm", "ubuntu-22.04-arm"];
+const STANDARD_RUNNERS = new Set([
+  "ubuntu-24.04",
+  "ubuntu-22.04",
+  "ubuntu-latest",
+  "ubuntu-24.04-arm",
+  "ubuntu-22.04-arm",
+]);
 
 test("no job asks for a larger runner, which is charged even on a public repository", async () => {
   const offenders: string[] = [];
@@ -594,7 +600,7 @@ test("no job asks for a larger runner, which is charged even on a public reposit
         const literals = [...branches.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
         const seen = literals.length > 0 ? literals : [label];
         for (const value of seen) {
-          if (!STANDARD_RUNNERS.includes(value)) offenders.push(`${name}.${jobName}: ${value}`);
+          if (!STANDARD_RUNNERS.has(value)) offenders.push(`${name}.${jobName}: ${value}`);
         }
       }
     }
