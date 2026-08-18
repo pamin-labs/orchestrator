@@ -10,6 +10,14 @@ import { landGroup } from "../../src/api/panel/group.ts";
 import type { Ctx } from "../../src/mech/ctx.ts";
 import { cacheProjectSkills, listSkills, projectSkills } from "../../src/mech/skills.ts";
 import { landed } from "../../src/mech/flow/mergequeue.ts";
+import { getGithubLogin } from "../../src/api/panel/authflow.ts";
+import { makeGithub } from "../../src/mech/git/github.ts";
+import { saveAuth } from "../../src/mech/sandbox/auth.ts";
+import { testContext } from "../support/test-context.ts";
+
+/** A JSON response, for the GitHub stubs below. */
+const json = (body: unknown): Response =>
+  new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 import { sweepApproved } from "../../src/mech/flow/start.ts";
 import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
@@ -1653,4 +1661,106 @@ test("every dynamic route declares its path shape", () => {
     .filter(({ path, params }) => path.includes(":") && !params)
     .map(({ path }) => path);
   expect(unvalidated).toEqual([]);
+});
+
+/**
+ * The GitHub pane's two reads happen at once.
+ *
+ * They were serial, and the second used the first only as a truthiness gate —
+ * never its data. So opening that pane cost two round trips to api.github.com
+ * before it drew anything: measured at 1.2s against a live server, while every
+ * other settings endpoint answered in 16–160ms.
+ *
+ * Asserted by the *overlap*, not by a duration: a test that says "faster than
+ * 500ms" fails on a loaded machine and passes on a fast one for the wrong reason.
+ * Each stub holds until it has seen the other arrive, so the assertion is that
+ * both were in flight together — which a serial version can never satisfy.
+ */
+test("the account and the installation list are asked for concurrently", async () => {
+  const db = openMemory();
+  saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
+  // A barrier, not a sleep. The first request to arrive waits for the second to
+  // release it, so a concurrent caller passes in the same tick and a serial one
+  // cannot pass at all — the second never arrives while the first is held. The
+  // 2s race only elapses on the failing path, which is what keeps this from being
+  // a timing test: the first version used a 5ms timer and went flaky under load,
+  // which is the rule about sleeps standing in for synchronisation.
+  let release = () => {};
+  const second = new Promise<void>((done) => {
+    release = done;
+  });
+  let arrivals = 0;
+  let overlapped = false;
+  const ctx = testContext({
+    db,
+    gh: makeGithub(db, async (url) => {
+      arrivals += 1;
+      if (arrivals === 1) {
+        overlapped = await Promise.race([
+          second.then(() => true),
+          new Promise<boolean>((done) => {
+            setTimeout(() => done(false), 2000);
+          }),
+        ]);
+      } else {
+        release();
+      }
+      return url.includes("/user/installations")
+        ? json({ installations: [] })
+        : json({ login: "me", id: 7, name: "Me" });
+    }),
+  });
+
+  const res = await getGithubLogin(ctx, new Request("http://x/api/v1/auth/github"), {}, {});
+  expect(res.status).toBe(200);
+  expect(overlapped).toBe(true);
+});
+
+/**
+ * The pane's second open asks GitHub nothing.
+ *
+ * GitHub's own guidance is to not call `/user` on every page load and to learn
+ * about revocation from a 401 on real work — which ADR 029 already routes to the
+ * boss. This route was asking twice per open regardless: 1.2s against a live
+ * server, every time, for an account that changes when the boss changes it.
+ *
+ * `fresh=1` is the way back to asking, for the case the TTL exists to cover: the
+ * app being installed on another org, which happens on github.com and nothing
+ * here would otherwise hear about.
+ */
+test("the connection is read once and served from the snapshot after that", async () => {
+  const db = openMemory();
+  saveAuth(db, { runtime: "github", mode: "api_key", secret: "gho_x" });
+  let asked = 0;
+  const ctx = testContext({
+    db,
+    gh: makeGithub(db, async (url) => {
+      asked += 1;
+      return url.includes("/user/installations")
+        ? json({ installations: [{ id: 3, account: { login: "acme", type: "Organization" } }] })
+        : json({ login: "me", id: 7, name: "Me" });
+    }),
+  });
+  // Parsed, not asserted: the point of the test is what the endpoint returns, and
+  // a cast would let a shape change through silently.
+  const Shown = z.object({ account: z.string().nullable(), installed: z.boolean().nullable() });
+  const open = async (query: { fresh?: boolean } = {}) => {
+    const res = await getGithubLogin(ctx, new Request("http://x/api/v1/auth/github"), {}, query);
+    return Shown.parse(await res.json());
+  };
+
+  const first = await open();
+  expect(first.account).toBe("me");
+  expect(first.installed).toBe(true);
+  const afterFirst = asked;
+  expect(afterFirst).toBeGreaterThan(0);
+
+  // Same answer, no further requests.
+  const second = await open();
+  expect(second).toEqual(first);
+  expect(asked).toBe(afterFirst);
+
+  // And a caller who says so gets a real read.
+  await open({ fresh: true });
+  expect(asked).toBeGreaterThan(afterFirst);
 });

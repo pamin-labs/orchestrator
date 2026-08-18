@@ -453,7 +453,7 @@ function GithubSettings({ open, section }: { open: boolean; section: Section }) 
   const queries = useQueryClient();
   const { data: status = null } = useQuery({
     queryKey: ["gh"],
-    queryFn: () => readApi(api.auth.github.$get(), GhStatusSchema),
+    queryFn: () => readApi(api.auth.github.$get({ query: {} }), GhStatusSchema),
     enabled: open && section === "github",
     refetchInterval: (q) => (q.state.data?.pending ? 3000 : false),
   });

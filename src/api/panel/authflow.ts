@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { Ctx } from "../../mech/ctx.ts";
+import { readSetting, writeSetting } from "../../platform/persistence/database.ts";
+import { jsonOr } from "../../contracts/json.ts";
 import { release } from "../../mech/flow/intercept.ts";
 import {
   APP_SLUG,
@@ -175,7 +177,10 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
   release(ctx, null, { only: `auth:${runtime}` });
   // A different account commits under a different name, and a stale one would
   // sign off as somebody who is no longer connected.
-  if (runtime === "github") forgetIdentity(ctx);
+  if (runtime === "github") {
+    forgetIdentity(ctx);
+    forgetGithubConnection(ctx);
+  }
   ctx.sched.tick();
 }
 
@@ -380,30 +385,102 @@ async function withCounts(
 /** Where the boss installs the app. One app, so one address. */
 const INSTALL_URL = `https://github.com/apps/${APP_SLUG}/installations/new`;
 
-export const getGithubLogin = (async (ctx, req) => {
+/** `fresh=1` skips the cached snapshot. The 刷新 path and nothing else. */
+export const GithubLoginQuery = z.object({ fresh: z.coerce.boolean().optional() });
+
+/**
+ * What the panel knows about the connection, kept rather than re-asked.
+ *
+ * GitHub's own *Best practices for creating a GitHub App* says it directly:
+ * **"Rather than calling the `/user` endpoint on every page load, you should
+ * handle token validation more strategically"**, store the account by its `id`
+ * (which never changes), and learn about revocation from the
+ * `github_app_authorization` webhook or from a 401 on a call you actually needed.
+ *
+ * This route was doing the thing that advises against — two requests to
+ * api.github.com every time the pane opened, measured at **1.2s** against a live
+ * server while every other settings endpoint answered in 16–160ms. The comment
+ * defending it named a real failure: a stored name that keeps saying 已连接 for a
+ * token revoked last week. But this is not where that is caught. ADR 029 already
+ * routes a 401 from real work to the boss, holds the project and says so once,
+ * and a settings pane nobody has opened cannot notice anything at all.
+ */
+const SNAPSHOT_KEY = "github_connection";
+
+/**
+ * Ten minutes, and the number is about *installations* rather than the account.
+ *
+ * An account changes when the boss connects a different one, which clears this
+ * outright. Installations change on github.com, out of band — so the pane needs
+ * some way to notice, and `?fresh=1` is the one the 刷新 path uses. The TTL is the
+ * floor under a reader who never presses it.
+ */
+const SNAPSHOT_TTL_MS = 10 * 60_000;
+
+const Snapshot = z.object({
+  account: z.string().nullable(),
+  installed: z.boolean().nullable(),
+  // The *normalised* shape, which is what `withCounts` returns and what the panel
+  // renders — not GitHub's raw `{ id, account: { login, type } }`. Getting this
+  // wrong made the UI's props `unknown`, which the compiler said and a cast would
+  // have hidden; validating the read is what turns a stale setting into a type.
+  accounts: z.array(z.object({ id: z.number(), account: z.string(), kind: z.string(), repos: z.number().nullable() })),
+  at: z.number(),
+});
+
+/** Cleared when the GitHub credential changes, beside the commit identity. */
+const forgetGithubConnection = (ctx: Ctx): void => {
+  if (ctx.db) writeSetting(ctx.db, SNAPSHOT_KEY, null);
+};
+
+/**
+ * Ask GitHub, and keep the answer.
+ *
+ * Its own function rather than an expression inside the handler: the handler is a
+ * response shape, and this is two requests and a write.
+ */
+async function readConnection(ctx: Ctx, gh: NonNullable<Ctx["gh"]>, signal?: AbortSignal) {
+  const [account, installs] = await Promise.all([githubAccount(gh, signal), listInstallations(gh, signal)]);
+  const snapshot = {
+    account,
+    installed: account && installs.ok ? installs.data.length > 0 : null,
+    accounts: account && installs.ok ? await withCounts(ctx, installs.data, signal) : [],
+    at: Date.now(),
+  };
+  // Only a usable answer is kept. Storing a failed read would turn one
+  // unreachable moment into ten minutes of 连接已失效.
+  if (account) writeSetting(ctx.db, SNAPSHOT_KEY, JSON.stringify(snapshot));
+  return snapshot;
+}
+
+export const getGithubLogin = (async (ctx, req, _params, query) => {
   const a = loadAuth(ctx.db, "github");
-  // Asked of GitHub rather than read from a stored name: a name in the database
-  // keeps saying "connected" for a token that was revoked last week, and an
-  // expired GitHub token is the failure where every group breaks at once with a
-  // different error each (决策 007 §6). No row, no request.
-  const account = a && ctx.gh ? await githubAccount(ctx.gh, req.signal) : null;
+  const cached = a ? jsonOr(readSetting(ctx.db, SNAPSHOT_KEY), Snapshot.nullable(), null) : null;
+  const usable = cached && !query?.fresh && Date.now() - cached.at < SNAPSHOT_TTL_MS ? cached : null;
+
+  //
   // Authorized is not installed. A GitHub App's user token reaches exactly the
-  // repositories the app is installed on, so zero installations is the state
-  // that looks like success and is not: a green 已连接 over a repo list that
-  // can never fill.
-  const installs = a && account && ctx.gh ? await listInstallations(ctx.gh, req.signal) : null;
+  // repositories the app is installed on, so zero installations is the state that
+  // looks like success and is not: a green 已连接 over a repo list that can never
+  // fill.
+  //
+  // Both at once when they do have to be asked. They were serial, and the second
+  // only used the first as a truthiness gate — never its data. Overlapping them
+  // costs one wasted request when the token has been revoked, which is the case
+  // where the panel is about to say 连接已失效 and nobody is waiting on a list.
+  const shown = usable ?? (a && ctx.gh ? await readConnection(ctx, ctx.gh, req.signal) : null);
   // Read after the requests above, not before: a code that expired while they
   // were in flight is not a code the panel should still be offering.
   const waiting = livePending();
   return json({
     connected: !!a,
-    account,
+    account: shown?.account ?? null,
     /** The token is stored and GitHub no longer answers for it. */
-    stale: !!a && !account,
+    stale: !!a && !shown?.account,
     /** Authorized, but the app is not installed anywhere it could read. */
-    installed: installs?.ok ? installs.data.length > 0 : null,
+    installed: shown?.installed ?? null,
     installUrl: INSTALL_URL,
-    accounts: installs?.ok ? await withCounts(ctx, installs.data, req.signal) : [],
+    accounts: shown?.accounts ?? [],
     pending: waiting ? { userCode: waiting.userCode, verificationUri: waiting.verificationUri } : null,
     error: ghError,
     /** On this route because both answers come from the connection above. */
@@ -411,7 +488,7 @@ export const getGithubLogin = (async (ctx, req) => {
     identity: await commitIdentity(ctx),
     bot: { ...BOT },
   });
-}) satisfies Handler;
+}) satisfies Handler<z.infer<typeof GithubLoginQuery>>;
 
 /** The two switches. Both default on; see `TRAILERS_KEY` for why each exists. */
 export const TrailersBody = z.object({

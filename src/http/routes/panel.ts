@@ -9,6 +9,7 @@ import {
   CodeBody,
   getAuth,
   getGithubLogin,
+  GithubLoginQuery,
   getGithubRepos,
   GithubReposQuery,
   postAuth,
@@ -115,7 +116,9 @@ export function panelRoutes(ctx: Ctx) {
       postClaudeCode(ctx, c.req.raw, c.req.param(), c.req.valid("json")),
     )
     .post("/auth/claude/login/cancel", () => postClaudeCancel(ctx))
-    .get("/auth/github", (c) => getGithubLogin(ctx, c.req.raw))
+    .get("/auth/github", queryParams(GithubLoginQuery), (c) =>
+      getGithubLogin(ctx, c.req.raw, c.req.param(), c.req.valid("query")),
+    )
     .post("/auth/github", () => postGithubLogin(ctx))
     .get("/github/repos", queryParams(GithubReposQuery), (c) =>
       getGithubRepos(ctx, c.req.raw, c.req.param(), c.req.valid("query")),
