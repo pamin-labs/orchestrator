@@ -336,10 +336,9 @@ test("an unmapped name falls through to itself, never to nothing", () => {
   // The property that matters: the set of span names grows every time somebody
   // adds a stage, and a missing entry has to leave a name the reader can still
   // search for rather than a blank row or an invented sentence.
-  for (const id of ["turn.settle", "watchdog.7e", "POST /api/v1/ideas", "brand.new.stage", ""]) {
-    expect(humanName(id)).toBe(id);
-    expect(isRenamed(id)).toBe(false);
-  }
+  const unmapped = ["turn.settle", "watchdog.7e", "POST /api/v1/ideas", "brand.new.stage", ""];
+  expect(unmapped.map(humanName)).toEqual(unmapped);
+  expect(unmapped.filter(isRenamed)).toEqual([]);
 });
 
 test("a span's kind comes from its own prefix, so a new name needs no code change", () => {

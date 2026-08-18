@@ -80,13 +80,13 @@ export function dropGroup(ctx: Ctx, grpId: number, why: string): void {
  */
 export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<{ ok: boolean; tail: string }> {
   const seen: string[] = [];
-  sandboxLog(ctx, grpId, "cmd", cmd);
+  sandboxLog(ctx.bus, grpId, "cmd", cmd);
   const stream = execLines(ctx, { grp: grpId }, cmd, {
     cwd: WORK,
     timeoutMs: ctx.config.installTimeoutMs,
     // Package managers print progress on stderr; without this an install is
     // silent for its whole run and then dumps everything at once.
-    onStderr: (l) => sandboxLog(ctx, grpId, "out", l),
+    onStderr: (l) => sandboxLog(ctx.bus, grpId, "out", l),
   });
   let end = { code: -1, err: "" };
   for (;;) {
@@ -97,9 +97,9 @@ export async function runInstall(ctx: Ctx, grpId: number, cmd: string): Promise<
     }
     seen.push(step.value);
     if (seen.length > 400) seen.shift();
-    sandboxLog(ctx, grpId, "out", step.value);
+    sandboxLog(ctx.bus, grpId, "out", step.value);
   }
-  sandboxLog(ctx, grpId, "end", end.code === 0 ? "ok" : `exit ${end.code}`);
+  sandboxLog(ctx.bus, grpId, "end", end.code === 0 ? "ok" : `exit ${end.code}`);
   const tail = [...seen.slice(-12), ...(end.err ? [end.err.slice(-400)] : [])].join("\n");
   ctx.bus.emit({
     grpId,

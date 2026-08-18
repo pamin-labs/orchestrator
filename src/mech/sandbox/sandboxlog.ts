@@ -1,4 +1,4 @@
-import type { Ctx } from "../../mech/ctx.ts";
+import type { Bus } from "../../platform/persistence/event-bus.ts";
 
 /**
  * The last few hundred lines a group's container printed, in memory.
@@ -25,13 +25,13 @@ export interface Line {
 }
 
 /** Record a line and, in the same call, put it on the live feed. */
-export function sandboxLog(ctx: Ctx, grpId: number, kind: Line["kind"], text: string): void {
+export function sandboxLog(bus: Bus, grpId: number, kind: Line["kind"], text: string): void {
   const buf = buffers.get(grpId) ?? [];
   const at = Date.now();
   buf.push({ at, kind, text });
   if (buf.length > CAP) buf.splice(0, buf.length - CAP);
   buffers.set(grpId, buf);
-  ctx.bus?.live({
+  bus?.live({
     at,
     grpId,
     agentId: null,

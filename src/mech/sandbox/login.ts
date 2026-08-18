@@ -1,3 +1,4 @@
+import type { Bus } from "../../platform/persistence/event-bus.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { saveAuth } from "./auth.ts";
 import { REFRESH_HOME } from "./chatgpt.ts";
@@ -45,13 +46,13 @@ export interface LoginRun {
 
 type LineStream = ReturnType<typeof execLines>;
 
-async function consumeLogin(ctx: Ctx, stream: LineStream, onLine: (line: string) => void) {
+async function consumeLogin(bus: Bus, stream: LineStream, onLine: (line: string) => void) {
   for (;;) {
     const step = await stream.next();
     if (step.done) return step.value;
     const plain = clean(step.value).trim();
     if (!plain) continue;
-    ctx.bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
+    bus.live({ grpId: null, agentId: null, role: "orchestrator", kind: "status", body: plain });
     onLine(plain);
   }
 }
@@ -78,7 +79,7 @@ async function finishCodexLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
     timeoutMs: DEVICE_CODE_TTL_MS + 60_000,
     signal,
   });
-  const result = await consumeLogin(ctx, stream, (line) => {
+  const result = await consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
     run.code ??= line.match(DEVICE_CODE_RE)?.[0] ?? null;
   });
@@ -230,7 +231,7 @@ async function finishClaudeLogin(ctx: Ctx, run: LoginRun, signal: AbortSignal) {
   });
   let token: string | null = null;
   let sawPrompt = false;
-  const result = await consumeLogin(ctx, stream, (line) => {
+  const result = await consumeLogin(ctx.bus, stream, (line) => {
     run.url ??= line.match(URL_RE)?.[0] ?? null;
     token ??= line.match(CLAUDE_TOKEN_RE)?.[0] ?? null;
     sawPrompt ||= PASTE_RE.test(line);

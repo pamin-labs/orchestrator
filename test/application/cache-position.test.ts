@@ -78,18 +78,26 @@ test("changing the stable half forces session rotation, not a silent edit", () =
 
   // Every one of these used to be a tempting "just append it" — each would
   // invalidate the cached prefix for the rest of the session.
-  const changed = [
-    buildStable(parts({ lessons: ["a brand new lesson"] })),
-    buildStable(parts({ onboarding: "different onboarding" })),
-    buildStable(parts({ model: "opus" })),
-    buildStable(parts({ allowedTools: ["Bash(orch *)"] })),
-    buildStable(parts({ effort: "high" })),
-    buildStable(parts({ addDirs: ["/tmp/wt/g2"] })),
-  ];
-  for (const c of changed) {
-    expect(c.hash).not.toBe(base.hash);
-    expect(needsRotation(base.hash, c)).toBe(true);
-  }
+  // Keyed by the part that moved, so a failure names it rather than reporting
+  // `expected true, received false` against whichever of the six it was.
+  const changed = {
+    lessons: buildStable(parts({ lessons: ["a brand new lesson"] })),
+    onboarding: buildStable(parts({ onboarding: "different onboarding" })),
+    model: buildStable(parts({ model: "opus" })),
+    allowedTools: buildStable(parts({ allowedTools: ["Bash(orch *)"] })),
+    effort: buildStable(parts({ effort: "high" })),
+    addDirs: buildStable(parts({ addDirs: ["/tmp/wt/g2"] })),
+  };
+  expect(
+    Object.entries(changed)
+      .filter(([, c]) => c.hash === base.hash)
+      .map(([part]) => part),
+  ).toEqual([]);
+  expect(
+    Object.entries(changed)
+      .filter(([, c]) => !needsRotation(base.hash, c))
+      .map(([part]) => part),
+  ).toEqual([]);
   expect(needsRotation(base.hash, buildStable(parts()))).toBe(false);
 });
 

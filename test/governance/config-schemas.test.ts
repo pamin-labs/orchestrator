@@ -59,6 +59,8 @@ test("the vendored schemas reject a file the services would ignore", () => {
   // contexts; a bare string parses as YAML and would be dropped on Codecov's
   // side without a word.
   const validate = validator("codecov");
-  expect(validate({ coverage: { status: { patch: "yes please" } } })).toBe(false);
-  expect(validate({ coverage: { status: { patch: { default: { target: "65%" } } } } })).toBe(true);
+  expect({
+    "a bare string": validate({ coverage: { status: { patch: "yes please" } } }),
+    "a context object": validate({ coverage: { status: { patch: { default: { target: "65%" } } } } }),
+  }).toEqual({ "a bare string": false, "a context object": true });
 });

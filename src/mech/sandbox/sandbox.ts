@@ -1,3 +1,4 @@
+import type { Bus } from "../../platform/persistence/event-bus.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { errText } from "../../platform/process/text.ts";
 import { existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
@@ -49,10 +50,9 @@ const PUBLISHED = new RegExp(`^ghcr\\.io/${PUBLISHED_REPO.split("/")[0]}/`, "i")
 /**
  * Does this reference name a registry to pull from?
  *
- * A registry is a `.` or a `:` in the first path segment, or a literal
- * `localhost` — Docker's own rule, and the reason `orch/agent:1` is local while
- * `evil.example.com/orch/agent:1` is not. Two callers, one rule: what may run,
- * and whether preflight may say "not on this machine" is fine.
+ * A registry is a `.` or a `:` in the first path segment, or a literal `localhost`
+ * — Docker's own rule, and the reason `orch/agent:1` is local. Two callers, one
+ * rule: what may run, and whether preflight may say "not on this machine" is fine.
  */
 export function hasRegistry(ref: string): boolean {
   const image = ref.trim();
@@ -91,13 +91,10 @@ function defaultCpu(): string {
 export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
   const base = ctx.config.sandbox;
   const over = projectConfig(ctx.db, projectId).sandbox ?? {};
-  // `||`, not `??`: an empty string is how the yaml says "you decide", and it is
-  // never a usable value for any of these.
-  //
-  // The image is the one key a project may not freely set. `patchProjectConfig`
-  // merges arbitrary keys into `config_json`, so refusing it only in the panel
-  // would be a check a request can walk around; this is where every container is
-  // actually built, which makes it the only place the rule holds.
+  // `||`, not `??`: an empty string is how the yaml says "you decide". The image is
+  // the one key a project may not freely set — `patchProjectConfig` merges arbitrary
+  // keys into `config_json`, so refusing it only in the panel would be a check a
+  // request can walk around, and this is where every container is actually built.
   const fallback = base.image;
   const image = over.image || fallback;
   return {
@@ -163,10 +160,9 @@ export function addrInConfig(path: string): string {
 /**
  * `api_key` out of one config file, or null.
  *
- * A regex rather than a TOML parser: one key, one line, and a dependency for
- * that is a dependency for that. The `^\s*` matters — the example config ships
- * the line commented out, and taking that would store a value the server is not
- * using and lock the fleet out just as thoroughly as a generated one.
+ * A regex rather than a TOML parser: one key, one line. The `^\s*` matters — the
+ * example config ships the line commented out, and taking that would lock the
+ * fleet out just as thoroughly as a generated key would.
  */
 export function keyInConfig(path: string): string | null {
   try {
@@ -194,8 +190,7 @@ export function keyInConfig(path: string): string | null {
  *
  * Anything that names it as an *argument* (pkill, grep, an editor, a terminal
  * title) is about the server, not the server. Pulled out so it can be checked
- * without a machine in a particular state, which is the only reason that bug
- * survived: reproducing it needed a specific process at a specific moment.
+ * without a machine in a particular state, which is why that bug survived so long.
  */
 export function isServerLine(l: string): boolean {
   if (!/(^|\/|\s)opensandbox-server(\s|$)/.test(l)) return false;
@@ -205,10 +200,9 @@ export function isServerLine(l: string): boolean {
 /**
  * Is this pid still there — without asking `ps`.
  *
- * POSIX signal 0 delivers nothing and only reports whether the process exists and
- * whether we may signal it. `EPERM` counts as alive — it is there and belongs to
- * somebody else. The known limit is pid reuse, which is why this answers "still",
- * not "which": callers fall back to `runningServer()` the moment it says no.
+ * POSIX signal 0 delivers nothing and only reports whether the process exists.
+ * `EPERM` counts as alive — it is there and belongs to somebody else. The known
+ * limit is pid reuse, which is why this answers "still", not "which".
  */
 export function pidAlive(pid: string): boolean {
   const n = Number(pid);
@@ -246,10 +240,9 @@ export function runningServer(): { pid: string; argv: string[]; config: string |
 /**
  * The host paths this server will actually mount, and the file that says so.
  *
- * The silent one of the three. A mount of a path missing from this list fails
- * creation outright, which is loud — but the config being *out of step with ours*
- * is not: the process is healthy, nothing errors, and the only symptom is an
- * empty directory inside every container. So the answer is "add this line".
+ * The silent one of the three. A missing path fails creation outright, which is
+ * loud — but a config *out of step with ours* is not: the process is healthy,
+ * nothing errors, and every container gets an empty directory. Answer: add a line.
  */
 export function allowedHostPaths(home = homedir()): { paths: string[]; config: string } | null {
   for (const path of configPaths(home)) {
@@ -296,9 +289,9 @@ async function waitForServerExit(ops: RestartOps): Promise<boolean> {
  * Restart the server the way it was started.
  *
  * Only ever from an argv we have **seen**, never one we composed: how the boss
- * runs it (`uvx`, a venv, a wrapper, extra flags) is theirs, and inventing a
- * command line would start a second, differently-configured server beside the
- * wedged one. Everything it was running dies with it, turns in flight included.
+ * runs it is theirs, and inventing a command line would start a second,
+ * differently-configured server beside the wedged one. Everything it was running
+ * dies with it, turns in flight included.
  */
 export async function restartServer(
   argv: string[],
@@ -455,9 +448,8 @@ function remoteOf(db: DB, projectId: number | null): string | null {
  * The scope's sandbox, created on first use and reconnected after a restart.
  *
  * The id column is the durable half; the Sandbox object is not. A restarted
- * orchestrator reconnects to a sandbox that is still running its TTL out, which
- * is what keeps a turn's session — and therefore its cached prefix — alive
- * across a restart.
+ * orchestrator reconnects to a sandbox still running its TTL out, which is what
+ * keeps a turn's session — and its cached prefix — alive across a restart.
  */
 /**
  * Nothing can open a container right now.
@@ -496,9 +488,9 @@ function markDown<T>(ctx: Ctx, e: T, now = Date.now()): void {
   });
 }
 
-function markUp(ctx: Ctx): void {
+function markUp(bus: Bus): void {
   if (saidDown) {
-    ctx.bus?.emit({ author: "orchestrator", kind: "state_change", body: "容器又能开了，挂起的活自动继续" });
+    bus?.emit({ author: "orchestrator", kind: "state_change", body: "容器又能开了，挂起的活自动继续" });
   }
   downUntil = 0;
   saidDown = false;
@@ -507,7 +499,7 @@ function markUp(ctx: Ctx): void {
 export async function ensureSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   try {
     const sb = await openSandbox(ctx, scope);
-    markUp(ctx);
+    markUp(ctx.bus);
     return sb;
   } catch (e) {
     markDown(ctx, e);
@@ -664,9 +656,8 @@ export function sandboxScope(scope: Scope, projectId: number | null) {
  * Two spans, because these are two different four-minute problems.
  *
  * Building the container is the image, the daemon and the mounts; initialising it
- * is provisioning, credentials and restoring the workspace. Split, the answer is
- * either "four minutes building a container" or "four minutes filling one", which
- * point at different fixes. Neither span opens on the warm path.
+ * is provisioning, credentials and the workspace. Split, the answer is "four
+ * minutes building" or "four minutes filling", which point at different fixes.
  */
 async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   const { sandboxId, projectId } = owner(ctx.db, scope);
@@ -700,23 +691,16 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
       // agent, so the one interface an agent is allowed would be surface with no
       // user — in the container that holds the real tokens.
       if (!isUtil(scope)) await provision(sb);
-      // Mounted is not the same as readable. Once per host path per process, and
-      // only when a mount was actually accepted — the fallback above has already
-      // said its piece, and "mounted but empty" would be a false description of a
-      // container that was built without the mount at all.
-      //
-      // The three together: they share no state — one writes files under
-      // `CODEX_HOME`, one calls `credentialVault.create`, and the third is an `ls`
-      // whose only output is an upgrade message — and each already owns its
-      // failure. Serially they were three round trips on the path a requirement
-      // waits on, with a *diagnostic* in front of the credentials.
-      //
-      // `Promise.all` and not a floating promise for the diagnostic: the sandbox
-      // is usable the moment this returns, and a check still in flight then would
-      // report on a container the next step has already changed.
+      // Mounted is not the same as readable — but only when a mount was actually
+      // accepted, since "mounted but empty" would falsely describe a container built
+      // without the mount at all. The three share no state and each owns its own
+      // failure, so they go together rather than as three round trips on the path a
+      // requirement waits on. `Promise.all` and not a floating promise: the sandbox
+      // is usable the moment this returns, and a check still in flight would report
+      // on a container the next step has already changed.
       await Promise.all([
         created.skillsMounted
-          ? checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {})
+          ? checkSkillsMount(ctx.bus, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {})
           : undefined,
         writeLoginFiles(ctx.db, sb),
         installVaultCredentials(ctx, scope, sb, projectId),
@@ -787,11 +771,10 @@ export interface Counter {
  * Did the skills mount actually bring the skills.
  *
  * A bind mount of a host path the container runtime cannot reach does not fail —
- * it succeeds and delivers an **empty directory**. macOS runs docker in a VM, and
- * `/var/tmp` there is the VM's, not the Mac's; a path under `$HOME` binds fine.
- * One `ls` per host path per process, and only when that path holds something.
+ * it succeeds and delivers an **empty directory**. macOS runs docker in a VM, so
+ * `/var/tmp` there is the VM's; a path under `$HOME` binds fine.
  */
-export async function checkSkillsMount(ctx: Ctx, sb: Counter, hostPath: string, at: string): Promise<void> {
+export async function checkSkillsMount(bus: Bus, sb: Counter, hostPath: string, at: string): Promise<void> {
   if (mountChecked.has(hostPath)) return;
   mountChecked.add(hostPath);
   let onHost = 0;
@@ -814,7 +797,7 @@ export async function checkSkillsMount(ctx: Ctx, sb: Counter, hostPath: string, 
       .trim(),
   );
   if (!Number.isFinite(inside) || inside > 0) return;
-  ctx.bus?.emit({
+  bus?.emit({
     author: "orchestrator",
     kind: "state_change",
     severity: "blocker",
@@ -1017,8 +1000,7 @@ export async function listProjectSkills(ctx: Ctx, projectId: number): Promise<st
  *
  * The upload is an HTTP POST to a port on this same machine, and it resets. One
  * retry is what that is worth: the far end is a container here, not a network. A
- * second failure is not a flake, so it throws — with the paths in the message,
- * because the SDK's error names `files/upload`. Every caller comes through here.
+ * second failure is not a flake, so it throws. Every caller comes through here.
  */
 export async function writeInto(
   sb: { files: Pick<Sandbox["files"], "writeFiles"> },
@@ -1039,10 +1021,9 @@ export async function writeInto(
 /**
  * Everything the rest of the system does to a sandbox.
  *
- * Injected on `Ctx` the same way `git`, `gh` and `ask` are, and for the same
- * reason: a unit test has no container to talk to, and the alternative — every
- * one of these swallowing its own connection error — is how a silent failure
- * gets to look exactly like success (docs/adr/001).
+ * Injected on `Ctx` the same way `git`, `gh` and `ask` are: a unit test has no
+ * container to talk to, and the alternative — each of these swallowing its own
+ * connection error — is how a silent failure looks like success (docs/adr/001).
  */
 export interface SandboxDriver {
   exec(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): Promise<ExecOutcome>;
@@ -1139,9 +1120,9 @@ async function realExec(ctx: Ctx, scope: Scope, cmd: string, opts: ExecOpts = {}
  * One log message is one line, and its newline is gone. Put it back.
  *
  * Measured against the running server: it splits on line boundaries and on CR,
- * strips the terminator, never splits a long line, and delivers a blank line as
- * the two-character string for a newline. So joining on newlines is safe rather
- * than a guess, and each message is stripped first — or every blank line doubles.
+ * strips the terminator, never splits a long line, and delivers a blank line as the
+ * two-character newline string. So joining on newlines is safe, and each message is
+ * stripped first — or every blank line doubles.
  */
 const oneLine = (m: { text: string }): string => m.text.replace(/\r?\n$/, "");
 
@@ -1461,24 +1442,18 @@ export const EXEC_UNAVAILABLE = 126;
 /**
  * How many containers may be reached at once when something fans out over them.
  *
- * Four, derived rather than picked: `cfg.sandbox.cpu` left empty means a quarter
- * of the host's cores, and that cap is **per container** — so N execs in a fan-out
- * contend on the host, where N caps sum. Ten groups, the shipped default, is 2.5
- * hosts' worth of CPU asked for at once. Four is one host's worth.
+ * Four, derived rather than picked: `cfg.sandbox.cpu` left empty means a quarter of
+ * the host's cores, and that cap is **per container** — so N execs in a fan-out
+ * contend on the host, where N caps sum. Four is one host's worth.
  */
 export const EXEC_FANOUT = 4;
 /**
  * A container round trip, with the span every one of them owes.
  *
- * `execIn` had one and the nine delegations beside it did not, so `git clone` —
- * which this module's own comment calls the longest minute in a group's life —
- * did not exist in 系统耗时 at all. They are one-line passthroughs, which is
- * exactly why the span belongs here rather than at each caller: the tenth
- * delegation gets it by being written in this shape.
- *
- * Never the path or the command as an attribute: both carry repository and file
- * names, which `docs/standards/observability.md` keeps off labels. The scope is
- * the identity, and it carries the project so the panel's project filter sees it.
+ * The delegations beside `execIn` are one-line passthroughs, which is exactly why
+ * the span belongs here rather than at each caller: the tenth gets it by being
+ * written in this shape. Never the path or the command as an attribute — both
+ * carry repository and file names, which observability.md keeps off labels.
  */
 function roundTrip<T>(name: string, ctx: Ctx, scope: Scope, run: () => Promise<T>): Promise<T> {
   const attributes = sandboxScope(scope, projectOf(ctx.db, scope));
@@ -1497,11 +1472,9 @@ function roundTrip<T>(name: string, ctx: Ctx, scope: Scope, run: () => Promise<T
 /**
  * The streaming exec, which is a generator and so cannot use `roundTrip`.
  *
- * A promise wrapper would end the span when the generator was *handed over*,
- * which is immediately — the number would be the cost of constructing an
- * iterator rather than of the turn it streams. The span has to close when
- * iteration does, so it is ended in a `finally` around the loop: that covers a
- * caller who breaks out early or throws, which is how a cancelled turn leaves.
+ * A promise wrapper would end the span when the generator was *handed over*, so it
+ * is ended in a `finally` around the loop instead — which also covers a caller who
+ * breaks out early or throws.
  */
 export async function* execLines(
   ctx: Ctx,

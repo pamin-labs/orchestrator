@@ -55,7 +55,7 @@ test("skills on the host and none in the container is called a blocker, with bot
   const host = staged(3);
   const sb = container(() => "0\n");
 
-  await checkSkillsMount(ctx, sb, host, "/opt/orch/skills");
+  await checkSkillsMount(ctx.bus, sb, host, "/opt/orch/skills");
 
   const [said] = blockers(ctx);
   expect(said).toContain(host);
@@ -72,7 +72,7 @@ test("a mount that actually carried the skills says nothing", async () => {
   const ctx = testContext({ db: openMemory() });
 
   await checkSkillsMount(
-    ctx,
+    ctx.bus,
     container(() => "179\n"),
     staged(3),
     "/opt/orch/skills",
@@ -87,7 +87,7 @@ test("a boss who has ticked no skills gets no noise", async () => {
   const ctx = testContext({ db: openMemory() });
   const sb = container(() => "0\n");
 
-  await checkSkillsMount(ctx, sb, staged(0), "/opt/orch/skills");
+  await checkSkillsMount(ctx.bus, sb, staged(0), "/opt/orch/skills");
 
   expect(blockers(ctx)).toEqual([]);
   // And it costs no exec: one `ls` per host path per process is the budget.
@@ -98,7 +98,7 @@ test("a host path that is not there is not a mount problem", async () => {
   const ctx = testContext({ db: openMemory() });
   const sb = container(() => "0\n");
 
-  await checkSkillsMount(ctx, sb, join(tmpdir(), "orch-mount-never-existed"), "/opt/orch/skills");
+  await checkSkillsMount(ctx.bus, sb, join(tmpdir(), "orch-mount-never-existed"), "/opt/orch/skills");
 
   expect(blockers(ctx)).toEqual([]);
   expect(sb.asked).toEqual([]);
@@ -111,7 +111,7 @@ test("a count that is not a number is not read as zero", async () => {
   const ctx = testContext({ db: openMemory() });
 
   await checkSkillsMount(
-    ctx,
+    ctx.bus,
     container(() => "ls: cannot access"),
     staged(2),
     "/opt/orch/skills",
@@ -132,7 +132,7 @@ test("a container that throws on the count leaves no finding and no exception", 
     },
   };
 
-  await checkSkillsMount(ctx, sb, staged(2), "/opt/orch/skills");
+  await checkSkillsMount(ctx.bus, sb, staged(2), "/opt/orch/skills");
 
   expect(blockers(ctx)).toEqual([]);
 });
@@ -142,8 +142,8 @@ test("the same host path is only checked once per process", async () => {
   const host = staged(2);
   const sb = container(() => "0\n");
 
-  await checkSkillsMount(ctx, sb, host, "/opt/orch/skills");
-  await checkSkillsMount(ctx, sb, host, "/opt/orch/skills");
+  await checkSkillsMount(ctx.bus, sb, host, "/opt/orch/skills");
+  await checkSkillsMount(ctx.bus, sb, host, "/opt/orch/skills");
 
   expect(sb.asked.length).toBe(1);
   expect(blockers(ctx).length).toBe(1);

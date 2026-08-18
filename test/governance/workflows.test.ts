@@ -419,9 +419,7 @@ describe("workflow governance", () => {
 
     expect(imageBuild.permissions).toBeUndefined();
     expect(imageBuild.strategy?.matrix?.platform).toEqual(["amd64", "arm64"]);
-    expect(build.with?.load).toBe(true);
-    expect(build.with?.push).toBe(false);
-    expect(build.with?.provenance).toBe("mode=max");
+    expect(build.with).toMatchObject({ load: true, push: false, provenance: "mode=max" });
     expectUnconditionalSteps(workflow, "image-build", [
       "verify image digest and provenance material",
       "scan verified image",

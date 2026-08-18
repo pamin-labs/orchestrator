@@ -46,12 +46,12 @@ test("every state says who pushes it out", () => {
     "lease",
   ]);
 
-  for (const i of Object.values(INVARIANT_TABLES).flat()) {
-    // `driver: null` is a real answer — terminal, or a human is deliberately being
-    // waited on. An empty string is the unanswered question.
-    expect(i.driver === null || i.driver.length > 10).toBe(true);
-    expect(i.must.length).toBeGreaterThan(10);
-  }
+  // `driver: null` is a real answer — terminal, or a human is deliberately being
+  // waited on. An empty string is the unanswered question, and the state it
+  // belongs to is what a failure has to name.
+  const rows = Object.values(INVARIANT_TABLES).flat();
+  expect(rows.filter((i) => !(i.driver === null || i.driver.length > 10)).map((i) => i.state)).toEqual([]);
+  for (const i of rows) expect(i.must.length).toBeGreaterThan(10);
 });
 
 test("every repair-bearing table is in the production runner", () => {

@@ -263,9 +263,7 @@ test("the utility container never checks anything out, and never runs a hook", a
 
   const util = calls.filter((c) => c.includes("core.hooksPath=/dev/null"));
   expect(util.length).toBeGreaterThan(0);
-  for (const c of util) {
-    expect(/git -c core\.hooksPath=\/dev\/null (clone|fetch|push|bundle)\b/.test(c)).toBe(true);
-  }
+  expect(util.filter((c) => !/git -c core\.hooksPath=\/dev\/null (clone|fetch|push|bundle)\b/.test(c))).toEqual([]);
   // The mirror is bare: nothing that came out of the repository is ever written
   // somewhere something would run it.
   const clone = calls.find((c) => c.includes("core.hooksPath=/dev/null") && c.includes("clone"));

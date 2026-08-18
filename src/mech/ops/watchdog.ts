@@ -381,14 +381,6 @@ export async function runWatchdog(deps: WatchdogDeps): Promise<Finding[]> {
 }
 
 /**
- * One rule, its own span, and its failure kept off the other twenty-three.
- *
- * The finding names the rule, so the boss reads "rule 15 broke, the other 24 ran"
- * rather than "the watchdog broke", and `emit` dedups it for `REEMIT_MS`. The span
- * is here rather than at each rule because this is the one place every rule passes
- * through — twenty-four call sites otherwise, and the twenty-fifth would not.
- */
-/**
  * Runs on every tick. Deliberately not the pattern `* * * * * *`: parsing
  * twenty-three cron patterns per tick to be told "yes" is work for nothing.
  */
@@ -434,7 +426,14 @@ interface Rule {
   every: Cadence;
 }
 
-/** Bound to this tick's database and clock, so `findings` leaves the call sites. */
+/**
+ * One rule, its own span, and its failure kept off the other twenty-three.
+ *
+ * Bound to this tick's database and clock, so `findings` leaves the call sites.
+ * The finding names the rule — the boss reads "rule 15 broke, the other 24 ran" —
+ * and `emit` dedups it for `REEMIT_MS`. The span is here because this is the one
+ * place every rule passes through; the twenty-fifth call site would not have one.
+ */
 function stepper(deps: WatchdogDeps, now: () => number, findings: Finding[]) {
   const db = deps.ctx.db;
   return async function step(rule: Rule, run: () => Promise<void>): Promise<void> {
@@ -511,10 +510,8 @@ async function nudgeMovedBases(ctx: Ctx, findings: Finding[], now: () => number)
                            AND j.kind = 'agent_turn' AND j.payload_json LIKE '%"conflict":true%')`,
     )
     .all();
-  // One request per *project*, not per group. Every group in a project asks the
-  // same repository for the same branch, so ten groups on one project made ten
-  // identical calls against one rate limit on every tick — and the answer they
-  // were racing to fetch was the same string.
+  // One request per *project*, not per group: ten groups on one project spent ten
+  // identical calls of one rate limit every tick, fetching the same string.
   const heads = new Map<number, BaseHead | null>();
   for (const group of groups) {
     if (!heads.has(group.project_id)) heads.set(group.project_id, await remoteBaseHead(ctx, group));
@@ -774,10 +771,9 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
   });
 
   // 7d2b. The same sweep, in the containers where the files actually are. Hourly
-  // and in parallel: `commands.run` is ~1s, and a seven-day retention window does
-  // not need enforcing twice a minute. The cadence is declared beside the rule and
-  // enforced by `step`, so it survives a restart and is not shared with a second
-  // tick.
+  // and in parallel: a seven-day retention window does not need enforcing twice a
+  // minute. The cadence is declared beside the rule and enforced by `step`, so it
+  // survives a restart and is not shared with a second tick.
   await step({ id: "7d2b", name: "container_sessions_swept", every: HOURLY }, async () => {
     await pMap(
       liveScopes(ctx.db),
@@ -788,21 +784,20 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     );
   });
 
-  // 7d3. How much of the claude subscription is left. codex reports both its
-  // windows in every turn; claude's stream reports none, so the only way to put
-  // the two side by side in the header is to ask. Rate limited to five minutes
-  // inside, and it swallows its own failures — the endpoint is undocumented and
-  // nothing here may depend on it. Injectable, because it is the one thing in this
-  // tick that talks to the network.
+  // 7d3. How much of the claude subscription is left. codex reports both windows
+  // in every turn; claude's stream reports none, so the only way to put the two
+  // side by side is to ask. It swallows its own failures — the endpoint is
+  // undocumented and nothing here may depend on it — and is injectable, being the
+  // one thing in this tick that talks to the network.
   await step({ id: "7d3", name: "subscription_usage", every: EVERY_TICK }, async () => {
     await (deps.pollUsage ?? pollUsage)(ctx, cfg.dataDir, now(), () => newestRollout(ctx));
   });
 
   // 7e. Keep the shared repo map current.
   //
-  // Deterministic and cheap — `git ls-files` plus a regex per file — and only
-  // written when the render changed, so a quiet repo costs one comparison. This is
-  // the thing seven groups were each rediscovering by grep.
+  // Deterministic and cheap — `git ls-files` plus one tree-sitter parse per file,
+  // grammars loaded once per process — and only written when the render changed,
+  // so a quiet repo costs one comparison. Seven groups were grepping for this.
   await step({ id: "7e", name: "repo_map", every: EVERY_TICK }, async () => {
     for (const p of ctx.db
       .query<{ id: number; repo_path: string; remote: string | null }, []>("SELECT id, repo_path, remote FROM project")
@@ -827,12 +822,9 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       }
       mapWarned.delete(p.id);
       // Symbols need file *contents*, and the only copy is in the project's own
-      // container: the mirror is `--filter=blob:none`, so reading through it is a
-      // network fetch per file, and this machine has no checkout at all. One exec
-      // for the whole corpus, and whole files rather than the indexer's head — the
-      // last declaration in a truncated file falls outside its `export_statement`
-      // and is lost, and no larger cap fixes it. Empty is a legitimate answer
-      // (indexing off, or no container yet) and means a paths-only map.
+      // container. Whole files, not the indexer's head: a parser needs the whole
+      // declaration, so a truncated file silently loses its last one and no larger
+      // cap fixes that. Empty is legitimate and means a paths-only map.
 
       // ponytail: the whole corpus crosses the exec every tick (0.8 MB → 4.0 MB
       // here). Gate the exec on the tree's head sha if a large repo makes it hurt.
@@ -1076,13 +1068,11 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 17b. A sandbox older than the credential it is supposed to be using.
-  //
-  // A sidecar is loaded once, when its sandbox is built, and never again, so
-  // storing a credential has to kill the running sandboxes. Not left to the
-  // callers: the next way to store one — an import, a refresh, a CLI — would have
-  // to remember, and this is the class of bug where forgetting looks healthy. The
-  // durable form is a fact about the row, checked here, whichever path stored it.
+  // 17b. A sandbox older than the credential it is supposed to be using. A sidecar
+  // is loaded once, when its sandbox is built, so storing a credential has to kill
+  // the running sandboxes. Not left to the callers — the next way to store one
+  // would have to remember, and forgetting looks healthy here. A fact about the
+  // row, checked here, whichever path stored it.
   await step({ id: "17b", name: "sandbox_stale_credential", every: EVERY_TICK }, async () => {
     const newestCredential =
       ctx.db.query<{ at: number | null }, []>("SELECT max(updated_at) at FROM runtime_auth").get()?.at ?? 0;
@@ -1119,12 +1109,11 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     }
   });
 
-  // 18. A live container expiring under whatever is using it. The TTL is what
-  // stops a crashed orchestrator leaking containers forever, so it is short enough
-  // to reap a group that is simply thinking; renewing every tick is the other half
-  // of that bargain. One loop over every kind there is, deliberately — a third loop
-  // for the utility container would guarantee the same omission a third time.
-  // `renewSandbox` is a no-op for a scope with no container.
+  // 18. A live container expiring under whatever is using it. The TTL stops a
+  // crashed orchestrator leaking containers forever, so it is short enough to reap
+  // a group that is merely thinking, and renewing every tick is the other half of
+  // that bargain. One loop over every kind, deliberately: a third loop for the
+  // utility container would guarantee the same omission a third time.
   await step({ id: "18", name: "sandbox_expiring", every: EVERY_TICK }, async () => {
     const alive: Scope[] = [
       ...ctx.db
@@ -1142,12 +1131,10 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
     for (const scope of alive) await renewSandbox(ctx, scope);
   });
 
-  // 19. The sandbox server is gone. Fires on **absence** and nothing else: a
-  // server that is present but refusing would only be restarted into a restart
-  // loop. Two more guards, because an automatic action that keeps trying is how a
-  // crash loop becomes an outage — only from an argv we have **seen** this process
-  // run, and a hard cap, because N failed restarts is evidence that restarting is
-  // not the answer.
+  // 19. The sandbox server is gone. Fires on **absence** and nothing else: one
+  // present but refusing would only be restarted into a loop. Two more guards,
+  // because an automatic action that keeps trying is how a crash loop becomes an
+  // outage — only an argv we have **seen** this process run, and a hard cap.
   await step({ id: "19", name: "sandbox_server", every: EVERY_TICK }, async () => {
     const present = serverPresent(deps);
     if (present) serverRestarts = 0;

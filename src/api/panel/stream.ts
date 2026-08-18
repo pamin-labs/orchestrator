@@ -1,3 +1,4 @@
+import type { Bus } from "../../platform/persistence/event-bus.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { Frame, StoredEvent } from "../../contracts/events.ts";
@@ -42,8 +43,8 @@ function projectResolver(db: DB): (grpId: number | null | undefined) => number |
   };
 }
 
-function frameSender(ctx: Ctx, stream: SSEStreamingApi): (frame: Frame) => Promise<void> {
-  const projectOf = projectResolver(ctx.db);
+function frameSender(db: DB, stream: SSEStreamingApi): (frame: Frame) => Promise<void> {
+  const projectOf = projectResolver(db);
   return (frame) =>
     stream.writeSSE({
       data: JSON.stringify({
@@ -68,12 +69,12 @@ async function sendEvents(
   return lastSeq;
 }
 
-async function replay(ctx: Ctx, cursor: number, stopped: () => boolean, enqueue: Enqueue): Promise<number> {
-  if (cursor === 0) return sendEvents(ctx.bus.latest(REPLAY_PAGE), cursor, stopped, enqueue);
+async function replay(bus: Bus, cursor: number, stopped: () => boolean, enqueue: Enqueue): Promise<number> {
+  if (cursor === 0) return sendEvents(bus.latest(REPLAY_PAGE), cursor, stopped, enqueue);
 
   let lastSeq = cursor;
   while (!stopped()) {
-    const page = ctx.bus.since(lastSeq, REPLAY_PAGE);
+    const page = bus.since(lastSeq, REPLAY_PAGE);
     lastSeq = await sendEvents(page, lastSeq, stopped, enqueue);
     if (page.length < REPLAY_PAGE) break;
   }
@@ -124,7 +125,7 @@ export async function getStream(
   stream.onAbort(stop);
   req.signal.addEventListener("abort", stop, { once: true });
 
-  const send = frameSender(ctx, stream);
+  const send = frameSender(ctx.db, stream);
   let writes = Promise.resolve();
   const enqueue = (frame: Frame) => (writes = writes.then(() => send(frame)));
 
@@ -142,7 +143,7 @@ export async function getStream(
   }
 
   await stream.write("retry: 3000\n: connected\n\n");
-  const lastSeq = await replay(ctx, cursorFor(req, since), () => stopped, enqueue);
+  const lastSeq = await replay(ctx.bus, cursorFor(req, since), () => stopped, enqueue);
 
   await flushPending(pending, lastSeq, () => stopped, enqueue);
   replaying = false;

@@ -125,11 +125,11 @@ test("a repeating rejection reaches the feed once, not every tick", () => {
   const ctx = testContext();
   const boom = new Error("the same detached chain");
 
-  const first = reportRejection(ctx, boom, "");
-  const second = reportRejection(ctx, boom, first);
+  const first = reportRejection(ctx.bus, boom, "");
+  const second = reportRejection(ctx.bus, boom, first);
   expect(second).toBe(first);
 
-  const different = reportRejection(ctx, new Error("a different one"), second);
+  const different = reportRejection(ctx.bus, new Error("a different one"), second);
   expect(different).not.toBe(second);
 
   const feed = ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE severity = 'blocker'").get()!.c;
@@ -191,7 +191,7 @@ test("a rejection is still reported when the record itself is what failed", () =
   // the console line is still the report.
   ctx.db.close();
 
-  expect(() => reportRejection(ctx, new Error("original"), "")).not.toThrow();
+  expect(() => reportRejection(ctx.bus, new Error("original"), "")).not.toThrow();
 });
 
 /**

@@ -215,9 +215,8 @@ test("every sandbox box refuses input while a save is in flight", () => {
   // a second edit from racing the save that is already running. A server render
   // could see `disabled=""` somewhere in the markup and nothing about where.
   const { getByLabelText } = render(<Sandbox d={config()} busy patch={() => {}} />);
-  for (const label of ["装依赖", "CPU", "内存", "共享缓存"]) {
-    expect(isDisabled(getByLabelText(label))).toBe(true);
-  }
+  const labels = ["装依赖", "CPU", "内存", "共享缓存"];
+  expect(labels.filter((label) => !isDisabled(getByLabelText(label)))).toEqual([]);
 });
 
 test("an override that is cleared leaves the patch rather than being sent as undefined", () => {

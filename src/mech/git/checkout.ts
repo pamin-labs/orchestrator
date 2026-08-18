@@ -43,18 +43,15 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
     .get(projectId);
   if (!row) return "main";
 
-  // Never host git: `repo_path` is `owner/name`, not a directory, and
-  // `Bun.spawn` throws rather than returning a code when the cwd does not exist.
-  //
-  // GitHub is the source (007 §6). Asked every time rather than only when the
-  // column is empty: the shared client sends `If-None-Match`, and a 304 does not
-  // count against the rate limit.
+  // Never host git: `repo_path` is `owner/name`, not a directory, and `Bun.spawn`
+  // throws rather than returning a code when the cwd does not exist. Asked every
+  // time rather than only when the column is empty: the shared client sends
+  // `If-None-Match`, and a 304 does not count against the rate limit.
   const r = await ctx.gh?.request("GET", `/repos/${row.repo_path}`, Repo);
-  // A rename or transfer on github.com goes stale here too, and this is the only
-  // request that runs on every path. Written back rather than left to the
-  // redirect: GitHub redirects `GET /repos/old/name`, but a `POST` to open a pull
-  // request does not survive one, and the old URL keeps working only until
-  // somebody claims the freed name.
+  // A rename or transfer on github.com goes stale here too. Written back rather
+  // than left to the redirect: GitHub redirects `GET /repos/old/name`, but a `POST`
+  // to open a pull request does not survive one, and the old URL keeps working only
+  // until somebody claims the freed name.
   if (r?.ok && r.data?.full_name && r.data.full_name !== row.repo_path) {
     ctx.db.run("UPDATE project SET repo_path = ?, remote = coalesce(?, remote) WHERE id = ?", [
       r.data.full_name,
@@ -75,9 +72,7 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
   if (!found) return row.base_branch ?? "main";
   // A branch the boss picked in settings is an answer, not a cache of GitHub's.
   // This used to overwrite it every call — and this runs on the heartbeat, so a
-  // choice survived about thirty seconds. The settings endpoint offers the remote's
-  // branch list and calls the box "a choice rather than a memory test"; the
-  // resolver was making it exactly a memory test.
+  // choice survived about thirty seconds.
   if (row.base_branch_pinned && row.base_branch) return row.base_branch;
   if (found !== row.base_branch) {
     // Conditional on the value that was read, so of two callers racing on the
@@ -201,20 +196,20 @@ async function streamed(
     const r = await execIn(ctx, scope, cmd, opts);
     return { code: r.code, out: `${r.out}${r.err}` };
   }
-  sandboxLog(ctx, grpId, "cmd", cmd);
+  sandboxLog(ctx.bus, grpId, "cmd", cmd);
   // Stderr streams here rather than arriving in one block at the end: for
   // `git clone --progress` that block *was* the whole log.
-  const stream = execLines(ctx, scope, cmd, { ...opts, onStderr: (l) => sandboxLog(ctx, grpId, "out", l) });
+  const stream = execLines(ctx, scope, cmd, { ...opts, onStderr: (l) => sandboxLog(ctx.bus, grpId, "out", l) });
   const seen: string[] = [];
   for (;;) {
     const step = await stream.next();
     if (step.done) {
-      sandboxLog(ctx, grpId, "end", step.value.code === 0 ? "ok" : `exit ${step.value.code}`);
+      sandboxLog(ctx.bus, grpId, "end", step.value.code === 0 ? "ok" : `exit ${step.value.code}`);
       return { code: step.value.code, out: [...seen, step.value.err].filter(Boolean).join("\n") };
     }
     seen.push(step.value);
     if (seen.length > 400) seen.shift();
-    sandboxLog(ctx, grpId, "out", step.value);
+    sandboxLog(ctx.bus, grpId, "out", step.value);
   }
 }
 
@@ -228,33 +223,26 @@ export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec)
 }
 
 async function createCheckoutInner(ctx: Ctx, scope: Scope, spec: CheckoutSpec): Promise<void> {
-  // Folded into the probe that was already happening, so the repository's own
-  // skills are re-linked and re-listed on every turn for no extra round trip —
-  // and a skill pushed this morning is delivered this afternoon rather than
-  // whenever the container next happens to be rebuilt. `SKILL_SYNC` cannot fail
-  // this command; see its own note.
+  // Folded into the probe that was already happening, so a skill pushed this
+  // morning is delivered this afternoon rather than whenever the container next
+  // happens to be rebuilt. `SKILL_SYNC` cannot fail this command; see its own note.
   const already = await execIn(ctx, scope, `${SKILL_SYNC}; test -d ${WORK}/.git && echo yes`);
   if (already.out.includes("yes")) {
     cacheProjectSkills(ctx.db, spec.projectId, already.out);
     return;
   }
 
-  // `GIT_TERMINAL_PROMPT=0`: without it a repository the sandbox cannot read
-  // stops on "could not read Username" and waits on a prompt nobody will answer.
-  // `--progress` and streamed: git writes clone progress to stderr, and
-  // `--progress` is what keeps it on when stdout is not a terminal.
-  // `shq`, not `JSON.stringify` — the latter emits *double* quotes, under which
-  // `sh` still expands `$(…)`, backticks and `${…}`, and the remote can come from
-  // `postProject`'s request body. `--filter=blob:none`, never `--depth=1`:
-  // `rebaseOntoBase` and `merge-base --is-ancestor` need the real history.
+  // `GIT_TERMINAL_PROMPT=0`: without it a repository the sandbox cannot read stops
+  // on "could not read Username" and waits on a prompt nobody will answer. `shq`,
+  // not `JSON.stringify` — the latter emits *double* quotes, under which `sh` still
+  // expands `$(…)`, and the remote can come from `postProject`'s request body.
+  // `--filter=blob:none`, never `--depth=1`: `rebaseOntoBase` and `merge-base
+  // --is-ancestor` need the real history.
   const cloneCmd = `git clone --progress --filter=blob:none ${shq(spec.remote)} ${WORK}`;
   const clone = await streamed(ctx, scope, cloneCmd, { timeoutMs: 600_000, env: { GIT_TERMINAL_PROMPT: "0" } });
   if (clone.code !== 0) throw new Error(`git clone failed: ${clone.out.slice(-400)}`);
 
-  // Two places the branch can be, and there used to be three. The first was "on
-  // the host", because a group's commits lived there between turns — which was
-  // the entire reason the host held a checkout. They live on the remote now
-  // (`pushBranch`), so:
+  // Two places the branch can be:
   //   1. on the remote — this group has reached a slice boundary before, or a PR.
   //   2. nowhere — a new group, so cut it from the base.
   const onRemote = await execIn(ctx, scope, `git ls-remote --exit-code --heads origin ${shq(spec.branch)}`, {
@@ -270,21 +258,18 @@ async function createCheckoutInner(ctx: Ctx, scope: Scope, spec: CheckoutSpec): 
 
   await initSubmodules(ctx, scope);
 
-  // An agent commits as itself, from the connected GitHub account, not from a
-  // config key. A repository enforcing DCO requires `Signed-off-by` to match the
-  // author, and `orch agent <agent@orch.local>` is not an identity anyone can be
-  // said to have signed as. Falls back to the old literal when nothing is
-  // connected — a checkout still has to work before GitHub does.
+  // An agent commits as itself, from the connected GitHub account: a repository
+  // enforcing DCO requires `Signed-off-by` to match the author, and
+  // `orch agent <agent@orch.local>` is not an identity anyone signed as.
   const who = await commitIdentity(ctx);
   await execIn(ctx, scope, `git config user.name ${shq(who.name)} && git config user.email ${shq(who.email)}`, {
     cwd: WORK,
   });
 
   // codex reads AGENTS.md where claude reads CLAUDE.md: same instructions, two
-  // names. Linked rather than copied so editing one cannot leave a stale twin,
-  // and both ways because both kinds of repo exist — a codex-native repo ships
-  // only AGENTS.md, and a claude turn in it otherwise runs with no project
-  // instructions at all, silently. A repo that ships both is left alone.
+  // names. Linked rather than copied so editing one cannot leave a stale twin, and
+  // both ways because a codex-native repo ships only AGENTS.md, and a claude turn
+  // in it otherwise runs with no project instructions at all, silently.
   await execIn(ctx, scope, LINK_AGENTS_MD, { cwd: WORK });
 
   // Again, now that there is a checkout to find them in. The probe above ran
@@ -489,21 +474,14 @@ async function listTreeInner(
  * files, which a parser needs and a line regex does not.
  *
  * Needs file *contents*, so the mirror cannot serve it: that clone is
- * `--filter=blob:none` and every read is a network fetch. It reads the project's
- * own container instead, in one exec — a read per file is 125 round trips a tick.
+ * `--filter=blob:none` and every read is a network fetch. One exec for the corpus.
  */
 /**
  * A git operation whose cost is the point, reported as one row.
  *
- * The container round trips underneath carry their own spans now, but a reader
- * asking "why did this requirement take a minute to start" wants the operation,
- * not nine execs. These are the two cadences that matter: `createCheckout` is
- * once per requirement and calls itself the longest minute in a group's life,
- * and `keepBranch` is once per *turn*, of which a requirement has dozens — so the
- * second is very likely the larger bill and neither could be seen at all.
- *
- * Reported failure rather than a throw is the contract of most of these, so a
- * span that only errored on an exception would almost never error. The caller
+ * The round trips underneath carry their own spans, but a reader asking "why did
+ * this requirement take a minute to start" wants the operation, not nine execs.
+ * Most of these report failure by returning rather than throwing, so the caller
  * says which result counts as failure.
  */
 async function gitSpan<T>(
@@ -582,9 +560,8 @@ async function treeHeadsInner(
 /**
  * A branch operation on one group: spanned, and never allowed to throw.
  *
- * Both callers promise a returned reason rather than an exception — one is a turn
- * that has already finished its work, the other a slice acceptance nobody awaits
- * — so the catch and the span's own failure test are the same two lines twice.
+ * Both callers promise a returned reason rather than an exception, so the catch
+ * and the span's own failure test are the same two lines twice.
  */
 function branchOp(
   name: string,
@@ -656,11 +633,10 @@ async function keep(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: st
   const fetched = await utilGit(ctx, ["fetch", inUtil, ref], mirror);
   if (fetched.code === 0) return { ok: true };
 
-  // "Repository lacks these prerequisite commits", and it is not a corrupt
-  // bundle. The bundle is cut `--not <base>`, so its prerequisites are commits
-  // on the base — and the group rebases onto a base it fetched itself, which
-  // this mirror has not seen since it was cloned. One `fetch origin` and a
-  // retry, only on this failure, so the ordinary turn still costs no network.
+  // "Repository lacks these prerequisite commits" is not a corrupt bundle: it is
+  // cut `--not <base>`, so its prerequisites are commits on a base this mirror has
+  // not seen since it was cloned. One `fetch origin` and a retry, only on this
+  // failure, so the ordinary turn still costs no network.
   if (!/prerequisite/i.test(fetched.out)) return { ok: false, reason: fetched.out.slice(-300) };
   await utilGit(ctx, ["fetch", "origin"], mirror);
   const again = await utilGit(ctx, ["fetch", inUtil, ref], mirror);

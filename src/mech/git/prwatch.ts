@@ -508,15 +508,15 @@ export async function pollPrs(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   // whether the cost is one slow route or the number of groups.
   return activeTracer().startActiveSpan("pr.poll", async (span) => {
     try {
-      return await pollPrsInner(ctx, gh);
+      return await pollPrsInner(ctx.db, gh);
     } finally {
       span.end();
     }
   });
 }
 
-async function pollPrsInner(ctx: Ctx, gh: Github): Promise<Feedback[]> {
-  const groups = ctx.db
+async function pollPrsInner(db: DB, gh: Github): Promise<Feedback[]> {
+  const groups = db
     .query<WatchedGroup, []>(
       `SELECT g.id, g.status, g.pr_number, g.pr_seen_at, g.pr_checks_sig, p.remote
        FROM grp g JOIN project p ON p.id = g.project_id
@@ -533,7 +533,7 @@ async function pollPrsInner(ctx: Ctx, gh: Github): Promise<Feedback[]> {
   // while making the failure of any one of them harder to attribute. The same
   // number the container fan-out uses, for the same reason — a ceiling somebody
   // chose beats a ceiling that happens to be the row count.
-  const results = await pMap(groups, (group) => pollPr(ctx.db, gh, group), { concurrency: PR_FANOUT });
+  const results = await pMap(groups, (group) => pollPr(db, gh, group), { concurrency: PR_FANOUT });
   return results.filter((result): result is Feedback => result !== null);
 }
 

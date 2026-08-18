@@ -43,10 +43,10 @@ test("an approved draft says so, because 待批 would be a lie once it is approv
   // sends them looking for a button that is already pressed.
   expect(statusLabel(group("DRAFT"))).toBe("待批");
   expect(statusLabel(group("DRAFT", 1))).toBe("已批·等边界");
-  expect(heldApproved(group("DRAFT", 1))).toBe(true);
+  const held = { DRAFT: heldApproved(group("DRAFT", 1)), RUNNING: heldApproved(group("RUNNING", 1)) };
   // Approval on any other state is not this case. Compared against the same
   // state unapproved rather than against the label's text, so this keeps saying
   // "approval changes nothing here" after somebody rewords 在跑.
-  expect(heldApproved(group("RUNNING", 1))).toBe(false);
+  expect(held).toEqual({ DRAFT: true, RUNNING: false });
   expect(statusLabel(group("RUNNING", 1))).toBe(statusLabel(group("RUNNING")));
 });

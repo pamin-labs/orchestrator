@@ -22,9 +22,9 @@ test("a line is on the feed and in the buffer, and the buffer is capped", () => 
   clearSandboxLog(1);
   const said: string[] = [];
   const c = ctx(said);
-  sandboxLog(c, 1, "cmd", "git clone --progress x /work");
-  for (let i = 0; i < 600; i++) sandboxLog(c, 1, "out", `line ${i}`);
-  sandboxLog(c, 1, "end", "ok");
+  sandboxLog(c.bus, 1, "cmd", "git clone --progress x /work");
+  for (let i = 0; i < 600; i++) sandboxLog(c.bus, 1, "out", `line ${i}`);
+  sandboxLog(c.bus, 1, "end", "ok");
 
   // Everything reaches the live feed; the buffer keeps the tail. `$ ` is what the
   // panes already use to tell a command from its output.
@@ -38,7 +38,7 @@ test("a line is on the feed and in the buffer, and the buffer is capped", () => 
 
 test("a rebuilt container starts an empty log", () => {
   clearSandboxLog(2);
-  sandboxLog(ctx(), 2, "out", "from the container that is now gone");
+  sandboxLog(ctx().bus, 2, "out", "from the container that is now gone");
   expect(sandboxLines(2)).toHaveLength(1);
   clearSandboxLog(2);
   expect(sandboxLines(2)).toEqual([]);

@@ -6,15 +6,9 @@ import { parseRepo } from "../../contracts/repository.ts";
  * Single source of truth for the schema. See docs/project/plan.md §3.
  *
  * Four first-class entities: `job` (what will happen), `event` (what happened),
- * `note` (the static blackboard), `task`/`slice` (units of work).
- * Everything else is support.
- */
-/**
- * A migration is SQL, or a function when the change is not expressible in it.
- *
- * The function form exists for one case so far: rewriting the skill paths stored
- * in old message bodies, where the old and new forms differ by the skill's name
- * and SQLite has no regex.
+ * `note` (the static blackboard), `task`/`slice` (units of work); everything else
+ * is support. A migration is SQL, or a function where SQL cannot express it — so
+ * far only rewriting skill paths, which vary by name and SQLite has no regex.
  */
 const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // 001 — initial schema
@@ -237,27 +231,22 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   CREATE INDEX escalation_open ON escalation (chain_state, created_at);
   `,
 
-  // 002 — per-agent bearer token.
-  //
-  // Anything else on 127.0.0.1 can reach the server too, so identity comes from a
-  // token the spawner injects into the turn's environment, never from a field in
-  // the request body that an agent could simply change.
+  // 002 — per-agent bearer token. Anything else on 127.0.0.1 can reach the server
+  // too, so identity comes from a token the spawner injects into the turn's
+  // environment, never from a request field an agent could simply change.
   `
   ALTER TABLE agent ADD COLUMN token TEXT;
   CREATE UNIQUE INDEX agent_token ON agent (token) WHERE token IS NOT NULL;
   `,
 
-  // 003 — hash of the session's stable prompt half.
-  //
-  // If the role prompt, model, tool whitelist or lessons list changes, the cached
-  // prefix is dead, and the executor rotates the session rather than silently
-  // paying full price on every remaining turn.
+  // 003 — hash of the session's stable prompt half. If the role prompt, model, tool
+  // whitelist or lessons list changes the cached prefix is dead, and the executor
+  // rotates the session rather than silently paying full price on every turn.
   `ALTER TABLE agent ADD COLUMN stable_hash TEXT;`,
 
-  // 004 — per-slice reconcile baseline and retry counter.
-  //
-  // Reconcile compares against what changed *in this slice*, not on the branch:
-  // otherwise every slice after the first inherits the previous ones' diff.
+  // 004 — per-slice reconcile baseline and retry counter. Reconcile compares what
+  // changed *in this slice*, not on the branch, or every slice after the first
+  // inherits the previous ones' diff.
   `
   ALTER TABLE slice ADD COLUMN base_sha TEXT;
   ALTER TABLE slice ADD COLUMN retries INTEGER NOT NULL DEFAULT 0;
@@ -305,21 +294,18 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // is what lets the waiter start again by itself when that group lands.
   `ALTER TABLE grp ADD COLUMN blocked_on INTEGER REFERENCES grp(id);`,
 
-  // 013 — when this branch joined the merge queue. The queue is strictly serial,
-  // so a head nobody merges blocks everything behind it, and without a clock "the
-  // boss forgot" and "it only just got there" look identical.
+  // 013 — when this branch joined the merge queue. It is strictly serial, so a head
+  // nobody merges blocks everything behind it, and without a clock "the boss forgot"
+  // and "it only just got there" look identical.
   `ALTER TABLE grp ADD COLUMN merge_seq_at INTEGER;`,
 
   // 014 — branch-level rework counter. docs/project/plan.md §"Gate 与审批顺序"
   // says two rounds then escalate; this is the column that makes that true.
   `ALTER TABLE grp ADD COLUMN pr_retries INTEGER NOT NULL DEFAULT 0;`,
 
-  // 015 — shared paths this one group was granted, by name.
-  //
-  // Shared files belong to no group, which is right, but a defect *in* one still
-  // has to be fixable. The grant is issued by the server when a group reports being
-  // blocked by the file, names exactly that path, and lets this one requirement
-  // through while every other group is still refused.
+  // 015 — shared paths this one group was granted, by name. Shared files belong to
+  // no group, but a defect *in* one still has to be fixable: the grant names exactly
+  // that path and lets one requirement through while every other group is refused.
   `ALTER TABLE grp ADD COLUMN shared_grant TEXT;`,
 
   // 016 — the main commit this group has already been told to rebase onto. Without
@@ -327,17 +313,14 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // how a useful message becomes one the agent learns to skip.
   `ALTER TABLE grp ADD COLUMN rebase_seen TEXT;`,
 
-  // 017 — what a resource contends for, so the Runner pool can be split by it.
-  //
-  // One global `leaseSlots` has to be the minimum any resource can tolerate: sized
-  // for the browser (1, each lease is a real Chromium) every gate in the fleet
-  // queues behind one screenshot; sized for `typecheck` the browsers thrash. Tags
-  // name the contended thing, and each tag gets its own pool size.
+  // 017 — what a resource contends for, so the Runner pool can be split by it. One
+  // global `leaseSlots` must be the minimum any resource tolerates: sized for the
+  // browser, every gate queues behind one screenshot; sized for `typecheck`, the
+  // browsers thrash. Each tag names the contended thing and gets its own pool.
   `ALTER TABLE resource ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';`,
 
-  // 018 — consecutive turns that ended in a clearance denial. The first denial is
-  // not a question — the agent takes a legal route on its next turn by itself — and
-  // only a repeat means it is actually stuck.
+  // 018 — consecutive turns that ended in a clearance denial. The first is not a
+  // question — the agent takes a legal route by itself — and only a repeat is stuck.
   `ALTER TABLE agent ADD COLUMN denial_turns INTEGER NOT NULL DEFAULT 0;`,
 
   // 019 — when this group was last told main had moved. `rebase_seen` records
@@ -346,7 +329,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
 
   // 020 — how much of each subscription window is gone. One row per provider,
   // overwritten; a table rather than a variable so the header is not blank after a
-  // restart and does not wait for the next turn to arrive.
+  // restart, waiting for the next turn.
   `
   CREATE TABLE usage_snapshot (
     runtime TEXT PRIMARY KEY,
@@ -356,27 +339,22 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `,
 
   // 021 — the context window this agent's model actually reported. Both CLIs state
-  // the real number during a turn, so record it: a table in config goes stale the
-  // week a model ships.
+  // it during a turn: a table in config goes stale the week a model ships.
   `ALTER TABLE agent ADD COLUMN context_window INTEGER;`,
 
   // 022 — which provider an agent runs on, and when that provider is out of quota.
-  //
-  // The window belongs to the account, not to the group that happened to hit it.
-  // `hold_until` is the whole mechanism: the scheduler will not dispatch a turn for
-  // a held provider, and it expires by clock, so nothing polls and nobody has to be
-  // awake to lift it.
+  // The window belongs to the account, not the group that hit it. `hold_until` is
+  // the whole mechanism: the scheduler will not dispatch for a held provider, and it
+  // expires by clock, so nothing polls and nobody has to be awake to lift it.
   `
   ALTER TABLE agent ADD COLUMN runtime TEXT NOT NULL DEFAULT 'claude';
   ALTER TABLE usage_snapshot ADD COLUMN hold_until INTEGER;
   `,
 
-  // 023 — the dollar columns go.
-  //
-  // They stay in the CREATE above because that block is history: a fresh database
-  // walks the same path an old one did, and a migration that drops a column the
-  // schema never created fails on every new install. Nothing displays them and
-  // nothing can — two subscriptions pay for this, so the figure was never a bill.
+  // 023 — the dollar columns go. They stay in the CREATE above because that block is
+  // history: a fresh database walks the same path an old one did, and dropping a
+  // column the schema never created fails on every new install. Two subscriptions
+  // pay for this, so the figure was never a bill.
   `
   ALTER TABLE grp DROP COLUMN spent_usd;
   ALTER TABLE slice DROP COLUMN spent_usd;
@@ -384,8 +362,8 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `,
 
   // 024 — one line of what a question is about, for the queue. 待办 showed the
-  // question itself, which is an agent writing to another agent, in front of a
-  // reader whose whole job here is to pick which one to open.
+  // question itself — an agent writing to another agent — to a reader whose whole
+  // job here is picking which one to open.
   `ALTER TABLE escalation ADD COLUMN brief TEXT;`,
 
   // 025 — what kind of thing is being asked. One bad premise strands every slice
@@ -393,24 +371,19 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // problem said twelve times — twelve decisions on a page where there is one.
   `ALTER TABLE escalation ADD COLUMN kind TEXT;`,
 
-  // 026 — the group's sandbox.
-  //
-  // Durable because the Sandbox object is not: a restarted orchestrator reconnects
-  // to the container that is still running, or the turn's session — and with it the
-  // cached prefix the whole cost model rests on — dies with the process that
-  // created it. Two columns, not a join table: a sandbox has two possible owners,
-  // a group or a project's standing roles.
+  // 026 — the group's sandbox. Durable because the Sandbox object is not: a
+  // restarted orchestrator reconnects to the container still running, or the turn's
+  // session — and the cached prefix the cost model rests on — dies with the process.
+  // Two columns, not a join table: a group or a project's standing roles owns it.
   `
   ALTER TABLE grp ADD COLUMN sandbox_id TEXT;
   ALTER TABLE project ADD COLUMN sandbox_id TEXT;
   `,
 
-  // 027 — where each runtime's credentials come from.
-  //
-  // The value never enters the sandbox: it is written to the egress sidecar's vault
-  // and injected on the way out (docs/adr/005). It never enters an event, a prompt
-  // or a log either, and the API only ever returns it masked. `base_url` is what
-  // makes an OpenAI-compatible endpoint a configuration rather than a fork.
+  // 027 — where each runtime's credentials come from. The value never enters the
+  // sandbox: it goes to the egress sidecar's vault and is injected on the way out
+  // (docs/adr/005), never into an event, a prompt or a log, and the API returns it
+  // masked. `base_url` makes an OpenAI-compatible endpoint config rather than a fork.
   `
   CREATE TABLE runtime_auth (
     runtime    TEXT PRIMARY KEY,
@@ -421,13 +394,10 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   );
   `,
 
-  // 028 — when a sandbox was built, so it can be told from the credential in it.
-  //
-  // A sidecar is loaded with the credentials that existed when its sandbox was
-  // created and never again, so storing one has to kill the running sandboxes. The
-  // fix that lasts is not a third call to the same helper but a fact on the row: a
-  // sandbox older than the newest credential is stale, whoever stored it, and the
-  // watchdog reaps it on the next tick.
+  // 028 — when a sandbox was built, so it can be told from the credential in it. A
+  // sidecar is loaded with the credentials that existed at creation and never again,
+  // so a sandbox older than the newest credential is stale, whoever stored it, and
+  // the watchdog reaps it on the next tick. A fact on the row, not a third caller.
   `
   ALTER TABLE grp ADD COLUMN sandbox_at INTEGER;
   ALTER TABLE project ADD COLUMN sandbox_at INTEGER;
@@ -441,8 +411,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `,
 
   // 030 — server-scope settings that are not a project's and not the yaml's. The
-  // skill tick boxes are the first: they belong to this machine rather than to a
-  // project, and the boss edits them in the panel.
+  // skill tick boxes are the first: this machine's, not a project's.
   `
   CREATE TABLE setting (
     k TEXT PRIMARY KEY,
@@ -463,30 +432,22 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   ALTER TABLE project ADD COLUMN base_branch TEXT;
   `,
 
-  // 033 — skill paths in old messages point at a machine the agent cannot see.
-  //
-  // The composer used to insert a path relative to the boss's home, which is a file
-  // the agent is told to read and cannot now that turns run in a container. These
-  // bodies are re-injected into later turns, which is why this is worth rewriting
-  // rather than leaving as history: `/name` is what both CLIs resolve, wherever the
-  // skill actually sits.
+  // 033 — skill paths in old messages point at a machine the agent cannot see. These
+  // bodies are re-injected into later turns, which is why they are rewritten rather
+  // than left as history: `/name` is what both CLIs resolve, wherever the skill sits.
   rewriteSkillPaths,
 
-  // 034 — a project is `owner/name`, not a directory on whoever's laptop.
-  //
-  // Every project now comes from GitHub (007 §2). The conversion needs neither git
-  // nor the network: the remote was recorded at registration and `parseRepo` reads
-  // the slug out of it. A row that cannot be converted keeps exactly what it had —
-  // guessing an owner from a directory name would write a repository that may
-  // belong to somebody else, and dropping the row deletes a project the boss chose.
+  // 034 — a project is `owner/name`, not a directory on whoever's laptop (007 §2).
+  // Needs neither git nor the network: `parseRepo` reads the slug out of the remote
+  // recorded at registration. A row that cannot be converted keeps exactly what it
+  // had — a guessed owner writes somebody else's repository, and dropping it deletes
+  // a project the boss chose.
   slugRepoPaths,
 
-  // 035 — what this branch is called in a log, written by an agent that read it.
-  //
-  // Two columns rather than one so the commit and the PR can differ where they
-  // should: `pr_title` is the subject both use, `pr_summary` is the body of the
-  // commit and the first section of the PR — the record sections below it are still
-  // built from the database, which knows them better than any agent.
+  // 035 — what this branch is called in a log, written by an agent that read it. Two
+  // columns so the commit and the PR can differ where they should: `pr_title` is the
+  // subject both use, `pr_summary` the commit body and the PR's first section. The
+  // record sections below it stay built from the database, which knows them better.
   `
   ALTER TABLE grp ADD COLUMN pr_title TEXT;
   `,
@@ -494,13 +455,10 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   ALTER TABLE grp ADD COLUMN pr_summary TEXT;
   `,
 
-  // 036 — two settings that predate the settings table, onto it.
-  //
-  // Keeping them special means one value with two homes and a precedence order that
-  // exists only in code — the shape this project has been burned by (see
-  // `grp.worktree`, a column nothing wrote and four things read). JSON-quoted on
-  // the way across, because the settings table stores JSON and these two stored the
-  // bare string.
+  // 036 — two settings that predate the settings table, onto it. Keeping them
+  // special means one value with two homes and a precedence order that exists only
+  // in code (see `grp.worktree`). JSON-quoted on the way across, because the
+  // settings table stores JSON and these two stored the bare string.
   `
   INSERT OR REPLACE INTO setting (k, v)
     SELECT 'cfg.sandbox.image', json_quote(v) FROM setting WHERE k = 'sandbox_image';
@@ -510,11 +468,9 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `,
 
   // 037 — why a group is paused, so that resuming can be about that reason.
-  //
-  // `paused_at` said when, never why, and eight places wrote it for eight different
-  // causes — so the one bulk resume in the tree matched every PAUSED row there was.
-  // Backfilled as 'unknown' rather than guessed: an existing PAUSED row is one whose
-  // cause was never recorded, and a wrong reason resumes the wrong group.
+  // `paused_at` said when, never why, and eight places wrote it for eight causes, so
+  // the one bulk resume matched every PAUSED row there was. Backfilled 'unknown'
+  // rather than guessed: a wrong reason resumes the wrong group.
   `
   ALTER TABLE grp ADD COLUMN pause_reason TEXT;
   UPDATE grp SET pause_reason = 'unknown' WHERE status IN ('PAUSED', 'PAUSING', 'PARKED');
@@ -550,14 +506,11 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   CREATE INDEX event_correlation ON event (correlation_id, seq);
   `,
 
-  // 040 — spans land here, so the panel has a trace to read without a collector.
-  //
-  // The three scope columns are nullable because a system span belongs to no
-  // project, and they are deliberately **not** foreign keys: a span is an
-  // observation of something that happened, not a reference to something that still
-  // exists. Retention, not referential integrity, is what bounds this table. Three
-  // indexes: `trace_id` for a whole trace, `span_scope` for a group or slice, and
-  // `span_age` for the retention scan, which neither of the others can serve.
+  // 040 — spans land here, so the panel has a trace to read without a collector. The
+  // scope columns are nullable (a system span belongs to no project) and deliberately
+  // **not** foreign keys: a span is an observation, not a reference to something that
+  // still exists, and retention rather than referential integrity bounds the table.
+  // `span_age` is its own index because the retention scan is what neither other serves.
   `
   CREATE TABLE span (
     trace_id        TEXT    NOT NULL,
@@ -579,26 +532,21 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `,
 
   // 041 — where a paused group came from, so resuming can put it back. `release`
-  // restored RUNNING unconditionally, and `mergequeue.queue()` filters on
-  // `status = 'PR_OPEN'`, so a rate-limited turn on an audited branch took the
-  // group out of the merge order silently.
+  // restored RUNNING unconditionally while `mergequeue.queue()` filters on
+  // `status = 'PR_OPEN'`, so a rate-limited turn silently left the merge order.
   `
   ALTER TABLE grp ADD COLUMN paused_from TEXT;
   `,
-  // 042 — why a span failed. `setStatus` takes a message and every error path in
-  // this repository passes one, and the table had nowhere to put it: the panel
-  // could say `index.ask` failed 2,835 times and never that the reason was a
-  // missing credential. Answering that took a query against the database, which
-  // is the thing 系统耗时 exists to make unnecessary.
+  // 042 — why a span failed. `setStatus` takes a message and every error path passes
+  // one; the table had nowhere to put it, so the panel could say `index.ask` failed
+  // and never that the reason was a missing credential.
   `
   ALTER TABLE span ADD COLUMN status_message TEXT;
   `,
   // 043 — whether the boss chose the base branch or we inferred it. `baseBranch`
   // asks GitHub for `default_branch` on every call and wrote the answer over
   // `base_branch` unconditionally, so a branch picked in settings was reverted
-  // within one tick — and the settings endpoint's own comment calls that box "a
-  // choice rather than a memory test". Seen twice in one event feed, 29 seconds
-  // apart, both announcing the same reversion.
+  // within one tick.
   `
   ALTER TABLE project ADD COLUMN base_branch_pinned INTEGER NOT NULL DEFAULT 0;
   `,

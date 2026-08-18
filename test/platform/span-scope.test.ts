@@ -474,7 +474,7 @@ test("a cycle in the parent ids terminates, and still counts what it cost", () =
   // — the last is the one that matters, because a walk without cycle detection
   // recurses to the depth cap and emits the ring sixty-four times.
   expect(rows.reduce((n, r) => n + r.count, 0)).toBe(3);
-  expect(rows.some((r) => r.path === "root")).toBe(true);
+  expect(rows.map((r) => r.path)).toContain("root");
   for (const row of rows) {
     const names = row.path.split(";");
     expect(new Set(names).size).toBe(names.length);

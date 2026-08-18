@@ -174,7 +174,7 @@ test.concurrent("a truthful claim with a passing gate reaches QA, not the boss",
   const slice = h.db.query<{ status: string }, []>("SELECT status FROM slice WHERE id = 1").get()!;
   expect(slice.status).toBe("qa");
   // A QA turn was queued; the boss is not involved until QA files a verdict.
-  expect(h.specs.some((s) => s.stable.systemAppend.includes("You are QA"))).toBe(true);
+  expect(h.specs.map((s) => s.stable.systemAppend).join("\n")).toContain("You are QA");
 });
 
 test.concurrent("a claim git cannot corroborate is sent back before any reviewer sees it", async () => {
@@ -322,7 +322,7 @@ test("with a retro and a green branch gate, the Auditor is called in", async () 
   await h.sched.drain();
 
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PR_OPEN");
-  expect(h.specs.some((s) => s.stable.systemAppend.includes("You are the Auditor"))).toBe(true);
+  expect(h.specs.map((s) => s.stable.systemAppend).join("\n")).toContain("You are the Auditor");
 });
 
 test("an auditor may not audit its own group", async () => {

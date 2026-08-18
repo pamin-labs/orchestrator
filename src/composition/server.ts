@@ -114,14 +114,6 @@ export async function shutdownRuntime(
 }
 
 /**
- * Nothing. The host runs no binary of its own any more — what is left on this
- * machine is the server, sqlite and mailbox polling, so a headless box with
- * docker, the image and a pasted token starts.
- *
- * Kept as a function rather than deleted: it is the one place to name a host
- * binary if one is ever needed again.
- */
-/**
  * How often the self-check runs, derived from the watchdog's own interval.
  *
  * Clamped rather than followed: below five seconds the `spawnSync` calls to the
@@ -132,6 +124,12 @@ export async function shutdownRuntime(
 export const readinessPeriodMs = (watchdogIntervalMs: number): number =>
   Math.min(Math.max(watchdogIntervalMs, 5_000), 30_000);
 
+/**
+ * Nothing. The host runs no binary of its own — what is left on this machine is
+ * the server, sqlite and mailbox polling, so a headless box with docker, the
+ * image and a pasted token starts. Kept as a function rather than deleted: the
+ * one place to name a host binary if one is ever needed again.
+ */
 export function missingBinaries(): string[] {
   return [];
 }
@@ -253,12 +251,12 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
  * Mostly per-tick chains, so without the check one recurring bug is a blocker
  * line every interval and the feed stops being readable. The console keeps all.
  */
-export function reportRejection(ctx: Ctx, e: unknown, said: string): string {
+export function reportRejection(bus: Bus, e: unknown, said: string): string {
   const why = (e instanceof Error ? (e.stack ?? e.message) : String(e)).slice(0, 600);
   consola.error(`unhandled rejection (kept running):\n${why}`);
   if (why === said) return said;
   try {
-    ctx.bus.emit({
+    bus.emit({
       author: "orchestrator",
       kind: "state_change",
       severity: "blocker",
@@ -273,11 +271,10 @@ export function reportRejection(ctx: Ctx, e: unknown, said: string): string {
 /**
  * What one poll result means for the group behind it.
  *
- * Four outcomes and they are not interchangeable: a merge lands the group, a
- * close stops it and asks the boss, a reopen puts it back, and anything else is
- * review feedback for the agents. Ordering matters — a PR can come back merged
- * and closed in the same poll, and treating that as a close would stop a group
- * whose work is already on the default branch.
+ * Four outcomes, not interchangeable: a merge lands the group, a close stops it
+ * and asks the boss, a reopen puts it back, anything else is review feedback.
+ * Order matters — a PR can come back merged *and* closed in one poll, and
+ * treating that as a close stops a group whose work is already on main.
  */
 export function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifier: Notifier): void {
   if (f.merged) {
@@ -292,11 +289,10 @@ export function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifier: Not
 /**
  * The boss closed the PR on GitHub.
  *
- * Leaves the merge queue rather than blocking it — the queue is strictly serial,
- * so a group that will never merge at its head stops every group behind it — and
- * stops as a group waiting on the boss, with both exits stated.
- *
- * Nothing here reopens it automatically: the close was deliberate.
+ * Leaves the merge queue rather than blocking it: the queue is strictly serial,
+ * so a group that will never merge at its head stops every group behind it. Stops
+ * as a group waiting on the boss, with both exits stated, and reopens nothing
+ * automatically — the close was deliberate.
  */
 function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): void {
   const g = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grpId);
@@ -350,23 +346,12 @@ function prReopened(ctx: Ctx, grpId: number, prNumber: number): void {
 }
 
 /**
- * Re-summarise what changed, once per tick, capped.
- *
- * The cap is the point: an index that could spend a hundred model calls in one
- * tick would be a worse version of the grepping it replaces. Twelve calls a tick
- * on the cheapest tier catches up over a few minutes and then costs nothing.
- */
-/**
  * The indexer's memory, per database rather than per process.
  *
- * These were three module-level containers keyed by project id alone, which
- * `AGENTS.md` invariant 11 forbids and which two tests proved: a second database
- * with a project id 1 inherited the first one's verdict, so a pass could be
- * skipped on the strength of a failure that happened somewhere else. One process
- * with one database never noticed, which is why it survived.
- *
- * A `WeakMap` because the owner is the database: when it goes, so does this, with
- * no sweep to write and nothing to forget to call.
+ * Three module-level containers keyed by project id alone, which `AGENTS.md`
+ * invariant 11 forbids: a second database with a project id 1 inherited the
+ * first one's verdict. A `WeakMap` because the owner is the database — when it
+ * goes so does this, with no sweep to write and nothing to forget to call.
  */
 interface IndexMemory {
   /** Content stamp of the last pass that finished clean, so an unchanged tree is free. */
@@ -394,9 +379,10 @@ const authStamp = (db: DB): number =>
 /**
  * Whether a pass would be spending calls that cannot be answered.
  *
- * Exported so the skip is testable: "the flag now stops the work" was the whole
- * of the fix, and the previous version of that claim — a flag that gated only the
- * warning — held for months because nothing asserted it.
+ * Keyed on the credential stamp, not on the project or the tree: nothing about a
+ * repository can make an unauthenticated CLI authenticate, so only a credential
+ * change is grounds to try again. Exported so the skip is testable — the previous
+ * version of that claim gated only the warning and nothing asserted it.
  */
 export function indexPaused(db: DB, projectId: number): boolean {
   return memory(db).down.get(projectId) === authStamp(db);
@@ -469,6 +455,13 @@ function indexStamp(heads: Map<string, string>): string {
   return heads.size ? Bun.hash([...heads].map(([file, head]) => `${file}${head}`).join("\n")).toString(16) : "";
 }
 
+/**
+ * Re-summarise what changed, once per tick, capped by `maxCalls`.
+ *
+ * The cap is the point: an index free to spend a hundred model calls in a tick
+ * would be a worse version of the grepping it replaces. Twelve a tick on the
+ * cheapest tier catches up over a few minutes and then costs nothing.
+ */
 async function buildProjectIndex(db: DB, projectId: number, heads: Map<string, string>, askIn: AskIn) {
   const excludes = indexExcludes(db, projectId);
   const files = [...heads.keys()].filter((file) => indexable(file, excludes));
@@ -512,10 +505,9 @@ export function recordIndexResult(
  * Which project pays for an index model call.
  *
  * Charged to the project's `indexer` row, so the most frequent model call in the
- * system stops being invisible in every cost total. A project-scoped call bills
- * itself; a group-scoped one bills the group's project. There is no util case:
- * nothing in the utility container asks a model — it has no agent in it, which
- * is the entire reason it may hold real tokens.
+ * system is not invisible in every cost total. A project-scoped call bills
+ * itself, a group-scoped one bills the group's project; there is no util case,
+ * because nothing in the utility container asks a model.
  */
 export function chargedProject(db: DB, scope: Scope): number | undefined {
   if ("project" in scope) return scope.project;
@@ -579,12 +571,10 @@ export function start(overrides: Partial<Config> = {}): Started {
 
   const dbPath = join(cfg.dataDir, "orchestrator.sqlite");
   const db = open(dbPath);
-  // The provider tokens are in `runtime_auth`, in plain text, and the default
-  // 0644 under 0755 is readable by every account on the machine. `.gitignore`
-  // is a different question from who on this host may read it.
-  //
-  // Best-effort: chmod is a no-op on Windows, and a filesystem that does not
-  // carry modes is not a reason to refuse to start.
+  // The provider tokens are in `runtime_auth` in plain text, and the default 0644
+  // under 0755 is readable by every account on the machine — `.gitignore` is a
+  // different question from who on this host may read it. Best-effort: a
+  // filesystem that carries no modes is not a reason to refuse to start.
   for (const p of [cfg.dataDir, dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
     try {
       chmodSync(p, p === cfg.dataDir ? 0o700 : 0o600);
@@ -666,12 +656,11 @@ export function start(overrides: Partial<Config> = {}): Started {
     })
       .then((r) => {
         if ("error" in r) {
-          // No remote, no gh auth, a rejected push: the branch is finished and
-          // has nowhere to go. Leave the queue rather than block it — a group at
-          // PR_OPEN with a null pr_number is one `pollPrs` skips forever, at the
-          // head of a strictly serial queue — and stop waiting on the boss.
-          // Answering un-pauses it, and the watchdog re-queues the Auditor's turn,
-          // which passes again and retries the PR. No mechanism only for this.
+          // No remote, no gh auth, a rejected push: the branch has nowhere to go.
+          // Leave the queue rather than block it — a group at PR_OPEN with a null
+          // pr_number is one `pollPrs` skips forever, at the head of a serial
+          // queue — and stop waiting on the boss. Answering un-pauses it and the
+          // watchdog retries the PR, so there is no mechanism only for this.
           hold(ctx.db, grpId, { reason: "merge", settled: true, leaveQueue: true });
           raise(db, {
             grpId,
@@ -814,12 +803,10 @@ export function start(overrides: Partial<Config> = {}): Started {
   const skills = restageSkills(db, cfg.skillsDir);
   if (skills.failed.length) consola.warn(`skills skipped (dangling): ${skills.failed.join(", ")}`);
 
-  // A server, if there is not one. Before preflight, so the check reports the
-  // state after we have done what we can rather than the state we walked in on
-  // — otherwise the first boot on a clean machine always prints a failure that
-  // fixed itself two seconds later.
-  //
-  // It never takes over a server it did not start. See `ensureServer`.
+  // A server, if there is not one, and never one it did not start (`ensureServer`).
+  // Before preflight, so the check reports the state after we have done what we
+  // can — otherwise the first boot on a clean machine prints a failure that fixed
+  // itself two seconds later.
   const sandboxServer = track(
     ensureServer(ctx)
       .then((st) => {
@@ -976,17 +963,14 @@ if (import.meta.main) {
     if (newest > dist) consola.warn("web/dist 比 web/src 旧 —— 跑一次 `bun run build:web`，不然页面是旧的");
   }
 
-  // A detached rejection must not be the end of the fleet: bun exits the process
-  // on one, which is right for a script and wrong for the only thing driving
-  // twelve containers.
-  //
-  // A backstop, not a licence. An unhandled rejection is still a bug, so it is
-  // logged and put on the record at `blocker`; the fix for each one is at its
-  // source, because this line can only say that something went wrong, never what
-  // should have happened instead. Installed once, like the signal handlers.
+  // A detached rejection must not end the fleet: bun exits the process on one,
+  // which is right for a script and wrong for the only thing driving twelve
+  // containers. A backstop, not a licence — it is logged and recorded at
+  // `blocker`, and the fix for each is at its source, because this line can only
+  // say something went wrong, never what should have happened. Installed once.
   let saidRejection = "";
   process.on("unhandledRejection", (e) => {
-    saidRejection = reportRejection(ctx, e, saidRejection);
+    saidRejection = reportRejection(ctx.bus, e, saidRejection);
   });
 
   // Let go of every turn we are reading before exiting, so the next boot sees

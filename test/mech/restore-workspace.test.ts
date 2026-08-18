@@ -55,7 +55,7 @@ test("a rebuilt sandbox gets the branch back and its dependencies installed", as
 test("with no recorded install command, the role that works it out is queued", async () => {
   const { ctx, queued } = harness();
   await restoreWorkspace(ctx, 1);
-  expect(queued().some((payload) => payload.role === "bootstrap")).toBe(true);
+  expect(queued().map((payload) => payload.role)).toContain("bootstrap");
 });
 
 test("a recorded command that stopped working hands the failure to that role", async () => {

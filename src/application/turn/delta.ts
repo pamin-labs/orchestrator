@@ -165,14 +165,14 @@ function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): void {
   if (payload.rejection) delta.rejection = payload.rejection;
 }
 
-function applyWorkCard(ctx: Ctx, agent: TurnAgent, job: TurnJob, delta: Delta): void {
-  if (job.slice_id) return applySliceCard(ctx.db, agent, job.slice_id, delta);
+function applyWorkCard(db: DB, agent: TurnAgent, job: TurnJob, delta: Delta): void {
+  if (job.slice_id) return applySliceCard(db, agent, job.slice_id, delta);
   if (!job.grp_id || job.payload.idea) return;
   // The slice list is the fallback for a turn with no stated reason. A payload
   // card is that reason — a lease result, a digest, a scribe brief — and none of
   // them has another way into the prompt.
   if (delta.card) return;
-  const slices = ctx.db
+  const slices = db
     .query<{ seq: number; title: string; status: SliceState; difficulty: string }, [number]>(
       "SELECT seq, title, status, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
     )
@@ -323,7 +323,7 @@ export async function buildTurnDelta(
 ): Promise<Delta> {
   const delta: Delta = {};
   applyPayloadCards(deps.ctx, job.payload, delta);
-  applyWorkCard(deps.ctx, agent, job, delta);
+  applyWorkCard(deps.ctx.db, agent, job, delta);
   applyHandoff(deps.ctx, job.grp_id, rotated, delta);
   const unread = readUnread(deps.ctx, agent, job.grp_id, deps.cfg);
   await applySkills(deps.ctx, agent, job, scope, delta);
