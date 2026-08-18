@@ -1,0 +1,47 @@
+# Accepted findings, each with a reason and a date it stops being accepted.
+#
+# Different from `ignore-unfixed`, which is a class — "nothing published to
+# apply". Everything here HAS a published fix this repository cannot reach, so
+# each entry is a decision with an owner and an expiry. When the date passes it
+# stops suppressing and the gate goes red, which is the point: an exception
+# nobody revisits is an exception that outlives its reason.
+#
+# Every entry below is the same situation: npm vendors about a hundred packages
+# under its own `node_modules` and pins them itself, and nothing this Dockerfile
+# does moves them. Three advisories landed there in one week, all fixed upstream
+# and none reachable from npm 12.0.2, which is the current release. Trivy has no
+# wildcard for a vulnerability id, so they are listed one by one — and that list
+# growing is the signal that the situation, not the entry, needs revisiting.
+#
+# The two real ways out, neither taken: drop npm from the image, which breaks
+# agents working in the many repositories that use it; or vendor a patched copy
+# inside npm's tree, which npm's next release undoes. Bun can install the two
+# agent CLIs — verified — but node's own tarball ships npm regardless, so that
+# alone does not remove it.
+#
+# Not covered: anything outside npm's tree. Node itself, the Debian layer and
+# the CLIs installed on top are all still gated.
+#
+# Re-check when npm publishes a release newer than 12.0.2.
+vulnerabilities:
+  - id: CVE-2026-14257
+    paths:
+      - usr/local/lib/node_modules/npm/**
+    statement: >-
+      brace-expansion, bundled by npm. 5.0.8 fixes it; npm 12.0.2 bundles 5.0.7. See the note at the top of this file for why
+      it is accepted rather than fixed.
+    expired_at: 2026-10-01
+  - id: CVE-2026-69152
+    paths:
+      - usr/local/lib/node_modules/npm/**
+    statement: >-
+      brace-expansion, bundled by npm. Same bundled copy, second advisory in the same week. See the note at the top of this file for why
+      it is accepted rather than fixed.
+    expired_at: 2026-10-01
+  - id: CVE-2026-69192
+    paths:
+      - usr/local/lib/node_modules/npm/**
+    statement: >-
+      ip-address, bundled by npm. 10.3.1 fixes it; npm bundles 10.2.0 through its agent stack. See the note at the top of this file for why
+      it is accepted rather than fixed.
+    expired_at: 2026-10-01

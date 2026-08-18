@@ -60,6 +60,17 @@ coherent change as a contract.
 - English is used for code, comments, errors, branches, commits, and pull
   requests. Runtime output may follow the configured language.
 
+## Before opening a pull request
+
+`bun run preflight` runs every gate CI runs, in about twenty seconds, and says
+which ones it could not run and why. Steps needing `actionlint`, `shellcheck` or
+`docker` are skipped with a note rather than passed over silently — install them
+(`brew install actionlint shellcheck`) to close the gap locally.
+
+`security-codeql` and `pr-plan` have no local equivalent: the first runs on
+GitHub's infrastructure, the second reads the pull request body. Filling in
+`.github/pull_request_template.md` completely is what the second checks.
+
 ## Commits and DCO
 
 Use a Conventional Commit prefix — `feat` `fix` `docs` `test` `refactor` `perf`

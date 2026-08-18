@@ -30,7 +30,8 @@
     "audit:fix": "fallow fix --yes --no-create-config --format compact",
     "validate": "bun run format:check && bun run typecheck && bun run lint && bun run build:web && bun run perf:budget && bun run test",
     "test:stress": "bun run scripts/stress-tests.ts",
-    "check": "bun run audit && bun run validate"
+    "check": "bun run audit && bun run validate",
+    "preflight": "bun run scripts/preflight.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",

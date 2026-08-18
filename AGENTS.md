@@ -167,6 +167,26 @@ or run the full suite unless they own integration.
   reported 50s against a 30s interval for as long as it was a single span.
   Details in [`observability`](docs/standards/observability.md).
 
+## Before opening a pull request
+
+```bash
+bun run preflight
+```
+
+One command, everything CI gates on, about twenty seconds. It reports each step
+as passed, failed, or **skipped with the reason** — a step needing a binary this
+repository does not vendor (`actionlint`, `shellcheck`, `docker`) says so and
+names what CI will do instead, because a preflight that silently skips the
+container scan promises a green run it never tested.
+
+Two checks have no local form and are named at the end of every run:
+`security-codeql` runs on GitHub's infrastructure, and `pr-plan` reads a pull
+request body that does not exist yet — fill in `.github/pull_request_template.md`
+and it passes.
+
+CI minutes cost money and a red check costs a round trip. Push knowing the
+answer.
+
 ## Commits
 
 Before every commit, run TypeScript and the full Bun suite, then stage exact
