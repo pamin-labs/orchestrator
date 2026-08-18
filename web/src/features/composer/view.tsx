@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { ClipboardPaste, Paperclip, SquareSlash, X } from "lucide-react";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { type RefObject, useEffect, useRef, useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "../../ui/button";
@@ -343,7 +343,14 @@ export function Composer({
 }) {
   const [text, setText] = useState(initial);
   const [files, setFiles] = useState<Attached[]>([]);
-  const [busy, setBusy] = useState(false);
+  // `useTransition`, not a `busy` flag written by hand. Each of the three async
+  // paths below used to bracket itself with `setBusy(true)`/`setBusy(false)`, and
+  // both ways that goes wrong were present: `upload`'s early return had to
+  // remember the reset inside its own `catch`, and `fromDisk` cleared the flag
+  // before the two awaits that follow it — so the composer read as idle while it
+  // was still parsing the response. React keeps `busy` true for as long as the
+  // async function runs, which is the property being hand-maintained.
+  const [busy, startTransition] = useTransition();
   const [drag, setDrag] = useState(false);
   const [slash, setSlash] = useState<Slash | null>(null);
   const [picking, setPicking] = useState(false);
@@ -418,45 +425,42 @@ export function Composer({
    * and everything it does pick it reads into memory to post straight back to the
    * same disk. Our own picker walks the real filesystem, so a folder is one click.
    */
-  const fromDisk = async (paths: string[]) => {
-    setBusy(true);
-    const r = await api.attach.local.$post({ json: { paths } }).catch(() => null);
-    setBusy(false);
-    if (!r) return void toast.error("加不进来", { duration: 8000 });
-    const result = await readJson(r, AttachmentsSchema);
-    if (!result.ok) return void toast.error(result.text, { duration: 8000 });
-    addFiles(result.data.files);
-  };
+  const fromDisk = (paths: string[]) =>
+    startTransition(async () => {
+      const r = await api.attach.local.$post({ json: { paths } }).catch(() => null);
+      if (!r) return void toast.error("加不进来", { duration: 8000 });
+      const result = await readJson(r, AttachmentsSchema);
+      if (!result.ok) return void toast.error(result.text, { duration: 8000 });
+      addFiles(result.data.files);
+    });
 
-  const upload = async (list: FileList | File[] | Picked[]) => {
-    const picked = asPicked(list);
-    if (!picked.length) return;
-    setBusy(true);
-    // A folder copied in Finder arrives as an unreadable zero-byte entry and the
-    // fetch dies with ERR_ACCESS_DENIED — as an unhandled rejection in the console
-    // and nothing at all on screen.
-    let r: Response;
-    try {
-      // Relative paths travel beside files so the server can rebuild a folder as
-      // one attachment. Hono RPC owns the multipart encoding and route contract.
-      r = await api.attach.$post({
-        form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) },
-      });
-    } catch {
-      setBusy(false);
-      return void toast.error("浏览器读不到这些内容。文件夹得拖进来。", { duration: 8000 });
-    }
-    setBusy(false);
-    // A file that silently fails to attach is worse than one never added: the text
-    // goes out referencing a path, and the agent is told to Read something missing.
-    const result = await readJson(r, AttachmentsSchema);
-    if (!result.ok) return void toast.error(result.text, { duration: 8000 });
-    // Preview from the local File, not a server round trip.
-    addFiles(
-      result.data.files,
-      picked.map(({ file }) => (file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined)),
-    );
-  };
+  const upload = (list: FileList | File[] | Picked[]) =>
+    startTransition(async () => {
+      const picked = asPicked(list);
+      if (!picked.length) return;
+      // A folder copied in Finder arrives as an unreadable zero-byte entry and the
+      // fetch dies with ERR_ACCESS_DENIED — as an unhandled rejection in the console
+      // and nothing at all on screen.
+      let r: Response;
+      try {
+        // Relative paths travel beside files so the server can rebuild a folder as
+        // one attachment. Hono RPC owns the multipart encoding and route contract.
+        r = await api.attach.$post({
+          form: { file: picked.map(({ file }) => file), rel: picked.map(({ rel }) => rel) },
+        });
+      } catch {
+        return void toast.error("浏览器读不到这些内容。文件夹得拖进来。", { duration: 8000 });
+      }
+      // A file that silently fails to attach is worse than one never added: the text
+      // goes out referencing a path, and the agent is told to Read something missing.
+      const result = await readJson(r, AttachmentsSchema);
+      if (!result.ok) return void toast.error(result.text, { duration: 8000 });
+      // Preview from the local File, not a server round trip.
+      addFiles(
+        result.data.files,
+        picked.map(({ file }) => (file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined)),
+      );
+    });
 
   /**
    * Read the clipboard on demand.
@@ -469,7 +473,11 @@ export function Composer({
     try {
       const { images, lines, empty } = await readClipboard();
       setText((prev) => lines.reduce(appendLine, prev));
-      if (images.length) await upload(images);
+      // Not awaited, and not only because a transition returns void: `upload`
+      // toasts its own failures, so awaiting it here put upload errors inside the
+      // clipboard `catch` below and reported them as "the browser will not let us
+      // read the clipboard" — the wrong sentence for a file the server rejected.
+      if (images.length) upload(images);
       else if (empty) toast.error("剪贴板是空的");
     } catch {
       // Safari and a denied permission both land here.
@@ -477,13 +485,12 @@ export function Composer({
     }
   };
 
-  const send = async () => {
-    if (!draft.text || !onSubmit) return;
-    setBusy(true);
-    const ok = await onSubmit(draft);
-    setBusy(false);
-    if (ok) clear();
-  };
+  const send = () =>
+    startTransition(async () => {
+      if (!draft.text || !onSubmit) return;
+      const ok = await onSubmit(draft);
+      if (ok) clear();
+    });
 
   /** Type the slash for them, so the picker opens the one way it already does. */
   const openSkills = () => {
@@ -509,13 +516,15 @@ export function Composer({
         setDrag(false);
         // dataTransfer.files holds a dropped folder as one unreadable entry with
         // no contents; the entry API is the only way to walk into it.
-        void walk(e.dataTransfer.items).then((picked) => upload(picked.length ? picked : e.dataTransfer.files));
+        void walk(e.dataTransfer.items).then((picked) => {
+          upload(picked.length ? picked : e.dataTransfer.files);
+        });
       }}
       onPaste={(e) => {
         const f = [...e.clipboardData.files];
         if (f.length) {
           e.preventDefault();
-          void upload(f);
+          upload(f);
         }
       }}
     >
@@ -538,7 +547,7 @@ export function Composer({
           const act = keyAction(e, slash !== null, matches.length > 0);
           if (!act) return;
           e.preventDefault();
-          if (act === "send") void send();
+          if (act === "send") send();
           else if (act === "skill") void insertSkill(matches[0]!);
           else setSlash(null);
         }}
