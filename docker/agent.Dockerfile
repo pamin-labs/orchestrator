@@ -25,8 +25,43 @@
 FROM oven/bun:1.3.14@sha256:50317d83cd5a5ae1d8b35b3379c69f57ce1a0dbf4def91f0965653d767851834
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates curl nodejs npm \
+ && apt-get install -y --no-install-recommends git ca-certificates curl xz-utils \
  && rm -rf /var/lib/apt/lists/*
+
+# Node from nodejs.org, not from apt, and the difference is a hundred CVEs.
+#
+# Debian's `npm` package is a metapackage over the registry: installing it pulls
+# `libnode-dev`, `libnode115` and the whole `node-*` set — `node-lodash`,
+# `node-postcss`, `node-undici`, `node-minimatch` and dozens more — each frozen
+# at whatever Debian shipped and each its own advisory surface. Trivy counted
+# **145 HIGH/CRITICAL** in this image's Debian layer with that line in place,
+# and none of them were reachable from anything this container runs: they are
+# libraries nothing here imports, installed because a package manager thought
+# `npm` needed them.
+#
+# The upstream tarball is one self-contained toolchain — node, npm and nothing
+# else — on the current LTS rather than on Debian's, and it updates by changing
+# two lines here rather than by waiting for a distribution rebuild.
+#
+# Checksummed against the release's own `SHASUMS256.txt`, because a tarball
+# fetched over the network into an image that later holds credentials is exactly
+# the place an unverified download is worth refusing.
+ARG NODE_VERSION=24.19.0
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH:-amd64}" in \
+      amd64) arch=x64; sha=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647 ;; \
+      arm64) arch=arm64; sha=01443c1e1a29e531ccad5a46fefa6df490d2189c49f7955904aecdbb0fe86fdc ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    archive="node-v${NODE_VERSION}-linux-${arch}.tar.xz"; \
+    curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/${archive}"; \
+    echo "${sha}  ${archive}" | sha256sum --check -; \
+    tar -xJf "${archive}" -C /usr/local --strip-components=1 --no-same-owner \
+      --exclude=CHANGELOG.md --exclude=LICENSE --exclude=README.md; \
+    rm "${archive}"; \
+    node --version; \
+    npm --version
 
 ARG CLAUDE_CODE_VERSION=2.1.233
 ARG CODEX_VERSION=0.147.0
