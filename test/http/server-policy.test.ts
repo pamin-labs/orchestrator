@@ -6,6 +6,8 @@ import {
   recordIndexResult,
   indexPaused,
   indexTargets,
+  indexThrew,
+  INDEX_THROW_BACKOFF_MS,
   reportRejection,
 } from "../../src/composition/server.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -239,4 +241,42 @@ test("an index model that answers nothing is not asked again until credentials c
   // A pass that worked clears it outright.
   recordIndexResult(ctx, p, "sha-3", { calls: 4, failed: 0, files: 9 });
   expect(indexPaused(ctx.db, p)).toBe(false);
+});
+
+/**
+ * A pass that *threw* is not a pass whose calls failed.
+ *
+ * `recordIndexResult` arms the credential pause, and a throw never reaches it —
+ * the catch is at the tick, above everything. So this path retried every thirty
+ * seconds forever, paying for a checkout and a `treeHeads` each time, and emitted
+ * a fresh event on every one because `bus.emit` has no dedup. Seen live as
+ * `could not write /tmp/orch-prompt-….txt into the container: socket closed`,
+ * repeating in the feed.
+ *
+ * A throw is not a credential problem, so it does not wait on a credential: it
+ * backs off, and it says the reason once per distinct reason.
+ */
+test("an index pass that throws backs off and says the reason once", () => {
+  const ctx = testContext();
+  const p = project(ctx.db);
+  ctx.db.run("UPDATE project SET remote = ? WHERE id = ?", ["git@example.com:o/r.git", p]);
+  const t0 = 1_000_000;
+  expect(indexTargets(ctx.db, t0).map((t) => t.id)).toEqual([p]);
+
+  indexThrew(ctx, new Error("socket closed"), t0);
+  expect(indexTargets(ctx.db, t0 + 1_000)).toEqual([]);
+  // Still inside the window at the last moment before it lapses.
+  expect(indexTargets(ctx.db, t0 + INDEX_THROW_BACKOFF_MS - 1)).toEqual([]);
+  expect(indexTargets(ctx.db, t0 + INDEX_THROW_BACKOFF_MS).map((t) => t.id)).toEqual([p]);
+
+  const said = () =>
+    ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM event WHERE body LIKE '%索引刷新出错%'").get()!.c;
+  expect(said()).toBe(1);
+  // The same socket failure is one piece of news however often it happens.
+  indexThrew(ctx, new Error("socket closed"), t0);
+  indexThrew(ctx, new Error("socket closed"), t0);
+  expect(said()).toBe(1);
+  // A different one is worth saying.
+  indexThrew(ctx, new Error("no such container"), t0);
+  expect(said()).toBe(2);
 });

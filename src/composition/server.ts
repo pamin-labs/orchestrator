@@ -218,11 +218,7 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
   // Caught here rather than at the process backstop, which emits a blocker per
   // tick, forever — `bus.emit` has no dedup.
   if (!inFlight.index) {
-    inFlight.index = track(
-      refreshIndex(ctx).catch((error: unknown) => {
-        ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${errText(error)}` });
-      }),
-    ).finally(() => {
+    inFlight.index = track(refreshIndex(ctx).catch((error: unknown) => indexThrew(ctx, error))).finally(() => {
       inFlight.index = null;
     });
   }
@@ -360,6 +356,11 @@ interface IndexMemory {
   warned: Set<number>;
   /** Projects whose model answered nothing, against the credential stamp at the time. */
   down: Map<number, number>;
+  /** When a pass that *threw* stops being backed off. Not per project: a socket
+   *  that will not carry a file carries nobody's. */
+  blockedUntil: number;
+  /** The last throw's reason, so the same one is not announced every tick. */
+  lastError: string;
 }
 
 const memories = new WeakMap<DB, IndexMemory>();
@@ -367,7 +368,7 @@ const memories = new WeakMap<DB, IndexMemory>();
 function memory(db: DB): IndexMemory {
   const found = memories.get(db);
   if (found) return found;
-  const fresh: IndexMemory = { at: new Map(), warned: new Set(), down: new Map() };
+  const fresh: IndexMemory = { at: new Map(), warned: new Set(), down: new Map(), blockedUntil: 0, lastError: "" };
   memories.set(db, fresh);
   return fresh;
 }
@@ -384,6 +385,34 @@ const authStamp = (db: DB): number =>
  * change is grounds to try again. Exported so the skip is testable — the previous
  * version of that claim gated only the warning and nothing asserted it.
  */
+/**
+ * An index pass that *threw*, which is not the same as one whose calls failed.
+ *
+ * `recordIndexResult` is what arms the credential pause, and a throw never
+ * reaches it — so this path retried every thirty seconds forever, each time
+ * paying for a checkout and a `treeHeads` before failing, and each time emitting
+ * a fresh event because `bus.emit` has no dedup. Seen live as
+ * `could not write /tmp/orch-prompt-….txt into the container: socket closed`,
+ * repeating.
+ *
+ * A throw is not a credential problem, so it does not wait on a credential: it
+ * backs off for a few ticks and says the reason once per distinct reason. A
+ * socket that recovers is picked up by the next attempt; one that does not stops
+ * costing a container round trip per tick.
+ */
+export const INDEX_THROW_BACKOFF_MS = 5 * 60_000;
+
+export function indexThrew(ctx: Ctx, error: unknown, now = Date.now()): void {
+  const reason = errText(error);
+  const mem = memory(ctx.db);
+  mem.blockedUntil = now + INDEX_THROW_BACKOFF_MS;
+  // Once per reason, not once per tick: the same socket failure is one piece of
+  // news however many times it happens, and a different one is worth saying.
+  if (reason === mem.lastError) return;
+  mem.lastError = reason;
+  ctx.bus.emit({ author: "orchestrator", kind: "state_change", body: `索引刷新出错：${reason}` });
+}
+
 export function indexPaused(db: DB, projectId: number): boolean {
   return memory(db).down.get(projectId) === authStamp(db);
 }
@@ -396,7 +425,8 @@ export function indexPaused(db: DB, projectId: number): boolean {
  * to ask — and the second of those used to be decided *after* a container
  * checkout had already been paid for.
  */
-export function indexTargets(db: DB): IndexProject[] {
+export function indexTargets(db: DB, now = Date.now()): IndexProject[] {
+  if (now < memory(db).blockedUntil) return [];
   return db
     .query<{ id: number; remote: string | null }, []>("SELECT id, remote FROM project")
     .all()
@@ -494,6 +524,9 @@ export function recordIndexResult(
   if (result.failed > 0 && result.failed === result.calls) return warnModelDown(ctx, projectId, result.failed);
   if (!result.calls) return;
   memory(ctx.db).down.delete(projectId);
+  // A pass that worked is the only evidence the throw path has recovered.
+  memory(ctx.db).blockedUntil = 0;
+  memory(ctx.db).lastError = "";
   ctx.bus.emit({
     author: "librarian",
     kind: "state_change",
