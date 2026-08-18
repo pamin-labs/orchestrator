@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { raise } from "../../src/mech/flow/escalate.ts";
@@ -34,10 +34,17 @@ function sources(
   root = dir,
 ): Array<{ path: string; text: string }> {
   const out: Array<{ path: string; text: string }> = [];
-  for (const entry of readdirSync(dir)) {
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) out.push(...sources(path, root));
-    else if (entry.endsWith(".ts")) out.push({ path: path.slice(root.length + 1), text: readFileSync(path, "utf8") });
+  // `withFileTypes`, so the kind comes back from the same `readdir` call that
+  // produced the name. It was a `statSync` on the joined path afterwards, which
+  // is a second syscall against a path that could have changed in between —
+  // CodeQL's `js/file-system-race`, and correct: check-then-use on a filesystem
+  // is a race whether or not anything is racing today. The dirent closes the
+  // window rather than narrowing it, and costs a syscall less.
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...sources(path, root));
+    else if (entry.name.endsWith(".ts"))
+      out.push({ path: path.slice(root.length + 1), text: readFileSync(path, "utf8") });
   }
   return out;
 }
