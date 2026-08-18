@@ -125,8 +125,10 @@ test("each runtime asks its own provider unless a gateway is configured", () => 
 
 test("only 401 and 403 are read as the credential being refused", () => {
   expect(credentialVerdict(200)).toEqual({ ok: true, detail: "能用" });
-  expect(credentialVerdict(401).ok).toBe(false);
-  expect(credentialVerdict(403).ok).toBe(false);
+  expect({ "401": credentialVerdict(401).ok, "403": credentialVerdict(403).ok }).toEqual({
+    "401": false,
+    "403": false,
+  });
 
   // Everything else is unverified, not refused. A 500 or a 429 from a gateway
   // says nothing about the token, and calling it bad costs the boss a re-paste

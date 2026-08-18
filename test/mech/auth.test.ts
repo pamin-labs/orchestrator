@@ -48,7 +48,7 @@ test("the real value never leaves the process except into the vault", () => {
   const { credentials, env } = vaultFor(db);
   expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe(decoy("claude", "oauth_token"));
   expect(env.CLAUDE_CODE_OAUTH_TOKEN).not.toBe(REAL);
-  expect(env.CLAUDE_CODE_OAUTH_TOKEN!.startsWith("sk-ant-oat01-")).toBe(true);
+  expect(env.CLAUDE_CODE_OAUTH_TOKEN!).toStartWith("sk-ant-oat01-");
 
   // And what the sidecar gets, bound to the one host it is for.
   expect(credentials).toEqual([{ name: "claude", value: REAL, hosts: ["api.anthropic.com"] }]);
@@ -104,12 +104,15 @@ test("preflight names what is missing and how to fix it, rather than degrading",
     verify: async () => ({ ok: true, detail: "能用" }),
   });
   const by = Object.fromEntries(checks.map((c) => [c.name, c]));
-  expect(by.docker!.ok).toBe(false);
   // The fix for a missing server is a uvx command, so a machine without uv has
-  // two problems that look like one.
-  expect(by["uv / python"]!.ok).toBe(false);
-  expect(by["opensandbox-server"]!.ok).toBe(false);
-  expect(by["credential:claude"]!.ok).toBe(false);
+  // two problems that look like one. Asserted as one map, so a failure names the
+  // check that started passing rather than a line number.
+  expect({
+    docker: by.docker!.ok,
+    "uv / python": by["uv / python"]!.ok,
+    "opensandbox-server": by["opensandbox-server"]!.ok,
+    "credential:claude": by["credential:claude"]!.ok,
+  }).toEqual({ docker: false, "uv / python": false, "opensandbox-server": false, "credential:claude": false });
   // Every failure carries the command that fixes it. Without that this is a
   // list of nouns, and the failure mode it replaces — agents that silently do
   // nothing — is already hard enough to read.
@@ -240,11 +243,13 @@ test("the ChatGPT login is renewed here, once, and by codex rather than by us", 
   const fresh = new Date().toISOString();
   const old = new Date(Date.now() - 9 * 24 * 3600_000).toISOString();
   const fresher = new Date(Date.now() + 1000).toISOString();
-  expect(isStale(parseAuth(JSON.stringify({ last_refresh: fresh }))!)).toBe(false);
-  expect(isStale(parseAuth(JSON.stringify({ last_refresh: old }))!)).toBe(true);
   // Never refreshed, or a date nothing can parse: assume it needs one.
-  expect(isStale({})).toBe(true);
-  expect(isStale({ last_refresh: "sometime last week" })).toBe(true);
+  expect({
+    fresh: isStale(parseAuth(JSON.stringify({ last_refresh: fresh }))!),
+    old: isStale(parseAuth(JSON.stringify({ last_refresh: old }))!),
+    "never refreshed": isStale({}),
+    unparseable: isStale({ last_refresh: "sometime last week" }),
+  }).toEqual({ fresh: false, old: true, "never refreshed": true, unparseable: true });
 
   // The refresher's own CODEX_HOME, inside the utility container: renewing must
   // not touch the boss's own terminal login, and must not be a group's.

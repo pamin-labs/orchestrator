@@ -270,7 +270,7 @@ test("the utility container never checks anything out, and never runs a hook", a
   // somewhere something would run it.
   const clone = calls.find((c) => c.includes("core.hooksPath=/dev/null") && c.includes("clone"));
   expect(clone).toContain("--bare");
-  expect(calls.some((c) => c.includes("core.hooksPath=/dev/null") && /\b(checkout|submodule)\b/.test(c))).toBe(false);
+  expect(calls.filter((c) => c.includes("core.hooksPath=/dev/null") && /\b(checkout|submodule)\b/.test(c))).toEqual([]);
 });
 
 test("the utility container refuses a verb that is not one of its four", async () => {
@@ -443,7 +443,7 @@ test("the lessons list is capped where it is written", async () => {
   // A list that keeps growing becomes the very context cost it exists to prevent.
   expect(rows.length).toBe(LESSON_CAP);
   expect(rows[0]!.body).toBe("the newest lesson");
-  expect(rows.some((x) => x.body === "lesson 0")).toBe(false);
+  expect(rows.filter((x) => x.body === "lesson 0")).toEqual([]);
 });
 
 test("eviction leaves other note kinds alone", () => {

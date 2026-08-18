@@ -300,8 +300,8 @@ test("every frame mixes its colour with the page, so the chart follows the theme
 
   await waitFor(() => expect(frames(view).length).toBeGreaterThanOrEqual(4));
   const fills = [...frames(view)].map((node) => node.getAttribute("fill") ?? "");
-  expect(fills.every((fill) => fill.includes("color-mix(in oklch"))).toBe(true);
-  expect(fills.every((fill) => fill.includes("var(--color-paper)"))).toBe(true);
+  expect(fills.filter((fill) => !fill.includes("color-mix(in oklch"))).toEqual([]);
+  expect(fills.filter((fill) => !fill.includes("var(--color-paper)"))).toEqual([]);
 });
 
 test("sibling frames whose names differ in one token are different colours", async () => {

@@ -320,6 +320,8 @@ test("an acceptance line listing several things asks for several verdicts", () =
   expect(criteriaIn("bun test 绿")).toBe(1);
   expect(criteriaIn("浏览器点附件进项目目录，多选两文件一目录")).toBe(1);
   expect(criteriaIn("bun test 绿；worktree git status 有改动")).toBe(2);
-  expect(validateSelfReview("pass: bun test 绿 — 见 a.test.ts:12", 2).ok).toBe(false);
-  expect(validateSelfReview("pass: 一 — x\npass: 二 — y", 2).ok).toBe(true);
+  expect({
+    "one verdict for two criteria": validateSelfReview("pass: bun test 绿 — 见 a.test.ts:12", 2).ok,
+    "two verdicts for two criteria": validateSelfReview("pass: 一 — x\npass: 二 — y", 2).ok,
+  }).toEqual({ "one verdict for two criteria": false, "two verdicts for two criteria": true });
 });

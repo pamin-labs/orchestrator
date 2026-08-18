@@ -242,7 +242,7 @@ test("the sync script links both CLIs' directories and lists what a repo ships",
   // and description twice on every turn of the session.
   expect(SKILL_SYNC).toContain('[ "$base" = ".claude" ] ||');
   // It rides on the checkout probe, so it must not be able to fail that command.
-  expect(SKILL_SYNC.trimEnd().endsWith("} 2>/dev/null")).toBe(true);
+  expect(SKILL_SYNC.trimEnd()).toEndWith("} 2>/dev/null");
 });
 
 test("the inventory survives the trip back out of the container", () => {

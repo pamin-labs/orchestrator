@@ -44,8 +44,10 @@ test("rollouts past the retention window are dropped, however deep they are nest
   });
 
   expect(sweepCodexSessions(home, NOW)).toBe(2);
-  expect(existsSync(join(home, "sessions/2024/06/04/fresh.jsonl"))).toBe(true);
-  expect(existsSync(join(home, "sessions/2024/01/old.jsonl"))).toBe(false);
+  expect({
+    "2024/06/04/fresh.jsonl": existsSync(join(home, "sessions/2024/06/04/fresh.jsonl")),
+    "2024/01/old.jsonl": existsSync(join(home, "sessions/2024/01/old.jsonl")),
+  }).toEqual({ "2024/06/04/fresh.jsonl": true, "2024/01/old.jsonl": false });
   // Only files are removed. The date directories are cheap and the next session
   // writes straight back into them.
   expect(readdirSync(join(home, "sessions"))).toEqual(["2024"]);

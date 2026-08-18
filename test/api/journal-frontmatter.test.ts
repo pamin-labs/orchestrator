@@ -30,5 +30,5 @@ test("a value that needs quoting gets it, and a list is not joined on commas", (
 test("the block is block style, because these files are read by people", () => {
   const block = frontmatterBlock({ group: "g", role: "scribe", slice: 3, kind: "retro", files: [] });
   expect(block).toContain("role: scribe");
-  expect(block.startsWith("{")).toBe(false);
+  expect(block).not.toStartWith("{");
 });

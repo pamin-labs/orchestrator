@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setIn } from "../../src/mech/sandbox/server.ts";
@@ -208,16 +208,24 @@ test("a sandbox span is scoped to what owns the container, and the utility one t
   expect(sandboxScope(UTIL, null)).toEqual({});
 });
 
-test("a pid is alive when it exists, whoever owns it", () => {
-  // `ps` is 30.6ms and this is 253ns, so the watchdog's steady state asks this
-  // and forks only when the answer is no. What it must never do is answer "gone"
-  // for a process that is there — that is the input to a decision whose failure
-  // mode is restarting a server that is already running.
-  expect(pidAlive(String(process.pid))).toBe(true);
-  // init exists and is not ours: `kill` fails with EPERM, which is a yes.
-  expect(pidAlive("1")).toBe(true);
-  // Above any pid this machine will hand out.
-  expect(pidAlive("999999")).toBe(false);
+/**
+ * A pid is alive when it exists, whoever owns it.
+ *
+ * `ps` is 30.6ms and this is 253ns, so the watchdog's steady state asks this and
+ * forks only when the answer is no. What it must never do is answer "gone" for a
+ * process that is there — that is the input to a decision whose failure mode is
+ * restarting a server that is already running.
+ */
+describe("a pid is alive when it exists, whoever owns it", () => {
+  test.each([
+    ["our own process", String(process.pid), true],
+    // init exists and is not ours: `kill` fails with EPERM, which is a yes.
+    ["init, which is not ours", "1", true],
+    // Above any pid this machine will hand out.
+    ["above any pid this machine hands out", "999999", false],
+  ])("%s", (_case, pid, alive) => {
+    expect(pidAlive(pid)).toBe(alive);
+  });
   // Not a pid at all. `process.kill` throws on these too, and a throw must not
   // be read as "alive" the way EPERM is.
   for (const junk of ["nope", "-1", "0", "", "1.5", "1e9"]) {

@@ -327,23 +327,31 @@ test("a repeat of the same problem backs off instead of nagging every tick", asy
   const sent: string[] = [];
   const n = new Notifier({ now: () => t, deliver: (_title, body) => void sent.push(body) });
 
-  expect(await n.push({ key: "esc:1", tier: "immediate", body: "answer me" })).toBe(true);
+  // Collected rather than asserted one at a time: the fact under test is the
+  // shape of the whole sequence, and five separate booleans reported which tick
+  // disagreed only by line number.
+  const answered: boolean[] = [];
+  const push = async () => answered.push(await n.push({ key: "esc:1", tier: "immediate", body: "answer me" }));
+
+  await push();
   t += 60_000;
-  expect(await n.push({ key: "esc:1", tier: "immediate", body: "answer me" })).toBe(false);
+  await push();
   t += 5 * 60_000;
-  expect(await n.push({ key: "esc:1", tier: "immediate", body: "answer me" })).toBe(true);
+  await push();
   // Second reminder waits 15 min, not another 5.
   t += 6 * 60_000;
-  expect(await n.push({ key: "esc:1", tier: "immediate", body: "answer me" })).toBe(false);
+  await push();
   t += 10 * 60_000;
-  expect(await n.push({ key: "esc:1", tier: "immediate", body: "answer me" })).toBe(true);
+  await push();
+
+  expect(answered).toEqual([true, false, true, false, true]);
   expect(sent.length).toBe(3);
 });
 
 test("a different problem is not suppressed by an unrelated one", async () => {
   const n = new Notifier({ now: () => 0, deliver: () => {} });
-  expect(await n.push({ key: "a", tier: "immediate", body: "x" })).toBe(true);
-  expect(await n.push({ key: "b", tier: "immediate", body: "y" })).toBe(true);
+  const first = await n.push({ key: "a", tier: "immediate", body: "x" });
+  expect([first, await n.push({ key: "b", tier: "immediate", body: "y" })]).toEqual([true, true]);
 });
 
 test("batched notifications arrive as one interruption", async () => {
@@ -485,7 +493,7 @@ test("a group waiting on quota is not parked out from under itself", async () =>
     1_000_000 + 600_000,
   ]);
   const found = await runWatchdog(h.deps);
-  expect(found.some((f) => f.rule === "parked")).toBe(false);
+  expect(found.filter((f) => f.rule === "parked")).toEqual([]);
   expect(h.db.query<{ status: string }, []>("SELECT status FROM grp WHERE id = 1").get()!.status).toBe("PAUSED");
 });
 
@@ -778,11 +786,16 @@ test("turn logs are compressed after a day and dropped after two weeks", () => {
 
   const r = sweepTurnLogs(dir, now);
   expect(r).toEqual({ zipped: 1, dropped: 1 });
-  expect(existsSync(join(dir, "1.jsonl.gz"))).toBe(true);
-  expect(existsSync(join(dir, "1.jsonl"))).toBe(false);
-  // Today's turn is left alone: it is still being written to.
-  expect(existsSync(join(dir, "2.jsonl"))).toBe(true);
-  expect(existsSync(join(dir, "3.jsonl.gz"))).toBe(false);
+  // Today's turn is left alone: it is still being written to. Asserted as one
+  // map so a failure names the file that survived or vanished, which four bare
+  // booleans on four lines did not.
+  const kept = (...names: string[]) => Object.fromEntries(names.map((n) => [n, existsSync(join(dir, n))]));
+  expect(kept("1.jsonl.gz", "1.jsonl", "2.jsonl", "3.jsonl.gz")).toEqual({
+    "1.jsonl.gz": true,
+    "1.jsonl": false,
+    "2.jsonl": true,
+    "3.jsonl.gz": false,
+  });
 });
 
 test("a burst of pushes costs one rebase turn, and never delays one", async () => {

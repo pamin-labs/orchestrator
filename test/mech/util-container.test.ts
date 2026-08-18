@@ -40,7 +40,7 @@ test("a group's binding covers a fetch and stops at the packfile push", () => {
   // And not by a wildcard, which is the trap: the sidecar matches a trailing `*`
   // as a prefix that does NOT stop at `/`, so `/me/x.git*` — the shape upstream's
   // own guide suggests — would readmit `git-receive-pack` while looking careful.
-  for (const p of bound.paths!) expect(p.endsWith("*")).toBe(false);
+  for (const p of bound.paths!) expect(p).not.toEndWith("*");
 });
 
 test("the utility container's binding is not the group's", () => {
@@ -75,7 +75,6 @@ test("the utility container is one per orchestrator and owns no row", () => {
   // server-scope settings. Nothing there yet means it has never been built,
   // which is the ordinary state — it is made on the first push.
   const db = openMemory();
-  expect(isUtil(UTIL)).toBe(true);
-  expect(isUtil({ grp: 1 })).toBe(false);
+  expect({ util: isUtil(UTIL), group: isUtil({ grp: 1 }) }).toEqual({ util: true, group: false });
   expect(utilSandbox(db)).toEqual({ id: null, at: 0 });
 });

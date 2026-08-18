@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Bus } from "../../src/platform/persistence/event-bus.ts";
 import { loadConfig } from "../../src/platform/config/load.ts";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
@@ -78,8 +78,8 @@ test("an ordinary question starts at the PM", () => {
   expect(jobsFor(h.db).length).toBe(1);
 });
 
-test("reserved topics skip the whole chain and go straight to the boss", () => {
-  for (const q of [
+describe("reserved topics skip the whole chain and go straight to the boss", () => {
+  test.each([
     "should we pay for the higher API tier?",
     "can I merge this into main?",
     "what is the value of the API_KEY?",
@@ -87,11 +87,14 @@ test("reserved topics skip the whole chain and go straight to the boss", () => {
     "the boss wanted rate limiting — should we drop the audit log instead?",
     "这个要花钱吗？",
     "要不要改需求范围？",
-  ]) {
+  ])("%s", (q) => {
     expect(isReserved(q)).toBe(true);
     expect(entryPoint(q)).toBe("boss");
-  }
-  expect(isReserved("which validation library should we use?")).toBe(false);
+  });
+
+  test("a question about implementation is not reserved", () => {
+    expect(isReserved("which validation library should we use?")).toBe(false);
+  });
 });
 
 test("a missing level is skipped, not waited on", () => {
@@ -280,8 +283,13 @@ test("both triage doors spell the verbs from TRIAGE, not each from its own copy"
   // the schema was meanwhile telling every caller it took any 40-character
   // string. This fails if one door is updated and the other is not.
   for (const as of TRIAGE) {
-    expect(SayBody.safeParse({ body: "x", as }).success).toBe(true);
-    expect(TriageBody.safeParse({ group_id: 1, as }).success).toBe(true);
+    expect({
+      say: SayBody.safeParse({ body: "x", as }).success,
+      triage: TriageBody.safeParse({ group_id: 1, as }).success,
+    }).toEqual({
+      say: true,
+      triage: true,
+    });
   }
   expect({
     say: SayBody.safeParse({ body: "x", as: "delete" }).success,

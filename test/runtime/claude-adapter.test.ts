@@ -62,7 +62,7 @@ test("summarizeTool clips to one line and never dumps the raw input", () => {
   const long = "x".repeat(500);
   const t = summarizeTool("Bash", { command: `echo ${long}` });
   expect(t.detail.length).toBeLessThan(100);
-  expect(t.detail.startsWith("Bash: echo")).toBe(true);
+  expect(t.detail).toStartWith("Bash: echo");
   expect(summarizeTool("Edit", { file_path: "auth/mw.ts" }).detail).toBe("Edit: auth/mw.ts");
 });
 

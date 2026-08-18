@@ -146,7 +146,7 @@ test("containers are killed before the rows that name them", async () => {
   const grps = h.killed.filter((s): s is { grp: number } => "grp" in s).map((s) => s.grp);
   expect(grps).toHaveLength(2);
   expect(h.killed.some((s) => "project" in s)).toBe(true);
-  expect(h.rowsWhenKilled.every((n) => n === 2)).toBe(true);
+  expect(h.rowsWhenKilled.filter((n) => n !== 2)).toEqual([]);
   expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM project").get()!.c).toBe(1);
 
   // And the bare mirror the utility container keeps for this project's branches:
@@ -184,12 +184,15 @@ test("attachments of the removed project go, and files it never named stay", asy
 
   await del(h.app, "/api/v1/projects/1");
 
-  expect(existsSync(mine)).toBe(false);
-  expect(existsSync(other)).toBe(true);
-  // Named in the body, but outside the attachments directory: these strings come
-  // out of prose an agent wrote, and this path must never be an `rm -rf` on
-  // whatever one of them happens to say.
-  expect(existsSync(outside)).toBe(true);
+  // `outside` is named in the body but sits outside the attachments directory:
+  // these strings come out of prose an agent wrote, and this path must never be
+  // an `rm -rf` on whatever one of them happens to say. One map, so a failure
+  // names the file that went rather than reporting a bare `true`.
+  expect({ mine: existsSync(mine), other: existsSync(other), outside: existsSync(outside) }).toEqual({
+    mine: false,
+    other: true,
+    outside: true,
+  });
 });
 
 test("the restart button gets the two numbers it has to show, and never a guess", async () => {

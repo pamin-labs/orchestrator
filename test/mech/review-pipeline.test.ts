@@ -190,7 +190,7 @@ test.concurrent("a claim git cannot corroborate is sent back before any reviewer
     .get()!;
   expect(slice.retries).toBe(1);
   // Straight back to the writer — the reviewer's judgement is not spent on this.
-  expect(h.specs.some((s) => s.stable.systemAppend.includes("You are QA"))).toBe(false);
+  expect(h.specs.filter((s) => s.stable.systemAppend.includes("You are QA"))).toEqual([]);
   const retry = h.specs.at(-1)!;
   expect(retry.prompt).toContain("Reconcile failed");
   // A retry starts a fresh session: the old history is mostly the failed attempt.
@@ -251,7 +251,7 @@ test("QA's pass hands the slice to the boss and rotates the sessions", async () 
   const agents = h.db
     .query<{ session_id: string | null; session_tokens: number }, []>("SELECT session_id, session_tokens FROM agent")
     .all();
-  expect(agents.every((a) => a.session_id === null && a.session_tokens === 0)).toBe(true);
+  expect(agents.filter((a) => a.session_id !== null || a.session_tokens !== 0)).toEqual([]);
 });
 
 test("QA's fail sends the slice back with QA's note", async () => {

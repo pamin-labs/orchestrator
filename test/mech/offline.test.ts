@@ -149,8 +149,7 @@ test("nothing configured yet is not the same as offline", async () => {
   const r = await probe(db, 1, async () => {
     throw new Error("should not be called");
   });
-  expect(r.online).toBe(true);
-  expect(isOnline()).toBe(true);
+  expect({ probed: r.online, held: isOnline() }).toEqual({ probed: true, held: true });
 });
 
 test("a refused credential is not a network fault", async () => {
@@ -161,8 +160,7 @@ test("a refused credential is not a network fault", async () => {
   const db = openMemory();
   saveAuth(db, { runtime: "claude", mode: "oauth_token", secret: "sk-ant-oat01-x" });
   const r = await probe(db, 1, async () => new Response("no", { status: 401 }));
-  expect(r.online).toBe(true);
-  expect(r.changed).toBe(false);
+  expect({ online: r.online, changed: r.changed }).toEqual({ online: true, changed: false });
 
   // Only a transport-level throw is offline. Past the throttle: while things work
   // the probe goes out every five minutes, not on every 30s tick — 288 requests a
@@ -170,9 +168,11 @@ test("a refused credential is not a network fault", async () => {
   const down = await probe(db, 1 + PROBE_EVERY_MS, async () => {
     throw new Error("getaddrinfo ENOTFOUND api.anthropic.com");
   });
-  expect(down.online).toBe(false);
-  expect(down.changed).toBe(true);
-  expect(isOnline()).toBe(false);
+  expect({ online: down.online, changed: down.changed, held: isOnline() }).toEqual({
+    online: false,
+    changed: true,
+    held: false,
+  });
   resetNet();
 });
 

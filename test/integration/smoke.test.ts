@@ -126,7 +126,7 @@ describe.skipIf(!canListen())("HTTP smoke", () => {
     // no spend. The Librarian's onboarding pass is not here any more: it read the
     // host checkout, and a project has none until a group clones (007 §2).
     expect(jobs.length).toBe(1);
-    expect(jobs.every((j) => j.kind === "agent_turn" && j.state === "pending")).toBe(true);
+    expect(jobs.filter((j) => j.kind !== "agent_turn" || j.state !== "pending")).toEqual([]);
     expect(srv.ctx.db.query<{ c: number }, []>("SELECT count(*) AS c FROM agent").get()!.c).toBe(0);
 
     // docs/project/plan.md §12 asks the smoke run to assert the four first-class tables, because

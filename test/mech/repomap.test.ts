@@ -109,7 +109,7 @@ test("the map's symbols come from a reader the caller supplies, not from this ma
   // choice a caller makes rather than an exception it never sees.
   const pathsOnly = await buildMap("owner/repo", () => files);
   expect(pathsOnly.flatMap((n) => n.files.map((f) => f.name)).sort()).toEqual(["a.ts", "b.go", "c.py", "x.md"]);
-  expect(pathsOnly.every((n) => n.files.every((f) => f.symbols.length === 0))).toBe(true);
+  expect(pathsOnly.filter((n) => !n.files.every((f) => f.symbols.length === 0))).toEqual([]);
 });
 
 test("the map is searched with the same tokenizer as the notes", async () => {

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { validateJournal, validateSelfReview } from "../../src/mech/util/validate.ts";
 
 const six = "a\nb\nc\nd\ne\nf";
@@ -44,12 +44,12 @@ test("a real entry passes and is normalised", () => {
   }
 });
 
-test("self-review must not be vacuous", () => {
-  for (const s of ["looks good", "LGTM", "no issues", "all good", ""]) {
-    const r = validateSelfReview(s, 2);
+describe("self-review must not be vacuous", () => {
+  test.each(["looks good", "LGTM", "no issues", "all good", ""])("%s is refused", (body) => {
+    const r = validateSelfReview(body, 2);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain("carries no information");
-  }
+  });
 });
 
 test("self-review must cover every acceptance criterion", () => {

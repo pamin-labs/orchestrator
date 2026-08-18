@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "../../src/mech/flow/reconcile.ts";
 
 test("a scratch file created and deleted inside the slice is not a lie", () => {
@@ -80,14 +80,20 @@ test("a claim naming a file by its tail still matches git's full path", () => {
 
 test("task claims take paths only from their validated files field", () => {
   expect(extractClaimedFiles([{ files: ["docs/x.md"], summary: "mentions invented/y.ts" }])).toEqual(["docs/x.md"]);
-  expect(TaskClaimSchema.safeParse({ files: ["docs/x.md"] }).success).toBe(false);
-  expect(TaskClaimSchema.safeParse({ files: [], summary: "nothing" }).success).toBe(false);
-  expect(TaskClaimSchema.safeParse("edited src/a.ts").success).toBe(false);
+  expect({
+    "files with no summary": TaskClaimSchema.safeParse({ files: ["docs/x.md"] }).success,
+    "a summary with no files": TaskClaimSchema.safeParse({ files: [], summary: "nothing" }).success,
+    "prose instead of a claim": TaskClaimSchema.safeParse("edited src/a.ts").success,
+  }).toEqual({ "files with no summary": false, "a summary with no files": false, "prose instead of a claim": false });
 });
 
-test("leading ./ and / do not create phantom mismatches", () => {
-  expect(reconcile({ claims: [{ files: ["./src/a.ts"], summary: "x" }], changedFiles: ["src/a.ts"] }).pass).toBe(true);
-  expect(reconcile({ claims: [{ files: ["src/a.ts"], summary: "x" }], changedFiles: ["./src/a.ts"] }).pass).toBe(true);
+describe("leading ./ and / do not create phantom mismatches", () => {
+  test.each([
+    ["the claim carries the prefix", "./src/a.ts", "src/a.ts"],
+    ["the diff carries it", "src/a.ts", "./src/a.ts"],
+  ])("%s", (_case, claimed, changed) => {
+    expect(reconcile({ claims: [{ files: [claimed], summary: "x" }], changedFiles: [changed] }).pass).toBe(true);
+  });
 });
 
 test("a declared no-op passes reconcile when nothing changed", () => {
@@ -118,7 +124,9 @@ test("a no-op claim alongside real changes is still reconciled normally", () => 
 });
 
 test("the schema rejects empty and ambiguous completion accounts", () => {
-  expect(TaskClaimSchema.safeParse({ already_done: "   " }).success).toBe(false);
-  expect(TaskClaimSchema.safeParse({ files: ["a.ts"] }).success).toBe(false);
-  expect(TaskClaimSchema.safeParse({ already_done: "x", files: ["a.ts"], summary: "x" }).success).toBe(false);
+  expect({
+    "a blank account": TaskClaimSchema.safeParse({ already_done: "   " }).success,
+    "files with no summary": TaskClaimSchema.safeParse({ files: ["a.ts"] }).success,
+    "both accounts at once": TaskClaimSchema.safeParse({ already_done: "x", files: ["a.ts"], summary: "x" }).success,
+  }).toEqual({ "a blank account": false, "files with no summary": false, "both accounts at once": false });
 });

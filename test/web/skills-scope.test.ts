@@ -21,11 +21,13 @@ test("no project means the parameter is absent, not blank", () => {
 });
 
 test("the endpoint admits an absent project but still rejects a blank one", () => {
-  expect(SkillsQuery.safeParse({}).success).toBe(true);
   // `.optional()` short-circuits on `undefined` only. An empty string is a
   // present value, so it reaches `z.coerce.number()`, becomes 0, and fails
   // `.positive()` — widening the schema without fixing the caller would have
   // left the section exactly as broken.
-  expect(SkillsQuery.safeParse({ project: "" }).success).toBe(false);
+  expect({
+    absent: SkillsQuery.safeParse({}).success,
+    blank: SkillsQuery.safeParse({ project: "" }).success,
+  }).toEqual({ absent: true, blank: false });
   expect(SkillsQuery.safeParse({ project: "7" })).toMatchObject({ data: { project: 7 } });
 });

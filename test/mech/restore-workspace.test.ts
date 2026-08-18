@@ -49,7 +49,7 @@ test("a rebuilt sandbox gets the branch back and its dependencies installed", as
   const { ctx, sandbox } = harness({ install: "bun install --frozen-lockfile" });
   await restoreWorkspace(ctx, 1);
   expect(sandbox.commands.some((c) => c.startsWith("git clone"))).toBe(true);
-  expect(sandbox.commands.some((c) => c.includes("bun install"))).toBe(true);
+  expect(sandbox.commands.join("\n")).toContain("bun install");
 });
 
 test("with no recorded install command, the role that works it out is queued", async () => {
@@ -75,13 +75,13 @@ test("a rebuilt container takes its branch off the remote, not out of a bundle",
 
   // `ls-remote` finds it, so this is a checkout of an existing branch rather
   // than cutting a new one from the base.
-  expect(sandbox.commands.some((c) => c.includes("ls-remote"))).toBe(true);
-  expect(sandbox.commands.some((c) => c.includes("git checkout 'orch/g1'"))).toBe(true);
-  expect(sandbox.commands.some((c) => c.includes("checkout -b"))).toBe(false);
+  expect(sandbox.commands.join("\n")).toContain("ls-remote");
+  expect(sandbox.commands.join("\n")).toContain("git checkout 'orch/g1'");
+  expect(sandbox.commands.filter((c) => c.includes("checkout -b"))).toEqual([]);
 
   // Nothing was written into the container, and nothing fetched from a file.
   expect([...sandbox.files.keys()].filter((p) => p.endsWith(".bundle"))).toEqual([]);
-  expect(sandbox.commands.some((c) => c.includes("fetch") && c.includes(".bundle"))).toBe(false);
+  expect(sandbox.commands.filter((c) => c.includes("fetch") && c.includes(".bundle"))).toEqual([]);
 });
 
 test("a group that never started is left to startGroup", async () => {

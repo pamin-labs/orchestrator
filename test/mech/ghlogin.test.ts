@@ -353,7 +353,7 @@ test("switching installation changes the list", async () => {
   const org = GithubReposResponse.parse(await (await get(app, "/api/v1/github/repos?installation=9")).json());
   expect(org.selected).toBe(9);
   expect(org.repos.map((repo) => repo.fullName)).toEqual(["acme/site"]);
-  expect(asked.some((u) => u.includes("/user/installations/9/repositories"))).toBe(true);
+  expect(asked.join("\n")).toContain("/user/installations/9/repositories");
 });
 
 test("a project added from the list keeps GitHub's default branch, not a guess", async () => {
@@ -579,8 +579,8 @@ test("naming the installation costs one round trip, not two", async () => {
   expect(b.selected).toBe(9);
   expect(b.repos.map((repo) => repo.fullName)).toEqual(["acme/site"]);
   // Both were asked for, and neither waited on the other.
-  expect(asked.some((u) => u.includes("/user/installations?"))).toBe(true);
-  expect(asked.some((u) => u.includes("/user/installations/9/repositories"))).toBe(true);
+  expect(asked.join("\n")).toContain("/user/installations?");
+  expect(asked.join("\n")).toContain("/user/installations/9/repositories");
   // And the repositories were fetched once, not once per guess.
   expect(asked.filter((u) => u.includes("/repositories")).length).toBe(1);
 });

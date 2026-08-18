@@ -68,8 +68,10 @@ test("staged skills are dereferenced, not symlinked", () => {
 
   expect(staged).toEqual(["alpha"]);
   expect(failed).toEqual([]);
-  expect(lstatSync(join(dir, "alpha")).isSymbolicLink()).toBe(false);
-  expect(lstatSync(join(dir, "alpha", "SKILL.md")).isSymbolicLink()).toBe(false);
+  expect({
+    alpha: lstatSync(join(dir, "alpha")).isSymbolicLink(),
+    "alpha/SKILL.md": lstatSync(join(dir, "alpha", "SKILL.md")).isSymbolicLink(),
+  }).toEqual({ alpha: false, "alpha/SKILL.md": false });
   // The rest of the skill travels too, or half its instructions are missing.
   expect(readFileSync(join(dir, "alpha", "reference", "more.md"), "utf8")).toBe("more");
 });
@@ -85,8 +87,10 @@ test("unticked skills leave, and the directory itself is never replaced", () => 
   expect(existsSync(join(first.dir, "beta"))).toBe(true);
 
   const second = stageSkills(data, [alpha]);
-  expect(existsSync(join(second.dir, "beta"))).toBe(false);
-  expect(existsSync(join(second.dir, "alpha"))).toBe(true);
+  expect({
+    beta: existsSync(join(second.dir, "beta")),
+    alpha: existsSync(join(second.dir, "alpha")),
+  }).toEqual({ beta: false, alpha: true });
   expect(lstatSync(second.dir).ino).toBe(inode);
 });
 

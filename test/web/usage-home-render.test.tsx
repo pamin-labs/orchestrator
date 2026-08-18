@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render as mount } from "../support/render.tsx";
 import { projectRow } from "../../web/src/features/home/model.ts";
 import { ringArc, ringTip, ringView, staleMark, until } from "../../web/src/features/usage/model.ts";
@@ -196,18 +196,24 @@ test("the arc never collapses to nothing and never overruns the circle", () => {
   expect(ringArc(undefined)).toBeNull();
 
   // Only a reading past the line is hot, and a missing one is never hot.
-  expect(ringView({ v: 80, stale: false })?.hot).toBe(true);
-  expect(ringView({ v: 79.9, stale: false })?.hot).toBe(false);
-  expect(ringView({ stale: true })?.hot).toBe(false);
+  expect({
+    "80%": ringView({ v: 80, stale: false })?.hot,
+    "79.9%": ringView({ v: 79.9, stale: false })?.hot,
+    "no reading": ringView({ stale: true })?.hot,
+  }).toEqual({ "80%": true, "79.9%": false, "no reading": false });
   expect(ringView({ stale: false })).toBeNull();
 });
 
-test("a read only counts as stale once it is an hour old, and only when it failed", () => {
+describe("a read only counts as stale once it is an hour old, and only when it failed", () => {
   const at = Date.now() - 2 * 60 * 60_000;
-  expect(staleMark({ runtime: "claude", at, error: "unreachable" })).toBe(true);
-  // An old reading that succeeded is just an old reading.
-  expect(staleMark({ runtime: "claude", at })).toBe(false);
-  expect(staleMark({ runtime: "claude", at: Date.now(), error: "unreachable" })).toBe(false);
+  test.each([
+    ["two hours old and failed", { runtime: "claude", at, error: "unreachable" }, true],
+    // An old reading that succeeded is just an old reading.
+    ["two hours old and fine", { runtime: "claude", at }, false],
+    ["failed just now", { runtime: "claude", at: Date.now(), error: "unreachable" }, false],
+  ])("%s", (_case, read, stale) => {
+    expect(staleMark(read)).toBe(stale);
+  });
 });
 
 test("a project's row data is decided before anything is drawn", () => {

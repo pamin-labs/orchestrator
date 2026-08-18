@@ -140,9 +140,11 @@ test("a dropped folder becomes one attachment, and cannot escape its directory",
   expect(files.map((f) => f.type)).toEqual(["image/png", "inode/directory"]);
   const folder = files.find((f) => f.type === "inode/directory")!;
   expect(folder.name).toBe("spec");
-  expect(existsSync(join(folder.path, "a.txt"))).toBe(true);
-  expect(existsSync(join(folder.path, "b.txt"))).toBe(true);
-  expect(existsSync(join(dir, "b.txt"))).toBe(false);
+  expect({
+    "spec/a.txt": existsSync(join(folder.path, "a.txt")),
+    "spec/b.txt": existsSync(join(folder.path, "b.txt")),
+    "b.txt": existsSync(join(dir, "b.txt")),
+  }).toEqual({ "spec/a.txt": true, "spec/b.txt": true, "b.txt": false });
 });
 
 test("a project links to its repository, and a leftover path never becomes a link", () => {

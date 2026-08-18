@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { cleanup, isDisabled, render as mount, valueOf } from "../support/render.tsx";
 import { inFlight, mockHttp } from "../support/http.ts";
@@ -406,22 +406,28 @@ test("a refusal marks the cell it is about, and nothing at all when there is non
   expect(invalidFlag({ why: "要一个整数", at: "browser" })).toBe("true");
 });
 
-test("a row is 已改 when either half of it is", () => {
+describe("a row is 已改 when either half of it is", () => {
   const on = { overridden: true };
   const off = { overridden: false };
-  expect(rowChanged(off, null)).toBe(false);
-  expect(rowChanged(on, null)).toBe(true);
-  // One row, so one 已改 — the index runtime and its model are one decision.
-  expect(rowChanged(off, on)).toBe(true);
-  expect(rowChanged(off, off)).toBe(false);
+  test.each([
+    ["neither half", off, null, false],
+    ["the first half", on, null, true],
+    // One row, so one 已改 — the index runtime and its model are one decision.
+    ["the second half", off, on, true],
+    ["both halves untouched", off, off, false],
+  ])("%s", (_case, first, second, changed) => {
+    expect(rowChanged(first, second)).toBe(changed);
+  });
 });
 
 test("rows whose control cannot carry a label name themselves through their title", () => {
   // A `<label for>` and a title cannot both hold the same id, and a switch or a
   // six-box table has nothing for a label to point at.
-  expect(selfNamed("difficultyModel", "object")).toBe(true);
-  expect(selfNamed("autoAdvance", "boolean")).toBe(true);
-  expect(selfNamed("maxGroups", "number")).toBe(false);
+  expect({
+    difficultyModel: selfNamed("difficultyModel", "object"),
+    autoAdvance: selfNamed("autoAdvance", "boolean"),
+    maxGroups: selfNamed("maxGroups", "number"),
+  }).toEqual({ difficultyModel: true, autoAdvance: true, maxGroups: false });
   expect(labelledBy("maxGroups", "number", "knob-maxGroups")).toBeUndefined();
   expect(labelledBy("autoAdvance", "boolean", "knob-autoAdvance")).toBe("knob-autoAdvance");
 });

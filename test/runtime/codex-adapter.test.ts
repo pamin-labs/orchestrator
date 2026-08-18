@@ -85,7 +85,7 @@ test("argv keeps the agent reachable and the boss's own setup out", () => {
   expect(argv[argv.indexOf("-i") + 1]).toBe("/tmp/a.png");
   // The key that used to be here does nothing in 0.147; passing it back would
   // read as a sandbox that is not there.
-  expect(argv.some((a) => a.startsWith("sandbox_permissions"))).toBe(false);
+  expect(argv.filter((a) => a.startsWith("sandbox_permissions"))).toEqual([]);
 });
 
 test("effort travels as a config override", () => {
@@ -261,6 +261,6 @@ test("a resumed thread is not re-sent the stable half", async () => {
     await runTurn({ stable, prompt: "do S1", cwd: "/tmp", runner });
     sent = runner.wrote;
     expect(sent).toContain("You are the Engineer.");
-    expect(sent.endsWith("do S1")).toBe(true);
+    expect(sent).toEndWith("do S1");
   }
 });

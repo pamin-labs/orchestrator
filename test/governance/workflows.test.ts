@@ -129,7 +129,7 @@ describe("workflow governance", () => {
     // this repository already found, seen from the other side.
     for (const job of Object.keys(ci.jobs)) expect(requiredChecks()).toContain(job);
     expect(ci.permissions).toEqual({ contents: "read" });
-    expect(Object.values(ci.jobs).every((job) => job.permissions === undefined)).toBe(true);
+    expect(Object.values(ci.jobs).filter((job) => job.permissions !== undefined)).toEqual([]);
     const ciText = await source("ci");
     // `edited` is load-bearing, not decoration. `pr-plan` reads the pull
     // request body out of the event payload, so without this the check that

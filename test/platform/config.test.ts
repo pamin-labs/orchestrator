@@ -30,8 +30,11 @@ test("dataDir is absolute, because the things that read it run elsewhere", () =>
   // Turn logs, gate logs and attachments are all written by paths built off this
   // while the work itself happens in a sandbox. A relative one resolved against
   // whatever the cwd happened to be, which was never the same twice.
-  expect(isAbsolute(loadConfig().dataDir)).toBe(true);
-  expect(isAbsolute(withAbsoluteDataDir({ ...loadConfig(), dataDir: "data" }).dataDir)).toBe(true);
+  const dirs = {
+    loaded: loadConfig().dataDir,
+    "made absolute": withAbsoluteDataDir({ ...loadConfig(), dataDir: "data" }).dataDir,
+  };
+  expect(Object.entries(dirs).filter(([, dir]) => !isAbsolute(dir))).toEqual([]);
 });
 
 test("only the engineer is allowed to be a writer", () => {

@@ -145,7 +145,7 @@ test("a picked file is copied under the data directory, typed and sized", async 
   expect(f!.type).toBe("image/png");
   expect(f!.size).toBe(7);
   // A copy, not a reference: the boss's own file is free to move afterwards.
-  expect(f!.path.startsWith(join(h.dir, "attachments"))).toBe(true);
+  expect(f!.path).toStartWith(join(h.dir, "attachments"));
   expect(f!.path).not.toBe(src);
   expect(readFileSync(f!.path, "utf8")).toBe("PNGDATA");
   expect(basename(f!.path)).toEndWith("-shot.png");

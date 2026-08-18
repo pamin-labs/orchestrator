@@ -91,7 +91,7 @@ test("submodules are initialised in two steps, and only when there are any", asy
   // A repository with no submodules pays one `test -f` and nothing else.
   const without = harness();
   await ensureCheckout(without.ctx, 1);
-  expect(without.sandbox.commands.some((c) => c.includes("submodule"))).toBe(false);
+  expect(without.sandbox.commands.filter((c) => c.includes("submodule"))).toEqual([]);
 });
 
 test("a warning on stderr does not become a changed path", async () => {

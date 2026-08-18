@@ -36,7 +36,7 @@ test("groups in different projects are not duplicates", () => {
   const q = fx.project.insert(db, { name: "q", repo_path: "/tmp/q" });
   grp(db, "a", ["src/**"]);
   fx.runningGrp.insert(db, { project_id: q.id, name: "b", owns_json: JSON.stringify(["src/**"]) });
-  expect(runStandup(db, NOW).some((i) => i.kind === "duplicate_effort")).toBe(false);
+  expect(runStandup(db, NOW).filter((i) => i.kind === "duplicate_effort")).toEqual([]);
 });
 
 test("silence is the problem, waiting is not", () => {
@@ -78,7 +78,7 @@ test("a gate that has since gone green stops being reported", () => {
   // boss's notification forever, with nothing that could clear it.
   lease(a, "done");
   lease(b, "done");
-  expect(runStandup(db, NOW).some((i) => i.kind === "repeat_failure")).toBe(false);
+  expect(runStandup(db, NOW).filter((i) => i.kind === "repeat_failure")).toEqual([]);
 });
 
 test("one group failing its own gate is not a standup item", () => {
@@ -88,7 +88,7 @@ test("one group failing its own gate is not a standup item", () => {
   const failed = (grp_id: number) => fx.lease.insert(db, { resource: "test", grp_id, state: "failed" });
   failed(a);
   failed(a);
-  expect(runStandup(db, NOW).some((i) => i.kind === "repeat_failure")).toBe(false);
+  expect(runStandup(db, NOW).filter((i) => i.kind === "repeat_failure")).toEqual([]);
 });
 
 // ----------------------------------------------------------------------- cost
@@ -124,7 +124,7 @@ test("cost is attributed four ways, because they answer different questions", ()
     ["engineer", "m", 4000],
     ["qa", "m", 1000],
   ]);
-  expect(r.agents.every((a) => a.grpId === 1)).toBe(true);
+  expect(r.agents.filter((a) => a.grpId !== 1)).toEqual([]);
 
   // No dollars anywhere in the report. Two subscriptions pay for this, so the
   // figure was notional on the half that reported one and absent on the other.

@@ -17,5 +17,5 @@ test("a caught value that is not an Error still comes back as a string, and boun
   // bodies, so a git error carrying 40KB of stderr is not a blocker card.
   const long = errText(new Error("x".repeat(5000)));
   expect(long.length).toBe(300);
-  expect(long.endsWith("…")).toBe(true);
+  expect(long).toEndWith("…");
 });

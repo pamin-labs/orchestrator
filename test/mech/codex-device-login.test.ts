@@ -50,7 +50,7 @@ test("the device code and its URL are read, and the login lands in runtime_auth"
   expect(loadAuth(db, "codex")!.secret).toContain("real");
   expect(loadAuth(db, "codex")!.mode).toBe("chatgpt");
   // Its own CODEX_HOME, not the one every container's decoy sits in.
-  expect(cmds.some((c) => c.includes("codex login --device-auth"))).toBe(true);
+  expect(cmds.join("\n")).toContain("codex login --device-auth");
 });
 
 test("output with no code says so instead of waiting out fifteen minutes", async () => {

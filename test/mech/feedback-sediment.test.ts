@@ -33,12 +33,14 @@ function harness() {
 }
 
 test("the same complaint in different words is recognised; unrelated ones are not", () => {
-  expect(terms("测试写得太浅").has("测试")).toBe(true);
+  expect([...terms("测试写得太浅")]).toContain("测试");
   // Two shared distinctive terms, not one: one is a coincidence.
   expect(OVERLAP_FLOOR).toBe(2);
-  expect(sameComplaint("测试写得太浅，没有边界用例", "测试太浅了，边界都没覆盖")).toBe(true);
-  expect(sameComplaint("QA tests are shallow, no edge cases", "the tests are shallow and skip edge cases")).toBe(true);
-  expect(sameComplaint("测试写得太浅", "这个按钮颜色不对")).toBe(false);
+  expect({
+    reworded: sameComplaint("测试写得太浅，没有边界用例", "测试太浅了，边界都没覆盖"),
+    english: sameComplaint("QA tests are shallow, no edge cases", "the tests are shallow and skip edge cases"),
+    unrelated: sameComplaint("测试写得太浅", "这个按钮颜色不对"),
+  }).toEqual({ reworded: true, english: true, unrelated: false });
 });
 
 test("the third time it becomes a project rule, and does not fire again on the same three", () => {

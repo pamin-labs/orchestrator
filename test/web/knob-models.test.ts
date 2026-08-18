@@ -45,8 +45,8 @@ test("every runtime is offered its own models and nobody else's", () => {
   expect(Object.keys(by).sort()).toEqual(["claude", "codex"]);
   // `contextWindow` names more models than `difficultyModel` does; they are
   // attributed by the family prefix the difficulty table taught.
-  expect(by.claude!.every((m) => m.startsWith("claude"))).toBe(true);
-  expect(by.codex!.every((m) => m.startsWith("gpt"))).toBe(true);
+  expect(by.claude!.filter((m) => !m.startsWith("claude"))).toEqual([]);
+  expect(by.codex!.filter((m) => !m.startsWith("gpt"))).toEqual([]);
   // Every model a difficulty tier names is offered for that runtime, or the
   // picker cannot show the value the row already holds.
   for (const [runtime, tiers] of Object.entries(DEFAULTS.difficultyModel)) {

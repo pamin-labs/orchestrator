@@ -991,11 +991,13 @@ test("the directory list marks git repos and what is already registered", async 
   // Repos first: the boss is looking for one, so burying them under plain folders
   // makes the picker useless in a deep tree.
   expect(out.dirs.map((dir) => dir.name)).toEqual(["b-repo", "c-taken", "a-plain"]);
-  expect(out.dirs.find((dir) => dir.name === "b-repo")?.repo).toBe(true);
-  expect(out.dirs.find((dir) => dir.name === "c-taken")?.taken).toBe(true);
-  expect(out.dirs.find((dir) => dir.name === "a-plain")?.repo).toBe(false);
+  expect({
+    "b-repo is a repo": out.dirs.find((dir) => dir.name === "b-repo")?.repo,
+    "c-taken is taken": out.dirs.find((dir) => dir.name === "c-taken")?.taken,
+    "a-plain is a repo": out.dirs.find((dir) => dir.name === "a-plain")?.repo,
+  }).toEqual({ "b-repo is a repo": true, "c-taken is taken": true, "a-plain is a repo": false });
   // Dotfiles are noise in a picker.
-  expect(out.dirs.some((dir) => dir.name === ".hidden")).toBe(false);
+  expect(out.dirs.filter((dir) => dir.name === ".hidden")).toEqual([]);
   expect(out.parent).toBe(dirname(root));
 });
 
@@ -1063,7 +1065,7 @@ test("nobody confirms a merge by hand: GitHub is the only source, and it winds t
   // What `pollPrs` calls when GitHub says MERGED. Delivered, and still visible.
   landGroup(ctx, 1, "github");
   const snap = await state(app);
-  expect(snap.groups.some((group) => group.id === 1)).toBe(false);
+  expect(snap.groups.filter((group) => group.id === 1)).toEqual([]);
   expect(snap.archived.map((group) => group.name)).toEqual(["g1"]);
 });
 

@@ -562,14 +562,22 @@ test("a session whose transcript is gone is not resumed forever", () => {
   // `thread/resume: no rollout found for thread id 02627e60-…` and looked
   // healthy the whole time — an agent on the roster, no error anywhere except
   // inside a rejection body nobody parses.
-  expect(LOST_SESSION.test("Error: thread/resume: thread/resume failed: no rollout found for thread id 02627e60")).toBe(
-    true,
-  );
-  expect(LOST_SESSION.test("No conversation found with session ID: abc")).toBe(true);
   // Not every failure is this one: clearing a live session costs an uncached
   // prefix, so the match has to be the actual message.
-  expect(LOST_SESSION.test("turn failed (max_turns): ...")).toBe(false);
-  expect(LOST_SESSION.test("rebase failed: conflict in src/api.ts")).toBe(false);
+  const matched = Object.fromEntries(
+    [
+      "Error: thread/resume: thread/resume failed: no rollout found for thread id 02627e60",
+      "No conversation found with session ID: abc",
+      "turn failed (max_turns): ...",
+      "rebase failed: conflict in src/api.ts",
+    ].map((line) => [line, LOST_SESSION.test(line)]),
+  );
+  expect(matched).toEqual({
+    "Error: thread/resume: thread/resume failed: no rollout found for thread id 02627e60": true,
+    "No conversation found with session ID: abc": true,
+    "turn failed (max_turns): ...": false,
+    "rebase failed: conflict in src/api.ts": false,
+  });
 });
 
 test("the session id stored is the one the runtime actually used", async () => {

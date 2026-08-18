@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, isDisabled, render as mount, valueOf } from "../support/render.tsx";
 import { inFlight, mockHttp } from "../support/http.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -337,16 +337,20 @@ test("the theme control says all three states, including the one a toggle cannot
   expect(getAllByRole("radio", { checked: true })).toHaveLength(1);
 });
 
-test("only ⌘⇧L cycles the theme", () => {
+describe("only ⌘⇧L cycles the theme", () => {
   const chord = { metaKey: false, ctrlKey: false, shiftKey: true, key: "L" };
-  expect(isThemeHotkey({ ...chord, metaKey: true })).toBe(true);
-  expect(isThemeHotkey({ ...chord, ctrlKey: true })).toBe(true);
-  // Lower case arrives when shift is reported separately by the platform.
-  expect(isThemeHotkey({ ...chord, metaKey: true, key: "l" })).toBe(true);
-  // Every near miss is a miss: this shortcut sits next to ⌘L and ⇧L.
-  expect(isThemeHotkey(chord)).toBe(false);
-  expect(isThemeHotkey({ ...chord, metaKey: true, shiftKey: false })).toBe(false);
-  expect(isThemeHotkey({ ...chord, metaKey: true, key: "k" })).toBe(false);
+  test.each([
+    ["⌘⇧L", { ...chord, metaKey: true }, true],
+    ["⌃⇧L", { ...chord, ctrlKey: true }, true],
+    // Lower case arrives when shift is reported separately by the platform.
+    ["⌘⇧l, shift reported separately", { ...chord, metaKey: true, key: "l" }, true],
+    // Every near miss is a miss: this shortcut sits next to ⌘L and ⇧L.
+    ["⇧L with no modifier", chord, false],
+    ["⌘L without shift", { ...chord, metaKey: true, shiftKey: false }, false],
+    ["⌘⇧K", { ...chord, metaKey: true, key: "k" }, false],
+  ])("%s", (_case, event, cycles) => {
+    expect(isThemeHotkey(event)).toBe(cycles);
+  });
 });
 
 test("a switcher row is filterable by its second line, and fills only the cells it has", () => {

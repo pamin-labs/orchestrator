@@ -38,7 +38,7 @@ test("mailbox normalization never escapes the versioned agent boundary", () => {
         if (result === null) return;
         const url = new URL(result);
         expect(url.origin).toBe("http://127.0.0.1:9417");
-        expect(url.pathname.startsWith("/orch/v1/")).toBe(true);
+        expect(url.pathname).toStartWith("/orch/v1/");
       },
     ),
     propertyOptions,

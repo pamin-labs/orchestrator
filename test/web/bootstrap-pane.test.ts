@@ -25,8 +25,7 @@ const out = (t: string) => f({ cls: "tool", text: t });
 
 test("a run in flight is shown, with the command it is on", () => {
   const b = bootstrapOf([started(), cmd(), out("Resolving dependencies")], 1);
-  expect(b.running).toBe(true);
-  expect(b.failed).toBe(false);
+  expect({ running: b.running, failed: b.failed }).toEqual({ running: true, failed: false });
   expect(b.cmd).toBe("bun install --frozen-lockfile");
   expect(b.lines).toHaveLength(2);
 });
@@ -41,14 +40,12 @@ test("a finished run leaves nothing on the page", () => {
   // The record keeps the outcome. A pane that also kept it would be the same
   // fact twice, 200px apart.
   const b = bootstrapOf([started(), cmd(), f({ cls: "state", text: "装好了：bun install" })], 1);
-  expect(b.running).toBe(false);
-  expect(b.failed).toBe(false);
+  expect({ running: b.running, failed: b.failed }).toEqual({ running: false, failed: false });
 });
 
 test("a failed run stays, because it is the one outcome to act on", () => {
   const b = bootstrapOf([started(), cmd(), f({ cls: "state", text: "装失败了（exit 1）：bun install" })], 1);
-  expect(b.running).toBe(false);
-  expect(b.failed).toBe(true);
+  expect({ running: b.running, failed: b.failed }).toEqual({ running: false, failed: true });
 });
 
 test("a second rebuild is its own run, not the first one continued", () => {

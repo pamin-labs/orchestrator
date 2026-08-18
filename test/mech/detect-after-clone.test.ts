@@ -86,7 +86,7 @@ test("the first clone is what works out the gates, the install command and the s
 
   // Read from the container, never from a host path.
   expect(h.asked.some((c) => c.startsWith("ls -A '/work'"))).toBe(true);
-  expect(h.asked.some((c) => c === "cat '/work/package.json'")).toBe(true);
+  expect(h.asked).toContain("cat '/work/package.json'");
   // Only the files a rule actually opens: existence answers everything else.
   expect(h.asked.filter((c) => c.startsWith("cat "))).toEqual(["cat '/work/package.json'"]);
 });

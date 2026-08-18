@@ -68,8 +68,10 @@ test.concurrent(
     // worst class of failure this system has had: every worktree of a repo shared
     // one dependency tree, so two gates installing at once raced on it and the
     // group read `Failed to link jiti: EEXIST` as its own build being broken.
-    expect(existsSync(join(worktree, "node_modules"))).toBe(false);
-    expect(existsSync(join(worktree, "web/dist"))).toBe(false);
+    expect({
+      node_modules: existsSync(join(worktree, "node_modules")),
+      "web/dist": existsSync(join(worktree, "web/dist")),
+    }).toEqual({ node_modules: false, "web/dist": false });
 
     // Whatever the install writes must stay invisible to git, or the turn
     // checkpoint's `git add -A` commits it and QA rejects a slice over a file the
@@ -87,8 +89,10 @@ test.concurrent(
     // Nothing has created `node_modules` in this copy of the origin, and nothing
     // needs to have: the checkout does not depend on a build existing anywhere.
     const { wt } = await checkout();
-    expect(existsSync(join(wt.worktree, "a.txt"))).toBe(true);
-    expect(existsSync(join(wt.worktree, "node_modules"))).toBe(false);
+    expect({
+      "a.txt": existsSync(join(wt.worktree, "a.txt")),
+      node_modules: existsSync(join(wt.worktree, "node_modules")),
+    }).toEqual({ "a.txt": true, node_modules: false });
   },
   GIT_IO,
 );
@@ -141,9 +145,11 @@ test.concurrent(
     await rollbackTo(git, dir, wt.worktree, before);
     // Both the committed checkpoint and the untracked leftovers go, or the next
     // turn starts from a state nobody chose.
-    expect(existsSync(join(wt.worktree, "half-done.txt"))).toBe(false);
-    expect(existsSync(join(wt.worktree, "untracked.txt"))).toBe(false);
-    expect(existsSync(join(wt.worktree, "a.txt"))).toBe(true);
+    expect({
+      "half-done.txt": existsSync(join(wt.worktree, "half-done.txt")),
+      "untracked.txt": existsSync(join(wt.worktree, "untracked.txt")),
+      "a.txt": existsSync(join(wt.worktree, "a.txt")),
+    }).toEqual({ "half-done.txt": false, "untracked.txt": false, "a.txt": true });
   },
   GIT_IO,
 );

@@ -197,7 +197,7 @@ test("unmatched request paths cannot create unbounded metrics labels", async () 
     const responses = await Promise.all(
       Array.from({ length: 40 }, (_, i) => app(new Request(`http://x/secret-token-${i}`))),
     );
-    expect(responses.every((response) => response.status === 404)).toBe(true);
+    expect(responses.filter((response) => response.status !== 404)).toEqual([]);
     const metrics = await (await app(new Request("http://x/metrics"))).text();
     expect(metrics).toContain('route="unmatched",status="404"');
     expect(metrics).not.toContain("secret-token-");
