@@ -1106,10 +1106,11 @@ async function provision(sb: Sandbox): Promise<void> {
     { path: "/opt/orch/cli.ts", data: cli, mode: FILE_MODE },
     { path: "/usr/local/bin/orch", data: '#!/bin/sh\nexec bun run /opt/orch/cli.ts "$@"\n', mode: EXEC_MODE },
   ]);
-  // The boss's own skills, before the first turn. A group's container gets this
-  // again on every checkout probe (that is where a repository's own join in);
-  // a project's container has no checkout and this is the only time it runs,
-  // which is why re-running it is also what a skill being ticked triggers.
+  // The boss's own skills, before the first turn. Every container with a
+  // checkout gets this again on that checkout's probe — a group's, and a
+  // project's once the indexer has cloned into it — which is where a
+  // repository's own join in. Re-running it is also what a skill being ticked
+  // triggers, for the containers that never reach a checkout at all.
   await sb.commands.run(SKILL_SYNC).catch(() => {});
 }
 
@@ -1127,12 +1128,19 @@ export async function relinkSkills(): Promise<void> {
  * nowhere else, so 重新扫描 — the one control whose entire purpose is "something
  * changed outside this process" — could not touch half of what it listed.
  *
+ * **The project's own container first, and it is not a fallback.** A project
+ * that has landed everything has no groups at all, and that is the state a
+ * stale entry sits in longest — asking only its groups asks nobody. The
+ * indexer clones into the project container (`indexHeads` →
+ * `createCheckout({ project })`), so a checkout is there whether or not any
+ * group exists.
+ *
  * `reconnect`, not `ensureSandbox`: a settings click must never cost a
  * `sandbox.create`, measured at ~34s p50. A container that has gone away
- * answers null and the next group is tried; the first one with a checkout wins,
- * so the usual cost after a restart is one reconnect. Serial for the same
- * reason — the answer is the same from any of them, and a fan-out would pay for
- * every container to agree.
+ * answers null and the next scope is tried; the first checkout that answers
+ * wins, so the usual cost is one reconnect. Serial for the same reason — the
+ * answer is the same from any of them, and a fan-out would pay for every
+ * container to agree.
  *
  * Null means nobody could answer, which is *not* the same as "this repository
  * ships none" — `cacheProjectSkills` writes an empty list as a real answer, so
@@ -1140,12 +1148,13 @@ export async function relinkSkills(): Promise<void> {
  */
 export async function listProjectSkills(ctx: Ctx, projectId: number): Promise<string | null> {
   const groups = ctx.db
-    .query<{ id: number; sandbox_id: string }, [number]>(
-      "SELECT id, sandbox_id FROM grp WHERE project_id = ? AND sandbox_id IS NOT NULL ORDER BY id DESC",
-    )
+    .query<{ id: number }, [number]>("SELECT id FROM grp WHERE project_id = ? ORDER BY id DESC")
     .all(projectId);
-  for (const g of groups) {
-    const sb = await reconnect(ctx, { grp: g.id }, g.sandbox_id);
+  const scopes: Scope[] = [{ project: projectId }, ...groups.map((g) => ({ grp: g.id }))];
+  for (const scope of scopes) {
+    const { sandboxId } = owner(ctx, scope);
+    if (!sandboxId) continue;
+    const sb = await reconnect(ctx, scope, sandboxId);
     if (!sb) continue;
     const probe = await sb.commands.run(`${SKILL_SYNC}; test -d ${WORK}/.git && echo yes`).catch(() => null);
     const out = stdoutText(probe);
