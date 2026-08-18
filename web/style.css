@@ -87,6 +87,16 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /* Keep the scrollbar's column whether or not there is a scrollbar in it.
+       Radix locks body scroll while a dialog is open, so opening 设置 takes the
+       page's scrollbar away and hands its width back to the content — every
+       chart on the page is measured by a `ResizeObserver`, so they all re-lay
+       out for a gutter appearing and disappearing. That is 「打开设置闪一下」,
+       and it is a layout fact rather than a charting one: no amount of
+       care inside the chart can stop it, because the chart is right to respond
+       to a width that really did change. Reserving the gutter means the width
+       does not change. */
+    scrollbar-gutter: stable;
   }
   body {
     background: var(--color-paper);
