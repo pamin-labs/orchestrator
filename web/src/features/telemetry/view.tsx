@@ -3,6 +3,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import { select } from "d3-selection";
 import flamegraph, { type FlameFrame, type FlameGraph } from "d3-flame-graph";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { scalePoint } from "d3-scale";
 // `Report` and not `Telemetry`: the component exported at the foot of this file
 // is called `Telemetry`, and a type import of the same name shadows it, so the
 // one place that renders the component could not see it.
@@ -211,6 +212,35 @@ function wheelWindow(
 const Y_AXIS_PX = 40;
 const CHART_MARGIN = { top: 4, right: 4, bottom: 0, left: 0 } as const;
 const TREND_INSET = { left: Y_AXIS_PX + CHART_MARGIN.left, right: CHART_MARGIN.right };
+
+/**
+ * `scalePoint`, imported so that it exists.
+ *
+ * `recharts` resolves a scale by *string*: it builds `"scale" + type` and looks
+ * the name up on its `d3-scale` namespace record, guarded by
+ * `typeof record[name] === "function"`. No bundler can follow a lookup like
+ * that, so each scale's implementation reaches the bundle only if something
+ * imports it statically — and the only module in the library that named
+ * `scalePoint` was `cartesian/Brush.js`. Deleting an unused `<Brush>` from this
+ * file therefore deleted a function the live chart resolves, leaving the export
+ * record pointing at a binding that no longer existed: `scalePoint:()=>ij0`
+ * with no `ij0` anywhere. Reading the property throws, so 耗时 died on mount
+ * with a minified name as its only evidence.
+ *
+ * Two other fixes were tried and are worth recording, because both look
+ * plausible and neither works. Passing the instance through `scale={...}`
+ * bypasses the library's own axis setup: the axis came back with no ticks and
+ * the area started a fifth of the way across the plot. Making the x axis
+ * numeric — which it now is, and for better reasons — does not remove the
+ * lookup either; `test/governance/bundle-boots.test.ts` still reproduced the
+ * crash against a bundle built that way.
+ *
+ * So the import is the fix, and the assertion is what stops it from looking
+ * like a stray line somebody can tidy away. It cannot fail while the import is
+ * here, which is the point: it fails loudly and by name if a future edit
+ * removes it, rather than silently at the next reader's mount.
+ */
+if (typeof scalePoint !== "function") throw new Error("d3-scale's scalePoint was tree-shaken out of the bundle");
 
 /** The endpoint's own default window, so the first bucket is derived from the same number. */
 const DAY_MS = 24 * 3_600_000;
@@ -1265,18 +1295,84 @@ function useTelemetry(
  * section of a longer page in the third, and a heading inside a tab repeats the
  * tab's own label.
  */
-export function Telemetry({
-  scope,
-  windowMs,
-  trend: showTrend = false,
-  empty = "还没有跑过任何活。",
+/**
+ * The trend, its bucket control and the two ways back out of a zoom.
+ *
+ * One component because those four things are one control surface: the picker
+ * governs the chart, the strip says where in the whole stretch the chart is,
+ * and the button undoes both. Rendering them from `Telemetry` put its own
+ * cognitive complexity over the threshold — 16 against 15 — and the branches it
+ * was counting were all about the window rather than about the page.
+ */
+function TrendBlock({
+  report,
+  bucketMs,
+  pinnedBucket,
+  onPickBucket,
+  window,
+  limit,
+  chosen,
+  onWindow,
 }: {
-  scope: TelemetryScope;
-  windowMs?: number;
-  /** The project view wants the shape over time; a single requirement has too few points for one. */
-  trend?: boolean;
-  empty?: string;
+  report: Report;
+  bucketMs: number;
+  pinnedBucket: number | null;
+  onPickBucket: (ms: number | null) => void;
+  window: TimeWindow;
+  limit: TimeWindow;
+  /** Whether the reader narrowed it, which is the only thing 回到整段时间 needs. */
+  chosen: TimeWindow | null;
+  onWindow: (next: TimeWindow | null) => void;
 }) {
+  return (
+    <Block
+      title="每次运行的耗时"
+      aside={
+        <BucketPicker
+          value={bucketMs}
+          pinned={pinnedBucket !== null}
+          windowMs={window.to - window.from}
+          onPick={onPickBucket}
+        />
+      }
+    >
+      <Trend
+        trend={report.trend}
+        windowMs={report.windowMs}
+        bucketMs={bucketMs}
+        window={window}
+        limit={limit}
+        onWindow={onWindow}
+      />
+      {/* The same strip the flamegraph has, against the whole stretch the data
+          covers. It is what the `Brush` could not be: a brush ranges over the
+          rows it is rendered with, and a zoom here re-reads the endpoint, so
+          those rows *are* the window and the brush could only ever span all of
+          itself. */}
+      <Minimap view={window} limit={limit} label="看的是哪一段" onPan={onWindow} />
+      {chosen !== null && (
+        <button
+          type="button"
+          onClick={() => onWindow(null)}
+          className="cursor-pointer self-start text-[0.75rem] text-ink-3 transition-colors hover:text-ink"
+        >
+          ← 回到整段时间
+        </button>
+      )}
+    </Block>
+  );
+}
+
+/**
+ * What the reader has singled out, and what they have hidden.
+ *
+ * Two pieces of state and the three rules that operate on them, together
+ * because they are one idea — "which stages am I looking at" — and apart from
+ * `Telemetry` because that component's own job is the layout and the read. Its
+ * cognitive complexity was over the threshold and every branch this hook takes
+ * with it was about a set of names rather than about the page.
+ */
+function useSelection() {
   /**
    * What the reader has selected, as the set of span names it covers.
    *
@@ -1295,6 +1391,31 @@ export function Telemetry({
   const [picked, setPicked] = useState<readonly string[]>([]);
   /** Names the reader has said they do not want to see. Right-click, 不看这一段. */
   const [excluded, setExcluded] = useState<readonly string[]>([]);
+  return {
+    picked,
+    excluded,
+    /** Selecting what is already selected clears it; that is the only way back. */
+    pick: (names: readonly string[]) =>
+      setPicked((current) => (current.length === names.length && names.every((n) => current.includes(n)) ? [] : names)),
+    exclude: (name: string) => setExcluded((names) => (names.includes(name) ? names : [...names, name])),
+    restore: (name: string) => setExcluded((names) => names.filter((other) => other !== name)),
+    restoreAll: () => setExcluded([]),
+  };
+}
+
+export function Telemetry({
+  scope,
+  windowMs,
+  trend: showTrend = false,
+  empty = "还没有跑过任何活。",
+}: {
+  scope: TelemetryScope;
+  windowMs?: number;
+  /** The project view wants the shape over time; a single requirement has too few points for one. */
+  trend?: boolean;
+  empty?: string;
+}) {
+  const { picked, excluded, pick, exclude, restore, restoreAll } = useSelection();
   /** The window a drag on the trend asked for, in place of the caller's default. */
   /**
    * The stretch of time the page is showing, when the reader has chosen one.
@@ -1356,10 +1477,6 @@ export function Telemetry({
   }
 
   const shown = report.stages.filter((stage) => !excluded.includes(stage.name));
-  const exclude = (name: string) => setExcluded((names) => (names.includes(name) ? names : [...names, name]));
-  /** Selecting what is already selected clears it; that is the only way back. */
-  const pick = (names: readonly string[]) =>
-    setPicked((current) => (current.length === names.length && names.every((n) => current.includes(n)) ? [] : names));
 
   return (
     // Two charts and two tables. Everything that stood between them — the
@@ -1382,41 +1499,16 @@ export function Telemetry({
             undo it. A chart with nothing in it is a state; a chart with its
             controls removed is a trap. */}
         {showTrend && (
-          <Block
-            title="每次运行的耗时"
-            aside={
-              <BucketPicker
-                value={bucketMs}
-                pinned={pinnedBucket !== null}
-                windowMs={shownWindow.to - shownWindow.from}
-                onPick={setPinnedBucket}
-              />
-            }
-          >
-            <Trend
-              trend={report.trend}
-              windowMs={report.windowMs}
-              bucketMs={bucketMs}
-              window={shownWindow}
-              limit={limit}
-              onWindow={setChosen}
-            />
-            {/* The same strip the flamegraph has, against the whole stretch the
-                data covers. It is what the `Brush` could not be: a brush ranges
-                over the rows it is rendered with, and a zoom here re-reads the
-                endpoint, so those rows *are* the window and the brush could only
-                ever span all of itself. */}
-            <Minimap view={shownWindow} limit={limit} label="看的是哪一段" onPan={setChosen} />
-            {chosen !== null && (
-              <button
-                type="button"
-                onClick={() => setChosen(null)}
-                className="cursor-pointer self-start text-[0.75rem] text-ink-3 transition-colors hover:text-ink"
-              >
-                ← 回到整段时间
-              </button>
-            )}
-          </Block>
+          <TrendBlock
+            report={report}
+            bucketMs={bucketMs}
+            pinnedBucket={pinnedBucket}
+            onPickBucket={setPinnedBucket}
+            window={shownWindow}
+            limit={limit}
+            chosen={chosen}
+            onWindow={setChosen}
+          />
         )}
 
         <FlameBlock folded={report.flame} picked={picked} />
@@ -1429,13 +1521,7 @@ export function Telemetry({
             and one bare table read as a layout that lost a heading. */}
         <Block title="各环节耗时">
           <Stages stages={shown} picked={picked} onPick={pick} onExclude={exclude} />
-          {excluded.length > 0 && (
-            <Excluded
-              names={excluded}
-              onClear={() => setExcluded([])}
-              onRestore={(n) => setExcluded((a) => a.filter((x) => x !== n))}
-            />
-          )}
+          {excluded.length > 0 && <Excluded names={excluded} onClear={restoreAll} onRestore={restore} />}
         </Block>
         <Slices slices={report.slices} />
       </div>
