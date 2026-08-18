@@ -13,7 +13,13 @@
     "typeCheck": false
   },
   "rules": {
-    "no-unused-vars": ["error", { "args": "none", "varsIgnorePattern": "^_" }],
+    "no-unused-vars": [
+      "error",
+      {
+        "args": "none",
+        "varsIgnorePattern": "^_"
+      }
+    ],
     "no-control-regex": "off",
     "no-await-in-loop": "off",
     "no-shadow": "off",
@@ -31,33 +37,60 @@
     "typescript/no-deprecated": "error",
     "typescript/no-floating-promises": "error",
     "typescript/no-import-type-side-effects": "error",
-    "typescript/no-misused-promises": ["error", { "checksVoidReturn": { "attributes": false } }],
+    "typescript/no-misused-promises": [
+      "error",
+      {
+        "checksVoidReturn": {
+          "attributes": false
+        }
+      }
+    ],
     "typescript/no-unsafe-assignment": "error",
     "typescript/no-unsafe-argument": "error",
     "typescript/no-unsafe-call": "error",
     "typescript/no-unsafe-member-access": "error",
     "typescript/no-unsafe-return": "error",
     "typescript/use-unknown-in-catch-callback-variable": "error",
-    "typescript/switch-exhaustiveness-check": ["error", { "defaultCaseCommentPattern": "@skip-exhaustive-check" }],
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      {
+        "defaultCaseCommentPattern": "@skip-exhaustive-check"
+      }
+    ],
     "no-loop-func": "error",
     "no-promise-executor-return": "error",
     "no-useless-return": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "react/react-in-jsx-scope": "off",
-    "react/no-unstable-nested-components": ["error", { "allowAsProps": true }],
+    "react/no-unstable-nested-components": [
+      "error",
+      {
+        "allowAsProps": true
+      }
+    ],
     "react/button-has-type": "error",
     "jsx-a11y/alt-text": "error",
     "jsx-a11y/anchor-is-valid": "error",
     "jsx-a11y/click-events-have-key-events": "error",
     "jsx-a11y/label-has-associated-control": "error",
     "jsx-a11y/no-static-element-interactions": "error",
-    "jsx-a11y/prefer-tag-over-role": "off"
+    "jsx-a11y/prefer-tag-over-role": "off",
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "z",
+        "property": "unknown",
+        "message": "z.unknown() erases validation at a trust boundary. Model the shape, or parse into a discriminated union."
+      }
+    ]
   },
   "overrides": [
     {
       "files": ["web/src/ui/button.tsx"],
-      "rules": { "jsx-a11y/anchor-has-content": "off" }
+      "rules": {
+        "jsx-a11y/anchor-has-content": "off"
+      }
     }
   ],
   "ignorePatterns": ["web/dist", "data", "leases", ".cache"]

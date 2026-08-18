@@ -24,19 +24,12 @@ test("Fallow adds only undiscovered entry points and classifies directories by p
   expect(config.security.categories.include).toContain("hardcoded-secret");
   expect(config.security.categories.include).toContain("secret-to-network");
   expect(new Set(config.security.categories.include).size).toBe(config.security.categories.include.length);
-  expect(zones).toMatchObject({
-    "public-rpc": ["src/http/routes/**"],
-    "shared-contracts": ["src/contracts/**"],
-    "build-info": ["src/platform/process/version.ts"],
-    platform: ["src/platform/**"],
-    "http-edge": ["src/http/**"],
-    "runtime-adapters": ["src/runtime/**"],
-    mechanisms: ["src/mech/**"],
-    composition: ["src/composition/**"],
-    tests: ["test/**"],
-    scripts: ["scripts/**"],
-  });
-
+  // No verbatim copy of the zone list. It used to be repeated here in full, which
+  // made `.fallowrc.json` a thing with two owners: adding a zone meant editing
+  // both, and the test failing said only that the two files disagreed — never
+  // which of them was right. Fallow is the owner and enforces the rules; what
+  // belongs here is the property those rules have to keep, which no tool checks.
+  //
   // Every zone is a directory. Zones used to carry file lists — `src/api.ts`,
   // `src/ctx.ts`, `src/lang.ts`, `src/observability.ts`, `src/scheduler.ts` —
   // because those files sat at the source root with nowhere to belong. A list is

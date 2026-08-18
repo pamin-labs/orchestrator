@@ -32,6 +32,7 @@ These encode product policy. There is no external owner to rent.
 | Formatting | Biome | `bun run format:check` | Formatter rules in Oxlint — would duplicate the verdict | Biome stops covering a language we use |
 | Type/build boundaries | TypeScript project build | `bun run typecheck`, clean build at milestones | Oxlint experimental compiler diagnostics — same verdict, weaker | — |
 | Source correctness, promises, React, accessibility | Oxlint + `oxlint-tsgolint` | `bun run lint` | ESLint, typescript-eslint — second linter for one risk | Oxlint drops a rule class we depend on |
+| Validation not erased at a trust boundary (`z.unknown()`) | Oxlint `no-restricted-properties` | `bun run lint` | A governance test that greps for the call — a linter's job, re-run by hand | Oxlint drops `no-restricted-properties`, which has no `no-restricted-syntax` beside it |
 | Dependency zones, cycles, dead code, private leaks, duplication, complexity | Fallow | `bun run audit`, changed-code report | dependency-cruiser, graph rules in Oxlint — second dependency graph | — |
 | Runtime behavior | Bun test | targeted tests, then `bun test` | Jest, Vitest — replacing the runner needs an ADR; Bun's is native and faster | Bun test loses a capability the suite needs |
 | Generative input invariants | fast-check on Bun test | seed and path on failure | — | — |
