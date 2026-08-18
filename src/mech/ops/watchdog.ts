@@ -510,12 +510,28 @@ async function nudgeMovedBases(ctx: Ctx, findings: Finding[], now: () => number)
                            AND j.kind = 'agent_turn' AND j.payload_json LIKE '%"conflict":true%')`,
     )
     .all();
-  for (const group of groups) await nudgeMovedBase(ctx, group, findings, now);
+  // One request per *project*, not per group. Every group in a project asks the
+  // same repository for the same branch, so ten groups on one project made ten
+  // identical calls against one rate limit on every tick — and the answer they
+  // were racing to fetch was the same string.
+  const heads = new Map<number, BaseHead | null>();
+  for (const group of groups) {
+    if (!heads.has(group.project_id)) heads.set(group.project_id, await remoteBaseHead(ctx, group));
+  }
+  for (const group of groups) await nudgeMovedBase(ctx, group, heads.get(group.project_id) ?? null, findings, now);
 }
 
-async function nudgeMovedBase(ctx: Ctx, group: BaseGroup, findings: Finding[], now: () => number): Promise<void> {
-  const movement = await remoteBaseMovement(ctx, group);
-  if (!movement) return;
+async function nudgeMovedBase(
+  ctx: Ctx,
+  group: BaseGroup,
+  head: BaseHead | null,
+  findings: Finding[],
+  now: () => number,
+): Promise<void> {
+  // The comparison stays per group: the base is a fact about the project, and
+  // whether it *moved* is a fact about what this group last saw.
+  if (!head || head.sha === group.seen) return;
+  const movement = head;
   const git = sandboxGit(ctx, { grp: group.id });
   if (!(await knowsCommit(git, movement.sha))) return;
   if ((await git(WORK, ["merge-base", "--is-ancestor", movement.sha, "HEAD"], WORK)).code === 0) return;
@@ -525,7 +541,13 @@ async function nudgeMovedBase(ctx: Ctx, group: BaseGroup, findings: Finding[], n
   ctx.db.run("UPDATE grp SET rebase_seen = ?, rebase_seen_at = ? WHERE id = ?", [movement.sha, now(), group.id]);
 }
 
-async function remoteBaseMovement(ctx: Ctx, group: BaseGroup): Promise<{ baseRef: string; sha: string } | null> {
+interface BaseHead {
+  baseRef: string;
+  sha: string;
+}
+
+/** Where a project's base branch points now. Nothing group-specific in it. */
+async function remoteBaseHead(ctx: Ctx, group: BaseGroup): Promise<BaseHead | null> {
   const baseRef = await baseRefFor(ctx, group.project_id);
   const branch = baseRef.startsWith("origin/") ? baseRef.slice("origin/".length) : baseRef;
   const head = await ctx.gh?.request(
@@ -534,7 +556,7 @@ async function remoteBaseMovement(ctx: Ctx, group: BaseGroup): Promise<{ baseRef
     z.object({ commit: z.object({ sha: z.string().optional() }).optional() }),
   );
   const sha = head?.ok ? (head.data?.commit?.sha ?? "") : "";
-  return !sha || sha === group.seen ? null : { baseRef, sha };
+  return sha ? { baseRef, sha } : null;
 }
 
 type GitIn = ReturnType<typeof sandboxGit>;

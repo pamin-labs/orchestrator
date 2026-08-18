@@ -207,6 +207,15 @@ async function streamed(
 }
 
 export async function createCheckout(ctx: Ctx, scope: Scope, spec: CheckoutSpec): Promise<void> {
+  // The one a reader is looking for: nine serial execs, a bare clone and a fetch,
+  // once per requirement. It had no row of its own, so the cost showed up only as
+  // a scattering of `sandbox.exec` and nothing said they were one operation.
+  await gitSpan("git.create_checkout", { "project.id": spec.projectId ?? 0 }, () =>
+    createCheckoutInner(ctx, scope, spec),
+  );
+}
+
+async function createCheckoutInner(ctx: Ctx, scope: Scope, spec: CheckoutSpec): Promise<void> {
   // Folded into the probe that was already happening, so the repository's own
   // skills are re-linked and re-listed on every turn for no extra round trip —
   // and a skill pushed this morning is delivered this afternoon rather than
@@ -348,6 +357,13 @@ const mirrorPath = (remote: string): string => `/repos/${remote.replace(/[^\w.-]
  * — `--mirror` does — so without it the mirror freezes; `--prune` drops dead branches.
  */
 async function ensureMirror(ctx: Ctx, remote: string): Promise<string> {
+  // Called by `keepBranch`, `pushBranch` and `listTree` with no freshness check at
+  // all, so an unconditional `fetch --prune` runs on every turn and every tick.
+  // Whether that is worth a cache is a question about a number nobody had.
+  return gitSpan("git.ensure_mirror", {}, () => ensureMirrorInner(ctx, remote));
+}
+
+async function ensureMirrorInner(ctx: Ctx, remote: string): Promise<string> {
   const path = mirrorPath(remote);
   const there = await execIn(ctx, UTIL, `test -d ${shq(path)} && echo yes`);
   if (there.out.trim() === "yes") {
@@ -464,6 +480,41 @@ async function listTreeInner(
  * `--filter=blob:none` and every read is a network fetch. It reads the project's
  * own container instead, in one exec — a read per file is 125 round trips a tick.
  */
+/**
+ * A git operation whose cost is the point, reported as one row.
+ *
+ * The container round trips underneath carry their own spans now, but a reader
+ * asking "why did this requirement take a minute to start" wants the operation,
+ * not nine execs. These are the two cadences that matter: `createCheckout` is
+ * once per requirement and calls itself the longest minute in a group's life,
+ * and `keepBranch` is once per *turn*, of which a requirement has dozens — so the
+ * second is very likely the larger bill and neither could be seen at all.
+ *
+ * Reported failure rather than a throw is the contract of most of these, so a
+ * span that only errored on an exception would almost never error. The caller
+ * says which result counts as failure.
+ */
+async function gitSpan<T>(
+  name: string,
+  attributes: Record<string, string | number>,
+  run: () => Promise<T>,
+  failed: (value: T) => string | null = () => null,
+): Promise<T> {
+  return activeTracer().startActiveSpan(name, { attributes }, async (span) => {
+    try {
+      const value = await run();
+      const why = failed(value);
+      if (why !== null) span.setStatus({ code: SpanStatusCode.ERROR, message: why });
+      return value;
+    } catch (e) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+      throw e;
+    } finally {
+      span.end();
+    }
+  });
+}
+
 export async function treeHeads(ctx: Ctx, scope: Scope, bytes: number | null): Promise<Map<string, string>> {
   // One exec, but it reads the head of every tracked file inside a container, so
   // the cost scales with the repository rather than with the round trip. This
@@ -516,16 +567,38 @@ async function treeHeadsInner(
  * objects and never a credential, which is why the direction is one-way: out of
  * the agent's container, never in. See `readOnlyGitPaths` for the other half.
  */
+/**
+ * A branch operation on one group: spanned, and never allowed to throw.
+ *
+ * Both callers promise a returned reason rather than an exception — one is a turn
+ * that has already finished its work, the other a slice acceptance nobody awaits
+ * — so the catch and the span's own failure test are the same two lines twice.
+ */
+function branchOp(
+  name: string,
+  grpId: number,
+  run: () => Promise<{ ok: boolean; reason?: string }>,
+): Promise<{ ok: boolean; reason?: string }> {
+  return gitSpan(
+    name,
+    { "grp.id": grpId },
+    async () => {
+      try {
+        return await run();
+      } catch (e) {
+        return { ok: false, reason: tail(errText(e, 100_000), 300) };
+      }
+    },
+    (r) => (r.ok ? null : (r.reason ?? "failed")),
+  );
+}
+
 export async function keepBranch(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
   // Every way out of here is a returned reason, never a throw. Two callers are a
   // turn that has already finished its work and a slice acceptance that is not
   // awaited — for both, a container that cannot be opened has to be a reported
   // failure rather than an exception that takes the turn or the process with it.
-  try {
-    return await keep(ctx, grpId);
-  } catch (e) {
-    return { ok: false, reason: tail(errText(e, 100_000), 300) };
-  }
+  return branchOp("git.keep_branch", grpId, () => keep(ctx, grpId));
 }
 
 function branchRemote(
@@ -591,11 +664,7 @@ async function keep(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: st
  * rejected `(stale info)`. The branch lives under `orch/`, which only we write.
  */
 export async function pushBranch(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {
-  try {
-    return await push(ctx, grpId);
-  } catch (e) {
-    return { ok: false, reason: tail(errText(e, 100_000), 300) };
-  }
+  return branchOp("git.push_branch", grpId, () => push(ctx, grpId));
 }
 
 async function push(ctx: Ctx, grpId: number): Promise<{ ok: boolean; reason?: string }> {

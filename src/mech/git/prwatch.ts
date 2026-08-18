@@ -14,6 +14,7 @@ import { pages } from "./paging.ts";
 import { parseRepo } from "../../contracts/repository.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { jsonOr } from "../../contracts/json.ts";
+import pMap from "p-map";
 import { z } from "zod";
 import type { GrpState } from "../../contracts/states.ts";
 
@@ -522,13 +523,28 @@ async function pollPrsInner(ctx: Ctx, gh: Github): Promise<Feedback[]> {
        WHERE g.status != 'DISSOLVED' AND g.pr_number IS NOT NULL`,
     )
     .all();
-  const feedback: Feedback[] = [];
-  for (const group of groups) {
-    const result = await pollPr(ctx, gh, group);
-    if (result) feedback.push(result);
-  }
-  return feedback;
+  // Concurrent, because these are N independent conversations with GitHub and
+  // nothing here reads another group's answer. Serially, ten open PRs cost five
+  // requests each inside one 30-second tick — about 7.5 seconds of it spent
+  // waiting, and that holds even when every one of them is a 304.
+  //
+  // Capped rather than unbounded: `plugin-throttling` already paces the account's
+  // own limits, and a fan-out wider than that only queues inside the library
+  // while making the failure of any one of them harder to attribute. The same
+  // number the container fan-out uses, for the same reason — a ceiling somebody
+  // chose beats a ceiling that happens to be the row count.
+  const results = await pMap(groups, (group) => pollPr(ctx, gh, group), { concurrency: PR_FANOUT });
+  return results.filter((result): result is Feedback => result !== null);
 }
+
+/**
+ * How many PRs are polled at once.
+ *
+ * Four, matching `EXEC_FANOUT`: not derived from anything about GitHub, just a
+ * bound small enough that one slow PR does not stall the tick and large enough
+ * that ten of them fit inside it.
+ */
+const PR_FANOUT = 4;
 
 /** Hand PR feedback to the PM: replying to a review needs judgement, polling does not. */
 export function dispatchFeedback(ctx: Ctx, f: Feedback): void {

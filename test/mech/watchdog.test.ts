@@ -1151,3 +1151,36 @@ test("a question on a group nobody can answer is closed, not pushed to the boss 
   expect(findings.map((f) => f.rule)).toContain("stale_ask");
   expect(pushed).toEqual([]);
 });
+
+/**
+ * One request per project, not per group.
+ *
+ * Every group in a project asks the same repository for the same branch, so the
+ * answer was fetched once per group per tick — ten groups on one project, ten
+ * identical calls against one rate limit, every thirty seconds, for one string.
+ * Whether the base *moved* is still decided per group, because that compares
+ * against what each one last saw.
+ */
+test("groups sharing a project ask GitHub about their base once between them", async () => {
+  const h = harness();
+  h.db.run("UPDATE grp SET status = 'RUNNING', sandbox_id = 'sb-1' WHERE id = 1");
+  h.db.run("UPDATE project SET repo_path = 'acme/p-pr', base_branch = 'master' WHERE id = 1");
+  // Two more groups on the same project, so three groups share one base branch.
+  for (const name of ["g2", "g3"]) {
+    const id = fx.grp.insert(h.db, { project_id: 1, name }).id;
+    h.db.run("UPDATE grp SET status = 'RUNNING', sandbox_id = 'sb-1' WHERE id = ?", [id]);
+  }
+  const asked: string[] = [];
+  h.ctx.gh = gh((path) => {
+    asked.push(path);
+    return { commit: { sha: "abc1234567" } };
+  });
+
+  await runWatchdog(h.deps);
+
+  expect(asked.filter((p) => p.includes("/branches/master"))).toHaveLength(1);
+  // All three still learned about it: the shared answer is not a shared verdict.
+  expect(h.db.query<{ c: number }, []>("SELECT count(*) AS c FROM grp WHERE rebase_seen = 'abc1234567'").get()!.c).toBe(
+    3,
+  );
+});

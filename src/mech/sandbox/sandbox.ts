@@ -703,11 +703,23 @@ async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
       // only when a mount was actually accepted — the fallback above has already
       // said its piece, and "mounted but empty" would be a false description of a
       // container that was built without the mount at all.
-      if (created.skillsMounted) {
-        await checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {});
-      }
-      await writeLoginFiles(ctx, sb);
-      await installVaultCredentials(ctx, scope, sb, projectId);
+      //
+      // The three together: they share no state — one writes files under
+      // `CODEX_HOME`, one calls `credentialVault.create`, and the third is an `ls`
+      // whose only output is an upgrade message — and each already owns its
+      // failure. Serially they were three round trips on the path a requirement
+      // waits on, with a *diagnostic* in front of the credentials.
+      //
+      // `Promise.all` and not a floating promise for the diagnostic: the sandbox
+      // is usable the moment this returns, and a check still in flight then would
+      // report on a container the next step has already changed.
+      await Promise.all([
+        created.skillsMounted
+          ? checkSkillsMount(ctx, sb, skills[0]!.host!.path, skills[0]!.mountPath).catch(() => {})
+          : undefined,
+        writeLoginFiles(ctx, sb),
+        installVaultCredentials(ctx, scope, sb, projectId),
+      ]);
       // Remembered before restore so re-entry finds this sandbox instead of building another.
       await restoreGroupWorkspace(ctx, scope);
     } catch (error) {
