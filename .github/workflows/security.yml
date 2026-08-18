@@ -112,6 +112,46 @@ jobs:
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           format: table
+      # What the gate above does not fail on, printed anyway.
+      #
+      # `ignore-unfixed` on the gate is not the same as not caring. An advisory
+      # with no published fix cannot be acted on by the person whose pull
+      # request is being blocked: the only ways out are changing base image or
+      # dropping the package, which are decisions somebody makes deliberately
+      # and not under a red check. Blocking on them teaches people to turn the
+      # gate off, which costs the fixable ones too.
+      #
+      # But not blocking is only defensible if the list is visible, so this step
+      # prints it on every run — 53 at the time it was added, all of them
+      # `affected` or `fix_deferred` in Debian's own tracker. It is the same
+      # arrangement `quality-fallow` uses for coverage gaps: reported, never
+      # gated, and never silent.
+      - name: report advisories with no fix available
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: orchestrator-agent:ci
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '0'
+          format: table
+          output: trivy-unfixed.txt
+      - name: publish the unfixed list
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          {
+            echo '### Advisories with no fix available'
+            echo
+            echo 'Not gated: no published fix means nothing this pull request can do.'
+            echo 'Acting on them means changing base image or dropping a package.'
+            echo
+            echo '```'
+            tail -c 60000 trivy-unfixed.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: create container SPDX SBOM
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:

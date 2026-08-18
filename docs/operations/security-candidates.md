@@ -47,13 +47,15 @@ because there is nothing left to annotate.
 | sql-injection | `src/api/panel/group.ts:199` | false positive | same constant, group id bound | api |
 | sql-injection | `src/api/orch/planning.ts:348` | false positive | same constant, project and group ids bound | api |
 | sql-injection | `src/api/panel/panel.ts:72` | false positive | every `where` element is a source literal carrying `?`; the values travel in `args` and are bound by `.all(...args)` | api |
-| ssrf | `src/api/panel/authflow.ts:132` | false positive | destination is `cfg.sandbox.server` and the key sent is the one stored for that address — the same disposition as `preflight.ts:62` | api |
+| ssrf | `src/api/panel/authflow.ts:137` | **fixed** | `cfg.sandbox.server` is now constrained to `host` or `host:port` by `contracts/config.ts`, and the URL is built with `new URL` rather than interpolated, so the value can only choose the address | api |
 | ssrf | `src/orch/cli.ts:88` | false positive | the URL is the generated client's, built from `ORCH_URL` or loopback; inside a sandbox `ORCH_MAILBOX` is set and this branch is never taken | orch |
 | ssrf | `src/mech/sandbox/images.ts:51` | false positive | fixed `ghcr.io` origin; token was minted for that same repository | mech |
 | ssrf | `src/mech/sandbox/mailbox.ts:94` | false positive | `normalise` pins the origin and the `/orch/v1/` prefix and returns the string that is sent | mech |
 | ssrf | `src/mech/sandbox/server.ts:93` | false positive | destination is `cfg.sandbox.server`, paired with its own key | mech |
 | ssrf | `scripts/browse.ts:101` | false positive | origin is the throwaway local server this script just started; the step file contributes a path | scripts |
 | ssrf | `scripts/make-github-app.ts:102` | **fixed** | `code` arrives on a listening socket; now shape-checked at the socket, so it is one path segment | scripts |
+| http-to-file | `scripts/make-github-app.ts:150` | **fixed** | the App slug went from an `as` assertion straight into a file path; the response is parsed with Zod and the slug constrained to `[a-z0-9-]+`, so it cannot be a path fragment | scripts |
+| secret-logged | `scripts/make-github-app.ts:163` | false positive | public identifiers of the App just created; the private key goes to a 0600 file and only its path is printed. The failure branch no longer prints the response body at all | scripts |
 | hardcoded-secret | `src/contracts/config.ts:219` | false positive | the `SETTING_DENIALS` refusal text for `sandbox.apiKey`, not a key; nothing is stored or sent | contracts |
 | sql-injection | `src/platform/observability/span-store.ts:372` | false positive | `where` is one of `scopeSql`'s three source literals; `percentiles("duration_ms")` is a module template over a literal column name; bounds and scope ids bound | platform |
 | sql-injection | `src/platform/observability/span-store.ts:465` | false positive | same `where`; bounds, scope ids and `limit` bound | platform |

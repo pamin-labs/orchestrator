@@ -219,3 +219,22 @@ test("the config type and the config schema are one declaration", () => {
   const live = ConfigSchema.safeParse(loadConfig());
   expect(live.success ? [] : live.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([]);
 });
+
+test("a sandbox address is a host and a port, not the rest of a URL", () => {
+  // Every reader interpolates this into `http://${server}/v1/...`, so an
+  // unchecked string is not an address — it is the whole URL after the scheme.
+  // `evil.example/x?` turns a probe carrying the sandbox API key into a request
+  // to somebody else's path; `user:pw@host` turns it into one carrying
+  // credentials. CodeQL called the shape `js/file-access-to-http`.
+  const server = (value: string) => ConfigSchema.shape.sandbox.shape.server.safeParse(value).success;
+
+  expect(server("127.0.0.1:8080")).toBe(true);
+  expect(server("sandbox.internal")).toBe(true);
+  expect(server("[::1]:8080")).toBe(true);
+
+  expect(server("evil.example/v1/steal")).toBe(false);
+  expect(server("user:pw@evil.example")).toBe(false);
+  expect(server("http://evil.example")).toBe(false);
+  expect(server("evil.example?x=")).toBe(false);
+  expect(server("evil.example#frag")).toBe(false);
+});

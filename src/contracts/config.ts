@@ -162,7 +162,27 @@ export const ConfigSchema = z.object({
    * overrides live in `project.config_json.sandbox`.
    */
   sandbox: SandboxSpecSchema.extend({
-    server: z.string().min(1),
+    /**
+     * `host` or `host:port`, and nothing else.
+     *
+     * Every reader interpolates this into a URL — `http://${server}/v1/...` —
+     * so an unchecked string is not an address, it is the whole of the URL
+     * after the scheme. `evil.example/x?` turns a probe carrying the sandbox
+     * API key into a request to somebody else's path, and `user:pw@host` turns
+     * it into one carrying credentials. CodeQL called that
+     * `js/file-access-to-http` and was right about the shape of it.
+     *
+     * Checked here rather than at the four call sites, because the four are not
+     * the point: the fifth is. A value that cannot be a URL fragment cannot be
+     * misused as one by a reader added next month.
+     */
+    server: z
+      .string()
+      .min(1)
+      .regex(
+        /^(?:\[[0-9a-fA-F:]+\]|[a-zA-Z0-9._-]+)(?::\d{1,5})?$/,
+        "sandbox.server 只能是 host 或 host:port，不能带协议、路径、查询或凭据",
+      ),
     apiKey: z.string(),
   }),
   dataDir: z.string().min(1),

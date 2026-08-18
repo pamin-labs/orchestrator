@@ -13,6 +13,7 @@
  * a manifest and have to be ticked by hand afterwards. Both fail in ways that
  * look like something else, which is why they are printed rather than assumed.
  */
+import { z } from "zod";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -104,18 +105,48 @@ const res = await fetch(`https://api.github.com/app-manifests/${code}/conversion
   method: "POST",
   headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
 });
-const app = (await res.json()) as {
-  id: number;
-  slug: string;
-  client_id: string;
-  pem: string;
-  html_url: string;
-  owner: { login: string };
-};
+/**
+ * GitHub's answer, parsed rather than asserted.
+ *
+ * It was `as { ... }`, which is a claim about a network response and not a
+ * check on one — and `slug` from that response went straight into a file path.
+ * A slug containing a separator escapes `data/` through `join`'s own
+ * normalisation, and the file being written is a private key. CodeQL called it
+ * `js/http-to-file-access`; the fix is to make the value incapable of being a
+ * path fragment rather than to explain that GitHub would not send one.
+ *
+ * The character class is GitHub's own: an App slug is lowercase alphanumerics
+ * and hyphens. Anything else fails here, loudly, before a key is written
+ * anywhere.
+ */
+const AppSchema = z.object({
+  id: z.number(),
+  slug: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[a-z0-9-]+$/, "GitHub returned an App slug that is not a slug"),
+  client_id: z.string().min(1),
+  pem: z.string().min(1),
+  html_url: z.string().min(1),
+  owner: z.object({ login: z.string() }),
+});
+
+const body: unknown = await res.json();
 if (!res.ok) {
-  console.error(`GitHub 拒绝了这次转换：${res.status}`, app);
+  // The status and GitHub's own message, not the body. A refused conversion
+  // carries no key, but printing an unparsed response wholesale is how one
+  // eventually will — and the message is the part a person can act on.
+  const said = body !== null && typeof body === "object" && "message" in body ? String(body.message) : "";
+  console.error(`GitHub 拒绝了这次转换：${res.status} ${said}`);
   process.exit(1);
 }
+const parsed = AppSchema.safeParse(body);
+if (!parsed.success) {
+  console.error("GitHub 的回复不是预期的形状，没有写任何文件：", parsed.error.issues);
+  process.exit(1);
+}
+const app = parsed.data;
 
 // The pem is a real secret and never goes in the repo. `data/` is gitignored and
 // the server already chmods it 0700 at startup.
@@ -124,6 +155,12 @@ const pem = join("data", `github-app-${app.slug}.pem`);
 writeFileSync(pem, app.pem, { mode: 0o600 });
 chmodSync(pem, 0o600);
 
+// Every field below is a public identifier of the App that was just created:
+// its URL, client id, slug, numeric id and owner login. The one secret in the
+// response, `pem`, goes to a 0600 file and is referred to here only by path.
+// Fallow flags them because they now trace to a parsed HTTP response, which is
+// exactly what they are.
+// fallow-ignore-next-line security-sink -- public identifiers of a just-created GitHub App; the private key is written to a 0600 file and only its path is printed. See the note above.
 console.log(`
 建好了：${app.html_url}
 

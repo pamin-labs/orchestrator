@@ -128,14 +128,14 @@ export const postAuth = (async (ctx, _req, _p, b) => {
  */
 async function sandboxKeyWorks(server: string, key: string): Promise<"ok" | "invalid" | "unknown"> {
   try {
-    // codeql[js/file-access-to-http] -- the stored key is sent to the address it
-    // was stored for, which is what "check this key still works" means. Both
-    // values come from the boss's own settings and neither is attacker-chosen:
-    // the panel is loopback-only and no request field reaches here. Dispositioned
-    // against Fallow in docs/operations/security-candidates.md as well; this is
-    // the same finding from a second tool.
     // fallow-ignore-next-line security-sink -- `server` is `cfg.sandbox.server`, the address of the boss's own sandbox server, and the key sent with it is the key stored for that same address. Choosing that address is the feature; the panel is loopback-only and no request field reaches this. Same disposition as the probe in `mech/sandbox/server.ts`.
-    const r = await fetch(`http://${server}/v1/sandboxes`, {
+    // Built rather than interpolated. `server` is `host[:port]` by contract
+    // (`config.ts` rejects anything else), and `new URL` is what makes that
+    // guarantee load-bearing: a path or a query in the value would replace this
+    // path rather than extend the host, which is how a probe carrying the
+    // sandbox key ends up somewhere else.
+    // fallow-ignore-next-line security-sink -- the destination is `cfg.sandbox.server`, which `contracts/config.ts` now constrains to `host` or `host:port` — no scheme, path, query or credentials — so the value can only choose the address, which is the feature. `new URL` is what makes that constraint load-bearing rather than advisory. The key sent with it is the key stored for that same address, the panel is loopback-only, and no request field reaches here.
+    const r = await fetch(new URL("/v1/sandboxes", `http://${server}`), {
       headers: { "OPEN-SANDBOX-API-KEY": key },
       signal: AbortSignal.timeout(3000),
     });
