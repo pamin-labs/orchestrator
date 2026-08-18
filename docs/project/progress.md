@@ -348,6 +348,27 @@ M7 — executable engineering governance and versioned protocol.
    that cannot be undone.
 5. Monitor the first merged CI and nightly stress runs; replay any property
    failure from its reported seed and path.
+7. The agent image does not build on arm64. `docker build --file
+   docker/agent.Dockerfile .` on Apple silicon fails verifying the Node install:
+   the tarball extracts `/usr/local/bin/node` but the step then resolves `node`
+   to the base image's `/usr/local/bun-node-fallback-bin/node -> bun` shim,
+   which refuses. CI builds amd64 and is unaffected, so this blocks local
+   iteration on the image rather than the product.
+
+   What is known, measured rather than assumed: a probe with the same `curl`,
+   `sha256sum` and `tar` — but without `apt-get upgrade` and without `git` —
+   extracts `bin/node`, `bin/npm`, `bin/npx` and `lib/node_modules/npm`
+   correctly on arm64, and `command -v node` resolves to the real binary. A
+   probe with `apt-get upgrade` and `git` but no Node install shows an intact
+   `/usr/local/bin` and the expected PATH. The two halves work; the combination
+   does not, and the difference has not been isolated. `hash -r` before the
+   check does not help, and removing the three `--exclude` flags makes it worse
+   (then even amd64 loses `bin/npm`).
+
+   Next step: bisect the two apt steps into the probe one at a time. Do not
+   loosen the verification to make it pass — it is what found this, and a bare
+   `node --version` succeeds against the shim.
+
 6. Add `codecov/patch` to the ruleset's required checks — **after this branch
    merges, not before**, and the reason is more specific than "wait for a PR to
    report it".
