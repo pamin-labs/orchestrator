@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { waitFor } from "@testing-library/dom";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { makeApp } from "../../src/composition/api.ts";
@@ -432,7 +433,15 @@ test("the codex device login shows a code with its link, and stores what the con
   expect(b.expiresAt - Date.now()).toBeLessThanOrEqual(DEVICE_CODE_TTL_MS);
 
   // No completion route: the credential row is the confirmation.
-  for (let i = 0; i < 50 && !loadAuth(db, "codex"); i++) await Bun.sleep(10);
+  //
+  // `waitFor` rather than a hand-rolled `for` with a `Bun.sleep` in it. The loop
+  // it replaces polled fifty times and then simply carried on, so a device flow
+  // that never completed failed on the *next* assertion — `toEqual` against
+  // `null`, which reads as "the row is wrong" rather than "the row never
+  // arrived". This one throws where the waiting happened, and it is already a
+  // dependency: `@testing-library/dom` is what `@testing-library/react` is
+  // built on, and `waitFor` itself touches no DOM.
+  await waitFor(() => expect(loadAuth(db, "codex")).not.toBeNull());
   expect(loadAuth(db, "codex")).toEqual({
     runtime: "codex",
     mode: "chatgpt",
