@@ -272,12 +272,17 @@ M7 — executable engineering governance and versioned protocol.
 
 - **`main` branch ruleset**, snapshotted before and after the Phase G4 change:
   the live state is whatever `gh api repos/pamin-labs/orchestrator/rulesets/20892179` answers as of
-  this entry. It requires **14** status checks — `quality-format`,
-  `quality-types`, `quality-oxlint`, `quality-fallow`, `test-main`,
-  `test-coverage`, `build-web`, `dco`, `pr-plan`, `security-codeql`,
-  `security-fallow`, `security-dependencies`, `security-container`,
-  `workflow-static` — with `require_code_owner_review` on, plus deletion and
-  non-fast-forward protection.
+  this entry. It requires the **8** contexts in
+  [`.github/required-checks.txt`](../../.github/required-checks.txt) — `quality`,
+  `test`, `pr`, `security-fallow`, `security-dependencies`, `security-container`,
+  `workflow-static`, `security-codeql` — with `require_code_owner_review` on, plus
+  deletion and non-fast-forward protection.
+
+  It said fourteen until this entry, naming `quality-format`, `test-main` and
+  friends: the nine-jobs-into-three consolidation renamed them and the list here
+  was not moved with them. The file is the single source now and the live ruleset
+  matches it; a list transcribed into prose is the same drift that produced the
+  `check` bug below, one layer up.
 
   All fourteen were verified against `.github/workflows/*.yml` as real job
   names, which is the check that matters: the bug this replaced required a
@@ -303,9 +308,23 @@ M7 — executable engineering governance and versioned protocol.
    a recognised credential pattern being refused at the remote with the rule
    named — which is the behaviour worth confirming once deliberately, on a
    throwaway branch with a fake key, rather than discovering under pressure.
-2. When the database moves to Drizzle, move `test/support/factories.ts` to
-   Fishery's documented `onCreate` + async `create()` with the database passed as
-   a transient parameter, and drop the project-owned `insert`. It is written
+2. When the database moves to Drizzle — decided, and on the **v1 RC line** rather
+   than `latest`, which has not moved since 2026-03-27 while v1 removes the
+   `_journal.json` every "bundle the migrations into the binary" recipe reads —
+   move `test/support/factories.ts` to Fishery's documented `onCreate` + async
+   `create()` with the database passed as a transient parameter, and drop the
+   project-owned `insert`.
+
+   Budget the async conversion rather than the ORM. Measured in `src/`: 297
+   `.query<>()`, 269 `.get()`, 132 `.all()`, 163 `db.run()` — about 564 call sites
+   that become `await`, plus 675 in `test/`, and it spreads, because a function
+   holding one becomes async and so does everything calling it. `openMemory()`'s
+   190× snapshot has no Postgres equivalent across its 283 call sites;
+   `pgsql-test` and `pglite-test` (both published 2026-08-18) replace it with
+   per-test transaction rollback — except `test/governance/transaction-boundaries.test.ts`,
+   whose subject *is* the transaction and which therefore cannot run inside one.
+   The `--compile` objection does not survive: with Postgres external, migration
+   is a compose step and the binary never migrates. It is written
    synchronously today because `bun:sqlite` is synchronous, which is a stated
    deviation rather than an oversight. Deferred deliberately: the conversion is
    423 call sites across 59 files, it is the same edit whether it happens now or
