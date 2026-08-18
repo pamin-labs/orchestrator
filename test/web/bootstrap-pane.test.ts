@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { bootstrapOf } from "../../web/src/features/requirement/bootstrap.ts";
-import type { PanelFrame } from "../../web/src/shared/api.ts";
+import type { PanelFrame } from "../../web/src/shared/stream.ts";
 
 /**
  * The pane that watches a sandbox being rebuilt. What can be wrong here is the

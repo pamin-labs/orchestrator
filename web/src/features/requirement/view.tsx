@@ -19,11 +19,11 @@ import {
   readApi,
   sliceDecision,
   type Escalation,
-  type PanelFrame,
   type Group,
   type Slice,
   type State,
 } from "../../shared/api";
+import type { PanelFrame } from "../../shared/stream";
 import { asksOf, gates, mineOf, prUrl, statusLabel, WHERE_ZH } from "../../shared/select";
 import { K, waited } from "../../shared/format";
 import { nl } from "../../shared/prose";
@@ -85,11 +85,8 @@ import {
 } from "./model";
 
 /**
- * Confirm, then act, then refresh — the shape every consequential control here has.
- *
- * Each of them spelled it out: a `const go`, an early return, the call, the
- * refresh. Four lines of ceremony per button, and the early return is the one
- * that gets forgotten.
+ * Confirm, then act, then refresh — the shape every consequential control here
+ * has, in one place, because the early return is the part that gets forgotten.
  */
 const confirmThen = (spec: AskSpec, run: () => Promise<unknown>, refresh?: () => void) => async () => {
   if (!(await ask(spec))) return;
@@ -100,17 +97,12 @@ const confirmThen = (spec: AskSpec, run: () => Promise<unknown>, refresh?: () =>
 /**
  * One requirement, arranged so exactly one thing is the target of action.
  *
- * The first version stacked everything at full weight: identity, five controls, three
- * slices each with its own gate row, an evidence panel that pushed the last slice off
- * the fold, then delegated answers, then records, then the roster, then a composer.
- * Nine blocks of equal loudness, and the boss's job on this page is one of three
- * things — approve the plan, accept a slice, answer a question.
- *
- * So: a header that states what this is and hides the rare controls in a menu; the
- * slices as a compact ordered list where the row that needs you is selected; the
- * detail of that one slice underneath it, with its actions; everything else (records,
- * stand-in answers, roster) behind tabs. Read top to bottom it says what happened,
- * what needs you, and what to type — in that order.
+ * The boss's job here is one of three things — approve the plan, accept a slice,
+ * answer a question — so: a header that states what this is and hides the rare
+ * controls in a menu; the slices as a compact ordered list with the row that
+ * needs you selected; that one slice's detail underneath it, with its actions;
+ * everything else behind tabs. Read top to bottom it says what happened, what
+ * needs you, and what to type — in that order.
  */
 export function Requirement({
   st,
@@ -149,13 +141,10 @@ export function Requirement({
   const sub = askLane(subPick, mine.length, others.length);
 
   return (
-    // Four things this page holds, and they were stacked in two columns down one
-    // scroll: questions, slices, the record, the roster — plus a composer that
-    // ended up below however many slices there were. Tabs put one at a time in
-    // front of the boss, each scrolling inside itself, with the header and the
-    // box you type into pinned. Long shell commands inside an escalation used to
-    // push the whole page into a horizontal scroll; every column is min-w-0 and
-    // the text breaks now.
+    // Tabs put one of the four things this page holds in front of the boss at a
+    // time, each scrolling inside itself, with the header and the box you type
+    // into pinned. Every column is min-w-0: a long shell command inside an
+    // escalation otherwise pushes the whole page into a horizontal scroll.
     <section className="flex min-h-0 flex-1 flex-col">
       <Header st={st} g={g} refresh={refresh} />
       <Bootstrap frames={frames} grpId={g.id} />
@@ -245,15 +234,12 @@ export function Requirement({
 /**
  * The slices, and the evidence for the one that is open.
  *
- * The evidence opens under the row it belongs to. It used to sit in a second
- * pane below the whole list, so the diff for S2 was drawn under S3 and the row
- * it answers was two rows away from the two buttons that answer it. One
- * accordion: rows and the one open body in the same scroll, the evidence header
- * pinned inside it so the verdict buttons stay reachable while you read the diff.
+ * One accordion, so the evidence opens under the row it belongs to rather than
+ * in a pane below the whole list, with its header pinned inside so the verdict
+ * buttons stay reachable while you read the diff.
  *
  * The box hugs its rows and is capped at what is left of the screen — not
- * `flex-1`, which drew an 800px empty frame under three closed rows. The scroll
- * still lives here once the open slice outgrows the pane.
+ * `flex-1`, which draws an empty frame under three closed rows.
  */
 function SliceList({
   st,
@@ -294,12 +280,8 @@ function SliceList({
 }
 
 /**
- * Three kinds of thing, one at a time, with their counts on the switch.
- *
- * Stacked down one scroll they were invisible: at the top of the page nothing
- * said a question was being held by the Architect or that a stand-in had
- * answered two of them — you found out by scrolling past the box you came to
- * type in. A switch says it in three words without moving anything.
+ * Three kinds of thing, one at a time, with their counts on the switch — which
+ * says who is holding what without the reader scrolling to find out.
  *
  * Not a second tab strip (this page already has one): the same quiet ToggleGroup
  * the evidence panel uses, for the same reason.
@@ -368,10 +350,9 @@ function AskLanes({
 /**
  * The sandbox being built back up, while it happens.
  *
- * A group's container is replaceable — the TTL reaps an idle one, a credential
- * change kills it — and what follows a rebuild is a clone and an install that
- * can run for minutes. Until this pane existed the page said nothing for all of
- * it: the requirement simply sat there, which is indistinguishable from stuck.
+ * A container is replaceable — the TTL reaps an idle one, a credential change
+ * kills it — and the clone and install that follow can run for minutes, which
+ * without this pane is indistinguishable from stuck.
  *
  * Live frames only, so it is gone on reload and the outcome line in the record
  * is what remains. Nothing here is stored twice.
@@ -629,11 +610,9 @@ function Ticks({ s, gs }: { s: Slice; gs: Record<string, string> }) {
 /** The selected slice, in full: what it promised, what it did, and the two buttons. */
 function SliceDetail({ st, s, refresh }: { st: State; s: Slice; refresh: () => void }) {
   const tasks = st.tasks.filter((t) => t.slice_id === s.id);
-  // A header saying `S2 <title> 验收：<spec>` sat here, directly under the lane row
-  // that says S2 and the title, directly above the evidence panel that leads with
-  // the acceptance line. Three copies of two facts, stacked. The buttons were the
-  // only thing here that was not a repeat, so they moved next to the evidence they
-  // are a verdict on.
+  // No header: the lane row above and the evidence panel below already carry the
+  // slice number, the title and the acceptance line. The buttons moved next to
+  // the evidence they are a verdict on.
   const act =
     s.status !== "awaiting_boss" ? null : (
       <span className="flex shrink-0 gap-1.5">
@@ -708,11 +687,9 @@ function NewPr({ grpId, refresh }: { grpId: number; refresh: () => void }) {
 }
 
 /**
- * Sending a slice back.
- *
- * The words are the whole payload: they become a blackboard fact and the PM plans
- * the correction from them, so this is the same composer as everywhere else and
- * takes a screenshot of what is wrong.
+ * Sending a slice back. The words are the whole payload — they become a
+ * blackboard fact the PM plans the correction from — so this is the same
+ * composer as everywhere else, screenshot included.
  */
 function RejectSlice({ sliceId, refresh }: { sliceId: number; refresh: () => void }) {
   const [open, setOpen] = useState(false);
@@ -781,8 +758,8 @@ function Budget({ g, refresh }: { g: Group; refresh: () => void }) {
  * The way out of budget exhaustion.
  *
  * The watchdog suspends the group and the scheduler then refuses to admit it, so
- * 继续 was a button that looked like it worked and changed nothing — the next tick
- * suspended it again. Raising the cap is the only thing that moves it.
+ * 继续 changes nothing — the next tick suspends it again. Raising the cap is the
+ * only thing that moves it.
  */
 function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
   // `budget_tokens` is nullable in the column and the browser used to declare it
@@ -817,17 +794,15 @@ function BudgetWall({ g, refresh }: { g: Group; refresh: () => void }) {
  */
 function Delegated({ rows, refresh }: { rows: State["answered"]; refresh: () => void }) {
   // Nothing at all when nobody has answered for you. A sentence explaining what
-  // an empty block would have contained is the page reporting an absence, which
-  // is what PRODUCT.md says an empty state must not do — and this one sat under
-  // the question the boss was there to answer.
+  // an empty block would have held is the page reporting an absence, which
+  // PRODUCT.md says an empty state must not do.
   if (!rows.length) return null;
   return (
     <div className="overflow-hidden rounded-lg border border-rule-soft">
       {rows.map((a) => (
         // Question, then answer, in the order they happened, at a measure that
-        // can be read. Both used to run the full width of the page, the question
-        // in body text and the answer in a grey slab under it — two paragraphs
-        // of somebody else's words at the weight of live work.
+        // can be read and a weight below live work — these are somebody else's
+        // words, not the boss's.
         <div key={a.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
           <div className="flex items-baseline gap-2">
             <span className="font-mono text-[0.6875rem] text-ink-3">{a.answered_by} 代答</span>
@@ -899,7 +874,7 @@ function SayDock({ g, refresh }: { g: Group; refresh: () => void }) {
  *
  * 方向错了, 不做了 and 退回重拆 are the same control three times: a tip saying who
  * receives the sentence, a confirm carrying the weight, and a send that clears
- * the box only if it went. Each one had written that out.
+ * the box only if it went.
  */
 function SendAs({
   label,
@@ -942,9 +917,9 @@ function Say({ g, refresh, projectId }: { g: Group; refresh: () => void; project
     return r.ok;
   };
 
-  // Before approval the exits live next to the approve button, where the decision
-  // is. A second composer down here asked the boss to type into whichever one they
-  // found first, and neither said where the words would go.
+  // Before approval the exits live next to the approve button, where the
+  // decision is. A second composer here would ask the boss to type into
+  // whichever one they found first.
   if (isDraft(g)) return null;
 
   return (
@@ -1114,12 +1089,8 @@ function DropProposal({ g, body, refresh }: { g: Group; body: string; refresh: (
 }
 
 /**
- * The other three things the boss can say here, with the box to say them in.
- *
- * There were two: 批准开工 and 退回重拴, and the box to type in was at the very
- * bottom of the page under everything else — so the words the boss added while
- * looking at the card went somewhere they could not see, and "要求修改" and
- * "不做了" did not exist at all. A duplicate requirement could not be turned away.
+ * The other three things the boss can say here, with the box to say them in —
+ * next to the card they are about, not at the bottom of the page.
  *
  * Each button says who receives the sentence, because the same words mean three
  * different things depending on which one is pressed.
@@ -1194,10 +1165,9 @@ function Ask({ e, refresh, open }: { e: Escalation; refresh: () => void; open: b
   // button did nothing — which is exactly when you press it: after editing the
   // draft into something worse and wanting it back.
   const [seed, setSeed] = useState<{ n: number; text: string }>({ n: 0, text: "" });
-  // Asked for, never automatic. Opening a question used to fire a model call —
-  // one per open, on every question the boss so much as looked at — and most of
-  // them are read and answered without wanting anybody's draft. The button is in
-  // the composer's own row, where the other writing aids are.
+  // Asked for, never automatic: on open this is a model call per question the
+  // boss so much as looks at, and most are answered without wanting a draft. The
+  // button is in the composer's own row, where the other writing aids are.
   const [draft, setDraft] = useState<{ busy: boolean; text?: string }>({ busy: false });
   const askDraft = () => {
     if (draft.busy) return;
@@ -1344,24 +1314,18 @@ function Asked({ body, className, tone }: { body: string; className?: string; to
 /**
  * Questions somebody else in the chain is still holding.
  *
- * Nothing here is the boss's move — the PM or the Architect will answer it, or
- * abstain and pass it up, at which point it moves to the list above. They sat in
- * that list at the same weight, with the same tint and the same answer box, and
- * the commonest one is an Architect quoting the shell command a clearance rule
- * blocked: a paragraph of `git ls-tree -r main --name-only | grep -i markdown`
- * the boss can do nothing with.
- *
- * One line each: who is holding it, how long, and the first line of what was
- * asked. Reference, not work.
+ * Nothing here is the boss's move — the PM or the Architect answers it, or
+ * abstains and passes it up, at which point it moves to the list above. One line
+ * each: who is holding it, how long, and the first line of what was asked.
+ * Reference, not work.
  */
 function Held({ rows }: { rows: Escalation[] }) {
   return (
     <div className="overflow-hidden rounded-lg border border-rule-soft">
       {rows.map((e) => (
         // Open, always. Folding is for a list you choose from, and there is
-        // nothing to choose here — no button, no box, nothing the boss does. The
-        // question and the fact that somebody is writing back are the whole
-        // content, so they are on the screen.
+        // nothing to choose here — the question and the fact that somebody is
+        // writing back are the whole content.
         <div key={e.id} className="border-t border-rule-soft px-4 py-2.5 first:border-t-0">
           <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[0.6875rem] text-ink-3">
             <span className="text-ink-2">{e.asker ?? "系统"}</span>

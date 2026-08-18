@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { appendFrame, type PanelFrame } from "../../web/src/shared/api.ts";
+import { appendFrame, type PanelFrame } from "../../web/src/shared/stream.ts";
 
 /**
  * The flicker's root cause was index keys: a new frame prepended in the

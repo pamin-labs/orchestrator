@@ -1,13 +1,6 @@
 import { expect, test } from "bun:test";
-import {
-  mutate,
-  notifyFrom,
-  notifyPlan,
-  readJson,
-  readWire,
-  requestHeaders,
-  type Wire,
-} from "../../web/src/shared/api.ts";
+import { mutate, readJson, requestHeaders } from "../../web/src/shared/api.ts";
+import { notifyFrom, notifyPlan, readWire, type Wire } from "../../web/src/shared/stream.ts";
 import type { Json } from "../../src/contracts/json.ts";
 import { z } from "zod";
 

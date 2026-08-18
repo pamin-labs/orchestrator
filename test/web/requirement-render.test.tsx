@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, render as mount, valueOf } from "../support/render.tsx";
 import { inFlight, mockHttp } from "../support/http.ts";
-import { emptyState, type Group, type PanelFrame, type Slice, type State } from "../../web/src/shared/api.ts";
+import { emptyState, type Group, type Slice, type State } from "../../web/src/shared/api.ts";
+import type { PanelFrame } from "../../web/src/shared/stream.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
 import { WithQueries } from "./queries.tsx";
 import { Requirement } from "../../web/src/features/requirement/view.tsx";

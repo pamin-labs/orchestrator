@@ -49,28 +49,14 @@ import type { InferResponseType } from "hono/client";
 /**
  * The operating knobs, as rows.
  *
- * These used to live in `config/default.yaml` with a hundred lines of comments
- * around them, and those comments are the most expensive thing in that file —
- * every number is a measurement someone paid for. They come across as the `?` on
- * each row. A settings page that lists forty numbers with no reasons is a page
- * that gets a number changed once and never changed back.
+ * Every number here is a measurement someone paid for, so each row carries its
+ * reason as a `?`. The server sends value, default and whether it was
+ * overridden; the labels and the reasons live here, because they are copy.
  *
- * The server sends value, default and whether it was overridden; the labels and
- * the reasons live here, because they are copy.
- *
- * Three things this page owes the reader, and did not:
- *
- * - **A value in the unit it means.** `1200000` is twenty minutes and
- *   `10800000` is three hours, and told apart by counting zeros. `units.ts`
- *   does the conversion and `test/knob-units.test.ts` holds it to being exact.
- * - **A shape for the value it holds.** Six of these are tables — runtime by
- *   difficulty, model by window, mount by host path — and a table crammed into
- *   one line of JSON is a value nobody can read and nobody can fix by hand.
- * - **A refusal where the value is.** A toast in the corner outlives the fix and
- *   never says which of the four boxes on the row it meant.
- *
- * No save button anywhere: a field is written when it loses focus, and the band
- * at the top says when the last write landed.
+ * A value is shown in the unit it means (`units.ts`, held exact by
+ * `test/knob-units.test.ts`), a table-shaped value gets a table rather than a
+ * line of JSON, and a refusal is drawn where the value is. No save button: a
+ * field is written when it loses focus.
  */
 
 const RawKnobSchema = z.object({
@@ -100,13 +86,10 @@ const TIERS = ["trivial", "normal", "hard"] as const;
 /**
  * Three tracks, one per tier.
  *
- * 难度 → 模型 needs a fourth on the left for its runtime names; 每片 token 上限
- * does not, and used to carry an empty one anyway so the two blocks' columns
- * would agree. That bought the wrong alignment: the eye runs down the *page*,
- * where every other row's control starts at the same x, and one row starting
- * 3.25rem further in reads as broken long before anyone compares it to the block
- * above it. The two blocks still read as the same three things because both are
- * labelled trivial / normal / hard.
+ * 难度 → 模型 needs a fourth column on the left for its runtime names; 每片
+ * token 上限 does not and carries none. The eye runs down the *page*, where
+ * every row's control starts at the same x, rather than across to the block
+ * above; both still read as the same three things, being labelled the same.
  */
 const TIERS_ONLY = "grid w-full grid-cols-3";
 const TIER_GRID = `${TIERS_ONLY} grid-cols-[3.25rem_repeat(3,minmax(0,1fr))]`;
@@ -295,14 +278,11 @@ const PAIRS: Record<string, { kind: PairKind; keyPh: string }> = {
 /**
  * Two settings the page shows as one row, because they are one decision.
  *
- * `indexModel` is `{runtime, model}` and the settings table splits any object
- * with fixed keys into a path each — so the server offers `indexModel.runtime`
- * and `indexModel.model` and never `indexModel`, which is why the old page,
- * asking for `indexModel`, drew nothing at all: the most-called model in the
- * system had no row and the paragraph explaining why it matters was on screen
- * zero times. Shown together because a model belongs to a CLI; two rows would
- * invite codex plus an Anthropic model, which is a config that boots and then
- * fails on every index call.
+ * The settings table splits any object with fixed keys into a path each, so the
+ * server offers `indexModel.runtime` and `indexModel.model` and never
+ * `indexModel` — asking for the latter draws nothing. Shown together because a
+ * model belongs to a CLI: two rows invite codex plus an Anthropic model, which
+ * boots and then fails on every index call.
  */
 const PAIRED: Record<string, string> = { "indexModel.runtime": "indexModel.model" };
 
@@ -315,10 +295,9 @@ export function Knobs({ section }: { section: KnobSection }) {
   // Every section of this dialog reads the same machine settings, so they share
   // one entry rather than each mounting its own effect and asking again.
   //
-  // The throw is what keeps a failed re-read from emptying the page: `readApi`
-  // has already put the server's refusal on screen, and returning `null` here
-  // would replace the knobs the boss is looking at with 读取中…. An error leaves
-  // the last good answer in place, which is what the `if (d)` guard did.
+  // The throw keeps a failed re-read from emptying the page: `readApi` has
+  // already shown the refusal, and returning `null` would replace the knobs with
+  // 读取中…. An error leaves the last good answer in place.
   const { data: knobs = null } = useQuery({
     queryKey: ["settings"],
     queryFn: async () => {
@@ -330,8 +309,8 @@ export function Knobs({ section }: { section: KnobSection }) {
 
   const write: Write = async (body) => {
     // Destructured: `post` returns `{ok, text}`, so `if (!ok)` on the object
-    // itself is always false and a refused write would still have said 已保存.
-    // `quiet` because the row shows the reason where the value is.
+    // itself is always false and a refused write still says 已保存. `quiet`
+    // because the row shows the reason where the value is.
     const r = await mutate(api.settings.$post({ json: body }), true);
     if (r.ok) {
       setSaved(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
@@ -361,10 +340,9 @@ export function Knobs({ section }: { section: KnobSection }) {
   rows.sort((a, b) => spec.paths.indexOf(a.path) - spec.paths.indexOf(b.path));
 
   return (
-    // The dialog sets one label column for every pane in it (5rem, which holds
-    // 基线分支 and API 密钥). These labels are sentences rather than nouns —
-    // 暂停多久后封存, 几次抱怨变规则 — so the five knob panes share a wider one
-    // among themselves rather than each row wrapping to three lines.
+    // The dialog's shared label column is 5rem. These labels are sentences
+    // rather than nouns — 暂停多久后封存 — so the five knob panes share a wider
+    // one among themselves rather than each row wrapping to three lines.
     <div className="[--label:8.5rem]">
       {/* Where a save button would be. There is none: a field is written when it
           loses focus, and this says the write landed. */}
@@ -555,12 +533,10 @@ function choiceValue({ knob, onWrite }: Editor) {
   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- this renderer intentionally owns only choice knobs
   switch (knob.path) {
     case "language":
-      // Any language, suggested rather than restricted. What this governs is
-      // what the *agents* write — journals, channel messages, the questions they
-      // ask — and a model writes whatever it is told to. `say()`'s two-column
-      // table is only the orchestrator's own two dozen status lines, and it
-      // falls back to English for anything it does not have; that is a smaller
-      // fact than this field, and it is in the row's note.
+      // Any language, suggested rather than restricted: this governs what the
+      // *agents* write, and a model writes whatever it is told to. `say()`'s
+      // table is only the orchestrator's own status lines — a smaller fact, and
+      // it is in the row's note.
       return (
         <Combobox
           free
@@ -740,12 +716,8 @@ const LANGUAGES = [
 /**
  * A number and its unit, as two controls instead of one string to spell.
  *
- * The parser stays — `20 分钟`, `3h`, `8M` all still work if someone types them
- * — but nobody has to. The reason is what the boss can get wrong: one box
- * holding `1200000` invites a zero too many, and one box holding `20 分钟`
- * invites `20 分` (fine), `20m` (fine), `20 min钟` (refused, and the refusal is
- * about spelling rather than about the number). Splitting them means the only
- * free text left is digits, and the input refuses everything but digits.
+ * The parser stays — `20 分钟`, `3h`, `8M` all still work — but splitting them
+ * leaves digits as the only free text, and the input refuses everything else.
  *
  * Integer-only, which is why `splitCount` exists next to `fmtCount`: the reading
  * format prints 8500000 as `8.5M`, and 8.5 is not something a spinner can step
@@ -807,12 +779,11 @@ function Amount<U extends string>({
       ) : (
         <Segments
           value={unit}
-          // Nothing selected *is* the answer when a bare number is legal — 8 is
-          // eight, not eight of some unit that had to be given a name. So the
+          // Nothing selected *is* the answer when a bare number is legal, so the
           // empty member is never drawn: pressing the lit one turns it off,
           // which is what a toggle group already means. A unit set with no empty
-          // member (毫秒/秒/分钟/小时) keeps what it had instead, because there
-          // is no such thing as a duration without one.
+          // member (毫秒/秒/分钟/小时) keeps what it had, because there is no
+          // such thing as a duration without one.
           onValueChange={(u) => {
             const wanted = u || (BARE_OK.has(unit) ? "" : unit);
             const selected = units.find((candidate) => candidate === wanted);
@@ -1050,11 +1021,9 @@ function Lines({ list, ph, onWrite }: { list: string[]; ph: string | undefined; 
 }
 
 /**
- * Runtime by difficulty, drawn as the grid it is.
- *
- * The rows are whichever runtimes the config holds rather than a fixed pair:
- * which CLIs exist is a code decision, and a table that could only ever say
- * claude and codex would be wrong the day a third one lands.
+ * Runtime by difficulty, drawn as the grid it is. The rows are whichever
+ * runtimes the config holds rather than a fixed pair, so a third CLI needs no
+ * change here.
  */
 function ModelTable({
   table,
@@ -1095,13 +1064,11 @@ function ModelTable({
 /**
  * Model to context window: a picker for the key, digits and a unit for the value.
  *
- * Not `Pairs`, which is right for `cacheDirs` and `leaseSlots` because their keys
- * really are free text. A model id is not: it has to match what a role is
- * actually run with, character for character, and the failure of a typo here is
- * silent — the model falls back to the `default` window and rotates its session
- * at a fraction of its real size, which is the exact bug the row's own `?` note
- * describes. Models already named elsewhere in the config are offered; anything
- * else can still be typed, because that is how a new one gets added at all.
+ * Not `Pairs` — a model id is not free text. It has to match what a role is run
+ * with character for character, and a typo is silent: the model falls back to
+ * the `default` window and rotates its session at a fraction of its real size.
+ * Models named elsewhere in the config are offered; anything else can still be
+ * typed, because that is how a new one gets added at all.
  */
 function Windows({
   map,
@@ -1112,11 +1079,10 @@ function Windows({
   src: ModelSources;
   onWrite: (v: Json) => void;
 }) {
-  // `default` first and always present. It is not a model — it is the window
-  // every model without a row of its own falls back to — and deleting it drops
-  // all of them to `MIN_CONTEXT`, which is a fleet-wide rotation nobody asked
-  // for and nothing reports. Sorted rather than left where the object put it,
-  // because the fallback belongs above the exceptions to it.
+  // `default` first and always present: it is the window every model without a
+  // row falls back to, and deleting it drops all of them to `MIN_CONTEXT` — a
+  // fleet-wide rotation nothing reports. Sorted, because the fallback belongs
+  // above the exceptions to it.
   const entries = Object.entries({ default: 0, ...map }).sort(([a], [b]) =>
     a === DEFAULT_KEY ? -1 : b === DEFAULT_KEY ? 1 : 0,
   );
@@ -1156,11 +1122,9 @@ function Windows({
             options={free}
             // Born at the fallback window, not at 0. A row is written the moment
             // it is named — there is nowhere to put a value first — and 0 is
-            // refused by the schema (`z.number().int().positive()`), so a new
-            // model could not be added at all: the box came back
-            // "contextWindow: Too small: expected number to be >0" and the row
-            // never appeared. The fallback is the honest starting guess anyway,
-            // since it is what this model was already being sized by.
+            // refused by the schema (`z.number().int().positive()`), so a row
+            // born at 0 is one the boss cannot create. The fallback is the honest
+            // guess anyway: it is what this model was already sized by.
             onCommit={(name) => {
               if (name.trim()) onWrite({ ...map, [name.trim()]: Number(map[DEFAULT_KEY]) || 200_000 });
             }}
@@ -1189,12 +1153,11 @@ function Caps({ caps, onWrite }: { caps: Record<string, number>; onWrite: (v: Js
 /**
  * Which CLI, and which model on it. Two settings, one decision, one row.
  *
- * Switching the CLI carries the model with it, and it must not: `gpt-5.6-luna`
- * on claude is a model that runtime cannot run, and this is by its own note the
- * most frequent model call in the system, so the failure arrives everywhere at
- * once. It moves to the new runtime's cheapest, which `difficultyModel` already
- * states — `trivial` is by definition the tier not worth a large model, so the
- * answer is in the config rather than in a price table nobody would update.
+ * Switching the CLI must not carry the model with it: a gpt id on claude is a
+ * model that runtime cannot run, and this is the most frequent model call in the
+ * system, so the failure arrives everywhere at once. It moves to the new
+ * runtime's `trivial` model, which `difficultyModel` already names — the answer
+ * is in the config rather than in a price table nobody would update.
  */
 function IndexModel({
   runtime,
@@ -1236,9 +1199,8 @@ function IndexModel({
 /**
  * The browser's own permission, asked for where the boss can see why.
  *
- * Deliberately a button rather than a prompt on load: a page that asks for
- * notifications before it has said anything worth being notified about is the
- * page everyone clicks 拒绝 on, and that decision is sticky.
+ * A button rather than a prompt on load: asking before the page has said
+ * anything worth being notified about gets 拒绝, and that decision is sticky.
  */
 /** What each answer means, and where the reader has to go to change it. */
 const NOTIFY_SAID: Record<NotifyState, string> = {

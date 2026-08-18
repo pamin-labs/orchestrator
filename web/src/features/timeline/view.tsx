@@ -1,5 +1,6 @@
 import { memo } from "react";
-import { groupedRows, type PanelFrame, type State } from "../../shared/api";
+import type { State } from "../../shared/api";
+import { groupedRows, type PanelFrame } from "../../shared/stream";
 import { clock } from "../../shared/format";
 import { cn } from "../../ui/cn";
 

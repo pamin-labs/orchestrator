@@ -24,16 +24,10 @@ const SIZE = { width: 900, height: 500 };
 /**
  * `SVGTransformList.consolidate`, which happy-dom does not implement.
  *
- * `d3-transition` animates the `transform` attribute when the flamegraph zooms,
- * and `d3-interpolate` parses the current value by setting it on a scratch node
- * and calling `transform.baseVal.consolidate()`. happy-dom's `SVGTransformList`
- * has every other method from the spec and not that one, so a zoom threw from
- * inside a `d3-timer` callback — uncaught, after the test had already passed,
- * which is the worst place for it. Returning `null` is the documented answer for
- * an empty list and sends `parseSvg` down its identity path, which is right for
- * the zero-duration transitions this chart is built with.
- *
- * A gap in the DOM simulation, not in the chart: a browser has this method.
+ * A gap in the DOM simulation, not in the chart: a browser has this method, and
+ * `d3-interpolate` calls it while animating a zoom's `transform`. Without it a
+ * zoom threw from inside a `d3-timer` callback, after the test had passed.
+ * `null` is the documented answer for an empty list.
  */
 const svgTransforms: unknown = Object.getPrototypeOf(
   document.createElementNS("http://www.w3.org/2000/svg", "g").transform.baseVal,
@@ -109,13 +103,8 @@ const trace = (traceId: string, over: Partial<Report["traces"][number]> = {}) =>
 const serve = (answer: Report) => server.use(http.get("/api/v1/telemetry", () => HttpResponse.json(answer)));
 
 /**
- * Rendered the way the app renders it.
- *
- * `app.tsx` wraps the whole panel in `TipRoot`, and Radix's tooltip throws
- * outright when one is used outside its provider. Rendering the component bare
- * tested a tree the product never builds, and the failure it produced —
- * "`Tooltip` must be used within `TooltipProvider`" — was the harness's, not the
- * component's.
+ * Rendered the way the app renders it: `app.tsx` wraps the whole panel in
+ * `TipRoot`, and Radix's tooltip throws outside its provider.
  */
 const show = (ui: React.ReactElement) =>
   render(
@@ -156,12 +145,9 @@ const frames = (view: { container: HTMLElement }) => view.container.querySelecto
 const frameGroups = (view: { container: HTMLElement }) => view.container.querySelectorAll("svg.d3-flame-graph g.frame");
 
 /**
- * The one-line readout under the flamegraph.
- *
- * `d3-flame-graph` writes into it on hover, and it used to write its own status
- * sentence there on search too — `search: 0 of 11271164.521939998 total samples`
- * — which is why `setSearchHandler` is overridden to write nothing. This asserts
- * only the hover half, the half we asked for.
+ * The one-line readout under the flamegraph. `d3-flame-graph` writes into it on
+ * hover, and on search too until `setSearchHandler` was overridden to write
+ * nothing; this asserts only the hover half.
  */
 const readout = (view: { container: HTMLElement }) =>
   // A sibling of the chart host, not a child of it: the row above the svg holds
@@ -204,11 +190,8 @@ test("two kinds can be open at once, because the question is which is worse", as
   const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
   await waitFor(() => expect(view.getAllByText("巡检规则")).toHaveLength(1));
 
-  // Single-open was the original choice and it is wrong for these rows. A
-  // requirement's slices are alternatives — reading one means not reading the
-  // others — but 巡检规则 and 代码索引 are comparable, and the whole reason to
-  // open the second is to see it beside the first. Closing the first to do that
-  // is the one thing the control must not do.
+  // These rows are comparable, so any number may be open at once: closing the
+  // first to open the second is the one thing this control must not do.
   openGroup(view, "巡检规则");
   await waitFor(() => expect(view.getAllByText("watchdog.a")).toHaveLength(1));
   openGroup(view, "代码索引");
@@ -217,11 +200,9 @@ test("two kinds can be open at once, because the question is which is worse", as
 });
 
 test("a width change re-lays out the flamegraph instead of rebuilding it", async () => {
-  // A controllable `ResizeObserver`, because happy-dom's does not fire and a
-  // `window.resize` event does not reach one. The first version of this test
-  // dispatched `resize` and passed against the bug it was written for, which is
-  // worse than not having it — so the observer is replaced by one whose
-  // callback this test can call.
+  // A controllable `ResizeObserver`: happy-dom's does not fire, and a dispatched
+  // `window.resize` never reaches one — which is how the first version of this
+  // test passed against the bug it was written for.
   const observers: { fire: () => void }[] = [];
   const seen = globalThis.ResizeObserver;
   class Controllable implements ResizeObserver {
@@ -241,11 +222,9 @@ test("a width change re-lays out the flamegraph instead of rebuilding it", async
     const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
     await waitFor(() => expect(frames(view).length).toBeGreaterThan(0));
 
-    // The node identity is the assertion. Opening 设置 locks body scroll, the
-    // scrollbar goes, the pane gains those pixels back and the observer fires —
-    // and while `width` was a dependency of the effect that *creates* the chart,
-    // that destroyed and rebuilt it, which is 「打开设置页面，前者会闪一下」.
-    // A re-layout keeps the same svg; a rebuild does not.
+    // The node identity is the assertion: with `width` a dependency of the
+    // effect that creates the chart, opening 设置 rebuilt it — 「打开设置页面，
+    // 前者会闪一下」. A re-layout keeps the same svg; a rebuild does not.
     const before = view.container.querySelector("svg.d3-flame-graph");
     expect(before).not.toBeNull();
     SIZE.width = 700;
@@ -290,12 +269,10 @@ test("a failed stage is counted and marked, not dropped", async () => {
 // ── the rest ───────────────────────────────────────────────────────────────
 
 test("every frame mixes its colour with the page, so the chart follows the theme", async () => {
-  // The regression this pins: fixed OKLCH literals. `ui.md` delivers the dark
-  // variant by inverting the ink scale, so a frame at a fixed lightness stayed
-  // mid while the page flipped around it, and the label on it went from
-  // readable to invisible. The hue is a literal — it has to be, it is the
-  // frame's identity — but every fill is mixed toward `--color-paper`, and that
-  // is what makes lightness and chroma follow the theme.
+  // The regression this pins: fixed OKLCH literals stayed mid-lightness while
+  // the page flipped around them and the labels went invisible. The hue is the
+  // frame's identity, so it stays a literal; mixing toward `--color-paper` is
+  // what makes lightness and chroma follow the theme.
   serve(ONE_TRACE);
   const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
 
@@ -326,8 +303,7 @@ test("sibling frames whose names differ in one token are different colours", asy
 
   await waitFor(() => expect(frames(view).length).toBeGreaterThanOrEqual(6));
   const fills = [...frames(view)].map((node) => node.getAttribute("fill") ?? "");
-  // Six frames — the synthetic root, `turn`, and its four children — and no two
-  // of them share a fill.
+  // Six: the synthetic root, `turn`, and its four children.
   expect(new Set(fills).size).toBe(fills.length);
 });
 
@@ -344,12 +320,9 @@ test("frames of different names are different colours", async () => {
 });
 
 test("every frame is labelled, in a colour that reads against it", async () => {
-  // The library's own stylesheet never loads — it self-imports
-  // `d3-flamegraph.css`, the bundler emits it as `web/dist/main.css`, and
-  // `web/index.html` links only `app.css`. So every rule the labels get is one
-  // of ours, they arrive on the host rather than on the label itself (they are
-  // Tailwind arbitrary variants), and an unstyled label is 16px of the page's
-  // own ink with no truncation — which is what put "sandb" in a frame.
+  // The library's own stylesheet never loads, so every rule the labels get is
+  // one of ours and arrives on the host rather than the label. Unstyled, a label
+  // is 16px with no truncation — which is what put "sandb" in a frame.
   serve(ONE_TRACE);
   const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
 
@@ -425,11 +398,9 @@ test("scrolling the flamegraph zooms its width, anchored where the pointer is", 
 
   await waitFor(() => expect(Number(svg()?.getAttribute("width") ?? 0)).toBeGreaterThan(before));
 
-  // The ratio, not just growth. "It grew" is also satisfied by a runaway, and
-  // there was one: the chart was measured *inside* the wrapper it had already
-  // scaled, so the width came out as viewport ÷ zoom² and each render resized
-  // what the observer was watching. The minimap's own window is the zoom, so
-  // the two have to agree — svg width × zoom = the viewport.
+  // The ratio, not just growth: "it grew" is also satisfied by the runaway this
+  // replaced, where each render resized what the observer was watching. The
+  // minimap's window is the zoom, so svg width × zoom must equal the viewport.
   const pct = Number.parseFloat(
     (await view.findByRole("slider")).firstElementChild?.getAttribute("style")?.match(/width:\s*([\d.]+)%/)?.[1] ?? "",
   );
@@ -516,13 +487,10 @@ test("a width that cannot be drawn across the window is offered and refused", as
     report({
       stages: [stage("stage.only")],
       traces: [trace("a".repeat(32), { name: "t" })],
-      // A month, where a one-minute bucket is 43,200 points. The old picker took
-      // that choice and drew the first eighty minutes of it, which is a blank
-      // chart and a control that looks dead. Refusing at the menu is the fix,
-      // and the count is the reason — an absence the reader cannot see is not
-      // an answer. The width comes off the window the *server* answered with,
-      // not off the caller's request: the endpoint clamps to retention, so
-      // those two are different numbers whenever the caller asks for more.
+      // A month at a one-minute bucket is 43,200 points; the old picker took the
+      // choice and drew the first eighty minutes, which looks like a dead
+      // control. The width comes off the window the *server* answered with, not
+      // the request: the endpoint clamps to retention, so they differ.
       window: { from: T0 - 30 * 24 * hour, to: T0 },
       trend: Array.from({ length: 4 }, (_, i) => ({ at: T0 - (3 - i) * hour, count: 4, p50: 10, p95: 20 })),
     }),
@@ -580,15 +548,12 @@ test("scrolling the trend zooms it, and re-reads every block", async () => {
   expect(url.searchParams.get("to")).not.toBeNull();
   expect(Number(url.searchParams.get("to"))).toBeGreaterThan(Number(url.searchParams.get("from")));
 
-  // And there is a way back out.
   expect(view.getAllByRole("button", { name: /回到整段时间/ })).toHaveLength(1);
 
-  // Scrolling the other way widens it again. This is the assertion that pins the
-  // limit: the endpoint echoes the *requested* window back as `report.window`,
-  // so using that as the zoom limit made the limit equal the view the instant
-  // anybody zoomed — after which `zoomAt` clamped every widening to the span it
-  // already had and `panBy` clamped every slide to zero. 「反方向滚动缩放回去也
-  // 没反应」 and 「左右滚动无效」 were the same bug reported twice.
+  // Scrolling the other way widens it again. `report.window` echoes the
+  // *requested* window, so using it as the zoom limit made the limit equal the
+  // view the instant anybody zoomed: 「反方向滚动缩放回去也没反应」 and
+  // 「左右滚动无效」 were that one bug reported twice.
   const narrow = new URL(String(asked.at(-1)), "http://x");
   const narrowSpan = Number(narrow.searchParams.get("to")) - Number(narrow.searchParams.get("from"));
   const after = asked.length;
@@ -601,11 +566,8 @@ test("scrolling the trend zooms it, and re-reads every block", async () => {
 });
 
 test("耗时 is a view of its own, not a tab under 需求", async () => {
-  // It was a tab inside 需求, one rank below the strip — so a project with no
-  // requirements, whose view is replaced by the onboarding card, could not
-  // reach it at all. It is also the wrong rank on its own terms: a project's
-  // spans are mostly routes and container operations belonging to no
-  // requirement, which makes it a sibling question rather than a detail.
+  // A sibling of 需求 rather than a tab inside it: as a tab, a project with no
+  // requirements could not reach 耗时 at all.
   const { contentSlot, VIEWS } = await import("../../web/src/features/navigation/model.ts");
   expect(VIEWS.map(([view]) => view)).toContain("time");
   expect(contentSlot(1, false, "time", 0, false, false)).toBe("time");
@@ -614,8 +576,8 @@ test("耗时 is a view of its own, not a tab under 需求", async () => {
 });
 
 test("the window drives the query every block reads, not just the chart", async () => {
-  // `serve` first: it replaces `globalThis.fetch` wholesale, so a wrapper
-  // installed before it is simply discarded.
+  // The recorder wraps whatever `fetch` is installed, which is MSW's — so it is
+  // taken here, after `mockHttp` has started, rather than at module scope.
   serve(report({ stages: [stage("stage.only", { count: 40 })], traces: [trace("a".repeat(32), { name: "t" })] }));
   const asked: string[] = [];
   const seen = globalThis.fetch;
@@ -650,12 +612,9 @@ test("a trend with one bucket keeps its section, and therefore its controls", as
   );
   const view = show(<Telemetry scope={{ kind: "project", id: 7 }} trend />);
 
-  // This used to assert the opposite, and the opposite was a trap. Hiding the
-  // whole block on a thin trend also hid the bucket picker and 回到整段时间 —
-  // the two controls that undo a zoom — so narrowing to one bucket deleted the
-  // way back out of the state it created. The block stays and says it is empty,
-  // in a slot the size of the chart that is missing rather than as a line at the
-  // top of the page, which is what the original complaint was about.
+  // Hiding the whole block on a thin trend also hid the bucket picker and
+  // 回到整段时间, so narrowing to one bucket deleted the way back out of the
+  // state it created. It stays and says it is empty, in the chart's own slot.
   await waitFor(() => expect(view.getAllByText("stage")).toHaveLength(1));
   expect(view.getAllByText("每次运行的耗时")).toHaveLength(1);
   expect(view.getAllByText("还不够两个时段的数据。")).toHaveLength(1);
@@ -680,7 +639,6 @@ test("the table says what a stage is, not what the code calls it", async () => {
   // The identifier is not printed beside the words; it is one hover away.
   expect(view.queryAllByText("sandbox.create")).toHaveLength(0);
 
-  // And the column headers are not statistics vocabulary either.
   expect(view.getAllByText("一般")).toHaveLength(1);
   expect(view.getAllByText("最慢")).toHaveLength(1);
   expect(view.queryAllByText("p50")).toHaveLength(0);
@@ -726,7 +684,6 @@ test("the folded tail is a door, not a truncation notice", async () => {
   await waitFor(() => expect(view.getAllByText("准备这一轮")).toHaveLength(1));
   expect(view.getAllByText("存一次档")).toHaveLength(1);
 
-  // And it shuts again, so the fold stays the default rather than a one-way door.
   fireEvent.click(view.getByRole("button", { name: /收起另外 2 个/ }));
   await waitFor(() => expect(view.queryAllByText("准备这一轮")).toHaveLength(0));
 });
@@ -860,7 +817,6 @@ test("clicking a frame zooms, and the way back out names where you are", async (
   const view = show(<Telemetry scope={{ kind: "group", id: 3 }} />);
   await waitFor(() => expect(frameGroups(view).length).toBeGreaterThanOrEqual(4));
 
-  // Nothing to go back to until you have gone somewhere.
   expect(view.queryAllByText("← 回到全部")).toHaveLength(0);
 
   const frame = [...frameGroups(view)].find((node) => node.getAttribute("name") === "flame.provider");

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { appendFrame, groupedRows, type PanelFrame } from "../../web/src/shared/api.ts";
+import { appendFrame, groupedRows, type PanelFrame } from "../../web/src/shared/stream.ts";
 
 /**
  * S1 fixed the key (stable id, no more remount). This locks down the layer
