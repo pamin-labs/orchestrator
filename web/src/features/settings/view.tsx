@@ -89,7 +89,14 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   // nav item is one string.
   { key: "github", zh: "GitHub", icon: GitBranch },
   { key: "host", zh: "环境", icon: MonitorCog },
-  { key: "server", zh: "沙盒服务器", icon: Server },
+  // The server *and* what it is told to build, in one pane. These were two
+  // sections, and the comment on the second one already said it belonged "under
+  // 沙盒服务器, the same subject one level down" — while the rendering put five
+  // panes between them. Worse, they overlapped: `sandbox.server` and
+  // `sandbox.image` were knob rows *and* purpose-built rows here, so one value
+  // had two controls in two places, and the knob version of the image is a plain
+  // text box while this one lists what the registry actually has.
+  { key: "server", zh: "沙盒", icon: Server },
   // Not a setting, and it sits here anyway. It was an accordion at the foot of
   // the landing page, which is the page for what waits on the boss — and how
   // long `GET /state` took never waits on anybody. This dialog is where you come
@@ -106,10 +113,6 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   { key: "sched", zh: "调度", icon: Gauge },
   { key: "models", zh: "模型与预算", icon: Coins },
   { key: "turn", zh: "turn 与上下文", icon: Timer },
-  // Under 沙盒服务器, because it is the same subject one level down: that pane is
-  // the process, this is what it is told to build. A project's own 沙盒 pane
-  // overrides these; nothing overrides them for a project that says nothing.
-  { key: "boxdefaults", zh: "沙盒默认值", icon: Box },
   { key: "notify", zh: "通知", icon: Bell },
   { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
   { key: "gates", zh: "闸门", icon: ListChecks, project: true },
@@ -418,12 +421,18 @@ function SettingsPanes({
     ),
     github: <GithubSettings open={open} section={section} />,
     host: <EnvPane checks={checks.filter((c) => !isCredential(c))} />,
-    server: <SandboxServerSettings open={open} section={section} rows={rows} checks={checks} onSaved={onSaved} />,
+    server: (
+      <>
+        <SandboxServerSettings open={open} section={section} rows={rows} checks={checks} onSaved={onSaved} />
+        {/* What a container is built with, for a project that says nothing. A
+            project's own 沙盒 pane overrides these. */}
+        <Knobs section="boxdefaults" />
+      </>
+    ),
     skills: <Skills projectId={projectId} />,
     sched: <Knobs section="sched" />,
     models: <Knobs section="models" />,
     turn: <Knobs section="turn" />,
-    boxdefaults: <Knobs section="boxdefaults" />,
     notify: <Knobs section="notify" />,
     prefs: <Preferences />,
     gates: projectPane("gates"),

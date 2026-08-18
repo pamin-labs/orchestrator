@@ -108,3 +108,71 @@ test("project controls own panes while the settings shell owns project scope", (
     expect(pane).toContain(contract);
   }
 });
+
+/**
+ * A setting has one control, in one pane.
+ *
+ * `sandbox.server` and `sandbox.image` had two each: a generic knob row in the
+ * 沙盒默认值 section *and* a purpose-built row in 沙盒服务器 — an address row that
+ * validates, and an image row that lists what the registry actually holds.
+ * Neither section knew about the other, and the panes were five apart in the
+ * sidebar, so which control a reader found was down to which pane they opened.
+ * The report that arrived was "the image dropdown disappeared": it had not, they
+ * were on the knob.
+ *
+ * Derived rather than listed, so it holds for the next one too. `putSetting` is
+ * the only way a setting is stored, and there are exactly two kinds of caller:
+ * the generic endpoint, whose path comes from the request, and a route that names
+ * one path — which is what having a purpose-built control means. Those paths must
+ * not also be knob rows.
+ */
+const settingPaths = (): string[] => {
+  const out: string[] = [];
+  for (const rel of ["src/mech/sandbox/images.ts", "src/mech/sandbox/server.ts", "src/api/panel/settings.ts"]) {
+    const src = read(`../../${rel}`);
+    for (const call of src.matchAll(/putSetting\(([^)]*)\)/g)) {
+      const arg = call[1]!.split(",")[2]?.trim() ?? "";
+      // A literal names its path; a bare identifier is either the request's own
+      // (the generic endpoint) or a constant in the same file.
+      const literal = /^"([\w.]+)"$/.exec(arg);
+      if (literal) {
+        out.push(literal[1]!);
+        continue;
+      }
+      const named = new RegExp(`const ${arg} = "([\\w.]+)"`).exec(src);
+      if (named) out.push(named[1]!);
+    }
+  }
+  return out;
+};
+
+/** Every path each knob section says it renders, section by section. */
+const knobPaths = (): Map<string, string[]> => {
+  const src = read("../../web/src/features/knobs/view.tsx");
+  const table = src.slice(src.indexOf("const SECTIONS"), src.indexOf("\n};", src.indexOf("const SECTIONS")));
+  const out = new Map<string, string[]>();
+  for (const m of table.matchAll(/(\w+): \{[\s\S]*?paths: \[([\s\S]*?)\]/g)) {
+    out.set(
+      m[1]!,
+      [...m[2]!.matchAll(/"([\w.]+)"/g)].map((x) => x[1]!),
+    );
+  }
+  return out;
+};
+
+test("a setting written by a route of its own is not also a knob row", () => {
+  const bespoke = settingPaths();
+  // Non-empty, or this holds by finding nothing. Two routes name a path today.
+  expect(bespoke.length).toBeGreaterThanOrEqual(2);
+  const knobs = [...knobPaths().values()].flat();
+  expect(knobs.length).toBeGreaterThan(10);
+  expect(knobs.filter((p) => bespoke.includes(p))).toEqual([]);
+});
+
+test("no knob path is rendered by two sections", () => {
+  const seen = new Map<string, string[]>();
+  for (const [section, paths] of knobPaths()) {
+    for (const path of paths) seen.set(path, [...(seen.get(path) ?? []), section]);
+  }
+  expect([...seen].filter(([, sections]) => sections.length > 1)).toEqual([]);
+});

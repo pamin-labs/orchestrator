@@ -23,7 +23,6 @@ export const SectionSchema = z.enum([
   "sched",
   "models",
   "turn",
-  "boxdefaults",
   "notify",
   "prefs",
   "gates",

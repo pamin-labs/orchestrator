@@ -117,15 +117,12 @@ const SECTIONS: Record<KnobSection, { zh: string; note: string; paths: string[] 
   boxdefaults: {
     zh: "沙盒默认值",
     note: "没自己设的项目用这些",
-    paths: [
-      "sandbox.server",
-      "sandbox.image",
-      "sandbox.cpu",
-      "sandbox.memory",
-      "sandbox.ttlSeconds",
-      "sandbox.denyDomains",
-      "sandbox.cacheDirs",
-    ],
+    // Not `sandbox.server` or `sandbox.image`: the pane this section renders
+    // inside owns both, with an address row that validates and an image row that
+    // lists what the registry has. A knob row for the image is a plain text box,
+    // which is how "the image dropdown disappeared" happened — two controls for
+    // one value, and the reader found the other one.
+    paths: ["sandbox.cpu", "sandbox.memory", "sandbox.ttlSeconds", "sandbox.denyDomains", "sandbox.cacheDirs"],
   },
 };
 
