@@ -57,6 +57,8 @@ const EMPTY: Report = {
   scope: "group",
   windowMs: 3_600_000,
   window: { from: T0 - 3_600_000, to: T0 },
+  // The extent the store actually holds, which is what a zoom clamps against.
+  dataWindow: { from: T0 - 3_600_000, to: T0 },
   stages: [],
   traces: [],
   trend: [],
@@ -65,7 +67,18 @@ const EMPTY: Report = {
   trace: null,
 };
 
-const report = (over: Partial<Report>): Report => ({ ...EMPTY, ...over });
+/**
+ * A report, with the data extent following the window unless a test says otherwise.
+ *
+ * `dataWindow` is what a zoom clamps against, so leaving it at the default while
+ * overriding `window` builds a fixture whose chart cannot be zoomed out — which
+ * is a real state, and never the one a test asking about zooming means.
+ */
+const report = (over: Partial<Report>): Report => ({
+  ...EMPTY,
+  ...(over.window && !over.dataWindow ? { dataWindow: over.window } : {}),
+  ...over,
+});
 
 const stage = (name: string, over: Partial<Report["stages"][number]> = {}) => ({
   name,

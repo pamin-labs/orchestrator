@@ -1524,11 +1524,18 @@ export function Telemetry({
   /**
    * How far a zoom or a pan may reach.
    *
-   * The endpoint's answer to the unnarrowed read, and never `report.window` —
-   * that is the window the last request *asked for*, so using it here made the
-   * limit follow the view and every clamp in `zoomAt`/`panBy` became a no-op.
+   * `dataWindow` first: the first and last instant this scope actually has a
+   * span for. Clamping to anything wider lets a pan walk into stretches the
+   * store is empty in, where the reader gets a blank chart and no way to tell
+   * 「这段时间没有活动」 from 「你已经滑出头了」 — which is what 「不让滚动到那
+   * 个档」 was asking for.
+   *
+   * The unnarrowed read's window is the fallback, and `report.window` is never
+   * used directly: that is the window the last request *asked for*, so using it
+   * here made the limit follow the view and every clamp in `zoomAt`/`panBy`
+   * became a no-op.
    */
-  const limit = extent ?? report?.window ?? shownWindow;
+  const limit = report?.dataWindow ?? extent ?? report?.window ?? shownWindow;
 
   if (!report) {
     return <div className="py-4 text-[0.75rem] text-ink-3">{loading ? "读取中…" : empty}</div>;

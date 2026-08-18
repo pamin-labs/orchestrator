@@ -108,6 +108,7 @@ export const TelemetryReportSchema: z.ZodType<TelemetryReport> = z.object({
   scope: z.enum(["group", "project", "system"]),
   windowMs: z.number(),
   window: z.object({ from: z.number(), to: z.number() }),
+  dataWindow: z.object({ from: z.number(), to: z.number() }).nullable(),
   stages: z.array(StageStatSchema),
   traces: z.array(
     z.object({

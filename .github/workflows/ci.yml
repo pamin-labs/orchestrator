@@ -71,6 +71,15 @@ jobs:
   quality-fallow:
     name: quality-fallow
     runs-on: ubuntu-24.04
+    # Serialised behind the job that measures coverage, on purpose. Fallow's
+    # CRAP score is cyclomatic complexity weighted by how much of a function is
+    # tested, so without an Istanbul map it falls back to an export-reference
+    # estimate and calls well-tested functions untested. This job ran
+    # `fallow audit` with no `coverage/coverage-final.json` in the checkout at
+    # all, so every CRAP number it gated on was a guess — and AGENTS.md says in
+    # so many words to read CRAP only from the command that regenerates coverage
+    # first. The gate was measuring something nobody would defend.
+    needs: test-coverage
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -79,6 +88,9 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      - name: take the coverage the test job already measured
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with: { name: report-coverage, path: coverage }
       - name: open report directory
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -89,7 +101,7 @@ jobs:
       - name: audit repository structure
         run: |
           set +e
-          bun run audit -- --format json --quiet --output-file "$RUNNER_TEMP/report/fallow-audit.json"
+          bun run audit -- --coverage coverage/coverage-final.json --format json --quiet --output-file "$RUNNER_TEMP/report/fallow-audit.json"
           audit_status=$?
           set -e
           ./node_modules/.bin/fallow report --from "$RUNNER_TEMP/report/fallow-audit.json" --format github-annotations

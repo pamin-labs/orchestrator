@@ -36,6 +36,7 @@ import {
   foldedStacks,
   type SliceCost,
   sliceCosts,
+  spanExtent,
   readTrace,
   type ReadScope,
   recentWindow,
@@ -154,6 +155,16 @@ export interface TelemetryReport {
   windowMs: number;
   /** The stretch of time the numbers cover, so the charts can label their own axis. */
   window: TimeWindow;
+  /**
+   * The first and last instant this scope has a span for, or `null` when it has
+   * none.
+   *
+   * Not the same fact as `window`, which is whatever the query asked for and is
+   * echoed straight back. A zoom or a pan clamped to `window` can only ever
+   * reach where it already is, and clamped to a requested window it walks into
+   * stretches the store is empty in. This is what a chart's limits should be.
+   */
+  dataWindow: TimeWindow | null;
   stages: StageStat[];
   traces: TraceSummary[];
   trend: TrendPoint[];
@@ -201,6 +212,7 @@ export const getTelemetry = (async (ctx, _req, _params, query) => {
     scope: query.scope,
     windowMs,
     window,
+    dataWindow: spanExtent(ctx.db, scope),
     stages: stageStats(ctx.db, scope, window),
     traces: traceList(ctx.db, scope, TRACE_LIMIT, window),
     trend: trend(ctx.db, scope, query.bucketMs ?? DEFAULT_BUCKET_MS, window),

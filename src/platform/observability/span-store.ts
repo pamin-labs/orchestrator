@@ -655,6 +655,36 @@ export interface TrendPoint {
  * so each row carries the epoch millisecond the bucket starts at rather than an
  * index the caller would have to know the divisor to interpret.
  */
+/**
+ * The first and last instant this scope has a span for.
+ *
+ * Different from the window a read was asked for, and that difference is the
+ * point: a pan or a zoom clamped to the *requested* window can walk into
+ * stretches the store has nothing in, and the reader gets a blank chart with no
+ * way to tell "nothing happened" from "you have scrolled off the end". Clamped
+ * to retention like every other read, so it can never point at rows the sweeper
+ * has already taken.
+ *
+ * `null` when the scope has no spans at all, which is a different answer from a
+ * zero-width window and is why it is not one.
+ */
+export function spanExtent(db: DB, scope: ReadScope, now = Date.now()): TimeWindow | null {
+  const { where, params } = scopeSql(scope);
+  const floor = now - SPAN_MAX_AGE_MS;
+  // fallow-ignore-next-line security-sink -- `where` is one of the three source literals in `scopeSql` above, chosen by `scope.kind` and never assembled from a value; the retention floor and the scope ids travel in `params` and bind through `?`.
+  const row = db
+    .query<{ first: number | null; last: number | null }, number[]>(
+      `SELECT MIN(started_at) AS first, MAX(started_at + duration_ms) AS last
+         FROM span WHERE started_at >= ? AND ${where}`,
+    )
+    .get(floor, ...params);
+  if (!row || row.first === null || row.last === null) return null;
+  // A single span makes first and last equal, and a zero-width window is not a
+  // range anything can be clamped inside. One second is the smallest span the
+  // rest of this module considers a window at all.
+  return { from: row.first, to: Math.max(row.last, row.first + 1_000) };
+}
+
 export function trend(
   db: DB,
   scope: ReadScope,

@@ -6,6 +6,7 @@ import {
   type SpanRow,
   type ReadScope,
   sliceCosts,
+  spanExtent,
   recentWindow,
   stageStats,
   traceList,
@@ -539,4 +540,33 @@ test("a requirement's time is split by the slice that spent it", () => {
 
 test("a requirement that has run nothing splits into nothing", () => {
   expect(sliceCosts(openMemory(), 3, recentWindow(600_000, NOW))).toEqual([]);
+});
+
+test("the data extent is where the spans are, not where the query looked", () => {
+  const db = openMemory();
+  write(db, [
+    { name: "turn", startedAt: NOW - 600_000, durationMs: 10, attributes: inProject },
+    { name: "turn", startedAt: NOW - 120_000, durationMs: 5_000, attributes: inProject },
+    { name: "turn", startedAt: NOW - 60_000, durationMs: 10, attributes: otherProject },
+  ]);
+
+  // The pair a chart clamps its pan and zoom against. It has to be the scope's
+  // own rows: clamping to the requested window instead lets a pan walk into
+  // stretches with nothing in them, where a blank chart cannot be told apart
+  // from having scrolled off the end.
+  const extent = spanExtent(db, { kind: "project", id: 7 }, NOW);
+  expect(extent).toEqual({ from: NOW - 600_000, to: NOW - 120_000 + 5_000 });
+  // The other project's span is later and is not in it.
+  expect(extent!.to).toBeLessThan(NOW - 60_000);
+});
+
+test("a scope with no spans has no extent, which is not a window of zero width", () => {
+  const db = openMemory();
+  expect(spanExtent(db, { kind: "group", id: 3 }, NOW)).toBeNull();
+
+  // And one span is widened to something a range can be clamped inside: `from`
+  // and `to` equal is not a window anything fits in.
+  write(db, [{ name: "turn", startedAt: NOW - 1_000, durationMs: 0, attributes: inProject }]);
+  const one = spanExtent(db, { kind: "project", id: 7 }, NOW);
+  expect(one!.to - one!.from).toBeGreaterThan(0);
 });

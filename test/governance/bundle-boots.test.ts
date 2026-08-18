@@ -99,6 +99,8 @@ const TELEMETRY = {
   scope: "project",
   windowMs: 3_600_000,
   window: { from: T0 - 3_600_000, to: T0 },
+  // The extent the store actually holds, which is what a zoom clamps against.
+  dataWindow: { from: T0 - 3_600_000, to: T0 },
   stages: [{ name: "turn", count: 2, totalMs: 20, p50: 10, p95: 10, errors: 0 }],
   traces: [],
   trend: [
