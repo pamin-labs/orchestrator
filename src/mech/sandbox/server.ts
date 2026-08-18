@@ -21,24 +21,10 @@ import { z } from "zod";
 /**
  * Starting opensandbox-server, and knowing when not to.
  *
- * A user should need an environment, not a runbook. Every container this system
- * opens goes through one server process, and asking someone to start it by hand
- * in a second terminal before anything works is a setup step that exists only
- * because nothing was doing it for them.
- *
- * But it is a **shared, machine-wide** process. It may already be running, it may
- * be serving something else, and its config may be somebody's. So the rule is
- * narrow and one-directional:
- *
- *   absent            we start one, with our own config, and remember it is ours
- *   present, usable   we use it and never touch it — it may not be ours
- *   present, not      we report it and hand over a button. Never an automatic
- *                     restart: killing a process we did not start takes down
- *                     whatever else was using it, and "I cannot drive it" is not
- *                     evidence that nobody can.
- *
- * The third case is the one worth being strict about. A restart there is
- * indistinguishable, from here, from a restart of the user's own work.
+ * A **shared, machine-wide** process, possibly already serving somebody else.
+ * Absent, we start one with our own config and remember it is ours; present and
+ * usable, we never touch it; present and not, we report it and hand over a
+ * button — never an automatic restart: "I cannot drive it" is not "nobody can".
  */
 
 /** Recorded so a later boot can tell our process from one that was already there. */
@@ -60,15 +46,10 @@ export type ServerState =
 /**
  * Four answers, not two.
  *
- * "Can we drive it" was one boolean, and it collapsed the two cases that need
- * different actions. A server on the port that refuses our key is **not** a
- * server that is down: starting a second one just fails to bind, dies, and then
- * the health probe talks to the first one and reports 401 — which is how a
- * clean machine produced *"起来了但驱动不了：Unable to connect"*, a sentence
- * describing neither of the two things that were true.
- *
- * `auth` is also the one case we must never act on. A server holding a key we
- * were not given is, by construction, somebody else's.
+ * "Can we drive it" was one boolean and it collapsed the two cases that need
+ * different actions: a server refusing our key is **not** a server that is down,
+ * and starting a second one just fails to bind. `auth` is the one case we must
+ * never act on — a server holding a key we were not given is somebody else's.
  */
 type Probe =
   | { kind: "ok" }
@@ -85,10 +66,8 @@ async function probe(server: string, key: string): Promise<Probe> {
     // fallow-ignore-next-line security-sink -- the destination is `cfg.sandbox.server`, the address the boss set for their own sandbox server, and the key sent with it is the key stored for that same address. No request field reaches it.
     const res = await fetch(`${protocol}://${authority}/v1/sandboxes?page_size=1`, {
       // `OPEN-SANDBOX-API-KEY`, not `Authorization: Bearer` — the server reads
-      // that one header and nothing else (`middleware/auth.py`). Sending the
-      // wrong one is indistinguishable from having the wrong key: 401 either
-      // way, and it cost an hour reading a message that said the key was not
-      // accepted when the key was never presented.
+      // that one header and nothing else (`middleware/auth.py`), and sending the
+      // wrong one is indistinguishable from a wrong key: 401 either way.
       headers: key ? { [SANDBOX_API_KEY_HEADER]: key } : {},
       // Short on purpose: this is a socket on this machine, so it answers
       // quickly or it is not there — and the settings page waits on it.
@@ -105,10 +84,9 @@ async function probe(server: string, key: string): Promise<Probe> {
 /**
  * What to tell the boss. One line, and it has to name the thing to do next.
  *
- * The first version was three sentences of reasoning — where the server came
- * from, why we did not touch it, both ways out — set as a paragraph above the
- * two controls that are the ways out. docs/design/ui.md's rule applies here as much as
- * anywhere: say it once, and let the control next to it do the explaining.
+ * docs/design/ui.md: say it once, and let the control next to it do the
+ * explaining. These sentences sit directly above the controls that are the
+ * ways out of each case.
  */
 function say(p: Probe, server: string): string {
   switch (p.kind) {
@@ -129,17 +107,10 @@ const ourConfigPath = (home = homedir()): string => join(home, ".orch-cache", "s
 /**
  * Set one key inside one TOML section.
  *
- * Section-aware, and that is the whole point: a blanket `^mode =` replaced
- * `[ingress] mode` with `dns+nft` and the server refused to start —
- * *"Input should be 'direct' or 'gateway'"* — because `mode` appears in two
- * sections and the first one wins a file-wide match.
- *
- * Commented lines count as the key. The generated example ships
- * `# api_key = "your-secret-api-key"`, and treating that as absent left the
- * server with no key at all while we sent one.
- *
- * Appends to the section when the key is genuinely not there, and appends the
- * section too when that is missing. Still not a TOML parser: six known keys.
+ * Section-aware, because `mode` appears in two sections and a file-wide `^mode =`
+ * takes the first one. Commented lines count as the key: the example ships
+ * `# api_key = "…"`, and treating that as absent leaves the server with no key
+ * while we send one. Appends key or section when truly absent; not a parser.
  */
 export function setIn(toml: string, section: string, key: string, line: string): string {
   const lines = toml.split("\n");
@@ -172,20 +143,10 @@ export function setIn(toml: string, section: string, key: string, line: string):
 /**
  * The config we start a server with, generated by the server itself.
  *
- * Hand-writing it was wrong and failed the first time it ran on a clean machine:
- *
- *   pydantic_core.ValidationError: 1 validation error for AppConfig
- *   runtime.execd_image
- *     Field required
- *
- * A config file is that package's schema, not ours, and every required field it
- * adds in a later version would break this the same way. `init-config --example
- * docker` renders one from the packaged example, so the parts we do not care
- * about stay correct without anyone tracking them.
- *
- * `patchConfig` below is what agrees the few values that have to agree with us.
- *
- * Created once. A user who edits it keeps their edits.
+ * A config file is that package's schema, not ours, and every required field a
+ * later version adds would break a hand-written one — as one did on a clean
+ * machine. `init-config --example docker` renders it; `patchConfig` agrees only
+ * the values that must agree with us. Created once: a user's edits are kept.
  */
 async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promise<string> {
   if (existsSync(path)) return path;
@@ -194,12 +155,10 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
     stdout: "pipe",
     stderr: "pipe",
   });
-  // Read it rather than ask whether it exists and then read it. The two-step
-  // form is `js/file-system-race`: the answer to `existsSync` is already stale
-  // by the time the read runs, and the read is the thing that has to succeed
-  // anyway. One syscall, and its failure carries the same message — which is
-  // where the message belongs, since "the file is missing" and "the file is
-  // unreadable" are both `init-config` not having produced a usable config.
+  // Read it rather than ask whether it exists and then read it: the two-step
+  // form is `js/file-system-race`, and the read has to succeed anyway. Its
+  // failure carries the same message, since "missing" and "unreadable" are both
+  // `init-config` not having produced a usable config.
   let generated: string;
   try {
     generated = readFileSync(path, "utf8");
@@ -215,14 +174,12 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
   // sibling cache directory added later should not need this file edited again.
   const allowed = [...new Set([dirname(skills), "/var/tmp/orch-cache"])];
 
-  // Written beside the target and renamed onto it, rather than written in
-  // place. `rename` is atomic within a filesystem, which buys two things:
-  // a server starting while this runs can only ever open the old file or the
-  // new one, never the half of a truncated write; and two processes racing
-  // between the `existsSync` at the top of this function and here end with one
-  // whole config rather than two interleaved ones. CodeQL calls the second of
-  // those `js/file-system-race`, and it is right that the check does not hold
-  // until the write — the fix is to make the write not care.
+  // Written beside the target and renamed onto it: `rename` is atomic within a
+  // filesystem, so a server starting while this runs opens the old file or the
+  // new one and never half of a truncated write, and two processes racing the
+  // `existsSync` above end with one whole config rather than two interleaved.
+  // CodeQL calls the second `js/file-system-race`; the fix is a write that does
+  // not care whether the check still holds.
   const staged = `${path}.${process.pid}.tmp`;
   writeFileSync(
     staged,
@@ -238,25 +195,20 @@ async function writeConfig(ctx: Ctx, key: string, path = ourConfigPath()): Promi
 /**
  * The values in a generated config that have to agree with *us*, and no others.
  *
- *   host / port         or we start a server on an address we are not asking
- *   api_key             or the server we just started refuses every call we make
- *   allowed_host_paths  the silent one: a path missing from it does not fail,
- *                       it mounts an empty directory, and the only symptom is
- *                       every agent having no skills
- *   egress image        v1.1.4 403s every scoped package fetch while a
- *                       credential is bound (005), and the example may ship it
- *   egress mode         the example's `direct` does not route through it at all
- *
- * Regex rather than a TOML parser, like `keyInConfig` and `allowedHostPaths`
- * above: six known keys, one line each, and a dependency for that is a
- * dependency for that. `setIn` is section-aware for the reason written on it —
- * `mode` appears in two sections and a file-wide match takes the wrong one.
+ * Regex rather than a TOML parser, like `allowedHostPaths` above: six known
+ * keys, one line each. `setIn` is section-aware for the reason written on it.
  */
 export function patchConfig(
   toml: string,
   at: { host?: string | undefined; port?: string | undefined; key: string; allowed: string[] },
 ): string {
   let out = toml;
+  // Why each: host/port, or we start a server on an address we are not asking;
+  // api_key, or the server we just started refuses every call we make;
+  // allowed_host_paths is the silent one, where a missing path mounts an empty
+  // directory and the only symptom is every agent having no skills; egress
+  // image because v1.1.4 403s every scoped package fetch while a credential is
+  // bound (005); egress mode because the example's `direct` does not route.
   for (const [section, k, line] of [
     ["server", "host", `host = "${at.host}"`],
     ["server", "port", `port = ${Number(at.port) || 8080}`],
@@ -348,9 +300,9 @@ const timedOut = (ms: number, last: string, tail: string): string =>
 /**
  * What is there, without changing anything.
  *
- * Split from `ensureServer` because a GET must not start a process. The settings
- * page polls this, and the first version had the panel spawning a server as a
- * side effect of being looked at — which also hung the test that opens it.
+ * Split from `ensureServer` because a GET must not start a process: the settings
+ * page polls this, and spawning a server as a side effect of being looked at
+ * also hung the test that opens it.
  */
 export async function inspectServer(ctx: Ctx): Promise<ServerState> {
   const server = serverAddr(ctx);

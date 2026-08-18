@@ -16,11 +16,9 @@ import { dirname, join, resolve } from "node:path";
 /**
  * Reasoning effort, one word for both CLIs.
  *
- * Measured off the two installations rather than assumed: `claude --help` offers
- * `--effort (low, medium, high, xhigh, max)`, and every entry in codex's
- * `models_cache.json` lists the same five under `supported_reasoning_levels`.
- * Only `gpt-5.6-sol` adds `ultra`, so that one word is the whole difference and
- * the claude adapter clamps it to `max` rather than carrying a mapping table.
+ * Both offer low/medium/high/xhigh/max; only `gpt-5.6-sol` adds `ultra`, so that
+ * one word is the whole difference and the claude adapter clamps it to `max`
+ * rather than carrying a mapping table.
  */
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
@@ -40,11 +38,10 @@ const RoleDefSchema = z.object({
   /**
    * Tool rounds this role gets, overriding `maxTurnsPerJob`.
    *
-   * Measured: tool results are 90% of everything in a transcript, and every round
-   * re-reads all of them, so rounds are the token bill. But the right number is
-   * not one number — a review reads a diff and files a verdict, while an engineer
-   * runs a test-fix loop. One cap for both has to be the engineer's, and the
-   * reviewers spend it.
+   * Every round re-reads all tool results, so rounds are the token bill — but the
+   * right number is not one number: a review reads a diff and files a verdict
+   * while an engineer runs a test-fix loop, and one cap for both has to be the
+   * engineer's.
    */
   maxTurns: z.number().int().positive().optional(),
   /** How hard the model thinks per turn. Part of the cached prefix, see assemble.ts. */
@@ -58,11 +55,6 @@ const RoleDefSchema = z.object({
 export type RoleDef = z.infer<typeof RoleDefSchema>;
 
 /**
- * A type alias rather than an interface, on purpose: an interface has no
- * implicit index signature, so nothing typed can read it key by key without a
- * cast — and the config checker's whole job is to walk it key by key.
- */
-/**
  * Where skills can be staged such that a container actually sees them.
  *
  * `/var/tmp/orch-cache` matches opensandbox-server's own default allowlist and is
@@ -72,11 +64,10 @@ export type RoleDef = z.infer<typeof RoleDefSchema>;
  */
 function defaultSkillsDir(): string {
   if (platform() === "darwin") return join(homedir(), ".orch-cache/skills");
-  // Windows has no `/var/tmp`, and the path matters more here than anywhere
-  // else: it is one side of a bind mount performed by a docker daemon that, on
-  // Windows, lives in WSL and does not read drive letters the same way. A path
-  // under the user's profile is at least one this process can create; making the
-  // two ends agree is `ORCH_SKILLS_DIR` and a line in `allowed_host_paths`.
+  // Windows has no `/var/tmp`, and this is one side of a bind mount performed by a
+  // docker daemon that lives in WSL and does not read drive letters the same way.
+  // A path under the user's profile is at least one this process can create;
+  // `ORCH_SKILLS_DIR` and a line in `allowed_host_paths` make the two ends agree.
   if (platform() === "win32") return join(homedir(), ".orch-cache", "skills");
   return "/var/tmp/orch-cache/skills";
 }
@@ -84,16 +75,10 @@ function defaultSkillsDir(): string {
 /**
  * What a legal config is, as one declaration.
  *
- * This used to be a hand-written `type Config = { ... }` of twenty-six fields
- * beside a `ConfigSchema` of the same twenty-six, kept in step by whoever
- * remembered. Nothing checked that they agreed, and the panel and the yaml
- * checker both run off the schema — so a field added to the type and not the
- * schema is a setting the panel cannot show and the boot check will not police,
- * while the compiler says everything is fine.
- *
- * `z.infer` makes the schema the only declaration. The field comments moved
- * there with it: they are the expensive part, every number is a measurement
- * somebody paid for, and they are still what an editor shows on hover.
+ * `z.infer` off the schema, so there is only one: a field in a hand-written type
+ * but not in the schema is a setting the panel cannot show and the boot check will
+ * not police. A type alias, not an interface — an interface has no implicit index
+ * signature, and the config checker's whole job is to walk this key by key.
  */
 export type Config = z.infer<typeof ConfigSchema>;
 
@@ -102,8 +87,7 @@ const DEFAULTS: Config = {
   maxGroups: 10,
   // `{default: 2, browser: 1}`, not a flat 2: each browser lease is a real
   // Chromium, and one global number could only ever be the browser's, which
-  // starves the typechecks. This was the shipped yaml's value while the code
-  // default said 2 — the file is what has been running, so it wins.
+  // starves the typechecks.
   leaseSlots: { default: 2, browser: 1 },
   host: "127.0.0.1",
   port: 47821,
@@ -113,17 +97,13 @@ const DEFAULTS: Config = {
       normal: "claude-sonnet-5",
       hard: "claude-opus-5",
     },
-    // GPT-5.6's three tiers line up with the three difficulties on their own:
-    // models_cache.json records `gpt-5.4 -> terra` and `gpt-5.4-mini -> luna` as its
-    // own upgrade path, and sol is the flagship.
+    // GPT-5.6's three tiers line up with the three difficulties on their own.
     codex: {
       trivial: "gpt-5.6-luna",
       normal: "gpt-5.6-terra",
       hard: "gpt-5.6-sol",
     },
   },
-  // 20 minutes. The code default said 10 while the shipped yaml said 20, so
-  // every install has been running 20 and nothing has been running 10.
   turnTimeoutMs: 1_200_000,
   maxTurnsPerJob: 45,
   sessionRotateFraction: 0.6,
@@ -136,29 +116,17 @@ const DEFAULTS: Config = {
   gateRetries: 2,
   leaseTimeoutMs: 10_800_000,
   installTimeoutMs: 10_800_000,
-  // On by default: "approved" should buy a night of work. Accepting a slice was what
-  // started the next one, so with this off a group did exactly one slice and then
-  // waited until morning — which defeats the reason the system exists. The slice still
-  // waits to be accepted; only the next one stops waiting.
-  //
-  // The cost, stated: a wrong slice is discovered later, with the following slices
-  // built on top of it. Rejecting one then pauses the whole group and says so
-  // (postSliceDecision), rather than quietly fixing the foundation under finished work.
+  // On by default: "approved" should buy a night of work. The slice still waits to
+  // be accepted; only the next one stops waiting. The cost, stated: a wrong slice
+  // is discovered later with the following slices built on top of it, and
+  // rejecting one then pauses the whole group and says so (postSliceDecision).
   autoAdvance: true,
   // trivial and normal. Four gates still run on both — self-review, reconcile,
   // the deterministic gate, an independent QA — so this skips the fifth layer,
   // the boss's own look. hard still waits for you.
-  //
-  // The code default said `["trivial"]` and the shipped yaml said
-  // `["trivial", "normal"]`, with a comment under each explaining why its own
-  // answer was the careful one. The yaml is the one that has been running, and
-  // two files arguing in comments is worse than either answer.
   autoAcceptTiers: ["trivial", "normal"],
-  // Measured over the 16 slices in this checkout that spent anything: trivial
-  // averaged 4.0M with one 12.0M runaway, normal averaged 7.3M with a 16.1M tail,
-  // the single hard slice took 4.0M. So these are set above the worst slice that
-  // actually finished and below the runaway — the cap is for the agent that has
-  // lost the plot, not for the one having a hard day.
+  // Set above the worst slice that actually finished and below the runaway: the
+  // cap is for the agent that has lost the plot, not the one having a hard day.
   sliceBudgetTokens: { trivial: 8_000_000, normal: 20_000_000, hard: 30_000_000 },
   indexModel: { runtime: "codex", model: "gpt-5.6-luna" },
   contextWindow: {
@@ -188,24 +156,9 @@ const DEFAULTS: Config = {
  * Repo root, derived from this file rather than from cwd.
  *
  * `roles/` and `config/` are part of the installation, not of whatever directory
- * the server happened to be launched from — resolving them against cwd meant a
- * server started elsewhere silently found no roles at all.
- *
- * Three shapes this has to answer for, and the third is why it is a function:
- *
- *   source        `<root>/src/platform/config/load.ts` -> `../../..`
- *   bundled       `<root>/dist/server.js`  ->  `..`
- *   compiled      `/$bunfs/root/config.ts` ->  nothing. `bun build --compile`
- *                 puts modules in a read-only virtual filesystem, so `..` is
- *                 `/$bunfs`, and `config/default.yaml`, `roles/*.yaml`,
- *                 `web/dist` and the `orch` CLI copied into every sandbox all
- *                 resolve to paths that do not exist. Measured: the binary
- *                 starts, warns that the config is missing, and then dies trying
- *                 to `mkdir` a data directory on a read-only mount.
- *
- * For the compiled case the executable's own directory is the real one, which
- * makes a single-file binary usable as long as its assets sit beside it.
- * `ORCH_ROOT` overrides all three, for a layout that is none of them.
+ * the server was launched from. Three shapes: source resolves `../../..`, a bundle
+ * resolves `..`, and a `bun build --compile` binary resolves **neither** — its
+ * modules live in a read-only virtual filesystem, so the executable's dir is root.
  */
 function resolveRoot(): string {
   const explicit = process.env.ORCH_ROOT?.trim();
@@ -225,15 +178,8 @@ export const ROOT = resolveRoot();
  *
  * Everything under it is the *host's* — the sqlite file, gate and lease logs,
  * turn transcripts, attachments, the staged skills directory. A relative path
- * resolved against whatever cwd the process happened to be started with, and the
- * failure was a file "not found" that existed. Same lesson as ROOT above.
- *
- * The reason used to be stated as "handed to subprocesses that do not run where
- * the server does". Since 005 no subprocess sees `dataDir` at all — turns run in
- * containers and reach the host only through the mailbox — so that sentence
- * would have had the next reader looking for a boundary that is not here. The
- * conclusion is unchanged; the reason is that this process can be started from
- * anywhere.
+ * resolves against whatever cwd the process was started with, and the failure was
+ * a file "not found" that existed. Same lesson as ROOT above.
  */
 export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: resolve(ROOT, c.dataDir) });
 
@@ -241,14 +187,10 @@ export const withAbsoluteDataDir = (c: Config): Config => ({ ...c, dataDir: reso
  * The sandbox server's API key comes from the environment, not the yaml.
  *
  * config/default.yaml is committed, and a key in a committed file is a key that
- * leaks. An empty one means the server has no auth, which is the usual local
- * setup and is fine — preflight reports what it finds either way.
+ * leaks; an empty one means the server has no auth, which is the usual local
+ * setup. Two spellings, because this is the one value both processes must agree
+ * on, and disagreeing presents as every container failing to open with a 401.
  */
-// Two spellings for one value. `ORCH_SANDBOX_API_KEY` is the original;
-// `ORCH_SANDBOX_KEY` is the shorter one, and both are accepted because the
-// sandbox server's own key is the single value both processes must agree on —
-// disagreeing presents as every container failing to open with a 401, which
-// reads as a broken server rather than as two names for one secret.
 const SANDBOX_API_KEY_ENV = "ORCH_SANDBOX_API_KEY";
 const SANDBOX_API_KEY_ALT = "ORCH_SANDBOX_KEY";
 
@@ -256,12 +198,9 @@ const SANDBOX_API_KEY_ALT = "ORCH_SANDBOX_KEY";
  * The handful of keys a container deployment has to set without editing a file.
  *
  * An explicit table rather than a generic `ORCH_*` -> config mapper: the generic
- * version reads well and then silently accepts `ORCH_SANDBOX_IMAGE`, which is a
- * boundary decision `allowedImage` exists to make. These four are the ones an
- * image cannot know at build time, and nothing else is settable this way.
- *
- * The yaml stays the place where a setting is explained; this is the place a
- * deployment overrides one.
+ * version silently accepts `ORCH_SANDBOX_IMAGE`, which is a boundary decision
+ * `allowedImage` exists to make. The yaml stays the place where a setting is
+ * explained; this is the place a deployment overrides one.
  */
 function fromEnv(cfg: Config): Config {
   const out = { ...cfg };
@@ -273,11 +212,9 @@ function fromEnv(cfg: Config): Config {
   if (dir) out.dataDir = resolve(dir);
   const server = process.env.ORCH_SANDBOX_SERVER?.trim();
   if (server) out.sandbox = { ...out.sandbox, server };
-  // Where the ticked skills are staged for the mount. An environment variable
-  // as well as a yaml key, because the tarball is unpacked wherever somebody
-  // put it: the path the sandbox server must allow is a property of *this*
-  // installation, and editing a file inside the release to say so is worse than
-  // one variable in whatever starts it.
+  // Where the ticked skills are staged for the mount. An environment variable as
+  // well as a yaml key, because the path the sandbox server must allow is a
+  // property of *this* installation, wherever the tarball was unpacked.
   const skills = process.env.ORCH_SKILLS_DIR?.trim();
   if (skills) out.skillsDir = resolve(skills);
   return out;
@@ -290,17 +227,14 @@ export function loadConfig(path = join(ROOT, "config/default.yaml")): Config {
   const parsed = existsSync(path)
     ? z.record(z.string(), z.json()).parse(Bun.YAML.parse(readFileSync(path, "utf8")) ?? {})
     : {};
-  // Key by key, not block by block: a spread means a `sandbox:` naming two of
-  // its eight fields drops the other six to `undefined`, and the symptom is a
-  // container that will not start rather than a config error. `defu` is exactly
-  // this and nothing else — arrays and scalars replace, plain objects recurse —
-  // and JS has no stdlib deep merge worth hand-rolling around.
-  // Cloned, because `defu` fills an absent key by reference: a config whose
-  // `sandbox:` block came entirely from the defaults *was* the defaults' block,
-  // and one write through it edited `DEFAULTS` for the rest of the process. That
-  // is reachable now that settings are written onto the live config — the panel
-  // changing an image would also have changed what "default" means, so the
-  // "restore default" button would restore the value it was asked to undo.
+  // Key by key, not block by block: a spread means a `sandbox:` naming two of its
+  // eight fields drops the other six to `undefined`, and the symptom is a container
+  // that will not start rather than a config error. `defu` is exactly this and
+  // nothing else — arrays and scalars replace, plain objects recurse.
+  //
+  // Cloned, because `defu` fills an absent key **by reference**: a block that came
+  // entirely from the defaults *was* the defaults' block, and one write through it
+  // edited `DEFAULTS` for the rest of the process.
   const merged = ConfigSchema.parse(defu(parsed, structuredClone(DEFAULTS)));
   const cfg = ConfigSchema.parse(fromEnv(withAbsoluteDataDir(merged)));
   const key = process.env[SANDBOX_API_KEY_ENV] || process.env[SANDBOX_API_KEY_ALT];
@@ -323,11 +257,9 @@ export function loadRoles(dir = join(ROOT, "roles")): Map<string, RoleDef> {
 /**
  * Which model runs this turn.
  *
- * A role may pin one (the Auditor wants a specific reviewer), otherwise the
- * slice's difficulty tag decides — that tag is the boss's cost knob, editable
- * right on the DRAFT card. The provider picks the table first: a claude model id
- * handed to `codex exec -m` is rejected outright, and before this split that is
- * exactly what a `runtime: codex` role would have got.
+ * A role may pin one, otherwise the slice's difficulty tag decides — that tag is
+ * the boss's cost knob, editable right on the DRAFT card. The provider picks the
+ * table first: a claude model id handed to `codex exec -m` is rejected outright.
  */
 export function modelFor(cfg: Config, role: RoleDef, difficulty?: string | null): string {
   if (role.model) return role.model;

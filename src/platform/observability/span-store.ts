@@ -1,22 +1,10 @@
 /**
  * Spans, in the same SQLite file as everything else they describe.
  *
- * The SDK ships spans to a collector when one is configured, and to nothing when
- * one is not. Neither case leaves anything the panel can read back: a boss asking
- * where a requirement's wall clock went has no collector to ask. So a destination
- * is the one piece of the tracing stack that has to be ours — the library cannot
- * know our database.
- *
- * It is a `SpanExporter`, not a `SpanProcessor`, and that is the whole point.
- * `SpanProcessor.onEnd` runs inside the operation being measured, so writing
- * there makes tracing a tax on the thing it observes. `SpanExporter` is the
- * documented seam for a destination, and `BatchSpanProcessor` — which the SDK
- * already ships and which the OTLP side already uses — supplies the bounded
- * queue, the drop-when-full policy, the batching and the flush timer. None of
- * that is written here.
- *
- * Registered *beside* the OTLP processor, never instead of it. Both see every
- * span; an operator who runs a real collector keeps it.
+ * A `SpanExporter`, **not** a `SpanProcessor`: `SpanProcessor.onEnd` runs inside
+ * the operation being measured, so writing there makes tracing a tax on the thing
+ * it observes, while `BatchSpanProcessor` supplies the queue, the drop policy, the
+ * batching and the flush timer. Registered *beside* the OTLP processor.
  */
 
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
@@ -50,28 +38,10 @@ export interface StoredSpan extends SpanRow {
 /**
  * Retention, stated rather than left to grow, and sized to what is read.
  *
- * **A day, because a day is what the panel asks for.** `DEFAULT_WINDOW_MS` is 24
- * hours and the page says so — 「最近一天」. This kept a week, and the row cap
- * then cut that to 2.7 days at the measured rate of 3,114 spans an hour, so
- * three numbers disagreed: the copy said a day, the standard said a week, and a
- * reader could reach neither. Days two through seven were stored and never read
- * by anything.
- *
- * A rollup table was designed for this and then discarded, which is worth
- * recording because the design was sound and the problem was not. Folding
- * expiring spans into per-hour summaries buys long history cheaply — but only
- * for a page that wants long history, and this one wants "is something slow
- * right now". Storing a week to serve a day is what made retention look like it
- * needed a mechanism.
- *
- * The row bound stays and changes meaning. It is not the history length any
- * more; it is the disaster bound, and it is sized so that it never decides how
- * far back a reader can see. A day is 75k rows at the measured rate and 750k at
- * ten times that; a retry storm or a hot loop writing 7.5M rows in a day would
- * be 1GB of somebody's laptop, and that is the case this stops.
- *
- * Same shape as the idempotency store's retention (age + count), because it is
- * the same problem: append-only history that nothing else deletes.
+ * **A day, because a day is what the panel asks for** — `DEFAULT_WINDOW_MS` is 24
+ * hours and the page says 「最近一天」. The row bound is not the history length: it is
+ * the disaster bound, sized so it never decides how far back a reader can see, and
+ * what it stops is a retry storm or a hot loop. Age plus count, as idempotency does.
  */
 export const SPAN_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const SPAN_MAX_ROWS = 1_000_000;
@@ -101,10 +71,9 @@ function spanStatusName(code: SpanStatusCode | number | undefined): SpanRow["sta
 /**
  * The scope columns, read off the span's own attributes.
  *
- * Nullable in the schema because most spans belong to no project: a `/healthz`
- * request and the retention trim itself are system work. An attribute that is
- * not a positive integer is treated as absent rather than coerced — a scope id
- * guessed from a string would aggregate somebody else's time into a group.
+ * Nullable because most spans belong to no project. An attribute that is not a
+ * positive integer is treated as absent rather than coerced — a scope id guessed
+ * from a string would aggregate somebody else's time into a group.
  */
 function scopeId(attributes: Record<string, unknown>, key: string): number | null {
   const raw = attributes[key];
@@ -130,10 +99,9 @@ function toSpanRow(span: ReadableSpan): SpanRow {
 /**
  * `OR IGNORE` on the natural key, so ingest is idempotent by construction.
  *
- * The same batch arriving twice — an OTLP client retrying a request whose
- * response it never saw — writes the same rows. That is why the receive route
- * does not carry an `Idempotency-Key`: there is no second side effect for one to
- * protect against.
+ * The same batch arriving twice writes the same rows, which is why the receive
+ * route carries no `Idempotency-Key`: there is no second side effect to protect
+ * against.
  */
 const INSERT = `
   INSERT OR IGNORE INTO span
@@ -239,12 +207,9 @@ export function readTrace(db: DB, traceId: string): StoredSpan[] {
 /**
  * Which work a read is asking about.
  *
- * `system` is not "everything". It is the work that belongs to no project — the
- * scheduler, the indexer, `/healthz`, the retention trim — and it is expressed
- * as both scope columns being NULL rather than as an absent filter, so the three
- * scopes partition the table instead of overlapping. A "system" view that also
- * counted every project's turns would report the fleet's busiest requirement as
- * a property of the host.
+ * `system` is not "everything": it is the work that belongs to no project, and it
+ * is expressed as both scope columns being NULL rather than as an absent filter,
+ * so the three scopes partition the table instead of overlapping.
  */
 export type ReadScope = { kind: "group"; id: number } | { kind: "project"; id: number } | { kind: "system" };
 
@@ -252,29 +217,20 @@ export type ReadScope = { kind: "group"; id: number } | { kind: "project"; id: n
  * The scope predicate and its parameters, together, because they cannot be
  * correct apart.
  *
- * `group` leads with `grp_id`, which is the first column of `span_scope`, so it
- * is an index range scan. `project` has no index of its own and leans on the
- * window bound through `span_age`; that is a deliberate omission rather than an
- * oversight — see `Window` below.
+ * `group` leads with `grp_id`, the first column of `span_scope`, so it is an index
+ * range scan. `project` has no index of its own and leans on the window bound
+ * through `span_age` — a deliberate omission, see `Window` below.
  */
 function scopeSql(scope: ReadScope): { where: string; params: number[] } {
   if (scope.kind === "system") return { where: "project_id IS NULL AND grp_id IS NULL", params: [] };
   if (scope.kind === "group") return { where: "grp_id = ?", params: [scope.id] };
-  // A project's spans are the ones that say so **and** the ones belonging to one
-  // of its groups, because most of them only say the latter. `turnScope` in
-  // `application/executor.ts` builds `{ grpId, sliceId }` and no `projectId`, so
-  // `scopeAttributes` never emits `project.id` for a turn and the column is NULL
-  // on every stage span ever written. Filtering on the column alone found
-  // nothing, and an empty panel is indistinguishable from a panel that was never
-  // built — which is exactly how this was reported.
-  //
-  // Resolved here rather than fixed at the writer, and that is the substantive
-  // choice. A writer fix only labels spans written after it; the rows already in
-  // the table would stay NULL forever, so the project view would be empty until
-  // the fleet had run enough new turns to refill it. A span's project is not
-  // independent information — `grp.project_id` already knows it — so deriving it
-  // on read is both the smaller change and the one that works on the data that
-  // is there. The writer may start setting the column too; this keeps working.
+  // A project's spans are the ones that say so **and** the ones belonging to one of
+  // its groups, because most of them only say the latter: `turnScope` builds
+  // `{ grpId, sliceId }` and no `projectId`, so `project_id` is NULL on every stage
+  // span ever written. Resolved on read rather than at the writer — a writer fix
+  // only labels spans written after it, while the rows already in the table stay
+  // NULL forever. A span's project is not independent information, `grp.project_id`
+  // already knows it. The writer may start setting the column too; this keeps working.
   return {
     where: "(project_id = ? OR grp_id IN (SELECT id FROM grp WHERE project_id = ?))",
     params: [scope.id, scope.id],
@@ -284,16 +240,10 @@ function scopeSql(scope: ReadScope): { where: string; params: number[] } {
 /**
  * Nearest-rank percentile, in integer arithmetic.
  *
- * The rank of the p-th percentile over `n` samples is `ceil(n * p / 100)`, and
- * this is that written as `n - (n * (100 - p)) / 100` with SQLite's integer
- * division. Two reasons not to use floating point: SQLite is not built with the
- * math extensions everywhere, so `ceil()` is not reliably present, and
- * `CAST(n * 0.95 AS INTEGER)` truncates a value that IEEE-754 may have already
- * nudged below the integer it should have been — which moves a p95 down one
- * sample at exactly the round numbers a test would pick.
- *
- * Degenerate inputs land where they should without a special case: n = 1 gives
- * rank 1 for every percentile, so the only sample is both the p50 and the p95.
+ * `ceil(n * p / 100)` written as `n - (n * (100 - p)) / 100` with SQLite's integer
+ * division. Not floating point: `ceil()` is not reliably present, and
+ * `CAST(n * 0.95 AS INTEGER)` truncates a value IEEE-754 may already have nudged
+ * below the integer it should have been. n = 1 gives rank 1 for every percentile.
  */
 const rank = (p: number) => `n - (n * ${100 - p}) / 100`;
 
@@ -305,16 +255,10 @@ const percentiles = (column: string) => `
 /**
  * Which stretch of time a read covers: two instants, not a duration.
  *
- * It was `(windowMs, now)` — a length backwards from the present — and that
- * shape could not express the one thing a brush is for. Dragging the handles
- * around 01:30–02:00 could only be reported as "the last thirty minutes",
- * because the end was pinned to `now` and only the start could move. From the
- * outside that reads as the zoom being broken rather than as the query being
- * unable to say what was asked.
- *
- * The window is still what makes these affordable: `span_age` indexes
- * `started_at` alone, so a bounded range is a scan the scope filter then
- * narrows. Two bounds narrow it more than one did.
+ * A length backwards from the present cannot express what a brush is for — with
+ * the end pinned to `now`, only the start moves. The window is also what makes
+ * these affordable: `span_age` indexes `started_at` alone, so a bounded range is a
+ * scan the scope filter then narrows, and two bounds narrow it more than one.
  */
 export interface TimeWindow {
   from: number;
@@ -328,14 +272,10 @@ export const recentWindow = (windowMs = SPAN_MAX_AGE_MS, now = Date.now()): Time
 });
 
 /**
- * Bounded to retention, measured against the window's own end rather than the
- * wall clock.
- *
- * `Math.max(from, Date.now() - SPAN_MAX_AGE_MS)` was the obvious version and it
- * was wrong for every caller with an injected clock: a test asking about a fixed
- * instant in the past had its start pulled forward to a week before *today*,
- * which is after its own end, and every query returned nothing. The bound is a
- * property of the window, so it is computed from the window.
+ * Bounded to retention, measured against the window's own end rather than the wall
+ * clock: the bound is a property of the window, so it is computed from the window.
+ * `Math.max(from, Date.now() - SPAN_MAX_AGE_MS)` pulls a caller with an injected
+ * clock past its own end, and every query then returns nothing.
  */
 const clamp = (w: TimeWindow): TimeWindow => ({ from: Math.max(w.from, w.to - SPAN_MAX_AGE_MS), to: w.to });
 
@@ -352,14 +292,10 @@ export interface StageStat {
 /**
  * Where a scope's wall clock went, by stage, newest-costliest first.
  *
- * Grouped by span name because that is what a stage *is* here: `turn.provider`,
- * `sandbox.create`, `GET /api/v1/state`, a job kind. The same query answers all
- * three scopes, which is the reason there is one endpoint and not three.
- *
- * `totalMs` is a sum over overlapping spans and is deliberately not presented as
- * a share of anything: `turn` contains `turn.provider`, so the column adds up to
- * more than the wall clock and a percentage of it would be a lie. It orders the
- * list; the percentiles are what answer "is this slow".
+ * Grouped by span name, because that is what a stage *is* here. `totalMs` is a sum
+ * over **overlapping** spans and is deliberately not presented as a share of
+ * anything: `turn` contains `turn.provider`, so the column adds up to more than the
+ * wall clock. It orders the list; the percentiles answer "is this slow".
  */
 export function stageStats(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): StageStat[] {
   const bounds = clamp(window);
@@ -400,22 +336,10 @@ export interface SliceCost {
 /**
  * A requirement's wall clock, split by the slice that spent it.
  *
- * The one question the stage table cannot answer. Stages say *what* the time
- * went on — the provider, a cold container — and this says *which piece of the
- * work* it went on, which is the axis a boss reading a requirement already has
- * in their head: slice 1 sailed through, slice 3 has burned an hour.
- *
- * `slice_id` is written by `turnScope` and indexed as the second column of
- * `span_scope`, so scoping to a group and grouping by slice is one range scan.
- *
- * NULL is a row rather than a filter. A requirement's planning turns, its draft
- * card and its roster belong to no slice, and dropping them would make the
- * per-slice numbers add up to less than the requirement's total with nothing on
- * screen explaining the difference.
- *
- * Only ever asked of a group: a project's slices belong to different
- * requirements and share only their sequence numbers, so the same query at that
- * scope would add up slice 1 of everything.
+ * NULL is a row rather than a filter: planning turns, the draft card and the roster
+ * belong to no slice, and dropping them makes the per-slice numbers add up to less
+ * than the requirement's total. Only ever asked of a **group** — a project's slices
+ * belong to different requirements and share only their sequence numbers.
  */
 export function sliceCosts(db: DB, grpId: number, window: TimeWindow = recentWindow()): SliceCost[] {
   const bounds = clamp(window);
@@ -443,16 +367,10 @@ export interface TraceSummary {
 /**
  * The scope's recent traces, for picking one to open.
  *
- * A trace's span is measured as `MAX(end) - MIN(start)` *within the scope*
- * rather than by finding a root span, and that is the correct reading rather
- * than a shortcut. A requirement's turn is parented to the HTTP request that
- * enqueued it — `startChildTrace` sets a remote parent from the job row — so no
- * span in the requirement's own scope has a NULL parent, and a root-based
- * measure would either find nothing or wander up into another scope's time.
- *
- * `FIRST_VALUE` over the same window supplies the name, ordered by `span_id`
- * after `started_at` so two spans opened in the same millisecond do not make the
- * label flap between reads.
+ * `MAX(end) - MIN(start)` *within the scope* rather than a root span, and that is
+ * the correct reading rather than a shortcut: `startChildTrace` gives a turn a
+ * remote parent, so no span in a requirement's own scope has a NULL parent.
+ * `FIRST_VALUE` supplies the name, ordered by `span_id` so it cannot flap.
  */
 export function traceList(db: DB, scope: ReadScope, limit = 20, window: TimeWindow = recentWindow()): TraceSummary[] {
   const bounds = clamp(window);
@@ -487,9 +405,7 @@ export function traceList(db: DB, scope: ReadScope, limit = 20, window: TimeWind
  *
  * `path` is the span names from the root down, `;`-separated — the folded-stack
  * format flamegraphs have consumed since the original Perl ones, which is why it
- * is the shape produced here rather than a nested object. A tree built in SQL
- * would be a tree serialised through a text column either way; folded stacks are
- * that with a format somebody else already defined.
+ * is the shape produced here rather than a nested object.
  */
 export interface FoldedStack {
   path: string;
@@ -500,58 +416,20 @@ export interface FoldedStack {
 /**
  * How deep the walk will follow parent links.
  *
- * Worth being exact about what this does and does not protect against, because
- * the obvious reading is wrong. It is *not* what stops a cycle hanging the
- * query: a span has one parent column and `(trace_id, span_id)` is the primary
- * key, so every span has at most one parent and the part of the graph reachable
- * from a root is a tree by construction. A cycle can only exist among spans that
- * are unreachable from any root, and those are never walked at all.
- *
- * What it bounds is depth itself. Each level concatenates another name onto a
- * path string, so a runaway-deep trace — a recursive tool call, an agent looping
- * through a stage — costs quadratic text before it costs anything else. 64 is
- * far past anything real: the deepest thing this system emits is `turn` →
- * `turn.checkpoint` → `sandbox.create` → `sandbox.init`, which is four.
- *
- * The unreachable-cycle case is a real if unreachable-in-practice gap: those
- * spans contribute nothing to the flamegraph rather than appearing detached.
- * Sweeping them in would mean a second pass over the scope to find what the
- * first missed, which is not worth paying for a shape no correct writer emits.
+ * **Not** what stops a cycle hanging the query — every span has at most one parent,
+ * so the part of the graph reachable from a root is a tree by construction. What it
+ * bounds is depth: each level concatenates another name onto a path string, so a
+ * runaway-deep trace costs quadratic text. The deepest this system emits is four.
  */
 const MAX_STACK_DEPTH = 64;
 
 /**
  * Every call path in the scope, summed — the flamegraph's data.
  *
- * This is the aggregate, not one trace, and that is the point of having it
- * beside the waterfall. A waterfall answers "what happened in this one run, and
- * in what order". A flamegraph over every run in the scope answers "where does
- * this project's time actually go", which is a question no single trace can
- * answer and the one somebody asks when the fleet feels slow.
- *
  * A root is a span whose parent is absent *from the scope* rather than NULL:
- * `startChildTrace` gives a job's span a remote parent, so a requirement's own
- * spans never have a NULL parent, and anchoring on NULL would return nothing at
- * all. The key carries `trace_id` as well as the span id because span ids are
- * only unique within a trace.
- *
- * **Folded here rather than in SQL**, which is the exception to this file's own
- * rule and is worth the sentence. Percentiles and bucketing belong in the query
- * and are fast there; a tree walk does not, because a recursive CTE has no index
- * to stand on. The version this replaced joined a CTE to itself once per level
- * and ran a correlated subquery over the same CTE to find roots — quadratic in
- * the window, measured at **5,178ms** against 7,382 spans while the flat read
- * that feeds this is 0.1ms.
- *
- * What this guarantees, asserted rather than assumed: every span in the scope is
- * counted exactly once (7,008 in, 7,008 out at system scope on live data; 374
- * in, 374 out at project scope), and no path repeats a name, which is what a
- * walk without cycle detection produces when parent ids form a ring.
- *
- * A "the query was also losing rows" claim was made here and withdrawn: it came
- * from comparing the scoped query against an unscoped probe, so the 374 spans
- * missing from one side were project-scoped rows the system scope excludes by
- * design. The measurement was wrong; the speed is the whole of the reason.
+ * anchoring on NULL returns nothing at all. The key carries `trace_id` as well as
+ * the span id, because span ids are unique only within a trace. **Folded here rather
+ * than in SQL**, this file's one exception: a tree walk has no index to stand on.
  */
 export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = recentWindow()): FoldedStack[] {
   const bounds = clamp(window);
@@ -571,17 +449,10 @@ export function foldedStacks(db: DB, scope: ReadScope, window: TimeWindow = rece
   /**
    * A span's ancestry, or as much of it as the scope can establish.
    *
-   * Three things end the walk and all three mean the same thing — nothing above
-   * this is knowable from here — so all three produce a root: no parent id, a
-   * parent outside the scope, and a cycle. The cycle case is why `walking`
-   * exists: without it a ring of parent ids recurses to the depth cap and emits
-   * a path repeating the ring sixty-four times, which is worse than useless.
-   *
-   * The old query dropped cycles entirely, and that was recorded as a decision.
-   * It is not one this keeps: a span that happened and cost time belongs on the
-   * graph, and being unable to say what it hung off is not a reason to say it
-   * never happened. Every span in the scope is counted exactly once, which is
-   * the property the test asserts and which dropping them would break.
+   * Three things end the walk and all three mean the same thing — no parent id, a
+   * parent outside the scope, a cycle — so all three produce a root. `walking` is the
+   * cycle case: without it a ring recurses to the depth cap and emits a path
+   * repeating the ring sixty-four times. Every span is still counted exactly once.
    */
   const pathOf = (row: FoldRow, depth: number): string => {
     const id = spanKey(row.trace_id, row.span_id);
@@ -640,29 +511,12 @@ export interface TrendPoint {
 }
 
 /**
- * The scope's end-to-end time over the window, bucketed.
- *
- * The sample is one trace, not one span, so a bucket answers "how long did a
- * unit of work take then" rather than "how long did the average span take" —
- * the second is a number that moves when the shape of the tracing changes and
- * nothing about the system does.
- *
- * Bucketing is `started_at / bucketMs` in integer division, multiplied back out
- * so each row carries the epoch millisecond the bucket starts at rather than an
- * index the caller would have to know the divisor to interpret.
- */
-/**
  * The first and last instant this scope has a span for.
  *
- * Different from the window a read was asked for, and that difference is the
- * point: a pan or a zoom clamped to the *requested* window can walk into
- * stretches the store has nothing in, and the reader gets a blank chart with no
- * way to tell "nothing happened" from "you have scrolled off the end". Clamped
- * to retention like every other read, so it can never point at rows the sweeper
- * has already taken.
- *
- * `null` when the scope has no spans at all, which is a different answer from a
- * zero-width window and is why it is not one.
+ * Different from the window a read was asked for: a pan clamped to the *requested*
+ * window can walk into stretches the store has nothing in, and the reader cannot
+ * tell "nothing happened" from "you have scrolled off the end". Clamped to retention
+ * like every other read. `null` when the scope has no spans — not a zero-width one.
  */
 export function spanExtent(db: DB, scope: ReadScope, now = Date.now()): TimeWindow | null {
   const { where, params } = scopeSql(scope);
@@ -716,8 +570,7 @@ export function trend(
 
 /**
  * Drop what is older than the age bound, then whatever still exceeds the row
- * bound. `maxRows` is a parameter only so a test can prove the second delete
- * without writing two hundred thousand rows to prove it.
+ * bound. `maxRows` is a parameter only so a test can prove the second delete.
  *
  * Called from the server's heartbeat, never from the write path: retention is
  * housekeeping on a schedule, and a span arriving is not a reason to run it.
@@ -752,15 +605,10 @@ export class SqliteSpanExporter implements SpanExporter {
   /**
    * Losing spans is never a reason to fail the flush that carried them.
    *
-   * `forceFlush` and `shutdown` are the process's shutdown path, and
-   * `BatchSpanProcessor` turns a `FAILED` result into a rejected promise — so
-   * reporting the failure here is how a closed or broken database turned a clean
-   * shutdown into a rejection. It buys nothing either: the processor does not
-   * retry, so the only consumer of `FAILED` is that rejection.
-   *
-   * The loss is still reported, through the channel an operator actually watches:
-   * `orchestrator_telemetry_dropped_total`, the same counter the OTLP side uses
-   * for batches a collector refused.
+   * `BatchSpanProcessor` turns a `FAILED` result into a rejected promise, so
+   * reporting one here turns a closed database into a failed shutdown — and it buys
+   * nothing, since the processor does not retry. The loss is reported through
+   * `orchestrator_telemetry_dropped_total`, which the OTLP side already uses.
    */
   export(spans: ReadableSpan[], done: (result: ExportResult) => void): void {
     // `shutdownTracing` swaps in a fresh provider before closing this one, so a

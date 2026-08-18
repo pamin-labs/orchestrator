@@ -10,28 +10,10 @@ import { z } from "zod";
 /**
  * Skills reach an agent two ways, and both are needed.
  *
- * **Discovered.** `stageSkills` builds one directory out of what the boss ticked;
- * the sandbox mounts it read-only at `STAGED_SKILLS` and `SKILL_SYNC` links every
- * entry into both CLIs' own skill directories, so the agent finds and invokes a
- * skill by itself. The same pass links whatever the *repository* ships
- * (`PROJECT_SKILL_DIRS`) into the same two places — which is the only way a repo
- * skill reaches codex at all, since codex has no project-local skills directory.
- *
- * This half is prefix: every skill in there costs name + description on EVERY
- * turn of EVERY agent (measured: the boss's whole ~180-skill set plus slash
- * commands was ~46k cached tokens). That is the bill the tick boxes control, and
- * why the settings page states it out loud. A repository's own are not tickable —
- * shipping one is the decision.
- *
- * **Injected.** The boss naming a skill in a requirement appends that SKILL.md to
- * that one turn's delta (`executor.ts`, via `readSkillIn`). A user skill is read
- * here; a project skill is read out of the container, because that is the only
- * copy. Narrower than the catalogue and free: one turn pays for one skill, and it
- * works for a skill that was never ticked.
- *
- * `--setting-sources project,local` stays on regardless — that flag governs
- * settings, not skill discovery, and inheriting the boss's user-level setup
- * measured ~195k cached tokens on a trivial haiku turn.
+ * **Discovered** is prefix: `stageSkills` stages what the boss ticked, and
+ * `SKILL_SYNC` links it and the repository's own into both CLIs' directories,
+ * costing name + description on every turn of every agent. **Injected** is one
+ * turn's delta — naming a skill in a requirement, ticked or not, and free.
  */
 
 export interface SkillRef {
@@ -52,10 +34,7 @@ const SkillRefSchema = z.object({
 });
 const SkillFrontmatter = z.object({ description: z.string().optional() });
 
-/**
- * Where a repository can ship its own skills. See `listSkills` for the counts
- * behind this list and which CLI actually reads each one.
- */
+/** Where a repository can ship its own skills; `listSkills` says which CLI reads each. */
 const PROJECT_SKILL_DIRS = [".claude/skills", ".codex/skills", ".agents/skills"] as const;
 
 /** Skill text is instructions, not a library. Past this it is being used wrong. */
@@ -64,15 +43,10 @@ const SKILL_CAP = 12_000;
 /**
  * The `description:` from a skill's frontmatter, including the block-scalar form.
  *
- * `Bun.YAML.parse` rather than a regex and a hand-rolled indentation walk.
- * Real skills are written `description: |` with the text on the following
- * indented lines; the one-line regex this started as returned "|", which is
- * what the picker showed. The replacement for that was 20 lines that folded
- * `>-` the way `|` folds and could match a `description:` in the body text
- * below the frontmatter — and the parser was already in use three files over.
- *
- * The head may be a truncated read (`slice(0, 4000)`), so a parse failure is
- * normal rather than exceptional: fall back to the first line, do not throw.
+ * `Bun.YAML.parse` rather than a regex: real skills are written `description: |`
+ * with the text on following indented lines, and the one-line regex this started
+ * as returned "|", which is what the picker showed. The head may be a truncated
+ * read, so a parse failure is normal — fall back to the first line, do not throw.
  */
 export function frontmatterDescription(text: string): string {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text.trimStart());
@@ -136,24 +110,11 @@ export function listSkills(repoPath?: string | null, project: SkillRef[] = []): 
   const out: SkillRef[] = [...project];
   // A host path only. `repo_path` is `owner/name` since 007 §2 and the checkout
   // exists only inside containers, so this branch finds nothing in normal
-  // operation — the repository's own skills arrive through `project`, which
-  // `projectSkills` reads from what `SKILL_SYNC` enumerated in the container.
-  //
-  // **Which directories, and why these.** `.claude/skills` is not a universal
-  // convention — it is claude's. Counted as exact strings in each CLI's own
-  // binary (`codex-cli 0.147.0`, `claude 2.1.232`, in `orch/agent:1`):
-  //
-  //   claude   .claude/skills 93   .codex/skills 0   .agents/skills 0
-  //   codex    .codex/skills  3    .claude/skills 0  .agents/skills 0
-  //
-  // and codex's three are one sentence about `$CODEX_HOME/skills`. So codex has
-  // **no project-local skills directory**, and claude's is read from its working
-  // directory. `.agents/skills` is the wider ecosystem's (`npx skills add
-  // --agent` writes there) and neither CLI reads it.
-  //
-  // Which is why delivery is `SKILL_SYNC`'s symlink farm rather than anything
-  // here: all three conventions are listed, and all three are linked into both
-  // CLIs' own directories inside the container.
+  // operation — the repository's own arrive through `project`. All three
+  // conventions are listed because none is universal: `.claude/skills` is
+  // claude's, read from its working directory; codex has **no project-local
+  // skills directory** at all; `.agents/skills` is the wider ecosystem's and
+  // neither CLI reads it. Hence delivery by `SKILL_SYNC`'s symlink farm.
   if (repoPath?.startsWith("/")) {
     for (const dir of PROJECT_SKILL_DIRS) scan(repoPath, dir, "project", out);
   }
@@ -162,19 +123,15 @@ export function listSkills(repoPath?: string | null, project: SkillRef[] = []): 
   // ticked skill stage zero files with nothing said — `scan` skips a directory
   // that is not there, which is the right behaviour and the wrong answer.
   scan(hostClaudeHome(), "skills", "user", out, ".claude/skills");
-  // The other CLI keeps its own, and the boss has no reason to care which
-  // directory a skill lives in — the text is inlined into the turn either way, so
-  // a codex skill works on a claude role and the reverse. Second, so a same-named
+  // The other CLI's own. The text is inlined into the turn either way, so a
+  // codex skill works on a claude role and the reverse. Second, so a same-named
   // skill resolves to the .claude one (the dedupe above is first-wins).
   scan(hostCodexHome(), "skills", "user", out, ".codex/skills");
-  // The ecosystem's shared home. `npx skills add --agent <name>` installs here
-  // and links into each CLI's directory — measured on this machine, every one of
-  // `~/.claude/skills`'s 93 entries is a symlink into `~/.agents/skills`, so
-  // scanning it adds **nothing here**. That is exactly why it is worth scanning:
-  // the case it covers is the machine where those links were never made (one CLI
-  // installed, or `--agent` pointed somewhere else), and there the skills are
-  // present, invisible, and there is nothing to notice. Last, so a CLI's own copy
-  // still wins the name.
+  // The ecosystem's shared home, where `npx skills add --agent` installs and
+  // links into each CLI's directory. Where those links were made this adds
+  // nothing, which is exactly why it is worth scanning: on a machine where they
+  // were not, the skills are present, invisible, and there is nothing to notice.
+  // Last, so a CLI's own copy still wins the name.
   scan(join(homedir(), ".agents"), "skills", "user", out, ".agents/skills");
   return out.sort((a, b) => (a.scope === b.scope ? a.name.localeCompare(b.name) : a.scope === "project" ? -1 : 1));
 }
@@ -191,10 +148,9 @@ export function referencedSkills(text: string, all: SkillRef[]): SkillRef[] {
   const hit: SkillRef[] = [];
   for (const s of all) {
     const byPath = text.includes(s.rel) || text.includes(s.file);
-    // Escaped: a skill name is a directory name off disk, and it went into the
-    // pattern raw. `c++` is a legal directory and an illegal regex, so one such
-    // skill made every message throw on its way to being read; a name with a `.`
-    // silently matched the wrong skill and injected it into the turn.
+    // Escaped: a skill name is a directory name off disk. `c++` is a legal
+    // directory and an illegal regex, so one such skill made every message throw
+    // on its way to being read; a name with a `.` matched the wrong skill.
     // fallow-ignore-next-line security-sink -- `s.name` is a directory name off disk and it goes through `RegExp.escape`, so it can only ever contribute literal characters; the message text is the `test` argument.
     const bySlash = new RegExp(`(?:^|\\s)/${RegExp.escape(s.name)}(?![\\w-])`).test(text);
     if (byPath || bySlash) hit.push(s);
@@ -237,11 +193,10 @@ export function readSkill(ref: SkillRef): string {
 /**
  * The same, for a skill that may live inside the container rather than here.
  *
- * A user skill is on this machine and is read here — it is the same file the
- * mount carries, and reading it locally costs nothing. A project skill exists
- * *only* in the container, so it is fetched over the files API (1-5ms, not the
- * ~1s an exec costs). Naming one in a requirement has to work for both, or the
- * repository's own skills are listed in the panel and inert when pointed at.
+ * A user skill is on this machine and is read here. A project skill exists
+ * *only* in the container, so it is fetched over the files API rather than an
+ * exec. Naming one in a requirement has to work for both, or a repository's own
+ * skills are listed in the panel and inert when pointed at.
  */
 export async function readSkillIn(get: (path: string) => Promise<string | null>, ref: SkillRef): Promise<string> {
   if (ref.scope !== "project") return readSkill(ref);
@@ -259,15 +214,9 @@ export function skillNames(text: string, repoPath?: string | null, project: Skil
  * A repository's own skills, as the container last enumerated them.
  *
  * The container is the only place that can see them — `repo_path` is
- * `owner/name` and the checkout lives inside a sandbox — so the listing that the
- * settings page and `/name` need has to be carried back and kept. `SKILL_SYNC`
- * prints it on the exec that already probes the checkout; this is where it
- * lands.
- *
- * A `setting` row rather than a `note`: it is a cache of something the container
- * owns, not something anybody decided. Stale between a push that adds a skill
- * and the next group's first turn, which is the honest ceiling of caching a
- * remote directory and is why the cache is rewritten on every turn's probe.
+ * `owner/name` and the checkout lives inside a sandbox — so the listing is
+ * carried back and cached in a `setting` rather than a `note`. Rewritten on
+ * every turn's probe, or a push that adds a skill stays invisible until later.
  */
 const PROJECT_KEY = (id: number) => `skills.project.${id}`;
 
@@ -279,13 +228,10 @@ export function projectSkills(db: DB, projectId: number | null | undefined): Ski
 /**
  * Read `SKILL_SYNC`'s inventory lines out of an exec's stdout and store them.
  *
- * Returns what it stored so a caller can report it. Absence of any line is a
- * real answer — a repository with no skills — so it writes the empty list too;
- * treating "none" as "do not touch the cache" is how a removed skill stays
- * listed forever.
- *
- * The one case it will not write is a container that never got as far as running
- * the script, which the caller distinguishes because the exec itself failed.
+ * Absence of any line is a real answer — a repository with no skills — so the
+ * empty list is written too; treating "none" as "do not touch the cache" is how
+ * a removed skill stays listed forever. The one case it will not write is a
+ * container that never ran the script, which the caller sees as a failed exec.
  */
 export function cacheProjectSkills(db: DB, projectId: number | null | undefined, stdout: string): SkillRef[] {
   if (!projectId) return [];
@@ -346,23 +292,14 @@ export function restageSkills(db: DB, dir: string): ReturnType<typeof stageSkill
 /**
  * The one directory every sandbox mounts, built from the skills still ticked.
  *
- * Mounted at `STAGED_SKILLS`, not at either CLI's own path: `SKILL_SYNC` links
- * out of here into both, which is what leaves those directories writable enough
- * for a repository's own skills to join them.
- *
- * Copied, not symlinked, and copied with `dereference` — both skill directories on
- * a real machine are symlink farms (`~/.claude/skills/impeccable ->
- * ../../.agents/skills/impeccable`, codex's point into its plugin cache), and a
- * symlink whose target was never mounted is a dangling link inside the container.
- *
- * Updated in place rather than rebuilt beside and renamed: the container mounted
- * this directory, so a rename leaves every running sandbox looking at the old one.
- *
- * Callers pass `listSkills()` minus what the boss unticked — user scope only. A
- * repository's own never come through here: they exist only inside the container
- * that cloned them, and `SKILL_SYNC` links them in there.
+ * Mounted at `STAGED_SKILLS`, not either CLI's own path, so `SKILL_SYNC` links
+ * out of here into both and leaves those writable for a repository's own. Copied
+ * with `dereference`: both are symlink farms on a real machine, and a link whose
+ * target was never mounted dangles. Updated in place, or a rename strands them.
  */
 export function stageSkills(dir: string, want: SkillRef[]): { dir: string; staged: string[]; failed: string[] } {
+  // User scope only. A repository's own never come through here: they exist just
+  // inside the container that cloned them, where `SKILL_SYNC` links them.
   mkdirSync(dir, { recursive: true });
   const keep = new Set(want.map((s) => s.name));
 
@@ -399,14 +336,10 @@ export function stageSkills(dir: string, want: SkillRef[]): { dir: string; stage
 /**
  * Say once that a project's own skills have not been enumerated yet.
  *
- * Not the same thing as "unreachable", which is what this used to say and what
- * was true before `SKILL_SYNC` existed. The listing now arrives from the first
- * container that clones the repository, so before that container there is
- * nothing to list — and after it there is, without anyone doing anything.
- *
- * `listSkills` is a pure function with no bus, so the report lives with the
- * caller that has one. Once per project: a standing condition repeated every
- * poll is a feed nobody reads.
+ * Not "unreachable", which is what this said before `SKILL_SYNC` existed: the
+ * listing arrives from the first container that clones the repository, so before
+ * that there is nothing to list and after it there is. Once per project — a
+ * standing condition repeated every poll is a feed nobody reads.
  */
 const skillsWarned = new Set<number>();
 

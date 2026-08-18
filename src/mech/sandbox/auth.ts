@@ -11,29 +11,12 @@ import type { Credential } from "./sandbox.ts";
 /**
  * Where each runtime's credential comes from, and how it reaches the model.
  *
- * Never into the sandbox. The value is written to the egress sidecar's vault and
+ * Never into the sandbox. The value goes to the egress sidecar's vault and is
  * injected into outbound requests on the way past; the sandbox's environment
- * holds a format-plausible fake. Measured (docs/adr/005): the sidecar
- * REPLACES an `Authorization` header the CLI already set, and `claude` does not
- * validate its token locally — a synthetic one comes back as a server-side 401 —
- * which together are what make this work at all.
+ * holds a format-plausible fake. The sidecar *replaces* an `Authorization`
+ * header the CLI already set (docs/adr/005), so each path must send something.
  */
 
-/**
- * `chatgpt` is the odd one, and deliberately so.
- *
- * codex has exactly two non-interactive credential paths: an API key, or an
- * `auth.json` in `$CODEX_HOME`. A ChatGPT-account login is the second — a pair
- * of access and refresh tokens that codex itself rotates and rewrites — so it
- * cannot go in the vault: what you would bind is one access token that expires
- * in hours with nothing to renew it. claude's `setup-token` works precisely
- * because it hands over a year-long token instead.
- *
- * So a ChatGPT subscription is stored whole, refreshed here on the host, and
- * reaches the model as an injected header like everything else — the sandbox
- * gets a decoy file. Its own mode because what is stored is a login rather than
- * a key, and because only this one can go stale on its own.
- */
 /** The sandbox server key is stored beside model credentials, but never injected. */
 export const SANDBOX_KEY = "sandbox";
 
@@ -46,7 +29,14 @@ const credential = {
     .optional(),
 };
 
-/** Runtime and mode are one fact: combinations outside this union cannot run. */
+/**
+ * Runtime and mode are one fact: combinations outside this union cannot run.
+ *
+ * `chatgpt` is its own mode because what is stored is a login, not a key — a
+ * pair of tokens codex rotates, so the vault could only bind one access token
+ * that expires in hours. It is stored whole, refreshed on the host, and injected
+ * as a header while the sandbox gets a decoy file. It alone can go stale.
+ */
 export const RuntimeAuthSchema = z.discriminatedUnion("runtime", [
   z.strictObject({ runtime: z.literal("claude"), mode: z.enum(["oauth_token", "api_key"]), ...credential }),
   z.strictObject({ runtime: z.literal("codex"), mode: z.enum(["chatgpt", "api_key"]), ...credential }),
@@ -61,48 +51,29 @@ const BINDINGS: Record<string, { hosts: string[]; header?: string }> = {
   // An OAuth token travels as `Authorization: Bearer`; an API key as `x-api-key`.
   claude: { hosts: ["api.anthropic.com"] },
   codex: { hosts: ["api.openai.com", "chatgpt.com"] },
-  // Read-only in a group container, and that is enforced by `readOnlyGitPaths`
-  // rather than by the scope of the token — see it for why the host list alone
-  // was never enough. Bound here so a private repository can be cloned over
-  // HTTPS without the token being inside the container.
+  // Read-only in a group container, enforced by `readOnlyGitPaths` rather than
+  // by the scope of the token. Bound here so a private repository can be cloned
+  // over HTTPS without the token being inside the container.
   github: { hosts: ["github.com", "api.github.com"] },
 };
 
 /**
  * The two request paths a clone and a fetch use, and no third.
  *
- * This is the whole of "a group container cannot write to the remote", so it is
- * worth stating exactly what it does and does not stop. Git's smart HTTP is four
- * requests:
- *
- *   fetch   GET  /owner/repo.git/info/refs?service=git-upload-pack
- *           POST /owner/repo.git/git-upload-pack
- *   push    GET  /owner/repo.git/info/refs?service=git-receive-pack
- *           POST /owner/repo.git/git-receive-pack
- *
- * The two discovery requests differ only in the query string, and the sidecar
- * cuts the query off before matching — so no rule can tell them apart, and a
- * push's discovery *is* credentialed. What it cannot do is the second half: the
- * `git-receive-pack` POST carries the packfile, matches nothing, goes out with
- * the decoy, and GitHub answers 401. So the guarantee is **no write ever
- * completes**, not "the token is never presented on a write path". The
- * difference is worth one paragraph because it is the reason the utility
- * container exists at all rather than every group simply pushing.
- *
- * Exact strings, never `/owner/repo.git*`: a trailing `*` is a prefix match that
- * does not stop at `/`, so the shape the upstream guide suggests would readmit
- * `git-receive-pack`.
- *
- * Known gap, stated rather than papered over: Git LFS lives under
- * `/owner/repo.git/info/lfs/…` and is not in this list, so a private repository
- * using LFS will fail to fetch its objects inside a group. Adding it would also
- * admit LFS *uploads*, which share the path — so it waits for a repository that
- * needs it.
+ * This is the whole of "a group container cannot write to the remote", and the
+ * guarantee is **no write ever completes**, not "the token is never presented on
+ * a write path": push discovery differs from fetch discovery only in the query
+ * string, which the sidecar cuts before matching, so it *is* credentialed.
  */
 export function readOnlyGitPaths(remote: string): string[] | null {
   const m = /github\.com[:/]+(.+?)(\.git)?\/?$/i.exec(remote.trim());
   if (!m) return null;
   const base = `/${m[1]}${m[2] ?? ""}`;
+  // Exact strings, never `/owner/repo.git*`: a trailing `*` is a prefix match
+  // that does not stop at `/` and would readmit `git-receive-pack` — which,
+  // matching nothing, goes out with the decoy and gets a 401 from GitHub. Git
+  // LFS (`/owner/repo.git/info/lfs/…`) is absent because its path admits uploads
+  // too, so a private LFS repository cannot fetch objects inside a group.
   return [`${base}/info/refs`, `${base}/git-upload-pack`];
 }
 
@@ -138,9 +109,8 @@ export function saveAuth(db: DB, a: RuntimeAuth): void {
   // Registered the moment it is stored, so the masker knows this value before
   // anything has a chance to print it. Same order as `::add-mask::`.
   maskValue(auth.secret);
-  // Nothing learned from the old credential still applies. Without this a boss who
-  // reconnects GitHub watches nothing happen until the hold's clock lapses, which
-  // reads as the fix not having worked.
+  // Nothing learned from the old credential still applies; without this a
+  // reconnect changes nothing visible until the hold's clock lapses.
   forgetHolds(auth.runtime);
   db.run(
     `INSERT INTO runtime_auth (runtime, mode, secret, base_url, updated_at)
@@ -154,16 +124,10 @@ export function saveAuth(db: DB, a: RuntimeAuth): void {
 /**
  * Does this runtime have a subscription window worth reading?
  *
- * Two conditions, and the second is the one that is easy to miss. A per-token key
- * has no window to run out of. And the usage endpoint is the provider's own
- * (subusage.ts), so once a self-hosted gateway is configured the quota it reports
- * belongs to a different account than the one the fleet is spending — a number
- * about somebody else's subscription, rendered as if it were the constraint on
- * what to start next.
- *
- * No row at all is also false: nothing can run without a configured credential,
- * so a bar sourced from whatever this host happens to be logged into would be
- * about an account the fleet never touches.
+ * A per-token key has no window to run out of. And the usage endpoint is the
+ * provider's own (subusage.ts), so once a self-hosted gateway is configured the
+ * quota belongs to a different account than the one the fleet spends. No row is
+ * false for the same reason: it would report an account nothing here touches.
  */
 export function subscriptionAccount(db: DB, runtime: string): boolean {
   const a = loadAuth(db, runtime);
@@ -179,16 +143,10 @@ export function subscriptionAccount(db: DB, runtime: string): boolean {
 /**
  * Where a CLI keeps its own state *on this host*.
  *
- * Both tools let you move it — codex reads `$CODEX_HOME`, Claude Code reads
- * `$CLAUDE_CONFIG_DIR` — and hardcoding `~/.codex` / `~/.claude` fails silently
- * for anyone who has: `codex login` succeeds and the credential is read from a
- * directory it did not write, so the panel says "finished but produced no
- * credential"; every ticked skill stages zero files and the mount is empty.
- * Honour the variable the CLI honours, then fall back to the conventional path.
- *
- * `homedir()` handles the platform difference; the env vars handle the
- * install-somewhere-else one. Note these are the *host* paths — `CODEX_HOME`
- * above is the path inside the container, which is ours to fix and never varies.
+ * Both tools let you move it — `$CODEX_HOME`, `$CLAUDE_CONFIG_DIR` — and
+ * hardcoding `~/.codex` / `~/.claude` fails silently for anyone who has, reading
+ * the credential from a directory the CLI never wrote. These are the *host*
+ * paths; `CODEX_HOME` below is the container's, ours to fix and fixed.
  */
 export const hostCodexHome = (home = homedir()): string => process.env.CODEX_HOME || join(home, ".codex");
 export const hostClaudeHome = (home = homedir()): string => process.env.CLAUDE_CONFIG_DIR || join(home, ".claude");
@@ -196,11 +154,10 @@ export const hostClaudeHome = (home = homedir()): string => process.env.CLAUDE_C
 /**
  * The hosts a turn has to be able to reach, for the configured credentials.
  *
- * Derived rather than configured: these are exactly the hosts the vault binds,
- * so a self-hosted gateway moves the probe with it and nobody has to keep a
- * second list in step. Only credentials that exist count — probing a provider
- * nobody configured would report the machine offline for a wall it will never
- * hit.
+ * Derived rather than configured: exactly the hosts the vault binds, so a
+ * self-hosted gateway moves the probe with it and no second list drifts. Only
+ * credentials that exist count — probing a provider nobody configured reports
+ * the machine offline for a wall it will never hit.
  */
 export function probeHosts(db: DB): string[] {
   const out = new Set<string>();
@@ -251,23 +208,10 @@ const authorityOf = (url: string): string | null => {
 /**
  * The key to send to one sandbox server address, and nothing to send elsewhere.
  *
- * Four call sites resolved the stored key with `loadAuth(db, SANDBOX_KEY)?.secret
- * || cfg.sandbox.apiKey` and sent it to whatever `cfg.sandbox.server` currently
- * said. Those are two different facts held apart: `sandbox.server` is a settings
- * knob the panel can rewrite at runtime (`sandbox-server/addr`, and the
- * `sandbox.server` row itself, which is not in `SETTING_DENIALS`), while the
- * secret is stored once and reused. So changing the address was enough to make
- * the next probe hand the stored key to it. `reachable`'s own suppression
- * asserted the opposite — "the key sent with it is the key stored for that same
- * address" — which was an assumption, not something the code arranged.
- *
- * Compare `modelProbe`: its URL is built from `runtime_auth.base_url`, the same
- * row the secret is in, so credential and address cannot be substituted for one
- * another. This gives the sandbox key the same property.
- *
- * The config/environment value is not filtered. It is not stored here, it is set
- * by whoever writes the yaml or the environment, and that is the same person who
- * sets the address in them — there is no privilege boundary between the two.
+ * `sandbox.server` is a settings knob the panel rewrites at runtime while the
+ * secret is stored once, so resolving them independently made changing the
+ * address enough to hand the stored key to it. The config/environment value is
+ * not filtered: whoever sets it also sets the address, so no boundary is crossed.
  */
 export function sandboxKeyFor(db: DB, server: string, fromConfig?: string): string {
   const stored = loadAuth(db, SANDBOX_KEY);
@@ -282,11 +226,10 @@ export function sandboxKeyFor(db: DB, server: string, fromConfig?: string): stri
 /**
  * Give a key stored before this rule the address that was in effect at boot.
  *
- * Called once at startup, where the address comes from the configuration as
- * resolved for the run. The ceiling is worth stating: it binds to whatever the
- * settings say at that moment, so it cannot tell a legitimate address from one
- * changed before the last restart. What it does close is the live path — change
- * the knob, and the next probe hands over the key without anything restarting.
+ * ponytail: binds to whatever the settings say at startup, so it cannot tell a
+ * legitimate address from one changed before the last restart. It closes the
+ * live path — change the knob and the next probe hands the key over with
+ * nothing restarting. Bind at write time if that ceiling starts to matter.
  */
 export function bindSandboxKey(db: DB, server: string): void {
   const stored = loadAuth(db, SANDBOX_KEY);
@@ -339,11 +282,10 @@ export const CODEX_HOME = "/root/.codex";
 /**
  * Files a sandbox needs because the CLI reads a file and nothing else.
  *
- * codex is the only one, and what it gets is a decoy: enough to start and
+ * codex is the only one, and what it gets is a **decoy**: enough to start and
  * believe it is logged in, while the sidecar swaps in the real access token on
- * the way out. The alternative — the real auth.json in every sandbox — is what
- * codex's own CI guidance warns against, because each copy refreshes and they
- * invalidate each other.
+ * the way out. The real auth.json in every sandbox is what codex's own CI
+ * guidance warns against — each copy refreshes, and they invalidate each other.
  */
 export function filesFor(db: DB): Record<string, string> {
   const files: Record<string, string> = { ...gitFilesFor(db), ...claudeFilesFor(db) };
@@ -358,21 +300,12 @@ export function filesFor(db: DB): Record<string, string> {
 }
 
 /**
- * Claude Code's own commit trailer.
+ * Claude Code's own commit trailer, on the commits an agent writes by hand.
  *
- * The CLI appends `Co-Authored-By: Claude` and a `Generated with Claude Code`
- * line to any commit it makes itself, and it has a setting for that. Left alone
- * it is on, so this was a trailer nothing in the panel could reach — on the
- * commits an agent wrote by hand rather than the ones this orchestrator
- * squashes.
- *
- * Its own switch, beside the Claude account. It was briefly wired to the git
- * co-author switch, which is a different question: one is what this project
- * puts in its history, the other is which tool wrote the diff.
- *
- * `--setting-sources user,project,local` is what makes this file read at all;
- * `/root/.claude` is the container's HOME, which holds nothing but what we put
- * in it.
+ * The CLI appends `Co-Authored-By: Claude` to its own commits; left alone the
+ * setting is on, and nothing in the panel could reach it. `--setting-sources
+ * user,project,local` is what makes this file read at all, and `/root/.claude`
+ * is the container's HOME, holding nothing but what we put in it.
  */
 function claudeFilesFor(db: DB): Record<string, string> {
   const { claudeCoauthor } = trailers(db);
@@ -385,23 +318,14 @@ const GIT_USER = "x-access-token";
 /**
  * Give git something to send, so the sidecar has something to replace.
  *
- * This is the half that was described and never built. `git clone` over HTTPS
- * does **not** send `Authorization` up front: it asks anonymously, takes the
- * 401, and only then looks for a credential helper. With `GIT_TERMINAL_PROMPT=0`
- * and no helper in the container it stopped at `could not read Username`, and no
- * token anywhere could have changed that — the vault *replaces* a header the
- * client already set (005), and git had set none.
- *
- * So the container gets a stored credential whose password is a decoy, exactly
- * like codex's `auth.json`. git reads it, sends `Authorization: Basic
- * base64(x-access-token:decoy)`, and the sidecar swaps in the real one on the
- * way out. Nothing real is ever inside.
- *
- * Only when a GitHub credential is configured. A public repository clones
- * anonymously today, and handing git a credential it will fail with would turn
- * that into a 401 — breaking the case that currently works.
+ * `git clone` does **not** send `Authorization` up front: it asks anonymously
+ * and only then looks for a credential helper, so the vault had no header to
+ * replace (005). git gets a stored credential whose password is a decoy,
+ * swapped for the real one on the way out. Nothing real is ever inside.
  */
 function gitFilesFor(db: DB): Record<string, string> {
+  // Only when a GitHub credential is configured: a public repository clones
+  // anonymously, and handing git a credential it will fail with makes that a 401.
   if (!loadAuth(db, "github")) return {};
   return {
     "/root/.git-credentials": BINDINGS.github!.hosts.map(
@@ -416,30 +340,23 @@ function gitFilesFor(db: DB): Record<string, string> {
 }
 
 /**
+ * Re-entrancy guard, and the reason it has to exist.
+ *
+ * The refresh runs `codex` inside the utility container, and getting that
+ * container means `openSandbox` → `vaultBindings` → here, so a stale refresh
+ * would recurse forever. While one is in flight every other caller gets the
+ * token we already have: minutes from expiry at worst, against a deadlock.
+ */
+let refreshing = false;
+
+/**
  * Refresh the stored ChatGPT login if it is getting old, and hand back the
  * access token the sidecar should inject.
  *
  * One refresher, on the host, because there is one login: ten sandboxes each
- * refreshing their own copy is precisely the thing codex's CI guidance says not
- * to do. The renewal is done by codex itself rather than by us — see chatgpt.ts
- * for why that distinction is worth a few hundred tokens a week. A failed one
- * keeps what we had, and shows up later as the 401 that pauses the group.
+ * refreshing their own copy is what codex's CI guidance says not to do. A failed
+ * one keeps what we had, and surfaces later as the 401 that pauses the group.
  */
-/**
- * Re-entrancy guard, and the reason it has to exist.
- *
- * The refresh runs `codex` inside the **utility container**, and getting that
- * container means `openSandbox`, which calls `vaultBindings`, which calls this —
- * so the first stale refresh would recurse into itself forever, building a
- * container in order to build a container. Nothing else in the loop notices,
- * because each step is doing something reasonable.
- *
- * While a refresh is in flight, every other caller gets the token we already
- * have. It is minutes from expiry at worst, and the alternative is a deadlock at
- * the exact moment the fleet needs a credential.
- */
-let refreshing = false;
-
 async function currentChatgptToken(db: DB, io: CodexHomeIO | null, now = Date.now()): Promise<string | null> {
   const a = loadAuth(db, "codex");
   if (a?.mode !== "chatgpt") return null;
@@ -451,11 +368,9 @@ async function currentChatgptToken(db: DB, io: CodexHomeIO | null, now = Date.no
       await seedHome(io, a.secret);
       const next = await renew(io);
       if (next) {
-        // One writer. The container is where the refresh *happens*; this row is
-        // where the login lives, and it is the only copy anything reads. The
-        // container's `auth.json` is scratch — a rebuilt one is reseeded from
-        // here — so the two-writers-one-token case codex warns about cannot
-        // arise: nothing else ever refreshes it.
+        // One writer. The container is where the refresh happens; this row is
+        // the only copy anything reads, and the container's `auth.json` is
+        // scratch that gets reseeded from here. Nothing else ever refreshes it.
         saveAuth(db, { ...a, secret: JSON.stringify(next) });
         parsed = next;
       }
@@ -469,18 +384,10 @@ async function currentChatgptToken(db: DB, io: CodexHomeIO | null, now = Date.no
 /**
  * There is no write-back from the sandbox, deliberately.
  *
- * `absorbCodexHome` used to read `$CODEX_HOME/auth.json` out of the container
- * after every codex turn and store whatever it found, on the theory that codex
- * rotates its own tokens. Since 005 that file is a decoy *we* wrote (`filesFor`
- * below), and `decoyAuth` stamps `last_refresh` with now for the express purpose
- * of stopping codex from refreshing it. So the only thing the read-back could
- * ever find was our own fake — and it stored it, replacing the real refresh
- * token, which nothing else holds. Every sandbox then got `decoy-aaa…` injected
- * and the whole fleet 401'd, presenting as an expired account.
- *
- * One login, one refresher, on the host (`currentChatgptToken` below). A second
- * writer for the same row is what this comment exists to prevent someone adding
- * back.
+ * `absorbCodexHome` used to read `$CODEX_HOME/auth.json` back out after every
+ * codex turn. Since 005 that file is a decoy *we* wrote, so the read-back found
+ * our own fake and stored it, replacing the real refresh token, which nothing
+ * else holds. One login, one refresher, on the host; a second writer is the bug.
  */
 
 /**

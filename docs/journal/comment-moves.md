@@ -1144,3 +1144,942 @@ a regex did not care where a file was cut, a parser does […] measured at 43 of
 494 files here, [and] there is always a last construct.
 
 [a paths-only map is] not a silent one: the count is in the line below.
+
+## src/platform/config/load.ts:16
+
+Measured off the two installations rather than assumed: `claude --help` offers
+`--effort (low, medium, high, xhigh, max)`, and every entry in codex's
+`models_cache.json` lists the same five under `supported_reasoning_levels`.
+
+## src/platform/config/load.ts:38
+
+Measured: tool results are 90% of everything in a transcript. […] One cap for
+both has to be the engineer's, and the reviewers spend it.
+
+## src/platform/config/load.ts:75
+
+This used to be a hand-written `type Config = { ... }` of twenty-six fields
+beside a `ConfigSchema` of the same twenty-six, kept in step by whoever
+remembered. Nothing checked that they agreed.
+
+The field comments moved there with it: they are the expensive part, every
+number is a measurement somebody paid for, and they are still what an editor
+shows on hover.
+
+## src/platform/config/load.ts:89
+
+This was the shipped yaml's value while the code default said 2 — the file is
+what has been running, so it wins.
+
+## src/platform/config/load.ts:101
+
+models_cache.json records `gpt-5.4 -> terra` and `gpt-5.4-mini -> luna` as its
+own upgrade path, and sol is the flagship.
+
+## src/platform/config/load.ts:108
+
+20 minutes. The code default said 10 while the shipped yaml said 20, so
+every install has been running 20 and nothing has been running 10.
+
+## src/platform/config/load.ts:120
+
+Accepting a slice was what started the next one, so with this off a group did
+exactly one slice and then waited until morning — which defeats the reason the
+system exists.
+
+[postSliceDecision pauses the group] rather than quietly fixing the foundation
+under finished work.
+
+## src/platform/config/load.ts:125
+
+The code default said `["trivial"]` and the shipped yaml said
+`["trivial", "normal"]`, with a comment under each explaining why its own
+answer was the careful one. The yaml is the one that has been running, and
+two files arguing in comments is worse than either answer.
+
+## src/platform/config/load.ts:129
+
+Measured over the 16 slices in this checkout that spent anything: trivial
+averaged 4.0M with one 12.0M runaway, normal averaged 7.3M with a 16.1M tail,
+the single hard slice took 4.0M.
+
+## src/platform/config/load.ts:156
+
+Resolving them against cwd meant a server started elsewhere silently found no
+roles at all.
+
+  source        `<root>/src/platform/config/load.ts` -> `../../..`
+  bundled       `<root>/dist/server.js`  ->  `..`
+  compiled      `/$bunfs/root/config.ts` ->  nothing. `bun build --compile`
+                puts modules in a read-only virtual filesystem, so `..` is
+                `/$bunfs`, and `config/default.yaml`, `roles/*.yaml`,
+                `web/dist` and the `orch` CLI copied into every sandbox all
+                resolve to paths that do not exist. Measured: the binary
+                starts, warns that the config is missing, and then dies trying
+                to `mkdir` a data directory on a read-only mount.
+
+[the executable's own directory] makes a single-file binary usable as long as
+its assets sit beside it. `ORCH_ROOT` overrides all three, for a layout that is
+none of them.
+
+## src/platform/config/load.ts:178
+
+The reason used to be stated as "handed to subprocesses that do not run where
+the server does". Since 005 no subprocess sees `dataDir` at all — turns run in
+containers and reach the host only through the mailbox — so that sentence
+would have had the next reader looking for a boundary that is not here. The
+conclusion is unchanged; the reason is that this process can be started from
+anywhere.
+
+## src/platform/config/load.ts:188
+
+An empty one […] is fine — preflight reports what it finds either way.
+
+`ORCH_SANDBOX_API_KEY` is the original; `ORCH_SANDBOX_KEY` is the shorter one.
+[A 401] reads as a broken server rather than as two names for one secret.
+
+## src/platform/config/load.ts:199
+
+These four are the ones an image cannot know at build time, and nothing else is
+settable this way.
+
+## src/platform/config/load.ts:217
+
+editing a file inside the release to say so is worse than one variable in
+whatever starts it.
+
+## src/platform/config/load.ts:232
+
+JS has no stdlib deep merge worth hand-rolling around.
+
+That is reachable now that settings are written onto the live config — the
+panel changing an image would also have changed what "default" means, so the
+"restore default" button would restore the value it was asked to undo.
+
+## src/platform/config/load.ts:259
+
+(the Auditor wants a specific reviewer) […] before this split that is exactly
+what a `runtime: codex` role would have got.
+
+## src/platform/observability/span-store.ts:1
+
+The SDK ships spans to a collector when one is configured, and to nothing when
+one is not. Neither case leaves anything the panel can read back: a boss asking
+where a requirement's wall clock went has no collector to ask.
+
+`SpanExporter` is the documented seam for a destination, and
+`BatchSpanProcessor` […] is one the SDK already ships and which the OTLP side
+already uses.
+
+Both see every span; an operator who runs a real collector keeps it.
+
+## src/platform/observability/span-store.ts:40
+
+This kept a week, and the row cap then cut that to 2.7 days at the measured
+rate of 3,114 spans an hour, so three numbers disagreed: the copy said a day,
+the standard said a week, and a reader could reach neither. Days two through
+seven were stored and never read by anything.
+
+A rollup table was designed for this and then discarded, which is worth
+recording because the design was sound and the problem was not. Folding
+expiring spans into per-hour summaries buys long history cheaply — but only
+for a page that wants long history, and this one wants "is something slow
+right now". Storing a week to serve a day is what made retention look like it
+needed a mechanism.
+
+A day is 75k rows at the measured rate and 750k at ten times that; a retry
+storm or a hot loop writing 7.5M rows in a day would be 1GB of somebody's
+laptop.
+
+## src/platform/observability/span-store.ts:210
+
+[system work is] the scheduler, the indexer, `/healthz`, the retention trim.
+
+A "system" view that also counted every project's turns would report the
+fleet's busiest requirement as a property of the host.
+
+## src/platform/observability/span-store.ts:231
+
+Filtering on the column alone found nothing, and an empty panel is
+indistinguishable from a panel that was never built — which is exactly how this
+was reported.
+
+[without a read-side fix] the project view would be empty until the fleet had
+run enough new turns to refill it. […] deriving it on read is both the smaller
+change and the one that works on the data that is there.
+
+## src/platform/observability/span-store.ts:244
+
+Two reasons not to use floating point: SQLite is not built with the math
+extensions everywhere. […] [truncation] moves a p95 down one sample at exactly
+the round numbers a test would pick.
+
+Degenerate inputs land where they should without a special case: n = 1 gives
+rank 1 for every percentile, so the only sample is both the p50 and the p95.
+
+## src/platform/observability/span-store.ts:259
+
+It was `(windowMs, now)`. Dragging the handles around 01:30–02:00 could only be
+reported as "the last thirty minutes" […] From the outside that reads as the
+zoom being broken rather than as the query being unable to say what was asked.
+
+## src/platform/observability/span-store.ts:278
+
+[the obvious version] was wrong for every caller with an injected clock: a test
+asking about a fixed instant in the past had its start pulled forward to a week
+before *today*.
+
+## src/platform/observability/span-store.ts:296
+
+[a stage is] `turn.provider`, `sandbox.create`, `GET /api/v1/state`, a job kind.
+The same query answers all three scopes, which is the reason there is one
+endpoint and not three.
+
+## src/platform/observability/span-store.ts:340
+
+The one question the stage table cannot answer. Stages say *what* the time
+went on — the provider, a cold container — and this says *which piece of the
+work* it went on, which is the axis a boss reading a requirement already has
+in their head: slice 1 sailed through, slice 3 has burned an hour.
+
+`slice_id` is written by `turnScope` and indexed as the second column of
+`span_scope`, so scoping to a group and grouping by slice is one range scan.
+
+[at project scope] the same query would add up slice 1 of everything.
+
+## src/platform/observability/span-store.ts:372
+
+A requirement's turn is parented to the HTTP request that enqueued it […] and a
+root-based measure would either find nothing or wander up into another scope's
+time.
+
+## src/platform/observability/span-store.ts:409
+
+A tree built in SQL would be a tree serialised through a text column either
+way; folded stacks are that with a format somebody else already defined.
+
+## src/platform/observability/span-store.ts:422
+
+Worth being exact about what this does and does not protect against, because
+the obvious reading is wrong. […] a span has one parent column and
+`(trace_id, span_id)` is the primary key. A cycle can only exist among spans
+that are unreachable from any root, and those are never walked at all.
+
+[a runaway-deep trace is] a recursive tool call, an agent looping through a
+stage. […] the deepest thing this system emits is `turn` → `turn.checkpoint` →
+`sandbox.create` → `sandbox.init`.
+
+The unreachable-cycle case is a real if unreachable-in-practice gap: those
+spans contribute nothing to the flamegraph rather than appearing detached.
+Sweeping them in would mean a second pass over the scope to find what the
+first missed, which is not worth paying for a shape no correct writer emits.
+
+## src/platform/observability/span-store.ts:433
+
+This is the aggregate, not one trace, and that is the point of having it
+beside the waterfall. A waterfall answers "what happened in this one run, and
+in what order". A flamegraph over every run in the scope answers "where does
+this project's time actually go", which is a question no single trace can
+answer and the one somebody asks when the fleet feels slow.
+
+`startChildTrace` gives a job's span a remote parent, so a requirement's own
+spans never have a NULL parent.
+
+Percentiles and bucketing belong in the query and are fast there. The version
+this replaced joined a CTE to itself once per level and ran a correlated
+subquery over the same CTE to find roots — quadratic in the window, measured at
+**5,178ms** against 7,382 spans while the flat read that feeds this is 0.1ms.
+
+What this guarantees, asserted rather than assumed: 7,008 in, 7,008 out at
+system scope on live data; 374 in, 374 out at project scope. [No path repeating
+a name] is what a walk without cycle detection produces when parent ids form a
+ring.
+
+A "the query was also losing rows" claim was made here and withdrawn: it came
+from comparing the scoped query against an unscoped probe, so the 374 spans
+missing from one side were project-scoped rows the system scope excludes by
+design. The measurement was wrong; the speed is the whole of the reason.
+
+## src/platform/observability/span-store.ts:459
+
+The old query dropped cycles entirely, and that was recorded as a decision.
+It is not one this keeps: […] being unable to say what it hung off is not a
+reason to say it never happened. [Counting every span once] is the property the
+test asserts and which dropping them would break.
+
+## src/platform/observability/span-store.ts:524
+
+[This block sat above `spanExtent`, describing `trend` below it:]
+
+The sample is one trace, not one span, so a bucket answers "how long did a
+unit of work take then" rather than "how long did the average span take" —
+the second is a number that moves when the shape of the tracing changes and
+nothing about the system does.
+
+Bucketing is `started_at / bucketMs` in integer division, multiplied back out
+so each row carries the epoch millisecond the bucket starts at rather than an
+index the caller would have to know the divisor to interpret.
+
+## src/platform/observability/span-store.ts:617
+
+`forceFlush` and `shutdown` are the process's shutdown path. […] the only
+consumer of `FAILED` is that rejection. [The counter is] the channel an
+operator actually watches.
+
+## src/platform/observability/span-store.ts:4
+
+None of [the queue, drop policy, batching, flush timer] is written here.
+
+## src/platform/observability/span-store.ts:43
+
+[age + count, because it is the same problem:] append-only history that nothing
+else deletes.
+
+## src/platform/observability/span-store.ts:432
+
+Every span in the scope is counted exactly once, and no path repeats a name.
+
+## src/api/panel/authflow.ts:43
+
+Three flows with the same shape on purpose — a code, a link, and a pending
+state that dies with the code — because a second shape for the same
+interaction is how a settings page stops being learnable.
+
+## src/api/panel/authflow.ts:90
+
+That separation is the fix, not a tidy-up […] a `!("adopt" in b)` guard further
+down does not achieve that — the two branches still meet in one binding, which
+is exactly what a taint analysis reports and, more to the point, what one
+refactor away from being true again.
+
+## src/api/panel/authflow.ts:126
+
+generating one here and not telling the server made every turn, every gate and
+every diff 401 — reported as "Authentication credentials are invalid", which
+reads as a model problem.
+
+## src/api/panel/authflow.ts:175
+
+It lives here rather than inline because there are two ways in and only one of
+them used to do this: a login from the panel stored the token and stopped, so
+every running group kept a sidecar bound to the credential that was missing and
+every turn came back `Authentication credentials are invalid`.
+
+## src/api/panel/authflow.ts:191
+
+a group the boss paused by hand restarted itself the moment anyone signed into
+GitHub, a budget-burnt group resumed with nothing changed about its budget, and
+a rate-limited one came back carrying `rl_resets_at` — which watchdog rule 6
+only clears for rows it still finds PAUSED, so nothing cleared it afterwards
+either.
+
+## src/api/panel/authflow.ts:347
+
+under `e: any` the fallback `??` handed `bad()` the object itself — a 422 whose
+body reads "[object Object]".
+
+## src/api/panel/authflow.ts:402
+
+page one of a hundred repositories to count them is the sort of thing that eats
+a 5000/hour budget quietly. Repeats come back 304 from the client's ETag cache,
+which does not count against the limit at all.
+
+## src/api/panel/authflow.ts:494
+
+measured, a round trip to api.github.com is 260-630ms, so doing these in series
+is a second of blank dialog for no reason.
+
+## src/mech/ops/preflight.ts:17
+
+A missing docker means every group's first turn errors one at a time with the
+same message; an egress server in `dns` mode means credential injection quietly
+does not happen and the symptom is a 401 from Anthropic, which reads as a bad
+token […] Decision 001's lesson, one layer up: every quiet failure looked
+exactly like success. […] It does **not** refuse to start, and said it did for a
+while.
+
+## src/mech/ops/preflight.ts:49
+
+It used to GET `/openapi.json` with an `x-api-key` header, and both halves of
+that were wrong: the doc endpoint is unauthenticated, so a server that rejected
+every real call reported `reachable`, and the header it authenticates by is
+`OPEN-SANDBOX-API-KEY`. A panel showing a green tick while every turn, every
+gate and every diff came back 401 is worse than no check at all.
+
+## src/mech/ops/preflight.ts:82
+
+Existence was the old check […] The failure it missed is the expensive one:
+everything looks configured, and every turn dies at the API with a message the
+boss sees as an agent problem. […] a preflight that costs two round trips per
+glance is one nobody leaves on.
+
+## src/mech/ops/preflight.ts:100
+
+two different credentials shared a cache entry and the second one was reported
+with the first one's verdict.
+
+## src/mech/ops/preflight.ts:112
+
+the usage poll was the last one […] So: not an oversight, and not something to
+tidy up on sight of a host `fetch` next to a commit that removed exactly that.
+
+## src/mech/ops/preflight.ts:221
+
+there is no docker socket in here, `uvx` is not installed and never will be, and
+pulling the sidecar here would put it in the wrong daemon […] every fix they
+print (`brew install uv`) is a command for a host this process cannot see.
+
+## src/mech/ops/preflight.ts:476
+
+A blocked loop does not show up as a slow span of its own — it shows up as every
+other span being slow, which is the hardest shape to diagnose from a panel. […]
+this covers the readiness ticker, which is the path that runs when nobody is
+looking.
+
+## src/mech/ops/preflight.ts:499
+
+Measured: with the daemon down — Docker Desktop installed and never launched,
+the most common first-run state there is — `docker --version` still exits 0, so
+this check reported "running" while every `ensureSandbox` failed. The blocker
+the boss got said "多半是 docker 没起，自检那栏会说是哪个", and the self-check then
+said it was up: pointed at the right page and told the wrong thing on it.
+
+## src/mech/ops/preflight.ts:512
+
+Only ever consulted when the server is down, but reported always: the fix for a
+missing server is `uvx opensandbox-server`, and a machine without uv cannot run
+that either. Two failures that look identical from the panel.
+
+[Deleted rather than moved: the check it described now lives inside
+`hostToolChecks`, so the comment sat above unrelated code.]
+
+## src/mech/ops/preflight.ts:554
+
+A published one is pulled by the sandbox server the first time it builds a
+container, so there is nothing here for anybody to do and nothing that can go
+wrong at this level. A row that is always green is a row nobody reads, and this
+pane is the one place where a tick has to mean something.
+
+## src/mech/ops/preflight.ts:594
+
+the nudge throws, `renew` returns null, the stored token is kept […] The other
+three modes need nothing here: a pasted `sk-ant-oat01-` is good for a year and
+an API key does not expire.
+
+## src/composition/server.ts:118
+
+It demanded `claude` until 005 (turns moved into containers) and `git` until 007
+step 6 (the checkout, the bundle and the push moved with them) […] which is the
+whole point of the decision.
+
+## src/composition/server.ts:143
+
+the browser heuristically cached the bundle and kept showing a UI that had
+already been rebuilt — a deleted button stayed on screen through a rebuild and a
+restart, and the PM ended up asking the boss to hard-refresh. […] Over loopback
+that costs nothing measurable.
+
+## src/composition/server.ts:179
+
+Everything decided here — whether a watchdog is already queued, what the boss is
+waiting on, whether the network is worth trying, and whether the last index or
+poll has come back — used to be reachable only by starting the process and
+waiting thirty seconds per branch.
+
+## src/composition/server.ts:189
+
+Counting only pending was wrong the moment a tick took longer than the interval
+that drives it, which telemetry measured at a p50 of 50s against a 30s tick: at
+t=30 the first is running rather than pending, so a second was enqueued, and the
+queue never emptied again.
+
+## src/composition/server.ts:233
+
+`void` with no `.catch` sent every throw to the process backstop, which emits a
+blocker — one per tick, forever, and `bus.emit` has no dedup.
+
+## src/composition/server.ts:310
+
+Closing is a decision — "not like this" — and it can only be made there, so the
+system has to read it from there. […] undoing a deliberate act because a poller
+disagreed with it is the worst kind of helpful.
+
+## src/composition/server.ts:640
+
+This used to be an event and nothing else — not a row in `escalation`, so it
+never reached 待办 — while the group sat at PR_OPEN holding the head of a
+strictly serial merge queue with a null pr_number, which pollPrs skips forever.
+Everything behind it stopped, and the only trace was one line in the feed.
+
+## src/composition/server.ts:731
+
+See NO_CACHE: /dist/main.js has no hash in its name and Bun sends no validators,
+so a rebuilt bundle kept being served from the browser's cache.
+
+[Deleted rather than moved: a restatement of the `NO_CACHE` block it names.]
+
+## src/composition/server.ts:846
+
+Rather than juggle a timer handle from the settings route, the callback notices
+its own period changed and re-arms — one place, and it cannot be forgotten by a
+new writer.
+
+[The fact this restated — two timers reading one setting, only one noticing a
+change — is kept at `reArming` itself, which is the helper it explains.]
+
+## src/composition/server.ts:874
+
+A UI change that is committed, tested and typechecked still shows the old page,
+which reads as "the fix did not work" — measured, on a button that had already
+been deleted. […] this crashed the container on boot rather than reporting
+anything.
+
+## src/composition/server.ts:906
+
+Observed: one `ECONNRESET` on a container's `files/upload` — a socket on this
+same machine — and every group stopped, mid-turn, with a two-line error and no
+stack. […] `writeInto` retries the upload, `Scheduler.start` and `acceptSlice`
+catch their own chains.
+
+## src/platform/observability/span-store.ts:4
+
+A destination is the one piece of the tracing stack that has to be ours — the
+library cannot know our database.
+
+## src/platform/observability/span-store.ts:4
+
+[Registered beside the OTLP processor,] never instead of it.
+
+## src/platform/persistence/database.ts:240
+
+`orch` reaches the server over localhost TCP (see
+docs/adr/001-agent-transport-and-sandbox.md).
+
+## src/platform/persistence/database.ts:288
+
+without this the PM gets woken every 30 seconds for the same failure.
+
+## src/platform/persistence/database.ts:292
+
+a slice that has waited four hours is a different problem from one that
+finished a minute ago, and the queue could not tell them apart.
+
+## src/platform/persistence/database.ts:296
+
+Without the timestamp "wait" meant "wait for the boss", so one 429 at 01:00
+cost the whole night.
+
+## src/platform/persistence/database.ts:300
+
+Without this the click was thrown away: the group stayed in DRAFT, nothing
+recorded that anyone had said yes, and the boss had to guess when to come
+back and click again.
+
+## src/platform/persistence/database.ts:304
+
+A group that hits a defect outside its own paths cannot fix it and cannot ask
+anyone to: `orch mail` is a message, not a work item. So it escalated to the
+boss and stopped, and the boss got a blocker with no button on it.
+
+## src/platform/persistence/database.ts:313
+
+A slice that keeps failing stops after `gateRetries` and asks the boss
+(slice.retries). The branch had no such counter at all: a red branch gate sent
+the Engineer round, a rejected audit sent the PM round, and neither loop had
+an end.
+
+## src/platform/persistence/database.ts:317
+
+two groups editing package.json is the collision ownership exists to prevent.
+
+[the requirement opened for a shared-file defect] could never start — the
+Architect can only cut its boundary to the file itself, and canStart then
+refuses it as a shared path. `sweepApproved` retried that forever.
+
+## src/platform/persistence/database.ts:338
+
+Filing one wakes three roles in the chain to think about it — measured, three
+turns at ~3M tokens each.
+
+## src/platform/persistence/database.ts:343
+
+three pushes in an hour are three different shas and three rebase turns — the
+boss pushing a batch of fixes cost one group three turns of pure rebasing.
+
+## src/platform/persistence/database.ts:358
+
+Rotation divided by a hardcoded 200_000 for every model. [The CLIs report it]
+claude in modelUsage, codex in token_count.
+
+## src/platform/persistence/database.ts:363
+
+Pausing only that group left every other group to spend a turn discovering the
+same wall, and a standing agent — no group to pause — kept retrying into it.
+
+## src/platform/persistence/database.ts:374
+
+[the figure] was what these turns would have cost at API rates on the half that
+reported one, and zero on the other. A column half-populated with a number
+nobody is billed for is worse than no column — it invites exactly the ranking
+and the totals that were quietly wrong for every codex role.
+
+## src/platform/persistence/database.ts:386
+
+[the first two lines looked like] `S2 "常驻岗独立分段" failed qa 3 times.
+Latest: 结构: pass — splitDeskRows(tables.tsx:82-104)…`. Eight of those is a
+page of prose.
+
+## src/platform/persistence/database.ts:391
+
+[the same problem twelve times:] the worktree has no playwright, the acceptance
+line cannot be verified.
+
+## src/platform/persistence/database.ts:396
+
+standing roles (Architect, CoS, Dispatcher) have no group and still must not
+run on the host, so they share one per project.
+
+## src/platform/persistence/database.ts:424
+
+exactly one of the two ways to store one did — a login from the panel saved
+the token and stopped, so every group kept a sidecar bound to the credential
+that was still missing and every turn came back "Authentication credentials are
+invalid" against a token that was fine.
+
+## src/platform/persistence/database.ts:436
+
+`clearance` stayed 'L1' on every row an insert ever made, and the panel printed
+it as 「权限 L1」 — a permission level shown to the boss by a system that has no
+permission levels. `denial_turns` counted permission refusals, which cannot
+happen inside a container the CLI is told to skip its own checks in.
+
+## src/platform/persistence/database.ts:453
+
+[the four paths:] the rollback behind "interrupt and roll back", the rebase on
+the way out of PARKED, the rollback behind a revoked answer, and the change set
+the reconcile gate scores claims against — that last one silently passed every
+claim for as long as the column has existed.
+
+## src/platform/persistence/database.ts:459
+
+It was detected on every call and the detection returned `origin/main` where
+four callers then wrote `origin/${...}`.
+
+## src/platform/persistence/database.ts:466
+
+[the old form was] `.claude/skills/<name>/SKILL.md`. That was readable when
+turns ran on this machine.
+
+## src/platform/persistence/database.ts:475
+
+so the data stays and one question is raised naming all of them. `repoHref`
+still refuses anything shaped like a path, so an unconverted row renders as it
+always did.
+
+## src/platform/persistence/database.ts:484
+
+The pull request title was `orch: <group name>`, a slug the dispatcher made
+up before any code existed, and the squashed commit carried the whole PR body
+under it — headings, gate tables, `Opened by orchestrator`. A reviewer's log
+is the least generous place this project shows up in, and it showed up as
+eight rows of the same prefix.
+
+## src/platform/persistence/database.ts:497
+
+`sandbox_image` and `sandbox_server_addr` were the first two things the panel
+could change about this machine, and each got its own key, its own reader and
+its own writer.
+
+## src/platform/persistence/database.ts:512
+
+[the bulk resume is] `credentialChanged`, after the boss signs in [and it
+matched] groups stopped for burning their budget, groups blocked on another
+group, groups the boss paused by hand. Signing into GitHub restarted work the
+boss had deliberately stopped, and the rate-limited ones came back with
+`rl_resets_at` still set, which watchdog rule 6 only ever clears for rows it
+finds still PAUSED.
+
+## src/platform/persistence/database.ts:553
+
+039 put `trace_id` on jobs and events, which is enough to correlate rows that
+already existed but says nothing about where the wall clock went: durations
+lived only in the SDK's export queue, and with no `OTEL_EXPORTER_OTLP_ENDPOINT`
+that queue was never even constructed.
+
+[system spans are] `/healthz`, the watchdog tick, the retention trim itself.
+[A group deleted next week must not] fail to delete because of it.
+
+[`span_scope` leading with group then slice means] aggregating a requirement's
+time over a window uses the same index as aggregating a group's.
+
+## src/platform/persistence/database.ts:584
+
+`server.ts`'s `prReopened` was this patched once, for one cause.
+
+## src/platform/persistence/database.ts:664
+
+`test/settings.test.ts` used to [rewind `max(n)`] — and then failed on that
+migration's own `ALTER TABLE`, naming a column the test has never heard of.
+
+## src/platform/persistence/database.ts:705
+
+[`open(":memory:")`] runs every migration and every `CREATE TABLE` again per
+call, and the suite calls this from 49 files. Measured on this machine:
+4.9 ms each, against 0.026 ms to deserialize a snapshot — 190x, and there are
+enough calls for that to be most of a test run.
+
+[without re-applying the pragma,] `test/drop-slices.test.ts` would be asserting
+on constraints nothing enforces. The mask registration `open()` performs is
+not repeated because a fresh database has no `runtime_auth` rows to mask.
+
+## src/platform/persistence/database.ts:721
+
+Nineteen call sites across six files wrote this SQL out by hand — eight copies
+of the same upsert, six of the same lookup, five of the same delete — and two
+of them had independently arrived at the same "null means remove it" rule.
+Nothing was wrong with any one of them; the cost is that a change to how this
+table is written is a change in nineteen places, and a project about to take
+contributors offers nineteen examples to copy from instead of one.
+
+## src/platform/persistence/database.ts:738
+
+Re-approving a DRAFT rewrites the plan, which means the old slices go. They
+are pointed at from four places and the delete only cleared one of them, so
+approving a card for a group that had already run failed with the least
+actionable message SQLite has: `FOREIGN KEY constraint failed`. Nothing said
+which key, and the boss's only move was to click again.
+
+## src/platform/persistence/database.ts:555
+
+a group deleted next week must not take last week's timing with it.
+
+## src/platform/persistence/database.ts:705
+
+[a caller that migrates again] gets a no-op.
+
+## src/platform/persistence/database.ts:738
+
+[the test is] so the next table to grow a `slice_id` cannot reintroduce this
+bug quietly.
+
+## src/mech/sandbox/auth.ts:11
+
+Measured (docs/adr/005): the sidecar REPLACES an `Authorization` header the CLI
+already set, and `claude` does not validate its token locally — a synthetic one
+comes back as a server-side 401 — which together are what make this work at all.
+
+## src/mech/sandbox/auth.ts:22
+
+codex has exactly two non-interactive credential paths: an API key, or an
+`auth.json` in `$CODEX_HOME`. A ChatGPT-account login is the second — a pair
+of access and refresh tokens that codex itself rotates and rewrites — so it
+cannot go in the vault: what you would bind is one access token that expires
+in hours with nothing to renew it. claude's `setup-token` works precisely
+because it hands over a year-long token instead.
+
+## src/mech/sandbox/auth.ts:71
+
+Git's smart HTTP is four requests:
+
+    fetch   GET  /owner/repo.git/info/refs?service=git-upload-pack
+            POST /owner/repo.git/git-upload-pack
+    push    GET  /owner/repo.git/info/refs?service=git-receive-pack
+            POST /owner/repo.git/git-receive-pack
+
+The difference is worth one paragraph because it is the reason the utility
+container exists at all rather than every group simply pushing.
+
+[on the exact-strings rule] the shape the upstream guide suggests would readmit
+`git-receive-pack`.
+
+Known gap, stated rather than papered over: […] Adding it would also admit LFS
+*uploads*, which share the path — so it waits for a repository that needs it.
+
+## src/mech/sandbox/auth.ts:141
+
+[without `forgetHolds`] a boss who reconnects GitHub watches nothing happen
+until the hold's clock lapses, which reads as the fix not having worked.
+
+## src/mech/sandbox/auth.ts:154
+
+[a gateway's quota is] a number about somebody else's subscription, rendered as
+if it were the constraint on what to start next.
+
+[no row at all] so a bar sourced from whatever this host happens to be logged
+into would be about an account the fleet never touches.
+
+## src/mech/sandbox/auth.ts:179
+
+`codex login` succeeds and the credential is read from a directory it did not
+write, so the panel says "finished but produced no credential"; every ticked
+skill stages zero files and the mount is empty. Honour the variable the CLI
+honours, then fall back to the conventional path. `homedir()` handles the
+platform difference; the env vars handle the install-somewhere-else one.
+
+## src/mech/sandbox/auth.ts:251
+
+Four call sites resolved the stored key with `loadAuth(db, SANDBOX_KEY)?.secret
+|| cfg.sandbox.apiKey` and sent it to whatever `cfg.sandbox.server` currently
+said. […] (`sandbox-server/addr`, and the `sandbox.server` row itself, which is
+not in `SETTING_DENIALS`) […] `reachable`'s own suppression asserted the
+opposite — "the key sent with it is the key stored for that same address" —
+which was an assumption, not something the code arranged.
+
+Compare `modelProbe`: its URL is built from `runtime_auth.base_url`, the same
+row the secret is in, so credential and address cannot be substituted for one
+another. This gives the sandbox key the same property.
+
+## src/mech/sandbox/auth.ts:360
+
+[the trailer] was a trailer nothing in the panel could reach — on the commits an
+agent wrote by hand rather than the ones this orchestrator squashes.
+
+Its own switch, beside the Claude account. It was briefly wired to the git
+co-author switch, which is a different question: one is what this project puts
+in its history, the other is which tool wrote the diff.
+
+## src/mech/sandbox/auth.ts:385
+
+This is the half that was described and never built. […] With
+`GIT_TERMINAL_PROMPT=0` and no helper in the container it stopped at `could not
+read Username`, and no token anywhere could have changed that — the vault
+*replaces* a header the client already set (005), and git had set none.
+
+[git sends] `Authorization: Basic base64(x-access-token:decoy)`.
+
+## src/mech/sandbox/auth.ts:418
+
+The renewal is done by codex itself rather than by us — see chatgpt.ts for why
+that distinction is worth a few hundred tokens a week.
+
+[on the re-entrancy guard] Nothing else in the loop notices, because each step
+is doing something reasonable.
+
+## src/mech/sandbox/auth.ts:469
+
+`decoyAuth` stamps `last_refresh` with now for the express purpose of stopping
+codex from refreshing it. […] Every sandbox then got `decoy-aaa…` injected and
+the whole fleet 401'd, presenting as an expired account.
+
+## src/mech/sandbox/server.ts:21
+
+A user should need an environment, not a runbook. Every container this system
+opens goes through one server process, and asking someone to start it by hand
+in a second terminal before anything works is a setup step that exists only
+because nothing was doing it for them.
+
+The third case is the one worth being strict about. A restart there is
+indistinguishable, from here, from a restart of the user's own work. [Killing a
+process we did not start] takes down whatever else was using it.
+
+## src/mech/sandbox/server.ts:60
+
+[a second server] just fails to bind, dies, and then the health probe talks to
+the first one and reports 401 — which is how a clean machine produced *"起来了
+但驱动不了：Unable to connect"*, a sentence describing neither of the two things
+that were true.
+
+## src/mech/sandbox/server.ts:87
+
+[sending `Authorization: Bearer`] cost an hour reading a message that said the
+key was not accepted when the key was never presented.
+
+## src/mech/sandbox/server.ts:105
+
+The first version was three sentences of reasoning — where the server came
+from, why we did not touch it, both ways out — set as a paragraph above the two
+controls that are the ways out.
+
+## src/mech/sandbox/server.ts:129
+
+a blanket `^mode =` replaced `[ingress] mode` with `dns+nft` and the server
+refused to start — *"Input should be 'direct' or 'gateway'"* — because `mode`
+appears in two sections and the first one wins a file-wide match.
+
+The generated example ships `# api_key = "your-secret-api-key"`.
+
+## src/mech/sandbox/server.ts:172
+
+Hand-writing it was wrong and failed the first time it ran on a clean machine:
+
+    pydantic_core.ValidationError: 1 validation error for AppConfig
+    runtime.execd_image
+      Field required
+
+`init-config --example docker` renders one from the packaged example, so the
+parts we do not care about stay correct without anyone tracking them.
+
+## src/mech/sandbox/server.ts:238
+
+[egress image] v1.1.4 403s every scoped package fetch while a credential is
+bound (005), and the example may ship it.
+
+Regex rather than a TOML parser, like `keyInConfig` and `allowedHostPaths`
+above: six known keys, one line each, and a dependency for that is a dependency
+for that.
+
+## src/mech/sandbox/server.ts:348
+
+the first version had the panel spawning a server as a side effect of being
+looked at.
+
+## src/mech/skills.ts:10
+
+This half is prefix: every skill in there costs name + description on EVERY turn
+of EVERY agent (measured: the boss's whole ~180-skill set plus slash commands
+was ~46k cached tokens). That is the bill the tick boxes control, and why the
+settings page states it out loud. A repository's own are not tickable —
+shipping one is the decision.
+
+`--setting-sources project,local` stays on regardless — that flag governs
+settings, not skill discovery, and inheriting the boss's user-level setup
+measured ~195k cached tokens on a trivial haiku turn.
+
+## src/mech/skills.ts:64
+
+The replacement for that was 20 lines that folded `>-` the way `|` folds and
+could match a `description:` in the body text below the frontmatter — and the
+parser was already in use three files over.
+
+## src/mech/skills.ts:137
+
+**Which directories, and why these.** `.claude/skills` is not a universal
+convention — it is claude's. Counted as exact strings in each CLI's own binary
+(`codex-cli 0.147.0`, `claude 2.1.232`, in `orch/agent:1`):
+
+    claude   .claude/skills 93   .codex/skills 0   .agents/skills 0
+    codex    .codex/skills  3    .claude/skills 0  .agents/skills 0
+
+and codex's three are one sentence about `$CODEX_HOME/skills`. […]
+`.agents/skills` is the wider ecosystem's (`npx skills add --agent` writes
+there) and neither CLI reads it.
+
+## src/mech/skills.ts:170
+
+measured on this machine, every one of `~/.claude/skills`'s 93 entries is a
+symlink into `~/.agents/skills`, so scanning it adds **nothing here**. […] (one
+CLI installed, or `--agent` pointed somewhere else)
+
+## src/mech/skills.ts:237
+
+[a project skill] is fetched over the files API (1-5ms, not the ~1s an exec
+costs).
+
+## src/mech/skills.ts:258
+
+`SKILL_SYNC` prints it on the exec that already probes the checkout; this is
+where it lands. […] Stale between a push that adds a skill and the next group's
+first turn, which is the honest ceiling of caching a remote directory.
+
+## src/mech/skills.ts:346
+
+Copied, not symlinked […] (`~/.claude/skills/impeccable ->
+../../.agents/skills/impeccable`, codex's point into its plugin cache).
+
+Updated in place rather than rebuilt beside and renamed: the container mounted
+this directory.
+
+## src/mech/skills.ts:399
+
+`listSkills` is a pure function with no bus, so the report lives with the caller
+that has one.

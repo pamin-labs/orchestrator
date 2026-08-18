@@ -15,27 +15,14 @@ import { decode } from "hono/jwt";
 import { z } from "zod";
 
 /**
- * What has to be true before any agent can run, checked once.
+ * What has to be true before any agent can run, checked once. Every one of these
+ * fails silently if you let it.
  *
- * Every one of these fails silently if you let it. A missing docker means every
- * group's first turn errors one at a time with the same message; an egress
- * server in `dns` mode means credential injection quietly does not happen and
- * the symptom is a 401 from Anthropic, which reads as a bad token; a runtime
- * with no credential configured looks like an agent that will not answer.
- *
- * Decision 001's lesson, one layer up: every quiet failure looked exactly like
- * success. Nothing here ever falls back to running a turn on the host — there is
- * no host path left to fall back to.
- *
- * It does **not** refuse to start, and said it did for a while. Refusing would
- * take the panel down with it, and the panel is where three of these are fixed —
- * the sandbox key is pasted there, so a server that will not boot without one
- * cannot be given one. What enforces instead is the hold in `sandbox.ts`: with
- * no container to open, turns are not dispatched at all, so the fleet waits
- * rather than each group failing separately. This reports; that gates.
- *
- * `missingBinaries` in server.ts is the only fatal check, and it is down to
- * `git`: the host really does run that one itself.
+ * This reports; it does **not** refuse to start, because the panel is where
+ * three of them are fixed — a server that will not boot without a sandbox key
+ * cannot be given one. The hold in `sandbox.ts` is what gates: with no container
+ * to open, turns are not dispatched at all. `missingBinaries` in server.ts is
+ * the only fatal check.
  */
 
 export interface Check {
@@ -49,13 +36,8 @@ export interface Check {
 /**
  * Can we actually drive this server, not merely reach it.
  *
- * It used to GET `/openapi.json` with an `x-api-key` header, and both halves of
- * that were wrong: the doc endpoint is unauthenticated, so a server that
- * rejected every real call reported `reachable`, and the header it authenticates
- * by is `OPEN-SANDBOX-API-KEY`. A panel showing a green tick while every turn,
- * every gate and every diff came back 401 is worse than no check at all.
- *
- * `/v1/sandboxes` is the cheapest authenticated call — a list, no side effect.
+ * `/v1/sandboxes` is the cheapest *authenticated* call — a list, no side effect.
+ * An unauthenticated endpoint answers for a server that rejects every real call.
  */
 async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; detail: string }> {
   try {
@@ -80,26 +62,20 @@ async function reachable(url: string, apiKey: string): Promise<{ ok: boolean; de
 }
 
 /**
- * Does the provider accept this credential, right now.
+ * Does the provider accept this credential, right now — not whether one exists,
+ * because a token that expired last week exists.
  *
- * Existence was the old check, and a token that expired last week exists. The
- * failure it missed is the expensive one: everything looks configured, and every
- * turn dies at the API with a message the boss sees as an agent problem.
- *
- * `GET /v1/models` on both sides — a list, free, no side effect, and it answers
- * 401 for exactly the thing being asked. A ChatGPT login is checked without a
- * request at all: what expires is inside the JWT it stores.
- *
- * Cached, because the settings page asks on every open and a preflight that
- * costs two round trips per glance is one nobody leaves on.
+ * `GET /v1/models` on both sides: free, no side effect, and it answers 401 for
+ * exactly the thing being asked. A ChatGPT login needs no request at all — what
+ * expires is inside the JWT it stores. Cached, because the settings page asks on
+ * every open.
  */
 const seen = new Map<string, { at: number; ok: boolean; detail: string }>();
 const CACHE_MS = 5 * 60_000;
 
 async function accepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
   // Hashed, not a tail: a pasted auth.json ends in `"}}` no matter whose login
-  // it is, so two different credentials shared a cache entry and the second one
-  // was reported with the first one's verdict.
+  // it is, so a tail collides and reports one credential's verdict for another.
   const key = `${runtime}:${auth.mode}:${Bun.hash(auth.secret)}:${auth.baseUrl ?? ""}`;
   const hit = seen.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return { ok: hit.ok, detail: hit.detail };
@@ -112,16 +88,11 @@ async function accepted(runtime: string, auth: RuntimeAuth): Promise<{ ok: boole
 /**
  * These are host `fetch`es carrying the real token, and they stay that way.
  *
- * Every other place a real model credential reached the wire moved into the
- * utility container, where the sidecar substitutes it — the usage poll was the
- * last one. This is the deliberate exception, and the reason is the shape of the
- * check rather than the credential: it runs at boot, before any container is
- * guaranteed to exist, and moving it would make *"can we open a container"* a
- * prerequisite for reporting that we cannot. **A check that needs the thing it
- * checks is not a check.**
- *
- * So: not an oversight, and not something to tidy up on sight of a host `fetch`
- * next to a commit that removed exactly that.
+ * Every other model credential reaches the wire from inside the utility
+ * container. This is the deliberate exception: it runs at boot, before any
+ * container is guaranteed to exist, and moving it would make "can we open a
+ * container" a prerequisite for reporting that we cannot. **A check that needs
+ * the thing it checks is not a check.**
  */
 async function ask(runtime: string, auth: RuntimeAuth): Promise<{ ok: boolean; detail: string }> {
   if (auth.mode === "chatgpt") return chatgptAccepted(auth);
@@ -160,13 +131,11 @@ async function githubAccepted(auth: RuntimeAuth): Promise<{ ok: boolean; detail:
  * Where to ask, and how to present the credential while asking.
  *
  * An OAuth token travels as `Authorization: Bearer`; an API key as `x-api-key`.
- * Sending the wrong one is indistinguishable from having the wrong key — 401
- * either way — so a check built on the wrong header reports "not accepted"
- * about a credential that was never presented.
+ * Sending the wrong one is 401 either way, so a check built on the wrong header
+ * reports "not accepted" about a credential that was never presented.
  *
- * A gateway's own address wins over both defaults, trailing slashes trimmed: the
- * yaml is hand-edited and `https://gw/` produces `https://gw//v1/models`, which
- * some proxies 404.
+ * A gateway's own address wins over both defaults, trailing slashes trimmed:
+ * `https://gw/` produces `https://gw//v1/models`, which some proxies 404.
  */
 export function modelProbe(runtime: string, auth: RuntimeAuth): { url: string; headers: Record<string, string> } {
   const base =
@@ -221,17 +190,13 @@ function jwtExpiry(token?: string): number | null {
 /**
  * Is the orchestrator itself inside a container?
  *
- * It changes what this pane is even *about*. Three of these checks — docker, uv,
- * the sidecar image — are questions about the machine that runs the sandbox
- * server, and when the orchestrator ships as an image that machine is somebody
- * else's: there is no docker socket in here, `uvx` is not installed and never
- * will be, and pulling the sidecar here would put it in the wrong daemon. Asked
- * anyway, they answer "broken" about a deployment that is working, and every fix
- * they print (`brew install uv`) is a command for a host this process cannot see.
+ * Three checks — docker, uv, the sidecar image — are about the machine running
+ * the sandbox server, which in a container is somebody else's. Asked anyway they
+ * answer "broken" about a working deployment, and print fixes for a host this
+ * process cannot see.
  *
- * `ORCH_IN_CONTAINER` is set by our own Dockerfile. `/.dockerenv` is the fallback
- * for anyone who builds their own image or runs the binary in a container of
- * their own.
+ * `ORCH_IN_CONTAINER` is set by our own Dockerfile; `/.dockerenv` is the fallback
+ * for anyone who builds their own image.
  */
 const inContainer = (): boolean => process.env.ORCH_IN_CONTAINER === "1" || existsSync("/.dockerenv");
 
@@ -474,13 +439,10 @@ function codexRefresherCheck(db: DB): Check | null {
 }
 
 export async function preflight(input: PreflightInput): Promise<Check[]> {
-  // Timed because of what is inside it, not because it is slow on paper: three
-  // network probes with 3–6s timeouts, and three `spawnSync` calls to the docker
-  // daemon that **block the event loop** for their duration. A blocked loop does
-  // not show up as a slow span of its own — it shows up as every other span
-  // being slow, which is the hardest shape to diagnose from a panel. The HTTP
-  // route was already timed; this covers the readiness ticker, which is the path
-  // that runs when nobody is looking.
+  // Timed for what is inside it: three network probes with 3–6s timeouts and
+  // three `spawnSync` calls that **block the event loop**, which shows up as
+  // every *other* span being slow. Covers the readiness ticker; the HTTP route
+  // was already timed.
   return activeTracer().startActiveSpan("preflight.check", async (span) => {
     try {
       return await preflightInner(input);
@@ -496,22 +458,13 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   const contained = input.contained ?? inContainer();
   const probe = input.probe ?? defaultProbe;
 
-  // `docker info`, not `docker --version`. Measured: with the daemon down —
-  // Docker Desktop installed and never launched, the most common first-run state
-  // there is — `docker --version` still exits 0, so this check reported
-  // "running" while every `ensureSandbox` failed. The blocker the boss got said
-  // "多半是 docker 没起，自检那栏会说是哪个", and the self-check then said it was
-  // up: pointed at the right page and told the wrong thing on it.
-  //
-  // Both are asked, because the answers send them to different places: not
+  // `docker info`, not `docker --version`: with the daemon down the binary still
+  // exits 0, so `--version` reports "running" while every `ensureSandbox` fails.
+  // Both are asked, because the answers send the boss to different places: not
   // installed at all is a download, installed but not started is one click.
   const hostTools = hostToolChecks(contained, probe);
   const docker = hostTools.docker;
   out.push(...hostTools.checks);
-
-  // Only ever consulted when the server is down, but reported always: the fix
-  // for a missing server is `uvx opensandbox-server`, and a machine without uv
-  // cannot run that either. Two failures that look identical from the panel.
 
   // The same order `connection()` resolves it in: panel, then environment, then
   // the yaml. Checking a different key than the one the turns use is how a green
@@ -520,88 +473,56 @@ async function preflightInner(input: PreflightInput): Promise<Check[]> {
   const server = await reachable(`http://${input.sandbox.server}`, key);
   out.push(sandboxServerCheck(input, contained, server));
 
-  // One row instead of the three above, and only in a container: docker, uv and
-  // the sidecar image are facts about the machine running the sandbox server,
-  // which is not this one. Said once rather than dropped silently — somebody
-  // reading this pane after a `docker run` should learn where those questions
-  // went, not wonder whether they are still being asked.
+  // One row instead of the three above, and only in a container. Said once
+  // rather than dropped silently, so the pane shows where those questions went.
   const hostEnvironment = hostEnvironmentCheck(contained);
   if (hostEnvironment) out.push(hostEnvironment);
 
-  // Answering without a key is not a configuration detail: this server creates
-  // containers and runs commands inside them, and those containers hold the
-  // checkout, the mailbox token and the CLI logins. Anything else on this
-  // machine — any process, any page that can reach loopback — can exec into one.
-  //
-  // Only when it is reachable AND we sent no key. A server that refuses us is
-  // already reported above, and one on a Tailscale address with no key is the
-  // same exposure to everyone on that network.
+  // Answering without a key is not a configuration detail: the containers hold
+  // the checkout, the mailbox token and the CLI logins, so any process that can
+  // reach loopback can exec into one. Only when reachable AND we sent no key — a
+  // server that refuses us is already reported above.
   const sandboxAuth = sandboxAuthCheck(server.ok, key);
   if (sandboxAuth) out.push(sandboxAuth);
 
-  // The version the example config ships (v1.1.4) 403s every scoped package
-  // fetch while a credential is bound, and the symptom is "this project cannot
-  // install its dependencies" — which nobody traces back to a sidecar version.
-  // Checked by image tag rather than by probing, because probing it means
-  // creating a sandbox on every boot (docs/adr/005).
-  // Which tag the sidecar actually runs is in the sandbox server's own TOML,
-  // which is not ours to read — so this reports what is available rather than
-  // what is configured. Having a good one is the part we can check; pointing at
-  // it is the part the fix line has to say out loud.
+  // v1.1.4 — the version the example config ships — 403s every scoped package
+  // fetch while a credential is bound, and the symptom reads as "this project
+  // cannot install its dependencies". Checked by image tag rather than by
+  // probing, because probing means creating a sandbox on every boot (adr/005).
+  // Which tag the sidecar runs is in the server's own TOML, not ours to read, so
+  // this reports what is available and the fix line says to point at it.
   const egress = egressCheck(contained, probe);
   if (egress) out.push(egress);
 
-  // The image every group's container is made from — reported only when it can
-  // fail, which is not the usual case any more.
-  //
-  // A published one is pulled by the sandbox server the first time it builds a
-  // container, so there is nothing here for anybody to do and nothing that can
-  // go wrong at this level. A row that is always green is a row nobody reads,
-  // and this pane is the one place where a tick has to mean something.
-  //
-  // A tag with no registry in front of it has nowhere to be pulled from. That
-  // one fails every sandbox with a pull error reading like a network problem,
-  // which is why this check exists at all.
+  // Reported only when it can fail: a published image is pulled by the sandbox
+  // server on first build, and a row that is always green is a row nobody reads.
+  // A tag with no registry in front of it has nowhere to be pulled from, and
+  // fails every sandbox with a pull error that reads like a network problem.
   const agentImage = agentImageCheck(input.sandbox.image, docker);
   if (agentImage) out.push(agentImage);
 
-  // The skills mount, reported the same way as the sidecar image: the server's
-  // `allowed_host_paths` is in its own TOML, which is not ours to read, so this
-  // says which path has to be in it rather than pretending to have checked. A
-  // path that is not allowed fails sandbox creation outright — loudly, but for
-  // every group at once, which is a bad way to learn it.
+  // Says which path has to be in the server's `allowed_host_paths` rather than
+  // pretending to have checked it. A path that is not allowed fails sandbox
+  // creation for every group at once.
   const skillsMount = skillsMountCheck(input, contained);
   out.push(skillsMount.check);
 
-  // The line above says which path has to be allowed. This says whether it is.
-  //
-  // The failure it catches has no other symptom: a host path missing from
-  // `allowed_host_paths` either fails creation outright (loud, and the fallback
-  // in `sandbox.ts` says so) or — when the runtime cannot reach the path at all —
-  // mounts an empty directory over it, which nothing notices. Both end with
-  // agents running without the skills the boss ticked.
-  //
-  // The fix is one line in a file we can already find, so this prints that line
-  // rather than describing it.
-  // Paths are compared as the daemon sees them (for example WSL `/mnt/c/...`).
+  // The line above says which path has to be allowed; this says whether it is.
+  // The quiet half is why it exists: when the runtime cannot reach the path it
+  // mounts an empty directory over it, which nothing notices, and agents run
+  // without the skills the boss ticked. Prints the fix line rather than
+  // describing it. Paths compare as the daemon sees them (WSL `/mnt/c/...`).
   out.push(allowedPathsCheck(input, skillsMount.staged));
 
   // Credentials are per runtime and live in the DB, never in an event or a
-  // prompt. Whether one *exists* was the whole check, and existing is not the
-  // question anyone is asking — a token that expired last week exists.
+  // prompt.
   out.push(...(await Promise.all(credentialRuntimes(input.db).map((runtime) => credentialCheck(input, runtime)))));
 
-  // A ChatGPT-account login is the one credential that needs a binary on *this*
-  // machine, permanently.
-  //
-  // It is a pair of tokens codex itself rotates, and the renewal is deliberately
-  // done by running the real `codex` rather than posting the refresh token
-  // ourselves with the CLI's client id (chatgpt.ts says why). So no `codex` on
-  // the host means no renewal — and the failure is silent and delayed: the nudge
-  // throws, `renew` returns null, the stored token is kept, and hours later every
-  // codex turn 401s looking like an expired account. The other three modes need
-  // nothing here: a pasted `sk-ant-oat01-` is good for a year and an API key does
-  // not expire.
+  // A ChatGPT-account login is a pair of tokens codex itself rotates, renewed by
+  // running the real `codex` rather than posting the refresh token ourselves
+  // (chatgpt.ts says why). The failure is silent and delayed: `renew` returns
+  // null, the stored token is kept, and hours later every codex turn 401s looking
+  // like an expired account. The other modes need nothing here.
   const codexRefresher = codexRefresherCheck(input.db);
   if (codexRefresher) out.push(codexRefresher);
 

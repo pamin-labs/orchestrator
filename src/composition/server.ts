@@ -114,23 +114,20 @@ export async function shutdownRuntime(
 }
 
 /**
- * Nothing. The host runs no binary of its own any more.
+ * Nothing. The host runs no binary of its own any more — what is left on this
+ * machine is the server, sqlite and mailbox polling, so a headless box with
+ * docker, the image and a pasted token starts.
  *
- * It demanded `claude` until 005 (turns moved into containers) and `git` until
- * 007 step 6 (the checkout, the bundle and the push moved with them). What is
- * left on this machine is the server, sqlite and mailbox polling — so a
- * headless box with docker, the image and a pasted token starts, which is the
- * whole point of the decision. Kept as a function rather than deleted: it is
- * the one place to name a host binary if one is ever needed again, and the
- * caller already says the right thing when the list is not empty.
+ * Kept as a function rather than deleted: it is the one place to name a host
+ * binary if one is ever needed again.
  */
 /**
  * How often the self-check runs, derived from the watchdog's own interval.
  *
- * Clamped rather than followed: below five seconds the three `spawnSync` calls
- * to the docker daemon would block the event loop more often than they told
- * anyone anything, and above thirty a machine that lost its sandbox server takes
- * half a minute to say so on a page somebody is looking at.
+ * Clamped rather than followed: below five seconds the `spawnSync` calls to the
+ * docker daemon block the event loop more often than they say anything, and
+ * above thirty a machine that lost its sandbox server takes half a minute to
+ * report it.
  */
 export const readinessPeriodMs = (watchdogIntervalMs: number): number =>
   Math.min(Math.max(watchdogIntervalMs, 5_000), 30_000);
@@ -140,14 +137,11 @@ export function missingBinaries(): string[] {
 }
 
 /**
- * The panel is one localhost page for one person, and its bundle is `/dist/main.js`
- * with no hash in the name. Bun's file responses carry no etag and no
- * last-modified, so the browser heuristically cached the bundle and kept showing a
- * UI that had already been rebuilt — a deleted button stayed on screen through a
- * rebuild and a restart, and the PM ended up asking the boss to hard-refresh.
+ * The bundle is `/dist/main.js` with no hash in the name, and Bun's file
+ * responses carry no etag and no last-modified — so without this the browser
+ * heuristically caches it and keeps showing a UI that was already rebuilt.
  *
- * `no-cache` is revalidate-every-time, not "never store". Over loopback that costs
- * nothing measurable.
+ * `no-cache` is revalidate-every-time, not "never store".
  */
 const NO_CACHE = "no-cache";
 const INDEX_PATHS = new Set(["/", "/index.html"]);
@@ -177,23 +171,16 @@ export interface HeartbeatDeps {
 }
 
 /**
- * One tick of the server's own work, separated from the timer that drives it.
- *
- * Only the re-arming stays in the callback, because that is about the timer
- * handle. Everything decided here — whether a watchdog is already queued, what
- * the boss is waiting on, whether the network is worth trying, and whether the
- * last index or poll has come back — used to be reachable only by starting the
- * process and waiting thirty seconds per branch.
+ * One tick of the server's own work, separated from the timer that drives it, so
+ * every branch here is reachable without starting the process and waiting out an
+ * interval. Only the re-arming stays in the callback: that is about the handle.
  */
 export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }: HeartbeatDeps): void {
-  // The watchdog is an ordinary job. One in flight is enough: a second would only
-  // re-examine the same groups, and the queue is not where it should pile up.
+  // The watchdog is an ordinary job, and one in flight is enough.
   //
-  // `pending` **or** `running`. Counting only pending was wrong the moment a tick
-  // took longer than the interval that drives it, which telemetry measured at a
-  // p50 of 50s against a 30s tick: at t=30 the first is running rather than
-  // pending, so a second was enqueued, and the queue never emptied again. Two
-  // watchdogs at once is worse than a slow one — the rules keep module state
+  // `pending` **or** `running`: a tick can outlast the interval that drives it,
+  // and counting only pending enqueues a second one the moment it does, forever.
+  // Two watchdogs at once is worse than a slow one — the rules keep module state
   // (the server argv last seen, the sweep clock, which projects were warned)
   // that a second run would race.
   const queued = db
@@ -230,8 +217,8 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
 
   // Keep the PageIndex tree current. Incremental by file signature, so a quiet
   // repo costs zero model calls; a busy one pays for the files that changed.
-  // `void` with no `.catch` sent every throw to the process backstop, which
-  // emits a blocker — one per tick, forever, and `bus.emit` has no dedup.
+  // Caught here rather than at the process backstop, which emits a blocker per
+  // tick, forever — `bus.emit` has no dedup.
   if (!inFlight.index) {
     inFlight.index = track(
       refreshIndex(ctx).catch((error: unknown) => {
@@ -243,10 +230,9 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
   }
 
   // Polling is arithmetic, not judgement, so it happens here rather than in an
-  // agent. Only a change wakes the PM.
-  // The `.then` writes rows, enqueues turns and pushes notifications, so a group
-  // dropped between the poll and the handler lands here as an unhandled
-  // rejection — which is a process-wide blocker for one stale row.
+  // agent. Only a change wakes the PM. The `.then` writes rows and enqueues
+  // turns, so a group dropped between poll and handler would otherwise be a
+  // process-wide blocker for one stale row.
   if (!inFlight.poll) {
     inFlight.poll = track(
       pollPrs(ctx, gh)
@@ -264,9 +250,8 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
  * Log every unhandled rejection, but put each distinct one on the boss's feed
  * once. Returns the text to compare the next one against.
  *
- * What this catches is mostly the per-tick chains, so without the check a single
- * recurring bug is a blocker line every thirty seconds and the feed stops being
- * readable — worse than the bug it is reporting. The console keeps all of them.
+ * Mostly per-tick chains, so without the check one recurring bug is a blocker
+ * line every interval and the feed stops being readable. The console keeps all.
  */
 export function reportRejection(ctx: Ctx, e: unknown, said: string): string {
   const why = (e instanceof Error ? (e.stack ?? e.message) : String(e)).slice(0, 600);
@@ -307,14 +292,11 @@ export function applyPrOutcome(ctx: Ctx, f: Feedback, url: string, notifier: Not
 /**
  * The boss closed the PR on GitHub.
  *
- * Closing is a decision — "not like this" — and it can only be made there, so the
- * system has to read it from there. It leaves the merge queue rather than blocking
- * it (the queue is strictly serial; a group that will never merge at its head stops
- * every group behind it), and stops as a group waiting on the boss, with the two
- * exits stated: reopen the PR, or 不做了.
+ * Leaves the merge queue rather than blocking it — the queue is strictly serial,
+ * so a group that will never merge at its head stops every group behind it — and
+ * stops as a group waiting on the boss, with both exits stated.
  *
- * Nothing here reopens it automatically. The close was deliberate, and undoing a
- * deliberate act because a poller disagreed with it is the worst kind of helpful.
+ * Nothing here reopens it automatically: the close was deliberate.
  */
 function prClosed(ctx: Ctx, grpId: number, prNumber: number, url: string, notifier: Notifier): void {
   const g = ctx.db.query<{ name: string }, [number]>("SELECT name FROM grp WHERE id = ?").get(grpId);
@@ -535,13 +517,12 @@ export function start(overrides: Partial<Config> = {}): Started {
 
   const dbPath = join(cfg.dataDir, "orchestrator.sqlite");
   const db = open(dbPath);
-  // The provider tokens are in `runtime_auth`, in plain text, and this file was
-  // created 0644 under a 0755 directory — readable by every account on the
-  // machine. `.gitignore` keeps it out of the repository, which is a different
-  // question from who on this host may read it.
+  // The provider tokens are in `runtime_auth`, in plain text, and the default
+  // 0644 under 0755 is readable by every account on the machine. `.gitignore`
+  // is a different question from who on this host may read it.
   //
-  // Best-effort: chmod is a no-op for permission bits on Windows, and a file on a
-  // filesystem that does not carry modes is not a reason to refuse to start.
+  // Best-effort: chmod is a no-op on Windows, and a filesystem that does not
+  // carry modes is not a reason to refuse to start.
   for (const p of [cfg.dataDir, dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
     try {
       chmodSync(p, p === cfg.dataDir ? 0o700 : 0o600);
@@ -587,9 +568,6 @@ export function start(overrides: Partial<Config> = {}): Started {
     sandbox: REAL,
     // Cheapest tier: navigating a tree of one-line summaries is not a reasoning
     // job, and this runs on every `orch ctx query`.
-    // Charged to the project's `indexer` row, so the most frequent model call in
-    // the system stops being invisible in every cost total. Group-scoped calls
-    // bill the group's project; a project-scoped one bills itself.
     askIn: (scope) =>
       modelAsk(ctx, cfg.indexModel, scope, undefined, (u) => {
         const projectId = chargedProject(db, scope);
@@ -626,18 +604,12 @@ export function start(overrides: Partial<Config> = {}): Started {
     })
       .then((r) => {
         if ("error" in r) {
-          // No remote, no gh auth, a rejected push: the branch is finished and has
-          // nowhere to go. This used to be an event and nothing else — not a row in
-          // `escalation`, so it never reached 待办 — while the group sat at PR_OPEN
-          // holding the head of a strictly serial merge queue with a null
-          // pr_number, which pollPrs skips forever. Everything behind it stopped,
-          // and the only trace was one line in the feed.
-          //
-          // So: leave the queue rather than block it, and stop as a group that is
-          // waiting on the boss. Answering the blocker un-pauses it, the watchdog
-          // finds a live group with an empty queue and re-queues its last turn —
-          // the Auditor's — which passes again and retries the PR. No new
-          // mechanism, and no button that only exists for this.
+          // No remote, no gh auth, a rejected push: the branch is finished and
+          // has nowhere to go. Leave the queue rather than block it — a group at
+          // PR_OPEN with a null pr_number is one `pollPrs` skips forever, at the
+          // head of a strictly serial queue — and stop waiting on the boss.
+          // Answering un-pauses it, and the watchdog re-queues the Auditor's turn,
+          // which passes again and retries the PR. No mechanism only for this.
           hold(ctx, grpId, { reason: "merge", settled: true, leaveQueue: true });
           raise(db, {
             grpId,
@@ -661,11 +633,10 @@ export function start(overrides: Partial<Config> = {}): Started {
           });
         }
       })
-      // Detached, and its handler writes rows and pushes notifications, so
-      // anything it throws surfaces against whoever is running when it lands
-      // rather than against the PR that caused it. The careful PAUSED path
-      // above is the answer to a *failed* PR; this is the answer to a failure
-      // while answering one.
+      // Detached, so anything the handler throws would surface against whoever
+      // is running when it lands rather than against the PR that caused it. The
+      // PAUSED path above answers a *failed* PR; this answers a failure while
+      // answering one.
       .catch((error: unknown) => consola.warn(`opening the PR for ${grpId} threw: ${errText(error)}`));
   };
   exec = makeExecutor(execDeps);
@@ -697,9 +668,6 @@ export function start(overrides: Partial<Config> = {}): Started {
   const server = Bun.serve({
     hostname: cfg.host,
     port: cfg.port,
-    // See NO_CACHE: /dist/main.js has no hash in its name and Bun sends no
-    // validators, so a rebuilt bundle kept being served from the browser's cache.
-
     idleTimeout: 0, // `ask-boss` holds a request open until the boss answers
     async fetch(req, bunServer) {
       const path = new URL(req.url).pathname;
@@ -767,9 +735,6 @@ export function start(overrides: Partial<Config> = {}): Started {
 
   // The watchdog is an ordinary job, enqueued on a timer. It bypasses the group
   // slot pool, or it could never fire on the very group that is stuck.
-  // The period is a setting, and `setInterval` captures it. Rather than juggle a
-  // timer handle from the settings route, the callback notices its own period
-  // changed and re-arms — one place, and it cannot be forgotten by a new writer.
   const inFlight: InFlight = { index: null, poll: null };
   const stopHeartbeat = reArming(
     () => cfg.watchdogIntervalMs,
@@ -850,12 +815,8 @@ export function start(overrides: Partial<Config> = {}): Started {
     });
   };
   refreshReadiness();
-  // Re-armed on a changed setting, the way the watchdog timer above is. The
-  // period is derived from `watchdogIntervalMs`, which the settings page can
-  // change while the server runs — and this one resolved it once at boot, so
-  // changing the interval moved the watchdog and left the self-check on its old
-  // clock until a restart. Two timers reading one setting and only one noticing
-  // is the kind of difference nobody finds by reading.
+  // The second of the two timers reading `watchdogIntervalMs`; see `reArming`
+  // for why neither may resolve it once at boot.
   const stopReadiness = reArming(() => readinessPeriodMs(cfg.watchdogIntervalMs), refreshReadiness);
 
   sched.tick();
@@ -940,14 +901,11 @@ if (import.meta.main) {
   reportConfig(loadConfig());
   const { ctx, url, shutdown } = start();
   consola.info(`orchestrator on ${url}`);
-  // The panel is served from `web/dist`, and nothing rebuilds it. A UI change that
-  // is committed, tested and typechecked still shows the old page, which reads as
-  // "the fix did not work" — measured, on a button that had already been deleted.
-  // Not rebuilt here on purpose: in a worktree `web/dist` is a symlink to the main
-  // checkout's build, so building would overwrite somebody else's bundle.
-  // Skipped where there is no source to compare against — an image ships the
-  // built panel and no `web/src`, and this crashed the container on boot rather
-  // than reporting anything. A check that cannot run is not a failure.
+  // The panel is served from `web/dist` and nothing rebuilds it, so a committed,
+  // tested, typechecked UI change still shows the old page. Not rebuilt here on
+  // purpose: in a worktree `web/dist` is a symlink to the main checkout's build.
+  // Skipped where there is no `web/src` to compare against — an image ships the
+  // built panel only, and a check that cannot run is not a failure.
   if (existsSync(join(ROOT, "web/src"))) {
     const dist = statSync(join(ROOT, "web/dist/main.js"), { throwIfNoEntry: false })?.mtimeMs ?? 0;
     const newest = readdirSync(join(ROOT, "web/src"), { recursive: true, withFileTypes: true })
@@ -956,22 +914,14 @@ if (import.meta.main) {
     if (newest > dist) consola.warn("web/dist 比 web/src 旧 —— 跑一次 `bun run build:web`，不然页面是旧的");
   }
 
-  // A detached rejection must not be the end of the fleet.
+  // A detached rejection must not be the end of the fleet: bun exits the process
+  // on one, which is right for a script and wrong for the only thing driving
+  // twelve containers.
   //
-  // bun exits the process on an unhandled rejection, which is right for a script
-  // and wrong for a server that is the only thing driving twelve containers.
-  // Observed: one `ECONNRESET` on a container's `files/upload` — a socket on this
-  // same machine — and every group stopped, mid-turn, with a two-line error and
-  // no stack.
-  //
-  // This is a backstop and not a licence. An unhandled rejection is still a bug:
-  // something detached failed and nobody was told, so it is logged and put on the
-  // record at `blocker` where the boss's own feed shows it. The fix for each one
-  // is still at its source — `writeInto` retries the upload, `Scheduler.start`
-  // and `acceptSlice` catch their own chains — because this line can only say
-  // that something went wrong, never what should have happened instead.
-  //
-  // Installed once, here, for the same reason as the signal handlers below.
+  // A backstop, not a licence. An unhandled rejection is still a bug, so it is
+  // logged and put on the record at `blocker`; the fix for each one is at its
+  // source, because this line can only say that something went wrong, never what
+  // should have happened instead. Installed once, like the signal handlers.
   let saidRejection = "";
   process.on("unhandledRejection", (e) => {
     saidRejection = reportRejection(ctx, e, saidRejection);

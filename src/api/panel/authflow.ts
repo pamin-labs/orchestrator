@@ -43,19 +43,14 @@ import { bad, json, message } from "../../http/respond.ts";
 /**
  * Signing in: to the two model accounts, to GitHub, and to the sandbox server.
  *
- * Three flows with the same shape on purpose — a code, a link, and a pending
- * state that dies with the code — because a second shape for the same
- * interaction is how a settings page stops being learnable. Each keeps one
- * module-level slot: a login nobody finished must not hold it forever, which is
- * what the expiry and the cancel routes are for.
+ * Each flow keeps one module-level slot, so a login nobody finished must not
+ * hold it forever — which is what the expiry and the cancel routes are for.
  */
 
 /**
- * Which runtime is configured, and how. Never the secret.
- *
- * The value only ever leaves this process into an egress sidecar's vault, so
- * even the page that sets it reads back a masked tail — enough to tell two
- * tokens apart, which is the only question anyone asks of one they pasted.
+ * Which runtime is configured, and how. Never the secret: the value leaves this
+ * process only into an egress sidecar's vault, so the page that sets it reads
+ * back a masked tail.
  */
 // `trailers` rides along: the Claude block draws one of the three switches, and
 // a second fetch for one boolean is a second thing that can be stale.
@@ -63,11 +58,9 @@ export const getAuth = (async (ctx) =>
   json({ runtimes: listAuth(ctx.db), trailers: trailers(ctx.db) })) satisfies Handler;
 
 /**
- * `secret` is not length-capped and not logged.
- *
- * A pasted `auth.json` is tens of kilobytes and a token is a hundred bytes, so
- * any cap here would be a guess that refuses a real credential — and the failure
- * would read as "the paste is broken". `wrongShape` is what judges it, by shape.
+ * `secret` is not length-capped and not logged. A pasted `auth.json` is tens of
+ * kilobytes and a token is a hundred bytes, so a cap would refuse a real
+ * credential. `wrongShape` judges it, by shape.
  */
 export const AuthBody = z.union([
   z.strictObject({ runtime: AuthRuntimeSchema, clear: z.literal(true) }),
@@ -87,18 +80,13 @@ export const postAuth = (async (ctx, _req, _p, b) => {
     return message("ok");
   }
 
-  // Adopting is a different operation and returns here, rather than joining the
-  // path below through a shared variable. That separation is the fix, not a
-  // tidy-up: a secret read off disk must not be able to reach the probe at all,
-  // and a `!("adopt" in b)` guard further down does not achieve that — the two
-  // branches still meet in one binding, which is exactly what a taint analysis
-  // reports and, more to the point, what one refactor away from being true again.
+  // Returns here rather than joining the path below through a shared variable:
+  // a secret read off disk must not be able to reach the probe at all, and a
+  // guard further down would still let both branches meet in one binding.
   //
   // Nothing is sent. A key read out of the server's own config **is** the key
-  // that server is running with, so asking the server to confirm its own file
-  // returns no answer the file did not already give. It is stored bound to the
-  // address in that same file, so no later change to `sandbox.server` — a
-  // settings knob the panel rewrites at runtime — can send it elsewhere.
+  // that server is running with. It is stored bound to the address in that same
+  // file, so no later change to `sandbox.server` can send it elsewhere.
   if ("adopt" in b) {
     const found = serverKeyOnDisk();
     if (!found)
@@ -123,11 +111,9 @@ export const postAuth = (async (ctx, _req, _p, b) => {
     const wrong = wrongShape(auth);
     if (wrong) return bad(wrong);
   }
-  // The sandbox key is the one credential whose owner we can ask, and the one
-  // where a wrong value is silent and total: it overrides the environment, so
-  // generating one here and not telling the server made every turn, every gate
-  // and every diff 401 — reported as "Authentication credentials are invalid",
-  // which reads as a model problem. Refused rather than stored.
+  // The one credential whose owner we can ask, and the one where a wrong value
+  // is silent and total: it overrides the environment, so a key the server does
+  // not share 401s every turn, gate and diff. Refused rather than stored.
   if (auth.runtime === SANDBOX_KEY) {
     const server = ctx.config.sandbox?.server ?? "127.0.0.1:8080";
     const said = await sandboxKeyWorks(server, auth.secret);
@@ -168,14 +154,9 @@ async function sandboxKeyWorks(server: string, key: string): Promise<"ok" | "inv
 /**
  * What has to happen after a credential is stored, wherever it was stored.
  *
- * Existing sandboxes hold the old value in their sidecars. Killing them is the
- * cheap half of the fix — the next turn makes a new one and binds the new
- * credential — and leaving them would mean "I changed it and nothing happened".
- *
- * It lives here rather than inline because there are two ways in and only one of
- * them used to do this: a login from the panel stored the token and stopped,
- * so every running group kept a sidecar bound to the credential that was missing
- * and every turn came back `Authentication credentials are invalid`.
+ * Existing sandboxes hold the old value in their sidecars, so they are killed
+ * and the next turn binds the new credential. Shared rather than inline because
+ * every way in has to do it, not just the one that happens to be edited.
  */
 export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void> {
   for (const g of ctx.db.query<{ id: number }, []>("SELECT id FROM grp WHERE sandbox_id IS NOT NULL").all()) {
@@ -188,12 +169,9 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
      WHERE answer IS NULL AND substr(question, 1, length(?)) = ?`,
     [prefix, prefix],
   );
-  // Only the groups this credential stopped. Unscoped, this matched every PAUSED
-  // row there was: a group the boss paused by hand restarted itself the moment
-  // anyone signed into GitHub, a budget-burnt group resumed with nothing changed
-  // about its budget, and a rate-limited one came back carrying `rl_resets_at` —
-  // which watchdog rule 6 only clears for rows it still finds PAUSED, so nothing
-  // cleared it afterwards either.
+  // Only the groups this credential stopped. Unscoped, this matches every PAUSED
+  // row there is — a hand-paused group, a budget-burnt one, a rate-limited one
+  // still carrying `rl_resets_at` that watchdog rule 6 then never clears.
   release(ctx, null, { only: `auth:${runtime}` });
   // A different account commits under a different name, and a stale one would
   // sign off as somebody who is no longer connected.
@@ -203,12 +181,6 @@ export async function credentialChanged(ctx: Ctx, runtime: string): Promise<void
 
 /**
  * Sign in to a Claude account, from the utility container.
- *
- * Three routes for one thing, because the interaction has three moments and
- * they are minutes apart: the POST returns the link the moment the CLI prints
- * it, the code route carries what the boss pastes back from that page, and
- * cancel exists because a login nobody finished should not sit there holding
- * the one slot.
  *
  * The CLI is `claude setup-token` itself, under a pty, in the container. Nothing
  * here builds a URL or calls a token endpoint — see `startClaudeLogin`.
@@ -221,11 +193,9 @@ let claudeFlow: ClaudeLoginFlow | null = null;
 /**
  * Wait for the CLI to print what the boss has to see, or for the run to end.
  *
- * A pty plus a TUI's first paint puts the link a second or two out, so a button
- * that returns before there is one has nothing to show. The run's own exit ends
- * the wait as well: a CLI that printed nothing and quit is already an answer,
- * and sitting out the whole window for it is minutes of spinner over a process
- * that is gone.
+ * The run's own exit ends the wait as well: a CLI that printed nothing and quit
+ * is already an answer, and waiting out the window for it is a spinner over a
+ * process that is gone.
  */
 async function printed<T>(run: LoginRun, read: () => T | null | undefined, tries: number): Promise<T | null> {
   const ended = run.done.then(
@@ -281,11 +251,6 @@ export const postClaudeCancel = (async (ctx) => {
 /**
  * Connect GitHub, device flow, no token pasted and no `gh` on this machine.
  *
- * Two routes for one thing, because the flow has two halves that arrive minutes
- * apart: the POST returns the code the moment GitHub mints it — that code *is*
- * the interaction, and a button that waits for the browser has nothing to show —
- * and the GET is what the panel asks while the boss is off in the other tab.
- *
  * The poll runs here rather than in the browser: it holds the device code, which
  * is the half that trades for a token, and it has to finish even if the settings
  * dialog is closed halfway through.
@@ -307,10 +272,9 @@ function livePending(): GhFlow | null {
 /**
  * Wait out the browser half, then store what it produced.
  *
- * Its own function, and awaited by nothing in production, because the poll
- * outlives the request that started it — the settings dialog may be closed long
- * before GitHub answers. The device code never leaves here: what the panel is
- * told is the outcome, and a failure carries GitHub's reason, not the exchange.
+ * Awaited by nothing in production: the poll outlives the request that started
+ * it. The device code never leaves here — the panel is told the outcome, and a
+ * failure carries GitHub's reason, not the exchange.
  */
 export async function finishGithubLogin(ctx: Ctx, d: DeviceCode, fetchFn?: DeviceFlowFetcher): Promise<void> {
   try {
@@ -344,9 +308,8 @@ export async function githubDeviceLogin(ctx: Ctx, fetchFn?: DeviceFlowFetcher): 
   try {
     d = await startDeviceFlow(fetchFn);
   } catch (e) {
-    // `errText`, not `e?.message`: a thrown non-Error has no `message`, and
-    // under `e: any` the fallback `??` handed `bad()` the object itself — a 422
-    // whose body reads "[object Object]".
+    // `errText`, not `e?.message`: a thrown non-Error has no `message`, and the
+    // object itself reaches the response body as "[object Object]".
     return bad(errText(e) || "GitHub 没给出登录码");
   }
   ghFlow = { userCode: d.userCode, verificationUri: d.verificationUri, expiresAt: Date.now() + d.expiresIn * 1000 };
@@ -357,17 +320,7 @@ export async function githubDeviceLogin(ctx: Ctx, fetchFn?: DeviceFlowFetcher): 
 
 export const postGithubLogin = (async (ctx) => githubDeviceLogin(ctx)) satisfies Handler;
 
-/**
- * Sign in to a ChatGPT account, from the utility container.
- *
- * Same shape as the GitHub flow above and deliberately so: a code, a link, and
- * a pending state that dies with the code. A second shape for the same
- * interaction is how a panel stops being learnable.
- *
- * No completion route. `run.done` writes `runtime_auth` itself, so the
- * credential row the panel already polls **is** the confirmation, and the
- * progress lines are already on the live feed.
- */
+/** Sign in to a ChatGPT account, from the utility container. */
 let codexFlow: CodexLoginFlow | null = null;
 
 export const postCodexDevice = (async (ctx) => {
@@ -402,10 +355,8 @@ export const postCodexDeviceCancel = (async (ctx) => {
 /**
  * Each installation, with how many repositories it can see.
  *
- * One extra request per account, asking for a single item — only `total_count` is
- * wanted, and page one of a hundred repositories to count them is the sort of
- * thing that eats a 5000/hour budget quietly. Repeats come back 304 from the
- * client's ETag cache, which does not count against the limit at all.
+ * `per_page=1` because only `total_count` is wanted; fetching a page of repos to
+ * count them spends the hourly budget on data nobody reads.
  */
 async function withCounts(
   ctx: Ctx,
@@ -451,16 +402,11 @@ export const getGithubLogin = (async (ctx, req) => {
     stale: !!a && !account,
     /** Authorized, but the app is not installed anywhere it could read. */
     installed: installs?.ok ? installs.data.length > 0 : null,
-    /** Where to fix that. One app, so one address. */
     installUrl: INSTALL_URL,
-    /** Which accounts it is installed on, and how many repositories each can see. */
     accounts: installs?.ok ? await withCounts(ctx, installs.data, req.signal) : [],
     pending: waiting ? { userCode: waiting.userCode, verificationUri: waiting.verificationUri } : null,
     error: ghError,
-    /** What every commit carries besides its message, and who it is authored as.
-     *  On this route because both answers come from the connection above: the
-     *  author is the login, and the two switches are decisions about the
-     *  repositories it can reach. */
+    /** On this route because both answers come from the connection above. */
     trailers: trailers(ctx.db),
     identity: await commitIdentity(ctx),
     bot: { ...BOT },
@@ -479,12 +425,9 @@ export const postTrailers = (async (ctx, _req, _p, b) => {
 }) satisfies Handler<z.infer<typeof TrailersBody>>;
 
 /**
- * What this login can actually open a project on.
- *
- * One route for both halves because they are one question: which account, and
- * which of its repositories. Switching org is picking another installation, not
- * logging in again — so the switcher's options and the list it drives arrive
- * together rather than as two round trips that can disagree.
+ * What this login can actually open a project on: which account, and which of
+ * its repositories. One route, so the switcher's options and the list it drives
+ * cannot disagree.
  */
 export const GithubReposQuery = z.object({ installation: z.coerce.number().int().positive().optional() });
 
@@ -492,9 +435,8 @@ export const getGithubRepos = (async (ctx, req, _params, { installation: asked =
   if (!ctx.gh) return bad("this server has no GitHub client");
   if (!loadAuth(ctx.db, "github")) return bad("还没连 GitHub，先去设置里连一下");
   // Both at once when the caller names an installation, which it does on every
-  // open after the first: measured, a round trip to api.github.com is 260-630ms,
-  // so doing these in series is a second of blank dialog for no reason. The
-  // first open of a session still has to learn the id before it can ask.
+  // open after the first. The first open of a session still has to learn the id
+  // before it can ask.
   const [inst, guess] = await Promise.all([
     listInstallations(ctx.gh, req.signal),
     asked ? listRepos(ctx.gh, asked, req.signal) : Promise.resolve(null),
@@ -507,9 +449,8 @@ export const getGithubRepos = (async (ctx, req, _params, { installation: asked =
 
   // Seam (007 step 6): a project's identity is still `repo_path`, which for a
   // repository added here is `owner/name`.
-  // Which project, not whether. A greyed-out row saying 已添加 is a dead end: the
-  // boss came here to reach that repository and the answer is "it exists
-  // somewhere else". Naming it makes the row a route instead.
+  // Which project, not whether: naming it makes an 已添加 row a route rather than
+  // a dead end.
   const taken = new Map(
     ctx.db
       .query<{ id: number; name: string; repo_path: string }, []>("SELECT id, name, repo_path FROM project")
