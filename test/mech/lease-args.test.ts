@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   digestOutput,
   LeaseArgsSchema,
@@ -9,11 +9,16 @@ import {
   LEASE_TIMEOUT_CODE,
 } from "../../src/mech/lease.ts";
 
-test("lease arguments are flat JSON scalars before resource-specific validation", () => {
-  expect(LeaseArgsSchema.safeParse({ target: "release", jobs: 8, clean: false }).success).toBe(true);
-  for (const args of [null, { target: null }, { target: ["release"] }, { target: { name: "release" } }]) {
-    expect(LeaseArgsSchema.safeParse(args).success).toBe(false);
-  }
+describe("lease arguments are flat JSON scalars before resource-specific validation", () => {
+  test.each([
+    [{ target: "release", jobs: 8, clean: false }, true],
+    [null, false],
+    [{ target: null }, false],
+    [{ target: ["release"] }, false],
+    [{ target: { name: "release" } }, false],
+  ])("%j parses: %p", (args, accepted) => {
+    expect(LeaseArgsSchema.safeParse(args).success).toBe(accepted);
+  });
 });
 
 const testRes: ResourceDef = {
@@ -66,12 +71,12 @@ test("free-form commands cannot be smuggled in as an extra arg", () => {
   if (!r.ok) expect(r.error).toContain("unused args");
 });
 
-test("path args cannot escape their root", () => {
-  for (const p of ["../../etc/passwd", "/etc/passwd", "test/../../..", ".."]) {
-    const r = resolveLease(testRes, { file: p });
+describe("path args cannot escape their root", () => {
+  test.each(["../../etc/passwd", "/etc/passwd", "test/../../..", ".."])("%s is refused", (path) => {
+    const r = resolveLease(testRes, { file: path });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain("inside");
-  }
+  });
 });
 
 test("a null byte in a path is rejected", () => {
@@ -87,11 +92,15 @@ test("missing args and undeclared placeholders both fail loudly", () => {
   if (!r.ok) expect(r.error).toContain("no schema declares it");
 });
 
-test("int bounds and enum membership are enforced", () => {
-  expect(resolveLease(buildRes, { target: "debug", jobs: 99 }).ok).toBe(false);
-  expect(resolveLease(buildRes, { target: "debug", jobs: 0 }).ok).toBe(false);
-  expect(resolveLease(buildRes, { target: "debug", jobs: 1.5 }).ok).toBe(false);
-  expect(resolveLease(buildRes, { target: "prod", jobs: 2 }).ok).toBe(false);
+describe("int bounds and enum membership are enforced", () => {
+  test.each([
+    ["above the maximum", { target: "debug", jobs: 99 }],
+    ["below the minimum", { target: "debug", jobs: 0 }],
+    ["not an integer", { target: "debug", jobs: 1.5 }],
+    ["a target outside the enum", { target: "prod", jobs: 2 }],
+  ])("%s is refused", (_case, args) => {
+    expect(resolveLease(buildRes, args).ok).toBe(false);
+  });
 });
 
 test("string args need a pattern and honour maxLength", () => {
@@ -101,9 +110,12 @@ test("string args need a pattern and honour maxLength", () => {
     concurrency: 1,
     argSchema: { pat: { type: "string", pattern: "^[\\w.-]+$", maxLength: 40 } },
   };
-  expect(resolveLease(def, { pat: "auth_token" }).ok).toBe(true);
-  expect(resolveLease(def, { pat: "a b" }).ok).toBe(false);
-  expect(resolveLease(def, { pat: "x".repeat(41) }).ok).toBe(false);
+  const accepted = (pat: string) => resolveLease(def, { pat }).ok;
+  expect({ matching: accepted("auth_token"), spaced: accepted("a b"), overlong: accepted("x".repeat(41)) }).toEqual({
+    matching: true,
+    spaced: false,
+    overlong: false,
+  });
 });
 
 test("a placeholder embedded in a token substitutes in place", () => {

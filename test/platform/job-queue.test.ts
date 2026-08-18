@@ -601,6 +601,42 @@ test("two gates of one repo do not run at once, but two repos still do", async (
   release();
 });
 
+test("the per-repo gate pool is one, whatever the default lease slots are", async () => {
+  // The test above passes `new Scheduler(db, exec)`, so `poolSizes(undefined)` is
+  // `{default: 1}` and a `repo:<id>` pool resolves to 1 by accident. The shipped
+  // config is `{default: 2, browser: 1}` (load.ts:107), nothing sets a `repo` key,
+  // and `claimLeaseCapacity` falls back to `default` — so in production two gates
+  // of one repo ran side by side, which is exactly what start.ts:222 says the tag
+  // exists to make structurally impossible.
+  const db = openMemory();
+  const { release, exec } = gate();
+  const sched = new Scheduler(db, exec, { leaseSlots: { default: 2, browser: 1 } });
+  fx.project.insert(db, { id: 1, name: "a", repo_path: "/a" });
+  fx.runningGrp.insert(db, { id: 1, project_id: 1, name: "g1" });
+  fx.runningGrp.insert(db, { id: 2, project_id: 1, name: "g1b" });
+  for (const [name, template] of [
+    ["build", "x"],
+    ["typecheck", "y"],
+  ] as const) {
+    fx.resource.insert(db, { name, template, concurrency: 1, tags_json: '["repo"]' });
+  }
+  for (const [id, resource, grp] of [
+    [1, "build", 1],
+    [2, "typecheck", 2],
+  ] as const) {
+    fx.lease.insert(db, { id, resource, grp_id: grp, state: "queued" });
+    sched.enqueue("lease", { grp_id: grp, payload: { lease_id: id } });
+  }
+  sched.tick();
+
+  const inflight = db
+    .query<{ payload_json: string }, []>("SELECT payload_json FROM job WHERE state = 'running'")
+    .all()
+    .map((row) => LeaseJobPayload.parse(JSON.parse(row.payload_json)).lease_id);
+  expect(inflight).toEqual([1]);
+  release();
+});
+
 test("a finished job dispatches what it queued, without anyone remembering to", () => {
   // Sixteen `enqueue` sites had no `tick()` after them, and the omission looked
   // exactly like the deliberate ones — both waited for the watchdog timer, up to

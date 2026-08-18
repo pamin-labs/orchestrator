@@ -264,11 +264,12 @@ export class Scheduler {
   private draining = false;
   private accepting = true;
 
-  constructor(
-    private db: DB,
-    private exec: Executor,
-    opts: SchedulerOptions = {},
-  ) {
+  private readonly db: DB;
+  private readonly exec: Executor;
+
+  constructor(db: DB, exec: Executor, opts: SchedulerOptions = {}) {
+    this.db = db;
+    this.exec = exec;
     const groups = opts.maxGroups ?? 3;
     this.maxGroups = typeof groups === "function" ? groups : () => groups;
     const slots = opts.leaseSlots;
@@ -416,7 +417,13 @@ export class Scheduler {
     // both `browser` and `heavy` waits for whichever is tighter.
     const wanted = this.poolsOf(job);
     const limits = this.pools();
-    if (wanted.some((pool) => (taken[pool] ?? 0) >= (limits[pool] ?? limits[DEFAULT_POOL]!))) return false;
+    // `repo:<project>` must not inherit `default`, which ships as 2. The pool is
+    // keyed per project so that it can be one — falling back to `default` is what
+    // let two gates of one repository run side by side, the thing the `repo` tag
+    // exists to make structurally impossible (`start.ts`).
+    const limitOf = (pool: string): number =>
+      pool.startsWith(`${REPO_POOL}:`) ? (limits[REPO_POOL] ?? 1) : (limits[pool] ?? limits[DEFAULT_POOL]!);
+    if (wanted.some((pool) => (taken[pool] ?? 0) >= limitOf(pool))) return false;
     for (const pool of wanted) taken[pool] = (taken[pool] ?? 0) + 1;
     return true;
   }
