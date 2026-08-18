@@ -81,9 +81,8 @@ function harness(over: Partial<ReturnType<typeof loadConfig>> = {}) {
     now: () => 1_000_000,
     pollUsage: async () => {},
     probe: async () => ({ online: true, changed: false }),
-    // `ps -Ao` on every tick, 30ms a call, and nothing here asserts on the
-    // server rules. Measured: 92% of a sixty-tick CPU profile, and this file
-    // ticks the watchdog forty-eight times.
+    // `ps -Ao` on every tick, and nothing in this file asserts on the server
+    // rules — so the probe is stubbed rather than run forty-eight times.
     runningServer: () => null,
   };
   return { db, ctx, sched, cfg, deps };
@@ -292,11 +291,9 @@ test("park drops queued turns and retires sessions, keeping the checkout", () =>
 /**
  * Only what the boss can act on is worth a notification.
  *
- * "main 动到了 549e8bc，已经让它先 rebase" arrived under a heading that said
- * "5 things need you". It needed nobody: the system had already handled it. Two
- * of those in a row and the heading stops meaning anything, which costs the
- * notifications that were real — so which rule leaked is the fact a failure has
- * to carry, and one bare boolean per line did not carry it.
+ * "main 动到了 549e8bc，已经让它先 rebase" arrived under a heading saying "5
+ * things need you"; it needed nobody. Two of those and the heading stops meaning
+ * anything, so a failure has to name the rule that leaked.
  */
 describe("only what the boss can act on is worth a notification", () => {
   test.each([
@@ -328,8 +325,7 @@ test("a repeat of the same problem backs off instead of nagging every tick", asy
   const n = new Notifier({ now: () => t, deliver: (_title, body) => void sent.push(body) });
 
   // Collected rather than asserted one at a time: the fact under test is the
-  // shape of the whole sequence, and five separate booleans reported which tick
-  // disagreed only by line number.
+  // shape of the whole sequence, which five separate booleans could not name.
   const answered: boolean[] = [];
   const push = async () => answered.push(await n.push({ key: "esc:1", tier: "immediate", body: "answer me" }));
 
@@ -755,9 +751,7 @@ test("a stale PR branch is told to rebase too, with the measured remote base in 
 
 test("a group already on the base is not nudged", async () => {
   // The sha comparison is the whole rule: a group that has rebased must not be
-  // told again, or an agent learns to skip the message. The old version of this
-  // test protected against comparing with a *local* checkout's HEAD, which no
-  // longer exists to be compared with.
+  // told again, or an agent learns to skip the message.
   const h = harness();
   h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
   h.ctx.gh = gh(() => ({ commit: { sha: "def4560000000000000000000000000000000000" } }));
@@ -772,10 +766,8 @@ test("a group already on the base is not nudged", async () => {
 });
 
 test("turn logs are compressed after a day and dropped after two weeks", () => {
-  // Ten requirements produced 123 MB of raw NDJSON — median 324 KB a turn, 3 MB at
-  // the tail — because a transcript is mostly tool output written verbatim. Worth
-  // keeping (every measurement in PROGRESS came out of these), not worth keeping
-  // uncompressed.
+  // A transcript is mostly tool output written verbatim, so these are worth
+  // keeping and not worth keeping uncompressed.
   const dir = tempDir("orch-logs-");
   const now = 10 * DROP_AFTER_MS;
   writeFileSync(join(dir, "1.jsonl"), "x".repeat(5000));
@@ -1014,11 +1006,8 @@ test("a webhook that is down does not take the run with it", async () => {
 /**
  * The container sweep is hourly, and the hour has to survive a restart.
  *
- * It was a module-level `lastSweep` compared against `SWEEP_EVERY_MS` inside the
- * rule's own body: process memory, so every restart swept again, and two ticks
- * running at once would each see the other's zero. Nothing covered it — this is
- * the first test of the cadence at all, which is how it stayed a hand-written
- * throttle while twenty-three sibling rules had none.
+ * It was a module-level `lastSweep` held in process memory, so every restart
+ * swept again and two concurrent ticks each saw the other's zero.
  */
 test("the container sweep runs hourly, and the clock is not in this process", async () => {
   const h = harness();
@@ -1112,7 +1101,6 @@ test("the two reconcilers above the rules cost themselves, not the twenty-four b
 
   // The reconciler that threw names itself, rather than "the watchdog broke".
   expect(rules).toContain("rule_broke:0a");
-  // And the rules below it still ran.
   expect(rules).toContain("turn_timeout");
 });
 
@@ -1155,17 +1143,14 @@ test("a question on a group nobody can answer is closed, not pushed to the boss 
 /**
  * One request per project, not per group.
  *
- * Every group in a project asks the same repository for the same branch, so the
- * answer was fetched once per group per tick — ten groups on one project, ten
- * identical calls against one rate limit, every thirty seconds, for one string.
- * Whether the base *moved* is still decided per group, because that compares
- * against what each one last saw.
+ * Every group in a project asks the same repository for the same branch, so ten
+ * groups meant ten identical calls against one rate limit every thirty seconds.
+ * Whether the base *moved* is still per group: that compares what each last saw.
  */
 test("groups sharing a project ask GitHub about their base once between them", async () => {
   const h = harness();
   h.db.run("UPDATE grp SET status = 'RUNNING', sandbox_id = 'sb-1' WHERE id = 1");
   h.db.run("UPDATE project SET repo_path = 'acme/p-pr', base_branch = 'master' WHERE id = 1");
-  // Two more groups on the same project, so three groups share one base branch.
   for (const name of ["g2", "g3"]) {
     const id = fx.grp.insert(h.db, { project_id: 1, name }).id;
     h.db.run("UPDATE grp SET status = 'RUNNING', sandbox_id = 'sb-1' WHERE id = ?", [id]);

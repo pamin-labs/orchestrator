@@ -386,7 +386,6 @@ test("a malformed card is refused both when filed and when approved", async () =
     "PLANNING",
   );
 
-  // …and again on the edit-then-approve path.
   const approved = await post(app, `/api/v1/draft/${grp_id}/approve`, { card: "目标 : still broken" });
   expect(approved.status).toBe(422);
 });
@@ -613,10 +612,8 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   // something they cannot see.
   expect(filed?.body).toContain("支持 zh");
 
-  // An objection that lands after the card must reach the boss too. The card says
-  // 反对 : 无 because the Dispatcher does not wait for the Architect — measured,
-  // the objection arrived a minute later and said the plan contradicted its own
-  // acceptance criterion.
+  // An objection that lands after the card must reach the boss too: the card
+  // says 反对 : 无 because the Dispatcher does not wait for the Architect.
   fx.agent.insert(db, { project_id: 1, role: "architect", token: "tok-arch" });
   await post(
     app,
@@ -629,12 +626,10 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   expect(late?.body).toContain("与验收冲突");
   expect(late?.author).toBe("architect");
 
-  // The same objection, filed in the same millisecond as the card. This is not
-  // a hypothetical: on a fast machine the two writes above land on one
-  // millisecond about one run in five, and while the comparison was a strict
-  // `>` the objection was dropped and the test failed intermittently. Dropping
-  // it is the failure the whole feature exists to prevent, so the flake was the
-  // defect showing itself rather than noise around it.
+  // The same objection, filed in the same millisecond as the card — which the
+  // two writes above really do hit on a fast machine. Under a strict `>` the
+  // objection was dropped, and dropping it is what this feature exists to
+  // prevent, so the intermittent failure was the defect rather than noise.
   const cardAt = db
     .query<{ at: number }, [number]>(
       "SELECT max(at) AS at FROM note WHERE grp_id = ? AND json_extract(frontmatter_json, '$.draft_card') = 1",
@@ -1170,13 +1165,10 @@ test("the blackboard is readable: notes by project, by group, and by kind", asyn
 });
 
 test("a rescan that reaches no container leaves the repository's own skills alone", async () => {
-  // 重新扫描 refreshes both halves of the list: this machine's directories, which
-  // it can read, and the repository's own, which live in a container and reach
-  // this process only as text `SKILL_SYNC` printed. The second half is a cache,
-  // and `cacheProjectSkills` writes an empty inventory as a real answer — that
-  // is how a deleted skill stops being listed. So a rescan that could not ask
-  // anybody must not be allowed to speak for the repository: the group here has
-  // no `sandbox_id`, nothing answers, and the previous inventory has to survive.
+  // The repository half of the list is a cache, and an empty inventory is a real
+  // answer there — that is how a deleted skill stops being listed. So a rescan
+  // that could not reach a container must not speak for the repository: this
+  // group has no `sandbox_id`, and the previous inventory has to survive.
   const h = harness();
   cacheProjectSkills(h.db, 1, `ORCHSKILL .claude/skills/deploy/SKILL.md ${btoa("---\n---\n")}`);
   expect(projectSkills(h.db, 1).map((s) => s.name)).toEqual(["deploy"]);
@@ -1281,13 +1273,11 @@ test("one box holding several unrelated asks becomes several requirements", asyn
 });
 
 test("a group blocked outside its boundary hands the work on and waits for it", async () => {
-  // The gap seen whole: pm-ai-agent's gate failed on a missing line in
-  // tsconfig.json, which is not in its owns, so the sandbox refused the write. No
-  // verb opened a requirement for it and `orch mail` creates no work, so it rewrote
-  // its own code three times, escalated, and stopped.
-  // The existence check runs in the group's own checkout, not the host's: the
-  // caller named this path from inside `/work`, and the host main checkout sits on
-  // whatever branch the boss last had out — so a file the group itself created
+  // The gap seen whole: a gate failed on a file outside the group's owns, no verb
+  // opened a requirement for it, so the group rewrote its own code and stopped.
+  //
+  // The existence check runs in the group's own checkout: the host's sits on
+  // whatever branch the boss last had out, so a file the group itself created
   // came back as "not a file in this repo". The fake stands in for the container.
   const present = new Set(["package.json", "src/a/x.ts", "tsconfig.json"]);
   const h = harness((cmd) => {
@@ -1466,7 +1456,6 @@ test("reads are scoped by the token too, not only writes", async () => {
 
   expect((await get(app, "/orch/v1/task")).status).toBe(401);
   expect(await (await withToken(app, "/orch/v1/task", "tok-eng")).text()).toContain("g1 only");
-  // The other group's engineer gets its own (empty) list, not this one's.
   expect(await (await withToken(app, "/orch/v1/task", "tok-other")).text()).not.toContain("g1 only");
 
   expect((await get(app, "/orch/v1/lease/1/log")).status).toBe(401);

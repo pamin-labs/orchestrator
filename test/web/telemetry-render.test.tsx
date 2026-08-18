@@ -10,11 +10,9 @@ import { WithQueries } from "./queries.tsx";
 /**
  * A viewport, because happy-dom measures every element as 0x0.
  *
- * `ResponsiveContainer` asks its parent how wide it is and draws nothing at all
- * when the answer is zero, and the flamegraph shell takes the same measurement
- * for the width it hands the library. Without this the tests below pass against
- * an empty `<svg>` and prove nothing. Restored afterwards so a later file does
- * not inherit a fake layout.
+ * `ResponsiveContainer` draws nothing at all at zero width, so without this the
+ * tests below pass against an empty `<svg>` and prove nothing. Restored
+ * afterwards so a later file does not inherit a fake layout.
  */
 const T0 = 1_700_000_000_000;
 

@@ -14,6 +14,7 @@ const WorkflowSchema = z.object({
       if: z.string().optional(),
       needs: z.union([z.string(), z.array(z.string())]).optional(),
       "timeout-minutes": z.number().optional(),
+      "runs-on": z.union([z.string(), z.array(z.string())]).optional(),
       permissions: StringMap.optional(),
       strategy: z.looseObject({ matrix: JsonMap.optional() }).optional(),
       steps: z.array(
@@ -551,4 +552,52 @@ describe("workflow governance", () => {
     }
     expect(unpinned).toEqual([]);
   });
+});
+
+/**
+ * Every job runs on a standard runner, which is the only reason CI is free.
+ *
+ * This repository is public, and GitHub does not charge public repositories for
+ * standard GitHub-hosted runners — including the arm64 ones, since August 2025.
+ * The billing API shows it per line: 808 minutes in a month, `grossAmount` $4.85,
+ * `discountAmount` $4.85, **`netAmount` $0.00**. The discount cancels the charge
+ * item by item, which is what "free for public repositories" looks like; it is
+ * not an allowance being drawn down.
+ *
+ * **Larger runners are charged even for public repositories.** They are named by
+ * their size — `ubuntu-latest-4-cores`, `-8-cores`, `-16-cores`, and the same for
+ * Windows — so one label somebody adds for a slow job turns a free pipeline into
+ * a metered one, and nothing about the run says so. That is a property worth
+ * asserting rather than a thing to remember, because the feedback arrives on an
+ * invoice a month later.
+ *
+ * Self-hosted runners would also be free, but they are not what this repository
+ * uses and adding one is a decision, not a default. The list is explicit for the
+ * same reason the DOM preload's is.
+ */
+const STANDARD_RUNNERS = ["ubuntu-24.04", "ubuntu-22.04", "ubuntu-latest", "ubuntu-24.04-arm", "ubuntu-22.04-arm"];
+
+test("no job asks for a larger runner, which is charged even on a public repository", async () => {
+  const offenders: string[] = [];
+  for (const name of workflowNames) {
+    const workflow = await load(name);
+    for (const [jobName, job] of Object.entries(workflow.jobs)) {
+      const on = job["runs-on"];
+      if (on === undefined) continue;
+      for (const label of Array.isArray(on) ? on : [on]) {
+        // A matrix expression is checked by its literals: the branches are in the
+        // template, so every label it can produce is visible here. Comparison
+        // operands are stripped first — `matrix.platform == 'arm64' && …` names
+        // `arm64`, which is a matrix value and not a runner, and counting it made
+        // this fail against a workflow that was correct.
+        const branches = label.replace(/[=!]=\s*'[^']*'/g, "");
+        const literals = [...branches.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
+        const seen = literals.length > 0 ? literals : [label];
+        for (const value of seen) {
+          if (!STANDARD_RUNNERS.includes(value)) offenders.push(`${name}.${jobName}: ${value}`);
+        }
+      }
+    }
+  }
+  expect(offenders).toEqual([]);
 });
