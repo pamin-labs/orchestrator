@@ -2083,3 +2083,629 @@ this directory.
 
 `listSkills` is a pure function with no bus, so the report lives with the caller
 that has one.
+
+## src/mech/git/github.ts:20
+
+The eight endpoints are PR create / edit / view, checks, comments, reviews,
+`/user` and one repo read. […] status decoding [is] commodity behaviour with a
+maintained owner.
+
+Not `@octokit/rest` or the batteries-included `octokit`: those exist to give
+you a typed method per REST endpoint, and we call eight of them with our own
+schemas. Not `gh` either — the point of 007 is that a host with docker, the
+image and a pasted token can run, and every shelled-out binary is one more
+thing that has to be installed and separately logged in.
+
+[The credential is] never a host CLI's login. That distinction is what
+`test/one-model-path.test.ts` guards: two accounts behind one label is how the
+fleet spent a night 401ing on a token the panel could not see.
+
+## src/mech/git/github.ts:39
+
+[the backoff] at 50ms is 50ms then 200ms. Its `doNotRetry` default [is]
+400, 401, 403, 404, 410, 422, 451 […] that is the set this file used to spell
+out by hand.
+
+## src/mech/git/github.ts:106
+
+Saying "deleted" when it was an org policy change sends the boss to the wrong
+page.
+
+## src/mech/git/github.ts:193
+
+A schema here would have to wave the body through to be written at all, which
+looks like validation and does none — see
+`test/governance/type-hygiene.test.ts`.
+
+## src/mech/git/github.ts:203
+
+[the signal] is the one usable per-request identity. [A `WeakMap` per client,]
+so nothing is shared between clients and nothing outlives the request.
+
+## src/mech/git/github.ts:276
+
+Refusing at the door is what keeps a caller who cancelled during a backoff from
+paying for one more request.
+
+## src/mech/git/github.ts:300
+
+[reading by shape] is the same check the retry plugin makes on its own errors.
+[importing] `@octokit/request-error` to compare against [is the second copy].
+
+## src/mech/git/github.ts:344
+
+Re-serialising is what keeps the sentence the boss ends up reading identical to
+the one this file produced when it did its own parsing.
+
+## src/mech/git/github.ts:372
+
+GitHub labels its bodies correctly, so in production `data` is already parsed
+and this is a no-op.
+
+## src/mech/git/github.ts:406
+
+the moment the cursor traffic tipped the count every open PR the poller was
+serving from a 304 went back to paying full price against the budget this cache
+exists to protect.
+
+## src/mech/git/github.ts:509
+
+one span name per pull request is a span table nobody can group by.
+
+## src/mech/git/github.ts:534
+
+Measured before this landed: 18 calls to one route, 132.1s, and not one error
+row in the whole table.
+
+## src/mech/git/github.ts:576
+
+without this a quiet fleet spends its 5000/hour re-reading answers it already
+has. […] all [Octokit] is handed is the `if-none-match` header and the 304 it
+throws back.
+
+## src/mech/git/github.ts:591
+
+Passing our own groups would only change the pacing numbers, and would
+mean declaring `bottleneck` directly, whose last release is 2023-02-22
+and so fails the maintenance rule in `docs/standards/dependencies.md`.
+(The date here said 2019 until it was checked against npm. The
+conclusion held; a wrong date in the reason is how a decision gets
+reopened by someone who checks.)
+
+## src/mech/git/github.ts:600
+
+[`retry-after` is] 60 by default. Saying no here keeps today's behaviour
+exactly.
+
+## src/mech/git/github.ts:23
+
+[the plumbing:] retry, backoff, URL and body construction.
+
+## src/mech/git/github.ts:126
+
+[422 bodies read] "No commits between…", "A pull request already exists".
+
+## src/mech/git/github.ts:430
+
+writes are the only thing that sets this, to 0.
+
+## web/src/features/knobs/view.tsx:49
+
+These used to live in `config/default.yaml` with a hundred lines of comments
+around them, and those comments are the most expensive thing in that file […] A
+settings page that lists forty numbers with no reasons is a page that gets a
+number changed once and never changed back. […] Three things this page owes the
+reader, and did not: […] `1200000` is twenty minutes and `10800000` is three
+hours, and told apart by counting zeros. […] a table crammed into one line of
+JSON is a value nobody can read and nobody can fix by hand. […] A toast in the
+corner outlives the fix and never says which of the four boxes on the row it
+meant.
+
+## web/src/features/knobs/view.tsx:100
+
+每片 token 上限 does not, and used to carry an empty one anyway so the two
+blocks' columns would agree. That bought the wrong alignment: […] one row
+starting 3.25rem further in reads as broken long before anyone compares it to
+the block above it.
+
+## web/src/features/knobs/view.tsx:295
+
+which is why the old page, asking for `indexModel`, drew nothing at all: the
+most-called model in the system had no row and the paragraph explaining why it
+matters was on screen zero times.
+
+## web/src/features/knobs/view.tsx:740
+
+The reason is what the boss can get wrong: one box holding `1200000` invites a
+zero too many, and one box holding `20 分钟` invites `20 分` (fine), `20m`
+(fine), `20 min钟` (refused, and the refusal is about spelling rather than about
+the number).
+
+## web/src/features/knobs/view.tsx:1157
+
+so a new model could not be added at all: the box came back "contextWindow: Too
+small: expected number to be >0" and the row never appeared.
+
+## web/src/features/requirement/view.tsx:87
+
+Each of them spelled it out: a `const go`, an early return, the call, the
+refresh. Four lines of ceremony per button.
+
+## web/src/features/requirement/view.tsx:100
+
+The first version stacked everything at full weight: identity, five controls,
+three slices each with its own gate row, an evidence panel that pushed the last
+slice off the fold, then delegated answers, then records, then the roster, then
+a composer. Nine blocks of equal loudness.
+
+## web/src/features/requirement/view.tsx:152
+
+Four things this page holds, and they were stacked in two columns down one
+scroll: questions, slices, the record, the roster — plus a composer that ended
+up below however many slices there were.
+
+## web/src/features/requirement/view.tsx:245
+
+It used to sit in a second pane below the whole list, so the diff for S2 was
+drawn under S3 and the row it answers was two rows away from the two buttons
+that answer it. […] not `flex-1`, which drew an 800px empty frame under three
+closed rows.
+
+## web/src/features/requirement/view.tsx:296
+
+Stacked down one scroll they were invisible: at the top of the page nothing said
+a question was being held by the Architect or that a stand-in had answered two
+of them — you found out by scrolling past the box you came to type in. A switch
+says it in three words without moving anything.
+
+## web/src/features/requirement/view.tsx:368
+
+Until this pane existed the page said nothing for all of it: the requirement
+simply sat there, which is indistinguishable from stuck.
+
+## web/src/features/requirement/view.tsx:632
+
+A header saying `S2 <title> 验收：<spec>` sat here, directly under the lane row
+that says S2 and the title, directly above the evidence panel that leads with
+the acceptance line. Three copies of two facts, stacked.
+
+## web/src/features/requirement/view.tsx:827
+
+Both used to run the full width of the page, the question in body text and the
+answer in a grey slab under it — two paragraphs of somebody else's words at the
+weight of live work.
+
+## web/src/features/requirement/view.tsx:945
+
+A second composer down here asked the boss to type into whichever one they found
+first, and neither said where the words would go.
+
+## web/src/features/requirement/view.tsx:1116
+
+There were two: 批准开工 and 退回重拴, and the box to type in was at the very
+bottom of the page under everything else — so the words the boss added while
+looking at the card went somewhere they could not see, and "要求修改" and "不做了"
+did not exist at all. A duplicate requirement could not be turned away.
+
+## web/src/features/requirement/view.tsx:1197
+
+Opening a question used to fire a model call — one per open, on every question
+the boss so much as looked at.
+
+## web/src/features/requirement/view.tsx:1344
+
+They sat in that list at the same weight, with the same tint and the same answer
+box, and the commonest one is an Architect quoting the shell command a clearance
+rule blocked: a paragraph of `git ls-tree -r main --name-only | grep -i markdown`
+the boss can do nothing with.
+
+## src/mech/git/worktree.ts:21
+
+Three callers each wrote `origin/${await detectBaseBranch(...)}` and each took
+an override argument that no caller outside a test ever passed. So the
+hardcoded `origin/` prefix was the only path in production, and it is wrong
+for exactly the clone that has no remote — the one where the fallback was
+supposed to help.
+
+## src/mech/git/worktree.ts:55
+
+[a turn is killed by] the server stopping, the watchdog taking the process, the
+agent hitting its turn cap. [git refuses with] "there is already a rebase-merge
+directory … I am stopping in case you still have something valuable there"
+[and] it says so once per wake attempt forever. Observed on
+response-aiagent-markdown.
+
+[`--abort` restores the pre-rebase HEAD,] which is exactly the state the caller
+assumes.
+
+## src/mech/git/worktree.ts:72
+
+this used to return `origin/main` when `origin/HEAD` was set and `main` when it
+was not, while four of its callers wrote `origin/${await defaultBase(...)}`. On
+any repository where `origin/HEAD` exists — which is every clone — those asked
+git for `origin/origin/main`.
+
+[the remote's own HEAD first:] a repo whose default is `trunk` says so here.
+`HEAD` last, for a repository with no branches yet.
+
+## src/mech/git/worktree.ts:110
+
+A checkpoint whose message is only `wip: S2: engineer` says nothing that
+`git log --stat` does not. […] Twelve paths and a count is a page of the log
+that answers "where did this touch" without a second command.
+
+## src/mech/git/worktree.ts:126
+
+[a path outside ASCII comes back as] `"docs/\350\256\276\350\256\241.md"`,
+[so] git answers
+
+    error: pathspec 'docs/\350\256\276\350\256\241.md' did not match any file(s)
+
+exits 1, changes nothing, and the exit code was not read. The out-of-bounds
+file survived and the bus announced it had been reverted, with a count. That
+is decision 005's only remaining enforcement failing open and reporting
+success, in a project whose runtime output language is Chinese.
+
+## src/mech/git/worktree.ts:194
+
+GitHub reads a `Co-Authored-By:` line in the body. It goes last, after a blank
+line, which is where every tool that parses trailers looks.
+
+[of two copies of the address] the half that is wrong is the half a DCO check
+rejects — after every gate has already passed.
+
+## src/mech/git/worktree.ts:222
+
+flattening that would destroy information to satisfy a rule about noise.
+
+## src/mech/git/worktree.ts:284
+
+and it only "passed" on the retry because the next turn's checkpoint had
+quietly committed the previous turn's work.
+
+## src/mech/git/worktree.ts:302
+
+`slice.base_sha` is the branch tip when the slice started, and it is the right
+base right up until a rebase rewrites the branch onto a newer main. Groups here
+rebase on every main push (watchdog rule 15), so that is the normal case, not
+the rare one.
+
+[Says which one it used,] because "this slice" and "this branch" are different
+claims and the boss is accepting one of them.
+
+## src/mech/git/worktree.ts:58
+
+this runs at the start of a rebase about to redo the work.
+
+## src/mech/git/worktree.ts:75
+
+[then] `HEAD` [last].
+
+## src/mech/git/worktree.ts:25
+
+three messages for one cause, none of which names it.
+
+## test/web/telemetry-render.test.tsx:24
+
+`d3-transition` animates the `transform` attribute when the flamegraph zooms,
+and `d3-interpolate` parses the current value by setting it on a scratch node
+and calling `transform.baseVal.consolidate()`. happy-dom's `SVGTransformList`
+has every other method from the spec and not that one, so a zoom threw from
+inside a `d3-timer` callback — uncaught, after the test had already passed,
+which is the worst place for it. Returning `null` is the documented answer for
+an empty list and sends `parseSvg` down its identity path, which is right for
+the zero-duration transitions this chart is built with.
+
+## test/web/telemetry-render.test.tsx:111
+
+Rendering the component bare tested a tree the product never builds, and the
+failure it produced — "`Tooltip` must be used within `TooltipProvider`" — was
+the harness's, not the component's.
+
+## test/web/telemetry-render.test.tsx:158
+
+it used to write its own status sentence there on search too — `search: 0 of
+11271164.521939998 total samples`
+
+## test/web/telemetry-render.test.tsx:207
+
+Single-open was the original choice and it is wrong for these rows. A
+requirement's slices are alternatives — reading one means not reading the
+others — but 巡检规则 and 代码索引 are comparable, and the whole reason to
+open the second is to see it beside the first.
+
+## test/web/telemetry-render.test.tsx:244
+
+Opening 设置 locks body scroll, the scrollbar goes, the pane gains those pixels
+back and the observer fires — and while `width` was a dependency of the effect
+that *creates* the chart, that destroyed and rebuilt it.
+
+## test/web/telemetry-render.test.tsx:293
+
+`ui.md` delivers the dark variant by inverting the ink scale, so a frame at a
+fixed lightness stayed mid while the page flipped around it, and the label on it
+went from readable to invisible.
+
+## test/web/telemetry-render.test.tsx:347
+
+it self-imports `d3-flamegraph.css`, the bundler emits it as `web/dist/main.css`,
+and `web/index.html` links only `app.css`. So every rule the labels get is one
+of ours, they arrive on the host rather than on the label itself (they are
+Tailwind arbitrary variants), and an unstyled label is 16px of the page's own
+ink with no truncation.
+
+## test/web/telemetry-render.test.tsx:428
+
+"It grew" is also satisfied by a runaway, and there was one: the chart was
+measured *inside* the wrapper it had already scaled, so the width came out as
+viewport ÷ zoom² and each render resized what the observer was watching.
+
+## test/web/telemetry-render.test.tsx:519
+
+Refusing at the menu is the fix, and the count is the reason — an absence the
+reader cannot see is not an answer.
+
+## test/web/telemetry-render.test.tsx:586
+
+after which `zoomAt` clamped every widening to the span it already had and
+`panBy` clamped every slide to zero.
+
+## test/web/telemetry-render.test.tsx:604
+
+It is also the wrong rank on its own terms: a project's spans are mostly routes
+and container operations belonging to no requirement, which makes it a sibling
+question rather than a detail.
+
+## test/web/telemetry-render.test.tsx:653
+
+This used to assert the opposite, and the opposite was a trap. […] in a slot the
+size of the chart that is missing rather than as a line at the top of the page,
+which is what the original complaint was about.
+
+## test/mech/watchdog.test.ts:84
+
+30ms a call. Measured: 92% of a sixty-tick CPU profile, and this file ticks the
+watchdog forty-eight times.
+
+## test/mech/watchdog.test.ts:292
+
+It needed nobody: the system had already handled it. […] which costs the
+notifications that were real — so which rule leaked is the fact a failure has
+to carry, and one bare boolean per line did not carry it.
+
+## test/mech/watchdog.test.ts:757
+
+The old version of this test protected against comparing with a *local*
+checkout's HEAD, which no longer exists to be compared with.
+
+## test/mech/watchdog.test.ts:775
+
+Ten requirements produced 123 MB of raw NDJSON — median 324 KB a turn, 3 MB at
+the tail — because a transcript is mostly tool output written verbatim. Worth
+keeping (every measurement in PROGRESS came out of these).
+
+## test/mech/watchdog.test.ts:1014
+
+It was a module-level `lastSweep` compared against `SWEEP_EVERY_MS` inside the
+rule's own body. […] Nothing covered it — this is the first test of the cadence
+at all, which is how it stayed a hand-written throttle while twenty-three
+sibling rules had none.
+
+## test/mech/watchdog.test.ts:1155
+
+the answer was fetched once per group per tick — ten groups on one project, ten
+identical calls against one rate limit, every thirty seconds, for one string.
+
+## test/api/api.test.ts:616
+
+measured, the objection arrived a minute later and said the plan contradicted
+its own acceptance criterion.
+
+## test/api/api.test.ts:632
+
+This is not a hypothetical: on a fast machine the two writes above land on one
+millisecond about one run in five, and while the comparison was a strict `>` the
+objection was dropped and the test failed intermittently. […] so the flake was
+the defect showing itself rather than noise around it.
+
+## test/api/api.test.ts:1173
+
+重新扫描 refreshes both halves of the list: this machine's directories, which it
+can read, and the repository's own, which live in a container and reach this
+process only as text `SKILL_SYNC` printed.
+
+## test/api/api.test.ts:1284
+
+pm-ai-agent's gate failed on a missing line in tsconfig.json, which is not in
+its owns, so the sandbox refused the write. No verb opened a requirement for it
+and `orch mail` creates no work, so it rewrote its own code three times,
+escalated, and stopped. […] the caller named this path from inside `/work`.
+
+## test/web/telemetry-render.test.tsx:10
+
+`ResponsiveContainer` asks its parent how wide it is […] and the flamegraph
+shell takes the same measurement for the width it hands the library.
+
+## src/application/executor.ts:221
+
+which is what it was on every turn span ever written […] The read path derives it
+through `grp` for the rows already stored, and does not need this. One
+primary-key lookup against a turn that takes seconds.
+
+## src/application/executor.ts:238
+
+The stages are the ones that actually take time.
+
+## src/application/executor.ts:400
+
+[`no_result`] is a turn that broke after spending its whole timeout.
+
+## src/application/executor.ts:452
+
+It was a ternary inside an object literal, where the only way to check it was to
+run a turn and read the spec back out.
+
+## src/application/executor.ts:575
+
+The slice number is where the reviewer looks first, the role is who did it, and
+the task title is the only sentence anyone wrote about this particular piece of
+work. […] The checkpoint runs at the top of a turn and commits whatever is
+dirty, which is the previous turn's output […] and the one place a reviewer
+looks to find out who wrote a line said the wrong name.
+
+## src/application/executor.ts:611
+
+Removed whole — it documented something this function does not do. It sat as the
+doc comment on `buildStableFor`, which builds the stable prompt prefix and has
+nothing to do with gate containers:
+
+> The project's gate container, if it has one.
+>
+> `config_json.container` = `{"image":"oven/bun:1"}`, optionally with
+> `network`, `depsVolume` and `depsPath`. Absent means the host.
+
+If that is still true of `config_json.container`, it belongs wherever the gate
+container is actually read.
+
+## src/application/executor.ts:630
+
+The comment that used to be here said those two queries have to agree, and then
+wrote out its own predicate and its own literal 20.
+
+## src/application/executor.ts:656
+
+The boss attaches a screenshot […] claude was asked to `Read` a missing file,
+failed silently and improvised around it; codex was handed `-i
+/Users/…/data/attachments/…` for a file that was not there. Nothing copied them
+in, and nothing said so — the feature had been dead for as long as the container
+had been the boundary.
+
+## src/application/executor.ts:723
+
+a deny-list used to stop the write before it happened, and decision 005 §Ceiling
+accepted the trade. […] Deliberately deterministic: asking a role prompt to
+respect a boundary is the thing this codebase does not do.
+
+[`sandboxGit`] Pointing the host runner at it threw on every turn, in the one
+mechanism that has no second line of defence.
+
+## src/application/executor.ts:752
+
+The same function was just fixed for pointing the host runner at `/work`; this
+line is the identical failure one layer down.
+
+## src/application/executor.ts:853
+
+成本's 按账号 split was reading `model LIKE 'gpt%'`, which is right today and
+wrong the first time either vendor renames anything.
+
+## src/application/executor.ts:899
+
+Removed whole — it described two parameters that no longer exist:
+
+> No `repoPath` and no `git`: both were left over from when this read the host
+> checkout, and the diff has come out of `sandboxGit(WORK)` since 005. A
+> parameter nobody reads is the next reader's wrong mental model.
+
+## src/application/executor.ts:923
+
+Removed whole — it was stacked above `handleAuthFailure`'s own doc comment and
+describes a denied *tool call*, which that function does not handle:
+
+> A headless run never prompts, so a denied tool call is silent and the agent
+> quietly invents a workaround. Surfacing it as an escalation is the only way
+> the boss ever finds out.
+
+## src/application/executor.ts:1000
+
+The denominator used to be the literal 200_000 for every model. Measured on this
+repo's own logs, sonnet-5 and opus-5 report a 1M window — so the strong models
+were rotating at 12% of theirs.
+
+## src/application/executor.ts:1140
+
+docs/project/plan.md called the runner the sandbox's only hole.
+
+## src/platform/scheduling/scheduler.ts:133
+
+each one is a real Chromium […] `typecheck` wants as many as the machine has
+cores. One global number could only ever be the minimum of those, which is the
+browser's.
+
+## src/platform/scheduling/scheduler.ts:144
+
+Removed whole — it sat on the `now?: () => number` option and describes
+`FREE_KINDS`, which is declared 77 lines further down:
+
+> Kinds that are cheap bookkeeping and bypass the group slot pool.
+
+## src/platform/scheduling/scheduler.ts:162
+
+Injected like the others, so no unit test needs a network — `repoHeld` in
+`github.ts` is what the server passes.
+
+## src/platform/scheduling/scheduler.ts:194
+
+the contradiction was load-bearing […] the boundary was never cut, the approval
+never landed […] Observed on three groups at once, each holding a permanently
+pending job.
+
+## src/platform/scheduling/scheduler.ts:223
+
+those used to collapse onto slot 0 — so Architect, CoS, Dispatcher and
+Librarian, who share nothing, took turns waiting for each other. Measured on
+this database: Dispatcher averaged 4309s of queueing, CoS 1752s, for turns that
+touch no common state. […] (it cannot write two transcripts at once) […] They
+still count towards `maxGroups`, which was the actual reason slot 0 existed.
+
+## src/platform/scheduling/scheduler.ts:346
+
+The rules enumeration, which now restates the three named branches of
+`claimCapacity`:
+
+>  - one in-flight agent_turn per group (the group's single writer; makes the
+>    L2 barrier and "no intra-group write conflicts" fall out for free)
+>  - at most `maxGroups` groups with an in-flight agent_turn
+>  - leases draw from their own pool, capped per resource concurrency
+>  - a group must be in a dispatchable status
+>  - budget must not be exhausted (slice budget first, then group)
+
+## src/platform/scheduling/scheduler.ts:494
+
+It will be hired, run once, and hold the provider itself.
+
+## src/platform/scheduling/scheduler.ts:517
+
+A turn that cannot possibly work should not be dispatched — preflight and the
+settings page are where this is said out loud, and both name the command that
+fixes it. […] with none, nothing it could be hired onto would run either.
+
+## src/platform/scheduling/scheduler.ts:541
+
+there is nothing to look up, and defaulting to held would stop housekeeping over
+somebody else's credential.
+
+## src/platform/scheduling/scheduler.ts:645
+
+Sixteen `enqueue` sites had no `tick()` after them and the omission looked
+exactly like the deliberate ones — both waited for the watchdog timer, up to
+`watchdogIntervalMs`, on work whose whole point was that something noticed it
+was stuck. […] an escape from here surfaces against whatever happens to be
+running with no relationship to the job that caused it.
+
+## src/platform/scheduling/scheduler.ts:678
+
+the queue looks healthy and simply never moves. Observed exactly that way. […]
+After a restart nothing is being read, which is the right answer — the command
+inside the sandbox runs on into the void until its own timeout, and the requeued
+turn sees whatever it wrote.
+
+The work itself was still dropped — the slice stayed `running`, so
+`startNextSlice` counted the group busy and never queued anything again. Same
+silence, one layer down.
+
+## src/platform/scheduling/scheduler.ts:776
+
+each holding a turn that was only ever killed by the restart itself, and every
+one of them needed a human to say "go on then". […] spending its one retry on
+that would leave the group stopped after the connection came back.

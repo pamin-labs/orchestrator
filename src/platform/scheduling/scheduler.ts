@@ -133,15 +133,12 @@ export interface SchedulerOptions {
   /**
    * Slots for the Runner pool, per resource tag. Leases never consume group slots.
    *
-   * A plain number is the whole pool, as before. A map is one pool per tag, with
-   * `default` covering resources that carry no tag — because the pool size is a
-   * property of what the resource contends for, not of leases in general: a
-   * headless browser wants 1 (each one is a real Chromium), while `typecheck`
-   * wants as many as the machine has cores. One global number could only ever be
-   * the minimum of those, which is the browser's, which starves everything else.
+   * A plain number is the whole pool; a map is one pool per tag, with `default`
+   * covering untagged resources. Pool size is a property of what the resource
+   * contends for: a headless browser wants 1, `typecheck` wants a core each, and
+   * one global number could only be the minimum, which starves everything else.
    */
   leaseSlots?: number | Record<string, number> | (() => number | Record<string, number> | undefined);
-  /** Kinds that are cheap bookkeeping and bypass the group slot pool. */
   now?: () => number;
   /**
    * Is the machine able to reach the providers right now?
@@ -163,11 +160,9 @@ export interface SchedulerOptions {
    * Has GitHub stopped accepting us for this project?
    *
    * The fourth gate of the same shape, and the first that is **per project**:
-   * `online`, `sandboxReady` and `providerHeld` are all facts about the machine
-   * or the account, while a dead GitHub credential is a fact about one
-   * repository. One project's revoked org access must not stop a project whose
-   * credential is fine. Injected like the others, so no unit test needs a
-   * network — `repoHeld` in `github.ts` is what the server passes.
+   * `online`, `sandboxReady` and `providerHeld` are facts about the machine or
+   * account; a dead GitHub credential is a fact about one repository, and one
+   * project's revoked access must not stop another. `github.ts` passes it.
    */
   repoHeld?: (projectId: number) => boolean;
 }
@@ -184,25 +179,23 @@ export function poolSizes(slots: number | Record<string, number> | undefined): R
 }
 
 /**
- * Group statuses that allow dispatching an agent_turn.
- *
- * PLANNING is dispatchable and DRAFT is not, and the distinction matters: the
- * Dispatcher has to run *before* the boss can approve anything, so "planning the
- * work" and "waiting for the boss" cannot be the same state. Everything else is a
- * barrier: PAUSING/PAUSED (intercept L2), PARKED, DRAFT (the card is ready).
- */
-/**
  * Roles DRAFT does not block.
  *
- * DRAFT means "the card is written, stop spending until the boss says go", and
- * that is about the writers. It was applied to every role, and the contradiction
- * was load-bearing: a refused approval enqueues an Architect turn to cut the
- * boundary, the group is in DRAFT, so that turn never ran — the boundary was
- * never cut, the approval never landed, and the boss was told to click again.
- * Observed on three groups at once, each holding a permanently pending job.
+ * DRAFT means "the card is written, stop spending until the boss says go", which
+ * is about the writers. Applied to every role it deadlocked: a refused approval
+ * enqueues an Architect turn to cut the boundary, the group is in DRAFT, so that
+ * turn never ran and the boss was told to click again. Three groups at once.
  */
 const PLANNING_ROLES = new Set(["dispatcher", "architect", "cos", "librarian"]);
 
+/**
+ * Group statuses that allow dispatching an agent_turn.
+ *
+ * PLANNING is dispatchable and DRAFT is not: the Dispatcher has to run *before*
+ * the boss can approve anything, so "planning the work" and "waiting for the
+ * boss" cannot be one state. Everything else is a barrier — PAUSING/PAUSED
+ * (intercept L2), PARKED, and DRAFT except for the roles above.
+ */
 function groupStateAdmits(status: GrpState, job: Job): boolean {
   if (isDispatchableGrpState(status)) return true;
   return (
@@ -223,15 +216,10 @@ const FREE_KINDS = new Set<JobKind>(["watchdog", "notify", "digest"]);
 /**
  * Which writer slot a job occupies. One in-flight job per slot.
  *
- * For a group it is the group: that is the "one writer per group" rule, and the
- * L2 barrier falls out of it. A group-less job belongs to a standing agent, and
- * those used to collapse onto slot 0 — so Architect, CoS, Dispatcher and
- * Librarian, who share nothing, took turns waiting for each other. Measured on
- * this database: Dispatcher averaged 4309s of queueing, CoS 1752s, for turns
- * that touch no common state. Negative keys can never collide with a group id,
- * so an agent still serialises against itself (it cannot write two transcripts
- * at once) while the four of them run in parallel. They still count towards
- * `maxGroups`, which was the actual reason slot 0 existed.
+ * For a group it is the group — the "one writer per group" rule, with the L2
+ * barrier falling out of it. A group-less job belongs to a standing agent, keyed
+ * **negative** so it can never collide with a group id: the four standing roles
+ * run in parallel, each serialised against itself, all counting to `maxGroups`.
  */
 function slotOf(job: Pick<Job, "grp_id" | "agent_id">): number {
   return job.grp_id ?? -(job.agent_id ?? 0);
@@ -346,13 +334,10 @@ export class Scheduler {
   /**
    * Jobs that may start right now, in dispatch order.
    *
-   * Rules, in order of application:
-   *  - one in-flight agent_turn per group (the group's single writer; makes the
-   *    L2 barrier and "no intra-group write conflicts" fall out for free)
-   *  - at most `maxGroups` groups with an in-flight agent_turn
-   *  - leases draw from their own pool, capped per resource concurrency
-   *  - a group must be in a dispatchable status
-   *  - budget must not be exhausted (slice budget first, then group)
+   * A **batch** decision, not a filter: `busyGroups` and `taken` are mutated as
+   * the loop admits each job, so the Nth job's admission depends on the previous
+   * N−1 — a check before dequeue rather than a property of an edge, which is why
+   * this is not a workflow engine (ADR 003). `claimCapacity` holds the rules.
    */
   private eligible(): Job[] {
     const rows = this.db
@@ -494,14 +479,10 @@ export class Scheduler {
   /**
    * Is this turn's provider out of quota right now?
    *
-   * A rate limit is an account-level fact, so it holds every agent on that CLI —
-   * including standing ones, which have no group to pause. Holding here rather
-   * than failing the turn is what keeps it free: a held job is simply not picked
-   * up, so there is no process, no retry loop and no quota spent proving the wall
-   * is still there. It lifts by clock, on the reset time the CLI itself reported.
-   *
-   * A job whose agent does not exist yet cannot be held: nothing has chosen a
-   * provider for it. It will be hired, run once, and hold the provider itself.
+   * A rate limit is an account-level fact, so it holds every agent on that CLI,
+   * standing ones included. Holding rather than failing keeps it free: a held job
+   * is never picked up, so no process, no retry loop, no quota spent proving the
+   * wall. Lifts by the CLI's own reset clock; an unhired job has no provider yet.
    */
   private providerHeld(job: Job<"agent_turn">): boolean {
     if (!job.agent_id) return false;
@@ -517,15 +498,10 @@ export class Scheduler {
   /**
    * Is there a credential for this turn's provider at all?
    *
-   * Same shape as a rate-limit hold, and for the same reason: without it every
-   * group spends a turn discovering the wall, one at a time, and the only sign
-   * is a queue full of failures that all say 401. A turn that cannot possibly
-   * work should not be dispatched — preflight and the settings page are where
-   * this is said out loud, and both name the command that fixes it.
-   *
-   * An unhired job has not chosen a provider yet, so the question becomes
-   * whether *any* credential exists: with none, nothing it could be hired onto
-   * would run either.
+   * Same shape as a rate-limit hold and for the same reason: without it every
+   * group spends a turn discovering the wall one at a time, and the only sign is
+   * a queue of failures that all say 401. An unhired job has not chosen a
+   * provider, so the question becomes whether *any* credential exists.
    */
   private credentialMissing(job: Job<"agent_turn">): boolean {
     const runtime = job.agent_id
@@ -542,12 +518,9 @@ export class Scheduler {
    * Has GitHub locked this turn's project out?
    *
    * Only `agent_turn`, like `online` and `sandboxReady`: a lease is a gate or a
-   * typecheck in the group's own container and mostly needs no network at all,
-   * so holding those would stop work that would have succeeded.
-   *
-   * A job with no group belongs to no project and cannot be held — there is
-   * nothing to look up, and defaulting to held would stop housekeeping over
-   * somebody else's credential.
+   * typecheck in the group's own container and mostly needs no network, so
+   * holding those would stop work that would have succeeded. A job with no group
+   * belongs to no project — defaulting to held would stop housekeeping.
    */
   private repoLockedOut(job: Job<"agent_turn">): boolean {
     if (!job.grp_id) return false;
@@ -643,20 +616,13 @@ export class Scheduler {
         untrack(job.id, cancel);
         this.inflight.delete(job.id);
         // A finished job frees its slot and usually queues what comes next, and
-        // nothing dispatched either. Sixteen `enqueue` sites had no `tick()`
-        // after them and the omission looked exactly like the deliberate ones —
-        // both waited for the watchdog timer, up to `watchdogIntervalMs`, on
-        // work whose whole point was that something noticed it was stuck. The
-        // watchdog is itself a job, so its own sweep queued into that wait too.
-        //
-        // Here rather than inside `enqueue`: staging a batch and dispatching it
-        // in priority order is a real property, and an enqueue that dispatched
-        // on the spot would send the first job before the second one exists.
-        //
-        // Guarded for the same reason the `catch` above it is: this chain is
-        // detached, so it can land after the database is closed on shutdown, and
-        // an escape from here surfaces against whatever happens to be running
-        // with no relationship to the job that caused it.
+        // nothing dispatched either: sixteen `enqueue` sites had no `tick()`, so
+        // the work waited on the watchdog timer — and the watchdog is itself a
+        // job, so its own sweep queued into that wait. Here rather than inside
+        // `enqueue`, because staging a batch and dispatching it in priority order
+        // is a real property and an on-the-spot enqueue would send the first job
+        // before the second exists. Guarded like the `catch` above it: this chain
+        // is detached and can land after the database is closed on shutdown.
         try {
           this.tick();
         } catch {}
@@ -678,24 +644,10 @@ export class Scheduler {
 /**
  * Reclaim jobs left `running` by a server that is no longer here.
  *
- * A job in `running` holds its group's only slot, and nothing else in that group
- * can ever dispatch while it does. So a crash — or an ordinary restart while a
- * turn was in flight — permanently wedges the group, silently: the queue looks
- * healthy and simply never moves. Observed exactly that way.
- *
- * A job is an orphan when this process is no longer reading its turn, or when it
- * has been "running" longer than any turn is allowed to.
- *
- * "Reading it" replaced "its pid is alive" when turns moved into sandboxes: the
- * CLI is not a child of this process any more, so liveness is about the stream,
- * not about a process table. After a restart nothing is being read, which is the
- * right answer — the command inside the sandbox runs on into the void until its
- * own timeout, and the requeued turn sees whatever it wrote.
- *
- * Returns the reclaimed jobs so the caller can put them back: freeing the slot
- * only un-wedges the *queue*. The work itself was still dropped — the slice stayed
- * `running`, so `startNextSlice` counted the group busy and never queued anything
- * again. Same silence, one layer down.
+ * A `running` job holds its group's only slot, so a crash wedges the group
+ * silently. An orphan is a job nothing is reading, or one running longer than any
+ * turn may — liveness is the stream, not a process table, since the CLI is not
+ * our child. Returned so the caller can requeue: the slot alone is not enough.
  */
 function failOrphan(db: DB, row: RunningJob, endedAt: number, reason: string): Job | null {
   db.run(`UPDATE job SET state = 'failed', ended_at = ?, error = ? WHERE id = ? AND state = 'running'`, [
@@ -754,12 +706,11 @@ export function reclaimOrphans(
 }
 
 /**
- * Put reclaimed turns back on the queue, so a restart costs one turn rather than
- * the group.
+ * Put reclaimed turns back, so a restart costs one turn rather than the group.
  *
  * The slice is left where it was and the same role is re-queued on it: whatever
  * the killed turn wrote is still in the worktree, which is the `keep` half of
- * intercept, reached from the other direction. `resumed` is stamped on the payload
+ * intercept reached from the other direction. `resumed` is stamped on the payload
  * so a turn that takes the server down with it cannot be resurrected forever.
  */
 function reclaimedJob(row: Job | StoredJob): Job | null {
@@ -775,14 +726,9 @@ function resumeJob(sched: Scheduler, j: Job): boolean {
   if (FREE_KINDS.has(j.kind)) return false;
   // `resumed` stops a turn that takes the server down with it from being
   // resurrected forever — but an orphan died because the *server* went away, not
-  // because of anything it did, and that must not spend its one chance. Six
-  // groups sat stopped after a restart with a fix already in main, each holding a
-  // turn that was only ever killed by the restart itself, and every one of them
-  // needed a human to say "go on then".
-  //
-  // `offline:` is the same argument. The network went away; the turn did
-  // nothing wrong, and spending its one retry on that would leave the group
-  // stopped after the connection came back.
+  // because of anything it did, and must not spend its one chance. Six groups sat
+  // stopped after a restart, each needing a human to say "go on then". `offline:`
+  // is the same argument: the network went away, the turn did nothing wrong.
   const orphaned = /^(orphaned|offline):/.test(j.error ?? "");
   if (j.payload.resumed && !orphaned) return false;
   // Every kind that reaches here resumes with its own payload plus the stamp:

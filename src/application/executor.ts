@@ -218,15 +218,11 @@ interface PreparedTurn {
  * group's turns is the slow one.
  */
 function turnScope(deps: ExecDeps, job: Job<"agent_turn">): SpanScope {
-  // The project is looked up rather than left NULL, which is what it was on
-  // every turn span ever written: `scopeAttributes` only emits `project.id` when
-  // it is given one, so the panel's project scope matched nothing at all. The
-  // read path derives it through `grp` for the rows already stored, and does not
-  // need this — but a span exported over OTLP reaches a collector that has never
-  // heard of our `grp` table, and there the column is the only thing that says
-  // which project the work belonged to.
-  //
-  // One primary-key lookup against a turn that takes seconds.
+  // Looked up rather than left NULL: `scopeAttributes` only emits `project.id`
+  // when given one, so the panel's project scope matched nothing. The read path
+  // derives it through `grp`, but a span exported over OTLP reaches a collector
+  // that never heard of our `grp` table, where this column is the only thing
+  // saying which project the work belonged to. One PK lookup per turn.
   const projectId =
     job.grp_id === null
       ? null
@@ -238,11 +234,10 @@ function turnScope(deps: ExecDeps, job: Job<"agent_turn">): SpanScope {
 /**
  * Where a turn's wall clock goes, as four spans rather than one number.
  *
- * The stages are the ones that actually take time and can each be slow for a
- * different reason: assembling the prompt, taking the checkpoint (which is the
- * first thing to touch the group's sandbox, so a cold container is paid here),
- * the provider call, and settling the result. A turn that took nine minutes is
- * not actionable; nine minutes of which eight were the provider is.
+ * The stages can each be slow for a different reason: assembling the prompt,
+ * taking the checkpoint (first to touch the sandbox, so a cold container is paid
+ * there), the provider call, settling the result. A turn that took nine minutes
+ * is not actionable; nine of which eight were the provider is.
  */
 async function runAgentTurn(deps: ExecDeps, job: Job<"agent_turn">): Promise<void> {
   return activeTracer().startActiveSpan(
@@ -398,10 +393,9 @@ async function invokeTurn(deps: ExecDeps, job: Job<"agent_turn">, turn: Prepared
       try {
         const result = await callProvider(deps, job, turn);
         // A failed turn returns, it does not throw — `claude.ts` sets `ok` false
-        // and `terminalReason` to `no_result` when the provider emitted nothing
-        // at all, which is a turn that broke after spending its whole timeout.
-        // Erroring only in the catch made that indistinguishable from a turn
-        // that worked, in the one surface built to tell them apart.
+        // and `terminalReason` to `no_result` when the provider emitted nothing.
+        // Erroring only in the catch made that indistinguishable from a turn that
+        // worked, in the one surface built to tell them apart.
         if (!result.ok) span.setStatus({ code: SpanStatusCode.ERROR, message: result.terminalReason });
         return result;
       } catch (error) {
@@ -455,9 +449,7 @@ async function turnPrompt(deps: ExecDeps, job: Job<"agent_turn">, turn: Prepared
  * Named and exported because getting it wrong is expensive in both directions
  * and silent in both: resuming a session the provider has rotated away from
  * fails the turn, and starting fresh when one was live throws away the cached
- * prefix that makes a long requirement affordable. It was a ternary inside an
- * object literal, where the only way to check it was to run a turn and read the
- * spec back out.
+ * prefix that makes a long requirement affordable.
  */
 export function sessionFor(turn: {
   rotate: boolean;
@@ -575,15 +567,10 @@ export const LOST_SESSION = /no rollout found for thread|No conversation found w
 /**
  * What a turn's checkpoint commit says about itself.
  *
- * `S2: engineer — 闸门放行的卡 enqueue 一个 cos turn`. The slice number is where
- * the reviewer looks first, the role is who did it, and the task title is the
- * only sentence anyone wrote about this particular piece of work.
- *
- * It names the turn that **just ended**, not the one about to start. The
- * checkpoint runs at the top of a turn and commits whatever is dirty, which is
- * the previous turn's output — so taking the role from the incoming job filed
- * the Engineer's diff under `S2: qa`, and the one place a reviewer looks to find
- * out who wrote a line said the wrong name.
+ * `S2: engineer — 闸门放行的卡…`: slice number first, then who did it, then the
+ * only sentence anyone wrote about this work. It names the turn that **just
+ * ended**, not the one about to start — the checkpoint commits the previous
+ * turn's output, so the incoming job's role filed the Engineer's diff as `qa`.
  */
 function checkpointLabel(db: DB, job: Job<"agent_turn">): string {
   const prev = db
@@ -608,12 +595,6 @@ function checkpointLabel(db: DB, job: Job<"agent_turn">): string {
   return task ? `${head} — ${task.slice(0, 60)}` : head;
 }
 
-/**
- * The project's gate container, if it has one.
- *
- * `config_json.container` = `{"image":"oven/bun:1"}`, optionally with
- * `network`, `depsVolume` and `depsPath`. Absent means the host.
- */
 function buildStableFor(
   deps: ExecDeps,
   agent: AgentRow,
@@ -627,9 +608,7 @@ function buildStableFor(
   const projectId = projectOfAgent(ctx.db, agent.id);
 
   const onboarding = noteBody(ctx.db, projectId, "onboarding");
-  // Owned by `report.ts`, next to the eviction that decides which of them
-  // survive. The comment that used to be here said those two queries have to
-  // agree, and then wrote out its own predicate and its own literal 20.
+  // Owned by `report.ts`, next to the eviction that decides which survive.
   const lessons = lessonsFor(ctx.db, projectId);
   const effort = clampEffort(agent.runtime ?? role.runtime, role.effort);
 
@@ -656,16 +635,10 @@ export const ATTACH_DIR = `${MAILBOX_DIR}/attach`;
 /**
  * Copy the turn's attachments into the sandbox and point the prompt at them.
  *
- * The boss attaches a screenshot; `withAttachments` writes its **host** path into
- * the message, and since 005 that path does not exist where the turn runs. claude
- * was asked to `Read` a missing file, failed silently and improvised around it;
- * codex was handed `-i /Users/…/data/attachments/…` for a file that was not
- * there. Nothing copied them in, and nothing said so — the feature had been dead
- * for as long as the container had been the boundary.
- *
- * Only paths under `<dataDir>/attachments` are touched. That is the whole
- * filter: it is exact, and it cannot mistake an agent's own bullet list for an
- * attachment block the way parsing the header would.
+ * `withAttachments` writes the attachment's **host** path into the message, and
+ * since 005 that path does not exist where the turn runs. Only paths under
+ * `<dataDir>/attachments` are touched — exact, so it cannot mistake an agent's
+ * own bullet list for an attachment block the way parsing the header would.
  */
 export async function stageAttachments(
   deps: ExecDeps,
@@ -723,19 +696,10 @@ function recordSubscriptionUsage(deps: ExecDeps, provider: string, r: TurnResult
 /**
  * File ownership, enforced after the fact. The only mechanism there is.
  *
- * The container is the write boundary, and it knows nothing about which group
- * owns which file — a deny-list used to stop the write before it happened, and
- * decision 005 §Ceiling accepted the trade. So the rule runs against
- * `git status` here and the offending files go back. Deliberately deterministic:
- * asking a role prompt to respect a boundary is the thing this codebase does not
- * do.
- *
- * Rolled back, then said out loud — a silent revert would have the agent puzzling
- * over work that keeps vanishing.
- *
- * `sandboxGit`, not the host runner: the checkout is `/work` inside the group's
- * container and there is no such path on this machine. Pointing the host runner at
- * it threw on every turn, in the one mechanism that has no second line of defence.
+ * The container is the write boundary and knows nothing about which group owns
+ * which file (005 §Ceiling), so the rule runs against `git status` here and the
+ * files go back, deterministically, and are announced — a silent revert has the
+ * agent puzzling over work that vanishes. `sandboxGit`: `/work` is inside.
  */
 export async function reconcileOwnership(
   deps: { ctx: Ctx },
@@ -752,8 +716,6 @@ export async function reconcileOwnership(
     // Said out loud. This is the only file-ownership enforcement there is since
     // 005 deleted the deny-list, and `engineer.yaml` promises it to the agent —
     // so skipping silently means the boundary is off and everything reads normal.
-    // The same function was just fixed for pointing the host runner at `/work`;
-    // this line is the identical failure one layer down.
     deps.ctx.bus.emit({
       grpId: job.grp_id,
       author: "orchestrator",
@@ -850,9 +812,8 @@ function recordCost(
     author: agent.role,
     kind: "tool_summary",
     body: `turn done (${r.numTurns} steps, ${total} tokens)`,
-    // The provider, recorded rather than inferred. 成本's 按账号 split was reading
-    // `model LIKE 'gpt%'`, which is right today and wrong the first time either
-    // vendor renames anything — and the event row has no agent to join back to.
+    // The provider, recorded rather than inferred: the `model LIKE 'gpt%'` split
+    // 成本 used breaks on any rename, and the event row has no agent to join to.
     meta: {
       usage: r.usage,
       cacheRatio: cacheRatio(r),
@@ -896,9 +857,6 @@ export function cacheRatio(r: TurnResult): number {
  * boss's benefit; that would be tokens spent on prose.
  */
 async function narrate(deps: ExecDeps, agent: AgentRow, job: Job, before: string | null, r: TurnResult): Promise<void> {
-  // No `repoPath` and no `git`: both were left over from when this read the host
-  // checkout, and the diff has come out of `sandboxGit(WORK)` since 005. A
-  // parameter nobody reads is the next reader's wrong mental model.
   const { ctx } = deps;
   for (const t of r.toolSummaries.slice(0, 12)) {
     ctx.bus.emit({ grpId: job.grp_id, author: agent.role, kind: "tool_summary", body: t.detail });
@@ -920,11 +878,6 @@ async function narrate(deps: ExecDeps, agent: AgentRow, job: Job, before: string
   }
 }
 
-/**
- * A headless run never prompts, so a denied tool call is silent and the agent
- * quietly invents a workaround. Surfacing it as an escalation is the only way
- * the boss ever finds out.
- */
 /**
  * The credential stopped working.
  *
@@ -994,13 +947,10 @@ function handleRateLimit(deps: ExecDeps, agent: AgentRow, job: Job, r: TurnResul
 }
 
 function overTokenBudget(agent: AgentRow, cfg: Config): boolean {
-  // Fallback trigger only. The real rotation point is slice completion, which
-  // is a clean semantic boundary and makes the handoff cheap.
-  //
-  // The denominator used to be the literal 200_000 for every model. Measured on
-  // this repo's own logs, sonnet-5 and opus-5 report a 1M window — so the strong
-  // models were rotating at 12% of theirs, and every rotation throws away a cached
-  // prefix that cost real money to build.
+  // Fallback trigger only. The real rotation point is slice completion, a clean
+  // semantic boundary that makes the handoff cheap. The denominator is the
+  // model's own window, never a literal: the strong models have far more, and
+  // every rotation throws away a cached prefix that cost money to build.
   const ceiling = contextWindowFor(cfg, agent.model, agent.context_window) * cfg.sessionRotateFraction;
   return agent.session_tokens > ceiling;
 }
@@ -1138,8 +1088,7 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
     logPath,
     timeoutMs: cfg.leaseTimeoutMs,
     // The group's own sandbox. A lease used to be the one thing that ran on the
-    // boss's machine with the boss's permissions — docs/project/plan.md called the runner the
-    // sandbox's only hole. There is no hole now.
+    // boss's machine with the boss's permissions; there is no hole now.
     exec: resourceExec(ctx, scope),
   });
   if (!("digest" in out)) return finishLease(deps, leaseId, 126, out.error, logPath);

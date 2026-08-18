@@ -20,20 +20,11 @@ export type GitRunner = (repo: string, argv: string[], cwd?: string) => Promise<
 
 /**
  * The ref this branch is measured against, verified to exist: `origin/main`,
- * `origin/develop`, a bare `master` in a clone with no remote — whatever this
- * repository actually has.
+ * `origin/develop`, a bare `master` in a clone with no remote.
  *
- * Null when nothing resolves, and every caller stops on null rather than
- * carrying on. That is the point of returning it: a guessed `origin/main` does
- * not fail as *this repository has no base branch*, it fails as `fatal:
- * ambiguous argument 'origin/main'` in the middle of a rebase, a squash or a
- * diff — three different messages for one cause, none of which names it.
- *
- * Three callers each wrote `origin/${await detectBaseBranch(...)}` and each took
- * an override argument that no caller outside a test ever passed. So the
- * hardcoded `origin/` prefix was the only path in production, and it is wrong
- * for exactly the clone that has no remote — the one where the fallback was
- * supposed to help.
+ * Null when nothing resolves, and every caller stops on null. A guessed
+ * `origin/main` does not fail as *this repository has no base branch*, it fails as
+ * `fatal: ambiguous argument 'origin/main'` mid-rebase, mid-squash or mid-diff.
  */
 export async function baseRef(git: GitRunner, repoPath: string): Promise<string | null> {
   const name = await detectBaseBranch(git, repoPath);
@@ -63,17 +54,10 @@ export async function rebaseOntoBase(git: GitRunner, repoPath: string, worktree:
 /**
  * A rebase nobody is going to finish.
  *
- * A turn killed mid-rebase — the server stopped, the watchdog took the process,
- * the agent hit its turn cap — leaves `rebase-merge/` in the worktree, and every
- * later rebase refuses with "there is already a rebase-merge directory … I am
- * stopping in case you still have something valuable there". Right for a human
- * at a terminal; here it means the group can never wake, and it says so once per
- * wake attempt forever. Observed on response-aiagent-markdown.
- *
- * Nothing valuable is in there: whatever the interrupted rebase was replaying is
- * still in the branch it was replaying from, and this is called at the start of a
- * rebase that is about to redo the work anyway. `--abort` restores the pre-rebase
- * HEAD, which is exactly the state the caller assumes.
+ * A turn killed mid-rebase leaves `rebase-merge/`, and every later rebase refuses —
+ * right for a human at a terminal, but here the group can never wake. Nothing
+ * valuable is in there: what the interrupted rebase was replaying is still in the
+ * branch it replayed from, and `--abort` restores the pre-rebase HEAD.
  */
 async function abortStaleRebase(git: GitRunner, repoPath: string, worktree: string): Promise<boolean> {
   // Ask git rather than look for `.git/rebase-merge` on disk: the checkout lives
@@ -87,16 +71,9 @@ async function abortStaleRebase(git: GitRunner, repoPath: string, worktree: stri
  * The default branch's **bare** name — `main`, `master`, `trunk`, whatever this
  * remote actually calls it.
  *
- * Bare, and that is the whole point of the rewrite: this used to return
- * `origin/main` when `origin/HEAD` was set and `main` when it was not, while four
- * of its callers wrote `origin/${await defaultBase(...)}`. On any repository where
- * `origin/HEAD` exists — which is every clone — those asked git for
- * `origin/origin/main`.
- *
- * Asked in the order that is right rather than convenient: the remote's own HEAD
- * first (a repo whose default is `trunk` says so here), then whichever of
- * main/master exists on the remote, then locally. `HEAD` last, for a repository
- * with no branches yet.
+ * Bare, because callers write `origin/${...}` around it and a returned
+ * `origin/main` made those ask git for `origin/origin/main`. Asked in the right
+ * order: the remote's own HEAD, then main/master on the remote, then locally.
  */
 async function existingBase(git: GitRunner, repoPath: string, prefix = ""): Promise<string | null> {
   for (const branch of ["main", "master"]) {
@@ -130,11 +107,8 @@ export async function detectBaseBranch(git: GitRunner, repoPath: string): Promis
 /**
  * What a checkpoint contains, from the `git status` it already ran.
  *
- * A checkpoint whose message is only `wip: S2: engineer` says nothing that
- * `git log --stat` does not — but these commits survive into review whenever
- * `squashWip` declines, and the boss reading the branch then has a list of
- * subjects and no idea which one to open. Twelve paths and a count is a page of
- * the log that answers "where did this touch" without a second command.
+ * These commits survive into review whenever `squashWip` declines, and a list of
+ * `wip:` subjects leaves the boss with no idea which one to open.
  */
 const CAP = 12;
 function touched(porcelain: string): string {
@@ -149,23 +123,10 @@ export const STATUS_Z = ["status", "--porcelain", "-z"];
 /**
  * The paths `git status --porcelain -z` reports, as they exist on disk.
  *
- * Must be the `-z` form, and the reason is not tidiness. Without it git applies
- * `core.quotePath`, which defaults to on: a path outside ASCII comes back as
- * `"docs/\350\256\276\350\256\241.md"` and a path containing a space comes back
- * quoted too. The caller that mattered is the file-ownership sweep in
- * `executor.ts`, which feeds these names straight to `git checkout --` and
- * `git clean -fd` — and a mangled name matches no pathspec, so git answers
- *
- *     error: pathspec 'docs/\350\256\276\350\256\241.md' did not match any file(s)
- *
- * exits 1, changes nothing, and the exit code was not read. The out-of-bounds
- * file survived and the bus announced it had been reverted, with a count. That
- * is decision 005's only remaining enforcement failing open and reporting
- * success, in a project whose runtime output language is Chinese.
- *
- * `-z` also removes the second guess: entries are NUL-separated, so a rename is
- * `XY new\0old\0` rather than `XY old -> new`, and a path that legitimately
- * contains " -> " stops being ambiguous.
+ * Must be `-z`: without it `core.quotePath` is on by default, so a non-ASCII or
+ * spaced path comes back quoted and matches no pathspec — and `executor.ts` feeds
+ * these names straight to `git checkout --` and `git clean -fd`. `-z` also makes a
+ * rename `XY new\0old\0` rather than `XY old -> new`, killing the " -> " guess.
  */
 export function porcelainPaths(zOut: string): string[] {
   return porcelainEntries(zOut).map((entry) => entry.path);
@@ -230,16 +191,9 @@ export async function checkpoint(
  * What every commit carries besides its message, when nobody said otherwise.
  *
  * `-s` is git's own flag and writes `Signed-off-by` from the configured author,
- * which is why `createCheckout` sets that author from the connected account —
- * DCO checks that the two match.
- *
- * The co-author trailer is appended to the message instead, because git has no
- * flag for it: GitHub reads a `Co-Authored-By:` line in the body. It goes last,
- * after a blank line, which is where every tool that parses trailers looks.
- *
- * The bot is `BOT`, not a copy of it: an address written out twice is an address
- * that can disagree with itself, and the half that is wrong is the half a DCO
- * check rejects — after every gate has already passed.
+ * which is why `createCheckout` sets that author from the connected account — DCO
+ * checks the two match. The co-author trailer is appended to the message instead,
+ * git having no flag for it. `BOT`, not a copy: two addresses can disagree.
  */
 const DEFAULT_TRAILERS: Trailers = { signoff: true, coauthor: true, bot: { ...BOT } };
 
@@ -249,8 +203,7 @@ function withTrailers(message: string, t: Trailers = DEFAULT_TRAILERS): string {
   if (!t.coauthor) return message;
   const line = `Co-Authored-By: ${t.bot.name} <${t.bot.email}>`;
   // Already there — a squash rewrites a message that may carry it from the wip
-  // commits it is collapsing, and two identical trailers is a diff nobody wants
-  // to explain.
+  // commits it is collapsing, and two identical trailers is a diff nobody wants.
   if (message.includes(line)) return message;
   return `${message.replace(/\s+$/, "")}\n\n${line}\n`;
 }
@@ -264,13 +217,10 @@ export interface SquashResult {
 /**
  * Fold the turn checkpoints into one commit before the PR.
  *
- * Every turn leaves a `wip:` commit, so a three-slice feature arrives as a
- * dozen commits all called "wip: engineer turn" — unreviewable, and the
- * opposite of the linear history the merge queue wants.
- *
- * Only an all-`wip:` range is squashed. An agent that wrote real commit
- * messages said something worth keeping, and flattening that would destroy
- * information to satisfy a rule about noise.
+ * Every turn leaves a `wip:` commit, so a three-slice feature arrives as a dozen
+ * commits all called "wip: engineer turn" — the opposite of the linear history the
+ * merge queue wants. Only an all-`wip:` range is squashed: an agent that wrote real
+ * commit messages said something worth keeping.
  */
 export async function squashWip(
   git: GitRunner,
@@ -309,9 +259,8 @@ export async function squashWip(
 /**
  * Discard everything after `sha` — intercept L3's "interrupt and roll back".
  *
- * Returns whether it worked. A rollback that quietly fails is worse than one
- * that errors: the boss reads "rolled back to abc123" and believes the state
- * was restored.
+ * Returns whether it worked. A rollback that quietly fails is worse than one that
+ * errors: the boss reads "rolled back to abc123" and believes it.
  */
 export async function rollbackTo(
   git: GitRunner,
@@ -330,11 +279,9 @@ export async function rollbackTo(
 /**
  * Files changed since a checkpoint — the reconcile input, and free narration.
  *
- * Compares the *working tree* against the sha, not `sha..HEAD`. Reconcile runs
- * the moment a task is marked done, while the turn's work is still uncommitted:
- * comparing commits made every first attempt look like it had changed nothing,
- * and it only "passed" on the retry because the next turn's checkpoint had
- * quietly committed the previous turn's work.
+ * Compares the *working tree* against the sha, not `sha..HEAD`. Reconcile runs the
+ * moment a task is marked done, while the turn's work is still uncommitted, so
+ * comparing commits makes every first attempt look like it changed nothing.
  */
 /** Every path the branch point knew about. Used to tell a deletion from a fiction. */
 export async function filesAt(git: GitRunner, repoPath: string, worktree: string, sha: string): Promise<string[]> {
@@ -350,18 +297,10 @@ export async function filesAt(git: GitRunner, repoPath: string, worktree: string
 /**
  * What to diff a slice against, after somebody has rebased the branch.
  *
- * `slice.base_sha` is the branch tip when the slice started, and it is the right
- * base right up until a rebase rewrites the branch onto a newer main. Then the
- * recorded commit is no longer a point on this branch — it is an ancestor of
- * main — and `git diff <base_sha>` starts reporting every other group's landed
- * work as this slice's change. Groups here rebase on every main push (watchdog
- * rule 15), so that is the normal case, not the rare one.
- *
- * Rule: keep `base_sha` only while it still sits on this branch at or after the
- * fork from main. Otherwise diff from the fork point — the whole branch against
- * origin/main, which is exactly what the PR will show. Says which one it used,
- * because "this slice" and "this branch" are different claims and the boss is
- * accepting one of them.
+ * Keep `base_sha` only while it still sits on this branch at or after the fork from
+ * main; otherwise diff from the fork point, which is what the PR will show. After a
+ * rebase the recorded commit is an ancestor of main, not a point on this branch, so
+ * `git diff <base_sha>` reports other groups' landed work. Says which it used.
  */
 export async function sliceDiffBase(
   git: GitRunner,
