@@ -4,14 +4,12 @@ import { useEffect, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
-  Bell,
   Box,
   Coins,
   Gauge,
   GitBranch,
   KeyRound,
   ListChecks,
-  MonitorCog,
   Server,
   SlidersHorizontal,
   Sparkles,
@@ -88,7 +86,11 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   // because there is only GitHub, and the day there is a second one, renaming a
   // nav item is one string.
   { key: "github", zh: "GitHub", icon: GitBranch },
-  { key: "host", zh: "环境", icon: MonitorCog },
+  // Everything about the sandbox, in the order you need it: what the machine must
+  // have, the server that opens containers, and what a container is built with.
+  // 环境 used to be its own item and its own note said "沙盒要用的" — the checks are
+  // docker and uv, which is the sandbox's prerequisites and nothing else's.
+  //
   // The server *and* what it is told to build, in one pane. These were two
   // sections, and the comment on the second one already said it belonged "under
   // 沙盒服务器, the same subject one level down" — while the rendering put five
@@ -113,7 +115,6 @@ const NAV: Array<{ key: Section; zh: string; icon: typeof KeyRound; project?: tr
   { key: "sched", zh: "调度", icon: Gauge },
   { key: "models", zh: "模型与预算", icon: Coins },
   { key: "turn", zh: "turn 与上下文", icon: Timer },
-  { key: "notify", zh: "通知", icon: Bell },
   { key: "prefs", zh: "偏好", icon: SlidersHorizontal },
   { key: "gates", zh: "闸门", icon: ListChecks, project: true },
   { key: "sandbox", zh: "沙盒", icon: Box, project: true },
@@ -420,9 +421,12 @@ function SettingsPanes({
       />
     ),
     github: <GithubSettings open={open} section={section} />,
-    host: <EnvPane checks={checks.filter((c) => !isCredential(c))} />,
     server: (
       <>
+        {/* Prerequisites first: a server that will not start is usually docker,
+            and the answer is above the thing that failed rather than in another
+            pane. */}
+        <EnvPane checks={checks.filter((c) => !isCredential(c))} />
         <SandboxServerSettings open={open} section={section} rows={rows} checks={checks} onSaved={onSaved} />
         {/* What a container is built with, for a project that says nothing. A
             project's own 沙盒 pane overrides these. */}
@@ -433,7 +437,6 @@ function SettingsPanes({
     sched: <Knobs section="sched" />,
     models: <Knobs section="models" />,
     turn: <Knobs section="turn" />,
-    notify: <Knobs section="notify" />,
     prefs: <Preferences />,
     gates: projectPane("gates"),
     sandbox: projectPane("sandbox"),
@@ -516,6 +519,10 @@ function Preferences() {
           </FieldContent>
         </Field>
       </FieldGroup>
+      {/* Notifications were a nav item of their own for one knob and a browser
+          permission — and both are exactly what this pane is: local to this
+          machine, not carried by the project. */}
+      <Knobs section="notify" />
     </>
   );
 }
@@ -556,7 +563,7 @@ function SettingsNavigation({
   // the gear in the header, which is where they saw it before they clicked.
   const nags: Partial<Record<Section, boolean>> = {
     cred: needsCredentials(rows),
-    host: needsHostAttention(checks),
+    server: needsHostAttention(checks),
     gates: needsGates(project),
   };
 
