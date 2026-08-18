@@ -6,6 +6,7 @@
  * `bun test`, which must perform no network I/O.
  */
 
+import { ExportResultCode } from "@opentelemetry/core";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
@@ -41,15 +42,17 @@ const QUEUE = {
  * The processor's own queue-full drops are logged through `diag` but are not
  * reachable as a number through the public `sdk-trace-base` surface, so this
  * covers the loss path an operator can act on: batches that were sent and
- * rejected. Every OTLP failure path reports an error and no success path does,
- * which keeps this off `ExportResultCode` — that enum is only exported by
- * `@opentelemetry/core`, which is not a declared dependency here.
+ * rejected.
+ *
+ * On `code`, which `ExportResult` declares required, rather than on the optional
+ * `error` — an exporter that fails without attaching one would otherwise drop
+ * silently.
  */
 function counting(inner: SpanExporter): SpanExporter {
   return {
     export: (spans, done) =>
       inner.export(spans, (result) => {
-        if (result.error) recordDroppedSpans(spans.length);
+        if (result.code === ExportResultCode.FAILED) recordDroppedSpans(spans.length);
         done(result);
       }),
     shutdown: () => inner.shutdown(),

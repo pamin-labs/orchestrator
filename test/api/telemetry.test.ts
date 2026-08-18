@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { JsonObject } from "../../src/contracts/json.ts";
 import { getTelemetry, TelemetryQuery, type TelemetryReport } from "../../src/api/panel/telemetry.ts";
@@ -53,38 +53,43 @@ async function report(
   return { status: response.status, body };
 }
 
-test("a scope of group, project or system is accepted and anything else is not", () => {
-  expect(parse({ scope: "group", id: "3" }).success).toBe(true);
-  expect(parse({ scope: "project", id: "7" }).success).toBe(true);
-  expect(parse({ scope: "system" }).success).toBe(true);
-  expect(parse({ scope: "fleet", id: "1" }).success).toBe(false);
+/**
+ * The query the panel sends, and everything a hand-typed URL can send instead.
+ *
+ * A case per query, because the query *is* the finding: as one test per rule
+ * this printed `expected false, received true` and left the reader to work out
+ * which of four ids the schema had started accepting.
+ */
+describe("the telemetry query is validated before it reaches a statement", () => {
+  test.each([
+    [{ scope: "group", id: "3" }, true],
+    [{ scope: "project", id: "7" }, true],
+    [{ scope: "system" }, true],
+    [{ scope: "fleet", id: "1" }, false],
+    // Not a formality: silently defaulting a missing id would report some other
+    // scope's time under this one's heading, and silently ignoring an id on
+    // `system` would make a panel bug look like a working query.
+    [{ scope: "group" }, false],
+    [{ scope: "project" }, false],
+    [{ scope: "system", id: "3" }, false],
+    // A scope id is a positive integer.
+    [{ scope: "group", id: "0" }, false],
+    [{ scope: "group", id: "-1" }, false],
+    [{ scope: "group", id: "1.5" }, false],
+    [{ scope: "group", id: "'; DROP TABLE span; --" }, false],
+    // A window cannot ask for more than retention keeps.
+    [{ scope: "system", windowMs: String(SPAN_MAX_AGE_MS) }, true],
+    [{ scope: "system", windowMs: String(SPAN_MAX_AGE_MS + 1) }, false],
+    // A trace id must be a trace id.
+    [{ scope: "system", trace: "a".repeat(32) }, true],
+    [{ scope: "system", trace: "a".repeat(31) }, false],
+    [{ scope: "system", trace: "../../etc/passwd" }, false],
+  ])("%j is accepted: %p", (query, accepted) => {
+    expect(parse(query).success).toBe(accepted);
+  });
 });
 
-test("a group or project scope without an id is refused, and system with one", () => {
-  // Not a formality: silently defaulting a missing id would report some other
-  // scope's time under this one's heading, and silently ignoring an id on
-  // `system` would make a panel bug look like a working query.
-  expect(parse({ scope: "group" }).success).toBe(false);
-  expect(parse({ scope: "project" }).success).toBe(false);
-  expect(parse({ scope: "system", id: "3" }).success).toBe(false);
-});
-
-test("a scope id must be a positive integer", () => {
-  expect(parse({ scope: "group", id: "0" }).success).toBe(false);
-  expect(parse({ scope: "group", id: "-1" }).success).toBe(false);
-  expect(parse({ scope: "group", id: "1.5" }).success).toBe(false);
-  expect(parse({ scope: "group", id: "'; DROP TABLE span; --" }).success).toBe(false);
-});
-
-test("a window cannot ask for more than retention keeps", () => {
-  expect(parse({ scope: "system", windowMs: String(SPAN_MAX_AGE_MS) }).success).toBe(true);
-  expect(parse({ scope: "system", windowMs: String(SPAN_MAX_AGE_MS + 1) }).success).toBe(false);
-});
-
-test("a trace id must be a trace id", () => {
-  expect(parse({ scope: "system", trace: "a".repeat(32) }).success).toBe(true);
-  expect(parse({ scope: "system", trace: "a".repeat(31) }).success).toBe(false);
-  expect(parse({ scope: "system", trace: "../../etc/passwd" }).success).toBe(false);
+test("a trace id is stored lowercase", () => {
   // Stored lowercase, so an uppercase id from a copied header still resolves.
   const upper = parse({ scope: "system", trace: "A".repeat(32) });
   expect(upper.success && upper.data.trace).toBe("a".repeat(32));

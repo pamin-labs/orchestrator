@@ -3,7 +3,12 @@ import type { Attributes } from "@opentelemetry/api";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { AggregationType, MeterProvider, MetricReader, type ViewOptions } from "@opentelemetry/sdk-metrics";
-import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import {
+  ATTR_HTTP_REQUEST_METHOD,
+  ATTR_HTTP_RESPONSE_STATUS_CODE,
+  ATTR_HTTP_ROUTE,
+  ATTR_SERVICE_NAME,
+} from "@opentelemetry/semantic-conventions";
 import { JOB_STATES } from "../../contracts/states.ts";
 import type { DB } from "../persistence/database.ts";
 import { endSpan, shutdownTracing, type Trace } from "./traces.ts";
@@ -188,9 +193,9 @@ export function observeHttp(method: string, path: string, status: number, trace:
   httpRequests.add(1, attributes);
   httpDuration.record(seconds, attributes);
   endSpan(trace, `${method} ${route}`, status >= 500, {
-    "http.request.method": method,
-    "http.route": route,
-    "http.response.status_code": status,
+    [ATTR_HTTP_REQUEST_METHOD]: method,
+    [ATTR_HTTP_ROUTE]: route,
+    [ATTR_HTTP_RESPONSE_STATUS_CODE]: status,
     ...scopeAttributes(scope),
   });
 }

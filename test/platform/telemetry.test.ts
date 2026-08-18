@@ -3,6 +3,7 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { MeterProvider, MetricReader } from "@opentelemetry/sdk-metrics";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import {
+  AlwaysOffSampler,
   InMemorySpanExporter,
   NodeTracerProvider,
   SimpleSpanProcessor,
@@ -11,7 +12,7 @@ import {
 import { makeApp } from "../../src/composition/api.ts";
 import { openMemory } from "../../src/platform/persistence/database.ts";
 import { MAX_REQUEST_SERIES, metricViews, prometheus } from "../../src/platform/observability/metrics.ts";
-import { installTracerProvider } from "../../src/platform/observability/traces.ts";
+import { installTracerProvider, startTrace, traceparent } from "../../src/platform/observability/traces.ts";
 import { Scheduler } from "../../src/platform/scheduling/scheduler.ts";
 import { testContext } from "../support/test-context.ts";
 
@@ -208,4 +209,13 @@ test("a drained queue reports zero rather than keeping the depth it last had", a
   } finally {
     ctx.db.close();
   }
+});
+
+test("traceparent carries the span's own sampled flag, not a hard-coded one", () => {
+  // The header was built as `00-<trace>-<span>-01`, with the flags written
+  // literally. Every span is sampled today, so it was latent — but the first
+  // sampler configured makes this advertise SAMPLED downstream for a trace this
+  // process dropped, and the receiver keeps it on our word.
+  installTracerProvider(new NodeTracerProvider({ sampler: new AlwaysOffSampler() }));
+  expect(traceparent(startTrace())).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-00$/);
 });

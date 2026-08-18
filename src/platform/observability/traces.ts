@@ -142,7 +142,10 @@ export function startChildTrace(traceId?: string | null, parentSpanId?: string |
 }
 
 export function traceparent(trace: Trace): string {
-  return `00-${trace.traceId}-${trace.spanId}-01`;
+  // The span's own flags, not a literal `01`. A sampler configured in this process
+  // would otherwise have this header telling downstream to keep a trace we dropped.
+  const flags = trace.span.spanContext().traceFlags.toString(16).padStart(2, "0");
+  return `00-${trace.traceId}-${trace.spanId}-${flags}`;
 }
 
 /**

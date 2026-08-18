@@ -20,7 +20,7 @@
  */
 
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
-import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
+import { ExportResultCode, hrTimeToMilliseconds, type ExportResult } from "@opentelemetry/core";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-node";
 import type { Statement } from "bun:sqlite";
 import { JsonObject, jsonOr } from "../../contracts/json.ts";
@@ -112,10 +112,6 @@ function scopeId(attributes: Record<string, unknown>, key: string): number | nul
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
-function hrToMillis(time: [number, number]): number {
-  return time[0] * 1_000 + time[1] / 1e6;
-}
-
 function toSpanRow(span: ReadableSpan): SpanRow {
   const ctx = span.spanContext();
   return {
@@ -124,8 +120,8 @@ function toSpanRow(span: ReadableSpan): SpanRow {
     parentSpanId: span.parentSpanContext?.spanId ?? null,
     name: span.name,
     kind: spanKindName(span.kind),
-    startedAt: Math.round(hrToMillis(span.startTime)),
-    durationMs: hrToMillis(span.duration),
+    startedAt: Math.round(hrTimeToMilliseconds(span.startTime)),
+    durationMs: hrTimeToMilliseconds(span.duration),
     status: spanStatusName(span.status.code),
     attributes: { ...span.attributes },
   };
