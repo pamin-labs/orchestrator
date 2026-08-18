@@ -432,7 +432,14 @@ test("the lessons list is capped where it is written", async () => {
   );
   expect(r.status).toBe(200);
 
-  const rows = h.db.query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'lesson' ORDER BY at DESC").all();
+  // `at DESC, id DESC`: the lessons are written in a loop through HTTP, so
+  // several share a millisecond and `at` alone is not a total order — `rows[0]`
+  // was then whichever row SQLite felt like returning. The id is monotonic and
+  // agrees with `at` wherever `at` distinguishes anything, so it is the
+  // tiebreak that says "later" rather than a second opinion about it.
+  const rows = h.db
+    .query<{ body: string }, []>("SELECT body FROM note WHERE kind = 'lesson' ORDER BY at DESC, id DESC")
+    .all();
   // A list that keeps growing becomes the very context cost it exists to prevent.
   expect(rows.length).toBe(LESSON_CAP);
   expect(rows[0]!.body).toBe("the newest lesson");

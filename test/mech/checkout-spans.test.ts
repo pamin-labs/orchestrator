@@ -28,8 +28,19 @@ function traced(handler: Parameters<typeof fakeSandbox>[0]) {
   return { db, provider, ctx: testContext({ db, sandbox: fakeSandbox(handler) }) };
 }
 
+/**
+ * The spans that were written, by name — deliberately not in time order.
+ *
+ * `ORDER BY started_at` is not a total order: a parent and the child it opens
+ * immediately can share a millisecond, and which one SQLite returns first is
+ * then whatever the storage engine feels like. That made this file fail about
+ * one run in ten with the two rows transposed, and the transposition meant
+ * nothing — the assertions are about *which* spans exist and what status each
+ * carries, not about their sequence. Nesting has its own helper below, and it
+ * reads parent ids rather than guessing from a clock.
+ */
 const spans = (db: DB) =>
-  db.query<{ name: string; status: string }, []>("SELECT name, status FROM span ORDER BY started_at").all();
+  db.query<{ name: string; status: string }, []>("SELECT name, status FROM span ORDER BY name").all();
 
 /** Which span each one hangs off, by name, so nesting is assertable without ids. */
 const parents = (db: DB) =>
@@ -71,8 +82,8 @@ test("a container that refuses marks the span, and still answers empty", async (
     // healthy container is not a transport failure. `execIn` marks its span only
     // for exit 126, which it reserves for a container it could not reach at all.
     expect(spans(t.db)).toEqual([
-      { name: "sandbox.exec", status: "unset" },
       { name: "git.tree_heads", status: "error" },
+      { name: "sandbox.exec", status: "unset" },
     ]);
   } finally {
     installTracerProvider(new NodeTracerProvider());
