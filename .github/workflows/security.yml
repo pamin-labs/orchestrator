@@ -17,9 +17,72 @@ env:
   TRIVY_VERSION: v0.74.0
 
 jobs:
+  # Which of the expensive jobs below this commit can actually invalidate.
+  #
+  # The trap this deliberately avoids is `paths-ignore` on the workflow: a
+  # workflow that never fires never posts its check runs, and a required check
+  # that was never posted is *missing* rather than skipped, so the pull request
+  # waits on it forever. A job skipped by `if` is different — the workflow ran,
+  # the check run exists, and it completes as `skipped`, which the merge gate
+  # accepts. The cost is one checkout and a `grep`.
+  #
+  # The two gated jobs ask `!= 'false'` rather than `== 'true'`, with an
+  # `always()` so a dependency that did not succeed does not skip them. A job
+  # skipped for any reason — including because this one failed — still completes
+  # as `skipped`, which the merge gate accepts: an `== 'true'` condition would
+  # make a broken filter silently drop two required security checks. Unset is
+  # not "no", so the only thing that turns a gate off is this job saying so.
+  #
+  # Outside a pull request every gate runs regardless of what changed, because
+  # `release.yml` demands `completed:success` from every name in
+  # `.github/required-checks.txt` for the main SHA it releases — and `skipped`
+  # is not `success`. A docs-only commit landing on main would otherwise make
+  # that commit unreleasable.
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      container: ${{ steps.filter.outputs.container }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        if: github.event_name == 'pull_request'
+        with:
+          # The pull request is checked out as its merge commit, so the first
+          # parent is the base it would merge into: two commits is the whole
+          # diff, and a full history costs seconds this job exists to save.
+          fetch-depth: 2
+          persist-credentials: false
+      - id: filter
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo 'container=true' >> "$GITHUB_OUTPUT"
+            echo 'workflows=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only HEAD^1 HEAD)
+          printf '%s\n' "$files"
+          matches() { printf '%s\n' "$files" | grep -qE "$1"; }
+          # `security-container` scans the filesystem as well as the image, so
+          # the lockfile and the manifest count as container input even though
+          # they are not under `docker/`.
+          if matches '^(docker/|trivy\.yaml$|bun\.lock$|package\.json$)'; then
+            echo 'container=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'container=false' >> "$GITHUB_OUTPUT"
+          fi
+          if matches '^\.github/'; then
+            echo 'workflows=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'workflows=false' >> "$GITHUB_OUTPUT"
+          fi
+
   security-fallow:
     name: security-fallow
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -43,6 +106,7 @@ jobs:
   security-dependencies:
     name: security-dependencies
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -60,7 +124,10 @@ jobs:
 
   security-container:
     name: security-container
+    needs: changes
+    if: always() && needs.changes.outputs.container != 'false'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -124,8 +191,12 @@ jobs:
           file: docker/agent.Dockerfile
           tags: orchestrator-agent:ci
           load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # The same scope `release.yml` writes from its amd64 `image-build`, so
+          # a pull request warms from the last release instead of from nothing.
+          # An unscoped `type=gha` is its own namespace: the two jobs built the
+          # identical Dockerfile and shared no layer.
+          cache-from: type=gha,scope=orch-agent-amd64
+          cache-to: type=gha,mode=max,scope=orch-agent-amd64
       - name: scan container
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
@@ -214,7 +285,10 @@ jobs:
 
   workflow-static:
     name: workflow-static
+    needs: changes
+    if: always() && needs.changes.outputs.workflows != 'false'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
       attestations: read # Verify actionlint release provenance.

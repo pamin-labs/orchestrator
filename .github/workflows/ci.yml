@@ -49,6 +49,7 @@ jobs:
   quality:
     name: quality
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -56,36 +57,12 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      # Before anything that can fail. `upload-artifact` runs on `always()` so a
-      # red job still hands its evidence over — but it cannot upload a directory
-      # that a failing step never got to create, and it then reports "no files
-      # found", which is a second, misleading error stacked on the real one.
-      - name: open report directory
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/report"
-          printf '%s' "$PR_NUMBER" > "$RUNNER_TEMP/report/pr-number.txt"
       - name: format
         run: bun run format:check
       - name: types
         run: bun run typecheck
       - name: lint
         run: bun run lint
-      - name: web bundle
-        run: bun run build:web
-      - name: size budgets
-        run: |
-          set -euo pipefail
-          bun run perf:budget | tee "$RUNNER_TEMP/report/budget.txt"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: report-budget
-          path: ${{ runner.temp }}/report
-          if-no-files-found: error
-          retention-days: 7
       # Nothing above may leave the tree dirty — a formatter or a build that
       # writes into the repository is a diff the author never saw.
       - name: nothing was rewritten
@@ -102,6 +79,7 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -111,7 +89,10 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - run: bun run build:web
+      # Before anything that can fail. `upload-artifact` runs on `always()` so a
+      # red job still hands its evidence over — but it cannot upload a directory
+      # that a failing step never got to create, and it then reports "no files
+      # found", which is a second, misleading error stacked on the real one.
       - name: open report directory
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -119,6 +100,14 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/report"
           printf '%s' "$PR_NUMBER" > "$RUNNER_TEMP/report/pr-number.txt"
+      # The only `build:web` in this workflow. `quality` ran a second one purely
+      # to measure the result, so the same bundle was compiled twice per pull
+      # request; the measurement moved to the job that already has a bundle.
+      - run: bun run build:web
+      - name: size budgets
+        run: |
+          set -euo pipefail
+          bun run perf:budget | tee "$RUNNER_TEMP/report/budget.txt"
       # `test:coverage:ci` and not the commands inlined here: a gate that
       # assembles its own version of a project command drifts from the one a
       # developer runs, and then only CI knows what is actually checked. It is
@@ -170,6 +159,7 @@ jobs:
   pr:
     name: pr
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: skip outside pull requests
         if: github.event_name != 'pull_request'

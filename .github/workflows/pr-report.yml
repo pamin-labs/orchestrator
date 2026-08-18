@@ -24,8 +24,15 @@ concurrency:
 jobs:
   pr-report:
     name: pr-report
-    if: github.event.workflow_run.event == 'pull_request'
+    # A cancelled upstream run has nothing to report: `ci` sets
+    # `cancel-in-progress`, so every push after the first cancels the run
+    # before it, and `workflow_run: completed` fires for each of those too.
+    # Without the conclusion filter this workflow bills a job to download
+    # artifacts that were never uploaded and post "uploaded no report
+    # artifacts" over the comment the finished run is about to write.
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       pull-requests: write # Maintain the single sticky report comment.
       actions: read # Read the triggering run's artifacts.

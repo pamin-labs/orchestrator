@@ -12,5 +12,20 @@ runs:
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
         bun-version: ${{ inputs.bun-version }}
+    # `setup-bun` caches the Bun binary, not the packages it then downloads, and
+    # this action runs four times per pull request — `ci` twice, `security`
+    # twice — each one resolving the same frozen lockfile from the network.
+    # The key is the lockfile, so a run that changes no dependency restores
+    # rather than downloads; `restore-keys` still gives a partial tree to a pull
+    # request that does change one, so only the delta is fetched.
+    #
+    # Keyed on the Bun version as well because the cache holds what that version
+    # of the resolver wrote, and on the architecture because `ubuntu-24.04-arm`
+    # runs this too and its packages are not the amd64 ones.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ runner.arch }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-${{ inputs.bun-version }}-
     - shell: bash
       run: bun install --frozen-lockfile

@@ -13,11 +13,13 @@ const WorkflowSchema = z.object({
       name: z.string().optional(),
       if: z.string().optional(),
       needs: z.union([z.string(), z.array(z.string())]).optional(),
+      "timeout-minutes": z.number().optional(),
       permissions: StringMap.optional(),
       strategy: z.looseObject({ matrix: JsonMap.optional() }).optional(),
       steps: z.array(
         z.object({
           name: z.string().optional(),
+          id: z.string().optional(),
           if: z.string().optional(),
           uses: z.string().optional(),
           run: z.string().optional(),
@@ -92,6 +94,29 @@ describe("workflow governance", () => {
     expect(setup.runs.steps.find((step) => step.run)?.run).toBe("bun install --frozen-lockfile");
   });
 
+  test("no job can bill six hours for being stuck, and the install is cached", async () => {
+    // The default is 360 minutes. Nothing here takes more than an hour, so the
+    // only run that reaches the default is one that has hung — a lost network
+    // read, a container that never starts — and it bills every minute of it on
+    // every job of the matrix. The number is a ceiling, not an estimate.
+    for (const name of workflowNames) {
+      const workflow = await load(name);
+      for (const [jobName, job] of Object.entries(workflow.jobs)) {
+        const limit = job["timeout-minutes"];
+        expect(limit, `${name}: ${jobName} has no timeout-minutes`).toBeDefined();
+        expect(limit, `${name}: ${jobName}`).toBeLessThanOrEqual(60);
+      }
+    }
+
+    // Four jobs per pull request run this composite action, and each one used to
+    // resolve the identical frozen lockfile over the network. The key is the
+    // lockfile, so a run that changes no dependency downloads nothing.
+    const setup = await Bun.file(".github/actions/setup-bun/action.yml").text();
+    expect(setup).toContain("actions/cache@");
+    expect(setup).toContain("path: ~/.bun/install/cache");
+    expect(setup).toContain("hashFiles('bun.lock')");
+  });
+
   test("CI exposes independent read-only required jobs", async () => {
     const ci = await load("ci");
     // Three jobs, and the count is the assertion. Actions bills per job rounded
@@ -132,11 +157,18 @@ describe("workflow governance", () => {
     );
 
     const uploadNames = uploads.map((step) => step.with?.name).filter((name) => typeof name === "string");
-    // Two artifacts, not four, because there are two jobs producing evidence.
-    // `pr-report` downloads `report-*` with `merge-multiple`, so what it reads
-    // are the *file* names — `junit.xml`, `lcov.info`, `fallow-audit.json`,
-    // `budget.txt` — and those are unchanged.
-    expect(uploadNames.toSorted((a, b) => a.localeCompare(b))).toEqual(["report-budget", "report-tests"]);
+    // One artifact, because one job produces evidence. `quality` used to upload
+    // a second one holding `budget.txt`, and the only reason it could is that it
+    // ran its own `build:web` — the same bundle `test` was compiling in
+    // parallel. The measurement moved to the job that already had the bundle,
+    // and the second build went with it. `pr-report` downloads `report-*` with
+    // `merge-multiple`, so what it reads are the *file* names — `junit.xml`,
+    // `lcov.info`, `fallow-audit.json`, `budget.txt` — and those are unchanged.
+    expect(uploadNames).toEqual(["report-tests"]);
+    // The bundle is built once per pull request. Two `build:web` runs is the
+    // cost regression this asserts against; the ordering guard below asserts the
+    // remaining one still precedes the suite.
+    expect(ciText.match(/bun run build:web/g)).toHaveLength(1);
     // A red job still has to hand its evidence over, or the comment reports nothing
     // exactly when the reader needs it most.
     for (const upload of uploads) expect(upload.if).toBe("always()");
@@ -164,7 +196,13 @@ describe("workflow governance", () => {
 
     expect(reportText).toContain("workflows: [ci]");
     expect(reportText).toContain("types: [completed]");
-    expect(job.if).toBe("github.event.workflow_run.event == 'pull_request'");
+    // `cancel-in-progress` on `ci` means most pushes leave a cancelled run
+    // behind, and `workflow_run: completed` fires for those too. Reporting one
+    // bills a job to download artifacts that were never uploaded, and overwrites
+    // the sticky comment with "uploaded no report artifacts".
+    expect(job.if).toBe(
+      "github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled'",
+    );
     expect(report.permissions).toEqual({ contents: "read" });
     expect(job.permissions).toEqual({ "pull-requests": "write", actions: "read", "id-token": "write" });
 
@@ -215,11 +253,33 @@ describe("workflow governance", () => {
 
     const security = await load("security");
     expect(Object.keys(security.jobs)).toEqual([
+      "changes",
       "security-fallow",
       "security-dependencies",
       "security-container",
       "workflow-static",
     ]);
+    // The two jobs that only answer about `docker/` and `.github/` are gated on
+    // `changes`, never on `paths-ignore`. A workflow that path filtering stops
+    // from firing posts no check run at all, and a required check that was never
+    // posted is missing rather than skipped — the pull request then waits on it
+    // forever. Both are required, so both have to keep reporting.
+    for (const name of ["security-container", "workflow-static"]) {
+      expect(requiredChecks(), name).toContain(name);
+      expect(security.jobs[name]?.needs, name).toBe("changes");
+      // `!= 'false'`, not `== 'true'`, and `always()` so a failed filter does not
+      // skip them. A skipped job completes as `skipped`, which the merge gate
+      // accepts — so a filter that breaks must fail *towards* running the gate,
+      // or breaking it becomes the way to bypass two required security checks.
+      expect(security.jobs[name]?.if, name).toMatch(/^always\(\) && needs\.changes\.outputs\.\w+ != 'false'$/);
+    }
+    // `release.yml` requires `completed:success` from every required name for
+    // the main SHA it releases, and `skipped` is not `success`. So the filter
+    // only ever answers "false" for a pull request; a docs-only commit on main
+    // still runs both, and stays releasable.
+    expect(security.jobs["changes"]!.steps.find((step) => step.id === "filter")?.run).toContain(
+      'if [ "$GITHUB_EVENT_NAME" != pull_request ]; then',
+    );
     const securityText = await source("security");
     const fallow = security.jobs["security-fallow"]!.steps.find(
       (step) => step.name === "scan newly reachable security candidates",

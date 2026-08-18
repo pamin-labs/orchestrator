@@ -71,6 +71,38 @@ zizmor runs at an exact version through the pinned uv setup action. Statistical
 microbenchmarks and randomized stress run nightly. Pull requests retain only
 deterministic artifact budgets.
 
+## What a pull request pays for
+
+Actions bills per job, rounded up to the whole minute, so the shape of the run is
+a cost decision. Three things hold it down, and each has a failure mode worth
+knowing before changing it.
+
+**Every job carries `timeout-minutes`.** They inherited the six-hour default
+until this was added; one wedged `bun test` or a hung registry pull would have
+billed 360 minutes on its own.
+
+**`bun install` is cached** in `.github/actions/setup-bun`, keyed on
+`hashFiles('bun.lock')`. It runs in four jobs per pull request and was cold in
+all four.
+
+**`security-container` and `workflow-static` are gated on what changed**, by a
+`changes` job they `needs:` — not by `paths-ignore` on the workflow. The
+difference is the whole point: a workflow that never fires produces no check run
+at all, and a required context that never posts leaves the pull request pending
+forever, which is the `check` bug described above. A job skipped by an `if`
+still completes, as `skipped`, and the merge gate accepts that.
+
+Two rules that look like details and are not:
+
+- The gates ask `!= 'false'`, not `== 'true'`, under an `always()`. An unset
+  output is therefore "run it". A filter that breaks in any way keeps the security
+  checks on rather than silently dropping two of them.
+- **Outside a pull request the filter is bypassed and every gate runs.**
+  `release.yml` demands `completed:success` from every name in
+  `.github/required-checks.txt` for the commit it releases, and `skipped` is not
+  `success` — so a docs-only commit that skipped a gate on `main` would be
+  unreleasable.
+
 ## Pull request report
 
 `ci` produces evidence; `pr-report` publishes it. The split exists because `ci`

@@ -28,6 +28,7 @@ jobs:
   checks:
     name: verify release source
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
       checks: read # Read the named CI and security results for the selected source SHA.
@@ -103,6 +104,7 @@ jobs:
     name: build five binaries
     needs: checks
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -197,6 +199,7 @@ jobs:
     name: build source SBOMs
     needs: checks
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -213,6 +216,7 @@ jobs:
     name: build and verify image (${{ matrix.platform }})
     needs: checks
     runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 45
     strategy:
       fail-fast: true
       matrix: { platform: [amd64, arm64] }
@@ -306,6 +310,7 @@ jobs:
     needs: [checks, image-build]
     if: ${{ !inputs.dry_run }}
     runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write # Push only the image archive that passed local scan and provenance checks.
@@ -358,6 +363,7 @@ jobs:
     needs: [checks, image-push]
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     outputs:
       digest: ${{ steps.manifest.outputs.digest }}
       previous-latest: ${{ steps.manifest.outputs.previous-latest }}
@@ -464,6 +470,7 @@ jobs:
     needs: [checks, binaries, source-sbom, image-build, image-push, manifest]
     if: ${{ always() && needs.checks.result == 'success' && needs.binaries.result == 'success' && needs.source-sbom.result == 'success' && needs.image-build.result == 'success' && (inputs.dry_run || (needs.image-push.result == 'success' && needs.manifest.result == 'success')) }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with: { name: release-binaries, path: dist }
@@ -498,6 +505,7 @@ jobs:
     needs: [checks, release-evidence, manifest]
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write # Create the tag and GitHub release only after every evidence gate passes.
       id-token: write # Request the OIDC identity used to sign artifact attestations.
@@ -541,6 +549,7 @@ jobs:
     needs: [manifest, publish]
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: write # Advance latest only after the immutable GitHub release exists.

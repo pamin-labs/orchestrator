@@ -18,6 +18,7 @@ jobs:
   security-codeql:
     name: security-codeql
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     permissions:
       contents: read
       security-events: write # CodeQL publishes analysis results to code scanning.
