@@ -583,6 +583,23 @@ const STANDARD_RUNNERS = new Set([
   "ubuntu-22.04-arm",
 ]);
 
+/**
+ * Every label one `runs-on` can resolve to.
+ *
+ * A matrix expression is read by its literals, because the branches are in the
+ * template and so every label it can produce is visible. Comparison operands are
+ * stripped first — `matrix.platform == 'arm64' && …` names `arm64`, which is a
+ * matrix value and not a runner, and counting it failed a workflow that was
+ * correct.
+ */
+function runnerLabels(on: string | string[]): string[] {
+  return (Array.isArray(on) ? on : [on]).flatMap((label) => {
+    const branches = label.replace(/[=!]=\s*'[^']*'/g, "");
+    const literals = [...branches.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
+    return literals.length > 0 ? literals : [label];
+  });
+}
+
 test("no job asks for a larger runner, which is charged even on a public repository", async () => {
   const offenders: string[] = [];
   for (const name of workflowNames) {
@@ -590,19 +607,8 @@ test("no job asks for a larger runner, which is charged even on a public reposit
     for (const [jobName, job] of Object.entries(workflow.jobs)) {
       const on = job["runs-on"];
       if (on === undefined) continue;
-      for (const label of Array.isArray(on) ? on : [on]) {
-        // A matrix expression is checked by its literals: the branches are in the
-        // template, so every label it can produce is visible here. Comparison
-        // operands are stripped first — `matrix.platform == 'arm64' && …` names
-        // `arm64`, which is a matrix value and not a runner, and counting it made
-        // this fail against a workflow that was correct.
-        const branches = label.replace(/[=!]=\s*'[^']*'/g, "");
-        const literals = [...branches.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
-        const seen = literals.length > 0 ? literals : [label];
-        for (const value of seen) {
-          if (!STANDARD_RUNNERS.has(value)) offenders.push(`${name}.${jobName}: ${value}`);
-        }
-      }
+      const larger = runnerLabels(on).filter((label) => !STANDARD_RUNNERS.has(label));
+      offenders.push(...larger.map((label) => `${name}.${jobName}: ${label}`));
     }
   }
   expect(offenders).toEqual([]);
