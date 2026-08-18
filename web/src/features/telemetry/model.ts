@@ -443,11 +443,12 @@ export function trendScale(
  * Whether the series can actually draw a line, which is not the same as having
  * points in it.
  *
- * An area is drawn between *adjacent* non-null points, and `connectNulls` is false
- * here on purpose — a gap is a fact. So a sporadic fleet can put ten runs in the
- * window, pass a "two or more points" test, and still render an empty box, because
- * no two of them are neighbours. Measured on ten runs over a day: at every width
- * from a minute to an hour there were ten points and zero adjacent pairs.
+ * An area is drawn between *adjacent* non-null points, so with `connectNulls` off
+ * a sporadic fleet could put ten runs in the window, pass a "two or more points"
+ * test, and still render an empty box, because no two of them were neighbours.
+ * Measured on ten runs over a day: at every width from a minute to an hour there
+ * were ten points and zero adjacent pairs. Kept as the regression that says why
+ * the chart joins across nulls rather than as a live precondition.
  */
 export const adjacentPairs = (points: readonly { p50: number | null }[]): number => {
   let pairs = 0;
@@ -477,10 +478,10 @@ export const bucketFits = (windowMs: number, bucketMs: number): boolean => windo
 /**
  * The trend as a dense series, with a point for every bucket in the window.
  *
- * The server only returns buckets that had traces in them, and a line drawn
- * through that smooths straight over the gaps — so a quiet ten minutes and ten
- * with no data draw identically. `null` renders as a break, the honest mark for
- * "nothing here" and what recharts leaves alone by default.
+ * The server only returns buckets that had traces in them, so the empty ones have
+ * to be invented here or the axis has nothing to place the rest against. They
+ * carry `null`, which the chart joins across: the axis is a number line, so the
+ * join is drawn the width of the silence rather than collapsing it.
  */
 export function fillBuckets(
   points: readonly Trend[],

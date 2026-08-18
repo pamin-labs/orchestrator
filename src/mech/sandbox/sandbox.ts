@@ -1454,13 +1454,72 @@ export const EXEC_UNAVAILABLE = 126;
  * hosts' worth of CPU asked for at once. Four is one host's worth.
  */
 export const EXEC_FANOUT = 4;
-export const execLines = (ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts) =>
-  driver(ctx).lines(ctx, scope, cmd, opts);
-export const putFile = (ctx: Ctx, scope: Scope, path: string, data: string) => driver(ctx).put(ctx, scope, path, data);
-export const getFile = (ctx: Ctx, scope: Scope, path: string) => driver(ctx).get(ctx, scope, path);
-export const getBytes = (ctx: Ctx, scope: Scope, path: string) => driver(ctx).getBytes(ctx, scope, path);
+/**
+ * A container round trip, with the span every one of them owes.
+ *
+ * `execIn` had one and the nine delegations beside it did not, so `git clone` —
+ * which this module's own comment calls the longest minute in a group's life —
+ * did not exist in 系统耗时 at all. They are one-line passthroughs, which is
+ * exactly why the span belongs here rather than at each caller: the tenth
+ * delegation gets it by being written in this shape.
+ *
+ * Never the path or the command as an attribute: both carry repository and file
+ * names, which `docs/standards/observability.md` keeps off labels. The scope is
+ * the identity, and it carries the project so the panel's project filter sees it.
+ */
+function roundTrip<T>(name: string, ctx: Ctx, scope: Scope, run: () => Promise<T>): Promise<T> {
+  const attributes = sandboxScope(scope, projectOf(ctx, scope));
+  return activeTracer().startActiveSpan(name, { attributes }, async (span) => {
+    try {
+      return await run();
+    } catch (e) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+      throw e;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+/**
+ * The streaming exec, which is a generator and so cannot use `roundTrip`.
+ *
+ * A promise wrapper would end the span when the generator was *handed over*,
+ * which is immediately — the number would be the cost of constructing an
+ * iterator rather than of the turn it streams. The span has to close when
+ * iteration does, so it is ended in a `finally` around the loop: that covers a
+ * caller who breaks out early or throws, which is how a cancelled turn leaves.
+ */
+export async function* execLines(
+  ctx: Ctx,
+  scope: Scope,
+  cmd: string,
+  opts?: ExecOpts,
+): AsyncGenerator<string, { code: number; err: string }, void> {
+  const attributes = sandboxScope(scope, projectOf(ctx, scope));
+  const span = activeTracer().startSpan("sandbox.exec_lines", { attributes });
+  try {
+    const outcome = yield* driver(ctx).lines(ctx, scope, cmd, opts);
+    if (outcome.code === EXEC_UNAVAILABLE) span.setStatus({ code: SpanStatusCode.ERROR, message: outcome.err });
+    return outcome;
+  } catch (e) {
+    span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
+    throw e;
+  } finally {
+    span.end();
+  }
+}
+export const putFile = (ctx: Ctx, scope: Scope, path: string, data: string) =>
+  roundTrip("sandbox.put_file", ctx, scope, () => driver(ctx).put(ctx, scope, path, data));
+export const getFile = (ctx: Ctx, scope: Scope, path: string) =>
+  roundTrip("sandbox.get_file", ctx, scope, () => driver(ctx).get(ctx, scope, path));
+export const getBytes = (ctx: Ctx, scope: Scope, path: string) =>
+  roundTrip("sandbox.get_bytes", ctx, scope, () => driver(ctx).getBytes(ctx, scope, path));
 export const putBytes = (ctx: Ctx, scope: Scope, path: string, data: Uint8Array) =>
-  driver(ctx).putBytes(ctx, scope, path, data);
-export const bindCredentials = (ctx: Ctx, scope: Scope, creds: Credential[]) => driver(ctx).bind(ctx, scope, creds);
-export const killSandbox = (ctx: Ctx, scope: Scope) => driver(ctx).kill(ctx, scope);
-export const renewSandbox = (ctx: Ctx, scope: Scope) => driver(ctx).renew(ctx, scope);
+  roundTrip("sandbox.put_bytes", ctx, scope, () => driver(ctx).putBytes(ctx, scope, path, data));
+export const bindCredentials = (ctx: Ctx, scope: Scope, creds: Credential[]) =>
+  roundTrip("sandbox.bind_credentials", ctx, scope, () => driver(ctx).bind(ctx, scope, creds));
+export const killSandbox = (ctx: Ctx, scope: Scope) =>
+  roundTrip("sandbox.kill", ctx, scope, () => driver(ctx).kill(ctx, scope));
+export const renewSandbox = (ctx: Ctx, scope: Scope) =>
+  roundTrip("sandbox.renew", ctx, scope, () => driver(ctx).renew(ctx, scope));

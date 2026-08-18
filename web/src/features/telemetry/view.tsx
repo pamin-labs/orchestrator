@@ -917,9 +917,10 @@ function Trend({
     event.preventDefault();
     onWindow(next);
   });
-  // Dense, so an empty bucket in the middle draws as a break rather than being
-  // smoothed over. A quiet ten minutes and ten minutes with no data are not the
-  // same fact, and a line joined across the gap says they are.
+  // Dense, so every bucket has a slot on the axis whether or not anything landed
+  // in it. The empty ones carry `null`, which `connectNulls` then joins across —
+  // legibly, because the axis is a number line and the join is drawn the width of
+  // the silence.
   const data = fillBuckets(trend, window, bucketMs);
   // Asked of what is *in the window*, not of what the server returned: panning to
   // a quiet stretch otherwise draws axes and an empty plot over a fifth of the
@@ -985,13 +986,17 @@ function Trend({
           {/* The head line is the axis key, which is now an instant rather than a
               printed label — so it is spelled the same way the ticks are. */}
           <ChartTooltip format={duration} label={(at) => trendLabel(Number(at), windowMs, bucketMs)} />
-          {/* `dot`, because an area is drawn *between* adjacent points and
-              `connectNulls` is false on purpose — a gap is a fact. A sporadic
-              fleet puts every run in its own bucket with holes either side, and
-              with no dots that renders as axes over nothing: measured at ten runs
-              across a day, zero adjacent pairs at every width up to an hour. The
-              radius is small enough that a dense series reads as a line with the
-              points marked, rather than as beads. */}
+          {/* `connectNulls`, because the x axis is a number line.
+              The objection to joining across a gap — that a quiet ten minutes and
+              ten with no data would draw identically — is an objection to a
+              *category* axis, where every bucket gets the same slot whatever the
+              clock says. Here the axis is `type="number"` over the window, so the
+              horizontal distance between two points *is* the length of the quiet
+              stretch, drawn to scale. Without it a sporadic fleet drew nothing at
+              all: measured at ten runs across a day, zero adjacent pairs at every
+              width up to an hour, because each run had its own bucket and holes
+              either side. `dot` stays, so a measurement that was taken is still
+              marked and the line between two of them is not mistaken for data. */}
           <Area
             type="monotone"
             dataKey="p50"
@@ -999,6 +1004,7 @@ function Trend({
             stroke="var(--color-ink-3)"
             fill="var(--color-sunk)"
             dot={{ r: 1.5 }}
+            connectNulls
           />
           <Area
             type="monotone"
@@ -1007,6 +1013,7 @@ function Trend({
             stroke="var(--color-warn)"
             fill="transparent"
             dot={{ r: 1.5 }}
+            connectNulls
           />
         </AreaChart>
       </ResponsiveContainer>
