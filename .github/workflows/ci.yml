@@ -3,7 +3,21 @@ name: ci
 on:
   push:
     branches: [main]
+  # `edited` as well as the three defaults, because `pr-plan` reads
+  # `github.event.pull_request.body` — and that is the body as it was when the
+  # event fired. Without this, filling in the engineering plan does not re-run
+  # the check that asked for it: the author has to push a commit they do not
+  # otherwise need, and until they do the pull request shows a red gate against
+  # a body that already satisfies it. That was observed here, twice.
+  #
+  # The whole workflow re-runs rather than `pr-plan` alone, and the alternative
+  # was rejected on purpose: skipping the other jobs with an `if` reports them
+  # as *skipped*, which a required status check reads as "never posted" and
+  # leaves the pull request pending forever — the same trap as requiring a
+  # context nothing produces. `concurrency` already cancels the previous run, so
+  # a burst of edits costs one pass of a workflow that takes about a minute.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read

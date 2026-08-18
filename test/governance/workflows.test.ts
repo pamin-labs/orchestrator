@@ -93,6 +93,12 @@ describe("workflow governance", () => {
     expect(ci.permissions).toEqual({ contents: "read" });
     expect(Object.values(ci.jobs).every((job) => job.permissions === undefined)).toBe(true);
     const ciText = await source("ci");
+    // `edited` is load-bearing, not decoration. `pr-plan` reads the pull
+    // request body out of the event payload, so without this the check that
+    // asks for the engineering plan does not re-run when the plan is written —
+    // the author has to push an unrelated commit, and until then a satisfied
+    // body shows a red gate. Observed twice on the pull request that added it.
+    expect(ciText).toContain("types: [opened, synchronize, reopened, edited]");
     expect(ciText).not.toMatch(/audit:fix|format --write|git (add|commit|push)|create-github-app-token/);
     expect(ciText).not.toContain("bun run perf:bench");
 
