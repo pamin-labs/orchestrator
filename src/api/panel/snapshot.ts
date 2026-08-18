@@ -115,7 +115,16 @@ export function snapshot(ctx: Ctx): Snapshot {
          GROUP BY n.grp_id HAVING n.at = max(n.at)`,
       )
       .all(),
-    // An objection that arrived after the card was filed. The Dispatcher does not
+    // An objection that arrived after the card was filed.
+    //
+    // The comparison is >= rather than >, and that is a fix rather than a
+    // detail: a millisecond is not an ordering key, so a card and an objection
+    // can share one, and a strict > then drops the objection entirely. That is
+    // precisely the failure this clause exists to prevent — approving a card
+    // that still reads 反对：无 while somebody has already said otherwise. The
+    // boundary has to fall on the side that shows it. Nothing else can land
+    // here: a card is a note, not an event, and the only say events considered
+    // are other agents'. The Dispatcher does not
     // wait for the Architect — a card nobody filed is worth less than a card with
     // no objection on it — so a real objection can land a minute later, while the
     // card still reads 反对 : 无. Approving that is approving something the boss
@@ -126,7 +135,8 @@ export function snapshot(ctx: Ctx): Snapshot {
         `SELECT e.grp_id AS grpId, e.author, e.body FROM event e
          JOIN grp g ON g.id = e.grp_id
          WHERE g.status = 'DRAFT' AND e.kind = 'say' AND e.author != 'dispatcher'
-           AND e.at > (SELECT max(n.at) FROM note n
+           -- Inclusive on purpose; see the comment above this query.
+           AND e.at >= (SELECT max(n.at) FROM note n
                        WHERE n.grp_id = e.grp_id
                          AND json_extract(n.frontmatter_json, '$.draft_card') = 1)
          ORDER BY e.seq`,

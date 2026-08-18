@@ -626,6 +626,21 @@ test("the state snapshot carries the filed card so the boss can see what they ap
   const late = s2.lateObjections.find((objection) => objection.grpId === grp_id);
   expect(late?.body).toContain("与验收冲突");
   expect(late?.author).toBe("architect");
+
+  // The same objection, filed in the same millisecond as the card. This is not
+  // a hypothetical: on a fast machine the two writes above land on one
+  // millisecond about one run in five, and while the comparison was a strict
+  // `>` the objection was dropped and the test failed intermittently. Dropping
+  // it is the failure the whole feature exists to prevent, so the flake was the
+  // defect showing itself rather than noise around it.
+  const cardAt = db
+    .query<{ at: number }, [number]>(
+      "SELECT max(at) AS at FROM note WHERE grp_id = ? AND json_extract(frontmatter_json, '$.draft_card') = 1",
+    )
+    .get(grp_id);
+  db.run("UPDATE event SET at = ? WHERE grp_id = ? AND kind = 'say' AND author = 'architect'", [cardAt!.at, grp_id]);
+  const s3 = await state(app);
+  expect(s3.lateObjections.filter((objection) => objection.grpId === grp_id)).toHaveLength(1);
 });
 
 test("a second group triggers boundaries for every undeclared group, not just the new one", async () => {
