@@ -65,3 +65,28 @@ test("the prompts do not send an agent to a search that ignores .gitignore", () 
     .filter((line) => /\bgrep\b/.test(line) && !/--grep|orch lease log/.test(line));
   expect(offending).toEqual([]);
 });
+
+/**
+ * `preflight` and CI check the workflows with the same actionlint.
+ *
+ * The local check used to need `brew install actionlint shellcheck`, which is a
+ * check that silently does not run for whoever skipped it — and it looks green,
+ * because a skipped step is not a failed one. It runs from the pinned image now,
+ * which this project can assume: a container runtime is already required, since
+ * the agents live in one.
+ *
+ * Two files naming the version is the cost of that, so this is the guard: a
+ * bumped CI pin and a stale local one would mean contributors and CI disagree
+ * about what a valid workflow is, which is exactly the disagreement running it
+ * locally exists to prevent.
+ */
+test("the actionlint version preflight runs is the one CI runs", () => {
+  const pinned = (text: string, re: RegExp): string | null => re.exec(text)?.[1] ?? null;
+  const ci = pinned(
+    readFileSync(join(ROOT, ".github/workflows/security.yml"), "utf8"),
+    /ACTIONLINT_VERSION:\s*([\d.]+)/,
+  );
+  const local = pinned(readFileSync(join(ROOT, "scripts/preflight.ts"), "utf8"), /ACTIONLINT_VERSION = "([\d.]+)"/);
+  expect(local).not.toBeNull();
+  expect(local).toBe(ci);
+});

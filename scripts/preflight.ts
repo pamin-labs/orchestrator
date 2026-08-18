@@ -41,6 +41,9 @@ async function cmd(line: string): Promise<Outcome> {
 }
 
 /** Whether a binary is on PATH, for the steps that need one we do not ship. */
+/** Pinned beside `security.yml`'s copy; a governance test keeps the two equal. */
+const ACTIONLINT_VERSION = "1.7.12";
+
 const has = async (bin: string): Promise<boolean> => (await $`command -v ${bin}`.quiet().nothrow()).exitCode === 0;
 
 /**
@@ -95,16 +98,25 @@ const steps: Step[] = [
     name: "workflow syntax",
     job: "workflow-static",
     run: async () => {
-      if (!(await has("actionlint"))) {
-        return { outcome: "skip", note: "actionlint not on PATH — CI runs it; `brew install actionlint shellcheck`" };
+      // A host install is used when it is there, and it is nobody's requirement.
+      // Asking a contributor to `brew install` is a check that silently does not
+      // run for whoever skipped it — which is the same failure as not having the
+      // check, except it looks green.
+      if ((await has("actionlint")) && (await has("shellcheck"))) return cmd("actionlint");
+      // Otherwise the pinned image, which this project can assume: a container
+      // runtime is already a hard requirement — the agents run in one. It also
+      // carries shellcheck and pyflakes, so the shell rules actually run; a bare
+      // `actionlint` binary skips them without saying so.
+      //
+      // Same version as `security.yml` pins, and that is the point of the
+      // constant: two places asserting different versions is worse than one
+      // place asserting none.
+      if (await has("docker")) {
+        return cmd(
+          `docker run --rm -v "${process.cwd()}":/repo -w /repo rhysd/actionlint:${ACTIONLINT_VERSION} -color`,
+        );
       }
-      if (!(await has("shellcheck"))) {
-        return {
-          outcome: "skip",
-          note: "shellcheck not on PATH — actionlint silently skips its shell rules without it",
-        };
-      }
-      return cmd("actionlint");
+      return { outcome: "skip", note: "no actionlint and no docker — CI runs it" };
     },
   },
   {

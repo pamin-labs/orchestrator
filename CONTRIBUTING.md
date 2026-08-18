@@ -63,9 +63,16 @@ coherent change as a contract.
 ## Before opening a pull request
 
 `bun run preflight` runs every gate CI runs, in about twenty seconds, and says
-which ones it could not run and why. Steps needing `actionlint`, `shellcheck` or
-`docker` are skipped with a note rather than passed over silently — install them
-(`brew install actionlint shellcheck`) to close the gap locally.
+which ones it could not run and why — a step that cannot run is reported as
+*skipped with a reason*, never passed over silently.
+
+There is nothing to install. The workflow lint runs from the same pinned
+`rhysd/actionlint` image CI verifies, so it needs only the container runtime this
+project already requires, and that image carries `shellcheck` — which a bare
+`actionlint` binary does not, and without which it skips every shell rule without
+saying so. A host `actionlint` is used when you happen to have one; asking each
+contributor to install it would make the check silently absent for whoever did
+not, and an absent check reads as a green one.
 
 `security-codeql` and `pr-plan` have no local equivalent: the first runs on
 GitHub's infrastructure, the second reads the pull request body. Filling in
