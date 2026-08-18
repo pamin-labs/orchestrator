@@ -55,9 +55,38 @@ property. Anything that positions or measures itself asynchronously — every Ra
 popover and dialog — needs `findBy*` or `waitFor`, or React will warn that the
 update escaped the test and your assertion read the frame before it settled.
 
+**The network is `test/support/http.ts`, in web tests too.** `mockHttp()` at the
+top of the file, handlers from `msw`; nothing assigns `globalThis.fetch`. A
+replaced `fetch` fakes the wrong layer and, more to the point, cannot be
+reconciled with `onUnhandledRequest: "error"` — thirteen web files stubbing it
+directly meant that gate covered none of the suite that talks to the panel's own
+API. A pane asserted in its first-paint state passes `inFlight()` to `mockHttp()`,
+which answers every unclaimed request with a promise that never settles; that is
+the one opt-out, and it is per file. The three files that release a reply from
+inside the test to order it against a render — `read-races`, `evidence-race`,
+`pending-transitions` — still hold `fetch`, because what they need is a promise
+the test owns rather than a route.
+
 **Use `test.each` when the cases differ only in data.** The boundary tests for an
-address predicate or a state transition are a table; nineteen addresses in one
-loop is one test that names the rule, where nineteen tests name nothing.
+address predicate or a state transition are a table. This reverses what this
+document used to say — that nineteen addresses in one loop is one test naming the
+rule where nineteen tests name nothing — and the reason is the failure message.
+A loop reports `expected false, received true` at one line number and withholds
+the input, which is the only thing the reader needed; `test.each` puts the case
+in the test's own name, so the report reads
+`a mount is covered by a prefix directory > /var/tmp/orch-cache-other/skills
+covered: true`. The rule still gets named — by the `describe` the table sits in.
+Bun's formatter takes the arguments positionally: `%s` for a string, `%p` for
+anything else, `%j` for an object. Where the input is too large to read in a
+name, make the first column a sentence and format only that.
+
+**Or assert on the value, so the diff is the finding.** A boolean helper that
+answers "are these unique" becomes one that answers "which ones repeat", and
+`expect(duplicates(SERVER_STATES)).toEqual([])` prints the offending state
+instead of `false`. Where several booleans belong to one fact, assert them as one
+object — `expect({ matching, spaced, overlong }).toEqual({ … })` — and the diff
+names the case that moved. Leave `toBe(true)` where the boolean genuinely is the
+fact under test: a `.ok` narrowing before reading `.error`, or a flag on a row.
 
 **Reach for `fast-check` when the invariant is worth more than the examples** —
 when you can state a property that must hold for every input rather than enumerate
@@ -103,7 +132,7 @@ randomized order/rerun 10.
 Replay fast-check with both values printed by the failure:
 
 ```bash
-FC_SEED=<seed> FC_PATH=<path> bun test test/governance/properties.test.ts
+FC_SEED=<seed> FC_PATH=<path> bun run test test/governance/properties.test.ts
 ```
 
 Replay Bun's randomized stress order with its printed seed:

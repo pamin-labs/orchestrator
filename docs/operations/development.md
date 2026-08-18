@@ -36,8 +36,8 @@ bunx fallow guard <changed-files>
 # edit the smallest coherent behavior
 bun run typecheck
 bun run lint
-bun test test/affected.test.ts
-bun test
+bun run test test/affected.test.ts
+bun run test
 bun run audit
 git diff --check
 ```

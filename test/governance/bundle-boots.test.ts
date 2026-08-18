@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { restoreFetch, stubFetch, waitFor } from "../support/render.tsx";
+import { HttpResponse, http } from "msw";
+import { waitFor } from "../support/render.tsx";
+import { inFlight, mockHttp, server } from "../support/http.ts";
 import { emptyState } from "../../web/src/shared/api.ts";
 
 /**
@@ -68,7 +70,6 @@ afterEach(() => {
   // Every one of these is process-global and shared with the other files in this
   // worker, so the teardown is not tidiness: leaving the fake viewport installed
   // is what turned one failure here into eighteen elsewhere.
-  restoreFetch();
   document.body.innerHTML = "";
   location.hash = "";
   HTMLElement.prototype.getBoundingClientRect = realRect;
@@ -92,6 +93,10 @@ const STATE = {
   ...emptyState(),
   projects: [{ id: 1, name: "p", repo_path: "/tmp/p", remote: null, base_branch: "main" }],
 };
+
+/** Anything the booted panel reads beyond the three routes below stays in flight;
+ *  the assertion is that the bundle mounts, not that every pane fills. */
+mockHttp(inFlight());
 
 const T0 = 1_700_000_000_000;
 
@@ -118,7 +123,11 @@ test("the built bundle mounts 耗时 without throwing", async () => {
   expect(built.success).toBe(true);
 
   (globalThis as { EventSource?: unknown }).EventSource = QuietSource;
-  stubFetch({ "/api/v1/telemetry": TELEMETRY, "/api/v1/state": STATE, "/api/v1/cost": { rows: [] } });
+  server.use(
+    http.get("/api/v1/telemetry", () => HttpResponse.json(TELEMETRY)),
+    http.get("/api/v1/state", () => HttpResponse.json(STATE)),
+    http.get("/api/v1/cost", () => HttpResponse.json({ rows: [] })),
+  );
   location.hash = "#p=1&v=time";
   const root = document.createElement("div");
   root.id = "root";

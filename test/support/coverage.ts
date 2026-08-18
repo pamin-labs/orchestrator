@@ -1,7 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll } from "bun:test";
-import { instrument as oxcInstrument } from "oxc-coverage-instrument";
+import { createRequire } from "node:module";
+import type { instrument as oxcInstrumentFn } from "oxc-coverage-instrument";
 
 /**
  * Coverage for `bun test`, by instrumenting the source rather than asking the
@@ -83,7 +84,26 @@ function instrument(source: string, path: string, _jsx: boolean): string {
   return oxcInstrument(source, path).code;
 }
 
+/**
+ * The rewriter itself, loaded only when it is going to be used.
+ *
+ * A static `import` here is paid by every one of the 149 test files — twice
+ * over under `--parallel`, which implies `--isolate` and so re-evaluates the
+ * module graph per file — for a plugin the default run never registers. The
+ * `require`, not `await import`. Measured against Bun 1.3.14: a preload's
+ * top-level `await` does not hold back the module it was preloading for, so
+ * under `--parallel` the plugin would register after the source it exists to
+ * instrument had already been loaded — the exact failure `bunfig.toml`'s comment
+ * describes, reached from the other direction. `require` keeps registration on
+ * the synchronous path, where the ordering the preload buys us still holds.
+ */
+let oxcInstrument: typeof oxcInstrumentFn;
+
 if (enabled) {
+  // Typed by the caller: `createRequire` returns `any`, and the module named
+  // here is a literal, so the generic is just saying what it already is.
+  const load = createRequire(import.meta.url) as <T>(id: string) => T;
+  oxcInstrument = load<typeof import("oxc-coverage-instrument")>("oxc-coverage-instrument").instrument;
   Bun.plugin({
     name: "istanbul-instrument",
     setup(build) {

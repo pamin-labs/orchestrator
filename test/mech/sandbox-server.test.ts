@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openMemory } from "../../src/platform/persistence/database.ts";
@@ -41,15 +41,26 @@ test("the server's own allowlist is read from its own config, and a comment is n
   }
 });
 
-test("a mount is covered by a prefix directory, not by string equality", () => {
+/**
+ * A mount is covered by a prefix directory, not by string equality.
+ *
+ * A table, so the failure names the path. As five assertions in one test this
+ * printed `expected false, received true` and nothing about which of the five
+ * mounts was asked — and the sibling case below is the one that matters.
+ */
+describe("a mount is covered by a prefix directory", () => {
   const allowed = ["/var/tmp/orch-cache", "/Users/me/.orch-cache/"];
-  expect(coveredBy(allowed, "/var/tmp/orch-cache/skills")).toBe(true);
-  expect(coveredBy(allowed, "/var/tmp/orch-cache")).toBe(true);
-  // A trailing slash in the config is the boss's to write however they like.
-  expect(coveredBy(allowed, "/Users/me/.orch-cache/skills")).toBe(true);
-  // Not a sibling that merely starts with the same characters.
-  expect(coveredBy(allowed, "/var/tmp/orch-cache-other/skills")).toBe(false);
-  expect(coveredBy(allowed, "/Users/me/elsewhere")).toBe(false);
+  test.each([
+    ["/var/tmp/orch-cache/skills", true],
+    ["/var/tmp/orch-cache", true],
+    // A trailing slash in the config is the boss's to write however they like.
+    ["/Users/me/.orch-cache/skills", true],
+    // Not a sibling that merely starts with the same characters.
+    ["/var/tmp/orch-cache-other/skills", false],
+    ["/Users/me/elsewhere", false],
+  ])("%s covered: %p", (mount, covered) => {
+    expect(coveredBy(allowed, mount)).toBe(covered);
+  });
 });
 
 test("drift is reported with the line to paste, not a description of it", async () => {

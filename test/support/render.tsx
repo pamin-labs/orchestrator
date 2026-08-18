@@ -25,24 +25,22 @@ import { nativeFetch } from "./dom.ts";
 export { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 
 /**
- * The network these panes see while a test looks at them.
+ * The network these panes see while a test looks at them: `test/support/http.ts`.
  *
  * A real document runs effects, and half of these panes fetch on mount — which
  * is new: `renderToStaticMarkup` ran no effect, so every pane was frozen in its
- * first-paint state whether the test wanted that state or not. A path with no
- * entry here is answered by a request that never comes back, which *is* the
- * first-paint state, and is now something a test opts into rather than the only
- * thing it can have.
+ * first-paint state whether the test wanted that state or not. What answers
+ * those reads is MSW, armed per file with `mockHttp()`, for the reason that file
+ * gives: a replaced `globalThis.fetch` is a fake of the wrong layer, and it
+ * cannot be reconciled with `onUnhandledRequest: "error"` — a suite with two
+ * mocking vocabularies has the gate over neither. `inFlight()` is the
+ * never-answered read a first-paint test wants.
+ *
+ * `restoreFetch` below is not that vocabulary coming back. The three files that
+ * still hold `globalThis.fetch` — `read-races`, `evidence-race`,
+ * `pending-transitions` — release a reply from inside the test to order it
+ * against a render, which is a promise the test owns rather than a route.
  */
-export function stubFetch(routes: Record<string, unknown> = {}): void {
-  const answer = (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-    const url = input instanceof Request ? input.url : String(input);
-    const reply = Object.entries(routes).find(([path]) => url.includes(path));
-    if (!reply) return new Promise<Response>(() => {});
-    return Promise.resolve(new Response(JSON.stringify(reply[1]), { headers: { "content-type": "application/json" } }));
-  };
-  globalThis.fetch = Object.assign(answer, { preconnect: nativeFetch.preconnect });
-}
 
 /** Hands the process back Bun's own `fetch`; `bun test` shares one for every file. */
 export function restoreFetch(): void {

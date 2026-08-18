@@ -1,4 +1,5 @@
-import { afterAll, afterEach, beforeAll } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
+import { http, type RequestHandler } from "msw";
 import { setupServer } from "msw/node";
 
 /**
@@ -24,6 +25,9 @@ export const server = setupServer();
 /**
  * Arm interception for the calling test file: `mockHttp()` at its top level.
  *
+ * Handlers passed here stand for every test in the file and are re-registered
+ * after each reset; a `server.use()` inside a test is prepended, so it wins.
+ *
  * The lifecycle inside is the documented one for `setupServer`
  * (https://mswjs.io/docs/api/setup-server): `listen` once, `resetHandlers`
  * between tests so a `server.use()` cannot leak into the next one, `close` at the
@@ -43,7 +47,7 @@ export const server = setupServer();
  * it. Arming it per file is what keeps `onUnhandledRequest: "error"` absolute
  * where it is on, instead of drilling an exemption through it.
  */
-export function mockHttp(): void {
+export function mockHttp(...standing: RequestHandler[]): void {
   beforeAll(() => {
     // `"error"`, not a custom callback. The string strategy prints a nine-line
     // block and rejects the request; the block is noise, and a callback that
@@ -56,6 +60,11 @@ export function mockHttp(): void {
     // the wrong trade, so the block stays.
     server.listen({ onUnhandledRequest: "error" });
   });
+  if (standing.length > 0) {
+    beforeEach(() => {
+      server.use(...standing);
+    });
+  }
   afterEach(() => {
     server.resetHandlers();
   });
@@ -63,3 +72,15 @@ export function mockHttp(): void {
     server.close();
   });
 }
+
+/**
+ * Every request the file did not answer, left in flight.
+ *
+ * Half the panel's panes fetch on mount, and a request that never comes back is
+ * their first-paint state — the one a loading test is looking at. Passed to
+ * `mockHttp()` it is the file saying so out loud, which is the one thing that
+ * relaxes `onUnhandledRequest: "error"` and is therefore per file rather than
+ * global. A pane whose landed data the test cares about names its own URL, and
+ * that handler wins over this one.
+ */
+export const inFlight = (): RequestHandler => http.all("*", () => new Promise<never>(() => {}));

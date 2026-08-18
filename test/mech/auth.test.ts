@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { waitFor } from "@testing-library/dom";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
@@ -79,14 +79,18 @@ test("re-saving replaces rather than accumulating", () => {
   expect(loadAuth(db, "codex")!.secret).toBe("two");
 });
 
-test("an expired credential is recognised from what the CLI actually prints", () => {
-  // Verbatim from a real run against a synthetic token.
-  expect(isAuthFailure("Failed to authenticate. API Error: 401 OAuth access token is invalid.")).toBe(true);
-  expect(isAuthFailure("401 invalid_api_key")).toBe(true);
-  // A model refusing a request is not a credential problem, and pausing the
-  // group over it would stop work for something a retry fixes.
-  expect(isAuthFailure("the tests failed: 3 assertions")).toBe(false);
-  expect(isAuthFailure("rate_limit_error: 429")).toBe(false);
+describe("an expired credential is recognised from what the CLI actually prints", () => {
+  test.each([
+    // Verbatim from a real run against a synthetic token.
+    ["Failed to authenticate. API Error: 401 OAuth access token is invalid.", true],
+    ["401 invalid_api_key", true],
+    // A model refusing a request is not a credential problem, and pausing the
+    // group over it would stop work for something a retry fixes.
+    ["the tests failed: 3 assertions", false],
+    ["rate_limit_error: 429", false],
+  ])("%s is a credential failure: %p", (line, failure) => {
+    expect(isAuthFailure(line)).toBe(failure);
+  });
 });
 
 test("preflight names what is missing and how to fix it, rather than degrading", async () => {
@@ -122,17 +126,26 @@ test("preflight names what is missing and how to fix it, rather than degrading",
   expect(after.find((c) => c.name === "credential:claude")!.ok).toBe(true);
 });
 
-test("the egress sidecar version is checked, because its failure reads as a project problem", () => {
-  // v1.1.4 is what `opensandbox-server init-config --example docker` writes, and
-  // with a credential bound it 403s every scoped package fetch. The symptom is
-  // "this project cannot install its dependencies", which nobody traces back to
-  // a sidecar version — so the version is checked rather than the symptom.
-  expect(newEnough("v1.1.4")).toBe(false);
-  expect(newEnough("v1.1.6")).toBe(true);
-  expect(newEnough("v1.2.0")).toBe(true);
-  expect(newEnough("v2.0.0")).toBe(true);
-  // Not ours to judge: a tag we cannot parse is somebody's deliberate choice.
-  expect(newEnough("latest")).toBe(true);
+/**
+ * The egress sidecar version is checked, because its failure reads as a project
+ * problem.
+ *
+ * v1.1.4 is what `opensandbox-server init-config --example docker` writes, and
+ * with a credential bound it 403s every scoped package fetch. The symptom is
+ * "this project cannot install its dependencies", which nobody traces back to a
+ * sidecar version — so the version is checked rather than the symptom.
+ */
+describe("the egress sidecar version is checked", () => {
+  test.each([
+    ["v1.1.4", false],
+    ["v1.1.6", true],
+    ["v1.2.0", true],
+    ["v2.0.0", true],
+    // Not ours to judge: a tag we cannot parse is somebody's deliberate choice.
+    ["latest", true],
+  ])("%s is new enough: %p", (tag, ok) => {
+    expect(newEnough(tag)).toBe(ok);
+  });
 });
 
 test("a ChatGPT login is refreshed on the host, and the sandbox only gets a decoy", () => {

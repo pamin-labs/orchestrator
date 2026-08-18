@@ -283,8 +283,10 @@ test("both triage doors spell the verbs from TRIAGE, not each from its own copy"
     expect(SayBody.safeParse({ body: "x", as }).success).toBe(true);
     expect(TriageBody.safeParse({ group_id: 1, as }).success).toBe(true);
   }
-  expect(SayBody.safeParse({ body: "x", as: "delete" }).success).toBe(false);
-  expect(TriageBody.safeParse({ group_id: 1, as: "delete" }).success).toBe(false);
+  expect({
+    say: SayBody.safeParse({ body: "x", as: "delete" }).success,
+    triage: TriageBody.safeParse({ group_id: 1, as: "delete" }).success,
+  }).toEqual({ say: false, triage: false });
 });
 
 test("only the CoS triages, and only reviewers answer their own level", async () => {

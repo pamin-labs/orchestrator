@@ -54,11 +54,19 @@ file. Record an architectural exception or changed decision in a new ADR.
 bun install --frozen-lockfile
 bun run typecheck
 bun run lint
-bun test
+bun run test
 bun run check
 ```
 
 Use targeted tests while iterating, then the complete gates before a commit.
+
+**`bun run test`, not `bun test`** — including with a path after it, which is
+forwarded. The script carries `--parallel`, and `test/support/dom.ts` registers a
+DOM only for the files that need one, which it decides from `Bun.main`. That only
+holds when each file gets its own process, which `--parallel` implies. Run bare
+`bun test` over a directory and every file is classified from the first one's
+path; the symptom is `HTMLElement is not defined` in a file that looks nothing
+like a browser test.
 
 **Read CRAP numbers only from `bun run audit:crap`.** It regenerates coverage
 first; plain `bun run audit` reads whatever `coverage/coverage-final.json`
