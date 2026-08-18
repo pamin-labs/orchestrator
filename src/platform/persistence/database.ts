@@ -34,7 +34,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
     project_id    INTEGER NOT NULL REFERENCES project(id),
     name          TEXT    NOT NULL,
     branch        TEXT,
-    -- worktree is dropped by migration 024; like clearance below, it stays here
+    -- worktree is dropped by migration 031; like clearance below, it stays here
     -- because the base schema records what the first migration ran, not today.
     worktree      TEXT,
     status        TEXT    NOT NULL DEFAULT 'DRAFT',
@@ -49,7 +49,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   --   PLANNING: the Dispatcher/Architect are still working; DRAFT: the card awaits the boss
 
   -- Agent identity is durable (role/group/cost); the session is disposable.
-  -- clearance is dropped by migration 022; it is left here because the base
+  -- clearance is dropped by migration 029; it is left here because the base
   -- schema is what the first migration ran against, not a description of today.
   CREATE TABLE agent (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -436,7 +436,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   ALTER TABLE agent DROP COLUMN total_usd;
   `,
 
-  // 032 — one line of what a question is about, for the queue.
+  // 024 — one line of what a question is about, for the queue.
   //
   // 待办 showed the first two lines of the question itself, which is an agent
   // writing to another agent: `S2 "常驻岗独立分段" failed qa 3 times. Latest: 结构:
@@ -444,7 +444,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // in front of a reader whose whole job here is to pick which one to open.
   `ALTER TABLE escalation ADD COLUMN brief TEXT;`,
 
-  // 033 — what kind of thing is being asked.
+  // 025 — what kind of thing is being asked.
   //
   // One bad premise strands every slice behind it, so a requirement can hold a
   // dozen open questions that are all the same problem said twelve times — the
@@ -452,7 +452,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // cards is twelve decisions on a page where there is one.
   `ALTER TABLE escalation ADD COLUMN kind TEXT;`,
 
-  // 034 — the group's sandbox.
+  // 026 — the group's sandbox.
   //
   // Durable because the Sandbox object is not: a restarted orchestrator has to
   // reconnect to the container that is still running, or the turn's session —
@@ -467,7 +467,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   ALTER TABLE project ADD COLUMN sandbox_id TEXT;
   `,
 
-  // 035 — where each runtime's credentials come from.
+  // 027 — where each runtime's credentials come from.
   //
   // The value never enters the sandbox: it is written to the egress sidecar's
   // vault and injected on the way out (docs/adr/005). It never enters an
@@ -485,7 +485,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   );
   `,
 
-  // 036 — when a sandbox was built, so it can be told from the credential in it.
+  // 028 — when a sandbox was built, so it can be told from the credential in it.
   //
   // A sidecar is loaded with the credentials that existed when its sandbox was
   // created and never again. Storing one therefore has to kill the running
@@ -502,7 +502,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   ALTER TABLE project ADD COLUMN sandbox_at INTEGER;
   `,
 
-  // 022 — the last two columns of the clearance era.
+  // 029 — the last two columns of the clearance era.
   //
   // Neither was ever written: `clearance` stayed 'L1' on every row an insert ever
   // made, and the panel printed it as 「权限 L1」 — a permission level shown to the
@@ -514,7 +514,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   ALTER TABLE agent DROP COLUMN denial_turns;
   `,
 
-  // 023 — server-scope settings that are not a project's and not the yaml's.
+  // 030 — server-scope settings that are not a project's and not the yaml's.
   //
   // The skill tick boxes are the first: which of the boss's own skills get staged
   // into the directory every sandbox mounts. It belongs to this machine, not to a
@@ -527,7 +527,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   );
   `,
 
-  // 024 — the checkout moved into the container and this column stayed behind.
+  // 031 — the checkout moved into the container and this column stayed behind.
   //
   // Nothing ever wrote it. Four code paths read it and were gated on it being
   // non-null: the rollback behind "interrupt and roll back", the rebase on the way
@@ -538,7 +538,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   ALTER TABLE grp DROP COLUMN worktree;
   `,
 
-  // 025 — which branch this project is cut from and measured against.
+  // 032 — which branch this project is cut from and measured against.
   //
   // It was detected on every call and the detection returned `origin/main` where
   // four callers then wrote `origin/${...}`. NULL means "ask the remote", which is
@@ -548,7 +548,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   ALTER TABLE project ADD COLUMN base_branch TEXT;
   `,
 
-  // 026 — skill paths in old messages point at a machine the agent cannot see.
+  // 033 — skill paths in old messages point at a machine the agent cannot see.
   //
   // The composer used to insert `.claude/skills/<name>/SKILL.md`, a path relative
   // to the boss's home. That was readable when turns ran on this machine. They run
@@ -559,7 +559,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // the skill actually sits.
   rewriteSkillPaths,
 
-  // 037 — a project is `owner/name`, not a directory on whoever's laptop.
+  // 034 — a project is `owner/name`, not a directory on whoever's laptop.
   //
   // Every project now comes from GitHub (007 §2), so `repo_path` holds the slug
   // and nothing else. The conversion needs neither git nor the network: the
@@ -572,7 +572,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   // anything shaped like a path, so an unconverted row renders as it always did.
   slugRepoPaths,
 
-  // 038 — what this branch is called in a log, written by an agent that read it.
+  // 035 — what this branch is called in a log, written by an agent that read it.
   //
   // The pull request title was `orch: <group name>`, a slug the dispatcher made
   // up before any code existed, and the squashed commit carried the whole PR body
@@ -591,7 +591,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   ALTER TABLE grp ADD COLUMN pr_summary TEXT;
   `,
 
-  // 039 — two settings that predate the settings table, onto it.
+  // 036 — two settings that predate the settings table, onto it.
   //
   // `sandbox_image` and `sandbox_server_addr` were the first two things the
   // panel could change about this machine, and each got its own key, its own
@@ -610,7 +610,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   DELETE FROM setting WHERE k IN ('sandbox_image', 'sandbox_server_addr');
   `,
 
-  // 040 — why a group is paused, so that resuming can be about that reason.
+  // 037 — why a group is paused, so that resuming can be about that reason.
   //
   // `paused_at` said when, never why, and eight places wrote it for eight
   // different causes. So the one bulk resume in the tree — `credentialChanged`,
@@ -627,7 +627,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   UPDATE grp SET pause_reason = 'unknown' WHERE status IN ('PAUSED', 'PAUSING', 'PARKED');
   `,
 
-  // 041 — durable HTTP idempotency for every mutating protocol route.
+  // 038 — durable HTTP idempotency for every mutating protocol route.
   `
   CREATE TABLE idempotency_request (
     caller       TEXT NOT NULL,
@@ -645,7 +645,7 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   CREATE INDEX idempotency_request_age ON idempotency_request (updated_at);
   `,
 
-  // 042 — durable request/trace correlation across queued work and events.
+  // 039 — durable request/trace correlation across queued work and events.
   `
   ALTER TABLE job ADD COLUMN correlation_id TEXT;
   ALTER TABLE job ADD COLUMN trace_id TEXT;
@@ -657,9 +657,9 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   CREATE INDEX event_correlation ON event (correlation_id, seq);
   `,
 
-  // 043 — spans land here, so the panel has a trace to read without a collector.
+  // 040 — spans land here, so the panel has a trace to read without a collector.
   //
-  // 042 put `trace_id` on jobs and events, which is enough to correlate rows that
+  // 039 put `trace_id` on jobs and events, which is enough to correlate rows that
   // already existed but says nothing about where the wall clock went: durations
   // lived only in the SDK's export queue, and with no `OTEL_EXPORTER_OTLP_ENDPOINT`
   // that queue was never even constructed.
@@ -696,11 +696,21 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   CREATE INDEX span_scope ON span (grp_id, slice_id, started_at);
   CREATE INDEX span_age ON span (started_at);
   `,
+
+  // 041 — where a paused group came from, so resuming can put it back.
+  //
+  // `release` restored RUNNING unconditionally, and `mergequeue.queue()` filters
+  // on `status = 'PR_OPEN'` — so a rate-limited turn on an audited branch took the
+  // group out of the merge order silently. `server.ts`'s `prReopened` was this
+  // patched once, for one cause.
+  `
+  ALTER TABLE grp ADD COLUMN paused_from TEXT;
+  `,
 ];
 
 export type DB = Database;
 
-/** Migration 026, exported so it can be run against a database that has rows. */
+/** Migration 033, exported so it can be run against a database that has rows. */
 export function rewriteSkillPaths(db: DB): void {
   const like = "%skills/%/SKILL.md";
   for (const table of ["note", "event"] as const) {
