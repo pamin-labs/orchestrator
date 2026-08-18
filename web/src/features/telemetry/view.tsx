@@ -754,6 +754,16 @@ function useFlameChart({
   const port = useRef<HTMLDivElement>(null);
   const details = useRef<HTMLDivElement>(null);
   const chart = useRef<FlameGraph | null>(null);
+  /**
+   * The newest tree, for the effect that must not depend on it.
+   *
+   * The chart is built once per width and per `self`, and that effect still has
+   * to seed the selection with whatever data exists at the moment it runs. A
+   * dependency would put the rebuild back; a ref written during render gives the
+   * builder the current value without making it a reason to rebuild.
+   */
+  const latest = useRef(tree);
+  latest.current = tree;
   const [width, setWidth] = useState(0);
   // The frame the reader clicked into, so the way back out can name it. Held
   // here rather than in the block above, because the control that uses it sits
@@ -827,13 +837,29 @@ function useFlameChart({
       // does that itself. All this adds is somebody remembering, so the reader
       // has a way back that says where they are.
       .onClick((frame) => setZoomed(frame.parent === null ? null : frame.data.name));
-    select(el).datum(tree).call(graph);
+    select(el).datum(latest.current).call(graph);
     chart.current = graph;
     return () => {
       graph.destroy();
       chart.current = null;
     };
-  }, [width, self, tree]);
+    // Not `tree`. New data goes through `update()` in the effect below, which is
+    // what the comment above this hook has always claimed and what the deps list
+    // did not do: every wheel notch on the trend re-reads the endpoint, so a new
+    // `flame` array arrived on each one, and a `tree` dependency destroyed and
+    // rebuilt the whole chart under the reader — 「一移动每次运行的耗时图表的
+    // 位置，下面 flamegraph 就会闪一下」. `self` and `width` stay, because both
+    // are read when frames are laid out and neither can be changed on a live
+    // chart.
+  }, [width, self]);
+
+  // New data into the existing chart. `update` reuses the nodes, so the reader's
+  // zoom and search survive a refresh and nothing re-enters — which is also what
+  // stops the library's un-configurable 250ms enter transition from firing on
+  // every read.
+  useEffect(() => {
+    chart.current?.update(tree);
+  }, [tree]);
 
   // A separate effect so a selection highlights frames instead of rebuilding the
   // chart under the reader's cursor.
@@ -1048,17 +1074,32 @@ function Trend({
   // chart having nothing yet said as "nothing here yet". A slot the size of the
   // thing that is missing says which thing is missing, and `sunk` is already
   // this page's surface for what a machine produced.
-  if (trend.length < 2) {
-    return (
-      <div className="grid h-[7.5rem] place-items-center rounded-md bg-sunk text-[0.75rem] text-ink-3">
-        还不够两个时段的数据。
-      </div>
-    );
-  }
   // Dense, so an empty bucket in the middle draws as a break rather than being
   // smoothed over. A quiet ten minutes and ten minutes with no data are not the
   // same fact, and a line joined across the gap says they are.
   const data = fillBuckets(trend, window, bucketMs);
+  // Asked of what is *in the window*, not of what the server returned. The test
+  // used to be `trend.length < 2` — a count of rows the endpoint found anywhere
+  // in its own window — so panning to a quiet stretch left a chart that drew its
+  // axes, its gridless empty plot and nothing else, over a fifth of the page.
+  // Two points, because one point is not a line.
+  const drawable = data.filter((point) => point.p50 !== null).length;
+  if (drawable < 2) {
+    return (
+      // Inside the chart's own box, at the chart's own height, and not as a line
+      // above everything. It sat at the top of the section reading like the whole
+      // view's empty state, stacked on a stage table that had data in it — one
+      // chart having nothing yet said as "nothing here yet". A slot the size of
+      // the thing that is missing says which thing is missing, and `sunk` is
+      // already this page's surface for what a machine produced.
+      <div className="grid h-[7.5rem] place-items-center rounded-md bg-sunk text-center text-[0.75rem] text-ink-3">
+        {/* Which of the two absences it is. "Nothing was recorded here" and
+            "nothing has been recorded yet" send the reader to different places,
+            and the window is what tells them apart. */}
+        {trend.length === 0 ? "这段时间没有活动。" : "还不够两个时段的数据。"}
+      </div>
+    );
+  }
   return (
     <div
       // Not a control and not a paragraph. Clicking a chart drew the browser's
