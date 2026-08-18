@@ -24,7 +24,7 @@ import {
 import { runStandup } from "../mech/flow/standup.ts";
 import { ensureCheckout, keepBranch, sandboxGit } from "../mech/git/checkout.ts";
 import { gitTrailers } from "../mech/git/ghlogin.ts";
-import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/worktree.ts";
+import { changedSince, checkpoint, porcelainEntries, porcelainPaths, STATUS_Z } from "../mech/git/gitops.ts";
 import { lessonsFor } from "../mech/knowledge/lessons.ts";
 import { LeaseArgsSchema, loadResource, type ResourceDef, resolveLease, runResource } from "../mech/lease.ts";
 import { gzipTurnLog, REEMIT_MS, recordTurnOutcome, runWatchdog } from "../mech/ops/watchdog.ts";
@@ -353,7 +353,6 @@ async function takeCheckpoint(deps: ExecDeps, job: Job<"agent_turn">, turn: Prep
   }
   const before = await checkpoint(
     sandboxGit(deps.ctx, turn.scope),
-    WORK,
     WORK,
     checkpointLabel(deps.ctx.db, job),
     gitTrailers(deps.ctx.db),
@@ -711,7 +710,7 @@ export async function reconcileOwnership(
   if (!owns.length || !job.grp_id) return;
 
   const git = sandboxGit(deps.ctx, { grp: job.grp_id });
-  const status = await git(WORK, STATUS_Z, WORK);
+  const status = await git(STATUS_Z, WORK);
   if (status.code !== 0) {
     // Said out loud. This is the only file-ownership enforcement there is since
     // 005 deleted the deny-list, and `engineer.yaml` promises it to the agent —
@@ -740,13 +739,13 @@ export async function reconcileOwnership(
   const untracked = new Set(entries.filter((entry) => entry.xy === "??").map((entry) => entry.path));
   const modified = stray.filter((path) => !untracked.has(path));
   const created = stray.filter((path) => untracked.has(path));
-  const co = modified.length ? await git(WORK, ["checkout", "--", ...modified], WORK) : null;
-  const cl = created.length ? await git(WORK, ["clean", "-fd", "--", ...created], WORK) : null;
+  const co = modified.length ? await git(["checkout", "--", ...modified], WORK) : null;
+  const cl = created.length ? await git(["clean", "-fd", "--", ...created], WORK) : null;
   // What is actually gone, read back rather than assumed. This announcement used
   // to be made from the list of files we had *tried* to revert: when the pathspec
   // did not match — every non-ASCII and every spaced path, before `-z` — git
   // exited 1, changed nothing, and the boss was told the boundary had held.
-  const after = await git(WORK, STATUS_Z, WORK);
+  const after = await git(STATUS_Z, WORK);
   // A status we could not read back is not evidence that anything was reverted.
   const left = after.code === 0 ? new Set(outsideOwns(porcelainPaths(after.out), owns)) : new Set(stray);
   const reverted = stray.filter((p) => !left.has(p));
@@ -864,7 +863,7 @@ async function narrate(deps: ExecDeps, agent: AgentRow, job: Job, before: string
 
   let files = r.filesTouched;
   if (before && job.grp_id) {
-    const changed = await changedSince(sandboxGit(ctx, { grp: job.grp_id }), WORK, WORK, before);
+    const changed = await changedSince(sandboxGit(ctx, { grp: job.grp_id }), WORK, before);
     if (changed.length) files = changed;
   }
   if (files.length) {
@@ -1069,7 +1068,7 @@ async function lease(deps: ExecDeps, job: Job<"lease">, leaseIdIn: number): Prom
   // Stamp the commit this ran against: two failures at the same sha mean the
   // environment is the variable, not the code.
   const scope: Scope = lease.grp_id ? { grp: lease.grp_id } : { project: 0 };
-  const head = await sandboxGit(ctx, scope)(cwd, ["rev-parse", "HEAD"], cwd);
+  const head = await sandboxGit(ctx, scope)(["rev-parse", "HEAD"], cwd);
   ctx.db.run("UPDATE lease SET state = 'running', head_sha = ?, started_at = unixepoch() * 1000 WHERE id = ?", [
     head.code === 0 ? head.out.trim() : null,
     leaseId,

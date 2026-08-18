@@ -1,7 +1,7 @@
 import type { DB } from "../../platform/persistence/database.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
-import { rebaseOntoBase, rollbackTo } from "../git/worktree.ts";
+import { rebaseOntoBase, rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
@@ -239,7 +239,7 @@ export async function interrupt(
     // gated on `grp.worktree`, a column nothing writes, so "interrupt and roll
     // back" only ever interrupted.
     if (sha) {
-      const back = await rollbackTo(sandboxGit(ctx, { grp: grpId }), WORK, WORK, sha);
+      const back = await rollbackTo(sandboxGit(ctx, { grp: grpId }), WORK, sha);
       if (back.ok) rolledBackTo = sha;
       else {
         // "Interrupt and roll back" that only interrupted leaves a dirty tree
@@ -309,7 +309,7 @@ export function park(ctx: Ctx, grpId: number, reason: string): void {
 
 /** Wake a parked group. Rebasing on the way back in avoids a stale baseline. */
 export async function unpark(ctx: Ctx, grpId: number): Promise<void> {
-  const r = await rebaseOntoBase(sandboxGit(ctx, { grp: grpId }), WORK, WORK);
+  const r = await rebaseOntoBase(sandboxGit(ctx, { grp: grpId }), WORK);
   if (r.code !== 0) {
     // A conflicting rebase is the boss's call, not something to paper over.
     ctx.bus.emit({

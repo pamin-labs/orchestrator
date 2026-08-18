@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import type { Ctx } from "../../mech/ctx.ts";
 import { acceptSlice } from "../../mech/flow/review.ts";
 import { criteriaIn, validateSelfReview } from "../../mech/util/validate.ts";
-import { sliceDiffBase } from "../../mech/git/worktree.ts";
+import { sliceDiffBase } from "../../mech/git/gitops.ts";
 import { baseRefFor, sandboxGit } from "../../mech/git/checkout.ts";
 import { WORK } from "../../mech/sandbox/sandbox.ts";
 import { z } from "zod";
@@ -135,12 +135,12 @@ async function sliceDiff(
 ): Promise<{ stat: string; diff: string; truncated: boolean; scope: "slice" | "branch" }> {
   const empty = { stat: "", diff: "", truncated: false, scope: "slice" as const };
   const git = sandboxGit(ctx, { grp: grpId });
-  const from = await sliceDiffBase(git, WORK, WORK, baseSha, projectId ? await baseRefFor(ctx, projectId) : undefined);
+  const from = await sliceDiffBase(git, WORK, baseSha, projectId ? await baseRefFor(ctx, projectId) : undefined);
   if (!from) return empty;
 
   const [s, d] = await Promise.all([
-    git(WORK, ["diff", "--stat", from.base, "--"], WORK),
-    git(WORK, ["diff", from.base, "--"], WORK),
+    git(["diff", "--stat", from.base, "--"], WORK),
+    git(["diff", from.base, "--"], WORK),
   ]);
   const diff = d.code === 0 ? d.out : "";
   return {

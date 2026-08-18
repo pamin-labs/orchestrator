@@ -260,14 +260,14 @@ function duplicateEvidence(ctx: Ctx, gid: number, ref: z.infer<typeof GroupRef>)
 async function commitEvidence(ctx: Ctx, gid: number, sha: string): Promise<string | Response> {
   if (!/^[0-9a-f]{7,40}$/i.test(sha)) return bad("--commit takes a sha, 7 to 40 hex characters");
   const git = sandboxGit(ctx, { grp: gid });
-  const commit = await git(WORK, ["cat-file", "-t", sha], WORK);
+  const commit = await git(["cat-file", "-t", sha], WORK);
   if (commit.code !== 0 || commit.out.trim() !== "commit") return bad(`${sha} is not a commit in this repo`);
   const projectId = ctx.db
     .query<{ project_id: number }, [number]>("SELECT project_id FROM grp WHERE id = ?")
     .get(gid)?.project_id;
   if (!projectId) return bad("no such group");
   const base = await baseRefFor(ctx, projectId);
-  const merged = await git(WORK, ["merge-base", "--is-ancestor", sha, base], WORK);
+  const merged = await git(["merge-base", "--is-ancestor", sha, base], WORK);
   return merged.code === 0
     ? `already landed in ${sha.slice(0, 8)}`
     : bad(`${sha.slice(0, 8)} is a real commit but is not on ${base} yet`);

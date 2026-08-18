@@ -14,7 +14,7 @@ import {
   rollbackTo,
   sliceDiffBase,
   squashWip,
-} from "../../src/mech/git/worktree.ts";
+} from "../../src/mech/git/gitops.ts";
 import * as fx from "../support/factories.ts";
 import { testContext } from "../support/test-context.ts";
 import { tempDir } from "../support/temp.ts";
@@ -61,7 +61,7 @@ test.concurrent(
     mkdirSync(join(dir, "web/dist"), { recursive: true });
     writeFileSync(join(dir, "web/dist/main.js"), "built\n");
     const worktree = join(dir, "../built-work");
-    await git(dir, ["clone", "-q", dir, worktree]);
+    await git(["clone", "-q", dir, worktree], dir);
 
     // A group's checkout starts with nothing built in it. It used to start with a
     // `node_modules` symlink to the main checkout, and that one symlink caused the
@@ -78,7 +78,7 @@ test.concurrent(
     // group never touched.
     mkdirSync(join(worktree, "node_modules"), { recursive: true });
     writeFileSync(join(worktree, "node_modules/marker"), "x");
-    expect((await git(worktree, ["status", "--porcelain"], worktree)).out).toBe("");
+    expect((await git(["status", "--porcelain"], worktree)).out).toBe("");
   },
   GIT_IO,
 );
@@ -100,22 +100,22 @@ test.concurrent(
 test.concurrent(
   "checkpoint commits dirty work and returns a sha to come back to",
   async () => {
-    const { dir, wt } = await checkout();
+    const { wt } = await checkout();
 
-    const before = await checkpoint(git, dir, wt.worktree, "engineer turn");
+    const before = await checkpoint(git, wt.worktree, "engineer turn");
     expect(before).toMatch(/^[0-9a-f]{40}$/);
 
     writeFileSync(join(wt.worktree, "b.txt"), "two\n");
-    const after = await checkpoint(git, dir, wt.worktree, "engineer turn");
+    const after = await checkpoint(git, wt.worktree, "engineer turn");
     expect(after).not.toBe(before);
 
     // What the turn changed, for reconcile and for free narration.
-    expect(await changedSince(git, dir, wt.worktree, before!)).toEqual(["b.txt"]);
+    expect(await changedSince(git, wt.worktree, before!)).toEqual(["b.txt"]);
 
     // And in the message, because these commits survive into review whenever
     // `squashWip` declines: a branch of subjects that all say `wip: engineer turn`
     // gives the boss no way to pick which one to open.
-    const msg = (await git(dir, ["log", "-1", "--format=%B"], wt.worktree)).out;
+    const msg = (await git(["log", "-1", "--format=%B"], wt.worktree)).out;
     expect(msg).toContain("b.txt");
   },
   GIT_IO,
@@ -124,9 +124,9 @@ test.concurrent(
 test.concurrent(
   "checkpoint on a clean tree does not create an empty commit",
   async () => {
-    const { dir, wt } = await checkout();
-    const a = await checkpoint(git, dir, wt.worktree, "turn");
-    const b = await checkpoint(git, dir, wt.worktree, "turn");
+    const { wt } = await checkout();
+    const a = await checkpoint(git, wt.worktree, "turn");
+    const b = await checkpoint(git, wt.worktree, "turn");
     expect(a).toBe(b);
   },
   GIT_IO,
@@ -135,14 +135,14 @@ test.concurrent(
 test.concurrent(
   "rollback discards a turn's work — this is intercept L3",
   async () => {
-    const { dir, wt } = await checkout();
-    const before = (await checkpoint(git, dir, wt.worktree, "turn"))!;
+    const { wt } = await checkout();
+    const before = (await checkpoint(git, wt.worktree, "turn"))!;
 
     writeFileSync(join(wt.worktree, "half-done.txt"), "abandoned\n");
-    await checkpoint(git, dir, wt.worktree, "turn");
+    await checkpoint(git, wt.worktree, "turn");
     writeFileSync(join(wt.worktree, "untracked.txt"), "also gone\n");
 
-    await rollbackTo(git, dir, wt.worktree, before);
+    await rollbackTo(git, wt.worktree, before);
     // Both the committed checkpoint and the untracked leftovers go, or the next
     // turn starts from a state nobody chose.
     expect({
@@ -157,15 +157,15 @@ test.concurrent(
 test.concurrent(
   "changedSince sees uncommitted work — reconcile runs before any commit",
   async () => {
-    const { dir, wt } = await checkout();
-    const base = (await checkpoint(git, dir, wt.worktree, "start"))!;
+    const { wt } = await checkout();
+    const base = (await checkpoint(git, wt.worktree, "start"))!;
 
     // Exactly the state reconcile sees: the turn wrote files and marked the task
     // done, and nothing has been committed yet.
     writeFileSync(join(wt.worktree, "a.txt"), "changed\n"); // tracked, modified
     writeFileSync(join(wt.worktree, "new.txt"), "added\n"); // untracked
 
-    const changed = await changedSince(git, dir, wt.worktree, base);
+    const changed = await changedSince(git, wt.worktree, base);
     // Comparing base..HEAD instead would return nothing here, which made every
     // first attempt fail reconcile spuriously.
     expect(changed.sort()).toEqual(["a.txt", "new.txt"]);
@@ -176,7 +176,7 @@ test.concurrent(
 test.concurrent(
   "wip checkpoints are squashed into one commit, and the tree survives",
   async () => {
-    const { dir, wt } = await checkout();
+    const { wt } = await checkout();
 
     for (const [file, body] of [
       ["b.txt", "one\n"],
@@ -184,18 +184,18 @@ test.concurrent(
       ["d.txt", "three\n"],
     ]) {
       writeFileSync(join(wt.worktree, file!), body!);
-      await checkpoint(git, dir, wt.worktree, "engineer turn");
+      await checkpoint(git, wt.worktree, "engineer turn");
     }
-    expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out.split("\n").length).toBe(3);
+    expect((await git(["log", "--format=%s", "main..HEAD"], wt.worktree)).out.split("\n").length).toBe(3);
 
-    const r = await squashWip(git, dir, wt.worktree, "feat: the whole thing");
+    const r = await squashWip(git, wt.worktree, "feat: the whole thing");
     expect(r.squashed).toBe(3);
 
-    const log = (await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out.trim();
+    const log = (await git(["log", "--format=%s", "main..HEAD"], wt.worktree)).out.trim();
     expect(log).toBe("feat: the whole thing");
     // --soft, so every file the turns wrote is still there and still committed.
     for (const f of ["b.txt", "c.txt", "d.txt"]) expect(existsSync(join(wt.worktree, f))).toBe(true);
-    expect((await git(dir, ["status", "--porcelain"], wt.worktree)).out.trim()).toBe("");
+    expect((await git(["status", "--porcelain"], wt.worktree)).out.trim()).toBe("");
   },
   GIT_IO,
 );
@@ -203,18 +203,18 @@ test.concurrent(
 test.concurrent(
   "a real commit message is never squashed away",
   async () => {
-    const { dir, wt } = await checkout();
+    const { wt } = await checkout();
 
     writeFileSync(join(wt.worktree, "b.txt"), "one\n");
-    await checkpoint(git, dir, wt.worktree, "engineer turn");
+    await checkpoint(git, wt.worktree, "engineer turn");
     writeFileSync(join(wt.worktree, "c.txt"), "two\n");
-    await git(dir, ["add", "-A"], wt.worktree);
-    await git(dir, ["commit", "-q", "-m", "fix: the actual bug"], wt.worktree);
+    await git(["add", "-A"], wt.worktree);
+    await git(["commit", "-q", "-m", "fix: the actual bug"], wt.worktree);
 
-    const r = await squashWip(git, dir, wt.worktree, "squashed");
+    const r = await squashWip(git, wt.worktree, "squashed");
     expect(r.squashed).toBe(0);
     expect(r.reason).toContain("real messages");
-    expect((await git(dir, ["log", "--format=%s", "main..HEAD"], wt.worktree)).out).toContain("fix: the actual bug");
+    expect((await git(["log", "--format=%s", "main..HEAD"], wt.worktree)).out).toContain("fix: the actual bug");
   },
   GIT_IO,
 );
@@ -225,27 +225,27 @@ test.concurrent(
     const { dir, wt } = await checkout();
 
     // Where the slice started: the branch tip at the time, which here is main.
-    const base = (await git(dir, ["rev-parse", "HEAD"], wt.worktree)).out.trim();
+    const base = (await git(["rev-parse", "HEAD"], wt.worktree)).out.trim();
     writeFileSync(join(wt.worktree, "mine.txt"), "slice work\n");
-    await checkpoint(git, dir, wt.worktree, "engineer turn");
+    await checkpoint(git, wt.worktree, "engineer turn");
 
     // Untouched branch: the recorded base is still a point on it.
-    expect(await sliceDiffBase(git, dir, wt.worktree, base)).toEqual({ base, scope: "slice" });
+    expect(await sliceDiffBase(git, wt.worktree, base)).toEqual({ base, scope: "slice" });
 
     // Another group lands on main, and this branch is rebased onto it (rule 15).
     // The base is `origin/main`: a clone's own `main` does not move when the
     // remote does, which is the whole reason rule 15 fetches first.
     writeFileSync(join(dir, "theirs.txt"), "somebody else\n");
-    await git(dir, ["add", "-A"]);
-    await git(dir, ["commit", "-q", "-m", "other group"]);
-    await git(wt.worktree, ["fetch", "-q", "origin"], wt.worktree);
-    await rebaseOntoBase(git, wt.worktree, wt.worktree);
+    await git(["add", "-A"], dir);
+    await git(["commit", "-q", "-m", "other group"], dir);
+    await git(["fetch", "-q", "origin"], wt.worktree);
+    await rebaseOntoBase(git, wt.worktree);
 
     // The recorded base is now a commit on main, so diffing from it would call
     // `theirs.txt` part of this slice. Fall back to the fork point instead.
-    const after = await sliceDiffBase(git, wt.worktree, wt.worktree, base);
+    const after = await sliceDiffBase(git, wt.worktree, base);
     expect(after?.scope).toBe("branch");
-    const files = (await git(dir, ["diff", "--name-only", after!.base], wt.worktree)).out;
+    const files = (await git(["diff", "--name-only", after!.base], wt.worktree)).out;
     expect(files).toContain("mine.txt");
     expect(files).not.toContain("theirs.txt");
   },
@@ -289,15 +289,15 @@ test.concurrent(
     // when it was not, while four callers wrote `origin/${...}` around it. On any
     // ordinary clone they were asking git for `origin/origin/main`.
     const { dir: origin } = await checkout();
-    await git(origin, ["branch", "-m", "main", "trunk"]);
+    await git(["branch", "-m", "main", "trunk"], origin);
     // Cloned after the rename, so `origin/HEAD` is what a real clone of this remote
     // would have. The fixture's own clone predates it and is not the subject here.
     const work = join(origin, "../renamed-work");
-    await git(origin, ["clone", "-q", origin, work]);
+    await git(["clone", "-q", origin, work], origin);
 
     expect(await detectBaseBranch(git, work)).toBe("trunk");
     // Without origin/HEAD it has to ask the remote rather than guess main.
-    await git(work, ["update-ref", "-d", "refs/remotes/origin/HEAD"], work);
+    await git(["update-ref", "-d", "refs/remotes/origin/HEAD"], work);
     expect(await detectBaseBranch(git, work)).toBe("trunk");
   },
   GIT_IO,
@@ -312,19 +312,19 @@ test.concurrent(
     // at all, so the rebase fails deep inside git with a message about argument
     // parsing. `unpark` then shows the boss that message.
     const dir = tempDir("orch-nobase-");
-    await git(dir, ["init", "-q", "-b", "solo"]);
-    await git(dir, ["config", "user.email", "t@example.com"]);
-    await git(dir, ["config", "user.name", "test"]);
+    await git(["init", "-q", "-b", "solo"], dir);
+    await git(["config", "user.email", "t@example.com"], dir);
+    await git(["config", "user.name", "test"], dir);
     writeFileSync(join(dir, "a.txt"), "one\n");
-    await git(dir, ["add", "-A"]);
-    await git(dir, ["commit", "-q", "-m", "one"]);
+    await git(["add", "-A"], dir);
+    await git(["commit", "-q", "-m", "one"], dir);
 
     expect(await baseRef(git, dir)).toBeNull();
-    const r = await rebaseOntoBase(git, dir, dir);
+    const r = await rebaseOntoBase(git, dir);
     expect(r.code).not.toBe(0);
     expect(r.out).toContain("no base branch");
     // And the squash declines with a reason instead of committing onto nothing.
-    expect((await squashWip(git, dir, dir, "feat: x")).reason).toContain("no base branch");
+    expect((await squashWip(git, dir, "feat: x")).reason).toContain("no base branch");
   },
   GIT_IO,
 );

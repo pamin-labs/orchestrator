@@ -120,15 +120,15 @@ live(
         base: "origin/HEAD",
       });
       const git = sandboxGit(c, scope);
-      expect((await git(WORK, ["rev-parse", "--abbrev-ref", "HEAD"], WORK)).out.trim()).toBe("orch/live");
+      expect((await git(["rev-parse", "--abbrev-ref", "HEAD"], WORK)).out.trim()).toBe("orch/live");
 
       // And it is a real repository the agent can commit to — which a mounted
       // `git worktree` could not have been without opening the boundary.
       await putFile(c, scope, `${WORK}/NOTE.md`, "written by the agent\n");
-      const committed = await git(WORK, ["add", "-A"], WORK);
+      const committed = await git(["add", "-A"], WORK);
       expect(committed.code).toBe(0);
-      expect((await git(WORK, ["commit", "-q", "-m", "wip: live check"], WORK)).code).toBe(0);
-      expect((await git(WORK, ["log", "-1", "--format=%s"], WORK)).out.trim()).toBe("wip: live check");
+      expect((await git(["commit", "-q", "-m", "wip: live check"], WORK)).code).toBe(0);
+      expect((await git(["log", "-1", "--format=%s"], WORK)).out.trim()).toBe("wip: live check");
 
       // Files in and out, which is what the mailbox and the bundle both ride on.
       expect(await getFile(c, scope, `${WORK}/NOTE.md`)).toContain("written by the agent");

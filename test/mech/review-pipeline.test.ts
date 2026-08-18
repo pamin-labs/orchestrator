@@ -11,7 +11,7 @@ import { gateState } from "../../src/mech/gate.ts";
 import { TaskClaimSchema } from "../../src/mech/flow/reconcile.ts";
 import { runInvariants } from "../../src/mech/ops/invariants.ts";
 import { handToBoss } from "../../src/mech/flow/review.ts";
-import { checkpoint } from "../../src/mech/git/worktree.ts";
+import { checkpoint } from "../../src/mech/git/gitops.ts";
 import { AgentTurnPayloadSchema, Scheduler, type Executor } from "../../src/platform/scheduling/scheduler.ts";
 import { makeAuditVerdict, makeExecutor, makeReviewVerdict, type ExecDeps } from "../../src/application/executor.ts";
 import type { TurnResult, TurnSpec } from "../../src/runtime/claude.ts";
@@ -137,7 +137,7 @@ async function harness(opts: { gates?: string[]; realGit?: boolean } = {}) {
     );
 
   // Baseline for reconcile, as the executor would set on the slice's first turn.
-  const base = realGit ? await checkpoint(git, repo, wt.worktree, "start") : null;
+  const base = realGit ? await checkpoint(git, wt.worktree, "start") : null;
   db.run("UPDATE slice SET base_sha = ? WHERE id = 1", [base]);
 
   const gate = (code: number, out = "") =>
@@ -163,7 +163,7 @@ test.concurrent("a truthful claim with a passing gate reaches QA, not the boss",
   const h = await harness({ realGit: true });
   h.gate(0);
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
-  await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
+  await h.git(["commit", "-qam", "edit"], h.wt.worktree);
 
   await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
   await h.sched.drain();
@@ -202,7 +202,7 @@ test.concurrent("a failing gate sends the slice back with the failing lines", as
   const h = await harness({ realGit: true });
   h.gate(1, "FAIL_mw_test");
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
-  await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
+  await h.git(["commit", "-qam", "edit"], h.wt.worktree);
   await doneClaim(h.post, { files: ["a.txt"], summary: "a.txt now says two" });
   await h.sched.drain();
 
@@ -214,7 +214,7 @@ test.concurrent("repeated failures escalate to the boss instead of looping forev
   const h = await harness({ realGit: true });
   h.gate(1, "FAIL_again");
   writeFileSync(join(h.wt.worktree, "a.txt"), "two\n");
-  await h.git(h.wt.worktree, ["commit", "-qam", "edit"], h.wt.worktree);
+  await h.git(["commit", "-qam", "edit"], h.wt.worktree);
 
   for (let i = 0; i < 3; i++) {
     h.db.run("UPDATE task SET status = 'done' WHERE id = 1");

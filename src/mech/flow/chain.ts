@@ -1,7 +1,7 @@
 import type { Ctx } from "../../mech/ctx.ts";
 import { addNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
-import { rollbackTo } from "../git/worktree.ts";
+import { rollbackTo } from "../git/gitops.ts";
 import { sandboxGit } from "../git/checkout.ts";
 import { WORK } from "../sandbox/sandbox.ts";
 import { dropGroup } from "./start.ts";
@@ -287,7 +287,7 @@ export async function revoke(deps: ChainDeps, escId: number): Promise<{ rolledBa
   // The group's own checkout. Gated on `grp.worktree` before — a column nothing
   // writes — so revoking an answer never actually revoked the work done on it.
   if (esc.checkpoint_sha && esc.grp_id) {
-    const back = await rollbackTo(sandboxGit(ctx, { grp: esc.grp_id }), WORK, WORK, esc.checkpoint_sha);
+    const back = await rollbackTo(sandboxGit(ctx, { grp: esc.grp_id }), WORK, esc.checkpoint_sha);
     if (back.ok) rolledBackTo = esc.checkpoint_sha;
     else {
       ctx.bus.emit({

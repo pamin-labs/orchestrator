@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { openMemory, type DB } from "../../src/platform/persistence/database.ts";
 import { ensureCheckout, sandboxGit } from "../../src/mech/git/checkout.ts";
-import { porcelainPaths, STATUS_Z } from "../../src/mech/git/worktree.ts";
+import { porcelainPaths, STATUS_Z } from "../../src/mech/git/gitops.ts";
 import { WORK } from "../../src/mech/sandbox/sandbox.ts";
 import * as fx from "../support/factories.ts";
 import { fakeSandbox } from "../support/fake-sandbox.ts";
@@ -107,6 +107,6 @@ test("a warning on stderr does not become a changed path", async () => {
     return { out: " M src/a.ts\0", err: "warning: unable to access '/root/.config/git/ignore'" };
   });
   const ctx = testContext({ sandbox });
-  const r = await sandboxGit(ctx, { grp: 1 })(WORK, STATUS_Z, WORK);
+  const r = await sandboxGit(ctx, { grp: 1 })(STATUS_Z, WORK);
   expect(porcelainPaths(r.out)).toEqual(["src/a.ts"]);
 });

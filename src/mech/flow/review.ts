@@ -6,7 +6,7 @@ import { say } from "../../platform/text/lang.ts";
 import { jsonOr } from "../../contracts/json.ts";
 import { runGates, recordGate, gateState } from "../gate.ts";
 import { extractClaimedFiles, reconcile, TaskClaimSchema } from "./reconcile.ts";
-import { changedSince, filesAt } from "../git/worktree.ts";
+import { changedSince, filesAt } from "../git/gitops.ts";
 import { resourceExec, WORK } from "../sandbox/sandbox.ts";
 import { pushBranch, sandboxGit } from "../git/checkout.ts";
 import { joinQueue, position } from "./mergequeue.ts";
@@ -90,13 +90,13 @@ export async function runDeterministicReview(
     // false, the change set was always empty, and the gate scored every claim
     // against nothing at all.
     const sgit = sandboxGit(ctx, { grp: slice.grp_id });
-    changed = await changedSince(sgit, WORK, WORK, slice.base_sha);
+    changed = await changedSince(sgit, WORK, slice.base_sha);
     // A path that is in neither the branch point nor the change set: a scratch file
     // created and then deleted inside this slice. Git has no record of it either
     // way, so it cannot be a delivery — and it must not be scored as a lie.
     // (`changed` already carries the untracked files, so anything that exists now
     // is in one list or the other; no filesystem check is needed.)
-    const known = new Set(await filesAt(sgit, WORK, WORK, slice.base_sha));
+    const known = new Set(await filesAt(sgit, WORK, slice.base_sha));
     const seen = new Set(changed);
     absent = extractClaimedFiles(claims.data).filter((c) => !known.has(c) && !seen.has(c));
   }

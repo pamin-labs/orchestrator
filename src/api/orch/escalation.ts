@@ -86,7 +86,7 @@ export const postAskBoss = (async (ctx, _req, a, _p, b) => {
 
   // The commit the question was asked at, so a stand-in's answer can be undone.
   if (a.grp_id) {
-    const head = await sandboxGit(ctx, { grp: a.grp_id })(WORK, ["rev-parse", "HEAD"], WORK);
+    const head = await sandboxGit(ctx, { grp: a.grp_id })(["rev-parse", "HEAD"], WORK);
     if (head.code === 0) {
       ctx.db.run("UPDATE escalation SET checkpoint_sha = ? WHERE id = ?", [head.out.trim(), id]);
     }

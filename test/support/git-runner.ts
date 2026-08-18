@@ -1,6 +1,6 @@
 import { cpSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { GitRunner } from "../../src/mech/git/worktree.ts";
+import type { GitRunner } from "../../src/mech/git/gitops.ts";
 import { tempDir } from "./temp.ts";
 
 /**
@@ -16,8 +16,12 @@ import { tempDir } from "./temp.ts";
  * No lock: one host checkout with three concurrent writers is what `gitlock.ts`
  * existed for, and a test file drives one repository from one place.
  */
-export const testGit: GitRunner = async (repo, argv, cwd) => {
-  const p = Bun.spawn(["git", ...argv], { cwd: cwd ?? repo, stdout: "pipe", stderr: "pipe" });
+export const testGit: GitRunner = async (argv, cwd) => {
+  // `cwd` decides where this runs, and nothing else does. The runner used to take
+  // a repository argument that only *this* implementation honoured — production's
+  // `sandboxGit` opened `async (_repo, …)` and always ran in `WORK` — so a caller
+  // could name a directory and be ignored everywhere that mattered.
+  const p = Bun.spawn(["git", ...argv], { cwd: cwd ?? process.cwd(), stdout: "pipe", stderr: "pipe" });
   const [so, se] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   return { code: await p.exited, out: (so + se).trimEnd() };
 };
@@ -52,20 +56,20 @@ async function buildTemplate(): Promise<string> {
   const dir = tempDir("orch-git-tpl-");
   const origin = join(dir, "origin");
   mkdirSync(origin);
-  await testGit(origin, ["init", "-q", "-b", "main"]);
-  await testGit(origin, ["config", "user.email", "t@example.com"]);
-  await testGit(origin, ["config", "user.name", "test"]);
+  await testGit(["init", "-q", "-b", "main"], origin);
+  await testGit(["config", "user.email", "t@example.com"], origin);
+  await testGit(["config", "user.name", "test"], origin);
   writeFileSync(join(origin, "a.txt"), "one\n");
   writeFileSync(join(origin, ".gitignore"), "node_modules/\nweb/dist/\n");
-  await testGit(origin, ["add", "-A"]);
-  await testGit(origin, ["commit", "-q", "-m", "init"]);
+  await testGit(["add", "-A"], origin);
+  await testGit(["commit", "-q", "-m", "init"], origin);
 
   const work = join(dir, "work");
-  await testGit(dir, ["clone", "-q", origin, work]);
-  await testGit(work, ["remote", "set-url", "origin", "../origin"], work);
-  await testGit(work, ["config", "user.email", "a@orch.local"], work);
-  await testGit(work, ["config", "user.name", "orch agent"], work);
-  await testGit(work, ["checkout", "-q", "-b", "orch/g1"], work);
+  await testGit(["clone", "-q", origin, work], dir);
+  await testGit(["remote", "set-url", "origin", "../origin"], work);
+  await testGit(["config", "user.email", "a@orch.local"], work);
+  await testGit(["config", "user.name", "orch agent"], work);
+  await testGit(["checkout", "-q", "-b", "orch/g1"], work);
   return dir;
 }
 

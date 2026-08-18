@@ -7,7 +7,7 @@ import { gitTrailers } from "./ghlogin.ts";
 import type { Ctx } from "../../mech/ctx.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { say } from "../../platform/text/lang.ts";
-import { squashWip } from "./worktree.ts";
+import { squashWip } from "./gitops.ts";
 import { baseBranch, pushBranch, sandboxGit } from "./checkout.ts";
 import type { Github } from "./github.ts";
 import { pages } from "./paging.ts";
@@ -87,7 +87,7 @@ export async function openPr(input: OpenPrInput): Promise<{ number: number } | {
   // string, so `git log` in the merged repository carried `## Slices (3, all
   // accepted)`, a gate table and `Opened by orchestrator` — a description
   // written for a review page, pasted into the one place that outlives it.
-  const sq = await squashWip(sandbox, WORK, WORK, commitMessage(ctx.db, grpId, input.title), gitTrailers(ctx.db));
+  const sq = await squashWip(sandbox, WORK, commitMessage(ctx.db, grpId, input.title), gitTrailers(ctx.db));
   ctx.bus.emit({
     grpId,
     author: "orchestrator",

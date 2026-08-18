@@ -535,7 +535,7 @@ async function nudgeMovedBase(
   const movement = head;
   const git = sandboxGit(ctx, { grp: group.id });
   if (!(await knowsCommit(git, movement.sha))) return;
-  if ((await git(WORK, ["merge-base", "--is-ancestor", movement.sha, "HEAD"], WORK)).code === 0) return;
+  if ((await git(["merge-base", "--is-ancestor", movement.sha, "HEAD"], WORK)).code === 0) return;
   // Enqueue first, record after: `rebase_seen` is the claim that this movement was
   // handled, and a throw between the two left the claim standing with no nudge sent.
   queueRebase(ctx, group, movement, findings);
@@ -563,9 +563,9 @@ async function remoteBaseHead(ctx: Ctx, group: BaseGroup): Promise<BaseHead | nu
 type GitIn = ReturnType<typeof sandboxGit>;
 
 async function knowsCommit(git: GitIn, sha: string): Promise<boolean> {
-  if ((await git(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0) return true;
-  if ((await git(WORK, ["fetch", "--quiet", "origin"], WORK)).code !== 0) return false;
-  return (await git(WORK, ["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0;
+  if ((await git(["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0) return true;
+  if ((await git(["fetch", "--quiet", "origin"], WORK)).code !== 0) return false;
+  return (await git(["cat-file", "-e", `${sha}^{commit}`], WORK)).code === 0;
 }
 
 function queueRebase(

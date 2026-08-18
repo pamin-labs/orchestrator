@@ -8,7 +8,7 @@ import { execIn, execLines, getBytes, putBytes, SKILL_SYNC, UTIL, WORK, type Sco
 import { sandboxLog } from "../sandbox/sandboxlog.ts";
 import { cacheProjectSkills } from "../skills.ts";
 import { shq } from "../../platform/process/shell.ts";
-import type { GitRunner } from "./worktree.ts";
+import type { GitRunner } from "./gitops.ts";
 import { commitIdentity } from "./ghlogin.ts";
 
 const Repo = z.object({
@@ -133,7 +133,7 @@ export const baseRefFor = async (ctx: Ctx, projectId: number): Promise<string> =
  * two groups to corrupt.
  */
 export function sandboxGit(ctx: Ctx, scope: Scope): GitRunner {
-  return async (_repo, argv, cwd) => {
+  return async (argv, cwd) => {
     const r = await execIn(ctx, scope, `git ${argv.map(shq).join(" ")}`, { cwd: cwd ?? WORK });
     // stderr only when the command failed — that is where the reason lives and
     // callers read `out` for it. On success stderr is warnings, and porcelain `-z`
