@@ -118,3 +118,42 @@ instead of pretending to replay a different run.
 `test:stress` repeats replay-safe unit, property, and model suites. Stateful HTTP
 and live OpenSandbox integration run once in main CI; randomizing their shared
 server lifecycle would test ordering noise instead of product behavior.
+
+## A guard is kept only once it has been seen failing
+
+Write the test, take the fix away, watch it go red, put the fix back. A guard
+that has only ever been green is a guess about what it measures, and it is worse
+than no guard because it reads as coverage.
+
+Three on one branch could not fail at all:
+
+| Guard | Why it could not fail |
+|---|---|
+| a flamegraph resize test | dispatched `window.resize`; happy-dom's `ResizeObserver` never sees one |
+| a bundle boot test | waited for a non-empty `document.body`, which the first paint satisfies — the assertions then ran against a page still routing |
+| a CLI regression test | `bun test` gives no tty, so it passed with its guard deleted |
+
+Each was written against a real, reproduced defect. Each was green against the
+broken code. The third was deleted rather than fixed, which is also an answer.
+
+This is the same rule as "no `fallow-ignore` without a reason", moved from the
+suppression to the assertion: a claim that cannot be wrong is not a claim.
+
+## Measure the artefact, not the source
+
+The suite imports `web/src/**`, so until `test/governance/bundle-boots.test.ts`
+nothing in it ran the bundle the browser is served — and the source and the
+bundle are different programs. `recharts` resolves an axis scale by building
+`"scale" + type` and looking the name up on its `d3-scale` namespace, which no
+bundler can follow, so deleting an unused `<Brush>` tree-shook `scalePoint` out
+and crashed a whole view while 1,311 tests stayed green.
+
+Reasoning about it was wrong twice before the boot test settled it in one run.
+The same shape appeared in CI, where the CRAP gate ran `fallow audit` with no
+`coverage/coverage-final.json` in the checkout: it fell back to an
+export-reference estimate and failed on seven functions that measure 88.9%–100%
+covered.
+
+So when a claim can be measured — a bundler's output, a CI job's inputs, a
+library's runtime behaviour — measure it. Build it and run it, or read the real
+numbers out of the file. Confident wrong answers cost more than a check.

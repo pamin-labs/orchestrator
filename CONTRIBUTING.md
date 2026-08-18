@@ -62,9 +62,13 @@ coherent change as a contract.
 
 ## Commits and DCO
 
-Use a Conventional Commit prefix and a subject that states the finding, not
-merely the edit. Explain how failure presented and why the fix belongs at this
-layer. Follow [`.claude/skills/git-commit/SKILL.md`](.claude/skills/git-commit/SKILL.md).
+Use a Conventional Commit prefix — `feat` `fix` `docs` `test` `refactor` `perf`
+`build` `chore`, scoped to the module — and a subject that states the finding,
+not merely the edit: `fix(sandbox): the skills mount was empty on macOS, and
+nothing could say so`, not `fix(sandbox): update mount path`. The body explains
+how the failure presented, why the fix belongs at that layer, and what was
+deliberately left out; measurements beat adjectives. English throughout, and no
+`🤖 Generated with` footer — the trailers below are the attribution.
 
 Every human-authored commit carries a matching DCO sign-off:
 

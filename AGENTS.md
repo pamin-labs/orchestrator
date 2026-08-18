@@ -147,6 +147,12 @@ or run the full suite unless they own integration.
   assertions.
 - Test observable behavior and failure paths. Keep incident regression tests;
   remove tests that merely rerun compiler or linter commands.
+- A new guard is shown failing before it is kept, and a claim about a bundle, a
+  CI command or a library's runtime is measured rather than reasoned about.
+  Both rules, and the defects that produced them, are in
+  [`testing`](docs/standards/testing.md).
+- A `key`, a dependency array or a cache key takes the resolved value, not the
+  raw one in scope. See [`state-management`](docs/standards/state-management.md).
 - No sleeps for synchronization, unbounded concurrency, dangling promises,
   swallowed errors, or retries of non-idempotent work.
 - A bug fix must block the same bug class at its shared entrypoint, type,
@@ -164,6 +170,12 @@ or run the full suite unless they own integration.
 ## Commits
 
 Before every commit, run TypeScript and the full Bun suite, then stage exact
-owned files. Follow `.claude/skills/git-commit/SKILL.md`. Commit subjects explain
-the finding; bodies explain the observed failure and why the fix belongs at that
-layer.
+owned files by name — `git add -A` sweeps in another session's half-finished
+work. Sign off every commit (`git commit -s`); CI's `dco` job checks each one
+against its author, and repairing a branch afterwards rewrites its history.
+
+Conventional Commit prefix, scoped to the module. The subject states the
+**finding**, not the diff — the log is read by somebody asking *why is this like
+this*. The body says what the failure looked like, why the fix is at that layer,
+and what was deliberately left out; measurements beat adjectives. Examples and
+the full convention are in [`CONTRIBUTING`](CONTRIBUTING.md).

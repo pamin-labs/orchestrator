@@ -23,3 +23,23 @@ events.
 Model impossible states out of the type/API before adding source-text guards.
 When the type system cannot cover a persistent invariant, use a database
 constraint or executable invariant check.
+
+## Identity keys take the resolved value, not the raw one
+
+A React `key`, an effect's dependency array and a cache key all answer the same
+question — *is this still the same thing?* — and all three go wrong the same
+way: by reaching for whatever value is conveniently in scope instead of the one
+that means identity.
+
+Two on one branch:
+
+- The error boundary was keyed on `selection.view`, the raw hash value, which
+  becomes `settings` the instant a dialog opens. A changed `key` unmounts the
+  subtree, so opening 设置 threw away the page behind the modal and re-fetched
+  it — on 耗时 both charts and the table vanished and came back. The resolved
+  view, which `resolveNavigation` already computes, does not move.
+- The flamegraph's *create* effect depended on `width`, so any layout change
+  destroyed and rebuilt the chart. Width belongs to the effect that re-lays it
+  out; only "is there a box yet" belongs to the one that builds it.
+
+Ask what would make this a different thing, and depend on that.
