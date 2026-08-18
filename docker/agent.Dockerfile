@@ -24,7 +24,15 @@
 # nothing here uses (docs/adr/005).
 FROM oven/bun:1.3.14@sha256:50317d83cd5a5ae1d8b35b3379c69f57ce1a0dbf4def91f0965653d767851834
 
+# `upgrade` before `install`, and it is not belt-and-braces. A base image is a
+# snapshot: `oven/bun:1.3.14` is pinned by digest, so every Debian package in it
+# is frozen at whatever was current when that image was built, security updates
+# included. Trivy counted 60 HIGH/CRITICAL after the Node change and the bulk of
+# them were `perl` — pulled in by `git` — and `util-linux`, every one with a
+# `deb13uN` fix already published. Installing without upgrading is choosing the
+# snapshot's versions on purpose.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends git ca-certificates curl xz-utils \
  && rm -rf /var/lib/apt/lists/*
 
@@ -62,6 +70,17 @@ RUN set -eux; \
     rm "${archive}"; \
     node --version; \
     npm --version
+
+# npm before the CLIs, and pinned like everything else here.
+#
+# The seven advisories left after the Debian layer was upgraded were all in
+# npm's own bundled dependencies — `tar`, `undici`, `brace-expansion`,
+# `ip-address` — frozen at whatever the Node tarball shipped with. They are not
+# ours and not Debian's, and the only thing that moves them is npm itself.
+# Upgrading first also means the two CLIs below are installed by the version
+# that stays.
+ARG NPM_VERSION=12.0.2
+RUN npm install -g --no-fund --no-audit "npm@${NPM_VERSION}"
 
 ARG CLAUDE_CODE_VERSION=2.1.233
 ARG CODEX_VERSION=0.147.0
