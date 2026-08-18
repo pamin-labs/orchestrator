@@ -29,6 +29,7 @@ import {
   bodyClass,
   choose,
   connectionText,
+  contentKey,
   contentSlot,
   findById,
   idOrZero,
@@ -435,7 +436,7 @@ export function App() {
         <Group orientation="horizontal" className={cn("h-full min-h-0", bodyClass(timeline))}>
           <Panel className="min-w-0 overflow-hidden" defaultSize="100%">
             <div className={cn("flex h-full max-w-[76rem] flex-col px-6 pt-5", scrollClass(view))}>
-              <Boundary key={`${sel.view}:${sel.p}:${sel.g}`}>{content[slot]()}</Boundary>
+              <Boundary key={contentKey(view, sel.p, sel.g)}>{content[slot]()}</Boundary>
             </div>
           </Panel>
           {choose(

@@ -182,3 +182,24 @@ export function projectItem(project: State["projects"][number], waiting: number)
 export function requirementItem(group: State["groups"][number], status: string) {
   return { id: group.id, name: group.name, meta: `${status}${group.branch ? ` · ${group.branch}` : ""}` };
 }
+
+/**
+ * What identifies the content subtree, for the error boundary's `key`.
+ *
+ * A `key` change unmounts and remounts everything under it, which is what makes
+ * it the right tool for "this is a different page now, discard its state" and a
+ * trap everywhere else.
+ *
+ * It takes the **resolved** view, not `selection.view`, and that is the whole
+ * of the fix. The raw value becomes `settings` — or `config`, `skills`,
+ * `github`, `sandbox` — the moment a dialog opens, so keying on it threw away
+ * the page *behind* the dialog and rebuilt it: on 耗时 both charts and the table
+ * vanished and came back as the modal appeared, and every one of them re-read
+ * the endpoint to do it. A dialog is drawn on top of a page, not instead of it.
+ *
+ * The project and the group stay in the key because those really are different
+ * pages: a boundary that has caught an error for one requirement should not
+ * keep showing it for the next.
+ */
+export const contentKey = (view: View, project: number | null, group: number | null): string =>
+  `${view}:${project}:${group}`;

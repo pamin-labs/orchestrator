@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   backgroundView,
   connectionText,
+  contentKey,
   contentSlot,
   navigationShortcut,
   parseSelection,
@@ -52,4 +53,21 @@ test("keyboard, labels and switcher rows preserve visible policy", () => {
     badge: "2 件待办",
   });
   expect(readSide({ getItem: () => "0" })).toBeFalse();
+});
+
+test("a dialog does not change the identity of the page behind it", () => {
+  // `contentKey` feeds the error boundary's `key`, and a `key` change unmounts
+  // and remounts the whole subtree. It used to be built from `selection.view`,
+  // which becomes `settings` the instant a dialog opens — so opening 设置 threw
+  // away the page underneath and rebuilt it. On 耗时 both charts and the table
+  // disappeared and came back as the modal appeared, each one re-reading the
+  // endpoint on the way. The resolved view is what stays put.
+  const behind = resolveNavigation(selection({ view: "settings", p: 1 }), "time");
+  expect(behind.view).toBe("time");
+  expect(contentKey(behind.view, 1, null)).toBe(contentKey("time", 1, null));
+
+  // A real page change still changes it, or the boundary would keep showing one
+  // requirement's error while displaying the next.
+  expect(contentKey("time", 1, null)).not.toBe(contentKey("time", 2, null));
+  expect(contentKey("time", 1, null)).not.toBe(contentKey("progress", 1, null));
 });
