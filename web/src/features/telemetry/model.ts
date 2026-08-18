@@ -407,6 +407,55 @@ export const bucketFor = (windowMs: number): number =>
   BUCKETS.find((b) => windowMs / b <= MAX_BUCKETS) ?? BUCKETS.at(-1)!;
 
 /**
+ * The window a pinned bucket needs, which is the other half of `bucketFor`.
+ *
+ * Only one of the two was ever wired: the window picked the bucket, and pinning a
+ * bucket left the window where it was. Pin one wider than the window and the whole
+ * window collapses into a single bucket — one point, and a line needs two, so the
+ * chart went blank at exactly the moment the reader made a choice about it. Pin
+ * one much finer and the same window spreads every run into its own bucket with
+ * gaps either side, which draws nothing for a different reason.
+ *
+ * Exact inverse of `bucketFor`, so pinning the width the window already implied
+ * changes nothing: `bucketFor(windowFor(b)) === b` for every width offered.
+ */
+export const windowFor = (bucketMs: number): number => bucketMs * MAX_BUCKETS;
+
+/**
+ * The width and the stretch, resolved together, because they are one choice.
+ *
+ * Three inputs decide both and they do not compose in the view without a nest of
+ * ternaries: a brush names a stretch and keeps its own width; a pinned width names
+ * the stretch it needs; neither, and the caller's window picks the width.
+ */
+export function trendScale(
+  pinnedBucket: number | null,
+  chosen: { from: number; to: number } | null,
+  windowMs: number | undefined,
+  fallbackMs: number,
+): { bucketMs: number; askedWindowMs: number | undefined } {
+  if (chosen) return { bucketMs: pinnedBucket ?? bucketFor(chosen.to - chosen.from), askedWindowMs: windowMs };
+  if (pinnedBucket !== null) return { bucketMs: pinnedBucket, askedWindowMs: windowFor(pinnedBucket) };
+  return { bucketMs: bucketFor(windowMs ?? fallbackMs), askedWindowMs: windowMs };
+}
+
+/**
+ * Whether the series can actually draw a line, which is not the same as having
+ * points in it.
+ *
+ * An area is drawn between *adjacent* non-null points, and `connectNulls` is false
+ * here on purpose — a gap is a fact. So a sporadic fleet can put ten runs in the
+ * window, pass a "two or more points" test, and still render an empty box, because
+ * no two of them are neighbours. Measured on ten runs over a day: at every width
+ * from a minute to an hour there were ten points and zero adjacent pairs.
+ */
+export const adjacentPairs = (points: readonly { p50: number | null }[]): number => {
+  let pairs = 0;
+  for (let i = 1; i < points.length; i++) if (points[i]!.p50 !== null && points[i - 1]!.p50 !== null) pairs++;
+  return pairs;
+};
+
+/**
  * How many points the trend will draw before it stops being a chart.
  *
  * Not `MAX_BUCKETS`, deliberately: that is a *taste* limit governing the bucket

@@ -9,6 +9,10 @@ import {
   draggedWindow,
   bucketFits,
   bucketFor,
+  windowFor,
+  trendScale,
+  adjacentPairs,
+  BUCKETS,
   fillBuckets,
   groupByKind,
   panBy,
@@ -576,4 +580,71 @@ test("panning by a distance keeps the width and clamps by sliding", () => {
   const stuck = panBy({ from: 0.8, to: 1 }, 0.5, { from: 0, to: 1 });
   expect(stuck.to).toBeCloseTo(1, 6);
   expect(stuck.to - stuck.from).toBeCloseTo(0.2, 6);
+});
+
+/**
+ * The window follows a pinned width, because the two are one degree of freedom.
+ *
+ * `bucketFor` was wired and its inverse was not. Pin six hours onto a one-hour
+ * window and every instant in it lands in the same bucket: one point, and an area
+ * is drawn between two.
+ */
+test("a pinned bucket asks for a window it can be drawn across", () => {
+  for (const bucketMs of BUCKETS) expect(bucketFor(windowFor(bucketMs))).toBe(bucketMs);
+});
+
+test("a bucket wider than the window leaves one point, which is not a line", () => {
+  const now = 1_760_000_000_000;
+  const hour = { from: now - 3_600_000, to: now };
+  const points = [{ at: now - 1_800_000, count: 1, p50: 1000, p95: 2000 }];
+  expect(fillBuckets(points, hour, 6 * 3_600_000)).toHaveLength(1);
+  // The window the pin should have asked for instead.
+  const asked = { from: now - windowFor(6 * 3_600_000), to: now };
+  expect(fillBuckets(points, asked, 6 * 3_600_000).length).toBeGreaterThan(1);
+});
+
+/**
+ * The drawability test counts what recharts draws between, not what it draws.
+ *
+ * Ten sporadic runs across a day put ten points on the chart and zero neighbours,
+ * so the old `points >= 2` test passed and the box rendered empty. `connectNulls`
+ * is false on purpose — a gap is a fact — so the pairs are the precondition.
+ */
+test("scattered runs are points without pairs, at every width that fits them", () => {
+  const now = 1_760_000_000_000;
+  const day = { from: now - 24 * 3_600_000, to: now };
+  const runs = Array.from({ length: 10 }, (_, i) => ({
+    at: now - i * 137 * 60_000,
+    count: 1,
+    p50: 1000,
+    p95: 2000,
+  }));
+  for (const bucketMs of [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000, 3_600_000]) {
+    const rows = fillBuckets(runs, day, bucketMs);
+    expect(rows.filter((r) => r.p50 !== null).length).toBeGreaterThanOrEqual(2);
+    expect(adjacentPairs(rows)).toBe(0);
+  }
+  // Wide enough that the runs share buckets, which is when a line exists.
+  expect(adjacentPairs(fillBuckets(runs, day, 6 * 3_600_000))).toBeGreaterThan(0);
+});
+
+/**
+ * The two are one choice, and a brush is a third input that overrides only one.
+ */
+test("a pinned width asks for its own window; a brush keeps the one it named", () => {
+  const chosen = { from: 1_000, to: 3_600_000 + 1_000 };
+  expect(trendScale(6 * 3_600_000, null, 3_600_000, 86_400_000)).toEqual({
+    bucketMs: 6 * 3_600_000,
+    askedWindowMs: windowFor(6 * 3_600_000),
+  });
+  // A brush names the stretch, so the pin only supplies the width.
+  expect(trendScale(6 * 3_600_000, chosen, 3_600_000, 86_400_000)).toEqual({
+    bucketMs: 6 * 3_600_000,
+    askedWindowMs: 3_600_000,
+  });
+  // Nothing pinned: the window picks the width, which is the original direction.
+  expect(trendScale(null, null, 86_400_000, 86_400_000)).toEqual({
+    bucketMs: bucketFor(86_400_000),
+    askedWindowMs: 86_400_000,
+  });
 });

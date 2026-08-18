@@ -22,7 +22,7 @@ import {
   fillBuckets,
   BUCKETS,
   bucketFits,
-  bucketFor,
+  trendScale,
   flameDepth,
   type TimeWindow,
   panBy,
@@ -924,8 +924,11 @@ function Trend({
   // Asked of what is *in the window*, not of what the server returned: panning to
   // a quiet stretch otherwise draws axes and an empty plot over a fifth of the
   // page. Two points, because one point is not a line.
-  const drawable = data.filter((point) => point.p50 !== null).length;
-  if (drawable < 2) {
+  // Adjacent pairs, not points: an area is drawn *between* neighbours and
+  // `connectNulls` is false by design, so ten runs scattered one-per-bucket are ten
+  // points and no line. Counting points passed them and drew an empty box.
+  const withData = data.filter((point) => point.p50 !== null).length;
+  if (withData < 2) {
     return (
       // Inside the chart's own box, at the chart's own height: a slot the size of
       // the thing that is missing says which thing is missing. `sunk` is already
@@ -982,8 +985,29 @@ function Trend({
           {/* The head line is the axis key, which is now an instant rather than a
               printed label — so it is spelled the same way the ticks are. */}
           <ChartTooltip format={duration} label={(at) => trendLabel(Number(at), windowMs, bucketMs)} />
-          <Area type="monotone" dataKey="p50" name={P50_LABEL} stroke="var(--color-ink-3)" fill="var(--color-sunk)" />
-          <Area type="monotone" dataKey="p95" name={P95_LABEL} stroke="var(--color-warn)" fill="transparent" />
+          {/* `dot`, because an area is drawn *between* adjacent points and
+              `connectNulls` is false on purpose — a gap is a fact. A sporadic
+              fleet puts every run in its own bucket with holes either side, and
+              with no dots that renders as axes over nothing: measured at ten runs
+              across a day, zero adjacent pairs at every width up to an hour. The
+              radius is small enough that a dense series reads as a line with the
+              points marked, rather than as beads. */}
+          <Area
+            type="monotone"
+            dataKey="p50"
+            name={P50_LABEL}
+            stroke="var(--color-ink-3)"
+            fill="var(--color-sunk)"
+            dot={{ r: 1.5 }}
+          />
+          <Area
+            type="monotone"
+            dataKey="p95"
+            name={P95_LABEL}
+            stroke="var(--color-warn)"
+            fill="transparent"
+            dot={{ r: 1.5 }}
+          />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -1187,8 +1211,11 @@ export function Telemetry({
   // The bucket is derived from what is being *asked for*, not from what came back
   // — otherwise the read needs the answer to the read. When nothing is chosen that
   // is the caller's own window, the same number the endpoint derives its own from.
-  const bucketMs = pinnedBucket ?? bucketFor(chosen ? chosen.to - chosen.from : (windowMs ?? DAY_MS));
-  const { report, loading, extent } = useTelemetry(scope, windowMs, chosen, bucketMs);
+  // `bucketFor` was wired and its inverse was not, so pinning a width changed the
+  // bucket and left the window — and a width wider than the window collapsed the
+  // whole thing into one point, which is not a line.
+  const { bucketMs, askedWindowMs } = trendScale(pinnedBucket, chosen, windowMs, DAY_MS);
+  const { report, loading, extent } = useTelemetry(scope, askedWindowMs, chosen, bucketMs);
   /**
    * The stretch on screen: what the reader chose, else what the server sent.
    *
@@ -1196,7 +1223,7 @@ export function Telemetry({
    * preferring it would put the charts on this browser's `now` while the limit came
    * from the endpoint — two windows that agree only when the two clocks do.
    */
-  const shownWindow = chosen ?? report?.window ?? { from: Date.now() - (windowMs ?? DAY_MS), to: Date.now() };
+  const shownWindow = chosen ?? report?.window ?? { from: Date.now() - (askedWindowMs ?? DAY_MS), to: Date.now() };
   /**
    * How far a zoom or a pan may reach.
    *
