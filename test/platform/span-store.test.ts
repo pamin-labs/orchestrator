@@ -149,7 +149,7 @@ function insert(db: DB, spanId: string, startedAt: number): void {
 
 const remaining = (db: DB): string[] =>
   db
-    .query<{ span_id: string }, []>("SELECT span_id FROM span ORDER BY started_at")
+    .query<{ span_id: string }, []>("SELECT span_id FROM span ORDER BY started_at, span_id")
     .all()
     .map((r) => r.span_id);
 

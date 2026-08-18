@@ -180,7 +180,7 @@ export const postSplit = (async (ctx, _req, a, _p, b) => {
   // the attachment paths, which live in the first note.
   const original = ctx.db
     .query<{ id: number; body: string }, [number]>(
-      "SELECT id, body FROM note WHERE grp_id = ? AND kind = 'fact' ORDER BY at LIMIT 1",
+      "SELECT id, body FROM note WHERE grp_id = ? AND kind = 'fact' ORDER BY at, id LIMIT 1",
     )
     .get(gid);
 

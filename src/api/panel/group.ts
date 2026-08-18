@@ -137,7 +137,7 @@ export const postDraftDecision = (async (ctx, _req, params, b) => {
   const filed = ctx.db
     .query<{ body: string }, [number]>(
       `SELECT body FROM note WHERE grp_id = ? AND json_extract(frontmatter_json, '$.draft_card') = 1
-       ORDER BY at DESC LIMIT 1`,
+       ORDER BY at DESC, id DESC LIMIT 1`,
     )
     .get(grpId)?.body;
   const card = b.card ?? filed;

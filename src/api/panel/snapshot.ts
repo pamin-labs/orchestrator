@@ -159,7 +159,7 @@ export function snapshot(ctx: Ctx): Snapshot {
         `SELECT id, grp_id, question, answer, answered_by, ref_note_id, answered_at
          FROM escalation
          WHERE chain_state = 'answered' AND answered_by IS NOT NULL AND answered_by != 'boss'
-         ORDER BY answered_at DESC LIMIT 10`,
+         ORDER BY answered_at DESC, id DESC LIMIT 10`,
       )
       .all(),
     escalations: db
@@ -167,7 +167,7 @@ export function snapshot(ctx: Ctx): Snapshot {
         `SELECT e.id, e.grp_id, e.severity, e.question, e.brief, e.kind, e.chain_state, e.answered_by, e.answer,
                 e.created_at, a.role AS asker, a.project_id AS asker_project
          FROM escalation e LEFT JOIN agent a ON a.id = e.agent_id
-         WHERE e.chain_state NOT IN (SELECT value FROM json_each(?)) ORDER BY e.created_at`,
+         WHERE e.chain_state NOT IN (SELECT value FROM json_each(?)) ORDER BY e.created_at, e.id`,
       )
       .all(stateParam(ESCALATION_TERMINAL_STATES)),
     // Only the queue head is offered for merging; the rest carry their place in
@@ -187,7 +187,7 @@ export function snapshot(ctx: Ctx): Snapshot {
         `SELECT g.id, g.project_id, g.name, g.branch, g.pr_number, g.spent_tokens,
                 (SELECT count(*) FROM slice s WHERE s.grp_id = g.id) AS slices,
                 (SELECT max(e.at) FROM event e WHERE e.grp_id = g.id) AS at
-         FROM grp g WHERE g.status = 'DISSOLVED' ORDER BY at DESC LIMIT 12`,
+         FROM grp g WHERE g.status = 'DISSOLVED' ORDER BY at DESC, g.id DESC LIMIT 12`,
       )
       .all(),
     // The panel shows "并行 3/3" from this: without the cap, a queued group looks

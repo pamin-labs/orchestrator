@@ -75,7 +75,7 @@ export const getNotes = (async (ctx, _req, _params, query) => {
               n.frontmatter_json AS frontmatter, g.name AS "group"
        FROM note n LEFT JOIN grp g ON g.id = n.grp_id
        ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-       ORDER BY n.at DESC LIMIT 300`,
+       ORDER BY n.at DESC, n.id DESC LIMIT 300`,
     )
     .all(...args);
   return json({ notes: rows });

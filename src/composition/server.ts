@@ -215,7 +215,7 @@ export function heartbeat({ ctx, db, sched, gh, url, notifier, track, inFlight }
       `SELECT e.id, e.severity, e.question, e.grp_id AS grpId, g.name AS "group"
          FROM escalation e LEFT JOIN grp g ON g.id = e.grp_id
          WHERE e.chain_state = 'boss' AND e.answer IS NULL
-         ORDER BY e.created_at`,
+         ORDER BY e.created_at, e.id`,
     )
     .all();
   const batched = batchForBoss(waiting, url);

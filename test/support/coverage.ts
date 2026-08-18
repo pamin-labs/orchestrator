@@ -27,9 +27,22 @@ const COVERAGE_DIR = process.env.COVERAGE_DIR ?? "coverage";
 const root = process.cwd();
 
 /**
- * Imported unconditionally as the first line of `test/support/setup.ts` — that is the
- * only position early enough to instrument what the resets there import — so the
- * switch has to live here rather than at the import site.
+ * The switch is an environment variable because there is nowhere else to put it.
+ *
+ * This file is imported as the first line of `test/support/setup.ts`, which is
+ * the only position early enough to instrument what the resets there import —
+ * a plugin registered after a module has loaded does not reach it. So the
+ * question is whether the *loading* can be made conditional instead, and it
+ * cannot. Measured against Bun 1.3.14:
+ *
+ *   - `bunfig.toml`'s `preload` runs **before** a command-line `--preload`, so
+ *     `bun test --preload ./test/support/coverage.ts` registers the plugin
+ *     after `setup.ts` has already loaded.
+ *   - `bun test` has no `--config`/`-c`: passing one is read as a test-file
+ *     filter and matches nothing.
+ *
+ * The preload list is therefore static, and a static list can only be made
+ * conditional from inside the thing it loads.
  */
 const enabled = process.env.ORCH_COVERAGE === "1";
 

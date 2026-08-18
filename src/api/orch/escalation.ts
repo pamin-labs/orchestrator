@@ -299,7 +299,7 @@ function answerDraftContext(
     .query<{ kind: string; body: string }, [number]>(
       `SELECT kind, body FROM note
        WHERE (grp_id = ? OR (grp_id IS NULL AND kind IN ('decision','lesson','fact')))
-       ORDER BY at DESC LIMIT 12`,
+       ORDER BY at DESC, id DESC LIMIT 12`,
     )
     .all(groupId)
     .map((note) => `[${note.kind}] ${note.body.slice(0, 400)}`);

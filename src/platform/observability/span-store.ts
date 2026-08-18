@@ -474,7 +474,7 @@ export function traceList(db: DB, scope: ReadScope, limit = 20, window: TimeWind
          FROM span WHERE started_at >= ? AND started_at < ? AND ${where}
          WINDOW p AS (PARTITION BY trace_id),
                 w AS (PARTITION BY trace_id ORDER BY started_at, span_id)
-       ) WHERE rn = 1 ORDER BY started_at DESC LIMIT ?`,
+       ) WHERE rn = 1 ORDER BY started_at DESC, trace_id DESC LIMIT ?`,
     )
     .all(bounds.from, bounds.to, ...params, limit)
     .map((row) => ({
@@ -709,6 +709,9 @@ export function trend(
          FROM per_trace
        )
        SELECT bucket * ? AS at, MAX(n) AS count, ${percentiles("wall")}
+       -- any-order: at is bucket * width and bucket is the GROUP BY key, so
+       -- there is one row per value and nothing to tie. It reads like a clock
+       -- and is an index into the buckets.
        FROM bucketed GROUP BY bucket ORDER BY at`,
     )
     .all(bounds.from, bounds.to, ...params, bucketMs, bucketMs, bucketMs, bucketMs)
@@ -727,7 +730,7 @@ export function trimSpans(db: DB, now = Date.now(), maxRows = SPAN_MAX_ROWS): vo
   db.run("DELETE FROM span WHERE started_at < ?", [now - SPAN_MAX_AGE_MS]);
   db.run(
     `DELETE FROM span WHERE rowid IN (
-       SELECT rowid FROM span ORDER BY started_at DESC LIMIT -1 OFFSET ?
+       SELECT rowid FROM span ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?
      )`,
     [maxRows],
   );

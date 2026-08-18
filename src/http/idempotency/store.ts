@@ -173,7 +173,7 @@ function cleanup(db: DB, now: number): void {
   db.run(
     `DELETE FROM idempotency_request WHERE rowid IN (
        SELECT rowid FROM idempotency_request WHERE state = 'completed'
-       ORDER BY updated_at DESC LIMIT -1 OFFSET 10000
+       ORDER BY updated_at DESC, rowid DESC LIMIT -1 OFFSET 10000
      )`,
   );
 }
@@ -207,7 +207,7 @@ export function operatorIdempotencyStatus(db: DB, query: IdempotencyStatus): Ope
       `SELECT caller, route, key, state, updated_at
        FROM idempotency_request
        WHERE state IN ('failed', 'in_progress')
-       ORDER BY updated_at ASC
+       ORDER BY updated_at ASC, rowid ASC
        LIMIT 100`,
     )
     .all()

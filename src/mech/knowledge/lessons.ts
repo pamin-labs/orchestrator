@@ -139,7 +139,7 @@ export function sediment(ctx: Ctx, projectId: number | null, threshold: number):
        LEFT JOIN grp g ON g.id = n.grp_id
        WHERE n.kind = 'fact' AND (n.project_id = ? OR g.project_id = ?)
          AND coalesce(json_extract(n.frontmatter_json, '$.sedimented'), 0) != 1
-       ORDER BY n.at DESC LIMIT 40`,
+       ORDER BY n.at DESC, n.id DESC LIMIT 40`,
     )
     .all(projectId, projectId);
   if (facts.length < threshold) return 0;

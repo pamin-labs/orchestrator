@@ -196,7 +196,7 @@ function applyHandoff(ctx: Ctx, groupId: number | null, rotated: boolean, delta:
   if (!rotated) return;
   const handoff = ctx.db
     .query<{ body: string }, [number | null]>(
-      "SELECT body FROM note WHERE grp_id IS ? AND kind = 'handoff' ORDER BY at DESC LIMIT 1",
+      "SELECT body FROM note WHERE grp_id IS ? AND kind = 'handoff' ORDER BY at DESC, id DESC LIMIT 1",
     )
     .get(groupId);
   delta.handoff =
