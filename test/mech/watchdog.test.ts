@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { SqliteSpanExporter } from "../../src/platform/observability/span-store.ts";
 import { installTracerProvider } from "../../src/platform/observability/traces.ts";
@@ -289,23 +289,31 @@ test("park drops queued turns and retires sessions, keeping the checkout", () =>
 
 // ------------------------------------------------------------------ notifier
 
-test("only what the boss can act on is worth a notification", async () => {
-  // "main 动到了 549e8bc，已经让它先 rebase" arrived under a heading that said
-  // "5 things need you". It needed nobody: the system had already handled it. Two
-  // of those in a row and the heading stops meaning anything, which costs the
-  // notifications that were real.
-  expect(notifiable("base_moved", "advisory")).toBe(false);
-  expect(notifiable("repeat_failure", "advisory")).toBe(false);
-  expect(notifiable("env_suspect", "advisory")).toBe(false);
-  expect(notifiable("unshipped", "advisory")).toBe(false);
-  expect(notifiable("parked", "advisory")).toBe(false);
-
-  // The boss's own queue, and money running out.
-  expect(notifiable("waiting_slice", "advisory")).toBe(true);
-  expect(notifiable("waiting_merge", "advisory")).toBe(true);
-  expect(notifiable("budget_exhausted", "advisory")).toBe(true);
-  // Severity still wins: anything that stopped a group reaches them.
-  expect(notifiable("stalled", "blocker")).toBe(true);
+/**
+ * Only what the boss can act on is worth a notification.
+ *
+ * "main 动到了 549e8bc，已经让它先 rebase" arrived under a heading that said
+ * "5 things need you". It needed nobody: the system had already handled it. Two
+ * of those in a row and the heading stops meaning anything, which costs the
+ * notifications that were real — so which rule leaked is the fact a failure has
+ * to carry, and one bare boolean per line did not carry it.
+ */
+describe("only what the boss can act on is worth a notification", () => {
+  test.each([
+    ["base_moved", "advisory", false],
+    ["repeat_failure", "advisory", false],
+    ["env_suspect", "advisory", false],
+    ["unshipped", "advisory", false],
+    ["parked", "advisory", false],
+    // The boss's own queue, and money running out.
+    ["waiting_slice", "advisory", true],
+    ["waiting_merge", "advisory", true],
+    ["budget_exhausted", "advisory", true],
+    // Severity still wins: anything that stopped a group reaches them.
+    ["stalled", "blocker", true],
+  ] as const)("%s at %s notifies: %p", (rule, severity, notifies) => {
+    expect(notifiable(rule, severity)).toBe(notifies);
+  });
 });
 
 test("blockers interrupt immediately; ordinary findings are batched", () => {
@@ -1063,4 +1071,70 @@ test("a rule that throws marks its own span, not just the findings", async () =>
   } finally {
     installTracerProvider(new NodeTracerProvider());
   }
+});
+
+test("the two reconcilers above the rules cost themselves, not the twenty-four below", async () => {
+  // `runInvariants` and `sweepApproved` run before every rule and were the only
+  // two things on the tick outside `step`. A throw in either escaped to
+  // `runWatchdog`'s catch, so all twenty-four rules were skipped — every thirty
+  // seconds, reported as one deduped line every half hour. Rule 18 stops renewing
+  // sandbox TTLs on that path, and the fleet is reaped in a day.
+  const h = harness({ turnTimeoutMs: 1000 });
+  // `publishBranch` is the one `Ctx` callback `runInvariants` reaches
+  // (invariants.ts:175), so it is how a test makes that half throw without
+  // pretending anything else is broken.
+  h.ctx.publishBranch = () => {
+    throw new Error("publish exploded");
+  };
+  // That repair's condition: PR_OPEN, no PR number, has a merge_seq, and no live
+  // turn — so the timed-out turn below has to belong to a different group, or it
+  // satisfies the NOT EXISTS and the repair never runs.
+  h.db.run("UPDATE grp SET status = 'PR_OPEN', pr_number = NULL, merge_seq = 1 WHERE id = 1");
+  const other = fx.runningGrp.insert(h.db, { project_id: 1, name: "g2" });
+  // Rule 1's condition, which is checked after both reconcilers.
+  fx.job.insert(h.db, { grp_id: other.id, state: "running", started_at: 0 });
+
+  const findings = await runWatchdog(h.deps);
+  const rules = findings.map((f) => f.rule);
+
+  // The reconciler that threw names itself, rather than "the watchdog broke".
+  expect(rules).toContain("rule_broke:0a");
+  // And the rules below it still ran.
+  expect(rules).toContain("turn_timeout");
+});
+
+test("a rebase nudge that fails to enqueue is not recorded as delivered", async () => {
+  // `rebase_seen` is the record that this base movement was handled, and it was
+  // written *before* the enqueue. A throw there left the row claiming delivery,
+  // so that movement was never nudged again — the group silently stays stale.
+  // Act first, record after, which is the same order a reconciler writes
+  // `observedGeneration`.
+  const h = harness();
+  h.db.run("UPDATE grp SET sandbox_id = 'sb-1' WHERE id = 1");
+  h.ctx.gh = gh(() => ({ commit: { sha: "abc1234567" } }));
+  h.ctx.sched.enqueue = () => {
+    throw new Error("enqueue exploded");
+  };
+
+  await runWatchdog(h.deps);
+
+  expect(h.db.query<{ s: string | null }, []>("SELECT rebase_seen AS s FROM grp WHERE id = 1").get()!.s).toBeNull();
+});
+
+test("a question on a group nobody can answer is closed, not pushed to the boss first", async () => {
+  // Rule 11 routes stranded blockers to the boss; rule 16 revokes questions on
+  // groups that have no caller left. Rule 11 ran first and its predicate — "not a
+  // dispatchable state" — includes exactly the states rule 16 revokes. So a
+  // dissolved group's blocker was pushed to the boss's phone and killed three
+  // hundred lines later in the same sweep.
+  const h = harness();
+  const pushed: number[] = [];
+  h.ctx.notifyBoss = (escId) => void pushed.push(escId);
+  h.db.run("UPDATE grp SET status = 'DISSOLVED' WHERE id = 1");
+  fx.escalation.insert(h.db, { grp_id: 1, chain_state: "pm", severity: "blocker", question: "which schema?" });
+
+  const findings = await runWatchdog(h.deps);
+
+  expect(findings.map((f) => f.rule)).toContain("stale_ask");
+  expect(pushed).toEqual([]);
 });

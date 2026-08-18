@@ -104,6 +104,21 @@ export const ACTIVE_JOB_STATES = ["pending", "running"] as const satisfies reado
 
 /** Group states in which an agent turn can run and answer a routed question. */
 export const DISPATCHABLE_GRP_STATES = ["PLANNING", "RUNNING", "PR_OPEN"] as const satisfies readonly GrpState[];
+/**
+ * A group with nobody left to answer a question.
+ *
+ * Shared by the two watchdog rules that would otherwise disagree in a way only
+ * their order in the file resolved: one routes a stranded question up to the boss,
+ * the other revokes questions here. Routing first meant a push notification for a
+ * question revoked later in the same sweep.
+ */
+export const ANSWERLESS_GRP_STATES = ["PR_OPEN", "DISSOLVED"] as const satisfies readonly GrpState[];
+
+/**
+ * A group that is over. Nothing may move it, and `invariants.ts` declares it
+ * terminal rather than giving it a driver.
+ */
+export const GRP_TERMINAL_STATES = ["DISSOLVED"] as const satisfies readonly GrpState[];
 
 /** A question in any of these states can still move through the answer chain. */
 export const ESCALATION_OPEN_STATES = ["pm", "architect", "cos", "boss"] as const satisfies readonly EscalationState[];

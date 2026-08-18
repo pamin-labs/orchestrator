@@ -22,34 +22,64 @@ import {
   UTIL_STATES,
 } from "../../src/contracts/states.ts";
 
-const unique = (values: readonly string[]): boolean => new Set(values).size === values.length;
-const inside = <T>(subset: readonly T[], all: readonly T[]): boolean => {
+/**
+ * The states that appear twice, and the ones that appear where they may not.
+ *
+ * Both used to answer `boolean`, which made every failure here `expected true,
+ * received false` against a list of eight — true, and no help at all. They name
+ * the offending state instead, so the diff is the finding.
+ */
+const duplicates = (values: readonly string[]): string[] => values.filter((value, at) => values.indexOf(value) !== at);
+const outside = <T>(subset: readonly T[], all: readonly T[]): T[] => {
   const allowed = new Set<T>(all);
-  return subset.every((value) => allowed.has(value));
+  return subset.filter((value) => !allowed.has(value));
 };
 
 test("canonical states and semantic subsets are unique and aligned", () => {
-  for (const states of [
-    GRP_STATES,
-    SLICE_STATES,
-    JOB_STATES,
-    LEASE_STATES,
-    ESCALATION_STATES,
-    UTIL_STATES,
-    PROJECT_STATES,
-    SERVER_STATES,
-  ]) {
-    expect(unique(states)).toBe(true);
-  }
+  const repeated = Object.fromEntries(
+    Object.entries({
+      GRP_STATES,
+      SLICE_STATES,
+      JOB_STATES,
+      LEASE_STATES,
+      ESCALATION_STATES,
+      UTIL_STATES,
+      PROJECT_STATES,
+      SERVER_STATES,
+      ACTIVE_JOB_STATES,
+      DISPATCHABLE_GRP_STATES,
+      ESCALATION_OPEN_STATES,
+      ESCALATION_TERMINAL_STATES,
+    }).map(([name, states]) => [name, duplicates(states)]),
+  );
+  expect(repeated).toEqual({
+    GRP_STATES: [],
+    SLICE_STATES: [],
+    JOB_STATES: [],
+    LEASE_STATES: [],
+    ESCALATION_STATES: [],
+    UTIL_STATES: [],
+    PROJECT_STATES: [],
+    SERVER_STATES: [],
+    ACTIVE_JOB_STATES: [],
+    DISPATCHABLE_GRP_STATES: [],
+    ESCALATION_OPEN_STATES: [],
+    ESCALATION_TERMINAL_STATES: [],
+  });
 
-  expect(unique(ACTIVE_JOB_STATES)).toBe(true);
-  expect(unique(DISPATCHABLE_GRP_STATES)).toBe(true);
-  expect(unique(ESCALATION_OPEN_STATES)).toBe(true);
-  expect(unique(ESCALATION_TERMINAL_STATES)).toBe(true);
-  expect(inside(ACTIVE_JOB_STATES, JOB_STATES)).toBe(true);
-  expect(inside(DISPATCHABLE_GRP_STATES, GRP_STATES)).toBe(true);
-  expect(inside(ESCALATION_OPEN_STATES, ESCALATION_STATES)).toBe(true);
-  expect(inside(ESCALATION_TERMINAL_STATES, ESCALATION_STATES)).toBe(true);
+  // A subset naming a state its parent does not have is the drift this catches,
+  // and the state it named is what the reader needs.
+  expect({
+    ACTIVE_JOB_STATES: outside(ACTIVE_JOB_STATES, JOB_STATES),
+    DISPATCHABLE_GRP_STATES: outside(DISPATCHABLE_GRP_STATES, GRP_STATES),
+    ESCALATION_OPEN_STATES: outside(ESCALATION_OPEN_STATES, ESCALATION_STATES),
+    ESCALATION_TERMINAL_STATES: outside(ESCALATION_TERMINAL_STATES, ESCALATION_STATES),
+  }).toEqual({
+    ACTIVE_JOB_STATES: [],
+    DISPATCHABLE_GRP_STATES: [],
+    ESCALATION_OPEN_STATES: [],
+    ESCALATION_TERMINAL_STATES: [],
+  });
   expect([...ESCALATION_OPEN_STATES, ...ESCALATION_TERMINAL_STATES]).toEqual([...ESCALATION_STATES]);
 
   const activeJobStates: ReadonlySet<JobState> = new Set(ACTIVE_JOB_STATES);
