@@ -168,4 +168,8 @@ test("a grammar loads from inside a compiled binary, which is not the same claim
     out: '["Gamma"]',
     err: "",
   });
-});
+  // 30s, because this test writes a 69 MB executable and Bun's default is 5s.
+  // Alone it takes 1.5s; sharing a machine with the other 159 files under
+  // `--parallel` it has been measured at 6.7s, which is a flake rather than a
+  // finding. The budget is a ceiling on the disk write, not on the parse.
+}, 30_000);
