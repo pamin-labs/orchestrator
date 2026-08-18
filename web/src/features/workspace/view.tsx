@@ -1,5 +1,6 @@
 import type { InferResponseType } from "hono/client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useTransition } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { GRP_STATES } from "../../../../src/contracts/states.ts";
 import { api, groupAction, type PanelFrame, readApi } from "../../shared/api";
@@ -51,14 +52,17 @@ const fromSandbox = (f: PanelFrame, grpId: number): boolean =>
   f.grpId === grpId && f.agentId == null && (f.cls === "tool" || f.cls === "state") && f.author === "orchestrator";
 
 export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: number }) {
-  const [info, setInfo] = useState<SandboxInfo | null>(null);
-  const [busy, setBusy] = useState(false);
-  const load = async (id: number) =>
-    setInfo(await readApi(api.sandbox.$get({ query: { grp: String(id) } }), SandboxInfoSchema));
-  useEffect(() => {
-    setInfo(null);
-    void load(grpId);
-  }, [grpId]);
+  const queries = useQueryClient();
+  const [busy, startTransition] = useTransition();
+  // The group is the key. This was `useState` filled from a bare `.then()`, so
+  // moving between two requirements while the first read was in flight put one
+  // group's image, spec, branch and TTL under the other group's name — on the
+  // one pane whose whole purpose is answering "is *this* container stuck".
+  const { data: info = null } = useQuery({
+    queryKey: ["sandbox", grpId],
+    queryFn: (): Promise<SandboxInfo | null> =>
+      readApi(api.sandbox.$get({ query: { grp: String(grpId) } }), SandboxInfoSchema),
+  });
 
   // The stored tail, then whatever has arrived since this panel opened. Both,
   // because either one alone is the bug: the tail stops at page load and the
@@ -104,10 +108,12 @@ export function Workspace({ frames, grpId }: { frames: PanelFrame[]; grpId: numb
               yes: "重开",
             });
             if (!go) return;
-            setBusy(true);
-            await groupAction(grpId, "rebuild");
-            await load(grpId);
-            setBusy(false);
+            // The confirm is outside: the transition covers the rebuild and the
+            // re-read that proves it happened, not the question.
+            startTransition(async () => {
+              await groupAction(grpId, "rebuild");
+              await queries.invalidateQueries({ queryKey: ["sandbox", grpId] });
+            });
           }}
         >
           重开容器

@@ -1,9 +1,11 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { createElement } from "react";
-import { cleanup, render as mount, restoreFetch, stubFetch } from "../support/render.tsx";
+import { cleanup, render as mount } from "../support/render.tsx";
+import { inFlight, mockHttp } from "../support/http.ts";
 import { emptyState, type PanelFrame } from "../../web/src/shared/api.ts";
 import { Timeline } from "../../web/src/features/timeline/view.tsx";
 import { Workspace } from "../../web/src/features/workspace/view.tsx";
+import { WithQueries } from "./queries.tsx";
 
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is
@@ -11,20 +13,17 @@ import { Workspace } from "../../web/src/features/workspace/view.tsx";
  * belongs to whichever file imported it first, and every later file kept the
  * previous one's nodes in `document.body`. Each file registers its own.
  */
-afterEach(() => {
-  cleanup();
-  restoreFetch();
-});
+afterEach(cleanup);
 
-/** The workspace reads its own tail on mount, against a relative path Bun's own
- *  `fetch` cannot resolve. Left in flight: what these tests assert is the frames
- *  they were handed, not the read. */
-beforeEach(() => stubFetch());
+/** The workspace reads its own tail on mount. Left in flight: what these tests
+ *  assert is the frames they were handed, not the read. */
+mockHttp(inFlight());
 
-/** One view at a time: both halves of each test share the page. */
+/** One view at a time: both halves of each test share the page. The workspace
+ *  reads through the query cache, so every render needs one behind it. */
 const render = (node: ReturnType<typeof createElement>) => {
   cleanup();
-  return mount(node);
+  return mount(createElement(WithQueries, null, node));
 };
 
 const shown = (r: ReturnType<typeof render>, text: string) =>

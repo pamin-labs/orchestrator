@@ -1,7 +1,9 @@
 import { afterEach, test } from "bun:test";
 import { createElement } from "react";
-import { cleanup, render, restoreFetch, stubFetch } from "../support/render.tsx";
+import { cleanup, render } from "../support/render.tsx";
+import { inFlight, mockHttp } from "../support/http.ts";
 import { Notes } from "../../web/src/features/notes/view.tsx";
+import { WithQueries } from "./queries.tsx";
 
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is
@@ -9,13 +11,12 @@ import { Notes } from "../../web/src/features/notes/view.tsx";
  * belongs to whichever file imported it first, and every later file kept the
  * previous one's nodes in `document.body`. Each file registers its own.
  */
-afterEach(() => {
-  cleanup();
-  restoreFetch();
-});
+/** The pane reads on mount; this test is looking at the state before it lands. */
+mockHttp(inFlight());
+
+afterEach(cleanup);
 
 test("notes have a renderable loading state", () => {
   // The read is left in flight, which is what the pane comes up in front of.
-  stubFetch();
-  render(createElement(Notes, { projectId: 1 })).getByText(/读记录/);
+  render(createElement(WithQueries, null, createElement(Notes, { projectId: 1 }))).getByText(/读记录/);
 });

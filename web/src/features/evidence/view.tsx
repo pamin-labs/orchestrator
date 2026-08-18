@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api, type Evidence, EvidenceSchema, GateLogResponseSchema, readApi } from "../../shared/api";
 import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
@@ -12,26 +13,43 @@ const PAD = "px-4";
 const failed = (verdict: { body: string }) => /\bfail\b/i.test(verdict.body);
 const defaultView = (evidence?: Evidence | null) => (evidence?.verdicts.some(failed) ? "verdicts" : "diff");
 
-export function EvidencePanel({
+/**
+ * One slice's evidence, identified by the slice it belongs to.
+ *
+ * This was `useState` filled from a bare `.then()` in an effect — no ignore
+ * flag, no `AbortController` — so clicking one slice and then a faster one left
+ * the first read in flight, and when it returned it wrote its `accept_spec`, its
+ * diff and its verdicts into the panel already showing the second. The slice id
+ * is part of the query key now, which is the whole of the fix: a reply is filed
+ * under the slice that asked for it, and the component reads the entry for the
+ * slice on screen, so there is no version of this where the two can meet.
+ *
+ * The key is not under the `["orch"]` prefix the stream invalidates. Evidence is
+ * read when a slice is opened, exactly as before; putting it in that prefix
+ * would re-read a diff on every `state_change` frame in the system.
+ */
+export function EvidencePanel({ sliceId, actions }: { sliceId: number; actions?: React.ReactNode }) {
+  const { data: evidence } = useQuery({
+    queryKey: ["evidence", sliceId],
+    queryFn: () => readApi(api.slices[":id"].evidence.$get({ param: { id: String(sliceId) } }), EvidenceSchema),
+  });
+  if (!evidence) return <Message>读改动…</Message>;
+  // Keyed by the slice: which tab opens is decided from that slice's verdicts,
+  // so a different slice starts from its own default rather than inheriting the
+  // tab the reader happened to leave the last one on.
+  return <EvidenceViews key={sliceId} evidence={evidence} sliceId={sliceId} actions={actions} />;
+}
+
+function EvidenceViews({
+  evidence,
   sliceId,
   actions,
-  initialEvidence,
 }: {
+  evidence: Evidence;
   sliceId: number;
   actions?: React.ReactNode;
-  initialEvidence?: Evidence;
 }) {
-  const [evidence, setEvidence] = useState<Evidence | null>(initialEvidence ?? null);
-  const [view, setView] = useState(defaultView(initialEvidence));
-  useEffect(() => {
-    if (initialEvidence) return;
-    setEvidence(null);
-    void readApi(api.slices[":id"].evidence.$get({ param: { id: String(sliceId) } }), EvidenceSchema).then((result) => {
-      setEvidence(result);
-      setView(defaultView(result));
-    });
-  }, [sliceId, initialEvidence]);
-  if (!evidence) return <Message>读改动…</Message>;
+  const [view, setView] = useState(() => defaultView(evidence));
   return <EvidenceContent evidence={evidence} view={view} setView={setView} sliceId={sliceId} actions={actions} />;
 }
 
@@ -204,17 +222,20 @@ function filterLines(lines: string[], query: string): string[] {
   return lines.filter((line) => line.toLowerCase().includes(needle));
 }
 
+/** The same race one level down: two gate tabs in a row, answered out of order. */
 function GateLog({ sliceId, name }: { sliceId: number; name: string }) {
-  const [text, setText] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  useEffect(() => {
-    setText(null);
-    void readApi(
-      api.slices[":id"].gate[":name"].$get({ param: { id: String(sliceId), name }, query: {} }),
-      GateLogResponseSchema,
-    ).then((result) => setText(result?.text ?? "读不到日志"));
-  }, [sliceId, name]);
-  if (text === null) return <Message>读日志…</Message>;
+  const { data: text } = useQuery({
+    queryKey: ["gate", sliceId, name],
+    queryFn: async () =>
+      (
+        await readApi(
+          api.slices[":id"].gate[":name"].$get({ param: { id: String(sliceId), name }, query: {} }),
+          GateLogResponseSchema,
+        )
+      )?.text ?? "读不到日志",
+  });
+  if (text === undefined) return <Message>读日志…</Message>;
   const lines = logLines(text);
   if (!lines.some((line) => line.trim())) return <Message>{name} 没有输出。</Message>;
   const fails = lines.filter((line) => /^\s*\(fail\)/.test(line));

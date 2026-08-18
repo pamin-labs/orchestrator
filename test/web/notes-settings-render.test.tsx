@@ -1,13 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import {
-  cleanup,
-  fireEvent,
-  isDisabled,
-  render as mount,
-  restoreFetch,
-  stubFetch,
-  valueOf,
-} from "../support/render.tsx";
+import { cleanup, fireEvent, isDisabled, render as mount, valueOf } from "../support/render.tsx";
+import { inFlight, mockHttp } from "../support/http.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { PanelNote } from "../../src/contracts/notes.ts";
@@ -17,6 +10,7 @@ import { switchRow } from "../../web/src/features/navigation/switcher.tsx";
 import { isThemeHotkey, ThemeChoice } from "../../web/src/ui/theme.tsx";
 import type { Skill } from "../../web/src/features/composer/view.tsx";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
+import { WithQueries } from "./queries.tsx";
 import { NotesBoard } from "../../web/src/features/notes/view.tsx";
 import { SandboxServerSettings, visibleSection } from "../../web/src/features/settings/view.tsx";
 import { CredPane } from "../../web/src/features/settings/credentials.tsx";
@@ -33,7 +27,12 @@ import { Skills } from "../../web/src/features/skills/view.tsx";
  * switcher's rows — are here for the same reason.
  */
 
-const render = (node: ReactNode) => mount(<TipRoot>{node}</TipRoot>);
+const render = (node: ReactNode) =>
+  mount(
+    <WithQueries>
+      <TipRoot>{node}</TipRoot>
+    </WithQueries>,
+  );
 
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is
@@ -41,10 +40,11 @@ const render = (node: ReactNode) => mount(<TipRoot>{node}</TipRoot>);
  * belongs to whichever file imported it first, and every later file kept the
  * previous one's nodes in `document.body`. Each file registers its own.
  */
-afterEach(() => {
-  cleanup();
-  restoreFetch();
-});
+afterEach(cleanup);
+
+/** Each of these panes reads on mount and is asserted in the state before that
+ *  read lands, so every request stays in flight. */
+mockHttp(inFlight());
 
 const note = (over: Partial<PanelNote> = {}): PanelNote => ({
   id: 1,
@@ -183,7 +183,6 @@ test("a section only a project has falls back to an account pane when there is n
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 test("the sandbox server pane comes up reading rather than claiming a state", () => {
-  stubFetch();
   const { getAllByText, getByText } = mount(
     <QueryClientProvider client={client()}>
       <TipRoot>
@@ -197,7 +196,6 @@ test("the sandbox server pane comes up reading rather than claiming a state", ()
 });
 
 test("an account with nothing stored says so and offers both ways to fill it", () => {
-  stubFetch();
   const { getAllByText, getByPlaceholderText, getByText } = render(
     <CredPane rows={[]} onSaved={() => {}} onWaitForLogin={() => {}} />,
   );
@@ -213,7 +211,6 @@ test("an account with nothing stored says so and offers both ways to fill it", (
 });
 
 test("a stored credential shows its tail and stops re-explaining how to get one", () => {
-  stubFetch();
   const { getAllByText, getByPlaceholderText, getByText, queryAllByText } = render(
     <CredPane
       rows={[{ runtime: "claude", mode: "oauth_token", hint: "…7f21", updatedAt: 1_700_000_000_000 }]}
@@ -233,7 +230,6 @@ test("a stored credential shows its tail and stops re-explaining how to get one"
 });
 
 test("a login in flight disables the button that started it", () => {
-  stubFetch();
   const { getAllByText, getByRole } = render(
     <CredPane rows={[]} waiting="claude" onSaved={() => {}} onWaitForLogin={() => {}} />,
   );
@@ -243,7 +239,6 @@ test("a login in flight disables the button that started it", () => {
 });
 
 test("the skills pane says nothing about counts until the read lands", () => {
-  stubFetch();
   const { getByPlaceholderText, getByRole, getByText, queryAllByText } = render(<Skills projectId={1} />);
   getByText("技能");
   getByText("读取中…");

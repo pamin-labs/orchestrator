@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   findById,
   isHome,
@@ -24,32 +24,49 @@ import {
  * chose, which are wrong quietly when they drift.
  */
 
-test("a requirement keeps its project's tab lit", () => {
-  // `req` is reached from `progress` and is not a sibling of it, so the strip
-  // has to keep showing where the reader came from — otherwise opening a
-  // requirement makes the whole navigation look unselected.
-  expect(viewActive("req", "progress")).toBe(true);
-  expect(viewActive("progress", "progress")).toBe(true);
-  expect(viewActive("req", "notes")).toBe(false);
-  // Not symmetric: being on the list does not light the requirement.
-  expect(viewActive("progress", "req")).toBe(false);
+/**
+ * `req` is reached from `progress` and is not a sibling of it, so the strip has
+ * to keep showing where the reader came from — otherwise opening a requirement
+ * makes the whole navigation look unselected. A case per pair, because which
+ * pair drifted is the thing a bare `expected true, received false` withholds.
+ */
+describe("a requirement keeps its project's tab lit", () => {
+  test.each([
+    ["req", "progress", true],
+    ["progress", "progress", true],
+    ["req", "notes", false],
+    // Not symmetric: being on the list does not light the requirement.
+    ["progress", "req", false],
+  ] as const)("on %s, the %s tab is lit: %p", (view, tab, lit) => {
+    expect(viewActive(view, tab)).toBe(lit);
+  });
 });
 
-test("no project is home, whatever the hash asked for", () => {
-  // A link into 记录 on a machine with no project has nowhere to land, and the
-  // fallback has to happen here rather than at each view.
-  expect(isHome("notes", false)).toBe(true);
-  expect(isHome("home", true)).toBe(true);
-  expect(isHome("notes", true)).toBe(false);
+/**
+ * A link into 记录 on a machine with no project has nowhere to land, and the
+ * fallback has to happen here rather than at each view.
+ */
+describe("no project is home, whatever the hash asked for", () => {
+  test.each([
+    ["notes", false, true],
+    ["home", true, true],
+    ["notes", true, false],
+  ] as const)("view %s with a project: %p is home: %p", (view, hasProject, home) => {
+    expect(isHome(view, hasProject)).toBe(home);
+  });
 });
 
-test("the event stream needs all three of its conditions", () => {
-  expect(showSide(true, false, 1)).toBe(true);
-  // Asked for, but home has no stream to show.
-  expect(showSide(true, true, 1)).toBe(false);
-  // Asked for, not home, and nothing to stream about yet.
-  expect(showSide(true, false, 0)).toBe(false);
-  expect(showSide(false, false, 1)).toBe(false);
+describe("the event stream needs all three of its conditions", () => {
+  test.each([
+    ["asked for, not home, something to stream", true, false, 1, true],
+    // Asked for, but home has no stream to show.
+    ["home", true, true, 1, false],
+    // Asked for, not home, and nothing to stream about yet.
+    ["nothing to stream about yet", true, false, 0, false],
+    ["not asked for", false, false, 1, false],
+  ])("%s", (_case, asked, home, count, shown) => {
+    expect(showSide(asked, home, count)).toBe(shown);
+  });
 });
 
 test("every view that owns its scrolling is in the list that says so", () => {
@@ -90,11 +107,23 @@ test("the small selectors answer for absent input rather than throwing", () => {
   expect(findById(null, [{ id: 1 }])).toBeUndefined();
   expect(waitingProject(true, 4)).toBeNull();
   expect(waitingProject(false, 4)).toBe(4);
-  expect(showRequirementCrumb("req", true)).toBe(true);
-  expect(showRequirementCrumb("req", false)).toBe(false);
-  expect(showRequirementCrumb("progress", true)).toBe(false);
+});
+
+describe("a crumb and a button each need every one of their conditions", () => {
+  test.each([
+    ["on the requirement with one to name", "req", true, true],
+    ["on the requirement with nothing to name", "req", false, false],
+    ["on the list", "progress", true, false],
+  ] as const)("the requirement crumb: %s", (_case, view, hasGroup, shown) => {
+    expect(showRequirementCrumb(view, hasGroup)).toBe(shown);
+  });
+
   // A project is needed, and so is a project list — the button writes into one.
-  expect(showNewRequirement(1, 1)).toBe(true);
-  expect(showNewRequirement(null, 1)).toBe(false);
-  expect(showNewRequirement(1, 0)).toBe(false);
+  test.each([
+    ["a project and a list to write into", 1, 1, true],
+    ["no project selected", null, 1, false],
+    ["no project list", 1, 0, false],
+  ])("the new-requirement button: %s", (_case, projectId, projects, shown) => {
+    expect(showNewRequirement(projectId, projects)).toBe(shown);
+  });
 });

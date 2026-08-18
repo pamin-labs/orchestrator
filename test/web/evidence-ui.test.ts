@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { createElement } from "react";
-import { cleanup, render as mount, restoreFetch, stubFetch } from "../support/render.tsx";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render as mount } from "../support/render.tsx";
+import { inFlight, mockHttp } from "../support/http.ts";
 import type { Evidence } from "../../web/src/shared/api.ts";
 import { EvidencePanel } from "../../web/src/features/evidence/view.tsx";
 
@@ -20,27 +22,38 @@ const evidence = (patch: Partial<Evidence> = {}): Evidence => ({
   ...patch,
 });
 
-/** One panel at a time; they all share the page. The read stays in flight, so a
- *  panel handed no evidence stays in the state it comes up in. */
-const render = (initialEvidence?: Evidence) => {
+/**
+ * One panel at a time; they all share the page.
+ *
+ * The evidence is seeded into the query cache rather than passed as a prop. It
+ * used to arrive through an `initialEvidence` prop that no caller in the panel
+ * ever set — a branch in production code whose only reason to exist was this
+ * file, and which meant these renders never went down the path the panel
+ * actually takes. Seeding the cache under the key the component reads exercises
+ * that path with no network. A panel handed nothing has a read in flight, which
+ * is the state it comes up in.
+ */
+const render = (seed?: Evidence) => {
   cleanup();
-  return mount(createElement(EvidencePanel, { sliceId: 1, ...(initialEvidence ? { initialEvidence } : {}) }));
+  const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  if (seed) queries.setQueryData(["evidence", 1], seed);
+  return mount(createElement(QueryClientProvider, { client: queries }, createElement(EvidencePanel, { sliceId: 1 })));
 };
 
 const shown = (r: ReturnType<typeof render>, text: string) =>
   expect(r.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
 
-beforeEach(() => stubFetch());
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is
  * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
  * belongs to whichever file imported it first, and every later file kept the
  * previous one's nodes in `document.body`. Each file registers its own.
  */
-afterEach(() => {
-  cleanup();
-  restoreFetch();
-});
+afterEach(cleanup);
+
+/** A panel handed nothing has its evidence read in flight, which is the state it
+ *  comes up in. */
+mockHttp(inFlight());
 
 test("evidence exposes loading, empty, verdict and gate states", () => {
   shown(render(), "读改动");

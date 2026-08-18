@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Meta, Pane } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
 import { Tip } from "../../ui/tooltip";
@@ -83,22 +84,32 @@ export function Notes({
   /** How many were found, for a tab label that cannot fetch them itself. */
   onCount?: (n: number) => void;
 }) {
-  const [notes, setNotes] = useState<Note[] | null>(null);
   const onCountRef = useRef(onCount);
-
   useEffect(() => {
     onCountRef.current = onCount;
   }, [onCount]);
 
+  // The scope is the key. This was one `useState` filled from a bare `.then()`,
+  // so opening one requirement and then another left the first read in flight;
+  // when it landed it filled the blackboard of the requirement now on screen
+  // with the previous one's journal, retro and lessons — and told its tab to
+  // count them. A group's notes and a project's notes are different questions
+  // asked of the same endpoint, so both go in the key rather than only the one
+  // that happens to be set.
+  const { data: notes = null } = useQuery({
+    queryKey: ["notes", grpId ?? null, projectId ?? null],
+    queryFn: async () => {
+      const query = grpId ? { group: String(grpId) } : projectId ? { project: String(projectId) } : {};
+      return (await readApi(api.notes.$get({ query }), NotesResponseSchema))?.notes ?? [];
+    },
+  });
+
+  // The count follows the data rather than the reply, so the tab label is told
+  // about the notes actually on the board — including the ones that came from
+  // the cache without a request.
   useEffect(() => {
-    setNotes(null);
-    const query = grpId ? { group: String(grpId) } : projectId ? { project: String(projectId) } : {};
-    void readApi(api.notes.$get({ query }), NotesResponseSchema).then((r) => {
-      const found = r?.notes ?? [];
-      setNotes(found);
-      onCountRef.current?.(found.length);
-    });
-  }, [grpId, projectId]);
+    if (notes) onCountRef.current?.(notes.length);
+  }, [notes]);
 
   return (
     <NotesBoard

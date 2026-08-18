@@ -1,6 +1,6 @@
 import type { InferResponseType } from "hono/client";
 import { Check, CircleAlert } from "lucide-react";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { api, mutate } from "../../shared/api";
@@ -224,14 +224,16 @@ function ServerControl({ server, onRefresh }: { server: ServerInfo | null; onRef
 }
 
 function StartButton({ onRefresh }: { onRefresh: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const start = async () => {
-    setBusy(true);
-    const response = await mutate(api["sandbox-server"].start.$post());
-    setBusy(false);
-    onRefresh();
-    if (response.ok) toast.success("起来了");
-  };
+  // The re-read is inside the pending window now. Clearing the flag before
+  // `onRefresh()` let the button go live again while the line beside it still
+  // said what it said before the server was started.
+  const [busy, startTransition] = useTransition();
+  const start = () =>
+    startTransition(async () => {
+      const response = await mutate(api["sandbox-server"].start.$post());
+      onRefresh();
+      if (response.ok) toast.success("起来了");
+    });
   return (
     <Button size="sm" variant="go" disabled={busy} onClick={start}>
       {busy ? "起中…" : "起一个"}
@@ -240,7 +242,7 @@ function StartButton({ onRefresh }: { onRefresh: () => void }) {
 }
 
 function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: () => void }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, startTransition] = useTransition();
   const restart = async () => {
     const yes = await ask({
       title: "重启沙盒服务器？",
@@ -253,11 +255,14 @@ function RestartButton({ server, onRefresh }: { server: ServerInfo; onRefresh: (
       danger: true,
     });
     if (!yes) return;
-    setBusy(true);
-    const response = await mutate(api["sandbox-server"].restart.$post());
-    setBusy(false);
-    onRefresh();
-    if (response.ok) toast.success("重启了，容器会按需重开");
+    // The confirm is deliberately outside: nothing is in flight while the boss
+    // is reading the dialog, and a button that goes pending on being asked a
+    // question has already answered it.
+    startTransition(async () => {
+      const response = await mutate(api["sandbox-server"].restart.$post());
+      onRefresh();
+      if (response.ok) toast.success("重启了，容器会按需重开");
+    });
   };
   return (
     <Button size="sm" disabled={busy} onClick={restart}>
@@ -305,7 +310,7 @@ type AuthJson = NonNullable<Parameters<typeof api.auth.$post>[0]>["json"];
 
 function ServerFields(props: ServerPaneProps) {
   const [key, setKey] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, startTransition] = useTransition();
 
   /**
    * Adopt, replace or clear, and then ask the server again.
@@ -315,28 +320,26 @@ function ServerFields(props: ServerPaneProps) {
    * 在跑，直接用 is the shape this project keeps paying for — a stale answer that
    * looks like a healthy one.
    */
-  const sendKey = async (json: AuthJson) => {
-    setBusy(true);
-    const response = await mutate(api.auth.$post({ json }));
-    setBusy(false);
-    // Only on success. A rejected key wiped from the box makes the fix "paste it
-    // again", which is never the fix.
-    if (response.ok) setKey("");
-    props.onRefreshServer();
-    props.onSaved();
-  };
+  const sendKey = (json: AuthJson) =>
+    startTransition(async () => {
+      const response = await mutate(api.auth.$post({ json }));
+      // Only on success. A rejected key wiped from the box makes the fix "paste it
+      // again", which is never the fix.
+      if (response.ok) setKey("");
+      props.onRefreshServer();
+      props.onSaved();
+    });
 
-  const saveImage = async (image: string) => {
-    setBusy(true);
-    const response = await mutate(api.sandbox.images.$post({ json: { image } }));
-    setBusy(false);
-    if (!response.ok) return;
-    // Re-read rather than assume: what the row shows is the server's
-    // answer, and a write that was accepted is not a write that stored
-    // this exact string.
-    props.onRefreshImages();
-    toast.success(image ? `以后新项目都用 ${image}` : "改回配置文件里的了");
-  };
+  const saveImage = (image: string) =>
+    startTransition(async () => {
+      const response = await mutate(api.sandbox.images.$post({ json: { image } }));
+      if (!response.ok) return;
+      // Re-read rather than assume: what the row shows is the server's
+      // answer, and a write that was accepted is not a write that stored
+      // this exact string.
+      props.onRefreshImages();
+      toast.success(image ? `以后新项目都用 ${image}` : "改回配置文件里的了");
+    });
 
   return (
     // The status band above is one section, these two values are another, and

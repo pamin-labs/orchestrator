@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, render, restoreFetch, stubFetch, waitFor } from "../support/render.tsx";
+import { cleanup, render, waitFor } from "../support/render.tsx";
+import { inFlight, mockHttp, server } from "../support/http.ts";
+import { HttpResponse, http } from "msw";
 import { FirstProject, Picker } from "../../web/src/features/picker/view.tsx";
 
 /**
@@ -21,7 +23,11 @@ const repo = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const stubRepos = (body?: unknown) => stubFetch(body === undefined ? {} : { "/github/repos": body });
+/** The repository list, as the read comes back. Called with nothing, the read is
+ *  left in flight — the state the card and the dialog come up in. */
+const stubRepos = (body?: unknown): void => {
+  if (body !== undefined) server.use(http.get("/api/v1/github/repos", () => HttpResponse.json(body)));
+};
 
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is
@@ -29,10 +35,9 @@ const stubRepos = (body?: unknown) => stubFetch(body === undefined ? {} : { "/gi
  * belongs to whichever file imported it first, and every later file kept the
  * previous one's nodes in `document.body`. Each file registers its own.
  */
-afterEach(() => {
-  cleanup();
-  restoreFetch();
-});
+afterEach(cleanup);
+
+mockHttp(inFlight());
 
 test("the first-project card names itself and offers no repository until one has landed", () => {
   stubRepos();

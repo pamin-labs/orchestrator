@@ -30,7 +30,7 @@ import { nl } from "../../shared/prose";
 import { cn } from "../../ui/cn";
 import { WithAttachments } from "../../ui/attachments";
 import { useEffect, useRef, useState } from "react";
-import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "./accordion";
+import { Accordion, AccordionBody, AccordionItem, AccordionTrigger } from "../../ui/accordion";
 import { Segment, Segments } from "../../ui/segment";
 import { Workspace } from "../workspace/view";
 import { EvidencePanel } from "../evidence/view";

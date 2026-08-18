@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useTransition } from "react";
 import { Head } from "../../ui/bits";
 import { Button } from "../../ui/button";
 import { ask } from "../../ui/confirm";
@@ -23,7 +23,7 @@ export function ProjectPane({
   projectId: number;
   projectName?: string;
   groupCount: number;
-  patch: (body: ProjectPatch) => Promise<void>;
+  patch: (body: ProjectPatch) => void;
   onRemoved: () => void;
 }) {
   if (section === "gates") return <Gates d={data} patch={patch} />;
@@ -66,7 +66,7 @@ function Remove({
   groups: number;
   onRemoved: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, startTransition] = useTransition();
   const go = async () => {
     const yes = await ask({
       title: `移除 ${name}？`,
@@ -77,10 +77,13 @@ function Remove({
       danger: true,
     });
     if (!yes) return;
-    setBusy(true);
-    const r = await mutate(api.projects[":id"].$delete({ param: { id: String(projectId) } }));
-    setBusy(false);
-    if (r.ok) onRemoved();
+    // The confirm stays outside the transition: nothing is in flight while the
+    // boss reads it, and a button that goes pending on being asked has answered
+    // for them.
+    startTransition(async () => {
+      const r = await mutate(api.projects[":id"].$delete({ param: { id: String(projectId) } }));
+      if (r.ok) onRemoved();
+    });
   };
 
   return (

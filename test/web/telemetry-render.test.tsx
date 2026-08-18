@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { cleanup, fireEvent, render, restoreFetch, stubFetch, waitFor } from "../support/render.tsx";
+import { cleanup, fireEvent, render, waitFor } from "../support/render.tsx";
+import { inFlight, mockHttp, server } from "../support/http.ts";
+import { HttpResponse, http } from "msw";
 import { SystemTiming, Telemetry } from "../../web/src/features/telemetry/view.tsx";
 import type { Telemetry as Report } from "../../web/src/shared/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
+import { WithQueries } from "./queries.tsx";
 
 /**
  * A viewport, because happy-dom measures every element as 0x0.
@@ -49,9 +52,12 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  restoreFetch();
   HTMLElement.prototype.getBoundingClientRect = realRect;
 });
+
+/** A pane that never gets its report is the state it comes up in; a test that
+ *  wants a landed one calls `serve`. */
+mockHttp(inFlight());
 
 const EMPTY: Report = {
   scope: "group",
@@ -99,7 +105,7 @@ const trace = (traceId: string, over: Partial<Report["traces"][number]> = {}) =>
   ...over,
 });
 
-const serve = (answer: Report) => stubFetch({ "/api/v1/telemetry": answer });
+const serve = (answer: Report) => server.use(http.get("/api/v1/telemetry", () => HttpResponse.json(answer)));
 
 /**
  * Rendered the way the app renders it.
@@ -110,7 +116,12 @@ const serve = (answer: Report) => stubFetch({ "/api/v1/telemetry": answer });
  * "`Tooltip` must be used within `TooltipProvider`" — was the harness's, not the
  * component's.
  */
-const show = (ui: React.ReactElement) => render(<TipRoot>{ui}</TipRoot>);
+const show = (ui: React.ReactElement) =>
+  render(
+    <WithQueries>
+      <TipRoot>{ui}</TipRoot>
+    </WithQueries>,
+  );
 
 /**
  * One scope with something in every block the page still has.
@@ -213,7 +224,9 @@ test("a width change re-lays out the flamegraph instead of rebuilding it", async
   const observers: { fire: () => void }[] = [];
   const seen = globalThis.ResizeObserver;
   class Controllable implements ResizeObserver {
-    constructor(private readonly callback: ResizeObserverCallback) {
+    private readonly callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
       observers.push({ fire: () => this.callback([], this) });
     }
     observe() {}
@@ -912,12 +925,13 @@ test("the host page asks for the host's spans and nothing else", async () => {
   // fresh object every render is a fresh effect dependency, and this pane would
   // re-read on every keystroke anywhere above it.
   const asked: string[] = [];
-  stubFetch({ "/api/v1/telemetry": report({ stages: [stage("stage.only")] }) });
-  const seen = globalThis.fetch;
-  globalThis.fetch = Object.assign((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-    asked.push(input instanceof Request ? input.url : String(input));
-    return seen(input, init);
-  }, seen);
+  const answer = report({ stages: [stage("stage.only")] });
+  server.use(
+    http.get("/api/v1/telemetry", ({ request }) => {
+      asked.push(request.url);
+      return HttpResponse.json(answer);
+    }),
+  );
 
   const view = show(<SystemTiming />);
   await waitFor(() => expect(view.getAllByText("stage")).toHaveLength(1));

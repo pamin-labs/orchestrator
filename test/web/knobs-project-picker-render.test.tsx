@@ -1,5 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, isDisabled, render, restoreFetch, stubFetch, valueOf } from "../support/render.tsx";
+import type { ReactNode } from "react";
+import { cleanup, isDisabled, render as mount, valueOf } from "../support/render.tsx";
+import { inFlight, mockHttp } from "../support/http.ts";
+import { WithQueries } from "./queries.tsx";
 import { Gates, ImageRow, Sandbox, type ProjectConfig } from "../../web/src/features/project/view.tsx";
 import { FirstProject } from "../../web/src/features/picker/view.tsx";
 import {
@@ -31,6 +34,9 @@ import {
   selfNamed,
   textOf,
 } from "../../web/src/features/knobs/model.ts";
+
+/** The sandbox panes read the image list through the query cache. */
+const render = (node: ReactNode) => mount(<WithQueries>{node}</WithQueries>);
 
 /**
  * The three settings surfaces the boss changes a project through: the gates that
@@ -65,10 +71,12 @@ const config = (over: Partial<ProjectConfig> = {}): ProjectConfig => ({
  * belongs to whichever file imported it first, and every later file kept the
  * previous one's nodes in `document.body`. Each file registers its own.
  */
-afterEach(() => {
-  cleanup();
-  restoreFetch();
-});
+afterEach(cleanup);
+
+/** These panes read on mount — the branch list, the image lists, the repository
+ *  list. Every one is left in flight: what is asserted is the state each pane
+ *  comes up in, before an answer can have landed. */
+mockHttp(inFlight());
 
 test("the gates that run are listed in run order, numbered, above the ones that do not", () => {
   const { getAllByRole, getByText } = render(<Gates d={config()} patch={() => {}} />);
@@ -153,7 +161,6 @@ test("only Alt plus an up or down arrow moves a gate", () => {
 // -------------------------------------------------------------- sandbox
 
 test("the sandbox pane shows every unset override as an empty box with the default named", () => {
-  stubFetch();
   const { getByLabelText, getByPlaceholderText, getByText } = render(
     <Sandbox d={config()} busy={false} patch={() => {}} />,
   );
@@ -178,7 +185,6 @@ test("the sandbox pane shows every unset override as an empty box with the defau
 });
 
 test("stored sandbox overrides reach their controls as values, and blocked domains as chips", () => {
-  stubFetch();
   const d = config({
     baseBranch: "release",
     config: {
@@ -207,7 +213,6 @@ test("every sandbox box refuses input while a save is in flight", () => {
   // `busy` reaches each control as `disabled`, which is the only thing stopping
   // a second edit from racing the save that is already running. A server render
   // could see `disabled=""` somewhere in the markup and nothing about where.
-  stubFetch();
   const { getByLabelText } = render(<Sandbox d={config()} busy patch={() => {}} />);
   for (const label of ["装依赖", "CPU", "内存", "共享缓存"]) {
     expect(isDisabled(getByLabelText(label))).toBe(true);
@@ -277,7 +282,6 @@ test("Enter commits a domain and Backspace on an empty box takes the last chip",
 // ---------------------------------------------------------------- image
 
 test("the image row offers both sources and says it is still reading them", () => {
-  stubFetch();
   const { getByPlaceholderText, getByRole, queryAllByPlaceholderText } = render(
     <ImageRow value="" busy={false} onSave={() => {}} />,
   );
@@ -321,7 +325,6 @@ test("the first-project card names the action and shows rows before any reposito
   // Left in flight on purpose: this is the state the card comes up in, and the
   // module-level repository cache would otherwise carry a landed list into
   // whichever file runs next.
-  stubFetch();
   const { getByRole, getByText } = render(<FirstProject onAdded={() => {}} onSettings={() => {}} />);
   getByRole("heading", { name: "添加第一个项目" });
   getByText("点一行就添加");

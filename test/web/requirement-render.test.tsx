@@ -1,7 +1,9 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { cleanup, render as mount, restoreFetch, stubFetch, valueOf } from "../support/render.tsx";
+import { afterEach, expect, test } from "bun:test";
+import { cleanup, render as mount, valueOf } from "../support/render.tsx";
+import { inFlight, mockHttp } from "../support/http.ts";
 import { emptyState, type Group, type PanelFrame, type Slice, type State } from "../../web/src/shared/api.ts";
 import { TipRoot } from "../../web/src/ui/tooltip.tsx";
+import { WithQueries } from "./queries.tsx";
 import { Requirement } from "../../web/src/features/requirement/view.tsx";
 
 const group = (status: Group["status"], over: Partial<Group> = {}): Group => ({
@@ -54,24 +56,24 @@ const frame = (over: Partial<PanelFrame> & { id: string }): PanelFrame => ({
 const render = (state: State, current: Group, tab: string | null = null, frames: PanelFrame[] = []) => {
   cleanup();
   return mount(
-    <TipRoot>
-      <Requirement st={state} g={current} frames={frames} refresh={() => {}} open tab={tab} />
-    </TipRoot>,
+    <WithQueries>
+      <TipRoot>
+        <Requirement st={state} g={current} frames={frames} refresh={() => {}} open tab={tab} />
+      </TipRoot>
+    </WithQueries>,
   );
 };
 
 /** Anything this pane fetches — the evidence diff — stays in flight. */
-beforeEach(() => stubFetch());
+mockHttp(inFlight());
+
 /**
  * testing-library's own `afterEach(cleanup)` is registered when its module is
  * evaluated, and `bun test` scopes the lifecycle globals per file — so that hook
  * belongs to whichever file imported it first, and every later file kept the
  * previous one's nodes in `document.body`. Each file registers its own.
  */
-afterEach(() => {
-  cleanup();
-  restoreFetch();
-});
+afterEach(cleanup);
 
 /** Most of these sentences sit inside a longer line, so the match is a substring —
  *  of rendered text, which is what a reader has, rather than of the markup. */

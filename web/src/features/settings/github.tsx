@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useTransition } from "react";
 import { Badge } from "../../ui/badge";
 import { H2, Head, Meta } from "../../ui/bits";
 import { Button, LinkButton } from "../../ui/button";
@@ -52,21 +52,25 @@ export function GithubPane({ status: s, onRefresh }: { status: GhStatus | null; 
 }
 
 function Connection({ status, onRefresh }: { status: GhStatus | null; onRefresh: () => void }) {
-  const [busy, setBusy] = useState(false);
+  // One pending state for both directions, as before: connecting and
+  // disconnecting are the same button row, and neither may be pressed while the
+  // other is in flight. React 19 keeps `busy` true for the whole async function,
+  // so the re-read that follows the write is inside the pending window rather
+  // than after it — which is what a hand-cleared flag got wrong: the row went
+  // live again while it was still showing the state from before the write.
+  const [busy, start] = useTransition();
 
-  const connect = async () => {
-    setBusy(true);
-    await mutate(api.auth.github.$post());
-    setBusy(false);
-    onRefresh();
-  };
+  const connect = () =>
+    start(async () => {
+      await mutate(api.auth.github.$post());
+      onRefresh();
+    });
 
-  const disconnect = async () => {
-    setBusy(true);
-    await mutate(api.auth.$post({ json: { runtime: "github", clear: true } }));
-    setBusy(false);
-    onRefresh();
-  };
+  const disconnect = () =>
+    start(async () => {
+      await mutate(api.auth.$post({ json: { runtime: "github", clear: true } }));
+      onRefresh();
+    });
 
   return (
     <section>
@@ -258,13 +262,12 @@ function CommitSettings({ status, onSaved }: { status: GhStatus | null; onSaved:
  * finished branch, and a diff an agent wrote should say so in the record.
  */
 function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const set = async (next: { signoff?: boolean; coauthor?: boolean }) => {
-    setBusy(true);
-    await mutate(api.git.trailers.$post({ json: next }));
-    setBusy(false);
-    onSaved();
-  };
+  const [busy, start] = useTransition();
+  const set = (next: { signoff?: boolean; coauthor?: boolean }) =>
+    start(async () => {
+      await mutate(api.git.trailers.$post({ json: next }));
+      onSaved();
+    });
   const bot = s.identity.name === s.bot.name;
   return (
     <section className="mt-6">
@@ -292,7 +295,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               id="t-signoff"
               checked={s.trailers.signoff}
               disabled={busy}
-              onCheckedChange={(v) => void set({ signoff: v })}
+              onCheckedChange={(v) => set({ signoff: v })}
             />
             <Meta>开了 DCO 的仓库不收没有这行的提交</Meta>
           </FieldContent>
@@ -304,7 +307,7 @@ function Commits({ s, onSaved }: { s: GhStatus; onSaved: () => void }) {
               id="t-coauthor"
               checked={s.trailers.coauthor}
               disabled={busy}
-              onCheckedChange={(v) => void set({ coauthor: v })}
+              onCheckedChange={(v) => set({ coauthor: v })}
             />
             <Meta>把 {s.bot.name} 写进 Co-Authored-By</Meta>
           </FieldContent>

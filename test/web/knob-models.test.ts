@@ -1,11 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { createElement } from "react";
-import { cleanup, render, restoreFetch, stubFetch } from "../support/render.tsx";
+import { cleanup, render } from "../support/render.tsx";
+import { inFlight, mockHttp } from "../support/http.ts";
 import { Knobs } from "../../web/src/features/knobs/view";
 import { allModels, cheapest, modelsByRuntime } from "../../web/src/features/knobs/models";
 import { COUNT_UNITS, countOf, splitCount } from "../../web/src/features/knobs/units";
 import { DEFAULTS_FOR_CHECK as DEFAULTS } from "../../src/platform/config/load.ts";
 import { ConfigSchema } from "../../src/contracts/config.ts";
+import { WithQueries } from "./queries.tsx";
 
 /**
  * The model pickers offer what this config already names.
@@ -28,15 +30,14 @@ const src = {
  * belongs to whichever file imported it first, and every later file kept the
  * previous one's nodes in `document.body`. Each file registers its own.
  */
-afterEach(() => {
-  cleanup();
-  restoreFetch();
-});
+/** The editor reads on mount; these tests are looking at the state before it lands. */
+mockHttp(inFlight());
+
+afterEach(cleanup);
 
 test("the knob editor has a renderable loading state", () => {
   // The read is left in flight, which is the state the editor comes up in.
-  stubFetch();
-  render(createElement(Knobs, { section: "models" })).getByText(/读取中/);
+  render(createElement(WithQueries, null, createElement(Knobs, { section: "models" }))).getByText(/读取中/);
 });
 
 test("every runtime is offered its own models and nobody else's", () => {

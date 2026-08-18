@@ -2,14 +2,9 @@
  * Stored spans, turned into what the four blocks on the page draw.
  *
  * Everything that reduces — percentiles, bucketing, folded stacks, the scope
- * filter — happens in SQL, and none of it is here. What is here is the shaping
- * the browser does on rows the server already sent: a flame tree, a grouping by
- * kind, the fold that decides which stages are worth a row, and the names the
- * reader sees instead of span identifiers.
- *
- * The views compose these; they decide nothing. That split is why "an unmapped
- * identifier falls through to itself" and "twenty-four rules are one line" are
- * unit tests rather than screenshots.
+ * filter — happens in SQL. What is here is the shaping the browser does on rows
+ * the server already sent. The views compose these and decide nothing, which is
+ * what makes the page's rules unit tests rather than screenshots.
  */
 
 import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
@@ -18,9 +13,8 @@ import type { Folded, Stage, TraceRow, Trend } from "../../shared/api";
  * One frame of the flamegraph: a name, what it cost, and what it called.
  *
  * Ours rather than the library's, and structurally what `d3-flame-graph`
- * consumes. It lives here because this is the shape the model produces and the
- * tests assert on, and an ambient module declaration does not cross a project
- * reference — a test importing it from the library's `.d.ts` gets an error type.
+ * consumes: an ambient module declaration does not cross a project reference, so
+ * a test importing it from the library's `.d.ts` gets an error type.
  */
 export interface FlameNode {
   name: string;
@@ -31,20 +25,10 @@ export interface FlameNode {
 /**
  * Folded stacks, as the tree a flamegraph consumes.
  *
- * The server sends `turn;turn.provider` with a total, which is the format
- * flamegraphs have taken since the original Perl ones; this is the one place
- * that turns it back into `{name, value, children}`. Doing it here rather than
- * in SQL is deliberate — it is a reshaping of rows the browser already holds,
- * not a reduction, and it is the part worth having a unit test on.
- *
- * A parent's `value` is its own summed time, not its children's. `selfValue` on
- * the chart is what decides which of the two a frame's width means, and giving
- * the library the real number for both keeps that a display choice rather than
- * something baked in here.
- *
- * Paths arrive sorted, so a parent is always seen before its children; the map
- * is keyed by full path so two different parents' identically named children
- * never merge.
+ * A parent's `value` is its own summed time, not its children's, so `selfValue`
+ * stays a display choice. Paths arrive sorted, so a parent is always seen before
+ * its children, and the map is keyed by full path so two different parents'
+ * identically named children never merge.
  */
 export function flameTree(folded: readonly Folded[], rootName = "全部"): FlameNode {
   const root: FlameNode = { name: rootName, value: 0, children: [] };
@@ -70,8 +54,7 @@ export function flameTree(folded: readonly Folded[], rootName = "全部"): Flame
   }
 
   // The root spans everything under it, so it is the sum of what it holds —
-  // otherwise the topmost frame is a zero-width bar with the whole chart
-  // hanging off it.
+  // otherwise the topmost frame is a zero-width bar with the chart hanging off it.
   root.value = (root.children ?? []).reduce((total, child) => total + child.value, 0);
   return root;
 }
@@ -85,23 +68,10 @@ export function flameDepth(node: FlameNode): number {
 /**
  * The verdict that goes above the table: is anything actually slow.
  *
- * Three outcomes, and the middle one exists because of a bug this shipped with.
- * The first version had two: name the slow stages when the fold found a gap, and
- * otherwise assert 「各阶段耗时接近，没有特别慢的。」 That second branch was
- * false on real data and the table under it said so — `splitStages` cuts at the
- * largest *adjacent* ratio, so a smooth ramp from 41.9s down to 8.7s has no
- * single fourfold step in it and folded nothing, while being a fivefold spread
- * end to end. The page asserted an absence its own rows contradicted one line
- * below, which is worse than having no summary at all.
- *
- * So there is no branch that claims flatness any more. Either a gap was found
- * and the slow stages are named, or the leader is stated as a fact with the
- * multiple that makes it the leader, or nothing is rendered. A summary line may
- * only ever say something the rows can be checked against.
- *
- * `null` covers the two cases with no fact in them: fewer than two stages, where
- * "the slowest of one thing" is not a finding, and a genuine tie, where a
- * sentence reading 「是第二名的 1.0 倍」 is noise dressed as a result.
+ * **No branch claims flatness.** A summary line may only say something the rows
+ * can be checked against: either a gap was found and the slow stages are named,
+ * or the leader is stated with the multiple that makes it one, or nothing is
+ * rendered. `null` is the two cases with no fact — under two stages, and a tie.
  */
 export type Verdict =
   | { kind: "slow"; names: string[]; unnamed: number; more: number }
@@ -115,14 +85,10 @@ const LEAD = 1.15;
 
 export function verdict(split: StageSplit): Verdict | null {
   if (split.fast.length > 0) {
-    // Two names and a count, not seven names. Seven things in one sentence is a
-    // list, and a list is what the table underneath already is — the sentence
-    // exists to be read instead of the table, so it has to be shorter than it.
-    //
-    // Unmapped identifiers are counted rather than pasted in. Half a translated
-    // sentence is worse than none: 「更新代码索引、git.ls_tree」 reads as two
-    // different kinds of thing, and the reader cannot tell which of the two is
-    // the name of a stage and which is a leak.
+    // Two names and a count, not seven names: the sentence exists to be read
+    // instead of the table, so it has to be shorter than it. Unmapped identifiers
+    // are counted rather than pasted in — 「更新代码索引、git.ls_tree」 reads as two
+    // different kinds of thing, and half a translated sentence is worse than none.
     const named = split.slow.filter((stage) => isRenamed(stage.name));
     const unnamed = split.slow.length - named.length;
     return {
@@ -147,24 +113,10 @@ export function verdict(split: StageSplit): Verdict | null {
 /**
  * What each span name is, in words, for the person reading this page.
  *
- * The boss runs a company. `sandbox.create`, `GET /api/v1/auth/github` and
- * `watchdog.repo_map` are instrumentation keys — the names the code calls
- * itself — and a page built out of them asks the reader to be a debugger before
- * it will tell them where four hours went. `ui.md` sets the register: 「白干的
- * 单位」, 「去合并 PR」. This is that rule applied to the one place the interface
- * was still speaking to the compiler.
- *
- * An exact table and nothing cleverer. A pattern that turned `foo.create` into
- * 「开一个 foo」 would be a translator that invents sentences about spans nobody
- * has read, and the first one it got wrong would be indistinguishable from a
- * name somebody chose.
- *
- * **Unmapped falls through to the identifier**, which is the property that
- * matters most here: the set of span names grows every time somebody adds a
- * stage, and a missing entry has to degrade to a name the reader can search for
- * rather than to a blank or to a guess. The raw identifier stays reachable
- * everywhere it is replaced — on hover in the aggregate views, and plainly in
- * the waterfall, which is the drill-down somebody debugging is already in.
+ * An exact table and nothing cleverer: a pattern turning `foo.create` into
+ * 「开一个 foo」 invents sentences about spans nobody has read. **Unmapped falls
+ * through to the identifier** — the set of names grows every time somebody adds a
+ * stage, and a missing entry must degrade to a name the reader can search for.
  */
 const HUMAN: Record<string, string> = {
   "sandbox.create": "开一个新环境",
@@ -199,13 +151,9 @@ export const P95_LABEL = "最慢的那几次";
 /**
  * What kind of work a span name is, from its own prefix.
  *
- * Derived, never enumerated. The set of names grows every hour — `github.request`,
- * `index.ask`, `lease.run`, `gate.run`, `pr.poll`, `sandbox.reconnect` all landed
- * today — and a hardcoded list would silently drop each new one into nothing or
- * into the wrong pile. The names already encode the kind, so the prefix is the
- * grouping and a name nobody has seen slots in without a code change.
- *
- * The fallback bucket is the point of the design rather than an afterthought: a
+ * Derived, never enumerated: the set of names grows constantly, and a hardcoded
+ * list would silently drop each new one into nothing or into the wrong pile. The
+ * names already encode the kind. The fallback bucket is part of the design — a
  * span with no prefix at all still has to land somewhere a reader can find it.
  */
 const KIND_NAMES: Record<string, string> = {
@@ -280,11 +228,10 @@ export interface StageSplit {
 /**
  * How large a step has to be before it is a gap rather than a spread: fourfold.
  *
- * A threshold in milliseconds would be the wrong kind of constant — "slow" on a
- * fleet whose turns take minutes is not "slow" on one that serves cached reads,
- * and a number written here would be right for whichever of the two was on the
- * screen the day it was chosen. A ratio asks the distribution instead, and a
- * fourfold step is well outside what the same kind of work varies by.
+ * A ratio and not a threshold in milliseconds — "slow" on a fleet whose turns
+ * take minutes is not "slow" on one that serves cached reads, so a millisecond
+ * number would be right only for whichever fleet was on screen the day it was
+ * chosen. A fourfold step is well outside what the same kind of work varies by.
  */
 const GAP = 4;
 
@@ -294,26 +241,14 @@ const MIN_FOLD = 2;
 /**
  * Split the stages at their own largest gap.
  *
- * Eleven rows at equal weight is eleven rows nobody reads, and it is what the
- * data looks like when two stages take seconds and the other nine take under a
- * handful of milliseconds. Those nine are not an answer to "is anything slow",
- * they are the absence of one, and `docs/design/ui.md` is explicit that absence
- * gets a sentence rather than equal billing.
- *
- * The cut is the largest multiplicative step in the p95 ordering, and it is
- * taken only if that step is at least `GAP`. A list with no gap — every stage
- * within a factor of four of its neighbour — is genuinely a list of comparable
- * rows, and folding part of it would be inventing a distinction the numbers do
- * not make.
- *
- * p95 and not p50, because the question is whether anything is slow and a stage
- * that is usually instant and occasionally seconds is exactly the row worth
- * keeping above the fold.
+ * The cut is the largest multiplicative step in the p95 ordering, taken only if
+ * that step is at least `GAP`: a list where every stage is within a factor of four
+ * of its neighbour is comparable rows, and folding part of it invents a
+ * distinction the numbers do not make. p95, because occasionally-seconds counts.
  */
 export function splitStages(stages: readonly Stage[]): StageSplit {
-  // Ties broken by total time so the order is stable across reads: two stages
-  // with the same p95 would otherwise swap places on the strength of whichever
-  // the query happened to return first.
+  // Ties broken by total time so the order is stable across reads: two stages with
+  // the same p95 would otherwise swap on whichever the query returned first.
   const sorted = stages.toSorted((a, b) => b.p95 - a.p95 || b.totalMs - a.totalMs);
   let cut = 0;
   let widest = 0;
@@ -339,14 +274,10 @@ export function splitStages(stages: readonly Stage[]): StageSplit {
 /**
  * What a drag on the trend means, as a window.
  *
- * Its own function because it is policy rather than event handling, and it was
- * six branches inlined in a `Brush` callback where nothing could reach it. Two
- * rules live here: dragging from the first bucket means "all of it", which is
- * the window the caller already asked for and therefore not a change; and a
- * window under a minute is a drag nobody meant, since the buckets are hours.
- *
- * `null` is "leave the caller's window alone", which is a different answer from
- * "a window of zero" and is why it is not a number.
+ * Two rules: dragging from the first bucket means "all of it", the window the
+ * caller already asked for and therefore not a change; and a window under a
+ * minute is a drag nobody meant. `null` is "leave the caller's window alone",
+ * which is a different answer from "a window of zero".
  */
 const MIN_DRAG_MS = 60_000;
 
@@ -370,20 +301,12 @@ export interface TimeWindow {
 const MIN_SPAN_MS = 1_000;
 
 /**
- * Zoom around the pointer, not the centre.
- *
- * Every profiler does this — DevTools, Grafana, speedscope — and the reason is
- * that the frame you are pointing at stays under the pointer while everything
- * else spreads away from it. Zooming to the centre moves the thing you were
- * aiming at, so you chase it across the screen.
+ * Zoom around the pointer, not the centre — zooming to the centre moves the frame
+ * you were aiming at, so you chase it across the screen.
  *
  * `at` is the pointer as a fraction of the width, so the instant under it is
- * `from + at * span`. After scaling the span by `k` that instant has to land on
- * the same fraction again, which fixes the new start: everything else follows.
- *
- * Clamped at both ends. It cannot zoom out past `limit`, because there are no
- * rows outside it, and it cannot zoom in below a second, because a window
- * narrower than the clock resolves is a window showing nothing.
+ * `from + at * span` and has to land on the same fraction after scaling by `k`.
+ * Clamped at both ends: nothing outside `limit`, nothing narrower than the clock.
  */
 export function zoomAt(
   window: TimeWindow,
@@ -391,21 +314,17 @@ export function zoomAt(
   k: number,
   limit: TimeWindow,
   /**
-   * The narrowest range worth showing, in the caller's own units.
-   *
-   * A millisecond default for the trend, whose axis is time. The flamegraph's
-   * axis is a fraction of the total width, so it passes its own floor — one
-   * constant here would have meant a second copy of this function for the sake
-   * of a unit.
+   * The narrowest range worth showing, in the caller's own units: milliseconds by
+   * default for the trend, while the flamegraph's axis is a fraction of the total
+   * width and passes its own floor.
    */
   minSpan = MIN_SPAN_MS,
 ): TimeWindow {
   const span = window.to - window.from;
   const anchored = window.from + at * span;
   const next = Math.min(Math.max(span * k, minSpan), limit.to - limit.from);
-  // Anchor first, then slide back inside the limit if the anchor pushed an edge
-  // out — sliding keeps the width the reader asked for, where clamping each edge
-  // independently would silently shrink it.
+  // Anchor first, then slide back inside the limit — sliding keeps the width the
+  // reader asked for, where clamping each edge independently would shrink it.
   let from = anchored - at * next;
   from = Math.min(Math.max(from, limit.from), limit.to - next);
   return { from, to: from + next };
@@ -427,11 +346,9 @@ export function panTo(window: TimeWindow, centre: number, limit: TimeWindow): Ti
 /**
  * One wheel event in pixels, whatever unit it arrived in.
  *
- * `deltaMode` is 0 for pixels, 1 for lines and 2 for pages, and a factor tuned
- * for one is wrong by an order of magnitude for the others. The clamp is for the
- * gesture rather than the unit: a trackpad emits a burst of small deltas where a
- * mouse emits a few large ones, and one violent flick should not cross the whole
- * range — which is what "too sensitive" was.
+ * `deltaMode` is 0 for pixels, 1 for lines and 2 for pages, and a factor tuned for
+ * one is wrong by an order of magnitude for the others. The clamp is for the
+ * gesture rather than the unit: one violent flick must not cross the whole range.
  */
 const LINE_PX = 16;
 const PAGE_PX = 800;
@@ -445,30 +362,10 @@ export const wheelPixels = (delta: number, deltaMode: number): number => {
 /**
  * The scale one wheel event asks for, from `d3-zoom`'s own normalisation.
  *
- * Three lines lifted from `d3-zoom`'s `wheelDelta`, not the package: it is not
- * installed, `d3-flame-graph` brings seventeen d3 subpackages and not that one,
- * and its last publish is 2022 — and what we would use of it is these three
- * lines, since the drag-pan, scale extents and transition interpolation are all
- * things this does not need and `zoomAt` already clamps.
- *
- * Each factor earns its place:
- *
- * `deltaMode` is not optional. Firefox reports a wheel tick as `deltaY: ±1` in
- * *lines*; Chrome and Safari report hundreds of *pixels*. A constant tuned on
- * one is wrong on the other by two orders of magnitude.
- *
- * The exponential is what makes one constant serve both devices, and it has to,
- * because **there is no device detection to be had** — a trackpad and a mouse
- * produce identical events. A Chrome mouse click at `deltaY: 100` becomes a 13%
- * step; a trackpad's `deltaY: 3` becomes 0.4%. Same formula, no branch.
- *
- * `ctrlKey` is the pinch: browsers set it on a trackpad pinch, the one gesture
- * distinguishable from a two-finger scroll, and ×10 is what makes it feel like
- * one.
- *
- * Returned as a *span* multiplier, which is the inverse of d3's scale — `zoomAt`
- * takes "how much wider does the window get", so scrolling up returns less
- * than 1.
+ * `deltaMode` is not optional: Firefox reports a wheel tick as `deltaY: ±1` in
+ * *lines* where Chrome and Safari report hundreds of *pixels*. The exponential is
+ * what makes one constant serve both, and it has to, because **there is no device
+ * detection to be had**. Returned as a *span* multiplier, the inverse of d3's.
  */
 export function wheelScale(deltaY: number, deltaMode: number, ctrlKey: boolean): number {
   const delta = -deltaY * (deltaMode === 1 ? 0.05 : deltaMode ? 1 : 0.002) * (ctrlKey ? 10 : 1);
@@ -479,8 +376,7 @@ export function wheelScale(deltaY: number, deltaMode: number, ctrlKey: boolean):
  * Slide the window by a distance in its own units, clamped by sliding.
  *
  * A horizontal wheel — the two-finger swipe a trackpad makes — pans rather than
- * zooms, which is what speedscope and Chrome's Modern mode both do. It did
- * nothing here before, or worse, was read as a zoom.
+ * zooms, which is what speedscope and Chrome's Modern mode both do.
  */
 export function panBy(window: TimeWindow, delta: number, limit: TimeWindow): TimeWindow {
   const span = window.to - window.from;
@@ -513,23 +409,19 @@ export const bucketFor = (windowMs: number): number =>
 /**
  * How many points the trend will draw before it stops being a chart.
  *
- * Far above `MAX_BUCKETS`, and the two are not the same number for a reason.
- * `MAX_BUCKETS` is a *taste* limit — how many ticks read comfortably — and it
- * governs the bucket nobody chose. This is a *render* limit: one `<path>` per
- * series, so a day at one-minute buckets is 1,440 line segments and costs
- * nothing worth measuring. A reader who pins a fine bucket has asked for the
- * dense chart on purpose, and answering with the comfortable one would be
- * overruling them.
+ * Not `MAX_BUCKETS`, deliberately: that is a *taste* limit governing the bucket
+ * nobody chose, and this is a *render* limit. A reader who pins a fine bucket has
+ * asked for the dense chart on purpose, and answering with the comfortable one
+ * would be overruling them.
  */
 const MAX_POINTS = 1_500;
 
 /**
  * Whether a bucket can actually be drawn across a window.
  *
- * The picker asks this before offering a width, which is the whole fix for
- * 「选其他的单位渲染不出东西」. There is no honest way to *draw* 1,440 points
- * when only 81 fit, so the choice is refused where it is made rather than
- * accepted and then quietly truncated somewhere the reader cannot see.
+ * The picker asks this before offering a width: the choice is refused where it is
+ * made, rather than accepted and then quietly truncated somewhere the reader
+ * cannot see.
  */
 export const bucketFits = (windowMs: number, bucketMs: number): boolean => windowMs / bucketMs <= MAX_POINTS;
 
@@ -538,9 +430,8 @@ export const bucketFits = (windowMs: number, bucketMs: number): boolean => windo
  *
  * The server only returns buckets that had traces in them, and a line drawn
  * through that smooths straight over the gaps — so a quiet ten minutes and ten
- * minutes with no data draw identically, and only one of them means the fleet
- * was idle. `null` renders as a break, which is the honest mark for "nothing
- * here" and is what recharts leaves alone by default.
+ * with no data draw identically. `null` renders as a break, the honest mark for
+ * "nothing here" and what recharts leaves alone by default.
  */
 export function fillBuckets(
   points: readonly Trend[],
@@ -550,19 +441,10 @@ export function fillBuckets(
   const byBucket = new Map(points.map((p) => [Math.floor(p.at / bucketMs), p]));
   const first = Math.floor(window.from / bucketMs);
   const last = Math.floor(window.to / bucketMs);
-  // The ceiling, and which end it is taken from — the second half of that is
-  // where this was wrong. It was capped at `MAX_BUCKETS * 2` counted *forward*
-  // from `window.from`, on the stated assumption that a window needing more had
-  // already been given a wider bucket. True while the bucket is derived; false
-  // the moment the reader pins one, which is the only reason the picker exists.
-  // Pinning a minute on a day therefore drew the first eighty minutes of
-  // twenty-four hours — a stretch that on a fleet started this morning has no
-  // rows in it at all, so the chart went blank and the control looked broken.
-  //
-  // `MAX_POINTS` is high enough that the picker's own guard is what stops this
-  // being reached; the clamp is kept as a floor under a caller who does not ask.
-  // It takes the *last* buckets, because a window's recent end is the half
-  // somebody is looking at.
+  // The ceiling, and which end it is taken from. It takes the *last* buckets,
+  // because a window's recent end is the half somebody is looking at. `MAX_POINTS`
+  // is high enough that the picker's own guard is what stops this being reached;
+  // the clamp is kept as a floor under a caller who does not ask.
   const span = Math.min(last - first, MAX_POINTS);
   const start = last - span;
   return Array.from({ length: span + 1 }, (_, i) => {
@@ -590,18 +472,10 @@ export const hasSpans = (stages: readonly Stage[], traces: readonly TraceRow[]):
 /**
  * A trend point's label: the day, the hour, or the minute.
  *
- * The bucket carries no unit of its own — it is the epoch millisecond the bucket
- * opens at — so the axis has to be told what it is showing, and it is told
- * rather than left to guess from the spacing of the points. A quiet fleet
- * produces gaps, and spacing read off gaps would relabel the axis because
- * nothing happened for two hours.
- *
- * Two inputs and not one, because they answer different halves of the format.
- * The **window** decides whether a clock is worth printing at all: past two days
- * the reader is looking at a shape across dates. The **bucket** decides the
- * precision, and that is the half this was missing — the minutes were hardcoded
- * to `:00`, so pinning a fifteen-minute bucket labelled four consecutive points
- * `02:00` and the axis claimed the same instant four times.
+ * Told what it is showing rather than guessing from the spacing of the points: a
+ * quiet fleet produces gaps, and spacing read off gaps would relabel the axis
+ * because nothing happened for two hours. Two inputs: the **window** decides
+ * whether a clock is worth printing, the **bucket** decides the precision.
  */
 export const trendLabel = (at: number, windowMs: number, bucketMs: number): string => {
   const when = new Date(at);

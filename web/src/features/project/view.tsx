@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { GripVertical, X } from "lucide-react";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Button } from "../../ui/button";
@@ -362,10 +363,15 @@ export function ImageRow({
   placeholder?: string;
 }) {
   const [src, setSrc] = useState(imageSource(value));
-  const [c, setC] = useState<ImageChoices | null>(null);
-  useEffect(() => {
-    void readApi(api.sandbox.images.$get(), ImageChoicesSchema).then(setC);
-  }, []);
+  // The same key the settings shell reads this under. Two `ImageRow`s can be on
+  // screen at once — the machine default and the project's own — and each held
+  // its own copy filled by its own effect, so the panel asked the host for the
+  // identical list of images once per row. One cache entry answers both, and
+  // whichever mounts second gets the list without a request.
+  const { data: c = null } = useQuery({
+    queryKey: ["sandbox-images"],
+    queryFn: (): Promise<ImageChoices | null> => readApi(api.sandbox.images.$get(), ImageChoicesSchema),
+  });
 
   const { options, note } = imageOptions(src, c);
   return (

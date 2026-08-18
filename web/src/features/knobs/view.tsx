@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, X } from "lucide-react";
 import { api, mutate, readApi } from "../../shared/api";
 import { cn } from "../../ui/cn";
@@ -308,16 +309,24 @@ const PAIRED: Record<string, string> = { "indexModel.runtime": "indexModel.model
 type Write = (write: SettingWrite) => Promise<{ ok: boolean; text: string }>;
 
 export function Knobs({ section }: { section: KnobSection }) {
-  const [knobs, setKnobs] = useState<Knob[] | null>(null);
+  const queries = useQueryClient();
   const [saved, setSaved] = useState<string | null>(null);
 
-  const load = async () => {
-    const d = await readApi(api.settings.$get(), SettingsResponseSchema);
-    if (d) setKnobs(d.settings);
-  };
-  useEffect(() => {
-    void load();
-  }, []);
+  // Every section of this dialog reads the same machine settings, so they share
+  // one entry rather than each mounting its own effect and asking again.
+  //
+  // The throw is what keeps a failed re-read from emptying the page: `readApi`
+  // has already put the server's refusal on screen, and returning `null` here
+  // would replace the knobs the boss is looking at with 读取中…. An error leaves
+  // the last good answer in place, which is what the `if (d)` guard did.
+  const { data: knobs = null } = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const d = await readApi(api.settings.$get(), SettingsResponseSchema);
+      if (!d) throw new Error("settings read failed");
+      return d.settings;
+    },
+  });
 
   const write: Write = async (body) => {
     // Destructured: `post` returns `{ok, text}`, so `if (!ok)` on the object
@@ -326,7 +335,7 @@ export function Knobs({ section }: { section: KnobSection }) {
     const r = await mutate(api.settings.$post({ json: body }), true);
     if (r.ok) {
       setSaved(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
-      await load();
+      await queries.invalidateQueries({ queryKey: ["settings"] });
     }
     return r;
   };

@@ -1,6 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
-import { cleanup, isDisabled, render, restoreFetch, stubFetch, valueOf, waitFor } from "../support/render.tsx";
-import { AttachmentTiles, Composer, forgetSkills, SkillMenu } from "../../web/src/features/composer/view.tsx";
+import type { ReactNode } from "react";
+import { cleanup, isDisabled, render as mount, valueOf, waitFor } from "../support/render.tsx";
+import { inFlight, mockHttp, server } from "../support/http.ts";
+import { HttpResponse, http } from "msw";
+import { WithQueries } from "./queries.tsx";
+import { AttachmentTiles, Composer, SkillMenu } from "../../web/src/features/composer/view.tsx";
 import {
   appendLine,
   attachmentLabel,
@@ -35,16 +39,28 @@ const files: Attached[] = [
  * belongs to whichever file imported it first, and every later file kept the
  * previous one's nodes in `document.body`. Each file registers its own.
  */
-afterEach(() => {
-  cleanup();
-  restoreFetch();
-  // The list is cached at module scope for the life of the page, and every file
-  // in this process shares that page.
-  forgetSkills();
-});
+afterEach(cleanup);
+
+/** A composer with a project reads its skills on mount. Left in flight unless a
+ *  test answers `/api/v1/skills` itself, which is the state it comes up in. */
+mockHttp(inFlight());
+
+/** The skills a project has, as the read comes back. */
+const serveSkills = (list: Skill[]) =>
+  server.use(http.get("/api/v1/skills", () => HttpResponse.json({ skills: list })));
+
+/**
+ * A composer, with its own cache behind it.
+ *
+ * The skills list used to be a `Map` at module scope, shared by every file in
+ * this process for the life of the run — so this file needed a `forgetSkills()`
+ * in `afterEach` and a distinct project id per test to keep one test's read out
+ * of the next. A client per mount is what removes both: the cache now has the
+ * lifetime of the thing being rendered.
+ */
+const render = (node: ReactNode) => mount(<WithQueries>{node}</WithQueries>);
 
 test("an empty composer offers attach, paste and a send that refuses to send nothing", () => {
-  stubFetch();
   const { getByPlaceholderText, getByRole } = render(
     <Composer placeholder="说点什么" submit="发送" onSubmit={() => true} />,
   );
@@ -57,7 +73,6 @@ test("an empty composer offers attach, paste and a send that refuses to send not
 });
 
 test("seed text arrives in the box and enables the primary action", () => {
-  stubFetch();
   const { getByRole } = render(<Composer initial="这里不对" submit="发送" onSubmit={() => true} />);
   expect(valueOf(getByRole("textbox"))).toBe("这里不对");
   expect(isDisabled(getByRole("button", { name: "发送" }))).toBe(false);
@@ -66,17 +81,14 @@ test("seed text arrives in the box and enables the primary action", () => {
 test("a composer with no submit label and no handler renders no primary action", async () => {
   // Skills present and loaded, so the missing 插技能 is about this composer having
   // no project rather than about the read not having landed.
-  stubFetch({ "/skills": { skills } });
-  // A project id no other test uses. `forgetSkills` empties the resolved cache
-  // but not the in-flight one, so a project whose read another file left hanging
-  // hands this composer that same never-settling promise.
+  serveSkills(skills);
   const { getByRole, queryAllByRole } = render(<Composer placeholder="说点什么" projectId={8801} />);
   await waitFor(() => getByRole("button", { name: /插技能/ }));
   expect(queryAllByRole("button", { name: "发送" })).toHaveLength(0);
 });
 
 test("the 插技能 button waits for the skills read rather than appearing empty", async () => {
-  stubFetch({ "/skills": { skills: [] } });
+  serveSkills([]);
   const { getByRole, queryAllByRole } = render(<Composer placeholder="说点什么" projectId={8802} submit="发送" />);
   // A project whose skills read came back empty has nothing to insert, so the
   // button never arrives — but the two beside it are up immediately.

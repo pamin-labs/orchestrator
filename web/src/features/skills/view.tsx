@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Head, Input, Meta } from "../../ui/bits";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { api, mutate, readApi } from "../../shared/api";
 import { searchSkills, skillTally } from "./model";
-import { forgetSkills } from "../composer/view";
 import { cn } from "../../ui/cn";
 import { z } from "zod";
-import { SkillSchema, type Skill as Row } from "../composer/view";
-import { skillsQuery } from "../composer/model";
+import { SkillSchema, skillsQuery, type Skill as Row } from "../composer/model";
+import { skillsKey } from "../composer/view";
 
 /**
  * Which of the boss's skills the agents can see.
@@ -25,20 +25,22 @@ import { skillsQuery } from "../composer/model";
  */
 
 export function Skills({ projectId }: { projectId: number | null }) {
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const queries = useQueryClient();
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const d = await readApi(
-      api.skills.$get({ query: skillsQuery(projectId) }),
-      z.object({ skills: z.array(SkillSchema) }),
-    );
-    setRows(d?.skills ?? []);
-  }, [projectId]);
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // Keyed by the project. It was one `useState` filled from a bare `.then()`,
+  // so switching projects while the first read was in flight wrote that
+  // project's skills into a pane already headed by the next one — and the tick
+  // boxes then wrote back against the wrong list. The key is not under the
+  // `["orch"]` prefix the stream invalidates: a skill appears when a file lands
+  // on disk, not when an agent changes state.
+  const { data: rows = null } = useQuery({
+    queryKey: skillsKey(projectId),
+    queryFn: async () =>
+      (await readApi(api.skills.$get({ query: skillsQuery(projectId) }), z.object({ skills: z.array(SkillSchema) })))
+        ?.skills ?? [],
+  });
 
   const tally = useMemo(() => skillTally(rows ?? []), [rows]);
   const shown = useMemo(() => searchSkills(rows ?? [], q), [rows, q]);
@@ -47,9 +49,15 @@ export function Skills({ projectId }: { projectId: number | null }) {
     setBusy(r.name);
     // Optimistic: the staging copy takes a moment on a big skill and a tick box
     // that waits for a filesystem walk reads as a dead control.
-    setRows((all) => (all ?? []).map((x) => (x.name === r.name ? { ...x, on: !x.on } : x)));
+    queries.setQueryData(skillsKey(projectId), (all: Row[] | undefined) =>
+      (all ?? []).map((x) => (x.name === r.name ? { ...x, on: !x.on } : x)),
+    );
     await mutate(api.skills.$post({ json: { name: r.name, on: !r.on } }));
-    forgetSkills();
+    // Stale, not refetched. The composer reads this same entry and has to stop
+    // believing its `on` flags — which is what the old `forgetSkills()` did — but
+    // this pane already holds the answer it just wrote, and refetching here would
+    // replace the tick the boss can see with an identical one a request later.
+    await queries.invalidateQueries({ queryKey: skillsKey(projectId), refetchType: "none" });
     setBusy(null);
   };
 
@@ -59,7 +67,7 @@ export function Skills({ projectId }: { projectId: number | null }) {
   const rescan = async () => {
     setBusy("*");
     await mutate(api.skills.$post({ json: projectId ? { project: projectId } : {} }));
-    await load();
+    await queries.invalidateQueries({ queryKey: skillsKey(projectId) });
     setBusy(null);
   };
 

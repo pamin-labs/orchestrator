@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState, useTransition } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button, LinkButton } from "../../ui/button";
 import { Tip } from "../../ui/tooltip";
 import { Meta } from "../../ui/bits";
@@ -297,15 +298,18 @@ function TicketReply({ item, standing, refresh }: { item: QueueItem; standing: b
 function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh: () => void }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const send = async (answer: string) => {
+  const [busy, startTransition] = useTransition();
+  const send = (answer: string) => {
+    // The re-entry guard stays: `startTransition` starts a second action rather
+    // than refusing one, and `orch ask-boss` unblocks on the first answer — a
+    // double press would post the same answer twice.
     if (busy || !answer.trim()) return;
-    setBusy(true);
-    await mutate(api.escalations[":id"].answer.$post({ param: { id: String(escId) }, json: { answer } }));
-    setBusy(false);
-    setOpen(false);
-    setText("");
-    refresh();
+    startTransition(async () => {
+      await mutate(api.escalations[":id"].answer.$post({ param: { id: String(escId) }, json: { answer } }));
+      setOpen(false);
+      setText("");
+      refresh();
+    });
   };
   if (fyi) {
     return (
@@ -337,7 +341,7 @@ function Reply({ escId, fyi, refresh }: { escId: number; fyi?: boolean; refresh:
         placeholder="回答…  ⌘↵ 发送"
         className="w-[20rem] resize-none rounded-md border border-rule bg-paper px-2 py-1.5 text-[0.8125rem] outline-none focus:border-accent"
       />
-      <Button variant="go" disabled={busy || !text.trim()} onClick={() => void send(text)}>
+      <Button variant="go" disabled={busy || !text.trim()} onClick={() => send(text)}>
         发送
       </Button>
     </span>
@@ -352,10 +356,10 @@ export function replyKeyAction(key: string, metaKey: boolean, ctrlKey: boolean):
   return hasReplyModifier(metaKey, ctrlKey) ? "send" : null;
 }
 
-function handleReplyKey(event: React.KeyboardEvent, close: () => void, send: () => Promise<unknown>) {
+function handleReplyKey(event: React.KeyboardEvent, close: () => void, send: () => void) {
   const action = replyKeyAction(event.key, event.metaKey, event.ctrlKey);
   if (action === "close") close();
-  if (action === "send") void send();
+  if (action === "send") send();
 }
 
 /**
@@ -367,12 +371,19 @@ function handleReplyKey(event: React.KeyboardEvent, close: () => void, send: () 
  * it goes into the box rather than to the agent.
  */
 function Draft({ escId, onUse }: { escId: number; onUse: (t: string) => void }) {
-  const [text, setText] = useState<string | null>(null);
-  useEffect(() => {
-    void readApi(api.escalations[":id"].draft.$get({ param: { id: String(escId) } }), AnswerDraftSchema).then((r) =>
-      setText(r?.text?.trim() || ""),
-    );
-  }, [escId]);
+  // Keyed by the question it drafts an answer to. There is no race to fix here —
+  // the list keys each row by `a${escalation.id}`, so a mounted `Draft` keeps
+  // its `escId` for life — but a draft is a model call, and the box is opened,
+  // shut and opened again while the boss reads the question. The cache means the
+  // second open shows the draft it already has while it re-reads, rather than
+  // paying for the call again before the button can appear.
+  const { data: text } = useQuery({
+    queryKey: ["answer-draft", escId],
+    queryFn: async () =>
+      (
+        await readApi(api.escalations[":id"].draft.$get({ param: { id: String(escId) } }), AnswerDraftSchema)
+      )?.text?.trim() ?? "",
+  });
   if (!text) return null;
   return (
     <Tip label={text}>

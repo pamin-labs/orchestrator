@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { SystemTiming } from "../telemetry/view";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -33,6 +33,7 @@ import { CredPane, RUNTIMES } from "./credentials";
 import { EnvPane, ServerInfoSchema, ServerPane } from "./environment";
 import { GithubPane, GhStatusSchema } from "./github";
 import { ProjectPane, type ProjectSection } from "./project";
+import type { Section } from "./model";
 import { AuthRowSchema, HostCheckSchema, type AuthRow, type HostCheck } from "./auth";
 import { z } from "zod";
 import type { InferResponseType } from "hono/client";
@@ -70,25 +71,6 @@ const EMPTY_PREFLIGHT = { checks: [] as HostCheck[] };
  *
  * Behaviour is Radix (硬约束 4): focus trap, Esc, restored focus, aria wiring.
  */
-
-export const SectionSchema = z.enum([
-  "cred",
-  "github",
-  "host",
-  "server",
-  "timing",
-  "skills",
-  "sched",
-  "models",
-  "turn",
-  "boxdefaults",
-  "notify",
-  "prefs",
-  "gates",
-  "sandbox",
-  "remove",
-]);
-export type Section = z.infer<typeof SectionSchema>;
 
 /** Host facts only. The credential rows are the 账号 section, said once. */
 const isCredential = (c: HostCheck) => c.name.startsWith("credential:");
@@ -233,7 +215,10 @@ function SettingsContent({
   onOpenChange: (open: boolean) => void;
   onRemoved: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  // The re-read is inside the pending window. Clearing the flag before the
+  // invalidate let every pane in the dialog go live again while still showing
+  // the config from before the write.
+  const [busy, startTransition] = useTransition();
   const [signin, setSignin] = useState<Signin | null>(null);
 
   const queries = useQueryClient();
@@ -245,12 +230,11 @@ function SettingsContent({
   const { authData, rows, prefs, checks, proj } = useSettingsData(open, projectId, signin);
   useSigninEnd(authData, signin, setSignin);
 
-  const patch = async (body: ProjectPatch) => {
-    setBusy(true);
-    await mutate(api.project[":id"].config.$post({ param: { id: String(projectId) }, json: body }));
-    setBusy(false);
-    void queries.invalidateQueries({ queryKey: ["project", projectId] });
-  };
+  const patch = (body: ProjectPatch) =>
+    startTransition(async () => {
+      await mutate(api.project[":id"].config.$post({ param: { id: String(projectId) }, json: body }));
+      await queries.invalidateQueries({ queryKey: ["project", projectId] });
+    });
 
   const items = NAV.filter((n) => !n.project || projectId !== null);
 
@@ -392,7 +376,7 @@ function SettingsPanes({
   projectName?: string;
   groupCount: number;
   busy: boolean;
-  patch: (body: ProjectPatch) => Promise<void>;
+  patch: (body: ProjectPatch) => void;
   onSaved: () => void;
   onWaitForLogin: (runtime: string, since: number) => void;
   onOpenChange: (open: boolean) => void;

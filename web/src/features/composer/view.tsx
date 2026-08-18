@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { ClipboardPaste, Paperclip, SquareSlash, X } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/bits";
@@ -35,7 +36,6 @@ import {
   type Slash,
 } from "./model";
 
-export { SkillSchema };
 export type { Draft, Skill };
 
 const isFileEntry = (entry: FileSystemEntry): entry is FileSystemFileEntry => entry.isFile;
@@ -102,33 +102,17 @@ const SkillsResponseSchema: z.ZodType<InferResponseType<typeof api.skills.$get, 
  * remount — and the list changes when a file lands on disk, not between two
  * clicks.
  */
-const SKILLS = new Map<string, Skill[]>();
-const SKILLS_IN_FLIGHT = new Map<string, Promise<Skill[]>>();
-
-const cachedSkills = (projectId?: number): Skill[] | null => SKILLS.get(String(projectId ?? "")) ?? null;
-
-/** Ticking a skill in settings changes `on` here; the cache would say otherwise. */
-export const forgetSkills = () => SKILLS.clear();
-
-function fetchSkills(key: string, projectId?: number): Promise<Skill[]> {
-  const p = readApi(api.skills.$get({ query: skillsQuery(projectId) }), SkillsResponseSchema)
-    .then((d) => d?.skills ?? [])
-    .catch(() => [])
-    .then((list) => {
-      SKILLS.set(key, list);
-      SKILLS_IN_FLIGHT.delete(key);
-      return list;
-    });
-  SKILLS_IN_FLIGHT.set(key, p);
-  return p;
-}
-
-function loadSkills(projectId?: number): Promise<Skill[]> {
-  const key = String(projectId ?? "");
-  const done = SKILLS.get(key);
-  if (done) return Promise.resolve(done);
-  return SKILLS_IN_FLIGHT.get(key) ?? fetchSkills(key, projectId);
-}
+/**
+ * The key both readers of this list share: this composer and the settings pane.
+ *
+ * There were two caches for it. This file kept a module-scope `Map` of answers
+ * plus a second `Map` of in-flight promises to collapse concurrent callers, and
+ * an exported `forgetSkills()` for the settings pane to clear it after a tick —
+ * a hand-written query cache, deduplicator and invalidation, beside a query
+ * cache that already does all three. Sharing the key means the settings pane's
+ * optimistic tick is what this composer reads, with nothing to keep in step.
+ */
+export const skillsKey = (projectId?: number | null) => ["skills", projectId ?? null] as const;
 
 const clipboardImage = async (it: ClipboardItem, n: number): Promise<File | null> => {
   const mime = it.types.find((t) => t.startsWith("image/"));
@@ -274,12 +258,12 @@ function useAutoGrow(box: RefObject<HTMLTextAreaElement | null>, text: string, r
  * "fast" is exactly the timing that reads as a flicker.
  */
 function useSkills(projectId?: number) {
-  const [skills, setSkills] = useState<Skill[] | null>(cachedSkills(projectId));
-  useEffect(() => {
-    if (skills) return;
-    void loadSkills(projectId).then(setSkills);
-  }, [projectId, skills]);
-  return skills;
+  const { data = null } = useQuery({
+    queryKey: skillsKey(projectId),
+    queryFn: async () =>
+      (await readApi(api.skills.$get({ query: skillsQuery(projectId) }), SkillsResponseSchema))?.skills ?? [],
+  });
+  return data;
 }
 
 /**

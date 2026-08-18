@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { Stage } from "../../web/src/shared/api.ts";
 import {
   flameDepth,
@@ -109,10 +109,14 @@ test("the fold reproduces the shape it was written for", () => {
   expect(duration(split.ceiling)).toBe("6ms");
 });
 
-test("a scope has something to draw when it has either stages or traces", () => {
-  expect(hasSpans([], [])).toBe(false);
-  expect(hasSpans([stage({ name: "turn" })], [])).toBe(true);
-  expect(hasSpans([], [{ traceId: "a", name: "turn", startedAt: T0, durationMs: 1, failed: false }])).toBe(true);
+describe("a scope has something to draw when it has either stages or traces", () => {
+  test.each([
+    ["neither", [], [], false],
+    ["a stage and no trace", [stage({ name: "turn" })], [], true],
+    ["a trace and no stage", [], [{ traceId: "a", name: "turn", startedAt: T0, durationMs: 1, failed: false }], true],
+  ])("%s", (_case, stages, traces, drawable) => {
+    expect(hasSpans(stages, traces)).toBe(drawable);
+  });
 });
 
 test("the trend axis reads as hours inside two days and as dates beyond", () => {
@@ -518,16 +522,20 @@ test("a pinned bucket fills the recent end of the window, not its beginning", ()
   expect(filled.filter((p) => p.p50 !== null)).toHaveLength(1);
 });
 
-test("a width that cannot be drawn across the window is refused where it is offered", () => {
+describe("a width that cannot be drawn across the window is refused where it is offered", () => {
   const m = 60_000;
   const day = 24 * 60 * m;
-  // A day at one minute is 1,440 points — dense, and deliberately allowed: one
-  // `<path>` per series costs nothing, and a reader who pins it asked for it.
-  expect(bucketFits(day, m)).toBe(true);
-  // A week at one minute is 10,080, which is where the picker says no and
-  // quotes the number rather than accepting the choice and drawing a fraction.
-  expect(bucketFits(7 * day, m)).toBe(false);
-  expect(bucketFits(7 * day, 15 * m)).toBe(true);
+  test.each([
+    // A day at one minute is 1,440 points — dense, and deliberately allowed: one
+    // `<path>` per series costs nothing, and a reader who pins it asked for it.
+    ["a day at one minute — 1,440 points", day, m, true],
+    // A week at one minute is 10,080, which is where the picker says no and
+    // quotes the number rather than accepting the choice and drawing a fraction.
+    ["a week at one minute — 10,080 points", 7 * day, m, false],
+    ["a week at fifteen minutes", 7 * day, 15 * m, true],
+  ])("%s", (_case, window, bucket, fits) => {
+    expect(bucketFits(window, bucket)).toBe(fits);
+  });
 });
 
 // ── the wheel ──────────────────────────────────────────────────────────────
