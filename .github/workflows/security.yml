@@ -83,6 +83,10 @@ jobs:
           severity: HIGH,CRITICAL
           format: table
       - name: create filesystem SPDX SBOM
+        # Evidence for a release, not an answer a pull request needs: four SBOM
+        # generations cost 28s per run and nothing gates on them. `release.yml`
+        # produces its own from the exact source it publishes.
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
@@ -92,6 +96,10 @@ jobs:
           output: trivy-fs.spdx.json
           exit-code: '0'
       - name: create filesystem CycloneDX SBOM
+        # Evidence for a release, not an answer a pull request needs: four SBOM
+        # generations cost 28s per run and nothing gates on them. `release.yml`
+        # produces its own from the exact source it publishes.
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
@@ -100,7 +108,24 @@ jobs:
           format: cyclonedx
           output: trivy-fs.cdx.json
           exit-code: '0'
-      - run: docker build --tag orchestrator-agent:ci --file docker/agent.Dockerfile .
+      # Built through buildx with a layer cache, because 35 of this job's 125
+      # seconds were rebuilding an image whose Dockerfile rarely changes: an apt
+      # upgrade, a Node tarball and two npm installs, all identical run to run.
+      # `type=gha` keeps the layers in the same cache Actions already provides,
+      # so a run that changes nothing under `docker/` reuses them.
+      #
+      # `load: true` because the scanner below reads it from the local daemon
+      # rather than a registry — this image is built to be inspected, never
+      # pushed.
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/agent.Dockerfile
+          tags: orchestrator-agent:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: scan container
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
@@ -153,6 +178,10 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: create container SPDX SBOM
+        # Evidence for a release, not an answer a pull request needs: four SBOM
+        # generations cost 28s per run and nothing gates on them. `release.yml`
+        # produces its own from the exact source it publishes.
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
@@ -161,6 +190,10 @@ jobs:
           output: trivy-image.spdx.json
           exit-code: '0'
       - name: create container CycloneDX SBOM
+        # Evidence for a release, not an answer a pull request needs: four SBOM
+        # generations cost 28s per run and nothing gates on them. `release.yml`
+        # produces its own from the exact source it publishes.
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
@@ -168,7 +201,11 @@ jobs:
           format: cyclonedx
           output: trivy-image.cdx.json
           exit-code: '0'
+      # Skipped with the SBOMs it uploads. `if-no-files-found: error` is right —
+      # an upload that silently ships nothing is worse than one that fails — but
+      # it means this step has to follow the same condition as its inputs.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: github.event_name != 'pull_request'
         with:
           name: security-sboms
           path: trivy-*.json
