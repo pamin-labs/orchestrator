@@ -167,6 +167,10 @@ function applyPayloadCards(ctx: Ctx, payload: TurnPayload, delta: Delta): void {
 function applyWorkCard(ctx: Ctx, agent: TurnAgent, job: TurnJob, delta: Delta): void {
   if (job.slice_id) return applySliceCard(ctx, agent, job.slice_id, delta);
   if (!job.grp_id || job.payload.idea) return;
+  // The slice list is the fallback for a turn with no stated reason. A payload
+  // card is that reason — a lease result, a digest, a scribe brief — and none of
+  // them has another way into the prompt.
+  if (delta.card) return;
   const slices = ctx.db
     .query<{ seq: number; title: string; status: SliceState; difficulty: string }, [number]>(
       "SELECT seq, title, status, difficulty FROM slice WHERE grp_id = ? ORDER BY seq",
