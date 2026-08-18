@@ -23,16 +23,9 @@ import { projectConfig } from "../util/rows.ts";
  * One sandbox per group. The boundary.
  *
  * Everything an agent runs — its turn, its gates, its leases, its git — runs in
- * here, and nothing in here can reach the host. That is the whole point:
- * decision 001 measured that the host sandbox is deny-only, so "only this
- * checkout is writable" was never expressible and every path nobody thought to
- * deny stayed writable. A container inverts it. The host offers a finite set of
- * actions through `orch` and nothing else, which is hard constraint 2 turned
- * from the sandbox's only gap into its only interface.
- *
- * This file is the only place that knows OpenSandbox exists. See
- * docs/adr/005 for what was measured, including the several places where
- * the observed behaviour contradicts that project's docs.
+ * here, and nothing in here can reach the host. The host offers a finite set of
+ * actions through `orch` and nothing else, which is hard constraint 2. This file
+ * is the only place that knows OpenSandbox exists; see docs/adr/005.
  */
 
 /** Reconnecting on every call would build a new undici pool each time. */
@@ -41,25 +34,10 @@ const live = new Map<string, Sandbox>();
 /**
  * Which images a group's container may be made from.
  *
- * Two sources, and nothing else:
- *
- *   ghcr.io/pamin-labs/…   what this project publishes
- *   no registry prefix     what you built here, e.g. `orch/agent:1`
- *
- * The second is what makes local development and debugging work — a locally
- * built tag has no registry in front of it and can never have been pulled from
- * one, so allowing it does not open the door the first rule closes.
- *
- * The reason for the rule at all: this image is where an agent runs, and an
- * agent runs with your code in front of it. Pointing the fleet at somebody
- * else's image hands over the whole boundary — and it is invisible, because a
- * container built from a hostile image behaves exactly like one that is not.
- * Everything else in this file assumes the image is ours; this is the line that
- * makes the assumption true.
- *
- * Refused rather than corrected. A project that names an image we will not run
- * is a project whose owner meant something, and quietly substituting a different
- * one is worse than saying no.
+ * Two sources: `ghcr.io/pamin-labs/…`, and anything with no registry prefix — a
+ * locally built tag can never have been pulled from a registry, so allowing it
+ * does not open the door the first rule closes. Everything else here assumes the
+ * image is ours; this is the line that makes that true. Refused, not corrected.
  */
 /** The one namespace this project publishes to. One home, so the allowlist and
  *  the panel's version list can never disagree about what "ours" means. */
@@ -71,12 +49,9 @@ const PUBLISHED = new RegExp(`^ghcr\\.io/${PUBLISHED_REPO.split("/")[0]}/`, "i")
  * Does this reference name a registry to pull from?
  *
  * A registry is a `.` or a `:` in the first path segment, or a literal
- * `localhost`. Docker's own rule, and the reason `orch/agent:1` is local while
- * `evil.example.com/orch/agent:1` is not.
- *
- * Two callers, one rule: this decides both what may run (below) and whether
- * preflight is allowed to say "not on this machine" is fine — the sandbox server
- * pulls what it can pull, and nothing can pull a bare tag.
+ * `localhost` — Docker's own rule, and the reason `orch/agent:1` is local while
+ * `evil.example.com/orch/agent:1` is not. Two callers, one rule: what may run,
+ * and whether preflight may say "not on this machine" is fine.
  */
 export function hasRegistry(ref: string): boolean {
   const image = ref.trim();
@@ -94,19 +69,10 @@ export function allowedImage(ref: string): boolean {
 /**
  * A host path, as the daemon that performs the mount will read it.
  *
- * On Windows this is not the path this process would use. `opensandbox-server`
- * is Linux-only — its egress mode is `dns+nft` — so on a Windows machine it runs
- * under WSL, next to the Docker Desktop daemon, and the path it is handed is
- * resolved in *that* filesystem. `C:\orch\skills` is not a path it has; the
- * same directory is `/mnt/c/orch/skills` there.
- *
- * Left untranslated, nothing errors: the server rejects it for not starting with
- * `/`, or accepts it and mounts an empty directory. Both end with every skill
- * the boss ticked silently absent, which is this project's oldest failure shape.
- *
- * Only drive-letter paths are touched. A path that is already absolute-POSIX is
- * somebody who has thought about this, and a UNC path (`\\wsl$\...`) is one the
- * daemon cannot use either way.
+ * `opensandbox-server` is Linux-only, so on Windows it runs under WSL and the
+ * path it is handed is resolved in *that* filesystem: `C:\orch\skills` is
+ * `/mnt/c/orch/skills` there. Left untranslated nothing errors — the server
+ * rejects it, or mounts an empty directory. Only drive-letter paths are touched.
  */
 export function hostPathForDaemon(path: string, os: string = platform()): string {
   if (os !== "win32") return path;
@@ -131,11 +97,6 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
   // merges arbitrary keys into `config_json`, so refusing it only in the panel
   // would be a check a request can walk around; this is where every container is
   // actually built, which makes it the only place the rule holds.
-  // Two layers now, narrowest first: this project, then the machine's answer.
-  // That second one used to be three — a `sandbox_image` row read here, with the
-  // yaml under it — and it is one since the settings table holds every config
-  // path: `cfg.sandbox.image` already *is* the row when there is one and the
-  // shipped default when there is not.
   const fallback = base.image;
   const image = over.image || fallback;
   return {
@@ -151,18 +112,10 @@ export function specFor(ctx: Ctx, projectId: number | null): SandboxSpec {
 /**
  * The key the sandbox server is actually running with, read from its own config.
  *
- * Generating one here and asking the boss to copy it into the server's file is
- * how a whole night went: the panel had a key, the server had another, and every
- * turn, gate and diff came back 401 as "Authentication credentials are invalid",
- * which reads as a model problem. The server owns this value. We are its client,
- * so we read it.
- *
- * Where a running server was pointed is not ours to know — it takes `--config`
- * and may be started from anywhere — so this looks in the three places one is
- * conventionally found, in the order the server itself would.
- *
- * A regex rather than a TOML parser: one key, one line, and a dependency for
- * that is a dependency for that.
+ * The server owns this value; we are its client, so we read it rather than
+ * generating one and asking the boss to copy it across. Where a running server
+ * was pointed is not ours to know — it takes `--config` and may be started from
+ * anywhere — so this looks in the three places one is conventionally found.
  */
 function configPaths(home = homedir()): string[] {
   return [
@@ -225,30 +178,23 @@ export function keyInConfig(path: string): string | null {
 /**
  * The opensandbox-server process that is running right now, if there is one.
  *
- * Three questions have three different answers and only this one separates
- * them: **absent** (restart it), **present but refusing** (a restart makes a
- * restart loop), and **present, healthy, and holding stale config** (needs a
- * restart, and nothing else notices). `preflight`'s `reachable()` answers the
- * middle one over HTTP; this answers the first.
- *
- * ponytail: shells out to `ps`, splits argv on whitespace, and resolves a
- * relative `--config` against the process's own working directory (`/proc` on
- * Linux, `lsof` on macOS). A path with a space in it comes back wrong — the fix
- * is the server publishing its own config path over its API, not a shell parser
- * here.
+ * Three states, three different answers: **absent** (restart it), **present but
+ * refusing** (a restart makes a restart loop), and **present, healthy, holding
+ * stale config** (needs a restart, and nothing else notices). `preflight`'s
+ * `reachable()` answers the middle one over HTTP; this answers the first.
  */
+// ponytail: shells out to `ps`, splits argv on whitespace, and resolves a relative
+// `--config` against the process's own working directory (`/proc` on Linux, `lsof`
+// on macOS). A path with a space in it comes back wrong — the fix is the server
+// publishing its own config path over its API, not a shell parser here.
+
 /**
  * Is this `ps` line the server, or a process talking about it.
  *
- * Measured the hard way: a shell whose argv contained
- * `pkill -f opensandbox-server` was matched as the server itself, so the caller
- * reported "already running" and never started one — on a machine with no server
- * at all. Anything that names it as an *argument* (pkill, grep, an editor, a
- * terminal title) is about the server, not the server.
- *
- * Pulled out so it can be checked without a machine in a particular state, which
- * is the only reason that bug survived: reproducing it needed a specific process
- * to exist at a specific moment.
+ * Anything that names it as an *argument* (pkill, grep, an editor, a terminal
+ * title) is about the server, not the server. Pulled out so it can be checked
+ * without a machine in a particular state, which is the only reason that bug
+ * survived: reproducing it needed a specific process at a specific moment.
  */
 export function isServerLine(l: string): boolean {
   if (!/(^|\/|\s)opensandbox-server(\s|$)/.test(l)) return false;
@@ -258,22 +204,10 @@ export function isServerLine(l: string): boolean {
 /**
  * Is this pid still there — without asking `ps`.
  *
- * POSIX signal 0 delivers nothing and only reports whether the process exists
- * and whether we may signal it. No subprocess, no allocation: the whole check is
- * one `kill(2)`, against the 30.6ms `runningServer()` spends forking `ps`.
- * `EPERM` counts as alive — the process is there and belongs to somebody else,
- * which for "did the server die" is a yes.
- *
- * The known limit is pid reuse: a pid that was the server's and now belongs to
- * something unrelated reads as alive. That is why this answers "still", not
- * "which" — callers pair it with a pid they recorded and fall back to
- * `runningServer()` the moment it says no, which is when the argv is needed
- * anyway.
- *
- * There is no library for this. The maintained ones (`ps-list`, `find-process`)
- * enumerate processes and therefore fork `ps` themselves; the ones that check a
- * single pid (`is-running` 2016, `process-exists` 2021, `ps-node` 2017) are
- * abandoned wrappers around exactly the two lines below.
+ * POSIX signal 0 delivers nothing and only reports whether the process exists and
+ * whether we may signal it. `EPERM` counts as alive — it is there and belongs to
+ * somebody else. The known limit is pid reuse, which is why this answers "still",
+ * not "which": callers fall back to `runningServer()` the moment it says no.
  */
 export function pidAlive(pid: string): boolean {
   const n = Number(pid);
@@ -291,11 +225,7 @@ export function runningServer(): { pid: string; argv: string[]; config: string |
   try {
     const ps = Bun.spawnSync(["ps", "-Ao", "pid=,args="], { stdout: "pipe" }).stdout.toString();
     // The name has to appear as a program being run, not merely somewhere on a
-    // command line. Measured the hard way: a shell whose argv contained
-    // `pkill -f opensandbox-server` was matched as the server itself, and the
-    // caller then reported "already running" and never started one. Anything
-    // that mentions it as an *argument* — pkill, grep, kill, an editor, a
-    // terminal title — is a process talking about the server, not the server.
+    // command line — see `isServerLine`.
     const line = ps.split("\n").find(isServerLine);
     if (!line) return null;
     const parts = line.trim().split(/\s+/);
@@ -316,13 +246,9 @@ export function runningServer(): { pid: string; argv: string[]; config: string |
  * The host paths this server will actually mount, and the file that says so.
  *
  * The silent one of the three. A mount of a path missing from this list fails
- * creation outright, which is loud — but the config being *out of step with
- * ours* is not: the process is healthy, nothing errors, and the only symptom is
- * an empty directory inside every container. That is the incident this exists
- * for, and it is why the answer is not "restart" but "add this line".
- *
- * Same regex-not-a-parser trade as `keyInConfig`, and the same `^[ \t]*` for the
- * same reason: the example config ships the line commented out.
+ * creation outright, which is loud — but the config being *out of step with ours*
+ * is not: the process is healthy, nothing errors, and the only symptom is an
+ * empty directory inside every container. So the answer is "add this line".
  */
 export function allowedHostPaths(home = homedir()): { paths: string[]; config: string } | null {
   for (const path of configPaths(home)) {
@@ -371,11 +297,7 @@ async function waitForServerExit(ops: RestartOps): Promise<boolean> {
  * Only ever from an argv we have **seen**, never one we composed: how the boss
  * runs it (`uvx`, a venv, a wrapper, extra flags) is theirs, and inventing a
  * command line would start a second, differently-configured server beside the
- * one that is wedged.
- *
- * Everything it was running dies with it — every container, and with them every
- * turn in flight. That is why the deliberate one is a button with hard
- * constraint 5's evidence beside it, and the automatic one below is narrow.
+ * wedged one. Everything it was running dies with it, turns in flight included.
  */
 export async function restartServer(
   argv: string[],
@@ -444,12 +366,9 @@ function connection(ctx: Ctx): ConnectionConfig {
   const { protocol, authority } = splitAddr(serverAddr(ctx));
   const [host, port] = authority.split(":");
   // Set from the panel first, then the environment, then the yaml. The yaml is
-  // committed, so a key that lives there is a key that leaks; the panel writes
-  // it to the same store every other credential uses.
-  //
-  // Resolved against the address it is about to be sent to, not on its own: a
-  // stored key travels with the address it was stored for, and `sandbox.server`
-  // is a knob the panel can move underneath it.
+  // committed, so a key that lives there is a key that leaks. Resolved against the
+  // address it is about to be sent to: a stored key travels with the address it
+  // was stored for, and `sandbox.server` is a knob the panel can move under it.
   const key = sandboxKeyFor(ctx.db, authority, ctx.config.sandbox.apiKey);
   return new ConnectionConfig({
     domain: `${host}:${port ?? 8080}`,
@@ -463,18 +382,10 @@ function connection(ctx: Ctx): ConnectionConfig {
 /**
  * Who owns a sandbox.
  *
- * A group is the usual answer. Standing roles — Architect, CoS, Dispatcher —
- * have no group and still must not run on the host, so they share one per
- * project.
- *
- * `util` is the third, and it is not a sandbox in the 005 sense. 007 narrows
- * that decision by one word: **the boundary is a container that runs an agent**.
- * This one runs none, checks out no working tree, and executes nothing that came
- * out of a repository — it is a peer of the server that happens not to occupy
- * the host's PATH. So it is the only container bound for GitHub *writes*, while
- * every group's binding is scoped to the two request paths a fetch uses
- * (`readOnlyGitPaths`). One per orchestrator, not per project: what it holds is
- * the login, and there is one of those.
+ * A group is the usual answer; standing roles have no group and share one per
+ * project. `util` runs no agent, checks out no working tree and executes nothing
+ * from a repository, so it is the only container bound for GitHub *writes* — a
+ * group's binding is scoped to the paths a fetch uses (`readOnlyGitPaths`).
  */
 export type Scope = { grp: number } | { project: number } | { util: true };
 
@@ -550,17 +461,10 @@ function remoteOf(ctx: Ctx, projectId: number | null): string | null {
 /**
  * Nothing can open a container right now.
  *
- * docker not running, `opensandbox-server` down, the key rejected. Preflight
- * reports all three — and only as a console warning, so the fleet still finds
- * out the expensive way: every group dispatches, `ensureSandbox` throws, the
- * turn fails, the watchdog requeues it once and then files a blocker. Ten
- * groups, ten blockers, one fact.
- *
- * So it is a hold, the same shape as the rate-limit and offline ones: the first
- * group discovers the wall and the rest are simply not dispatched. Short,
- * because the alternative to re-probing is staying down after docker comes
- * back, and because a failure that was actually about one project's config
- * should not hold everyone for long.
+ * docker not running, `opensandbox-server` down, the key rejected. A hold, the
+ * same shape as the rate-limit and offline ones: the first group discovers the
+ * wall and the rest are simply not dispatched. Short, because the alternative to
+ * re-probing is staying down after docker comes back.
  */
 const HOLD_MS = 60_000;
 let downUntil = 0;
@@ -626,9 +530,7 @@ async function reconnect(ctx: Ctx, scope: Scope, sandboxId: string | null): Prom
         return sandbox;
       } catch (e) {
         // A reconnect that burns its timeout and fails falls through to a fresh
-        // `sandbox.create`, whose span measures 34s at p50 — so until this one
-        // existed the cost of the failed attempt was charged to the creation it
-        // caused, and nothing said a reconnect had been tried at all.
+        // `sandbox.create`, so without this span its cost was charged there.
         span.setStatus({ code: SpanStatusCode.ERROR, message: errText(e) });
         remember(ctx, scope, null);
         return null;
@@ -760,15 +662,10 @@ export function sandboxScope(scope: Scope, projectId: number | null) {
 /**
  * Two spans, because these are two different four-minute problems.
  *
- * Building the container is the image, the daemon and the mounts; initialising
- * it is provisioning, credentials and restoring the workspace. Folded together
- * — or worse, folded into the checkpoint that happens to call this first — the
- * boss sees "the checkpoint took four minutes" and learns nothing. Split, the
- * answer is either "we spent four minutes building a container" or "we spent
- * four minutes filling one", which point at different fixes.
- *
- * Neither span opens on the warm path: a reconnect built nothing and filled
- * nothing, and a zero-duration span every turn would bury the cold ones.
+ * Building the container is the image, the daemon and the mounts; initialising it
+ * is provisioning, credentials and restoring the workspace. Split, the answer is
+ * either "four minutes building a container" or "four minutes filling one", which
+ * point at different fixes. Neither span opens on the warm path.
  */
 async function openSandbox(ctx: Ctx, scope: Scope): Promise<Sandbox> {
   const { sandboxId, projectId } = owner(ctx, scope);
@@ -842,19 +739,10 @@ function isPathNotAllowed<T>(e: T): boolean {
 /**
  * The refresher's hands, inside the utility container.
  *
- * 007 step 7: the ChatGPT login was the last thing that needed a binary on the
- * boss's own machine, and codex is already in the agent image because turns run
- * `codex exec`. So the weekly renewal runs where every other credential already
- * lives, and a host with docker and a pasted token needs nothing else.
- *
- * **The utility container, never a group's.** This is the real refresh token —
- * the one credential 007 deliberately kept off every agent — and the utility
- * container is the one with no agent, no mailbox and no `orch` in it, which is
- * the entire reason it may hold real credentials.
- *
- * Lives here rather than in `chatgpt.ts` because that file must not import this
- * one: `sandbox.ts` -> `auth.ts` -> `chatgpt.ts` already, and reaching back
- * closes the cycle.
+ * **Never a group's.** This is the real refresh token — the one credential 007
+ * kept off every agent — and the utility container has no agent, no mailbox and
+ * no `orch` in it. Lives here rather than in `chatgpt.ts`: that file must not
+ * import this one, or `sandbox.ts` -> `auth.ts` -> `chatgpt.ts` closes a cycle.
  */
 function codexHomeIO(ctx: Ctx): CodexHomeIO {
   return {
@@ -886,19 +774,9 @@ export interface Counter {
  * Did the skills mount actually bring the skills.
  *
  * A bind mount of a host path the container runtime cannot reach does not fail —
- * it succeeds and delivers an **empty directory**. Measured on this machine:
- * `/var/tmp/orch-cache/skills` holds 179 skills, `docker run -v` on that exact
- * path sees 0, and inside the container the mount shows as an overlay with
- * `lowerdir=/` rather than the host directory. macOS runs docker in a VM, and
+ * it succeeds and delivers an **empty directory**. macOS runs docker in a VM, and
  * `/var/tmp` there is the VM's, not the Mac's; a path under `$HOME` binds fine.
- *
- * So every agent ran with no skills at all, `skillMounts` returned two correct
- * mounts, creation succeeded, the degrade path never fired, and preflight
- * reported "179 staged" — because it counts them on the host, which is the one
- * place they definitely are. Nothing anywhere was wrong.
- *
- * One `ls` per host path per process, and only when the host directory has
- * something in it: a boss who has ticked no skills gets no noise.
+ * One `ls` per host path per process, and only when that path holds something.
  */
 export async function checkSkillsMount(ctx: Ctx, sb: Counter, hostPath: string, at: string): Promise<void> {
   if (mountChecked.has(hostPath)) return;
@@ -939,32 +817,20 @@ export async function checkSkillsMount(ctx: Ctx, sb: Counter, hostPath: string, 
 /**
  * Where the boss's staged skills land inside a container.
  *
- * **Not** either CLI's own skills directory, and that is the whole change. It
- * used to be mounted straight onto both of them, read-only — which worked for
- * the boss's own skills and made the repository's own undeliverable, because a
- * read-only mount is not a directory anything can add to. The one previous
- * attempt at repo skills linked into it and got `EROFS`, swallowed by a
- * `; true`, so the feature reported success and delivered nothing.
- *
- * So the mount is a staging path nothing reads directly, and `SKILL_SYNC` builds
- * each CLI's real directory out of symlinks into it. That directory is ordinary
- * container filesystem, so a repository's skills can join it.
+ * **Not** either CLI's own skills directory: a read-only mount straight onto them
+ * is not a directory anything can add to, so a repository's own skills were
+ * undeliverable. This is a staging path nothing reads directly, and `SKILL_SYNC`
+ * builds each CLI's real directory from symlinks into it — ordinary filesystem.
  */
 export const STAGED_SKILLS = "/opt/orch/skills";
 
 /**
  * How `SKILL_SYNC` reports a repository's own skills back out.
  *
- * The linking has to happen in the container and the *listing* has to reach the
- * host, or the settings page cannot show a repo's skills and `/name` cannot
- * resolve one — which is the half that has been missing since `repo_path`
- * became `owner/name` and the checkout stopped existing on this machine.
- *
- * One line per skill, on the same exec that was already probing the checkout, so
- * the inventory costs no extra round trip. The head of the file rides along
- * base64'd because the description lives in YAML frontmatter and
- * `frontmatterDescription` already knows how to read it — parsing a block scalar
- * in `sh` is the version of this that is wrong in a way nobody notices.
+ * The linking happens in the container and the *listing* has to reach the host,
+ * or the settings page cannot show a repo's skills and `/name` cannot resolve one.
+ * One line per skill, on the exec already probing the checkout; the head of the
+ * file rides along base64'd, because `frontmatterDescription` reads YAML.
  */
 export const SKILL_LINE = "ORCHSKILL";
 
@@ -987,37 +853,10 @@ export function skillMounts(ctx: Ctx): Volume[] {
 /**
  * Both CLIs' skill directories, rebuilt from what is on disk right now.
  *
- * Measured against the two binaries in `orch/agent:1` (`claude 2.1.232`,
- * `codex-cli 0.147.0`), by counting the paths each one actually contains:
- *
- *   claude   .claude/skills 93   .codex/skills 0   .agents/skills 0
- *   codex    .codex/skills  3    .claude/skills 0  .agents/skills 0
- *
- * and codex's three are all one sentence — *"I will place it in
- * `$CODEX_HOME/skills` (or `~/.codex/skills` when `CODEX_HOME` is unset)"*. So
  * **codex has no project-local skills directory at all**, and claude's is
- * `.claude/skills` under its working directory. The delivery matrix that leaves:
- *
- *   repo ships .claude/skills   claude: native   codex: nothing
- *   repo ships .codex/skills    claude: nothing  codex: nothing
- *   repo ships .agents/skills   claude: nothing  codex: nothing
- *
- * Two of the three conventions reached nobody, and the third reached one of two
- * runtimes. The old comment in `skills.ts` had `.codex/skills` down as codex's
- * project path; it is its home path, and that one word is the whole reason this
- * looked delivered.
- *
- * Symlinks rather than copies: codex has a `skills_watcher`, both directories on
- * a real machine are already symlink farms, and a link costs nothing to redo —
- * which is what makes running this on every turn affordable.
- *
- * `.claude/skills` is deliberately **not** linked into claude's own directory:
- * claude already reads it from the checkout, and a second entry would bill the
- * same skill's name and description twice on every turn of that session.
- *
- * Never fails its caller. It is folded into the checkout probe, and a container
- * whose skills did not link is a container that should still run its turn — the
- * old `; true` was wrong because it hid a real error, not because it degraded.
+ * `.claude/skills` under its working directory, so a repo's `.codex/skills` and
+ * `.agents/skills` reach nobody unless linked here. Symlinks, not copies — that is
+ * what makes this affordable every turn. Never fails its caller.
  */
 export const SKILL_SYNC = `{
 mkdir -p /root/.claude/skills ${CODEX_HOME}/skills
@@ -1045,23 +884,17 @@ done
  * Not `Authorization: Bearer`. The server checks this header and nothing else
  * (`middleware/auth.py`), so sending the wrong one is indistinguishable from
  * holding the wrong key — 401 both ways, and the message says the key was
- * rejected when it was never presented. Exported so the two probes that need it
- * cannot drift apart.
+ * rejected when it was never presented. Exported so the two probes cannot drift.
  */
 export const SANDBOX_API_KEY_HEADER = "OPEN-SANDBOX-API-KEY";
 
-/** Where the panel stores an address that overrides the yaml. */
 /**
  * Split an address into scheme and authority.
  *
- * The server does not have to be on this machine. A Tailscale peer or a cloud
- * box works — the SDK only ever speaks HTTP to it — so the address accepts a
- * hostname and, now, a scheme.
- *
- * `https` matters for exactly one of those two: over Tailscale the transport is
- * already WireGuard and plain HTTP is fine, but over the open internet the
- * api_key and every container payload would cross it in the clear. So the scheme
- * is honoured rather than assumed, and `remoteInClear` below is what says so.
+ * The server does not have to be on this machine — the SDK only ever speaks HTTP
+ * to it. `https` matters for one case: over Tailscale the transport is already
+ * WireGuard, but over the open internet the api_key and every container payload
+ * would cross in the clear, so the scheme is honoured rather than assumed.
  */
 export function splitAddr(addr: string): { protocol: "http" | "https"; authority: string } {
   const m = /^(https?):\/\/(.+)$/i.exec(addr.trim());
@@ -1073,12 +906,10 @@ export function splitAddr(addr: string): { protocol: "http" | "https"; authority
 /**
  * Reachable only from this machine, or from a network that encrypts itself.
  *
- * Loopback is obvious. The Tailscale range (100.64.0.0/10, the CGNAT block it
- * uses) and `*.ts.net` are treated as safe because that transport is WireGuard —
- * which is the whole reason plain HTTP to a peer is not a mistake. Everything
- * else on plain HTTP is a real exposure and is reported, never blocked: it may
- * be a private VLAN we cannot see from here, and refusing it outright would be
- * this side deciding something it does not know.
+ * The Tailscale range (100.64.0.0/10, the CGNAT block it uses) and `*.ts.net` are
+ * safe because that transport is WireGuard. Everything else on plain HTTP is a
+ * real exposure and is reported, never blocked: it may be a private VLAN we cannot
+ * see from here, and refusing it would be this side deciding what it cannot know.
  */
 export function remoteInClear(addr: string): boolean {
   const { protocol, authority } = splitAddr(addr);
@@ -1132,11 +963,9 @@ async function provision(sb: Sandbox): Promise<void> {
     { path: "/opt/orch/cli.ts", data: cli, mode: FILE_MODE },
     { path: "/usr/local/bin/orch", data: '#!/bin/sh\nexec bun run /opt/orch/cli.ts "$@"\n', mode: EXEC_MODE },
   ]);
-  // The boss's own skills, before the first turn. Every container with a
-  // checkout gets this again on that checkout's probe — a group's, and a
-  // project's once the indexer has cloned into it — which is where a
-  // repository's own join in. Re-running it is also what a skill being ticked
-  // triggers, for the containers that never reach a checkout at all.
+  // The boss's own skills, before the first turn. Every container with a checkout
+  // gets this again on that checkout's probe, which is where a repository's own
+  // join in; re-running it is also what ticking a skill triggers.
   await sb.commands.run(SKILL_SYNC).catch(() => {});
 }
 
@@ -1148,29 +977,10 @@ export async function relinkSkills(): Promise<void> {
 /**
  * Ask a project's own containers what its checkout ships, and build nothing.
  *
- * `projectSkills` serves a repository's skills from a cache only `SKILL_SYNC`
- * can write, because `repo_path` is `owner/name` and the checkout exists only
- * inside a container. That cache was refreshed on a turn's checkout probe and
- * nowhere else, so 重新扫描 — the one control whose entire purpose is "something
- * changed outside this process" — could not touch half of what it listed.
- *
- * **The project's own container first, and it is not a fallback.** A project
- * that has landed everything has no groups at all, and that is the state a
- * stale entry sits in longest — asking only its groups asks nobody. The
- * indexer clones into the project container (`indexHeads` →
- * `createCheckout({ project })`), so a checkout is there whether or not any
- * group exists.
- *
- * `reconnect`, not `ensureSandbox`: a settings click must never cost a
- * `sandbox.create`, measured at ~34s p50. A container that has gone away
- * answers null and the next scope is tried; the first checkout that answers
- * wins, so the usual cost is one reconnect. Serial for the same reason — the
- * answer is the same from any of them, and a fan-out would pay for every
- * container to agree.
- *
- * Null means nobody could answer, which is *not* the same as "this repository
- * ships none" — `cacheProjectSkills` writes an empty list as a real answer, so
- * the caller must not turn silence into one.
+ * **The project's own container first, not as a fallback**: a project that has
+ * landed everything has no groups at all, and the indexer clones into the project
+ * container. `reconnect`, not `ensureSandbox` — a settings click must never cost a
+ * `sandbox.create`. Null means nobody answered, *not* "this repository ships none".
  */
 export async function listProjectSkills(ctx: Ctx, projectId: number): Promise<string | null> {
   const groups = ctx.db
@@ -1192,25 +1002,10 @@ export async function listProjectSkills(ctx: Ctx, projectId: number): Promise<st
 /**
  * Every upload into a container, with one retry.
  *
- * The upload is an HTTP POST to a port on this same machine, and it resets. Live,
- * from the boss's terminal:
- *
- *   error: The socket connection was closed unexpectedly.
- *     path: "http://127.0.0.1:51394/proxy/44772/files/upload", code: "ECONNRESET"
- *
- * No stack, because nothing was awaiting it — and bun treats an unhandled
- * rejection as fatal, so one flaky local socket to one container took the whole
- * fleet down. The backstop in `server.ts` is what stops that being fatal; this is
- * what stops it happening.
- *
- * One retry, which is what a reset local socket is worth: the far end is a
- * container on this machine, not a network, so a reset is the transport hiccuping
- * rather than anything being wrong with the request. A second failure is not a
- * flake, so it throws — with the paths in the message, because the SDK's error
- * carries a URL that says `files/upload` and nothing about which file.
- *
- * Every caller that writes into a container goes through here. Fixing it at the
- * four call sites instead would leave the fifth one somebody adds next month.
+ * The upload is an HTTP POST to a port on this same machine, and it resets. One
+ * retry is what that is worth: the far end is a container here, not a network. A
+ * second failure is not a flake, so it throws — with the paths in the message,
+ * because the SDK's error names `files/upload`. Every caller comes through here.
  */
 export async function writeInto(
   sb: { files: Pick<Sandbox["files"], "writeFiles"> },
@@ -1262,13 +1057,10 @@ export interface Credential {
   /**
    * Request paths this credential may be injected on. Absent means all of them.
    *
-   * Read from the sidecar's own matcher rather than assumed: a pattern ending in
-   * `*` is a **prefix**, anything else is compared for equality, and the query
-   * string is cut off before the comparison. So a leading wildcard matches
-   * nothing at all, and a trailing one — the shape the upstream guide suggests,
-   * `/owner/repo.git` plus a star — is useless here, because a prefix does not
-   * stop at `/` and would readmit `git-receive-pack`.
-   * The path filter is ANDed with the host one and evaluated before it.
+   * Read from the sidecar's own matcher: a pattern ending in `*` is a **prefix**,
+   * anything else is compared for equality, and the query string is cut off first.
+   * So a leading wildcard matches nothing, and a trailing one would readmit
+   * `git-receive-pack`. ANDed with the host match, and evaluated before it.
    */
   paths?: string[];
 }
@@ -1295,11 +1087,10 @@ export interface ExecOpts {
   /**
    * Stderr, a line at a time, for callers that are watching rather than parsing.
    *
-   * `execLines` yields stdout only, because the agent adapters parse every
-   * yielded line as NDJSON. But `git clone --progress` and every package manager
-   * print their progress on stderr — so the two commands that take minutes were
-   * the two that said nothing until they finished, which is precisely the case
-   * the log exists for. Opt-in, so the NDJSON readers are untouched.
+   * `execLines` yields stdout only, because the agent adapters parse every yielded
+   * line as NDJSON. But `git clone --progress` and every package manager print
+   * progress on stderr, so the two commands that take minutes were the two that
+   * said nothing until they finished. Opt-in, so the NDJSON readers are untouched.
    */
   onStderr?: (line: string) => void;
 }
@@ -1334,26 +1125,10 @@ async function realExec(ctx: Ctx, scope: Scope, cmd: string, opts: ExecOpts = {}
 /**
  * One log message is one line, and its newline is gone. Put it back.
  *
- * Measured against the running server, twice, because the consequence is
- * enormous and the shape is not documented anywhere:
- *
- *   printf 'a\\nbb\\nccc\\n'   ->  ["a", "bb", "ccc"]      three messages, no "\\n"
- *   printf 'a\\nb'             ->  ["a", "b"]              a partial last line is not marked
- *   printf 'a\\n\\n\\nb\\n'      ->  ["a", "\\n", "\\n", "b"]  a blank line arrives AS "\\n"
- *   printf '1%%\\r42%%\\rdone\\n' ->  ["1%", "42%", "done"]   a CR splits too, and is eaten
- *   300 KB with no newline    ->  one message                a long line is never split
- *
- * `join("")` therefore ran every line together. `git status --porcelain` came
- * back as one string, `ls` came back as one string, and **every caller that
- * splits `out` on newlines was reading a single line** — which does not throw,
- * does not warn, and mostly yields "nothing matched". That is the shape this
- * codebase keeps paying for: a wrong answer that looks like an empty one. It
- * surfaced because a skills inventory of two lines came back as one.
- *
- * The last row is what makes `join("\\n")` safe rather than a guess: the server
- * splits on line boundaries and nothing else, so one message is never half a
- * line. The blank-line row is why each message is stripped first — a bare "\\n"
- * joined with another "\\n" would double every blank line in a diff.
+ * Measured against the running server: it splits on line boundaries and on CR,
+ * strips the terminator, never splits a long line, and delivers a blank line as
+ * the two-character string for a newline. So joining on newlines is safe rather
+ * than a guess, and each message is stripped first — or every blank line doubles.
  */
 const oneLine = (m: { text: string }): string => m.text.replace(/\r?\n$/, "");
 
@@ -1395,13 +1170,9 @@ export function lineSplitter(): { push: (chunk: string) => string[]; rest: () =>
  * Callbacks on one side, an async generator on the other, one promise between.
  *
  * The SDK delivers output by calling a handler; the turn adapters consume it by
- * iterating. Something has to bridge those, and the bridge is where a stream
- * quietly stops being one — so it is separate, and checked.
- *
- * `Promise.withResolvers()` is the platform's answer to the thing this used to
- * be: a nullable `let` that the executor of a `new Promise` reached out and
- * assigned, cleared again after every await, and that every producer had to
- * remember to null-check before calling.
+ * iterating. The bridge is where a stream quietly stops being one — so it is
+ * separate, and checked. `Promise.withResolvers()` replaces a nullable `let` that
+ * every producer had to remember to null-check before calling.
  */
 export function lineQueue(): {
   push(lines: string[]): void;
@@ -1468,12 +1239,10 @@ async function* realLines(
         // Handlers only: accumulating a whole turn's NDJSON in the Execution
         // object as well would double the memory for no reader.
         skipAccumulation: true,
-        // `+ "\n"` on both, for the reason in `oneLine`: the server hands over
-        // one line per message with the terminator removed, so a splitter fed
-        // the raw text holds **everything** in its buffer and emits it once, at
-        // the end, as a single run-on line. For an NDJSON turn that is every
-        // object of the turn concatenated into one unparseable string — the
-        // stream stops being a stream and the live timeline goes quiet.
+        // `+ "\n"` on both, for the reason in `oneLine`: the server hands over one
+        // line per message with the terminator removed, so a splitter fed the raw
+        // text holds **everything** and emits it once, at the end, as one run-on
+        // line — for an NDJSON turn, the whole stream as one unparseable string.
         onStdout: (m) => q.push(split.push(`${oneLine(m)}\n`)),
         onStderr: (m) => {
           stderr += `${oneLine(m)}\n`;
@@ -1560,11 +1329,10 @@ async function realGet(ctx: Ctx, scope: Scope, path: string): Promise<string | n
 /**
  * Bind the real credentials to the sidecar.
  *
- * The sandbox's environment holds format-plausible fakes; the sidecar swaps in
- * the real value on the way out. Measured (005): injection REPLACES an
- * `Authorization` header the CLI already set, so the fake never reaches the
- * wire, and `claude` does not validate its token locally — a synthetic one
- * comes back as a server-side 401, which is exactly what makes this work.
+ * The sandbox's environment holds format-plausible fakes; the sidecar swaps in the
+ * real value on the way out. Measured (005): injection REPLACES an `Authorization`
+ * header the CLI already set, and `claude` does not validate its token locally —
+ * a synthetic one comes back as a server-side 401, which is what makes this work.
  */
 async function realBind(ctx: Ctx, scope: Scope, creds: Credential[]): Promise<void> {
   if (!creds.length) return;
@@ -1633,44 +1401,25 @@ export const REAL: SandboxDriver = {
 /**
  * `sh -c` a command in a container. **This never rejects.**
  *
- * Every caller reads `.code` — `sandboxGit`, `resourceExec`, and through the
- * first, every helper in `worktree.ts`. None of them is in a try/catch, because
- * a command that fails is a code, and that is the contract this function's shape
- * promises. Two things underneath it break that promise: `ensureSandbox`
- * rethrows when no container can be opened, and `commands.run` is a socket.
- *
- * The consequence was not a wrong answer, it was a **stopped agent**. A lease
- * whose exec rejected skipped `finishLease`, which is the only thing that
- * resolves `ctx.waiters.get('lease:N')` — so the route awaited a promise with no
- * timeout while the agent's `orch` polled a reply that would never be written.
- * The guard for exactly this (`126: the gate could not run`) could not fire,
- * because reaching it required a return. Every way to get there is ordinary: a
- * TTL reap, Docker restarting, the 60s hold expiring mid-gate.
- *
- * So a container that cannot be reached is an exit code with the reason in
- * `err`, which is what every caller already knows how to handle. The hold is
- * still set by `ensureSandbox` on its way through, so the fleet still stops
- * dispatching — this only changes what the call already in flight gets back.
- *
- * Here rather than in `realExec`, so the fake driver's failures land the same way.
+ * Every caller reads `.code` and none is in a try/catch, because a command that
+ * fails is a code — the contract this shape promises. Two things underneath break
+ * it: `ensureSandbox` rethrows when no container opens, and `commands.run` is a
+ * socket. So that is an exit code with the reason in `err`, not a rejection.
  */
 export async function execIn(ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts): Promise<ExecOutcome> {
   // The span is here for the same reason the guard is: about thirty call sites
   // converge on this one function, and the thirty-first would not have got one.
   // The command itself is never an attribute — it carries repository paths and
   // file names, which `docs/standards/observability.md` forbids on labels — so
-  // the scope is what identifies it.
-  // The group's project, not just the group: a span whose `project_id` is NULL
-  // is invisible to the panel's project scope, which is the defect `turnScope`
-  // had. One primary-key lookup against a round trip measured at ~1s.
+  // the scope is what identifies it. The group's project, not just the group: a
+  // span whose `project_id` is NULL is invisible to the panel's project scope.
   const attributes = sandboxScope(scope, projectOf(ctx, scope));
   return activeTracer().startActiveSpan("sandbox.exec", { attributes }, async (span) => {
     try {
       const out = await driver(ctx).exec(ctx, scope, cmd, opts);
       // This function is documented as never rejecting, so a span that errored
-      // only on a throw could never error at all. An unreachable container is
-      // the case the guard below was written for — a stopped agent — and it has
-      // to look like a failure in the panel as well as to the caller.
+      // only on a throw could never error at all. An unreachable container has to
+      // look like a failure in the panel as well as to the caller.
       if (out.code === EXEC_UNAVAILABLE) span.setStatus({ code: SpanStatusCode.ERROR, message: out.err });
       return out;
     } catch (e) {
@@ -1700,17 +1449,9 @@ export const EXEC_UNAVAILABLE = 126;
  * How many containers may be reached at once when something fans out over them.
  *
  * Four, derived rather than picked: `cfg.sandbox.cpu` left empty means a quarter
- * of the host's cores, and that cap is **per container**. Every exec in a fan-out
- * targets a different container, so N of them never contend inside one cap —
- * they contend on the host, where N caps sum. Ten groups, the shipped default,
- * is 2.5 hosts' worth of CPU asked for at once, and `maxGroups` can be raised
- * from the panel while the server runs. Four is one host's worth.
- *
- * The throughput this costs is small and measured against the two callers: the
- * skill relink is a settings click and the session sweep is hourly against a
- * seven-day window. Both are round-trip overhead rather than work, and the sweep
- * is disk-bound on a host with one disk queue, so ten at once was never ten
- * times faster than four.
+ * of the host's cores, and that cap is **per container** — so N execs in a fan-out
+ * contend on the host, where N caps sum. Ten groups, the shipped default, is 2.5
+ * hosts' worth of CPU asked for at once. Four is one host's worth.
  */
 export const EXEC_FANOUT = 4;
 export const execLines = (ctx: Ctx, scope: Scope, cmd: string, opts?: ExecOpts) =>
