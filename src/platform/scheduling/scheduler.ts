@@ -354,6 +354,7 @@ export class Scheduler {
     // cost the same money and CPU as anyone's — so they take a slot too. Letting
     // them bypass the pool was how a "no slots" configuration still spawned agents.
     const { busyGroups, taken } = this.capacity();
+    this.loadAdmission(pending);
 
     const out: Job[] = [];
     for (const job of pending) {
@@ -535,23 +536,58 @@ export class Scheduler {
     return this.groupAdmits(job) && this.sliceAdmits(job);
   }
 
+  /**
+   * Every group and slice this tick's queue names, in two queries.
+   *
+   * These were read one row at a time inside the admission check, so the query
+   * count grew with the depth of the queue while the number of *distinct* groups
+   * did not — twenty jobs on three groups asked twenty times. Idea taken from
+   * pg-boss's `ignoreGroups`, which decides the blocked set once per fetch rather
+   * than per job.
+   *
+   * Held only for the length of one `eligible()` call. A cache that outlived the
+   * tick would be a second copy of the group table, and the admission check exists
+   * precisely because those rows move.
+   */
+  private loadAdmission(pending: readonly Job[]): void {
+    const grpIds = [...new Set(pending.map((j) => j.grp_id).filter((id): id is number => id !== null))];
+    const sliceIds = [...new Set(pending.map((j) => j.slice_id).filter((id): id is number => id !== null))];
+    this.grpRows = new Map(
+      (grpIds.length === 0
+        ? []
+        : this.db
+            .query<{ id: number; status: GrpState; budget_tokens: number | null; spent_tokens: number }, string[]>(
+              `SELECT id, status, budget_tokens, spent_tokens FROM grp
+                WHERE id IN (SELECT value FROM json_each(?))`,
+            )
+            .all(JSON.stringify(grpIds))
+      ).map((r) => [r.id, r]),
+    );
+    this.sliceRows = new Map(
+      (sliceIds.length === 0
+        ? []
+        : this.db
+            .query<{ id: number; budget_tokens: number | null; spent_tokens: number }, string[]>(
+              `SELECT id, budget_tokens, spent_tokens FROM slice
+                WHERE id IN (SELECT value FROM json_each(?))`,
+            )
+            .all(JSON.stringify(sliceIds))
+      ).map((r) => [r.id, r]),
+    );
+  }
+
+  private grpRows = new Map<number, { status: GrpState; budget_tokens: number | null; spent_tokens: number }>();
+  private sliceRows = new Map<number, { budget_tokens: number | null; spent_tokens: number }>();
+
   private groupAdmits(job: Job): boolean {
-    const grp = this.db
-      .query<{ status: GrpState; budget_tokens: number | null; spent_tokens: number }, [number]>(
-        "SELECT status, budget_tokens, spent_tokens FROM grp WHERE id = ?",
-      )
-      .get(job.grp_id!);
+    const grp = this.grpRows.get(job.grp_id!);
     if (!grp) return false;
     return groupStateAdmits(grp.status, job) && hasBudget(grp);
   }
 
   private sliceAdmits(job: Job): boolean {
     if (job.slice_id === null) return true;
-    const slice = this.db
-      .query<{ budget_tokens: number | null; spent_tokens: number }, [number]>(
-        "SELECT budget_tokens, spent_tokens FROM slice WHERE id = ?",
-      )
-      .get(job.slice_id);
+    const slice = this.sliceRows.get(job.slice_id);
     // Budget is per-slice so overspend is caught early, not at group level.
     return !slice || hasBudget(slice);
   }
