@@ -1,0 +1,23 @@
+# What CodeQL analyses, and the two places its answer is already known.
+#
+# `security-extended` stays on for everything reachable at runtime. What this
+# file does is take two findings off the board that are the *feature*, not a
+# defect in it — both were dispositioned once already in
+# `docs/operations/security-candidates.md`, against Fallow, and CodeQL is a
+# second tool asking the same question of the same lines.
+name: orchestrator
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  # A one-shot interactive setup script: it starts a loopback server, waits for
+  # GitHub to redirect a manifest-conversion code back to it, and writes the
+  # resulting App private key to `data/`. `js/http-to-file-access` describes
+  # that accurately and it is the whole purpose — an App generator that does not
+  # save the key it was given has not generated anything. The one real risk on
+  # that path, a `code` steering the API request, is fixed at the socket where
+  # the value enters (see `security-candidates.md`, "The one that was real").
+  #
+  # Nothing here runs in the server, in a sandbox, or in a release artifact:
+  # `scripts/` is developer tooling, invoked by hand.
+  - scripts
