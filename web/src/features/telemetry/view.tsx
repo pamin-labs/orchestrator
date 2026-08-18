@@ -175,13 +175,14 @@ const NO_INSET: PlotInset = { left: 0, right: 0 };
  * the window alone rather than anchor a zoom on a guess.
  */
 function wheelWindow(
-  event: React.WheelEvent<HTMLDivElement>,
+  event: WheelEvent,
+  element: HTMLElement,
   window: TimeWindow,
   limit: TimeWindow,
   minSpan: number,
   inset: PlotInset = NO_INSET,
 ): TimeWindow | null {
-  const box = event.currentTarget.getBoundingClientRect();
+  const box = element.getBoundingClientRect();
   const plot = box.width - inset.left - inset.right;
   if (plot <= 0) return null;
   // Whichever axis the gesture is mostly on. A trackpad swipe is never purely
@@ -740,6 +741,38 @@ const flameColor = ({ data, highlight }: FlameFrame): string => {
 };
 
 /**
+ * A wheel listener that is allowed to say no.
+ *
+ * React registers `onWheel` as a **passive** listener — it has since React 17,
+ * deliberately, so that scrolling cannot be blocked by a slow handler — and
+ * `preventDefault()` inside a passive listener does nothing but log a warning.
+ * Both charts here had that call and it had never taken effect. The zoom worked
+ * anyway, because zooming does not need the default suppressed; what needed it
+ * was everything the browser does *instead*.
+ *
+ * On a trackpad that is the back/forward gesture. A two-finger horizontal swipe
+ * over a chart is a pan to the reader and a history navigation to macOS, and
+ * losing the page mid-gesture is the worst outcome available — the panel state,
+ * the zoom and the window all go with it. `overscroll-behavior` does not help:
+ * it governs scroll chaining, and these elements do not scroll.
+ *
+ * So the listener is attached by hand with `{ passive: false }`, which is the
+ * documented way to keep the right to refuse. The handler is held in a ref so
+ * that a new closure on every render does not detach and reattach it.
+ */
+function useWheel(target: React.RefObject<HTMLElement | null>, onWheel: (event: WheelEvent) => void) {
+  const latest = useRef(onWheel);
+  latest.current = onWheel;
+  useEffect(() => {
+    const el = target.current;
+    if (!el) return;
+    const handler = (event: WheelEvent) => latest.current(event);
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [target]);
+}
+
+/**
  * `d3-flame-graph`, wrapped in the lifecycle React needs it to have.
  *
  * The library is imperative and older than hooks: `flamegraph()` builds a chart
@@ -950,6 +983,19 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
   const [view, setView] = useState<TimeWindow>({ from: 0, to: 1 });
   const zoom = view.to - view.from;
   const { host, port, details, chart, zoomed, setZoomed } = useFlameChart({ tree, self, picked, zoom });
+  useWheel(port, (event) => {
+    const el = port.current;
+    if (!el) return;
+    // 0.002 of the whole width is the floor — five hundred times in, past which
+    // a frame is thinner than its own border.
+    const next = wheelWindow(event, el, view, WHOLE, 0.002);
+    if (!next) return;
+    // Refused whether or not the window moved. A pan that is already at the end
+    // of the range still has to say no, or the browser reads the rest of the
+    // gesture as a back-navigation and the page goes with it.
+    event.preventDefault();
+    setView(next);
+  });
 
   return (
     <div className="mt-2">
@@ -988,18 +1034,7 @@ function Flame({ tree, self, picked }: { tree: FlameNode; self: boolean; picked:
       {/* The viewport. The chart inside it is rendered `1/zoom` times wider and
           slid left, which is what "show a narrower slice across the full pane"
           means for an axis that is folded time rather than a clock. */}
-      <div
-        ref={port}
-        className="overflow-hidden"
-        onWheel={(event) => {
-          // 0.002 of the whole width is the floor — five hundred times in, past
-          // which a frame is thinner than its own border.
-          const next = wheelWindow(event, view, WHOLE, 0.002);
-          if (!next) return;
-          event.preventDefault();
-          setView(next);
-        }}
-      >
+      <div ref={port} className="overflow-hidden overscroll-x-contain">
         <div style={{ transform: `translateX(${-view.from * 100}%)`, width: `${100 / zoom}%` }}>
           <div
             ref={host}
@@ -1118,12 +1153,22 @@ function Trend({
   /** Drag and wheel write the same thing, and every block reads it. */
   onWindow: (next: TimeWindow | null) => void;
 }) {
-  // Inside the chart's own box, at the chart's own height, and not as a line
-  // above everything. It sat at the top of the section reading like the whole
-  // view's empty state, stacked on a stage table that had data in it — one
-  // chart having nothing yet said as "nothing here yet". A slot the size of the
-  // thing that is missing says which thing is missing, and `sunk` is already
-  // this page's surface for what a machine produced.
+  const box = useRef<HTMLDivElement>(null);
+  useWheel(box, (event) => {
+    const el = box.current;
+    if (!el) return;
+    // A minute is the floor the endpoint already enforces, so zooming below it
+    // would ask for buckets the server will not produce.
+    const next = wheelWindow(event, el, window, limit, 60_000, TREND_INSET);
+    if (!next) return;
+    // Unconditionally, even when the window did not move. On a trackpad a
+    // horizontal swipe over a chart is a pan to the reader and a back/forward
+    // navigation to the browser, and a pan already at the end of its range is
+    // exactly when the gesture keeps going — losing the page, the zoom and the
+    // window with it.
+    event.preventDefault();
+    onWindow(next);
+  });
   // Dense, so an empty bucket in the middle draws as a break rather than being
   // smoothed over. A quiet ten minutes and ten minutes with no data are not the
   // same fact, and a line joined across the gap says they are.
@@ -1156,19 +1201,11 @@ function Trend({
       // focus ring and selected the SVG as text, because `ResponsiveContainer`
       // renders a focusable wrapper. Scoped here rather than turning focus rings
       // off anywhere else — a real control still needs one.
+      ref={box}
       tabIndex={-1}
-      className="h-[7.5rem] touch-none select-none outline-none [&_*]:outline-none"
-      onWheel={(event) => {
-        // A minute is the floor the endpoint already enforces, so zooming below
-        // it would ask for buckets the server will not produce.
-        const next = wheelWindow(event, window, limit, 60_000, TREND_INSET);
-        if (!next) return;
-        // `preventDefault` only over the chart, so the page still scrolls
-        // everywhere else. `touch-none` is the same rule for a trackpad: without
-        // it the browser claims the gesture before React sees it.
-        event.preventDefault();
-        onWindow(next);
-      }}
+      // `touch-none` is the same refusal for a touchscreen, where the gesture
+      // never reaches a wheel listener at all.
+      className="h-[7.5rem] touch-none select-none overscroll-x-contain outline-none [&_*]:outline-none"
     >
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={CHART_MARGIN}>

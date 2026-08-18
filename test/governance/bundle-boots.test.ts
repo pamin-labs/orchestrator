@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { restoreFetch, stubFetch } from "../support/render.tsx";
+import { restoreFetch, stubFetch, waitFor } from "../support/render.tsx";
 import { emptyState } from "../../web/src/shared/api.ts";
 
 /**
@@ -14,16 +17,22 @@ import { emptyState } from "../../web/src/shared/api.ts";
  * on mount with `ij0 is not defined`. The source was correct. The bundle was
  * not, and 1,300 passing tests said nothing about it.
  *
- * So this one boots the real file: the entry point evaluates, React mounts, and
+ * So this one boots a real build: the entry point evaluates, React mounts, and
  * the view the crash was in renders. It is slow by the standards of this suite
  * and it is the only test that can see this class of defect at all.
  *
- * The document comes from `test/support/dom.ts` at preload, the same one every
- * render test uses.
+ * It **builds its own bundle** rather than reading `web/dist/main.js`. Asserting
+ * on the checked-out artefact made the suite depend on `build:web` having run,
+ * which `test-main` does not do — so in CI the file was absent, and because this
+ * file installs process-global fakes, its failure took eighteen tests in the
+ * same worker down with it. A test that needs a bundle should produce one, and
+ * a test that reaches for a global owes it back.
  */
 
-/** Where `build:web` writes, so the test and the script cannot disagree. */
-const BUNDLE = "web/dist/main.js";
+/** The same entry point `build:web` uses; anything else boots a different bundle. */
+const ENTRY = "web/src/app/main.tsx";
+
+let workdir = "";
 
 /**
  * A viewport, because happy-dom measures every element as 0x0.
@@ -31,10 +40,21 @@ const BUNDLE = "web/dist/main.js";
  * Load-bearing rather than cosmetic: `ResponsiveContainer` draws nothing at all
  * at zero width, so without this the charts never lay out — and a scale that is
  * never resolved cannot fail to resolve. The first version of this test passed
- * against a bundle that was known broken, for exactly that reason.
+ * against a bundle already known to be broken, for exactly that reason.
  */
 const realRect = HTMLElement.prototype.getBoundingClientRect.bind(HTMLElement.prototype);
 const SIZE = { width: 900, height: 500 };
+
+/**
+ * The panel's event stream, which happy-dom has no implementation of.
+ *
+ * A gap in the document simulation rather than in the product: `useOrch` opens
+ * one on mount, so without this the boot throws `EventSource is not defined`
+ * before it reaches anything worth asserting.
+ */
+class QuietSource extends EventTarget {
+  close() {}
+}
 
 beforeEach(() => {
   HTMLElement.prototype.getBoundingClientRect = function rect(this: void): DOMRect {
@@ -45,9 +65,18 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Every one of these is process-global and shared with the other files in this
+  // worker, so the teardown is not tidiness: leaving the fake viewport installed
+  // is what turned one failure here into eighteen elsewhere.
   restoreFetch();
   document.body.innerHTML = "";
+  location.hash = "";
   HTMLElement.prototype.getBoundingClientRect = realRect;
+  Reflect.deleteProperty(HTMLElement.prototype, "offsetWidth");
+  Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
+  Reflect.deleteProperty(globalThis, "EventSource");
+  if (workdir) rmSync(workdir, { recursive: true, force: true });
+  workdir = "";
 });
 
 /**
@@ -64,27 +93,17 @@ const STATE = {
   projects: [{ id: 1, name: "p", repo_path: "/tmp/p", remote: null, base_branch: "main" }],
 };
 
-/**
- * The panel's event stream, which happy-dom has no implementation of.
- *
- * A gap in the document simulation rather than in the product: `useOrch` opens
- * one on mount, so without this the boot throws `EventSource is not defined`
- * before it reaches anything worth asserting. Closing and listening are the
- * whole of the surface used here.
- */
-class QuietSource extends EventTarget {
-  close() {}
-}
+const T0 = 1_700_000_000_000;
 
 const TELEMETRY = {
   scope: "project",
   windowMs: 3_600_000,
-  window: { from: 1_700_000_000_000 - 3_600_000, to: 1_700_000_000_000 },
+  window: { from: T0 - 3_600_000, to: T0 },
   stages: [{ name: "turn", count: 2, totalMs: 20, p50: 10, p95: 10, errors: 0 }],
   traces: [],
   trend: [
-    { at: 1_700_000_000_000 - 3_600_000, count: 1, p50: 10, p95: 20 },
-    { at: 1_700_000_000_000, count: 1, p50: 12, p95: 25 },
+    { at: T0 - 3_600_000, count: 1, p50: 10, p95: 20 },
+    { at: T0, count: 1, p50: 12, p95: 25 },
   ],
   flame: [{ path: "turn", totalMs: 20, count: 2 }],
   slices: [],
@@ -92,9 +111,9 @@ const TELEMETRY = {
 };
 
 test("the built bundle mounts 耗时 without throwing", async () => {
-  const file = Bun.file(BUNDLE);
-  // A missing bundle is a skipped assertion wearing a pass, so say so instead.
-  expect(await file.exists()).toBe(true);
+  workdir = mkdtempSync(join(tmpdir(), "orch-boot-"));
+  const built = await Bun.build({ entrypoints: [ENTRY], target: "browser", minify: true, outdir: workdir });
+  expect(built.success).toBe(true);
 
   (globalThis as { EventSource?: unknown }).EventSource = QuietSource;
   stubFetch({ "/api/v1/telemetry": TELEMETRY, "/api/v1/state": STATE, "/api/v1/cost": { rows: [] } });
@@ -107,15 +126,18 @@ test("the built bundle mounts 耗时 without throwing", async () => {
   const onError = (event: ErrorEvent) => failures.push(event.error ?? event.message);
   window.addEventListener("error", onError);
   try {
-    // Cache-busted, because a second test in the same process would otherwise
-    // get the module registry's copy and never evaluate the fresh build.
-    await import(`${pathToFileURL(BUNDLE).href}?boot=${STATE.projects[0]!.id}`);
-    // The mount is inside an effect; one microtask turn is enough for React to
-    // commit, and any throw from it reaches the listener above.
-    // Two turns: one for the mount, one for the query that the view reads.
-    await new Promise((resolve) => {
-      setTimeout(resolve, 50);
-    });
+    await import(pathToFileURL(join(workdir, "main.js")).href);
+    // Polled, not slept. A fixed delay was long enough when this file ran alone
+    // and not when sixteen workers were competing for the machine, so it failed
+    // only under `--parallel` — the shape of flake that gets re-run rather than
+    // read. `waitFor` ends as soon as the mount lands, and the same condition
+    // is what the assertions below check.
+    // The condition is the *settled* state, not "something rendered". Waiting
+    // for a non-empty body ends on the first paint, which is the panel's
+    // first-project screen while the snapshot is still in flight — so the
+    // assertions below ran against a page that had not finished routing, and
+    // did so only when the machine was busy enough for that gap to be visible.
+    await waitFor(() => expect(document.body.textContent ?? "").toMatch(/耗时|这个视图崩了/));
   } finally {
     window.removeEventListener("error", onError);
   }
