@@ -45,6 +45,7 @@ export const ProjectConfigSchema: z.ZodType<ProjectConfigResponse> = z.object({
   resources: z.array(z.object({ name: z.string(), template: z.string() })),
   baseBranch: z.string().nullable(),
   baseBranchNow: z.string(),
+  basePinned: z.boolean(),
   branches: z.array(z.string()),
 });
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

@@ -593,6 +593,15 @@ const MIGRATIONS: Array<string | ((db: DB) => void)> = [
   `
   ALTER TABLE span ADD COLUMN status_message TEXT;
   `,
+  // 043 — whether the boss chose the base branch or we inferred it. `baseBranch`
+  // asks GitHub for `default_branch` on every call and wrote the answer over
+  // `base_branch` unconditionally, so a branch picked in settings was reverted
+  // within one tick — and the settings endpoint's own comment calls that box "a
+  // choice rather than a memory test". Seen twice in one event feed, 29 seconds
+  // apart, both announcing the same reversion.
+  `
+  ALTER TABLE project ADD COLUMN base_branch_pinned INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export type DB = Database;

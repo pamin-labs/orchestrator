@@ -394,7 +394,15 @@ export const patchProjectConfig = (async (ctx, _req, params, data) => {
   ctx.db.transaction(() => {
     if ("baseBranch" in data) {
       const want = (nextBase ?? "").trim();
-      ctx.db.run("UPDATE project SET base_branch = ? WHERE id = ?", [want || null, id]);
+      // Pinned when the boss names one, cleared when the box is emptied. Without
+      // that flag `baseBranch` cannot tell a choice from a cached lookup, and it
+      // overwrote both — so picking a branch here lasted until the next tick.
+      // Emptying the box is the way back to following the remote's default.
+      ctx.db.run("UPDATE project SET base_branch = ?, base_branch_pinned = ? WHERE id = ?", [
+        want || null,
+        want ? 1 : 0,
+        id,
+      ]);
     }
     if (changesConfig) {
       ctx.db.run("UPDATE project SET config_json = ? WHERE id = ?", [JSON.stringify(config), id]);
@@ -405,8 +413,8 @@ export const patchProjectConfig = (async (ctx, _req, params, data) => {
 
 export const getProjectConfig = (async (ctx, _req, params) => {
   const row = ctx.db
-    .query<{ repo_path: string; base_branch: string | null }, [number]>(
-      "SELECT repo_path, base_branch FROM project WHERE id = ?",
+    .query<{ repo_path: string; base_branch: string | null; base_branch_pinned: number }, [number]>(
+      "SELECT repo_path, base_branch, base_branch_pinned FROM project WHERE id = ?",
     )
     .get(params.id);
   if (!row) return message("no such project", 404);
@@ -419,6 +427,7 @@ export const getProjectConfig = (async (ctx, _req, params) => {
     config,
     resources,
     baseBranch: row.base_branch,
+    basePinned: row.base_branch_pinned === 1,
     // What it resolves to right now, so an empty box is not a mystery.
     baseBranchNow: await baseBranch(ctx, params.id),
     // What the remote has, so the box is a choice rather than a memory test.

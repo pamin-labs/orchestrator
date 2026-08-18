@@ -37,8 +37,8 @@ const Branches = z.array(z.object({ name: z.string() }));
  */
 export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
   const row = ctx.db
-    .query<{ repo_path: string; base_branch: string | null }, [number]>(
-      "SELECT repo_path, base_branch FROM project WHERE id = ?",
+    .query<{ repo_path: string; base_branch: string | null; base_branch_pinned: number }, [number]>(
+      "SELECT repo_path, base_branch, base_branch_pinned FROM project WHERE id = ?",
     )
     .get(projectId);
   if (!row) return "main";
@@ -73,11 +73,23 @@ export async function baseBranch(ctx: Ctx, projectId: number): Promise<string> {
   // Nothing to compare against: keep what is stored rather than resetting a
   // project that develops on `develop` to `main` because the network blinked.
   if (!found) return row.base_branch ?? "main";
+  // A branch the boss picked in settings is an answer, not a cache of GitHub's.
+  // This used to overwrite it every call — and this runs on the heartbeat, so a
+  // choice survived about thirty seconds. The settings endpoint offers the remote's
+  // branch list and calls the box "a choice rather than a memory test"; the
+  // resolver was making it exactly a memory test.
+  if (row.base_branch_pinned && row.base_branch) return row.base_branch;
   if (found !== row.base_branch) {
-    ctx.db.run("UPDATE project SET base_branch = ? WHERE id = ?", [found, projectId]);
+    // Conditional on the value that was read, so of two callers racing on the
+    // same tick only one writes and only one announces it. Both used to: the
+    // event feed carried the identical line twice, 29 seconds apart, because
+    // each had read the old value before either wrote.
+    const wrote = ctx.db
+      .query("UPDATE project SET base_branch = ? WHERE id = ? AND base_branch IS ? RETURNING id")
+      .all(found, projectId, row.base_branch);
     // Only when it *changed*, not when it was first learned: it changes what
     // every later diff means.
-    if (row.base_branch) {
+    if (wrote.length > 0 && row.base_branch) {
       ctx.bus?.emit({
         grpId: null,
         author: "orchestrator",

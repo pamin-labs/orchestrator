@@ -58,6 +58,7 @@ const config = (over: Partial<ProjectConfig> = {}): ProjectConfig => ({
     { name: "typecheck", template: "bun run typecheck" },
   ],
   baseBranch: null,
+  basePinned: false,
   baseBranchNow: "main",
   branches: ["main", "dev"],
   ...over,
