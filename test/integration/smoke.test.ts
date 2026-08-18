@@ -20,9 +20,13 @@ let dataDir: string;
 
 function canListen(): boolean {
   try {
-    const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
-    void probe.stop(true);
-    return true;
+    // `using`, because the previous line was `void probe.stop(true)` — a dangling
+    // promise, which this repository forbids, and one holding a listening socket:
+    // if the close lost its race the port was still bound when the real server
+    // asked for one. Bun's `Server` implements `Symbol.dispose` itself, so the
+    // socket closes when this scope leaves, including down the `catch`.
+    using probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+    return (probe.port ?? 0) > 0;
   } catch {
     return false;
   }

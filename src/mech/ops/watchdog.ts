@@ -28,7 +28,7 @@ import { serverLogPath } from "../sandbox/server.ts";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { buildMap, indexExcludes, renderMap, saveMap } from "../knowledge/repomap.ts";
+import { buildMap, indexExcludes, saveMap } from "../knowledge/repomap.ts";
 import { resumeReclaimed, type Job } from "../../platform/scheduling/scheduler.ts";
 import { abortJob } from "../../platform/process/running-turns.ts";
 import { probe } from "../sandbox/net.ts";
@@ -842,7 +842,7 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
         indexExcludes(ctx.db, p.id),
         (rel) => heads.get(rel),
       );
-      if (saveMap(ctx.db, p.id, renderMap(named))) {
+      if (saveMap(ctx.db, p.id, named)) {
         ctx.bus.emit({
           author: "librarian",
           kind: "state_change",

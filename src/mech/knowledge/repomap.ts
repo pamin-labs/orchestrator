@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { jsonOr } from "../../contracts/json.ts";
 import { projectConfig, saveSingletonNote, singletonNote } from "../util/rows.ts";
 import type { DB } from "../../platform/persistence/database.ts";
 import { symbolsIn } from "./symbols.ts";
@@ -90,6 +92,20 @@ export interface MapNode {
 }
 
 /**
+ * The stored shape, which is not the rendered one.
+ *
+ * The map used to be persisted as the text a prompt sees and parsed back by
+ * splitting on `" — "` and `", "` — so a file named `a — b.ts`, or a symbol with
+ * a comma in it, came back as a different file with different symbols, silently.
+ * The render is for reading; storage is JSON, which is what `saveTree` next door
+ * has always done for the same kind of value.
+ */
+const MapNodeSchema = z.object({
+  dir: z.string(),
+  files: z.array(z.object({ name: z.string(), symbols: z.array(z.string()) })),
+});
+
+/**
  * Tracked files only: build output and node_modules are noise, and git already knows.
  *
  * `read` is how the file's text arrives, and it is a parameter because there is
@@ -131,7 +147,7 @@ export async function buildMap(
   return [...byDir.values()].sort((a, b) => a.dir.localeCompare(b.dir));
 }
 
-export function renderMap(nodes: MapNode[]): string {
+function renderMap(nodes: MapNode[]): string {
   return nodes
     .map(
       (n) =>
@@ -173,21 +189,15 @@ export function mapFor(nodes: MapNode[], question: string, maxChars: number): st
 }
 
 /** Store the map as a project note, and only when it actually changed. */
-export function saveMap(db: DB, projectId: number, rendered: string): boolean {
-  return saveSingletonNote(db, projectId, "map", rendered);
+export function saveMap(db: DB, projectId: number, nodes: MapNode[]): boolean {
+  return saveSingletonNote(db, projectId, "map", JSON.stringify(nodes));
 }
 
+/**
+ * A map written by an older build is text, not JSON, and reads back as no map at
+ * all rather than as a corrupt one — the rule refreshes it on the next tick.
+ */
 export function loadMap(db: DB, projectId: number | null): MapNode[] {
   if (!projectId) return [];
-  const body = singletonNote(db, projectId, "map");
-  if (!body) return [];
-  const nodes: MapNode[] = [];
-  for (const line of body.split("\n")) {
-    if (line.endsWith("/")) nodes.push({ dir: line.slice(0, -1), files: [] });
-    else if (nodes.length) {
-      const [name, syms] = line.trim().split(" — ");
-      nodes.at(-1)!.files.push({ name: name!, symbols: syms ? syms.split(", ") : [] });
-    }
-  }
-  return nodes;
+  return jsonOr(singletonNote(db, projectId, "map"), z.array(MapNodeSchema), []);
 }

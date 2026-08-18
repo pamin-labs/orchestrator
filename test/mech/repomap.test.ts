@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { buildMap, indexable, mapFor } from "../../src/mech/knowledge/repomap.ts";
+import { buildMap, indexable, loadMap, mapFor, saveMap } from "../../src/mech/knowledge/repomap.ts";
+import { openMemory } from "../../src/platform/persistence/database.ts";
+import { saveSingletonNote } from "../../src/mech/util/rows.ts";
+import * as fx from "../support/factories.ts";
 
 test("what belongs in an index is decided by exclusion, not by an extension list", () => {
   // Both indexes used to carry their own allow-list. repomap's named eighteen
@@ -126,4 +129,31 @@ test("the map is searched with the same tokenizer as the notes", async () => {
   const found = mapFor(nodes, "where is the db schema", 4000);
   expect(found).toContain("src/db");
   expect(found).not.toContain("theme");
+});
+
+/**
+ * The map is stored as data, not as the text a prompt reads.
+ *
+ * It used to be persisted rendered and parsed back by splitting on `" — "` and
+ * `", "`, so a file whose name contained the separator came back as a different
+ * file with different symbols and nothing said so. The render is one-way.
+ */
+test("a file name containing the render's separator survives a round trip", () => {
+  const db = openMemory();
+  const p = fx.project.insert(db, { name: "p" }).id;
+  const nodes = [
+    { dir: "src", files: [{ name: "a — b.ts", symbols: ["one, two", "three"] }] },
+    { dir: "docs", files: [{ name: "plain.md", symbols: [] }] },
+  ];
+  expect(saveMap(db, p, nodes)).toBe(true);
+  expect(loadMap(db, p)).toEqual(nodes);
+  // Unchanged content is still not a write, which is what the rule depends on.
+  expect(saveMap(db, p, nodes)).toBe(false);
+});
+
+test("a map written by an older build reads as absent rather than as nonsense", () => {
+  const db = openMemory();
+  const p = fx.project.insert(db, { name: "p" }).id;
+  saveSingletonNote(db, p, "map", "src/\n  a.ts — one, two\n");
+  expect(loadMap(db, p)).toEqual([]);
 });
