@@ -461,9 +461,8 @@ async function listTreeInner(
  * files, which a parser needs and a line regex does not.
  *
  * Needs file *contents*, so the mirror cannot serve it: that clone is
- * `--filter=blob:none` and every read would be a network fetch. It reads the
- * project's own container instead. One exec for the whole corpus — `summarise`
- * reads every tracked file's head, so a read per file is 125 round trips a tick.
+ * `--filter=blob:none` and every read is a network fetch. It reads the project's
+ * own container instead, in one exec — a read per file is 125 round trips a tick.
  */
 export async function treeHeads(ctx: Ctx, scope: Scope, bytes: number | null): Promise<Map<string, string>> {
   // One exec, but it reads the head of every tracked file inside a container, so

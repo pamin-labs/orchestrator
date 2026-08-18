@@ -806,13 +806,11 @@ async function rules(deps: WatchdogDeps, findings: Finding[]): Promise<Finding[]
       // Symbols need file *contents*, and the only copy is in the project's own
       // container: the mirror is `--filter=blob:none`, so reading through it is a
       // network fetch per file, and this machine has no checkout at all. One exec
-      // for the whole corpus. Whole files, not the indexer's head: a regex did not
-      // care where a file was cut, a parser does — the last declaration in a
-      // truncated file falls outside its `export_statement` and is lost, measured
-      // at 43 of 494 files here, and no larger cap fixes it because there is
-      // always a last construct. Empty is a legitimate answer (indexing off, or no
-      // container yet) and means a paths-only map — not a silent one: the count is
-      // in the line below.
+      // for the whole corpus, and whole files rather than the indexer's head — the
+      // last declaration in a truncated file falls outside its `export_statement`
+      // and is lost, and no larger cap fixes it. Empty is a legitimate answer
+      // (indexing off, or no container yet) and means a paths-only map.
+
       // ponytail: the whole corpus crosses the exec every tick (0.8 MB → 4.0 MB
       // here). Gate the exec on the tree's head sha if a large repo makes it hurt.
       const heads = await treeHeads(ctx, { project: p.id }, null).catch(() => new Map<string, string>());
